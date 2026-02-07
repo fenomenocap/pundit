@@ -3,8 +3,12 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "forge build || echo 'forge not found — install Foundry to build contracts'",
+    "build": "forge build 2>/dev/null || npx solcjs --bin --abi --include-path node_modules --base-path . src/*.sol -o out/",
     "test": "forge test",
     "clean": "rm -rf out cache"
+  },
+  "devDependencies": {
+    "@openzeppelin/contracts": "^5.4.0",
+    "solc": "^0.8.33"
   }
 }
