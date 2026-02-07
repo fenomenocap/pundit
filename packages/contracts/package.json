@@ -1,0 +1,10 @@
+{
+  "name": "@spm/contracts",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "forge build || echo 'forge not found — install Foundry to build contracts'",
+    "test": "forge test",
+    "clean": "rm -rf out cache"
+  }
+}
