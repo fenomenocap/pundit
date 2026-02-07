@@ -1,5 +1,5 @@
 {
-  "name": "@spm/contracts",
+  "name": "@sports-predict/contracts",
   "version": "0.0.1",
   "private": true,
   "scripts": {
