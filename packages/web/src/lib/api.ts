@@ -71,9 +71,26 @@ export interface LeaderboardEntry {
   address: string;
   profit: string;
   totalInvested: string;
+  roi: number;
   wins: number;
   losses: number;
+  winRate: number;
   marketsTraded: number;
+}
+
+export interface MatchResponse {
+  id: number;
+  competition: string;
+  homeTeam: string;
+  awayTeam: string;
+  utcDate: string;
+  status: string;
+  matchday: number | null;
+  group: string | null;
+  score: {
+    home: number | null;
+    away: number | null;
+  } | null;
 }
 
 export interface PaginationResponse {
@@ -198,6 +215,14 @@ export async function getLeaderboard(
   const qs = query.toString();
   return apiFetch<{ period: string; leaderboard: LeaderboardEntry[] }>(
     `/api/leaderboard${qs ? `?${qs}` : ""}`
+  );
+}
+
+// ─── Matches ───────────────────────────────────────────────────────────────
+
+export async function getUpcomingMatches() {
+  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null }>(
+    "/api/matches/upcoming"
   );
 }
 

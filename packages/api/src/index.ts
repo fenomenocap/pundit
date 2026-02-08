@@ -6,6 +6,8 @@ import { requestLogger, errorHandler } from "./middleware";
 import marketRoutes from "./routes/markets";
 import userRoutes from "./routes/users";
 import leaderboardRoutes from "./routes/leaderboard";
+import matchRoutes from "./routes/matches";
+import { startFootballCron } from "./services/football-data";
 import { prisma } from "./db";
 
 const app = express();
@@ -42,6 +44,7 @@ app.get("/health", async (_req, res) => {
 app.use("/api/markets", marketRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
+app.use("/api/matches", matchRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 
@@ -51,4 +54,7 @@ app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`API server running on port ${port}`);
+
+  // Start football data cron (fetches every 6 hours)
+  startFootballCron();
 });
