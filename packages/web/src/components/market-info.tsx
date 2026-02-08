@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { CONTRACTS, EXPLORER_BASE } from "@/lib/contracts";
 import type { MarketResponse } from "@/lib/api";
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
@@ -50,8 +51,8 @@ export function MarketInfo({ market, participantCount }: MarketInfoProps) {
   const pctYes = total > 0n ? Number((poolYes * 10000n) / total) / 100 : 50;
   const pctNo = 100 - pctYes;
 
-  const explorerBase = "https://sepolia.basescan.org";
-  const contractAddr = "0x0000000000000000000000000000000000000000"; // placeholder
+  const explorerBase = EXPLORER_BASE;
+  const contractAddr = CONTRACTS.engine;
 
   return (
     <div className="space-y-6">
