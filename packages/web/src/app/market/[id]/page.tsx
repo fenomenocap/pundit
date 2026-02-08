@@ -1,14 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import Link from "next/link";
 import { fetchMarketDetail } from "@/lib/mock-data";
 import type { MarketDetailResponse } from "@/lib/api";
 import type { ChartDataPoint } from "@/lib/mock-data";
 import { MarketInfo } from "@/components/market-info";
-import { PriceChart } from "@/components/price-chart";
 import { TradePanel } from "@/components/trade-panel";
 import { RecentTrades } from "@/components/recent-trades";
+
+// Lazy-load the chart (recharts is ~100KB)
+const PriceChart = lazy(() =>
+  import("@/components/price-chart").then((m) => ({ default: m.PriceChart }))
+);
 
 interface MarketData extends MarketDetailResponse {
   chartData: ChartDataPoint[];
@@ -21,33 +25,70 @@ export default function MarketDetailPage({
 }) {
   const [data, setData] = useState<MarketData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
     fetchMarketDetail(params.id)
       .then(setData)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
   }, [params.id]);
+
+  // Dynamic page title
+  useEffect(() => {
+    if (data) {
+      document.title = `${data.question} | Sports Predict`;
+    }
+    return () => {
+      document.title = "Sports Predict — Onchain Prediction Markets";
+    };
+  }, [data]);
 
   if (error) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="flex flex-col items-center justify-center py-20">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-500/10">
+            <svg className="h-7 w-7 text-rose-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+            </svg>
+          </div>
           <h2 className="font-heading text-2xl font-bold text-slate-200">
-            Market Not Found
+            {error.includes("not found") || error.includes("Not Found")
+              ? "Market Not Found"
+              : "Failed to Load Market"}
           </h2>
-          <p className="mt-2 text-sm text-slate-400">{error}</p>
-          <Link
-            href="/"
-            className="mt-6 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
-          >
-            Back to Markets
-          </Link>
+          <p className="mt-2 max-w-sm text-center text-sm text-slate-400">{error}</p>
+          <div className="mt-6 flex items-center gap-3">
+            <button
+              onClick={() => {
+                setError(null);
+                setData(null);
+                setLoading(true);
+                fetchMarketDetail(params.id)
+                  .then(setData)
+                  .catch((err) => setError(err.message))
+                  .finally(() => setLoading(false));
+              }}
+              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-700"
+            >
+              Try Again
+            </button>
+            <Link
+              href="/"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+            >
+              Back to Markets
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!data) {
+  if (loading || !data) {
     return <MarketDetailSkeleton />;
   }
 
@@ -67,11 +108,13 @@ export default function MarketDetailPage({
         {/* Left column (60%) */}
         <div className="flex-1 space-y-6 lg:max-w-[60%]">
           <MarketInfo market={data} participantCount={data.participantCount} />
-          <PriceChart
-            data={data.chartData}
-            outcomeA={data.outcomeA}
-            outcomeB={data.outcomeB}
-          />
+          <Suspense fallback={<ChartSkeleton />}>
+            <PriceChart
+              data={data.chartData}
+              outcomeA={data.outcomeA}
+              outcomeB={data.outcomeB}
+            />
+          </Suspense>
           <RecentTrades
             trades={data.recentTrades}
             outcomeA={data.outcomeA}
@@ -140,7 +183,13 @@ function MobileTradeSheet({ market }: { market: MarketDetailResponse }) {
   );
 }
 
-// ─── Skeleton ───────────────────────────────────────────────────────────────
+// ─── Skeletons ─────────────────────────────────────────────────────────────
+
+function ChartSkeleton() {
+  return (
+    <div className="h-72 animate-pulse rounded-xl border border-slate-800 bg-slate-900/60" />
+  );
+}
 
 function MarketDetailSkeleton() {
   return (

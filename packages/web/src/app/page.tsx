@@ -1,10 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MarketCard, MarketCardSkeleton, MarketsEmptyState } from "@/components/market-card";
 import { fetchMarkets, MOCK_PARTICIPANTS } from "@/lib/mock-data";
 import type { MarketResponse } from "@/lib/api";
+
+// ─── Debounce hook ─────────────────────────────────────────────────────────
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    timerRef.current = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timerRef.current);
+  }, [value, delay]);
+  return debounced;
+}
 
 // ─── Category tabs ──────────────────────────────────────────────────────────
 
@@ -46,12 +58,13 @@ export default function MarketsPage() {
       .finally(() => setLoading(false));
   }, [category, sort]);
 
-  // Client-side search filter
+  // Client-side search filter (debounced 250ms)
+  const debouncedSearch = useDebounce(search, 250);
   const filtered = useMemo(() => {
-    if (!search.trim()) return markets;
-    const q = search.toLowerCase();
+    if (!debouncedSearch.trim()) return markets;
+    const q = debouncedSearch.toLowerCase();
     return markets.filter((m) => m.question.toLowerCase().includes(q));
-  }, [markets, search]);
+  }, [markets, debouncedSearch]);
 
   // Featured markets (always from full set)
   const [allMarkets, setAllMarkets] = useState<MarketResponse[]>([]);

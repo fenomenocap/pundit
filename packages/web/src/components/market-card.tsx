@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { MarketResponse } from "@/lib/api";
 
@@ -43,7 +43,7 @@ interface MarketCardProps {
   participants?: number;
 }
 
-export function MarketCard({ market, participants = 0 }: MarketCardProps) {
+export const MarketCard = memo(function MarketCard({ market, participants = 0 }: MarketCardProps) {
   const [countdown, setCountdown] = useState(() =>
     getCountdown(market.resolutionTimestamp)
   );
@@ -125,7 +125,7 @@ export function MarketCard({ market, participants = 0 }: MarketCardProps) {
       </div>
     </Link>
   );
-}
+});
 
 // ─── Skeleton ───────────────────────────────────────────────────────────────
 
