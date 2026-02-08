@@ -1,4 +1,4 @@
-import { MarketResponse, MarketDetailResponse, TradeResponse, PaginationResponse } from "./api";
+import { MarketResponse, MarketDetailResponse, TradeResponse, TradeWithMarketResponse, PositionResponse, PortfolioResponse, PaginationResponse } from "./api";
 
 // ─── Mock data matching the 10 seed markets from Phase 5 ────────────────────
 // Pool values are sum of all 3 traders' trades per outcome (in USDC raw units)
@@ -423,5 +423,283 @@ export async function fetchMarketDetail(id: string): Promise<MarketDetailRespons
     recentTrades: trades.slice(0, 20),
     participantCount: MOCK_PARTICIPANTS[id] ?? 0,
     chartData: generateChartData(market),
+  };
+}
+
+// ─── Mock portfolio data ──────────────────────────────────────────────────
+
+const MOCK_USER_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
+
+// 5 active positions across different markets
+const MOCK_POSITIONS: PositionResponse[] = [
+  {
+    marketId: "market-0",
+    marketQuestion: "Will Brazil win the 2026 FIFA World Cup?",
+    marketStatus: "OPEN",
+    outcome: 0,
+    shares: usdc(500),
+    invested: usdc(500),
+    claimable: "0",
+    claimed: false,
+    status: "active",
+  },
+  {
+    marketId: "market-1",
+    marketQuestion: "Will Argentina win the 2026 FIFA World Cup?",
+    marketStatus: "OPEN",
+    outcome: 0,
+    shares: usdc(1200),
+    invested: usdc(1200),
+    claimable: "0",
+    claimed: false,
+    status: "active",
+  },
+  {
+    marketId: "market-3",
+    marketQuestion: "Will Brazil beat Germany in their group stage match?",
+    marketStatus: "OPEN",
+    outcome: 0,
+    shares: usdc(2000),
+    invested: usdc(2000),
+    claimable: "0",
+    claimed: false,
+    status: "active",
+  },
+  {
+    marketId: "market-5",
+    marketQuestion: "Will France beat Spain in the Semi-Finals?",
+    marketStatus: "OPEN",
+    outcome: 1,
+    shares: usdc(1500),
+    invested: usdc(1500),
+    claimable: "0",
+    claimed: false,
+    status: "active",
+  },
+  {
+    marketId: "market-7",
+    marketQuestion: "Will Brazil advance from Group A?",
+    marketStatus: "OPEN",
+    outcome: 0,
+    shares: usdc(3000),
+    invested: usdc(3000),
+    claimable: "0",
+    claimed: false,
+    status: "active",
+  },
+];
+
+// 2 claimable positions (resolved markets where user won)
+const MOCK_CLAIMABLE: PositionResponse[] = [
+  {
+    marketId: "market-won-1",
+    marketQuestion: "Will Group A have more than 20 total goals?",
+    marketStatus: "RESOLVED",
+    outcome: 0,
+    shares: usdc(800),
+    invested: usdc(800),
+    claimable: usdc(1480), // won — payout > invested
+    claimed: false,
+    status: "claimable",
+  },
+  {
+    marketId: "market-won-2",
+    marketQuestion: "Will the opening match have over 2.5 goals?",
+    marketStatus: "RESOLVED",
+    outcome: 1,
+    shares: usdc(600),
+    invested: usdc(600),
+    claimable: usdc(1050),
+    claimed: false,
+    status: "claimable",
+  },
+];
+
+// 10 trade history entries
+const MOCK_TRADE_HISTORY: TradeWithMarketResponse[] = [
+  {
+    id: "th-1",
+    marketId: "market-0",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 0,
+    amount: usdc(500),
+    shares: usdc(500),
+    txHash: "0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 12001,
+    timestamp: pastISO(1),
+    marketQuestion: "Will Brazil win the 2026 FIFA World Cup?",
+    outcomeName: "Yes",
+  },
+  {
+    id: "th-2",
+    marketId: "market-1",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 0,
+    amount: usdc(1200),
+    shares: usdc(1200),
+    txHash: "0xdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 12010,
+    timestamp: pastISO(1),
+    marketQuestion: "Will Argentina win the 2026 FIFA World Cup?",
+    outcomeName: "Yes",
+  },
+  {
+    id: "th-3",
+    marketId: "market-3",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 0,
+    amount: usdc(2000),
+    shares: usdc(2000),
+    txHash: "0x1111234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 12050,
+    timestamp: pastISO(2),
+    marketQuestion: "Will Brazil beat Germany in their group stage match?",
+    outcomeName: "Brazil wins",
+  },
+  {
+    id: "th-4",
+    marketId: "market-5",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 1,
+    amount: usdc(1500),
+    shares: usdc(1500),
+    txHash: "0x2221234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 12080,
+    timestamp: pastISO(2),
+    marketQuestion: "Will France beat Spain in the Semi-Finals?",
+    outcomeName: "Draw or Spain wins",
+  },
+  {
+    id: "th-5",
+    marketId: "market-7",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 0,
+    amount: usdc(3000),
+    shares: usdc(3000),
+    txHash: "0x3331234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 12100,
+    timestamp: pastISO(3),
+    marketQuestion: "Will Brazil advance from Group A?",
+    outcomeName: "Yes",
+  },
+  {
+    id: "th-6",
+    marketId: "market-won-1",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 0,
+    amount: usdc(800),
+    shares: usdc(800),
+    txHash: "0x4441234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 11500,
+    timestamp: pastISO(5),
+    marketQuestion: "Will Group A have more than 20 total goals?",
+    outcomeName: "Yes",
+  },
+  {
+    id: "th-7",
+    marketId: "market-won-2",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 1,
+    amount: usdc(600),
+    shares: usdc(600),
+    txHash: "0x5551234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 11480,
+    timestamp: pastISO(5),
+    marketQuestion: "Will the opening match have over 2.5 goals?",
+    outcomeName: "No",
+  },
+  {
+    id: "th-8",
+    marketId: "market-4",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 0,
+    amount: usdc(400),
+    shares: usdc(400),
+    txHash: "0x6661234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 11400,
+    timestamp: pastISO(7),
+    marketQuestion: "Will Argentina beat England in the Quarter-Finals?",
+    outcomeName: "Argentina wins",
+  },
+  {
+    id: "th-9",
+    marketId: "market-6",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 1,
+    amount: usdc(750),
+    shares: usdc(750),
+    txHash: "0x7771234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 11350,
+    timestamp: pastISO(8),
+    marketQuestion: "Will USA beat Mexico in their group stage match?",
+    outcomeName: "Draw or Mexico wins",
+  },
+  {
+    id: "th-10",
+    marketId: "market-2",
+    userAddress: MOCK_USER_ADDRESS,
+    outcome: 0,
+    amount: usdc(950),
+    shares: usdc(950),
+    txHash: "0x8881234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd",
+    blockNumber: 11300,
+    timestamp: pastISO(10),
+    marketQuestion: "Will France win the 2026 FIFA World Cup?",
+    outcomeName: "Yes",
+  },
+];
+
+export async function fetchPortfolio(): Promise<PortfolioResponse> {
+  if (!USE_MOCK) {
+    const { getUserPortfolio } = await import("./api");
+    return getUserPortfolio(MOCK_USER_ADDRESS);
+  }
+
+  const allPositions = [...MOCK_POSITIONS, ...MOCK_CLAIMABLE];
+  const totalInvested = allPositions.reduce(
+    (sum, p) => sum + BigInt(p.invested),
+    0n
+  );
+  const totalClaimable = MOCK_CLAIMABLE.reduce(
+    (sum, p) => sum + BigInt(p.claimable),
+    0n
+  );
+
+  return {
+    address: MOCK_USER_ADDRESS,
+    positions: allPositions,
+    summary: {
+      totalInvested: totalInvested.toString(),
+      totalClaimable: totalClaimable.toString(),
+      totalClaimed: "0",
+    },
+  };
+}
+
+export async function fetchTradeHistory(params: {
+  page?: number;
+  limit?: number;
+} = {}): Promise<{
+  trades: TradeWithMarketResponse[];
+  pagination: PaginationResponse;
+}> {
+  if (!USE_MOCK) {
+    const { getUserHistory } = await import("./api");
+    return getUserHistory(MOCK_USER_ADDRESS, params);
+  }
+
+  const page = params.page || 1;
+  const limit = params.limit || 5;
+  const start = (page - 1) * limit;
+  const paginated = MOCK_TRADE_HISTORY.slice(start, start + limit);
+
+  return {
+    trades: paginated,
+    pagination: {
+      page,
+      limit,
+      total: MOCK_TRADE_HISTORY.length,
+      totalPages: Math.ceil(MOCK_TRADE_HISTORY.length / limit),
+    },
   };
 }
