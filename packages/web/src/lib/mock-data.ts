@@ -1,4 +1,4 @@
-import { MarketResponse, PaginationResponse } from "./api";
+import { MarketResponse, MarketDetailResponse, TradeResponse, PaginationResponse } from "./api";
 
 // ─── Mock data matching the 10 seed markets from Phase 5 ────────────────────
 // Pool values are sum of all 3 traders' trades per outcome (in USDC raw units)
@@ -301,3 +301,127 @@ export const MOCK_PARTICIPANTS: Record<string, number> = {
   "market-8": 3,
   "market-9": 3,
 };
+
+// ─── Mock trades for market detail ──────────────────────────────────────────
+
+const MOCK_ADDRESSES = [
+  "0x1234567890abcdef1234567890abcdef12345678",
+  "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+  "0x9876543210fedcba9876543210fedcba98765432",
+];
+
+function generateMockTrades(marketId: string, market: MarketResponse): TradeResponse[] {
+  const trades: TradeResponse[] = [];
+  const baseTime = new Date(market.createdAt).getTime();
+
+  // Seed trades from seed.ts data
+  const tradeData: Record<string, [number, number][]> = {
+    "market-0": [[500, 2000], [800, 1500], [300, 2500]],
+    "market-1": [[1200, 1800], [600, 2200], [900, 1600]],
+    "market-2": [[700, 2000], [400, 2500], [1100, 1200]],
+    "market-3": [[2000, 1000], [1500, 1500], [2500, 800]],
+    "market-4": [[1800, 1200], [2000, 1000], [1200, 2000]],
+    "market-5": [[1500, 1500], [1000, 2000], [2200, 1000]],
+    "market-6": [[1800, 1200], [1600, 1400], [2000, 1000]],
+    "market-7": [[3000, 500], [2500, 800], [2800, 600]],
+    "market-8": [[2000, 1200], [1800, 1500], [2200, 1000]],
+    "market-9": [[2500, 800], [2200, 1000], [2800, 500]],
+  };
+
+  const data = tradeData[marketId] || [[1000, 1000]];
+  let idx = 0;
+
+  for (let t = 0; t < data.length; t++) {
+    const [yesAmt, noAmt] = data[t];
+    if (yesAmt > 0) {
+      trades.push({
+        id: `trade-${marketId}-${idx}`,
+        marketId,
+        userAddress: MOCK_ADDRESSES[t],
+        outcome: 0,
+        amount: usdc(yesAmt),
+        shares: usdc(yesAmt),
+        txHash: `0x${(idx + 1).toString(16).padStart(64, "a")}`,
+        blockNumber: 1000 + idx,
+        timestamp: new Date(baseTime + idx * 3_600_000).toISOString(),
+      });
+      idx++;
+    }
+    if (noAmt > 0) {
+      trades.push({
+        id: `trade-${marketId}-${idx}`,
+        marketId,
+        userAddress: MOCK_ADDRESSES[t],
+        outcome: 1,
+        amount: usdc(noAmt),
+        shares: usdc(noAmt),
+        txHash: `0x${(idx + 1).toString(16).padStart(64, "b")}`,
+        blockNumber: 1000 + idx,
+        timestamp: new Date(baseTime + idx * 3_600_000).toISOString(),
+      });
+      idx++;
+    }
+  }
+
+  return trades.reverse(); // most recent first
+}
+
+// ─── Mock chart data ────────────────────────────────────────────────────────
+
+export interface ChartDataPoint {
+  time: string;
+  label: string;
+  outcomeA: number;
+  outcomeB: number;
+}
+
+function generateChartData(market: MarketResponse, points: number = 30): ChartDataPoint[] {
+  const poolYes = Number(BigInt(market.poolYes)) / 1_000_000;
+  const poolNo = Number(BigInt(market.poolNo)) / 1_000_000;
+  const total = poolYes + poolNo;
+  const finalPct = total > 0 ? (poolYes / total) * 100 : 50;
+
+  const data: ChartDataPoint[] = [];
+  const startTime = new Date(market.createdAt).getTime();
+  const endTime = Date.now();
+  const step = (endTime - startTime) / (points - 1);
+
+  // Walk from 50% toward the final implied probability with some noise
+  for (let i = 0; i < points; i++) {
+    const progress = i / (points - 1);
+    const base = 50 + (finalPct - 50) * progress;
+    const noise = (Math.sin(i * 1.7) * 4 + Math.cos(i * 0.9) * 3) * (1 - progress * 0.5);
+    const pctA = Math.max(5, Math.min(95, base + noise));
+    const t = new Date(startTime + step * i);
+    data.push({
+      time: t.toISOString(),
+      label: `${t.getMonth() + 1}/${t.getDate()}`,
+      outcomeA: Math.round(pctA * 10) / 10,
+      outcomeB: Math.round((100 - pctA) * 10) / 10,
+    });
+  }
+
+  return data;
+}
+
+// ─── fetchMarketDetail ──────────────────────────────────────────────────────
+
+export async function fetchMarketDetail(id: string): Promise<MarketDetailResponse & { chartData: ChartDataPoint[] }> {
+  if (!USE_MOCK) {
+    const { getMarket } = await import("./api");
+    const detail = await getMarket(id);
+    return { ...detail, chartData: [] };
+  }
+
+  const market = MOCK_MARKETS.find((m) => m.id === id);
+  if (!market) throw new Error("Market not found");
+
+  const trades = generateMockTrades(id, market);
+
+  return {
+    ...market,
+    recentTrades: trades.slice(0, 20),
+    participantCount: MOCK_PARTICIPANTS[id] ?? 0,
+    chartData: generateChartData(market),
+  };
+}
