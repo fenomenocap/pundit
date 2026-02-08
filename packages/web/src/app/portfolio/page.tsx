@@ -5,7 +5,8 @@ import { useAccount } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { useToast } from "@/components/toast";
+import { useClaimWinnings } from "@/hooks/use-contracts";
+import { TransactionToast } from "@/components/transaction-toast";
 import { fetchPortfolio, fetchTradeHistory, MOCK_MARKETS } from "@/lib/mock-data";
 import type {
   PositionResponse,
@@ -189,12 +190,22 @@ function ClaimableSection({
   positions,
   onClaim,
   onClaimAll,
+  claimState,
+  claimTxHash,
+  claimError,
+  onResetClaim,
 }: {
   positions: PositionResponse[];
   onClaim: (marketId: string) => void;
   onClaimAll: () => void;
+  claimState: import("@/hooks/use-contracts").ClaimState;
+  claimTxHash: `0x${string}` | undefined;
+  claimError: string | undefined;
+  onResetClaim: () => void;
 }) {
   if (positions.length === 0) return null;
+
+  const isClaiming = claimState !== "idle" && claimState !== "confirmed" && claimState !== "error";
 
   return (
     <div className="rounded-xl border border-amber-500/30 bg-gradient-to-b from-amber-950/20 to-transparent p-5">
@@ -208,9 +219,10 @@ function ClaimableSection({
         {positions.length > 1 && (
           <button
             onClick={onClaimAll}
-            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-amber-400"
+            disabled={isClaiming}
+            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-amber-400 disabled:opacity-50"
           >
-            Claim All
+            {isClaiming ? "Claiming..." : "Claim All"}
           </button>
         )}
       </div>
@@ -247,15 +259,23 @@ function ClaimableSection({
                 </div>
                 <button
                   onClick={() => onClaim(pos.marketId)}
-                  className="shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20"
+                  disabled={isClaiming}
+                  className="shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
                 >
-                  Claim
+                  {isClaiming ? "..." : "Claim"}
                 </button>
               </div>
             </div>
           );
         })}
       </div>
+      <TransactionToast
+        state={claimState}
+        txHash={claimTxHash}
+        error={claimError}
+        onReset={onResetClaim}
+        successMessage="Winnings claimed!"
+      />
     </div>
   );
 }
@@ -737,7 +757,7 @@ function PortfolioSkeleton() {
 
 export default function PortfolioPage() {
   const { isConnected } = useAccount();
-  const { toast } = useToast();
+  const { claimWinnings, state: claimState, txHash: claimTxHash, error: claimError, reset: resetClaim } = useClaimWinnings();
   const [portfolio, setPortfolio] = useState<PortfolioResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -755,14 +775,18 @@ export default function PortfolioPage() {
   }, [isConnected]);
 
   const handleClaim = (marketId: string) => {
-    toast(`Claiming winnings for ${marketId}... (contract call coming in Phase 12)`, "info");
+    const onchainId = parseInt(marketId.replace("market-", "").replace("market-won-", ""), 10);
+    if (!isNaN(onchainId)) {
+      claimWinnings(onchainId);
+    }
   };
 
   const handleClaimAll = () => {
-    toast(
-      "Claiming all winnings... (contract call coming in Phase 12)",
-      "info"
-    );
+    // Claim first claimable position — batch claims would need multicall
+    const first = portfolio?.positions.find((p) => p.status === "claimable");
+    if (first) {
+      handleClaim(first.marketId);
+    }
   };
 
   // Compute derived data
@@ -803,6 +827,10 @@ export default function PortfolioPage() {
             positions={claimablePositions}
             onClaim={handleClaim}
             onClaimAll={handleClaimAll}
+            claimState={claimState}
+            claimTxHash={claimTxHash}
+            claimError={claimError}
+            onResetClaim={resetClaim}
           />
           <ActivePositions positions={activePositions} />
           <TradeHistory />

@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { cn } from "@/lib/utils";
-import { useToast } from "./toast";
+import { useUSDCBalance, useBuyShares, useClaimWinnings, useUserPosition } from "@/hooks/use-contracts";
+import { TransactionToast } from "./transaction-toast";
 import type { MarketResponse } from "@/lib/api";
 
 interface TradePanelProps {
@@ -17,14 +18,19 @@ const BPS = 10000;
 export function TradePanel({ market }: TradePanelProps) {
   const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
-  const { toast } = useToast();
 
   const [selectedOutcome, setSelectedOutcome] = useState<0 | 1>(0);
   const [amount, setAmount] = useState("");
 
+  const { balance: usdcBalance, formatted: usdcFormatted } = useUSDCBalance();
+  const { buyShares, state: buyState, txHash: buyTxHash, error: buyError, reset: resetBuy } = useBuyShares();
+  const { claimWinnings, state: claimState, txHash: claimTxHash, error: claimError, reset: resetClaim } = useClaimWinnings();
+  const position = useUserPosition(market.onchainId);
+
   const isResolved = market.status === "RESOLVED";
   const isCancelled = market.status === "CANCELLED";
   const isDisabled = isResolved || isCancelled;
+  const isBuying = buyState !== "idle" && buyState !== "confirmed" && buyState !== "error";
 
   const poolYes = BigInt(market.poolYes);
   const poolNo = BigInt(market.poolNo);
@@ -57,6 +63,7 @@ export function TradePanel({ market }: TradePanelProps) {
       : 50;
 
     return {
+      amountUsdc,
       shares: Number(shares) / 1_000_000,
       payout: Number(payout) / 1_000_000,
       profit: Number(payout - amountUsdc) / 1_000_000,
@@ -65,30 +72,45 @@ export function TradePanel({ market }: TradePanelProps) {
     };
   }, [amount, selectedOutcome, poolYes, poolNo]);
 
-  const handleBuy = () => {
+  // Reset buy state after success so user can trade again
+  useEffect(() => {
+    if (buyState === "confirmed") {
+      setAmount("");
+    }
+  }, [buyState]);
+
+  const handleBuy = async () => {
     if (!isConnected) {
       openConnectModal?.();
       return;
     }
-    toast(
-      `Order placed: ${calc?.shares.toFixed(2)} ${selectedOutcome === 0 ? market.outcomeA : market.outcomeB} shares for $${parseFloat(amount).toFixed(2)} USDC`,
-      "success"
-    );
-    setAmount("");
+    if (!calc || calc.amountUsdc <= 0n) return;
+
+    await buyShares(market.onchainId, selectedOutcome, calc.amountUsdc);
   };
 
-  const handleClaim = () => {
-    toast("Claim transaction submitted — contract calls coming in Phase 12", "info");
+  const handleClaim = async () => {
+    if (!isConnected) {
+      openConnectModal?.();
+      return;
+    }
+    await claimWinnings(market.onchainId);
   };
 
   const handleMax = () => {
-    // Mock balance
-    setAmount("10000");
+    const maxUsdc = Number(usdcBalance) / 1_000_000;
+    setAmount(maxUsdc > 0 ? maxUsdc.toFixed(2) : "0");
   };
+
+  // Check insufficient balance
+  const insufficientBalance = calc ? calc.amountUsdc > usdcBalance : false;
 
   // Current implied odds
   const currentPctA = totalPool > 0n ? Number((poolYes * 10000n) / totalPool) / 100 : 50;
   const currentPctB = 100 - currentPctA;
+
+  // User position display
+  const hasPosition = position.sharesYes > 0n || position.sharesNo > 0n;
 
   // ── Resolved state ────────────────────────────────────────────────────────
   if (isResolved) {
@@ -108,12 +130,51 @@ export function TradePanel({ market }: TradePanelProps) {
           </p>
         </div>
 
-        <button
-          onClick={handleClaim}
-          className="w-full rounded-lg bg-emerald-600 py-3 font-heading text-sm font-semibold text-white transition-colors hover:bg-emerald-500"
-        >
-          Claim Winnings
-        </button>
+        {/* User position info */}
+        {hasPosition && (
+          <div className="mb-4 space-y-1.5 rounded-lg bg-slate-800/50 p-3 text-xs">
+            {position.sharesYes > 0n && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">{market.outcomeA} shares</span>
+                <span className="font-mono text-slate-200">
+                  {(Number(position.sharesYes) / 1_000_000).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {position.sharesNo > 0n && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">{market.outcomeB} shares</span>
+                <span className="font-mono text-slate-200">
+                  {(Number(position.sharesNo) / 1_000_000).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {position.hasClaimed && (
+              <p className="text-center text-emerald-400">Already claimed</p>
+            )}
+          </div>
+        )}
+
+        {!position.hasClaimed && hasPosition && (
+          <>
+            <button
+              onClick={handleClaim}
+              disabled={claimState !== "idle" && claimState !== "confirmed" && claimState !== "error"}
+              className="w-full rounded-lg bg-emerald-600 py-3 font-heading text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {claimState === "claiming" || claimState === "awaiting-confirmation"
+                ? "Claiming..."
+                : "Claim Winnings"}
+            </button>
+            <TransactionToast
+              state={claimState}
+              txHash={claimTxHash}
+              error={claimError}
+              onReset={resetClaim}
+              successMessage="Winnings claimed!"
+            />
+          </>
+        )}
       </div>
     );
   }
@@ -127,12 +188,27 @@ export function TradePanel({ market }: TradePanelProps) {
         <p className="mb-4 text-sm text-slate-400">
           This market has been cancelled. All participants can claim a full refund.
         </p>
-        <button
-          onClick={handleClaim}
-          className="w-full rounded-lg bg-slate-700 py-3 font-heading text-sm font-semibold text-white transition-colors hover:bg-slate-600"
-        >
-          Claim Refund
-        </button>
+
+        {hasPosition && !position.hasClaimed && (
+          <>
+            <button
+              onClick={handleClaim}
+              disabled={claimState !== "idle" && claimState !== "confirmed" && claimState !== "error"}
+              className="w-full rounded-lg bg-slate-700 py-3 font-heading text-sm font-semibold text-white transition-colors hover:bg-slate-600 disabled:opacity-50"
+            >
+              {claimState === "claiming" || claimState === "awaiting-confirmation"
+                ? "Claiming..."
+                : "Claim Refund"}
+            </button>
+            <TransactionToast
+              state={claimState}
+              txHash={claimTxHash}
+              error={claimError}
+              onReset={resetClaim}
+              successMessage="Refund claimed!"
+            />
+          </>
+        )}
       </div>
     );
   }
@@ -148,6 +224,7 @@ export function TradePanel({ market }: TradePanelProps) {
       <div className="mb-4 grid grid-cols-2 gap-2">
         <button
           onClick={() => setSelectedOutcome(0)}
+          disabled={isBuying}
           className={cn(
             "rounded-lg border-2 py-3 text-center text-sm font-semibold transition-all",
             selectedOutcome === 0
@@ -162,6 +239,7 @@ export function TradePanel({ market }: TradePanelProps) {
         </button>
         <button
           onClick={() => setSelectedOutcome(1)}
+          disabled={isBuying}
           className={cn(
             "rounded-lg border-2 py-3 text-center text-sm font-semibold transition-all",
             selectedOutcome === 1
@@ -178,9 +256,16 @@ export function TradePanel({ market }: TradePanelProps) {
 
       {/* Amount input */}
       <div className="mb-4">
-        <label className="mb-1.5 block text-xs font-medium text-slate-400">
-          Amount (USDC)
-        </label>
+        <div className="mb-1.5 flex items-center justify-between">
+          <label className="text-xs font-medium text-slate-400">
+            Amount (USDC)
+          </label>
+          {isConnected && (
+            <span className="text-xs text-slate-500">
+              Balance: <span className="font-mono text-slate-400">${usdcFormatted}</span>
+            </span>
+          )}
+        </div>
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
             $
@@ -192,11 +277,12 @@ export function TradePanel({ market }: TradePanelProps) {
             placeholder="0.00"
             min="0"
             step="0.01"
-            disabled={isDisabled}
+            disabled={isDisabled || isBuying}
             className="h-11 w-full rounded-lg border border-slate-700 bg-slate-800/50 pl-7 pr-16 font-mono text-sm text-slate-200 placeholder-slate-600 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
           />
           <button
             onClick={handleMax}
+            disabled={isBuying}
             className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-slate-700 px-2.5 py-1 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-600"
           >
             MAX
@@ -240,25 +326,67 @@ export function TradePanel({ market }: TradePanelProps) {
         </div>
       )}
 
+      {/* User position (if any) */}
+      {isConnected && hasPosition && (
+        <div className="mb-4 space-y-1.5 rounded-lg border border-slate-700/50 bg-slate-800/30 p-3 text-xs">
+          <p className="font-medium text-slate-300">Your Position</p>
+          {position.sharesYes > 0n && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">{market.outcomeA} shares</span>
+              <span className="font-mono text-emerald-400">
+                {(Number(position.sharesYes) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
+          {position.sharesNo > 0n && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">{market.outcomeB} shares</span>
+              <span className="font-mono text-rose-400">
+                {(Number(position.sharesNo) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Buy button */}
       <button
         onClick={handleBuy}
-        disabled={isDisabled || (isConnected && (!calc || parseFloat(amount) <= 0))}
+        disabled={isDisabled || isBuying || (isConnected && (!calc || parseFloat(amount) <= 0 || insufficientBalance))}
         className={cn(
           "w-full rounded-lg py-3 font-heading text-sm font-semibold transition-colors",
           !isConnected
             ? "bg-blue-600 text-white hover:bg-blue-500"
-            : calc && parseFloat(amount) > 0
-              ? "bg-blue-600 text-white hover:bg-blue-500"
-              : "cursor-not-allowed bg-slate-700 text-slate-500"
+            : isBuying
+              ? "cursor-wait bg-blue-600/50 text-blue-200"
+              : insufficientBalance
+                ? "cursor-not-allowed bg-rose-600/50 text-rose-200"
+                : calc && parseFloat(amount) > 0
+                  ? "bg-blue-600 text-white hover:bg-blue-500"
+                  : "cursor-not-allowed bg-slate-700 text-slate-500"
         )}
       >
         {!isConnected
           ? "Connect Wallet"
-          : !calc || parseFloat(amount) <= 0
-            ? "Enter Amount"
-            : `Buy ${calc.shares.toLocaleString(undefined, { maximumFractionDigits: 2 })} Shares`}
+          : isBuying
+            ? buyState === "approving" || buyState === "awaiting-approval"
+              ? "Approving USDC..."
+              : "Buying..."
+            : insufficientBalance
+              ? "Insufficient Balance"
+              : !calc || parseFloat(amount) <= 0
+                ? "Enter Amount"
+                : `Buy ${calc.shares.toLocaleString(undefined, { maximumFractionDigits: 2 })} Shares`}
       </button>
+
+      {/* Transaction status */}
+      <TransactionToast
+        state={buyState}
+        txHash={buyTxHash}
+        error={buyError}
+        onReset={resetBuy}
+        successMessage="Trade confirmed!"
+      />
 
       {/* Fee note */}
       <p className="mt-3 text-center text-xs text-slate-500">
