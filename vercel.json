@@ -1,7 +1,0 @@
-{
-  "framework": "nextjs",
-  "buildCommand": "cd packages/web && next build",
-  "installCommand": "pnpm install",
-  "outputDirectory": "packages/web/.next",
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- packages/web/"
-}
