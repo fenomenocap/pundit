@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────────────
+
+enum MarketStatus {
+  OPEN
+  LOCKED
+  RESOLVED
+  CANCELLED
+}
+
+enum MarketCategory {
+  GROUP_STAGE
+  ROUND_OF_16
+  QUARTER_FINAL
+  SEMI_FINAL
+  FINAL
+  TOURNAMENT
+}
+
+// ─── Models ─────────────────────────────────────────────────────────────────
+
+/// Mirrors on-chain market data with additional off-chain metadata.
+model Market {
+  id                  String         @id @default(uuid())
+  onchainId           Int            @unique
+  question            String
+  outcomeA            String         // e.g. "Yes" or "Brazil wins"
+  outcomeB            String         // e.g. "No"  or "Draw or Germany wins"
+  category            MarketCategory
+  teamA               String?        // optional: first team name
+  teamB               String?        // optional: second team name
+  poolYes             BigInt         @default(0)
+  poolNo              BigInt         @default(0)
+  status              MarketStatus   @default(OPEN)
+  resolvedOutcome     Int?           // 0 or 1, null if unresolved
+  resolvedAt          DateTime?
+  resolutionTimestamp DateTime       // when the market CAN be resolved
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  trades    Trade[]
+  positions Position[]
+
+  @@index([status])
+  @@index([category])
+}
+
+/// Individual share purchase event, indexed from on-chain.
+model Trade {
+  id          String   @id @default(uuid())
+  marketId    String
+  market      Market   @relation(fields: [marketId], references: [id])
+  userAddress String
+  outcome     Int      // 0 or 1
+  amount      BigInt   // USDC raw (6 decimals)
+  shares      BigInt   // shares received (1:1 with amount)
+  txHash      String   @unique
+  blockNumber Int
+  timestamp   DateTime
+
+  @@index([marketId])
+  @@index([userAddress])
+  @@index([blockNumber])
+}
+
+/// Aggregated user position per market per outcome.
+model Position {
+  id          String  @id @default(uuid())
+  marketId    String
+  market      Market  @relation(fields: [marketId], references: [id])
+  userAddress String
+  outcome     Int     // 0 or 1
+  shares      BigInt  @default(0)
+  claimed     Boolean @default(false)
+
+  @@unique([marketId, userAddress, outcome])
+  @@index([userAddress])
+}
+
+/// Singleton row tracking the last block the indexer has processed.
+model IndexerState {
+  id               Int @id @default(1)
+  lastIndexedBlock Int @default(0)
+}
