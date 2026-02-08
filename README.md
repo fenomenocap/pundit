@@ -167,6 +167,62 @@ cd packages/web && pnpm dev
 - **Performance** — React.memo cards, debounced search, Suspense boundaries
 - **SEO** — Dynamic titles, OpenGraph tags, Twitter cards
 
+## Deploying to Base Sepolia
+
+### 1. Deploy Contracts
+
+```bash
+# Set deployer private key (needs Base Sepolia ETH for gas)
+export DEPLOYER_PRIVATE_KEY=0x...
+export RPC_URL=https://sepolia.base.org
+
+cd packages/contracts
+pnpm deploy:sepolia
+```
+
+The deploy script prints all contract addresses and env vars to copy.
+
+### 2. Verify Contracts on Basescan (optional)
+
+```bash
+export ETHERSCAN_API_KEY=...
+npx hardhat verify --network base_sepolia <CONTRACT_ADDRESS> <CONSTRUCTOR_ARGS>
+```
+
+### 3. Deploy Frontend to Vercel
+
+```bash
+cd packages/web
+
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy (first time — links to project)
+vercel
+
+# Set environment variables in Vercel dashboard or CLI:
+vercel env add NEXT_PUBLIC_ENGINE_ADDRESS
+vercel env add NEXT_PUBLIC_FACTORY_ADDRESS
+vercel env add NEXT_PUBLIC_VAULT_ADDRESS
+vercel env add NEXT_PUBLIC_USDC_ADDRESS
+vercel env add NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+vercel env add NEXT_PUBLIC_API_URL
+
+# Production deploy
+vercel --prod
+```
+
+### Required Vercel Environment Variables
+
+| Variable | Description |
+|---|---|
+| `NEXT_PUBLIC_ENGINE_ADDRESS` | ParimutuelEngine contract address |
+| `NEXT_PUBLIC_FACTORY_ADDRESS` | MarketFactory contract address |
+| `NEXT_PUBLIC_VAULT_ADDRESS` | CollateralVault contract address |
+| `NEXT_PUBLIC_USDC_ADDRESS` | MockUSDC contract address |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect Cloud project ID |
+| `NEXT_PUBLIC_API_URL` | Backend API URL (e.g. `https://api.yourdomain.com`) |
+
 ## Testing
 
 ```bash

@@ -5,6 +5,8 @@
   "scripts": {
     "build": "forge build 2>/dev/null || npx solcjs --bin --abi --include-path node_modules --base-path . src/*.sol -o out/",
     "test": "npx hardhat test",
+    "deploy:local": "npx hardhat run scripts/deploy.ts --network localhost",
+    "deploy:sepolia": "npx hardhat run scripts/deploy.ts --network base_sepolia",
     "clean": "rm -rf out cache"
   },
   "devDependencies": {
