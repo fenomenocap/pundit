@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "pnpm -r --parallel dev",
+    "dev:indexer": "pnpm --filter @sports-predict/api dev:indexer",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "clean": "pnpm -r clean"
