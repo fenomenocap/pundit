@@ -761,6 +761,12 @@ export default function PortfolioPage() {
   const [portfolio, setPortfolio] = useState<PortfolioResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Dynamic page title
+  useEffect(() => {
+    document.title = "Portfolio | Sports Predict";
+    return () => { document.title = "Sports Predict — Onchain Prediction Markets"; };
+  }, []);
+
   useEffect(() => {
     if (!isConnected) {
       setLoading(false);

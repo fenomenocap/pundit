@@ -4,6 +4,43 @@ import { useState, useCallback, useMemo } from "react";
 import { useReadContract, useReadContracts, useWriteContract, useAccount } from "wagmi";
 import { CONTRACTS, parimutuelEngineAbi, marketFactoryAbi, erc20Abi } from "@/lib/contracts";
 
+// ─── Human-readable error mapping ───────────────────────────────────────────
+
+function parseContractError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+
+  // User rejection
+  if (msg.includes("User rejected") || msg.includes("user rejected") || msg.includes("ACTION_REJECTED")) {
+    return "Transaction rejected by user";
+  }
+  // Wallet disconnected mid-tx
+  if (msg.includes("disconnected") || msg.includes("Connector not connected") || msg.includes("No connector")) {
+    return "Wallet disconnected. Please reconnect and try again.";
+  }
+  // Insufficient funds (gas)
+  if (msg.includes("insufficient funds for gas")) {
+    return "Insufficient ETH for gas fees";
+  }
+  // Contract reverts
+  if (msg.includes("MarketDoesNotExist")) return "Market does not exist";
+  if (msg.includes("MarketNotOpen")) return "Market is no longer open for trading";
+  if (msg.includes("MarketNotResolved")) return "Market has not been resolved yet";
+  if (msg.includes("MarketNotSettled")) return "Settlement period has not passed yet (30 min after resolution)";
+  if (msg.includes("AlreadyClaimed")) return "Winnings already claimed";
+  if (msg.includes("NothingToClaim")) return "No winnings to claim for this market";
+  if (msg.includes("ZeroAmount")) return "Amount must be greater than zero";
+  if (msg.includes("InvalidOutcome")) return "Invalid outcome selection";
+  if (msg.includes("InsufficientBalance") || msg.includes("insufficient balance") || msg.includes("transfer amount exceeds balance")) {
+    return "Insufficient USDC balance";
+  }
+  if (msg.includes("InsufficientAllowance") || msg.includes("allowance")) {
+    return "USDC approval required. Please try again.";
+  }
+
+  // Truncate generic errors
+  return msg.length > 120 ? msg.slice(0, 120) + "..." : msg;
+}
+
 // ─── useMarketData ───────────────────────────────────────────────────────────
 // Reads pool sizes, total pool, and market info from contracts. Refreshes every 15s.
 
@@ -261,14 +298,7 @@ export function useBuyShares(): BuySharesHook {
         await new Promise((r) => setTimeout(r, 2000));
         setBuyState("confirmed");
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Transaction failed";
-        if (msg.includes("User rejected") || msg.includes("user rejected")) {
-          setBuyError("Transaction rejected by user");
-        } else if (msg.includes("insufficient funds")) {
-          setBuyError("Insufficient USDC balance");
-        } else {
-          setBuyError(msg.length > 100 ? msg.slice(0, 100) + "..." : msg);
-        }
+        setBuyError(parseContractError(err));
         setBuyState("error");
       }
     },
@@ -322,18 +352,7 @@ export function useClaimWinnings(): ClaimWinningsHook {
         await new Promise((r) => setTimeout(r, 2000));
         setClaimState("confirmed");
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Transaction failed";
-        if (msg.includes("User rejected") || msg.includes("user rejected")) {
-          setClaimError("Transaction rejected by user");
-        } else if (msg.includes("MarketNotSettled")) {
-          setClaimError("Settlement period not yet passed");
-        } else if (msg.includes("AlreadyClaimed")) {
-          setClaimError("Already claimed");
-        } else if (msg.includes("NothingToClaim")) {
-          setClaimError("Nothing to claim");
-        } else {
-          setClaimError(msg.length > 100 ? msg.slice(0, 100) + "..." : msg);
-        }
+        setClaimError(parseContractError(err));
         setClaimState("error");
       }
     },

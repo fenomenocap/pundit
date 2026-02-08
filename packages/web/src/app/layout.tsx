@@ -24,9 +24,30 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Sports Predict — Onchain Prediction Markets",
+  title: {
+    default: "Sports Predict — Onchain Prediction Markets",
+    template: "%s | Sports Predict",
+  },
   description:
     "Trade on FIFA World Cup 2026 outcomes with USDC on Base. Parimutuel prediction markets powered by smart contracts.",
+  keywords: ["prediction markets", "FIFA World Cup 2026", "crypto", "USDC", "Base", "onchain"],
+  openGraph: {
+    type: "website",
+    siteName: "Sports Predict",
+    title: "Sports Predict — Onchain Prediction Markets",
+    description:
+      "Trade on FIFA World Cup 2026 outcomes with USDC on Base. Parimutuel prediction markets powered by smart contracts.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Sports Predict — Onchain Prediction Markets",
+    description:
+      "Trade on FIFA World Cup 2026 outcomes with USDC on Base.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({

@@ -75,6 +75,12 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Dynamic page title
+  useEffect(() => {
+    document.title = "Leaderboard | Sports Predict";
+    return () => { document.title = "Sports Predict — Onchain Prediction Markets"; };
+  }, []);
+
   const fetchData = useCallback(async (p: Period) => {
     setLoading(true);
     setError(null);
