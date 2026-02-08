@@ -77,6 +77,17 @@ async function main() {
   console.log("---");
   console.log("Addresses saved to:", outPath);
   console.log(JSON.stringify(addresses, null, 2));
+
+  // Print env vars ready to copy into .env or Vercel dashboard
+  console.log("\n=== Environment variables (copy to .env / Vercel) ===");
+  console.log(`NEXT_PUBLIC_ENGINE_ADDRESS=${engineAddr}`);
+  console.log(`NEXT_PUBLIC_FACTORY_ADDRESS=${factoryAddr}`);
+  console.log(`NEXT_PUBLIC_VAULT_ADDRESS=${vaultAddr}`);
+  console.log(`NEXT_PUBLIC_USDC_ADDRESS=${usdcAddr}`);
+  console.log(`FACTORY_ADDRESS=${factoryAddr}`);
+  console.log(`ENGINE_ADDRESS=${engineAddr}`);
+  console.log(`RESOLVER_ADDRESS=${resolverAddr}`);
+  console.log(`USDC_ADDRESS=${usdcAddr}`);
 }
 
 main().catch((error) => {
