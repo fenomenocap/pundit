@@ -18,11 +18,9 @@ function useDebounce<T>(value: T, delay: number): T {
 
 const CATEGORIES = [
   { key: "ALL", label: "All" },
-  { key: "TOURNAMENT", label: "Tournament" },
-  { key: "GROUP_STAGE", label: "Group" },
-  { key: "QUARTER_FINAL", label: "QF" },
-  { key: "SEMI_FINAL", label: "SF" },
-  { key: "FINAL", label: "Final" },
+  { key: "WORLD_CUP", label: "World Cup" },
+  { key: "EPL", label: "Premier League" },
+  { key: "LA_LIGA", label: "La Liga" },
 ] as const;
 
 export default function MarketsPage() {
@@ -51,7 +49,7 @@ export default function MarketsPage() {
       <div className="mb-6">
         <h1 className="text-lg font-bold text-foreground">Markets</h1>
         <p className="mt-1 text-xs text-muted-foreground">
-          Trade on FIFA World Cup 2026 outcomes with USDC on Base.
+          Trade on sports outcomes with USDC on Base Sepolia.
         </p>
       </div>
 
