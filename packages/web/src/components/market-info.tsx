@@ -5,12 +5,9 @@ import { CONTRACTS, EXPLORER_BASE } from "@/lib/contracts";
 import type { MarketResponse } from "@/lib/api";
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
-  GROUP_STAGE: { label: "Group Stage", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
-  ROUND_OF_16: { label: "Round of 16", color: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30" },
-  QUARTER_FINAL: { label: "Quarter-Final", color: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
-  SEMI_FINAL: { label: "Semi-Final", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
-  FINAL: { label: "Final", color: "bg-rose-500/20 text-rose-400 border-rose-500/30" },
-  TOURNAMENT: { label: "Tournament", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
+  WORLD_CUP: { label: "World Cup", color: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
+  EPL: { label: "Premier League", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
+  LA_LIGA: { label: "La Liga", color: "bg-rose-500/20 text-rose-400 border-rose-500/30" },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -110,8 +107,8 @@ export function MarketInfo({ market, participantCount }: MarketInfoProps) {
         </h3>
         <dl className="space-y-2.5 text-sm">
           <DetailRow label="Resolution Date" value={new Date(market.resolutionTimestamp).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })} />
-          <DetailRow label="Source" value="FIFA Official / Oracle Committee" />
-          <DetailRow label="Resolution Rules" value="Market resolves YES if the specified outcome occurs by the resolution date. Otherwise resolves NO." />
+          <DetailRow label="Source" value="Official league/tournament results" />
+          <DetailRow label="Resolution Rules" value="Market resolves YES if the specified outcome occurs. Otherwise resolves NO. Resolved by admin oracle." />
           {market.resolvedAt && (
             <DetailRow label="Resolved At" value={new Date(market.resolvedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })} />
           )}
