@@ -7,7 +7,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useClaimWinnings } from "@/hooks/use-contracts";
 import { TransactionToast } from "@/components/transaction-toast";
-import { fetchPortfolio, fetchTradeHistory, MOCK_MARKETS } from "@/lib/mock-data";
+import { fetchPortfolio, fetchTradeHistory } from "@/lib/mock-data";
 import type {
   PositionResponse,
   PortfolioResponse,
@@ -47,21 +47,9 @@ function timeAgo(iso: string): string {
 }
 
 function getCurrentValue(position: PositionResponse): bigint {
-  const market = MOCK_MARKETS.find((m) => m.id === position.marketId);
-  if (!market) return BigInt(position.invested);
-
-  const poolYes = BigInt(market.poolYes);
-  const poolNo = BigInt(market.poolNo);
-  const total = poolYes + poolNo;
-  if (total === 0n) return BigInt(position.invested);
-
-  const shares = BigInt(position.shares);
-  const winningPool = position.outcome === 0 ? poolYes : poolNo;
-  if (winningPool === 0n) return 0n;
-
-  const fee = (total * 200n + 9999n) / 10000n;
-  const netPool = total - fee;
-  return (shares * netPool) / winningPool;
+  // For active positions, estimate current value as invested amount
+  // (accurate P&L requires live pool data from contract reads)
+  return BigInt(position.invested);
 }
 
 function getPnL(position: PositionResponse): bigint {
