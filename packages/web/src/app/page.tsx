@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { MarketCard, MarketCardSkeleton, MarketsEmptyState } from "@/components/market-card";
-import { fetchMarkets, MOCK_PARTICIPANTS } from "@/lib/mock-data";
+import { fetchMarkets } from "@/lib/mock-data";
 import type { MarketResponse } from "@/lib/api";
-
-// ─── Debounce hook ─────────────────────────────────────────────────────────
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -18,47 +16,54 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
-// ─── Category tabs ──────────────────────────────────────────────────────────
-
 const CATEGORIES = [
   { key: "ALL", label: "All" },
-  { key: "GROUP_STAGE", label: "Group Stage" },
-  { key: "QUARTER_FINAL", label: "Quarter-Final" },
-  { key: "SEMI_FINAL", label: "Semi-Final" },
-  { key: "FINAL", label: "Final" },
   { key: "TOURNAMENT", label: "Tournament" },
+  { key: "GROUP_STAGE", label: "Group" },
+  { key: "QUARTER_FINAL", label: "QF" },
+  { key: "SEMI_FINAL", label: "SF" },
+  { key: "FINAL", label: "Final" },
 ] as const;
 
-const SORT_OPTIONS = [
-  { key: "newest", label: "Newest" },
-  { key: "volume", label: "Highest Volume" },
-  { key: "closing_soon", label: "Closing Soon" },
-] as const;
+function formatUsdc(raw: string): string {
+  const n = Number(BigInt(raw)) / 1_000_000;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+  return `$${n.toFixed(0)}`;
+}
 
-// ─── Featured market IDs (top volume) ───────────────────────────────────────
+function getTimeLeft(ts: string): string {
+  const diff = new Date(ts).getTime() - Date.now();
+  if (diff <= 0) return "Ended";
+  const d = Math.floor(diff / 86_400_000);
+  const h = Math.floor((diff % 86_400_000) / 3_600_000);
+  if (d > 0) return `${d}d ${h}h`;
+  const m = Math.floor((diff % 3_600_000) / 60_000);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
 
-const FEATURED_IDS = new Set(["market-7", "market-3", "market-1", "market-4"]);
-
-// ─── Page ───────────────────────────────────────────────────────────────────
+function getOdds(market: MarketResponse): { yes: number; no: number } {
+  const y = BigInt(market.poolYes);
+  const n = BigInt(market.poolNo);
+  const t = y + n;
+  if (t === 0n) return { yes: 50, no: 50 };
+  const yes = Number((y * 10000n) / t) / 100;
+  return { yes, no: 100 - yes };
+}
 
 export default function MarketsPage() {
   const [markets, setMarkets] = useState<MarketResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("ALL");
-  const [sort, setSort] = useState<"newest" | "volume" | "closing_soon">("newest");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     setLoading(true);
-    fetchMarkets({
-      category: category === "ALL" ? undefined : category,
-      sort,
-    })
+    fetchMarkets({ category: category === "ALL" ? undefined : category, sort: "volume" })
       .then((res) => setMarkets(res.markets))
       .finally(() => setLoading(false));
-  }, [category, sort]);
+  }, [category]);
 
-  // Client-side search filter (debounced 250ms)
   const debouncedSearch = useDebounce(search, 250);
   const filtered = useMemo(() => {
     if (!debouncedSearch.trim()) return markets;
@@ -66,168 +71,117 @@ export default function MarketsPage() {
     return markets.filter((m) => m.question.toLowerCase().includes(q));
   }, [markets, debouncedSearch]);
 
-  // Featured markets (always from full set)
-  const [allMarkets, setAllMarkets] = useState<MarketResponse[]>([]);
-  useEffect(() => {
-    fetchMarkets({ sort: "volume" }).then((res) => setAllMarkets(res.markets));
-  }, []);
-
-  const featured = useMemo(
-    () => allMarkets.filter((m) => FEATURED_IDS.has(m.id)),
-    [allMarkets]
-  );
-
   return (
-    <div className="min-h-screen">
-      {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden border-b border-slate-800 bg-gradient-to-b from-slate-900 via-slate-950 to-background">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(59,130,246,0.15),transparent)]" />
-        <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
-          <h1 className="font-heading text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-            Predict the
-            <br />
-            <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-              World Cup
-            </span>
-          </h1>
-          <p className="mt-4 max-w-lg text-lg text-slate-400">
-            Trade on FIFA World Cup 2026 outcomes with USDC on Base.
-            Parimutuel markets powered by smart contracts.
-          </p>
-          <div className="mt-6 flex items-center gap-6 text-sm text-slate-400">
-            <span className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              {allMarkets.length} active markets
-            </span>
-            <span className="font-mono">
-              {formatTotalVolume(allMarkets)} total volume
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Featured Markets ──────────────────────────────────────────────── */}
-      {featured.length > 0 && (
-        <section className="border-b border-slate-800 bg-slate-950/50">
-          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <h2 className="mb-4 font-heading text-lg font-semibold tracking-tight text-slate-200">
-              Featured Markets
-            </h2>
-            <div className="flex gap-4 overflow-x-auto pb-2">
-              {featured.map((m) => (
-                <div key={m.id} className="w-[320px] flex-shrink-0">
-                  <MarketCard
-                    market={m}
-                    participants={MOCK_PARTICIPANTS[m.id] ?? 0}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ── All Markets ───────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Toolbar */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          {/* Category tabs */}
-          <div className="flex gap-1 overflow-x-auto">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat.key}
-                onClick={() => setCategory(cat.key)}
-                className={cn(
-                  "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                  category === cat.key
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                )}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Search + Sort */}
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search markets..."
-                className="h-9 w-52 rounded-lg border border-slate-700 bg-slate-800/50 pl-9 pr-3 text-sm text-slate-200 placeholder-slate-500 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <select
-              value={sort}
-              onChange={(e) =>
-                setSort(e.target.value as "newest" | "volume" | "closing_soon")
-              }
-              className="h-9 rounded-lg border border-slate-700 bg-slate-800/50 px-3 text-sm text-slate-200 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+    <div className="flex flex-1 flex-col">
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 border-b border-border px-4 py-2">
+        <div className="flex gap-0.5">
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat.key}
+              onClick={() => setCategory(cat.key)}
+              className={cn(
+                "rounded px-2 py-1 text-[11px] font-medium transition-colors",
+                category === cat.key
+                  ? "bg-teal-500/15 text-teal-400"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.key} value={opt.key}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+              {cat.label}
+            </button>
+          ))}
         </div>
+        <div className="relative ml-auto">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="h-7 w-44 rounded border border-border bg-secondary px-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-teal-500"
+          />
+        </div>
+      </div>
 
-        {/* Grid */}
-        {loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <MarketCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <MarketsEmptyState />
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((m) => (
-              <MarketCard
-                key={m.id}
-                market={m}
-                participants={MOCK_PARTICIPANTS[m.id] ?? 0}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Table */}
+      <div className="flex-1 overflow-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+              <th className="px-4 py-2 text-left font-medium">Market</th>
+              <th className="px-3 py-2 text-right font-medium">Yes</th>
+              <th className="px-3 py-2 text-right font-medium">No</th>
+              <th className="px-3 py-2 text-right font-medium">Volume</th>
+              <th className="px-3 py-2 text-right font-medium">Closes</th>
+              <th className="px-3 py-2 text-right font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading
+              ? Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i} className="border-b border-border">
+                    <td className="px-4 py-3" colSpan={6}>
+                      <div className="h-3 w-full animate-pulse rounded bg-secondary" />
+                    </td>
+                  </tr>
+                ))
+              : filtered.length === 0
+                ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                      No markets found
+                    </td>
+                  </tr>
+                )
+                : filtered.map((m) => {
+                    const odds = getOdds(m);
+                    return (
+                      <tr
+                        key={m.id}
+                        className="border-b border-border transition-colors hover:bg-secondary/50"
+                      >
+                        <td className="px-4 py-2.5">
+                          <Link
+                            href={`/market/${m.id}`}
+                            className="font-medium text-foreground hover:text-teal-400"
+                          >
+                            {m.question}
+                          </Link>
+                          <span className="ml-2 text-[10px] text-muted-foreground">
+                            {m.category.replace(/_/g, " ")}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono text-teal-400">
+                          {odds.yes.toFixed(1)}%
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono text-rose-400">
+                          {odds.no.toFixed(1)}%
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono text-foreground">
+                          {formatUsdc(m.totalVolume)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-muted-foreground">
+                          {getTimeLeft(m.resolutionTimestamp)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <span
+                            className={cn(
+                              "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                              m.status === "OPEN"
+                                ? "bg-teal-500/10 text-teal-400"
+                                : m.status === "RESOLVED"
+                                  ? "bg-blue-500/10 text-blue-400"
+                                  : "bg-muted text-muted-foreground"
+                            )}
+                          >
+                            {m.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+          </tbody>
+        </table>
+      </div>
     </div>
-  );
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function formatTotalVolume(markets: MarketResponse[]): string {
-  const total = markets.reduce(
-    (sum, m) => sum + Number(BigInt(m.totalVolume)) / 1_000_000,
-    0
-  );
-  if (total >= 1_000_000) return `$${(total / 1_000_000).toFixed(1)}M`;
-  if (total >= 1_000) return `$${(total / 1_000).toFixed(1)}K`;
-  return `$${total.toFixed(0)}`;
-}
-
-function SearchIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={1.5}
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-      />
-    </svg>
   );
 }
