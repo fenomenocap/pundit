@@ -11,16 +11,15 @@ import "@rainbow-me/rainbowkit/styles.css";
 const queryClient = new QueryClient();
 
 const customTheme = darkTheme({
-  accentColor: "#3b82f6",
-  accentColorForeground: "white",
-  borderRadius: "medium",
+  accentColor: "#2dd4bf",
+  accentColorForeground: "#000000",
+  borderRadius: "small",
   overlayBlur: "small",
 });
 
-// Override the background colors to match our navy theme
-customTheme.colors.modalBackground = "#111827";
-customTheme.colors.profileForeground = "#111827";
-customTheme.colors.connectButtonBackground = "#1e293b";
+customTheme.colors.modalBackground = "hsl(220, 20%, 6%)";
+customTheme.colors.profileForeground = "hsl(220, 20%, 6%)";
+customTheme.colors.connectButtonBackground = "hsl(220, 15%, 10%)";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
