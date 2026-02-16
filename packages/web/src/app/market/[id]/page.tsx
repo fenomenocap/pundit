@@ -4,9 +4,10 @@ import { useEffect, useState, lazy, Suspense } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { fetchMarketDetail, MOCK_PARTICIPANTS } from "@/lib/mock-data";
+import { fetchMarketDetail } from "@/lib/mock-data";
 import { TradePanel } from "@/components/trade-panel";
 import type { MarketDetailResponse } from "@/lib/api";
+import type { ChartDataPoint } from "@/lib/mock-data";
 
 const PriceChart = lazy(() =>
   import("@/components/price-chart").then((m) => ({ default: m.PriceChart }))
@@ -29,7 +30,7 @@ function getTimeLeft(ts: string): string {
 
 export default function MarketPage() {
   const { id } = useParams<{ id: string }>();
-  const [market, setMarket] = useState<MarketDetailResponse | null>(null);
+  const [market, setMarket] = useState<(MarketDetailResponse & { chartData: ChartDataPoint[] }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,7 +112,7 @@ export default function MarketPage() {
           {/* Chart */}
           <div className="flex-1 p-4">
             <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-muted-foreground">Loading chart...</div>}>
-              <PriceChart marketId={market.id} />
+              <PriceChart data={market.chartData} outcomeA={market.outcomeA} outcomeB={market.outcomeB} />
             </Suspense>
           </div>
 
