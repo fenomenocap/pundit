@@ -6,12 +6,9 @@ import { cn } from "@/lib/utils";
 import type { MarketResponse } from "@/lib/api";
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
-  GROUP_STAGE: { label: "Group Stage", color: "bg-teal-500/15 text-teal-400 border-teal-500/25" },
-  ROUND_OF_16: { label: "Round of 16", color: "bg-cyan-500/15 text-cyan-400 border-cyan-500/25" },
-  QUARTER_FINAL: { label: "Quarter-Final", color: "bg-amber-500/15 text-amber-400 border-amber-500/25" },
-  SEMI_FINAL: { label: "Semi-Final", color: "bg-purple-500/15 text-purple-400 border-purple-500/25" },
-  FINAL: { label: "Final", color: "bg-rose-500/15 text-rose-400 border-rose-500/25" },
-  TOURNAMENT: { label: "Tournament", color: "bg-blue-500/15 text-blue-400 border-blue-500/25" },
+  WORLD_CUP: { label: "World Cup", color: "bg-amber-500/15 text-amber-400 border-amber-500/25" },
+  EPL: { label: "Premier League", color: "bg-purple-500/15 text-purple-400 border-purple-500/25" },
+  LA_LIGA: { label: "La Liga", color: "bg-rose-500/15 text-rose-400 border-rose-500/25" },
 };
 
 function formatUsdcPool(raw: string): string {
