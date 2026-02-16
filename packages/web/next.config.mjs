@@ -5,9 +5,10 @@ const nextConfig = {
       ...config.resolve.fallback,
       "pino-pretty": false,
     };
-    config.externals.push(
-      "@react-native-async-storage/async-storage"
-    );
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@react-native-async-storage/async-storage": false,
+    };
     return config;
   },
 };
