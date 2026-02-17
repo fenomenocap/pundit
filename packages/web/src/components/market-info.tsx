@@ -42,10 +42,11 @@ export function MarketInfo({ market, participantCount }: MarketInfoProps) {
   const cat = CATEGORY_CONFIG[market.category] || { label: market.category, color: "bg-slate-500/20 text-slate-400 border-slate-500/30" };
   const status = STATUS_CONFIG[market.status] || { label: market.status, color: "bg-slate-500/20 text-slate-400" };
 
-  const poolYes = BigInt(market.poolYes);
-  const poolNo = BigInt(market.poolNo);
-  const total = poolYes + poolNo;
-  const pctYes = total > 0n ? Number((poolYes * 10000n) / total) / 100 : 50;
+  // AMM pricing: Price(YES) = noReserve / total, Price(NO) = yesReserve / total
+  const yesRes = BigInt(market.poolYes);
+  const noRes = BigInt(market.poolNo);
+  const total = yesRes + noRes;
+  const pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
   const pctNo = 100 - pctYes;
 
   const explorerBase = EXPLORER_BASE;

@@ -82,10 +82,11 @@ export default function MarketPage() {
     );
   }
 
-  const poolYes = BigInt(market.poolYes);
-  const poolNo = BigInt(market.poolNo);
-  const total = poolYes + poolNo;
-  const pctYes = total > 0n ? Number((poolYes * 10000n) / total) / 100 : 50;
+  // AMM pricing: Price(YES) = noReserve / total, Price(NO) = yesReserve / total
+  const yesRes = BigInt(market.poolYes);
+  const noRes = BigInt(market.poolNo);
+  const total = yesRes + noRes;
+  const pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
   const pctNo = 100 - pctYes;
   const cat = CATEGORY_CONFIG[market.category] || { label: market.category, color: "bg-muted text-muted-foreground border-border" };
   const status = STATUS_CONFIG[market.status] || { label: market.status, color: "bg-muted text-muted-foreground" };
@@ -126,10 +127,10 @@ export default function MarketPage() {
             <div className="mb-2 flex items-center justify-between text-sm">
               <span className="font-medium text-teal-400">
                 {market.outcomeA}
-                <span className="ml-2 font-mono text-base">{pctYes.toFixed(1)}%</span>
+                <span className="ml-2 font-mono text-base">{Math.round(pctYes)}&cent;</span>
               </span>
               <span className="font-medium text-rose-400">
-                <span className="mr-2 font-mono text-base">{pctNo.toFixed(1)}%</span>
+                <span className="mr-2 font-mono text-base">{Math.round(pctNo)}&cent;</span>
                 {market.outcomeB}
               </span>
             </div>
@@ -147,10 +148,10 @@ export default function MarketPage() {
 
           {/* Stats row */}
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Total Pool" value={formatUsdc(market.totalVolume)} />
-            <StatCard label="Participants" value={String(participants)} />
+            <StatCard label="Volume" value={formatUsdc(market.totalVolume)} />
+            <StatCard label="Liquidity" value={formatUsdc(String(total))} />
             <StatCard label="Time Left" value={getTimeLeft(market.resolutionTimestamp)} />
-            <StatCard label="Market ID" value={`#${market.onchainId}`} />
+            <StatCard label="Traders" value={String(participants)} />
           </div>
 
           {/* Chart */}
@@ -234,20 +235,16 @@ export default function MarketPage() {
         </div>
 
         {/* Right: sticky trade panel */}
-        <div className="hidden w-80 shrink-0 lg:block">
+        <div className="hidden w-[340px] shrink-0 lg:block">
           <div className="sticky top-16">
-            <div className="rounded-lg border border-border bg-card">
-              <TradePanel market={market} />
-            </div>
+            <TradePanel market={market} />
           </div>
         </div>
       </div>
 
       {/* Mobile trade panel (below content on small screens) */}
       <div className="mt-6 lg:hidden">
-        <div className="rounded-lg border border-border bg-card">
-          <TradePanel market={market} />
-        </div>
+        <TradePanel market={market} />
       </div>
     </div>
   );

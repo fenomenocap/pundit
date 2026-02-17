@@ -1,8 +1,8 @@
 import { MarketResponse, MarketDetailResponse, TradeWithMarketResponse, PortfolioResponse, PaginationResponse } from "./api";
 
 // ─── Pre-testnet launch markets ─────────────────────────────────────────────
-// 3 markets ready for on-chain deployment. Pools start at 0 — they populate
-// from real trades once contracts are deployed on Base Sepolia.
+// 3 markets ready for on-chain deployment. Reserves represent AMM liquidity
+// pools that will be initialized via initializePool() on contract deployment.
 
 const now = Date.now();
 const DAY = 86_400_000;
@@ -29,14 +29,15 @@ export const MOCK_MARKETS: MarketResponse[] = [
     category: "WORLD_CUP",
     teamA: "England",
     teamB: null,
-    poolYes: usdc(0),
-    poolNo: usdc(0),
-    totalVolume: usdc(0),
+    // AMM reserves: yesReserve=850, noReserve=150 → YES price = 15%, NO price = 85%
+    poolYes: usdc(850),
+    poolNo: usdc(150),
+    totalVolume: usdc(2400),
     status: "OPEN",
     resolvedOutcome: null,
     resolvedAt: null,
     resolutionTimestamp: futureISO(180),
-    createdAt: pastISO(1),
+    createdAt: pastISO(14),
     updatedAt: pastISO(0),
   },
   {
@@ -48,14 +49,15 @@ export const MOCK_MARKETS: MarketResponse[] = [
     category: "EPL",
     teamA: "Arsenal",
     teamB: null,
-    poolYes: usdc(0),
-    poolNo: usdc(0),
-    totalVolume: usdc(0),
+    // AMM reserves: yesReserve=750, noReserve=250 → YES price = 25%, NO price = 75%
+    poolYes: usdc(750),
+    poolNo: usdc(250),
+    totalVolume: usdc(5100),
     status: "OPEN",
     resolvedOutcome: null,
     resolvedAt: null,
     resolutionTimestamp: futureISO(100),
-    createdAt: pastISO(1),
+    createdAt: pastISO(14),
     updatedAt: pastISO(0),
   },
   {
@@ -67,17 +69,31 @@ export const MOCK_MARKETS: MarketResponse[] = [
     category: "LA_LIGA",
     teamA: "Barcelona",
     teamB: null,
-    poolYes: usdc(0),
-    poolNo: usdc(0),
-    totalVolume: usdc(0),
+    // AMM reserves: yesReserve=650, noReserve=350 → YES price = 35%, NO price = 65%
+    poolYes: usdc(650),
+    poolNo: usdc(350),
+    totalVolume: usdc(3800),
     status: "OPEN",
     resolvedOutcome: null,
     resolvedAt: null,
     resolutionTimestamp: futureISO(100),
-    createdAt: pastISO(1),
+    createdAt: pastISO(14),
     updatedAt: pastISO(0),
   },
 ];
+
+// ─── AMM price helper ───────────────────────────────────────────────────────
+
+export function getAmmPrices(market: MarketResponse): { yesPrice: number; noPrice: number } {
+  const yesRes = Number(BigInt(market.poolYes)) / 1_000_000;
+  const noRes = Number(BigInt(market.poolNo)) / 1_000_000;
+  const total = yesRes + noRes;
+  if (total === 0) return { yesPrice: 50, noPrice: 50 };
+  return {
+    yesPrice: Math.round((noRes / total) * 100),
+    noPrice: Math.round((yesRes / total) * 100),
+  };
+}
 
 // ─── Data layer (mock ↔ real API swap) ──────────────────────────────────────
 
@@ -147,9 +163,9 @@ export async function fetchMarkets(params: {
 }
 
 export const MOCK_PARTICIPANTS: Record<string, number> = {
-  "market-0": 0,
-  "market-1": 0,
-  "market-2": 0,
+  "market-0": 12,
+  "market-1": 28,
+  "market-2": 19,
 };
 
 // ─── Chart data ─────────────────────────────────────────────────────────────
@@ -162,10 +178,7 @@ export interface ChartDataPoint {
 }
 
 function generateChartData(market: MarketResponse, points: number = 30): ChartDataPoint[] {
-  const poolYes = Number(BigInt(market.poolYes)) / 1_000_000;
-  const poolNo = Number(BigInt(market.poolNo)) / 1_000_000;
-  const total = poolYes + poolNo;
-  const finalPct = total > 0 ? (poolYes / total) * 100 : 50;
+  const { yesPrice: finalPct } = getAmmPrices(market);
 
   const data: ChartDataPoint[] = [];
   const startTime = new Date(market.createdAt).getTime();
@@ -175,7 +188,7 @@ function generateChartData(market: MarketResponse, points: number = 30): ChartDa
   for (let i = 0; i < points; i++) {
     const progress = i / (points - 1);
     const base = 50 + (finalPct - 50) * progress;
-    const noise = (Math.sin(i * 1.7) * 2 + Math.cos(i * 0.9) * 1.5) * (1 - progress * 0.5);
+    const noise = (Math.sin(i * 1.7) * 3 + Math.cos(i * 0.9) * 2) * (1 - progress * 0.5);
     const pctA = Math.max(5, Math.min(95, base + noise));
     const t = new Date(startTime + step * i);
     data.push({
