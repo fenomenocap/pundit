@@ -8,11 +8,13 @@ export interface MarketResponse {
   question: string;
   outcomeA: string;
   outcomeB: string;
+  outcomeC?: string | null; // Draw / third outcome
   category: string;
   teamA: string | null;
   teamB: string | null;
   poolYes: string;
   poolNo: string;
+  poolDraw?: string | null; // Draw pool reserve
   totalVolume: string;
   status: string;
   resolvedOutcome: number | null;
