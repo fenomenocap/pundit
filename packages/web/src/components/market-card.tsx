@@ -46,12 +46,30 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
     return () => clearInterval(interval);
   }, [market.resolutionTimestamp]);
 
-  // AMM pricing: Price(YES) = noReserve / total, Price(NO) = yesReserve / total
+  // AMM pricing
   const yesRes = BigInt(market.poolYes);
   const noRes = BigInt(market.poolNo);
-  const total = yesRes + noRes;
-  const pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
-  const pctNo = total > 0n ? 100 - pctYes : 50;
+  const drawRes = market.poolDraw ? BigInt(market.poolDraw) : 0n;
+  const total = yesRes + noRes + drawRes;
+  const hasDraw = !!market.outcomeC;
+
+  let pctYes: number, pctNo: number, pctDraw: number;
+
+  if (hasDraw && total > 0n) {
+    const reserves = [Number(yesRes), Number(noRes), Number(drawRes)];
+    const products = reserves.map((_, i) => {
+      const others = reserves.filter((__, j) => j !== i);
+      return others.reduce((a, b) => a * b, 1);
+    });
+    const sumProducts = products.reduce((a, b) => a + b, 0);
+    pctYes = sumProducts > 0 ? (products[0] / sumProducts) * 100 : 33;
+    pctNo = sumProducts > 0 ? (products[1] / sumProducts) * 100 : 33;
+    pctDraw = sumProducts > 0 ? (products[2] / sumProducts) * 100 : 34;
+  } else {
+    pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
+    pctNo = total > 0n ? 100 - pctYes : 50;
+    pctDraw = 0;
+  }
 
   const cat = CATEGORY_CONFIG[market.category] || {
     label: market.category,
@@ -80,28 +98,48 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
 
         {/* Outcome rows with AMM prices */}
         <div className="mb-3 space-y-1.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-foreground">{market.outcomeA}</span>
-            <div className="flex items-center gap-2">
-              <span className="rounded bg-teal-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-teal-400">
-                Yes {Math.round(pctYes)}&cent;
+          {hasDraw ? (
+            <div className="flex items-center justify-between text-xs gap-1.5">
+              <span className="rounded bg-teal-500/15 px-2 py-0.5 text-[11px] font-semibold text-teal-400 truncate">
+                {market.outcomeA} {Math.round(pctYes)}&cent;
               </span>
-              <span className="rounded bg-rose-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-rose-400">
-                No {Math.round(pctNo)}&cent;
+              <span className="rounded bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-400 truncate">
+                {market.outcomeC} {Math.round(pctDraw)}&cent;
+              </span>
+              <span className="rounded bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-400 truncate">
+                {market.outcomeB} {Math.round(pctNo)}&cent;
               </span>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-foreground">{market.outcomeA}</span>
+              <div className="flex items-center gap-2">
+                <span className="rounded bg-teal-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-teal-400">
+                  Yes {Math.round(pctYes)}&cent;
+                </span>
+                <span className="rounded bg-rose-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-rose-400">
+                  No {Math.round(pctNo)}&cent;
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Odds bar */}
         <div className="mb-3">
           <div className="flex h-1.5 overflow-hidden rounded-full bg-secondary">
             <div
-              className="rounded-l-full bg-teal-500 transition-all duration-500"
+              className="bg-teal-500 transition-all duration-500"
               style={{ width: `${pctYes}%` }}
             />
+            {hasDraw && (
+              <div
+                className="bg-amber-500 transition-all duration-500"
+                style={{ width: `${pctDraw}%` }}
+              />
+            )}
             <div
-              className="rounded-r-full bg-rose-500 transition-all duration-500"
+              className="bg-rose-500 transition-all duration-500"
               style={{ width: `${pctNo}%` }}
             />
           </div>

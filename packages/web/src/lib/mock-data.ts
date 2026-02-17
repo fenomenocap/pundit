@@ -80,6 +80,52 @@ export const MOCK_MARKETS: MarketResponse[] = [
     createdAt: pastISO(14),
     updatedAt: pastISO(0),
   },
+  {
+    id: "market-3",
+    onchainId: 3,
+    question: "Brazil vs Germany — 2026 World Cup Quarter-Final",
+    outcomeA: "Brazil",
+    outcomeB: "Germany",
+    outcomeC: "Draw",
+    category: "WORLD_CUP",
+    teamA: "Brazil",
+    teamB: "Germany",
+    // 3-way AMM reserves: Brazil=400, Germany=500, Draw=600
+    // Prices: Brazil ~43%, Germany ~34%, Draw ~23%
+    poolYes: usdc(400),
+    poolNo: usdc(500),
+    poolDraw: usdc(600),
+    totalVolume: usdc(4200),
+    status: "OPEN",
+    resolvedOutcome: null,
+    resolvedAt: null,
+    resolutionTimestamp: futureISO(160),
+    createdAt: pastISO(7),
+    updatedAt: pastISO(0),
+  },
+  {
+    id: "market-4",
+    onchainId: 4,
+    question: "Arsenal vs Liverpool — EPL Matchweek 28",
+    outcomeA: "Arsenal",
+    outcomeB: "Liverpool",
+    outcomeC: "Draw",
+    category: "EPL",
+    teamA: "Arsenal",
+    teamB: "Liverpool",
+    // 3-way AMM reserves: Arsenal=350, Liverpool=450, Draw=700
+    // Prices: Arsenal ~45%, Liverpool ~35%, Draw ~20%
+    poolYes: usdc(350),
+    poolNo: usdc(450),
+    poolDraw: usdc(700),
+    totalVolume: usdc(6800),
+    status: "OPEN",
+    resolvedOutcome: null,
+    resolvedAt: null,
+    resolutionTimestamp: futureISO(12),
+    createdAt: pastISO(3),
+    updatedAt: pastISO(0),
+  },
 ];
 
 // ─── AMM price helper ───────────────────────────────────────────────────────
@@ -166,6 +212,8 @@ export const MOCK_PARTICIPANTS: Record<string, number> = {
   "market-0": 12,
   "market-1": 28,
   "market-2": 19,
+  "market-3": 34,
+  "market-4": 47,
 };
 
 // ─── Chart data ─────────────────────────────────────────────────────────────
