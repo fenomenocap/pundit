@@ -11,15 +11,16 @@ import "@rainbow-me/rainbowkit/styles.css";
 const queryClient = new QueryClient();
 
 const customTheme = darkTheme({
-  accentColor: "#2dd4bf",
+  accentColor: "#00c8ff",
   accentColorForeground: "#000000",
   borderRadius: "small",
   overlayBlur: "small",
+  fontStack: "system",
 });
 
-customTheme.colors.modalBackground = "hsl(220, 20%, 6%)";
-customTheme.colors.profileForeground = "hsl(220, 20%, 6%)";
-customTheme.colors.connectButtonBackground = "hsl(220, 15%, 10%)";
+customTheme.colors.modalBackground = "hsl(228, 45%, 7%)";
+customTheme.colors.profileForeground = "hsl(228, 45%, 7%)";
+customTheme.colors.connectButtonBackground = "hsl(228, 35%, 12%)";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (

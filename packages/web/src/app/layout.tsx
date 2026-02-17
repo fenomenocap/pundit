@@ -1,48 +1,27 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
 import { DynamicProviders } from "@/components/dynamic-providers";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import "./globals.css";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-heading",
-  weight: "100 900",
-});
-
-const geistBody = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-body",
-  weight: "100 900",
-});
-
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-mono",
-  weight: "100 900",
-});
-
 export const metadata: Metadata = {
   title: {
-    default: "Sports Predict — Onchain Prediction Markets",
-    template: "%s | Sports Predict",
+    default: "Pundit — Sports Prediction Markets",
+    template: "%s | Pundit",
   },
   description:
-    "Trade on FIFA World Cup 2026 outcomes with USDC on Base. Parimutuel prediction markets powered by smart contracts.",
-  keywords: ["prediction markets", "FIFA World Cup 2026", "crypto", "USDC", "Base", "onchain"],
+    "Your edge in sports prediction markets. Trade on football outcomes with limit orders on Base.",
+  keywords: ["prediction markets", "sports betting", "football", "crypto", "USDC", "Base", "onchain"],
   openGraph: {
     type: "website",
-    siteName: "Sports Predict",
-    title: "Sports Predict — Onchain Prediction Markets",
-    description:
-      "Trade on FIFA World Cup 2026 outcomes with USDC on Base. Parimutuel prediction markets powered by smart contracts.",
+    siteName: "Pundit",
+    title: "Pundit — Sports Prediction Markets",
+    description: "Your edge in sports prediction markets. Trade on football outcomes with limit orders on Base.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sports Predict — Onchain Prediction Markets",
-    description:
-      "Trade on FIFA World Cup 2026 outcomes with USDC on Base.",
+    title: "Pundit — Sports Prediction Markets",
+    description: "Your edge in sports prediction markets.",
   },
   robots: {
     index: true,
@@ -57,9 +36,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body
-        className={`${geistSans.variable} ${geistBody.variable} ${geistMono.variable} font-body antialiased`}
-      >
+      <head>
+        {/* Space Grotesk (FTX-style geometric sans) + Space Mono */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="font-body antialiased">
         <DynamicProviders>
           <div className="flex min-h-screen flex-col">
             <Navbar />
