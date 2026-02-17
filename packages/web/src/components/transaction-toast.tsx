@@ -3,14 +3,14 @@
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { EXPLORER_BASE } from "@/lib/contracts";
-import type { BuyState, ClaimState } from "@/hooks/use-contracts";
+import type { BuyState, SellState, ClaimState } from "@/hooks/use-contracts";
 
 // ─── TransactionToast ────────────────────────────────────────────────────────
 // Shows transaction status with tx hash linking to BaseScan.
 // Renders inline (not via toast context) so it can show state transitions.
 
 interface TransactionToastProps {
-  state: BuyState | ClaimState;
+  state: BuyState | SellState | ClaimState;
   txHash: `0x${string}` | undefined;
   error: string | undefined;
   onReset: () => void;
@@ -48,6 +48,7 @@ export function TransactionToast({
     approving: "Approving USDC...",
     "awaiting-approval": "Waiting for approval...",
     buying: "Submitting trade...",
+    selling: "Submitting sale...",
     claiming: "Submitting claim...",
     "awaiting-confirmation": "Awaiting confirmation...",
     confirmed: successMessage,

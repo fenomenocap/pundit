@@ -46,10 +46,11 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
     return () => clearInterval(interval);
   }, [market.resolutionTimestamp]);
 
-  const poolYes = BigInt(market.poolYes);
-  const poolNo = BigInt(market.poolNo);
-  const total = poolYes + poolNo;
-  const pctYes = total > 0n ? Number((poolYes * 10000n) / total) / 100 : 50;
+  // AMM pricing: Price(YES) = noReserve / total, Price(NO) = yesReserve / total
+  const yesRes = BigInt(market.poolYes);
+  const noRes = BigInt(market.poolNo);
+  const total = yesRes + noRes;
+  const pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
   const pctNo = total > 0n ? 100 - pctYes : 50;
 
   const cat = CATEGORY_CONFIG[market.category] || {
@@ -77,22 +78,17 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
 
         <div className="mt-auto" />
 
-        {/* Outcome rows */}
+        {/* Outcome rows with AMM prices */}
         <div className="mb-3 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-foreground">{market.outcomeA}</span>
             <div className="flex items-center gap-2">
-              <span className="font-mono text-foreground">{pctYes.toFixed(0)}%</span>
-              <span className="rounded bg-teal-500/15 px-2 py-0.5 text-[10px] font-semibold text-teal-400">YES</span>
-              <span className="rounded bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-400">NO</span>
-            </div>
-          </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-foreground">{market.outcomeB}</span>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-foreground">{pctNo.toFixed(0)}%</span>
-              <span className="rounded bg-teal-500/15 px-2 py-0.5 text-[10px] font-semibold text-teal-400">YES</span>
-              <span className="rounded bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-400">NO</span>
+              <span className="rounded bg-teal-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-teal-400">
+                Yes {Math.round(pctYes)}&cent;
+              </span>
+              <span className="rounded bg-rose-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-rose-400">
+                No {Math.round(pctNo)}&cent;
+              </span>
             </div>
           </div>
         </div>
