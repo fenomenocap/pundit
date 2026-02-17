@@ -17,6 +17,7 @@ export enum MarketCategory {
 export enum Outcome {
   Yes = 0,
   No = 1,
+  Draw = 2,
 }
 
 export interface Market {
@@ -24,9 +25,10 @@ export interface Market {
   question: string;
   category: MarketCategory;
   status: MarketStatus;
-  outcomes: [string, string]; // e.g. ["Yes", "No"] or ["Brazil", "Draw/Germany"]
+  outcomes: [string, string] | [string, string, string]; // e.g. ["Yes", "No"] or ["Brazil", "Germany", "Draw"]
   poolYes: bigint;
   poolNo: bigint;
+  poolDraw?: bigint;
   resolutionDate: number; // unix timestamp
   resolvedOutcome: Outcome | null;
   createdAt: number;

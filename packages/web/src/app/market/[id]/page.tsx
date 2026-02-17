@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState, lazy, Suspense, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { fetchMarketDetail, MOCK_PARTICIPANTS } from "@/lib/mock-data";
 import { TradePanel } from "@/components/trade-panel";
+import { OutcomeDetail } from "@/components/outcome-detail";
 import { CONTRACTS, EXPLORER_BASE } from "@/lib/contracts";
 import type { MarketDetailResponse } from "@/lib/api";
 import type { ChartDataPoint } from "@/lib/mock-data";
@@ -13,6 +14,8 @@ import type { ChartDataPoint } from "@/lib/mock-data";
 const PriceChart = lazy(() =>
   import("@/components/price-chart").then((m) => ({ default: m.PriceChart }))
 );
+
+type OutcomeIndex = 0 | 1 | 2;
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
   WORLD_CUP: { label: "World Cup", color: "bg-amber-500/15 text-amber-400 border-amber-500/25" },
@@ -49,6 +52,7 @@ export default function MarketPage() {
   const [market, setMarket] = useState<(MarketDetailResponse & { chartData: ChartDataPoint[] }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedOutcome, setSelectedOutcome] = useState<OutcomeIndex | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -64,6 +68,10 @@ export default function MarketPage() {
     if (market) document.title = `${market.question} | Sports Predict`;
     return () => { document.title = "Sports Predict"; };
   }, [market]);
+
+  const handleOutcomeClick = useCallback((outcome: OutcomeIndex) => {
+    setSelectedOutcome(outcome);
+  }, []);
 
   if (loading) {
     return (
@@ -82,12 +90,32 @@ export default function MarketPage() {
     );
   }
 
-  // AMM pricing: Price(YES) = noReserve / total, Price(NO) = yesReserve / total
+  // AMM pricing
   const yesRes = BigInt(market.poolYes);
   const noRes = BigInt(market.poolNo);
-  const total = yesRes + noRes;
-  const pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
-  const pctNo = 100 - pctYes;
+  const drawRes = market.poolDraw ? BigInt(market.poolDraw) : 0n;
+  const total = yesRes + noRes + drawRes;
+  const hasDraw = !!market.outcomeC;
+
+  let pctYes: number, pctNo: number, pctDraw: number;
+
+  if (hasDraw && total > 0n) {
+    // 3-way pricing: inverse-proportional from reserves
+    const reserves = [Number(yesRes), Number(noRes), Number(drawRes)];
+    const products = reserves.map((_, i) => {
+      const others = reserves.filter((__, j) => j !== i);
+      return others.reduce((a, b) => a * b, 1);
+    });
+    const sumProducts = products.reduce((a, b) => a + b, 0);
+    pctYes = sumProducts > 0 ? (products[0] / sumProducts) * 100 : 33;
+    pctNo = sumProducts > 0 ? (products[1] / sumProducts) * 100 : 33;
+    pctDraw = sumProducts > 0 ? (products[2] / sumProducts) * 100 : 34;
+  } else {
+    pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
+    pctNo = 100 - pctYes;
+    pctDraw = 0;
+  }
+
   const cat = CATEGORY_CONFIG[market.category] || { label: market.category, color: "bg-muted text-muted-foreground border-border" };
   const status = STATUS_CONFIG[market.status] || { label: market.status, color: "bg-muted text-muted-foreground" };
   const participants = MOCK_PARTICIPANTS[market.id] ?? 0;
@@ -125,26 +153,62 @@ export default function MarketPage() {
           {/* Odds bar */}
           <div className="mb-6">
             <div className="mb-2 flex items-center justify-between text-sm">
-              <span className="font-medium text-teal-400">
+              <button
+                onClick={() => setSelectedOutcome(0)}
+                className="font-medium text-teal-400 hover:underline cursor-pointer"
+              >
                 {market.outcomeA}
                 <span className="ml-2 font-mono text-base">{Math.round(pctYes)}&cent;</span>
-              </span>
-              <span className="font-medium text-rose-400">
+              </button>
+              {hasDraw && (
+                <button
+                  onClick={() => setSelectedOutcome(2)}
+                  className="font-medium text-amber-400 hover:underline cursor-pointer"
+                >
+                  {market.outcomeC}
+                  <span className="ml-2 font-mono text-base">{Math.round(pctDraw)}&cent;</span>
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedOutcome(1)}
+                className="font-medium text-rose-400 hover:underline cursor-pointer"
+              >
                 <span className="mr-2 font-mono text-base">{Math.round(pctNo)}&cent;</span>
                 {market.outcomeB}
-              </span>
+              </button>
             </div>
             <div className="flex h-2 overflow-hidden rounded-full bg-secondary">
               <div
-                className="rounded-l-full bg-teal-500 transition-all duration-500"
+                className="bg-teal-500 transition-all duration-500"
                 style={{ width: `${pctYes}%` }}
               />
+              {hasDraw && (
+                <div
+                  className="bg-amber-500 transition-all duration-500"
+                  style={{ width: `${pctDraw}%` }}
+                />
+              )}
               <div
-                className="rounded-r-full bg-rose-500 transition-all duration-500"
+                className="bg-rose-500 transition-all duration-500"
                 style={{ width: `${pctNo}%` }}
               />
             </div>
+            <div className="mt-1.5 text-[10px] text-muted-foreground">
+              Click an outcome to view order book &amp; trades
+            </div>
           </div>
+
+          {/* Outcome detail panel (trades + orderbook) */}
+          {selectedOutcome !== null && (
+            <div className="mb-6">
+              <OutcomeDetail
+                market={market}
+                outcome={selectedOutcome}
+                trades={market.recentTrades}
+                onClose={() => setSelectedOutcome(null)}
+              />
+            </div>
+          )}
 
           {/* Stats row */}
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -187,8 +251,11 @@ export default function MarketPage() {
                   ) : (
                     market.recentTrades.slice(0, 15).map((t) => (
                       <tr key={t.id} className="border-b border-border hover:bg-secondary/50">
-                        <td className={cn("px-4 py-2 font-medium", t.outcome === 0 ? "text-teal-400" : "text-rose-400")}>
-                          {t.outcome === 0 ? "YES" : "NO"}
+                        <td className={cn(
+                          "px-4 py-2 font-medium",
+                          t.outcome === 0 ? "text-teal-400" : t.outcome === 2 ? "text-amber-400" : "text-rose-400"
+                        )}>
+                          {t.outcome === 0 ? market.outcomeA : t.outcome === 2 ? (market.outcomeC || "DRAW") : market.outcomeB}
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-foreground">
                           ${(Number(BigInt(t.amount)) / 1_000_000).toFixed(0)}
@@ -213,7 +280,11 @@ export default function MarketPage() {
             <dl className="space-y-2.5 text-xs">
               <DetailRow label="Resolution Date" value={new Date(market.resolutionTimestamp).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })} />
               <DetailRow label="Source" value="Official league/tournament results" />
-              <DetailRow label="Resolution Rules" value="Market resolves YES if the specified outcome occurs. Otherwise resolves NO. Resolved by admin oracle." />
+              <DetailRow label="Resolution Rules" value={
+                hasDraw
+                  ? "Market resolves to the winning outcome, or Draw if the match ends level. Resolved by admin oracle."
+                  : "Market resolves YES if the specified outcome occurs. Otherwise resolves NO. Resolved by admin oracle."
+              } />
               {market.resolvedAt && (
                 <DetailRow label="Resolved At" value={new Date(market.resolvedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })} />
               )}
@@ -235,16 +306,16 @@ export default function MarketPage() {
         </div>
 
         {/* Right: sticky trade panel */}
-        <div className="hidden w-[340px] shrink-0 lg:block">
+        <div className="hidden w-[360px] shrink-0 lg:block">
           <div className="sticky top-16">
-            <TradePanel market={market} />
+            <TradePanel market={market} onOutcomeClick={handleOutcomeClick} />
           </div>
         </div>
       </div>
 
       {/* Mobile trade panel (below content on small screens) */}
       <div className="mt-6 lg:hidden">
-        <TradePanel market={market} />
+        <TradePanel market={market} onOutcomeClick={handleOutcomeClick} />
       </div>
     </div>
   );
