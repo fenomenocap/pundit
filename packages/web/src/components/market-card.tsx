@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { memo, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { getTeamLogo } from "@/lib/team-logos";
 import type { MarketResponse } from "@/lib/api";
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
   WORLD_CUP: { label: "World Cup", color: "bg-amber-500/15 text-amber-400 border-amber-500/25" },
   EPL: { label: "Premier League", color: "bg-purple-500/15 text-purple-400 border-purple-500/25" },
-  LA_LIGA: { label: "La Liga", color: "bg-rose-500/15 text-rose-400 border-rose-500/25" },
+  LA_LIGA: { label: "La Liga", color: "bg-pink-500/15 text-pink-400 border-pink-500/25" },
 };
 
 function formatUsdcPool(raw: string): string {
@@ -78,7 +79,7 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
 
   return (
     <Link href={`/market/${market.id}`} className="group block">
-      <div className="relative flex h-full flex-col rounded-lg border border-border bg-card p-4 transition-all duration-200 group-hover:border-teal-500/30 group-hover:bg-secondary">
+      <div className="relative flex h-full flex-col rounded-lg border border-border bg-card p-4 transition-all duration-200 group-hover:border-cyan-500/30 group-hover:bg-secondary">
         {/* Category badge */}
         <span
           className={cn(
@@ -89,8 +90,23 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
           {cat.label}
         </span>
 
+        {/* Team logos */}
+        {(market.teamA || market.teamB) && (
+          <div className="mb-2 flex items-center gap-2 text-base">
+            {market.teamA && getTeamLogo(market.teamA) && (
+              <span title={market.teamA}>{getTeamLogo(market.teamA)}</span>
+            )}
+            {market.teamB && getTeamLogo(market.teamB) && (
+              <>
+                <span className="text-[10px] text-muted-foreground">vs</span>
+                <span title={market.teamB}>{getTeamLogo(market.teamB)}</span>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Question */}
-        <h3 className="mb-4 line-clamp-2 text-sm font-semibold leading-snug text-foreground group-hover:text-teal-400">
+        <h3 className="mb-4 line-clamp-2 text-sm font-semibold leading-snug text-foreground group-hover:text-cyan-400">
           {market.question}
         </h3>
 
@@ -100,13 +116,13 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
         <div className="mb-3 space-y-1.5">
           {hasDraw ? (
             <div className="flex items-center justify-between text-xs gap-1.5">
-              <span className="rounded bg-teal-500/15 px-2 py-0.5 text-[11px] font-semibold text-teal-400 truncate">
+              <span className="rounded bg-cyan-500/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-400 truncate">
                 {market.outcomeA} {Math.round(pctYes)}&cent;
               </span>
               <span className="rounded bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-400 truncate">
                 {market.outcomeC} {Math.round(pctDraw)}&cent;
               </span>
-              <span className="rounded bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-400 truncate">
+              <span className="rounded bg-pink-500/15 px-2 py-0.5 text-[11px] font-semibold text-pink-400 truncate">
                 {market.outcomeB} {Math.round(pctNo)}&cent;
               </span>
             </div>
@@ -114,10 +130,10 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
             <div className="flex items-center justify-between text-xs">
               <span className="text-foreground">{market.outcomeA}</span>
               <div className="flex items-center gap-2">
-                <span className="rounded bg-teal-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-teal-400">
+                <span className="rounded bg-cyan-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-400">
                   Yes {Math.round(pctYes)}&cent;
                 </span>
-                <span className="rounded bg-rose-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-rose-400">
+                <span className="rounded bg-pink-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-pink-400">
                   No {Math.round(pctNo)}&cent;
                 </span>
               </div>
@@ -129,7 +145,7 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
         <div className="mb-3">
           <div className="flex h-1.5 overflow-hidden rounded-full bg-secondary">
             <div
-              className="bg-teal-500 transition-all duration-500"
+              className="bg-cyan-500 transition-all duration-500"
               style={{ width: `${pctYes}%` }}
             />
             {hasDraw && (
@@ -139,7 +155,7 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
               />
             )}
             <div
-              className="bg-rose-500 transition-all duration-500"
+              className="bg-pink-500 transition-all duration-500"
               style={{ width: `${pctNo}%` }}
             />
           </div>

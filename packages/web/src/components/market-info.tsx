@@ -7,11 +7,11 @@ import type { MarketResponse } from "@/lib/api";
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
   WORLD_CUP: { label: "World Cup", color: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
   EPL: { label: "Premier League", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
-  LA_LIGA: { label: "La Liga", color: "bg-rose-500/20 text-rose-400 border-rose-500/30" },
+  LA_LIGA: { label: "La Liga", color: "bg-pink-500/20 text-pink-400 border-pink-500/30" },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  OPEN: { label: "Open", color: "bg-emerald-500/20 text-emerald-400" },
+  OPEN: { label: "Open", color: "bg-emerald-500/20 text-cyan-400" },
   LOCKED: { label: "Locked", color: "bg-amber-500/20 text-amber-400" },
   RESOLVED: { label: "Resolved", color: "bg-blue-500/20 text-blue-400" },
   CANCELLED: { label: "Cancelled", color: "bg-slate-500/20 text-slate-400" },
@@ -72,11 +72,11 @@ export function MarketInfo({ market, participantCount }: MarketInfoProps) {
       {/* Wide odds bar */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-semibold text-emerald-400">
+          <span className="text-sm font-semibold text-cyan-400">
             {market.outcomeA}
             <span className="ml-2 font-mono text-lg">{pctYes.toFixed(1)}%</span>
           </span>
-          <span className="text-sm font-semibold text-rose-400">
+          <span className="text-sm font-semibold text-pink-400">
             <span className="mr-2 font-mono text-lg">{pctNo.toFixed(1)}%</span>
             {market.outcomeB}
           </span>
@@ -87,7 +87,7 @@ export function MarketInfo({ market, participantCount }: MarketInfoProps) {
             style={{ width: `${pctYes}%` }}
           />
           <div
-            className="rounded-r-full bg-gradient-to-l from-rose-600 to-rose-400 transition-all duration-700"
+            className="rounded-r-full bg-gradient-to-l from-pink-600 to-pink-400 transition-all duration-700"
             style={{ width: `${pctNo}%` }}
           />
         </div>

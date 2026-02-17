@@ -74,8 +74,8 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    document.title = "Portfolio | Sports Predict";
-    return () => { document.title = "Sports Predict"; };
+    document.title = "Portfolio | Pundit";
+    return () => { document.title = "Pundit"; };
   }, []);
 
   useEffect(() => {
@@ -110,7 +110,7 @@ export default function PortfolioPage() {
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-teal-400 border-t-transparent" />
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
       </div>
     );
   }
@@ -128,7 +128,7 @@ export default function PortfolioPage() {
         </span>
         <span className="text-muted-foreground">
           P&L{" "}
-          <span className={cn("font-mono", totalPnL > 0n ? "text-teal-400" : totalPnL < 0n ? "text-rose-400" : "text-foreground")}>
+          <span className={cn("font-mono", totalPnL > 0n ? "text-cyan-400" : totalPnL < 0n ? "text-pink-400" : "text-foreground")}>
             {formatUsdcSigned(totalPnL.toString())}
           </span>
         </span>
@@ -168,19 +168,19 @@ export default function PortfolioPage() {
                   return (
                     <tr key={pos.marketId} className="border-b border-border last:border-0 hover:bg-secondary/50">
                       <td className="px-4 py-2">
-                        <Link href={`/market/${pos.marketId}`} className="text-foreground hover:text-teal-400">
+                        <Link href={`/market/${pos.marketId}`} className="text-foreground hover:text-cyan-400">
                           {pos.marketQuestion}
                         </Link>
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <span className={cn("font-medium", pos.outcome === 0 ? "text-teal-400" : "text-rose-400")}>
+                        <span className={cn("font-medium", pos.outcome === 0 ? "text-cyan-400" : "text-pink-400")}>
                           {pos.outcome === 0 ? "Yes" : "No"}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-amber-400">
                         {formatUsdc(pos.claimable)}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-teal-400">
+                      <td className="px-3 py-2 text-right font-mono text-cyan-400">
                         +{formatUsdc(profit.toString())}
                       </td>
                       <td className="px-3 py-2 text-right">
@@ -209,7 +209,7 @@ export default function PortfolioPage() {
           {activePositions.length === 0 ? (
             <div className="px-4 py-8 text-center text-xs text-muted-foreground">
               No active positions.{" "}
-              <Link href="/" className="text-teal-400 hover:underline">Browse markets</Link>
+              <Link href="/" className="text-cyan-400 hover:underline">Browse markets</Link>
             </div>
           ) : (
             <table className="w-full text-xs">
@@ -236,12 +236,12 @@ export default function PortfolioPage() {
                   return (
                     <tr key={pos.marketId} className="border-b border-border hover:bg-secondary/50">
                       <td className="max-w-[260px] truncate px-4 py-2">
-                        <Link href={`/market/${pos.marketId}`} className="text-foreground hover:text-teal-400">
+                        <Link href={`/market/${pos.marketId}`} className="text-foreground hover:text-cyan-400">
                           {pos.marketQuestion}
                         </Link>
                       </td>
                       <td className="px-3 py-2">
-                        <span className={cn("font-medium", pos.outcome === 0 ? "text-teal-400" : "text-rose-400")}>
+                        <span className={cn("font-medium", pos.outcome === 0 ? "text-cyan-400" : "text-pink-400")}>
                           {pos.outcome === 0 ? "YES" : "NO"}
                         </span>
                       </td>
@@ -255,12 +255,12 @@ export default function PortfolioPage() {
                         {formatUsdc(currentValue.toString())}
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <span className={cn("font-mono", pnl > 0n ? "text-teal-400" : pnl < 0n ? "text-rose-400" : "text-muted-foreground")}>
+                        <span className={cn("font-mono", pnl > 0n ? "text-cyan-400" : pnl < 0n ? "text-pink-400" : "text-muted-foreground")}>
                           {formatUsdcSigned(pnl.toString())}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <span className={cn("font-mono", pnlPct > 0 ? "text-teal-400" : pnlPct < 0 ? "text-rose-400" : "text-muted-foreground")}>
+                        <span className={cn("font-mono", pnlPct > 0 ? "text-cyan-400" : pnlPct < 0 ? "text-pink-400" : "text-muted-foreground")}>
                           {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%
                         </span>
                       </td>
@@ -326,12 +326,12 @@ function TradeHistory() {
                     {timeAgo(trade.timestamp)}
                   </td>
                   <td className="max-w-[200px] truncate px-3 py-2">
-                    <Link href={`/market/${trade.marketId}`} className="text-foreground hover:text-teal-400">
+                    <Link href={`/market/${trade.marketId}`} className="text-foreground hover:text-cyan-400">
                       {trade.marketQuestion}
                     </Link>
                   </td>
                   <td className="px-3 py-2">
-                    <span className={cn("font-medium", trade.outcome === 0 ? "text-teal-400" : "text-rose-400")}>
+                    <span className={cn("font-medium", trade.outcome === 0 ? "text-cyan-400" : "text-pink-400")}>
                       {trade.outcomeName}
                     </span>
                   </td>
@@ -346,7 +346,7 @@ function TradeHistory() {
                       href={`https://sepolia.basescan.org/tx/${trade.txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-mono text-[10px] text-teal-400 hover:text-teal-300"
+                      className="font-mono text-[10px] text-cyan-400 hover:text-cyan-300"
                     >
                       {shortenTxHash(trade.txHash)}
                     </a>
