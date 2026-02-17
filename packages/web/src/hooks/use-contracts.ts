@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { useReadContract, useReadContracts, useWriteContract, useAccount } from "wagmi";
-import { CONTRACTS, parimutuelEngineAbi, marketFactoryAbi, erc20Abi } from "@/lib/contracts";
+import { CONTRACTS, predictionMarketAmmAbi, marketFactoryAbi, erc20Abi } from "@/lib/contracts";
 
 // ─── Human-readable error mapping ───────────────────────────────────────────
 
@@ -21,10 +21,13 @@ function parseContractError(err: unknown): string {
   if (msg.includes("insufficient funds for gas")) {
     return "Insufficient ETH for gas fees";
   }
-  // Contract reverts
+  // AMM-specific contract reverts
   if (msg.includes("MarketDoesNotExist")) return "Market does not exist";
   if (msg.includes("MarketNotOpen")) return "Market is no longer open for trading";
-  if (msg.includes("MarketNotResolved")) return "Market has not been resolved yet";
+  if (msg.includes("PoolNotInitialized")) return "Pool has not been initialized yet";
+  if (msg.includes("PoolAlreadyInitialized")) return "Pool is already initialized";
+  if (msg.includes("SlippageExceeded")) return "Price moved too much — try again with higher slippage";
+  if (msg.includes("InsufficientShares")) return "You don't have enough shares to sell";
   if (msg.includes("MarketNotSettled")) return "Settlement period has not passed yet (30 min after resolution)";
   if (msg.includes("AlreadyClaimed")) return "Winnings already claimed";
   if (msg.includes("NothingToClaim")) return "No winnings to claim for this market";
@@ -42,12 +45,14 @@ function parseContractError(err: unknown): string {
 }
 
 // ─── useMarketData ───────────────────────────────────────────────────────────
-// Reads pool sizes, total pool, and market info from contracts. Refreshes every 15s.
+// Reads AMM reserves, prices, and market info from contracts. Refreshes every 15s.
 
 export interface OnchainMarketData {
-  poolYes: bigint;
-  poolNo: bigint;
-  totalPool: bigint;
+  yesReserve: bigint;
+  noReserve: bigint;
+  yesPrice: number;    // 0–100 (percent)
+  noPrice: number;     // 0–100 (percent)
+  poolInitialized: boolean;
   question: string;
   outcomes: readonly [string, string];
   resolutionTimestamp: bigint;
@@ -66,20 +71,14 @@ export function useMarketData(marketId: number | undefined): OnchainMarketData {
     contracts: [
       {
         address: CONTRACTS.engine,
-        abi: parimutuelEngineAbi,
-        functionName: "totalSharesByOutcome",
-        args: enabled ? [BigInt(marketId), 0] : undefined,
+        abi: predictionMarketAmmAbi,
+        functionName: "getReserves",
+        args: enabled ? [BigInt(marketId)] : undefined,
       },
       {
         address: CONTRACTS.engine,
-        abi: parimutuelEngineAbi,
-        functionName: "totalSharesByOutcome",
-        args: enabled ? [BigInt(marketId), 1] : undefined,
-      },
-      {
-        address: CONTRACTS.engine,
-        abi: parimutuelEngineAbi,
-        functionName: "totalPool",
+        abi: predictionMarketAmmAbi,
+        functionName: "isPoolInitialized",
         args: enabled ? [BigInt(marketId)] : undefined,
       },
       {
@@ -96,10 +95,11 @@ export function useMarketData(marketId: number | undefined): OnchainMarketData {
   });
 
   return useMemo(() => {
-    const poolYes = (data?.[0]?.result as bigint) ?? 0n;
-    const poolNo = (data?.[1]?.result as bigint) ?? 0n;
-    const totalPool = (data?.[2]?.result as bigint) ?? 0n;
-    const marketData = data?.[3]?.result as
+    const reserves = data?.[0]?.result as [bigint, bigint] | undefined;
+    const yesReserve = reserves?.[0] ?? 0n;
+    const noReserve = reserves?.[1] ?? 0n;
+    const poolInitialized = (data?.[1]?.result as boolean) ?? false;
+    const marketData = data?.[2]?.result as
       | {
           question: string;
           outcomes: readonly [string, string];
@@ -111,10 +111,16 @@ export function useMarketData(marketId: number | undefined): OnchainMarketData {
         }
       | undefined;
 
+    const total = yesReserve + noReserve;
+    const yesPrice = total > 0n ? Number((noReserve * 10000n) / total) / 100 : 50;
+    const noPrice = total > 0n ? Number((yesReserve * 10000n) / total) / 100 : 50;
+
     return {
-      poolYes,
-      poolNo,
-      totalPool,
+      yesReserve,
+      noReserve,
+      yesPrice,
+      noPrice,
+      poolInitialized,
       question: marketData?.question ?? "",
       outcomes: marketData?.outcomes ?? ["Yes", "No"],
       resolutionTimestamp: marketData?.resolutionTimestamp ?? 0n,
@@ -147,19 +153,19 @@ export function useUserPosition(marketId: number | undefined): UserPosition {
     contracts: [
       {
         address: CONTRACTS.engine,
-        abi: parimutuelEngineAbi,
+        abi: predictionMarketAmmAbi,
         functionName: "getUserShares",
         args: enabled ? [BigInt(marketId), address!, 0] : undefined,
       },
       {
         address: CONTRACTS.engine,
-        abi: parimutuelEngineAbi,
+        abi: predictionMarketAmmAbi,
         functionName: "getUserShares",
         args: enabled ? [BigInt(marketId), address!, 1] : undefined,
       },
       {
         address: CONTRACTS.engine,
-        abi: parimutuelEngineAbi,
+        abi: predictionMarketAmmAbi,
         functionName: "claimed",
         args: enabled ? [BigInt(marketId), address!] : undefined,
       },
@@ -183,7 +189,6 @@ export function useUserPosition(marketId: number | undefined): UserPosition {
 }
 
 // ─── useUSDCBalance ──────────────────────────────────────────────────────────
-// Reads the connected user's USDC balance.
 
 export interface USDCBalance {
   balance: bigint;
@@ -214,8 +219,8 @@ export function useUSDCBalance(): USDCBalance {
   }, [data, isLoading, refetch]);
 }
 
-// ─── useBuyShares ────────────────────────────────────────────────────────────
-// Handles the full flow: check USDC allowance → approve vault if needed → buyShares.
+// ─── useBuyOutcome ──────────────────────────────────────────────────────────
+// Handles: check USDC allowance → approve vault if needed → buyOutcome on AMM.
 
 export type BuyState =
   | "idle"
@@ -227,15 +232,15 @@ export type BuyState =
   | "confirmed"
   | "error";
 
-export interface BuySharesHook {
-  buyShares: (marketId: number, outcome: 0 | 1, amount: bigint) => Promise<void>;
+export interface BuyOutcomeHook {
+  buyOutcome: (marketId: number, outcome: 0 | 1, amount: bigint, minSharesOut?: bigint) => Promise<void>;
   state: BuyState;
   txHash: `0x${string}` | undefined;
   error: string | undefined;
   reset: () => void;
 }
 
-export function useBuyShares(): BuySharesHook {
+export function useBuyOutcome(): BuyOutcomeHook {
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
 
@@ -257,8 +262,8 @@ export function useBuyShares(): BuySharesHook {
     setBuyError(undefined);
   }, []);
 
-  const buyShares = useCallback(
-    async (marketId: number, outcome: 0 | 1, amount: bigint) => {
+  const buyOutcome = useCallback(
+    async (marketId: number, outcome: 0 | 1, amount: bigint, minSharesOut?: bigint) => {
       if (!address) return;
       setBuyError(undefined);
 
@@ -279,22 +284,20 @@ export function useBuyShares(): BuySharesHook {
           });
           setBuyTxHash(approveTx);
           setBuyState("awaiting-approval");
-          // Wait for block confirmation
           await new Promise((r) => setTimeout(r, 2000));
         }
 
-        // Step 3: Buy shares
+        // Step 3: Buy outcome tokens
         setBuyState("buying");
         const tx = await writeContractAsync({
           address: CONTRACTS.engine,
-          abi: parimutuelEngineAbi,
-          functionName: "buyShares",
-          args: [BigInt(marketId), outcome, amount],
+          abi: predictionMarketAmmAbi,
+          functionName: "buyOutcome",
+          args: [BigInt(marketId), outcome, amount, minSharesOut ?? 0n],
         });
         setBuyTxHash(tx);
         setBuyState("awaiting-confirmation");
 
-        // Wait for block confirmation
         await new Promise((r) => setTimeout(r, 2000));
         setBuyState("confirmed");
       } catch (err: unknown) {
@@ -305,11 +308,69 @@ export function useBuyShares(): BuySharesHook {
     [address, refetchAllowance, writeContractAsync]
   );
 
-  return { buyShares, state: buyState, txHash: buyTxHash, error: buyError, reset };
+  return { buyOutcome, state: buyState, txHash: buyTxHash, error: buyError, reset };
+}
+
+// ─── useSellOutcome ─────────────────────────────────────────────────────────
+// Sells outcome tokens back to the AMM for USDC.
+
+export type SellState =
+  | "idle"
+  | "selling"
+  | "awaiting-confirmation"
+  | "confirmed"
+  | "error";
+
+export interface SellOutcomeHook {
+  sellOutcome: (marketId: number, outcome: 0 | 1, shares: bigint, minUsdcOut?: bigint) => Promise<void>;
+  state: SellState;
+  txHash: `0x${string}` | undefined;
+  error: string | undefined;
+  reset: () => void;
+}
+
+export function useSellOutcome(): SellOutcomeHook {
+  const { writeContractAsync } = useWriteContract();
+
+  const [sellState, setSellState] = useState<SellState>("idle");
+  const [sellTxHash, setSellTxHash] = useState<`0x${string}` | undefined>(undefined);
+  const [sellError, setSellError] = useState<string | undefined>(undefined);
+
+  const reset = useCallback(() => {
+    setSellState("idle");
+    setSellTxHash(undefined);
+    setSellError(undefined);
+  }, []);
+
+  const sellOutcome = useCallback(
+    async (marketId: number, outcome: 0 | 1, shares: bigint, minUsdcOut?: bigint) => {
+      setSellError(undefined);
+
+      try {
+        setSellState("selling");
+        const tx = await writeContractAsync({
+          address: CONTRACTS.engine,
+          abi: predictionMarketAmmAbi,
+          functionName: "sellOutcome",
+          args: [BigInt(marketId), outcome, shares, minUsdcOut ?? 0n],
+        });
+        setSellTxHash(tx);
+        setSellState("awaiting-confirmation");
+
+        await new Promise((r) => setTimeout(r, 2000));
+        setSellState("confirmed");
+      } catch (err: unknown) {
+        setSellError(parseContractError(err));
+        setSellState("error");
+      }
+    },
+    [writeContractAsync]
+  );
+
+  return { sellOutcome, state: sellState, txHash: sellTxHash, error: sellError, reset };
 }
 
 // ─── useClaimWinnings ────────────────────────────────────────────────────────
-// Calls engine.claimWinnings with proper state management.
 
 export type ClaimState = "idle" | "claiming" | "awaiting-confirmation" | "confirmed" | "error";
 
@@ -342,7 +403,7 @@ export function useClaimWinnings(): ClaimWinningsHook {
         setClaimState("claiming");
         const tx = await writeContractAsync({
           address: CONTRACTS.engine,
-          abi: parimutuelEngineAbi,
+          abi: predictionMarketAmmAbi,
           functionName: "claimWinnings",
           args: [BigInt(marketId)],
         });

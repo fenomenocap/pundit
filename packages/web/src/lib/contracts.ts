@@ -1,15 +1,39 @@
 // ─── Contract ABIs (human-readable format for viem) ─────────────────────────
 // Extracted from compiled Solidity contracts in packages/contracts/src/*.sol
 
-export const parimutuelEngineAbi = [
+export const predictionMarketAmmAbi = [
+  // Pool initialization
+  {
+    type: "function",
+    name: "initializePool",
+    inputs: [
+      { name: "marketId", type: "uint256" },
+      { name: "initialLiquidity", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
   // Trading
   {
     type: "function",
-    name: "buyShares",
+    name: "buyOutcome",
     inputs: [
       { name: "marketId", type: "uint256" },
       { name: "outcome", type: "uint8" },
       { name: "amount", type: "uint256" },
+      { name: "minSharesOut", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "sellOutcome",
+    inputs: [
+      { name: "marketId", type: "uint256" },
+      { name: "outcome", type: "uint8" },
+      { name: "shares", type: "uint256" },
+      { name: "minUsdcOut", type: "uint256" },
     ],
     outputs: [],
     stateMutability: "nonpayable",
@@ -22,7 +46,29 @@ export const parimutuelEngineAbi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
-  // View helpers
+  // View: prices
+  {
+    type: "function",
+    name: "getPrice",
+    inputs: [
+      { name: "marketId", type: "uint256" },
+      { name: "outcome", type: "uint8" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  // View: reserves
+  {
+    type: "function",
+    name: "getReserves",
+    inputs: [{ name: "marketId", type: "uint256" }],
+    outputs: [
+      { name: "yesReserve", type: "uint256" },
+      { name: "noReserve", type: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  // View: user shares
   {
     type: "function",
     name: "getUserShares",
@@ -34,23 +80,31 @@ export const parimutuelEngineAbi = [
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
   },
+  // View: pool initialized
   {
     type: "function",
-    name: "totalSharesByOutcome",
-    inputs: [
-      { name: "marketId", type: "uint256" },
-      { name: "outcome", type: "uint8" },
-    ],
-    outputs: [{ name: "", type: "uint256" }],
+    name: "isPoolInitialized",
+    inputs: [{ name: "marketId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
     stateMutability: "view",
   },
+  // View: volume
   {
     type: "function",
-    name: "totalPool",
+    name: "totalVolume",
     inputs: [{ name: "marketId", type: "uint256" }],
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
   },
+  // View: fees
+  {
+    type: "function",
+    name: "collectedFees",
+    inputs: [{ name: "marketId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  // View: claimed
   {
     type: "function",
     name: "claimed",
@@ -61,6 +115,7 @@ export const parimutuelEngineAbi = [
     outputs: [{ name: "", type: "bool" }],
     stateMutability: "view",
   },
+  // Immutables
   {
     type: "function",
     name: "feeBps",
@@ -92,12 +147,32 @@ export const parimutuelEngineAbi = [
   // Events
   {
     type: "event",
-    name: "SharesPurchased",
+    name: "PoolInitialized",
+    inputs: [
+      { name: "marketId", type: "uint256", indexed: true },
+      { name: "initialLiquidity", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "OutcomeBought",
     inputs: [
       { name: "marketId", type: "uint256", indexed: true },
       { name: "buyer", type: "address", indexed: true },
       { name: "outcome", type: "uint8", indexed: false },
-      { name: "amount", type: "uint256", indexed: false },
+      { name: "usdcIn", type: "uint256", indexed: false },
+      { name: "sharesOut", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "OutcomeSold",
+    inputs: [
+      { name: "marketId", type: "uint256", indexed: true },
+      { name: "seller", type: "address", indexed: true },
+      { name: "outcome", type: "uint8", indexed: false },
+      { name: "sharesIn", type: "uint256", indexed: false },
+      { name: "usdcOut", type: "uint256", indexed: false },
     ],
   },
   {
