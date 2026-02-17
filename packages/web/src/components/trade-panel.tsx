@@ -28,8 +28,8 @@ function getOutcomeNames(market: MarketResponse): string[] {
 }
 
 function getOutcomeColor(idx: OutcomeIndex): { text: string; bg: string; border: string; ring: string } {
-  if (idx === 0) return { text: "text-teal-400", bg: "bg-teal-500/10", border: "border-teal-500/40", ring: "ring-teal-500/30" };
-  if (idx === 1) return { text: "text-rose-400", bg: "bg-rose-500/10", border: "border-rose-500/40", ring: "ring-rose-500/30" };
+  if (idx === 0) return { text: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/40", ring: "ring-cyan-500/30" };
+  if (idx === 1) return { text: "text-pink-400", bg: "bg-pink-500/10", border: "border-pink-500/40", ring: "ring-pink-500/30" };
   return { text: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/40", ring: "ring-amber-500/30" };
 }
 
@@ -265,9 +265,9 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
           {isResolved ? "Resolved" : "Cancelled"}
         </div>
         {isResolved && (
-          <div className="rounded-lg border border-teal-500/30 bg-teal-500/5 px-3 py-2.5 text-center">
-            <div className="text-[10px] text-teal-400">Winner</div>
-            <div className="text-sm font-semibold text-teal-300">{winner}</div>
+          <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5 text-center">
+            <div className="text-[10px] text-cyan-400">Winner</div>
+            <div className="text-sm font-semibold text-cyan-300">{winner}</div>
           </div>
         )}
         {hasPos && (
@@ -291,7 +291,7 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
             <button
               onClick={handleClaim}
               disabled={claimState !== "idle" && claimState !== "confirmed" && claimState !== "error"}
-              className="w-full rounded-lg bg-teal-500 py-2.5 text-xs font-semibold text-black transition-colors hover:bg-teal-400 disabled:opacity-50"
+              className="w-full rounded-lg bg-cyan-500 py-2.5 text-xs font-semibold text-black transition-colors hover:bg-cyan-400 disabled:opacity-50"
             >
               {claimState === "claiming" || claimState === "awaiting-confirmation"
                 ? "Claiming..."
@@ -316,7 +316,7 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
           className={cn(
             "flex-1 py-3 text-sm font-semibold transition-all text-center",
             mode === "buy"
-              ? "bg-teal-500/10 text-teal-400 border-b-2 border-teal-400"
+              ? "bg-cyan-500/10 text-cyan-400 border-b-2 border-cyan-400"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -328,7 +328,7 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
           className={cn(
             "flex-1 py-3 text-sm font-semibold transition-all text-center",
             mode === "sell"
-              ? "bg-rose-500/10 text-rose-400 border-b-2 border-rose-400"
+              ? "bg-pink-500/10 text-pink-400 border-b-2 border-pink-400"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -425,7 +425,7 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
                 max="99"
                 step="1"
                 disabled={isTrading}
-                className="h-10 w-full rounded-lg border border-border bg-secondary pl-3 pr-10 font-mono text-sm text-foreground placeholder-muted-foreground outline-none focus:border-teal-500/50 disabled:opacity-50"
+                className="h-10 w-full rounded-lg border border-border bg-secondary pl-3 pr-10 font-mono text-sm text-foreground placeholder-muted-foreground outline-none focus:border-cyan-500/50 disabled:opacity-50"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
                 &cent;
@@ -489,7 +489,7 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
               min="0"
               step={inputMode === "dollars" ? "0.01" : "1"}
               disabled={isTrading}
-              className="h-10 w-full rounded-lg border border-border bg-secondary pl-7 pr-16 font-mono text-sm text-foreground placeholder-muted-foreground outline-none focus:border-teal-500/50 disabled:opacity-50"
+              className="h-10 w-full rounded-lg border border-border bg-secondary pl-7 pr-16 font-mono text-sm text-foreground placeholder-muted-foreground outline-none focus:border-cyan-500/50 disabled:opacity-50"
             />
             <button
               onClick={() => {
@@ -568,7 +568,7 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
               <span className="font-mono text-foreground">
                 {formatUsd(buyCalc.payout)}
                 {buyCalc.profit > 0 && (
-                  <span className="ml-1 text-teal-400">(+{formatUsd(buyCalc.profit)})</span>
+                  <span className="ml-1 text-cyan-400">(+{formatUsd(buyCalc.profit)})</span>
                 )}
               </span>
             </div>
@@ -584,10 +584,17 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">
-                {inputMode === "dollars" ? "Contracts to sell" : "You receive"}
+                {inputMode === "dollars" ? "Contracts to sell" : "Contracts"}
               </span>
-              <span className="font-mono text-teal-400">
-                {inputMode === "dollars" ? sellCalc.sharesF.toFixed(2) : formatUsd(sellCalc.usdcOutF)}
+              <span className="font-mono text-foreground">
+                {inputMode === "dollars" ? sellCalc.sharesF.toFixed(2) : sellCalc.sharesF.toFixed(2)}
+              </span>
+            </div>
+            <div className="my-1 border-t border-border/50" />
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">You receive</span>
+              <span className="font-mono text-cyan-400">
+                {formatUsd(sellCalc.usdcOutF)}
               </span>
             </div>
           </div>
@@ -609,17 +616,26 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
               </span>
             </div>
             <div className="my-1 border-t border-border/50" />
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">
-                Payout if {outcomeNames[outcome]}
-              </span>
-              <span className="font-mono text-foreground">
-                {formatUsd(limitCalc.payout)}
-                {limitCalc.profit > 0 && (
-                  <span className="ml-1 text-teal-400">(+{formatUsd(limitCalc.profit)})</span>
-                )}
-              </span>
-            </div>
+            {mode === "buy" ? (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">
+                  Payout if {outcomeNames[outcome]}
+                </span>
+                <span className="font-mono text-foreground">
+                  {formatUsd(limitCalc.payout)}
+                  {limitCalc.profit > 0 && (
+                    <span className="ml-1 text-cyan-400">(+{formatUsd(limitCalc.profit)})</span>
+                  )}
+                </span>
+              </div>
+            ) : (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">You receive</span>
+                <span className="font-mono text-cyan-400">
+                  {formatUsd(limitCalc.cost)}
+                </span>
+              </div>
+            )}
             <div className="mt-1 rounded bg-amber-500/10 border border-amber-500/20 px-2 py-1.5 text-[10px] text-amber-400">
               Limit orders execute when market price reaches your limit price
             </div>
@@ -634,7 +650,7 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{market.outcomeA}</span>
                 <div className="text-right">
-                  <span className="font-mono text-teal-400">{(Number(pos.sharesYes) / 1e6).toFixed(2)}</span>
+                  <span className="font-mono text-cyan-400">{(Number(pos.sharesYes) / 1e6).toFixed(2)}</span>
                   <span className="ml-1 text-muted-foreground">contracts</span>
                   <span className="ml-1.5 text-muted-foreground">
                     ({formatUsd(Number(pos.sharesYes) / 1e6 * prices[0] / 100)})
@@ -646,7 +662,7 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{market.outcomeB}</span>
                 <div className="text-right">
-                  <span className="font-mono text-rose-400">{(Number(pos.sharesNo) / 1e6).toFixed(2)}</span>
+                  <span className="font-mono text-pink-400">{(Number(pos.sharesNo) / 1e6).toFixed(2)}</span>
                   <span className="ml-1 text-muted-foreground">contracts</span>
                   <span className="ml-1.5 text-muted-foreground">
                     ({formatUsd(Number(pos.sharesNo) / 1e6 * prices[1] / 100)})
@@ -664,11 +680,11 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
             disabled={isBuying || (isConnected && (!hasValidInput || insuf))}
             className={cn(
               "w-full rounded-lg py-3 text-sm font-semibold transition-colors",
-              !isConnected ? "bg-teal-500 text-black hover:bg-teal-400"
-                : isBuying ? "cursor-wait bg-teal-500/50 text-teal-200"
-                : insuf ? "cursor-not-allowed bg-rose-500/20 text-rose-400 border border-rose-500/30"
+              !isConnected ? "bg-cyan-500 text-black hover:bg-cyan-400"
+                : isBuying ? "cursor-wait bg-cyan-500/50 text-cyan-200"
+                : insuf ? "cursor-not-allowed bg-pink-500/20 text-pink-400 border border-pink-500/30"
                 : hasValidInput
-                  ? "bg-teal-500 text-black hover:bg-teal-400"
+                  ? "bg-cyan-500 text-black hover:bg-cyan-400"
                   : "cursor-not-allowed bg-secondary text-muted-foreground"
             )}
           >
@@ -685,11 +701,11 @@ export function TradePanel({ market, onOutcomeClick }: TradePanelProps) {
             disabled={isSelling || (isConnected && (!hasValidInput || sellInsuf))}
             className={cn(
               "w-full rounded-lg py-3 text-sm font-semibold transition-colors",
-              !isConnected ? "bg-rose-500 text-white hover:bg-rose-400"
-                : isSelling ? "cursor-wait bg-rose-500/50 text-rose-200"
-                : sellInsuf ? "cursor-not-allowed bg-rose-500/20 text-rose-400 border border-rose-500/30"
+              !isConnected ? "bg-pink-500 text-white hover:bg-pink-400"
+                : isSelling ? "cursor-wait bg-pink-500/50 text-pink-200"
+                : sellInsuf ? "cursor-not-allowed bg-pink-500/20 text-pink-400 border border-pink-500/30"
                 : hasValidInput
-                  ? "bg-rose-500 text-white hover:bg-rose-400"
+                  ? "bg-pink-500 text-white hover:bg-pink-400"
                   : "cursor-not-allowed bg-secondary text-muted-foreground"
             )}
           >

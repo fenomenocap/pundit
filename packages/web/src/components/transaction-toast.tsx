@@ -61,7 +61,7 @@ export function TransactionToast({
         "mt-3 rounded-lg border p-3 text-sm",
         isProcessing && "border-blue-500/30 bg-blue-950/30",
         state === "confirmed" && "border-emerald-500/30 bg-emerald-950/30",
-        state === "error" && "border-rose-500/30 bg-rose-950/30"
+        state === "error" && "border-pink-500/30 bg-pink-950/30"
       )}
     >
       <div className="flex items-center gap-2">
@@ -75,7 +75,7 @@ export function TransactionToast({
             "flex-1 text-xs font-medium",
             isProcessing && "text-blue-300",
             state === "confirmed" && "text-emerald-300",
-            state === "error" && "text-rose-300"
+            state === "error" && "text-pink-300"
           )}
         >
           {stateLabel[state]}
@@ -154,7 +154,7 @@ function CheckIcon() {
 function XIcon() {
   return (
     <svg
-      className="h-4 w-4 text-rose-400"
+      className="h-4 w-4 text-pink-400"
       fill="none"
       viewBox="0 0 24 24"
       strokeWidth={2.5}

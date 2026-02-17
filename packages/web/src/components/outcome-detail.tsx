@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Orderbook, DepthChart } from "./orderbook";
+import { Orderbook } from "./orderbook";
 import type { MarketResponse, TradeResponse } from "@/lib/api";
 
 type OutcomeIndex = 0 | 1 | 2;
@@ -21,8 +21,8 @@ function getOutcomeName(market: MarketResponse, idx: OutcomeIndex): string {
 }
 
 function getOutcomeColor(idx: OutcomeIndex): string {
-  if (idx === 0) return "text-teal-400";
-  if (idx === 1) return "text-rose-400";
+  if (idx === 0) return "text-cyan-400";
+  if (idx === 1) return "text-pink-400";
   return "text-amber-400";
 }
 
@@ -50,23 +50,20 @@ function getAmmPrice(market: MarketResponse, outcome: OutcomeIndex): number {
 }
 
 export function OutcomeDetail({ market, outcome, trades, onClose }: OutcomeDetailProps) {
-  const [tab, setTab] = useState<"orderbook" | "trades" | "depth">("orderbook");
+  const [tab, setTab] = useState<"orderbook" | "trades">("orderbook");
 
   const name = getOutcomeName(market, outcome);
   const color = getOutcomeColor(outcome);
   const price = getAmmPrice(market, outcome);
 
-  // Filter trades for this outcome
   const outcomeTrades = useMemo(
     () => trades.filter((t) => t.outcome === outcome),
     [trades, outcome]
   );
 
-  // Generate some mock trades if we have none
   const displayTrades = useMemo(() => {
     if (outcomeTrades.length > 0) return outcomeTrades;
 
-    // Generate mock trades for demonstration
     const now = Date.now();
     const mock: TradeResponse[] = [];
     for (let i = 0; i < 12; i++) {
@@ -108,33 +105,32 @@ export function OutcomeDetail({ market, outcome, trades, onClose }: OutcomeDetai
         </button>
       </div>
 
-      {/* Tab bar */}
+      {/* Tab bar - now just 2 tabs since depth is combined into orderbook */}
       <div className="flex border-b border-border">
-        {(["orderbook", "trades", "depth"] as const).map((t) => (
+        {(["orderbook", "trades"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
               "flex-1 py-2 text-[11px] font-semibold transition-all text-center capitalize",
               tab === t
-                ? "text-foreground border-b-2 border-foreground"
+                ? "text-foreground border-b-2 border-cyan-400"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            {t === "orderbook" ? "Order Book" : t === "trades" ? "Trades" : "Depth"}
+            {t === "orderbook" ? "Order Book" : "Trades"}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
-      <div className="max-h-[380px] overflow-auto">
+      <div className="max-h-[420px] overflow-auto">
         {tab === "orderbook" && (
           <Orderbook market={market} outcome={outcome} />
         )}
 
         {tab === "trades" && (
           <div className="text-[11px]">
-            {/* Trades header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
               <span>Side</span>
               <span>Price</span>
@@ -158,7 +154,7 @@ export function OutcomeDetail({ market, outcome, trades, onClose }: OutcomeDetai
                     key={trade.id}
                     className="flex items-center justify-between border-b border-border/50 px-3 py-1.5 hover:bg-secondary/30"
                   >
-                    <span className="font-medium text-teal-400">
+                    <span className="font-medium text-cyan-400">
                       BUY
                     </span>
                     <span className="font-mono text-foreground">
@@ -178,10 +174,6 @@ export function OutcomeDetail({ market, outcome, trades, onClose }: OutcomeDetai
               })
             )}
           </div>
-        )}
-
-        {tab === "depth" && (
-          <DepthChart market={market} outcome={outcome} />
         )}
       </div>
     </div>

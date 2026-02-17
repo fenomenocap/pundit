@@ -7,8 +7,8 @@ const Providers = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex min-h-screen items-center justify-center bg-[hsl(220,20%,4%)]">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-400 border-t-transparent" />
+      <div className="flex min-h-screen items-center justify-center bg-[hsl(228,50%,5%)]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
       </div>
     ),
   }

@@ -50,8 +50,8 @@ export function RecentTrades({ trades, outcomeA, outcomeB }: RecentTradesProps) 
                 <span
                   className={
                     trade.outcome === 0
-                      ? "h-2 w-2 rounded-full bg-emerald-500"
-                      : "h-2 w-2 rounded-full bg-rose-500"
+                      ? "h-2 w-2 rounded-full bg-cyan-500"
+                      : "h-2 w-2 rounded-full bg-pink-500"
                   }
                 />
                 <div>
@@ -63,8 +63,8 @@ export function RecentTrades({ trades, outcomeA, outcomeB }: RecentTradesProps) 
                     <span
                       className={
                         trade.outcome === 0
-                          ? "text-emerald-400"
-                          : "text-rose-400"
+                          ? "text-cyan-400"
+                          : "text-pink-400"
                       }
                     >
                       {trade.outcome === 0 ? outcomeA : outcomeB}

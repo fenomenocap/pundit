@@ -20,11 +20,11 @@ type OutcomeIndex = 0 | 1 | 2;
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
   WORLD_CUP: { label: "World Cup", color: "bg-amber-500/15 text-amber-400 border-amber-500/25" },
   EPL: { label: "Premier League", color: "bg-purple-500/15 text-purple-400 border-purple-500/25" },
-  LA_LIGA: { label: "La Liga", color: "bg-rose-500/15 text-rose-400 border-rose-500/25" },
+  LA_LIGA: { label: "La Liga", color: "bg-pink-500/15 text-pink-400 border-pink-500/25" },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  OPEN: { label: "Open", color: "bg-teal-500/15 text-teal-400" },
+  OPEN: { label: "Open", color: "bg-cyan-500/15 text-cyan-400" },
   LOCKED: { label: "Locked", color: "bg-amber-500/15 text-amber-400" },
   RESOLVED: { label: "Resolved", color: "bg-blue-500/15 text-blue-400" },
   CANCELLED: { label: "Cancelled", color: "bg-muted text-muted-foreground" },
@@ -52,7 +52,7 @@ export default function MarketPage() {
   const [market, setMarket] = useState<(MarketDetailResponse & { chartData: ChartDataPoint[] }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedOutcome, setSelectedOutcome] = useState<OutcomeIndex | null>(null);
+  const [selectedOutcome, setSelectedOutcome] = useState<OutcomeIndex | null>(0);
 
   useEffect(() => {
     if (!id) return;
@@ -65,8 +65,8 @@ export default function MarketPage() {
   }, [id]);
 
   useEffect(() => {
-    if (market) document.title = `${market.question} | Sports Predict`;
-    return () => { document.title = "Sports Predict"; };
+    if (market) document.title = `${market.question} | Pundit`;
+    return () => { document.title = "Pundit"; };
   }, [market]);
 
   const handleOutcomeClick = useCallback((outcome: OutcomeIndex) => {
@@ -76,7 +76,7 @@ export default function MarketPage() {
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-400 border-t-transparent" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
       </div>
     );
   }
@@ -85,7 +85,7 @@ export default function MarketPage() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
         <p className="text-sm text-muted-foreground">{error || "Market not found"}</p>
-        <Link href="/" className="text-xs text-teal-400 hover:underline">Back to Markets</Link>
+        <Link href="/" className="text-xs text-cyan-400 hover:underline">Back to Markets</Link>
       </div>
     );
   }
@@ -124,7 +124,7 @@ export default function MarketPage() {
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       {/* Breadcrumb */}
       <div className="mb-4">
-        <Link href="/" className="text-xs text-muted-foreground hover:text-teal-400">
+        <Link href="/" className="text-xs text-muted-foreground hover:text-cyan-400">
           Markets
         </Link>
         <span className="mx-2 text-xs text-muted-foreground">/</span>
@@ -155,7 +155,7 @@ export default function MarketPage() {
             <div className="mb-2 flex items-center justify-between text-sm">
               <button
                 onClick={() => setSelectedOutcome(0)}
-                className="font-medium text-teal-400 hover:underline cursor-pointer"
+                className="font-medium text-cyan-400 hover:underline cursor-pointer"
               >
                 {market.outcomeA}
                 <span className="ml-2 font-mono text-base">{Math.round(pctYes)}&cent;</span>
@@ -171,7 +171,7 @@ export default function MarketPage() {
               )}
               <button
                 onClick={() => setSelectedOutcome(1)}
-                className="font-medium text-rose-400 hover:underline cursor-pointer"
+                className="font-medium text-pink-400 hover:underline cursor-pointer"
               >
                 <span className="mr-2 font-mono text-base">{Math.round(pctNo)}&cent;</span>
                 {market.outcomeB}
@@ -179,7 +179,7 @@ export default function MarketPage() {
             </div>
             <div className="flex h-2 overflow-hidden rounded-full bg-secondary">
               <div
-                className="bg-teal-500 transition-all duration-500"
+                className="bg-cyan-500 transition-all duration-500"
                 style={{ width: `${pctYes}%` }}
               />
               {hasDraw && (
@@ -189,13 +189,28 @@ export default function MarketPage() {
                 />
               )}
               <div
-                className="bg-rose-500 transition-all duration-500"
+                className="bg-pink-500 transition-all duration-500"
                 style={{ width: `${pctNo}%` }}
               />
             </div>
             <div className="mt-1.5 text-[10px] text-muted-foreground">
               Click an outcome to view order book &amp; trades
             </div>
+          </div>
+
+          {/* Stats row */}
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatCard label="Volume" value={formatUsdc(market.totalVolume)} />
+            <StatCard label="Liquidity" value={formatUsdc(String(total))} />
+            <StatCard label="Time Left" value={getTimeLeft(market.resolutionTimestamp)} />
+            <StatCard label="Traders" value={String(participants)} />
+          </div>
+
+          {/* Chart */}
+          <div className="mb-6 rounded-lg border border-border bg-card p-4">
+            <Suspense fallback={<div className="flex h-[300px] items-center justify-center text-xs text-muted-foreground">Loading chart...</div>}>
+              <PriceChart data={market.chartData} outcomeA={market.outcomeA} outcomeB={market.outcomeB} />
+            </Suspense>
           </div>
 
           {/* Outcome detail panel (trades + orderbook) */}
@@ -209,22 +224,6 @@ export default function MarketPage() {
               />
             </div>
           )}
-
-          {/* Stats row */}
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Volume" value={formatUsdc(market.totalVolume)} />
-            <StatCard label="Liquidity" value={formatUsdc(String(total))} />
-            <StatCard label="Time Left" value={getTimeLeft(market.resolutionTimestamp)} />
-            <StatCard label="Traders" value={String(participants)} />
-          </div>
-
-          {/* Chart */}
-          <div className="mb-6 rounded-lg border border-border bg-card p-4">
-            <h3 className="mb-3 text-xs font-semibold text-foreground">Implied Probability</h3>
-            <Suspense fallback={<div className="flex h-[300px] items-center justify-center text-xs text-muted-foreground">Loading chart...</div>}>
-              <PriceChart data={market.chartData} outcomeA={market.outcomeA} outcomeB={market.outcomeB} />
-            </Suspense>
-          </div>
 
           {/* Recent trades */}
           <div className="mb-6 rounded-lg border border-border bg-card">
@@ -253,7 +252,7 @@ export default function MarketPage() {
                       <tr key={t.id} className="border-b border-border hover:bg-secondary/50">
                         <td className={cn(
                           "px-4 py-2 font-medium",
-                          t.outcome === 0 ? "text-teal-400" : t.outcome === 2 ? "text-amber-400" : "text-rose-400"
+                          t.outcome === 0 ? "text-cyan-400" : t.outcome === 2 ? "text-amber-400" : "text-pink-400"
                         )}>
                           {t.outcome === 0 ? market.outcomeA : t.outcome === 2 ? (market.outcomeC || "DRAW") : market.outcomeB}
                         </td>
@@ -295,7 +294,7 @@ export default function MarketPage() {
                     href={`${EXPLORER_BASE}/address/${CONTRACTS.engine}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-mono text-teal-400 hover:underline"
+                    className="font-mono text-cyan-400 hover:underline"
                   >
                     {CONTRACTS.engine.slice(0, 10)}...{CONTRACTS.engine.slice(-8)}
                   </a>
