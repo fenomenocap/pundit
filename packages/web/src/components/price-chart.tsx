@@ -39,11 +39,11 @@ export function PriceChart({ data, outcomeA, outcomeB }: PriceChartProps) {
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-4 text-xs">
           <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-teal-500" />
+            <span className="h-2 w-2 rounded-full bg-cyan-500" />
             <span className="text-muted-foreground">{outcomeA}</span>
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-rose-500" />
+            <span className="h-2 w-2 rounded-full bg-pink-500" />
             <span className="text-muted-foreground">{outcomeB}</span>
           </span>
         </div>
@@ -55,7 +55,7 @@ export function PriceChart({ data, outcomeA, outcomeB }: PriceChartProps) {
               className={cn(
                 "rounded px-2 py-1 text-[11px] font-medium transition-colors",
                 range === r.key
-                  ? "bg-teal-500/15 text-teal-400"
+                  ? "bg-cyan-500/15 text-cyan-400"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -69,36 +69,36 @@ export function PriceChart({ data, outcomeA, outcomeB }: PriceChartProps) {
         <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
           <defs>
             <linearGradient id="gradA" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.25} />
-              <stop offset="100%" stopColor="#2dd4bf" stopOpacity={0} />
+              <stop offset="0%" stopColor="#00c8ff" stopOpacity={0.25} />
+              <stop offset="100%" stopColor="#00c8ff" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="gradB" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.15} />
-              <stop offset="100%" stopColor="#f43f5e" stopOpacity={0} />
+              <stop offset="0%" stopColor="#ec4899" stopOpacity={0.15} />
+              <stop offset="100%" stopColor="#ec4899" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(220, 15%, 14%)" />
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(228, 30%, 15%)" />
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 11, fill: "hsl(220, 10%, 40%)" }}
-            axisLine={{ stroke: "hsl(220, 15%, 14%)" }}
+            tick={{ fontSize: 11, fill: "hsl(225, 15%, 48%)" }}
+            axisLine={{ stroke: "hsl(228, 30%, 15%)" }}
             tickLine={false}
           />
           <YAxis
             domain={[0, 100]}
-            tick={{ fontSize: 11, fill: "hsl(220, 10%, 40%)" }}
+            tick={{ fontSize: 11, fill: "hsl(225, 15%, 48%)" }}
             axisLine={false}
             tickLine={false}
             tickFormatter={(v: number) => `${v}%`}
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: "hsl(220, 20%, 6%)",
-              border: "1px solid hsl(220, 15%, 14%)",
+              backgroundColor: "hsl(228, 45%, 7%)",
+              border: "1px solid hsl(228, 30%, 15%)",
               borderRadius: "4px",
               fontSize: "12px",
             }}
-            labelStyle={{ color: "hsl(220, 10%, 55%)" }}
+            labelStyle={{ color: "hsl(225, 15%, 55%)" }}
             formatter={((value: number, name: string) => [
               `${value.toFixed(1)}%`,
               name === "outcomeA" ? outcomeA : outcomeB,
@@ -107,14 +107,14 @@ export function PriceChart({ data, outcomeA, outcomeB }: PriceChartProps) {
           <Area
             type="monotone"
             dataKey="outcomeA"
-            stroke="#2dd4bf"
+            stroke="#00c8ff"
             strokeWidth={2}
             fill="url(#gradA)"
           />
           <Area
             type="monotone"
             dataKey="outcomeB"
-            stroke="#f43f5e"
+            stroke="#ec4899"
             strokeWidth={1.5}
             fill="url(#gradB)"
           />

@@ -47,8 +47,8 @@ export default function LeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = "Leaderboard | Sports Predict";
-    return () => { document.title = "Sports Predict"; };
+    document.title = "Leaderboard | Pundit";
+    return () => { document.title = "Pundit"; };
   }, []);
 
   const fetchData = useCallback(async (p: Period) => {
@@ -84,7 +84,7 @@ export default function LeaderboardPage() {
               className={cn(
                 "rounded px-2 py-1 text-[11px] font-medium transition-colors",
                 period === p.key
-                  ? "bg-teal-500/15 text-teal-400"
+                  ? "bg-cyan-500/15 text-cyan-400"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -100,7 +100,7 @@ export default function LeaderboardPage() {
             </span>
             <span className={cn(
               "font-mono",
-              Number(BigInt(connectedEntry.profit)) > 0 ? "text-teal-400" : Number(BigInt(connectedEntry.profit)) < 0 ? "text-rose-400" : "text-muted-foreground"
+              Number(BigInt(connectedEntry.profit)) > 0 ? "text-cyan-400" : Number(BigInt(connectedEntry.profit)) < 0 ? "text-pink-400" : "text-muted-foreground"
             )}>
               {formatProfit(connectedEntry.profit).text}
             </span>
@@ -112,12 +112,12 @@ export default function LeaderboardPage() {
       <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex flex-1 items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-teal-400 border-t-transparent" />
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
           </div>
         ) : error ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-xs text-rose-400">{error}</p>
-            <button onClick={() => fetchData(period)} className="mt-2 text-[10px] text-teal-400 hover:underline">
+            <p className="text-xs text-pink-400">{error}</p>
+            <button onClick={() => fetchData(period)} className="mt-2 text-[10px] text-cyan-400 hover:underline">
               Try again
             </button>
           </div>
@@ -148,7 +148,7 @@ export default function LeaderboardPage() {
                     key={entry.address}
                     className={cn(
                       "border-b border-border transition-colors hover:bg-secondary/50",
-                      isMe && "bg-teal-500/5"
+                      isMe && "bg-cyan-500/5"
                     )}
                   >
                     <td className="px-4 py-2">
@@ -160,11 +160,11 @@ export default function LeaderboardPage() {
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <span className={cn("font-mono", isMe ? "text-teal-400" : "text-foreground")}>
+                      <span className={cn("font-mono", isMe ? "text-cyan-400" : "text-foreground")}>
                         {shortenAddress(entry.address)}
                       </span>
                       {isMe && (
-                        <span className="ml-1.5 rounded bg-teal-500/15 px-1 py-0.5 text-[9px] font-medium text-teal-400">
+                        <span className="ml-1.5 rounded bg-cyan-500/15 px-1 py-0.5 text-[9px] font-medium text-cyan-400">
                           YOU
                         </span>
                       )}
@@ -172,7 +172,7 @@ export default function LeaderboardPage() {
                     <td className="px-3 py-2 text-right">
                       <span className={cn(
                         "font-mono font-medium",
-                        profit.positive ? "text-teal-400" : profit.zero ? "text-muted-foreground" : "text-rose-400"
+                        profit.positive ? "text-cyan-400" : profit.zero ? "text-muted-foreground" : "text-pink-400"
                       )}>
                         {profit.text}
                       </span>
@@ -180,7 +180,7 @@ export default function LeaderboardPage() {
                     <td className="px-3 py-2 text-right">
                       <span className={cn(
                         "font-mono",
-                        entry.roi > 0 ? "text-teal-400" : entry.roi < 0 ? "text-rose-400" : "text-muted-foreground"
+                        entry.roi > 0 ? "text-cyan-400" : entry.roi < 0 ? "text-pink-400" : "text-muted-foreground"
                       )}>
                         {entry.roi >= 0 ? "+" : ""}{entry.roi.toFixed(1)}%
                       </span>
