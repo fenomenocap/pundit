@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 import { fetchMarketDetail, MOCK_PARTICIPANTS } from "@/lib/mock-data";
 import { TradePanel } from "@/components/trade-panel";
 import { OutcomeDetail } from "@/components/outcome-detail";
-import { CONTRACTS, EXPLORER_BASE } from "@/lib/contracts";
+import { MarketsSidebar } from "@/components/markets-sidebar";
+import { OrdersPanel } from "@/components/orders-panel";
 import type { MarketDetailResponse } from "@/lib/api";
 import type { ChartDataPoint } from "@/lib/mock-data";
 
@@ -43,7 +44,7 @@ function getTimeLeft(ts: string): string {
   const d = Math.floor(diff / 86_400_000);
   const h = Math.floor((diff % 86_400_000) / 3_600_000);
   const m = Math.floor((diff % 3_600_000) / 60_000);
-  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (d > 0) return `${d}d ${h}h`;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
@@ -52,7 +53,7 @@ export default function MarketPage() {
   const [market, setMarket] = useState<(MarketDetailResponse & { chartData: ChartDataPoint[] }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedOutcome, setSelectedOutcome] = useState<OutcomeIndex | null>(0);
+  const [selectedOutcome, setSelectedOutcome] = useState<OutcomeIndex>(0);
 
   useEffect(() => {
     if (!id) return;
@@ -75,7 +76,7 @@ export default function MarketPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="flex h-[calc(100vh-44px)] items-center justify-center bg-background">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
       </div>
     );
@@ -83,7 +84,7 @@ export default function MarketPage() {
 
   if (error || !market) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+      <div className="flex h-[calc(100vh-44px)] flex-col items-center justify-center gap-3 bg-background">
         <p className="text-sm text-muted-foreground">{error || "Market not found"}</p>
         <Link href="/" className="text-xs text-cyan-400 hover:underline">Back to Markets</Link>
       </div>
@@ -100,7 +101,6 @@ export default function MarketPage() {
   let pctYes: number, pctNo: number, pctDraw: number;
 
   if (hasDraw && total > 0n) {
-    // 3-way pricing: inverse-proportional from reserves
     const reserves = [Number(yesRes), Number(noRes), Number(drawRes)];
     const products = reserves.map((_, i) => {
       const others = reserves.filter((__, j) => j !== i);
@@ -121,200 +121,183 @@ export default function MarketPage() {
   const participants = MOCK_PARTICIPANTS[market.id] ?? 0;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      {/* Breadcrumb */}
-      <div className="mb-4">
-        <Link href="/" className="text-xs text-muted-foreground hover:text-cyan-400">
-          Markets
-        </Link>
-        <span className="mx-2 text-xs text-muted-foreground">/</span>
-        <span className="text-xs text-foreground">{market.category.replace(/_/g, " ")}</span>
+    <div className="flex h-[calc(100vh-44px)] overflow-hidden bg-background">
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {/* Col 1: Markets Sidebar (far left)                              */}
+      {/* ──────────────────────────────────────────────────────────────── */}
+      <div className="hidden w-52 shrink-0 lg:block">
+        <MarketsSidebar />
       </div>
 
-      {/* Two-column layout: content left, trade panel right */}
-      <div className="flex gap-6">
-        {/* Left: main content (scrollable) */}
-        <div className="min-w-0 flex-1">
-          {/* Market header */}
-          <div className="mb-6">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className={cn("rounded border px-2 py-0.5 text-[10px] font-medium", cat.color)}>
-                {cat.label}
-              </span>
-              <span className={cn("rounded px-2 py-0.5 text-[10px] font-medium", status.color)}>
-                {status.label}
-              </span>
-            </div>
-            <h1 className="text-xl font-bold text-foreground sm:text-2xl">
-              {market.question}
-            </h1>
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {/* Col 2: Center — Chart (top) + Orders (bottom)                  */}
+      {/* ──────────────────────────────────────────────────────────────── */}
+      <div className="flex min-w-0 flex-1 flex-col border-l border-r border-border">
+        {/* Market header bar */}
+        <div className="flex items-center gap-3 border-b border-border px-4 py-2">
+          <div className="flex items-center gap-2">
+            <span className={cn("rounded border px-1.5 py-0.5 text-[9px] font-medium", cat.color)}>
+              {cat.label}
+            </span>
+            <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-medium", status.color)}>
+              {status.label}
+            </span>
           </div>
+          <h1 className="min-w-0 truncate text-sm font-semibold text-foreground">
+            {market.question}
+          </h1>
+          <div className="ml-auto flex items-center gap-4 shrink-0 text-[10px] text-muted-foreground">
+            <span>Vol {formatUsdc(market.totalVolume)}</span>
+            <span>Liq {formatUsdc(String(total))}</span>
+            <span>{getTimeLeft(market.resolutionTimestamp)}</span>
+            <span>{participants} traders</span>
+          </div>
+        </div>
 
-          {/* Odds bar */}
-          <div className="mb-6">
-            <div className="mb-2 flex items-center justify-between text-sm">
-              <button
-                onClick={() => setSelectedOutcome(0)}
-                className="font-medium text-cyan-400 hover:underline cursor-pointer"
-              >
-                {market.outcomeA}
-                <span className="ml-2 font-mono text-base">{Math.round(pctYes)}&cent;</span>
-              </button>
-              {hasDraw && (
-                <button
-                  onClick={() => setSelectedOutcome(2)}
-                  className="font-medium text-amber-400 hover:underline cursor-pointer"
-                >
-                  {market.outcomeC}
-                  <span className="ml-2 font-mono text-base">{Math.round(pctDraw)}&cent;</span>
-                </button>
+        {/* Odds bar (compact) */}
+        <div className="border-b border-border px-4 py-2">
+          <div className="mb-1.5 flex items-center justify-between text-[11px]">
+            <button
+              onClick={() => setSelectedOutcome(0)}
+              className={cn(
+                "font-medium cursor-pointer hover:underline",
+                selectedOutcome === 0 ? "text-cyan-400" : "text-muted-foreground"
               )}
+            >
+              {market.outcomeA}
+              <span className="ml-1.5 font-mono">{Math.round(pctYes)}&cent;</span>
+            </button>
+            {hasDraw && (
               <button
-                onClick={() => setSelectedOutcome(1)}
-                className="font-medium text-pink-400 hover:underline cursor-pointer"
+                onClick={() => setSelectedOutcome(2)}
+                className={cn(
+                  "font-medium cursor-pointer hover:underline",
+                  selectedOutcome === 2 ? "text-amber-400" : "text-muted-foreground"
+                )}
               >
-                <span className="mr-2 font-mono text-base">{Math.round(pctNo)}&cent;</span>
-                {market.outcomeB}
+                {market.outcomeC}
+                <span className="ml-1.5 font-mono">{Math.round(pctDraw)}&cent;</span>
               </button>
-            </div>
-            <div className="flex h-2 overflow-hidden rounded-full bg-secondary">
-              <div
-                className="bg-cyan-500 transition-all duration-500"
-                style={{ width: `${pctYes}%` }}
-              />
-              {hasDraw && (
-                <div
-                  className="bg-amber-500 transition-all duration-500"
-                  style={{ width: `${pctDraw}%` }}
-                />
+            )}
+            <button
+              onClick={() => setSelectedOutcome(1)}
+              className={cn(
+                "font-medium cursor-pointer hover:underline",
+                selectedOutcome === 1 ? "text-pink-400" : "text-muted-foreground"
               )}
-              <div
-                className="bg-pink-500 transition-all duration-500"
-                style={{ width: `${pctNo}%` }}
-              />
-            </div>
-            <div className="mt-1.5 text-[10px] text-muted-foreground">
-              Click an outcome to view order book &amp; trades
-            </div>
+            >
+              <span className="mr-1.5 font-mono">{Math.round(pctNo)}&cent;</span>
+              {market.outcomeB}
+            </button>
           </div>
-
-          {/* Stats row */}
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="Volume" value={formatUsdc(market.totalVolume)} />
-            <StatCard label="Liquidity" value={formatUsdc(String(total))} />
-            <StatCard label="Time Left" value={getTimeLeft(market.resolutionTimestamp)} />
-            <StatCard label="Traders" value={String(participants)} />
+          <div className="flex h-1.5 overflow-hidden rounded-full bg-secondary">
+            <div className="bg-cyan-500 transition-all duration-500" style={{ width: `${pctYes}%` }} />
+            {hasDraw && <div className="bg-amber-500 transition-all duration-500" style={{ width: `${pctDraw}%` }} />}
+            <div className="bg-pink-500 transition-all duration-500" style={{ width: `${pctNo}%` }} />
           </div>
+        </div>
 
-          {/* Chart */}
-          <div className="mb-6 rounded-lg border border-border bg-card p-4">
-            <Suspense fallback={<div className="flex h-[300px] items-center justify-center text-xs text-muted-foreground">Loading chart...</div>}>
+        {/* Chart area (top portion) */}
+        <div className="flex-1 min-h-0 overflow-auto">
+          <div className="p-4">
+            <Suspense fallback={<div className="flex h-[260px] items-center justify-center text-xs text-muted-foreground">Loading chart...</div>}>
               <PriceChart data={market.chartData} outcomeA={market.outcomeA} outcomeB={market.outcomeB} />
             </Suspense>
           </div>
-
-          {/* Outcome detail panel (trades + orderbook) */}
-          {selectedOutcome !== null && (
-            <div className="mb-6">
-              <OutcomeDetail
-                market={market}
-                outcome={selectedOutcome}
-                trades={market.recentTrades}
-                onClose={() => setSelectedOutcome(null)}
-              />
-            </div>
-          )}
-
-          {/* Recent trades */}
-          <div className="mb-6 rounded-lg border border-border bg-card">
-            <div className="border-b border-border px-4 py-3">
-              <h3 className="text-xs font-semibold text-foreground">Recent Trades</h3>
-            </div>
-            <div className="max-h-64 overflow-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
-                    <th className="px-4 py-2 text-left font-medium">Side</th>
-                    <th className="px-3 py-2 text-right font-medium">Amount</th>
-                    <th className="px-3 py-2 text-right font-medium">Trader</th>
-                    <th className="px-3 py-2 text-right font-medium">Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {market.recentTrades.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
-                        No trades yet
-                      </td>
-                    </tr>
-                  ) : (
-                    market.recentTrades.slice(0, 15).map((t) => (
-                      <tr key={t.id} className="border-b border-border hover:bg-secondary/50">
-                        <td className={cn(
-                          "px-4 py-2 font-medium",
-                          t.outcome === 0 ? "text-cyan-400" : t.outcome === 2 ? "text-amber-400" : "text-pink-400"
-                        )}>
-                          {t.outcome === 0 ? market.outcomeA : t.outcome === 2 ? (market.outcomeC || "DRAW") : market.outcomeB}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-foreground">
-                          ${(Number(BigInt(t.amount)) / 1_000_000).toFixed(0)}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-muted-foreground">
-                          {t.userAddress.slice(0, 6)}...{t.userAddress.slice(-4)}
-                        </td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">
-                          {new Date(t.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Market details */}
-          <div className="mb-6 rounded-lg border border-border bg-card p-4">
-            <h3 className="mb-3 text-xs font-semibold text-foreground">Market Details</h3>
-            <dl className="space-y-2.5 text-xs">
-              <DetailRow label="Resolution Date" value={new Date(market.resolutionTimestamp).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })} />
-              <DetailRow label="Source" value="Official league/tournament results" />
-              <DetailRow label="Resolution Rules" value={
-                hasDraw
-                  ? "Market resolves to the winning outcome, or Draw if the match ends level. Resolved by admin oracle."
-                  : "Market resolves YES if the specified outcome occurs. Otherwise resolves NO. Resolved by admin oracle."
-              } />
-              {market.resolvedAt && (
-                <DetailRow label="Resolved At" value={new Date(market.resolvedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })} />
-              )}
-              <div className="flex items-start justify-between gap-4">
-                <dt className="text-muted-foreground">Contract</dt>
-                <dd>
-                  <a
-                    href={`${EXPLORER_BASE}/address/${CONTRACTS.engine}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-cyan-400 hover:underline"
-                  >
-                    {CONTRACTS.engine.slice(0, 10)}...{CONTRACTS.engine.slice(-8)}
-                  </a>
-                </dd>
-              </div>
-            </dl>
-          </div>
         </div>
 
-        {/* Right: sticky trade panel */}
-        <div className="hidden w-[360px] shrink-0 lg:block">
-          <div className="sticky top-16">
-            <TradePanel market={market} onOutcomeClick={handleOutcomeClick} />
-          </div>
+        {/* Orders panel (bottom portion) */}
+        <div className="h-48 shrink-0">
+          <OrdersPanel market={market} />
         </div>
       </div>
 
-      {/* Mobile trade panel (below content on small screens) */}
-      <div className="mt-6 lg:hidden">
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {/* Col 3: Order Book / Depth / Trades (right of chart)            */}
+      {/* ──────────────────────────────────────────────────────────────── */}
+      <div className="hidden w-64 shrink-0 border-r border-border xl:block">
+        <OutcomeDetail
+          market={market}
+          outcome={selectedOutcome}
+          trades={market.recentTrades}
+          embedded
+        />
+      </div>
+
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {/* Col 4: Trade Panel (far right)                                 */}
+      {/* ──────────────────────────────────────────────────────────────── */}
+      <div className="hidden w-[340px] shrink-0 overflow-y-auto lg:block">
         <TradePanel market={market} onOutcomeClick={handleOutcomeClick} />
+      </div>
+
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {/* Mobile fallback: stacked layout                                */}
+      {/* ──────────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col lg:hidden w-full overflow-y-auto">
+        {/* Market info */}
+        <div className="border-b border-border px-4 py-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className={cn("rounded border px-2 py-0.5 text-[10px] font-medium", cat.color)}>
+              {cat.label}
+            </span>
+            <span className={cn("rounded px-2 py-0.5 text-[10px] font-medium", status.color)}>
+              {status.label}
+            </span>
+          </div>
+          <h1 className="text-lg font-bold text-foreground">{market.question}</h1>
+        </div>
+
+        {/* Odds bar */}
+        <div className="border-b border-border px-4 py-3">
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="font-medium text-cyan-400">
+              {market.outcomeA} <span className="font-mono">{Math.round(pctYes)}&cent;</span>
+            </span>
+            {hasDraw && (
+              <span className="font-medium text-amber-400">
+                {market.outcomeC} <span className="font-mono">{Math.round(pctDraw)}&cent;</span>
+              </span>
+            )}
+            <span className="font-medium text-pink-400">
+              <span className="font-mono">{Math.round(pctNo)}&cent;</span> {market.outcomeB}
+            </span>
+          </div>
+          <div className="flex h-2 overflow-hidden rounded-full bg-secondary">
+            <div className="bg-cyan-500 transition-all duration-500" style={{ width: `${pctYes}%` }} />
+            {hasDraw && <div className="bg-amber-500 transition-all duration-500" style={{ width: `${pctDraw}%` }} />}
+            <div className="bg-pink-500 transition-all duration-500" style={{ width: `${pctNo}%` }} />
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-px border-b border-border bg-border">
+          <StatCard label="Volume" value={formatUsdc(market.totalVolume)} />
+          <StatCard label="Liquidity" value={formatUsdc(String(total))} />
+          <StatCard label="Time Left" value={getTimeLeft(market.resolutionTimestamp)} />
+          <StatCard label="Traders" value={String(participants)} />
+        </div>
+
+        {/* Chart */}
+        <div className="border-b border-border p-4">
+          <Suspense fallback={<div className="flex h-[250px] items-center justify-center text-xs text-muted-foreground">Loading chart...</div>}>
+            <PriceChart data={market.chartData} outcomeA={market.outcomeA} outcomeB={market.outcomeB} />
+          </Suspense>
+        </div>
+
+        {/* Trade panel */}
+        <div className="p-4">
+          <TradePanel market={market} onOutcomeClick={handleOutcomeClick} />
+        </div>
+
+        {/* Outcome detail */}
+        <div className="border-t border-border">
+          <OutcomeDetail
+            market={market}
+            outcome={selectedOutcome}
+            trades={market.recentTrades}
+          />
+        </div>
       </div>
     </div>
   );
@@ -322,18 +305,9 @@ export default function MarketPage() {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2.5">
-      <p className="text-[10px] text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm font-semibold text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="text-right text-foreground">{value}</dd>
+    <div className="bg-card px-3 py-2">
+      <p className="text-[9px] text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-xs font-semibold text-foreground">{value}</p>
     </div>
   );
 }
