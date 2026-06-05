@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:indexer": "ts-node-dev --respawn --transpile-only src/indexer.ts",
-    "build": "DATABASE_URL=${DATABASE_URL:-postgresql://placeholder:placeholder@localhost:5432/placeholder} prisma generate && tsc",
+    "build": "cd ../shared && npm run build && cd ../api && DATABASE_URL=${DATABASE_URL:-postgresql://placeholder:placeholder@localhost:5432/placeholder} prisma generate && tsc",
     "start": "node dist/index.js",
     "start:indexer": "node dist/indexer.js",
     "clean": "rm -rf dist",
