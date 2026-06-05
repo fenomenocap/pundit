@@ -1,240 +1,234 @@
-# Sports Predict — Onchain Prediction Markets
+# Pundit — FIFA World Cup 2026 Prediction Market
 
-Parimutuel prediction market for FIFA World Cup 2026. Users trade binary outcome shares (YES / NO) on match and tournament outcomes using USDC on Base (Ethereum L2).
+Onchain parimutuel prediction market for the 2026 FIFA World Cup. Users buy USDC-denominated shares on match and tournament outcomes. Winners split the net pool proportional to shares held. Live Polymarket consensus odds are shown as reference.
+
+**Chain:** Base Sepolia (testnet) → Base mainnet  
+**Token:** MockUSDC (6 decimals, permissionless testnet faucet)
+
+---
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌──────────────────┐
-│  Next.js 14  │────▶│  Express API │────▶│   PostgreSQL     │
-│  (Frontend)  │     │  + Prisma    │     │   (Market data)  │
-└──────┬───────┘     └──────┬───────┘     └──────────────────┘
-       │                    │
-       │   wagmi v2 / viem  │  viem (indexer)
-       ▼                    ▼
-┌──────────────────────────────────────────┐
-│           Base Sepolia (EVM)             │
-│  ┌────────────┐  ┌──────────────────┐    │
-│  │ MockUSDC   │  │ MarketFactory    │    │
-│  └────────────┘  └──────────────────┘    │
-│  ┌────────────┐  ┌──────────────────┐    │
-│  │ Collateral │  │ ParimutuelEngine │    │
-│  │ Vault      │  └──────────────────┘    │
-│  └────────────┘  ┌──────────────────┐    │
-│                  │ OracleResolver   │    │
-│                  └──────────────────┘    │
-└──────────────────────────────────────────┘
+┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│   Next.js 14     │───▶│   Express API    │───▶│   PostgreSQL     │
+│   (Frontend)     │    │   + Prisma ORM   │    │   (Railway)      │
+└────────┬─────────┘    └────────┬─────────┘    └──────────────────┘
+         │                       │
+         │  wagmi v2 / viem      │  viem (indexer polling)
+         ▼                       ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                     Base Sepolia (EVM)                             │
+│  MockUSDC · MarketFactory · CollateralVault · ParimutuelEngine    │
+│                          OracleResolver                            │
+└────────────────────────────────────────────────────────────────────┘
+         ▲
+         │  Reference odds only (public API, no auth)
+┌────────┴────────┐
+│  Polymarket     │
+│  Gamma API      │
+└─────────────────┘
 ```
 
 ### Smart Contracts
 
 | Contract | Purpose |
 |---|---|
-| **MockUSDC** | ERC-20 test stablecoin (6 decimals) |
+| **MockUSDC** | ERC-20 test stablecoin (6 decimals, permissionless `mint`) |
 | **MarketFactory** | Creates and tracks prediction markets |
-| **CollateralVault** | Holds USDC deposits, distributes payouts and fees |
-| **OracleResolver** | Admin-only outcome resolution with 30-min settlement delay |
-| **ParimutuelEngine** | Core trading logic — buy shares, compute payouts |
+| **CollateralVault** | Holds USDC deposits, distributes payouts |
+| **OracleResolver** | Admin-only outcome resolution + 30-min settlement delay |
+| **ParimutuelEngine** | Core trading — `buyShares`, `claimWinnings` |
 
 ### How Parimutuel Trading Works
 
-1. Users deposit USDC to buy YES or NO shares (1 USDC = 1 share)
-2. All deposits go into a single pool per market
-3. When the market resolves, a **2% protocol fee** is taken (rounded up)
-4. Winners split the remaining pool proportional to their shares (rounded down)
-5. A 30-minute settlement delay protects against oracle manipulation
+1. Users deposit USDC to buy Home / Away / Draw shares
+2. All deposits pool together per market (no counter-party needed)
+3. On resolution, a **2% protocol fee** is taken (rounded up)
+4. Winners split the remaining pool **proportional to their shares**
+5. A **30-minute settlement delay** protects against oracle manipulation
+
+---
 
 ## Tech Stack
 
-- **Monorepo**: pnpm workspaces
-- **Smart Contracts**: Solidity 0.8.33, Hardhat, OpenZeppelin v5
-- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS
-- **Web3**: wagmi v2, viem, RainbowKit
-- **Backend**: Express, TypeScript, Prisma ORM, PostgreSQL
-- **Chain**: Base Sepolia (testnet)
+| Layer | Technology |
+|---|---|
+| Monorepo | pnpm workspaces (Node ≥18, pnpm 9.15.4) |
+| Contracts | Solidity 0.8.24+, Hardhat, OpenZeppelin v5 |
+| Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui |
+| Web3 | wagmi v2, viem, RainbowKit |
+| Backend | Express + TypeScript, Prisma 6, PostgreSQL |
+| Chain | Base Sepolia → Base mainnet |
+
+---
 
 ## Project Structure
 
 ```
 packages/
-  contracts/   — Solidity contracts, Hardhat tests, deploy scripts
-  web/         — Next.js frontend (dark theme, mobile-first)
-  api/         — Express REST API + blockchain event indexer
-  shared/      — TypeScript types, constants, ABIs
+  contracts/   — Solidity contracts, Hardhat tests (58/58 passing), deploy + seed scripts
+  web/         — Next.js 14 frontend (dark theme, mobile-first)
+  api/         — Express REST API + viem blockchain event indexer
+  shared/      — TypeScript types, ABIs, constants (single source of truth)
 ```
 
-## Setup
+---
+
+## Quick Start (Local Dev with Mock Data)
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start frontend only (mock data — no API or contracts needed)
+cd packages/web
+cp .env.local.example .env.local   # or create with: NEXT_PUBLIC_USE_MOCK=true
+pnpm dev
+# → http://localhost:3000
+```
+
+Mock mode (`NEXT_PUBLIC_USE_MOCK=true`) uses hardcoded WC 2026 data — no wallet, no API, no DB required.
+
+---
+
+## Full Testnet Setup
 
 ### Prerequisites
 
-- Node.js >= 18
-- pnpm >= 8
-- PostgreSQL 14+
+- Node.js ≥ 18, pnpm 9.15.4
+- Base Sepolia wallet funded with ~0.05 ETH
+- [Railway](https://railway.app) account (free tier works) for managed Postgres
+- [WalletConnect Cloud](https://cloud.walletconnect.com) project ID (free)
+- [Basescan](https://basescan.org) API key (free, for contract verification)
 
-### Install
-
-```bash
-pnpm install
-```
-
-### Environment
+### 1. Configure environment
 
 ```bash
 cp .env.example .env
-# Edit .env with your values:
-#   DATABASE_URL=postgresql://user:pass@localhost:5432/sports_predict
-#   PRIVATE_KEY=0x...           (deployer wallet)
-#   BASE_SEPOLIA_RPC=https://...
-#   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=...
+# Fill in:
+#   DEPLOYER_PRIVATE_KEY=  (funded Base Sepolia wallet)
+#   ADMIN_API_KEY=         (openssl rand -hex 32)
+#   DATABASE_URL=          (from Railway Postgres plugin)
+#   ETHERSCAN_API_KEY=     (from basescan.org)
+
+cp packages/web/.env.local.example packages/web/.env.local
+# Fill in:
+#   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
+#   NEXT_PUBLIC_API_URL=http://localhost:3001
+#   NEXT_PUBLIC_USE_MOCK=false   (set after contracts + markets are ready)
 ```
 
-### Database
+### 2. Run contract tests
 
 ```bash
-cd packages/api
-pnpm prisma migrate dev
+cd packages/contracts && npx hardhat test
+# All 58 tests must pass before deploying
 ```
 
-### Local Development
+### 3. Deploy contracts
 
 ```bash
-# Terminal 1 — local blockchain
-cd packages/contracts && npx hardhat node
+npx hardhat run scripts/deploy.ts --network base_sepolia
+# Prints all contract addresses — copy into .env and .env.local
+```
 
-# Terminal 2 — deploy contracts
-cd packages/contracts && pnpm deploy:local
+### 4. Set up database
 
-# Terminal 3 — API server + indexer
-pnpm dev:indexer &
-cd packages/api && pnpm dev
+```bash
+cd packages/api && npx prisma migrate deploy
+```
 
-# Terminal 4 — frontend
+### 5. Start API + indexer
+
+```bash
+# Terminal 1 — API server
+cd packages/api && npm run dev
+
+# Terminal 2 — Blockchain indexer (polls for events)
+cd packages/api && npx ts-node src/indexer.ts
+```
+
+### 6. Seed WC 2026 markets
+
+```bash
+cd packages/contracts
+API_URL=http://localhost:3001 \
+ADMIN_API_KEY=<your-key> \
+npx hardhat run scripts/seed-wc.ts --network base_sepolia
+# Creates 16 markets: 8 tournament outrights + 8 group stage matches
+```
+
+### 7. Start frontend
+
+```bash
 cd packages/web && pnpm dev
+# → http://localhost:3000
 ```
 
-## Scripts
+### 8. Resolve a market (post-match)
 
-### Root
+```bash
+cd packages/contracts
+MARKET_ID=3 OUTCOME=0 npx hardhat run scripts/resolve-market.ts --network base_sepolia
+# OUTCOME: 0=Home/Yes  1=Away/No  2=Draw
+```
 
-| Command | Description |
-|---|---|
-| `pnpm dev` | Start all packages in parallel |
-| `pnpm build` | Build all packages |
-| `pnpm test` | Run all tests |
-| `pnpm clean` | Clean build artifacts |
+---
 
-### Contracts
-
-| Command | Description |
-|---|---|
-| `pnpm test` | Run Hardhat test suite (unit + E2E) |
-| `pnpm deploy:local` | Deploy to local Hardhat node |
-| `pnpm deploy:sepolia` | Deploy to Base Sepolia |
-
-### API
-
-| Command | Description |
-|---|---|
-| `pnpm dev` | Start Express server with hot reload |
-| `pnpm dev:indexer` | Start blockchain event indexer |
-| `pnpm build` | Compile TypeScript |
-
-### Web
-
-| Command | Description |
-|---|---|
-| `pnpm dev` | Start Next.js dev server |
-| `pnpm build` | Production build |
-
-## API Endpoints
+## API Reference
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/markets` | List all markets (with filters) |
-| GET | `/api/markets/:id` | Market detail with pool sizes |
-| GET | `/api/markets/:id/history` | Price history for charts |
-| GET | `/api/positions/:address` | User's open positions |
+| GET | `/api/markets` | List markets (filters: `status`, `category`, `sort`) |
+| GET | `/api/markets/:id` | Market detail + Polymarket reference odds |
+| POST | `/api/markets` | Create market (admin) |
+| POST | `/api/markets/:id/resolve` | Resolve market (admin) |
+| GET | `/api/users/:addr/portfolio` | Positions, P&L, claimable winnings |
+| GET | `/api/users/:addr/history` | Paginated trade history |
 | GET | `/api/leaderboard` | Top traders by profit |
+| GET | `/api/polymarkets/wc` | Live WC markets from Polymarket (reference only) |
+| GET | `/health` | API + DB health check |
+
+---
 
 ## Frontend Features
 
-- **Market Grid** — Browse markets with search, status filters, and loading skeletons
-- **Market Detail** — Live odds chart (lazy-loaded), trade panel, outcome breakdown
-- **Portfolio** — Position dashboard with P&L tracking and claim buttons
-- **Leaderboard** — Top traders ranked by profit
-- **Network Guard** — Auto-prompt to switch to Base Sepolia
-- **Error Handling** — Human-readable contract revert messages with retry buttons
-- **Performance** — React.memo cards, debounced search, Suspense boundaries
-- **SEO** — Dynamic titles, OpenGraph tags, Twitter cards
+- **WC 2026 countdown banner** — live countdown to the Jun 11 tournament opener
+- **Polymarket live preview** — purple cards showing live Polymarket WC consensus odds (reference only, always live regardless of mock mode)
+- **Market grid** — our parimutuel pools with multiplier badges ("Up to 3.2x"), parimutuel pricing, search + category filter
+- **Market detail** — trading terminal: price chart, order panel, trade panel, Polymarket consensus bar
+- **Testnet USDC faucet** — "Get 100 USDC" button when balance is zero on Base Sepolia
+- **Portfolio** — positions, P&L, claimable winnings with one-click claim
+- **Leaderboard** — top traders ranked by profit (7d / 30d / all-time)
+- **Arena** — coming soon (CLOB order book)
 
-## Deploying to Base Sepolia
+---
 
-### 1. Deploy Contracts
-
-```bash
-# Set deployer private key (needs Base Sepolia ETH for gas)
-export DEPLOYER_PRIVATE_KEY=0x...
-export RPC_URL=https://sepolia.base.org
-
-cd packages/contracts
-pnpm deploy:sepolia
-```
-
-The deploy script prints all contract addresses and env vars to copy.
-
-### 2. Verify Contracts on Basescan (optional)
+## Vercel + Railway Production Deploy
 
 ```bash
-export ETHERSCAN_API_KEY=...
-npx hardhat verify --network base_sepolia <CONTRACT_ADDRESS> <CONSTRUCTOR_ARGS>
+# API → Railway
+cd packages/api && railway up
+
+# Frontend → Vercel
+cd packages/web && vercel --prod
 ```
 
-### 3. Deploy Frontend to Vercel
+**Required Vercel env vars:**
 
-```bash
-cd packages/web
-
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy (first time — links to project)
-vercel
-
-# Set environment variables in Vercel dashboard or CLI:
-vercel env add NEXT_PUBLIC_ENGINE_ADDRESS
-vercel env add NEXT_PUBLIC_FACTORY_ADDRESS
-vercel env add NEXT_PUBLIC_VAULT_ADDRESS
-vercel env add NEXT_PUBLIC_USDC_ADDRESS
-vercel env add NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
-vercel env add NEXT_PUBLIC_API_URL
-
-# Production deploy
-vercel --prod
-```
-
-### Required Vercel Environment Variables
-
-| Variable | Description |
+| Variable | Value |
 |---|---|
-| `NEXT_PUBLIC_ENGINE_ADDRESS` | ParimutuelEngine contract address |
-| `NEXT_PUBLIC_FACTORY_ADDRESS` | MarketFactory contract address |
-| `NEXT_PUBLIC_VAULT_ADDRESS` | CollateralVault contract address |
-| `NEXT_PUBLIC_USDC_ADDRESS` | MockUSDC contract address |
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect Cloud project ID |
-| `NEXT_PUBLIC_API_URL` | Backend API URL (e.g. `https://api.yourdomain.com`) |
+| `NEXT_PUBLIC_CHAIN_ID` | `84532` |
+| `NEXT_PUBLIC_API_URL` | Your Railway API URL |
+| `NEXT_PUBLIC_ENGINE_ADDRESS` | From deploy output |
+| `NEXT_PUBLIC_FACTORY_ADDRESS` | From deploy output |
+| `NEXT_PUBLIC_VAULT_ADDRESS` | From deploy output |
+| `NEXT_PUBLIC_USDC_ADDRESS` | From deploy output |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | From WalletConnect Cloud |
+| `NEXT_PUBLIC_USE_MOCK` | `false` |
 
-## Testing
-
-```bash
-# Run all contract tests (54 unit + 4 E2E)
-cd packages/contracts && pnpm test
-
-# E2E tests cover:
-#   - Full lifecycle: deploy → trade → resolve → settle → claim → verify balances
-#   - Market cancellation with full refunds
-#   - Settlement delay enforcement
-#   - Multi-market independent settlement
-```
+---
 
 ## License
 

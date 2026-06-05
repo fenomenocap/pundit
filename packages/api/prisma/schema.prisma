@@ -16,13 +16,17 @@ enum MarketStatus {
   CANCELLED
 }
 
+// Sport/competition-based categories (aligned with frontend UI)
 enum MarketCategory {
-  GROUP_STAGE
-  ROUND_OF_16
-  QUARTER_FINAL
-  SEMI_FINAL
-  FINAL
-  TOURNAMENT
+  WORLD_CUP
+  CHAMPIONS_LEAGUE
+  EUROPA_LEAGUE
+  PREMIER_LEAGUE
+  LA_LIGA
+  BUNDESLIGA
+  SERIE_A
+  LIGUE_1
+  OTHER
 }
 
 // ─── Models ─────────────────────────────────────────────────────────────────
@@ -32,17 +36,21 @@ model Market {
   id                  String         @id @default(uuid())
   onchainId           Int            @unique
   question            String
-  outcomeA            String         // e.g. "Yes" or "Brazil wins"
-  outcomeB            String         // e.g. "No"  or "Draw or Germany wins"
+  outcomeA            String         // e.g. "Yes" / "Brazil"
+  outcomeB            String         // e.g. "No"  / "Germany"
+  outcomeC            String?        // e.g. "Draw" — null for binary markets
   category            MarketCategory
-  teamA               String?        // optional: first team name
-  teamB               String?        // optional: second team name
+  teamA               String?
+  teamB               String?
+  polymarketId        String?        // Polymarket conditionId for reference odds
   poolYes             BigInt         @default(0)
   poolNo              BigInt         @default(0)
+  poolDraw            BigInt         @default(0)  // net shares on outcome 2
+  totalVolume         BigInt         @default(0)  // gross USDC traded (for accurate sorting)
   status              MarketStatus   @default(OPEN)
-  resolvedOutcome     Int?           // 0 or 1, null if unresolved
+  resolvedOutcome     Int?           // 0, 1, or 2; null if unresolved
   resolvedAt          DateTime?
-  resolutionTimestamp DateTime       // when the market CAN be resolved
+  resolutionTimestamp DateTime
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -59,9 +67,9 @@ model Trade {
   marketId    String
   market      Market   @relation(fields: [marketId], references: [id])
   userAddress String
-  outcome     Int      // 0 or 1
-  amount      BigInt   // USDC raw (6 decimals)
-  shares      BigInt   // shares received (1:1 with amount)
+  outcome     Int      // 0, 1, or 2
+  grossAmount BigInt   // USDC deposited by user (6 decimals, before fee)
+  netShares   BigInt   // shares received (after fee)
   txHash      String   @unique
   blockNumber Int
   timestamp   DateTime
@@ -77,8 +85,8 @@ model Position {
   marketId    String
   market      Market  @relation(fields: [marketId], references: [id])
   userAddress String
-  outcome     Int     // 0 or 1
-  shares      BigInt  @default(0)
+  outcome     Int     // 0, 1, or 2
+  shares      BigInt  @default(0)  // net shares
   claimed     Boolean @default(false)
 
   @@unique([marketId, userAddress, outcome])

@@ -16,14 +16,20 @@ contract OracleResolver is Ownable {
     event MarketCancelled(uint256 indexed marketId);
 
     error InvalidOutcome();
+    error ResolutionTooEarly(uint256 resolutionTimestamp, uint256 currentTime);
 
     constructor(address _factory, address _owner) Ownable(_owner) {
         factory = MarketFactory(_factory);
     }
 
-    /// @notice Resolve a market with the winning outcome (0 or 1).
+    /// @notice Resolve a market with the winning outcome (0=Yes/Home, 1=No/Away, 2=Draw).
+    /// @dev Enforces that the market's resolutionTimestamp has passed.
     function resolve(uint256 marketId, uint8 winningOutcome) external onlyOwner {
-        if (winningOutcome > 1) revert InvalidOutcome();
+        if (winningOutcome > 2) revert InvalidOutcome();
+        MarketFactory.MarketData memory m = factory.getMarket(marketId);
+        if (block.timestamp < m.resolutionTimestamp) {
+            revert ResolutionTooEarly(m.resolutionTimestamp, block.timestamp);
+        }
         factory.resolveMarket(marketId, winningOutcome);
         emit MarketResolved(marketId, winningOutcome);
     }

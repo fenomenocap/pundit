@@ -74,7 +74,7 @@ export function RecentTrades({ trades, outcomeA, outcomeB }: RecentTradesProps) 
               </div>
               <div className="text-right">
                 <span className="block font-mono text-xs text-slate-200">
-                  ${formatUsdc(trade.amount)}
+                  ${formatUsdc(trade.grossAmount)}
                 </span>
                 <span className="block text-xs text-slate-500">
                   {timeAgo(trade.timestamp)}

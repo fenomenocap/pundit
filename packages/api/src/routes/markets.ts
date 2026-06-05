@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { MarketStatus, MarketCategory } from "@sports-predict/shared";
 import { prisma } from "../db";
 import { requireAdmin, AppError } from "../middleware";
+import { getCachedPolymarketMarkets } from "../services/polymarket-data";
 
 const router: Router = Router();
 
@@ -21,7 +22,6 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
     const skip = (pageNum - 1) * limitNum;
 
-    // Build where clause
     const where: Record<string, unknown> = {};
 
     if (status) {
@@ -42,14 +42,11 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       }
     }
 
-    // Build orderBy
     let orderBy: Record<string, string>;
     switch (sort) {
       case "volume":
-        // Sort by total pool (poolYes + poolNo). Prisma doesn't support computed
-        // columns in orderBy, so we sort by poolYes desc as a proxy, then re-sort
-        // in memory below.
-        orderBy = { poolYes: "desc" };
+        // totalVolume is tracked directly in the DB now
+        orderBy = { totalVolume: "desc" };
         break;
       case "closing_soon":
         orderBy = { resolutionTimestamp: "asc" };
@@ -61,29 +58,12 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     }
 
     const [markets, total] = await Promise.all([
-      prisma.market.findMany({
-        where,
-        orderBy,
-        skip,
-        take: limitNum,
-      }),
+      prisma.market.findMany({ where, orderBy, skip, take: limitNum }),
       prisma.market.count({ where }),
     ]);
 
-    // If sorting by volume, re-sort by total pool in memory
-    if (sort === "volume") {
-      markets.sort((a, b) => {
-        const volA = a.poolYes + a.poolNo;
-        const volB = b.poolYes + b.poolNo;
-        return volB > volA ? 1 : volB < volA ? -1 : 0;
-      });
-    }
-
-    // Serialize BigInts to strings for JSON
-    const serialized = markets.map(serializeMarket);
-
     res.json({
-      markets: serialized,
+      markets: markets.map(serializeMarket),
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -111,20 +91,28 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
       },
     });
 
-    if (!market) {
-      throw new AppError(404, "Market not found");
-    }
+    if (!market) throw new AppError(404, "Market not found");
 
-    // Count unique participants
     const participantCount = await prisma.position.groupBy({
       by: ["userAddress"],
       where: { marketId: market.id },
     });
 
+    // Attach Polymarket reference odds if the market is linked to one
+    let polymarketOdds: { outcomes: string[]; prices: number[] } | null = null;
+    if (market.polymarketId) {
+      const { wcMarkets } = getCachedPolymarketMarkets();
+      const ref = wcMarkets.find((m) => m.id === market.polymarketId);
+      if (ref) {
+        polymarketOdds = { outcomes: ref.outcomes, prices: ref.outcomePrices };
+      }
+    }
+
     res.json({
       ...serializeMarket(market),
       recentTrades: market.trades.map(serializeTrade),
       participantCount: participantCount.length,
+      polymarketOdds,
     });
   } catch (err) {
     next(err);
@@ -143,26 +131,27 @@ router.post(
         question,
         outcomeA,
         outcomeB,
+        outcomeC,
         category,
         teamA,
         teamB,
         resolutionTimestamp,
+        polymarketId,
       } = req.body;
 
-      // Validate required fields
       if (onchainId == null || !question || !outcomeA || !outcomeB || !category || !resolutionTimestamp) {
-        throw new AppError(400, "Missing required fields: onchainId, question, outcomeA, outcomeB, category, resolutionTimestamp");
+        throw new AppError(
+          400,
+          "Missing required fields: onchainId, question, outcomeA, outcomeB, category, resolutionTimestamp"
+        );
       }
 
       const upperCategory = (category as string).toUpperCase();
       if (!Object.values(MarketCategory).includes(upperCategory as MarketCategory)) {
-        throw new AppError(400, `Invalid category: ${category}`);
+        throw new AppError(400, `Invalid category: ${category}. Valid values: ${Object.values(MarketCategory).join(", ")}`);
       }
 
-      // Check for duplicate onchainId
-      const existing = await prisma.market.findUnique({
-        where: { onchainId: Number(onchainId) },
-      });
+      const existing = await prisma.market.findUnique({ where: { onchainId: Number(onchainId) } });
       if (existing) {
         throw new AppError(409, `Market with onchainId ${onchainId} already exists`);
       }
@@ -173,9 +162,11 @@ router.post(
           question,
           outcomeA,
           outcomeB,
-          category: upperCategory as "GROUP_STAGE" | "ROUND_OF_16" | "QUARTER_FINAL" | "SEMI_FINAL" | "FINAL" | "TOURNAMENT",
-          teamA: teamA || null,
-          teamB: teamB || null,
+          outcomeC: outcomeC ?? null,
+          category: upperCategory as MarketCategory,
+          teamA: teamA ?? null,
+          teamB: teamB ?? null,
+          polymarketId: polymarketId ?? null,
           resolutionTimestamp: new Date(resolutionTimestamp),
         },
       });
@@ -196,17 +187,12 @@ router.post(
     try {
       const { outcome } = req.body;
 
-      if (outcome == null || (outcome !== 0 && outcome !== 1)) {
-        throw new AppError(400, "outcome must be 0 or 1");
+      if (outcome == null || ![0, 1, 2].includes(Number(outcome))) {
+        throw new AppError(400, "outcome must be 0 (Yes/Home), 1 (No/Away), or 2 (Draw)");
       }
 
-      const market = await prisma.market.findUnique({
-        where: { id: req.params.id },
-      });
-
-      if (!market) {
-        throw new AppError(404, "Market not found");
-      }
+      const market = await prisma.market.findUnique({ where: { id: req.params.id } });
+      if (!market) throw new AppError(404, "Market not found");
 
       if (market.status !== "OPEN" && market.status !== "LOCKED") {
         throw new AppError(400, `Cannot resolve market with status ${market.status}`);
@@ -216,7 +202,7 @@ router.post(
         where: { id: req.params.id },
         data: {
           status: "RESOLVED",
-          resolvedOutcome: outcome,
+          resolvedOutcome: Number(outcome),
           resolvedAt: new Date(),
         },
       });
@@ -236,11 +222,15 @@ interface MarketRow {
   question: string;
   outcomeA: string;
   outcomeB: string;
+  outcomeC: string | null;
   category: string;
   teamA: string | null;
   teamB: string | null;
+  polymarketId: string | null;
   poolYes: bigint;
   poolNo: bigint;
+  poolDraw: bigint;
+  totalVolume: bigint;
   status: string;
   resolvedOutcome: number | null;
   resolvedAt: Date | null;
@@ -256,12 +246,15 @@ function serializeMarket(m: MarketRow) {
     question: m.question,
     outcomeA: m.outcomeA,
     outcomeB: m.outcomeB,
+    outcomeC: m.outcomeC ?? null,
     category: m.category,
     teamA: m.teamA,
     teamB: m.teamB,
+    polymarketId: m.polymarketId ?? null,
     poolYes: m.poolYes.toString(),
     poolNo: m.poolNo.toString(),
-    totalVolume: (m.poolYes + m.poolNo).toString(),
+    poolDraw: m.poolDraw.toString(),
+    totalVolume: m.totalVolume.toString(),
     status: m.status,
     resolvedOutcome: m.resolvedOutcome,
     resolvedAt: m.resolvedAt?.toISOString() ?? null,
@@ -276,8 +269,8 @@ interface TradeRow {
   marketId: string;
   userAddress: string;
   outcome: number;
-  amount: bigint;
-  shares: bigint;
+  grossAmount: bigint;
+  netShares: bigint;
   txHash: string;
   blockNumber: number;
   timestamp: Date;
@@ -289,8 +282,8 @@ function serializeTrade(t: TradeRow) {
     marketId: t.marketId,
     userAddress: t.userAddress,
     outcome: t.outcome,
-    amount: t.amount.toString(),
-    shares: t.shares.toString(),
+    grossAmount: t.grossAmount.toString(),
+    netShares: t.netShares.toString(),
     txHash: t.txHash,
     blockNumber: t.blockNumber,
     timestamp: t.timestamp.toISOString(),

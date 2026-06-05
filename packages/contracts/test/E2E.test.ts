@@ -48,15 +48,16 @@ describe("E2E: Full Lifecycle", function () {
     await engine.connect(bob).buyShares(marketId, 0, usdc(200));
     await engine.connect(charlie).buyShares(marketId, 1, usdc(500));
 
-    // Verify pool state
-    expect(await engine.totalSharesByOutcome(marketId, 0)).to.equal(usdc(500)); // YES
-    expect(await engine.totalSharesByOutcome(marketId, 1)).to.equal(usdc(500)); // NO
-    expect(await engine.totalPool(marketId)).to.equal(usdc(1000));
+    // Verify pool state — pools track net shares (after per-trade 2% fee)
+    // Alice 300 gross → fee=6, net=294; Bob 200 → fee=4, net=196; Charlie 500 → fee=10, net=490
+    expect(await engine.totalSharesByOutcome(marketId, 0)).to.equal(490_000_000n); // YES net
+    expect(await engine.totalSharesByOutcome(marketId, 1)).to.equal(490_000_000n); // NO net
+    expect(await engine.totalPool(marketId)).to.equal(980_000_000n);
 
-    // Verify user shares
-    expect(await engine.getUserShares(marketId, alice.address, 0)).to.equal(usdc(300));
-    expect(await engine.getUserShares(marketId, bob.address, 0)).to.equal(usdc(200));
-    expect(await engine.getUserShares(marketId, charlie.address, 1)).to.equal(usdc(500));
+    // Verify user net shares
+    expect(await engine.getUserShares(marketId, alice.address, 0)).to.equal(294_000_000n);
+    expect(await engine.getUserShares(marketId, bob.address, 0)).to.equal(196_000_000n);
+    expect(await engine.getUserShares(marketId, charlie.address, 1)).to.equal(490_000_000n);
 
     // Verify vault holds 1000 USDC
     expect(await usdcToken.balanceOf(vaultAddr)).to.equal(usdc(1000));
@@ -77,31 +78,23 @@ describe("E2E: Full Lifecycle", function () {
 
     // ─── 6. Compute expected payouts exactly ──────────────────────────
     //
-    // Pool = 1,000 USDC = 1,000,000,000 raw
-    // Fee = ceil(1,000,000,000 * 200 / 10,000) = ceil(20,000,000) = 20,000,000 (exact, no rounding needed)
-    // Net pool = 1,000,000,000 - 20,000,000 = 980,000,000
-    // Winning pool (YES) = 500,000,000
+    // Fee is charged per-trade (2% rounded up). Net shares credited to pools.
+    // Alice 300 gross → fee=6, net=294; Bob 200 → fee=4, net=196; Charlie 500 → fee=10, net=490
+    // Total fees = 20 USDC; net pool = 980 USDC; YES net pool = 490 USDC
     //
-    // Alice (300 YES): floor(300,000,000 * 980,000,000 / 500,000,000) = floor(588,000,000) = 588,000,000
-    // Bob (200 YES):   floor(200,000,000 * 980,000,000 / 500,000,000) = floor(392,000,000) = 392,000,000
-    // Charlie (500 NO): NothingToClaim
-    //
-    // Total payouts: 588,000,000 + 392,000,000 = 980,000,000
-    // Fee retained: 20,000,000
+    // payout = floor(winnerShares * totalNetPool / winningNetPool)
+    // Alice (294 shares): floor(294e6 * 980e6 / 490e6) = floor(588e6) = 588 USDC
+    // Bob   (196 shares): floor(196e6 * 980e6 / 490e6) = floor(392e6) = 392 USDC
+    // Charlie (490 NO shares): NothingToClaim
 
-    const POOL = usdc(1000);           // 1,000,000,000
-    const FEE_BPS = 200n;
-    const BPS = 10_000n;
-    const fee = (POOL * FEE_BPS + BPS - 1n) / BPS; // ceil
-    expect(fee).to.equal(20_000_000n);
+    const totalFees = 6_000_000n + 4_000_000n + 10_000_000n;
+    expect(totalFees).to.equal(20_000_000n);
 
-    const netPool = POOL - fee;
-    expect(netPool).to.equal(980_000_000n);
+    const netPool = 980_000_000n;
+    const winningPool = 490_000_000n; // YES net pool
 
-    const winningPool = usdc(500);     // 500,000,000
-
-    const alicePayout = (usdc(300) * netPool) / winningPool;
-    const bobPayout = (usdc(200) * netPool) / winningPool;
+    const alicePayout = (294_000_000n * netPool) / winningPool;
+    const bobPayout   = (196_000_000n * netPool) / winningPool;
     expect(alicePayout).to.equal(588_000_000n);
     expect(bobPayout).to.equal(392_000_000n);
 
@@ -135,7 +128,7 @@ describe("E2E: Full Lifecycle", function () {
     ).to.be.revertedWithCustomError(engine, "AlreadyClaimed");
 
     // ─── 8. Verify vault holds exactly the fee ────────────────────────
-    expect(await usdcToken.balanceOf(vaultAddr)).to.equal(fee);
+    expect(await usdcToken.balanceOf(vaultAddr)).to.equal(totalFees);
 
     // ─── 9. Verify conservation of funds ──────────────────────────────
     // Total USDC in system = alice + bob + charlie + vault fee
@@ -156,7 +149,7 @@ describe("E2E: Full Lifecycle", function () {
     console.log(`    Vault:   ${ethers.formatUnits(vaultFinal, 6)} USDC (fee)`);
   });
 
-  it("cancellation → all users get full refund, vault empty", async function () {
+  it("cancellation → users refunded net deposits, vault retains fees", async function () {
     const { alice, bob, charlie, usdc: usdcToken, vault, factory, resolver, engine } =
       await deployFixture();
 
@@ -169,7 +162,7 @@ describe("E2E: Full Lifecycle", function () {
 
     const marketId = 0n;
 
-    // Trade
+    // Trade: Alice 400 gross, Bob 600 gross, Charlie 200 gross
     await engine.connect(alice).buyShares(marketId, 0, usdc(400));
     await engine.connect(bob).buyShares(marketId, 1, usdc(600));
     await engine.connect(charlie).buyShares(marketId, 0, usdc(200));
@@ -179,18 +172,20 @@ describe("E2E: Full Lifecycle", function () {
     // Cancel
     await resolver.cancel(marketId);
 
-    // Everyone can claim full refund
+    // Everyone can claim net deposit refund (fee is non-refundable on cancellation)
     await engine.connect(alice).claimWinnings(marketId);
     await engine.connect(bob).claimWinnings(marketId);
     await engine.connect(charlie).claimWinnings(marketId);
 
-    // Balances restored
-    expect(await usdcToken.balanceOf(alice.address)).to.equal(ONE_MILLION);
-    expect(await usdcToken.balanceOf(bob.address)).to.equal(ONE_MILLION);
-    expect(await usdcToken.balanceOf(charlie.address)).to.equal(ONE_MILLION);
+    // Alice: 400 gross → fee=ceil(400e6*200/10000)=8e6, net=392e6 refunded
+    // Bob:   600 gross → fee=12e6, net=588e6 refunded
+    // Charlie: 200 gross → fee=4e6, net=196e6 refunded
+    expect(await usdcToken.balanceOf(alice.address)).to.equal(ONE_MILLION - 8_000_000n);
+    expect(await usdcToken.balanceOf(bob.address)).to.equal(ONE_MILLION - 12_000_000n);
+    expect(await usdcToken.balanceOf(charlie.address)).to.equal(ONE_MILLION - 4_000_000n);
 
-    // Vault empty
-    expect(await usdcToken.balanceOf(vaultAddr)).to.equal(0n);
+    // Vault retains accumulated fees: 8 + 12 + 4 = 24 USDC
+    expect(await usdcToken.balanceOf(vaultAddr)).to.equal(24_000_000n);
   });
 
   it("settlement delay enforced — claim before delay reverts", async function () {

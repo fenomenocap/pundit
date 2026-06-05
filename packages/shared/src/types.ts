@@ -6,12 +6,15 @@ export enum MarketStatus {
 }
 
 export enum MarketCategory {
-  GroupStage = "GROUP_STAGE",
-  RoundOf16 = "ROUND_OF_16",
-  QuarterFinal = "QUARTER_FINAL",
-  SemiFinal = "SEMI_FINAL",
-  Final = "FINAL",
-  Tournament = "TOURNAMENT",
+  WorldCup = "WORLD_CUP",
+  ChampionsLeague = "CHAMPIONS_LEAGUE",
+  EuropaLeague = "EUROPA_LEAGUE",
+  PremierLeague = "PREMIER_LEAGUE",
+  LaLiga = "LA_LIGA",
+  Bundesliga = "BUNDESLIGA",
+  SerieA = "SERIE_A",
+  Ligue1 = "LIGUE_1",
+  Other = "OTHER",
 }
 
 export enum Outcome {
@@ -39,8 +42,8 @@ export interface Trade {
   marketId: string;
   trader: string; // ethereum address
   outcome: Outcome;
-  amount: bigint; // USDC amount (6 decimals)
-  shares: bigint;
+  grossAmount: bigint; // USDC paid by user (6 decimals, before 2% fee)
+  netShares: bigint;   // shares received (after fee); used as pool contribution
   timestamp: number;
   txHash: string;
 }

@@ -68,7 +68,7 @@ function getPnLPercent(position: PositionResponse): number {
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { claimWinnings, state: claimState, txHash: claimTxHash, error: claimError, reset: resetClaim } = useClaimWinnings();
   const [portfolio, setPortfolio] = useState<PortfolioResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,17 +81,16 @@ export default function PortfolioPage() {
   useEffect(() => {
     if (!isConnected) { setLoading(false); return; }
     setLoading(true);
-    fetchPortfolio().then((data) => { setPortfolio(data); setLoading(false); });
+    fetchPortfolio(address ?? "").then((data) => { setPortfolio(data); setLoading(false); });
   }, [isConnected]);
 
-  const handleClaim = (marketId: string) => {
-    const onchainId = parseInt(marketId.replace("market-", "").replace("market-won-", ""), 10);
-    if (!isNaN(onchainId)) claimWinnings(onchainId);
+  const handleClaim = (onchainId: number) => {
+    claimWinnings(onchainId);
   };
 
   const handleClaimAll = () => {
     const first = portfolio?.positions.find((p) => p.status === "claimable");
-    if (first) handleClaim(first.marketId);
+    if (first) handleClaim(first.onchainId);
   };
 
   const activePositions = portfolio?.positions.filter((p) => p.status === "active") || [];
@@ -173,8 +172,8 @@ export default function PortfolioPage() {
                         </Link>
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <span className={cn("font-medium", pos.outcome === 0 ? "text-cyan-400" : "text-pink-400")}>
-                          {pos.outcome === 0 ? "Yes" : "No"}
+                        <span className={cn("font-medium", pos.outcome === 0 ? "text-cyan-400" : pos.outcome === 1 ? "text-pink-400" : "text-amber-400")}>
+                          {pos.outcome === 0 ? "Yes" : pos.outcome === 1 ? "No" : "Draw"}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-amber-400">
@@ -185,7 +184,7 @@ export default function PortfolioPage() {
                       </td>
                       <td className="px-3 py-2 text-right">
                         <button
-                          onClick={() => handleClaim(pos.marketId)}
+                          onClick={() => handleClaim(pos.onchainId)}
                           disabled={isClaiming}
                           className="rounded bg-amber-500 px-2 py-0.5 text-[10px] font-semibold text-black hover:bg-amber-400 disabled:opacity-50"
                         >
@@ -241,8 +240,8 @@ export default function PortfolioPage() {
                         </Link>
                       </td>
                       <td className="px-3 py-2">
-                        <span className={cn("font-medium", pos.outcome === 0 ? "text-cyan-400" : "text-pink-400")}>
-                          {pos.outcome === 0 ? "YES" : "NO"}
+                        <span className={cn("font-medium", pos.outcome === 0 ? "text-cyan-400" : pos.outcome === 1 ? "text-pink-400" : "text-amber-400")}>
+                          {pos.outcome === 0 ? "YES" : pos.outcome === 1 ? "NO" : "DRAW"}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-foreground">
@@ -273,7 +272,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Trade history */}
-        <TradeHistory />
+        <TradeHistory walletAddress={address} />
       </div>
     </div>
   );
@@ -281,7 +280,7 @@ export default function PortfolioPage() {
 
 // ─── Trade History ──────────────────────────────────────────────────────────
 
-function TradeHistory() {
+function TradeHistory({ walletAddress }: { walletAddress?: string }) {
   const [trades, setTrades] = useState<TradeWithMarketResponse[]>([]);
   const [pagination, setPagination] = useState<PaginationResponse | null>(null);
   const [page, setPage] = useState(1);
@@ -289,12 +288,12 @@ function TradeHistory() {
 
   useEffect(() => {
     setLoading(true);
-    fetchTradeHistory({ page, limit: 10 }).then((data) => {
+    fetchTradeHistory({ page, limit: 10 }, walletAddress).then((data) => {
       setTrades(data.trades);
       setPagination(data.pagination);
       setLoading(false);
     });
-  }, [page]);
+  }, [page, walletAddress]);
 
   return (
     <div className="border-t border-border">
@@ -331,15 +330,15 @@ function TradeHistory() {
                     </Link>
                   </td>
                   <td className="px-3 py-2">
-                    <span className={cn("font-medium", trade.outcome === 0 ? "text-cyan-400" : "text-pink-400")}>
+                    <span className={cn("font-medium", trade.outcome === 0 ? "text-cyan-400" : trade.outcome === 1 ? "text-pink-400" : "text-amber-400")}>
                       {trade.outcomeName}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-foreground">
-                    {formatUsdc(trade.amount)}
+                    {formatUsdc(trade.grossAmount)}
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-muted-foreground">
-                    {formatUsdc(trade.shares)}
+                    {formatUsdc(trade.netShares)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <a

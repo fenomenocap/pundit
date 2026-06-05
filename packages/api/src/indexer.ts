@@ -23,12 +23,17 @@ const RESOLVER_ADDRESS = (process.env.RESOLVER_ADDRESS ||
 const MarketCreatedEvent = parseAbiItem(
   "event MarketCreated(uint256 indexed marketId, string question, string[2] outcomes, uint256 resolutionTimestamp)"
 );
+
+// New signature: grossAmount (paid by user) + netShares (credited to pool)
 const SharesPurchasedEvent = parseAbiItem(
-  "event SharesPurchased(uint256 indexed marketId, address indexed buyer, uint8 outcome, uint256 amount)"
+  "event SharesPurchased(uint256 indexed marketId, address indexed buyer, uint8 outcome, uint256 grossAmount, uint256 netShares)"
 );
+
 const WinningsClaimedEvent = parseAbiItem(
   "event WinningsClaimed(uint256 indexed marketId, address indexed claimant, uint256 payout)"
 );
+
+// Emitted by OracleResolver, not MarketFactory
 const MarketResolvedEvent = parseAbiItem(
   "event MarketResolved(uint256 indexed marketId, uint8 winningOutcome)"
 );
@@ -71,7 +76,6 @@ async function handleMarketCreated(log: any): Promise<void> {
 
   const onchainId = Number(marketId);
 
-  // Upsert: if market already exists (idempotent), skip
   await prisma.market.upsert({
     where: { onchainId },
     create: {
@@ -79,11 +83,11 @@ async function handleMarketCreated(log: any): Promise<void> {
       question,
       outcomeA: outcomes[0],
       outcomeB: outcomes[1],
-      category: "TOURNAMENT", // default — can be enriched via admin API
+      category: "OTHER", // default — enriched via admin API when market is created off-chain
       resolutionTimestamp: new Date(Number(resolutionTimestamp) * 1000),
       status: "OPEN",
     },
-    update: {}, // no-op if already exists
+    update: {}, // no-op if already exists (idempotent)
   });
 
   console.log(`  [MarketCreated] market #${onchainId}: "${question}"`);
@@ -91,14 +95,20 @@ async function handleMarketCreated(log: any): Promise<void> {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleSharesPurchased(log: any): Promise<void> {
-  const { marketId, buyer, outcome, amount } = log.args;
-  if (marketId === undefined || !buyer || outcome === undefined || amount === undefined) return;
+  const { marketId, buyer, outcome, grossAmount, netShares } = log.args;
+  if (
+    marketId === undefined ||
+    !buyer ||
+    outcome === undefined ||
+    grossAmount === undefined ||
+    netShares === undefined
+  ) return;
 
   const txHash = log.transactionHash as string;
   const blockNumber = Number(log.blockNumber);
   const onchainId = Number(marketId);
+  const outcomeNum = Number(outcome);
 
-  // Find market by onchainId
   const market = await prisma.market.findUnique({ where: { onchainId } });
   if (!market) {
     console.warn(`  [SharesPurchased] market #${onchainId} not in DB, skipping`);
@@ -107,15 +117,15 @@ async function handleSharesPurchased(log: any): Promise<void> {
 
   const blockTs = await getBlockTimestamp(log.blockNumber);
 
-  // Upsert trade by txHash (idempotent)
+  // Upsert trade (idempotent via unique txHash)
   await prisma.trade.upsert({
     where: { txHash },
     create: {
       marketId: market.id,
-      userAddress: buyer.toLowerCase(),
-      outcome: Number(outcome),
-      amount: BigInt(amount),
-      shares: BigInt(amount), // 1:1
+      userAddress: (buyer as string).toLowerCase(),
+      outcome: outcomeNum,
+      grossAmount: BigInt(grossAmount), // USDC paid by user
+      netShares:   BigInt(netShares),   // shares credited (gross - fee)
       txHash,
       blockNumber,
       timestamp: new Date(Number(blockTs) * 1000),
@@ -123,57 +133,58 @@ async function handleSharesPurchased(log: any): Promise<void> {
     update: {}, // no-op if already exists
   });
 
-  // Upsert position (aggregate shares)
+  // Re-derive position from all trades (idempotent for replay safety)
   const positionKey = {
     marketId_userAddress_outcome: {
       marketId: market.id,
-      userAddress: buyer.toLowerCase(),
-      outcome: Number(outcome),
+      userAddress: (buyer as string).toLowerCase(),
+      outcome: outcomeNum,
     },
   };
-  const existing = await prisma.position.findUnique({ where: positionKey });
-  if (existing) {
-    // Only add if this trade hadn't been counted yet (idempotent check)
-    // Since we upserted the trade above with no-op on duplicate, and
-    // positions aggregate, we re-derive from all trades for correctness.
-    const totalShares = await prisma.trade.aggregate({
-      where: {
-        marketId: market.id,
-        userAddress: buyer.toLowerCase(),
-        outcome: Number(outcome),
-      },
-      _sum: { shares: true },
-    });
-    await prisma.position.update({
-      where: positionKey,
-      data: { shares: totalShares._sum.shares || 0n },
-    });
-  } else {
-    await prisma.position.create({
-      data: {
-        marketId: market.id,
-        userAddress: buyer.toLowerCase(),
-        outcome: Number(outcome),
-        shares: BigInt(amount),
-      },
-    });
-  }
 
-  // Re-derive pool sizes from all trades for this market (idempotent)
+  const totalShares = await prisma.trade.aggregate({
+    where: {
+      marketId: market.id,
+      userAddress: (buyer as string).toLowerCase(),
+      outcome: outcomeNum,
+    },
+    _sum: { netShares: true },
+  });
+
+  await prisma.position.upsert({
+    where: positionKey,
+    create: {
+      marketId: market.id,
+      userAddress: (buyer as string).toLowerCase(),
+      outcome: outcomeNum,
+      shares: totalShares._sum.netShares ?? 0n,
+    },
+    update: {
+      shares: totalShares._sum.netShares ?? 0n,
+    },
+  });
+
+  // Re-derive pool sizes from all trades (idempotent)
+  // Pools track net shares (USDC after fee), volume tracks gross (USDC paid)
   const poolAgg = await prisma.trade.groupBy({
     by: ["outcome"],
     where: { marketId: market.id },
-    _sum: { amount: true },
+    _sum: { netShares: true, grossAmount: true },
   });
-  const poolYes = poolAgg.find((p) => p.outcome === 0)?._sum.amount || 0n;
-  const poolNo = poolAgg.find((p) => p.outcome === 1)?._sum.amount || 0n;
+
+  const poolYes   = poolAgg.find((p) => p.outcome === 0)?._sum.netShares   ?? 0n;
+  const poolNo    = poolAgg.find((p) => p.outcome === 1)?._sum.netShares    ?? 0n;
+  const poolDraw  = poolAgg.find((p) => p.outcome === 2)?._sum.netShares    ?? 0n;
+  const totalVol  = poolAgg.reduce((acc, p) => acc + (p._sum.grossAmount ?? 0n), 0n);
+
   await prisma.market.update({
     where: { id: market.id },
-    data: { poolYes, poolNo },
+    data: { poolYes, poolNo, poolDraw, totalVolume: totalVol },
   });
 
   console.log(
-    `  [SharesPurchased] market #${onchainId} | ${buyer.slice(0, 8)}... | outcome=${outcome} | amount=${amount}`
+    `  [SharesPurchased] market #${onchainId} | ${(buyer as string).slice(0, 8)}... ` +
+    `| outcome=${outcomeNum} | gross=${grossAmount} | net=${netShares}`
   );
 }
 
@@ -212,12 +223,12 @@ async function handleWinningsClaimed(log: any): Promise<void> {
   await prisma.position.updateMany({
     where: {
       marketId: market.id,
-      userAddress: claimant.toLowerCase(),
+      userAddress: (claimant as string).toLowerCase(),
     },
     data: { claimed: true },
   });
 
-  console.log(`  [WinningsClaimed] market #${onchainId} | ${claimant.slice(0, 8)}... claimed`);
+  console.log(`  [WinningsClaimed] market #${onchainId} | ${(claimant as string).slice(0, 8)}... claimed`);
 }
 
 // ─── Log Fetching & Processing ──────────────────────────────────────────────
@@ -225,67 +236,26 @@ async function handleWinningsClaimed(log: any): Promise<void> {
 async function fetchAndProcessLogs(fromBlock: bigint, toBlock: bigint): Promise<void> {
   if (fromBlock > toBlock) return;
 
-  // Fetch all 4 event types in parallel
   const [marketCreatedLogs, sharesPurchasedLogs, marketResolvedLogs, winningsClaimedLogs] =
     await Promise.all([
-      client.getLogs({
-        address: FACTORY_ADDRESS,
-        event: MarketCreatedEvent,
-        fromBlock,
-        toBlock,
-      }),
-      client.getLogs({
-        address: ENGINE_ADDRESS,
-        event: SharesPurchasedEvent,
-        fromBlock,
-        toBlock,
-      }),
-      client.getLogs({
-        address: RESOLVER_ADDRESS,
-        event: MarketResolvedEvent,
-        fromBlock,
-        toBlock,
-      }),
-      client.getLogs({
-        address: ENGINE_ADDRESS,
-        event: WinningsClaimedEvent,
-        fromBlock,
-        toBlock,
-      }),
+      client.getLogs({ address: FACTORY_ADDRESS,  event: MarketCreatedEvent,   fromBlock, toBlock }),
+      client.getLogs({ address: ENGINE_ADDRESS,   event: SharesPurchasedEvent, fromBlock, toBlock }),
+      client.getLogs({ address: RESOLVER_ADDRESS, event: MarketResolvedEvent,  fromBlock, toBlock }),
+      client.getLogs({ address: ENGINE_ADDRESS,   event: WinningsClaimedEvent, fromBlock, toBlock }),
     ]);
 
-  // Merge all logs and sort by block number + log index for correct ordering
   interface TaggedLog {
     blockNumber: bigint;
     logIndex: number;
     eventType: string;
     raw: unknown;
   }
+
   const allLogs: TaggedLog[] = [
-    ...marketCreatedLogs.map((l) => ({
-      blockNumber: l.blockNumber,
-      logIndex: l.logIndex,
-      eventType: "MarketCreated",
-      raw: l,
-    })),
-    ...sharesPurchasedLogs.map((l) => ({
-      blockNumber: l.blockNumber,
-      logIndex: l.logIndex,
-      eventType: "SharesPurchased",
-      raw: l,
-    })),
-    ...marketResolvedLogs.map((l) => ({
-      blockNumber: l.blockNumber,
-      logIndex: l.logIndex,
-      eventType: "MarketResolved",
-      raw: l,
-    })),
-    ...winningsClaimedLogs.map((l) => ({
-      blockNumber: l.blockNumber,
-      logIndex: l.logIndex,
-      eventType: "WinningsClaimed",
-      raw: l,
-    })),
+    ...marketCreatedLogs.map((l) => ({ blockNumber: l.blockNumber, logIndex: l.logIndex, eventType: "MarketCreated",   raw: l })),
+    ...sharesPurchasedLogs.map((l) => ({ blockNumber: l.blockNumber, logIndex: l.logIndex, eventType: "SharesPurchased", raw: l })),
+    ...marketResolvedLogs.map((l) => ({ blockNumber: l.blockNumber, logIndex: l.logIndex, eventType: "MarketResolved",  raw: l })),
+    ...winningsClaimedLogs.map((l) => ({ blockNumber: l.blockNumber, logIndex: l.logIndex, eventType: "WinningsClaimed", raw: l })),
   ];
 
   allLogs.sort((a, b) => {
@@ -297,21 +267,12 @@ async function fetchAndProcessLogs(fromBlock: bigint, toBlock: bigint): Promise<
 
   console.log(`  Processing ${allLogs.length} events from blocks ${fromBlock}–${toBlock}`);
 
-  // Process events in order
   for (const entry of allLogs) {
     switch (entry.eventType) {
-      case "MarketCreated":
-        await handleMarketCreated(entry.raw);
-        break;
-      case "SharesPurchased":
-        await handleSharesPurchased(entry.raw);
-        break;
-      case "MarketResolved":
-        await handleMarketResolved(entry.raw);
-        break;
-      case "WinningsClaimed":
-        await handleWinningsClaimed(entry.raw);
-        break;
+      case "MarketCreated":   await handleMarketCreated(entry.raw);   break;
+      case "SharesPurchased": await handleSharesPurchased(entry.raw); break;
+      case "MarketResolved":  await handleMarketResolved(entry.raw);  break;
+      case "WinningsClaimed": await handleWinningsClaimed(entry.raw); break;
     }
   }
 }
@@ -343,7 +304,7 @@ async function backfill(fromBlock: number, toBlock: number): Promise<void> {
     console.log(`  [Backfill] Processed up to block ${end}`);
   }
 
-  console.log(`[Indexer] Backfill complete.`);
+  console.log("[Indexer] Backfill complete.");
 }
 
 // ─── Main Loop ──────────────────────────────────────────────────────────────
@@ -357,18 +318,14 @@ async function main(): Promise<void> {
   console.log(`  Resolver:  ${RESOLVER_ADDRESS}`);
   console.log(`  Poll:      ${POLL_INTERVAL_MS}ms`);
 
-  // Get current chain head
   const currentBlock = await client.getBlockNumber();
   console.log(`  Chain head: ${currentBlock}`);
 
-  // Get last indexed block
   let lastIndexed = await getLastIndexedBlock();
   console.log(`  Last indexed: ${lastIndexed}`);
 
-  // Determine start block
   const startBlock = lastIndexed > 0 ? lastIndexed + 1 : DEPLOYMENT_BLOCK;
 
-  // Backfill if behind
   if (startBlock < Number(currentBlock)) {
     await backfill(startBlock, Number(currentBlock));
     lastIndexed = Number(currentBlock);
@@ -376,7 +333,6 @@ async function main(): Promise<void> {
 
   console.log("[Indexer] Entering poll loop...");
 
-  // Poll loop
   const poll = async () => {
     try {
       const latestBlock = await client.getBlockNumber();
@@ -392,7 +348,6 @@ async function main(): Promise<void> {
     }
   };
 
-  // Run immediately, then on interval
   await poll();
   setInterval(poll, POLL_INTERVAL_MS);
 }

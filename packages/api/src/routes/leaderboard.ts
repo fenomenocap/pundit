@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { PLATFORM_FEE_BPS, BPS_DENOMINATOR } from "@sports-predict/shared";
 import { prisma } from "../db";
 import { AppError } from "../middleware";
 
@@ -102,14 +101,15 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       }
 
       if (market.resolvedOutcome !== null && pos.outcome === market.resolvedOutcome) {
-        // Winner
-        const totalPool = market.poolYes + market.poolNo;
-        const fee = (totalPool * PLATFORM_FEE_BPS + BPS_DENOMINATOR - 1n) / BPS_DENOMINATOR;
-        const netPool = totalPool - fee;
-        const winningPool = pos.outcome === 0 ? market.poolYes : market.poolNo;
+        // Winner — DB pools are already NET; formula mirrors the contract.
+        const totalPool = market.poolYes + market.poolNo + market.poolDraw;
+        const winningPool =
+          pos.outcome === 0 ? market.poolYes :
+          pos.outcome === 1 ? market.poolNo  :
+          market.poolDraw;
 
         if (winningPool > 0n) {
-          const payout = (pos.shares * netPool) / winningPool;
+          const payout = (pos.shares * totalPool) / winningPool;
           entry.profit += payout - invested;
         }
         entry.wins++;

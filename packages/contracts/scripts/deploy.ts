@@ -40,17 +40,18 @@ async function main() {
   const resolverAddr = await resolver.getAddress();
   console.log("OracleResolver deployed to:", resolverAddr);
 
-  // 5. PredictionMarketAMM (2% fee = 200 bps, 30 min = 1800s settlement delay)
-  const PredictionMarketAMM = await ethers.getContractFactory("PredictionMarketAMM");
-  const engine = await PredictionMarketAMM.deploy(
+  // 5. ParimutuelEngine (2% fee = 200 bps, 30 min = 1800s settlement delay)
+  const ParimutuelEngine = await ethers.getContractFactory("ParimutuelEngine");
+  const engine = await ParimutuelEngine.deploy(
     factoryAddr,
     vaultAddr,
-    200n,
-    1800n
+    200n,   // feeBps
+    1800n,  // settlementDelay (seconds)
+    deployer.address
   );
   await engine.waitForDeployment();
   const engineAddr = await engine.getAddress();
-  console.log("PredictionMarketAMM deployed to:", engineAddr);
+  console.log("ParimutuelEngine deployed to:", engineAddr);
 
   // 6. Wire contracts together
   console.log("---");
@@ -60,7 +61,7 @@ async function main() {
   console.log("  Factory resolver set to OracleResolver");
 
   await (await vault.setAuthorized(engineAddr, true)).wait();
-  console.log("  Vault authorized PredictionMarketAMM");
+  console.log("  Vault authorized ParimutuelEngine");
 
   // Save addresses to JSON
   const addresses = {
@@ -69,7 +70,7 @@ async function main() {
     MarketFactory: factoryAddr,
     CollateralVault: vaultAddr,
     OracleResolver: resolverAddr,
-    PredictionMarketAMM: engineAddr,
+    ParimutuelEngine: engineAddr,
   };
 
   const outPath = path.join(__dirname, "..", "deployed-addresses.json");

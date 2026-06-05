@@ -7,7 +7,8 @@ import marketRoutes from "./routes/markets";
 import userRoutes from "./routes/users";
 import leaderboardRoutes from "./routes/leaderboard";
 import matchRoutes from "./routes/matches";
-import { startFootballCron } from "./services/football-data";
+import polymarketRoutes from "./routes/polymarkets";
+import { startPolymarketCron } from "./services/polymarket-data";
 import { prisma } from "./db";
 
 const app = express();
@@ -45,6 +46,7 @@ app.use("/api/markets", marketRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/matches", matchRoutes);
+app.use("/api/polymarkets", polymarketRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 
@@ -55,6 +57,6 @@ app.use(errorHandler);
 app.listen(port, () => {
   console.log(`API server running on port ${port}`);
 
-  // Start football data cron (fetches every 6 hours)
-  startFootballCron();
+  // Start Polymarket cron — fetches WC 2026 markets and reference odds every 6 hours
+  startPolymarketCron();
 });

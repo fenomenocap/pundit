@@ -19,9 +19,15 @@ const PriceChart = lazy(() =>
 type OutcomeIndex = 0 | 1 | 2;
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
-  WORLD_CUP: { label: "World Cup", color: "bg-amber-500/15 text-amber-400 border-amber-500/25" },
-  EPL: { label: "Premier League", color: "bg-purple-500/15 text-purple-400 border-purple-500/25" },
-  LA_LIGA: { label: "La Liga", color: "bg-pink-500/15 text-pink-400 border-pink-500/25" },
+  WORLD_CUP:        { label: "World Cup",        color: "bg-amber-500/15 text-amber-400 border-amber-500/25" },
+  PREMIER_LEAGUE:   { label: "Premier League",   color: "bg-purple-500/15 text-purple-400 border-purple-500/25" },
+  CHAMPIONS_LEAGUE: { label: "Champions League", color: "bg-blue-500/15 text-blue-400 border-blue-500/25" },
+  EUROPA_LEAGUE:    { label: "Europa League",    color: "bg-orange-500/15 text-orange-400 border-orange-500/25" },
+  LA_LIGA:          { label: "La Liga",          color: "bg-pink-500/15 text-pink-400 border-pink-500/25" },
+  BUNDESLIGA:       { label: "Bundesliga",       color: "bg-red-500/15 text-red-400 border-red-500/25" },
+  SERIE_A:          { label: "Serie A",          color: "bg-sky-500/15 text-sky-400 border-sky-500/25" },
+  LIGUE_1:          { label: "Ligue 1",          color: "bg-indigo-500/15 text-indigo-400 border-indigo-500/25" },
+  OTHER:            { label: "Other",            color: "bg-muted text-muted-foreground border-border" },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -91,29 +97,22 @@ export default function MarketPage() {
     );
   }
 
-  // AMM pricing
-  const yesRes = BigInt(market.poolYes);
-  const noRes = BigInt(market.poolNo);
+  // Parimutuel pricing: P(outcome) = pool[outcome] / totalPool
+  const yesRes  = BigInt(market.poolYes);
+  const noRes   = BigInt(market.poolNo);
   const drawRes = market.poolDraw ? BigInt(market.poolDraw) : 0n;
-  const total = yesRes + noRes + drawRes;
+  const total   = yesRes + noRes + drawRes;
   const hasDraw = !!market.outcomeC;
 
   let pctYes: number, pctNo: number, pctDraw: number;
-
-  if (hasDraw && total > 0n) {
-    const reserves = [Number(yesRes), Number(noRes), Number(drawRes)];
-    const products = reserves.map((_, i) => {
-      const others = reserves.filter((__, j) => j !== i);
-      return others.reduce((a, b) => a * b, 1);
-    });
-    const sumProducts = products.reduce((a, b) => a + b, 0);
-    pctYes = sumProducts > 0 ? (products[0] / sumProducts) * 100 : 33;
-    pctNo = sumProducts > 0 ? (products[1] / sumProducts) * 100 : 33;
-    pctDraw = sumProducts > 0 ? (products[2] / sumProducts) * 100 : 34;
+  if (total > 0n) {
+    pctYes  = Number(yesRes  * 10000n / total) / 100;
+    pctNo   = Number(noRes   * 10000n / total) / 100;
+    pctDraw = hasDraw ? Number(drawRes * 10000n / total) / 100 : 0;
   } else {
-    pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
-    pctNo = 100 - pctYes;
-    pctDraw = 0;
+    pctYes  = hasDraw ? 33 : 50;
+    pctNo   = hasDraw ? 33 : 50;
+    pctDraw = hasDraw ? 34 : 0;
   }
 
   const cat = CATEGORY_CONFIG[market.category] || { label: market.category, color: "bg-muted text-muted-foreground border-border" };
@@ -196,6 +195,20 @@ export default function MarketPage() {
             <div className="bg-pink-500 transition-all duration-500" style={{ width: `${pctNo}%` }} />
           </div>
         </div>
+
+        {/* Polymarket reference odds */}
+        {market.polymarketOdds && (
+          <div className="flex items-center gap-2 border-b border-border px-4 py-1.5">
+            <span className="shrink-0 rounded bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-purple-400">
+              Polymarket ref
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              {market.polymarketOdds.outcomes
+                .map((o, i) => `${o} ${Math.round((market.polymarketOdds!.prices[i] ?? 0) * 100)}%`)
+                .join(" · ")}
+            </span>
+          </div>
+        )}
 
         {/* Chart area (top portion) */}
         <div className="flex-1 min-h-0 overflow-auto">

@@ -10,6 +10,7 @@
     "clean": "rm -rf .next"
   },
   "dependencies": {
+    "@sports-predict/shared": "workspace:*",
     "@radix-ui/react-slot": "^1.2.4",
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@tanstack/react-query": "^5.90.20",
