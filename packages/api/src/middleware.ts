@@ -15,32 +15,25 @@ export function requestLogger(req: Request, _res: Response, next: NextFunction) 
 }
 
 // ─── Admin Auth ─────────────────────────────────────────────────────────────
-
-function getAdminAddresses(): Set<string> {
-  const raw = process.env.ADMIN_ADDRESSES || "";
-  return new Set(
-    raw
-      .split(",")
-      .map((a) => a.trim().toLowerCase())
-      .filter(Boolean)
-  );
-}
+//
+// Callers must set the header:
+//   x-admin-key: <value of ADMIN_API_KEY env var>
+//
+// The key is a secret known only to the protocol operator. It is NOT a public
+// Ethereum address — never put it in NEXT_PUBLIC_* or commit it to source.
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const address = req.headers["x-admin-address"] as string | undefined;
-  if (!address) {
-    res.status(401).json({ error: "Missing x-admin-address header" });
+  const expectedKey = process.env.ADMIN_API_KEY;
+
+  if (!expectedKey) {
+    res.status(503).json({ error: "ADMIN_API_KEY not configured on server" });
     return;
   }
 
-  const admins = getAdminAddresses();
-  if (admins.size === 0) {
-    res.status(503).json({ error: "ADMIN_ADDRESSES not configured" });
-    return;
-  }
+  const providedKey = req.headers["x-admin-key"] as string | undefined;
 
-  if (!admins.has(address.toLowerCase())) {
-    res.status(403).json({ error: "Not authorized" });
+  if (!providedKey || providedKey !== expectedKey) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 

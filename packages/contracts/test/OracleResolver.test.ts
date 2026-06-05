@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
+import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { deployFixture, createDefaultMarket } from "./helpers";
 
 describe("OracleResolver", function () {
@@ -46,6 +46,7 @@ describe("OracleResolver", function () {
       const { factory, resolver } = await loadFixture(deployFixture);
       await createDefaultMarket(factory);
 
+      await time.increase(3601);
       await resolver.resolve(0n, 1);
 
       const market = await factory.getMarket(0n);
@@ -58,16 +59,18 @@ describe("OracleResolver", function () {
       const { factory, resolver } = await loadFixture(deployFixture);
       await createDefaultMarket(factory);
 
+      await time.increase(3601);
       await expect(resolver.resolve(0n, 0))
         .to.emit(resolver, "MarketResolved")
         .withArgs(0n, 0);
     });
 
-    it("resolve reverts with invalid outcome > 1", async function () {
+    it("resolve reverts with invalid outcome > 2", async function () {
       const { factory, resolver } = await loadFixture(deployFixture);
       await createDefaultMarket(factory);
 
-      await expect(resolver.resolve(0n, 2)).to.be.revertedWithCustomError(
+      // Contract allows outcomes 0 (Yes/Home), 1 (No/Away), 2 (Draw). 3+ is invalid.
+      await expect(resolver.resolve(0n, 3)).to.be.revertedWithCustomError(
         resolver,
         "InvalidOutcome"
       );

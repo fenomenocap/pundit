@@ -2,9 +2,28 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { fetchMarkets, MOCK_PARTICIPANTS } from "@/lib/mock-data";
+import { fetchMarkets, fetchPolymarketMarkets, MOCK_PARTICIPANTS } from "@/lib/mock-data";
 import { MarketCard, MarketCardSkeleton, MarketsEmptyState } from "@/components/market-card";
+import { PolymarketCard, PolymarketCardSkeleton } from "@/components/polymarket-card";
+import type { PolymarketMarket } from "@/lib/api";
 import type { MarketResponse } from "@/lib/api";
+
+// ─── Hook: fetch Polymarket WC markets (mock or live depending on USE_MOCK) ──
+function usePolymarketData() {
+  const [markets, setMarkets] = useState<PolymarketMarket[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPolymarketMarkets()
+      .then((data) => { if (!cancelled) setMarkets(data); })
+      .catch(() => { if (!cancelled) setMarkets([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  return { markets, loading };
+}
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -17,48 +36,46 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 const CATEGORIES = [
-  { key: "ALL", label: "All" },
-  { key: "WORLD_CUP", label: "World Cup" },
-  { key: "EPL", label: "Premier League" },
-  { key: "LA_LIGA", label: "La Liga" },
+  { key: "ALL",       label: "All" },
+  { key: "WORLD_CUP", label: "🏆 World Cup" },
 ] as const;
 
-// Mock football news items
+// World Cup 2026 news — tournament opens June 11
 const FOOTBALL_NEWS = [
   {
     id: 1,
-    headline: "England announce 26-man squad for World Cup 2026",
-    source: "BBC Sport",
-    time: "2h ago",
+    headline: "Brazil arrive in Los Angeles as heavy favourites to lift the trophy",
+    source: "The Athletic",
+    time: "1h ago",
     tag: "World Cup",
   },
   {
     id: 2,
-    headline: "Arsenal extend lead at the top with derby victory",
-    source: "Sky Sports",
-    time: "4h ago",
-    tag: "EPL",
+    headline: "USA vs Mexico: everything you need to know about Group A's opening clash",
+    source: "ESPN",
+    time: "3h ago",
+    tag: "World Cup",
   },
   {
     id: 3,
-    headline: "Barcelona confirm Lamine Yamal contract extension",
-    source: "Marca",
-    time: "6h ago",
-    tag: "La Liga",
+    headline: "Mbappé named France captain — can Les Bleus go all the way?",
+    source: "L'Équipe",
+    time: "5h ago",
+    tag: "World Cup",
   },
   {
     id: 4,
-    headline: "Brazil vs Germany: tactical preview of the quarter-final clash",
-    source: "The Athletic",
-    time: "8h ago",
+    headline: "England vs France tipped as group stage match of the tournament",
+    source: "BBC Sport",
+    time: "7h ago",
     tag: "World Cup",
   },
   {
     id: 5,
-    headline: "Liverpool target January reinforcements after draw",
-    source: "ESPN",
-    time: "12h ago",
-    tag: "EPL",
+    headline: "Argentina defending champions: can Messi's men retain the trophy?",
+    source: "Marca",
+    time: "10h ago",
+    tag: "World Cup",
   },
 ];
 
@@ -70,11 +87,30 @@ function getMovers(markets: MarketResponse[]): { market: MarketResponse; change:
   }));
 }
 
+function useWCCountdown() {
+  const target = new Date("2026-06-11T00:00:00Z").getTime();
+  const [timeLeft, setTimeLeft] = useState(() => target - Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setTimeLeft(target - Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [target]);
+
+  if (timeLeft <= 0) return null;
+  return {
+    days:  Math.floor(timeLeft / 86_400_000),
+    hours: Math.floor((timeLeft % 86_400_000) / 3_600_000),
+    mins:  Math.floor((timeLeft % 3_600_000) / 60_000),
+    secs:  Math.floor((timeLeft % 60_000) / 1000),
+  };
+}
+
 export default function MarketsPage() {
   const [markets, setMarkets] = useState<MarketResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState("ALL");
+  const [category, setCategory] = useState("WORLD_CUP");
   const [search, setSearch] = useState("");
+  const { markets: polymarkets, loading: polyLoading } = usePolymarketData();
 
   useEffect(() => {
     setLoading(true);
@@ -91,9 +127,43 @@ export default function MarketsPage() {
   }, [markets, debouncedSearch]);
 
   const movers = useMemo(() => getMovers(markets), [markets]);
+  const countdown = useWCCountdown();
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      {/* WC 2026 Countdown Banner */}
+      {countdown && (
+        <div className="mb-6 overflow-hidden rounded-xl border border-amber-500/20 bg-gradient-to-r from-amber-950/40 via-amber-900/20 to-amber-950/40 px-6 py-4">
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-500">
+                FIFA World Cup 2026
+              </p>
+              <h2 className="font-heading text-lg font-bold text-white sm:text-xl">
+                Trade every match. Beat the crowd.
+              </h2>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {[
+                { value: countdown.days,  label: "days"  },
+                { value: countdown.hours, label: "hours" },
+                { value: countdown.mins,  label: "mins"  },
+                { value: countdown.secs,  label: "secs"  },
+              ].map(({ value, label }) => (
+                <div key={label} className="flex flex-col items-center">
+                  <span className="font-heading text-2xl font-bold tabular-nums text-white sm:text-3xl">
+                    {String(value).padStart(2, "0")}
+                  </span>
+                  <span className="text-[9px] font-medium uppercase tracking-wider text-amber-500/70">
+                    {label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hero section */}
       <div className="mb-8">
         <h1 className="font-heading text-2xl font-bold text-white sm:text-3xl">
@@ -161,6 +231,27 @@ export default function MarketsPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Live Polymarket WC Markets section ── */}
+      {(polyLoading || polymarkets.length > 0) && (
+        <div className="mb-8">
+          <div className="mb-3 flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Live WC Markets</h2>
+            <span className="inline-flex items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase text-purple-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-pulse" />
+              Polymarket
+            </span>
+            <span className="text-[10px] text-muted-foreground">Reference consensus · not tradeable here</span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {polyLoading
+              ? Array.from({ length: 4 }).map((_, i) => <PolymarketCardSkeleton key={i} />)
+              : polymarkets.slice(0, 8).map((m) => (
+                  <PolymarketCard key={m.id} market={m} />
+                ))}
+          </div>
+        </div>
+      )}
 
       {/* Category tabs + search */}
       <div className="mb-6 flex flex-wrap items-center gap-3">

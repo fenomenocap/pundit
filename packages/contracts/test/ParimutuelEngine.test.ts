@@ -14,14 +14,13 @@ describe("ParimutuelEngine", function () {
       const { factory, engine, alice } = await loadFixture(deployFixture);
       await createDefaultMarket(factory);
 
-      await engine.connect(alice).buyShares(0n, 0, usdc(100)); // 100 USDC on YES
+      await engine.connect(alice).buyShares(0n, 0, usdc(100)); // 100 USDC gross on YES
 
-      expect(await engine.totalPool(0n)).to.equal(usdc(100));
-      expect(await engine.totalSharesByOutcome(0n, 0)).to.equal(usdc(100));
+      // fee = ceil(100e6 * 200 / 10000) = 2e6; net = 98e6
+      expect(await engine.totalPool(0n)).to.equal(98_000_000n);
+      expect(await engine.totalSharesByOutcome(0n, 0)).to.equal(98_000_000n);
       expect(await engine.totalSharesByOutcome(0n, 1)).to.equal(0n);
-      expect(await engine.getUserShares(0n, alice.address, 0)).to.equal(
-        usdc(100)
-      );
+      expect(await engine.getUserShares(0n, alice.address, 0)).to.equal(98_000_000n);
     });
 
     it("multi-user: 3 users buy, all pool sizes correct", async function () {
@@ -29,25 +28,27 @@ describe("ParimutuelEngine", function () {
         await loadFixture(deployFixture);
       await createDefaultMarket(factory);
 
-      await engine.connect(alice).buyShares(0n, 0, usdc(300));   // Alice: 300 YES
-      await engine.connect(bob).buyShares(0n, 0, usdc(200));     // Bob:   200 YES
-      await engine.connect(charlie).buyShares(0n, 1, usdc(500)); // Charlie: 500 NO
+      await engine.connect(alice).buyShares(0n, 0, usdc(300));   // Alice: 300 YES gross → net 294
+      await engine.connect(bob).buyShares(0n, 0, usdc(200));     // Bob:   200 YES gross → net 196
+      await engine.connect(charlie).buyShares(0n, 1, usdc(500)); // Charlie: 500 NO  gross → net 490
 
-      expect(await engine.totalPool(0n)).to.equal(usdc(1000));
-      expect(await engine.totalSharesByOutcome(0n, 0)).to.equal(usdc(500));
-      expect(await engine.totalSharesByOutcome(0n, 1)).to.equal(usdc(500));
-      expect(await engine.getUserShares(0n, alice.address, 0)).to.equal(usdc(300));
-      expect(await engine.getUserShares(0n, bob.address, 0)).to.equal(usdc(200));
-      expect(await engine.getUserShares(0n, charlie.address, 1)).to.equal(usdc(500));
+      // All pools/shares track net amounts (after per-trade 2% fee)
+      expect(await engine.totalPool(0n)).to.equal(980_000_000n);
+      expect(await engine.totalSharesByOutcome(0n, 0)).to.equal(490_000_000n); // YES net
+      expect(await engine.totalSharesByOutcome(0n, 1)).to.equal(490_000_000n); // NO net
+      expect(await engine.getUserShares(0n, alice.address, 0)).to.equal(294_000_000n);
+      expect(await engine.getUserShares(0n, bob.address, 0)).to.equal(196_000_000n);
+      expect(await engine.getUserShares(0n, charlie.address, 1)).to.equal(490_000_000n);
     });
 
     it("emits SharesPurchased event", async function () {
       const { factory, engine, alice } = await loadFixture(deployFixture);
       await createDefaultMarket(factory);
 
+      // fee = ceil(50e6 * 200 / 10000) = 1e6; netShares = 49e6
       await expect(engine.connect(alice).buyShares(0n, 0, usdc(50)))
         .to.emit(engine, "SharesPurchased")
-        .withArgs(0n, alice.address, 0, usdc(50));
+        .withArgs(0n, alice.address, 0, usdc(50), 49_000_000n);
     });
 
     it("reverts on zero amount", async function () {
@@ -59,12 +60,13 @@ describe("ParimutuelEngine", function () {
       ).to.be.revertedWithCustomError(engine, "ZeroAmount");
     });
 
-    it("reverts on invalid outcome > 1", async function () {
+    it("reverts on invalid outcome > 2", async function () {
       const { factory, engine, alice } = await loadFixture(deployFixture);
       await createDefaultMarket(factory);
 
+      // Contract allows 0 (Yes/Home), 1 (No/Away), 2 (Draw). Outcome 3+ is invalid.
       await expect(
-        engine.connect(alice).buyShares(0n, 2, usdc(100))
+        engine.connect(alice).buyShares(0n, 3, usdc(100))
       ).to.be.revertedWithCustomError(engine, "InvalidOutcome");
     });
 
@@ -72,6 +74,7 @@ describe("ParimutuelEngine", function () {
       const { factory, engine, resolver, alice } =
         await loadFixture(deployFixture);
       await createDefaultMarket(factory);
+      await time.increase(3601);
       await resolver.resolve(0n, 0);
 
       await expect(
@@ -119,7 +122,8 @@ describe("ParimutuelEngine", function () {
       await engine.connect(bob).buyShares(0n, 0, usdc(200));
       await engine.connect(charlie).buyShares(0n, 1, usdc(500));
 
-      // Resolve YES, warp past settlement delay
+      // Warp past resolution timestamp, resolve YES, warp past settlement delay
+      await time.increase(3601);
       await resolver.resolve(0n, 0);
       await time.increase(1801);
 
@@ -152,6 +156,7 @@ describe("ParimutuelEngine", function () {
         await loadFixture(deployFixture);
       await createDefaultMarket(factory);
       await engine.connect(alice).buyShares(0n, 0, usdc(100));
+      await time.increase(3601);
       await resolver.resolve(0n, 0);
 
       // Try to claim immediately
@@ -174,6 +179,7 @@ describe("ParimutuelEngine", function () {
         await loadFixture(deployFixture);
       await createDefaultMarket(factory);
       await engine.connect(alice).buyShares(0n, 0, usdc(100));
+      await time.increase(3601);
       await resolver.resolve(0n, 0);
 
       await time.increase(1801);
@@ -189,6 +195,7 @@ describe("ParimutuelEngine", function () {
         await loadFixture(deployFixture);
       await createDefaultMarket(factory);
       await engine.connect(alice).buyShares(0n, 0, usdc(100));
+      await time.increase(3601);
       await resolver.resolve(0n, 0);
       await time.increase(1801);
 
@@ -209,6 +216,7 @@ describe("ParimutuelEngine", function () {
       await createDefaultMarket(factory);
       await engine.connect(alice).buyShares(0n, 0, usdc(100)); // YES
       await engine.connect(bob).buyShares(0n, 1, usdc(100));   // NO
+      await time.increase(3601);
       await resolver.resolve(0n, 0); // YES wins
       await time.increase(1801);
 
@@ -253,6 +261,7 @@ describe("ParimutuelEngine", function () {
       await createDefaultMarket(factory);
 
       await engine.connect(alice).buyShares(0n, 0, usdc(1)); // 1 USDC YES
+      await time.increase(3601);
       await resolver.resolve(0n, 0);
       await time.increase(1801);
 
@@ -280,6 +289,7 @@ describe("ParimutuelEngine", function () {
       await engine.connect(bob).buyShares(0n, 1, usdc(200));
 
       // Resolve YES (outcome 0) — nobody bet on YES
+      await time.increase(3601);
       await resolver.resolve(0n, 0);
       await time.increase(1801);
 
@@ -289,16 +299,16 @@ describe("ParimutuelEngine", function () {
       await engine.connect(alice).claimWinnings(0n);
       await engine.connect(bob).claimWinnings(0n);
 
-      // Full refund — no fee
+      // Refund = net deposit (gross - fee). fee=ceil(100e6*200/10000)=2e6, fee=ceil(200e6*200/10000)=4e6
       expect(
         (await usdcToken.balanceOf(alice.address)) - aliceBefore
-      ).to.equal(usdc(100));
+      ).to.equal(98_000_000n);
       expect(
         (await usdcToken.balanceOf(bob.address)) - bobBefore
-      ).to.equal(usdc(200));
+      ).to.equal(196_000_000n);
     });
 
-    it("cancelled market → full refund", async function () {
+    it("cancelled market → net deposit refund (fee non-refundable)", async function () {
       const { factory, engine, resolver, usdc: usdcToken, alice, bob } =
         await loadFixture(deployFixture);
       await createDefaultMarket(factory);
@@ -313,12 +323,14 @@ describe("ParimutuelEngine", function () {
       await engine.connect(alice).claimWinnings(0n);
       await engine.connect(bob).claimWinnings(0n);
 
+      // Refund = net deposit (fee is non-refundable on cancellation per protocol design)
+      // Alice: 100 gross → fee=2, net=98. Bob: 200 gross → fee=4, net=196.
       expect(
         (await usdcToken.balanceOf(alice.address)) - aliceBefore
-      ).to.equal(usdc(100));
+      ).to.equal(98_000_000n);
       expect(
         (await usdcToken.balanceOf(bob.address)) - bobBefore
-      ).to.equal(usdc(200));
+      ).to.equal(196_000_000n);
     });
 
     it("user with no shares cannot claim from cancelled market", async function () {
@@ -357,6 +369,7 @@ describe("ParimutuelEngine", function () {
       await engine.connect(charlie).buyShares(0n, 0, usdc(1));
       await engine.connect(charlie).buyShares(0n, 1, usdc(8)); // loser side
 
+      await time.increase(3601);
       await resolver.resolve(0n, 0);
       await time.increase(1801);
 
@@ -379,6 +392,7 @@ describe("ParimutuelEngine", function () {
       // Pool = 1 raw unit (smallest possible). fee = ceil(1 * 200 / 10000)
       // = ceil(0.02) = 1. Net = 0. Payout = 0. The full 1 unit is fee.
       await engine.connect(alice).buyShares(0n, 0, 1n);
+      await time.increase(3601);
       await resolver.resolve(0n, 0);
       await time.increase(1801);
 

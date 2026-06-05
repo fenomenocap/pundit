@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { cn } from "@/lib/utils";
-import { getLeaderboard } from "@/lib/api";
+import { fetchLeaderboard } from "@/lib/mock-data";
 import type { LeaderboardEntry } from "@/lib/api";
 
 const PERIODS = [
@@ -55,7 +55,7 @@ export default function LeaderboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getLeaderboard({ period: p, limit: 50 });
+      const res = await fetchLeaderboard({ period: p, limit: 50 });
       setEntries(res.leaderboard);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load leaderboard");

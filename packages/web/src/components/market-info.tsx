@@ -5,9 +5,15 @@ import { CONTRACTS, EXPLORER_BASE } from "@/lib/contracts";
 import type { MarketResponse } from "@/lib/api";
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
-  WORLD_CUP: { label: "World Cup", color: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
-  EPL: { label: "Premier League", color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
-  LA_LIGA: { label: "La Liga", color: "bg-pink-500/20 text-pink-400 border-pink-500/30" },
+  WORLD_CUP:        { label: "World Cup",        color: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
+  PREMIER_LEAGUE:   { label: "Premier League",   color: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
+  CHAMPIONS_LEAGUE: { label: "Champions League", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
+  EUROPA_LEAGUE:    { label: "Europa League",    color: "bg-orange-500/20 text-orange-400 border-orange-500/30" },
+  LA_LIGA:          { label: "La Liga",          color: "bg-pink-500/20 text-pink-400 border-pink-500/30" },
+  BUNDESLIGA:       { label: "Bundesliga",       color: "bg-red-500/20 text-red-400 border-red-500/30" },
+  SERIE_A:          { label: "Serie A",          color: "bg-sky-500/20 text-sky-400 border-sky-500/30" },
+  LIGUE_1:          { label: "Ligue 1",          color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30" },
+  OTHER:            { label: "Other",            color: "bg-slate-500/20 text-slate-400 border-slate-500/30" },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -42,12 +48,15 @@ export function MarketInfo({ market, participantCount }: MarketInfoProps) {
   const cat = CATEGORY_CONFIG[market.category] || { label: market.category, color: "bg-slate-500/20 text-slate-400 border-slate-500/30" };
   const status = STATUS_CONFIG[market.status] || { label: market.status, color: "bg-slate-500/20 text-slate-400" };
 
-  // AMM pricing: Price(YES) = noReserve / total, Price(NO) = yesReserve / total
-  const yesRes = BigInt(market.poolYes);
-  const noRes = BigInt(market.poolNo);
-  const total = yesRes + noRes;
-  const pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
-  const pctNo = 100 - pctYes;
+  // Parimutuel pricing: P(outcome) = pool[outcome] / totalPool
+  const yesRes  = BigInt(market.poolYes);
+  const noRes   = BigInt(market.poolNo);
+  const drawRes = market.poolDraw ? BigInt(market.poolDraw) : 0n;
+  const total   = yesRes + noRes + drawRes;
+  const hasDraw = !!market.outcomeC;
+  const pctYes  = total > 0n ? Number(yesRes  * 10000n / total) / 100 : (hasDraw ? 33 : 50);
+  const pctNo   = total > 0n ? Number(noRes   * 10000n / total) / 100 : (hasDraw ? 33 : 50);
+  const pctDraw = hasDraw ? (total > 0n ? Number(drawRes * 10000n / total) / 100 : 34) : 0;
 
   const explorerBase = EXPLORER_BASE;
   const contractAddr = CONTRACTS.engine;
@@ -76,6 +85,12 @@ export function MarketInfo({ market, participantCount }: MarketInfoProps) {
             {market.outcomeA}
             <span className="ml-2 font-mono text-lg">{pctYes.toFixed(1)}%</span>
           </span>
+          {hasDraw && (
+            <span className="text-sm font-semibold text-amber-400">
+              {market.outcomeC}
+              <span className="ml-2 font-mono text-lg">{pctDraw.toFixed(1)}%</span>
+            </span>
+          )}
           <span className="text-sm font-semibold text-pink-400">
             <span className="mr-2 font-mono text-lg">{pctNo.toFixed(1)}%</span>
             {market.outcomeB}
@@ -83,11 +98,17 @@ export function MarketInfo({ market, participantCount }: MarketInfoProps) {
         </div>
         <div className="flex h-3 overflow-hidden rounded-full bg-slate-800">
           <div
-            className="rounded-l-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-700"
+            className="bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-700"
             style={{ width: `${pctYes}%` }}
           />
+          {hasDraw && (
+            <div
+              className="bg-gradient-to-r from-amber-600 to-amber-400 transition-all duration-700"
+              style={{ width: `${pctDraw}%` }}
+            />
+          )}
           <div
-            className="rounded-r-full bg-gradient-to-l from-pink-600 to-pink-400 transition-all duration-700"
+            className="bg-gradient-to-l from-pink-600 to-pink-400 transition-all duration-700"
             style={{ width: `${pctNo}%` }}
           />
         </div>

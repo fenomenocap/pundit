@@ -28,27 +28,15 @@ function getOutcomeColor(idx: OutcomeIndex): string {
   return "text-amber-400";
 }
 
-function getAmmPrice(market: MarketResponse, outcome: OutcomeIndex): number {
+/** Parimutuel implied probability: pool[outcome] / totalPool */
+function getParimutuelPrice(market: MarketResponse, outcome: OutcomeIndex): number {
   const yesRes = Number(BigInt(market.poolYes));
-  const noRes = Number(BigInt(market.poolNo));
+  const noRes  = Number(BigInt(market.poolNo));
   const drawRes = market.poolDraw ? Number(BigInt(market.poolDraw)) : 0;
   const total = yesRes + noRes + drawRes;
   if (total === 0) return market.outcomeC ? 33 : 50;
-
-  if (!market.outcomeC) {
-    if (outcome === 0) return (noRes / total) * 100;
-    return (yesRes / total) * 100;
-  }
-
-  const reserves = [yesRes, noRes, drawRes];
-  const others = reserves.filter((_, i) => i !== outcome);
-  const othersProduct = others.reduce((a, b) => a * b, 1);
-  const allProducts = reserves.map((_, i) => {
-    const o = reserves.filter((_, j) => j !== i);
-    return o.reduce((a, b) => a * b, 1);
-  });
-  const sumProducts = allProducts.reduce((a, b) => a + b, 0);
-  return sumProducts > 0 ? (othersProduct / sumProducts) * 100 : 33;
+  const pool = outcome === 0 ? yesRes : outcome === 1 ? noRes : drawRes;
+  return (pool / total) * 100;
 }
 
 export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: OutcomeDetailProps) {
@@ -56,7 +44,7 @@ export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: Ou
 
   const name = getOutcomeName(market, outcome);
   const color = getOutcomeColor(outcome);
-  const price = getAmmPrice(market, outcome);
+  const price = getParimutuelPrice(market, outcome);
 
   const outcomeTrades = useMemo(
     () => trades.filter((t) => t.outcome === outcome),
@@ -69,15 +57,16 @@ export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: Ou
     const now = Date.now();
     const mock: TradeResponse[] = [];
     for (let i = 0; i < 12; i++) {
-      const amount = Math.round((10 + Math.random() * 200) * 1_000_000);
-      const shares = Math.round(amount / (price / 100));
+      const grossAmount = Math.round((10 + Math.random() * 200) * 1_000_000);
+      // netShares = grossAmount after 2% fee
+      const netShares = Math.round(grossAmount * 0.98);
       mock.push({
         id: `mock-${outcome}-${i}`,
         marketId: market.id,
         userAddress: `0x${Math.random().toString(16).slice(2, 10)}${"0".repeat(32)}`.slice(0, 42),
         outcome,
-        amount: String(amount),
-        shares: String(shares),
+        grossAmount: String(grossAmount),
+        netShares: String(netShares),
         txHash: `0x${Math.random().toString(16).slice(2)}`,
         blockNumber: 1000000 + i,
         timestamp: new Date(now - i * 300_000 - Math.random() * 600_000).toISOString(),
@@ -136,8 +125,8 @@ export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: Ou
                 </div>
               ) : (
                 displayTrades.map((trade) => {
-                  const amount = Number(BigInt(trade.amount)) / 1_000_000;
-                  const shares = Number(BigInt(trade.shares)) / 1_000_000;
+                  const amount = Number(BigInt(trade.grossAmount)) / 1_000_000;
+                  const shares = Number(BigInt(trade.netShares)) / 1_000_000;
                   const tradePrice = shares > 0 ? (amount / shares) * 100 : 0;
                   const time = new Date(trade.timestamp);
                   return (
@@ -227,8 +216,8 @@ export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: Ou
               </div>
             ) : (
               displayTrades.map((trade) => {
-                const amount = Number(BigInt(trade.amount)) / 1_000_000;
-                const shares = Number(BigInt(trade.shares)) / 1_000_000;
+                const amount = Number(BigInt(trade.grossAmount)) / 1_000_000;
+                const shares = Number(BigInt(trade.netShares)) / 1_000_000;
                 const tradePrice = shares > 0 ? (amount / shares) * 100 : 0;
                 const time = new Date(trade.timestamp);
                 return (

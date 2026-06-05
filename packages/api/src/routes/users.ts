@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { PLATFORM_FEE_BPS, BPS_DENOMINATOR } from "@sports-predict/shared";
 import { prisma } from "../db";
 import { AppError } from "../middleware";
 
@@ -31,14 +30,16 @@ router.get(
 
       const serialized = positions.map((pos) => {
         const market = pos.market;
-        const invested = pos.shares; // 1:1 shares to USDC
+        // pos.shares = net shares (gross minus 2% fee). Used as both "invested"
+        // proxy and payout numerator — consistent with on-chain accounting.
+        const invested = pos.shares;
         totalInvested += invested;
 
         let claimable = 0n;
         let status: "active" | "won" | "lost" | "claimable" | "claimed" | "refundable";
 
         if (market.status === "CANCELLED") {
-          // Full refund
+          // On-chain refund = net deposit (fee is non-refundable).
           if (pos.claimed) {
             status = "claimed";
             totalClaimed += invested;
@@ -49,14 +50,16 @@ router.get(
           }
         } else if (market.status === "RESOLVED" && market.resolvedOutcome !== null) {
           if (pos.outcome === market.resolvedOutcome) {
-            // Winner — calculate payout
-            const totalPool = market.poolYes + market.poolNo;
-            const fee = (totalPool * PLATFORM_FEE_BPS + BPS_DENOMINATOR - 1n) / BPS_DENOMINATOR;
-            const netPool = totalPool - fee;
-            const winningPool = pos.outcome === 0 ? market.poolYes : market.poolNo;
+            // Winner — DB pools are already NET (fee excluded at deposit).
+            // Formula mirrors the contract: payout = shares * totalPool / winningPool
+            const totalPool = market.poolYes + market.poolNo + market.poolDraw;
+            const winningPool =
+              pos.outcome === 0 ? market.poolYes :
+              pos.outcome === 1 ? market.poolNo  :
+              market.poolDraw;
 
             if (winningPool > 0n) {
-              claimable = (pos.shares * netPool) / winningPool;
+              claimable = (pos.shares * totalPool) / winningPool;
             }
 
             if (pos.claimed) {
@@ -75,6 +78,7 @@ router.get(
 
         return {
           marketId: pos.marketId,
+          onchainId: market.onchainId,
           marketQuestion: market.question,
           marketStatus: market.status,
           outcome: pos.outcome,
@@ -126,6 +130,7 @@ router.get(
                 question: true,
                 outcomeA: true,
                 outcomeB: true,
+                outcomeC: true,
                 status: true,
               },
             },
@@ -140,10 +145,13 @@ router.get(
           id: t.id,
           marketId: t.marketId,
           marketQuestion: t.market.question,
-          outcomeName: t.outcome === 0 ? t.market.outcomeA : t.market.outcomeB,
+          outcomeName:
+            t.outcome === 0 ? t.market.outcomeA :
+            t.outcome === 1 ? t.market.outcomeB :
+            (t.market.outcomeC ?? "Draw"),
           outcome: t.outcome,
-          amount: t.amount.toString(),
-          shares: t.shares.toString(),
+          grossAmount: t.grossAmount.toString(),
+          netShares: t.netShares.toString(),
           txHash: t.txHash,
           blockNumber: t.blockNumber,
           timestamp: t.timestamp.toISOString(),

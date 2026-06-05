@@ -27,6 +27,7 @@ export interface MarketResponse {
 export interface MarketDetailResponse extends MarketResponse {
   recentTrades: TradeResponse[];
   participantCount: number;
+  polymarketOdds: { outcomes: string[]; prices: number[] } | null;
 }
 
 export interface TradeResponse {
@@ -34,8 +35,8 @@ export interface TradeResponse {
   marketId: string;
   userAddress: string;
   outcome: number;
-  amount: string;
-  shares: string;
+  grossAmount: string; // USDC paid (before fee)
+  netShares: string;   // shares received (after fee)
   txHash: string;
   blockNumber: number;
   timestamp: string;
@@ -48,6 +49,7 @@ export interface TradeWithMarketResponse extends TradeResponse {
 
 export interface PositionResponse {
   marketId: string;
+  onchainId: number;
   marketQuestion: string;
   marketStatus: string;
   outcome: number;
@@ -155,28 +157,29 @@ export async function createMarket(
     question: string;
     outcomeA: string;
     outcomeB: string;
+    outcomeC?: string;   // optional Draw / third outcome
     category: string;
     teamA?: string;
     teamB?: string;
     resolutionTimestamp: string;
   },
-  adminAddress: string
+  adminKey: string
 ) {
   return apiFetch<MarketResponse>("/api/markets", {
     method: "POST",
-    headers: { "x-admin-address": adminAddress },
+    headers: { "x-admin-key": adminKey },
     body: JSON.stringify(data),
   });
 }
 
 export async function resolveMarket(
   id: string,
-  outcome: 0 | 1,
-  adminAddress: string
+  outcome: 0 | 1 | 2,   // 0=Yes/Home, 1=No/Away, 2=Draw
+  adminKey: string
 ) {
   return apiFetch<MarketResponse>(`/api/markets/${id}/resolve`, {
     method: "POST",
-    headers: { "x-admin-address": adminAddress },
+    headers: { "x-admin-key": adminKey },
     body: JSON.stringify({ outcome }),
   });
 }
@@ -225,6 +228,30 @@ export async function getLeaderboard(
 export async function getUpcomingMatches() {
   return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null }>(
     "/api/matches/upcoming"
+  );
+}
+
+// ─── Polymarket types + endpoints ───────────────────────────────────────────
+
+export interface PolymarketMarket {
+  id: string;
+  question: string;
+  outcomes: string[];
+  outcomePrices: number[];  // 0–1 floats e.g. 0.34
+  liquidity: number;
+  volume: number;
+  endDate: string;
+  resolved: boolean;
+  active: boolean;
+  onchainMarketId?: string; // set when linked to our on-chain market detail page
+}
+
+export async function getPolymarketMarkets(): Promise<{
+  markets: PolymarketMarket[];
+  lastUpdated: string | null;
+}> {
+  return apiFetch<{ markets: PolymarketMarket[]; lastUpdated: string | null }>(
+    "/api/polymarkets/wc"
   );
 }
 

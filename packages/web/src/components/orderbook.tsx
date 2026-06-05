@@ -18,14 +18,14 @@ function generateMockOrderbook(
   market: MarketResponse,
   outcome: number
 ): { bids: OrderLevel[]; asks: OrderLevel[] } {
-  const yesRes = Number(BigInt(market.poolYes));
-  const noRes = Number(BigInt(market.poolNo));
-  const total = yesRes + noRes;
+  const yesRes  = Number(BigInt(market.poolYes));
+  const noRes   = Number(BigInt(market.poolNo));
+  const drawRes = market.poolDraw ? Number(BigInt(market.poolDraw)) : 0;
+  const total = yesRes + noRes + drawRes;
   if (total === 0) return { bids: [], asks: [] };
 
-  const midPrice = outcome === 0
-    ? (noRes / total) * 100
-    : (yesRes / total) * 100;
+  const pool = outcome === 0 ? yesRes : outcome === 1 ? noRes : drawRes;
+  const midPrice = (pool / total) * 100;
 
   const mid = Math.round(midPrice);
   const spread = 1;
@@ -65,12 +65,12 @@ export function Orderbook({ market, outcome }: OrderbookProps) {
     1
   );
 
-  const yesRes = Number(BigInt(market.poolYes));
-  const noRes = Number(BigInt(market.poolNo));
-  const total = yesRes + noRes;
-  const midPrice = total > 0
-    ? (outcome === 0 ? (noRes / total) * 100 : (yesRes / total) * 100)
-    : 50;
+  const yesRes  = Number(BigInt(market.poolYes));
+  const noRes   = Number(BigInt(market.poolNo));
+  const drawRes = market.poolDraw ? Number(BigInt(market.poolDraw)) : 0;
+  const total = yesRes + noRes + drawRes;
+  const pool = outcome === 0 ? yesRes : outcome === 1 ? noRes : drawRes;
+  const midPrice = total > 0 ? (pool / total) * 100 : 50;
 
   // Depth bars (combined into orderbook)
   const bidBars = [...bids].reverse();

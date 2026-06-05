@@ -35,7 +35,8 @@ export async function deployFixture() {
     await factory.getAddress(),
     await vault.getAddress(),
     200n,
-    1800n
+    1800n,
+    owner.address
   );
 
   // Wire: set resolver on factory, authorize engine on vault

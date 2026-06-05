@@ -2,52 +2,73 @@
 pragma solidity ^0.8.24;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {MarketFactory} from "./MarketFactory.sol";
 import {CollateralVault} from "./CollateralVault.sol";
 
 /// @title ParimutuelEngine
-/// @notice Parimutuel (pool-based) trading for binary prediction markets.
-///         Users deposit USDC to buy outcome shares 1:1. On resolution, winners
-///         split the total pool minus a protocol fee.
-contract ParimutuelEngine is ReentrancyGuard {
+/// @notice Parimutuel (pool-based) trading for prediction markets.
+///         Supports binary (YES/NO) and 3-way (HOME/AWAY/DRAW) outcomes.
+///
+///         Fee accounting:
+///           - Fee is taken upfront on each buy (rounds UP, protocol's favour).
+///           - Net amount is minted as shares 1:1.
+///           - totalPool tracks only net USDC (fees excluded).
+///           - On resolution, winners split totalPool proportional to their shares.
+///           - Accumulated fees per market can be withdrawn by the owner at any time.
+///           - On cancellation, users are refunded their net deposit (fee is NOT refunded).
+contract ParimutuelEngine is ReentrancyGuard, Ownable {
+
     // ─── Constants ──────────────────────────────────────────────────────
 
-    uint256 public immutable feeBps;        // e.g. 200 = 2 %
-    uint256 public immutable settlementDelay; // seconds after resolution before claims open
-
+    uint256 public immutable feeBps;
+    uint256 public immutable settlementDelay;
     uint256 private constant BPS_DENOMINATOR = 10_000;
+    uint8  private constant MAX_OUTCOME = 2; // 0 = Yes/Home, 1 = No/Away, 2 = Draw
 
     // ─── External references ────────────────────────────────────────────
 
-    MarketFactory public immutable factory;
+    MarketFactory   public immutable factory;
     CollateralVault public immutable vault;
 
     // ─── Storage ────────────────────────────────────────────────────────
 
-    /// marketId => outcome (0 or 1) => total shares
+    /// marketId => outcome => total net shares in that outcome pool
     mapping(uint256 => mapping(uint8 => uint256)) public totalSharesByOutcome;
 
-    /// marketId => total USDC deposited into the pool
+    /// marketId => total net USDC across all outcomes (fees already excluded)
     mapping(uint256 => uint256) public totalPool;
 
-    /// marketId => user => outcome => shares
+    /// marketId => user => outcome => net shares held
     mapping(uint256 => mapping(address => mapping(uint8 => uint256))) public userShares;
 
     /// marketId => user => true if already claimed
     mapping(uint256 => mapping(address => bool)) public claimed;
+
+    /// marketId => accumulated protocol fees (USDC raw, 6 decimals)
+    mapping(uint256 => uint256) public accumulatedFees;
+
+    /// marketId => true once fees have been withdrawn (prevents double-withdrawal)
+    mapping(uint256 => bool) public feesWithdrawn;
 
     // ─── Events ─────────────────────────────────────────────────────────
 
     event SharesPurchased(
         uint256 indexed marketId,
         address indexed buyer,
-        uint8 outcome,
-        uint256 amount
+        uint8   outcome,
+        uint256 grossAmount,
+        uint256 netShares
     );
     event WinningsClaimed(
         uint256 indexed marketId,
         address indexed claimant,
         uint256 payout
+    );
+    event FeesWithdrawn(
+        uint256 indexed marketId,
+        address indexed to,
+        uint256 amount
     );
 
     // ─── Errors ─────────────────────────────────────────────────────────
@@ -59,6 +80,8 @@ contract ParimutuelEngine is ReentrancyGuard {
     error AlreadyClaimed();
     error NothingToClaim();
     error MarketNotClaimable();
+    error FeesAlreadyWithdrawn();
+    error NoFeesAccumulated();
 
     // ─── Constructor ────────────────────────────────────────────────────
 
@@ -66,42 +89,50 @@ contract ParimutuelEngine is ReentrancyGuard {
         address _factory,
         address _vault,
         uint256 _feeBps,
-        uint256 _settlementDelay
-    ) {
-        factory = MarketFactory(_factory);
-        vault = CollateralVault(_vault);
-        feeBps = _feeBps;
+        uint256 _settlementDelay,
+        address _owner
+    ) Ownable(_owner) {
+        factory        = MarketFactory(_factory);
+        vault          = CollateralVault(_vault);
+        feeBps         = _feeBps;
         settlementDelay = _settlementDelay;
     }
 
     // ─── Trading ────────────────────────────────────────────────────────
 
-    /// @notice Buy shares for a binary outcome. Shares are minted 1:1 with USDC.
+    /// @notice Buy shares for an outcome. Fee taken upfront; net minted as shares.
     /// @param marketId  Market to trade in.
-    /// @param outcome   0 or 1.
-    /// @param amount    USDC amount (6-decimal). msg.sender must have approved the vault.
-    function buyShares(uint256 marketId, uint8 outcome, uint256 amount) external nonReentrant {
-        if (amount == 0) revert ZeroAmount();
-        if (outcome > 1) revert InvalidOutcome();
+    /// @param outcome   0 = Yes/Home, 1 = No/Away, 2 = Draw.
+    /// @param amount    Gross USDC (6-decimal). msg.sender must have approved the vault.
+    function buyShares(
+        uint256 marketId,
+        uint8   outcome,
+        uint256 amount
+    ) external nonReentrant {
+        if (amount == 0)           revert ZeroAmount();
+        if (outcome > MAX_OUTCOME) revert InvalidOutcome();
 
         MarketFactory.MarketStatus status = factory.getMarketStatus(marketId);
         if (status != MarketFactory.MarketStatus.Open) revert MarketNotOpen();
 
-        // Pull USDC from buyer into the vault.
         vault.depositFor(msg.sender, amount);
 
-        // Mint shares 1:1 with USDC deposited.
-        totalSharesByOutcome[marketId][outcome] += amount;
-        totalPool[marketId] += amount;
-        userShares[marketId][msg.sender][outcome] += amount;
+        // Fee taken upfront (rounds UP — protocol's favour).
+        uint256 fee       = (amount * feeBps + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR;
+        uint256 netAmount = amount - fee;
 
-        emit SharesPurchased(marketId, msg.sender, outcome, amount);
+        accumulatedFees[marketId]                          += fee;
+        totalSharesByOutcome[marketId][outcome]            += netAmount;
+        totalPool[marketId]                                += netAmount;
+        userShares[marketId][msg.sender][outcome]          += netAmount;
+
+        emit SharesPurchased(marketId, msg.sender, outcome, amount, netAmount);
     }
 
     // ─── Claiming ───────────────────────────────────────────────────────
 
     /// @notice Claim winnings after resolution + settlement delay, or reclaim
-    ///         deposits if the market was cancelled / had zero winning shares.
+    ///         net deposits on cancellation or zero-winning-pool edge case.
     function claimWinnings(uint256 marketId) external nonReentrant {
         if (claimed[marketId][msg.sender]) revert AlreadyClaimed();
 
@@ -109,33 +140,26 @@ contract ParimutuelEngine is ReentrancyGuard {
         uint256 payout;
 
         if (status == MarketFactory.MarketStatus.Resolved) {
-            // Enforce settlement delay.
             uint256 resolvedAt = factory.getResolvedAt(marketId);
             if (block.timestamp < resolvedAt + settlementDelay) revert MarketNotSettled();
 
-            uint8 winningOutcome = factory.getResolvedOutcome(marketId);
-            uint256 winningPool = totalSharesByOutcome[marketId][winningOutcome];
+            uint8   winningOutcome = factory.getResolvedOutcome(marketId);
+            uint256 winningPool    = totalSharesByOutcome[marketId][winningOutcome];
 
             if (winningPool == 0) {
-                // Edge case: nobody bet on the winning side → full refund, no fee.
-                payout = _userTotalDeposit(marketId, msg.sender);
+                // Edge case: nobody bet on the winning side → refund net deposits.
+                payout = _userNetDeposit(marketId, msg.sender);
             } else {
-                // Normal payout from the pool minus fee.
                 uint256 winnerShares = userShares[marketId][msg.sender][winningOutcome];
                 if (winnerShares == 0) revert NothingToClaim();
 
-                uint256 pool = totalPool[marketId];
-
-                // fee = ceil(pool * feeBps / BPS_DENOMINATOR)  →  rounds UP (protocol's favor)
-                uint256 fee = (pool * feeBps + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR;
-                uint256 netPool = pool - fee;
-
-                // payout = floor(winnerShares * netPool / winningPool)  →  rounds DOWN
-                payout = (winnerShares * netPool) / winningPool;
+                // totalPool is net of fees — no further deduction needed.
+                // payout = floor(winnerShares * totalPool / winningPool)
+                payout = (winnerShares * totalPool[marketId]) / winningPool;
             }
         } else if (status == MarketFactory.MarketStatus.Cancelled) {
-            // Cancelled → full refund of deposits, no fee.
-            payout = _userTotalDeposit(marketId, msg.sender);
+            // Refund net deposit. Fee is non-refundable on cancellation.
+            payout = _userNetDeposit(marketId, msg.sender);
         } else {
             revert MarketNotClaimable();
         }
@@ -148,20 +172,39 @@ contract ParimutuelEngine is ReentrancyGuard {
         emit WinningsClaimed(marketId, msg.sender, payout);
     }
 
+    // ─── Protocol fee withdrawal ─────────────────────────────────────────
+
+    /// @notice Withdraw accumulated protocol fees for a market to `to`.
+    ///         Safe to call at any time after fees have accumulated.
+    ///         Can only be called once per market.
+    function withdrawFees(uint256 marketId, address to) external onlyOwner nonReentrant {
+        if (feesWithdrawn[marketId]) revert FeesAlreadyWithdrawn();
+        uint256 amount = accumulatedFees[marketId];
+        if (amount == 0) revert NoFeesAccumulated();
+
+        feesWithdrawn[marketId] = true;
+        vault.withdrawTo(to, amount);
+
+        emit FeesWithdrawn(marketId, to, amount);
+    }
+
     // ─── View helpers ───────────────────────────────────────────────────
 
     function getUserShares(
         uint256 marketId,
         address user,
-        uint8 outcome
+        uint8   outcome
     ) external view returns (uint256) {
         return userShares[marketId][user][outcome];
     }
 
     // ─── Internal ───────────────────────────────────────────────────────
 
-    /// @dev Sum of shares across both outcomes = user's total USDC deposited.
-    function _userTotalDeposit(uint256 marketId, address user) internal view returns (uint256) {
-        return userShares[marketId][user][0] + userShares[marketId][user][1];
+    /// @dev Sum of net shares across all three outcome slots.
+    function _userNetDeposit(uint256 marketId, address user) internal view returns (uint256) {
+        return
+            userShares[marketId][user][0] +
+            userShares[marketId][user][1] +
+            userShares[marketId][user][2];
     }
 }

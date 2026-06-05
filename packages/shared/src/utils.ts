@@ -1,8 +1,6 @@
 import {
   USDC_DECIMALS,
   ONE_USDC,
-  PLATFORM_FEE_BPS,
-  BPS_DENOMINATOR,
 } from "./constants";
 
 /**
@@ -45,34 +43,27 @@ export function parseUsdc(input: string): bigint {
 
 /**
  * Calculate implied probability (odds) for the YES outcome from pool sizes.
- * Returns a number between 0 and 1. Returns 0.5 if both pools are empty.
+ * Returns a number between 0 and 1. Returns 0.5 (binary) or 1/3 (3-way) if all pools are empty.
  */
-export function calculateImpliedOdds(poolYes: bigint, poolNo: bigint): number {
-  const total = poolYes + poolNo;
-  if (total === 0n) return 0.5;
+export function calculateImpliedOdds(poolYes: bigint, poolNo: bigint, poolDraw = 0n): number {
+  const total = poolYes + poolNo + poolDraw;
+  if (total === 0n) return poolDraw > 0n ? 1 / 3 : 0.5;
   return Number(poolYes) / Number(total);
 }
 
 /**
  * Calculate payout for a winning position.
- * payout = (shares / winningPool) * totalPool * (1 - fee)
- * Multiply before divide. Fee rounds up (in favor of protocol), payout rounds down.
+ * DB pool columns are already NET of fees — do NOT re-deduct fee here.
+ * payout = shares * totalPool / winningPool (floor division)
+ * Multiply before divide to minimise precision loss.
  */
 export function calculatePayout(
   shares: bigint,
   winningPool: bigint,
-  totalPool: bigint
+  totalPool: bigint  // already net of fees
 ): bigint {
   if (winningPool === 0n) return 0n;
-
-  // fee = totalPool * FEE_BPS / BPS_DENOMINATOR, rounded up
-  const fee =
-    (totalPool * PLATFORM_FEE_BPS + BPS_DENOMINATOR - 1n) / BPS_DENOMINATOR;
-
-  const poolAfterFee = totalPool - fee;
-
-  // payout = shares * poolAfterFee / winningPool, rounded down (natural bigint division)
-  return (shares * poolAfterFee) / winningPool;
+  return (shares * totalPool) / winningPool;
 }
 
 /**

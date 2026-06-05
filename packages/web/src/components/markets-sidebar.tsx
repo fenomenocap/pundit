@@ -8,17 +8,24 @@ import { fetchMarkets } from "@/lib/mock-data";
 import type { MarketResponse } from "@/lib/api";
 
 const CATEGORY_COLORS: Record<string, string> = {
-  WORLD_CUP: "bg-amber-500",
-  EPL: "bg-purple-500",
-  LA_LIGA: "bg-pink-500",
+  WORLD_CUP:        "bg-amber-500",
+  PREMIER_LEAGUE:   "bg-purple-500",
+  CHAMPIONS_LEAGUE: "bg-blue-500",
+  EUROPA_LEAGUE:    "bg-orange-500",
+  LA_LIGA:          "bg-pink-500",
+  BUNDESLIGA:       "bg-red-500",
+  SERIE_A:          "bg-sky-500",
+  LIGUE_1:          "bg-indigo-500",
 };
 
-function getAmmPriceSimple(market: MarketResponse): number {
-  const yesRes = Number(BigInt(market.poolYes));
-  const noRes = Number(BigInt(market.poolNo));
-  const total = yesRes + noRes;
-  if (total === 0) return 50;
-  return Math.round((noRes / total) * 100);
+/** Parimutuel implied probability for the first outcome (outcomeA / Yes / Home). */
+function getYesPrice(market: MarketResponse): number {
+  const yes  = Number(BigInt(market.poolYes));
+  const no   = Number(BigInt(market.poolNo));
+  const draw = market.poolDraw ? Number(BigInt(market.poolDraw)) : 0;
+  const total = yes + no + draw;
+  if (total === 0) return market.outcomeC ? 33 : 50;
+  return Math.round((yes / total) * 100);
 }
 
 function getTimeLeftShort(ts: string): string {
@@ -65,7 +72,7 @@ export function MarketsSidebar() {
           <div className="space-y-px p-1">
             {markets.map((m) => {
               const isActive = m.id === id;
-              const price = getAmmPriceSimple(m);
+              const price = getYesPrice(m);
               const catColor = CATEGORY_COLORS[m.category] || "bg-muted";
               const timeLeft = getTimeLeftShort(m.resolutionTimestamp);
 

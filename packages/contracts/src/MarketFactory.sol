@@ -82,9 +82,15 @@ contract MarketFactory is Ownable {
 
     // ─── Resolver-only state mutations ──────────────────────────────────
 
+    error InvalidStatusTransition(MarketStatus current, MarketStatus attempted);
+
     function resolveMarket(uint256 marketId, uint8 outcome) external onlyResolver {
-        MarketData storage m = _markets[marketId];
         _requireExists(marketId);
+        MarketData storage m = _markets[marketId];
+        // Can only resolve an Open or Locked market
+        if (m.status != MarketStatus.Open && m.status != MarketStatus.Locked) {
+            revert InvalidStatusTransition(m.status, MarketStatus.Resolved);
+        }
         m.status = MarketStatus.Resolved;
         m.resolvedOutcome = outcome;
         m.resolvedAt = block.timestamp;
@@ -92,17 +98,30 @@ contract MarketFactory is Ownable {
 
     function pauseMarket(uint256 marketId) external onlyResolver {
         _requireExists(marketId);
-        _markets[marketId].status = MarketStatus.Locked;
+        MarketData storage m = _markets[marketId];
+        if (m.status != MarketStatus.Open) {
+            revert InvalidStatusTransition(m.status, MarketStatus.Locked);
+        }
+        m.status = MarketStatus.Locked;
     }
 
     function unpauseMarket(uint256 marketId) external onlyResolver {
         _requireExists(marketId);
-        _markets[marketId].status = MarketStatus.Open;
+        MarketData storage m = _markets[marketId];
+        if (m.status != MarketStatus.Locked) {
+            revert InvalidStatusTransition(m.status, MarketStatus.Open);
+        }
+        m.status = MarketStatus.Open;
     }
 
     function cancelMarket(uint256 marketId) external onlyResolver {
         _requireExists(marketId);
-        _markets[marketId].status = MarketStatus.Cancelled;
+        MarketData storage m = _markets[marketId];
+        // Can cancel Open or Locked markets only; not already Resolved or Cancelled
+        if (m.status == MarketStatus.Resolved || m.status == MarketStatus.Cancelled) {
+            revert InvalidStatusTransition(m.status, MarketStatus.Cancelled);
+        }
+        m.status = MarketStatus.Cancelled;
     }
 
     // ─── View helpers ───────────────────────────────────────────────────

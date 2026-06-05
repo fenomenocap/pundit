@@ -7,9 +7,15 @@ import { getTeamLogo } from "@/lib/team-logos";
 import type { MarketResponse } from "@/lib/api";
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
-  WORLD_CUP: { label: "World Cup", color: "bg-amber-500/15 text-amber-400 border-amber-500/25" },
-  EPL: { label: "Premier League", color: "bg-purple-500/15 text-purple-400 border-purple-500/25" },
-  LA_LIGA: { label: "La Liga", color: "bg-pink-500/15 text-pink-400 border-pink-500/25" },
+  WORLD_CUP:        { label: "World Cup",        color: "bg-amber-500/15 text-amber-400 border-amber-500/25" },
+  PREMIER_LEAGUE:   { label: "Premier League",   color: "bg-purple-500/15 text-purple-400 border-purple-500/25" },
+  CHAMPIONS_LEAGUE: { label: "Champions League", color: "bg-blue-500/15 text-blue-400 border-blue-500/25" },
+  EUROPA_LEAGUE:    { label: "Europa League",    color: "bg-orange-500/15 text-orange-400 border-orange-500/25" },
+  LA_LIGA:          { label: "La Liga",          color: "bg-pink-500/15 text-pink-400 border-pink-500/25" },
+  BUNDESLIGA:       { label: "Bundesliga",       color: "bg-red-500/15 text-red-400 border-red-500/25" },
+  SERIE_A:          { label: "Serie A",          color: "bg-sky-500/15 text-sky-400 border-sky-500/25" },
+  LIGUE_1:          { label: "Ligue 1",          color: "bg-indigo-500/15 text-indigo-400 border-indigo-500/25" },
+  OTHER:            { label: "Other",            color: "bg-muted text-muted-foreground border-border" },
 };
 
 function formatUsdcPool(raw: string): string {
@@ -47,29 +53,33 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
     return () => clearInterval(interval);
   }, [market.resolutionTimestamp]);
 
-  // AMM pricing
-  const yesRes = BigInt(market.poolYes);
-  const noRes = BigInt(market.poolNo);
+  // Parimutuel pricing: P(outcome) = pool[outcome] / totalPool
+  const yesRes  = BigInt(market.poolYes);
+  const noRes   = BigInt(market.poolNo);
   const drawRes = market.poolDraw ? BigInt(market.poolDraw) : 0n;
-  const total = yesRes + noRes + drawRes;
+  const total   = yesRes + noRes + drawRes;
   const hasDraw = !!market.outcomeC;
 
   let pctYes: number, pctNo: number, pctDraw: number;
-
-  if (hasDraw && total > 0n) {
-    const reserves = [Number(yesRes), Number(noRes), Number(drawRes)];
-    const products = reserves.map((_, i) => {
-      const others = reserves.filter((__, j) => j !== i);
-      return others.reduce((a, b) => a * b, 1);
-    });
-    const sumProducts = products.reduce((a, b) => a + b, 0);
-    pctYes = sumProducts > 0 ? (products[0] / sumProducts) * 100 : 33;
-    pctNo = sumProducts > 0 ? (products[1] / sumProducts) * 100 : 33;
-    pctDraw = sumProducts > 0 ? (products[2] / sumProducts) * 100 : 34;
+  if (total > 0n) {
+    pctYes  = Number(yesRes  * 10000n / total) / 100;
+    pctNo   = Number(noRes   * 10000n / total) / 100;
+    pctDraw = hasDraw ? Number(drawRes * 10000n / total) / 100 : 0;
   } else {
-    pctYes = total > 0n ? Number((noRes * 10000n) / total) / 100 : 50;
-    pctNo = total > 0n ? 100 - pctYes : 50;
-    pctDraw = 0;
+    pctYes  = hasDraw ? 33 : 50;
+    pctNo   = hasDraw ? 33 : 50;
+    pctDraw = hasDraw ? 34 : 0;
+  }
+
+  // Multiplier: payout ratio for the most underbacked outcome
+  let maxMultiplier: number | null = null;
+  if (total > 0n) {
+    const pools = hasDraw ? [yesRes, noRes, drawRes] : [yesRes, noRes];
+    const nonZero = pools.filter((p) => p > 0n);
+    if (nonZero.length > 0) {
+      const smallest = nonZero.reduce((a, b) => (a < b ? a : b));
+      maxMultiplier = Number((total * 100n) / smallest) / 100;
+    }
   }
 
   const cat = CATEGORY_CONFIG[market.category] || {
@@ -80,6 +90,13 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
   return (
     <Link href={`/market/${market.id}`} className="group block">
       <div className="relative flex h-full flex-col rounded-lg border border-border bg-card p-4 transition-all duration-200 group-hover:border-cyan-500/30 group-hover:bg-secondary">
+        {/* Multiplier badge */}
+        {maxMultiplier !== null && maxMultiplier >= 1.5 && (
+          <span className="absolute right-3 top-3 rounded bg-cyan-500/15 px-2 py-0.5 text-[10px] font-bold text-cyan-400">
+            Up to {maxMultiplier.toFixed(1)}x
+          </span>
+        )}
+
         {/* Category badge */}
         <span
           className={cn(

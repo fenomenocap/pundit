@@ -61,12 +61,14 @@ describe("Integration: full lifecycle", function () {
       usdc(1000)
     );
 
-    // Pool state
-    expect(await engine.totalPool(0n)).to.equal(usdc(1000));
-    expect(await engine.totalSharesByOutcome(0n, 0)).to.equal(usdc(500));
-    expect(await engine.totalSharesByOutcome(0n, 1)).to.equal(usdc(500));
+    // Pool state — tracks net shares (after per-trade 2% fee)
+    // Alice 300 gross → net 294; Bob 200 → net 196; Charlie 500 → net 490
+    expect(await engine.totalPool(0n)).to.equal(980_000_000n);
+    expect(await engine.totalSharesByOutcome(0n, 0)).to.equal(490_000_000n); // YES net
+    expect(await engine.totalSharesByOutcome(0n, 1)).to.equal(490_000_000n); // NO net
 
     // ── Step 4: Resolve — Brazil wins (outcome 0) ───────────────────
+    await time.increase(86401); // market resolves in 24h; warp past it
     await resolver.resolve(0n, 0);
     expect((await factory.getMarket(0n)).status).to.equal(2); // Resolved
     expect(await factory.getResolvedOutcome(0n)).to.equal(0);
