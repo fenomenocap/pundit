@@ -1,7 +1,7 @@
 // ─── Polymarket Gamma API Integration ────────────────────────────────────────
 //
 // Public API, no auth required.
-// Fetches FIFA World Cup 2026 markets and caches them in-memory.
+// Fetches FIFA World Cup 2026 outright winner + group winner markets.
 // Refreshes every 6 hours via cron.
 //
 // Docs: https://docs.polymarket.com/#gamma-markets-api
@@ -10,20 +10,25 @@ const GAMMA_BASE = "https://gamma-api.polymarket.com";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+export type PolymarketMarketType = "outright" | "group";
+
 export interface PolymarketMarket {
-  id: string;           // Polymarket market/condition ID
+  id: string;
   question: string;
-  outcomes: string[];   // e.g. ["Yes","No"] or ["Brazil","France","Draw"]
-  outcomePrices: number[]; // implied probabilities 0–1
-  liquidity: number;    // USDC
-  volume: number;       // USDC
-  endDate: string;      // ISO — use as resolution timestamp hint
+  outcomes: string[];
+  outcomePrices: number[];
+  liquidity: number;
+  volume: number;
+  endDate: string;
   resolved: boolean;
   active: boolean;
+  type: PolymarketMarketType;
+  group?: string; // e.g. "A", "B", … for group winner markets
 }
 
 interface PolymarketCache {
-  wcMarkets: PolymarketMarket[];
+  wcMarkets: PolymarketMarket[];      // outright winner markets (Will X win WC?)
+  groupMarkets: PolymarketMarket[];   // group winner markets (Will X win Group Y?)
   lastUpdated: Date | null;
   error: string | null;
 }
@@ -32,15 +37,16 @@ interface PolymarketCache {
 
 const WC_KEYWORDS = ["world cup", "fifa", "wc 2026", "2026 world cup"];
 
-function isWCMarket(question: string): boolean {
-  const q = question.toLowerCase();
-  return WC_KEYWORDS.some((kw) => q.includes(kw));
+function isWCRelated(text: string): boolean {
+  const t = text.toLowerCase();
+  return WC_KEYWORDS.some((kw) => t.includes(kw));
 }
 
 // ─── Cache ──────────────────────────────────────────────────────────────────
 
 const cache: PolymarketCache = {
   wcMarkets: [],
+  groupMarkets: [],
   lastUpdated: null,
   error: null,
 };
@@ -69,7 +75,7 @@ function parseNumberArray(raw: unknown): number[] {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseMarket(m: any): PolymarketMarket | null {
+function parseMarket(m: any, type: PolymarketMarketType, group?: string): PolymarketMarket | null {
   const question: string = m.question || m.title || "";
   if (!question) return null;
 
@@ -86,6 +92,8 @@ function parseMarket(m: any): PolymarketMarket | null {
     endDate: m.endDate || m.end_date_iso || "",
     resolved: Boolean(m.resolved),
     active: Boolean(m.active),
+    type,
+    ...(group ? { group } : {}),
   };
 }
 
@@ -104,25 +112,59 @@ async function gammaFetch<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function fetchWCMarkets(): Promise<PolymarketMarket[]> {
-  // Fetch active soccer markets from Gamma API
+// Fetch outright "Will X win the WC?" markets from the /markets endpoint
+async function fetchOutrightMarkets(): Promise<PolymarketMarket[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = await gammaFetch<any[]>(
     "/markets?tag_slug=sports&active=true&closed=false&limit=200"
   );
 
   const markets: PolymarketMarket[] = [];
-
   for (const raw of Array.isArray(data) ? data : []) {
     const question: string = raw.question || raw.title || "";
-    if (!isWCMarket(question)) continue;
+    if (!isWCRelated(question)) continue;
+    // Skip group winner markets — those come from the events endpoint
+    if (/win group [a-l]/i.test(question)) continue;
 
-    const parsed = parseMarket(raw);
+    const parsed = parseMarket(raw, "outright");
     if (parsed) markets.push(parsed);
   }
 
-  // Sort by liquidity descending so highest-liquidity WC markets are first
   return markets.sort((a, b) => b.liquidity - a.liquidity);
+}
+
+// Fetch "Will X win Group Y?" markets from the /events endpoint
+async function fetchGroupMarkets(): Promise<PolymarketMarket[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const events = await gammaFetch<any[]>(
+    "/events?tag_slug=sports&active=true&closed=false&limit=100"
+  );
+
+  const markets: PolymarketMarket[] = [];
+
+  for (const event of Array.isArray(events) ? events : []) {
+    const title: string = event.title || event.name || "";
+    // Match "World Cup Group X Winner" events
+    const groupMatch = title.match(/world cup group ([a-l]) winner/i);
+    if (!groupMatch) continue;
+    const group = groupMatch[1].toUpperCase();
+
+    for (const m of Array.isArray(event.markets) ? event.markets : []) {
+      const question: string = m.question || "";
+      if (!isWCRelated(question)) continue;
+      // Skip the "another team" catch-all options
+      if (/another team/i.test(question)) continue;
+
+      const parsed = parseMarket(m, "group", group);
+      if (parsed) markets.push(parsed);
+    }
+  }
+
+  // Sort: by group letter, then by outcomePrices[0] (Yes probability) descending
+  return markets.sort((a, b) => {
+    if (a.group !== b.group) return (a.group ?? "").localeCompare(b.group ?? "");
+    return (b.outcomePrices[0] ?? 0) - (a.outcomePrices[0] ?? 0);
+  });
 }
 
 // ─── Refresh ─────────────────────────────────────────────────────────────────
@@ -131,16 +173,22 @@ export async function refreshPolymarketData(): Promise<void> {
   console.log("[Polymarket] Refreshing WC markets from Gamma API...");
 
   try {
-    const wcMarkets = await fetchWCMarkets();
+    const [wcMarkets, groupMarkets] = await Promise.all([
+      fetchOutrightMarkets(),
+      fetchGroupMarkets(),
+    ]);
+
     cache.wcMarkets = wcMarkets;
+    cache.groupMarkets = groupMarkets;
     cache.lastUpdated = new Date();
     cache.error = null;
-    console.log(`[Polymarket] ${wcMarkets.length} WC markets cached.`);
+    console.log(
+      `[Polymarket] ${wcMarkets.length} outright + ${groupMarkets.length} group winner markets cached.`
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     cache.error = msg;
     console.error(`[Polymarket] Refresh error: ${msg}`);
-    // Keep stale data in cache — better than nothing
   }
 }
 

@@ -244,7 +244,9 @@ export interface PolymarketMarket {
   endDate: string;
   resolved: boolean;
   active: boolean;
-  onchainMarketId?: string; // set when linked to our on-chain market detail page
+  type?: "outright" | "group";
+  group?: string | null;    // "A"–"L" for group winner markets
+  onchainMarketId?: string;
 }
 
 export async function getPolymarketMarkets(): Promise<{
@@ -253,6 +255,15 @@ export async function getPolymarketMarkets(): Promise<{
 }> {
   return apiFetch<{ markets: PolymarketMarket[]; lastUpdated: string | null }>(
     "/api/polymarkets/wc"
+  );
+}
+
+export async function getPolymarketGroupMarkets(): Promise<{
+  markets: PolymarketMarket[];
+  lastUpdated: string | null;
+}> {
+  return apiFetch<{ markets: PolymarketMarket[]; lastUpdated: string | null }>(
+    "/api/polymarkets/groups"
   );
 }
 
