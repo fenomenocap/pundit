@@ -12,7 +12,7 @@ import { startPolymarketCron } from "./services/polymarket-data";
 import { prisma } from "./db";
 
 const app = express();
-const port = process.env.API_PORT || 3001;
+const port = process.env.PORT || process.env.API_PORT || 3001;
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 

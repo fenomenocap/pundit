@@ -114,7 +114,7 @@ export default function MarketsPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetchMarkets({ category: category === "ALL" ? undefined : category, sort: "volume" })
+    fetchMarkets({ category: category === "ALL" ? undefined : category, sort: "closing_soon", limit: 100 })
       .then((res) => setMarkets(res.markets))
       .finally(() => setLoading(false));
   }, [category]);

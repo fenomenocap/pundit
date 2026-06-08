@@ -7,3 +7,8 @@ dist/
 out/
 cache/
 broadcast/
+
+# Vercel / local tooling
+.vercel
+.DS_Store
+.claude/
