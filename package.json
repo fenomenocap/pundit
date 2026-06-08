@@ -11,5 +11,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "next": "14.2.35"
   }
 }
