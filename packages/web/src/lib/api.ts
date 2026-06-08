@@ -22,6 +22,7 @@ export interface MarketResponse {
   resolutionTimestamp: string;
   createdAt: string;
   updatedAt: string;
+  polymarketOdds?: { outcomes: string[]; prices: number[] } | null;
 }
 
 export interface MarketDetailResponse extends MarketResponse {

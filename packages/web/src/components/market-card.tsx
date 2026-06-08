@@ -60,11 +60,19 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
   const total   = yesRes + noRes + drawRes;
   const hasDraw = !!market.outcomeC;
 
+  // When pools are empty, fall back to Polymarket reference odds if linked
+  const po = total === 0n ? market.polymarketOdds : null;
+  const showingRefOdds = !!po;
+
   let pctYes: number, pctNo: number, pctDraw: number;
   if (total > 0n) {
     pctYes  = Number(yesRes  * 10000n / total) / 100;
     pctNo   = Number(noRes   * 10000n / total) / 100;
     pctDraw = hasDraw ? Number(drawRes * 10000n / total) / 100 : 0;
+  } else if (po) {
+    pctYes  = Math.round((po.prices[0] ?? 0) * 1000) / 10;
+    pctNo   = Math.round((po.prices[1] ?? 0) * 1000) / 10;
+    pctDraw = hasDraw ? Math.round((po.prices[2] ?? 0) * 1000) / 10 : 0;
   } else {
     pctYes  = hasDraw ? 33 : 50;
     pctNo   = hasDraw ? 33 : 50;
@@ -129,7 +137,7 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
 
         <div className="mt-auto" />
 
-        {/* Outcome rows with AMM prices */}
+        {/* Outcome rows with prices */}
         <div className="mb-3 space-y-1.5">
           {hasDraw ? (
             <div className="flex items-center justify-between text-xs gap-1.5">
@@ -147,7 +155,12 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
             <div className="flex items-center justify-between text-xs">
               <span className="text-foreground">{market.outcomeA}</span>
               <div className="flex items-center gap-2">
-                <span className="rounded bg-cyan-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-400">
+                <span className={cn(
+                  "rounded px-2.5 py-0.5 text-[11px] font-semibold",
+                  showingRefOdds
+                    ? "bg-purple-500/15 text-purple-400"
+                    : "bg-cyan-500/15 text-cyan-400"
+                )}>
                   Yes {Math.round(pctYes)}&cent;
                 </span>
                 <span className="rounded bg-pink-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-pink-400">
@@ -155,6 +168,11 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
                 </span>
               </div>
             </div>
+          )}
+          {showingRefOdds && (
+            <p className="text-[9px] text-purple-400/70 text-right">
+              Polymarket consensus · no trades yet
+            </p>
           )}
         </div>
 
