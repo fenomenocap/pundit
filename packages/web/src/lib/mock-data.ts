@@ -572,11 +572,16 @@ const MOCK_POLYMARKET_MARKETS: PolymarketMarket[] = [
 export async function fetchPolymarketMarkets(): Promise<PolymarketMarket[]> {
   if (!USE_MOCK) {
     try {
-      const { getPolymarketMarkets } = await import("./api");
-      const data = await getPolymarketMarkets();
-      return data.markets ?? [];
+      const { getPolymarketMarkets, getPolymarketGroupMarkets } = await import("./api");
+      const [outright, groups] = await Promise.all([
+        getPolymarketMarkets(),
+        getPolymarketGroupMarkets(),
+      ]);
+      // Interleave: show a mix of outright and group winner markets, sorted by liquidity
+      return [...(outright.markets ?? []), ...(groups.markets ?? [])]
+        .sort((a, b) => b.liquidity - a.liquidity);
     } catch {
-      return []; // API down — caller hides the section gracefully
+      return [];
     }
   }
   return MOCK_POLYMARKET_MARKETS;

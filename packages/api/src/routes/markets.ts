@@ -62,9 +62,12 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       prisma.market.count({ where }),
     ]);
 
-    // Enrich with Polymarket reference odds from in-memory cache
-    const { wcMarkets } = getCachedPolymarketMarkets();
-    const polyById = new Map(wcMarkets.map((m) => [m.id, m]));
+    // Enrich with Polymarket reference odds from in-memory cache (outright + group winner)
+    const { wcMarkets, groupMarkets } = getCachedPolymarketMarkets();
+    const polyById = new Map([
+      ...wcMarkets.map((m) => [m.id, m] as const),
+      ...groupMarkets.map((m) => [m.id, m] as const),
+    ]);
 
     res.json({
       markets: markets.map((m) => {
