@@ -267,6 +267,52 @@ export async function getPolymarketGroupMarkets(): Promise<{
   );
 }
 
+// ─── worldcup-model types + endpoints (reference only, not tradeable) ───────
+
+export interface ModelTeamProbability {
+  team: string;
+  winProb: number;    // 0–1
+  sfProb: number;     // 0–1
+  qfProb: number;     // 0–1
+  marketPrice: number; // 0–1
+  edge: number;        // winProb - marketPrice
+}
+
+export interface ModelFixture {
+  date: string;
+  group: string | null;
+  stage: string;
+  home: string;
+  away: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  stakePHome: number | null;
+  stakePDraw: number | null;
+  stakePAway: number | null;
+  result: { homeScore: number; awayScore: number; status: string } | null;
+}
+
+export async function getModelWcProbabilities(): Promise<{
+  teams: ModelTeamProbability[];
+  lastUpdated: string | null;
+  error: string | null;
+}> {
+  return apiFetch<{ teams: ModelTeamProbability[]; lastUpdated: string | null; error: string | null }>(
+    "/api/model/wc"
+  );
+}
+
+export async function getModelFixtures(): Promise<{
+  fixtures: ModelFixture[];
+  lastUpdated: string | null;
+  error: string | null;
+}> {
+  return apiFetch<{ fixtures: ModelFixture[]; lastUpdated: string | null; error: string | null }>(
+    "/api/model/fixtures"
+  );
+}
+
 // ─── Health ─────────────────────────────────────────────────────────────────
 
 export async function getHealth() {
