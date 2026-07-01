@@ -11,7 +11,9 @@ export default function ModelPage() {
   }, []);
 
   return (
-    <div className="flex flex-1 flex-col">
+    // main/footer aren't a flex-height chain, so flex-1 alone won't size the
+    // iframe — pin an explicit height (navbar 44px + this toolbar ~31px + footer ~33px).
+    <div className="flex h-[calc(100vh-108px)] flex-col">
       {/* Toolbar */}
       <div className="flex items-center gap-3 border-b border-border px-4 py-2">
         <span className="rounded border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400">
@@ -26,7 +28,7 @@ export default function ModelPage() {
       <iframe
         src={MODEL_URL}
         title="2026 FIFA World Cup Model"
-        className="flex-1 border-0"
+        className="w-full flex-1 border-0"
       />
     </div>
   );
