@@ -1,5 +1,5 @@
 {
   "framework": "nextjs",
   "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "pnpm build"
+  "buildCommand": "cd ../.. && pnpm --filter @sports-predict/shared build && cd packages/web && next build"
 }
