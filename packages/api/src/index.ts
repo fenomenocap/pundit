@@ -8,7 +8,9 @@ import userRoutes from "./routes/users";
 import leaderboardRoutes from "./routes/leaderboard";
 import matchRoutes from "./routes/matches";
 import polymarketRoutes from "./routes/polymarkets";
+import modelRoutes from "./routes/model";
 import { startPolymarketCron } from "./services/polymarket-data";
+import { startModelCron } from "./services/model-data";
 import { prisma } from "./db";
 
 const app = express();
@@ -47,6 +49,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/polymarkets", polymarketRoutes);
+app.use("/api/model", modelRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 
@@ -59,4 +62,7 @@ app.listen(port, () => {
 
   // Start Polymarket cron — fetches WC 2026 markets and reference odds every 6 hours
   startPolymarketCron();
+
+  // Start worldcup-model cron — fetches Elo/Poisson win probabilities every 6 hours
+  startModelCron();
 });
