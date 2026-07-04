@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { memo, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getTeamLogo } from "@/lib/team-logos";
+import { getTeamLogo, getTeamColor } from "@/lib/team-logos";
 import type { MarketResponse } from "@/lib/api";
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
@@ -95,20 +95,30 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
     color: "bg-muted text-muted-foreground border-border",
   };
 
+  const accentColor = getTeamColor(market.teamA) !== "#64748B" ? getTeamColor(market.teamA) : null;
+
   return (
     <Link href={`/market/${market.id}`} className="group block">
-      <div className="relative flex h-full flex-col rounded-lg border border-border bg-card p-4 transition-all duration-200 group-hover:border-cyan-500/30 group-hover:bg-secondary">
+      <div
+        className="relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card p-4 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-cyan-500/40 group-hover:bg-secondary group-hover:shadow-[0_0_24px_-8px_rgba(34,211,238,0.35)]"
+      >
+        {/* Team-color accent bar */}
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: accentColor ?? "linear-gradient(90deg, #22d3ee, #ec4899)" }}
+        />
+
         {/* Multiplier badge */}
         {maxMultiplier !== null && maxMultiplier >= 1.5 && (
-          <span className="absolute right-3 top-3 rounded bg-cyan-500/15 px-2 py-0.5 text-[10px] font-bold text-cyan-400">
-            Up to {maxMultiplier.toFixed(1)}x
+          <span className="absolute right-3 top-4 rounded-full bg-cyan-500/15 px-2.5 py-1 text-[10px] font-black text-cyan-400">
+            UP TO {maxMultiplier.toFixed(1)}x
           </span>
         )}
 
         {/* Category badge */}
         <span
           className={cn(
-            "mb-3 inline-flex w-fit items-center rounded border px-2 py-0.5 text-[10px] font-medium",
+            "mb-3 mt-1 inline-flex w-fit items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
             cat.color
           )}
         >
@@ -117,13 +127,13 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
 
         {/* Team logos */}
         {(market.teamA || market.teamB) && (
-          <div className="mb-2 flex items-center gap-2 text-base">
+          <div className="mb-2 flex items-center gap-2.5 text-2xl">
             {market.teamA && getTeamLogo(market.teamA) && (
               <span title={market.teamA}>{getTeamLogo(market.teamA)}</span>
             )}
             {market.teamB && getTeamLogo(market.teamB) && (
               <>
-                <span className="text-[10px] text-muted-foreground">vs</span>
+                <span className="text-[10px] font-bold uppercase text-muted-foreground">vs</span>
                 <span title={market.teamB}>{getTeamLogo(market.teamB)}</span>
               </>
             )}
@@ -131,7 +141,7 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
         )}
 
         {/* Question */}
-        <h3 className="mb-4 line-clamp-2 text-sm font-semibold leading-snug text-foreground group-hover:text-cyan-400">
+        <h3 className="mb-4 line-clamp-2 font-heading text-sm font-bold leading-snug text-foreground group-hover:text-cyan-400">
           {market.question}
         </h3>
 
@@ -140,30 +150,30 @@ export const MarketCard = memo(function MarketCard({ market }: MarketCardProps) 
         {/* Outcome rows with prices */}
         <div className="mb-3 space-y-1.5">
           {hasDraw ? (
-            <div className="flex items-center justify-between text-xs gap-1.5">
-              <span className="rounded bg-cyan-500/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-400 truncate">
+            <div className="flex items-center justify-between gap-1.5 text-xs">
+              <span className="rounded-lg bg-cyan-500/15 px-2.5 py-1 text-xs font-black text-cyan-400 truncate">
                 {market.outcomeA} {Math.round(pctYes)}&cent;
               </span>
-              <span className="rounded bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-400 truncate">
+              <span className="rounded-lg bg-amber-500/15 px-2.5 py-1 text-xs font-black text-amber-400 truncate">
                 {market.outcomeC} {Math.round(pctDraw)}&cent;
               </span>
-              <span className="rounded bg-pink-500/15 px-2 py-0.5 text-[11px] font-semibold text-pink-400 truncate">
+              <span className="rounded-lg bg-pink-500/15 px-2.5 py-1 text-xs font-black text-pink-400 truncate">
                 {market.outcomeB} {Math.round(pctNo)}&cent;
               </span>
             </div>
           ) : (
             <div className="flex items-center justify-between text-xs">
-              <span className="text-foreground">{market.outcomeA}</span>
+              <span className="font-semibold text-foreground">{market.outcomeA}</span>
               <div className="flex items-center gap-2">
                 <span className={cn(
-                  "rounded px-2.5 py-0.5 text-[11px] font-semibold",
+                  "rounded-lg px-3 py-1 text-xs font-black",
                   showingRefOdds
                     ? "bg-purple-500/15 text-purple-400"
                     : "bg-cyan-500/15 text-cyan-400"
                 )}>
                   Yes {Math.round(pctYes)}&cent;
                 </span>
-                <span className="rounded bg-pink-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-pink-400">
+                <span className="rounded-lg bg-pink-500/15 px-3 py-1 text-xs font-black text-pink-400">
                   No {Math.round(pctNo)}&cent;
                 </span>
               </div>

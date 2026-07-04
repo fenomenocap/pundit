@@ -121,25 +121,27 @@ export default function PortfolioPage() {
   return (
     <div className="flex flex-1 flex-col">
       {/* Summary strip */}
-      <div className="flex items-center gap-6 border-b border-border px-4 py-2 text-[11px]">
-        <span className="text-muted-foreground">
-          Invested <span className="font-mono text-foreground">{formatUsdc(portfolio.summary.totalInvested)}</span>
-        </span>
-        <span className="text-muted-foreground">
-          P&L{" "}
-          <span className={cn("font-mono", totalPnL > 0n ? "text-cyan-400" : totalPnL < 0n ? "text-pink-400" : "text-foreground")}>
+      <div className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-4">
+        <div className="bg-card px-4 py-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Invested</p>
+          <p className="mt-0.5 font-mono text-lg font-black text-foreground">{formatUsdc(portfolio.summary.totalInvested)}</p>
+        </div>
+        <div className="bg-card px-4 py-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">P&amp;L</p>
+          <p className={cn("mt-0.5 font-mono text-lg font-black", totalPnL > 0n ? "text-cyan-400" : totalPnL < 0n ? "text-pink-400" : "text-foreground")}>
             {formatUsdcSigned(totalPnL.toString())}
-          </span>
-        </span>
-        <span className="text-muted-foreground">
-          Claimable{" "}
-          <span className={cn("font-mono", BigInt(portfolio.summary.totalClaimable) > 0n ? "text-amber-400" : "text-foreground")}>
+          </p>
+        </div>
+        <div className="bg-card px-4 py-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Claimable</p>
+          <p className={cn("mt-0.5 font-mono text-lg font-black", BigInt(portfolio.summary.totalClaimable) > 0n ? "text-amber-400" : "text-foreground")}>
             {formatUsdc(portfolio.summary.totalClaimable)}
-          </span>
-        </span>
-        <span className="text-muted-foreground">
-          Positions <span className="font-mono text-foreground">{activePositions.length}</span>
-        </span>
+          </p>
+        </div>
+        <div className="bg-card px-4 py-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Positions</p>
+          <p className="mt-0.5 font-mono text-lg font-black text-foreground">{activePositions.length}</p>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -147,14 +149,14 @@ export default function PortfolioPage() {
         {claimablePositions.length > 0 && (
           <div className="border-b border-border">
             <div className="flex items-center justify-between px-4 py-1.5">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-amber-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
                 Claimable Winnings
               </span>
               {claimablePositions.length > 1 && (
                 <button
                   onClick={handleClaimAll}
                   disabled={isClaiming}
-                  className="rounded bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400 hover:bg-amber-500/25 disabled:opacity-50"
+                  className="rounded-full bg-amber-500/15 px-2.5 py-1 text-[10px] font-bold text-amber-400 hover:bg-amber-500/25 disabled:opacity-50"
                 >
                   {isClaiming ? "Claiming..." : "Claim All"}
                 </button>
@@ -186,7 +188,7 @@ export default function PortfolioPage() {
                         <button
                           onClick={() => handleClaim(pos.onchainId)}
                           disabled={isClaiming}
-                          className="rounded bg-amber-500 px-2 py-0.5 text-[10px] font-semibold text-black hover:bg-amber-400 disabled:opacity-50"
+                          className="rounded-full bg-amber-500 px-2.5 py-1 text-[10px] font-black text-black hover:bg-amber-400 disabled:opacity-50"
                         >
                           {isClaiming ? "..." : "Claim"}
                         </button>
@@ -202,7 +204,7 @@ export default function PortfolioPage() {
 
         {/* Active positions table */}
         <div>
-          <div className="px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Active Positions
           </div>
           {activePositions.length === 0 ? (
@@ -297,7 +299,7 @@ function TradeHistory({ walletAddress }: { walletAddress?: string }) {
 
   return (
     <div className="border-t border-border">
-      <div className="px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
         Trade History
       </div>
 

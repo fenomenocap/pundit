@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Orderbook } from "./orderbook";
+import { PoolBreakdown } from "./pool-breakdown";
 import type { MarketResponse, TradeResponse } from "@/lib/api";
 
 type OutcomeIndex = 0 | 1 | 2;
@@ -40,40 +40,16 @@ function getParimutuelPrice(market: MarketResponse, outcome: OutcomeIndex): numb
 }
 
 export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: OutcomeDetailProps) {
-  const [tab, setTab] = useState<"orderbook" | "trades">("orderbook");
+  const [tab, setTab] = useState<"pool" | "trades">("pool");
 
   const name = getOutcomeName(market, outcome);
   const color = getOutcomeColor(outcome);
   const price = getParimutuelPrice(market, outcome);
 
-  const outcomeTrades = useMemo(
+  const displayTrades = useMemo(
     () => trades.filter((t) => t.outcome === outcome),
     [trades, outcome]
   );
-
-  const displayTrades = useMemo(() => {
-    if (outcomeTrades.length > 0) return outcomeTrades;
-
-    const now = Date.now();
-    const mock: TradeResponse[] = [];
-    for (let i = 0; i < 12; i++) {
-      const grossAmount = Math.round((10 + Math.random() * 200) * 1_000_000);
-      // netShares = grossAmount after 2% fee
-      const netShares = Math.round(grossAmount * 0.98);
-      mock.push({
-        id: `mock-${outcome}-${i}`,
-        marketId: market.id,
-        userAddress: `0x${Math.random().toString(16).slice(2, 10)}${"0".repeat(32)}`.slice(0, 42),
-        outcome,
-        grossAmount: String(grossAmount),
-        netShares: String(netShares),
-        txHash: `0x${Math.random().toString(16).slice(2)}`,
-        blockNumber: 1000000 + i,
-        timestamp: new Date(now - i * 300_000 - Math.random() * 600_000).toISOString(),
-      });
-    }
-    return mock;
-  }, [outcomeTrades, outcome, market.id, price]);
 
   // Full-height embedded mode for the terminal layout
   if (embedded) {
@@ -88,7 +64,7 @@ export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: Ou
 
         {/* Tabs */}
         <div className="flex border-b border-border">
-          {(["orderbook", "trades"] as const).map((t) => (
+          {(["pool", "trades"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -99,15 +75,15 @@ export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: Ou
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {t === "orderbook" ? "Order Book" : "Trades"}
+              {t === "pool" ? "Pool" : "Trades"}
             </button>
           ))}
         </div>
 
         {/* Content fills remaining space */}
         <div className="flex-1 overflow-auto">
-          {tab === "orderbook" && (
-            <Orderbook market={market} outcome={outcome} />
+          {tab === "pool" && (
+            <PoolBreakdown market={market} />
           )}
 
           {tab === "trades" && (
@@ -178,7 +154,7 @@ export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: Ou
 
       {/* Tab bar */}
       <div className="flex border-b border-border">
-        {(["orderbook", "trades"] as const).map((t) => (
+        {(["pool", "trades"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -189,15 +165,15 @@ export function OutcomeDetail({ market, outcome, trades, onClose, embedded }: Ou
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            {t === "orderbook" ? "Order Book" : "Trades"}
+            {t === "pool" ? "Pool" : "Trades"}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
       <div className="max-h-[420px] overflow-auto">
-        {tab === "orderbook" && (
-          <Orderbook market={market} outcome={outcome} />
+        {tab === "pool" && (
+          <PoolBreakdown market={market} />
         )}
 
         {tab === "trades" && (

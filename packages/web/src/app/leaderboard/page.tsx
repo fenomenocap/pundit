@@ -76,16 +76,16 @@ export default function LeaderboardPage() {
     <div className="flex flex-1 flex-col">
       {/* Toolbar */}
       <div className="flex items-center gap-3 border-b border-border px-4 py-2">
-        <div className="flex gap-0.5">
+        <div className="flex gap-1">
           {PERIODS.map((p) => (
             <button
               key={p.key}
               onClick={() => setPeriod(p.key)}
               className={cn(
-                "rounded px-2 py-1 text-[11px] font-medium transition-colors",
+                "rounded-full px-3 py-1.5 text-xs font-bold transition-colors",
                 period === p.key
                   ? "bg-cyan-500/15 text-cyan-400"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
               )}
             >
               {p.label}
@@ -154,9 +154,9 @@ export default function LeaderboardPage() {
                     <td className="px-4 py-2">
                       <span className={cn(
                         "font-mono",
-                        entry.rank <= 3 ? "font-semibold text-amber-400" : "text-muted-foreground"
+                        entry.rank <= 3 ? "text-base font-black text-amber-400" : "text-muted-foreground"
                       )}>
-                        {entry.rank}
+                        {entry.rank === 1 ? "\u{1F947}" : entry.rank === 2 ? "\u{1F948}" : entry.rank === 3 ? "\u{1F949}" : entry.rank}
                       </span>
                     </td>
                     <td className="px-3 py-2">
@@ -164,14 +164,14 @@ export default function LeaderboardPage() {
                         {shortenAddress(entry.address)}
                       </span>
                       {isMe && (
-                        <span className="ml-1.5 rounded bg-cyan-500/15 px-1 py-0.5 text-[9px] font-medium text-cyan-400">
+                        <span className="ml-1.5 rounded-full bg-cyan-500/15 px-1.5 py-0.5 text-[9px] font-bold text-cyan-400">
                           YOU
                         </span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
                       <span className={cn(
-                        "font-mono font-medium",
+                        "font-mono font-black",
                         profit.positive ? "text-cyan-400" : profit.zero ? "text-muted-foreground" : "text-pink-400"
                       )}>
                         {profit.text}
