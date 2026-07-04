@@ -11,6 +11,7 @@ import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
 import { startPolymarketCron } from "./services/polymarket-data";
 import { startModelCron } from "./services/model-data";
+import { startFootballCron } from "./services/football-data";
 import { prisma } from "./db";
 
 const app = express();
@@ -65,4 +66,7 @@ app.listen(port, () => {
 
   // Start worldcup-model cron — fetches Elo/Poisson win probabilities every 6 hours
   startModelCron();
+
+  // Start football-data.org cron — fetches live WC fixtures/results/standings every 6 hours
+  startFootballCron();
 });
