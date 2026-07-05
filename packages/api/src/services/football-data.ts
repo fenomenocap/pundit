@@ -1,17 +1,20 @@
-// ─── football-data.org Integration ──────────────────────────────────────────
+// ─── ESPN Public Scoreboard Integration ─────────────────────────────────────
 //
-// Free tier: 10 requests/minute, World Cup competition code: "WC"
-// Docs: https://www.football-data.org/documentation/api
+// Public JSON, no auth/API key required.
+// Fetches WC 2026 fixtures, results, and group standings from ESPN's public
+// site API. Covers the full tournament (group stage → final) with real,
+// per-round stage labels (group-stage, round-of-32, round-of-16,
+// quarterfinals, semifinals, 3rd-place-match, final) — unresolved knockout
+// fixtures correctly show as "Round of X Winner" until earlier rounds finish.
 //
-// This service fetches upcoming qualifiers, recent results, and standings,
-// caching results in-memory. A cron runs every 6 hours to refresh.
+// A cron runs every 6 hours to refresh the in-memory cache.
 
-const API_BASE = "https://api.football-data.org/v4";
-const API_KEY = process.env.FOOTBALL_DATA_API_KEY || "";
+const SCOREBOARD_URL =
+  "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard";
+const STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings";
 
-// Competition codes for World Cup related data
-const COMPETITION_WC = "WC"; // FIFA World Cup
-const COMPETITION_CL = "CLI"; // Copa Libertadores / international friendlies fallback
+// Tournament window: 11 June – 19 July 2026. Padded a day on each side.
+const TOURNAMENT_DATE_RANGE = "20260609-20260721";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -21,7 +24,8 @@ export interface FootballMatch {
   homeTeam: string;
   awayTeam: string;
   utcDate: string;
-  status: string; // SCHEDULED, TIMED, IN_PLAY, PAUSED, FINISHED, POSTPONED, CANCELLED
+  status: string; // SCHEDULED, IN_PLAY, FINISHED, POSTPONED, CANCELLED
+  stage: string | null; // group-stage, round-of-32, round-of-16, quarterfinals, semifinals, 3rd-place-match, final
   matchday: number | null;
   group: string | null;
   score: {
@@ -42,6 +46,7 @@ export interface FootballStanding {
   goalsAgainst: number;
   goalDifference: number;
   group: string | null;
+  advanced: boolean;
 }
 
 interface CachedData {
@@ -68,20 +73,12 @@ export function getCachedMatches(): CachedData {
 
 // ─── API Fetcher ────────────────────────────────────────────────────────────
 
-async function footballFetch<T>(path: string): Promise<T> {
-  if (!API_KEY) {
-    throw new Error("FOOTBALL_DATA_API_KEY not configured");
-  }
-
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "X-Auth-Token": API_KEY,
-    },
-  });
+async function espnFetch<T>(url: string): Promise<T> {
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`football-data.org API error ${res.status}: ${text.slice(0, 200)}`);
+    throw new Error(`ESPN API error ${res.status}: ${text.slice(0, 200)}`);
   }
 
   return res.json() as Promise<T>;
@@ -89,92 +86,78 @@ async function footballFetch<T>(path: string): Promise<T> {
 
 // ─── Data Transformers ──────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseMatch(m: any, competition: string): FootballMatch {
-  return {
-    id: m.id,
-    competition,
-    homeTeam: m.homeTeam?.name || m.homeTeam?.shortName || "TBD",
-    awayTeam: m.awayTeam?.name || m.awayTeam?.shortName || "TBD",
-    utcDate: m.utcDate,
-    status: m.status,
-    matchday: m.matchday ?? null,
-    group: m.group ?? null,
-    score:
-      m.score?.fullTime?.home !== null && m.score?.fullTime?.home !== undefined
-        ? { home: m.score.fullTime.home, away: m.score.fullTime.away }
-        : null,
-  };
+function statusFromState(state: string): string {
+  if (state === "post") return "FINISHED";
+  if (state === "in") return "IN_PLAY";
+  return "SCHEDULED";
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseStanding(s: any, group: string | null): FootballStanding {
+function parseEvent(e: any): FootballMatch {
+  const competition = e.competitions?.[0];
+  const competitors = competition?.competitors || [];
+  const home = competitors.find((c: any) => c.homeAway === "home"); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const away = competitors.find((c: any) => c.homeAway === "away"); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const statusType = competition?.status?.type || {};
+  const completed = Boolean(statusType.completed);
+
+  // altGameNote looks like "FIFA World Cup, Group A" — pull the group letter if present.
+  const groupMatch = /Group ([A-Z])/.exec(competition?.altGameNote || "");
+
   return {
-    position: s.position,
-    team: s.team?.name || s.team?.shortName || "Unknown",
-    playedGames: s.playedGames,
-    won: s.won,
-    draw: s.draw,
-    lost: s.lost,
-    points: s.points,
-    goalsFor: s.goalsFor,
-    goalsAgainst: s.goalsAgainst,
-    goalDifference: s.goalDifference,
-    group,
+    id: Number(e.id),
+    competition: "FIFA World Cup",
+    homeTeam: home?.team?.displayName || "TBD",
+    awayTeam: away?.team?.displayName || "TBD",
+    utcDate: e.date,
+    status: statusFromState(statusType.state),
+    stage: e.season?.slug || null,
+    matchday: null,
+    group: groupMatch ? groupMatch[1] : null,
+    score: completed
+      ? { home: Number(home?.score ?? 0), away: Number(away?.score ?? 0) }
+      : null,
   };
 }
 
 // ─── Fetch Functions ────────────────────────────────────────────────────────
 
-async function fetchUpcomingMatches(): Promise<FootballMatch[]> {
-  // Get matches with status SCHEDULED or TIMED
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = await footballFetch<any>(
-    `/competitions/${COMPETITION_WC}/matches?status=SCHEDULED,TIMED`
+async function fetchAllMatches(): Promise<FootballMatch[]> {
+  const data = await espnFetch<{ events?: unknown[] }>(
+    `${SCOREBOARD_URL}?dates=${TOURNAMENT_DATE_RANGE}&limit=200`
   );
 
-  const matches: FootballMatch[] = (data.matches || [])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((m: any) => parseMatch(m, "FIFA World Cup"))
-    .sort(
-      (a: FootballMatch, b: FootballMatch) =>
-        new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime()
-    );
-
-  return matches.slice(0, 50); // Cap at 50
-}
-
-async function fetchRecentResults(): Promise<FootballMatch[]> {
-  // Get finished matches
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = await footballFetch<any>(
-    `/competitions/${COMPETITION_WC}/matches?status=FINISHED&limit=20`
-  );
-
-  const matches: FootballMatch[] = (data.matches || [])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((m: any) => parseMatch(m, "FIFA World Cup"))
-    .sort(
-      (a: FootballMatch, b: FootballMatch) =>
-        new Date(b.utcDate).getTime() - new Date(a.utcDate).getTime()
-    );
-
-  return matches.slice(0, 20);
+  return (data.events || []).map(parseEvent);
 }
 
 async function fetchStandings(): Promise<FootballStanding[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = await footballFetch<any>(
-    `/competitions/${COMPETITION_WC}/standings`
-  );
+  const data = await espnFetch<{ children?: any[] }>(STANDINGS_URL); // eslint-disable-line @typescript-eslint/no-explicit-any
 
   const standings: FootballStanding[] = [];
 
-  for (const table of data.standings || []) {
-    const group = table.group ?? null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const entry of table.table || []) {
-      standings.push(parseStanding(entry, group));
+  for (const group of data.children || []) {
+    const groupName = (group.name || "").replace(/^Group /, "") || null;
+
+    for (const entry of group.standings?.entries || []) {
+      const stat = (name: string): number => {
+        const found = entry.stats?.find((s: any) => s.name === name); // eslint-disable-line @typescript-eslint/no-explicit-any
+        return Number(found?.value) || 0;
+      };
+
+      standings.push({
+        position: stat("rank"),
+        team: entry.team?.displayName || "Unknown",
+        playedGames: stat("gamesPlayed"),
+        won: stat("wins"),
+        draw: stat("ties"),
+        lost: stat("losses"),
+        points: stat("points"),
+        goalsFor: stat("pointsFor"),
+        goalsAgainst: stat("pointsAgainst"),
+        goalDifference: stat("pointDifferential"),
+        group: groupName,
+        advanced: stat("advanced") === 1,
+      });
     }
   }
 
@@ -184,32 +167,27 @@ async function fetchStandings(): Promise<FootballStanding[]> {
 // ─── Refresh All Data ───────────────────────────────────────────────────────
 
 export async function refreshFootballData(): Promise<void> {
-  if (!API_KEY) {
-    cache.error = "FOOTBALL_DATA_API_KEY not configured — skipping football data fetch";
-    console.warn(`[FootballData] ${cache.error}`);
-    return;
-  }
-
-  console.log("[FootballData] Refreshing data from football-data.org...");
+  console.log("[FootballData] Refreshing data from ESPN...");
 
   try {
-    // Fetch sequentially to respect rate limits (10 req/min on free tier)
-    const upcoming = await fetchUpcomingMatches();
-    cache.upcoming = upcoming;
-    console.log(`[FootballData]   ${upcoming.length} upcoming matches`);
+    const all = await fetchAllMatches();
 
-    // Small delay to be kind to rate limit
-    await new Promise((r) => setTimeout(r, 1000));
+    cache.upcoming = all
+      .filter((m) => m.status !== "FINISHED")
+      .sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime())
+      .slice(0, 50);
 
-    const recent = await fetchRecentResults();
-    cache.recent = recent;
-    console.log(`[FootballData]   ${recent.length} recent results`);
+    cache.recent = all
+      .filter((m) => m.status === "FINISHED")
+      .sort((a, b) => new Date(b.utcDate).getTime() - new Date(a.utcDate).getTime())
+      .slice(0, 20);
 
-    await new Promise((r) => setTimeout(r, 1000));
+    console.log(
+      `[FootballData]   ${cache.upcoming.length} upcoming, ${cache.recent.length} recent`
+    );
 
-    const standings = await fetchStandings();
-    cache.standings = standings;
-    console.log(`[FootballData]   ${standings.length} standing entries`);
+    cache.standings = await fetchStandings();
+    console.log(`[FootballData]   ${cache.standings.length} standing entries`);
 
     cache.lastUpdated = new Date();
     cache.error = null;
