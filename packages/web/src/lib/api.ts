@@ -90,12 +90,28 @@ export interface MatchResponse {
   awayTeam: string;
   utcDate: string;
   status: string;
+  stage: string | null; // group-stage, round-of-32, round-of-16, quarterfinals, semifinals, 3rd-place-match, final
   matchday: number | null;
   group: string | null;
   score: {
     home: number | null;
     away: number | null;
   } | null;
+}
+
+export interface StandingResponse {
+  position: number;
+  team: string;
+  playedGames: number;
+  won: number;
+  draw: number;
+  lost: number;
+  points: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  group: string | null;
+  advanced: boolean;
 }
 
 export interface PaginationResponse {
@@ -229,6 +245,18 @@ export async function getLeaderboard(
 export async function getUpcomingMatches() {
   return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null }>(
     "/api/matches/upcoming"
+  );
+}
+
+export async function getRecentMatches() {
+  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null }>(
+    "/api/matches/recent"
+  );
+}
+
+export async function getStandings() {
+  return apiFetch<{ standings: StandingResponse[]; lastUpdated: string | null }>(
+    "/api/matches/standings"
   );
 }
 

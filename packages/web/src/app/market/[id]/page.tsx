@@ -135,10 +135,10 @@ export default function MarketPage() {
         {/* Market header bar */}
         <div className="flex items-center gap-3 border-b border-border px-4 py-2">
           <div className="flex items-center gap-2">
-            <span className={cn("rounded border px-1.5 py-0.5 text-[9px] font-medium", cat.color)}>
+            <span className={cn("rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase", cat.color)}>
               {cat.label}
             </span>
-            <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-medium", status.color)}>
+            <span className={cn("rounded-full px-2 py-0.5 text-[9px] font-bold uppercase", status.color)}>
               {status.label}
             </span>
           </div>
@@ -164,7 +164,7 @@ export default function MarketPage() {
               )}
             >
               {market.outcomeA}
-              <span className="ml-1.5 font-mono">{Math.round(pctYes)}&cent;</span>
+              <span className="ml-1.5 font-mono font-black">{Math.round(pctYes)}&cent;</span>
             </button>
             {hasDraw && (
               <button
@@ -175,7 +175,7 @@ export default function MarketPage() {
                 )}
               >
                 {market.outcomeC}
-                <span className="ml-1.5 font-mono">{Math.round(pctDraw)}&cent;</span>
+                <span className="ml-1.5 font-mono font-black">{Math.round(pctDraw)}&cent;</span>
               </button>
             )}
             <button
@@ -185,7 +185,7 @@ export default function MarketPage() {
                 selectedOutcome === 1 ? "text-pink-400" : "text-muted-foreground"
               )}
             >
-              <span className="mr-1.5 font-mono">{Math.round(pctNo)}&cent;</span>
+              <span className="mr-1.5 font-mono font-black">{Math.round(pctNo)}&cent;</span>
               {market.outcomeB}
             </button>
           </div>
@@ -251,10 +251,10 @@ export default function MarketPage() {
         {/* Market info */}
         <div className="border-b border-border px-4 py-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className={cn("rounded border px-2 py-0.5 text-[10px] font-medium", cat.color)}>
+            <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase", cat.color)}>
               {cat.label}
             </span>
-            <span className={cn("rounded px-2 py-0.5 text-[10px] font-medium", status.color)}>
+            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase", status.color)}>
               {status.label}
             </span>
           </div>
