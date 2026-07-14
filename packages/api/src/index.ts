@@ -3,16 +3,12 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { requestLogger, errorHandler } from "./middleware";
-import marketRoutes from "./routes/markets";
-import userRoutes from "./routes/users";
-import leaderboardRoutes from "./routes/leaderboard";
 import matchRoutes from "./routes/matches";
 import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
 import { startPolymarketCron } from "./services/polymarket-data";
 import { startModelCron } from "./services/model-data";
 import { startFootballCron } from "./services/football-data";
-import { prisma } from "./db";
 
 const app = express();
 const port = process.env.PORT || process.env.API_PORT || 3001;
@@ -36,18 +32,10 @@ app.use(
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
-app.get("/health", async (_req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: "ok", db: "connected" });
-  } catch {
-    res.status(503).json({ status: "degraded", db: "disconnected" });
-  }
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
 });
 
-app.use("/api/markets", marketRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/polymarkets", polymarketRoutes);
 app.use("/api/model", modelRoutes);

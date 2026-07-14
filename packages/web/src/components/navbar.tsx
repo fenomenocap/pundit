@@ -2,16 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { href: "/", label: "Markets" },
   { href: "/fixtures", label: "Fixtures" },
-  { href: "/portfolio", label: "Portfolio" },
-  { href: "/leaderboard", label: "Leaderboard" },
   { href: "/model", label: "Model" },
-  { href: "/arena", label: "Arena" },
 ];
 
 export function Navbar() {
@@ -53,53 +48,6 @@ export function Navbar() {
             })}
           </nav>
         </div>
-
-        <ConnectButton.Custom>
-          {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
-            const connected = mounted && account && chain;
-            return (
-              <div
-                {...(!mounted && {
-                  "aria-hidden": true,
-                  style: { opacity: 0, pointerEvents: "none", userSelect: "none" },
-                })}
-              >
-                {!connected ? (
-                  <button
-                    onClick={openConnectModal}
-                    className="rounded-md bg-cyan-500 px-3 py-1.5 text-[11px] font-semibold text-black transition-colors hover:bg-cyan-400"
-                  >
-                    Connect
-                  </button>
-                ) : chain?.unsupported ? (
-                  <button
-                    onClick={openChainModal}
-                    className="rounded-md bg-red-500/20 px-3 py-1.5 text-[11px] font-semibold text-red-400 transition-colors hover:bg-red-500/30"
-                  >
-                    Wrong Network
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={openChainModal}
-                      className="flex items-center rounded-md bg-secondary px-2 py-1.5 text-[11px] transition-colors hover:bg-secondary/80"
-                    >
-                      {chain?.hasIcon && chain.iconUrl && (
-                        <img src={chain.iconUrl} alt="" className="mr-1 h-3.5 w-3.5 rounded-full" />
-                      )}
-                    </button>
-                    <button
-                      onClick={openAccountModal}
-                      className="rounded-md bg-secondary px-2.5 py-1.5 font-mono text-[11px] text-foreground transition-colors hover:bg-secondary/80"
-                    >
-                      {account.displayName}
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          }}
-        </ConnectButton.Custom>
       </div>
     </header>
   );
