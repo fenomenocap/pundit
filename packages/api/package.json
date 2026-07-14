@@ -10,6 +10,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "express-rate-limit": "^8.2.1",

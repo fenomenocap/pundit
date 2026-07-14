@@ -6,6 +6,7 @@ import { requestLogger, errorHandler } from "./middleware";
 import matchRoutes from "./routes/matches";
 import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
+import askRoutes from "./routes/ask";
 import { startPolymarketCron } from "./services/polymarket-data";
 import { startModelCron } from "./services/model-data";
 import { startFootballCron } from "./services/football-data";
@@ -39,6 +40,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/matches", matchRoutes);
 app.use("/api/polymarkets", polymarketRoutes);
 app.use("/api/model", modelRoutes);
+app.use("/api/ask", askRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 
