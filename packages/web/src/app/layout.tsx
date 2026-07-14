@@ -1,27 +1,26 @@
 import type { Metadata } from "next";
-import { DynamicProviders } from "@/components/dynamic-providers";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Pundit — Sports Prediction Markets",
+    default: "Pundit — Football Prediction Analysis",
     template: "%s | Pundit",
   },
   description:
-    "Your edge in sports prediction markets. Trade on football outcomes with limit orders on Base.",
-  keywords: ["prediction markets", "sports betting", "football", "crypto", "USDC", "Base", "onchain"],
+    "Elo/Poisson-modelled World Cup win probabilities, live fixture odds, and a conversational match-analysis agent.",
+  keywords: ["prediction market", "sports analysis", "football", "world cup", "elo", "poisson model"],
   openGraph: {
     type: "website",
     siteName: "Pundit",
-    title: "Pundit — Sports Prediction Markets",
-    description: "Your edge in sports prediction markets. Trade on football outcomes with limit orders on Base.",
+    title: "Pundit — Football Prediction Analysis",
+    description: "Elo/Poisson-modelled World Cup win probabilities, live fixture odds, and a conversational match-analysis agent.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Pundit — Sports Prediction Markets",
-    description: "Your edge in sports prediction markets.",
+    title: "Pundit — Football Prediction Analysis",
+    description: "Elo/Poisson-modelled World Cup win probabilities and live fixture odds.",
   },
   robots: {
     index: true,
@@ -46,13 +45,11 @@ export default function RootLayout({
         />
       </head>
       <body className="font-body antialiased">
-        <DynamicProviders>
-          <div className="flex min-h-screen flex-col">
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <Footer />
-          </div>
-        </DynamicProviders>
+        <div className="flex min-h-screen flex-col">
+          <Navbar />
+          <main className="flex-1">{children}</main>
+          <Footer />
+        </div>
       </body>
     </html>
   );
