@@ -1,11 +1,10 @@
 {
-  "name": "sports-prediction-markets",
+  "name": "pundit",
   "private": true,
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
-    "dev:indexer": "pnpm --filter @sports-predict/api dev:indexer",
-    "build": "pnpm --filter @sports-predict/shared build && pnpm --filter @sports-predict/contracts build && pnpm --filter @sports-predict/api build && pnpm --filter @sports-predict/web build",
+    "build": "pnpm --filter @sports-predict/api build && pnpm --filter @sports-predict/web build",
     "test": "pnpm -r test",
     "clean": "pnpm -r clean"
   },

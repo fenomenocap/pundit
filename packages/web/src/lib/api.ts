@@ -2,87 +2,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export interface MarketResponse {
-  id: string;
-  onchainId: number;
-  question: string;
-  outcomeA: string;
-  outcomeB: string;
-  outcomeC?: string | null; // Draw / third outcome
-  category: string;
-  teamA: string | null;
-  teamB: string | null;
-  poolYes: string;
-  poolNo: string;
-  poolDraw?: string | null; // Draw pool reserve
-  totalVolume: string;
-  status: string;
-  resolvedOutcome: number | null;
-  resolvedAt: string | null;
-  resolutionTimestamp: string;
-  createdAt: string;
-  updatedAt: string;
-  polymarketOdds?: { outcomes: string[]; prices: number[] } | null;
-}
-
-export interface MarketDetailResponse extends MarketResponse {
-  recentTrades: TradeResponse[];
-  participantCount: number;
-  polymarketOdds: { outcomes: string[]; prices: number[] } | null;
-}
-
-export interface TradeResponse {
-  id: string;
-  marketId: string;
-  userAddress: string;
-  outcome: number;
-  grossAmount: string; // USDC paid (before fee)
-  netShares: string;   // shares received (after fee)
-  txHash: string;
-  blockNumber: number;
-  timestamp: string;
-}
-
-export interface TradeWithMarketResponse extends TradeResponse {
-  marketQuestion: string;
-  outcomeName: string;
-}
-
-export interface PositionResponse {
-  marketId: string;
-  onchainId: number;
-  marketQuestion: string;
-  marketStatus: string;
-  outcome: number;
-  shares: string;
-  invested: string;
-  claimable: string;
-  claimed: boolean;
-  status: "active" | "won" | "lost" | "claimable" | "claimed" | "refundable";
-}
-
-export interface PortfolioResponse {
-  address: string;
-  positions: PositionResponse[];
-  summary: {
-    totalInvested: string;
-    totalClaimable: string;
-    totalClaimed: string;
-  };
-}
-
-export interface LeaderboardEntry {
-  rank: number;
-  address: string;
-  profit: string;
-  totalInvested: string;
-  roi: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  marketsTraded: number;
-}
-
 export interface MatchResponse {
   id: number;
   competition: string;
@@ -114,13 +33,6 @@ export interface StandingResponse {
   advanced: boolean;
 }
 
-export interface PaginationResponse {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-}
-
 // ─── Fetch helper ───────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -138,106 +50,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return res.json();
-}
-
-// ─── Market endpoints ───────────────────────────────────────────────────────
-
-export interface GetMarketsParams {
-  status?: string;
-  category?: string;
-  sort?: "volume" | "closing_soon" | "newest";
-  page?: number;
-  limit?: number;
-}
-
-export async function getMarkets(params: GetMarketsParams = {}) {
-  const query = new URLSearchParams();
-  if (params.status) query.set("status", params.status);
-  if (params.category) query.set("category", params.category);
-  if (params.sort) query.set("sort", params.sort);
-  if (params.page) query.set("page", String(params.page));
-  if (params.limit) query.set("limit", String(params.limit));
-
-  const qs = query.toString();
-  return apiFetch<{ markets: MarketResponse[]; pagination: PaginationResponse }>(
-    `/api/markets${qs ? `?${qs}` : ""}`
-  );
-}
-
-export async function getMarket(id: string) {
-  return apiFetch<MarketDetailResponse>(`/api/markets/${id}`);
-}
-
-export async function createMarket(
-  data: {
-    onchainId: number;
-    question: string;
-    outcomeA: string;
-    outcomeB: string;
-    outcomeC?: string;   // optional Draw / third outcome
-    category: string;
-    teamA?: string;
-    teamB?: string;
-    resolutionTimestamp: string;
-  },
-  adminKey: string
-) {
-  return apiFetch<MarketResponse>("/api/markets", {
-    method: "POST",
-    headers: { "x-admin-key": adminKey },
-    body: JSON.stringify(data),
-  });
-}
-
-export async function resolveMarket(
-  id: string,
-  outcome: 0 | 1 | 2,   // 0=Yes/Home, 1=No/Away, 2=Draw
-  adminKey: string
-) {
-  return apiFetch<MarketResponse>(`/api/markets/${id}/resolve`, {
-    method: "POST",
-    headers: { "x-admin-key": adminKey },
-    body: JSON.stringify({ outcome }),
-  });
-}
-
-// ─── User endpoints ─────────────────────────────────────────────────────────
-
-export async function getUserPortfolio(address: string) {
-  return apiFetch<PortfolioResponse>(
-    `/api/users/${address.toLowerCase()}/portfolio`
-  );
-}
-
-export async function getUserHistory(
-  address: string,
-  params: { page?: number; limit?: number } = {}
-) {
-  const query = new URLSearchParams();
-  if (params.page) query.set("page", String(params.page));
-  if (params.limit) query.set("limit", String(params.limit));
-
-  const qs = query.toString();
-  return apiFetch<{
-    address: string;
-    trades: TradeWithMarketResponse[];
-    pagination: PaginationResponse;
-  }>(`/api/users/${address.toLowerCase()}/history${qs ? `?${qs}` : ""}`);
-}
-
-// ─── Leaderboard ────────────────────────────────────────────────────────────
-
-export async function getLeaderboard(
-  params: { period?: "all" | "30d" | "7d"; limit?: number } = {}
-) {
-  const query = new URLSearchParams();
-  if (params.period) query.set("period", params.period);
-  if (params.limit) query.set("limit", String(params.limit));
-
-  const qs = query.toString();
-  return apiFetch<{ period: string; leaderboard: LeaderboardEntry[] }>(
-    `/api/leaderboard${qs ? `?${qs}` : ""}`
-  );
 }
 
 // ─── Matches ───────────────────────────────────────────────────────────────
@@ -344,5 +156,5 @@ export async function getModelFixtures(): Promise<{
 // ─── Health ─────────────────────────────────────────────────────────────────
 
 export async function getHealth() {
-  return apiFetch<{ status: string; db: string }>("/health");
+  return apiFetch<{ status: string }>("/health");
 }
