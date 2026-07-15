@@ -22,7 +22,12 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       throw new AppError(400, "Missing 'question' in request body.");
     }
 
-    const result = await answerQuestion(question.trim());
+    const trimmedQuestion = question.trim();
+    if (trimmedQuestion.length > 500) {
+      throw new AppError(400, "Question must be 500 characters or fewer.");
+    }
+
+    const result = await answerQuestion(trimmedQuestion);
     res.json(result);
   } catch (err) {
     next(err);
