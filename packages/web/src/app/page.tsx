@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import Link from "next/link";
-import { askQuestion } from "@/lib/api";
+import { ApiError, askQuestion } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +40,17 @@ export default function HomePage() {
       const { answer } = await askQuestion(trimmed);
       setMessages((prev) => [...prev, { id: nextId++, role: "assistant", content: answer }]);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Something went wrong.";
+      const serverMessage = err instanceof Error ? err.message : "Something went wrong.";
+      const status = err instanceof ApiError ? err.status : undefined;
+      const message = status === 400
+        ? `Couldn't understand that — ${serverMessage}`
+        : status === 404
+          ? `No data for that matchup yet — ${serverMessage}`
+          : status === 429
+            ? "You're asking a lot at once — wait a moment and try again"
+            : status === 502
+              ? "Analysis service is temporarily unavailable — try again shortly"
+              : serverMessage;
       setMessages((prev) => [...prev, { id: nextId++, role: "error", content: message }]);
     } finally {
       setLoading(false);
