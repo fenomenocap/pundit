@@ -27,6 +27,18 @@ describe("featured fixtures", () => {
   it("excludes completed and placeholder matches while preserving them outside the derived view", () => {
     expect(isFeaturedFootballMatch(football("semifinals", "FINISHED"))).toBe(false);
     expect(isFeaturedFootballMatch(football("final", "SCHEDULED", "TBD", "Argentina"))).toBe(false);
+    expect(isFeaturedFootballMatch(football(
+      "final",
+      "SCHEDULED",
+      "Spain",
+      "Semifinal 2 Winner"
+    ))).toBe(false);
+    expect(isFeaturedFootballMatch(football(
+      "semifinals",
+      "SCHEDULED",
+      "Quarterfinal 4 Loser",
+      "England"
+    ))).toBe(false);
   });
 
   it("joins an active ESPN fixture to model data", () => {

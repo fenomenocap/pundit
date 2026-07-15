@@ -3,17 +3,22 @@ import { FootballMatch, getCachedMatches } from "./football-data";
 import { ModelFixture, getCachedModelData } from "./model-data";
 
 const FEATURED_STAGES = new Set(["semifinals", "final"]);
+const PLACEHOLDER_TEAM = /\b(?:winner|loser)\b/i;
 
 export interface FeaturedFixture {
   football: FootballMatch;
   model: ModelFixture;
 }
 
+function isKnownTeam(team: string): boolean {
+  return team.trim().toLowerCase() !== "tbd" && !PLACEHOLDER_TEAM.test(team);
+}
+
 export function isFeaturedFootballMatch(match: FootballMatch): boolean {
   return FEATURED_STAGES.has(match.stage ?? "")
     && (match.status === "SCHEDULED" || match.status === "IN_PLAY")
-    && match.homeTeam !== "TBD"
-    && match.awayTeam !== "TBD";
+    && isKnownTeam(match.homeTeam)
+    && isKnownTeam(match.awayTeam);
 }
 
 export function selectFeaturedFixtures(
