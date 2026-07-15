@@ -1,4 +1,4 @@
-import { PolymarketMarket, MatchResponse, StandingResponse, ModelTeamProbability } from "./api";
+import { MatchResponse, StandingResponse } from "./api";
 
 const now = Date.now();
 const DAY = 86_400_000;
@@ -14,120 +14,6 @@ function pastISO(days: number): string {
 // ─── Data layer (mock ↔ real API swap) ──────────────────────────────────────
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
-
-// ─── Polymarket mock markets ─────────────────────────────────────────────────
-// Realistic WC 2026 markets as they appear on Polymarket's Gamma API.
-
-const MOCK_POLYMARKET_MARKETS: PolymarketMarket[] = [
-  {
-    id: "pm-wc-brazil",
-    question: "Will Brazil win the 2026 FIFA World Cup?",
-    outcomes: ["Yes", "No"],
-    outcomePrices: [0.34, 0.66],
-    volume: 1_840_000,
-    liquidity: 420_000,
-    endDate: futureISO(45),
-    resolved: false,
-    active: true,
-  },
-  {
-    id: "pm-wc-argentina",
-    question: "Will Argentina win the 2026 FIFA World Cup?",
-    outcomes: ["Yes", "No"],
-    outcomePrices: [0.28, 0.72],
-    volume: 1_560_000,
-    liquidity: 380_000,
-    endDate: futureISO(45),
-    resolved: false,
-    active: true,
-  },
-  {
-    id: "pm-wc-france",
-    question: "Will France win the 2026 FIFA World Cup?",
-    outcomes: ["Yes", "No"],
-    outcomePrices: [0.22, 0.78],
-    volume: 1_230_000,
-    liquidity: 310_000,
-    endDate: futureISO(45),
-    resolved: false,
-    active: true,
-  },
-  {
-    id: "pm-wc-england",
-    question: "Will England win the 2026 FIFA World Cup?",
-    outcomes: ["Yes", "No"],
-    outcomePrices: [0.14, 0.86],
-    volume: 890_000,
-    liquidity: 210_000,
-    endDate: futureISO(45),
-    resolved: false,
-    active: true,
-  },
-  {
-    id: "pm-wc-spain",
-    question: "Will Spain win the 2026 FIFA World Cup?",
-    outcomes: ["Yes", "No"],
-    outcomePrices: [0.18, 0.82],
-    volume: 760_000,
-    liquidity: 180_000,
-    endDate: futureISO(45),
-    resolved: false,
-    active: true,
-  },
-  {
-    id: "pm-wc-usa-mexico",
-    question: "USA vs Mexico — 2026 FIFA World Cup Group Stage",
-    outcomes: ["USA Win", "Draw", "Mexico Win"],
-    outcomePrices: [0.38, 0.28, 0.34],
-    volume: 540_000,
-    liquidity: 120_000,
-    endDate: futureISO(8),
-    resolved: false,
-    active: true,
-  },
-  {
-    id: "pm-wc-england-france",
-    question: "England vs France — 2026 FIFA World Cup Group Stage",
-    outcomes: ["England Win", "Draw", "France Win"],
-    outcomePrices: [0.32, 0.27, 0.41],
-    volume: 680_000,
-    liquidity: 160_000,
-    endDate: futureISO(12),
-    resolved: false,
-    active: true,
-  },
-  {
-    id: "pm-wc-brazil-argentina",
-    question: "Brazil vs Argentina — 2026 FIFA World Cup Group Stage",
-    outcomes: ["Brazil Win", "Draw", "Argentina Win"],
-    outcomePrices: [0.44, 0.26, 0.30],
-    volume: 920_000,
-    liquidity: 230_000,
-    endDate: futureISO(17),
-    resolved: false,
-    active: true,
-  },
-];
-
-// ─── Polymarket fetch (mock ↔ real API swap) ─────────────────────────────────
-
-export async function fetchPolymarketMarkets(): Promise<PolymarketMarket[]> {
-  if (!USE_MOCK) {
-    try {
-      const { getPolymarketMarkets, getPolymarketGroupMarkets } = await import("./api");
-      const [outright, groups] = await Promise.all([
-        getPolymarketMarkets(),
-        getPolymarketGroupMarkets(),
-      ]);
-      // Interleave: show a mix of outright and group winner markets, sorted by liquidity
-      return [...(outright.markets ?? []), ...(groups.markets ?? [])]
-        .sort((a, b) => b.liquidity - a.liquidity);
-    } catch {
-      return [];
-    }
-  }
-  return MOCK_POLYMARKET_MARKETS;
-}
 
 // ─── Live WC fixtures / standings (reference only, not tradeable) ───────────
 // Sourced from ESPN's public scoreboard API via the backend. Mock fallback is
@@ -199,17 +85,4 @@ export async function fetchStandings(): Promise<StandingResponse[]> {
     }
   }
   return MOCK_STANDINGS;
-}
-
-export async function fetchModelProbabilities(): Promise<ModelTeamProbability[]> {
-  if (!USE_MOCK) {
-    try {
-      const { getModelWcProbabilities } = await import("./api");
-      const res = await getModelWcProbabilities();
-      return res.teams ?? [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
 }

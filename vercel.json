@@ -1,6 +1,0 @@
-{
-  "framework": "nextjs",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @sports-predict/shared build && cd packages/web && npx next build",
-  "outputDirectory": "packages/web/.next"
-}

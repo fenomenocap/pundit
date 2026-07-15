@@ -1,52 +1,27 @@
-# Pundit — FIFA World Cup 2026 Prediction Market
+# Pundit — Football Prediction Analysis
 
-Onchain parimutuel prediction market for the 2026 FIFA World Cup. Users buy USDC-denominated shares on match and tournament outcomes. Winners split the net pool proportional to shares held. Live Polymarket consensus odds are shown as reference.
-
-**Chain:** Base Sepolia (testnet) → Base mainnet  
-**Token:** MockUSDC (6 decimals, permissionless testnet faucet)
+A chat-first analysis tool for the 2026 FIFA World Cup. Ask about a matchup — "France vs Morocco," "who wins Argentina vs Brazil" — and get a plain-language read grounded in a Dixon-Coles/Poisson statistical model, not vibes. No blockchain, no trading, nothing to buy — this is an analysis layer over public data.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│   Next.js 14     │───▶│   Express API    │───▶│   PostgreSQL     │
-│   (Frontend)     │    │   + Prisma ORM   │    │   (Railway)      │
-└────────┬─────────┘    └────────┬─────────┘    └──────────────────┘
-         │                       │
-         │  wagmi v2 / viem      │  viem (indexer polling)
-         ▼                       ▼
-┌────────────────────────────────────────────────────────────────────┐
-│                     Base Sepolia (EVM)                             │
-│  MockUSDC · MarketFactory · CollateralVault · ParimutuelEngine    │
-│                          OracleResolver                            │
-└────────────────────────────────────────────────────────────────────┘
-         ▲
-         │  Reference odds only (public API, no auth)
-┌────────┴────────┐
-│  Polymarket     │
-│  Gamma API      │
-└─────────────────┘
+┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
+│   Next.js 14     │────────▶│   Express API    │────────▶│   Anthropic API  │
+│   (chat UI)      │         │                  │         │   (chat answers) │
+└──────────────────┘         └────────┬─────────┘         └──────────────────┘
+                                       │
+                        ┌──────────────┼──────────────┐
+                        ▼              ▼              ▼
+                 ┌───────────┐  ┌────────────┐  ┌──────────────┐
+                 │   ESPN    │  │ Polymarket │  │ worldcup-     │
+                 │  public   │  │ Gamma API  │  │ model (JSON)  │
+                 │   API     │  │            │  │               │
+                 └───────────┘  └────────────┘  └──────────────┘
 ```
 
-### Smart Contracts
-
-| Contract | Purpose |
-|---|---|
-| **MockUSDC** | ERC-20 test stablecoin (6 decimals, permissionless `mint`) |
-| **MarketFactory** | Creates and tracks prediction markets |
-| **CollateralVault** | Holds USDC deposits, distributes payouts |
-| **OracleResolver** | Admin-only outcome resolution + 30-min settlement delay |
-| **ParimutuelEngine** | Core trading — `buyShares`, `claimWinnings` |
-
-### How Parimutuel Trading Works
-
-1. Users deposit USDC to buy Home / Away / Draw shares
-2. All deposits pool together per market (no counter-party needed)
-3. On resolution, a **2% protocol fee** is taken (rounded up)
-4. Winners split the remaining pool **proportional to their shares**
-5. A **30-minute settlement delay** protects against oracle manipulation
+All three right-hand sources are public, keyless, and cached server-side with a 6-hour cron. No database — everything is in-memory.
 
 ---
 
@@ -55,11 +30,8 @@ Onchain parimutuel prediction market for the 2026 FIFA World Cup. Users buy USDC
 | Layer | Technology |
 |---|---|
 | Monorepo | pnpm workspaces (Node ≥18, pnpm 9.15.4) |
-| Contracts | Solidity 0.8.24+, Hardhat, OpenZeppelin v5 |
 | Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui |
-| Web3 | wagmi v2, viem, RainbowKit |
-| Backend | Express + TypeScript, Prisma 6, PostgreSQL |
-| Chain | Base Sepolia → Base mainnet |
+| Backend | Express + TypeScript, `@anthropic-ai/sdk` |
 
 ---
 
@@ -67,112 +39,31 @@ Onchain parimutuel prediction market for the 2026 FIFA World Cup. Users buy USDC
 
 ```
 packages/
-  contracts/   — Solidity contracts, Hardhat tests (58/58 passing), deploy + seed scripts
-  web/         — Next.js 14 frontend (dark theme, mobile-first)
-  api/         — Express REST API + viem blockchain event indexer
-  shared/      — TypeScript types, ABIs, constants (single source of truth)
+  web/   — Next.js 14 frontend: chat homepage, /fixtures (bracket + standings), /model (iframe)
+  api/   — Express REST API: /api/ask, /api/matches, /api/polymarkets, /api/model
 ```
 
 ---
 
-## Quick Start (Local Dev with Mock Data)
+## Quick Start
+
+Every env var has a sane default (see `.env.example`) — nothing needs to be configured to run this locally, and `packages/api` does not auto-load `.env` (no `dotenv` dependency), so exporting variables into your shell is what actually takes effect, not just editing the file.
 
 ```bash
-# Install dependencies
 pnpm install
 
-# Start frontend only (mock data — no API or contracts needed)
-cd packages/web
-cp .env.local.example .env.local   # or create with: NEXT_PUBLIC_USE_MOCK=true
-pnpm dev
-# → http://localhost:3000
-```
-
-Mock mode (`NEXT_PUBLIC_USE_MOCK=true`) uses hardcoded WC 2026 data — no wallet, no API, no DB required.
-
----
-
-## Full Testnet Setup
-
-### Prerequisites
-
-- Node.js ≥ 18, pnpm 9.15.4
-- Base Sepolia wallet funded with ~0.05 ETH
-- [Railway](https://railway.app) account (free tier works) for managed Postgres
-- [WalletConnect Cloud](https://cloud.walletconnect.com) project ID (free)
-- [Basescan](https://basescan.org) API key (free, for contract verification)
-
-### 1. Configure environment
-
-```bash
-cp .env.example .env
-# Fill in:
-#   DEPLOYER_PRIVATE_KEY=  (funded Base Sepolia wallet)
-#   ADMIN_API_KEY=         (openssl rand -hex 32)
-#   DATABASE_URL=          (from Railway Postgres plugin)
-#   ETHERSCAN_API_KEY=     (from basescan.org)
-
-cp packages/web/.env.local.example packages/web/.env.local
-# Fill in:
-#   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
-#   NEXT_PUBLIC_API_URL=http://localhost:3001
-#   NEXT_PUBLIC_USE_MOCK=false   (set after contracts + markets are ready)
-```
-
-### 2. Run contract tests
-
-```bash
-cd packages/contracts && npx hardhat test
-# All 58 tests must pass before deploying
-```
-
-### 3. Deploy contracts
-
-```bash
-npx hardhat run scripts/deploy.ts --network base_sepolia
-# Prints all contract addresses — copy into .env and .env.local
-```
-
-### 4. Set up database
-
-```bash
-cd packages/api && npx prisma migrate deploy
-```
-
-### 5. Start API + indexer
-
-```bash
-# Terminal 1 — API server
+# Terminal 1 — API
 cd packages/api && npm run dev
+# → http://localhost:3001
 
-# Terminal 2 — Blockchain indexer (polls for events)
-cd packages/api && npx ts-node src/indexer.ts
-```
-
-### 6. Seed WC 2026 markets
-
-```bash
-cd packages/contracts
-API_URL=http://localhost:3001 \
-ADMIN_API_KEY=<your-key> \
-npx hardhat run scripts/seed-wc.ts --network base_sepolia
-# Creates 16 markets: 8 tournament outrights + 8 group stage matches
-```
-
-### 7. Start frontend
-
-```bash
+# Terminal 2 — Web
 cd packages/web && pnpm dev
 # → http://localhost:3000
 ```
 
-### 8. Resolve a market (post-match)
+`NEXT_PUBLIC_USE_MOCK=true` (the default) uses small hardcoded fixtures for `/fixtures` — no API needed to browse the frontend. Set it to `false` to hit the real API.
 
-```bash
-cd packages/contracts
-MARKET_ID=3 OUTCOME=0 npx hardhat run scripts/resolve-market.ts --network base_sepolia
-# OUTCOME: 0=Home/Yes  1=Away/No  2=Draw
-```
+**Known limitation:** the chat feature (`POST /api/ask`) requires `ANTHROPIC_API_KEY` to be exported in the API's environment, which is currently unset both locally and in production. Without it, chat requests return a 502.
 
 ---
 
@@ -180,32 +71,27 @@ MARKET_ID=3 OUTCOME=0 npx hardhat run scripts/resolve-market.ts --network base_s
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/markets` | List markets (filters: `status`, `category`, `sort`) |
-| GET | `/api/markets/:id` | Market detail + Polymarket reference odds |
-| POST | `/api/markets` | Create market (admin) |
-| POST | `/api/markets/:id/resolve` | Resolve market (admin) |
-| GET | `/api/users/:addr/portfolio` | Positions, P&L, claimable winnings |
-| GET | `/api/users/:addr/history` | Paginated trade history |
-| GET | `/api/leaderboard` | Top traders by profit |
-| GET | `/api/polymarkets/wc` | Live WC markets from Polymarket (reference only) |
-| GET | `/health` | API + DB health check |
+| POST | `/api/ask` | Ask about a WC 2026 matchup, get a Claude-generated analysis grounded in model data. Requires `ANTHROPIC_API_KEY`. |
+| GET | `/api/matches/upcoming` | Upcoming fixtures (ESPN) |
+| GET | `/api/matches/recent` | Recent results (ESPN) |
+| GET | `/api/matches/standings` | Group standings (ESPN) |
+| GET | `/api/polymarkets/wc` | Live WC outright markets from Polymarket (reference odds — not currently rendered by any page) |
+| GET | `/api/polymarkets/groups` | Live WC group-winner markets from Polymarket |
+| GET | `/api/model/wc` | Team win/SF/QF probabilities from worldcup-model |
+| GET | `/api/model/fixtures` | Fixture-level model odds from worldcup-model |
+| GET | `/health` | API health check |
 
 ---
 
-## Frontend Features
+## Frontend Pages
 
-- **WC 2026 countdown banner** — live countdown to the Jun 11 tournament opener
-- **Polymarket live preview** — purple cards showing live Polymarket WC consensus odds (reference only, always live regardless of mock mode)
-- **Market grid** — our parimutuel pools with multiplier badges ("Up to 3.2x"), parimutuel pricing, search + category filter
-- **Market detail** — trading terminal: price chart, order panel, trade panel, Polymarket consensus bar
-- **Testnet USDC faucet** — "Get 100 USDC" button when balance is zero on Base Sepolia
-- **Portfolio** — positions, P&L, claimable winnings with one-click claim
-- **Leaderboard** — top traders ranked by profit (7d / 30d / all-time)
-- **Arena** — coming soon (CLOB order book)
+- **`/`** — chat homepage: ask about any WC 2026 matchup
+- **`/fixtures`** — live knockout bracket + group standings (ESPN-backed)
+- **`/model`** — embedded reference view of the external worldcup-model site (do not modify — it's an iframe, not something this repo renders itself)
 
 ---
 
-## Vercel + Railway Production Deploy
+## Deploy
 
 ```bash
 # API → Railway
@@ -215,18 +101,13 @@ cd packages/api && railway up
 cd packages/web && vercel --prod
 ```
 
-**Required Vercel env vars:**
+Required env vars for each are listed in `.env.example`. Note the deployed API is missing `ANTHROPIC_API_KEY` — set it on Railway for chat to work in production.
 
-| Variable | Value |
-|---|---|
-| `NEXT_PUBLIC_CHAIN_ID` | `84532` |
-| `NEXT_PUBLIC_API_URL` | Your Railway API URL |
-| `NEXT_PUBLIC_ENGINE_ADDRESS` | From deploy output |
-| `NEXT_PUBLIC_FACTORY_ADDRESS` | From deploy output |
-| `NEXT_PUBLIC_VAULT_ADDRESS` | From deploy output |
-| `NEXT_PUBLIC_USDC_ADDRESS` | From deploy output |
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | From WalletConnect Cloud |
-| `NEXT_PUBLIC_USE_MOCK` | `false` |
+---
+
+## History
+
+This was originally an onchain parimutuel prediction market (Solidity contracts on Base Sepolia, Prisma/Postgres, wagmi wallet connection). That platform was fully removed and archived to git tag `archive/onchain-trading-v1` in favor of the current chat-first analysis product — recoverable via `git checkout archive/onchain-trading-v1` if ever needed.
 
 ---
 
