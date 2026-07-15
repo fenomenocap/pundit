@@ -1,5 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { AppError } from "../middleware";
+import {
+  getTeamNameAliases,
+  normalizeTeamName,
+  normalizeTeamText,
+} from "../lib/team-names";
 import { getCachedModelData, ModelFixture } from "./model-data";
 
 export interface Grounding {
@@ -39,8 +44,8 @@ headline win/draw/win and O/U 2.5 numbers naturally, mention 1-2 most likely
 scorelines, and give a one-line read on what would need to be true for the
 underdog.`;
 
-function resolveTeams(question: string, fixtures: ModelFixture[]): [string, string] {
-  const questionLower = question.toLowerCase();
+export function resolveTeams(question: string, fixtures: ModelFixture[]): [string, string] {
+  const normalizedQuestion = normalizeTeamText(question);
   const teamPositions = new Map<string, number>();
   const teams = new Set<string>();
 
@@ -49,15 +54,40 @@ function resolveTeams(question: string, fixtures: ModelFixture[]): [string, stri
     teams.add(fixture.away);
   }
 
+  const searchTerms = new Map<string, string>();
   for (const team of teams) {
-    const position = questionLower.indexOf(team.toLowerCase());
-    if (position !== -1) teamPositions.set(team, position);
+    const canonical = normalizeTeamName(team);
+    searchTerms.set(normalizeTeamText(team), team);
+    searchTerms.set(canonical, team);
+
+    for (const [alias, aliasCanonical] of getTeamNameAliases()) {
+      if (normalizeTeamName(aliasCanonical) === canonical) {
+        searchTerms.set(normalizeTeamText(alias), team);
+      }
+    }
+  }
+
+  const termsByLength = [...searchTerms.entries()].sort(
+    ([termA], [termB]) => termB.length - termA.length
+  );
+
+  for (const [term, team] of termsByLength) {
+    const position = normalizedQuestion.indexOf(term);
+    if (position === -1) continue;
+    const previous = teamPositions.get(team);
+    if (previous === undefined || position < previous) teamPositions.set(team, position);
   }
 
   const orderedTeams = [...teamPositions.entries()]
     .sort(([, positionA], [, positionB]) => positionA - positionB)
-    .map(([team]) => team)
-    .slice(0, 2);
+    .map(([team]) => team);
+
+  if (orderedTeams.length > 2) {
+    throw new AppError(
+      400,
+      "Please name exactly one matchup with two teams, e.g. 'France vs Morocco'."
+    );
+  }
 
   if (orderedTeams.length < 2) {
     throw new AppError(
@@ -69,7 +99,7 @@ function resolveTeams(question: string, fixtures: ModelFixture[]): [string, stri
   return [orderedTeams[0], orderedTeams[1]];
 }
 
-function findFixture(teamA: string, teamB: string, fixtures: ModelFixture[]): ModelFixture | undefined {
+export function findFixture(teamA: string, teamB: string, fixtures: ModelFixture[]): ModelFixture | undefined {
   const pair = new Set([teamA, teamB]);
   return fixtures.find((fixture) => new Set([fixture.home, fixture.away]).size === pair.size
     && fixture.home !== fixture.away
