@@ -84,6 +84,13 @@ export async function getStandings() {
 
 // ─── Ask (conversational match analysis) ────────────────────────────────────
 
+export interface OddsSource {
+  source: "kalshi" | "polymarket";
+  pHome: number;
+  pDraw: number | null;
+  pAway: number;
+}
+
 export interface MatchGrounding {
   kind: "match";
   date: string;
@@ -96,6 +103,7 @@ export interface MatchGrounding {
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
+  oddsSources: OddsSource[];
 }
 
 export interface TournamentGrounding {
