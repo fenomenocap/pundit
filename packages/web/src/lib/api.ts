@@ -153,6 +153,31 @@ export async function getModelFixtures(): Promise<{
   );
 }
 
+// ─── Ask (conversational match analysis) ────────────────────────────────────
+
+export interface AskGrounding {
+  date: string;
+  stage: string;
+  home: string;
+  away: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  stakePHome: number | null;
+  stakePDraw: number | null;
+  stakePAway: number | null;
+}
+
+export async function askQuestion(question: string): Promise<{
+  answer: string;
+  grounding: AskGrounding;
+}> {
+  return apiFetch<{ answer: string; grounding: AskGrounding }>("/api/ask", {
+    method: "POST",
+    body: JSON.stringify({ question }),
+  });
+}
+
 // ─── Health ─────────────────────────────────────────────────────────────────
 
 export async function getHealth() {
