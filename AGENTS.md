@@ -22,6 +22,10 @@ Chat-first WC 2026 matchup analysis app. No blockchain, no database — the prev
 | API — model | `packages/api/src/routes/model.ts` + `services/model-data.ts` | worldcup-model static JSON, feeds both `/api/ask`'s grounding data and the (currently unused by any page) `/api/model/*` endpoints. |
 | TypeScript | Both packages | 0 errors. Run `npx tsc --noEmit` in `packages/api` and `packages/web` to verify after any change. |
 
+`packages/api` has a focused Vitest suite for backend pure functions and market parsers.
+`packages/web` intentionally has no test infrastructure yet; this is a deliberate scope choice,
+not an omission to fix without a specific frontend-testing requirement.
+
 ---
 
 ## 🔴 Blocked on user — no code needed
