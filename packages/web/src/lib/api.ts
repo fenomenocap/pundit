@@ -35,6 +35,16 @@ export interface StandingResponse {
 
 // ─── Fetch helper ───────────────────────────────────────────────────────────
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -46,7 +56,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error || `API error ${res.status}`);
+    throw new ApiError(body.error || `API error ${res.status}`, res.status);
   }
 
   return res.json();
