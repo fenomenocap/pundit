@@ -206,9 +206,9 @@ export async function refreshFootballData(): Promise<void> {
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 let cronTimer: ReturnType<typeof setInterval> | null = null;
 
-export function startFootballCron(): void {
+export async function startFootballCron(): Promise<void> {
   // Run immediately on startup
-  refreshFootballData();
+  await refreshFootballData();
 
   // Then every 6 hours
   cronTimer = setInterval(refreshFootballData, SIX_HOURS_MS);

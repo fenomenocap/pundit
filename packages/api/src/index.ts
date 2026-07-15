@@ -10,6 +10,7 @@ import askRoutes from "./routes/ask";
 import { startPolymarketCron } from "./services/polymarket-data";
 import { startModelCron } from "./services/model-data";
 import { startFootballCron } from "./services/football-data";
+import { startKalshiCron } from "./services/kalshi-data";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -49,15 +50,16 @@ app.use(errorHandler);
 
 // ─── Start ──────────────────────────────────────────────────────────────────
 
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`API server running on port ${port}`);
-
-  // Start Polymarket cron — fetches WC 2026 markets and reference odds every 6 hours
-  startPolymarketCron();
 
   // Start worldcup-model cron — fetches Elo/Poisson win probabilities every 6 hours
   startModelCron();
 
-  // Start football-data.org cron — fetches live WC fixtures/results/standings every 6 hours
-  startFootballCron();
+  // Populate ESPN fixtures before starting odds services that match against them.
+  await startFootballCron();
+
+  // Start public market-data crons after fixture data is ready.
+  startPolymarketCron();
+  startKalshiCron();
 });
