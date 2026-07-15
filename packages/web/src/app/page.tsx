@@ -30,6 +30,10 @@ const FALLBACK_SUGGESTIONS = [
   "Which remaining team has the strongest title chance?",
 ];
 
+function isKnownTeam(team: string): boolean {
+  return team.trim().toLowerCase() !== "tbd" && !/\b(?:winner|loser)\b/i.test(team);
+}
+
 function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
   for (let index = 0; index < messages.length - 1; index += 1) {
@@ -104,8 +108,8 @@ export default function HomePage() {
       const featured = matches
         .filter((match) => (match.stage === "semifinals" || match.stage === "final")
           && (match.status === "SCHEDULED" || match.status === "IN_PLAY")
-          && match.homeTeam !== "TBD"
-          && match.awayTeam !== "TBD")
+          && isKnownTeam(match.homeTeam)
+          && isKnownTeam(match.awayTeam))
         .map((match) => `${match.homeTeam} vs ${match.awayTeam}`)
         .slice(0, 3);
       setSuggestions(featured.length > 0 ? featured : FALLBACK_SUGGESTIONS);
