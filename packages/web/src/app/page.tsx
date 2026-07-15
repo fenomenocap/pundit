@@ -5,7 +5,9 @@ import Link from "next/link";
 import {
   ApiError,
   askQuestion,
+  type AskGrounding,
   type ConversationTurn,
+  type MatchGrounding,
   type TeamContext,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -17,11 +19,44 @@ interface ChatMessage {
   id: number;
   role: "user" | "assistant" | "error";
   content: string;
+  grounding?: AskGrounding;
 }
 
 let nextId = 0;
 
 const SUGGESTIONS = ["France vs Morocco", "Argentina vs Brazil", "USA vs England"];
+
+function oddsRows(grounding: MatchGrounding) {
+  const rows: Array<{
+    label: string;
+    pHome: number;
+    pDraw: number | null;
+    pAway: number;
+  }> = [];
+
+  if (grounding.stakePHome !== null
+    && grounding.stakePDraw !== null
+    && grounding.stakePAway !== null) {
+    rows.push({
+      label: "Stake",
+      pHome: grounding.stakePHome,
+      pDraw: grounding.stakePDraw,
+      pAway: grounding.stakePAway,
+    });
+  }
+
+  rows.push(...grounding.oddsSources.map((source) => ({
+    label: source.source === "kalshi" ? "Kalshi" : "Polymarket",
+    pHome: source.pHome,
+    pDraw: source.pDraw,
+    pAway: source.pAway,
+  })));
+  return rows;
+}
+
+function formatPercent(value: number | null): string {
+  return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+}
 
 export default function HomePage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -54,7 +89,10 @@ export default function HomePage() {
       if (grounding?.kind === "match") {
         setTeamContext([grounding.home, grounding.away]);
       }
-      setMessages((prev) => [...prev, { id: nextId++, role: "assistant", content: answer }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId++, role: "assistant", content: answer, grounding },
+      ]);
     } catch (err) {
       const serverMessage = err instanceof Error ? err.message : "Something went wrong.";
       const status = err instanceof ApiError ? err.status : undefined;
@@ -135,22 +173,48 @@ export default function HomePage() {
       ) : (
         <ScrollArea className="flex-1">
           <div className="flex flex-col gap-3 py-4">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={cn(
-                  "max-w-[85%] rounded-lg border px-4 py-2.5 text-sm leading-relaxed",
-                  m.role === "user" &&
-                    "ml-auto border-cyan-500/30 bg-cyan-950/40 text-foreground",
-                  m.role === "assistant" &&
-                    "mr-auto border-border bg-card text-foreground",
-                  m.role === "error" &&
-                    "mr-auto border-pink-500/30 bg-pink-950 text-pink-200"
-                )}
-              >
-                {m.content}
-              </div>
-            ))}
+            {messages.map((m) => {
+              const rows = m.role === "assistant" && m.grounding?.kind === "match"
+                ? oddsRows(m.grounding)
+                : [];
+              return (
+                <div
+                  key={m.id}
+                  className={cn(
+                    "max-w-[85%] rounded-lg border px-4 py-2.5 text-sm leading-relaxed",
+                    m.role === "user" &&
+                      "ml-auto border-cyan-500/30 bg-cyan-950/40 text-foreground",
+                    m.role === "assistant" &&
+                      "mr-auto border-border bg-card text-foreground",
+                    m.role === "error" &&
+                      "mr-auto border-pink-500/30 bg-pink-950 text-pink-200"
+                  )}
+                >
+                  <div>{m.content}</div>
+                  {rows.length > 0 && (
+                    <div className="mt-2 border-t border-border/70 pt-2 text-[11px] leading-tight text-muted-foreground">
+                      <div className="grid grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)] gap-x-2 pb-1 font-medium uppercase tracking-wide">
+                        <span>Market</span>
+                        <span className="text-right">Home</span>
+                        <span className="text-right">Draw</span>
+                        <span className="text-right">Away</span>
+                      </div>
+                      {rows.map((row) => (
+                        <div
+                          key={row.label}
+                          className="grid grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)] gap-x-2 py-0.5"
+                        >
+                          <span className="text-foreground/80">{row.label}</span>
+                          <span className="text-right">{formatPercent(row.pHome)}</span>
+                          <span className="text-right">{formatPercent(row.pDraw)}</span>
+                          <span className="text-right">{formatPercent(row.pAway)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {loading && (
               <div className="mr-auto flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-muted-foreground">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
