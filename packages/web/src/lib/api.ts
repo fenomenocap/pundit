@@ -97,13 +97,24 @@ export interface AskGrounding {
   stakePAway: number | null;
 }
 
-export async function askQuestion(question: string): Promise<{
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export type TeamContext = [string, string];
+
+export async function askQuestion(
+  question: string,
+  history: ConversationTurn[] = [],
+  teamContext?: TeamContext
+): Promise<{
   answer: string;
   grounding: AskGrounding;
 }> {
   return apiFetch<{ answer: string; grounding: AskGrounding }>("/api/ask", {
     method: "POST",
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, history, teamContext }),
   });
 }
 
