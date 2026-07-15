@@ -51,7 +51,9 @@ export default function HomePage() {
 
     try {
       const { answer, grounding } = await askQuestion(trimmed, history, teamContext);
-      setTeamContext([grounding.home, grounding.away]);
+      if (grounding?.kind === "match") {
+        setTeamContext([grounding.home, grounding.away]);
+      }
       setMessages((prev) => [...prev, { id: nextId++, role: "assistant", content: answer }]);
     } catch (err) {
       const serverMessage = err instanceof Error ? err.message : "Something went wrong.";
