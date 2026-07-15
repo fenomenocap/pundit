@@ -6,8 +6,8 @@ import {
   normalizeTeamText,
 } from "../lib/team-names";
 import { getCachedModelData, ModelFixture } from "./model-data";
-import { getCachedKalshiOdds } from "./kalshi-data";
-import { getCachedPolymarketOdds } from "./polymarket-data";
+import { getFeaturedModelFixtures } from "./featured-fixtures";
+import { getCachedFixtureMarketOdds } from "./model-market-odds";
 
 export interface OddsSource {
   source: "kalshi" | "polymarket";
@@ -25,6 +25,11 @@ export interface Grounding {
   pHome: number;
   pDraw: number;
   pAway: number;
+  pOver2_5: number;
+  pUnder2_5: number;
+  pBttsYes: number;
+  pBttsNo: number;
+  topScores: Array<{ score: string; probability: number }>;
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
@@ -49,7 +54,8 @@ export interface ConversationTurn {
 export type TeamContext = [string, string];
 
 const ANTHROPIC_MODEL = "claude-sonnet-5";
-const MAX_TOKENS = 600;
+const MAX_TOKENS = 1_500;
+const REQUEST_TIMEOUT_MS = 45_000;
 
 const MATCH_SYSTEM_PROMPT = `You are a World Cup match-analysis assistant. You are given precomputed
 probabilities from a Dixon-Coles Poisson model (calibrated on live Elo ratings) for
@@ -63,6 +69,9 @@ model's win probability against them and note the edge (model minus market,
 positive means the model favours that outcome more than the market does). When
 absent (null), say plainly that no market price is available for this match rather
 than guessing one.
+The data also includes over/under 2.5, both-teams-to-score, and ranked scoreline
+probabilities. Quote those supplied values exactly; never invent a scoreline or
+total that is not present in the grounding.
 The data may also include oddsSources from Kalshi and/or Polymarket. Compare the
 model with whichever sources are present. If a source is absent, never guess its
 price; say plainly that it is unavailable if it is relevant to the answer.
@@ -168,12 +177,12 @@ export function findFixture(teamA: string, teamB: string, fixtures: ModelFixture
     && pair.has(fixture.away));
 }
 
-function buildGrounding(fixture: ModelFixture): Grounding {
+export function buildGrounding(fixture: ModelFixture): Grounding {
   const oddsSources: OddsSource[] = [];
-  const kalshi = getCachedKalshiOdds(fixture.home, fixture.away);
-  if (kalshi) oddsSources.push({ source: "kalshi", ...kalshi });
-  const polymarket = getCachedPolymarketOdds(fixture.home, fixture.away);
-  if (polymarket) oddsSources.push({ source: "polymarket", ...polymarket });
+  const markets = getCachedFixtureMarketOdds(fixture);
+  if (markets?.kalshi) oddsSources.push({ source: "kalshi", ...markets.kalshi });
+  if (markets?.polymarket) oddsSources.push({ source: "polymarket", ...markets.polymarket });
+  const stake = markets?.stake;
 
   return {
     kind: "match",
@@ -184,11 +193,60 @@ function buildGrounding(fixture: ModelFixture): Grounding {
     pHome: fixture.pHome,
     pDraw: fixture.pDraw,
     pAway: fixture.pAway,
-    stakePHome: fixture.stakePHome,
-    stakePDraw: fixture.stakePDraw,
-    stakePAway: fixture.stakePAway,
+    pOver2_5: fixture.pOver2_5,
+    pUnder2_5: fixture.pUnder2_5,
+    pBttsYes: fixture.pBttsYes,
+    pBttsNo: fixture.pBttsNo,
+    topScores: fixture.topScores,
+    stakePHome: stake?.pHome ?? fixture.stakePHome,
+    stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
+    stakePAway: stake?.pAway ?? fixture.stakePAway,
     oddsSources,
   };
+}
+
+export async function generateAnalysis(
+  client: Pick<Anthropic, "messages">,
+  systemPrompt: string,
+  messages: ConversationTurn[],
+  tier: "match" | "tournament" | "general"
+): Promise<string> {
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      tools: [{ type: "web_search_20260209", name: "web_search" }],
+      messages,
+    }, { timeout: REQUEST_TIMEOUT_MS });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/timed?\s*out|timeout/i.test(message)) {
+      throw new AppError(504, "Analysis service timed out. Please try again.");
+    }
+    throw error;
+  }
+  const answer = response.content.reduce(
+    (text, block) => block.type === "text" ? text + block.text : text,
+    ""
+  ).trim();
+  const usedWebSearch = response.content.some((block) =>
+    block.type === "server_tool_use" || block.type === "web_search_tool_result"
+  );
+  console.log(JSON.stringify({
+    event: "analysis_generated",
+    tier,
+    durationMs: Date.now() - startedAt,
+    stopReason: response.stop_reason,
+    usedWebSearch,
+  }));
+  if (!answer) throw new AppError(502, "Analysis service returned an empty response.");
+  if (response.stop_reason === "max_tokens") {
+    throw new AppError(502, "Analysis response was truncated. Please try again.");
+  }
+  return answer;
 }
 
 export async function answerQuestion(
@@ -198,6 +256,9 @@ export async function answerQuestion(
 ): Promise<{ answer: string; grounding: AskGrounding }> {
   const modelData = getCachedModelData();
   const { fixtures } = modelData;
+  if (fixtures.length === 0) {
+    throw new AppError(503, "Model data is still loading. Please try again shortly.");
+  }
   let teams: TeamContext | undefined;
   try {
     teams = resolveTeams(question, fixtures);
@@ -224,7 +285,8 @@ export async function answerQuestion(
     currentMessage = `Tournament model data: ${JSON.stringify(grounding)}\nUser question: ${question}`;
   } else {
     if (!teams && history.length > 0 && teamContext) teams = teamContext;
-    const fixture = teams ? findFixture(teams[0], teams[1], fixtures) : undefined;
+    const featuredFixtures = getFeaturedModelFixtures();
+    const fixture = teams ? findFixture(teams[0], teams[1], featuredFixtures) : undefined;
 
     if (fixture) {
       grounding = buildGrounding(fixture);
@@ -242,26 +304,17 @@ export async function answerQuestion(
 
   try {
     const client = new Anthropic({ apiKey });
-    const response = await client.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      tools: [{ type: "web_search_20260209", name: "web_search" }],
-      messages: [
-        ...history,
-        {
-          role: "user",
-          content: currentMessage,
-        },
-      ],
-    });
-    const answer = response.content.reduce(
-      (text, block) => block.type === "text" ? text + block.text : text,
-      ""
-    );
+    const answer = await generateAnalysis(client, systemPrompt, [
+      ...history,
+      { role: "user", content: currentMessage },
+    ], grounding?.kind ?? "general");
     return { answer, grounding };
   } catch (err) {
+    if (err instanceof AppError) throw err;
     const message = err instanceof Error ? err.message : String(err);
+    if (/timed?\s*out|timeout/i.test(message)) {
+      throw new AppError(504, "Analysis service timed out. Please try again.");
+    }
     throw new AppError(502, `Analysis generation failed: ${message}`);
   }
 }

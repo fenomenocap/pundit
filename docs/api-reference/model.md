@@ -41,6 +41,11 @@ Fixture-level probabilities for the full schedule.
       "pHome": 0.62,
       "pDraw": 0.22,
       "pAway": 0.16,
+      "pOver2_5": 0.54,
+      "pUnder2_5": 0.46,
+      "pBttsYes": 0.51,
+      "pBttsNo": 0.49,
+      "topScores": [{ "score": "1-0", "probability": 0.14 }],
       "stakePHome": 0.58,
       "stakePDraw": 0.24,
       "stakePAway": 0.18,
@@ -52,4 +57,6 @@ Fixture-level probabilities for the full schedule.
 }
 ```
 
-`stakePHome` / `stakePDraw` / `stakePAway` are no-vig implied probabilities derived from Stake's live 1X2 odds for that fixture, and are `null` when no market price is available yet. `home` / `away` are positional labels only — all World Cup 2026 matches are at neutral venues, so there's no home-field advantage baked into the probabilities.
+This endpoint preserves the full fixture history. Completed `result` objects include `homeScore`, `awayScore`, `status`, and `winner`; `winner` is authoritative for penalty shootouts. Stake fields are nullable. `home` / `away` are positional labels only.
+
+Historical probabilities are recalculated by the companion feed using current Elo ratings. Do not treat this endpoint as an immutable pre-match snapshot archive.

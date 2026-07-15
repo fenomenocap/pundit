@@ -10,12 +10,13 @@ import {
 const router: Router = Router();
 const MAX_HISTORY_TURNS = 12;
 const MAX_HISTORY_CONTENT_LENGTH = 4_000;
+const MAX_HISTORY_TOTAL_LENGTH = 12_000;
 
-function parseHistory(raw: unknown): ConversationTurn[] {
+export function parseHistory(raw: unknown): ConversationTurn[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw new AppError(400, "'history' must be an array.");
 
-  return raw.slice(-MAX_HISTORY_TURNS).map((turn) => {
+  const history = raw.slice(-MAX_HISTORY_TURNS).map((turn) => {
     if (!turn || typeof turn !== "object") {
       throw new AppError(400, "Each history turn must contain a role and content.");
     }
@@ -31,8 +32,19 @@ function parseHistory(raw: unknown): ConversationTurn[] {
       throw new AppError(400, "History content must be between 1 and 4000 characters.");
     }
 
-    return { role, content: trimmedContent };
+    return { role, content: trimmedContent } as ConversationTurn;
   });
+
+  if (history.length % 2 !== 0 || history.some((turn, index) =>
+    turn.role !== (index % 2 === 0 ? "user" : "assistant")
+  )) {
+    throw new AppError(400, "History must contain complete user/assistant exchanges.");
+  }
+  const totalLength = history.reduce((total, turn) => total + turn.content.length, 0);
+  if (totalLength > MAX_HISTORY_TOTAL_LENGTH) {
+    throw new AppError(400, "History must be 12000 characters or fewer in total.");
+  }
+  return history;
 }
 
 function parseTeamContext(raw: unknown): TeamContext | undefined {

@@ -8,9 +8,12 @@ import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
 import askRoutes from "./routes/ask";
 import { startPolymarketCron } from "./services/polymarket-data";
-import { startModelCron } from "./services/model-data";
-import { startFootballCron } from "./services/football-data";
-import { startKalshiCron } from "./services/kalshi-data";
+import { getCachedModelData, startModelCron } from "./services/model-data";
+import { getCachedMatches, startFootballCron } from "./services/football-data";
+import {
+  getModelMarketOddsStatus,
+  startModelMarketOddsCron,
+} from "./services/model-market-odds";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -39,6 +42,19 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/ready", (_req, res) => {
+  const model = getCachedModelData();
+  const football = getCachedMatches();
+  const odds = getModelMarketOddsStatus();
+  const ready = model.lastUpdated !== null && football.lastUpdated !== null && odds.ready;
+  res.status(ready ? 200 : 503).json({
+    status: ready ? "ready" : "loading",
+    model: { ready: model.lastUpdated !== null, lastUpdated: model.lastUpdated?.toISOString() ?? null },
+    football: { ready: football.lastUpdated !== null, lastUpdated: football.lastUpdated?.toISOString() ?? null },
+    marketOdds: { ready: odds.ready, lastUpdated: odds.lastUpdated?.toISOString() ?? null },
+  });
+});
+
 app.use("/api/matches", matchRoutes);
 app.use("/api/polymarkets", polymarketRoutes);
 app.use("/api/model", modelRoutes);
@@ -50,16 +66,15 @@ app.use(errorHandler);
 
 // ─── Start ──────────────────────────────────────────────────────────────────
 
-app.listen(port, async () => {
+app.listen(port, () => {
   console.log(`API server running on port ${port}`);
 
-  // Start worldcup-model cron — fetches Elo/Poisson win probabilities every 6 hours
-  startModelCron();
-
-  // Populate ESPN fixtures before starting odds services that match against them.
-  await startFootballCron();
-
-  // Start public market-data crons after fixture data is ready.
-  startPolymarketCron();
-  startKalshiCron();
+  void (async () => {
+    await Promise.all([startModelCron(), startFootballCron()]);
+    await startModelMarketOddsCron();
+    startPolymarketCron();
+  })().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[Bootstrap] ${message}`);
+  });
 });

@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { fetchUpcomingMatches } from "@/lib/mock-data";
 
 interface ChatMessage {
   id: number;
@@ -24,7 +25,26 @@ interface ChatMessage {
 
 let nextId = 0;
 
-const SUGGESTIONS = ["France vs Morocco", "Argentina vs Brazil", "USA vs England"];
+const FALLBACK_SUGGESTIONS = [
+  "Who is the favourite to win the World Cup now?",
+  "Which remaining team has the strongest title chance?",
+];
+
+function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
+  const turns: ConversationTurn[] = [];
+  for (let index = 0; index < messages.length - 1; index += 1) {
+    const user = messages[index];
+    const assistant = messages[index + 1];
+    if (user.role === "user" && assistant.role === "assistant") {
+      turns.push(
+        { role: "user", content: user.content },
+        { role: "assistant", content: assistant.content }
+      );
+      index += 1;
+    }
+  }
+  return turns.slice(-12);
+}
 
 function oddsRows(grounding: MatchGrounding) {
   const rows: Array<{
@@ -33,6 +53,13 @@ function oddsRows(grounding: MatchGrounding) {
     pDraw: number | null;
     pAway: number;
   }> = [];
+
+  rows.push({
+    label: "Model",
+    pHome: grounding.pHome,
+    pDraw: grounding.pDraw,
+    pAway: grounding.pAway,
+  });
 
   if (grounding.stakePHome !== null
     && grounding.stakePDraw !== null
@@ -63,22 +90,34 @@ export default function HomePage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [teamContext, setTeamContext] = useState<TeamContext>();
+  const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchUpcomingMatches().then((matches) => {
+      if (cancelled) return;
+      const featured = matches
+        .filter((match) => (match.stage === "semifinals" || match.stage === "final")
+          && (match.status === "SCHEDULED" || match.status === "IN_PLAY")
+          && match.homeTeam !== "TBD"
+          && match.awayTeam !== "TBD")
+        .map((match) => `${match.homeTeam} vs ${match.awayTeam}`)
+        .slice(0, 3);
+      setSuggestions(featured.length > 0 ? featured : FALLBACK_SUGGESTIONS);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   async function ask(question: string) {
     const trimmed = question.trim();
     if (!trimmed || loading) return;
 
-    const history: ConversationTurn[] = messages
-      .filter((message): message is ChatMessage & { role: "user" | "assistant" } =>
-        message.role !== "error"
-      )
-      .slice(-12)
-      .map(({ role, content }) => ({ role, content }));
+    const history = completedHistory(messages);
 
     setMessages((prev) => [...prev, { id: nextId++, role: "user", content: trimmed }]);
     setInput("");
@@ -104,6 +143,10 @@ export default function HomePage() {
             ? "You're asking a lot at once — wait a moment and try again"
             : status === 502
               ? "Analysis service is temporarily unavailable — try again shortly"
+              : status === 503
+                ? "Match data is still loading — try again shortly"
+                : status === 504
+                  ? "Analysis took too long — try again shortly"
               : serverMessage;
       setMessages((prev) => [...prev, { id: nextId++, role: "error", content: message }]);
     } finally {
@@ -145,7 +188,7 @@ export default function HomePage() {
             read on the numbers.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            {SUGGESTIONS.map((s) => (
+            {suggestions.map((s) => (
               <button
                 key={s}
                 onClick={() => ask(s)}
@@ -191,6 +234,15 @@ export default function HomePage() {
                   )}
                 >
                   <div>{m.content}</div>
+                  {m.role === "assistant" && (
+                    <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {m.grounding?.kind === "match"
+                        ? "Model-grounded match"
+                        : m.grounding?.kind === "tournament"
+                          ? "Model-grounded tournament"
+                          : "General analysis · not model-grounded"}
+                    </div>
+                  )}
                   {rows.length > 0 && (
                     <div className="mt-2 border-t border-border/70 pt-2 text-[11px] leading-tight text-muted-foreground">
                       <div className="grid grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)] gap-x-2 pb-1 font-medium uppercase tracking-wide">
@@ -230,8 +282,9 @@ export default function HomePage() {
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about a matchup, e.g. France vs Morocco"
+          placeholder="Ask about the semifinal, final, or title race"
           disabled={loading}
+          maxLength={500}
         />
         <Button type="submit" disabled={loading || !input.trim()}>
           Send
