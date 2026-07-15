@@ -6,6 +6,15 @@ import {
   normalizeTeamText,
 } from "../lib/team-names";
 import { getCachedModelData, ModelFixture } from "./model-data";
+import { getCachedKalshiOdds } from "./kalshi-data";
+import { getCachedPolymarketOdds } from "./polymarket-data";
+
+export interface OddsSource {
+  source: "kalshi" | "polymarket";
+  pHome: number;
+  pDraw: number | null;
+  pAway: number;
+}
 
 export interface Grounding {
   kind: "match";
@@ -19,6 +28,7 @@ export interface Grounding {
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
+  oddsSources: OddsSource[];
 }
 
 export interface TournamentGrounding {
@@ -53,6 +63,9 @@ model's win probability against them and note the edge (model minus market,
 positive means the model favours that outcome more than the market does). When
 absent (null), say plainly that no market price is available for this match rather
 than guessing one.
+The data may also include oddsSources from Kalshi and/or Polymarket. Compare the
+model with whichever sources are present. If a source is absent, never guess its
+price; say plainly that it is unavailable if it is relevant to the answer.
 You have a web_search tool -- use it when current injury, squad, or form news
 would materially change the read on this matchup. Do not fabricate injury/squad
 news or any fact not backed by the provided data or a search result -- if search
@@ -156,6 +169,12 @@ export function findFixture(teamA: string, teamB: string, fixtures: ModelFixture
 }
 
 function buildGrounding(fixture: ModelFixture): Grounding {
+  const oddsSources: OddsSource[] = [];
+  const kalshi = getCachedKalshiOdds(fixture.home, fixture.away);
+  if (kalshi) oddsSources.push({ source: "kalshi", ...kalshi });
+  const polymarket = getCachedPolymarketOdds(fixture.home, fixture.away);
+  if (polymarket) oddsSources.push({ source: "polymarket", ...polymarket });
+
   return {
     kind: "match",
     date: fixture.date,
@@ -168,6 +187,7 @@ function buildGrounding(fixture: ModelFixture): Grounding {
     stakePHome: fixture.stakePHome,
     stakePDraw: fixture.stakePDraw,
     stakePAway: fixture.stakePAway,
+    oddsSources,
   };
 }
 
