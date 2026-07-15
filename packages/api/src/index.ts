@@ -12,6 +12,7 @@ import { startModelCron } from "./services/model-data";
 import { startFootballCron } from "./services/football-data";
 
 const app = express();
+app.set("trust proxy", 1);
 const port = process.env.PORT || process.env.API_PORT || 3001;
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
