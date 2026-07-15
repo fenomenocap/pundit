@@ -3,11 +3,6 @@ node_modules/
 dist/
 .next/
 
-# Foundry
-out/
-cache/
-broadcast/
-
 # Vercel / local tooling
 .vercel
 .DS_Store

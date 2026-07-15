@@ -29,19 +29,6 @@
   }
 }
 
-@layer utilities {
-  @keyframes marquee {
-    from { transform: translateX(0); }
-    to   { transform: translateX(-50%); }
-  }
-  .animate-marquee {
-    animation: marquee 40s linear infinite;
-  }
-  .animate-marquee:hover {
-    animation-play-state: paused;
-  }
-}
-
 @layer base {
   * {
     @apply border-border;
@@ -55,14 +42,4 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: hsl(228 30% 20%); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: hsl(228 30% 30%); }
-}
-
-/* RainbowKit connect button size override */
-[data-rk] button[data-testid="rk-connect-button"] {
-  font-size: 12px !important;
-  padding: 6px 12px !important;
-  height: 32px !important;
-}
-[data-rk] [class*="iekbcc0"] {
-  font-size: 12px !important;
 }
