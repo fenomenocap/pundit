@@ -26,6 +26,14 @@ Chat-first WC 2026 matchup analysis app. No blockchain, no database — the prev
 `packages/web` intentionally has no test infrastructure yet; this is a deliberate scope choice,
 not an omission to fix without a specific frontend-testing requirement.
 
+### GitHub authentication on macOS
+
+GitHub CLI credentials are stored in the macOS keyring, and GitHub HTTPS operations use
+`gh auth git-credential`. A sandboxed `gh auth status` may therefore report an invalid token
+because it cannot access Keychain even when host authentication is valid. Before asking the user
+to authenticate again, rerun `gh auth status` with escalated/host permissions. Never work around
+Keychain isolation by writing a GitHub token to the repository, shell profile, or plaintext config.
+
 ---
 
 ## 🔴 Blocked on user — no code needed
