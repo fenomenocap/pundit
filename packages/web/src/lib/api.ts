@@ -84,7 +84,8 @@ export async function getStandings() {
 
 // ─── Ask (conversational match analysis) ────────────────────────────────────
 
-export interface AskGrounding {
+export interface MatchGrounding {
+  kind: "match";
   date: string;
   stage: string;
   home: string;
@@ -96,6 +97,16 @@ export interface AskGrounding {
   stakePDraw: number | null;
   stakePAway: number | null;
 }
+
+export interface TournamentGrounding {
+  kind: "tournament";
+  teams: Array<{
+    team: string;
+    winProb: number;
+  }>;
+}
+
+export type AskGrounding = MatchGrounding | TournamentGrounding | null;
 
 export interface ConversationTurn {
   role: "user" | "assistant";

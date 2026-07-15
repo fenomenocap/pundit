@@ -8,6 +8,7 @@ import {
 import { getCachedModelData, ModelFixture } from "./model-data";
 
 export interface Grounding {
+  kind: "match";
   date: string;
   stage: string;
   home: string;
@@ -20,6 +21,16 @@ export interface Grounding {
   stakePAway: number | null;
 }
 
+export interface TournamentGrounding {
+  kind: "tournament";
+  teams: Array<{
+    team: string;
+    winProb: number;
+  }>;
+}
+
+export type AskGrounding = Grounding | TournamentGrounding | null;
+
 export interface ConversationTurn {
   role: "user" | "assistant";
   content: string;
@@ -30,7 +41,7 @@ export type TeamContext = [string, string];
 const ANTHROPIC_MODEL = "claude-sonnet-5";
 const MAX_TOKENS = 600;
 
-const SYSTEM_PROMPT = `You are a World Cup match-analysis assistant. You are given precomputed
+const MATCH_SYSTEM_PROMPT = `You are a World Cup match-analysis assistant. You are given precomputed
 probabilities from a Dixon-Coles Poisson model (calibrated on live Elo ratings) for
 a specific matchup. Treat these numbers as ground truth for the statistical
 analysis. Do not invent or contradict them. All World Cup 2026 matches are at
@@ -50,6 +61,36 @@ Respond in 2-4 short paragraphs, plain language, no markdown tables. State the
 headline win/draw/win and O/U 2.5 numbers naturally, mention 1-2 most likely
 scorelines, and give a one-line read on what would need to be true for the
 underdog.`;
+
+const TOURNAMENT_SYSTEM_PROMPT = `You are a World Cup tournament-analysis assistant. You are given
+precomputed team win probabilities from a Dixon-Coles/Poisson tournament model calibrated on live
+Elo ratings. Treat those probabilities as ground truth for the statistical analysis and do not
+invent or contradict them. Never guess when model data is absent; say so plainly. You may use the
+web_search tool for current injury, squad, or form news, but do not fabricate facts when search does
+not support them. Respond in 2-4 short paragraphs in plain language with no markdown tables.`;
+
+const GENERAL_SYSTEM_PROMPT = `You are a general football analyst. This request is not grounded in
+Pundit's Dixon-Coles/Poisson model data. Make that limitation clear in the response and do not imply
+that any claim or number came from Pundit's model. Use the web_search tool for current facts when
+helpful, and never fabricate a statistic, injury, squad update, or result. Respond in 2-4 short
+paragraphs in plain language with no markdown tables.`;
+
+const TOURNAMENT_KEYWORDS = [
+  "who wins it all",
+  "who will win it all",
+  "favourite",
+  "favorite",
+  "win the world cup",
+  "wins the world cup",
+  "world cup winner",
+  "win the tournament",
+  "wins the tournament",
+];
+
+export function isTournamentQuestion(question: string): boolean {
+  const normalized = normalizeTeamText(question);
+  return TOURNAMENT_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
 
 export function resolveTeams(question: string, fixtures: ModelFixture[]): [string, string] {
   const normalizedQuestion = normalizeTeamText(question);
@@ -116,6 +157,7 @@ export function findFixture(teamA: string, teamB: string, fixtures: ModelFixture
 
 function buildGrounding(fixture: ModelFixture): Grounding {
   return {
+    kind: "match",
     date: fixture.date,
     stage: fixture.stage,
     home: fixture.home,
@@ -133,30 +175,48 @@ export async function answerQuestion(
   question: string,
   history: ConversationTurn[] = [],
   teamContext?: TeamContext
-): Promise<{ answer: string; grounding: Grounding }> {
-  const { fixtures } = getCachedModelData();
-  let teams: TeamContext;
+): Promise<{ answer: string; grounding: AskGrounding }> {
+  const modelData = getCachedModelData();
+  const { fixtures } = modelData;
+  let teams: TeamContext | undefined;
   try {
     teams = resolveTeams(question, fixtures);
   } catch (err) {
     const isMissingTeams = err instanceof AppError
       && err.statusCode === 400
       && err.message.startsWith("Could not identify two teams");
-    if (!isMissingTeams || history.length === 0 || !teamContext) throw err;
-    teams = teamContext;
+    if (!isMissingTeams) throw err;
   }
 
-  const [teamA, teamB] = teams;
-  const fixture = findFixture(teamA, teamB, fixtures);
+  let grounding: AskGrounding;
+  let systemPrompt: string;
+  let currentMessage: string;
 
-  if (!fixture) {
-    throw new AppError(
-      404,
-      `No fixture or model data available yet for ${teamA} vs ${teamB} (e.g. an undetermined knockout matchup). Try again closer to kickoff.`
-    );
+  if (!teams && isTournamentQuestion(question)) {
+    if (modelData.teams.length === 0) {
+      throw new AppError(502, "Tournament model data is not currently available.");
+    }
+    grounding = {
+      kind: "tournament",
+      teams: modelData.teams.map(({ team, winProb }) => ({ team, winProb })),
+    };
+    systemPrompt = TOURNAMENT_SYSTEM_PROMPT;
+    currentMessage = `Tournament model data: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+  } else {
+    if (!teams && history.length > 0 && teamContext) teams = teamContext;
+    const fixture = teams ? findFixture(teams[0], teams[1], fixtures) : undefined;
+
+    if (fixture) {
+      grounding = buildGrounding(fixture);
+      systemPrompt = MATCH_SYSTEM_PROMPT;
+      currentMessage = `Model data: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+    } else {
+      grounding = null;
+      systemPrompt = GENERAL_SYSTEM_PROMPT;
+      currentMessage = `User question: ${question}`;
+    }
   }
 
-  const grounding = buildGrounding(fixture);
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new AppError(502, "ANTHROPIC_API_KEY is not configured.");
 
@@ -165,13 +225,13 @@ export async function answerQuestion(
     const response = await client.messages.create({
       model: ANTHROPIC_MODEL,
       max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       tools: [{ type: "web_search_20260209", name: "web_search" }],
       messages: [
         ...history,
         {
           role: "user",
-          content: `Model data: ${JSON.stringify(grounding)}\nUser question: ${question}`,
+          content: currentMessage,
         },
       ],
     });
