@@ -30,4 +30,4 @@ Exceeding a limit returns an HTTP error with a JSON body like `{ "error": "Too m
 * [Model](model.md) — `GET /api/model/*`
 * [Ask](ask.md) — `POST /api/ask`
 
-There is also an unauthenticated `GET /health` endpoint for uptime checks (`{ "status": "ok" }`).
+`GET /health` is the unauthenticated liveness check. `GET /ready` reports whether the model, ESPN, and featured-market caches have completed a successful refresh.

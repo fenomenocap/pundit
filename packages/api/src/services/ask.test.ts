@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
-import { findFixture, isTournamentQuestion, resolveTeams } from "./ask";
+import { buildGrounding, findFixture, isTournamentQuestion, resolveTeams } from "./ask";
 
 function fixture(home: string, away: string): ModelFixture {
   return {
@@ -13,6 +13,11 @@ function fixture(home: string, away: string): ModelFixture {
     pHome: 0.4,
     pDraw: 0.3,
     pAway: 0.3,
+    pOver2_5: 0.55,
+    pUnder2_5: 0.45,
+    pBttsYes: 0.52,
+    pBttsNo: 0.48,
+    topScores: [{ score: "1-1", probability: 0.12 }],
     stakePHome: null,
     stakePDraw: null,
     stakePAway: null,
@@ -57,6 +62,18 @@ describe("resolveTeams", () => {
 describe("findFixture", () => {
   it("finds a fixture regardless of requested team order", () => {
     expect(findFixture("England", "USA", fixtures)).toEqual(fixtures[0]);
+  });
+});
+
+describe("buildGrounding", () => {
+  it("includes totals, BTTS, and model scorelines", () => {
+    expect(buildGrounding(fixtures[0])).toMatchObject({
+      pOver2_5: 0.55,
+      pUnder2_5: 0.45,
+      pBttsYes: 0.52,
+      pBttsNo: 0.48,
+      topScores: [{ score: "1-1", probability: 0.12 }],
+    });
   });
 });
 
