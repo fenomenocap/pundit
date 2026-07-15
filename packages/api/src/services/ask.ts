@@ -20,6 +20,13 @@ export interface Grounding {
   stakePAway: number | null;
 }
 
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export type TeamContext = [string, string];
+
 const ANTHROPIC_MODEL = "claude-sonnet-5";
 const MAX_TOKENS = 600;
 
@@ -123,10 +130,23 @@ function buildGrounding(fixture: ModelFixture): Grounding {
 }
 
 export async function answerQuestion(
-  question: string
+  question: string,
+  history: ConversationTurn[] = [],
+  teamContext?: TeamContext
 ): Promise<{ answer: string; grounding: Grounding }> {
   const { fixtures } = getCachedModelData();
-  const [teamA, teamB] = resolveTeams(question, fixtures);
+  let teams: TeamContext;
+  try {
+    teams = resolveTeams(question, fixtures);
+  } catch (err) {
+    const isMissingTeams = err instanceof AppError
+      && err.statusCode === 400
+      && err.message.startsWith("Could not identify two teams");
+    if (!isMissingTeams || history.length === 0 || !teamContext) throw err;
+    teams = teamContext;
+  }
+
+  const [teamA, teamB] = teams;
   const fixture = findFixture(teamA, teamB, fixtures);
 
   if (!fixture) {
@@ -147,10 +167,13 @@ export async function answerQuestion(
       max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
       tools: [{ type: "web_search_20260209", name: "web_search" }],
-      messages: [{
-        role: "user",
-        content: `Model data: ${JSON.stringify(grounding)}\nUser question: ${question}`,
-      }],
+      messages: [
+        ...history,
+        {
+          role: "user",
+          content: `Model data: ${JSON.stringify(grounding)}\nUser question: ${question}`,
+        },
+      ],
     });
     const answer = response.content.reduce(
       (text, block) => block.type === "text" ? text + block.text : text,

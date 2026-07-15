@@ -2,7 +2,12 @@
 
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import Link from "next/link";
-import { ApiError, askQuestion } from "@/lib/api";
+import {
+  ApiError,
+  askQuestion,
+  type ConversationTurn,
+  type TeamContext,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +27,7 @@ export default function HomePage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [teamContext, setTeamContext] = useState<TeamContext>();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,12 +38,20 @@ export default function HomePage() {
     const trimmed = question.trim();
     if (!trimmed || loading) return;
 
+    const history: ConversationTurn[] = messages
+      .filter((message): message is ChatMessage & { role: "user" | "assistant" } =>
+        message.role !== "error"
+      )
+      .slice(-12)
+      .map(({ role, content }) => ({ role, content }));
+
     setMessages((prev) => [...prev, { id: nextId++, role: "user", content: trimmed }]);
     setInput("");
     setLoading(true);
 
     try {
-      const { answer } = await askQuestion(trimmed);
+      const { answer, grounding } = await askQuestion(trimmed, history, teamContext);
+      setTeamContext([grounding.home, grounding.away]);
       setMessages((prev) => [...prev, { id: nextId++, role: "assistant", content: answer }]);
     } catch (err) {
       const serverMessage = err instanceof Error ? err.message : "Something went wrong.";
@@ -65,6 +79,7 @@ export default function HomePage() {
   function startNewChat() {
     setMessages([]);
     setInput("");
+    setTeamContext(undefined);
   }
 
   return (
