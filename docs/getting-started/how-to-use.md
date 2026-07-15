@@ -4,18 +4,16 @@ Pundit has three surfaces, all reachable from the top nav.
 
 ### The chat
 
-The homepage is a chat box. Type a question naming two teams — e.g. "France vs Morocco" or "who wins Argentina vs Brazil" — and Pundit looks up that fixture's model data and replies with a short, plain-language analysis: headline win/draw/win and over/under 2.5 odds, the 1–2 most likely scorelines, and a one-line note on what the underdog would need.
+The homepage suggests active semifinals and, once both teams are known, the championship final. A featured-match answer is grounded in the model's win/draw/win, over/under 2.5, BTTS, and most likely scorelines. Valid active Stake, Kalshi, and Polymarket 1X2 prices appear beneath the answer when available.
 
-A few things worth knowing:
+The chat also supports tournament-level questions such as “Who is the favourite?” and general football questions. Every assistant message is labelled as match-grounded, tournament-grounded, or general/not model-grounded. Up to six successful exchanges are carried forward for natural follow-ups; New Chat clears that context.
 
-* Pundit can only answer for fixtures that already exist in the tournament data — if the two teams haven't been drawn against each other yet (e.g. an undetermined knockout matchup), it'll tell you to check back closer to kickoff instead of guessing.
-* You need to name both teams for Pundit to identify the match. Vague questions ("who's going to win the World Cup") won't resolve to a specific fixture.
-* Answers can take a few seconds — the chat calls out to a model and, when relevant, a live web search for injury/squad news.
+Answers can take several seconds because Claude may run a live web search for relevant injury, squad, or form news. Requests are capped at 500 characters and 10 requests per minute.
 
 ### Fixtures & Standings
 
-The [Fixtures](how-to-use.md#fixtures--standings) page shows the full tournament schedule and results, grouped by stage (group stage → round of 32 → round of 16 → quarterfinals → semifinals → third-place match → final), plus live group standings. This is a straight read of the tournament as it's actually being played — not model output.
+The Fixtures page preserves the full tournament schedule and result history, grouped by stage, plus group standings. This is ESPN tournament data rather than model output.
 
 ### Model
 
-The Model page embeds Pundit's underlying prediction model directly, showing the full slate of team-level (win / semifinal / quarterfinal probabilities) and fixture-level odds the chat draws on. It's clearly labeled reference-only — the numbers here aren't tradeable anywhere in Pundit.
+The Model page embeds the companion prediction site. The API additionally retains the complete fixture history with model probabilities, totals, BTTS, scorelines, and completed results for future evaluation.

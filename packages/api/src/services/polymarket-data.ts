@@ -6,16 +6,6 @@
 //
 // Docs: https://docs.polymarket.com/#gamma-markets-api
 
-import {
-  MatchOdds,
-  StoredMatchOdds,
-  normalizeThreeWay,
-  normalizedTeamPairKey,
-  orientMatchOdds,
-} from "../lib/match-odds";
-import { normalizeTeamName } from "../lib/team-names";
-import { FootballMatch, getCachedMatches } from "./football-data";
-
 const GAMMA_BASE = "https://gamma-api.polymarket.com";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -39,7 +29,6 @@ export interface PolymarketMarket {
 interface PolymarketCache {
   wcMarkets: PolymarketMarket[];      // outright winner markets (Will X win WC?)
   groupMarkets: PolymarketMarket[];   // group winner markets (Will X win Group Y?)
-  matchOddsByPair: Map<string, StoredMatchOdds | null>;
   lastUpdated: Date | null;
   error: string | null;
 }
@@ -58,7 +47,6 @@ function isWCRelated(text: string): boolean {
 const cache: PolymarketCache = {
   wcMarkets: [],
   groupMarkets: [],
-  matchOddsByPair: new Map(),
   lastUpdated: null,
   error: null,
 };
@@ -84,64 +72,6 @@ function parseStringArray(raw: unknown): string[] {
 
 function parseNumberArray(raw: unknown): number[] {
   return parseStringArray(raw).map((v) => parseFloat(v)).filter((n) => !isNaN(n));
-}
-
-function uniqueFixtures(): FootballMatch[] {
-  const { upcoming, recent } = getCachedMatches();
-  const fixtures = new Map<string, FootballMatch>();
-  for (const fixture of [...upcoming, ...recent]) {
-    if (fixture.homeTeam === "TBD" || fixture.awayTeam === "TBD") continue;
-    fixtures.set(normalizedTeamPairKey(fixture.homeTeam, fixture.awayTeam), fixture);
-  }
-  return [...fixtures.values()];
-}
-
-function eventPairKey(title: string): string | null {
-  const match = /^(.+?)\s+vs\.?\s+(.+?)(?::|$)/i.exec(title.trim());
-  return match ? normalizedTeamPairKey(match[1], match[2]) : null;
-}
-
-function yesPrice(market: Record<string, unknown>): number | null {
-  const outcomes = parseStringArray(market.outcomes);
-  const prices = parseNumberArray(market.outcomePrices);
-  const yesIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === "yes");
-  const price = yesIndex >= 0 ? prices[yesIndex] : undefined;
-  return price !== undefined && Number.isFinite(price) && price >= 0 ? price : null;
-}
-
-export function parsePolymarketMatchEvent(
-  rawEvent: unknown,
-  home: string,
-  away: string
-): MatchOdds | null {
-  if (!rawEvent || typeof rawEvent !== "object") return null;
-  const event = rawEvent as Record<string, unknown>;
-  const markets = Array.isArray(event.markets) ? event.markets : [];
-  const normalizedHome = normalizeTeamName(home);
-  const normalizedAway = normalizeTeamName(away);
-  let pHome: number | null = null;
-  let pDraw: number | null = null;
-  let pAway: number | null = null;
-
-  for (const rawMarket of markets) {
-    if (!rawMarket || typeof rawMarket !== "object") continue;
-    const market = rawMarket as Record<string, unknown>;
-    const question = String(market.question ?? "");
-    const price = yesPrice(market);
-    if (price === null) continue;
-
-    if (/\b(draw|end in a draw)\b/i.test(question)) {
-      pDraw = price;
-      continue;
-    }
-    const winner = /^will\s+(.+?)\s+win\b/i.exec(question)?.[1];
-    if (!winner) continue;
-    if (normalizeTeamName(winner) === normalizedHome) pHome = price;
-    else if (normalizeTeamName(winner) === normalizedAway) pAway = price;
-  }
-
-  if (pHome === null || pDraw === null || pAway === null) return null;
-  return normalizeThreeWay(pHome, pDraw, pAway);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -237,74 +167,23 @@ async function fetchGroupMarkets(): Promise<PolymarketMarket[]> {
   });
 }
 
-async function fetchMatchOdds(): Promise<Map<string, StoredMatchOdds | null>> {
-  const fixtures = uniqueFixtures();
-  if (fixtures.length === 0) {
-    console.error("[Polymarket] Match refresh skipped: football fixture cache is empty.");
-    return new Map(cache.matchOddsByPair);
-  }
-
-  const next = new Map(cache.matchOddsByPair);
-  const batchSize = 5;
-  for (let offset = 0; offset < fixtures.length; offset += batchSize) {
-    const batch = fixtures.slice(offset, offset + batchSize);
-    await Promise.all(batch.map(async (fixture) => {
-      const key = normalizedTeamPairKey(fixture.homeTeam, fixture.awayTeam);
-      try {
-        const query = encodeURIComponent(`${fixture.homeTeam} ${fixture.awayTeam}`);
-        const result = await gammaFetch<{ events?: Array<Record<string, unknown>> }>(
-          `/public-search?q=${query}`
-        );
-        const event = (result.events ?? []).find((candidate) =>
-          eventPairKey(String(candidate.title ?? candidate.name ?? "")) === key
-        );
-        if (!event) {
-          next.set(key, null);
-          return;
-        }
-
-        const odds = parsePolymarketMatchEvent(event, fixture.homeTeam, fixture.awayTeam);
-        if (!odds) throw new Error(`Incomplete three-way market for ${fixture.homeTeam} vs ${fixture.awayTeam}`);
-        next.set(key, {
-          home: fixture.homeTeam,
-          away: fixture.awayTeam,
-          ...odds,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`[Polymarket] Match refresh error: ${message}`);
-      }
-    }));
-  }
-  return next;
-}
-
-export function getCachedPolymarketOdds(home: string, away: string): MatchOdds | null {
-  const stored = cache.matchOddsByPair.get(normalizedTeamPairKey(home, away));
-  return stored ? orientMatchOdds(stored, home, away) : null;
-}
-
 // ─── Refresh ─────────────────────────────────────────────────────────────────
 
 export async function refreshPolymarketData(): Promise<void> {
   console.log("[Polymarket] Refreshing WC markets from Gamma API...");
 
   try {
-    const [wcMarkets, groupMarkets, matchOddsByPair] = await Promise.all([
+    const [wcMarkets, groupMarkets] = await Promise.all([
       fetchOutrightMarkets(),
       fetchGroupMarkets(),
-      fetchMatchOdds(),
     ]);
 
     cache.wcMarkets = wcMarkets;
     cache.groupMarkets = groupMarkets;
-    cache.matchOddsByPair = matchOddsByPair;
     cache.lastUpdated = new Date();
     cache.error = null;
     console.log(
-      `[Polymarket] ${wcMarkets.length} outright + ${groupMarkets.length} group winner + ${
-        [...matchOddsByPair.values()].filter(Boolean).length
-      } match markets cached.`
+      `[Polymarket] ${wcMarkets.length} outright + ${groupMarkets.length} group winner markets cached.`
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";

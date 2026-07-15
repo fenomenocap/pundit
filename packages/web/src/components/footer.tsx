@@ -5,7 +5,7 @@ export function Footer() {
         <span>Reference only &middot; not tradeable</span>
         <div className="flex items-center gap-4">
           <a
-            href="https://github.com/fenomenocap/football-prediction-market"
+            href="https://github.com/fenomenocap/pundit"
             target="_blank"
             rel="noopener noreferrer"
             className="transition-colors hover:text-foreground"

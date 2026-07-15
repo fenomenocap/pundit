@@ -45,3 +45,7 @@ export function normalizeTeamName(name: string): string {
 export function getTeamNameAliases(): ReadonlyArray<readonly [string, string]> {
   return RAW_TEAM_ALIASES;
 }
+
+export function normalizedTeamPairKey(teamA: string, teamB: string): string {
+  return [normalizeTeamName(teamA), normalizeTeamName(teamB)].sort().join("::");
+}

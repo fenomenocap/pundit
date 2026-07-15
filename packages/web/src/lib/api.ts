@@ -100,6 +100,11 @@ export interface MatchGrounding {
   pHome: number;
   pDraw: number;
   pAway: number;
+  pOver2_5: number;
+  pUnder2_5: number;
+  pBttsYes: number;
+  pBttsNo: number;
+  topScores: Array<{ score: string; probability: number }>;
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
@@ -141,4 +146,13 @@ export async function askQuestion(
 
 export async function getHealth() {
   return apiFetch<{ status: string }>("/health");
+}
+
+export async function getReadiness() {
+  return apiFetch<{
+    status: "ready" | "loading";
+    model: { ready: boolean; lastUpdated: string | null };
+    football: { ready: boolean; lastUpdated: string | null };
+    marketOdds: { ready: boolean; lastUpdated: string | null };
+  }>("/ready");
 }

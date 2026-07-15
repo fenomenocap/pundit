@@ -14,16 +14,20 @@ For every team still in the tournament:
 For every fixture:
 
 * **Win / draw / win probabilities** (`pHome`, `pDraw`, `pAway`) — Dixon-Coles Poisson output for that specific matchup
-* **Market-implied probabilities**, when available — no-vig odds derived from Stake's live 1X2 pricing for the same fixture
-* **Result**, once played
+* **Over/under 2.5, BTTS, and likely scorelines** derived from the score matrix
+* **Result and authoritative winner**, once played
 
 ### How the chat uses it
 
-When you ask Pundit about a matchup, it looks up that fixture's precomputed probabilities and treats them as ground truth — it doesn't recompute or second-guess the model's numbers. It then:
+For an ESPN-active semifinal or final, Pundit treats the fixture's precomputed probabilities as ground truth. It then:
 
-1. Compares the model's win/draw/win read against the market's (when a market price exists for that fixture) and calls out the edge
+1. Compares the model's win/draw/win read with complete active Stake, Kalshi, and Polymarket 1X2 prices when available
 2. Runs a live web search only if current injury, squad, or form news would materially change the read — and says plainly when a search turns up nothing, rather than inventing something
 3. Responds in plain language: headline odds, 1–2 likely scorelines, and what the underdog would need
+
+### Historical evaluation caveat
+
+Pundit retains every fixture and completed result returned by the companion model. That feed recalculates older fixture probabilities with current Elo ratings, so it is useful for exploration but is not a look-ahead-free backtest dataset. Rigorous calibration requires immutable pre-kickoff snapshots, which are intentionally deferred.
 
 ### A note on venues
 
