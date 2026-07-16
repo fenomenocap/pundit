@@ -70,9 +70,9 @@ app.listen(port, () => {
   console.log(`API server running on port ${port}`);
 
   void (async () => {
-    await Promise.all([startModelCron(), startFootballCron()]);
+    await Promise.all([startFootballCron(), startPolymarketCron()]);
+    await startModelCron();
     await startModelMarketOddsCron();
-    startPolymarketCron();
   })().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[Bootstrap] ${message}`);
