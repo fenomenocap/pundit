@@ -169,6 +169,27 @@ export function resolveTeams(question: string, fixtures: ModelFixture[]): [strin
   return [orderedTeams[0], orderedTeams[1]];
 }
 
+// Resolve the two teams a question names, treating resolution failures as
+// "ungrounded" rather than user errors when the question can still be answered:
+// missing teams fall through to tournament/general analysis, and naming three or
+// more teams is fine for a tournament question ("Will France, England or Spain
+// win the World Cup?"). Only a multi-team matchup question keeps the 400.
+export function resolveQuestionTeams(
+  question: string,
+  fixtures: ModelFixture[]
+): TeamContext | undefined {
+  try {
+    return resolveTeams(question, fixtures);
+  } catch (err) {
+    if (!(err instanceof AppError) || err.statusCode !== 400) throw err;
+    const isMissingTeams = err.message.startsWith("Could not identify two teams");
+    const isTournamentMultiTeam = err.message.startsWith("Please name exactly one matchup")
+      && isTournamentQuestion(question);
+    if (!isMissingTeams && !isTournamentMultiTeam) throw err;
+    return undefined;
+  }
+}
+
 export function findFixture(teamA: string, teamB: string, fixtures: ModelFixture[]): ModelFixture | undefined {
   const pair = new Set([teamA, teamB]);
   return fixtures.find((fixture) => new Set([fixture.home, fixture.away]).size === pair.size
@@ -259,15 +280,7 @@ export async function answerQuestion(
   if (fixtures.length === 0) {
     throw new AppError(503, "Model data is still loading. Please try again shortly.");
   }
-  let teams: TeamContext | undefined;
-  try {
-    teams = resolveTeams(question, fixtures);
-  } catch (err) {
-    const isMissingTeams = err instanceof AppError
-      && err.statusCode === 400
-      && err.message.startsWith("Could not identify two teams");
-    if (!isMissingTeams) throw err;
-  }
+  let teams = resolveQuestionTeams(question, fixtures);
 
   let grounding: AskGrounding;
   let systemPrompt: string;

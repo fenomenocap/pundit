@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
-import { buildGrounding, findFixture, isTournamentQuestion, resolveTeams } from "./ask";
+import {
+  buildGrounding,
+  findFixture,
+  isTournamentQuestion,
+  resolveQuestionTeams,
+  resolveTeams,
+} from "./ask";
 
 function fixture(home: string, away: string): ModelFixture {
   return {
@@ -56,6 +62,28 @@ describe("resolveTeams", () => {
         message: expect.stringContaining("exactly one matchup"),
       });
     }
+  });
+});
+
+describe("resolveQuestionTeams", () => {
+  it("resolves a plain matchup", () => {
+    expect(resolveQuestionTeams("USA vs England", fixtures)).toEqual(["USA", "England"]);
+  });
+
+  it("returns undefined when no teams are named", () => {
+    expect(resolveQuestionTeams("Who wins tonight?", fixtures)).toBeUndefined();
+  });
+
+  it("lets a multi-team tournament question through ungrounded", () => {
+    expect(resolveQuestionTeams(
+      "Will France, England or Morocco win the World Cup?",
+      fixtures
+    )).toBeUndefined();
+  });
+
+  it("still rejects a multi-team matchup question", () => {
+    expect(() => resolveQuestionTeams("France vs Morocco, then Brazil", fixtures))
+      .toThrowError(AppError);
   });
 });
 

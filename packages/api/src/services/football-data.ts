@@ -172,15 +172,15 @@ export async function refreshFootballData(): Promise<void> {
   try {
     const all = await fetchAllMatches();
 
+    // The whole tournament is 104 matches — keep every fixture so /fixtures can
+    // render the full bracket (group stage included) at any point in the event.
     cache.upcoming = all
       .filter((m) => m.status !== "FINISHED")
-      .sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime())
-      .slice(0, 50);
+      .sort((a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime());
 
     cache.recent = all
       .filter((m) => m.status === "FINISHED")
-      .sort((a, b) => new Date(b.utcDate).getTime() - new Date(a.utcDate).getTime())
-      .slice(0, 20);
+      .sort((a, b) => new Date(b.utcDate).getTime() - new Date(a.utcDate).getTime());
 
     console.log(
       `[FootballData]   ${cache.upcoming.length} upcoming, ${cache.recent.length} recent`
