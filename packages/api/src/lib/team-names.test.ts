@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTeamName } from "./team-names";
+import { canonicalTeamName, normalizeTeamName } from "./team-names";
 
 describe("normalizeTeamName", () => {
   it("strips diacritics", () => {
@@ -14,5 +14,11 @@ describe("normalizeTeamName", () => {
 
   it("is case-insensitive", () => {
     expect(normalizeTeamName("BOSNIA AND HERZEGOVINA")).toBe("bosnia");
+  });
+
+  it("returns display-case canonical names for upstream model inputs", () => {
+    expect(canonicalTeamName("United States")).toBe("USA");
+    expect(canonicalTeamName("Türkiye")).toBe("Turkey");
+    expect(canonicalTeamName("Curaçao")).toBe("Curacao");
   });
 });

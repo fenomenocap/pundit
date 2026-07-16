@@ -197,8 +197,8 @@ export async function refreshPolymarketData(): Promise<void> {
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 let cronTimer: ReturnType<typeof setInterval> | null = null;
 
-export function startPolymarketCron(): void {
-  refreshPolymarketData();
+export async function startPolymarketCron(): Promise<void> {
+  await refreshPolymarketData();
   cronTimer = setInterval(refreshPolymarketData, SIX_HOURS_MS);
   console.log("[Polymarket] Cron started — refreshing every 6 hours");
 }

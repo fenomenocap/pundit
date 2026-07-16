@@ -1,6 +1,6 @@
 # Model
 
-Cached output from the `worldcup-model` companion project — the Dixon-Coles Poisson probabilities that power the chat's grounding. See [The Model](../how-it-works/the-model.md).
+Cached output from Pundit's local Elo, Dixon-Coles, and 100,000-run tournament simulation — the probabilities that power the chat's grounding. See [The Model](../how-it-works/the-model.md).
 
 ### `GET /api/model/wc`
 
@@ -59,4 +59,4 @@ Fixture-level probabilities for the full schedule.
 
 This endpoint preserves the full fixture history. Completed `result` objects include `homeScore`, `awayScore`, `status`, and `winner`; `winner` is authoritative for penalty shootouts. Stake fields are nullable. `home` / `away` are positional labels only.
 
-Historical probabilities are recalculated by the companion feed using current Elo ratings. Do not treat this endpoint as an immutable pre-match snapshot archive.
+Historical probabilities are recalculated locally using current Elo ratings. Do not treat this endpoint as an immutable pre-match snapshot archive.
