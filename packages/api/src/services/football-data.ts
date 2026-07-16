@@ -9,6 +9,8 @@
 //
 // A cron runs every 6 hours to refresh the in-memory cache.
 
+import { canonicalTeamName } from "../lib/team-names";
+
 const SCOREBOARD_URL =
   "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard";
 const STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings";
@@ -32,6 +34,7 @@ export interface FootballMatch {
     home: number | null;
     away: number | null;
   } | null;
+  winner?: string | null;
 }
 
 export interface FootballStanding {
@@ -93,7 +96,7 @@ function statusFromState(state: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseEvent(e: any): FootballMatch {
+export function parseEvent(e: any): FootballMatch {
   const competition = e.competitions?.[0];
   const competitors = competition?.competitors || [];
   const home = competitors.find((c: any) => c.homeAway === "home"); // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -107,8 +110,8 @@ function parseEvent(e: any): FootballMatch {
   return {
     id: Number(e.id),
     competition: "FIFA World Cup",
-    homeTeam: home?.team?.displayName || "TBD",
-    awayTeam: away?.team?.displayName || "TBD",
+    homeTeam: canonicalTeamName(home?.team?.displayName || "TBD"),
+    awayTeam: canonicalTeamName(away?.team?.displayName || "TBD"),
     utcDate: e.date,
     status: statusFromState(statusType.state),
     stage: e.season?.slug || null,
@@ -116,6 +119,13 @@ function parseEvent(e: any): FootballMatch {
     group: groupMatch ? groupMatch[1] : null,
     score: completed
       ? { home: Number(home?.score ?? 0), away: Number(away?.score ?? 0) }
+      : null,
+    winner: completed
+      ? home?.winner
+        ? canonicalTeamName(home?.team?.displayName || "")
+        : away?.winner
+          ? canonicalTeamName(away?.team?.displayName || "")
+          : null
       : null,
   };
 }
@@ -146,7 +156,7 @@ async function fetchStandings(): Promise<FootballStanding[]> {
 
       standings.push({
         position: stat("rank"),
-        team: entry.team?.displayName || "Unknown",
+        team: canonicalTeamName(entry.team?.displayName || "Unknown"),
         playedGames: stat("gamesPlayed"),
         won: stat("wins"),
         draw: stat("ties"),

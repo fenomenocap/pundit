@@ -1,12 +1,13 @@
 # Data Sources
 
-Pundit doesn't generate its own tournament or market data — it pulls from public sources and refreshes an in-memory cache on a schedule. Nothing below requires authentication, and none of it is proprietary to Pundit.
+Pundit generates its own model probabilities from public inputs and refreshes an in-memory cache on a schedule. Nothing below requires authentication, and none of it is proprietary to Pundit.
 
 | Source | What it provides | Refresh |
 |---|---|---|
 | **ESPN public scoreboard API** | Fixtures, live/final scores, match stage, and group standings for the full tournament | Every 6 hours |
-| **Polymarket Gamma API** | Retained outright-winner and group-winner reference endpoints | Every 6 hours |
-| **`worldcup-model`** (companion project) | Full fixture/model history plus normalized active Stake, Kalshi, and Polymarket 1X2 markets | Every 6 hours |
+| **eloratings.net TSV feeds** | Current ratings used by the local Elo-to-Poisson model | Every 6 hours |
+| **Stake, Kalshi, and Polymarket public endpoints** | Best-effort active 1X2 prices normalized to no-vig probabilities; Polymarket also supplies retained outright/group references | Every 6 hours |
+| **Pundit's local model** | Dixon-Coles fixture matrices and 100,000-run tournament probabilities using ESPN's actual bracket state | Every 6 hours |
 | **Claude** (Anthropic) | Powers the chat's natural-language answers, grounded in the model data above; can run a live web search for current injury/squad news | Per request |
 
 If an upstream source is temporarily unavailable, Pundit keeps serving the last-known-good cached data rather than showing nothing — so figures may occasionally lag by up to the refresh window above.

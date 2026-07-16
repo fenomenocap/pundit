@@ -1,8 +1,12 @@
 import { normalizedTeamPairKey } from "../lib/team-names";
 import { getFeaturedFixtures } from "./featured-fixtures";
+import {
+  fetchKalshiOdds,
+  fetchPolymarketOdds,
+  fetchStakeOdds,
+} from "./fixture-market-sources";
 import { ModelFixture } from "./model-data";
 
-const MODEL_DATA_BASE_URL = process.env.MODEL_DATA_BASE_URL || "https://worldcup-model.vercel.app";
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 
 export interface ThreeWayOdds {
@@ -111,25 +115,37 @@ export function getModelMarketOddsStatus() {
 export async function refreshModelMarketOdds(): Promise<void> {
   console.log("[ModelMarketOdds] Refreshing featured fixture odds...");
   try {
-    const response = await fetch(`${MODEL_DATA_BASE_URL}/api/market_odds`, {
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`worldcup-model /api/market_odds ${response.status}: ${text.slice(0, 200)}`);
-    }
-    const payload = await response.json() as Record<string, unknown>;
     const featured = getFeaturedFixtures().map((fixture) => fixture.model);
-    cache.byFixture = parseFeaturedMarketOdds(payload, featured);
+    const sources = await Promise.allSettled([
+      fetchStakeOdds(featured),
+      fetchPolymarketOdds(featured),
+      fetchKalshiOdds(featured),
+    ]);
+    const names = ["stake", "polymarket", "kalshi"] as const;
+    const fetched: Array<Map<string, ThreeWayOdds>> = [];
+    cache.sourceWarnings = {};
+    sources.forEach((result, index) => {
+      const name = names[index];
+      if (result.status === "fulfilled") {
+        fetched[index] = result.value;
+        cache.sourceWarnings[name] = null;
+      } else {
+        fetched[index] = new Map();
+        const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        cache.sourceWarnings[name] = `${name} odds fetch failed (${message})`;
+        console.warn(`[ModelMarketOdds] ${cache.sourceWarnings[name]}`);
+      }
+    });
+    cache.byFixture = new Map(featured.map((fixture) => {
+      const pair = normalizedTeamPairKey(fixture.home, fixture.away);
+      return [marketOddsFixtureKey(fixture.date, fixture.home, fixture.away), {
+        stake: fetched[0].get(pair) ?? null,
+        polymarket: fetched[1].get(pair) ?? null,
+        kalshi: fetched[2].get(pair) ?? null,
+      }];
+    }));
     cache.lastUpdated = new Date();
     cache.error = null;
-    cache.sourceWarnings = {};
-    if (payload.sources && typeof payload.sources === "object") {
-      for (const [source, value] of Object.entries(payload.sources as Record<string, unknown>)) {
-        const status = value && typeof value === "object" ? value as Record<string, unknown> : {};
-        cache.sourceWarnings[source] = typeof status.warning === "string" ? status.warning : null;
-      }
-    }
     console.log(`[ModelMarketOdds] ${cache.byFixture.size}/${featured.length} featured fixtures cached.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
