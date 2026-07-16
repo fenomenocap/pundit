@@ -12,9 +12,9 @@ Pundit is a deployed chat-first WC 2026 analysis app. It has no blockchain or da
 | `POST /api/ask` | Three tiers: featured-match model grounding, tournament model grounding, and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, web search, a 45-second Anthropic timeout, and 10 requests/minute limiting. |
 | Full fixture history | `/api/model/fixtures` retains every upstream fixture with 1X2, totals, BTTS, top scorelines, and completed results including the authoritative winner. |
 | Featured fixtures | ESPN is authoritative. Only scheduled/in-play semifinals and the championship final with known teams receive live match grounding and market rows; third place and completed matches are excluded from this derived view. |
-| Fixture markets | `model-market-odds.ts` caches the companion model's normalized active Stake/Kalshi/Polymarket 1X2 markets. Do not reintroduce direct per-match provider discovery here. |
+| Fixture markets | `fixture-market-sources.ts` fetches Stake/Kalshi/Polymarket directly and `model-market-odds.ts` caches complete active no-vig 1X2 prices for featured fixtures. Source failures stay isolated. |
 | `/fixtures` | Full live schedule/history, bracket, results, and standings from ESPN. |
-| `/model` | Do-not-touch iframe of the external `worldcup-model` application. |
+| `/model` | Native read-only view of Pundit's local team probabilities and full fixture model history. |
 | CI | `.github/workflows/ci.yml` runs both TypeScript checks and API Vitest on pull requests. |
 
 `packages/api` has focused Vitest coverage. `packages/web` intentionally has no test infrastructure yet; do not add it without a specific frontend-testing requirement.
@@ -27,7 +27,7 @@ Pundit is a deployed chat-first WC 2026 analysis app. It has no blockchain or da
 
 ## Outstanding
 
-- A rigorous backtest needs immutable pre-kickoff probability snapshots. The full fixture/result contract is retained now, but `worldcup-model` recalculates older fixtures with current Elo; snapshot storage and formal calibration reporting remain a separate pass.
+- A rigorous backtest needs immutable pre-kickoff probability snapshots. The full fixture/result contract is retained now, but each local refresh recalculates older fixtures with current Elo; snapshot storage and formal calibration reporting remain a separate pass.
 - `/fixtures` could eventually add an “Ask about this match” link into chat.
 - Other competitions require equivalent model data before extending grounded analysis beyond WC 2026.
 
@@ -39,16 +39,20 @@ packages/api/src/
   routes/ask.ts                    — validation, history limits, 10/min limiter
   services/
     ask.ts                         — three-tier Anthropic orchestration and grounding
-    model-data.ts                  — strict full-history worldcup-model cache
+    dixon-coles.ts                 — Elo-to-goal and analytical score model
+    elo-ratings.ts                 — live eloratings.net TSV parser/fetcher
+    tournament-simulator.ts        — 100,000-run group/knockout simulation
+    model-data.ts                  — locally generated full-history model cache
     football-data.ts               — ESPN fixtures/results/standings cache
     featured-fixtures.ts           — active semifinal/final ESPN-to-model join
+    fixture-market-sources.ts      — direct Stake/Kalshi/Polymarket normalizers
     model-market-odds.ts           — normalized active fixture 1X2 cache
     polymarket-data.ts             — retained outright/group reference endpoints
 
 packages/web/src/
   app/page.tsx                     — chat, featured suggestions, labels, inline odds
   app/fixtures/page.tsx            — full schedule/history and standings
-  app/model/page.tsx               — DO NOT TOUCH external iframe
+  app/model/page.tsx               — native local-model reference
   lib/api.ts                       — typed API boundary
   lib/mock-data.ts                 — mock-aware fixture/standing wrappers
 ```

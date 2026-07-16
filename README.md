@@ -15,9 +15,9 @@ A chat-first analysis tool for the 2026 FIFA World Cup. Ask about the active sem
                         ┌──────────────┼──────────────┐
                         ▼              ▼              ▼
                  ┌───────────┐  ┌────────────┐  ┌──────────────┐
-                 │   ESPN    │  │ Polymarket │  │ worldcup-     │
-                 │  public   │  │ Gamma API  │  │ model (JSON)  │
-                 │   API     │  │            │  │               │
+                 │ ESPN data │  │ Live Elo   │  │ Stake/Kalshi │
+                 │ + results │  │ + local DC │  │ /Polymarket  │
+                 │           │  │ simulation │  │ public odds  │
                  └───────────┘  └────────────┘  └──────────────┘
 ```
 
@@ -39,7 +39,7 @@ Public football/model/market sources are keyless and cached server-side every si
 
 ```
 packages/
-  web/   — Next.js 14 frontend: chat homepage, /fixtures (bracket + standings), /model (iframe)
+  web/   — Next.js 14 frontend: chat homepage, /fixtures, and the native /model reference
   api/   — Express REST API: /api/ask, /api/matches, /api/polymarkets, /api/model
 ```
 
@@ -77,7 +77,7 @@ Chat requires `ANTHROPIC_API_KEY` in the API environment. It is configured in Ra
 | GET | `/api/matches/standings` | Group standings (ESPN) |
 | GET | `/api/polymarkets/wc` | Live WC outright markets from Polymarket (reference odds — not currently rendered by any page) |
 | GET | `/api/polymarkets/groups` | Live WC group-winner markets from Polymarket |
-| GET | `/api/model/wc` | Team win/SF/QF probabilities from worldcup-model |
+| GET | `/api/model/wc` | Locally generated team win/SF/QF probabilities |
 | GET | `/api/model/fixtures` | Full fixture history with 1X2, totals, BTTS, scorelines, and results |
 | GET | `/health` | API health check |
 | GET | `/ready` | Model, ESPN, and fixture-market cache readiness |
@@ -88,7 +88,7 @@ Chat requires `ANTHROPIC_API_KEY` in the API environment. It is configured in Ra
 
 - **`/`** — chat homepage: grounded live semifinal/final analysis, tournament questions, and general football follow-ups
 - **`/fixtures`** — live knockout bracket + group standings (ESPN-backed)
-- **`/model`** — embedded reference view of the external worldcup-model site (do not modify — it's an iframe, not something this repo renders itself)
+- **`/model`** — native reference view of Pundit's local tournament probabilities and fixture history
 
 ---
 
@@ -106,7 +106,7 @@ Required env vars for each are listed in `.env.example`. Keep `ANTHROPIC_API_KEY
 
 ## Backtesting note
 
-Pundit retains the companion model's full fixture and result history for future evaluation. The current feed recalculates older fixture probabilities using current Elo ratings, so rigorous backtesting will require immutable pre-kickoff snapshots in a later pass; the present history must not be described as look-ahead-free.
+Pundit regenerates and retains the full fixture and result history for future evaluation. Each refresh recalculates older fixture probabilities using current Elo ratings, so rigorous backtesting will require immutable pre-kickoff snapshots in a later pass; the present history must not be described as look-ahead-free.
 
 ---
 

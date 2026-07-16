@@ -1,6 +1,6 @@
 # The Model
 
-Pundit's probabilities come from a **Dixon-Coles Poisson model**, calibrated on live Elo ratings, run by a companion project (`worldcup-model`) rather than by Pundit itself. Pundit fetches and caches that project's output and grounds every chat answer in it.
+Pundit's probabilities come from a **Dixon-Coles Poisson model** calibrated on live Elo ratings and run directly inside Pundit's API. Every six hours Pundit refreshes ESPN fixtures and standings, fetches current Elo ratings, recomputes fixture score matrices, and runs 100,000 tournament simulations.
 
 ### What the model produces
 
@@ -27,7 +27,7 @@ For an ESPN-active semifinal or final, Pundit treats the fixture's precomputed p
 
 ### Historical evaluation caveat
 
-Pundit retains every fixture and completed result returned by the companion model. That feed recalculates older fixture probabilities with current Elo ratings, so it is useful for exploration but is not a look-ahead-free backtest dataset. Rigorous calibration requires immutable pre-kickoff snapshots, which are intentionally deferred.
+Pundit retains every ESPN fixture and completed result in its in-memory model cache. Each refresh recalculates older fixture probabilities with current Elo ratings, so it is useful for exploration but is not a look-ahead-free backtest dataset. Rigorous calibration requires immutable pre-kickoff snapshots, which are intentionally deferred.
 
 ### A note on venues
 

@@ -37,9 +37,18 @@ const TEAM_ALIASES = new Map(
   ])
 );
 
+const CANONICAL_TEAM_NAMES = new Map(
+  RAW_TEAM_ALIASES.map(([, canonical]) => [normalizeTeamText(canonical), canonical])
+);
+
 export function normalizeTeamName(name: string): string {
   const normalized = normalizeTeamText(name);
   return TEAM_ALIASES.get(normalized) ?? normalized;
+}
+
+export function canonicalTeamName(name: string): string {
+  const normalized = normalizeTeamName(name);
+  return CANONICAL_TEAM_NAMES.get(normalized) ?? name.trim();
 }
 
 export function getTeamNameAliases(): ReadonlyArray<readonly [string, string]> {

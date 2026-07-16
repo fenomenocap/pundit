@@ -1,8 +1,18 @@
-// worldcup-model reference data integration.
+// Local port of the worldcup-model Elo + Dixon-Coles/Poisson pipeline.
 // The full fixture history is retained for model evaluation; featured live fixtures
 // are derived separately from ESPN state.
 
-const MODEL_DATA_BASE_URL = process.env.MODEL_DATA_BASE_URL || "https://worldcup-model.vercel.app";
+import { canonicalTeamName } from "../lib/team-names";
+import { computeMatchModel, DEFAULT_ELO } from "./dixon-coles";
+import { fetchEloRatings } from "./elo-ratings";
+import { FootballMatch, getCachedMatches } from "./football-data";
+import { getCachedPolymarketMarkets } from "./polymarket-data";
+import {
+  GroupStandingState,
+  runMonteCarlo,
+  TournamentFixtureState,
+} from "./tournament-simulator";
+import { TEAM_TO_GROUP, WORLD_CUP_TEAMS, WORLD_CUP_TEAM_SET } from "./world-cup-teams";
 
 export interface ModelTeamProbability {
   team: string;
@@ -43,7 +53,7 @@ export interface ModelFixture {
   } | null;
 }
 
-interface ModelDataCache {
+export interface ModelDataCache {
   teams: ModelTeamProbability[];
   fixtures: ModelFixture[];
   lastUpdated: Date | null;
@@ -161,26 +171,153 @@ export function parseFixtures(raw: unknown): ModelFixture[] {
   });
 }
 
-async function modelFetch<T>(path: string): Promise<T> {
-  const response = await fetch(`${MODEL_DATA_BASE_URL}${path}`, {
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`worldcup-model ${path} ${response.status}: ${text.slice(0, 200)}`);
+function rounded(value: number, digits = 4): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function modelStage(stage: string | null): string {
+  if (!stage) return "knockout";
+  return stage === "group-stage" ? "group" : stage.replaceAll("-", "_");
+}
+
+function matchWinner(match: FootballMatch): string | null {
+  if (match.winner) return canonicalTeamName(match.winner);
+  if (!match.score || match.score.home === null || match.score.away === null) return null;
+  if (match.score.home > match.score.away) return match.homeTeam;
+  if (match.score.away > match.score.home) return match.awayTeam;
+  return null;
+}
+
+function buildFixtures(matches: FootballMatch[], elo: Map<string, number>): ModelFixture[] {
+  return matches
+    .filter((match) => WORLD_CUP_TEAM_SET.has(match.homeTeam)
+      && WORLD_CUP_TEAM_SET.has(match.awayTeam))
+    .map((match) => {
+      const model = computeMatchModel(
+        elo.get(match.homeTeam) ?? DEFAULT_ELO,
+        elo.get(match.awayTeam) ?? DEFAULT_ELO
+      );
+      const stage = modelStage(match.stage);
+      const completed = match.status === "FINISHED" && match.score;
+      return {
+        date: match.utcDate.slice(0, 10),
+        group: stage === "group"
+          ? match.group ?? TEAM_TO_GROUP.get(match.homeTeam) ?? TEAM_TO_GROUP.get(match.awayTeam) ?? null
+          : null,
+        stage,
+        home: match.homeTeam,
+        away: match.awayTeam,
+        pHome: rounded(model.pHome),
+        pDraw: rounded(model.pDraw),
+        pAway: rounded(model.pAway),
+        pOver2_5: rounded(model.pOver2_5),
+        pUnder2_5: rounded(model.pUnder2_5),
+        pBttsYes: rounded(model.pBttsYes),
+        pBttsNo: rounded(model.pBttsNo),
+        topScores: model.topScores.map(([[home, away], probability]) => ({
+          score: `${home}-${away}`,
+          probability: rounded(probability),
+        })),
+        stakePHome: null,
+        stakePDraw: null,
+        stakePAway: null,
+        result: completed
+          ? {
+              homeScore: match.score!.home!,
+              awayScore: match.score!.away!,
+              status: "FT",
+              winner: matchWinner(match),
+            }
+          : null,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function standingsByGroup(
+  football: ReturnType<typeof getCachedMatches>
+): Record<string, Record<string, GroupStandingState>> {
+  const groups: Record<string, Record<string, GroupStandingState>> = {};
+  for (const standing of football.standings) {
+    if (!standing.group) continue;
+    const team = canonicalTeamName(standing.team);
+    groups[standing.group] ??= {};
+    groups[standing.group][team] = {
+      pts: standing.points,
+      gd: standing.goalDifference,
+      gf: standing.goalsFor,
+      played: standing.playedGames,
+    };
   }
-  return response.json() as Promise<T>;
+  return groups;
+}
+
+function tournamentFixtures(fixtures: ModelFixture[]): TournamentFixtureState[] {
+  return fixtures.map((fixture) => ({
+    home: fixture.home,
+    away: fixture.away,
+    stage: fixture.stage,
+    result: fixture.result ? { winner: fixture.result.winner } : null,
+  }));
+}
+
+function cachedOutrightPrices(): Map<string, number> {
+  const prices = new Map<string, number>();
+  for (const market of getCachedPolymarketMarkets().wcMarkets) {
+    const match = /Will (.+?) win the 2026 FIFA World Cup/i.exec(market.question);
+    if (!match) continue;
+    const yesIndex = market.outcomes.findIndex((outcome) => outcome.toLowerCase() === "yes");
+    const price = market.outcomePrices[yesIndex >= 0 ? yesIndex : 0];
+    if (Number.isFinite(price) && price >= 0 && price <= 1) {
+      prices.set(canonicalTeamName(match[1]), price);
+    }
+  }
+  return prices;
+}
+
+export function buildLocalModelData(
+  elo: Map<string, number>,
+  football: ReturnType<typeof getCachedMatches>,
+  marketPrices = new Map<string, number>(),
+  simulations?: number
+): { teams: ModelTeamProbability[]; fixtures: ModelFixture[] } {
+  const matches = [...football.recent, ...football.upcoming];
+  const fixtures = buildFixtures(matches, elo);
+  const probabilities = runMonteCarlo(
+    elo,
+    standingsByGroup(football),
+    tournamentFixtures(fixtures),
+    simulations
+  );
+  const teams = WORLD_CUP_TEAMS.map((team) => {
+    const probability = probabilities.get(team)!;
+    const marketPrice = marketPrices.get(team) ?? null;
+    return {
+      team,
+      ...probability,
+      marketPrice,
+      edge: marketPrice === null ? null : rounded(probability.winProb - marketPrice, 6),
+    };
+  }).sort((a, b) => b.winProb - a.winProb);
+  return { teams, fixtures };
 }
 
 export async function refreshModelData(): Promise<void> {
-  console.log("[Model] Refreshing worldcup-model reference data...");
+  console.log("[Model] Refreshing local Elo + Dixon-Coles tournament model...");
   try {
-    const [probabilities, fixtures] = await Promise.all([
-      modelFetch<unknown>("/data/probabilities.json"),
-      modelFetch<unknown>("/data/fixtures.json"),
-    ]);
-    cache.teams = parseTeams(probabilities);
-    cache.fixtures = parseFixtures(fixtures);
+    const football = getCachedMatches();
+    if (football.lastUpdated === null) throw new Error("ESPN cache is not ready.");
+    const elo = await fetchEloRatings();
+    for (const team of WORLD_CUP_TEAMS) {
+      if (!elo.has(team)) {
+        console.warn(`[Model] Missing Elo for ${team}; using ${DEFAULT_ELO}.`);
+        elo.set(team, DEFAULT_ELO);
+      }
+    }
+    const local = buildLocalModelData(elo, football, cachedOutrightPrices());
+    cache.teams = local.teams;
+    cache.fixtures = local.fixtures;
     cache.lastUpdated = new Date();
     cache.error = null;
     console.log(`[Model] ${cache.teams.length} teams, ${cache.fixtures.length} fixtures cached.`);

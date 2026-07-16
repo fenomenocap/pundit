@@ -33,6 +33,32 @@ export interface StandingResponse {
   advanced: boolean;
 }
 
+export interface ModelTeamResponse {
+  team: string;
+  winProb: number;
+  sfProb: number;
+  qfProb: number;
+  marketPrice: number | null;
+  edge: number | null;
+}
+
+export interface ModelFixtureResponse {
+  date: string;
+  group: string | null;
+  stage: string;
+  home: string;
+  away: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  result: {
+    homeScore: number;
+    awayScore: number;
+    status: string;
+    winner: string | null;
+  } | null;
+}
+
 // ─── Fetch helper ───────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -79,6 +105,16 @@ export async function getRecentMatches() {
 export async function getStandings() {
   return apiFetch<{ standings: StandingResponse[]; lastUpdated: string | null }>(
     "/api/matches/standings"
+  );
+}
+
+export async function getModelProbabilities() {
+  return apiFetch<{ teams: ModelTeamResponse[]; lastUpdated: string | null }>("/api/model/wc");
+}
+
+export async function getModelFixtures() {
+  return apiFetch<{ fixtures: ModelFixtureResponse[]; lastUpdated: string | null }>(
+    "/api/model/fixtures"
   );
 }
 
