@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { fetchUpcomingMatches, fetchRecentMatches, fetchStandings } from "@/lib/mock-data";
 import { formatStage, STAGE_ORDER } from "@/lib/stage-label";
-import { getTeamFlag, getTeamColor } from "@/lib/team-logos";
+import { getTeamFlagUrl, getTeamColor } from "@/lib/team-logos";
 import type { MatchResponse, StandingResponse } from "@/lib/api";
 
 function useFixturesData() {
@@ -41,10 +41,21 @@ function formatKickoff(utcDate: string): string {
 }
 
 function TeamLabel({ name, bold }: { name: string; bold?: boolean }) {
-  const flag = getTeamFlag(name);
+  const flagUrl = getTeamFlagUrl(name);
   return (
     <span className={cn("flex items-center gap-2 truncate", bold && "font-bold text-white")}>
-      {flag && <span className="shrink-0 text-xl">{flag}</span>}
+      {flagUrl && (
+        // SVG flag assets render identically across platforms, unlike emoji
+        // flags, which Windows shows as bare letter codes.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={flagUrl}
+          alt=""
+          aria-hidden
+          loading="lazy"
+          className="h-3.5 w-5 shrink-0 rounded-[2px] object-cover"
+        />
+      )}
       <span className="truncate">{name}</span>
     </span>
   );

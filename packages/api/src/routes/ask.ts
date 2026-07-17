@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { AppError } from "../middleware";
 import {
   answerQuestion,
+  answerQuestionStream,
   ConversationTurn,
   TeamContext,
 } from "../services/ask";
@@ -66,6 +67,10 @@ router.use(
   })
 );
 
+function sseSend(res: Response, event: string, data: unknown): void {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
 router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const question = req.body?.question;
@@ -80,8 +85,43 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
 
     const history = parseHistory(req.body?.history);
     const teamContext = parseTeamContext(req.body?.teamContext);
-    const result = await answerQuestion(trimmedQuestion, history, teamContext);
-    res.json(result);
+
+    if (req.body?.stream !== true) {
+      const result = await answerQuestion(trimmedQuestion, history, teamContext);
+      res.json(result);
+      return;
+    }
+
+    // SSE streaming path. Headers are only committed once grounding resolves,
+    // so validation/config errors before that still surface as normal JSON
+    // errors with a real status code via next(err).
+    try {
+      const { answer, grounding } = await answerQuestionStream(
+        trimmedQuestion,
+        history,
+        teamContext,
+        {
+          onGrounding: (initialGrounding) => {
+            res.status(200).set({
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+              "X-Accel-Buffering": "no",
+            });
+            res.flushHeaders();
+            sseSend(res, "grounding", { grounding: initialGrounding });
+          },
+          onDelta: (text) => sseSend(res, "delta", { text }),
+        }
+      );
+      sseSend(res, "done", { answer, grounding });
+      res.end();
+    } catch (err) {
+      if (!res.headersSent) throw err;
+      const message = err instanceof AppError ? err.message : "Analysis generation failed.";
+      sseSend(res, "error", { error: message });
+      res.end();
+    }
   } catch (err) {
     next(err);
   }
