@@ -265,9 +265,14 @@ export async function fetchPolymarketOdds(fixtures: ModelFixture[]): Promise<Map
   return result;
 }
 
+// Kalshi paginates via an opaque cursor; cap the walk so a server that keeps
+// returning cursors can't spin this fetch forever.
+const KALSHI_MAX_PAGES = 10;
+
 export async function fetchKalshiOdds(fixtures: ModelFixture[]): Promise<Map<string, ThreeWayOdds>> {
   const result = new Map<string, ThreeWayOdds>();
   let cursor = "";
+  let pages = 0;
   do {
     const params = new URLSearchParams({
       status: "open", with_nested_markets: "true", limit: "200",
@@ -283,6 +288,7 @@ export async function fetchKalshiOdds(fixtures: ModelFixture[]): Promise<Map<str
       }
     }
     cursor = typeof payload?.cursor === "string" ? payload.cursor : "";
-  } while (cursor);
+    pages += 1;
+  } while (cursor && pages < KALSHI_MAX_PAGES);
   return result;
 }

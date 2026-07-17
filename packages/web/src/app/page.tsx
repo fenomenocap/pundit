@@ -127,7 +127,7 @@ export default function HomePage() {
     fetchUpcomingMatches().then((matches) => {
       if (cancelled) return;
       const featured = matches
-        .filter((match) => (match.stage === "semifinals" || match.stage === "final")
+        .filter((match) => ["semifinals", "3rd-place-match", "final"].includes(match.stage ?? "")
           && (match.status === "SCHEDULED" || match.status === "IN_PLAY")
           && isKnownTeam(match.homeTeam)
           && isKnownTeam(match.awayTeam))

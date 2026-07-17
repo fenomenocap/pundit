@@ -2,7 +2,8 @@ import { normalizedTeamPairKey } from "../lib/team-names";
 import { FootballMatch, getCachedMatches } from "./football-data";
 import { ModelFixture, getCachedModelData } from "./model-data";
 
-const FEATURED_STAGES = new Set(["semifinals", "final"]);
+// ESPN stage slugs for the live late-stage matches Pundit grounds in chat.
+const FEATURED_STAGES = new Set(["semifinals", "3rd-place-match", "final"]);
 const PLACEHOLDER_TEAM = /\b(?:winner|loser)\b/i;
 
 export interface FeaturedFixture {

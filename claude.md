@@ -1,6 +1,6 @@
 # Pundit — Football Prediction Analysis
 
-Chat-first WC 2026 analysis. Active semifinals/final are grounded in precomputed Dixon-Coles/Poisson probabilities; tournament and clearly labelled general football questions are also supported. No blockchain, database, or trading. The former platform is archived at `archive/onchain-trading-v1`.
+Chat-first WC 2026 analysis. Active late-stage fixtures (semifinals, 3rd-place match, final) are grounded in precomputed Dixon-Coles/Poisson probabilities; tournament and clearly labelled general football questions are also supported. No blockchain, database, or trading. The former platform is archived at `archive/onchain-trading-v1`.
 
 **Status:** Deployed (Vercel + Railway). `POST /api/ask` is live in production with the Anthropic key managed in Railway.
 

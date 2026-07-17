@@ -26,6 +26,12 @@ export class AppError extends Error {
   }
 }
 
+// express.json() reports unparseable bodies as a SyntaxError carrying
+// type: "entity.parse.failed" — a client error, not a server fault.
+function isBodyParseError(err: Error): boolean {
+  return (err as { type?: unknown }).type === "entity.parse.failed";
+}
+
 export function errorHandler(
   err: Error,
   _req: Request,
@@ -36,6 +42,11 @@ export function errorHandler(
 
   if (err instanceof AppError) {
     res.status(err.statusCode).json({ error: err.message });
+    return;
+  }
+
+  if (isBodyParseError(err)) {
+    res.status(400).json({ error: "Request body must be valid JSON." });
     return;
   }
 

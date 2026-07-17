@@ -18,10 +18,11 @@ const model: ModelFixture = {
 };
 
 describe("featured fixtures", () => {
-  it("includes active semifinals and the final, but not third place", () => {
+  it("includes every active late-stage fixture: semifinals, third place, final", () => {
     expect(isFeaturedFootballMatch(football("semifinals", "SCHEDULED"))).toBe(true);
     expect(isFeaturedFootballMatch(football("final", "IN_PLAY"))).toBe(true);
-    expect(isFeaturedFootballMatch(football("3rd-place-match", "SCHEDULED"))).toBe(false);
+    expect(isFeaturedFootballMatch(football("3rd-place-match", "SCHEDULED"))).toBe(true);
+    expect(isFeaturedFootballMatch(football("quarterfinals", "SCHEDULED"))).toBe(false);
   });
 
   it("excludes completed and placeholder matches while preserving them outside the derived view", () => {
