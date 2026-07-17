@@ -178,6 +178,76 @@ export async function askQuestion(
   });
 }
 
+export interface AskStreamHandlers {
+  onGrounding?: (grounding: AskGrounding) => void;
+  onDelta: (text: string) => void;
+}
+
+interface SseEvent {
+  event: string;
+  data: string;
+}
+
+function parseSseChunk(buffer: string): { events: SseEvent[]; rest: string } {
+  const events: SseEvent[] = [];
+  const blocks = buffer.split("\n\n");
+  const rest = blocks.pop() ?? "";
+  for (const block of blocks) {
+    let event = "message";
+    let data = "";
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event: ")) event = line.slice(7).trim();
+      if (line.startsWith("data: ")) data += line.slice(6);
+    }
+    if (data) events.push({ event, data });
+  }
+  return { events, rest };
+}
+
+// Streams /api/ask over SSE, invoking handlers as grounding and text deltas
+// arrive. Resolves with the final trimmed answer once the server sends "done".
+export async function askQuestionStream(
+  question: string,
+  history: ConversationTurn[] = [],
+  teamContext: TeamContext | undefined,
+  handlers: AskStreamHandlers
+): Promise<{ answer: string; grounding: AskGrounding }> {
+  const res = await fetch(`${API_URL}/api/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, history, teamContext, stream: true }),
+  });
+
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!res.ok || !contentType.includes("text/event-stream") || !res.body) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(body.error || `API error ${res.status}`, res.status);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: { answer: string; grounding: AskGrounding } | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const { events, rest } = parseSseChunk(buffer);
+    buffer = rest;
+    for (const { event, data } of events) {
+      const payload = JSON.parse(data);
+      if (event === "grounding") handlers.onGrounding?.(payload.grounding);
+      else if (event === "delta") handlers.onDelta(payload.text);
+      else if (event === "done") result = payload;
+      else if (event === "error") throw new ApiError(payload.error, 502);
+    }
+  }
+
+  if (!result) throw new ApiError("Analysis stream ended unexpectedly.", 502);
+  return result;
+}
+
 // ─── Health ─────────────────────────────────────────────────────────────────
 
 export async function getHealth() {

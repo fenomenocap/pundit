@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
 import {
   ApiError,
-  askQuestion,
+  askQuestionStream,
   type AskGrounding,
   type ConversationTurn,
   type MatchGrounding,
@@ -89,10 +90,30 @@ function formatPercent(value: number | null): string {
   return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
 }
 
+// Renders assistant answers as constrained markdown (bold labels, bullets,
+// paragraphs) — anything richer is unwrapped to plain text.
+function AssistantMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      allowedElements={["p", "strong", "em", "ul", "ol", "li", "br", "code"]}
+      unwrapDisallowed
+      components={{
+        p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+        ul: (props) => <ul className="mb-2 list-disc space-y-1 pl-4 last:mb-0" {...props} />,
+        ol: (props) => <ol className="mb-2 list-decimal space-y-1 pl-4 last:mb-0" {...props} />,
+        strong: (props) => <strong className="font-semibold text-white" {...props} />,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
 export default function HomePage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streamStarted, setStreamStarted] = useState(false);
   const [teamContext, setTeamContext] = useState<TeamContext>();
   const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -122,20 +143,47 @@ export default function HomePage() {
     if (!trimmed || loading) return;
 
     const history = completedHistory(messages);
+    const userId = nextId++;
+    const assistantId = nextId++;
 
-    setMessages((prev) => [...prev, { id: nextId++, role: "user", content: trimmed }]);
+    setMessages((prev) => [...prev, { id: userId, role: "user", content: trimmed }]);
     setInput("");
     setLoading(true);
+    setStreamStarted(false);
+
+    let started = false;
+    let streamedGrounding: AskGrounding = null;
 
     try {
-      const { answer, grounding } = await askQuestion(trimmed, history, teamContext);
+      const { answer, grounding } = await askQuestionStream(trimmed, history, teamContext, {
+        onGrounding: (initialGrounding) => {
+          streamedGrounding = initialGrounding;
+        },
+        onDelta: (text) => {
+          if (!started) {
+            started = true;
+            setStreamStarted(true);
+            setMessages((prev) => [
+              ...prev,
+              { id: assistantId, role: "assistant", content: text, grounding: streamedGrounding },
+            ]);
+          } else {
+            setMessages((prev) => prev.map((m) =>
+              m.id === assistantId ? { ...m, content: m.content + text } : m
+            ));
+          }
+        },
+      });
       if (grounding?.kind === "match") {
         setTeamContext([grounding.home, grounding.away]);
       }
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId++, role: "assistant", content: answer, grounding },
-      ]);
+      // Swap the streamed draft for the server's final trimmed answer.
+      setMessages((prev) => {
+        const finalMessage: ChatMessage = { id: assistantId, role: "assistant", content: answer, grounding };
+        return started
+          ? prev.map((m) => (m.id === assistantId ? finalMessage : m))
+          : [...prev, finalMessage];
+      });
     } catch (err) {
       const serverMessage = err instanceof Error ? err.message : "Something went wrong.";
       const status = err instanceof ApiError ? err.status : undefined;
@@ -152,9 +200,14 @@ export default function HomePage() {
                 : status === 504
                   ? "Analysis took too long — try again shortly"
               : serverMessage;
-      setMessages((prev) => [...prev, { id: nextId++, role: "error", content: message }]);
+      // Drop any partially streamed draft before surfacing the error.
+      setMessages((prev) => [
+        ...prev.filter((m) => m.id !== assistantId),
+        { id: nextId++, role: "error", content: message },
+      ]);
     } finally {
       setLoading(false);
+      setStreamStarted(false);
     }
   }
 
@@ -188,8 +241,8 @@ export default function HomePage() {
         <div className="flex flex-1 flex-col items-center justify-center text-center">
           <h1 className="font-heading text-3xl font-bold text-white sm:text-4xl">Pundit</h1>
           <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-            Ask about any World Cup 2026 matchup for a Dixon-Coles-Poisson-modelled
-            read on the numbers.
+            Ask about any World Cup 2026 matchup for a read grounded in
+            Pundit&apos;s Dixon-Coles/Poisson model, calibrated on live Elo ratings.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
             {suggestions.map((s) => (
@@ -237,7 +290,9 @@ export default function HomePage() {
                       "mr-auto border-pink-500/30 bg-pink-950 text-pink-200"
                   )}
                 >
-                  <div>{m.content}</div>
+                  {m.role === "assistant"
+                    ? <AssistantMarkdown content={m.content} />
+                    : <div>{m.content}</div>}
                   {m.role === "assistant" && (
                     <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       {m.grounding?.kind === "match"
@@ -271,10 +326,10 @@ export default function HomePage() {
                 </div>
               );
             })}
-            {loading && (
+            {loading && !streamStarted && (
               <div className="mr-auto flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-muted-foreground">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
-                Thinking…
+                Checking model data and team news…
               </div>
             )}
             <div ref={scrollRef} />

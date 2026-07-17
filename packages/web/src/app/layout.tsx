@@ -9,18 +9,18 @@ export const metadata: Metadata = {
     template: "%s | Pundit",
   },
   description:
-    "Elo/Poisson-modelled World Cup win probabilities, live fixture odds, and a conversational match-analysis agent.",
-  keywords: ["prediction market", "sports analysis", "football", "world cup", "elo", "poisson model"],
+    "Dixon-Coles/Poisson-modelled World Cup win probabilities, live fixture odds, and a conversational match-analysis agent.",
+  keywords: ["prediction market", "sports analysis", "football", "world cup", "elo", "dixon-coles", "poisson model"],
   openGraph: {
     type: "website",
     siteName: "Pundit",
     title: "Pundit — Football Prediction Analysis",
-    description: "Elo/Poisson-modelled World Cup win probabilities, live fixture odds, and a conversational match-analysis agent.",
+    description: "Dixon-Coles/Poisson-modelled World Cup win probabilities, live fixture odds, and a conversational match-analysis agent.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Pundit — Football Prediction Analysis",
-    description: "Elo/Poisson-modelled World Cup win probabilities and live fixture odds.",
+    description: "Dixon-Coles/Poisson-modelled World Cup win probabilities and live fixture odds.",
   },
   robots: {
     index: true,

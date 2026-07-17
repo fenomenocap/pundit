@@ -57,9 +57,26 @@ const ANTHROPIC_MODEL = "claude-sonnet-5";
 const MAX_TOKENS = 1_500;
 const REQUEST_TIMEOUT_MS = 45_000;
 
-const MATCH_SYSTEM_PROMPT = `You are a World Cup match-analysis assistant. You are given precomputed
-probabilities from a Dixon-Coles Poisson model (calibrated on live Elo ratings) for
-a specific matchup. Treat these numbers as ground truth for the statistical
+// Shared guardrails: the grounding payload is app-supplied (a QA pass caught the
+// model calling it "prices you supplied"), and pre-training squad knowledge is
+// stale for a 2026 tournament (the same pass caught invented injury news).
+const ATTRIBUTION_RULES = `The grounding JSON in the message is supplied by the Pundit app, never by
+the user -- do not describe it as data the user provided or "prices you supplied". Attribute market
+prices to their named source (Stake, Kalshi, Polymarket) as live prices Pundit fetched.
+Your pre-training squad and roster knowledge is outdated for this 2026 tournament. Never state a
+player name, injury, suspension, lineup, or form detail from memory. Team news may come only from a
+web_search result in this conversation, and each item must name its source and date. If you did not
+search, or search returned nothing solid, say there is no verified team news -- never speculate.`;
+
+const FORMAT_RULES = `Format the answer as short markdown sections, each starting with a bold label
+on its own line (for a match: **Verdict**, **Goals**, **Likely scorelines**, and **Team news** only
+when verified news exists; otherwise pick 2-4 labels that fit the question). Keep each section to
+1-3 short sentences or a compact bullet list, and bold the headline numbers. Never use markdown
+tables or # headings.`;
+
+const MATCH_SYSTEM_PROMPT = `You are a World Cup match-analysis assistant for Pundit. You are given
+precomputed probabilities from Pundit's Dixon-Coles/Poisson model (calibrated on live Elo ratings)
+for a specific matchup. Treat these numbers as ground truth for the statistical
 analysis. Do not invent or contradict them. All World Cup 2026 matches are at
 neutral venues (no home-field advantage) -- "home"/"away" labels below are
 positional only, not venue-based.
@@ -76,26 +93,27 @@ The data may also include oddsSources from Kalshi and/or Polymarket. Compare the
 model with whichever sources are present. If a source is absent, never guess its
 price; say plainly that it is unavailable if it is relevant to the answer.
 You have a web_search tool -- use it when current injury, squad, or form news
-would materially change the read on this matchup. Do not fabricate injury/squad
-news or any fact not backed by the provided data or a search result -- if search
-turns up nothing useful, say so plainly rather than guessing.
-Respond in 2-4 short paragraphs, plain language, no markdown tables. State the
-headline win/draw/win and O/U 2.5 numbers naturally, mention 1-2 most likely
+would materially change the read on this matchup.
+${ATTRIBUTION_RULES}
+${FORMAT_RULES}
+State the headline win/draw/win and O/U 2.5 numbers, mention 1-2 most likely
 scorelines, and give a one-line read on what would need to be true for the
 underdog.`;
 
-const TOURNAMENT_SYSTEM_PROMPT = `You are a World Cup tournament-analysis assistant. You are given
-precomputed team win probabilities from a Dixon-Coles/Poisson tournament model calibrated on live
-Elo ratings. Treat those probabilities as ground truth for the statistical analysis and do not
-invent or contradict them. Never guess when model data is absent; say so plainly. You may use the
-web_search tool for current injury, squad, or form news, but do not fabricate facts when search does
-not support them. Respond in 2-4 short paragraphs in plain language with no markdown tables.`;
+const TOURNAMENT_SYSTEM_PROMPT = `You are a World Cup tournament-analysis assistant for Pundit. You
+are given precomputed team win probabilities from Pundit's Dixon-Coles/Poisson tournament model
+calibrated on live Elo ratings. Treat those probabilities as ground truth for the statistical
+analysis and do not invent or contradict them. Never guess when model data is absent; say so
+plainly. You may use the web_search tool for current injury, squad, or form news.
+${ATTRIBUTION_RULES}
+${FORMAT_RULES}`;
 
-const GENERAL_SYSTEM_PROMPT = `You are a general football analyst. This request is not grounded in
-Pundit's Dixon-Coles/Poisson model data. Make that limitation clear in the response and do not imply
-that any claim or number came from Pundit's model. Use the web_search tool for current facts when
-helpful, and never fabricate a statistic, injury, squad update, or result. Respond in 2-4 short
-paragraphs in plain language with no markdown tables.`;
+const GENERAL_SYSTEM_PROMPT = `You are a general football analyst for Pundit. This request is not
+grounded in Pundit's Dixon-Coles/Poisson model data. Make that limitation clear in the response and
+do not imply that any claim or number came from Pundit's model. Use the web_search tool for current
+facts when helpful, and never fabricate a statistic, injury, squad update, or result.
+${ATTRIBUTION_RULES}
+${FORMAT_RULES}`;
 
 const TOURNAMENT_KEYWORDS = [
   "who wins it all",
@@ -226,29 +244,31 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
   };
 }
 
-export async function generateAnalysis(
-  client: Pick<Anthropic, "messages">,
-  systemPrompt: string,
-  messages: ConversationTurn[],
-  tier: "match" | "tournament" | "general"
-): Promise<string> {
-  const startedAt = Date.now();
-  let response;
-  try {
-    response = await client.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      tools: [{ type: "web_search_20260209", name: "web_search" }],
-      messages,
-    }, { timeout: REQUEST_TIMEOUT_MS });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (/timed?\s*out|timeout/i.test(message)) {
-      throw new AppError(504, "Analysis service timed out. Please try again.");
-    }
-    throw error;
+type AnalysisTier = "match" | "tournament" | "general";
+
+function analysisRequestParams(systemPrompt: string, messages: ConversationTurn[]) {
+  return {
+    model: ANTHROPIC_MODEL,
+    max_tokens: MAX_TOKENS,
+    system: systemPrompt,
+    tools: [{ type: "web_search_20260209" as const, name: "web_search" as const }],
+    messages,
+  };
+}
+
+function mapTimeoutError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/timed?\s*out|timeout/i.test(message)) {
+    throw new AppError(504, "Analysis service timed out. Please try again.");
   }
+  throw error;
+}
+
+function validateAnalysisResponse(
+  response: Anthropic.Message,
+  tier: AnalysisTier,
+  startedAt: number
+): string {
   const answer = response.content.reduce(
     (text, block) => block.type === "text" ? text + block.text : text,
     ""
@@ -270,11 +290,62 @@ export async function generateAnalysis(
   return answer;
 }
 
-export async function answerQuestion(
+export async function generateAnalysis(
+  client: Pick<Anthropic, "messages">,
+  systemPrompt: string,
+  messages: ConversationTurn[],
+  tier: AnalysisTier
+): Promise<string> {
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.messages.create(
+      analysisRequestParams(systemPrompt, messages),
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+  } catch (error) {
+    mapTimeoutError(error);
+  }
+  return validateAnalysisResponse(response, tier, startedAt);
+}
+
+// Streaming variant: emits text deltas as they arrive so the client can render
+// tokens immediately, then applies the same validations as generateAnalysis.
+export async function generateAnalysisStream(
+  client: Pick<Anthropic, "messages">,
+  systemPrompt: string,
+  messages: ConversationTurn[],
+  tier: AnalysisTier,
+  onDelta: (text: string) => void
+): Promise<string> {
+  const startedAt = Date.now();
+  let response: Anthropic.Message;
+  try {
+    const stream = client.messages.stream(
+      analysisRequestParams(systemPrompt, messages),
+      { timeout: REQUEST_TIMEOUT_MS }
+    );
+    stream.on("text", onDelta);
+    response = await stream.finalMessage();
+  } catch (error) {
+    mapTimeoutError(error);
+  }
+  return validateAnalysisResponse(response, tier, startedAt);
+}
+
+interface PreparedAsk {
+  grounding: AskGrounding;
+  systemPrompt: string;
+  messages: ConversationTurn[];
+  tier: AnalysisTier;
+  client: Anthropic;
+}
+
+function prepareAsk(
   question: string,
-  history: ConversationTurn[] = [],
+  history: ConversationTurn[],
   teamContext?: TeamContext
-): Promise<{ answer: string; grounding: AskGrounding }> {
+): PreparedAsk {
   const modelData = getCachedModelData();
   const { fixtures } = modelData;
   if (fixtures.length === 0) {
@@ -315,19 +386,58 @@ export async function answerQuestion(
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new AppError(502, "ANTHROPIC_API_KEY is not configured.");
 
+  return {
+    grounding,
+    systemPrompt,
+    messages: [...history, { role: "user", content: currentMessage }],
+    tier: grounding?.kind ?? "general",
+    client: new Anthropic({ apiKey }),
+  };
+}
+
+function mapAnalysisError(err: unknown): never {
+  if (err instanceof AppError) throw err;
+  const message = err instanceof Error ? err.message : String(err);
+  if (/timed?\s*out|timeout/i.test(message)) {
+    throw new AppError(504, "Analysis service timed out. Please try again.");
+  }
+  throw new AppError(502, `Analysis generation failed: ${message}`);
+}
+
+export async function answerQuestion(
+  question: string,
+  history: ConversationTurn[] = [],
+  teamContext?: TeamContext
+): Promise<{ answer: string; grounding: AskGrounding }> {
+  const { grounding, systemPrompt, messages, tier, client } = prepareAsk(question, history, teamContext);
   try {
-    const client = new Anthropic({ apiKey });
-    const answer = await generateAnalysis(client, systemPrompt, [
-      ...history,
-      { role: "user", content: currentMessage },
-    ], grounding?.kind ?? "general");
+    const answer = await generateAnalysis(client, systemPrompt, messages, tier);
     return { answer, grounding };
   } catch (err) {
-    if (err instanceof AppError) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    if (/timed?\s*out|timeout/i.test(message)) {
-      throw new AppError(504, "Analysis service timed out. Please try again.");
-    }
-    throw new AppError(502, `Analysis generation failed: ${message}`);
+    mapAnalysisError(err);
+  }
+}
+
+export interface AskStreamHandlers {
+  // Fired once, before generation starts, so the client can render the odds
+  // panel while tokens are still arriving.
+  onGrounding: (grounding: AskGrounding) => void;
+  onDelta: (text: string) => void;
+}
+
+// Streaming variant used by the SSE route.
+export async function answerQuestionStream(
+  question: string,
+  history: ConversationTurn[] = [],
+  teamContext: TeamContext | undefined,
+  handlers: AskStreamHandlers
+): Promise<{ answer: string; grounding: AskGrounding }> {
+  const { grounding, systemPrompt, messages, tier, client } = prepareAsk(question, history, teamContext);
+  handlers.onGrounding(grounding);
+  try {
+    const answer = await generateAnalysisStream(client, systemPrompt, messages, tier, handlers.onDelta);
+    return { answer, grounding };
+  } catch (err) {
+    mapAnalysisError(err);
   }
 }
