@@ -71,106 +71,6 @@ export function getCachedModelData(): ModelDataCache {
   return { ...cache };
 }
 
-function objectValue(raw: unknown, label: string): Record<string, unknown> {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`${label} must be an object.`);
-  }
-  return raw as Record<string, unknown>;
-}
-
-function stringValue(raw: unknown, label: string): string {
-  if (typeof raw !== "string" || !raw.trim()) throw new Error(`${label} must be a non-empty string.`);
-  return raw;
-}
-
-function finiteNumber(raw: unknown, label: string): number {
-  if (typeof raw !== "number" || !Number.isFinite(raw)) throw new Error(`${label} must be finite.`);
-  return raw;
-}
-
-function probability(raw: unknown, label: string): number {
-  const value = finiteNumber(raw, label);
-  if (value < 0 || value > 1) throw new Error(`${label} must be between 0 and 1.`);
-  return value;
-}
-
-function nullableProbability(raw: unknown, label: string): number | null {
-  return raw === null || raw === undefined ? null : probability(raw, label);
-}
-
-function nullableFiniteNumber(raw: unknown, label: string): number | null {
-  return raw === null || raw === undefined ? null : finiteNumber(raw, label);
-}
-
-export function parseTeams(raw: unknown): ModelTeamProbability[] {
-  const teams = objectValue(raw, "probabilities");
-  return Object.entries(teams)
-    .map(([team, value]) => {
-      const entry = objectValue(value, `probabilities.${team}`);
-      return {
-        team,
-        winProb: probability(entry.win_prob, `${team}.win_prob`),
-        sfProb: probability(entry.sf_prob, `${team}.sf_prob`),
-        qfProb: probability(entry.qf_prob, `${team}.qf_prob`),
-        marketPrice: nullableProbability(entry.market_price, `${team}.market_price`),
-        edge: nullableFiniteNumber(entry.edge, `${team}.edge`),
-      };
-    })
-    .sort((a, b) => b.winProb - a.winProb);
-}
-
-function parseTopScores(raw: unknown, label: string): ModelScoreline[] {
-  if (!Array.isArray(raw)) throw new Error(`${label} must be an array.`);
-  return raw.map((item, index) => {
-    if (!Array.isArray(item) || item.length !== 2) throw new Error(`${label}[${index}] is invalid.`);
-    return {
-      score: stringValue(item[0], `${label}[${index}].score`),
-      probability: probability(item[1], `${label}[${index}].probability`),
-    };
-  });
-}
-
-export function parseFixtures(raw: unknown): ModelFixture[] {
-  if (!Array.isArray(raw)) throw new Error("fixtures must be an array.");
-  return raw.map((value, index) => {
-    const fixture = objectValue(value, `fixtures[${index}]`);
-    const result = fixture.result === null || fixture.result === undefined
-      ? null
-      : objectValue(fixture.result, `fixtures[${index}].result`);
-
-    return {
-      date: stringValue(fixture.date, `fixtures[${index}].date`),
-      group: fixture.group === null || fixture.group === undefined
-        ? null
-        : stringValue(fixture.group, `fixtures[${index}].group`),
-      stage: stringValue(fixture.stage, `fixtures[${index}].stage`),
-      home: stringValue(fixture.home, `fixtures[${index}].home`),
-      away: stringValue(fixture.away, `fixtures[${index}].away`),
-      pHome: probability(fixture.p_home, `fixtures[${index}].p_home`),
-      pDraw: probability(fixture.p_draw, `fixtures[${index}].p_draw`),
-      pAway: probability(fixture.p_away, `fixtures[${index}].p_away`),
-      pOver2_5: probability(fixture.p_over_2_5, `fixtures[${index}].p_over_2_5`),
-      pUnder2_5: probability(fixture.p_under_2_5, `fixtures[${index}].p_under_2_5`),
-      pBttsYes: probability(fixture.p_btts_yes, `fixtures[${index}].p_btts_yes`),
-      pBttsNo: probability(fixture.p_btts_no, `fixtures[${index}].p_btts_no`),
-      topScores: parseTopScores(fixture.top_scores, `fixtures[${index}].top_scores`),
-      stakePHome: nullableProbability(fixture.stake_p_home, `fixtures[${index}].stake_p_home`),
-      stakePDraw: nullableProbability(fixture.stake_p_draw, `fixtures[${index}].stake_p_draw`),
-      stakePAway: nullableProbability(fixture.stake_p_away, `fixtures[${index}].stake_p_away`),
-      result: result
-        ? {
-            homeScore: finiteNumber(result.home_score, `fixtures[${index}].result.home_score`),
-            awayScore: finiteNumber(result.away_score, `fixtures[${index}].result.away_score`),
-            status: stringValue(result.status, `fixtures[${index}].result.status`),
-            winner: result.winner === null || result.winner === undefined
-              ? null
-              : stringValue(result.winner, `fixtures[${index}].result.winner`),
-          }
-        : null,
-    };
-  });
-}
-
 function rounded(value: number, digits = 4): number {
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
@@ -328,13 +228,15 @@ export async function refreshModelData(): Promise<void> {
   }
 }
 
-const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+// Hourly: fast enough that results and bracket changes flow into the model the
+// same hour they happen, gentle enough on eloratings.net's small public site.
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 let cronTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function startModelCron(): Promise<void> {
   await refreshModelData();
-  cronTimer = setInterval(refreshModelData, SIX_HOURS_MS);
-  console.log("[Model] Cron started — refreshing every 6 hours");
+  cronTimer = setInterval(refreshModelData, REFRESH_INTERVAL_MS);
+  console.log("[Model] Cron started — refreshing every hour");
 }
 
 export function stopModelCron(): void {
