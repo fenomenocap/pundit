@@ -211,18 +211,19 @@ export async function refreshFootballData(): Promise<void> {
   }
 }
 
-// ─── Cron Scheduler (6-hour interval) ───────────────────────────────────────
+// ─── Cron Scheduler ─────────────────────────────────────────────────────────
 
-const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+// 30 minutes keeps statuses (SCHEDULED → IN_PLAY → FINISHED) and scores close
+// to live on match day without stressing ESPN's public scoreboard endpoint.
+const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 let cronTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function startFootballCron(): Promise<void> {
   // Run immediately on startup
   await refreshFootballData();
 
-  // Then every 6 hours
-  cronTimer = setInterval(refreshFootballData, SIX_HOURS_MS);
-  console.log("[FootballData] Cron started — refreshing every 6 hours");
+  cronTimer = setInterval(refreshFootballData, REFRESH_INTERVAL_MS);
+  console.log("[FootballData] Cron started — refreshing every 30 minutes");
 }
 
 export function stopFootballCron(): void {

@@ -7,7 +7,9 @@ import {
 } from "./fixture-market-sources";
 import { ModelFixture } from "./model-data";
 
-const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+// Market prices move fastest on match day; 30 minutes keeps the comparison
+// honest while staying trivial for three public endpoints.
+const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 
 export interface ThreeWayOdds {
   pHome: number;
@@ -37,66 +39,6 @@ const cache: MarketOddsCache = {
 
 export function marketOddsFixtureKey(date: string, home: string, away: string): string {
   return `${date}::${normalizedTeamPairKey(home, away)}`;
-}
-
-function probability(raw: unknown): number | null {
-  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 && raw < 1
-    ? raw
-    : null;
-}
-
-export function parseActiveMatchResult(raw: unknown): ThreeWayOdds | null {
-  if (!raw || typeof raw !== "object") return null;
-  const source = raw as Record<string, unknown>;
-  const matchResult = source.match_result;
-  if (!matchResult || typeof matchResult !== "object") return null;
-  const market = matchResult as Record<string, unknown>;
-  if (market.status !== "active" || !market.outcomes || typeof market.outcomes !== "object") {
-    return null;
-  }
-
-  const outcomes = market.outcomes as Record<string, unknown>;
-  const read = (name: string): number | null => {
-    const outcome = outcomes[name];
-    if (!outcome || typeof outcome !== "object") return null;
-    return probability((outcome as Record<string, unknown>).implied_probability);
-  };
-  const pHome = read("home");
-  const pDraw = read("draw");
-  const pAway = read("away");
-  if (pHome === null || pDraw === null || pAway === null) return null;
-  const total = pHome + pDraw + pAway;
-  if (!Number.isFinite(total) || total <= 0) return null;
-  return { pHome: pHome / total, pDraw: pDraw / total, pAway: pAway / total };
-}
-
-export function parseFeaturedMarketOdds(
-  raw: unknown,
-  featured: ModelFixture[]
-): Map<string, FixtureMarketOdds> {
-  if (!raw || typeof raw !== "object") throw new Error("market odds payload must be an object.");
-  const payload = raw as Record<string, unknown>;
-  if (!Array.isArray(payload.fixtures)) throw new Error("market odds fixtures must be an array.");
-  const featuredKeys = new Set(featured.map((fixture) =>
-    marketOddsFixtureKey(fixture.date, fixture.home, fixture.away)
-  ));
-  const next = new Map<string, FixtureMarketOdds>();
-
-  for (const value of payload.fixtures) {
-    if (!value || typeof value !== "object") continue;
-    const fixture = value as Record<string, unknown>;
-    if (typeof fixture.date !== "string"
-      || typeof fixture.home !== "string"
-      || typeof fixture.away !== "string") continue;
-    const key = marketOddsFixtureKey(fixture.date, fixture.home, fixture.away);
-    if (!featuredKeys.has(key)) continue;
-    next.set(key, {
-      stake: parseActiveMatchResult(fixture.stake),
-      polymarket: parseActiveMatchResult(fixture.polymarket),
-      kalshi: parseActiveMatchResult(fixture.kalshi),
-    });
-  }
-  return next;
 }
 
 export function getCachedFixtureMarketOdds(fixture: ModelFixture): FixtureMarketOdds | null {
@@ -158,8 +100,8 @@ let cronTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function startModelMarketOddsCron(): Promise<void> {
   await refreshModelMarketOdds();
-  cronTimer = setInterval(refreshModelMarketOdds, SIX_HOURS_MS);
-  console.log("[ModelMarketOdds] Cron started — refreshing every 6 hours");
+  cronTimer = setInterval(refreshModelMarketOdds, REFRESH_INTERVAL_MS);
+  console.log("[ModelMarketOdds] Cron started — refreshing every 30 minutes");
 }
 
 export function stopModelMarketOddsCron(): void {
