@@ -24,7 +24,8 @@ router.get("/fixtures", (_req: Request, res: Response, next: NextFunction) => {
   try {
     const cached = getCachedModelData();
     res.json({
-      fixtures: cached.fixtures,
+      // scorelines is chat-grounding-only; strip it to keep this contract stable.
+      fixtures: cached.fixtures.map(({ scorelines: _scorelines, ...fixture }) => fixture),
       lastUpdated: cached.lastUpdated?.toISOString() ?? null,
       error: cached.error,
     });

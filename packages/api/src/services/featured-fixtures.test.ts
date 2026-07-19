@@ -13,7 +13,7 @@ function football(stage: string, status: string, home = "England", away = "Argen
 const model: ModelFixture = {
   date: "2026-07-15", group: null, stage: "semifinals", home: "England", away: "Argentina",
   pHome: 0.25, pDraw: 0.25, pAway: 0.5, pOver2_5: 0.5, pUnder2_5: 0.5,
-  pBttsYes: 0.5, pBttsNo: 0.5, topScores: [], stakePHome: null,
+  pBttsYes: 0.5, pBttsNo: 0.5, topScores: [], scorelines: [], stakePHome: null,
   stakePDraw: null, stakePAway: null, result: null,
 };
 

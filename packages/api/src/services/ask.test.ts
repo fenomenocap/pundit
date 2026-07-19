@@ -24,6 +24,7 @@ function fixture(home: string, away: string): ModelFixture {
     pBttsYes: 0.52,
     pBttsNo: 0.48,
     topScores: [{ score: "1-1", probability: 0.12 }],
+    scorelines: [{ score: "1-1", probability: 0.12 }, { score: "3-2", probability: 0.011 }],
     stakePHome: null,
     stakePDraw: null,
     stakePAway: null,

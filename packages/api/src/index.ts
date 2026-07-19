@@ -51,7 +51,12 @@ app.get("/ready", (_req, res) => {
     status: ready ? "ready" : "loading",
     model: { ready: model.lastUpdated !== null, lastUpdated: model.lastUpdated?.toISOString() ?? null },
     football: { ready: football.lastUpdated !== null, lastUpdated: football.lastUpdated?.toISOString() ?? null },
-    marketOdds: { ready: odds.ready, lastUpdated: odds.lastUpdated?.toISOString() ?? null },
+    marketOdds: {
+      ready: odds.ready,
+      lastUpdated: odds.lastUpdated?.toISOString() ?? null,
+      sourceWarnings: odds.sourceWarnings,
+      coverage: odds.coverage,
+    },
   });
 });
 

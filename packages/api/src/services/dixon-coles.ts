@@ -106,6 +106,16 @@ export function matrixToCorrectScores(
   return scores.sort((a, b) => b[1] - a[1]).slice(0, count);
 }
 
+// Every scoreline at or above the probability floor, sorted descending —
+// so arbitrary "what about 3-2?" questions are answerable, not just the top 5.
+export function matrixToScorelines(
+  matrix: ScoreMatrix,
+  minProbability = 0.001
+): Array<[[number, number], number]> {
+  return matrixToCorrectScores(matrix, matrix.length ** 2)
+    .filter(([, probability]) => probability >= minProbability);
+}
+
 export function computeMatchModel(eloHome: number, eloAway: number) {
   const matrix = scoreMatrix(...eloToLambdas(eloHome, eloAway));
   const [pHome, pDraw, pAway] = matrixTo1x2(matrix);
@@ -120,6 +130,7 @@ export function computeMatchModel(eloHome: number, eloAway: number) {
     pBttsYes,
     pBttsNo,
     topScores: matrixToCorrectScores(matrix, 5),
+    scorelines: matrixToScorelines(matrix),
   };
 }
 

@@ -3,11 +3,13 @@ import {
   BASE_GOALS,
   LAMBDA_CAP,
   RHO,
+  computeMatchModel,
   dixonColesTau,
   eloToLambdas,
   matrixTo1x2,
   matrixToBtts,
   matrixToCorrectScores,
+  matrixToScorelines,
   matrixToTotals,
   scoreMatrix,
 } from "./dixon-coles";
@@ -39,6 +41,19 @@ describe("local Dixon-Coles model", () => {
     expect(scores.map(([, probability]) => probability)).toEqual(
       [...scores.map(([, probability]) => probability)].sort((a, b) => b - a)
     );
+  });
+
+  it("keeps every scoreline above the floor, ordered, alongside the top-5 contract", () => {
+    const matrix = scoreMatrix(...eloToLambdas(1950, 1750));
+    const scorelines = matrixToScorelines(matrix);
+    expect(scorelines.length).toBeGreaterThan(5);
+    expect(scorelines.every(([, probability]) => probability >= 0.001)).toBe(true);
+    expect(scorelines.map(([, probability]) => probability)).toEqual(
+      [...scorelines.map(([, probability]) => probability)].sort((a, b) => b - a)
+    );
+    const model = computeMatchModel(1950, 1750);
+    expect(model.topScores).toHaveLength(5);
+    expect(model.scorelines.slice(0, 5)).toEqual(model.topScores);
   });
 
   it("matches the Python source for a representative Elo pair", () => {

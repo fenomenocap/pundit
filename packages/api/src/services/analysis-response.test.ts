@@ -1,12 +1,28 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
-import { generateAnalysis } from "./ask";
+import { generateAnalysis, generateAnalysisStream } from "./ask";
 
 function clientWith(response: unknown): Pick<Anthropic, "messages"> {
   return {
     messages: { create: vi.fn().mockResolvedValue(response) },
   } as unknown as Pick<Anthropic, "messages">;
+}
+
+function message(text: string, stopReason: string) {
+  return { content: [{ type: "text", text, citations: [] }], stop_reason: stopReason };
+}
+
+// Stub of the SDK's MessageStream: emits deltas on subscribe, then resolves
+// (or rejects) finalMessage.
+function streamOf(final: unknown, deltas: string[] = [], error?: unknown) {
+  return {
+    on(event: string, handler: (text: string) => void) {
+      if (event === "text") deltas.forEach(handler);
+      return this;
+    },
+    finalMessage: () => (error ? Promise.reject(error) : Promise.resolve(final)),
+  };
 }
 
 describe("generateAnalysis", () => {
@@ -43,5 +59,59 @@ describe("generateAnalysis", () => {
       expect(error).toBeInstanceOf(AppError);
       expect(error).toMatchObject({ statusCode: 504 });
     }
+  });
+
+  it("continues a paused web-search turn, replaying its content as an assistant turn", async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(message("First half. ", "pause_turn"))
+      .mockResolvedValueOnce(message("Second half.", "end_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    await expect(generateAnalysis(client, "system", [
+      { role: "user", content: "q" },
+    ], "match")).resolves.toBe("First half. Second half.");
+    expect(create).toHaveBeenCalledTimes(2);
+    const continuationMessages = create.mock.calls[1][0].messages;
+    expect(continuationMessages.at(-1)).toMatchObject({ role: "assistant" });
+  });
+
+  it("gives up with a 504 when the turn never resumes", async () => {
+    const create = vi.fn().mockResolvedValue(message("still searching", "pause_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    await expect(generateAnalysis(client, "system", [], "match"))
+      .rejects.toMatchObject({ statusCode: 504 });
+    expect(create).toHaveBeenCalledTimes(6); // initial call + MAX_CONTINUATIONS
+  });
+});
+
+describe("generateAnalysisStream", () => {
+  it("emits deltas across continuations and joins the final text", async () => {
+    const stream = vi.fn()
+      .mockReturnValueOnce(streamOf(message("First half. ", "pause_turn"), ["First half. "]))
+      .mockReturnValueOnce(streamOf(message("Second half.", "end_turn"), ["Second half."]));
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    await expect(generateAnalysisStream(client, "system", [
+      { role: "user", content: "q" },
+    ], "match", (text) => deltas.push(text))).resolves.toBe("First half. Second half.");
+    expect(deltas).toEqual(["First half. ", "Second half."]);
+  });
+
+  it("retries once when the stream dies before any text was emitted", async () => {
+    const stream = vi.fn()
+      .mockReturnValueOnce(streamOf(null, [], new Anthropic.APIConnectionError({ message: "boom" })))
+      .mockReturnValueOnce(streamOf(message("Recovered.", "end_turn"), ["Recovered."]));
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    await expect(generateAnalysisStream(client, "system", [], "match", () => {}))
+      .resolves.toBe("Recovered.");
+    expect(stream).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry once text has reached the user", async () => {
+    const stream = vi.fn()
+      .mockReturnValueOnce(streamOf(null, ["partial "], new Anthropic.APIConnectionError({ message: "boom" })));
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    await expect(generateAnalysisStream(client, "system", [], "match", () => {}))
+      .rejects.toThrow();
+    expect(stream).toHaveBeenCalledTimes(1);
   });
 });
