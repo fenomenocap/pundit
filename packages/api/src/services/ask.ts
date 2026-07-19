@@ -83,7 +83,9 @@ when verified news exists; otherwise pick 2-4 labels that fit the question). Kee
 1-3 short sentences or a compact bullet list, and bold the headline numbers. Never use markdown
 tables or # headings. Every text block you write is shown to the user verbatim, including text
 between tool calls -- never narrate your process ("Let me search...", "Now I have enough...").
-Search silently, then start the answer directly with the first bold label.`;
+Search silently, then start the answer directly with the first bold label.
+Never reproduce raw JSON, field names, or key-value syntax from the grounding data in your answer --
+express its values as plain prose and percentages (write "2.26%", not {"score":"2-3","probability":0.0226}).`;
 
 const MATCH_SYSTEM_PROMPT = `You are a World Cup match-analysis assistant for Pundit. You are given
 precomputed probabilities from Pundit's Dixon-Coles/Poisson model (calibrated on live Elo ratings)
