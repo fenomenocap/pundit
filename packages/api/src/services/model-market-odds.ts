@@ -23,11 +23,17 @@ export interface FixtureMarketOdds {
   kalshi: ThreeWayOdds | null;
 }
 
+interface SourceCoverage {
+  matched: number;
+  total: number;
+}
+
 interface MarketOddsCache {
   byFixture: Map<string, FixtureMarketOdds>;
   lastUpdated: Date | null;
   error: string | null;
   sourceWarnings: Record<string, string | null>;
+  coverage: Record<string, SourceCoverage>;
 }
 
 const cache: MarketOddsCache = {
@@ -35,6 +41,7 @@ const cache: MarketOddsCache = {
   lastUpdated: null,
   error: null,
   sourceWarnings: {},
+  coverage: {},
 };
 
 export function marketOddsFixtureKey(date: string, home: string, away: string): string {
@@ -51,6 +58,7 @@ export function getModelMarketOddsStatus() {
     lastUpdated: cache.lastUpdated,
     error: cache.error,
     sourceWarnings: { ...cache.sourceWarnings },
+    coverage: { ...cache.coverage },
   };
 }
 
@@ -70,7 +78,12 @@ export async function refreshModelMarketOdds(): Promise<void> {
       const name = names[index];
       if (result.status === "fulfilled") {
         fetched[index] = result.value;
-        cache.sourceWarnings[name] = null;
+        // A source that answers 200 but matches nothing is as dead as one that
+        // throws; without this, silent-empty looks identical to healthy.
+        cache.sourceWarnings[name] = featured.length > 0 && result.value.size === 0
+          ? `${name} returned no matching fixtures (0/${featured.length})`
+          : null;
+        if (cache.sourceWarnings[name]) console.warn(`[ModelMarketOdds] ${cache.sourceWarnings[name]}`);
       } else {
         fetched[index] = new Map();
         const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
@@ -78,6 +91,15 @@ export async function refreshModelMarketOdds(): Promise<void> {
         console.warn(`[ModelMarketOdds] ${cache.sourceWarnings[name]}`);
       }
     });
+    cache.coverage = Object.fromEntries(names.map((name, index) => [
+      name,
+      { matched: fetched[index].size, total: featured.length },
+    ]));
+    console.log(JSON.stringify({
+      event: "market_odds_coverage",
+      ...Object.fromEntries(names.map((name, index) =>
+        [name, `${fetched[index].size}/${featured.length}`])),
+    }));
     cache.byFixture = new Map(featured.map((fixture) => {
       const pair = normalizedTeamPairKey(fixture.home, fixture.away);
       return [marketOddsFixtureKey(fixture.date, fixture.home, fixture.away), {

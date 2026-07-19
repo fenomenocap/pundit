@@ -119,7 +119,8 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     } catch (err) {
       if (!res.headersSent) throw err;
       const message = err instanceof AppError ? err.message : "Analysis generation failed.";
-      sseSend(res, "error", { error: message });
+      const status = err instanceof AppError ? err.statusCode : 502;
+      sseSend(res, "error", { error: message, status });
       res.end();
     }
   } catch (err) {

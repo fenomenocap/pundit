@@ -9,7 +9,10 @@ import type { ThreeWayOdds } from "./model-market-odds";
 
 const STAKE_URL = "https://stake.bet/_api/graphql";
 const POLYMARKET_URL = "https://gamma-api.polymarket.com/events";
-const KALSHI_URL = "https://external-api.kalshi.com/trade-api/v2/events";
+// Gamma's events list caps limit at 100 and serves oldest-first, so current
+// match events never appear in a plain listing; search per fixture instead.
+const POLYMARKET_SEARCH_URL = "https://gamma-api.polymarket.com/public-search";
+const KALSHI_URL = "https://api.elections.kalshi.com/trade-api/v2/events";
 const TIMEOUT_MS = 10_000;
 
 const STAKE_QUERY = `
@@ -99,7 +102,11 @@ function selection(name: string, fixture: ModelFixture): "home" | "draw" | "away
   const normalized = normalizeTeamName(name);
   if (normalized === normalizeTeamName(fixture.home)) return "home";
   if (normalized === normalizeTeamName(fixture.away)) return "away";
-  if (["draw", "x", "tie"].includes(normalizeTeamText(name))) return "draw";
+  const text = normalizeTeamText(name);
+  if (["draw", "x", "tie"].includes(text)) return "draw";
+  // Polymarket labels its draw leg "Draw (Spain vs. Argentina)" — a draw-led
+  // label is a draw even when it goes on to name both teams.
+  if (/^(draw|tie)\b/.test(text)) return "draw";
   return null;
 }
 
@@ -194,6 +201,20 @@ function kalshiPrice(market: UnknownRecord): number | null {
   return null;
 }
 
+// Kalshi outcome labels carry prefixes ("Reg Time: Spain", "Reg Time: Tie"),
+// so exact name matching fails; fall back to containment, requiring the label
+// to point at exactly one side so "Spain vs Argentina" never matches.
+function kalshiSelection(label: string, fixture: ModelFixture): "home" | "draw" | "away" | null {
+  const direct = selection(label, fixture);
+  if (direct) return direct;
+  const text = normalizeTeamText(label);
+  const matches: Array<"home" | "draw" | "away"> = [];
+  if (teamSearchTerms(fixture.home).some((term) => text.includes(term))) matches.push("home");
+  if (teamSearchTerms(fixture.away).some((term) => text.includes(term))) matches.push("away");
+  if (/\b(tie|draw)\b/.test(text)) matches.push("draw");
+  return matches.length === 1 ? matches[0] : null;
+}
+
 export function parseKalshiEvent(raw: unknown, fixture: ModelFixture): ThreeWayOdds | null {
   const event = record(raw);
   if (!event || !eventMatchesFixture(event, fixture)) return null;
@@ -204,7 +225,7 @@ export function parseKalshiEvent(raw: unknown, fixture: ModelFixture): ThreeWayO
     const label = [event.title, event.sub_title, market.title, market.subtitle]
       .map((value) => String(value ?? "").toLowerCase()).join(" ");
     if (!/(moneyline|match result|winner|to win|regulation time)/.test(label)) continue;
-    const key = selection(String(market.yes_sub_title ?? market.subtitle ?? ""), fixture);
+    const key = kalshiSelection(String(market.yes_sub_title ?? market.subtitle ?? ""), fixture);
     const price = kalshiPrice(market);
     if (key && price !== null) prices[key] = price;
   }
@@ -250,24 +271,56 @@ export async function fetchStakeOdds(fixtures: ModelFixture[]): Promise<Map<stri
   return result;
 }
 
-export async function fetchPolymarketOdds(fixtures: ModelFixture[]): Promise<Map<string, ThreeWayOdds>> {
-  const payload = await jsonFetch(
-    `${POLYMARKET_URL}?active=true&closed=false&limit=500&order=startDate&ascending=true`,
-    { headers: { Accept: "application/json" } }
-  );
-  const result = new Map<string, ThreeWayOdds>();
+// Search hits can ship slimmer market objects than the events endpoint; when a
+// matching event parses without prices, refetch it in full by slug.
+async function fetchPolymarketOddsBySlug(slug: string, fixture: ModelFixture): Promise<ThreeWayOdds | null> {
+  const payload = await jsonFetch(`${POLYMARKET_URL}?slug=${encodeURIComponent(slug)}`, {
+    headers: { Accept: "application/json" },
+  });
   for (const event of array(payload)) {
-    for (const fixture of fixtures) {
-      const odds = parsePolymarketEvent(event, fixture);
-      if (odds) result.set(normalizedTeamPairKey(fixture.home, fixture.away), odds);
+    const odds = parsePolymarketEvent(event, fixture);
+    if (odds) return odds;
+  }
+  return null;
+}
+
+export async function fetchPolymarketOdds(fixtures: ModelFixture[]): Promise<Map<string, ThreeWayOdds>> {
+  const result = new Map<string, ThreeWayOdds>();
+  let firstError: unknown = null;
+  for (const fixture of fixtures) {
+    try {
+      const query = encodeURIComponent(`${fixture.home} ${fixture.away}`);
+      const payload = record(await jsonFetch(`${POLYMARKET_SEARCH_URL}?q=${query}`, {
+        headers: { Accept: "application/json" },
+      }));
+      for (const raw of array(payload?.events)) {
+        const event = record(raw);
+        if (!event || !eventMatchesFixture(event, fixture)) continue;
+        let odds = parsePolymarketEvent(event, fixture);
+        if (!odds && typeof event.slug === "string" && event.slug) {
+          // A failed refetch of one candidate must not sink the other candidates.
+          odds = await fetchPolymarketOddsBySlug(event.slug, fixture).catch(() => null);
+        }
+        if (odds) {
+          result.set(normalizedTeamPairKey(fixture.home, fixture.away), odds);
+          break;
+        }
+      }
+    } catch (error) {
+      firstError = firstError ?? error;
     }
   }
+  if (result.size === 0 && firstError !== null) throw firstError;
   return result;
 }
 
-// Kalshi paginates via an opaque cursor; cap the walk so a server that keeps
-// returning cursors can't spin this fetch forever.
-const KALSHI_MAX_PAGES = 10;
+// KXWCGAME is Kalshi's World Cup match-moneyline series (regulation-time 1X2,
+// the same 90-minute outcome the model prices). Filtering by series keeps the
+// walk to one page instead of paginating every open market on the exchange,
+// where WC matches sat beyond the old 10-page cap. KXWCPLAY (play-ins) is out
+// of scope. The cap below is a pure safety net against runaway cursors.
+const KALSHI_SERIES_TICKER = "KXWCGAME";
+const KALSHI_MAX_PAGES = 3;
 
 export async function fetchKalshiOdds(fixtures: ModelFixture[]): Promise<Map<string, ThreeWayOdds>> {
   const result = new Map<string, ThreeWayOdds>();
@@ -275,6 +328,7 @@ export async function fetchKalshiOdds(fixtures: ModelFixture[]): Promise<Map<str
   let pages = 0;
   do {
     const params = new URLSearchParams({
+      series_ticker: KALSHI_SERIES_TICKER,
       status: "open", with_nested_markets: "true", limit: "200",
     });
     if (cursor) params.set("cursor", cursor);

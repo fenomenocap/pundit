@@ -30,6 +30,7 @@ export interface Grounding {
   pBttsYes: number;
   pBttsNo: number;
   topScores: Array<{ score: string; probability: number }>;
+  scorelines: Array<{ score: string; probability: number }>;
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
@@ -54,8 +55,16 @@ export interface ConversationTurn {
 export type TeamContext = [string, string];
 
 const ANTHROPIC_MODEL = "claude-sonnet-5";
-const MAX_TOKENS = 1_500;
-const REQUEST_TIMEOUT_MS = 45_000;
+// A web-search turn spends output tokens on tool-use blocks and citations as
+// well as the visible answer; 1500 demonstrably truncated search turns.
+const MAX_TOKENS = 4_096;
+// Per-API-call timeout. Search turns routinely ran past the old 45s limit.
+const REQUEST_TIMEOUT_MS = 90_000;
+// Server-side web search can pause a turn (stop_reason "pause_turn"); cap how
+// many continuation calls we make and how long the whole answer may take. The
+// browser streams SSE straight from Railway, so long requests are safe.
+const MAX_CONTINUATIONS = 5;
+const OVERALL_DEADLINE_MS = 240_000;
 
 // Shared guardrails: the grounding payload is app-supplied (a QA pass caught the
 // model calling it "prices you supplied"), and pre-training squad knowledge is
@@ -82,20 +91,25 @@ for a specific matchup. Treat these numbers as ground truth for the statistical
 analysis. Do not invent or contradict them. All World Cup 2026 matches are at
 neutral venues (no home-field advantage) -- "home"/"away" labels below are
 positional only, not venue-based.
-The data may also include stake_p_home/stake_p_draw/stake_p_away -- no-vig implied
-probabilities from Stake's live 1X2 odds for this match. When present, compare the
-model's win probability against them and note the edge (model minus market,
-positive means the model favours that outcome more than the market does). When
-absent (null), say plainly that no market price is available for this match rather
-than guessing one.
-The data also includes over/under 2.5, both-teams-to-score, and ranked scoreline
-probabilities. Quote those supplied values exactly; never invent a scoreline or
-total that is not present in the grounding.
-The data may also include oddsSources from Kalshi and/or Polymarket. Compare the
-model with whichever sources are present. If a source is absent, never guess its
-price; say plainly that it is unavailable if it is relevant to the answer.
+The data may include oddsSources -- no-vig implied 1X2 probabilities from live
+market prices (Kalshi and/or Polymarket). Compare the model's win probability
+against whichever sources are present and note the edge (model minus market,
+positive means the model favours that outcome more than the market does). It may
+also include stakePHome/stakePDraw/stakePAway from Stake, though those are often
+absent (null) -- when a source is absent, never guess its price; if no market
+source is present at all, say plainly that no market line is available.
+The data also includes over/under 2.5, both-teams-to-score, topScores (the
+top-ranked scorelines), and scorelines (every scoreline at or above a 0.1%
+probability). Quote those supplied values exactly; a score missing from the
+scorelines list has a probability below 0.1% -- say that rather than refusing
+or inventing a number.
 You have a web_search tool -- use it when current injury, squad, or form news
 would materially change the read on this matchup.
+For player-level questions (goalscorer, assists, cards, player props), Pundit's
+model has no player data -- say so briefly, then use web_search for current
+player-prop odds and player news, and present anything found as market- or
+search-sourced with its source and date, never as Pundit model output. If search
+returns nothing solid, say no verified player data is available.
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}
 State the headline win/draw/win and O/U 2.5 numbers, mention 1-2 most likely
@@ -114,6 +128,9 @@ const GENERAL_SYSTEM_PROMPT = `You are a general football analyst for Pundit. Th
 grounded in Pundit's Dixon-Coles/Poisson model data. Make that limitation clear in the response and
 do not imply that any claim or number came from Pundit's model. Use the web_search tool for current
 facts when helpful, and never fabricate a statistic, injury, squad update, or result.
+For player-level questions (goalscorer, assists, cards, player props), use web_search for current
+player-prop odds and player news, and present anything found as market- or search-sourced with its
+source and date. If search returns nothing solid, say no verified player data is available.
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}`;
 
@@ -239,6 +256,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     pBttsYes: fixture.pBttsYes,
     pBttsNo: fixture.pBttsNo,
     topScores: fixture.topScores,
+    scorelines: fixture.scorelines,
     stakePHome: stake?.pHome ?? fixture.stakePHome,
     stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
     stakePAway: stake?.pAway ?? fixture.stakePAway,
@@ -248,7 +266,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
 
 type AnalysisTier = "match" | "tournament" | "general";
 
-function analysisRequestParams(systemPrompt: string, messages: ConversationTurn[]) {
+function analysisRequestParams(systemPrompt: string, messages: Anthropic.MessageParam[]) {
   return {
     model: ANTHROPIC_MODEL,
     max_tokens: MAX_TOKENS,
@@ -256,6 +274,10 @@ function analysisRequestParams(systemPrompt: string, messages: ConversationTurn[
     tools: [{ type: "web_search_20260209" as const, name: "web_search" as const }],
     messages,
   };
+}
+
+function toMessageParams(messages: ConversationTurn[]): Anthropic.MessageParam[] {
+  return messages.map(({ role, content }) => ({ role, content }));
 }
 
 function mapTimeoutError(error: unknown): never {
@@ -267,29 +289,41 @@ function mapTimeoutError(error: unknown): never {
 }
 
 function validateAnalysisResponse(
-  response: Anthropic.Message,
+  responses: Anthropic.Message[],
   tier: AnalysisTier,
   startedAt: number
 ): string {
-  const answer = response.content.reduce(
+  const blocks = responses.flatMap((response) => response.content);
+  const answer = blocks.reduce(
     (text, block) => block.type === "text" ? text + block.text : text,
     ""
   ).trim();
-  const usedWebSearch = response.content.some((block) =>
+  const usedWebSearch = blocks.some((block) =>
     block.type === "server_tool_use" || block.type === "web_search_tool_result"
   );
+  const stopReason = responses.at(-1)?.stop_reason ?? null;
   console.log(JSON.stringify({
     event: "analysis_generated",
     tier,
     durationMs: Date.now() - startedAt,
-    stopReason: response.stop_reason,
+    stopReason,
     usedWebSearch,
+    continuations: responses.length - 1,
   }));
   if (!answer) throw new AppError(502, "Analysis service returned an empty response.");
-  if (response.stop_reason === "max_tokens") {
+  if (stopReason === "max_tokens") {
     throw new AppError(502, "Analysis response was truncated. Please try again.");
   }
   return answer;
+}
+
+// A paused turn is continued by replaying the paused message's content as an
+// assistant turn and calling again; the answer is the text across all turns.
+function appendPausedTurn(
+  convo: Anthropic.MessageParam[],
+  response: Anthropic.Message
+): Anthropic.MessageParam[] {
+  return [...convo, { role: "assistant", content: response.content as Anthropic.ContentBlockParam[] }];
 }
 
 export async function generateAnalysis(
@@ -299,16 +333,38 @@ export async function generateAnalysis(
   tier: AnalysisTier
 ): Promise<string> {
   const startedAt = Date.now();
-  let response;
-  try {
-    response = await client.messages.create(
-      analysisRequestParams(systemPrompt, messages),
-      { timeout: REQUEST_TIMEOUT_MS }
-    );
-  } catch (error) {
-    mapTimeoutError(error);
+  const collected: Anthropic.Message[] = [];
+  let convo = toMessageParams(messages);
+  for (let turn = 0; turn <= MAX_CONTINUATIONS; turn += 1) {
+    if (turn > 0 && Date.now() - startedAt > OVERALL_DEADLINE_MS) break;
+    let response;
+    try {
+      response = await client.messages.create(
+        analysisRequestParams(systemPrompt, convo),
+        { timeout: REQUEST_TIMEOUT_MS }
+      );
+    } catch (error) {
+      mapTimeoutError(error);
+    }
+    collected.push(response);
+    if (response.stop_reason !== "pause_turn") break;
+    convo = appendPausedTurn(convo, response);
   }
-  return validateAnalysisResponse(response, tier, startedAt);
+  if (collected.at(-1)?.stop_reason === "pause_turn") {
+    throw new AppError(504, "Analysis service timed out. Please try again.");
+  }
+  return validateAnalysisResponse(collected, tier, startedAt);
+}
+
+const RETRYABLE_STATUS = new Set([408, 429, 529]);
+
+// A stream that dies before any text reached the user can be retried safely;
+// once a delta has been emitted a retry would duplicate visible output.
+function isRetryableStreamError(error: unknown): boolean {
+  if (error instanceof Anthropic.APIConnectionError) return true;
+  return error instanceof Anthropic.APIError
+    && typeof error.status === "number"
+    && (RETRYABLE_STATUS.has(error.status) || error.status >= 500);
 }
 
 // Streaming variant: emits text deltas as they arrive so the client can render
@@ -321,18 +377,41 @@ export async function generateAnalysisStream(
   onDelta: (text: string) => void
 ): Promise<string> {
   const startedAt = Date.now();
-  let response: Anthropic.Message;
-  try {
-    const stream = client.messages.stream(
-      analysisRequestParams(systemPrompt, messages),
-      { timeout: REQUEST_TIMEOUT_MS }
-    );
-    stream.on("text", onDelta);
-    response = await stream.finalMessage();
-  } catch (error) {
-    mapTimeoutError(error);
+  const collected: Anthropic.Message[] = [];
+  let convo = toMessageParams(messages);
+  let anyDeltaSeen = false;
+  for (let turn = 0; turn <= MAX_CONTINUATIONS; turn += 1) {
+    if (turn > 0 && Date.now() - startedAt > OVERALL_DEADLINE_MS) break;
+    let response: Anthropic.Message | undefined;
+    let retried = false;
+    while (response === undefined) {
+      let deltaSeen = false;
+      try {
+        const stream = client.messages.stream(
+          analysisRequestParams(systemPrompt, convo),
+          { timeout: REQUEST_TIMEOUT_MS }
+        );
+        stream.on("text", (text) => {
+          deltaSeen = true;
+          anyDeltaSeen = true;
+          onDelta(text);
+        });
+        response = await stream.finalMessage();
+      } catch (error) {
+        if (deltaSeen || anyDeltaSeen || retried || !isRetryableStreamError(error)) {
+          mapTimeoutError(error);
+        }
+        retried = true;
+      }
+    }
+    collected.push(response);
+    if (response.stop_reason !== "pause_turn") break;
+    convo = appendPausedTurn(convo, response);
   }
-  return validateAnalysisResponse(response, tier, startedAt);
+  if (collected.at(-1)?.stop_reason === "pause_turn") {
+    throw new AppError(504, "Analysis service timed out. Please try again.");
+  }
+  return validateAnalysisResponse(collected, tier, startedAt);
 }
 
 interface PreparedAsk {
@@ -393,7 +472,7 @@ function prepareAsk(
     systemPrompt,
     messages: [...history, { role: "user", content: currentMessage }],
     tier: grounding?.kind ?? "general",
-    client: new Anthropic({ apiKey }),
+    client: new Anthropic({ apiKey, maxRetries: 2 }),
   };
 }
 
@@ -402,6 +481,9 @@ function mapAnalysisError(err: unknown): never {
   const message = err instanceof Error ? err.message : String(err);
   if (/timed?\s*out|timeout/i.test(message)) {
     throw new AppError(504, "Analysis service timed out. Please try again.");
+  }
+  if (err instanceof Anthropic.APIError && err.status === 429) {
+    throw new AppError(429, "Analysis service is busy right now. Please try again in a moment.");
   }
   throw new AppError(502, `Analysis generation failed: ${message}`);
 }

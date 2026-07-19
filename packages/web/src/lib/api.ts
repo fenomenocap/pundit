@@ -141,6 +141,7 @@ export interface MatchGrounding {
   pBttsYes: number;
   pBttsNo: number;
   topScores: Array<{ score: string; probability: number }>;
+  scorelines?: Array<{ score: string; probability: number }>;
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
@@ -240,7 +241,9 @@ export async function askQuestionStream(
       if (event === "grounding") handlers.onGrounding?.(payload.grounding);
       else if (event === "delta") handlers.onDelta(payload.text);
       else if (event === "done") result = payload;
-      else if (event === "error") throw new ApiError(payload.error, 502);
+      else if (event === "error") {
+        throw new ApiError(payload.error, typeof payload.status === "number" ? payload.status : 502);
+      }
     }
   }
 

@@ -42,6 +42,8 @@ export interface ModelFixture {
   pBttsYes: number;
   pBttsNo: number;
   topScores: ModelScoreline[];
+  // Every scoreline ≥0.1% — chat grounding only; stripped from /api/model responses.
+  scorelines: ModelScoreline[];
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
@@ -116,6 +118,10 @@ function buildFixtures(matches: FootballMatch[], elo: Map<string, number>): Mode
         pBttsYes: rounded(model.pBttsYes),
         pBttsNo: rounded(model.pBttsNo),
         topScores: model.topScores.map(([[home, away], probability]) => ({
+          score: `${home}-${away}`,
+          probability: rounded(probability),
+        })),
+        scorelines: model.scorelines.map(([[home, away], probability]) => ({
           score: `${home}-${away}`,
           probability: rounded(probability),
         })),
