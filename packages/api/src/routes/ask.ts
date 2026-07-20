@@ -95,6 +95,14 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     // SSE streaming path. Headers are only committed once grounding resolves,
     // so validation/config errors before that still surface as normal JSON
     // errors with a real status code via next(err).
+    // A web-search turn can think silently for minutes before the first text
+    // delta; Railway's edge closes streams idle for ~60s, so send an SSE
+    // comment as a heartbeat while the connection would otherwise be quiet.
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    const stopHeartbeat = () => {
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = null;
+    };
     try {
       const { answer, grounding } = await answerQuestionStream(
         trimmedQuestion,
@@ -110,13 +118,18 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
             });
             res.flushHeaders();
             sseSend(res, "grounding", { grounding: initialGrounding });
+            heartbeat = setInterval(() => {
+              if (!res.writableEnded) res.write(": ping\n\n");
+            }, 15_000);
           },
           onDelta: (text) => sseSend(res, "delta", { text }),
         }
       );
+      stopHeartbeat();
       sseSend(res, "done", { answer, grounding });
       res.end();
     } catch (err) {
+      stopHeartbeat();
       if (!res.headersSent) throw err;
       const message = err instanceof AppError ? err.message : "Analysis generation failed.";
       const status = err instanceof AppError ? err.statusCode : 502;
