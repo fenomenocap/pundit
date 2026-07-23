@@ -31,6 +31,7 @@ Pundit is a deployed chat-first WC 2026 analysis app. It has no blockchain or da
 - A rigorous backtest needs immutable pre-kickoff probability snapshots. The full fixture/result contract is retained now, but each local refresh recalculates older fixtures with current Elo; snapshot storage and formal calibration reporting remain a separate pass.
 - Other competitions require equivalent model data before extending grounded analysis beyond WC 2026.
 - Confirm the public Vercel production URL and set GitHub homepage + `ALLOWED_ORIGINS` to match.
+- Disconnect the legacy Vercel project `football_prediction_market` from this repo if it still deploys the old Kickpredict UI.
 
 ## Key file map
 
