@@ -21,7 +21,7 @@ Exceeding a limit returns an HTTP error with a JSON body like `{ "error": "Too m
 }
 ```
 
-`lastUpdated` is when the underlying cache was last refreshed (all caches refresh every 6 hours). `error` is non-null only if the most recent refresh attempt failed — in that case you're still getting the last-known-good cached data, not an empty response.
+`lastUpdated` is when the underlying cache was last refreshed (ESPN and featured odds every 30 minutes, local model hourly, Polymarket reference every 6 hours). `error` is non-null only if the most recent refresh attempt failed — in that case you're still getting the last-known-good cached data, not an empty response.
 
 **Endpoints:**
 

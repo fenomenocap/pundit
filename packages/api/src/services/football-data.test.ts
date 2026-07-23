@@ -23,4 +23,24 @@ describe("ESPN model inputs", () => {
       winner: "USA",
     });
   });
+
+  it("keeps live scores while a match is in play", () => {
+    const match = parseEvent({
+      id: "2",
+      date: "2026-07-14T19:00Z",
+      season: { slug: "semifinals" },
+      competitions: [{
+        status: { type: { state: "in", completed: false } },
+        competitors: [
+          { homeAway: "home", team: { displayName: "England" }, score: "2", winner: false },
+          { homeAway: "away", team: { displayName: "France" }, score: "1", winner: false },
+        ],
+      }],
+    });
+    expect(match).toMatchObject({
+      status: "IN_PLAY",
+      score: { home: 2, away: 1 },
+      winner: null,
+    });
+  });
 });

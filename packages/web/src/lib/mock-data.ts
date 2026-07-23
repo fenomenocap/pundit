@@ -15,6 +15,18 @@ function pastISO(days: number): string {
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
 
+export interface MatchesPayload {
+  matches: MatchResponse[];
+  lastUpdated: string | null;
+  error: string | null;
+}
+
+export interface StandingsPayload {
+  standings: StandingResponse[];
+  lastUpdated: string | null;
+  error: string | null;
+}
+
 // ─── Live WC fixtures / standings (reference only, not tradeable) ───────────
 // Sourced from ESPN's public scoreboard API via the backend. Mock fallback is
 // deliberately thin — this data is meant to be live, current tournament state.
@@ -48,41 +60,65 @@ const MOCK_STANDINGS: StandingResponse[] = [
   { position: 2, team: "South Africa", playedGames: 3, won: 1, draw: 1, lost: 1, points: 4, goalsFor: 2, goalsAgainst: 3, goalDifference: -1, group: "A", advanced: true },
 ];
 
-export async function fetchUpcomingMatches(): Promise<MatchResponse[]> {
+export async function fetchUpcomingMatches(): Promise<MatchesPayload> {
   if (!USE_MOCK) {
     try {
       const { getUpcomingMatches } = await import("./api");
       const res = await getUpcomingMatches();
-      return res.matches ?? [];
-    } catch {
-      return [];
+      return {
+        matches: res.matches ?? [],
+        lastUpdated: res.lastUpdated ?? null,
+        error: res.error ?? null,
+      };
+    } catch (reason) {
+      return {
+        matches: [],
+        lastUpdated: null,
+        error: reason instanceof Error ? reason.message : "Could not load upcoming matches.",
+      };
     }
   }
-  return MOCK_UPCOMING_MATCHES;
+  return { matches: MOCK_UPCOMING_MATCHES, lastUpdated: new Date(now).toISOString(), error: null };
 }
 
-export async function fetchRecentMatches(): Promise<MatchResponse[]> {
+export async function fetchRecentMatches(): Promise<MatchesPayload> {
   if (!USE_MOCK) {
     try {
       const { getRecentMatches } = await import("./api");
       const res = await getRecentMatches();
-      return res.matches ?? [];
-    } catch {
-      return [];
+      return {
+        matches: res.matches ?? [],
+        lastUpdated: res.lastUpdated ?? null,
+        error: res.error ?? null,
+      };
+    } catch (reason) {
+      return {
+        matches: [],
+        lastUpdated: null,
+        error: reason instanceof Error ? reason.message : "Could not load recent matches.",
+      };
     }
   }
-  return MOCK_RECENT_MATCHES;
+  return { matches: MOCK_RECENT_MATCHES, lastUpdated: new Date(now).toISOString(), error: null };
 }
 
-export async function fetchStandings(): Promise<StandingResponse[]> {
+export async function fetchStandings(): Promise<StandingsPayload> {
   if (!USE_MOCK) {
     try {
       const { getStandings } = await import("./api");
       const res = await getStandings();
-      return res.standings ?? [];
-    } catch {
-      return [];
+      return {
+        standings: res.standings ?? [],
+        lastUpdated: res.lastUpdated ?? null,
+        error: res.error ?? null,
+      };
+    } catch (reason) {
+      return {
+        standings: [],
+        lastUpdated: null,
+        error: reason instanceof Error ? reason.message : "Could not load standings.",
+      };
     }
   }
-  return MOCK_STANDINGS;
+  return { standings: MOCK_STANDINGS, lastUpdated: new Date(now).toISOString(), error: null };
 }
