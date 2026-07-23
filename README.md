@@ -94,15 +94,40 @@ Chat requires `ANTHROPIC_API_KEY` in the API environment. It is configured in Ra
 
 ## Deploy
 
-```bash
-# API → Railway
-cd packages/api && railway up
+Production (July 2026):
 
-# Frontend → Vercel
+| Service | URL |
+|---|---|
+| **API (Railway)** | `https://sports-predictapi-production.up.railway.app` |
+| **Web (Vercel)** | Project `sports-prediction-markets-web` — set **Root Directory** to `packages/web` |
+
+The repo is linked to two Vercel projects (`sports-prediction-markets-web` and legacy `football_prediction_market`). Only **`sports-prediction-markets-web`** should track this monorepo; disconnect or ignore the legacy project so production does not serve the old Kickpredict trading UI.
+
+### Railway (`@sports-predict/api`)
+
+```bash
+cd packages/api && railway up
+```
+
+| Variable | Value |
+|---|---|
+| `ANTHROPIC_API_KEY` | Railway secret (required for chat) |
+| `ALLOWED_ORIGINS` | Your Vercel frontend origin(s), comma-separated |
+
+### Vercel (`packages/web`)
+
+```bash
 cd packages/web && vercel --prod
 ```
 
-Required env vars for each are listed in `.env.example`. Keep `ANTHROPIC_API_KEY` in Railway/Vercel secret management and never commit it.
+| Variable | Production value |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | `https://sports-predictapi-production.up.railway.app` |
+| `NEXT_PUBLIC_USE_MOCK` | `false` |
+
+After the first successful deploy, set the GitHub repo **homepage** to the Vercel production URL and add the same origin to Railway `ALLOWED_ORIGINS`.
+
+Required env vars for local dev are listed in `.env.example`. Never commit `ANTHROPIC_API_KEY`.
 
 ## Backtesting note
 
