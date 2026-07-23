@@ -376,30 +376,45 @@ export async function generateAnalysisStream(
   systemPrompt: string,
   messages: ConversationTurn[],
   tier: AnalysisTier,
-  onDelta: (text: string) => void
+  onDelta: (text: string) => void,
+  shouldContinue: () => boolean = () => true
 ): Promise<string> {
   const startedAt = Date.now();
   const collected: Anthropic.Message[] = [];
   let convo = toMessageParams(messages);
   let anyDeltaSeen = false;
+  const abort = new AbortController();
   for (let turn = 0; turn <= MAX_CONTINUATIONS; turn += 1) {
+    if (!shouldContinue()) {
+      abort.abort();
+      throw new AppError(499, "Client disconnected.");
+    }
     if (turn > 0 && Date.now() - startedAt > OVERALL_DEADLINE_MS) break;
     let response: Anthropic.Message | undefined;
     let retried = false;
     while (response === undefined) {
+      if (!shouldContinue()) {
+        abort.abort();
+        throw new AppError(499, "Client disconnected.");
+      }
       let deltaSeen = false;
       try {
         const stream = client.messages.stream(
           analysisRequestParams(systemPrompt, convo),
-          { timeout: REQUEST_TIMEOUT_MS }
+          { timeout: REQUEST_TIMEOUT_MS, signal: abort.signal }
         );
         stream.on("text", (text) => {
+          if (!shouldContinue()) {
+            abort.abort();
+            return;
+          }
           deltaSeen = true;
           anyDeltaSeen = true;
           onDelta(text);
         });
         response = await stream.finalMessage();
       } catch (error) {
+        if (!shouldContinue()) throw new AppError(499, "Client disconnected.");
         if (deltaSeen || anyDeltaSeen || retried || !isRetryableStreamError(error)) {
           mapTimeoutError(error);
         }
@@ -487,7 +502,13 @@ function mapAnalysisError(err: unknown): never {
   if (err instanceof Anthropic.APIError && err.status === 429) {
     throw new AppError(429, "Analysis service is busy right now. Please try again in a moment.");
   }
-  throw new AppError(502, `Analysis generation failed: ${message}`);
+  // Log the upstream detail server-side; never echo Anthropic/provider text to clients.
+  console.error(JSON.stringify({
+    event: "analysis_failed",
+    message: message.slice(0, 500),
+    status: err instanceof Anthropic.APIError ? err.status : undefined,
+  }));
+  throw new AppError(502, "Analysis generation failed. Please try again.");
 }
 
 export async function answerQuestion(
@@ -509,6 +530,8 @@ export interface AskStreamHandlers {
   // panel while tokens are still arriving.
   onGrounding: (grounding: AskGrounding) => void;
   onDelta: (text: string) => void;
+  // Return false when the browser has hung up so we stop paying for tokens.
+  shouldContinue?: () => boolean;
 }
 
 // Streaming variant used by the SSE route.
@@ -521,7 +544,14 @@ export async function answerQuestionStream(
   const { grounding, systemPrompt, messages, tier, client } = prepareAsk(question, history, teamContext);
   handlers.onGrounding(grounding);
   try {
-    const answer = await generateAnalysisStream(client, systemPrompt, messages, tier, handlers.onDelta);
+    const answer = await generateAnalysisStream(
+      client,
+      systemPrompt,
+      messages,
+      tier,
+      handlers.onDelta,
+      handlers.shouldContinue ?? (() => true)
+    );
     return { answer, grounding };
   } catch (err) {
     mapAnalysisError(err);
