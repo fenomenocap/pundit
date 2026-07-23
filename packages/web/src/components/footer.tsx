@@ -1,4 +1,12 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+
 export function Footer() {
+  const pathname = usePathname();
+  // Chat is a full-viewport composition — keep the footer off that surface.
+  if (pathname === "/") return null;
+
   return (
     <footer className="border-t border-border px-4 py-2.5">
       <div className="flex flex-col items-center justify-between gap-2 text-[10px] text-muted-foreground sm:flex-row">

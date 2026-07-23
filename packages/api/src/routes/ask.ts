@@ -99,10 +99,17 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     // delta; Railway's edge closes streams idle for ~60s, so send an SSE
     // comment as a heartbeat while the connection would otherwise be quiet.
     let heartbeat: ReturnType<typeof setInterval> | null = null;
+    let clientGone = false;
     const stopHeartbeat = () => {
       if (heartbeat) clearInterval(heartbeat);
       heartbeat = null;
     };
+    const onClose = () => {
+      clientGone = true;
+      stopHeartbeat();
+    };
+    req.on("close", onClose);
+    res.on("close", onClose);
     try {
       const { answer, grounding } = await answerQuestionStream(
         trimmedQuestion,
@@ -110,6 +117,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
         teamContext,
         {
           onGrounding: (initialGrounding) => {
+            if (clientGone || res.writableEnded) return;
             res.status(200).set({
               "Content-Type": "text/event-stream",
               "Cache-Control": "no-cache",
@@ -122,19 +130,29 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
               if (!res.writableEnded) res.write(": ping\n\n");
             }, 15_000);
           },
-          onDelta: (text) => sseSend(res, "delta", { text }),
+          onDelta: (text) => {
+            if (clientGone || res.writableEnded) return;
+            sseSend(res, "delta", { text });
+          },
+          shouldContinue: () => !clientGone && !res.writableEnded,
         }
       );
       stopHeartbeat();
-      sseSend(res, "done", { answer, grounding });
-      res.end();
+      if (!clientGone && !res.writableEnded) {
+        sseSend(res, "done", { answer, grounding });
+        res.end();
+      }
     } catch (err) {
       stopHeartbeat();
+      if (clientGone || res.writableEnded) return;
       if (!res.headersSent) throw err;
       const message = err instanceof AppError ? err.message : "Analysis generation failed.";
       const status = err instanceof AppError ? err.statusCode : 502;
       sseSend(res, "error", { error: message, status });
       res.end();
+    } finally {
+      req.off("close", onClose);
+      res.off("close", onClose);
     }
   } catch (err) {
     next(err);

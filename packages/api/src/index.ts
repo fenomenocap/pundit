@@ -19,11 +19,28 @@ const app = express();
 app.set("trust proxy", 1);
 const port = process.env.PORT || process.env.API_PORT || 3001;
 
+// Comma-separated browser origins allowed to call the API. When unset, CORS
+// stays open (current production behaviour). Set this in Railway to the Vercel
+// frontend origin(s) so the Anthropic-backed /api/ask route cannot be called
+// from arbitrary third-party sites.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 // ─── Middleware ──────────────────────────────────────────────────────────────
 
 app.use(helmet());
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin(origin, callback) {
+    if (allowedOrigins.length === 0 || !origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(null, false);
+  },
+}));
+app.use(express.json({ limit: "32kb" }));
 app.use(requestLogger);
 
 app.use(

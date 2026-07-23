@@ -7,7 +7,7 @@
 // quarterfinals, semifinals, 3rd-place-match, final) — unresolved knockout
 // fixtures correctly show as "Round of X Winner" until earlier rounds finish.
 //
-// A cron runs every 6 hours to refresh the in-memory cache.
+// Cron cadence lives in REFRESH_INTERVAL_MS below (currently 30 minutes).
 
 import { canonicalTeamName } from "../lib/team-names";
 
@@ -95,6 +95,12 @@ function statusFromState(state: string): string {
   return "SCHEDULED";
 }
 
+function parseScore(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function parseEvent(e: any): FootballMatch {
   const competition = e.competitions?.[0];
@@ -103,6 +109,12 @@ export function parseEvent(e: any): FootballMatch {
   const away = competitors.find((c: any) => c.homeAway === "away"); // eslint-disable-line @typescript-eslint/no-explicit-any
   const statusType = competition?.status?.type || {};
   const completed = Boolean(statusType.completed);
+  const state = statusType.state;
+  // ESPN publishes competitor scores during live play as well as after the
+  // whistle — keep them for IN_PLAY so the fixtures UI can show a live score.
+  const homeScore = parseScore(home?.score);
+  const awayScore = parseScore(away?.score);
+  const hasScore = homeScore !== null && awayScore !== null;
 
   // altGameNote looks like "FIFA World Cup, Group A" — pull the group letter if present.
   const groupMatch = /Group ([A-Z])/.exec(competition?.altGameNote || "");
@@ -113,12 +125,12 @@ export function parseEvent(e: any): FootballMatch {
     homeTeam: canonicalTeamName(home?.team?.displayName || "TBD"),
     awayTeam: canonicalTeamName(away?.team?.displayName || "TBD"),
     utcDate: e.date,
-    status: statusFromState(statusType.state),
+    status: statusFromState(state),
     stage: e.season?.slug || null,
     matchday: null,
     group: groupMatch ? groupMatch[1] : null,
-    score: completed
-      ? { home: Number(home?.score ?? 0), away: Number(away?.score ?? 0) }
+    score: completed || state === "in" || hasScore
+      ? { home: homeScore ?? 0, away: awayScore ?? 0 }
       : null,
     winner: completed
       ? home?.winner

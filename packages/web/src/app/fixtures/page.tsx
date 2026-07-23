@@ -1,34 +1,62 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { fetchUpcomingMatches, fetchRecentMatches, fetchStandings } from "@/lib/mock-data";
 import { formatStage, STAGE_ORDER } from "@/lib/stage-label";
 import { getTeamFlagUrl, getTeamColor } from "@/lib/team-logos";
 import type { MatchResponse, StandingResponse } from "@/lib/api";
 
+const LIVE_POLL_MS = 60_000;
+
 function useFixturesData() {
   const [matches, setMatches] = useState<MatchResponse[]>([]);
   const [standings, setStandings] = useState<StandingResponse[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    const [upcoming, recent, standingsData] = await Promise.all([
+      fetchUpcomingMatches(),
+      fetchRecentMatches(),
+      fetchStandings(),
+    ]);
+    const merged = [...recent.matches, ...upcoming.matches].sort(
+      (a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime()
+    );
+    setMatches(merged);
+    setStandings(standingsData.standings);
+    setLastUpdated(
+      upcoming.lastUpdated
+      ?? recent.lastUpdated
+      ?? standingsData.lastUpdated
+    );
+    setError(upcoming.error || recent.error || standingsData.error);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchUpcomingMatches(), fetchRecentMatches(), fetchStandings()]).then(
-      ([upcoming, recent, standingsData]) => {
-        if (cancelled) return;
-        const merged = [...recent, ...upcoming].sort(
-          (a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime()
-        );
-        setMatches(merged);
-        setStandings(standingsData);
-        setLoading(false);
-      }
-    );
+    void load().then(() => {
+      if (cancelled) return;
+    });
     return () => { cancelled = true; };
-  }, []);
+  }, [load]);
 
-  return { matches, standings, loading };
+  // While any fixture is live, re-poll so scores stay near real-time.
+  useEffect(() => {
+    const hasLive = matches.some((match) => match.status === "IN_PLAY");
+    if (!hasLive) return;
+    const timer = setInterval(() => {
+      void load(true);
+    }, LIVE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [matches, load]);
+
+  return { matches, standings, lastUpdated, error, loading };
 }
 
 function formatKickoff(utcDate: string): string {
@@ -38,6 +66,16 @@ function formatKickoff(utcDate: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function isAskable(match: MatchResponse): boolean {
+  return (match.status === "SCHEDULED" || match.status === "IN_PLAY")
+    && Boolean(match.homeTeam)
+    && Boolean(match.awayTeam)
+    && match.homeTeam.toLowerCase() !== "tbd"
+    && match.awayTeam.toLowerCase() !== "tbd"
+    && !/\b(?:winner|loser)\b/i.test(match.homeTeam)
+    && !/\b(?:winner|loser)\b/i.test(match.awayTeam);
 }
 
 function TeamLabel({ name, bold }: { name: string; bold?: boolean }) {
@@ -64,7 +102,11 @@ function TeamLabel({ name, bold }: { name: string; bold?: boolean }) {
 function MatchRow({ match }: { match: MatchResponse }) {
   const finished = match.status === "FINISHED";
   const live = match.status === "IN_PLAY";
+  const showScore = finished || live;
   const accent = getTeamColor(match.homeTeam);
+  const askHref = isAskable(match)
+    ? `/?q=${encodeURIComponent(`${match.homeTeam} vs ${match.awayTeam}`)}`
+    : null;
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-border/60 bg-card px-3 py-3 transition-colors hover:border-cyan-500/30">
@@ -72,20 +114,36 @@ function MatchRow({ match }: { match: MatchResponse }) {
       <div className="flex items-center justify-between gap-3 pl-2">
         <div className="min-w-0 flex-1 space-y-1.5 text-xs">
           <div className="flex items-center justify-between gap-2">
-            <TeamLabel name={match.homeTeam} bold={finished && (match.score?.home ?? 0) > (match.score?.away ?? 0)} />
+            <TeamLabel
+              name={match.homeTeam}
+              bold={finished && (match.score?.home ?? 0) > (match.score?.away ?? 0)}
+            />
             <span className="shrink-0 font-mono text-lg font-black text-foreground">
-              {finished ? match.score?.home ?? "-" : ""}
+              {showScore ? match.score?.home ?? "–" : ""}
             </span>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <TeamLabel name={match.awayTeam} bold={finished && (match.score?.away ?? 0) > (match.score?.home ?? 0)} />
+            <TeamLabel
+              name={match.awayTeam}
+              bold={finished && (match.score?.away ?? 0) > (match.score?.home ?? 0)}
+            />
             <span className="shrink-0 font-mono text-lg font-black text-foreground">
-              {finished ? match.score?.away ?? "-" : ""}
+              {showScore ? match.score?.away ?? "–" : ""}
             </span>
           </div>
         </div>
       </div>
-      <div className="mt-2 flex justify-end pl-2">
+      <div className="mt-2 flex items-center justify-between gap-2 pl-2">
+        {askHref ? (
+          <Link
+            href={askHref}
+            className="text-[10px] font-semibold uppercase tracking-wide text-cyan-400 transition-colors hover:text-cyan-300"
+          >
+            Ask about this match
+          </Link>
+        ) : (
+          <span />
+        )}
         {live ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[9px] font-black uppercase text-red-400">
             <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
@@ -151,7 +209,7 @@ function StandingsTable({ group, rows }: { group: string; rows: StandingResponse
 }
 
 export default function FixturesPage() {
-  const { matches, standings, loading } = useFixturesData();
+  const { matches, standings, lastUpdated, error, loading } = useFixturesData();
 
   const byStage = STAGE_ORDER.map((stage) => ({
     stage,
@@ -163,14 +221,29 @@ export default function FixturesPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <h1 className="font-heading text-2xl font-bold text-white sm:text-3xl">
-          Fixtures &amp; Bracket
-        </h1>
-        <p className="mt-1.5 text-sm text-muted-foreground max-w-lg">
-          Live FIFA World Cup 2026 schedule and results — reference only, not tradeable here.
-        </p>
+      <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-bold text-white sm:text-3xl">
+            Fixtures &amp; Bracket
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground max-w-lg">
+            Live FIFA World Cup 2026 schedule and results — reference only, not tradeable here.
+          </p>
+        </div>
+        <span className="font-mono text-[10px] text-muted-foreground">
+          {lastUpdated
+            ? `Updated ${new Date(lastUpdated).toLocaleString()}`
+            : loading
+              ? "Loading…"
+              : "Update time unavailable"}
+        </span>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-pink-500/30 bg-pink-950 px-4 py-3 text-sm text-pink-200">
+          {error}
+        </div>
+      )}
 
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

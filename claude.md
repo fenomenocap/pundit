@@ -23,11 +23,11 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 
 | Source | Used by | Notes |
 |---|---|---|
-| **ESPN scoreboard/standings** (`packages/api/src/services/football-data.ts`) | `/api/matches/*` routes → `/fixtures` page | Public, keyless. Cron refresh every 30 minutes. Returns real fixtures/results/standings with a `stage` field (`group-stage`, `round-of-32`, `round-of-16`, `quarterfinals`, `semifinals`, `3rd-place-match`, `final`). |
+| **ESPN scoreboard/standings** (`packages/api/src/services/football-data.ts`) | `/api/matches/*` routes → `/fixtures` page | Public, keyless. Cron refresh every 30 minutes. Returns real fixtures/results/standings with a `stage` field (`group-stage`, `round-of-32`, `round-of-16`, `quarterfinals`, `semifinals`, `3rd-place-match`, `final`). Live scores are retained for in-play matches. |
 | **eloratings.net** (`elo-ratings.ts`) | Local tournament and fixture model | Current TSV ratings are fetched on every hourly model refresh; missing tournament teams use the documented 1400 fallback with a warning. |
 | **Local model** (`dixon-coles.ts`, `tournament-simulator.ts`, `model-data.ts`) | `/api/model/*`, `/model`, match grounding | Recomputes all ESPN fixtures and 100,000 tournament runs locally, carrying actual ESPN bracket pairings and authoritative winners forward. |
-| **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Featured match grounding | Direct best-effort public fetches normalize complete active 1X2 markets to no-vig probabilities. Source failures remain isolated. |
-| **Polymarket Gamma API** (`polymarket-data.ts`) | `/api/polymarkets/*` routes | Retained outright/group reference endpoints; the outright cache also supplies nullable tournament market prices. |
+| **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Featured match grounding | Direct best-effort public fetches normalize complete active 1X2 markets to no-vig probabilities every 30 minutes. Source failures remain isolated. |
+| **Polymarket Gamma API** (`polymarket-data.ts`) | `/api/polymarkets/*` routes | Retained outright/group reference endpoints (6-hour refresh); the outright cache also supplies nullable tournament market prices. |
 | **Anthropic API** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | Live in production. Supports featured-match grounding, tournament grounding, general football analysis, web search, and client-sourced conversation history. |
 
 ---
@@ -38,6 +38,9 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 # ── API ──────────────────────────────────────────────────────────────────────
 API_PORT=3001
 API_URL=http://localhost:3001
+# Comma-separated browser origins for CORS. Leave empty for open CORS (dev).
+# Production should set the Vercel frontend origin(s).
+ALLOWED_ORIGINS=http://localhost:3000
 
 # ── Frontend (Next.js) ────────────────────────────────────────────────────────
 NEXT_PUBLIC_API_URL=http://localhost:3001

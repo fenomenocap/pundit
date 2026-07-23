@@ -91,19 +91,19 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // ─── Matches ───────────────────────────────────────────────────────────────
 
 export async function getUpcomingMatches() {
-  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null }>(
+  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null; error?: string | null }>(
     "/api/matches/upcoming"
   );
 }
 
 export async function getRecentMatches() {
-  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null }>(
+  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null; error?: string | null }>(
     "/api/matches/recent"
   );
 }
 
 export async function getStandings() {
-  return apiFetch<{ standings: StandingResponse[]; lastUpdated: string | null }>(
+  return apiFetch<{ standings: StandingResponse[]; lastUpdated: string | null; error?: string | null }>(
     "/api/matches/standings"
   );
 }
