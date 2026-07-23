@@ -8,12 +8,12 @@ Pundit is a deployed chat-first WC 2026 analysis app. It has no blockchain or da
 
 | Area | Current behavior |
 |---|---|
-| Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels, active market comparisons, and suggestions derived from ESPN-active semifinals/final. |
-| `POST /api/ask` | Three tiers: featured-match model grounding, tournament model grounding, and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, web search, a 45-second Anthropic timeout, and 10 requests/minute limiting. |
+| Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels, active market comparisons, and suggestions derived from ESPN-active semifinals/3rd-place/final. |
+| `POST /api/ask` | Three tiers: featured-match model grounding, tournament model grounding, and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, web search, a 90-second Anthropic timeout (240s overall), and 10 requests/minute limiting. |
 | Full fixture history | `/api/model/fixtures` retains every upstream fixture with 1X2, totals, BTTS, top scorelines, and completed results including the authoritative winner. |
-| Featured fixtures | ESPN is authoritative. Only scheduled/in-play semifinals and the championship final with known teams receive live match grounding and market rows; third place and completed matches are excluded from this derived view. |
+| Featured fixtures | ESPN is authoritative. Only scheduled/in-play semifinals, the 3rd-place match, and the championship final with known teams receive live match grounding and market rows; completed matches are excluded from this derived view. |
 | Fixture markets | `fixture-market-sources.ts` fetches Stake/Kalshi/Polymarket directly and `model-market-odds.ts` caches complete active no-vig 1X2 prices for featured fixtures. Source failures stay isolated. |
-| `/fixtures` | Full live schedule/history, bracket, results, and standings from ESPN. |
+| `/fixtures` | Full live schedule/history, bracket, results, and standings from ESPN, with live scores, freshness stamps, and Ask-about-this-match links into chat. |
 | `/model` | Native read-only view of Pundit's local team probabilities and full fixture model history. |
 | CI | `.github/workflows/ci.yml` runs both TypeScript checks and API Vitest on pull requests. |
 
@@ -22,14 +22,15 @@ Pundit is a deployed chat-first WC 2026 analysis app. It has no blockchain or da
 ## Production and secrets
 
 - `ANTHROPIC_API_KEY` is configured on the Railway `@sports-predict/api` service. Never read it back, log it, hardcode it, or store it in the repository.
+- Optional `ALLOWED_ORIGINS` (comma-separated) restricts browser CORS; leave unset only while debugging, and set it to the Vercel frontend origin(s) in production.
 - `/health` is liveness. `/ready` reports model, ESPN, and fixture-market cache readiness without exposing secrets.
-- Railway and all upstream data caches refresh every six hours and retain the last good data on refresh failure.
+- Cache refresh cadences: ESPN fixtures/standings and featured market odds every 30 minutes; local Elo/model every hour; Polymarket outright/group reference every 6 hours. All retain last-good data on refresh failure.
 
 ## Outstanding
 
 - A rigorous backtest needs immutable pre-kickoff probability snapshots. The full fixture/result contract is retained now, but each local refresh recalculates older fixtures with current Elo; snapshot storage and formal calibration reporting remain a separate pass.
-- `/fixtures` could eventually add an “Ask about this match” link into chat.
 - Other competitions require equivalent model data before extending grounded analysis beyond WC 2026.
+- Confirm the public Vercel production URL and set GitHub homepage + `ALLOWED_ORIGINS` to match.
 
 ## Key file map
 

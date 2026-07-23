@@ -21,7 +21,7 @@ A chat-first analysis tool for the 2026 FIFA World Cup. Ask about the active sem
                  └───────────┘  └────────────┘  └──────────────┘
 ```
 
-Public football/model/market sources are keyless and cached server-side every six hours. Anthropic powers the live chat through a Railway-managed secret. No database — everything is in-memory.
+Public football/model/market sources are keyless and cached server-side on a cadence (ESPN + featured odds every 30 minutes, local model hourly, Polymarket reference every 6 hours). Anthropic powers the live chat through a Railway-managed secret. No database — everything is in-memory.
 
 ---
 

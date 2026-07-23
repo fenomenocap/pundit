@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, type FormEvent } from "react";
+import { Suspense, useState, useRef, useEffect, type FormEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import {
   ApiError,
@@ -109,7 +110,8 @@ function AssistantMarkdown({ content }: { content: string }) {
   );
 }
 
-export default function HomePage() {
+export function HomeChat() {
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -117,6 +119,8 @@ export default function HomePage() {
   const [teamContext, setTeamContext] = useState<TeamContext>();
   const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const autoAskedRef = useRef<string | null>(null);
+  const askRef = useRef<(question: string) => Promise<void>>(async () => undefined);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -124,7 +128,7 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchUpcomingMatches().then((matches) => {
+    fetchUpcomingMatches().then(({ matches }) => {
       if (cancelled) return;
       const featured = matches
         .filter((match) => ["semifinals", "3rd-place-match", "final"].includes(match.stage ?? "")
@@ -210,6 +214,16 @@ export default function HomePage() {
       setStreamStarted(false);
     }
   }
+
+  askRef.current = ask;
+
+  // Deep-link from /fixtures "Ask about this match" (?q=France vs Morocco).
+  useEffect(() => {
+    const query = searchParams.get("q")?.trim();
+    if (!query || query.length > 500 || autoAskedRef.current === query) return;
+    autoAskedRef.current = query;
+    void askRef.current(query);
+  }, [searchParams]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -350,5 +364,19 @@ export default function HomePage() {
         </Button>
       </form>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto flex h-[calc(100vh-2.75rem)] max-w-2xl flex-col items-center justify-center px-4 text-sm text-muted-foreground">
+          Loading chat…
+        </div>
+      }
+    >
+      <HomeChat />
+    </Suspense>
   );
 }
