@@ -31,3 +31,6 @@ jobs:
 
       - name: Test API
         run: pnpm --filter @sports-predict/api test
+
+      - name: Build web
+        run: pnpm --filter @sports-predict/web build
