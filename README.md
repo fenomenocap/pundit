@@ -98,10 +98,16 @@ Production (July 2026):
 
 | Service | URL |
 |---|---|
-| **API (Railway)** | `https://sports-predictapi-production.up.railway.app` |
-| **Web (Vercel)** | Project `sports-prediction-markets-web` — set **Root Directory** to `packages/web` |
+| **Web (Vercel)** | [https://thepundit.vercel.app](https://thepundit.vercel.app) — project `sports-prediction-markets-web`, **Root Directory** `packages/web` |
+| **API (Railway)** | [https://sports-predictapi-production.up.railway.app](https://sports-predictapi-production.up.railway.app) — service `@sports-predict/api` |
 
-The repo is linked to two Vercel projects (`sports-prediction-markets-web` and legacy `football_prediction_market`). Only **`sports-prediction-markets-web`** should track this monorepo; disconnect or ignore the legacy project so production does not serve the old Kickpredict trading UI.
+Verify the live stack after env or deploy changes:
+
+```bash
+pnpm verify:prod
+```
+
+The legacy Vercel project **`football_prediction_market`** (Kickpredict UI) has been **removed** from the fenomenocap team — only **`sports-prediction-markets-web`** tracks this monorepo.
 
 ### Railway (`@sports-predict/api`)
 
@@ -109,10 +115,10 @@ The repo is linked to two Vercel projects (`sports-prediction-markets-web` and l
 cd packages/api && railway up
 ```
 
-| Variable | Value |
+| Variable | Production value |
 |---|---|
 | `ANTHROPIC_API_KEY` | Railway secret (required for chat) |
-| `ALLOWED_ORIGINS` | Your Vercel frontend origin(s), comma-separated |
+| `ALLOWED_ORIGINS` | `https://thepundit.vercel.app` (comma-separate extra origins if needed) |
 
 ### Vercel (`packages/web`)
 
@@ -125,7 +131,7 @@ cd packages/web && vercel --prod
 | `NEXT_PUBLIC_API_URL` | `https://sports-predictapi-production.up.railway.app` |
 | `NEXT_PUBLIC_USE_MOCK` | `false` |
 
-After the first successful deploy, set the GitHub repo **homepage** to the Vercel production URL and add the same origin to Railway `ALLOWED_ORIGINS`.
+Set the GitHub repo **homepage** (Settings → General → Website) to `https://thepundit.vercel.app` so the About link matches production.
 
 Required env vars for local dev are listed in `.env.example`. Never commit `ANTHROPIC_API_KEY`.
 
