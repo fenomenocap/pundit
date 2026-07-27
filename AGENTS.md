@@ -26,6 +26,12 @@ Pundit is a deployed chat-first WC 2026 analysis app. It has no blockchain or da
 - `/health` is liveness. `/ready` reports model, ESPN, and fixture-market cache readiness without exposing secrets.
 - Cache refresh cadences: ESPN fixtures/standings and featured market odds every 30 minutes; local Elo/model every hour; Polymarket outright/group reference every 6 hours. All retain last-good data on refresh failure.
 
+## Production verification
+
+After Vercel or Railway env/config changes that affect production, run `pnpm verify:prod` from the repo root (~15s). Do not launch a verifier subagent for routine infra checks — the script is the gate.
+
+It checks: API `/health`, CORS allow/deny against `ALLOWED_ORIGINS`, and that the Vercel JS bundle inlines `NEXT_PUBLIC_API_URL`. On failure, fix the specific check, redeploy, and re-run.
+
 ## Outstanding
 
 - A rigorous backtest needs immutable pre-kickoff probability snapshots. The full fixture/result contract is retained now, but each local refresh recalculates older fixtures with current Elo; snapshot storage and formal calibration reporting remain a separate pass.
