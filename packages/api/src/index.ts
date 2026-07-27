@@ -25,7 +25,7 @@ const port = process.env.PORT || process.env.API_PORT || 3001;
 // from arbitrary third-party sites.
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
   .split(",")
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
@@ -33,11 +33,12 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
 app.use(helmet());
 app.use(cors({
   origin(origin, callback) {
-    if (allowedOrigins.length === 0 || !origin || allowedOrigins.includes(origin)) {
+    if (allowedOrigins.length === 0 || !origin) {
       callback(null, true);
       return;
     }
-    callback(null, false);
+    const normalized = origin.replace(/\/$/, "");
+    callback(null, allowedOrigins.includes(normalized));
   },
 }));
 app.use(express.json({ limit: "32kb" }));
