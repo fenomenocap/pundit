@@ -6,7 +6,8 @@
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm --filter @sports-predict/api build && pnpm --filter @sports-predict/web build",
     "test": "pnpm -r test",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "verify:prod": "bash scripts/verify-prod.sh"
   },
   "engines": {
     "node": ">=18"
