@@ -28,6 +28,8 @@ Pundit is a deployed chat-first WC 2026 analysis app. It has no blockchain or da
 
 ## Production verification
 
+Live URLs: **Web** [thepundit.vercel.app](https://thepundit.vercel.app) · **API** [sports-predictapi-production.up.railway.app](https://sports-predictapi-production.up.railway.app)
+
 After Vercel or Railway env/config changes that affect production, run `pnpm verify:prod` from the repo root (~15s). Do not launch a verifier subagent for routine infra checks — the script is the gate.
 
 It checks: API `/health`, CORS allow/deny against `ALLOWED_ORIGINS`, and that the Vercel JS bundle inlines `NEXT_PUBLIC_API_URL`. On failure, fix the specific check, redeploy, and re-run.
@@ -36,8 +38,7 @@ It checks: API `/health`, CORS allow/deny against `ALLOWED_ORIGINS`, and that th
 
 - A rigorous backtest needs immutable pre-kickoff probability snapshots. The full fixture/result contract is retained now, but each local refresh recalculates older fixtures with current Elo; snapshot storage and formal calibration reporting remain a separate pass.
 - Other competitions require equivalent model data before extending grounded analysis beyond WC 2026.
-- Confirm the public Vercel production URL and set GitHub homepage + `ALLOWED_ORIGINS` to match.
-- Disconnect the legacy Vercel project `football_prediction_market` from this repo if it still deploys the old Kickpredict UI.
+- **Manual (dashboard only):** set GitHub repo homepage to `https://thepundit.vercel.app`; disconnect legacy Vercel project `football_prediction_market` from this repo (see README Deploy section).
 
 ## Key file map
 
