@@ -59,6 +59,46 @@ export interface ModelFixtureResponse {
   } | null;
 }
 
+export interface Wc2026EvaluationFixture {
+  id: number;
+  utcDate: string;
+  stage: string | null;
+  group: string | null;
+  home: string;
+  away: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  result: {
+    homeScore: number;
+    awayScore: number;
+    winner: "home" | "draw" | "away";
+  };
+  predictedOutcome: "home" | "draw" | "away";
+  method: "reconstructed" | "snapshot";
+}
+
+export interface Wc2026EvaluationResponse {
+  competition: "fifa.world";
+  method: "reconstructed" | "snapshot";
+  builtAt: string;
+  disclaimer: string;
+  fixtures: Wc2026EvaluationFixture[];
+  metrics: {
+    fixtureCount: number;
+    brierScore: number;
+    logLoss: number;
+    winnerAccuracy: number;
+    drawCount: number;
+    calibration: Array<{
+      label: string;
+      count: number;
+      avgPredicted: number;
+      actualRate: number;
+    }>;
+  };
+}
+
 // ─── Fetch helper ───────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -116,6 +156,10 @@ export async function getModelFixtures() {
   return apiFetch<{ fixtures: ModelFixtureResponse[]; lastUpdated: string | null }>(
     "/api/model/fixtures"
   );
+}
+
+export async function getWc2026Evaluation() {
+  return apiFetch<Wc2026EvaluationResponse>("/api/evaluation/wc-2026");
 }
 
 // ─── Ask (conversational match analysis) ────────────────────────────────────

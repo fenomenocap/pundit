@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   getModelFixtures,
   getModelProbabilities,
@@ -54,6 +55,10 @@ export default function ModelPage() {
           <h1 className="font-heading text-2xl font-bold text-white">World Cup model</h1>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
             Live Elo ratings, a Dixon-Coles score model, and 100,000 Poisson tournament simulations run inside Pundit.
+            {" "}
+            <Link href="/evaluation/wc-2026" className="text-cyan-400 hover:text-cyan-300">
+              View the frozen WC 2026 backtest →
+            </Link>
           </p>
         </div>
         <span className="font-mono text-[10px] text-muted-foreground">

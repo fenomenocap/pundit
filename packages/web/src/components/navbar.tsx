@@ -8,6 +8,7 @@ const navLinks = [
   { href: "/", label: "Chat" },
   { href: "/fixtures", label: "Fixtures" },
   { href: "/model", label: "Model" },
+  { href: "/evaluation/wc-2026", label: "WC Backtest" },
 ];
 
 export function Navbar() {
