@@ -636,7 +636,7 @@ function awayWinSummary(grounding: Grounding): string {
 function replaceInvalidScorelineLines(answer: string, grounding: Grounding): string {
   return answer.split("\n").map((line) => {
     const isUnderdogInterpretation = line.toLowerCase().includes(grounding.away.toLowerCase())
-      && /\b(?:path|route|prevail|overturn|away-win|beat|winning?|spring|upset)\b/i.test(line)
+      && /\b(?:path|route|prevail|overturn|away-win|beat|win|winning|spring|upset|come out on top)\b/i.test(line)
       && /\b\d+-\d+\b/.test(line);
     if (isUnderdogInterpretation) return awayWinSummary(grounding);
     const pairs = [...line.matchAll(/\b(\d+-\d+)\b[^%\n]{0,45}?(\d+(?:\.\d+)?)%/g)];
