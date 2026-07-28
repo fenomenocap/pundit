@@ -1,7 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
-import { generateAnalysis, generateAnalysisStream, sanitizeMatchAnswer } from "./ask";
+import {
+  generateAnalysis,
+  generateAnalysisStream,
+  Grounding,
+  sanitizeMatchAnswer,
+} from "./ask";
 
 function clientWith(response: unknown): Pick<Anthropic, "messages"> {
   return {
@@ -96,6 +101,29 @@ describe("sanitizeMatchAnswer", () => {
     expect(answer).not.toContain("not listed here falls below");
     expect(answer).not.toContain("two-goal swing");
     expect(answer).not.toContain("entirely due");
+  });
+
+  it("replaces scoreline/probability mismatches and cup-points wording from grounding", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Kuopio",
+      away: "Sabah",
+      scorelines: [
+        { score: "1-0", probability: 0.0852 },
+        { score: "0-1", probability: 0.071 },
+        { score: "0-2", probability: 0.0519 },
+      ],
+    } as Grounding;
+    const answer = sanitizeMatchAnswer(
+      "BTTS is 56.0% (43.4% no... actually 44.0% no).\n"
+      + "Sabah's paths are **1-0 (7.1%)** and **0-2 (5.2%)**, their route to three points.",
+      grounding
+    );
+    expect(answer).toContain("(44.0% no)");
+    expect(answer).toContain("**0-1 (7.1%)** and **0-2 (5.2%)**");
+    expect(answer).not.toContain("1-0 (7.1%)");
+    expect(answer).not.toContain("three points");
   });
 });
 

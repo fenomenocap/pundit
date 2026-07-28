@@ -514,7 +514,41 @@ function mapTimeoutError(error: unknown): never {
   throw error;
 }
 
-export function sanitizeMatchAnswer(answer: string): string {
+function scorelinePercentageMatches(
+  score: string,
+  percentage: number,
+  grounding: Grounding
+): boolean {
+  return grounding.scorelines.some((row) =>
+    row.score === score && Math.abs(row.probability * 100 - percentage) < 0.05
+  );
+}
+
+function awayWinSummary(grounding: Grounding): string {
+  const awayWins = grounding.scorelines.filter(({ score }) => {
+    const [homeGoals, awayGoals] = score.split("-").map(Number);
+    return awayGoals > homeGoals;
+  }).slice(0, 2);
+  if (awayWins.length === 0) {
+    return `Pundit's payload does not include a reportable away-win scoreline for ${grounding.away}.`;
+  }
+  const examples = awayWins.map(({ score, probability }) =>
+    `**${score} (${(probability * 100).toFixed(1)}%)**`
+  );
+  return `For ${grounding.away} to win, the model's most likely away-win scorelines are ${examples.join(" and ")}.`;
+}
+
+function replaceInvalidScorelineLines(answer: string, grounding: Grounding): string {
+  return answer.split("\n").map((line) => {
+    const pairs = [...line.matchAll(/\b(\d+-\d+)\b[^%\n]{0,45}?(\d+(?:\.\d+)?)%/g)];
+    const hasInvalidPair = pairs.some((match) =>
+      !scorelinePercentageMatches(match[1], Number(match[2]), grounding)
+    );
+    return hasInvalidPair ? awayWinSummary(grounding) : line;
+  }).join("\n");
+}
+
+export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): string {
   let sanitized = answer;
   sanitized = sanitized.replace(
     /(?:Any|All|Every) scorelines? not (?:listed|mentioned|shown)(?: here)?[^.!?\n]*(?:below|under)[^.!?\n]*0\.1%[^.!?\n]*[.!?]?/gi,
@@ -528,13 +562,24 @@ export function sanitizeMatchAnswer(answer: string): string {
     /[^.!?\n]*(?:(?:entirely|solely)[^.!?\n]*(?:home[- ]field|home advantage|HFA|edge)|(?:home[- ]field|home advantage|HFA|edge)[^.!?\n]*(?:entirely|solely))[^.!?\n]*[.!?]?/gi,
     " Home-field advantage is applied, but this payload does not decompose the probability gap by cause."
   );
+  sanitized = sanitized.replace(
+    /\(\d+(?:\.\d+)?%\s+no[^)]*\bactually\s+(\d+(?:\.\d+)?)%\s+no\)/gi,
+    "($1% no)"
+  );
+  if (grounding) {
+    sanitized = replaceInvalidScorelineLines(sanitized, grounding);
+    if (grounding.competitionId === "uefa.champions_qual") {
+      sanitized = sanitized.replace(/\b(?:three|3) points\b/gi, "a win");
+    }
+  }
   return sanitized.replace(/[ \t]+\n/g, "\n").replace(/ {2,}/g, " ").trim();
 }
 
 function validateAnalysisResponse(
   responses: Anthropic.Message[],
   tier: AnalysisTier,
-  startedAt: number
+  startedAt: number,
+  grounding?: Grounding
 ): string {
   const blocks = responses.flatMap((response) => response.content);
   const answer = blocks.reduce(
@@ -557,7 +602,7 @@ function validateAnalysisResponse(
   if (stopReason === "max_tokens") {
     throw new AppError(502, "Analysis response was truncated. Please try again.");
   }
-  return tier === "match" ? sanitizeMatchAnswer(answer) : answer;
+  return tier === "match" ? sanitizeMatchAnswer(answer, grounding) : answer;
 }
 
 function appendPausedTurn(
@@ -571,7 +616,8 @@ export async function generateAnalysis(
   client: Pick<Anthropic, "messages">,
   systemPrompt: string,
   messages: ConversationTurn[],
-  tier: AnalysisTier
+  tier: AnalysisTier,
+  grounding?: Grounding
 ): Promise<string> {
   const startedAt = Date.now();
   const collected: Anthropic.Message[] = [];
@@ -594,7 +640,7 @@ export async function generateAnalysis(
   if (collected.at(-1)?.stop_reason === "pause_turn") {
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
-  return validateAnalysisResponse(collected, tier, startedAt);
+  return validateAnalysisResponse(collected, tier, startedAt, grounding);
 }
 
 const RETRYABLE_STATUS = new Set([408, 429, 529]);
@@ -612,7 +658,8 @@ export async function generateAnalysisStream(
   messages: ConversationTurn[],
   tier: AnalysisTier,
   onDelta: (text: string) => void,
-  shouldContinue: () => boolean = () => true
+  shouldContinue: () => boolean = () => true,
+  grounding?: Grounding
 ): Promise<string> {
   const startedAt = Date.now();
   const collected: Anthropic.Message[] = [];
@@ -663,7 +710,7 @@ export async function generateAnalysisStream(
   if (collected.at(-1)?.stop_reason === "pause_turn") {
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
-  const answer = validateAnalysisResponse(collected, tier, startedAt);
+  const answer = validateAnalysisResponse(collected, tier, startedAt, grounding);
   if (tier === "match") onDelta(answer);
   return answer;
 }
@@ -763,7 +810,13 @@ export async function answerQuestion(
 ): Promise<{ answer: string; grounding: AskGrounding }> {
   const { grounding, systemPrompt, messages, tier, client } = prepareAsk(question, history, teamContext);
   try {
-    const answer = await generateAnalysis(client, systemPrompt, messages, tier);
+    const answer = await generateAnalysis(
+      client,
+      systemPrompt,
+      messages,
+      tier,
+      grounding?.kind === "match" ? grounding : undefined
+    );
     return { answer, grounding };
   } catch (err) {
     mapAnalysisError(err);
@@ -791,7 +844,8 @@ export async function answerQuestionStream(
       messages,
       tier,
       handlers.onDelta,
-      handlers.shouldContinue ?? (() => true)
+      handlers.shouldContinue ?? (() => true),
+      grounding?.kind === "match" ? grounding : undefined
     );
     return { answer, grounding };
   } catch (err) {
