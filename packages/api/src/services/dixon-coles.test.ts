@@ -63,4 +63,11 @@ describe("local Dixon-Coles model", () => {
     expect(draw).toBeCloseTo(0.09694632518374494, 12);
     expect(away).toBeCloseTo(0.032960889548830696, 12);
   });
+
+  it("shifts home win probability upward with home-field advantage Elo", () => {
+    const neutral = computeMatchModel(1800, 1800, 0);
+    const withHfa = computeMatchModel(1800, 1800, 42);
+    expect(withHfa.pHome).toBeGreaterThan(neutral.pHome);
+    expect(withHfa.pAway).toBeLessThan(neutral.pAway);
+  });
 });

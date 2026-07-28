@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalTeamName, normalizeTeamName } from "./team-names";
+import { canonicalClubName, canonicalTeamName, normalizeTeamName } from "./team-names";
 
 describe("normalizeTeamName", () => {
   it("strips diacritics", () => {
@@ -20,5 +20,11 @@ describe("normalizeTeamName", () => {
     expect(canonicalTeamName("United States")).toBe("USA");
     expect(canonicalTeamName("Türkiye")).toBe("Turkey");
     expect(canonicalTeamName("Curaçao")).toBe("Curacao");
+  });
+
+  it("resolves club aliases to ClubElo canonical names", () => {
+    expect(normalizeTeamName("Manchester United")).toBe("man united");
+    expect(canonicalClubName("Tottenham Hotspur")).toBe("Tottenham");
+    expect(canonicalClubName("Brighton & Hove Albion")).toBe("Brighton");
   });
 });

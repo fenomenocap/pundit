@@ -1,6 +1,8 @@
 # Pundit — Football Prediction Analysis
 
-A chat-first analysis tool for the 2026 FIFA World Cup. Ask about the active semifinal/final, the title race, or a general football topic and get a clearly labelled model-grounded or general read. No blockchain, no trading, nothing to buy — this is an analysis layer over public data.
+A chat-first analysis tool for the club season: Premier League and UEFA Champions League qualifiers. Ask about an upcoming match, the title race, or a general football topic and get a clearly labelled model-grounded or general read. No blockchain, no trading, nothing to buy — this is an analysis layer over public data.
+
+World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluation/wc-2026`.
 
 ---
 
@@ -15,13 +17,13 @@ A chat-first analysis tool for the 2026 FIFA World Cup. Ask about the active sem
                         ┌──────────────┼──────────────┐
                         ▼              ▼              ▼
                  ┌───────────┐  ┌────────────┐  ┌──────────────┐
-                 │ ESPN data │  │ Live Elo   │  │ Stake/Kalshi │
-                 │ + results │  │ + local DC │  │ /Polymarket  │
-                 │           │  │ simulation │  │ public odds  │
+                 │ ESPN data │  │ ClubElo +  │  │ Stake/Kalshi │
+                 │ + results │  │ Dixon-Coles│  │ /Polymarket  │
+                 │           │  │ active set │  │ public odds  │
                  └───────────┘  └────────────┘  └──────────────┘
 ```
 
-Public football/model/market sources are keyless and cached server-side on a cadence (ESPN + featured odds every 30 minutes, local model hourly, Polymarket reference every 6 hours). Anthropic powers the live chat through a Railway-managed secret. No database — everything is in-memory.
+Public football/model/market sources are keyless and cached server-side on a cadence (ESPN + active market odds every 30 minutes, ClubElo + active model hourly). Anthropic powers the live chat through a Railway-managed secret. No database — everything is in-memory.
 
 ---
 
@@ -39,8 +41,8 @@ Public football/model/market sources are keyless and cached server-side on a cad
 
 ```
 packages/
-  web/   — Next.js 14 frontend: chat homepage, /fixtures, and the native /model reference
-  api/   — Express REST API: /api/ask, /api/matches, /api/polymarkets, /api/model
+  web/   — Next.js 14 frontend: chat homepage, /fixtures, /model, /evaluation/wc-2026
+  api/   — Express REST API: /api/ask, /api/matches, /api/model, /api/evaluation
 ```
 
 ---
@@ -52,8 +54,13 @@ Every env var has a sane default (see `.env.example`) — nothing needs to be co
 ```bash
 pnpm install
 
+export NEXT_PUBLIC_USE_MOCK=false
+export NEXT_PUBLIC_API_URL=http://localhost:3001
+export ALLOWED_ORIGINS=http://localhost:3000
+export ANTHROPIC_API_KEY=sk-...   # required for /api/ask
+
 # Terminal 1 — API
-cd packages/api && npm run dev
+cd packages/api && pnpm dev
 # → http://localhost:3001
 
 # Terminal 2 — Web
@@ -65,30 +72,41 @@ cd packages/web && pnpm dev
 
 Chat requires `ANTHROPIC_API_KEY` in the API environment. It is configured in Railway production; local development must export its own key.
 
+Local smoke checks (API must be running):
+
+```bash
+bash scripts/verify-local.sh
+pnpm test && pnpm build
+```
+
 ---
 
 ## API Reference
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/ask` | Multi-turn featured-match, tournament, or general football analysis. Requires `ANTHROPIC_API_KEY`. |
-| GET | `/api/matches/upcoming` | Upcoming fixtures (ESPN) |
+| POST | `/api/ask` | Multi-turn match, competition, or general football analysis. Requires `ANTHROPIC_API_KEY`. |
+| GET | `/api/matches/competitions` | Enabled competition registry |
+| GET | `/api/matches/active` | Active fixtures (14-day horizon) |
+| GET | `/api/matches/upcoming` | Upcoming fixtures (ESPN, optional `?competition=`) |
 | GET | `/api/matches/recent` | Recent results (ESPN) |
-| GET | `/api/matches/standings` | Group standings (ESPN) |
-| GET | `/api/polymarkets/wc` | Live WC outright markets from Polymarket (reference odds — not currently rendered by any page) |
-| GET | `/api/polymarkets/groups` | Live WC group-winner markets from Polymarket |
-| GET | `/api/model/wc` | Locally generated team win/SF/QF probabilities |
-| GET | `/api/model/fixtures` | Full fixture history with 1X2, totals, BTTS, scorelines, and results |
+| GET | `/api/matches/standings` | Standings (ESPN) |
+| GET | `/api/model/active` | Active club fixtures with model 1X2 probabilities |
+| GET | `/api/model/fixtures` | Same as active set (optional `?competition=`) |
+| GET | `/api/evaluation/wc-2026` | Frozen WC 2026 backtest artifact |
 | GET | `/health` | API health check |
-| GET | `/ready` | Model, ESPN, and fixture-market cache readiness |
+| GET | `/ready` | Model, ESPN, active-fixture, and market-odds cache readiness |
+
+`GET /api/model/wc` returns **410 Gone** — live WC model retired.
 
 ---
 
 ## Frontend Pages
 
-- **`/`** — chat homepage: grounded live semifinal/final analysis, tournament questions, and general football follow-ups
-- **`/fixtures`** — live knockout bracket + group standings (ESPN-backed)
-- **`/model`** — native reference view of Pundit's local tournament probabilities and fixture history
+- **`/`** — chat homepage: grounded active-match analysis, competition/table questions, and general football follow-ups
+- **`/fixtures`** — multi-competition live schedule, results, and standings (ESPN-backed)
+- **`/model`** — native reference view of active club fixture model probabilities
+- **`/evaluation/wc-2026`** — frozen WC 2026 backtest metrics and fixture table
 
 ---
 
@@ -106,8 +124,6 @@ Verify the live stack after env or deploy changes:
 ```bash
 pnpm verify:prod
 ```
-
-The legacy Vercel project **`football_prediction_market`** (Kickpredict UI) has been **removed** from the fenomenocap team — only **`sports-prediction-markets-web`** tracks this monorepo.
 
 ### Railway (`@sports-predict/api`)
 
@@ -131,13 +147,11 @@ cd packages/web && vercel --prod
 | `NEXT_PUBLIC_API_URL` | `https://sports-predictapi-production.up.railway.app` |
 | `NEXT_PUBLIC_USE_MOCK` | `false` |
 
-Set the GitHub repo **homepage** (Settings → General → Website) to `https://thepundit.vercel.app` so the About link matches production.
-
 Required env vars for local dev are listed in `.env.example`. Never commit `ANTHROPIC_API_KEY`.
 
 ## Backtesting note
 
-Pundit regenerates and retains the full fixture and result history for future evaluation. Each refresh recalculates older fixture probabilities using current Elo ratings, so rigorous backtesting will require immutable pre-kickoff snapshots in a later pass; the present history must not be described as look-ahead-free.
+The WC 2026 evaluation at `/evaluation/wc-2026` uses a frozen reconstructed artifact. Live club-season fixtures are recalculated on each ClubElo refresh; rigorous ongoing calibration will require immutable pre-kickoff snapshots in a later pass.
 
 ---
 
