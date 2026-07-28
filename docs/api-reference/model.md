@@ -1,62 +1,52 @@
 # Model
 
-Cached output from Pundit's local Elo, Dixon-Coles, and 100,000-run tournament simulation — the probabilities that power the chat's grounding. See [The Model](../how-it-works/the-model.md).
+Cached output from Pundit's local ClubElo + Dixon-Coles engine for the **active club-fixture set** (14-day horizon). See [The Model](../how-it-works/the-model.md).
 
-### `GET /api/model/wc`
+### `GET /api/model/active`
 
-Team-level probabilities, sorted by win probability descending.
-
-```json
-{
-  "teams": [
-    {
-      "team": "France",
-      "winProb": 0.18,
-      "sfProb": 0.52,
-      "qfProb": 0.81,
-      "marketPrice": 0.18,
-      "edge": 0.0
-    }
-  ],
-  "lastUpdated": "2026-06-12T10:00:00.000Z",
-  "error": null
-}
-```
-
-`edge` is `winProb - marketPrice` — positive means the model is more bullish on that team winning the tournament than the market is.
-
-### `GET /api/model/fixtures`
-
-Fixture-level probabilities for the full schedule.
+Active fixtures with model probabilities. Optional filter: `?competition=eng.1`.
 
 ```json
 {
   "fixtures": [
     {
-      "date": "2026-06-15T18:00:00Z",
-      "group": "A",
-      "stage": "group-stage",
-      "home": "France",
-      "away": "Morocco",
-      "pHome": 0.62,
-      "pDraw": 0.22,
-      "pAway": 0.16,
-      "pOver2_5": 0.54,
-      "pUnder2_5": 0.46,
-      "pBttsYes": 0.51,
-      "pBttsNo": 0.49,
-      "topScores": [{ "score": "1-0", "probability": 0.14 }],
-      "stakePHome": 0.58,
-      "stakePDraw": 0.24,
-      "stakePAway": 0.18,
+      "competitionId": "eng.1",
+      "competition": "Premier League",
+      "fixtureId": 401234,
+      "utcDate": "2026-08-15T14:00:00Z",
+      "date": "2026-08-15",
+      "stage": "match",
+      "home": "Arsenal",
+      "away": "Coventry City",
+      "homeElo": 1850,
+      "awayElo": 1520,
+      "pHome": 0.72,
+      "pDraw": 0.18,
+      "pAway": 0.10,
+      "pOver2_5": 0.55,
+      "pUnder2_5": 0.45,
+      "pBttsYes": 0.48,
+      "pBttsNo": 0.52,
+      "topScores": [{ "score": "2-0", "probability": 0.14 }],
+      "stakePHome": 0.68,
+      "stakePDraw": 0.20,
+      "stakePAway": 0.12,
       "result": null
     }
   ],
-  "lastUpdated": "2026-06-12T10:00:00.000Z",
+  "lastUpdated": "2026-07-28T10:00:00.000Z",
   "error": null
 }
 ```
 
-This endpoint preserves the full fixture history. Completed `result` objects include `homeScore`, `awayScore`, `status`, and `winner`; `winner` is authoritative for penalty shootouts. Stake fields are nullable. `home` / `away` are positional labels only.
+### `GET /api/model/fixtures`
 
-Historical probabilities are recalculated locally using current Elo ratings. Do not treat this endpoint as an immutable pre-match snapshot archive.
+Same payload as `/active`. Optional `?competition=` filter. Full scoreline matrices are omitted from the HTTP response (available internally for chat grounding).
+
+### Retired: `GET /api/model/wc`
+
+Returns **410 Gone**. The live World Cup tournament model is retired. See [Evaluation](evaluation.md) for the frozen WC 2026 backtest.
+
+### Important caveat
+
+The active fixture cache recalculates probabilities with **current** ClubElo ratings on each refresh. It is not an immutable pre-kickoff archive. For calibration metrics, use [Evaluation](evaluation.md).

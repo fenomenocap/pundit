@@ -34,3 +34,13 @@ jobs:
 
       - name: Build web
         run: pnpm --filter @sports-predict/web build
+
+      - name: Install Playwright browsers
+        working-directory: packages/web
+        run: npx playwright install chromium --with-deps
+
+      - name: Playwright smoke
+        working-directory: packages/web
+        env:
+          NEXT_PUBLIC_USE_MOCK: "true"
+        run: pnpm test:e2e

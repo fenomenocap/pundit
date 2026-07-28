@@ -16,9 +16,14 @@
 
 * [Overview](api-reference/overview.md)
 * [Matches](api-reference/matches.md)
-* [Polymarket Reference Odds](api-reference/polymarkets.md)
 * [Model](api-reference/model.md)
 * [Ask](api-reference/ask.md)
+* [Evaluation](api-reference/evaluation.md)
+* [Polymarket Reference Odds](api-reference/polymarkets.md)
+
+## Evaluation
+
+* [Evaluation API](api-reference/evaluation.md) — club-season rolling snapshots and frozen WC 2026 backtest
 
 ## Overview
 

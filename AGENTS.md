@@ -8,7 +8,7 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 
 | Area | Current behavior |
 |---|---|
-| Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/competition/general), active market comparisons, and suggestions from featured active club fixtures. |
+| Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/competition/season/general), active market comparisons, and suggestions from featured active club fixtures. |
 | `POST /api/ask` | Four tiers: active-match model grounding (ClubElo + HFA), competition standings grounding (ESPN table), Premier League season outlook (Monte Carlo title/top-four), and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, web search, a 90-second Anthropic timeout (240s overall), and 10 requests/minute limiting. |
 | Active model | `/api/model/active` and `/api/model/fixtures` serve Dixon-Coles 1X2 (plus totals/BTTS/scorelines) for active club fixtures only. |
 | Featured fixtures | Next N active fixtures across enabled competitions (EPL priority), joined to model rows for chat suggestions and market odds. |
@@ -17,9 +17,9 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 | `/model` | Native read-only view of active club fixture model probabilities; links to WC backtest. |
 | `/evaluation/club-season` | Rolling pre-kickoff snapshot calibration (read-only JSON artifact). |
 | `/evaluation/wc-2026` | Frozen WC 2026 backtest artifact (read-only, no cron). |
-| CI | `.github/workflows/ci.yml` runs both TypeScript checks and API Vitest on pull requests. |
+| CI | `.github/workflows/ci.yml` runs TypeScript checks, API Vitest, web build, and Playwright smoke tests on pull requests. |
 
-`packages/api` has focused Vitest coverage. `packages/web` intentionally has no test infrastructure yet; do not add it without a specific frontend-testing requirement.
+`packages/api` has focused Vitest coverage. `packages/web` has Playwright smoke tests only (`pnpm --filter web test:e2e`); no component unit tests unless explicitly requested.
 
 ## Production and secrets
 
@@ -40,10 +40,9 @@ Production chat eval (`pnpm chat-eval:production`) hits live Anthropic credits �
 
 Qualitative copy guards in `scripts/chat-battle-test-lib.mjs` fail answers containing internal jargon (`Dixon-Coles`, `ClubElo`, `model-grounded`) and 400 bodies leaking schema field names.
 
-## Outstanding
+## Future
 
-- `packages/web` test infrastructure (per above).
-- Paid unified odds API.
+- **Paid unified odds API** — candidate provider [The Odds API](https://the-odds-api.com/) when Stake/Kalshi/Polymarket scraper coverage becomes insufficient. Model probabilities stay local; market comparison would move to a single normalized feed.
 
 ## Key file map
 
@@ -52,7 +51,7 @@ packages/api/src/
   index.ts                         — Express routes, readiness, ordered cache bootstrap
   routes/ask.ts                    — validation, history limits, 10/min limiter
   services/
-    ask.ts                         — three-tier Anthropic orchestration and grounding
+    ask.ts                         — four-tier Anthropic orchestration and grounding
     club-ratings.ts                — ClubElo CSV fetch/cache by rating profile
     dixon-coles.ts                 — Elo-to-goal and analytical score model (+ HFA)
     model-data.ts                  — active-club fixture model cache
@@ -73,6 +72,8 @@ packages/web/src/
   app/evaluation/wc-2026/page.tsx  — frozen WC backtest UI
   lib/api.ts                       — typed API boundary
   lib/mock-data.ts                 — mock-aware fixture/standing wrappers
+  e2e/smoke.spec.ts              — Playwright UI shell smoke (mock mode)
+  playwright.config.ts           — chromium-only, mock-mode webServer
 ```
 
 ## GitHub authentication on macOS

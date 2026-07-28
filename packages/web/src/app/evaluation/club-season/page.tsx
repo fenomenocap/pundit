@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, X } from "lucide-react";
-import { getClubSeasonEvaluation, type ClubSeasonEvaluationResponse } from "@/lib/api";
+import { type ClubSeasonEvaluationResponse } from "@/lib/api";
+import { fetchClubSeasonEvaluation } from "@/lib/mock-data";
 import { PageHeader } from "@/components/page-header";
 import { ErrorBanner } from "@/components/error-banner";
 
@@ -25,7 +26,7 @@ export default function ClubSeasonEvaluationPage() {
   const load = () => {
     setLoading(true);
     setError(null);
-    getClubSeasonEvaluation()
+    fetchClubSeasonEvaluation()
       .then((response) => setData(response))
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "Could not load evaluation data.");
