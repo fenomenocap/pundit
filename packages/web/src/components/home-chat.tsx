@@ -9,11 +9,12 @@ import {
   askQuestionStream,
   type AskGrounding,
   type ConversationTurn,
+  type MatchResponse,
   type MatchGrounding,
   type ModelFixtureResponse,
   type TeamContext,
 } from "@/lib/api";
-import { fetchActiveModelFixtures } from "@/lib/mock-data";
+import { fetchActiveFixtures, fetchActiveModelFixtures } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,7 @@ let nextId = 0;
 
 const FALLBACK_SUGGESTIONS = [
   "What does the current Premier League table show?",
-  "Arsenal vs Coventry City",
+  "How does a high defensive line change pressing risk?",
 ];
 
 function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
@@ -108,6 +109,12 @@ function formatSuggestionChip(fixture: ModelFixtureResponse): string {
   const day = new Date(fixture.utcDate).toLocaleDateString(undefined, { weekday: "short" });
   const abbr = competitionAbbr(fixture.competitionId, fixture.competition);
   return `${fixture.home} vs ${fixture.away} · ${abbr} · ${day}`;
+}
+
+function formatActiveFixtureChip(fixture: MatchResponse): string {
+  const day = new Date(fixture.utcDate).toLocaleDateString(undefined, { weekday: "short" });
+  const abbr = competitionAbbr(fixture.competitionId, fixture.competition);
+  return `${fixture.homeTeam} vs ${fixture.awayTeam} · ${abbr} · ${day}`;
 }
 
 function teamAbbr(name: string): string {
@@ -210,15 +217,28 @@ export function HomeChat() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchActiveModelFixtures()
-      .then(({ fixtures }) => {
+    void (async () => {
+      try {
+        const { fixtures } = await fetchActiveModelFixtures();
         if (cancelled) return;
         const featured = fixtures.slice(0, 3).map(formatSuggestionChip);
-        setSuggestions(featured.length > 0 ? featured : FALLBACK_SUGGESTIONS);
-      })
-      .catch(() => {
+        if (featured.length > 0) {
+          setSuggestions(featured);
+          return;
+        }
+
+        const active = await fetchActiveFixtures();
+        if (cancelled) return;
+        const activeSuggestions = active.matches.slice(0, 3).map(formatActiveFixtureChip);
+        setSuggestions(
+          activeSuggestions.length > 0
+            ? activeSuggestions
+            : FALLBACK_SUGGESTIONS
+        );
+      } catch {
         if (!cancelled) setSuggestions(FALLBACK_SUGGESTIONS);
-      });
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
 
@@ -444,7 +464,7 @@ export function HomeChat() {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about Arsenal vs Coventry or the Premier League table"
+            placeholder="Ask about a match or the Premier League table"
             disabled={loading}
             maxLength={500}
             aria-label="Ask a question"
