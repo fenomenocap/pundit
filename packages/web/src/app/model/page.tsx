@@ -71,13 +71,6 @@ export default function ModelPage() {
 
       <p className="-mt-4 mb-6 text-xs text-muted-foreground">
         <Disclaimer />
-        {" · "}
-        <Link
-          href="/evaluation/wc-2026"
-          className="text-primary transition-colors hover:text-primary/80"
-        >
-          WC 2026 backtest
-        </Link>
       </p>
 
       {error && <ErrorBanner message={error} onRetry={load} />}

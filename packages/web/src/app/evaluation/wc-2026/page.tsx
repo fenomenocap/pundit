@@ -66,7 +66,7 @@ export default function Wc2026EvaluationPage() {
           href="/model"
           className="text-xs text-primary transition-colors hover:text-primary/80"
         >
-          ← Live model reference
+          ← Predictions
         </Link>
       </div>
 

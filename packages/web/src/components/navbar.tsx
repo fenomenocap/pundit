@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 const navLinks = [
   { href: "/", label: "Chat" },
   { href: "/fixtures", label: "Fixtures" },
-  { href: "/model", label: "Model" },
+  { href: "/model", label: "Predictions" },
+  { href: "/evaluation/wc-2026", label: "2026 FIFA World Cup" },
 ];
 
 export function Navbar() {
