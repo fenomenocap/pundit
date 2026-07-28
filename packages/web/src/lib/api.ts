@@ -4,6 +4,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export interface MatchResponse {
   id: number;
+  competitionId: string;
   competition: string;
   homeTeam: string;
   awayTeam: string;
@@ -19,6 +20,7 @@ export interface MatchResponse {
 }
 
 export interface StandingResponse {
+  competitionId: string;
   position: number;
   team: string;
   playedGames: number;
@@ -130,22 +132,58 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ─── Matches ───────────────────────────────────────────────────────────────
 
-export async function getUpcomingMatches() {
-  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null; error?: string | null }>(
-    "/api/matches/upcoming"
-  );
-}
-
-export async function getRecentMatches() {
-  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null; error?: string | null }>(
-    "/api/matches/recent"
-  );
-}
-
-export async function getStandings() {
+export async function getStandings(competition?: string) {
+  const query = competition ? `?competition=${encodeURIComponent(competition)}` : "";
   return apiFetch<{ standings: StandingResponse[]; lastUpdated: string | null; error?: string | null }>(
-    "/api/matches/standings"
+    `/api/matches/standings${query}`
   );
+}
+
+export interface CompetitionResponse {
+  id: string;
+  name: string;
+  type: "league" | "cup";
+  enabled: boolean;
+  priority: number;
+}
+
+export async function getCompetitions() {
+  return apiFetch<{
+    competitions: CompetitionResponse[];
+    enabled: string[];
+    lastUpdated: string | null;
+  }>("/api/matches/competitions");
+}
+
+export async function getActiveFixtures() {
+  return apiFetch<{
+    fixtures: MatchResponse[];
+    lastUpdated: string | null;
+    error?: string | null;
+  }>("/api/matches/active");
+}
+
+export async function getUpcomingMatches(competition?: string) {
+  const query = competition ? `?competition=${encodeURIComponent(competition)}` : "";
+  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null; error?: string | null }>(
+    `/api/matches/upcoming${query}`
+  );
+}
+
+export async function getRecentMatches(competition?: string) {
+  const query = competition ? `?competition=${encodeURIComponent(competition)}` : "";
+  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null; error?: string | null }>(
+    `/api/matches/recent${query}`
+  );
+}
+
+// Legacy wrappers without competition filter — kept for existing callers.
+export async function getUpcomingMatchesAll() {
+  return getUpcomingMatches();
+}
+
+export async function getRecentMatchesAll() {
+  return getRecentMatches();
 }
 
 export async function getModelProbabilities() {

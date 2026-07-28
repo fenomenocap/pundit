@@ -11,6 +11,7 @@ import evaluationRoutes from "./routes/evaluation";
 import { startPolymarketCron } from "./services/polymarket-data";
 import { getCachedModelData, startModelCron } from "./services/model-data";
 import { getCachedMatches, startFootballCron } from "./services/football-data";
+import { getActiveFixtureStatus } from "./services/active-fixtures";
 import {
   getModelMarketOddsStatus,
   startModelMarketOddsCron,
@@ -64,12 +65,18 @@ app.get("/health", (_req, res) => {
 app.get("/ready", (_req, res) => {
   const model = getCachedModelData();
   const football = getCachedMatches();
+  const active = getActiveFixtureStatus();
   const odds = getModelMarketOddsStatus();
   const ready = model.lastUpdated !== null && football.lastUpdated !== null && odds.ready;
   res.status(ready ? 200 : 503).json({
     status: ready ? "ready" : "loading",
     model: { ready: model.lastUpdated !== null, lastUpdated: model.lastUpdated?.toISOString() ?? null },
     football: { ready: football.lastUpdated !== null, lastUpdated: football.lastUpdated?.toISOString() ?? null },
+    activeFixtures: {
+      count: active.count,
+      byCompetition: active.byCompetition,
+      lastUpdated: active.lastUpdated?.toISOString() ?? null,
+    },
     marketOdds: {
       ready: odds.ready,
       lastUpdated: odds.lastUpdated?.toISOString() ?? null,
