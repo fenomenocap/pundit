@@ -4,7 +4,11 @@
 import { getCompetitionById } from "../config/competitions";
 import { modelFixtureKey } from "../lib/team-names";
 import { ActiveFixture, getActiveFixtures } from "./active-fixtures";
-import { getCachedClubRatings, lookupClubRating } from "./club-ratings";
+import {
+  ClubRatingsCache,
+  getCachedClubRatings,
+  lookupClubRating,
+} from "./club-ratings";
 import { computeMatchModel, DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
 
 export interface ModelScoreline {
@@ -181,6 +185,23 @@ export function modelDataCoversActiveFixtures(
     && [...activeKeys].every((key) => modelKeys.has(key));
 }
 
+export function findMissingClubRatingTeams(
+  activeFixtures: ActiveFixture[],
+  ratings: ClubRatingsCache["byProfile"]
+): string[] {
+  const missing = new Set<string>();
+  for (const fixture of activeFixtures) {
+    const competition = getCompetitionById(fixture.competitionId);
+    if (!competition || !competition.enabled) continue;
+    for (const team of [fixture.homeTeam, fixture.awayTeam]) {
+      if (lookupClubRating(team, competition.ratingProfile, ratings) === undefined) {
+        missing.add(team);
+      }
+    }
+  }
+  return [...missing].sort();
+}
+
 export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise<void> {
   console.log("[Model] Refreshing active fixture Dixon-Coles model...");
   try {
@@ -198,6 +219,16 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
     if (ratings.fetchedAt === null) {
       const detail = ratings.error ? `: ${ratings.error}` : ".";
       throw new Error(`Club ratings are not ready${detail}`);
+    }
+    const missingTeams = findMissingClubRatingTeams(activeFixtures, ratings.byProfile);
+    if (missingTeams.length > 0) {
+      const shown = missingTeams.slice(0, 12);
+      const remainder = missingTeams.length - shown.length;
+      const suffix = remainder > 0 ? `, and ${remainder} more` : "";
+      throw new Error(
+        `Club ratings are missing for ${missingTeams.length} active team(s): `
+        + `${shown.join(", ")}${suffix}.`
+      );
     }
     const fixtures = buildActiveModelFixtures(activeFixtures, ratings.byProfile);
     if (fixtures.length !== activeFixtures.length) {
