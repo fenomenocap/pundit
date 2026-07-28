@@ -18,6 +18,21 @@
       ]
     },
     {
+      "id": "tournament-model-follow-up",
+      "description": "An explicit Pundit tournament-model request and referential follow-up remain tournament-grounded.",
+      "kind": "json",
+      "turns": [
+        {
+          "question": "What does Pundit's own tournament model currently show for Spain?",
+          "expectGrounding": "tournament"
+        },
+        {
+          "question": "How should I interpret that 100% figure?",
+          "expectGrounding": "tournament"
+        }
+      ]
+    },
+    {
       "id": "general-analysis-label",
       "description": "A general football question remains explicitly ungrounded at the API boundary.",
       "kind": "json",

@@ -3,10 +3,12 @@ import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import {
   buildGrounding,
+  buildTournamentGrounding,
   findFixture,
   isTournamentQuestion,
   resolveQuestionTeams,
   resolveTeams,
+  shouldUseTournamentGrounding,
 } from "./ask";
 
 function fixture(home: string, away: string): ModelFixture {
@@ -106,16 +108,92 @@ describe("buildGrounding", () => {
   });
 });
 
+describe("buildTournamentGrounding", () => {
+  it("marks a completed final as settled state with its champion", () => {
+    const final = {
+      ...fixture("Spain", "Argentina"),
+      stage: "final",
+      date: "2026-07-19",
+      result: {
+        homeScore: 1,
+        awayScore: 0,
+        status: "FT",
+        winner: "Spain",
+      },
+    };
+    expect(buildTournamentGrounding({
+      teams: [
+        { team: "Spain", winProb: 1, sfProb: 1, qfProb: 1, marketPrice: null, edge: null },
+        { team: "Argentina", winProb: 0, sfProb: 1, qfProb: 1, marketPrice: null, edge: null },
+      ],
+      fixtures: [final],
+      lastUpdated: new Date("2026-07-27T09:00:00.000Z"),
+    })).toEqual({
+      kind: "tournament",
+      status: "completed",
+      champion: "Spain",
+      updatedAt: "2026-07-27T09:00:00.000Z",
+      teams: [
+        { team: "Spain", winProb: 1 },
+        { team: "Argentina", winProb: 0 },
+      ],
+    });
+  });
+
+  it("keeps tournament probabilities in progress before the final is settled", () => {
+    expect(buildTournamentGrounding({
+      teams: [
+        { team: "Spain", winProb: 0.25, sfProb: 0.5, qfProb: 0.7, marketPrice: null, edge: null },
+      ],
+      fixtures,
+      lastUpdated: null,
+    })).toMatchObject({
+      status: "in_progress",
+      champion: null,
+      updatedAt: null,
+    });
+  });
+});
+
 describe("isTournamentQuestion", () => {
   it.each([
     "Who wins it all?",
     "Who is the favourite?",
     "Which team will win the World Cup?",
+    "Rank the leading contenders for the 2026 World Cup.",
+    "Who is most likely to win the 2026 World Cup?",
+    "What does Pundit's own tournament model currently show for Spain?",
+    "How should I read Pundit's title probabilities now that the tournament is complete?",
   ])("recognizes %s", (question) => {
     expect(isTournamentQuestion(question)).toBe(true);
   });
 
   it("does not classify an ordinary matchup question", () => {
     expect(isTournamentQuestion("France vs Morocco")).toBe(false);
+  });
+});
+
+describe("shouldUseTournamentGrounding", () => {
+  const tournamentHistory = [
+    { role: "user" as const, content: "Who is the favourite to win the World Cup?" },
+    { role: "assistant" as const, content: "Spain leads the current model." },
+  ];
+
+  it("keeps referential tournament follow-ups grounded", () => {
+    expect(shouldUseTournamentGrounding(
+      "How should I interpret that 100% figure?",
+      tournamentHistory
+    )).toBe(true);
+    expect(shouldUseTournamentGrounding(
+      "What is the strongest counterargument to that ranking?",
+      tournamentHistory
+    )).toBe(true);
+  });
+
+  it("does not carry tournament grounding into an unrelated new topic", () => {
+    expect(shouldUseTournamentGrounding(
+      "How does a high defensive line change pressing risk?",
+      tournamentHistory
+    )).toBe(false);
   });
 });

@@ -232,6 +232,9 @@ export interface MatchGrounding {
 
 export interface TournamentGrounding {
   kind: "tournament";
+  status: "in_progress" | "completed";
+  champion: string | null;
+  updatedAt: string | null;
   teams: Array<{
     team: string;
     winProb: number;
