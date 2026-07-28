@@ -14,12 +14,14 @@ describe("model data contract", () => {
     );
     const football = {
       upcoming: [{
-        id: 2, competition: "FIFA World Cup", homeTeam: "Spain", awayTeam: "Argentina",
+        id: 2, competitionId: "fifa.world", competition: "FIFA World Cup",
+        homeTeam: "Spain", awayTeam: "Argentina",
         utcDate: "2026-07-19T19:00Z", status: "SCHEDULED", stage: "final",
         matchday: null, group: null, score: null, winner: null,
       }],
       recent: [{
-        id: 1, competition: "FIFA World Cup", homeTeam: "Mexico", awayTeam: "South Africa",
+        id: 1, competitionId: "fifa.world", competition: "FIFA World Cup",
+        homeTeam: "Mexico", awayTeam: "South Africa",
         utcDate: "2026-06-11T19:00Z", status: "FINISHED", stage: "group-stage",
         matchday: null, group: "A", score: { home: 2, away: 0 }, winner: "Mexico",
       }],

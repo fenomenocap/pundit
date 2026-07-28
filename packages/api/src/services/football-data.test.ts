@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { buildFetchDateRange } from "./football-data";
 import { parseEvent } from "./football-data";
+
+const wcContext = { competitionId: "fifa.world", competitionName: "FIFA World Cup" };
 
 describe("ESPN model inputs", () => {
   it("carries ESPN's authoritative penalty winner and canonical team names", () => {
@@ -14,8 +17,9 @@ describe("ESPN model inputs", () => {
           { homeAway: "away", team: { displayName: "United States" }, score: "1", winner: true },
         ],
       }],
-    });
+    }, wcContext);
     expect(match).toMatchObject({
+      competitionId: "fifa.world",
       homeTeam: "Turkey",
       awayTeam: "USA",
       stage: "round-of-32",
@@ -36,11 +40,28 @@ describe("ESPN model inputs", () => {
           { homeAway: "away", team: { displayName: "France" }, score: "1", winner: false },
         ],
       }],
-    });
+    }, wcContext);
     expect(match).toMatchObject({
       status: "IN_PLAY",
       score: { home: 2, away: 1 },
       winner: null,
     });
+  });
+
+  it("builds rolling fetch windows for club competitions", () => {
+    const range = buildFetchDateRange({
+      id: "eng.1",
+      name: "Premier League",
+      espnScoreboardPath: "eng.1",
+      fetchDaysPast: 7,
+      fetchDaysFuture: 14,
+      type: "league",
+      enabled: true,
+      priority: 1,
+      ratingProfile: "eng-clubs",
+      marketProfile: "premier-league",
+      homeFieldAdvantage: true,
+    });
+    expect(range).toMatch(/^\d{8}-\d{8}$/);
   });
 });
