@@ -64,8 +64,8 @@ export default function ModelPage() {
           </div>
           <h1 className="font-heading text-2xl font-bold text-white">Club season model</h1>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-            Dixon-Coles/Poisson 1X2 probabilities for active Premier League and UCL qualifier fixtures,
-            calibrated on live ClubElo ratings with home-field advantage where applicable.
+            Live 1X2 probabilities for active Premier League and UCL qualifier fixtures,
+            with home-field advantage where applicable.
             {" "}
             <Link href="/evaluation/wc-2026" className="text-cyan-400 hover:text-cyan-300">
               WC 2026 backtest →
