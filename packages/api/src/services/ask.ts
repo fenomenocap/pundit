@@ -636,7 +636,7 @@ function awayWinSummary(grounding: Grounding): string {
 function replaceInvalidScorelineLines(answer: string, grounding: Grounding): string {
   return answer.split("\n").map((line) => {
     const isUnderdogInterpretation = line.toLowerCase().includes(grounding.away.toLowerCase())
-      && /\b(?:path|route|prevail|overturn|away-win|beat|winning?)\b/i.test(line)
+      && /\b(?:path|route|prevail|overturn|away-win|beat|winning?|spring|upset)\b/i.test(line)
       && /\b\d+-\d+\b/.test(line);
     if (isUnderdogInterpretation) return awayWinSummary(grounding);
     const pairs = [...line.matchAll(/\b(\d+-\d+)\b[^%\n]{0,45}?(\d+(?:\.\d+)?)%/g)];
@@ -718,12 +718,10 @@ export function sanitizeSeasonAnswer(answer: string): string {
 }
 
 export function sanitizeUnsupportedTeamNews(answer: string): string {
-  return answer.split("\n").map((line) => {
-    if (/\bno (?:verified )?(?:injury\/lineup|injury or lineup|injury|lineup) (?:issues|concerns|updates)?\s*(?:were )?(?:reported|found|identified)\b/i.test(line)) {
-      return "No verified, dated injury or lineup update was established by the available evidence.";
-    }
-    return line;
-  }).join("\n").trim();
+  return answer.replace(
+    /(?:^[-*]\s*[^:\n]{1,40}:\s*)?\bNo (?:other )?(?:verified )?(?:injury\/lineup|injury or lineup|injury|lineup) (?:issues|concerns|updates)?\s*(?:were )?(?:reported|found|identified)\b[^.\n]*[.]?/gim,
+    "No additional verified, dated injury or lineup update was established by the available evidence."
+  ).trim();
 }
 
 function validateAnalysisResponse(
