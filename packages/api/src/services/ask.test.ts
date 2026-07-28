@@ -254,7 +254,7 @@ describe("resolveAskContext", () => {
     )).toEqual({ tier: "general" });
   });
 
-  it("uses Premier League standings even when there are no active model fixtures", () => {
+  it("uses Premier League season outlook for title questions without active model fixtures", () => {
     expect(resolveAskContext(
       "Who wins the Premier League?",
       [],
@@ -262,7 +262,7 @@ describe("resolveAskContext", () => {
       [],
       [standing()],
       [{ home: "Arsenal", away: "Coventry City" }]
-    )).toEqual({ tier: "competition", competitionId: "eng.1" });
+    )).toEqual({ tier: "season", competitionId: "eng.1" });
   });
 
   it("reports an active matchup whose model row is unavailable", () => {
@@ -279,14 +279,14 @@ describe("resolveAskContext", () => {
     });
   });
 
-  it("routes a two-team title question to competition grounding", () => {
+  it("routes a two-team title question to season grounding", () => {
     expect(resolveAskContext(
       "Will Arsenal or Coventry City win the Premier League?",
       [],
       undefined,
       fixtures,
       [standing()]
-    )).toEqual({ tier: "competition", competitionId: "eng.1" });
+    )).toEqual({ tier: "season", competitionId: "eng.1" });
   });
 
   it("routes a clear named matchup to match grounding even when the competition is named", () => {

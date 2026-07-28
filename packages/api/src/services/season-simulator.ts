@@ -1,0 +1,181 @@
+import { DEFAULT_HOME_ADVANTAGE_ELO, eloToLambdas, simulateMatch } from "./dixon-coles";
+import { FootballMatch, FootballStanding } from "./football-data";
+import { lookupClubRating, ClubRatingsCache } from "./club-ratings";
+import { getCompetitionById } from "../config/competitions";
+
+export const SEASON_SIM_RUNS = 10_000;
+
+export interface TeamStandingState {
+  team: string;
+  points: number;
+  goalDifference: number;
+  goalsFor: number;
+  playedGames: number;
+}
+
+export interface SeasonProbability {
+  team: string;
+  probability: number;
+}
+
+export interface SeasonOutlook {
+  competitionId: string;
+  competition: string;
+  runs: number;
+  titleProbabilities: SeasonProbability[];
+  topFourProbabilities: SeasonProbability[];
+  remainingFixtures: number;
+  updatedAt: string;
+}
+
+function rounded(value: number, digits = 4): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function standingState(standings: FootballStanding[]): Map<string, TeamStandingState> {
+  const state = new Map<string, TeamStandingState>();
+  for (const row of standings) {
+    state.set(row.team, {
+      team: row.team,
+      points: row.points,
+      goalDifference: row.goalDifference,
+      goalsFor: row.goalsFor,
+      playedGames: row.playedGames,
+    });
+  }
+  return state;
+}
+
+function cloneState(state: Map<string, TeamStandingState>): Map<string, TeamStandingState> {
+  return new Map([...state.entries()].map(([team, row]) => [team, { ...row }]));
+}
+
+function applyResult(
+  state: Map<string, TeamStandingState>,
+  home: string,
+  away: string,
+  homeGoals: number,
+  awayGoals: number
+): void {
+  const homeRow = state.get(home);
+  const awayRow = state.get(away);
+  if (!homeRow || !awayRow) return;
+  homeRow.playedGames += 1;
+  awayRow.playedGames += 1;
+  homeRow.goalsFor += homeGoals;
+  awayRow.goalsFor += awayGoals;
+  homeRow.goalDifference += homeGoals - awayGoals;
+  awayRow.goalDifference += awayGoals - homeGoals;
+  if (homeGoals > awayGoals) homeRow.points += 3;
+  else if (awayGoals > homeGoals) awayRow.points += 3;
+  else {
+    homeRow.points += 1;
+    awayRow.points += 1;
+  }
+}
+
+function rankTeams(state: Map<string, TeamStandingState>): string[] {
+  return [...state.values()]
+    .sort((a, b) =>
+      b.points - a.points
+      || b.goalDifference - a.goalDifference
+      || b.goalsFor - a.goalsFor
+      || a.team.localeCompare(b.team)
+    )
+    .map((row) => row.team);
+}
+
+export function remainingScheduledFixtures(
+  matches: FootballMatch[],
+  competitionId: string
+): FootballMatch[] {
+  return matches
+    .filter((match) =>
+      match.competitionId === competitionId
+      && match.status === "SCHEDULED"
+    )
+    .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
+}
+
+export function simulateSeasonOutlook(
+  competitionId: string,
+  standings: FootballStanding[],
+  scheduledFixtures: FootballMatch[],
+  ratings: ClubRatingsCache["byProfile"],
+  runs = SEASON_SIM_RUNS,
+  random: () => number = Math.random
+): SeasonOutlook | null {
+  const competition = getCompetitionById(competitionId);
+  if (!competition || competition.type !== "league") return null;
+
+  const baseState = standingState(
+    standings.filter((row) => row.competitionId === competitionId)
+  );
+  if (baseState.size === 0) return null;
+
+  const fixtures = scheduledFixtures.filter((fixture) =>
+    baseState.has(fixture.homeTeam) && baseState.has(fixture.awayTeam)
+  );
+  if (fixtures.length === 0) return null;
+
+  const titleCounts = new Map<string, number>();
+  const topFourCounts = new Map<string, number>();
+
+  for (let run = 0; run < runs; run += 1) {
+    const state = cloneState(baseState);
+    for (const fixture of fixtures) {
+      const homeElo = lookupClubRating(fixture.homeTeam, competition.ratingProfile, ratings);
+      const awayElo = lookupClubRating(fixture.awayTeam, competition.ratingProfile, ratings);
+      if (homeElo === undefined || awayElo === undefined) continue;
+      const homeAdvantage = competition.homeFieldAdvantage ? DEFAULT_HOME_ADVANTAGE_ELO : 0;
+      const [homeGoals, awayGoals] = simulateMatch(
+        ...eloToLambdas(homeElo, awayElo, homeAdvantage),
+        false,
+        random
+      );
+      applyResult(state, fixture.homeTeam, fixture.awayTeam, homeGoals, awayGoals);
+    }
+    const ranked = rankTeams(state);
+    const champion = ranked[0];
+    titleCounts.set(champion, (titleCounts.get(champion) ?? 0) + 1);
+    for (const team of ranked.slice(0, 4)) {
+      topFourCounts.set(team, (topFourCounts.get(team) ?? 0) + 1);
+    }
+  }
+
+  const toProbabilities = (counts: Map<string, number>): SeasonProbability[] =>
+    [...counts.entries()]
+      .map(([team, count]) => ({ team, probability: rounded(count / runs) }))
+      .sort((a, b) => b.probability - a.probability);
+
+  return {
+    competitionId,
+    competition: competition.name,
+    runs,
+    titleProbabilities: toProbabilities(titleCounts),
+    topFourProbabilities: toProbabilities(topFourCounts),
+    remainingFixtures: fixtures.length,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export const SEASON_QUESTION_CUES = [
+  "title race",
+  "win the league",
+  "wins the league",
+  "who wins the league",
+  "who will win the league",
+  "league winner",
+  "win the premier league",
+  "wins the premier league",
+  "top four",
+  "top 4",
+  "champions league spot",
+  "relegation",
+];
+
+export function isSeasonOutlookQuestion(question: string): boolean {
+  const normalized = question.toLowerCase();
+  return SEASON_QUESTION_CUES.some((cue) => normalized.includes(cue));
+}

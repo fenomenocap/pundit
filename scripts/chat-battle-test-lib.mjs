@@ -160,6 +160,40 @@ export function sanitizeEvidence(value) {
     .slice(0, 2_000);
 }
 
+/** User-facing jargon that must not appear in chat answers. */
+export const FORBIDDEN_ANSWER_TERMS = [
+  "dixon-coles",
+  "clubelo",
+  "model-grounded",
+  "not model-grounded",
+];
+
+/** Schema field names that must not leak in 400 error bodies. */
+export const FORBIDDEN_ERROR_TERMS = [
+  "history",
+  "must be an array",
+];
+
+export function validateAnswerCopy(answer) {
+  if (typeof answer !== "string" || !answer.trim()) {
+    return { passed: false, failures: ["answer is empty"] };
+  }
+  const normalized = answer.toLowerCase();
+  const failures = FORBIDDEN_ANSWER_TERMS
+    .filter((term) => normalized.includes(term))
+    .map((term) => `answer contains forbidden term: ${term}`);
+  return { passed: failures.length === 0, failures };
+}
+
+export function validateErrorCopy(body) {
+  const text = typeof body === "string" ? body : JSON.stringify(body ?? {});
+  const normalized = text.toLowerCase();
+  const failures = FORBIDDEN_ERROR_TERMS
+    .filter((term) => normalized.includes(term))
+    .map((term) => `400 body leaks schema term: ${term}`);
+  return { passed: failures.length === 0, failures };
+}
+
 export function qualitativeScores(result) {
   if (!result.passed || !result.answer) return null;
   const answer = result.answer;

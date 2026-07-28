@@ -9,12 +9,13 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 | Area | Current behavior |
 |---|---|
 | Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/competition/general), active market comparisons, and suggestions from featured active club fixtures. |
-| `POST /api/ask` | Three tiers: active-match model grounding (ClubElo + HFA), competition standings grounding (ESPN table), and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, web search, a 90-second Anthropic timeout (240s overall), and 10 requests/minute limiting. |
+| `POST /api/ask` | Four tiers: active-match model grounding (ClubElo + HFA), competition standings grounding (ESPN table), Premier League season outlook (Monte Carlo title/top-four), and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, web search, a 90-second Anthropic timeout (240s overall), and 10 requests/minute limiting. |
 | Active model | `/api/model/active` and `/api/model/fixtures` serve Dixon-Coles 1X2 (plus totals/BTTS/scorelines) for active club fixtures only. |
 | Featured fixtures | Next N active fixtures across enabled competitions (EPL priority), joined to model rows for chat suggestions and market odds. |
 | Fixture markets | `fixture-market-sources.ts` fetches Stake/Kalshi/Polymarket by market profile; `model-market-odds.ts` caches no-vig 1X2 for the active fixture set. Source failures stay isolated. |
 | `/fixtures` | Multi-competition live schedule/history and standings from ESPN, with competition tabs and Ask-about-this-match links into chat. |
 | `/model` | Native read-only view of active club fixture model probabilities; links to WC backtest. |
+| `/evaluation/club-season` | Rolling pre-kickoff snapshot calibration (read-only JSON artifact). |
 | `/evaluation/wc-2026` | Frozen WC 2026 backtest artifact (read-only, no cron). |
 | CI | `.github/workflows/ci.yml` runs both TypeScript checks and API Vitest on pull requests. |
 
@@ -33,10 +34,14 @@ Live URLs: **Web** [thepundit.vercel.app](https://thepundit.vercel.app) · **API
 
 After Vercel or Railway env/config changes that affect production, run `pnpm verify:prod` from the repo root (~15s). For local dev against running servers, use `bash scripts/verify-local.sh`.
 
+## Chat eval cadence
+
+Production chat eval (`pnpm chat-eval:production`) hits live Anthropic credits — run manually after Tier 1+ deploys as a post-deploy smoke, not in CI. Unit tests for the harness run via `pnpm chat-eval:test` (no production traffic). Dry-run config check: `pnpm chat-eval:dry-run`.
+
+Qualitative copy guards in `scripts/chat-battle-test-lib.mjs` fail answers containing internal jargon (`Dixon-Coles`, `ClubElo`, `model-grounded`) and 400 bodies leaking schema field names.
+
 ## Outstanding
 
-- Immutable pre-kickoff probability snapshots for ongoing club-season calibration (WC evaluation artifact is enough for historical credibility).
-- League-wide Monte Carlo title model (tier-2 uses standings only for now).
 - `packages/web` test infrastructure (per above).
 - Paid unified odds API.
 
@@ -57,11 +62,14 @@ packages/api/src/
     fixture-market-sources.ts      — Stake/Kalshi/Polymarket by market profile
     model-market-odds.ts           — normalized active fixture 1X2 cache
     wc-evaluation.ts               — frozen WC backtest read path
+    club-season-snapshots.ts         — rolling pre-kickoff snapshot persistence
+    season-simulator.ts              — PL title/top-four Monte Carlo
 
 packages/web/src/
   app/page.tsx                     — chat, featured suggestions, labels, inline odds
   app/fixtures/page.tsx            — multi-comp schedule/history and standings
   app/model/page.tsx               — active club fixture model reference
+  app/evaluation/club-season/page.tsx — rolling club-season calibration UI
   app/evaluation/wc-2026/page.tsx  — frozen WC backtest UI
   lib/api.ts                       — typed API boundary
   lib/mock-data.ts                 — mock-aware fixture/standing wrappers

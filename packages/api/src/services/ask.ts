@@ -13,6 +13,13 @@ import {
 import { getCachedMatches, FootballStanding } from "./football-data";
 import { getActiveFixtures } from "./active-fixtures";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
+import { getCachedClubRatings } from "./club-ratings";
+import {
+  isSeasonOutlookQuestion,
+  remainingScheduledFixtures,
+  simulateSeasonOutlook,
+  SeasonOutlook,
+} from "./season-simulator";
 
 export interface OddsSource {
   source: "kalshi" | "polymarket";
@@ -59,7 +66,16 @@ export interface CompetitionGrounding {
   }>;
 }
 
-export type AskGrounding = Grounding | CompetitionGrounding | null;
+export interface SeasonGrounding {
+  kind: "season";
+  competitionId: string;
+  competition: string;
+  updatedAt: string | null;
+  standings: CompetitionGrounding["standings"];
+  seasonOutlook: SeasonOutlook;
+}
+
+export type AskGrounding = Grounding | CompetitionGrounding | SeasonGrounding | null;
 
 export interface ConversationTurn {
   role: "user" | "assistant";
@@ -67,11 +83,12 @@ export interface ConversationTurn {
 }
 
 export type TeamContext = [string, string];
-export type AnalysisTier = "match" | "competition" | "general";
+export type AnalysisTier = "match" | "competition" | "season" | "general";
 
 export type ResolvedAskContext =
   | { tier: "match"; fixture: ModelFixture }
   | { tier: "competition"; competitionId: string }
+  | { tier: "season"; competitionId: string }
   | { tier: "model-unavailable"; teams: TeamContext }
   | { tier: "general" };
 
@@ -90,6 +107,9 @@ Your pre-training squad and roster knowledge may be outdated. Never state a
 player name, injury, suspension, lineup, or form detail from memory. Team news may come only from a
 web_search result in this conversation, and each item must name its source and date. If you did not
 search, or search returned nothing solid, say there is no verified team news -- never speculate.
+Never infer that there are no injuries or lineup issues from general squad, form, or preview
+commentary. A no-issues claim requires a targeted, dated injury or lineup source; otherwise say that
+no verified team-news update was established.
 Do not name internal methodology (Dixon-Coles, Poisson, Elo, ClubElo, eloratings.net, or similar)
 in user-facing answers -- say "Pundit's model" or "the model" instead.`;
 
@@ -113,7 +133,9 @@ omitted from your prose is below 0.1%; check that exact score against the full s
 Do not generalize from topScores or from the 1-2 scorelines you choose to mention.
 The grounding does not decompose why the probabilities differ. You may say home-field advantage is
 applied when homeFieldAdvantage is true, but never say it entirely causes the edge, quantify its
-contribution, or invent attacking, defensive, form, or team-strength drivers that are not supplied.`;
+contribution, or invent attacking, defensive, form, or team-strength drivers that are not supplied.
+For knockout or qualifier fixtures, use win/draw/loss language only. Never describe an outcome as
+earning, sharing, taking, or securing league points.`;
 
 const MATCH_SYSTEM_PROMPT = `You are a club-football match-analysis assistant for Pundit. You are given
 precomputed probabilities from Pundit's match model for a specific matchup. Treat these numbers as ground truth for the statistical
@@ -149,10 +171,22 @@ const COMPETITION_SYSTEM_PROMPT = `You are a club-football competition-analysis 
 You are given the current league or cup standings table from ESPN for a specific competition.
 Treat those standings as ground truth for table position, points, and games played. Do not invent
 or contradict them. Pre-season tables may show all zeros -- say so plainly rather than guessing form.
+Do not infer why equally ranked rows appear in their supplied order. Never call the order alphabetical,
+placeholder, default-sorted, or an ordering artifact unless that mechanism is an explicit field.
 You may use the web_search tool for current transfer, injury, or manager news that would change the
 title or qualification picture, but do not search merely to re-verify the supplied table.
 For historical World Cup 2026 questions, note that Pundit's frozen backtest lives at /evaluation/wc-2026
 and this payload does not include WC title probabilities.
+${ATTRIBUTION_RULES}
+${FORMAT_RULES}`;
+
+const SEASON_SYSTEM_PROMPT = `You are a club-football season-outlook assistant for Pundit.
+You are given the current league standings from ESPN plus Monte Carlo title and top-four
+probabilities from Pundit's remaining-fixture simulation. Treat those numbers as ground truth.
+Do not invent or contradict them. Explain that the outlook simulates the rest of the season from
+the current table and scheduled fixtures (~10,000 runs). Pre-season tables with all zeros should
+be described plainly. You may use web_search for transfer, injury, or manager news that would
+change the picture, but do not search merely to re-verify the supplied table or probabilities.
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}`;
 
@@ -450,6 +484,57 @@ export function buildCompetitionGrounding(
   };
 }
 
+function competitionStandingsRows(
+  competitionId: string,
+  standings: FootballStanding[]
+): CompetitionGrounding["standings"] {
+  return standings
+    .filter((row) => row.competitionId === competitionId)
+    .sort((a, b) => a.position - b.position)
+    .slice(0, 20)
+    .map((row) => ({
+      position: row.position,
+      team: row.team,
+      playedGames: row.playedGames,
+      points: row.points,
+      goalDifference: row.goalDifference,
+    }));
+}
+
+export function buildSeasonGrounding(
+  competitionId: string,
+  standings: FootballStanding[],
+  lastUpdated: Date | null
+): SeasonGrounding | null {
+  const competition = getCompetitionById(competitionId);
+  if (!competition || competitionId !== "eng.1") return null;
+
+  const football = getCachedMatches();
+  const scheduled = remainingScheduledFixtures(
+    [...football.upcoming, ...football.recent],
+    competitionId
+  );
+  const ratings = getCachedClubRatings();
+  if (ratings.fetchedAt === null) return null;
+
+  const seasonOutlook = simulateSeasonOutlook(
+    competitionId,
+    standings,
+    scheduled,
+    ratings.byProfile
+  );
+  if (!seasonOutlook) return null;
+
+  return {
+    kind: "season",
+    competitionId,
+    competition: competition.name,
+    updatedAt: lastUpdated?.toISOString() ?? null,
+    standings: competitionStandingsRows(competitionId, standings),
+    seasonOutlook,
+  };
+}
+
 export function resolveAskContext(
   question: string,
   history: ConversationTurn[],
@@ -464,6 +549,14 @@ export function resolveAskContext(
 
   if (explicitFixture && (!competitionId || hasExplicitMatchupCue(question))) {
     return { tier: "match", fixture: explicitFixture };
+  }
+
+  if (
+    competitionId === "eng.1"
+    && isSeasonOutlookQuestion(question)
+    && standings.some((row) => row.competitionId === competitionId)
+  ) {
+    return { tier: "season", competitionId };
   }
 
   if (competitionId && standings.some((row) => row.competitionId === competitionId)) {
@@ -540,6 +633,10 @@ function awayWinSummary(grounding: Grounding): string {
 
 function replaceInvalidScorelineLines(answer: string, grounding: Grounding): string {
   return answer.split("\n").map((line) => {
+    const isUnderdogInterpretation = line.toLowerCase().includes(grounding.away.toLowerCase())
+      && /\b(?:path|route|prevail|overturn|away-win)\b/i.test(line)
+      && /\b\d+-\d+\b/.test(line);
+    if (isUnderdogInterpretation) return awayWinSummary(grounding);
     const pairs = [...line.matchAll(/\b(\d+-\d+)\b[^%\n]{0,45}?(\d+(?:\.\d+)?)%/g)];
     const hasInvalidPair = pairs.some((match) =>
       !scorelinePercentageMatches(match[1], Number(match[2]), grounding)
@@ -569,17 +666,40 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
   if (grounding) {
     sanitized = replaceInvalidScorelineLines(sanitized, grounding);
     if (grounding.competitionId === "uefa.champions_qual") {
-      sanitized = sanitized.replace(/\b(?:three|3) points\b/gi, "a win");
+      sanitized = sanitized
+        .replace(/\b(?:a )?share of the points\b/gi, "a draw")
+        .replace(/\b(?:take|claim|earn|secure)(?:s|ed|ing)? (?:all )?(?:three|3) points\b/gi, "win")
+        .replace(/\broute to (?:three|3) points\b/gi, "route to victory")
+        .replace(/\b(?:one|1) point\b/gi, "a draw");
     }
   }
   return sanitized.replace(/[ \t]+\n/g, "\n").replace(/ {2,}/g, " ").trim();
+}
+
+export function sanitizeCompetitionAnswer(answer: string): string {
+  const orderCorrection = "The supplied all-zero table does not establish an on-field ranking or explain why equally ranked teams appear in this order.";
+  return answer.split("\n").map((line) => {
+    if (/\b(?:alphabet|placeholder|default sort|default-sorted|artifact of ordering)/i.test(line)) {
+      return orderCorrection;
+    }
+    return line.replace(/\bzero predictive value\b/gi, "no predictive evidence from played matches");
+  }).join("\n").trim();
+}
+
+export function sanitizeUnsupportedTeamNews(answer: string): string {
+  return answer.split("\n").map((line) => {
+    if (/\bno (?:injury\/lineup|injury or lineup|injury|lineup) (?:issues|concerns|updates)?\s*(?:were )?reported\b/i.test(line)) {
+      return "No verified, dated injury or lineup update was established by the available evidence.";
+    }
+    return line;
+  }).join("\n").trim();
 }
 
 function validateAnalysisResponse(
   responses: Anthropic.Message[],
   tier: AnalysisTier,
   startedAt: number,
-  grounding?: Grounding
+  grounding?: AskGrounding
 ): string {
   const blocks = responses.flatMap((response) => response.content);
   const answer = blocks.reduce(
@@ -602,7 +722,15 @@ function validateAnalysisResponse(
   if (stopReason === "max_tokens") {
     throw new AppError(502, "Analysis response was truncated. Please try again.");
   }
-  return tier === "match" ? sanitizeMatchAnswer(answer, grounding) : answer;
+  const commonSafeAnswer = sanitizeUnsupportedTeamNews(answer);
+  if (tier === "match") {
+    return sanitizeMatchAnswer(
+      commonSafeAnswer,
+      grounding?.kind === "match" ? grounding : undefined
+    );
+  }
+  if (tier === "competition") return sanitizeCompetitionAnswer(commonSafeAnswer);
+  return commonSafeAnswer;
 }
 
 function appendPausedTurn(
@@ -617,7 +745,7 @@ export async function generateAnalysis(
   systemPrompt: string,
   messages: ConversationTurn[],
   tier: AnalysisTier,
-  grounding?: Grounding
+  grounding?: AskGrounding
 ): Promise<string> {
   const startedAt = Date.now();
   const collected: Anthropic.Message[] = [];
@@ -659,7 +787,7 @@ export async function generateAnalysisStream(
   tier: AnalysisTier,
   onDelta: (text: string) => void,
   shouldContinue: () => boolean = () => true,
-  grounding?: Grounding
+  grounding?: AskGrounding
 ): Promise<string> {
   const startedAt = Date.now();
   const collected: Anthropic.Message[] = [];
@@ -692,7 +820,6 @@ export async function generateAnalysisStream(
           }
           deltaSeen = true;
           anyDeltaSeen = true;
-          if (tier !== "match") onDelta(text);
         });
         response = await stream.finalMessage();
       } catch (error) {
@@ -711,7 +838,7 @@ export async function generateAnalysisStream(
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
   const answer = validateAnalysisResponse(collected, tier, startedAt, grounding);
-  if (tier === "match") onDelta(answer);
+  onDelta(answer);
   return answer;
 }
 
@@ -764,6 +891,22 @@ function prepareAsk(
     );
     systemPrompt = COMPETITION_SYSTEM_PROMPT;
     currentMessage = `Competition standings: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+  } else if (context.tier === "season") {
+    const seasonGrounding = buildSeasonGrounding(
+      context.competitionId,
+      football.standings,
+      football.lastUpdated
+    );
+    if (!seasonGrounding) {
+      throw new AppError(
+        503,
+        "Pundit's season outlook is temporarily unavailable. Try a table question instead.",
+        "MODEL_UNAVAILABLE"
+      );
+    }
+    grounding = seasonGrounding;
+    systemPrompt = SEASON_SYSTEM_PROMPT;
+    currentMessage = `Season outlook: ${JSON.stringify(grounding)}\nUser question: ${question}`;
   } else if (context.tier === "match") {
     grounding = buildGrounding(context.fixture);
     systemPrompt = MATCH_SYSTEM_PROMPT;
@@ -815,7 +958,7 @@ export async function answerQuestion(
       systemPrompt,
       messages,
       tier,
-      grounding?.kind === "match" ? grounding : undefined
+      grounding
     );
     return { answer, grounding };
   } catch (err) {
@@ -845,7 +988,7 @@ export async function answerQuestionStream(
       tier,
       handlers.onDelta,
       handlers.shouldContinue ?? (() => true),
-      grounding?.kind === "match" ? grounding : undefined
+      grounding
     );
     return { answer, grounding };
   } catch (err) {

@@ -1,12 +1,12 @@
 # Welcome to Pundit
 
-Pundit is a chat-first analysis tool for the 2026 FIFA World Cup. Ask about the active semifinal/final, the title race, or a football concept and receive a clearly labelled grounded or general answer.
+Pundit is a chat-first analysis app for the club season — Premier League and UEFA Champions League qualifiers. Ask about an upcoming match for probabilities grounded in Pundit's statistical model, or ask about the league table and title race.
 
 Under the hood, every answer is backed by:
 
-* A **Dixon-Coles Poisson model** (calibrated on live Elo ratings) that produces win/draw/loss and score probabilities for every fixture in the tournament
-* Active **Stake, Kalshi, and Polymarket** 1X2 prices for featured late-stage matches, shown alongside the model
-* Live **fixtures, results, and group standings** pulled straight from the tournament as it happens
+* A **match probability model** (team-strength ratings plus home-field advantage where applicable) that produces win/draw/loss, totals, BTTS, and scoreline probabilities for active fixtures
+* Active **Stake, Kalshi, and Polymarket** 1X2 prices for featured matches, shown alongside the model when available
+* Live **fixtures, results, and standings** from ESPN
 
 Pundit doesn't run its own markets and there's nothing to trade here — it's an analysis layer on top of public data.
 

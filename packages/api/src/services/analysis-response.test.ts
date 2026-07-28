@@ -5,7 +5,9 @@ import {
   generateAnalysis,
   generateAnalysisStream,
   Grounding,
+  sanitizeCompetitionAnswer,
   sanitizeMatchAnswer,
+  sanitizeUnsupportedTeamNews,
 } from "./ask";
 
 function clientWith(response: unknown): Pick<Anthropic, "messages"> {
@@ -124,6 +126,48 @@ describe("sanitizeMatchAnswer", () => {
     expect(answer).toContain("**0-1 (7.1%)** and **0-2 (5.2%)**");
     expect(answer).not.toContain("1-0 (7.1%)");
     expect(answer).not.toContain("three points");
+  });
+
+  it("removes knockout points language and tactical inference from follow-ups", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Kuopio",
+      away: "Sabah",
+      scorelines: [
+        { score: "1-2", probability: 0.0758 },
+        { score: "0-1", probability: 0.071 },
+      ],
+    } as Grounding;
+    const answer = sanitizeMatchAnswer(
+      "The 1-1 gives Kuopio a share of the points.\n"
+      + "For Sabah to overturn the odds, 1-2 and 0-1 mean a counterattacking route.",
+      grounding
+    );
+    expect(answer).toContain("a draw");
+    expect(answer).toContain("**1-2 (7.6%)** and **0-1 (7.1%)**");
+    expect(answer).not.toContain("points");
+    expect(answer).not.toContain("counterattacking");
+  });
+});
+
+describe("grounded answer sanitizers", () => {
+  it("does not invent an all-zero standings sort mechanism", () => {
+    const answer = sanitizeCompetitionAnswer(
+      "Teams are listed alphabetically-by-default, so the table has zero predictive value."
+    );
+    expect(answer).toContain("does not establish an on-field ranking");
+    expect(answer).not.toContain("alphabet");
+    expect(answer).not.toContain("zero predictive value");
+  });
+
+  it("does not infer a negative injury claim from general commentary", () => {
+    const answer = sanitizeUnsupportedTeamNews(
+      "- Arsenal: no injury/lineup issues reported; source is general squad commentary."
+    );
+    expect(answer).toBe(
+      "No verified, dated injury or lineup update was established by the available evidence."
+    );
   });
 });
 

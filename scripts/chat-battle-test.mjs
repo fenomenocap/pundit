@@ -19,6 +19,8 @@ import {
   readinessFailures,
   validateGrounding,
   validateSse,
+  validateAnswerCopy,
+  validateErrorCopy,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -225,6 +227,11 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       result.evidence = `Turn ${history.length / 2} returned an empty answer.`;
       return result;
     }
+    const copyValidation = validateAnswerCopy(result.answer);
+    result.assertions.plainLanguageCopy = copyValidation.passed;
+    assertionFailures.push(...copyValidation.failures.map((failure) =>
+      `turn ${history.length / 2}: ${failure}`
+    ));
     assertionFailures.push(...groundingValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
@@ -270,9 +277,13 @@ async function runInvalidScenario(scenario, options, pacer, onRequestStart) {
   result.assertions.expectedStatus = response.status === scenario.expectStatus;
   result.assertions.sanitizedError = typeof response.body?.error === "string"
     && !/(anthropic|api[_-]?key|stack|token)/i.test(response.body.error);
+  const errorCopy = validateErrorCopy(response.body);
+  result.assertions.noSchemaLeak = errorCopy.passed;
   result.passed = Object.values(result.assertions).every(Boolean);
   result.outcome = result.passed ? "PASS" : "FAIL";
-  result.evidence = `HTTP ${response.status}: ${sanitizeEvidence(response.body)}`;
+  result.evidence = errorCopy.passed
+    ? `HTTP ${response.status}: ${sanitizeEvidence(response.body)}`
+    : `${errorCopy.failures.join("; ")} — ${sanitizeEvidence(response.body)}`;
   return result;
 }
 
@@ -308,7 +319,15 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
   result.outcome = result.passed ? "PASS" : "FAIL";
   const done = events.findLast(({ event }) => event === "done");
   result.answer = done?.payload?.answer ?? "";
-  result.evidence = `SSE order: ${events.map(({ event }) => event).join(" → ")}.`;
+  const copyValidation = validateAnswerCopy(result.answer);
+  result.assertions.plainLanguageCopy = copyValidation.passed;
+  if (!copyValidation.passed) {
+    result.passed = false;
+    result.failures = [...(result.failures ?? []), ...copyValidation.failures];
+  }
+  result.evidence = result.passed
+    ? `SSE order: ${events.map(({ event }) => event).join(" → ")}.`
+    : [...(result.failures ?? []), `SSE order: ${events.map(({ event }) => event).join(" → ")}.`].join("; ");
   result.qualitativeScores = qualitativeScores(result);
   return result;
 }
