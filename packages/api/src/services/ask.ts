@@ -5,7 +5,11 @@ import {
   normalizeTeamName,
   normalizeTeamText,
 } from "../lib/team-names";
-import { getCachedModelData, ModelFixture } from "./model-data";
+import {
+  getCachedModelData,
+  ModelDataCache,
+  ModelFixture,
+} from "./model-data";
 import { getFeaturedModelFixtures } from "./featured-fixtures";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
 
@@ -39,6 +43,9 @@ export interface Grounding {
 
 export interface TournamentGrounding {
   kind: "tournament";
+  status: "in_progress" | "completed";
+  champion: string | null;
+  updatedAt: string | null;
   teams: Array<{
     team: string;
     winProb: number;
@@ -122,7 +129,15 @@ const TOURNAMENT_SYSTEM_PROMPT = `You are a World Cup tournament-analysis assist
 are given precomputed team win probabilities from Pundit's Dixon-Coles/Poisson tournament model
 calibrated on live Elo ratings. Treat those probabilities as ground truth for the statistical
 analysis and do not invent or contradict them. Never guess when model data is absent; say so
-plainly. You may use the web_search tool for current injury, squad, or form news.
+plainly. The grounding also states whether the tournament is in progress or completed and names the
+confirmed champion when completed. For a completed tournament, describe 100%/0% values as settled
+result state, never as a live forecast, remaining title chance, model confidence, or evidence of
+rounding. Do not call any team a remaining contender or discuss its path to the title after the
+champion is confirmed. The supplied probabilities are the current model state, not immutable
+pre-kickoff snapshots; if the user asks what the model showed earlier, say historical snapshots are
+not available from this payload. You may use the web_search tool for current injury, squad, or form
+news, but do not search merely to re-verify completion status, the confirmed champion, or supplied
+probabilities.
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}`;
 
@@ -146,11 +161,52 @@ const TOURNAMENT_KEYWORDS = [
   "world cup winner",
   "win the tournament",
   "wins the tournament",
+  "most likely to win",
+  "leading contender",
+  "leading contenders",
+  "rank the contenders",
+  "title chance",
+  "title chances",
+  "title probability",
+  "title probabilities",
+  "title odds",
+  "title race",
+  "tournament model",
+  "world cup model",
 ];
 
 export function isTournamentQuestion(question: string): boolean {
   const normalized = normalizeTeamText(question);
   return TOURNAMENT_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
+const TOURNAMENT_FOLLOW_UP_CUES = [
+  "that ranking",
+  "those contenders",
+  "that probability",
+  "those probabilities",
+  "that figure",
+  "that percentage",
+  "that 100%",
+  "the 100%",
+  "that title",
+  "that model",
+  "the model",
+  "what about them",
+];
+
+export function shouldUseTournamentGrounding(
+  question: string,
+  history: ConversationTurn[]
+): boolean {
+  if (isTournamentQuestion(question)) return true;
+  const normalized = normalizeTeamText(question);
+  const hasFollowUpCue = TOURNAMENT_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
+  if (!hasFollowUpCue) return false;
+  return history
+    .filter(({ role }) => role === "user")
+    .slice(-2)
+    .some(({ content }) => isTournamentQuestion(content));
 }
 
 export function resolveTeams(question: string, fixtures: ModelFixture[]): [string, string] {
@@ -263,6 +319,22 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
     stakePAway: stake?.pAway ?? fixture.stakePAway,
     oddsSources,
+  };
+}
+
+export function buildTournamentGrounding(
+  modelData: Pick<ModelDataCache, "teams" | "fixtures" | "lastUpdated">
+): TournamentGrounding {
+  const completedFinal = modelData.fixtures
+    .filter((fixture) => fixture.stage === "final" && fixture.result?.winner)
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .at(-1);
+  return {
+    kind: "tournament",
+    status: completedFinal ? "completed" : "in_progress",
+    champion: completedFinal?.result?.winner ?? null,
+    updatedAt: modelData.lastUpdated?.toISOString() ?? null,
+    teams: modelData.teams.map(({ team, winProb }) => ({ team, winProb })),
   };
 }
 
@@ -455,14 +527,11 @@ function prepareAsk(
   let systemPrompt: string;
   let currentMessage: string;
 
-  if (!teams && isTournamentQuestion(question)) {
+  if (!teams && shouldUseTournamentGrounding(question, history)) {
     if (modelData.teams.length === 0) {
       throw new AppError(502, "Tournament model data is not currently available.");
     }
-    grounding = {
-      kind: "tournament",
-      teams: modelData.teams.map(({ team, winProb }) => ({ team, winProb })),
-    };
+    grounding = buildTournamentGrounding(modelData);
     systemPrompt = TOURNAMENT_SYSTEM_PROMPT;
     currentMessage = `Tournament model data: ${JSON.stringify(grounding)}\nUser question: ${question}`;
   } else {
