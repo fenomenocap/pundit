@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import {
+  MATCH_ANSWER_GUARDS,
   buildCompetitionGrounding,
   buildGrounding,
   findFixture,
@@ -13,6 +14,14 @@ import {
   shouldUseCompetitionGrounding,
   shouldUseMatchGrounding,
 } from "./ask";
+
+describe("MATCH_ANSWER_GUARDS", () => {
+  it("blocks unsupported aggregate, scoreline-tail, and causal claims", () => {
+    expect(MATCH_ANSWER_GUARDS).toContain("aggregate advancement is outside this model payload");
+    expect(MATCH_ANSWER_GUARDS).toContain("omitted from your prose");
+    expect(MATCH_ANSWER_GUARDS).toContain("never say it entirely causes the edge");
+  });
+});
 
 function fixture(home: string, away: string, overrides: Partial<ModelFixture> = {}): ModelFixture {
   return {
