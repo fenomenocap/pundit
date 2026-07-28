@@ -178,8 +178,7 @@ export async function buildWc2026EvaluationArtifact(): Promise<Wc2026EvaluationA
     method: "reconstructed",
     builtAt: new Date().toISOString(),
     disclaimer:
-      "Pre-kickoff probabilities are reconstructed by rewinding current eloratings.net "
-      + "World ratings through tournament results, then walking forward with Dixon-Coles "
+      "Pre-kickoff probabilities are reconstructed from historical ratings and match results "
       + "at neutral venues. This is look-ahead-free but approximate versus true pre-match snapshots.",
     fixtures,
     metrics,

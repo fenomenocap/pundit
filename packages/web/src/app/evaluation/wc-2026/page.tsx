@@ -57,9 +57,8 @@ export default function Wc2026EvaluationPage() {
           </div>
           <h1 className="font-heading text-2xl font-bold text-white">World Cup 2026 backtest</h1>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-            Immutable pre-kickoff probabilities rebuilt from eloratings.net World ratings and
-            Dixon-Coles at neutral venues. This is separate from the live model page, which
-            recalculates older fixtures with current Elo.
+            Immutable pre-kickoff probabilities reconstructed for backtesting. This is separate
+            from the live model page, which recalculates older fixtures with current ratings.
           </p>
         </div>
         <Link

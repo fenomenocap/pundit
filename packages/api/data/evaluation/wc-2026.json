@@ -2,7 +2,7 @@
   "competition": "fifa.world",
   "method": "reconstructed",
   "builtAt": "2026-07-27T20:27:59.534Z",
-  "disclaimer": "Pre-kickoff probabilities are reconstructed by rewinding current eloratings.net World ratings through tournament results, then walking forward with Dixon-Coles at neutral venues. This is look-ahead-free but approximate versus true pre-match snapshots.",
+  "disclaimer": "Pre-kickoff probabilities are reconstructed from historical ratings and match results at neutral venues. This is look-ahead-free but approximate versus true pre-match snapshots.",
   "fixtures": [
     {
       "id": 760415,
