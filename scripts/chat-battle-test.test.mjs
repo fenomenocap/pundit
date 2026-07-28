@@ -245,7 +245,7 @@ test("adversarial generation covers exactly five required categories", () => {
   ]);
   assert.equal(scenarios[2].kind, "inconclusive");
   assert.equal(JSON.stringify(scenarios).includes("World Cup"), false);
-  assert.equal(scenarios[1].turns[0].expectGrounding, "competition");
+  assert.equal(scenarios[1].turns[0].expectGrounding, "season");
 });
 
 test("atomic report writing preserves the previous report and updates latest", async () => {

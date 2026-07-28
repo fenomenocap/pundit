@@ -39,7 +39,7 @@ export function parseHistory(raw: unknown): ConversationTurn[] {
   if (history.length % 2 !== 0 || history.some((turn, index) =>
     turn.role !== (index % 2 === 0 ? "user" : "assistant")
   )) {
-    throw new AppError(400, "History must contain complete user/assistant exchanges.");
+    throw new AppError(400, "Conversation must contain complete user/assistant exchanges.");
   }
   const totalLength = history.reduce((total, turn) => total + turn.content.length, 0);
   if (totalLength > MAX_HISTORY_TOTAL_LENGTH) {
