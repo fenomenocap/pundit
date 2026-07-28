@@ -7,15 +7,19 @@ import {
   EVAL_SCHEMA_VERSION,
   MIN_REQUEST_INTERVAL_MS,
   createPacer,
+  fetchWithTimeout,
   finalizeClassifications,
   generateAdversarialScenarios,
   loadPreviousReport,
   parseSse,
   qualitativeScores,
+  recordScenarioFailure,
   sanitizeEvidence,
   selectFeaturedMatch,
   readinessFailures,
   validateSse,
+  writeCheckpoint,
+  writeFailureReport,
   writeReport
 } from "./chat-battle-test-lib.mjs";
 
@@ -41,6 +45,7 @@ function parseArgs(argv) {
     else if (argument === "--api-url") options.apiUrl = argv[++index];
     else if (argument === "--web-url") options.webUrl = argv[++index];
     else if (argument === "--output-dir") options.outputDir = path.resolve(argv[++index]);
+    else if (argument === "--scenarios-path") options.scenariosPath = path.resolve(argv[++index]);
     else if (argument === "--interval-ms") options.intervalMs = Number(argv[++index]);
     else if (argument === "--timeout-ms") options.timeoutMs = Number(argv[++index]);
     else if (argument === "--deployment-id") options.deploymentId = argv[++index];
@@ -54,16 +59,6 @@ function parseArgs(argv) {
 
 function timestampId(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, "-");
-}
-
-async function fetchWithTimeout(url, init, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 async function fetchJson(url, init, timeoutMs) {
@@ -134,9 +129,47 @@ function baseResult(scenario) {
   };
 }
 
-async function jsonTurn(options, pacer, turn, history, teamContext) {
+function failureKind(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/timed?\s*out|timeout/i.test(message)) return "timeout";
+  if (/abort/i.test(message)) return "aborted";
+  return "request_error";
+}
+
+function failedScenarioResult(scenario, error, requestStarts) {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    ...baseResult(scenario),
+    outcome: "FAIL",
+    requestStarts,
+    failure: {
+      kind: failureKind(error),
+      message: sanitizeEvidence(message),
+    },
+    evidence: `Evaluator request failed: ${sanitizeEvidence(message)}`,
+  };
+}
+
+async function jsonTurn(
+  scenario,
+  turnIndex,
+  options,
+  pacer,
+  turn,
+  history,
+  teamContext,
+  onRequestStart
+) {
   await pacer.beforeRequest();
   const start = pacer.starts.at(-1);
+  await onRequestStart({
+    scenarioId: scenario.id,
+    category: scenario.category ?? "fixed",
+    requestKind: "json",
+    turn: turnIndex + 1,
+    question: turn.question,
+    startedAt: start,
+  });
   const response = await fetchJson(`${options.apiUrl}/api/ask`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -149,13 +182,22 @@ async function jsonTurn(options, pacer, turn, history, teamContext) {
   return { ...response, start };
 }
 
-async function runJsonScenario(scenario, options, pacer) {
+async function runJsonScenario(scenario, options, pacer, onRequestStart) {
   const result = baseResult(scenario);
   const history = [];
   const assertionFailures = [];
   let teamContext = scenario.teamContext;
-  for (const turn of scenario.turns) {
-    const response = await jsonTurn(options, pacer, turn, history, teamContext);
+  for (const [turnIndex, turn] of scenario.turns.entries()) {
+    const response = await jsonTurn(
+      scenario,
+      turnIndex,
+      options,
+      pacer,
+      turn,
+      history,
+      teamContext,
+      onRequestStart
+    );
     result.requestStarts.push(response.start);
     result.status = response.status;
     result.latencyMs = (result.latencyMs ?? 0) + response.latencyMs;
@@ -202,10 +244,19 @@ async function runJsonScenario(scenario, options, pacer) {
   return result;
 }
 
-async function runInvalidScenario(scenario, options, pacer) {
+async function runInvalidScenario(scenario, options, pacer, onRequestStart) {
   const result = baseResult(scenario);
   await pacer.beforeRequest();
-  result.requestStarts.push(pacer.starts.at(-1));
+  const start = pacer.starts.at(-1);
+  result.requestStarts.push(start);
+  await onRequestStart({
+    scenarioId: scenario.id,
+    category: scenario.category ?? "fixed",
+    requestKind: "invalid",
+    turn: 1,
+    question: scenario.body?.question ?? null,
+    startedAt: start,
+  });
   const response = await fetchJson(`${options.apiUrl}/api/ask`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -222,10 +273,19 @@ async function runInvalidScenario(scenario, options, pacer) {
   return result;
 }
 
-async function runSseScenario(scenario, options, pacer) {
+async function runSseScenario(scenario, options, pacer, onRequestStart) {
   const result = baseResult(scenario);
   await pacer.beforeRequest();
-  result.requestStarts.push(pacer.starts.at(-1));
+  const start = pacer.starts.at(-1);
+  result.requestStarts.push(start);
+  await onRequestStart({
+    scenarioId: scenario.id,
+    category: scenario.category ?? "fixed",
+    requestKind: "sse",
+    turn: 1,
+    question: scenario.question,
+    startedAt: start,
+  });
   const started = Date.now();
   const response = await fetchWithTimeout(`${options.apiUrl}/api/ask`, {
     method: "POST",
@@ -250,7 +310,7 @@ async function runSseScenario(scenario, options, pacer) {
   return result;
 }
 
-async function runScenario(scenario, options, pacer, featured) {
+async function runScenario(scenario, options, pacer, featured, onRequestStart) {
   if (scenario.kind === "inconclusive") {
     return {
       ...baseResult(scenario),
@@ -274,7 +334,7 @@ async function runScenario(scenario, options, pacer, featured) {
         question: `What does Pundit's model say about ${featured.homeTeam} vs ${featured.awayTeam}?`,
         expectGrounding: "match"
       }]
-    }, options, pacer);
+    }, options, pacer, onRequestStart);
   }
   if (scenario.kind === "featured-follow-up") {
     if (!featured) {
@@ -298,11 +358,15 @@ async function runScenario(scenario, options, pacer, featured) {
           expectGrounding: "match"
         }
       ]
-    }, options, pacer);
+    }, options, pacer, onRequestStart);
   }
-  if (scenario.kind === "invalid") return runInvalidScenario(scenario, options, pacer);
-  if (scenario.kind === "sse") return runSseScenario(scenario, options, pacer);
-  return runJsonScenario(scenario, options, pacer);
+  if (scenario.kind === "invalid") {
+    return runInvalidScenario(scenario, options, pacer, onRequestStart);
+  }
+  if (scenario.kind === "sse") {
+    return runSseScenario(scenario, options, pacer, onRequestStart);
+  }
+  return runJsonScenario(scenario, options, pacer, onRequestStart);
 }
 
 async function main() {
@@ -336,11 +400,6 @@ async function main() {
   const adversarial = generateAdversarialScenarios(seed, featured);
   const scenarios = [...scenarioConfig.fixed, ...adversarial];
   const pacer = createPacer(options.intervalMs);
-  const results = [];
-  for (const scenario of scenarios) {
-    results.push(await runScenario(scenario, options, pacer, featured));
-  }
-
   const deploymentHeader = preflightResult.health.headers["x-railway-deployment-id"]
     ?? preflightResult.ready.headers["x-railway-deployment-id"]
     ?? null;
@@ -377,14 +436,80 @@ async function main() {
       minimumIntervalMs: options.intervalMs,
       requestStarts: pacer.starts
     },
-    scenarios: results,
+    progress: {
+      status: "running",
+      activeScenario: null,
+      activeRequest: null,
+      completedScenarioIds: [],
+      failure: null,
+    },
+    scenarios: [],
     browserEvidence: null,
     criticReview: null,
     recommendations: [],
     comparison: null,
     overall: null
   };
+
+  await writeCheckpoint(report, options.outputDir);
+  for (const [scenarioIndex, scenario] of scenarios.entries()) {
+    const requestStartIndex = pacer.starts.length;
+    report.progress.activeScenario = {
+      id: scenario.id,
+      category: scenario.category ?? "fixed",
+      index: scenarioIndex,
+    };
+    report.progress.activeRequest = null;
+    report.completedAt = new Date().toISOString();
+    await writeCheckpoint(report, options.outputDir);
+    try {
+      const result = await runScenario(
+        scenario,
+        options,
+        pacer,
+        featured,
+        async (request) => {
+          report.progress.activeRequest = request;
+          report.completedAt = new Date().toISOString();
+          await writeCheckpoint(report, options.outputDir);
+        }
+      );
+      report.scenarios.push(result);
+      report.progress.completedScenarioIds.push(scenario.id);
+      report.progress.activeScenario = null;
+      report.progress.activeRequest = null;
+      report.completedAt = new Date().toISOString();
+      await writeCheckpoint(report, options.outputDir);
+    } catch (error) {
+      const failed = failedScenarioResult(
+        scenario,
+        error,
+        pacer.starts.slice(requestStartIndex)
+      );
+      recordScenarioFailure(report, scenarios, scenarioIndex, failed);
+      finalizeClassifications(report, previous);
+      const checkpointPath = await writeCheckpoint(report, options.outputDir);
+      const paths = await writeFailureReport(report, options.outputDir);
+      console.error(`chat battle test stopped at ${scenario.id}: ${failed.failure.message}`);
+      console.log(JSON.stringify({
+        runId,
+        overall: report.overall,
+        requests: pacer.starts.length,
+        failedScenario: scenario.id,
+        checkpointPath,
+        report: paths
+      }, null, 2));
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  report.progress.status = "complete";
+  report.progress.activeScenario = null;
+  report.progress.activeRequest = null;
+  report.completedAt = new Date().toISOString();
   finalizeClassifications(report, previous);
+  await writeCheckpoint(report, options.outputDir);
   const paths = await writeReport(report, options.outputDir);
   console.log(JSON.stringify({
     runId,
