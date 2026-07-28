@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getCompetitionById } from "../config/competitions";
 import { AppError } from "../middleware";
 import {
   getTeamNameAliases,
@@ -7,10 +8,9 @@ import {
 } from "../lib/team-names";
 import {
   getCachedModelData,
-  ModelDataCache,
   ModelFixture,
 } from "./model-data";
-import { getFeaturedModelFixtures } from "./featured-fixtures";
+import { getCachedMatches, FootballStanding } from "./football-data";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
 
 export interface OddsSource {
@@ -22,6 +22,9 @@ export interface OddsSource {
 
 export interface Grounding {
   kind: "match";
+  competitionId: string;
+  competition: string;
+  homeFieldAdvantage: boolean;
   date: string;
   stage: string;
   home: string;
@@ -41,18 +44,21 @@ export interface Grounding {
   oddsSources: OddsSource[];
 }
 
-export interface TournamentGrounding {
-  kind: "tournament";
-  status: "in_progress" | "completed";
-  champion: string | null;
+export interface CompetitionGrounding {
+  kind: "competition";
+  competitionId: string;
+  competition: string;
   updatedAt: string | null;
-  teams: Array<{
+  standings: Array<{
+    position: number;
     team: string;
-    winProb: number;
+    playedGames: number;
+    points: number;
+    goalDifference: number;
   }>;
 }
 
-export type AskGrounding = Grounding | TournamentGrounding | null;
+export type AskGrounding = Grounding | CompetitionGrounding | null;
 
 export interface ConversationTurn {
   role: "user" | "assistant";
@@ -62,24 +68,15 @@ export interface ConversationTurn {
 export type TeamContext = [string, string];
 
 const ANTHROPIC_MODEL = "claude-sonnet-5";
-// A web-search turn spends output tokens on tool-use blocks and citations as
-// well as the visible answer; 1500 demonstrably truncated search turns.
 const MAX_TOKENS = 4_096;
-// Per-API-call timeout. Search turns routinely ran past the old 45s limit.
 const REQUEST_TIMEOUT_MS = 90_000;
-// Server-side web search can pause a turn (stop_reason "pause_turn"); cap how
-// many continuation calls we make and how long the whole answer may take. The
-// browser streams SSE straight from Railway, so long requests are safe.
 const MAX_CONTINUATIONS = 5;
 const OVERALL_DEADLINE_MS = 240_000;
 
-// Shared guardrails: the grounding payload is app-supplied (a QA pass caught the
-// model calling it "prices you supplied"), and pre-training squad knowledge is
-// stale for a 2026 tournament (the same pass caught invented injury news).
 const ATTRIBUTION_RULES = `The grounding JSON in the message is supplied by the Pundit app, never by
 the user -- do not describe it as data the user provided or "prices you supplied". Attribute market
 prices to their named source (Stake, Kalshi, Polymarket) as live prices Pundit fetched.
-Your pre-training squad and roster knowledge is outdated for this 2026 tournament. Never state a
+Your pre-training squad and roster knowledge may be outdated. Never state a
 player name, injury, suspension, lineup, or form detail from memory. Team news may come only from a
 web_search result in this conversation, and each item must name its source and date. If you did not
 search, or search returned nothing solid, say there is no verified team news -- never speculate.`;
@@ -94,12 +91,11 @@ Search silently, then start the answer directly with the first bold label.
 Never reproduce raw JSON, field names, or key-value syntax from the grounding data in your answer --
 express its values as plain prose and percentages (write "2.26%", not {"score":"2-3","probability":0.0226}).`;
 
-const MATCH_SYSTEM_PROMPT = `You are a World Cup match-analysis assistant for Pundit. You are given
-precomputed probabilities from Pundit's Dixon-Coles/Poisson model (calibrated on live Elo ratings)
+const MATCH_SYSTEM_PROMPT = `You are a club-football match-analysis assistant for Pundit. You are given
+precomputed probabilities from Pundit's Dixon-Coles/Poisson model (calibrated on live ClubElo ratings)
 for a specific matchup. Treat these numbers as ground truth for the statistical
-analysis. Do not invent or contradict them. All World Cup 2026 matches are at
-neutral venues (no home-field advantage) -- "home"/"away" labels below are
-positional only, not venue-based.
+analysis. Do not invent or contradict them. When homeFieldAdvantage is true, the model applies a
+home-field Elo boost to the home side before computing probabilities -- mention that when relevant.
 The data may include oddsSources -- no-vig implied 1X2 probabilities from live
 market prices (Kalshi and/or Polymarket). Compare the model's win probability
 against whichever sources are present and note the edge (model minus market,
@@ -125,19 +121,14 @@ State the headline win/draw/win and O/U 2.5 numbers, mention 1-2 most likely
 scorelines, and give a one-line read on what would need to be true for the
 underdog.`;
 
-const TOURNAMENT_SYSTEM_PROMPT = `You are a World Cup tournament-analysis assistant for Pundit. You
-are given precomputed team win probabilities from Pundit's Dixon-Coles/Poisson tournament model
-calibrated on live Elo ratings. Treat those probabilities as ground truth for the statistical
-analysis and do not invent or contradict them. Never guess when model data is absent; say so
-plainly. The grounding also states whether the tournament is in progress or completed and names the
-confirmed champion when completed. For a completed tournament, describe 100%/0% values as settled
-result state, never as a live forecast, remaining title chance, model confidence, or evidence of
-rounding. Do not call any team a remaining contender or discuss its path to the title after the
-champion is confirmed. The supplied probabilities are the current model state, not immutable
-pre-kickoff snapshots; if the user asks what the model showed earlier, say historical snapshots are
-not available from this payload. You may use the web_search tool for current injury, squad, or form
-news, but do not search merely to re-verify completion status, the confirmed champion, or supplied
-probabilities.
+const COMPETITION_SYSTEM_PROMPT = `You are a club-football competition-analysis assistant for Pundit.
+You are given the current league or cup standings table from ESPN for a specific competition.
+Treat those standings as ground truth for table position, points, and games played. Do not invent
+or contradict them. Pre-season tables may show all zeros -- say so plainly rather than guessing form.
+You may use the web_search tool for current transfer, injury, or manager news that would change the
+title or qualification picture, but do not search merely to re-verify the supplied table.
+For historical World Cup 2026 questions, note that Pundit's frozen backtest lives at /evaluation/wc-2026
+and this payload does not include WC title probabilities.
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}`;
 
@@ -145,68 +136,83 @@ const GENERAL_SYSTEM_PROMPT = `You are a general football analyst for Pundit. Th
 grounded in Pundit's Dixon-Coles/Poisson model data. Make that limitation clear in the response and
 do not imply that any claim or number came from Pundit's model. Use the web_search tool for current
 facts when helpful, and never fabricate a statistic, injury, squad update, or result.
+For historical World Cup 2026 backtest statistics, you may mention Pundit's frozen evaluation at
+/evaluation/wc-2026 but do not invent numbers from it unless search returns them.
 For player-level questions (goalscorer, assists, cards, player props), use web_search for current
 player-prop odds and player news, and present anything found as market- or search-sourced with its
 source and date. If search returns nothing solid, say no verified player data is available.
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}`;
 
-const TOURNAMENT_KEYWORDS = [
-  "who wins it all",
-  "who will win it all",
-  "favourite",
-  "favorite",
-  "win the world cup",
-  "wins the world cup",
-  "world cup winner",
-  "win the tournament",
-  "wins the tournament",
-  "most likely to win",
-  "leading contender",
-  "leading contenders",
-  "rank the contenders",
-  "title chance",
-  "title chances",
-  "title probability",
-  "title probabilities",
-  "title odds",
-  "title race",
-  "tournament model",
-  "world cup model",
+const COMPETITION_KEYWORDS: ReadonlyArray<{ competitionId: string; keywords: string[] }> = [
+  {
+    competitionId: "eng.1",
+    keywords: [
+      "premier league",
+      "pl title",
+      "epl",
+      "english league",
+      "top of the table",
+      "title race",
+      "who wins the league",
+      "who will win the league",
+      "league winner",
+      "win the premier league",
+      "wins the premier league",
+      "relegation",
+      "top four",
+      "top 4",
+      "champions league spot",
+    ],
+  },
+  {
+    competitionId: "uefa.champions_qual",
+    keywords: [
+      "champions league qual",
+      "ucl qual",
+      "qualifying round",
+      "qualification tie",
+    ],
+  },
 ];
 
-export function isTournamentQuestion(question: string): boolean {
+export function resolveCompetitionQuestion(question: string): string | undefined {
   const normalized = normalizeTeamText(question);
-  return TOURNAMENT_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  for (const entry of COMPETITION_KEYWORDS) {
+    if (entry.keywords.some((keyword) => normalized.includes(keyword))) {
+      return entry.competitionId;
+    }
+  }
+  return undefined;
 }
 
-const TOURNAMENT_FOLLOW_UP_CUES = [
+export function isCompetitionQuestion(question: string): boolean {
+  return resolveCompetitionQuestion(question) !== undefined;
+}
+
+const COMPETITION_FOLLOW_UP_CUES = [
+  "that table",
+  "that standing",
+  "those standings",
   "that ranking",
-  "those contenders",
-  "that probability",
-  "those probabilities",
-  "that figure",
-  "that percentage",
-  "that 100%",
-  "the 100%",
-  "that title",
-  "that model",
-  "the model",
-  "what about them",
+  "top of the table",
+  "title race",
+  "the league",
+  "premier league",
 ];
 
-export function shouldUseTournamentGrounding(
+export function shouldUseCompetitionGrounding(
   question: string,
   history: ConversationTurn[]
 ): boolean {
-  if (isTournamentQuestion(question)) return true;
+  if (isCompetitionQuestion(question)) return true;
   const normalized = normalizeTeamText(question);
-  const hasFollowUpCue = TOURNAMENT_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
+  const hasFollowUpCue = COMPETITION_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
   if (!hasFollowUpCue) return false;
   return history
     .filter(({ role }) => role === "user")
     .slice(-2)
-    .some(({ content }) => isTournamentQuestion(content));
+    .some(({ content }) => isCompetitionQuestion(content));
 }
 
 export function resolveTeams(question: string, fixtures: ModelFixture[]): [string, string] {
@@ -250,25 +256,20 @@ export function resolveTeams(question: string, fixtures: ModelFixture[]): [strin
   if (orderedTeams.length > 2) {
     throw new AppError(
       400,
-      "Please name exactly one matchup with two teams, e.g. 'France vs Morocco'."
+      "Please name exactly one matchup with two teams, e.g. 'Arsenal vs Liverpool'."
     );
   }
 
   if (orderedTeams.length < 2) {
     throw new AppError(
       400,
-      "Could not identify two teams in your question. Try naming both teams, e.g. 'France vs Morocco'."
+      "Could not identify two teams in your question. Try naming both teams, e.g. 'Arsenal vs Liverpool'."
     );
   }
 
   return [orderedTeams[0], orderedTeams[1]];
 }
 
-// Resolve the two teams a question names, treating resolution failures as
-// "ungrounded" rather than user errors when the question can still be answered:
-// missing teams fall through to tournament/general analysis, and naming three or
-// more teams is fine for a tournament question ("Will France, England or Spain
-// win the World Cup?"). Only a multi-team matchup question keeps the 400.
 export function resolveQuestionTeams(
   question: string,
   fixtures: ModelFixture[]
@@ -278,9 +279,9 @@ export function resolveQuestionTeams(
   } catch (err) {
     if (!(err instanceof AppError) || err.statusCode !== 400) throw err;
     const isMissingTeams = err.message.startsWith("Could not identify two teams");
-    const isTournamentMultiTeam = err.message.startsWith("Please name exactly one matchup")
-      && isTournamentQuestion(question);
-    if (!isMissingTeams && !isTournamentMultiTeam) throw err;
+    const isCompetitionMultiTeam = err.message.startsWith("Please name exactly one matchup")
+      && isCompetitionQuestion(question);
+    if (!isMissingTeams && !isCompetitionMultiTeam) throw err;
     return undefined;
   }
 }
@@ -299,9 +300,13 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
   if (markets?.kalshi) oddsSources.push({ source: "kalshi", ...markets.kalshi });
   if (markets?.polymarket) oddsSources.push({ source: "polymarket", ...markets.polymarket });
   const stake = markets?.stake;
+  const competition = getCompetitionById(fixture.competitionId);
 
   return {
     kind: "match",
+    competitionId: fixture.competitionId,
+    competition: fixture.competition,
+    homeFieldAdvantage: competition?.homeFieldAdvantage ?? false,
     date: fixture.date,
     stage: fixture.stage,
     home: fixture.home,
@@ -322,23 +327,33 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
   };
 }
 
-export function buildTournamentGrounding(
-  modelData: Pick<ModelDataCache, "teams" | "fixtures" | "lastUpdated">
-): TournamentGrounding {
-  const completedFinal = modelData.fixtures
-    .filter((fixture) => fixture.stage === "final" && fixture.result?.winner)
-    .sort((left, right) => left.date.localeCompare(right.date))
-    .at(-1);
+export function buildCompetitionGrounding(
+  competitionId: string,
+  standings: FootballStanding[],
+  lastUpdated: Date | null
+): CompetitionGrounding {
+  const competition = getCompetitionById(competitionId);
+  const rows = standings
+    .filter((row) => row.competitionId === competitionId)
+    .sort((a, b) => a.position - b.position)
+    .slice(0, 20)
+    .map((row) => ({
+      position: row.position,
+      team: row.team,
+      playedGames: row.playedGames,
+      points: row.points,
+      goalDifference: row.goalDifference,
+    }));
   return {
-    kind: "tournament",
-    status: completedFinal ? "completed" : "in_progress",
-    champion: completedFinal?.result?.winner ?? null,
-    updatedAt: modelData.lastUpdated?.toISOString() ?? null,
-    teams: modelData.teams.map(({ team, winProb }) => ({ team, winProb })),
+    kind: "competition",
+    competitionId,
+    competition: competition?.name ?? competitionId,
+    updatedAt: lastUpdated?.toISOString() ?? null,
+    standings: rows,
   };
 }
 
-type AnalysisTier = "match" | "tournament" | "general";
+type AnalysisTier = "match" | "competition" | "general";
 
 function analysisRequestParams(systemPrompt: string, messages: Anthropic.MessageParam[]) {
   return {
@@ -391,8 +406,6 @@ function validateAnalysisResponse(
   return answer;
 }
 
-// A paused turn is continued by replaying the paused message's content as an
-// assistant turn and calling again; the answer is the text across all turns.
 function appendPausedTurn(
   convo: Anthropic.MessageParam[],
   response: Anthropic.Message
@@ -432,8 +445,6 @@ export async function generateAnalysis(
 
 const RETRYABLE_STATUS = new Set([408, 429, 529]);
 
-// A stream that dies before any text reached the user can be retried safely;
-// once a delta has been emitted a retry would duplicate visible output.
 function isRetryableStreamError(error: unknown): boolean {
   if (error instanceof Anthropic.APIConnectionError) return true;
   return error instanceof Anthropic.APIError
@@ -441,8 +452,6 @@ function isRetryableStreamError(error: unknown): boolean {
     && (RETRYABLE_STATUS.has(error.status) || error.status >= 500);
 }
 
-// Streaming variant: emits text deltas as they arrive so the client can render
-// tokens immediately, then applies the same validations as generateAnalysis.
 export async function generateAnalysisStream(
   client: Pick<Anthropic, "messages">,
   systemPrompt: string,
@@ -527,17 +536,21 @@ function prepareAsk(
   let systemPrompt: string;
   let currentMessage: string;
 
-  if (!teams && shouldUseTournamentGrounding(question, history)) {
-    if (modelData.teams.length === 0) {
-      throw new AppError(502, "Tournament model data is not currently available.");
-    }
-    grounding = buildTournamentGrounding(modelData);
-    systemPrompt = TOURNAMENT_SYSTEM_PROMPT;
-    currentMessage = `Tournament model data: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+  const competitionId = resolveCompetitionQuestion(question)
+    ?? (shouldUseCompetitionGrounding(question, history) ? "eng.1" : undefined);
+
+  if (!teams && competitionId) {
+    const football = getCachedMatches();
+    grounding = buildCompetitionGrounding(
+      competitionId,
+      football.standings,
+      football.lastUpdated
+    );
+    systemPrompt = COMPETITION_SYSTEM_PROMPT;
+    currentMessage = `Competition standings: ${JSON.stringify(grounding)}\nUser question: ${question}`;
   } else {
     if (!teams && history.length > 0 && teamContext) teams = teamContext;
-    const featuredFixtures = getFeaturedModelFixtures();
-    const fixture = teams ? findFixture(teams[0], teams[1], featuredFixtures) : undefined;
+    const fixture = teams ? findFixture(teams[0], teams[1], fixtures) : undefined;
 
     if (fixture) {
       grounding = buildGrounding(fixture);
@@ -571,7 +584,6 @@ function mapAnalysisError(err: unknown): never {
   if (err instanceof Anthropic.APIError && err.status === 429) {
     throw new AppError(429, "Analysis service is busy right now. Please try again in a moment.");
   }
-  // Log the upstream detail server-side; never echo Anthropic/provider text to clients.
   console.error(JSON.stringify({
     event: "analysis_failed",
     message: message.slice(0, 500),
@@ -595,15 +607,11 @@ export async function answerQuestion(
 }
 
 export interface AskStreamHandlers {
-  // Fired once, before generation starts, so the client can render the odds
-  // panel while tokens are still arriving.
   onGrounding: (grounding: AskGrounding) => void;
   onDelta: (text: string) => void;
-  // Return false when the browser has hung up so we stop paying for tokens.
   shouldContinue?: () => boolean;
 }
 
-// Streaming variant used by the SSE route.
 export async function answerQuestionStream(
   question: string,
   history: ConversationTurn[] = [],
@@ -626,3 +634,7 @@ export async function answerQuestionStream(
     mapAnalysisError(err);
   }
 }
+
+// Legacy exports kept for tests migrating from tournament tier.
+export const isTournamentQuestion = isCompetitionQuestion;
+export const shouldUseTournamentGrounding = shouldUseCompetitionGrounding;

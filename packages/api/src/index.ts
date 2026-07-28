@@ -8,7 +8,7 @@ import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
 import askRoutes from "./routes/ask";
 import evaluationRoutes from "./routes/evaluation";
-import { startPolymarketCron } from "./services/polymarket-data";
+import { startClubRatingsCron } from "./services/club-ratings";
 import { getCachedModelData, startModelCron } from "./services/model-data";
 import { getCachedMatches, startFootballCron } from "./services/football-data";
 import { getActiveFixtureStatus } from "./services/active-fixtures";
@@ -102,7 +102,8 @@ app.listen(port, () => {
   console.log(`API server running on port ${port}`);
 
   void (async () => {
-    await Promise.all([startFootballCron(), startPolymarketCron()]);
+    await startFootballCron();
+    await startClubRatingsCron();
     await startModelCron();
     await startModelMarketOddsCron();
   })().catch((error) => {

@@ -4,11 +4,16 @@ export const BASE_GOALS = 1.35;
 export const LAMBDA_CAP = 5;
 export const RHO = -0.1;
 export const MAX_GOALS = 10;
+export const DEFAULT_HOME_ADVANTAGE_ELO = 42;
 
 export type ScoreMatrix = number[][];
 
-export function eloToLambdas(eloHome: number, eloAway: number): [number, number] {
-  const eloFactor = 10 ** ((eloHome - eloAway) / (2 * ELO_SCALE));
+export function eloToLambdas(
+  eloHome: number,
+  eloAway: number,
+  homeAdvantageElo = 0
+): [number, number] {
+  const eloFactor = 10 ** (((eloHome + homeAdvantageElo) - eloAway) / (2 * ELO_SCALE));
   return [
     Math.min(BASE_GOALS * eloFactor, LAMBDA_CAP),
     Math.min(BASE_GOALS / eloFactor, LAMBDA_CAP),
@@ -116,8 +121,12 @@ export function matrixToScorelines(
     .filter(([, probability]) => probability >= minProbability);
 }
 
-export function computeMatchModel(eloHome: number, eloAway: number) {
-  const matrix = scoreMatrix(...eloToLambdas(eloHome, eloAway));
+export function computeMatchModel(
+  eloHome: number,
+  eloAway: number,
+  homeAdvantageElo = 0
+) {
+  const matrix = scoreMatrix(...eloToLambdas(eloHome, eloAway, homeAdvantageElo));
   const [pHome, pDraw, pAway] = matrixTo1x2(matrix);
   const [pOver2_5, pUnder2_5] = matrixToTotals(matrix, 2.5);
   const [pBttsYes, pBttsNo] = matrixToBtts(matrix);

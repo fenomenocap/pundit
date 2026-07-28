@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { normalizedTeamPairKey } from "../lib/team-names";
-import { ModelFixture } from "./model-data";
+import { getModelFixtureKey, ModelFixture } from "./model-data";
 import {
   fetchKalshiOdds,
   fetchPolymarketOdds,
@@ -11,10 +10,30 @@ import {
 } from "./fixture-market-sources";
 
 const fixture: ModelFixture = {
-  date: "2026-07-15", group: null, stage: "semifinals", home: "England", away: "Argentina",
-  pHome: 0.25, pDraw: 0.25, pAway: 0.5, pOver2_5: 0.5, pUnder2_5: 0.5,
-  pBttsYes: 0.5, pBttsNo: 0.5, topScores: [], scorelines: [], stakePHome: null,
-  stakePDraw: null, stakePAway: null, result: null,
+  competitionId: "eng.1",
+  competition: "Premier League",
+  fixtureId: 1,
+  utcDate: "2026-07-15T19:00:00Z",
+  date: "2026-07-15",
+  group: null,
+  stage: "match",
+  home: "England",
+  away: "Argentina",
+  homeElo: 1800,
+  awayElo: 1750,
+  pHome: 0.25,
+  pDraw: 0.25,
+  pAway: 0.5,
+  pOver2_5: 0.5,
+  pUnder2_5: 0.5,
+  pBttsYes: 0.5,
+  pBttsNo: 0.5,
+  topScores: [],
+  scorelines: [],
+  stakePHome: null,
+  stakePDraw: null,
+  stakePAway: null,
+  result: null,
 };
 
 describe("local fixture market normalization", () => {
@@ -115,6 +134,11 @@ describe("market source fetchers", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("queries Kalshi by the WC match series and maps the fixture", async () => {
+    const wcFixture: ModelFixture = {
+      ...fixture,
+      competitionId: "fifa.world",
+      competition: "FIFA World Cup 2026",
+    };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
       events: [{
         title: "England vs Argentina: Regulation Time Moneyline",
@@ -127,10 +151,10 @@ describe("market source fetchers", () => {
       cursor: "",
     }));
     vi.stubGlobal("fetch", fetchMock);
-    const result = await fetchKalshiOdds([fixture]);
+    const result = await fetchKalshiOdds([wcFixture], "world-cup");
     expect(String(fetchMock.mock.calls[0][0])).toContain("series_ticker=KXWCGAME");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(result.has(normalizedTeamPairKey("England", "Argentina"))).toBe(true);
+    expect(result.size).toBe(1);
   });
 
   it("searches Polymarket per fixture and refetches slim events by slug", async () => {
@@ -141,14 +165,12 @@ describe("market source fetchers", () => {
       outcomes: '["Yes","No"]', outcomePrices: JSON.stringify([yes, String(1 - Number(yes))]),
     }));
     const fetchMock = vi.fn()
-      // public-search hit matches the fixture but ships markets without prices
       .mockResolvedValueOnce(jsonResponse({
         events: [{
           title: "England vs. Argentina", slug: "fifwc-eng-arg-2026-07-15",
           markets: pricedMarkets.map(({ outcomePrices: _p, ...market }) => market),
         }],
       }))
-      // slug refetch returns the full event
       .mockResolvedValueOnce(jsonResponse([{
         title: "England vs. Argentina", slug: "fifwc-eng-arg-2026-07-15",
         markets: pricedMarkets,
@@ -157,7 +179,7 @@ describe("market source fetchers", () => {
     const result = await fetchPolymarketOdds([fixture]);
     expect(String(fetchMock.mock.calls[0][0])).toContain("public-search?q=");
     expect(String(fetchMock.mock.calls[1][0])).toContain("slug=fifwc-eng-arg-2026-07-15");
-    expect(result.get(normalizedTeamPairKey("England", "Argentina")))
+    expect(result.get(getModelFixtureKey(fixture)))
       .toEqual({ pHome: 0.5, pDraw: 0.25, pAway: 0.25 });
   });
 });

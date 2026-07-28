@@ -81,6 +81,27 @@ export async function fetchCompetitions() {
   };
 }
 
+export async function fetchActiveFixtures(): Promise<MatchesPayload> {
+  if (!USE_MOCK) {
+    try {
+      const { getActiveFixtures } = await import("./api");
+      const res = await getActiveFixtures();
+      return {
+        matches: res.fixtures ?? [],
+        lastUpdated: res.lastUpdated ?? null,
+        error: res.error ?? null,
+      };
+    } catch (reason) {
+      return {
+        matches: [],
+        lastUpdated: null,
+        error: reason instanceof Error ? reason.message : "Could not load active fixtures.",
+      };
+    }
+  }
+  return { matches: MOCK_UPCOMING_MATCHES, lastUpdated: new Date(now).toISOString(), error: null };
+}
+
 export async function fetchUpcomingMatches(competition?: string): Promise<MatchesPayload> {
   if (!USE_MOCK) {
     try {

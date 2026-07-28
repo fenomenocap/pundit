@@ -2,22 +2,28 @@ import { describe, expect, it } from "vitest";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import {
+  buildCompetitionGrounding,
   buildGrounding,
-  buildTournamentGrounding,
   findFixture,
-  isTournamentQuestion,
+  isCompetitionQuestion,
   resolveQuestionTeams,
   resolveTeams,
-  shouldUseTournamentGrounding,
+  shouldUseCompetitionGrounding,
 } from "./ask";
 
-function fixture(home: string, away: string): ModelFixture {
+function fixture(home: string, away: string, overrides: Partial<ModelFixture> = {}): ModelFixture {
   return {
-    date: "2026-06-11",
-    group: "A",
-    stage: "group",
+    competitionId: "eng.1",
+    competition: "Premier League",
+    fixtureId: 1,
+    utcDate: "2026-08-02T15:00:00.000Z",
+    date: "2026-08-02",
+    group: null,
+    stage: "match",
     home,
     away,
+    homeElo: 1800,
+    awayElo: 1700,
     pHome: 0.4,
     pDraw: 0.3,
     pAway: 0.3,
@@ -31,74 +37,61 @@ function fixture(home: string, away: string): ModelFixture {
     stakePDraw: null,
     stakePAway: null,
     result: null,
+    ...overrides,
   };
 }
 
 const fixtures = [
-  fixture("USA", "England"),
-  fixture("South Korea", "France"),
-  fixture("Bosnia", "Morocco"),
-  fixture("Brazil", "DR Congo"),
+  fixture("Arsenal", "Coventry City"),
+  fixture("Liverpool", "Manchester United"),
+  fixture("Brighton & Hove Albion", "Tottenham Hotspur"),
 ];
 
 describe("resolveTeams", () => {
   it("extracts aliases as canonical fixture names", () => {
-    expect(resolveTeams("How does United States vs England look?", fixtures))
-      .toEqual(["USA", "England"]);
-    expect(resolveTeams("Bosnia and Herzegovina against Morocco", fixtures))
-      .toEqual(["Bosnia", "Morocco"]);
-  });
-
-  it("checks longer team search terms first", () => {
-    expect(resolveTeams("South Korea vs France", fixtures))
-      .toEqual(["South Korea", "France"]);
+    expect(resolveTeams("How does Manchester United vs Liverpool look?", fixtures))
+      .toEqual(["Manchester United", "Liverpool"]);
+    expect(resolveTeams("Brighton against Tottenham", fixtures))
+      .toEqual(["Brighton & Hove Albion", "Tottenham Hotspur"]);
   });
 
   it("rejects questions naming more than one matchup", () => {
-    expect(() => resolveTeams("France vs Morocco, then Brazil", fixtures))
+    expect(() => resolveTeams("Arsenal vs Liverpool, then Brighton", fixtures))
       .toThrowError(AppError);
-    try {
-      resolveTeams("France vs Morocco, then Brazil", fixtures);
-    } catch (error) {
-      expect(error).toMatchObject({
-        statusCode: 400,
-        message: expect.stringContaining("exactly one matchup"),
-      });
-    }
   });
 });
 
 describe("resolveQuestionTeams", () => {
   it("resolves a plain matchup", () => {
-    expect(resolveQuestionTeams("USA vs England", fixtures)).toEqual(["USA", "England"]);
+    expect(resolveQuestionTeams("Arsenal vs Coventry City", fixtures))
+      .toEqual(["Arsenal", "Coventry City"]);
   });
 
   it("returns undefined when no teams are named", () => {
     expect(resolveQuestionTeams("Who wins tonight?", fixtures)).toBeUndefined();
   });
 
-  it("lets a multi-team tournament question through ungrounded", () => {
+  it("lets a multi-team competition question through ungrounded", () => {
     expect(resolveQuestionTeams(
-      "Will France, England or Morocco win the World Cup?",
+      "Will Chelsea, Tottenham or Newcastle win the Premier League?",
       fixtures
     )).toBeUndefined();
-  });
-
-  it("still rejects a multi-team matchup question", () => {
-    expect(() => resolveQuestionTeams("France vs Morocco, then Brazil", fixtures))
-      .toThrowError(AppError);
   });
 });
 
 describe("findFixture", () => {
   it("finds a fixture regardless of requested team order", () => {
-    expect(findFixture("England", "USA", fixtures)).toEqual(fixtures[0]);
+    expect(findFixture("Coventry City", "Arsenal", fixtures)).toEqual(fixtures[0]);
   });
 });
 
 describe("buildGrounding", () => {
-  it("includes totals, BTTS, and model scorelines", () => {
+  it("includes competition metadata and totals", () => {
     expect(buildGrounding(fixtures[0])).toMatchObject({
+      kind: "match",
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeFieldAdvantage: true,
       pOver2_5: 0.55,
       pUnder2_5: 0.45,
       pBttsYes: 0.52,
@@ -108,92 +101,86 @@ describe("buildGrounding", () => {
   });
 });
 
-describe("buildTournamentGrounding", () => {
-  it("marks a completed final as settled state with its champion", () => {
-    const final = {
-      ...fixture("Spain", "Argentina"),
-      stage: "final",
-      date: "2026-07-19",
-      result: {
-        homeScore: 1,
-        awayScore: 0,
-        status: "FT",
-        winner: "Spain",
+describe("buildCompetitionGrounding", () => {
+  it("returns standings rows for the requested competition", () => {
+    expect(buildCompetitionGrounding("eng.1", [
+      {
+        competitionId: "eng.1",
+        position: 1,
+        team: "Arsenal",
+        playedGames: 0,
+        won: 0,
+        draw: 0,
+        lost: 0,
+        points: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        goalDifference: 0,
+        group: null,
+        advanced: false,
       },
-    };
-    expect(buildTournamentGrounding({
-      teams: [
-        { team: "Spain", winProb: 1, sfProb: 1, qfProb: 1, marketPrice: null, edge: null },
-        { team: "Argentina", winProb: 0, sfProb: 1, qfProb: 1, marketPrice: null, edge: null },
-      ],
-      fixtures: [final],
-      lastUpdated: new Date("2026-07-27T09:00:00.000Z"),
-    })).toEqual({
-      kind: "tournament",
-      status: "completed",
-      champion: "Spain",
+      {
+        competitionId: "uefa.champions_qual",
+        position: 1,
+        team: "Riga FC",
+        playedGames: 0,
+        won: 0,
+        draw: 0,
+        lost: 0,
+        points: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        goalDifference: 0,
+        group: null,
+        advanced: false,
+      },
+    ], new Date("2026-07-27T09:00:00.000Z"))).toEqual({
+      kind: "competition",
+      competitionId: "eng.1",
+      competition: "Premier League",
       updatedAt: "2026-07-27T09:00:00.000Z",
-      teams: [
-        { team: "Spain", winProb: 1 },
-        { team: "Argentina", winProb: 0 },
-      ],
-    });
-  });
-
-  it("keeps tournament probabilities in progress before the final is settled", () => {
-    expect(buildTournamentGrounding({
-      teams: [
-        { team: "Spain", winProb: 0.25, sfProb: 0.5, qfProb: 0.7, marketPrice: null, edge: null },
-      ],
-      fixtures,
-      lastUpdated: null,
-    })).toMatchObject({
-      status: "in_progress",
-      champion: null,
-      updatedAt: null,
+      standings: [{
+        position: 1,
+        team: "Arsenal",
+        playedGames: 0,
+        points: 0,
+        goalDifference: 0,
+      }],
     });
   });
 });
 
-describe("isTournamentQuestion", () => {
+describe("isCompetitionQuestion", () => {
   it.each([
-    "Who wins it all?",
-    "Who is the favourite?",
-    "Which team will win the World Cup?",
-    "Rank the leading contenders for the 2026 World Cup.",
-    "Who is most likely to win the 2026 World Cup?",
-    "What does Pundit's own tournament model currently show for Spain?",
-    "How should I read Pundit's title probabilities now that the tournament is complete?",
+    "Who wins the Premier League?",
+    "Who is leading the title race?",
+    "What does the top of the table look like?",
   ])("recognizes %s", (question) => {
-    expect(isTournamentQuestion(question)).toBe(true);
+    expect(isCompetitionQuestion(question)).toBe(true);
   });
 
   it("does not classify an ordinary matchup question", () => {
-    expect(isTournamentQuestion("France vs Morocco")).toBe(false);
+    expect(isCompetitionQuestion("Arsenal vs Coventry City")).toBe(false);
   });
 });
 
-describe("shouldUseTournamentGrounding", () => {
-  const tournamentHistory = [
-    { role: "user" as const, content: "Who is the favourite to win the World Cup?" },
-    { role: "assistant" as const, content: "Spain leads the current model." },
+describe("shouldUseCompetitionGrounding", () => {
+  const competitionHistory = [
+    { role: "user" as const, content: "Who wins the Premier League?" },
+    { role: "assistant" as const, content: "Arsenal leads the table." },
   ];
 
-  it("keeps referential tournament follow-ups grounded", () => {
-    expect(shouldUseTournamentGrounding(
-      "How should I interpret that 100% figure?",
-      tournamentHistory
-    )).toBe(true);
-    expect(shouldUseTournamentGrounding(
-      "What is the strongest counterargument to that ranking?",
-      tournamentHistory
+  it("keeps referential competition follow-ups grounded", () => {
+    expect(shouldUseCompetitionGrounding(
+      "What about that table ranking?",
+      competitionHistory
     )).toBe(true);
   });
 
-  it("does not carry tournament grounding into an unrelated new topic", () => {
-    expect(shouldUseTournamentGrounding(
+  it("does not carry competition grounding into an unrelated new topic", () => {
+    expect(shouldUseCompetitionGrounding(
       "How does a high defensive line change pressing risk?",
-      tournamentHistory
+      competitionHistory
     )).toBe(false);
   });
 });

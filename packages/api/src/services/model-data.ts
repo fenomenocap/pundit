@@ -1,27 +1,11 @@
-// Local port of the worldcup-model Elo + Dixon-Coles/Poisson pipeline.
-// The full fixture history is retained for model evaluation; featured live fixtures
-// are derived separately from ESPN state.
+// Active-club fixture model: Dixon-Coles probabilities for enabled competitions only.
+// WC live model/tournament sim is retired — see /api/evaluation/wc-2026 for backtest.
 
-import { canonicalTeamName } from "../lib/team-names";
-import { computeMatchModel, DEFAULT_ELO } from "./dixon-coles";
-import { fetchEloRatings } from "./elo-ratings";
-import { FootballMatch, getCachedMatches } from "./football-data";
-import { getCachedPolymarketMarkets } from "./polymarket-data";
-import {
-  GroupStandingState,
-  runMonteCarlo,
-  TournamentFixtureState,
-} from "./tournament-simulator";
-import { TEAM_TO_GROUP, WORLD_CUP_TEAMS, WORLD_CUP_TEAM_SET } from "./world-cup-teams";
-
-export interface ModelTeamProbability {
-  team: string;
-  winProb: number;
-  sfProb: number;
-  qfProb: number;
-  marketPrice: number | null;
-  edge: number | null;
-}
+import { getCompetitionById } from "../config/competitions";
+import { modelFixtureKey } from "../lib/team-names";
+import { ActiveFixture, getActiveFixtures } from "./active-fixtures";
+import { getCachedClubRatings, lookupClubRating } from "./club-ratings";
+import { computeMatchModel, DEFAULT_ELO, DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
 
 export interface ModelScoreline {
   score: string;
@@ -29,11 +13,17 @@ export interface ModelScoreline {
 }
 
 export interface ModelFixture {
+  competitionId: string;
+  competition: string;
+  fixtureId: number;
+  utcDate: string;
   date: string;
   group: string | null;
   stage: string;
   home: string;
   away: string;
+  homeElo: number;
+  awayElo: number;
   pHome: number;
   pDraw: number;
   pAway: number;
@@ -42,7 +32,6 @@ export interface ModelFixture {
   pBttsYes: number;
   pBttsNo: number;
   topScores: ModelScoreline[];
-  // Every scoreline ≥0.1% — chat grounding only; stripped from /api/model responses.
   scorelines: ModelScoreline[];
   stakePHome: number | null;
   stakePDraw: number | null;
@@ -56,14 +45,12 @@ export interface ModelFixture {
 }
 
 export interface ModelDataCache {
-  teams: ModelTeamProbability[];
   fixtures: ModelFixture[];
   lastUpdated: Date | null;
   error: string | null;
 }
 
 const cache: ModelDataCache = {
-  teams: [],
   fixtures: [],
   lastUpdated: null,
   error: null,
@@ -79,154 +66,110 @@ function rounded(value: number, digits = 4): number {
 }
 
 function modelStage(stage: string | null): string {
-  if (!stage) return "knockout";
+  if (!stage) return "match";
   return stage === "group-stage" ? "group" : stage.replaceAll("-", "_");
 }
 
-function matchWinner(match: FootballMatch): string | null {
-  if (match.winner) return canonicalTeamName(match.winner);
-  if (!match.score || match.score.home === null || match.score.away === null) return null;
-  if (match.score.home > match.score.away) return match.homeTeam;
-  if (match.score.away > match.score.home) return match.awayTeam;
+function matchWinner(fixture: ActiveFixture): string | null {
+  if (fixture.winner) return fixture.winner;
+  if (!fixture.score || fixture.score.home === null || fixture.score.away === null) return null;
+  if (fixture.score.home > fixture.score.away) return fixture.homeTeam;
+  if (fixture.score.away > fixture.score.home) return fixture.awayTeam;
   return null;
 }
 
-function buildFixtures(matches: FootballMatch[], elo: Map<string, number>): ModelFixture[] {
-  return matches
-    .filter((match) => WORLD_CUP_TEAM_SET.has(match.homeTeam)
-      && WORLD_CUP_TEAM_SET.has(match.awayTeam))
-    .map((match) => {
-      const model = computeMatchModel(
-        elo.get(match.homeTeam) ?? DEFAULT_ELO,
-        elo.get(match.awayTeam) ?? DEFAULT_ELO
-      );
-      const stage = modelStage(match.stage);
-      const completed = match.status === "FINISHED" && match.score;
-      return {
-        date: match.utcDate.slice(0, 10),
-        group: stage === "group"
-          ? match.group ?? TEAM_TO_GROUP.get(match.homeTeam) ?? TEAM_TO_GROUP.get(match.awayTeam) ?? null
-          : null,
-        stage,
-        home: match.homeTeam,
-        away: match.awayTeam,
-        pHome: rounded(model.pHome),
-        pDraw: rounded(model.pDraw),
-        pAway: rounded(model.pAway),
-        pOver2_5: rounded(model.pOver2_5),
-        pUnder2_5: rounded(model.pUnder2_5),
-        pBttsYes: rounded(model.pBttsYes),
-        pBttsNo: rounded(model.pBttsNo),
-        topScores: model.topScores.map(([[home, away], probability]) => ({
-          score: `${home}-${away}`,
-          probability: rounded(probability),
-        })),
-        scorelines: model.scorelines.map(([[home, away], probability]) => ({
-          score: `${home}-${away}`,
-          probability: rounded(probability),
-        })),
-        stakePHome: null,
-        stakePDraw: null,
-        stakePAway: null,
-        result: completed
-          ? {
-              homeScore: match.score!.home!,
-              awayScore: match.score!.away!,
-              status: "FT",
-              winner: matchWinner(match),
-            }
-          : null,
-      };
-    })
-    .sort((a, b) => a.date.localeCompare(b.date));
+export function buildModelFixtureFromActive(
+  fixture: ActiveFixture,
+  ratings = getCachedClubRatings().byProfile
+): ModelFixture | null {
+  const competition = getCompetitionById(fixture.competitionId);
+  if (!competition || !competition.enabled) return null;
+
+  const homeElo = lookupClubRating(fixture.homeTeam, competition.ratingProfile, ratings)
+    ?? DEFAULT_ELO;
+  const awayElo = lookupClubRating(fixture.awayTeam, competition.ratingProfile, ratings)
+    ?? DEFAULT_ELO;
+  const homeAdvantageElo = competition.homeFieldAdvantage ? DEFAULT_HOME_ADVANTAGE_ELO : 0;
+  const model = computeMatchModel(homeElo, awayElo, homeAdvantageElo);
+  const completed = fixture.status === "FINISHED" && fixture.score;
+
+  return {
+    competitionId: fixture.competitionId,
+    competition: fixture.competition,
+    fixtureId: fixture.id,
+    utcDate: fixture.utcDate,
+    date: fixture.utcDate.slice(0, 10),
+    group: fixture.group,
+    stage: modelStage(fixture.stage),
+    home: fixture.homeTeam,
+    away: fixture.awayTeam,
+    homeElo: rounded(homeElo, 1),
+    awayElo: rounded(awayElo, 1),
+    pHome: rounded(model.pHome),
+    pDraw: rounded(model.pDraw),
+    pAway: rounded(model.pAway),
+    pOver2_5: rounded(model.pOver2_5),
+    pUnder2_5: rounded(model.pUnder2_5),
+    pBttsYes: rounded(model.pBttsYes),
+    pBttsNo: rounded(model.pBttsNo),
+    topScores: model.topScores.map(([[home, away], probability]) => ({
+      score: `${home}-${away}`,
+      probability: rounded(probability),
+    })),
+    scorelines: model.scorelines.map(([[home, away], probability]) => ({
+      score: `${home}-${away}`,
+      probability: rounded(probability),
+    })),
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    result: completed
+      ? {
+          homeScore: fixture.score!.home!,
+          awayScore: fixture.score!.away!,
+          status: fixture.status === "FINISHED" ? "FT" : fixture.status,
+          winner: matchWinner(fixture),
+        }
+      : null,
+  };
 }
 
-function standingsByGroup(
-  football: ReturnType<typeof getCachedMatches>
-): Record<string, Record<string, GroupStandingState>> {
-  const groups: Record<string, Record<string, GroupStandingState>> = {};
-  for (const standing of football.standings) {
-    if (!standing.group) continue;
-    const team = canonicalTeamName(standing.team);
-    groups[standing.group] ??= {};
-    groups[standing.group][team] = {
-      pts: standing.points,
-      gd: standing.goalDifference,
-      gf: standing.goalsFor,
-      played: standing.playedGames,
-    };
-  }
-  return groups;
+export function buildActiveModelFixtures(
+  fixtures: ActiveFixture[],
+  ratings = getCachedClubRatings().byProfile
+): ModelFixture[] {
+  return fixtures
+    .map((fixture) => buildModelFixtureFromActive(fixture, ratings))
+    .filter((fixture): fixture is ModelFixture => fixture !== null)
+    .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
 }
 
-function tournamentFixtures(fixtures: ModelFixture[]): TournamentFixtureState[] {
-  return fixtures.map((fixture) => ({
-    home: fixture.home,
-    away: fixture.away,
-    stage: fixture.stage,
-    result: fixture.result ? { winner: fixture.result.winner } : null,
-  }));
-}
-
-function cachedOutrightPrices(): Map<string, number> {
-  const prices = new Map<string, number>();
-  for (const market of getCachedPolymarketMarkets().wcMarkets) {
-    const match = /Will (.+?) win the 2026 FIFA World Cup/i.exec(market.question);
-    if (!match) continue;
-    const yesIndex = market.outcomes.findIndex((outcome) => outcome.toLowerCase() === "yes");
-    const price = market.outcomePrices[yesIndex >= 0 ? yesIndex : 0];
-    if (Number.isFinite(price) && price >= 0 && price <= 1) {
-      prices.set(canonicalTeamName(match[1]), price);
-    }
-  }
-  return prices;
-}
-
-export function buildLocalModelData(
-  elo: Map<string, number>,
-  football: ReturnType<typeof getCachedMatches>,
-  marketPrices = new Map<string, number>(),
-  simulations?: number
-): { teams: ModelTeamProbability[]; fixtures: ModelFixture[] } {
-  const matches = [...football.recent, ...football.upcoming];
-  const fixtures = buildFixtures(matches, elo);
-  const probabilities = runMonteCarlo(
-    elo,
-    standingsByGroup(football),
-    tournamentFixtures(fixtures),
-    simulations
+export function findModelFixtureByTeams(
+  teamA: string,
+  teamB: string,
+  fixtures: ModelFixture[] = cache.fixtures
+): ModelFixture | undefined {
+  const pair = new Set([teamA, teamB]);
+  return fixtures.find((fixture) =>
+    pair.has(fixture.home) && pair.has(fixture.away) && fixture.home !== fixture.away
   );
-  const teams = WORLD_CUP_TEAMS.map((team) => {
-    const probability = probabilities.get(team)!;
-    const marketPrice = marketPrices.get(team) ?? null;
-    return {
-      team,
-      ...probability,
-      marketPrice,
-      edge: marketPrice === null ? null : rounded(probability.winProb - marketPrice, 6),
-    };
-  }).sort((a, b) => b.winProb - a.winProb);
-  return { teams, fixtures };
 }
 
-export async function refreshModelData(): Promise<void> {
-  console.log("[Model] Refreshing local Elo + Dixon-Coles tournament model...");
+export function getModelFixtureKey(fixture: ModelFixture): string {
+  return modelFixtureKey(fixture.competitionId, fixture.date, fixture.home, fixture.away);
+}
+
+export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise<void> {
+  console.log("[Model] Refreshing active fixture Dixon-Coles model...");
   try {
-    const football = getCachedMatches();
-    if (football.lastUpdated === null) throw new Error("ESPN cache is not ready.");
-    const elo = await fetchEloRatings();
-    for (const team of WORLD_CUP_TEAMS) {
-      if (!elo.has(team)) {
-        console.warn(`[Model] Missing Elo for ${team}; using ${DEFAULT_ELO}.`);
-        elo.set(team, DEFAULT_ELO);
-      }
+    const ratings = getCachedClubRatings();
+    if (ratings.fetchedAt === null && ratings.error) {
+      throw new Error(`Club ratings are not ready: ${ratings.error}`);
     }
-    const local = buildLocalModelData(elo, football, cachedOutrightPrices());
-    cache.teams = local.teams;
-    cache.fixtures = local.fixtures;
+    cache.fixtures = buildActiveModelFixtures(activeFixtures, ratings.byProfile);
     cache.lastUpdated = new Date();
     cache.error = null;
-    console.log(`[Model] ${cache.teams.length} teams, ${cache.fixtures.length} fixtures cached.`);
+    console.log(`[Model] ${cache.fixtures.length} active fixtures cached.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     cache.error = message;
@@ -234,14 +177,12 @@ export async function refreshModelData(): Promise<void> {
   }
 }
 
-// Hourly: fast enough that results and bracket changes flow into the model the
-// same hour they happen, gentle enough on eloratings.net's small public site.
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 let cronTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function startModelCron(): Promise<void> {
-  await refreshModelData();
-  cronTimer = setInterval(refreshModelData, REFRESH_INTERVAL_MS);
+  await refreshModelData(getActiveFixtures());
+  cronTimer = setInterval(() => refreshModelData(getActiveFixtures()), REFRESH_INTERVAL_MS);
   console.log("[Model] Cron started — refreshing every hour");
 }
 

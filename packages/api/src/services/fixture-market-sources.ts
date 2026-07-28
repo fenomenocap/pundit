@@ -1,16 +1,16 @@
+import { MarketProfile } from "../config/competitions";
 import {
   getTeamNameAliases,
+  modelFixtureKey,
   normalizeTeamName,
   normalizeTeamText,
   normalizedTeamPairKey,
 } from "../lib/team-names";
-import { ModelFixture } from "./model-data";
+import { getModelFixtureKey, ModelFixture } from "./model-data";
 import type { ThreeWayOdds } from "./model-market-odds";
 
 const STAKE_URL = "https://stake.bet/_api/graphql";
 const POLYMARKET_URL = "https://gamma-api.polymarket.com/events";
-// Gamma's events list caps limit at 100 and serves oldest-first, so current
-// match events never appear in a plain listing; search per fixture instead.
 const POLYMARKET_SEARCH_URL = "https://gamma-api.polymarket.com/public-search";
 const KALSHI_URL = "https://api.elections.kalshi.com/trade-api/v2/events";
 const TIMEOUT_MS = 10_000;
@@ -32,6 +32,48 @@ query SlugTournament(
     }
   }
 }`;
+
+interface StakeProfile {
+  category: string;
+  tournament: string;
+  referer: string;
+}
+
+interface KalshiProfile {
+  seriesTicker: string | null;
+}
+
+interface MarketSourceProfile {
+  stake: StakeProfile;
+  kalshi: KalshiProfile;
+}
+
+const MARKET_SOURCE_PROFILES: Record<MarketProfile, MarketSourceProfile> = {
+  "premier-league": {
+    stake: {
+      category: "england",
+      tournament: "premier-league",
+      referer: "https://stake.bet/sports/soccer/england/premier-league",
+    },
+    kalshi: { seriesTicker: null },
+  },
+  "uefa-champions-league": {
+    stake: {
+      category: "international-clubs",
+      tournament: "uefa-champions-league",
+      referer: "https://stake.bet/sports/soccer/international-clubs/uefa-champions-league",
+    },
+    kalshi: { seriesTicker: null },
+  },
+  "world-cup": {
+    stake: {
+      category: "international",
+      tournament: "world-cup",
+      referer: "https://stake.bet/sports/soccer/international/world-cup",
+    },
+    kalshi: { seriesTicker: "KXWCGAME" },
+  },
+};
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -104,8 +146,6 @@ function selection(name: string, fixture: ModelFixture): "home" | "draw" | "away
   if (normalized === normalizeTeamName(fixture.away)) return "away";
   const text = normalizeTeamText(name);
   if (["draw", "x", "tie"].includes(text)) return "draw";
-  // Polymarket labels its draw leg "Draw (Spain vs. Argentina)" — a draw-led
-  // label is a draw even when it goes on to name both teams.
   if (/^(draw|tie)\b/.test(text)) return "draw";
   return null;
 }
@@ -201,9 +241,6 @@ function kalshiPrice(market: UnknownRecord): number | null {
   return null;
 }
 
-// Kalshi outcome labels carry prefixes ("Reg Time: Spain", "Reg Time: Tie"),
-// so exact name matching fails; fall back to containment, requiring the label
-// to point at exactly one side so "Spain vs Argentina" never matches.
 function kalshiSelection(label: string, fixture: ModelFixture): "home" | "draw" | "away" | null {
   const direct = selection(label, fixture);
   if (direct) return direct;
@@ -243,20 +280,44 @@ async function jsonFetch(url: string, init?: RequestInit): Promise<unknown> {
   return response.json();
 }
 
-export async function fetchStakeOdds(fixtures: ModelFixture[]): Promise<Map<string, ThreeWayOdds>> {
+function fixturesByMarketProfile(fixtures: ModelFixture[]): Map<MarketProfile, ModelFixture[]> {
+  const grouped = new Map<MarketProfile, ModelFixture[]>();
+  for (const fixture of fixtures) {
+    const competition = fixture.competitionId;
+    let profile: MarketProfile;
+    if (competition === "eng.1") profile = "premier-league";
+    else if (competition.startsWith("uefa.")) profile = "uefa-champions-league";
+    else continue;
+    const bucket = grouped.get(profile) ?? [];
+    bucket.push(fixture);
+    grouped.set(profile, bucket);
+  }
+  return grouped;
+}
+
+export async function fetchStakeOdds(
+  fixtures: ModelFixture[],
+  profile: MarketProfile
+): Promise<Map<string, ThreeWayOdds>> {
+  const config = MARKET_SOURCE_PROFILES[profile];
   const payload = await jsonFetch(STAKE_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
       Origin: "https://stake.bet",
-      Referer: "https://stake.bet/sports/soccer/international/world-cup",
+      Referer: config.stake.referer,
     },
     body: JSON.stringify({
       query: STAKE_QUERY,
       variables: {
-        type: "popular", tournament: "world-cup", category: "international",
-        sport: "soccer", groups: ["main"], limit: 200, offset: 0,
+        type: "popular",
+        tournament: config.stake.tournament,
+        category: config.stake.category,
+        sport: "soccer",
+        groups: ["main"],
+        limit: 200,
+        offset: 0,
       },
     }),
   });
@@ -266,13 +327,13 @@ export async function fetchStakeOdds(fixtures: ModelFixture[]): Promise<Map<stri
   const result = new Map<string, ThreeWayOdds>();
   for (const raw of array(tournament?.fixtureList)) {
     const parsed = parseStakeFixture(raw, fixtures);
-    if (parsed) result.set(normalizedTeamPairKey(parsed.fixture.home, parsed.fixture.away), parsed.odds);
+    if (parsed) {
+      result.set(getModelFixtureKey(parsed.fixture), parsed.odds);
+    }
   }
   return result;
 }
 
-// Search hits can ship slimmer market objects than the events endpoint; when a
-// matching event parses without prices, refetch it in full by slug.
 async function fetchPolymarketOddsBySlug(slug: string, fixture: ModelFixture): Promise<ThreeWayOdds | null> {
   const payload = await jsonFetch(`${POLYMARKET_URL}?slug=${encodeURIComponent(slug)}`, {
     headers: { Accept: "application/json" },
@@ -298,11 +359,10 @@ export async function fetchPolymarketOdds(fixtures: ModelFixture[]): Promise<Map
         if (!event || !eventMatchesFixture(event, fixture)) continue;
         let odds = parsePolymarketEvent(event, fixture);
         if (!odds && typeof event.slug === "string" && event.slug) {
-          // A failed refetch of one candidate must not sink the other candidates.
           odds = await fetchPolymarketOddsBySlug(event.slug, fixture).catch(() => null);
         }
         if (odds) {
-          result.set(normalizedTeamPairKey(fixture.home, fixture.away), odds);
+          result.set(getModelFixtureKey(fixture), odds);
           break;
         }
       }
@@ -314,22 +374,24 @@ export async function fetchPolymarketOdds(fixtures: ModelFixture[]): Promise<Map
   return result;
 }
 
-// KXWCGAME is Kalshi's World Cup match-moneyline series (regulation-time 1X2,
-// the same 90-minute outcome the model prices). Filtering by series keeps the
-// walk to one page instead of paginating every open market on the exchange,
-// where WC matches sat beyond the old 10-page cap. KXWCPLAY (play-ins) is out
-// of scope. The cap below is a pure safety net against runaway cursors.
-const KALSHI_SERIES_TICKER = "KXWCGAME";
 const KALSHI_MAX_PAGES = 3;
 
-export async function fetchKalshiOdds(fixtures: ModelFixture[]): Promise<Map<string, ThreeWayOdds>> {
+export async function fetchKalshiOdds(
+  fixtures: ModelFixture[],
+  profile: MarketProfile
+): Promise<Map<string, ThreeWayOdds>> {
+  const seriesTicker = MARKET_SOURCE_PROFILES[profile].kalshi.seriesTicker;
   const result = new Map<string, ThreeWayOdds>();
+  if (!seriesTicker) return result;
+
   let cursor = "";
   let pages = 0;
   do {
     const params = new URLSearchParams({
-      series_ticker: KALSHI_SERIES_TICKER,
-      status: "open", with_nested_markets: "true", limit: "200",
+      series_ticker: seriesTicker,
+      status: "open",
+      with_nested_markets: "true",
+      limit: "200",
     });
     if (cursor) params.set("cursor", cursor);
     const payload = record(await jsonFetch(`${KALSHI_URL}?${params}`, {
@@ -338,11 +400,44 @@ export async function fetchKalshiOdds(fixtures: ModelFixture[]): Promise<Map<str
     for (const event of array(payload?.events)) {
       for (const fixture of fixtures) {
         const odds = parseKalshiEvent(event, fixture);
-        if (odds) result.set(normalizedTeamPairKey(fixture.home, fixture.away), odds);
+        if (odds) result.set(getModelFixtureKey(fixture), odds);
       }
     }
     cursor = typeof payload?.cursor === "string" ? payload.cursor : "";
     pages += 1;
   } while (cursor && pages < KALSHI_MAX_PAGES);
   return result;
+}
+
+export async function fetchAllMarketOdds(
+  fixtures: ModelFixture[]
+): Promise<Record<"stake" | "polymarket" | "kalshi", Map<string, ThreeWayOdds>>> {
+  const grouped = fixturesByMarketProfile(fixtures);
+  const stakeResults = await Promise.allSettled(
+    [...grouped.entries()].map(([profile, profileFixtures]) =>
+      fetchStakeOdds(profileFixtures, profile))
+  );
+  const kalshiResults = await Promise.allSettled(
+    [...grouped.entries()].map(([profile, profileFixtures]) =>
+      fetchKalshiOdds(profileFixtures, profile))
+  );
+  const stake = new Map<string, ThreeWayOdds>();
+  const kalshi = new Map<string, ThreeWayOdds>();
+  for (const result of stakeResults) {
+    if (result.status === "fulfilled") {
+      for (const [key, odds] of result.value) stake.set(key, odds);
+    }
+  }
+  for (const result of kalshiResults) {
+    if (result.status === "fulfilled") {
+      for (const [key, odds] of result.value) kalshi.set(key, odds);
+    }
+  }
+  const polymarket = await fetchPolymarketOdds(fixtures);
+  return { stake, polymarket, kalshi };
+}
+
+// Legacy key helper kept for tests.
+export function legacyMarketOddsFixtureKey(date: string, home: string, away: string): string {
+  return modelFixtureKey("legacy", date, home, away);
 }
