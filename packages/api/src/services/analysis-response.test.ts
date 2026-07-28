@@ -172,6 +172,10 @@ describe("sanitizeMatchAnswer", () => {
     expect(answer).toContain("**1-2 (7.6%)** and **0-1 (7.1%)**");
     expect(answer.match(/Aggregate advancement is outside/g)).toHaveLength(1);
     expect(answer).not.toContain("1-0 or 1-2");
+    expect(sanitizeMatchAnswer(
+      "For Sabah to come out on top, a 1-0 or 2-1 away win is the route.",
+      grounding
+    )).toContain("**1-2 (7.6%)** and **0-1 (7.1%)**");
   });
 
   it("renders grounded goal percentages and aggregate disclaimers atomically", () => {
