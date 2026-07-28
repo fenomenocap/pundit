@@ -10,7 +10,7 @@ export interface MatchResponse {
   awayTeam: string;
   utcDate: string;
   status: string;
-  stage: string | null; // group-stage, round-of-32, round-of-16, quarterfinals, semifinals, 3rd-place-match, final
+  stage: string | null;
   matchday: number | null;
   group: string | null;
   score: {
@@ -50,6 +50,14 @@ export interface ModelFixtureResponse {
   pHome: number;
   pDraw: number;
   pAway: number;
+  pOver2_5: number;
+  pUnder2_5: number;
+  pBttsYes: number;
+  pBttsNo: number;
+  topScores: Array<{ score: string; probability: number }>;
+  stakePHome: number | null;
+  stakePDraw: number | null;
+  stakePAway: number | null;
   result: {
     homeScore: number;
     awayScore: number;
@@ -227,7 +235,7 @@ export interface MatchGrounding {
   pBttsYes: number;
   pBttsNo: number;
   topScores: Array<{ score: string; probability: number }>;
-  scorelines?: Array<{ score: string; probability: number }>;
+  scorelines: Array<{ score: string; probability: number }>;
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
@@ -352,8 +360,30 @@ export async function getHealth() {
 export async function getReadiness() {
   return apiFetch<{
     status: "ready" | "loading";
-    model: { ready: boolean; lastUpdated: string | null };
-    football: { ready: boolean; lastUpdated: string | null };
-    marketOdds: { ready: boolean; lastUpdated: string | null };
+    model: {
+      ready: boolean;
+      fixtureCount: number;
+      expectedActiveFixtureCount: number;
+      lastUpdated: string | null;
+      error: string | null;
+    };
+    football: {
+      ready: boolean;
+      lastUpdated: string | null;
+      error: string | null;
+      competitionErrors: Record<string, string | null>;
+    };
+    activeFixtures: {
+      count: number;
+      byCompetition: Record<string, number>;
+      lastUpdated: string | null;
+    };
+    marketOdds: {
+      ready: boolean;
+      lastUpdated: string | null;
+      error: string | null;
+      sourceWarnings: Record<string, string | null>;
+      coverage: Record<string, { matched: number; total: number }>;
+    };
   }>("/ready");
 }

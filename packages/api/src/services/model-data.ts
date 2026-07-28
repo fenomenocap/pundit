@@ -5,7 +5,7 @@ import { getCompetitionById } from "../config/competitions";
 import { modelFixtureKey } from "../lib/team-names";
 import { ActiveFixture, getActiveFixtures } from "./active-fixtures";
 import { getCachedClubRatings, lookupClubRating } from "./club-ratings";
-import { computeMatchModel, DEFAULT_ELO, DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
+import { computeMatchModel, DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
 
 export interface ModelScoreline {
   score: string;
@@ -85,10 +85,9 @@ export function buildModelFixtureFromActive(
   const competition = getCompetitionById(fixture.competitionId);
   if (!competition || !competition.enabled) return null;
 
-  const homeElo = lookupClubRating(fixture.homeTeam, competition.ratingProfile, ratings)
-    ?? DEFAULT_ELO;
-  const awayElo = lookupClubRating(fixture.awayTeam, competition.ratingProfile, ratings)
-    ?? DEFAULT_ELO;
+  const homeElo = lookupClubRating(fixture.homeTeam, competition.ratingProfile, ratings);
+  const awayElo = lookupClubRating(fixture.awayTeam, competition.ratingProfile, ratings);
+  if (homeElo === undefined || awayElo === undefined) return null;
   const homeAdvantageElo = competition.homeFieldAdvantage ? DEFAULT_HOME_ADVANTAGE_ELO : 0;
   const model = computeMatchModel(homeElo, awayElo, homeAdvantageElo);
   const completed = fixture.status === "FINISHED" && fixture.score;
@@ -159,14 +158,54 @@ export function getModelFixtureKey(fixture: ModelFixture): string {
   return modelFixtureKey(fixture.competitionId, fixture.date, fixture.home, fixture.away);
 }
 
+function activeFixtureIdentity(
+  fixture: Pick<ActiveFixture, "competitionId" | "id">
+): string {
+  return `${fixture.competitionId}:${fixture.id}`;
+}
+
+function cachedFixtureIdentity(
+  fixture: Pick<ModelFixture, "competitionId" | "fixtureId">
+): string {
+  return `${fixture.competitionId}:${fixture.fixtureId}`;
+}
+
+export function modelDataCoversActiveFixtures(
+  model: Pick<ModelDataCache, "fixtures" | "lastUpdated">,
+  activeFixtures: ActiveFixture[]
+): boolean {
+  if (model.lastUpdated === null) return false;
+  const activeKeys = new Set(activeFixtures.map(activeFixtureIdentity));
+  const modelKeys = new Set(model.fixtures.map(cachedFixtureIdentity));
+  return activeKeys.size === modelKeys.size
+    && [...activeKeys].every((key) => modelKeys.has(key));
+}
+
 export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise<void> {
   console.log("[Model] Refreshing active fixture Dixon-Coles model...");
   try {
-    const ratings = getCachedClubRatings();
-    if (ratings.fetchedAt === null && ratings.error) {
-      throw new Error(`Club ratings are not ready: ${ratings.error}`);
+    // An empty active window is a valid state between rounds or seasons and
+    // does not need the ratings provider at all.
+    if (activeFixtures.length === 0) {
+      cache.fixtures = [];
+      cache.lastUpdated = new Date();
+      cache.error = null;
+      console.log("[Model] 0 active fixtures cached.");
+      return;
     }
-    cache.fixtures = buildActiveModelFixtures(activeFixtures, ratings.byProfile);
+
+    const ratings = getCachedClubRatings();
+    if (ratings.fetchedAt === null) {
+      const detail = ratings.error ? `: ${ratings.error}` : ".";
+      throw new Error(`Club ratings are not ready${detail}`);
+    }
+    const fixtures = buildActiveModelFixtures(activeFixtures, ratings.byProfile);
+    if (fixtures.length !== activeFixtures.length) {
+      throw new Error(
+        `Club ratings are missing for ${activeFixtures.length - fixtures.length} active fixture(s).`
+      );
+    }
+    cache.fixtures = fixtures;
     cache.lastUpdated = new Date();
     cache.error = null;
     console.log(`[Model] ${cache.fixtures.length} active fixtures cached.`);
@@ -177,16 +216,47 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
   }
 }
 
-const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-let cronTimer: ReturnType<typeof setInterval> | null = null;
+export const MODEL_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+export const MODEL_COLD_RETRY_MS = 6 * 60 * 1000;
+
+export function modelRefreshDelay(
+  cacheState: Pick<ModelDataCache, "fixtures" | "lastUpdated">,
+  activeFixtures: ActiveFixture[]
+): number {
+  return modelDataCoversActiveFixtures(cacheState, activeFixtures)
+    ? MODEL_REFRESH_INTERVAL_MS
+    : MODEL_COLD_RETRY_MS;
+}
+
+let cronTimer: ReturnType<typeof setTimeout> | null = null;
+let cronEnabled = false;
+
+function scheduleModelRefresh(): void {
+  if (!cronEnabled) return;
+  const activeFixtures = getActiveFixtures();
+  const delay = modelRefreshDelay(cache, activeFixtures);
+  cronTimer = setTimeout(() => {
+    cronTimer = null;
+    const nextActiveFixtures = getActiveFixtures();
+    void refreshModelData(nextActiveFixtures).finally(() => {
+      if (cronEnabled) scheduleModelRefresh();
+    });
+  }, delay);
+}
 
 export async function startModelCron(): Promise<void> {
-  await refreshModelData(getActiveFixtures());
-  cronTimer = setInterval(() => refreshModelData(getActiveFixtures()), REFRESH_INTERVAL_MS);
-  console.log("[Model] Cron started — refreshing every hour");
+  cronEnabled = true;
+  if (cronTimer) clearTimeout(cronTimer);
+  const activeFixtures = getActiveFixtures();
+  await refreshModelData(activeFixtures);
+  scheduleModelRefresh();
+  console.log(
+    `[Model] Cron started — next refresh in ${modelRefreshDelay(cache, activeFixtures) / 1000}s`
+  );
 }
 
 export function stopModelCron(): void {
-  if (cronTimer) clearInterval(cronTimer);
+  cronEnabled = false;
+  if (cronTimer) clearTimeout(cronTimer);
   cronTimer = null;
 }

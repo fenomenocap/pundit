@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import {
   ApiError,
   askQuestionStream,
+  getActiveModelFixtures,
   type AskGrounding,
   type ConversationTurn,
   type MatchGrounding,
@@ -16,7 +17,6 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { fetchActiveFixtures } from "@/lib/mock-data";
 
 interface ChatMessage {
   id: number;
@@ -28,13 +28,9 @@ interface ChatMessage {
 let nextId = 0;
 
 const FALLBACK_SUGGESTIONS = [
-  "Who wins the Premier League this season?",
-  "Arsenal vs Coventry City",
+  "What does the current Premier League table show?",
+  "How does a high defensive line change pressing risk?",
 ];
-
-function isKnownTeam(team: string): boolean {
-  return team.trim().toLowerCase() !== "tbd" && !/\b(?:winner|loser)\b/i.test(team);
-}
 
 function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
@@ -126,15 +122,17 @@ export function HomeChat() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchActiveFixtures().then(({ matches }) => {
-      if (cancelled) return;
-      const featured = matches
-        .filter((match) => match.status === "SCHEDULED" || match.status === "IN_PLAY")
-        .filter((match) => isKnownTeam(match.homeTeam) && isKnownTeam(match.awayTeam))
-        .map((match) => `${match.homeTeam} vs ${match.awayTeam}`)
-        .slice(0, 3);
-      setSuggestions(featured.length > 0 ? featured : FALLBACK_SUGGESTIONS);
-    });
+    getActiveModelFixtures()
+      .then(({ fixtures }) => {
+        if (cancelled) return;
+        const featured = fixtures
+          .map((fixture) => `${fixture.home} vs ${fixture.away}`)
+          .slice(0, 3);
+        setSuggestions(featured.length > 0 ? featured : FALLBACK_SUGGESTIONS);
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestions(FALLBACK_SUGGESTIONS);
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -174,9 +172,11 @@ export function HomeChat() {
           }
         },
       });
-      if (grounding?.kind === "match") {
-        setTeamContext([grounding.home, grounding.away]);
-      }
+      setTeamContext(
+        grounding?.kind === "match"
+          ? [grounding.home, grounding.away]
+          : undefined
+      );
       setMessages((prev) => {
         const finalMessage: ChatMessage = { id: assistantId, role: "assistant", content: answer, grounding };
         return started
@@ -305,7 +305,7 @@ export function HomeChat() {
                       {m.grounding?.kind === "match"
                         ? `${m.grounding.competition} · ${m.grounding.date} · model-grounded match`
                         : m.grounding?.kind === "competition"
-                          ? `${m.grounding.competition} · model-grounded standings`
+                          ? `${m.grounding.competition} · ESPN standings-grounded competition`
                           : "General analysis · not model-grounded"}
                     </div>
                   )}

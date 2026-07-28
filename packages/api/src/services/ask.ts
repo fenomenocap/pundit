@@ -66,6 +66,12 @@ export interface ConversationTurn {
 }
 
 export type TeamContext = [string, string];
+export type AnalysisTier = "match" | "competition" | "general";
+
+export type ResolvedAskContext =
+  | { tier: "match"; fixture: ModelFixture }
+  | { tier: "competition"; competitionId: string }
+  | { tier: "general" };
 
 const ANTHROPIC_MODEL = "claude-sonnet-5";
 const MAX_TOKENS = 4_096;
@@ -196,24 +202,89 @@ const COMPETITION_FOLLOW_UP_CUES = [
   "that standing",
   "those standings",
   "that ranking",
+  "those rankings",
+  "that race",
   "top of the table",
   "title race",
   "the league",
   "premier league",
 ];
 
+function hasCompetitionFollowUpCue(question: string): boolean {
+  const normalized = normalizeTeamText(question);
+  return COMPETITION_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
+}
+
+export function resolveCompetitionContext(
+  question: string,
+  history: ConversationTurn[]
+): string | undefined {
+  const explicitCompetitionId = resolveCompetitionQuestion(question);
+  if (explicitCompetitionId) return explicitCompetitionId;
+  if (!hasCompetitionFollowUpCue(question)) return undefined;
+
+  return history
+    .filter(({ role }) => role === "user")
+    .map(({ content }) => resolveCompetitionQuestion(content))
+    .reverse()
+    .find((competitionId): competitionId is string => competitionId !== undefined);
+}
+
 export function shouldUseCompetitionGrounding(
   question: string,
   history: ConversationTurn[]
 ): boolean {
-  if (isCompetitionQuestion(question)) return true;
+  return resolveCompetitionContext(question, history) !== undefined;
+}
+
+const MATCHUP_CUE_PATTERNS = [
+  /\b(?:vs|v)\b\.?/,
+  /\bagainst\b/,
+  /\bmatch(?:up)?\b/,
+  /\bfixture\b/,
+  /\bgame\b/,
+  /\b(?:beat|beats|defeat|defeats)\b/,
+];
+
+function hasExplicitMatchupCue(question: string): boolean {
   const normalized = normalizeTeamText(question);
-  const hasFollowUpCue = COMPETITION_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
-  if (!hasFollowUpCue) return false;
-  return history
-    .filter(({ role }) => role === "user")
-    .slice(-2)
-    .some(({ content }) => isCompetitionQuestion(content));
+  return MATCHUP_CUE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+const MATCH_FOLLOW_UP_CUES = [
+  "that match",
+  "the match",
+  "that game",
+  "the game",
+  "those teams",
+  "either team",
+  "home side",
+  "away side",
+  "the draw",
+  "draw chance",
+  "win chance",
+  "over 2.5",
+  "under 2.5",
+  "btts",
+  "both teams to score",
+  "scoreline",
+  "score line",
+  "goals",
+  "the odds",
+  "market price",
+  "the edge",
+  "the underdog",
+  "the favourite",
+  "the favorite",
+  "team news",
+  "injury",
+  "lineup",
+  "what about them",
+];
+
+export function shouldUseMatchGrounding(question: string): boolean {
+  const normalized = normalizeTeamText(question);
+  return MATCH_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
 }
 
 export function resolveTeams(question: string, fixtures: ModelFixture[]): [string, string] {
@@ -354,7 +425,32 @@ export function buildCompetitionGrounding(
   };
 }
 
-type AnalysisTier = "match" | "competition" | "general";
+export function resolveAskContext(
+  question: string,
+  history: ConversationTurn[],
+  teamContext: TeamContext | undefined,
+  fixtures: ModelFixture[],
+  standings: FootballStanding[]
+): ResolvedAskContext {
+  const teams = resolveQuestionTeams(question, fixtures);
+  const explicitFixture = teams ? findFixture(teams[0], teams[1], fixtures) : undefined;
+  const competitionId = resolveCompetitionContext(question, history);
+
+  if (explicitFixture && (!competitionId || hasExplicitMatchupCue(question))) {
+    return { tier: "match", fixture: explicitFixture };
+  }
+
+  if (competitionId && standings.some((row) => row.competitionId === competitionId)) {
+    return { tier: "competition", competitionId };
+  }
+
+  if (!teams && !competitionId && teamContext && shouldUseMatchGrounding(question)) {
+    const contextualFixture = findFixture(teamContext[0], teamContext[1], fixtures);
+    if (contextualFixture) return { tier: "match", fixture: contextualFixture };
+  }
+
+  return { tier: "general" };
+}
 
 function analysisRequestParams(systemPrompt: string, messages: Anthropic.MessageParam[]) {
   return {
@@ -528,40 +624,35 @@ function prepareAsk(
 ): PreparedAsk {
   const modelData = getCachedModelData();
   const { fixtures } = modelData;
-  if (fixtures.length === 0) {
-    throw new AppError(503, "Model data is still loading. Please try again shortly.");
-  }
-  let teams = resolveQuestionTeams(question, fixtures);
+  const football = getCachedMatches();
+  const context = resolveAskContext(
+    question,
+    history,
+    teamContext,
+    fixtures,
+    football.standings
+  );
 
   let grounding: AskGrounding;
   let systemPrompt: string;
   let currentMessage: string;
 
-  const competitionId = resolveCompetitionQuestion(question)
-    ?? (shouldUseCompetitionGrounding(question, history) ? "eng.1" : undefined);
-
-  if (!teams && competitionId) {
-    const football = getCachedMatches();
+  if (context.tier === "competition") {
     grounding = buildCompetitionGrounding(
-      competitionId,
+      context.competitionId,
       football.standings,
       football.lastUpdated
     );
     systemPrompt = COMPETITION_SYSTEM_PROMPT;
     currentMessage = `Competition standings: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+  } else if (context.tier === "match") {
+    grounding = buildGrounding(context.fixture);
+    systemPrompt = MATCH_SYSTEM_PROMPT;
+    currentMessage = `Model data: ${JSON.stringify(grounding)}\nUser question: ${question}`;
   } else {
-    if (!teams && history.length > 0 && teamContext) teams = teamContext;
-    const fixture = teams ? findFixture(teams[0], teams[1], fixtures) : undefined;
-
-    if (fixture) {
-      grounding = buildGrounding(fixture);
-      systemPrompt = MATCH_SYSTEM_PROMPT;
-      currentMessage = `Model data: ${JSON.stringify(grounding)}\nUser question: ${question}`;
-    } else {
-      grounding = null;
-      systemPrompt = GENERAL_SYSTEM_PROMPT;
-      currentMessage = `User question: ${question}`;
-    }
+    grounding = null;
+    systemPrompt = GENERAL_SYSTEM_PROMPT;
+    currentMessage = `User question: ${question}`;
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -635,7 +726,3 @@ export async function answerQuestionStream(
     mapAnalysisError(err);
   }
 }
-
-// Legacy exports kept for tests migrating from tournament tier.
-export const isTournamentQuestion = isCompetitionQuestion;
-export const shouldUseTournamentGrounding = shouldUseCompetitionGrounding;
