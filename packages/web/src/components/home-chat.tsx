@@ -2,21 +2,23 @@
 
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import {
   ApiError,
   askQuestionStream,
-  getActiveModelFixtures,
   type AskGrounding,
   type ConversationTurn,
   type MatchGrounding,
+  type ModelFixtureResponse,
   type TeamContext,
 } from "@/lib/api";
+import { fetchActiveModelFixtures } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Disclaimer } from "@/components/disclaimer";
 
 interface ChatMessage {
   id: number;
@@ -25,11 +27,13 @@ interface ChatMessage {
   grounding?: AskGrounding;
 }
 
+type LoadingTier = "match" | "competition" | "general" | null;
+
 let nextId = 0;
 
 const FALLBACK_SUGGESTIONS = [
   "What does the current Premier League table show?",
-  "How does a high defensive line change pressing risk?",
+  "Arsenal vs Coventry City",
 ];
 
 function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
@@ -46,6 +50,78 @@ function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
     }
   }
   return turns.slice(-12);
+}
+
+function sanitizeAskError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.code === "MODEL_UNAVAILABLE") {
+      return "Pundit's match model is temporarily unavailable — competition and general questions still work.";
+    }
+    switch (err.status) {
+      case 400:
+        return "Couldn't understand that — try rephrasing your question.";
+      case 404:
+        return "No data for that matchup yet.";
+      case 429:
+        return "You're asking a lot at once — wait a moment and try again.";
+      case 502:
+      case 503:
+      case 504:
+        return "Analysis is temporarily unavailable — try again shortly.";
+      default:
+        return "Analysis is temporarily unavailable — try again shortly.";
+    }
+  }
+  if (err instanceof TypeError) {
+    return "Connection problem — check your network and try again.";
+  }
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    if (msg.includes("failed to fetch") || msg.includes("network")) {
+      return "Connection problem — check your network and try again.";
+    }
+    if (
+      msg.includes("anthropic")
+      || msg.includes("api_key")
+      || msg.includes("stream ended")
+      || msg.includes("configured")
+    ) {
+      return "Analysis is temporarily unavailable — try again shortly.";
+    }
+  }
+  return "Something went wrong — try again shortly.";
+}
+
+function loadingMessage(tier: LoadingTier): string {
+  if (tier === "match") return "Checking model & markets…";
+  if (tier === "competition") return "Loading standings…";
+  return "Thinking…";
+}
+
+function competitionAbbr(competitionId: string, competition: string): string {
+  if (competitionId === "eng.1") return "PL";
+  if (competitionId.includes("champions")) return "UCL";
+  return competition.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
+}
+
+function formatSuggestionChip(fixture: ModelFixtureResponse): string {
+  const day = new Date(fixture.utcDate).toLocaleDateString(undefined, { weekday: "short" });
+  const abbr = competitionAbbr(fixture.competitionId, fixture.competition);
+  return `${fixture.home} vs ${fixture.away} · ${abbr} · ${day}`;
+}
+
+function teamAbbr(name: string): string {
+  const known: Record<string, string> = {
+    Arsenal: "ARS",
+    Liverpool: "LIV",
+    "Manchester City": "MCI",
+    "Manchester United": "MUN",
+    Chelsea: "CHE",
+    "Tottenham Hotspur": "TOT",
+    "Coventry City": "COV",
+    "Brighton & Hove Albion": "BHA",
+  };
+  return known[name] ?? name.slice(0, 3).toUpperCase();
 }
 
 function oddsRows(grounding: MatchGrounding) {
@@ -87,6 +163,16 @@ function formatPercent(value: number | null): string {
   return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
 }
 
+function groundingLabel(grounding: AskGrounding): string {
+  if (grounding?.kind === "match") {
+    return `${grounding.competition} · ${grounding.date} · Pundit model`;
+  }
+  if (grounding?.kind === "competition") {
+    return `${grounding.competition} · ESPN table`;
+  }
+  return "General · no live model data";
+}
+
 function AssistantMarkdown({ content }: { content: string }) {
   return (
     <ReactMarkdown
@@ -105,11 +191,13 @@ function AssistantMarkdown({ content }: { content: string }) {
 }
 
 export function HomeChat() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streamStarted, setStreamStarted] = useState(false);
+  const [loadingTier, setLoadingTier] = useState<LoadingTier>(null);
   const [teamContext, setTeamContext] = useState<TeamContext>();
   const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -122,12 +210,10 @@ export function HomeChat() {
 
   useEffect(() => {
     let cancelled = false;
-    getActiveModelFixtures()
+    fetchActiveModelFixtures()
       .then(({ fixtures }) => {
         if (cancelled) return;
-        const featured = fixtures
-          .map((fixture) => `${fixture.home} vs ${fixture.away}`)
-          .slice(0, 3);
+        const featured = fixtures.slice(0, 3).map(formatSuggestionChip);
         setSuggestions(featured.length > 0 ? featured : FALLBACK_SUGGESTIONS);
       })
       .catch(() => {
@@ -148,6 +234,7 @@ export function HomeChat() {
     setInput("");
     setLoading(true);
     setStreamStarted(false);
+    setLoadingTier(null);
 
     let started = false;
     let streamedGrounding: AskGrounding = null;
@@ -156,6 +243,13 @@ export function HomeChat() {
       const { answer, grounding } = await askQuestionStream(trimmed, history, teamContext, {
         onGrounding: (initialGrounding) => {
           streamedGrounding = initialGrounding;
+          setLoadingTier(
+            initialGrounding?.kind === "match"
+              ? "match"
+              : initialGrounding?.kind === "competition"
+                ? "competition"
+                : "general"
+          );
         },
         onDelta: (text) => {
           if (!started) {
@@ -184,28 +278,14 @@ export function HomeChat() {
           : [...prev, finalMessage];
       });
     } catch (err) {
-      const serverMessage = err instanceof Error ? err.message : "Something went wrong.";
-      const status = err instanceof ApiError ? err.status : undefined;
-      const message = status === 400
-        ? `Couldn't understand that — ${serverMessage}`
-        : status === 404
-          ? `No data for that matchup yet — ${serverMessage}`
-          : status === 429
-            ? "You're asking a lot at once — wait a moment and try again"
-            : status === 502
-              ? "Analysis service is temporarily unavailable — try again shortly"
-              : status === 503
-                ? "Match data is still loading — try again shortly"
-                : status === 504
-                  ? "Analysis took too long — try again shortly"
-              : serverMessage;
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== assistantId),
-        { id: nextId++, role: "error", content: message },
+        { id: nextId++, role: "error", content: sanitizeAskError(err) },
       ]);
     } finally {
       setLoading(false);
       setStreamStarted(false);
+      setLoadingTier(null);
     }
   }
 
@@ -227,12 +307,21 @@ export function HomeChat() {
     setMessages([]);
     setInput("");
     setTeamContext(undefined);
+    autoAskedRef.current = null;
+    if (searchParams.get("q")) {
+      router.replace("/", { scroll: false });
+    }
   }
 
   return (
     <div className="mx-auto flex h-[calc(100vh-2.75rem)] max-w-2xl flex-col px-4">
       {messages.length > 0 && (
-        <div className="flex justify-end pt-3">
+        <div className="flex items-center justify-end gap-2 pt-3">
+          {teamContext && (
+            <span className="rounded-full border border-border bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+              Following: {teamContext[0]} vs {teamContext[1]}
+            </span>
+          )}
           <Button
             type="button"
             variant="ghost"
@@ -256,71 +345,69 @@ export function HomeChat() {
               <button
                 key={s}
                 onClick={() => ask(s)}
-                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-cyan-500/50 hover:text-foreground"
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
               >
                 {s}
               </button>
             ))}
           </div>
           <div className="mt-8 flex items-center gap-3">
-            <Link
-              href="/fixtures"
-              className="rounded-md bg-cyan-500 px-4 py-2 text-xs font-semibold text-black transition-colors hover:bg-cyan-400"
-            >
-              View Fixtures
+            <Link href="/fixtures">
+              <Button size="sm">View Fixtures</Button>
             </Link>
-            <Link
-              href="/model"
-              className="rounded-md bg-secondary px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Model Reference
+            <Link href="/model">
+              <Button variant="secondary" size="sm">Model Reference</Button>
             </Link>
           </div>
         </div>
       ) : (
         <ScrollArea className="flex-1">
-          <div className="flex flex-col gap-3 py-4">
+          <div
+            aria-live="polite"
+            aria-relevant="additions text"
+            className="flex flex-col gap-3 py-4"
+          >
             {messages.map((m) => {
               const rows = m.role === "assistant" && m.grounding?.kind === "match"
                 ? oddsRows(m.grounding)
                 : [];
+              const hasMarkets = rows.length > 1;
+              const homeHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.home) : "Home";
+              const awayHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.away) : "Away";
               return (
                 <div
                   key={m.id}
+                  role={m.role === "error" ? "alert" : undefined}
                   className={cn(
                     "max-w-[85%] rounded-lg border px-4 py-2.5 text-sm leading-relaxed",
                     m.role === "user" &&
-                      "ml-auto border-cyan-500/30 bg-cyan-950/40 text-foreground",
+                      "ml-auto border-primary/30 bg-primary/10 text-foreground",
                     m.role === "assistant" &&
                       "mr-auto border-border bg-card text-foreground",
                     m.role === "error" &&
-                      "mr-auto border-pink-500/30 bg-pink-950 text-pink-200"
+                      "mr-auto border-destructive/30 bg-destructive/10 text-destructive-foreground"
                   )}
                 >
                   {m.role === "assistant"
                     ? <AssistantMarkdown content={m.content} />
                     : <div>{m.content}</div>}
                   {m.role === "assistant" && (
-                    <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {m.grounding?.kind === "match"
-                        ? `${m.grounding.competition} · ${m.grounding.date} · model-grounded match`
-                        : m.grounding?.kind === "competition"
-                          ? `${m.grounding.competition} · ESPN standings-grounded competition`
-                          : "General analysis · not model-grounded"}
+                    <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {groundingLabel(m.grounding ?? null)}
                     </div>
                   )}
                   {rows.length > 0 && (
-                    <div className="mt-2 border-t border-border/70 pt-2 text-[11px] leading-tight text-muted-foreground">
-                      <div className="grid grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)] gap-x-2 pb-1 font-medium uppercase tracking-wide">
+                    <div className="mt-2 border-t border-border/70 pt-2 text-xs leading-tight text-muted-foreground">
+                      <div className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 pb-1 font-medium uppercase tracking-wide sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]">
                         <span>Market</span>
-                        <span className="text-right">Home</span>
+                        <span className="text-right">{homeHeader}</span>
                         <span className="text-right">Draw</span>
-                        <span className="text-right">Away</span>
+                        <span className="text-right">{awayHeader}</span>
                       </div>
                       {rows.map((row) => (
                         <div
                           key={row.label}
-                          className="grid grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)] gap-x-2 py-0.5"
+                          className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 py-0.5 sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]"
                         >
                           <span className="text-foreground/80">{row.label}</span>
                           <span className="text-right">{formatPercent(row.pHome)}</span>
@@ -328,6 +415,11 @@ export function HomeChat() {
                           <span className="text-right">{formatPercent(row.pAway)}</span>
                         </div>
                       ))}
+                      {!hasMarkets && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          No live market line available
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -335,8 +427,8 @@ export function HomeChat() {
             })}
             {loading && !streamStarted && (
               <div className="mr-auto flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-muted-foreground">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
-                Checking model data and team news…
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                {loadingMessage(loadingTier)}
               </div>
             )}
             <div ref={scrollRef} />
@@ -344,17 +436,24 @@ export function HomeChat() {
         </ScrollArea>
       )}
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-border py-3">
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about an upcoming match or the Premier League title race"
-          disabled={loading}
-          maxLength={500}
-        />
-        <Button type="submit" disabled={loading || !input.trim()}>
-          Send
-        </Button>
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-1.5 border-t border-border py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask about Arsenal vs Coventry or the Premier League table"
+            disabled={loading}
+            maxLength={500}
+            aria-label="Ask a question"
+          />
+          <Button type="submit" disabled={loading || !input.trim()}>
+            Send
+          </Button>
+        </div>
+        <Disclaimer className="text-center text-xs text-muted-foreground" />
       </form>
     </div>
   );

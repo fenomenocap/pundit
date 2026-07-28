@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  getActiveModelFixtures,
-  getCompetitions,
-  type ModelFixtureResponse,
-} from "@/lib/api";
+import { fetchActiveModelFixtures, fetchCompetitions } from "@/lib/mock-data";
+import type { ModelFixtureResponse } from "@/lib/api";
+import { Disclaimer } from "@/components/disclaimer";
+import { PageHeader } from "@/components/page-header";
+import { ErrorBanner } from "@/components/error-banner";
+import { EmptyState } from "@/components/empty-state";
+import { FilterPill } from "@/components/filter-pill";
 
 function percent(value: number | null): string {
   return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
@@ -22,15 +24,15 @@ export default function ModelPage() {
   const [competitions, setCompetitions] = useState<Array<{ id: string; name: string }>>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    document.title = "Model | Pundit";
-    let cancelled = false;
-    Promise.all([getActiveModelFixtures(), getCompetitions()])
+  const load = () => {
+    setLoading(true);
+    Promise.all([fetchActiveModelFixtures(), fetchCompetitions()])
       .then(([fixtureData, competitionData]) => {
-        if (cancelled) return;
         setFixtures(fixtureData.fixtures);
         setLastUpdated(fixtureData.lastUpdated);
+        setError(fixtureData.error);
         setCompetitions(
           competitionData.competitions
             .filter((competition) => competition.enabled)
@@ -38,12 +40,13 @@ export default function ModelPage() {
         );
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not load model data.");
-      });
-    return () => {
-      cancelled = true;
-      document.title = "Pundit";
-    };
+        setError(reason instanceof Error ? reason.message : "Could not load model data.");
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
   }, []);
 
   const filteredFixtures = useMemo(() => (
@@ -54,103 +57,119 @@ export default function ModelPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6">
-      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <span className="rounded border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400">
-              Local model
-            </span>
-            <span className="text-[10px] text-muted-foreground">Reference only · not tradeable</span>
-          </div>
-          <h1 className="font-heading text-2xl font-bold text-white">Club season model</h1>
-          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-            Live 1X2 probabilities for active Premier League and UCL qualifier fixtures,
-            with home-field advantage where applicable.
-            {" "}
-            <Link href="/evaluation/wc-2026" className="text-cyan-400 hover:text-cyan-300">
-              WC 2026 backtest →
-            </Link>
-          </p>
-        </div>
-        <span className="font-mono text-[10px] text-muted-foreground">
-          {lastUpdated ? `Updated ${new Date(lastUpdated).toLocaleString()}` : "Loading current run…"}
-        </span>
-      </div>
+      <PageHeader
+        title="Club season model"
+        subtitle="Live 1X2 probabilities for active Premier League and UCL qualifier fixtures, with home-field advantage where applicable."
+        lastUpdated={lastUpdated}
+        loading={loading}
+        badge={(
+          <span className="mb-2 inline-block rounded border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+            Local model
+          </span>
+        )}
+      />
 
-      {error ? (
-        <div className="rounded-lg border border-pink-500/30 bg-pink-950 px-4 py-3 text-sm text-pink-200">
-          {error}
-        </div>
-      ) : (
+      <p className="-mt-4 mb-6 text-xs text-muted-foreground">
+        <Disclaimer />
+        {" · "}
+        <Link
+          href="/evaluation/wc-2026"
+          className="text-primary transition-colors hover:text-primary/80"
+        >
+          WC 2026 backtest
+        </Link>
+      </p>
+
+      {error && <ErrorBanner message={error} onRetry={load} />}
+
+      {!error && (
         <section className="overflow-hidden rounded-lg border border-border bg-card">
           <div className="border-b border-border px-4 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-white">Active fixtures</h2>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  {filteredFixtures.length || "…"} upcoming matches with model 1X2 probabilities.
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {loading ? "…" : filteredFixtures.length} upcoming matches with model 1X2 probabilities.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
+                <FilterPill
+                  label="All"
+                  active={selectedCompetition === "all"}
                   onClick={() => setSelectedCompetition("all")}
-                  className={`rounded-full border px-3 py-1 text-[10px] ${
-                    selectedCompetition === "all"
-                      ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
-                      : "border-border text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  All
-                </button>
+                />
                 {competitions.map((competition) => (
-                  <button
+                  <FilterPill
                     key={competition.id}
-                    type="button"
+                    label={competition.name}
+                    active={selectedCompetition === competition.id}
                     onClick={() => setSelectedCompetition(competition.id)}
-                    className={`rounded-full border px-3 py-1 text-[10px] ${
-                      selectedCompetition === competition.id
-                        ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {competition.name}
-                  </button>
+                  />
                 ))}
               </div>
             </div>
           </div>
           <div className="max-h-[70vh] overflow-auto">
-            <table className="w-full text-left text-[11px]">
-              <thead className="sticky top-0 bg-card text-[9px] uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2">Match</th>
-                  <th>Home</th>
-                  <th>Draw</th>
-                  <th>Away</th>
-                  <th className="pr-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredFixtures.map((fixture) => (
-                  <tr key={`${fixture.competitionId}-${fixture.date}-${fixture.home}-${fixture.away}`} className="border-t border-border/60">
-                    <td className="px-3 py-2">
-                      <div className="font-medium text-foreground">{fixture.home} · {fixture.away}</div>
-                      <div className="mt-0.5 text-[9px] text-muted-foreground">
-                        {fixture.competition} · {fixture.date}
-                        {fixture.stage !== "match" ? ` · ${stageLabel(fixture.stage)}` : ""}
-                      </div>
-                    </td>
-                    <td className="font-mono text-muted-foreground">{percent(fixture.pHome)}</td>
-                    <td className="font-mono text-muted-foreground">{percent(fixture.pDraw)}</td>
-                    <td className="font-mono text-muted-foreground">{percent(fixture.pAway)}</td>
-                    <td className="pr-3 font-mono text-foreground">
-                      {fixture.result ? `${fixture.result.homeScore}–${fixture.result.awayScore}` : "Upcoming"}
-                    </td>
-                  </tr>
+            {loading ? (
+              <div className="space-y-0">
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <div key={index} className="border-t border-border/60 px-3 py-4">
+                    <div className="h-4 w-48 animate-pulse rounded bg-secondary" />
+                    <div className="mt-2 h-3 w-32 animate-pulse rounded bg-secondary/60" />
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            ) : filteredFixtures.length === 0 ? (
+              <EmptyState
+                message="No upcoming fixtures in the next 14 days."
+                actionLabel="View fixtures"
+                actionHref="/fixtures"
+                className="border-0 bg-transparent"
+              />
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 bg-card text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Match</th>
+                    <th>Home</th>
+                    <th>Draw</th>
+                    <th>Away</th>
+                    <th>Status</th>
+                    <th className="pr-3" aria-label="Ask about match" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredFixtures.map((fixture) => (
+                    <tr
+                      key={`${fixture.competitionId}-${fixture.date}-${fixture.home}-${fixture.away}`}
+                      className="border-t border-border/60"
+                    >
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-foreground">{fixture.home} · {fixture.away}</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {fixture.competition} · {fixture.date}
+                          {fixture.stage !== "match" ? ` · ${stageLabel(fixture.stage)}` : ""}
+                        </div>
+                      </td>
+                      <td className="font-mono text-muted-foreground">{percent(fixture.pHome)}</td>
+                      <td className="font-mono text-muted-foreground">{percent(fixture.pDraw)}</td>
+                      <td className="font-mono text-muted-foreground">{percent(fixture.pAway)}</td>
+                      <td className="font-mono text-foreground">
+                        {fixture.result ? `${fixture.result.homeScore}–${fixture.result.awayScore}` : "Upcoming"}
+                      </td>
+                      <td className="pr-3">
+                        <Link
+                          href={`/?q=${encodeURIComponent(`${fixture.home} vs ${fixture.away}`)}`}
+                          className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary/80"
+                        >
+                          Ask
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </section>
       )}

@@ -247,8 +247,23 @@ describe("resolveAskContext", () => {
       [],
       undefined,
       [],
-      [standing()]
+      [standing()],
+      [{ home: "Arsenal", away: "Coventry City" }]
     )).toEqual({ tier: "competition", competitionId: "eng.1" });
+  });
+
+  it("reports an active matchup whose model row is unavailable", () => {
+    expect(resolveAskContext(
+      "Arsenal vs Coventry City",
+      [],
+      undefined,
+      [],
+      [],
+      [{ home: "Arsenal", away: "Coventry City" }]
+    )).toEqual({
+      tier: "model-unavailable",
+      teams: ["Arsenal", "Coventry City"],
+    });
   });
 
   it("routes a two-team title question to competition grounding", () => {
@@ -320,5 +335,22 @@ describe("resolveAskContext", () => {
       fixtures,
       []
     )).toEqual({ tier: "general" });
+  });
+
+  it("does not silently generalize a match follow-up while its model row is unavailable", () => {
+    expect(resolveAskContext(
+      "What about the draw chance?",
+      [
+        { role: "user", content: "Arsenal vs Coventry City" },
+        { role: "assistant", content: "The model was previously available." },
+      ],
+      ["Arsenal", "Coventry City"],
+      [],
+      [],
+      [{ home: "Arsenal", away: "Coventry City" }]
+    )).toEqual({
+      tier: "model-unavailable",
+      teams: ["Arsenal", "Coventry City"],
+    });
   });
 });

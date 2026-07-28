@@ -19,7 +19,8 @@ export function requestLogger(req: Request, _res: Response, next: NextFunction) 
 export class AppError extends Error {
   constructor(
     public statusCode: number,
-    message: string
+    message: string,
+    public code?: string
   ) {
     super(message);
     this.name = "AppError";
@@ -41,7 +42,10 @@ export function errorHandler(
   console.error(`Error: ${err.message}`);
 
   if (err instanceof AppError) {
-    res.status(err.statusCode).json({ error: err.message });
+    res.status(err.statusCode).json({
+      error: err.message,
+      ...(err.code ? { code: err.code } : {}),
+    });
     return;
   }
 
