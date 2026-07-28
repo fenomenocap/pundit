@@ -35,21 +35,18 @@ export interface StandingResponse {
   advanced: boolean;
 }
 
-export interface ModelTeamResponse {
-  team: string;
-  winProb: number;
-  sfProb: number;
-  qfProb: number;
-  marketPrice: number | null;
-  edge: number | null;
-}
-
 export interface ModelFixtureResponse {
+  competitionId: string;
+  competition: string;
+  fixtureId: number;
+  utcDate: string;
   date: string;
   group: string | null;
   stage: string;
   home: string;
   away: string;
+  homeElo: number;
+  awayElo: number;
   pHome: number;
   pDraw: number;
   pAway: number;
@@ -186,13 +183,17 @@ export async function getRecentMatchesAll() {
   return getRecentMatches();
 }
 
-export async function getModelProbabilities() {
-  return apiFetch<{ teams: ModelTeamResponse[]; lastUpdated: string | null }>("/api/model/wc");
+export async function getActiveModelFixtures(competition?: string) {
+  const query = competition ? `?competition=${encodeURIComponent(competition)}` : "";
+  return apiFetch<{ fixtures: ModelFixtureResponse[]; lastUpdated: string | null; error?: string | null }>(
+    `/api/model/active${query}`
+  );
 }
 
-export async function getModelFixtures() {
-  return apiFetch<{ fixtures: ModelFixtureResponse[]; lastUpdated: string | null }>(
-    "/api/model/fixtures"
+export async function getModelFixtures(competition?: string) {
+  const query = competition ? `?competition=${encodeURIComponent(competition)}` : "";
+  return apiFetch<{ fixtures: ModelFixtureResponse[]; lastUpdated: string | null; error?: string | null }>(
+    `/api/model/fixtures${query}`
   );
 }
 
@@ -211,6 +212,9 @@ export interface OddsSource {
 
 export interface MatchGrounding {
   kind: "match";
+  competitionId: string;
+  competition: string;
+  homeFieldAdvantage: boolean;
   date: string;
   stage: string;
   home: string;
@@ -230,18 +234,21 @@ export interface MatchGrounding {
   oddsSources: OddsSource[];
 }
 
-export interface TournamentGrounding {
-  kind: "tournament";
-  status: "in_progress" | "completed";
-  champion: string | null;
+export interface CompetitionGrounding {
+  kind: "competition";
+  competitionId: string;
+  competition: string;
   updatedAt: string | null;
-  teams: Array<{
+  standings: Array<{
+    position: number;
     team: string;
-    winProb: number;
+    playedGames: number;
+    points: number;
+    goalDifference: number;
   }>;
 }
 
-export type AskGrounding = MatchGrounding | TournamentGrounding | null;
+export type AskGrounding = MatchGrounding | CompetitionGrounding | null;
 
 export interface ConversationTurn {
   role: "user" | "assistant";
