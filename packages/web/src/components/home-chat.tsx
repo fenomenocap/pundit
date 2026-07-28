@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { fetchUpcomingMatches } from "@/lib/mock-data";
+import { fetchActiveFixtures } from "@/lib/mock-data";
 
 interface ChatMessage {
   id: number;
@@ -28,8 +28,8 @@ interface ChatMessage {
 let nextId = 0;
 
 const FALLBACK_SUGGESTIONS = [
-  "Who is the favourite to win the World Cup now?",
-  "Which remaining team has the strongest title chance?",
+  "Who wins the Premier League this season?",
+  "Arsenal vs Coventry City",
 ];
 
 function isKnownTeam(team: string): boolean {
@@ -126,13 +126,11 @@ export function HomeChat() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchUpcomingMatches().then(({ matches }) => {
+    fetchActiveFixtures().then(({ matches }) => {
       if (cancelled) return;
       const featured = matches
-        .filter((match) => ["semifinals", "3rd-place-match", "final"].includes(match.stage ?? "")
-          && (match.status === "SCHEDULED" || match.status === "IN_PLAY")
-          && isKnownTeam(match.homeTeam)
-          && isKnownTeam(match.awayTeam))
+        .filter((match) => match.status === "SCHEDULED" || match.status === "IN_PLAY")
+        .filter((match) => isKnownTeam(match.homeTeam) && isKnownTeam(match.awayTeam))
         .map((match) => `${match.homeTeam} vs ${match.awayTeam}`)
         .slice(0, 3);
       setSuggestions(featured.length > 0 ? featured : FALLBACK_SUGGESTIONS);
@@ -250,8 +248,8 @@ export function HomeChat() {
         <div className="flex flex-1 flex-col items-center justify-center text-center">
           <h1 className="font-heading text-3xl font-bold text-white sm:text-4xl">Pundit</h1>
           <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-            Ask about any World Cup 2026 matchup for a read grounded in
-            Pundit&apos;s Dixon-Coles/Poisson model, calibrated on live Elo ratings.
+            Ask about upcoming Premier League or UCL qualifier matches for a read grounded in
+            Pundit&apos;s Dixon-Coles/Poisson model, calibrated on live ClubElo ratings.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
             {suggestions.map((s) => (
@@ -305,9 +303,9 @@ export function HomeChat() {
                   {m.role === "assistant" && (
                     <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       {m.grounding?.kind === "match"
-                        ? "Model-grounded match"
-                        : m.grounding?.kind === "tournament"
-                          ? "Model-grounded tournament"
+                        ? `${m.grounding.competition} · ${m.grounding.date} · model-grounded match`
+                        : m.grounding?.kind === "competition"
+                          ? `${m.grounding.competition} · model-grounded standings`
                           : "General analysis · not model-grounded"}
                     </div>
                   )}
@@ -350,7 +348,7 @@ export function HomeChat() {
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about the semifinal, final, or title race"
+          placeholder="Ask about an upcoming match or the Premier League title race"
           disabled={loading}
           maxLength={500}
         />

@@ -1,10 +1,12 @@
+import { getEnabledCompetitions } from "../config/competitions";
 import { normalizedTeamPairKey } from "../lib/team-names";
+import { getActiveFixtures } from "./active-fixtures";
 import { FootballMatch, getCachedMatches } from "./football-data";
 import { ModelFixture, getCachedModelData } from "./model-data";
 
-// ESPN stage slugs for the live late-stage matches Pundit grounds in chat.
-const FEATURED_STAGES = new Set(["semifinals", "3rd-place-match", "final"]);
-const PLACEHOLDER_TEAM = /\b(?:winner|loser)\b/i;
+const PLACEHOLDER_TEAM = /^(tbd|unknown)$/i;
+const BRACKET_PLACEHOLDER = /\b(?:winner|loser)\b/i;
+const FEATURED_LIMIT = 6;
 
 export interface FeaturedFixture {
   football: FootballMatch;
@@ -12,18 +14,34 @@ export interface FeaturedFixture {
 }
 
 function isKnownTeam(team: string): boolean {
-  return team.trim().toLowerCase() !== "tbd" && !PLACEHOLDER_TEAM.test(team);
+  const normalized = team.trim().toLowerCase();
+  return normalized.length > 0
+    && !PLACEHOLDER_TEAM.test(normalized)
+    && !BRACKET_PLACEHOLDER.test(team);
 }
 
-export function isFeaturedFootballMatch(match: FootballMatch): boolean {
-  return FEATURED_STAGES.has(match.stage ?? "")
-    && (match.status === "SCHEDULED" || match.status === "IN_PLAY")
-    && isKnownTeam(match.homeTeam)
-    && isKnownTeam(match.awayTeam);
+export function selectFeaturedActiveFixtures(
+  activeFixtures: FootballMatch[],
+  limit = FEATURED_LIMIT
+): FootballMatch[] {
+  const enabled = new Set(getEnabledCompetitions().map((competition) => competition.id));
+  const priority = new Map(
+    getEnabledCompetitions().map((competition) => [competition.id, competition.priority])
+  );
+  return activeFixtures
+    .filter((fixture) => enabled.has(fixture.competitionId))
+    .filter((fixture) => isKnownTeam(fixture.homeTeam) && isKnownTeam(fixture.awayTeam))
+    .sort((left, right) => {
+      const priorityDiff = (priority.get(left.competitionId) ?? 99)
+        - (priority.get(right.competitionId) ?? 99);
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(left.utcDate).getTime() - new Date(right.utcDate).getTime();
+    })
+    .slice(0, limit);
 }
 
-export function selectFeaturedFixtures(
-  matches: FootballMatch[],
+export function joinFeaturedFixtures(
+  footballMatches: FootballMatch[],
   modelFixtures: ModelFixture[]
 ): FeaturedFixture[] {
   const modelsByPair = new Map<string, ModelFixture[]>();
@@ -34,26 +52,38 @@ export function selectFeaturedFixtures(
     modelsByPair.set(key, candidates);
   }
 
-  return matches
-    .filter(isFeaturedFootballMatch)
-    .flatMap((football) => {
-      const candidates = modelsByPair.get(normalizedTeamPairKey(
-        football.homeTeam,
-        football.awayTeam
-      )) ?? [];
-      const model = candidates.find((fixture) => fixture.stage === football.stage)
-        ?? candidates[0];
-      return model ? [{ football, model }] : [];
-    })
-    .sort((a, b) => new Date(a.football.utcDate).getTime() - new Date(b.football.utcDate).getTime());
+  return footballMatches.flatMap((football) => {
+    const candidates = modelsByPair.get(normalizedTeamPairKey(
+      football.homeTeam,
+      football.awayTeam
+    )) ?? [];
+    const model = candidates.find((fixture) => fixture.competitionId === football.competitionId)
+      ?? candidates[0];
+    return model ? [{ football, model }] : [];
+  });
 }
 
 export function getFeaturedFixtures(): FeaturedFixture[] {
-  const football = getCachedMatches();
+  const active = getActiveFixtures();
+  const football = selectFeaturedActiveFixtures(active);
   const model = getCachedModelData();
-  return selectFeaturedFixtures(football.upcoming, model.fixtures);
+  return joinFeaturedFixtures(football, model.fixtures);
 }
 
 export function getFeaturedModelFixtures(): ModelFixture[] {
   return getFeaturedFixtures().map((fixture) => fixture.model);
+}
+
+// Backward-compatible export for tests expecting WC stage filter removal.
+export function isFeaturedFootballMatch(match: FootballMatch): boolean {
+  return (match.status === "SCHEDULED" || match.status === "IN_PLAY")
+    && isKnownTeam(match.homeTeam)
+    && isKnownTeam(match.awayTeam);
+}
+
+export function selectFeaturedFixtures(
+  matches: FootballMatch[],
+  modelFixtures: ModelFixture[]
+): FeaturedFixture[] {
+  return joinFeaturedFixtures(selectFeaturedActiveFixtures(matches), modelFixtures);
 }

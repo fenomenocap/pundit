@@ -1,11 +1,5 @@
-import { normalizedTeamPairKey } from "../lib/team-names";
-import { getFeaturedFixtures } from "./featured-fixtures";
-import {
-  fetchKalshiOdds,
-  fetchPolymarketOdds,
-  fetchStakeOdds,
-} from "./fixture-market-sources";
-import { ModelFixture } from "./model-data";
+import { getCachedModelData, getModelFixtureKey, ModelFixture } from "./model-data";
+import { fetchAllMarketOdds } from "./fixture-market-sources";
 
 // Market prices move fastest on match day; 30 minutes keeps the comparison
 // honest while staying trivial for three public endpoints.
@@ -44,12 +38,12 @@ const cache: MarketOddsCache = {
   coverage: {},
 };
 
-export function marketOddsFixtureKey(date: string, home: string, away: string): string {
-  return `${date}::${normalizedTeamPairKey(home, away)}`;
+export function marketOddsFixtureKey(fixture: ModelFixture): string {
+  return getModelFixtureKey(fixture);
 }
 
 export function getCachedFixtureMarketOdds(fixture: ModelFixture): FixtureMarketOdds | null {
-  return cache.byFixture.get(marketOddsFixtureKey(fixture.date, fixture.home, fixture.away)) ?? null;
+  return cache.byFixture.get(getModelFixtureKey(fixture)) ?? null;
 }
 
 export function getModelMarketOddsStatus() {
@@ -63,54 +57,41 @@ export function getModelMarketOddsStatus() {
 }
 
 export async function refreshModelMarketOdds(): Promise<void> {
-  console.log("[ModelMarketOdds] Refreshing featured fixture odds...");
+  console.log("[ModelMarketOdds] Refreshing active fixture odds...");
   try {
-    const featured = getFeaturedFixtures().map((fixture) => fixture.model);
-    const sources = await Promise.allSettled([
-      fetchStakeOdds(featured),
-      fetchPolymarketOdds(featured),
-      fetchKalshiOdds(featured),
-    ]);
+    const active = getCachedModelData().fixtures;
+    const sources = await fetchAllMarketOdds(active);
     const names = ["stake", "polymarket", "kalshi"] as const;
-    const fetched: Array<Map<string, ThreeWayOdds>> = [];
     cache.sourceWarnings = {};
-    sources.forEach((result, index) => {
-      const name = names[index];
-      if (result.status === "fulfilled") {
-        fetched[index] = result.value;
-        // A source that answers 200 but matches nothing is as dead as one that
-        // throws; without this, silent-empty looks identical to healthy.
-        cache.sourceWarnings[name] = featured.length > 0 && result.value.size === 0
-          ? `${name} returned no matching fixtures (0/${featured.length})`
-          : null;
-        if (cache.sourceWarnings[name]) console.warn(`[ModelMarketOdds] ${cache.sourceWarnings[name]}`);
-      } else {
-        fetched[index] = new Map();
-        const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
-        cache.sourceWarnings[name] = `${name} odds fetch failed (${message})`;
+    for (const name of names) {
+      const fetched = sources[name];
+      cache.sourceWarnings[name] = active.length > 0 && fetched.size === 0
+        ? `${name} returned no matching fixtures (0/${active.length})`
+        : null;
+      if (cache.sourceWarnings[name]) {
         console.warn(`[ModelMarketOdds] ${cache.sourceWarnings[name]}`);
       }
-    });
-    cache.coverage = Object.fromEntries(names.map((name, index) => [
+    }
+    cache.coverage = Object.fromEntries(names.map((name) => [
       name,
-      { matched: fetched[index].size, total: featured.length },
+      { matched: sources[name].size, total: active.length },
     ]));
     console.log(JSON.stringify({
       event: "market_odds_coverage",
-      ...Object.fromEntries(names.map((name, index) =>
-        [name, `${fetched[index].size}/${featured.length}`])),
+      ...Object.fromEntries(names.map((name) =>
+        [name, `${sources[name].size}/${active.length}`])),
     }));
-    cache.byFixture = new Map(featured.map((fixture) => {
-      const pair = normalizedTeamPairKey(fixture.home, fixture.away);
-      return [marketOddsFixtureKey(fixture.date, fixture.home, fixture.away), {
-        stake: fetched[0].get(pair) ?? null,
-        polymarket: fetched[1].get(pair) ?? null,
-        kalshi: fetched[2].get(pair) ?? null,
+    cache.byFixture = new Map(active.map((fixture) => {
+      const key = getModelFixtureKey(fixture);
+      return [key, {
+        stake: sources.stake.get(key) ?? null,
+        polymarket: sources.polymarket.get(key) ?? null,
+        kalshi: sources.kalshi.get(key) ?? null,
       }];
     }));
     cache.lastUpdated = new Date();
     cache.error = null;
-    console.log(`[ModelMarketOdds] ${cache.byFixture.size}/${featured.length} featured fixtures cached.`);
+    console.log(`[ModelMarketOdds] ${cache.byFixture.size}/${active.length} active fixtures cached.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     cache.error = message;
