@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
-import { generateAnalysis, generateAnalysisStream } from "./ask";
+import { generateAnalysis, generateAnalysisStream, sanitizeMatchAnswer } from "./ask";
 
 function clientWith(response: unknown): Pick<Anthropic, "messages"> {
   return {
@@ -83,6 +83,22 @@ describe("generateAnalysis", () => {
   });
 });
 
+describe("sanitizeMatchAnswer", () => {
+  it("replaces unsupported scoreline-tail, aggregate, and causal claims", () => {
+    const answer = sanitizeMatchAnswer([
+      "Any scoreline not listed here falls below the 0.1% probability threshold.",
+      "Kuopio need a two-goal swing to advance outright.",
+      "The edge is entirely due to home-field advantage.",
+    ].join(" "));
+    expect(answer).toContain("selected examples");
+    expect(answer).toContain("Aggregate advancement is outside");
+    expect(answer).toContain("does not decompose");
+    expect(answer).not.toContain("not listed here falls below");
+    expect(answer).not.toContain("two-goal swing");
+    expect(answer).not.toContain("entirely due");
+  });
+});
+
 describe("generateAnalysisStream", () => {
   it("emits deltas across continuations and joins the final text", async () => {
     const stream = vi.fn()
@@ -93,7 +109,7 @@ describe("generateAnalysisStream", () => {
     await expect(generateAnalysisStream(client, "system", [
       { role: "user", content: "q" },
     ], "match", (text) => deltas.push(text))).resolves.toBe("First half. Second half.");
-    expect(deltas).toEqual(["First half. ", "Second half."]);
+    expect(deltas).toEqual(["First half. Second half."]);
   });
 
   it("retries once when the stream dies before any text was emitted", async () => {
@@ -104,6 +120,18 @@ describe("generateAnalysisStream", () => {
     await expect(generateAnalysisStream(client, "system", [], "match", () => {}))
       .resolves.toBe("Recovered.");
     expect(stream).toHaveBeenCalledTimes(2);
+  });
+
+  it("buffers match text until deterministic answer guards have run", async () => {
+    const unsafe = "Any scoreline not listed here falls below the 0.1% probability threshold.";
+    const stream = vi.fn().mockReturnValue(streamOf(message(unsafe, "end_turn"), [unsafe]));
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    await expect(generateAnalysisStream(client, "system", [], "match", (text) => deltas.push(text)))
+      .resolves.toContain("selected examples");
+    expect(deltas).toHaveLength(1);
+    expect(deltas[0]).toContain("selected examples");
+    expect(deltas[0]).not.toContain("not listed here falls below");
   });
 
   it("does not retry once text has reached the user", async () => {
