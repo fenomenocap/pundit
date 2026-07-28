@@ -7,6 +7,7 @@ import matchRoutes from "./routes/matches";
 import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
 import askRoutes from "./routes/ask";
+import evaluationRoutes from "./routes/evaluation";
 import { startPolymarketCron } from "./services/polymarket-data";
 import { getCachedModelData, startModelCron } from "./services/model-data";
 import { getCachedMatches, startFootballCron } from "./services/football-data";
@@ -82,6 +83,7 @@ app.use("/api/matches", matchRoutes);
 app.use("/api/polymarkets", polymarketRoutes);
 app.use("/api/model", modelRoutes);
 app.use("/api/ask", askRoutes);
+app.use("/api/evaluation", evaluationRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 
