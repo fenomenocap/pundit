@@ -17,6 +17,7 @@ import {
   sanitizeEvidence,
   selectFeaturedMatch,
   readinessFailures,
+  validateGrounding,
   validateSse,
   writeCheckpoint,
   writeFailureReport,
@@ -104,11 +105,11 @@ async function preflight(options) {
 }
 
 async function discoverFeatured(options) {
-  const result = await fetchJson(`${options.apiUrl}/api/matches/upcoming`, {}, options.timeoutMs);
-  if (!result.ok || !Array.isArray(result.body?.matches)) {
-    throw new Error(`featured discovery failed: HTTP ${result.status}`);
+  const result = await fetchJson(`${options.apiUrl}/api/model/active`, {}, options.timeoutMs);
+  if (!result.ok || !Array.isArray(result.body?.fixtures)) {
+    throw new Error(`active model discovery failed: HTTP ${result.status}`);
   }
-  return { featured: selectFeaturedMatch(result.body.matches), result };
+  return { featured: selectFeaturedMatch(result.body.fixtures), result };
 }
 
 function baseResult(scenario) {
@@ -206,12 +207,16 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       return result;
     }
     const grounding = response.body?.grounding ?? null;
-    const expected = turn.expectGrounding;
-    const groundingMatches = (grounding?.kind ?? null) === expected;
-    result.assertions[`turn${history.length / 2 + 1}Grounding`] = groundingMatches;
+    const groundingValidation = validateGrounding(grounding, turn);
+    const turnNumber = history.length / 2 + 1;
+    for (const [name, passed] of Object.entries(groundingValidation.assertions)) {
+      result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+    }
     result.answer = response.body?.answer ?? "";
     result.grounding = grounding;
-    if (grounding?.kind === "match") teamContext = [grounding.home, grounding.away];
+    teamContext = grounding?.kind === "match"
+      ? [grounding.home, grounding.away]
+      : undefined;
     history.push(
       { role: "user", content: turn.question },
       { role: "assistant", content: result.answer }
@@ -220,11 +225,9 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       result.evidence = `Turn ${history.length / 2} returned an empty answer.`;
       return result;
     }
-    if (!groundingMatches) {
-      assertionFailures.push(
-        `turn ${history.length / 2}: expected grounding ${expected ?? "null"}, received ${grounding?.kind ?? "null"}`
-      );
-    }
+    assertionFailures.push(...groundingValidation.failures.map((failure) =>
+      `turn ${history.length / 2}: ${failure}`
+    ));
   }
   if (scenario.kind === "certainty") {
     const resistsCertainty = /\b(probab|likely|uncertain|cannot|can't|no guarantee|not certain|model|estimate)\b/i.test(result.answer);
@@ -300,7 +303,7 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
     return result;
   }
   const events = parseSse(text);
-  const validation = validateSse(events, scenario.expectGrounding);
+  const validation = validateSse(events, scenario);
   Object.assign(result, validation);
   result.outcome = result.passed ? "PASS" : "FAIL";
   const done = events.findLast(({ event }) => event === "done");
@@ -323,16 +326,18 @@ async function runScenario(scenario, options, pacer, featured, onRequestStart) {
       return {
         ...baseResult(scenario),
         outcome: "INCONCLUSIVE",
-        evidence: "No scheduled or in-play late-stage fixture with known teams."
+        evidence: "No model-backed active club fixture with known teams."
       };
     }
     return runJsonScenario({
       ...scenario,
       kind: "json",
-      teamContext: [featured.homeTeam, featured.awayTeam],
+      teamContext: [featured.home, featured.away],
       turns: [{
-        question: `What does Pundit's model say about ${featured.homeTeam} vs ${featured.awayTeam}?`,
-        expectGrounding: "match"
+        question: `What does Pundit's model say about ${featured.home} vs ${featured.away}?`,
+        expectGrounding: "match",
+        expectTeams: [featured.home, featured.away],
+        expectCompetitionId: featured.competitionId
       }]
     }, options, pacer, onRequestStart);
   }
@@ -341,21 +346,25 @@ async function runScenario(scenario, options, pacer, featured, onRequestStart) {
       return {
         ...baseResult(scenario),
         outcome: "INCONCLUSIVE",
-        evidence: "No active featured fixture for a valid contextual follow-up."
+        evidence: "No model-backed active club fixture for a valid contextual follow-up."
       };
     }
     return runJsonScenario({
       ...scenario,
       kind: "json",
-      teamContext: [featured.homeTeam, featured.awayTeam],
+      teamContext: [featured.home, featured.away],
       turns: [
         {
-          question: `Compare ${featured.homeTeam} and ${featured.awayTeam}.`,
-          expectGrounding: "match"
+          question: `Compare ${featured.home} and ${featured.away}.`,
+          expectGrounding: "match",
+          expectTeams: [featured.home, featured.away],
+          expectCompetitionId: featured.competitionId
         },
         {
           question: "Which side has the stronger model case, and why?",
-          expectGrounding: "match"
+          expectGrounding: "match",
+          expectTeams: [featured.home, featured.away],
+          expectCompetitionId: featured.competitionId
         }
       ]
     }, options, pacer, onRequestStart);
@@ -416,6 +425,7 @@ async function main() {
       readinessTimestamps: {
         model: preflightResult.ready.body.model.lastUpdated,
         football: preflightResult.ready.body.football.lastUpdated,
+        activeFixtures: preflightResult.ready.body.activeFixtures.lastUpdated,
         marketOdds: preflightResult.ready.body.marketOdds.lastUpdated
       }
     },
@@ -425,10 +435,12 @@ async function main() {
       fixtureDiscovery: {
         status: fixtureDiscovery.status,
         featured: featured ? {
-          homeTeam: featured.homeTeam,
-          awayTeam: featured.awayTeam,
+          homeTeam: featured.home,
+          awayTeam: featured.away,
+          competitionId: featured.competitionId,
+          competition: featured.competition,
+          utcDate: featured.utcDate,
           stage: featured.stage,
-          status: featured.status
         } : null
       }
     },

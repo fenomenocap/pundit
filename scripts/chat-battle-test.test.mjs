@@ -17,6 +17,7 @@ import {
   recordScenarioFailure,
   readinessFailures,
   selectFeaturedMatch,
+  validateGrounding,
   validateSse,
   writeCheckpoint,
   writeFailureReport,
@@ -40,25 +41,72 @@ function runNode(args) {
   });
 }
 
-test("selectFeaturedMatch excludes completed and placeholder fixtures", () => {
+test("selectFeaturedMatch uses a model-backed active club fixture with known teams", () => {
   const match = selectFeaturedMatch([
-    { stage: "semifinals", status: "COMPLETED", homeTeam: "Spain", awayTeam: "Brazil" },
-    { stage: "final", status: "SCHEDULED", homeTeam: "Semifinal 1 Winner", awayTeam: "TBD" },
-    { stage: "3rd-place-match", status: "IN_PLAY", homeTeam: "England", awayTeam: "Argentina" }
+    { competitionId: "eng.1", home: "TBD", away: "Arsenal" },
+    { competitionId: "fifa.world", home: "Semifinal 1 Winner", away: "Spain" },
+    { competitionId: "uefa.champions_qual", home: "Riga FC", away: "Ararat-Armenia" }
   ]);
-  assert.equal(match.homeTeam, "England");
+  assert.equal(match.home, "Riga FC");
+  assert.equal(selectFeaturedMatch([]), null);
 });
 
 test("SSE parser and validator enforce grounding, delta, done order", () => {
+  const grounding = {
+    kind: "competition",
+    competitionId: "eng.1",
+    updatedAt: "2026-07-28T00:00:00.000Z",
+    standings: [{
+      position: 1,
+      team: "Arsenal",
+      playedGames: 0,
+      points: 0,
+      goalDifference: 0,
+    }],
+  };
   const events = parseSse([
-    'event: grounding\ndata: {"grounding":{"kind":"tournament"}}',
+    `event: grounding\ndata: ${JSON.stringify({ grounding })}`,
     'event: delta\ndata: {"text":"Hello"}',
-    'event: done\ndata: {"answer":"Hello","grounding":{"kind":"tournament"}}',
+    `event: done\ndata: ${JSON.stringify({ answer: "Hello", grounding })}`,
     ""
   ].join("\n\n"));
   assert.deepEqual(events.map(({ event }) => event), ["grounding", "delta", "done"]);
-  assert.equal(validateSse(events, "tournament").passed, true);
-  assert.equal(validateSse(events.slice().reverse(), "tournament").passed, false);
+  const expectation = { expectGrounding: "competition", expectCompetitionId: "eng.1" };
+  assert.equal(validateSse(events, expectation).passed, true);
+  assert.equal(validateSse(events.slice().reverse(), expectation).passed, false);
+});
+
+test("grounding validation checks tier-specific payload fidelity", () => {
+  const match = validateGrounding({
+    kind: "match",
+    competitionId: "eng.1",
+    home: "Arsenal",
+    away: "Liverpool",
+    pHome: 0.4,
+    pDraw: 0.3,
+    pAway: 0.3,
+    pOver2_5: 0.52,
+    pUnder2_5: 0.48,
+    pBttsYes: 0.55,
+    pBttsNo: 0.45,
+    topScores: [{ score: "1-1", probability: 0.12 }],
+    scorelines: [{ score: "1-1", probability: 0.12 }],
+    oddsSources: [],
+  }, {
+    expectGrounding: "match",
+    expectCompetitionId: "eng.1",
+    expectTeams: ["Liverpool", "Arsenal"],
+  });
+  assert.equal(match.passed, true);
+  assert.equal(validateGrounding({ kind: "match", pHome: 2 }, {
+    expectGrounding: "match",
+    expectCompetitionId: "eng.1",
+  }).passed, false);
+  assert.equal(validateGrounding(null, { expectGrounding: null }).passed, true);
+  assert.equal(validateGrounding({ kind: "competition", standings: [] }, {
+    expectGrounding: "competition",
+    expectCompetitionId: "eng.1",
+  }).passed, false);
 });
 
 test("classification distinguishes baseline, regression, pass, and inconclusive", () => {
@@ -98,12 +146,14 @@ test("readiness gating names each failed component", () => {
     status: "loading",
     model: { ready: true },
     football: { ready: false },
+    activeFixtures: { lastUpdated: "2026-07-28T00:00:00.000Z" },
     marketOdds: { ready: false }
   }), ["status=loading", "football.ready=false", "marketOdds.ready=false"]);
   assert.deepEqual(readinessFailures({
     status: "ready",
     model: { ready: true },
     football: { ready: true },
+    activeFixtures: { lastUpdated: "2026-07-28T00:00:00.000Z" },
     marketOdds: { ready: true }
   }), []);
 });
@@ -125,18 +175,20 @@ test("pacer waits for the remaining request interval", async () => {
   assert.equal(Date.parse(pacer.starts[1]) - Date.parse(pacer.starts[0]), 13_000);
 });
 
-test("report comparison fails closed across schema or known deployment changes", () => {
+test("report comparison stays comparable across deployments when the schema matches", () => {
   const base = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     runId: "current",
     deployment: { id: "deploy-b" },
     scenarios: [{ id: "one", classification: "PASS" }]
   };
-  assert.equal(compareReports(base, {
+  const deploymentChange = compareReports(base, {
     ...base,
     runId: "previous",
     deployment: { id: "deploy-a" }
-  }).comparable, false);
+  });
+  assert.equal(deploymentChange.comparable, true);
+  assert.match(deploymentChange.reason, /across deployments/);
   assert.equal(compareReports(base, {
     ...base,
     runId: "previous",
@@ -162,6 +214,24 @@ test("schema changes cannot classify a recovered check as intermittent", () => {
   assert.equal(current.comparison.comparable, false);
 });
 
+test("same-schema deployment failures classify against the prior complete report", () => {
+  const current = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "current",
+    deployment: { id: "deploy-b" },
+    scenarios: [{ id: "one", passed: false, outcome: "FAIL" }]
+  };
+  const previous = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "previous",
+    deployment: { id: "deploy-a" },
+    scenarios: [{ id: "one", passed: true, outcome: "PASS", classification: "PASS" }]
+  };
+  finalizeClassifications(current, previous);
+  assert.equal(current.scenarios[0].classification, "REGRESSION");
+  assert.equal(current.comparison.comparable, true);
+});
+
 test("adversarial generation covers exactly five required categories", () => {
   const scenarios = generateAdversarialScenarios("2026-07-27", null);
   assert.deepEqual(scenarios.map(({ category }) => category), [
@@ -172,6 +242,8 @@ test("adversarial generation covers exactly five required categories", () => {
     "malformed-inputs"
   ]);
   assert.equal(scenarios[2].kind, "inconclusive");
+  assert.equal(JSON.stringify(scenarios).includes("World Cup"), false);
+  assert.equal(scenarios[1].turns[0].expectGrounding, "competition");
 });
 
 test("atomic report writing preserves the previous report and updates latest", async () => {
@@ -230,7 +302,7 @@ test("checkpoint writing preserves latest while recording active request", async
         turn: 2,
         startedAt: "2026-07-27T00:01:00.000Z",
       },
-      completedScenarioIds: ["tournament-grounding"],
+      completedScenarioIds: ["competition-grounding"],
       failure: null,
     },
   };
