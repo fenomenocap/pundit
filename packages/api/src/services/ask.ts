@@ -514,6 +514,23 @@ function mapTimeoutError(error: unknown): never {
   throw error;
 }
 
+export function sanitizeMatchAnswer(answer: string): string {
+  let sanitized = answer;
+  sanitized = sanitized.replace(
+    /(?:Any|All|Every) scorelines? not (?:listed|mentioned|shown)(?: here)?[^.!?\n]*(?:below|under)[^.!?\n]*0\.1%[^.!?\n]*[.!?]?/gi,
+    "The scorelines above are selected examples, not the full set at or above the model's 0.1% reporting threshold."
+  );
+  sanitized = sanitized.replace(
+    /[^.!?\n]*(?:advance|progress|qualif(?:y|ies)|extra time|two[- ]goal swing)[^.!?\n]*[.!?]?/gi,
+    " Aggregate advancement is outside Pundit's match payload, so this model does not determine which result would settle the tie."
+  );
+  sanitized = sanitized.replace(
+    /[^.!?\n]*(?:(?:entirely|solely)[^.!?\n]*(?:home[- ]field|home advantage|HFA|edge)|(?:home[- ]field|home advantage|HFA|edge)[^.!?\n]*(?:entirely|solely))[^.!?\n]*[.!?]?/gi,
+    " Home-field advantage is applied, but this payload does not decompose the probability gap by cause."
+  );
+  return sanitized.replace(/[ \t]+\n/g, "\n").replace(/ {2,}/g, " ").trim();
+}
+
 function validateAnalysisResponse(
   responses: Anthropic.Message[],
   tier: AnalysisTier,
@@ -540,7 +557,7 @@ function validateAnalysisResponse(
   if (stopReason === "max_tokens") {
     throw new AppError(502, "Analysis response was truncated. Please try again.");
   }
-  return answer;
+  return tier === "match" ? sanitizeMatchAnswer(answer) : answer;
 }
 
 function appendPausedTurn(
@@ -628,7 +645,7 @@ export async function generateAnalysisStream(
           }
           deltaSeen = true;
           anyDeltaSeen = true;
-          onDelta(text);
+          if (tier !== "match") onDelta(text);
         });
         response = await stream.finalMessage();
       } catch (error) {
@@ -646,7 +663,9 @@ export async function generateAnalysisStream(
   if (collected.at(-1)?.stop_reason === "pause_turn") {
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
-  return validateAnalysisResponse(collected, tier, startedAt);
+  const answer = validateAnalysisResponse(collected, tier, startedAt);
+  if (tier === "match") onDelta(answer);
+  return answer;
 }
 
 interface PreparedAsk {
