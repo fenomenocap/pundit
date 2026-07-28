@@ -83,10 +83,12 @@ describe("season simulator", () => {
 
   it("produces title probabilities that sum to ~1", () => {
     const ratings = {
+      world: new Map<string, number>(),
       "eng-clubs": new Map([
         ["Arsenal", 1850],
         ["Liverpool", 1840],
       ]),
+      "uefa-clubs": new Map<string, number>(),
     };
     let seed = 0;
     const random = () => {
