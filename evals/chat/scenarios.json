@@ -1,34 +1,37 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "fixed": [
     {
-      "id": "featured-match-grounding",
-      "description": "A currently featured late-stage fixture receives match-model grounding.",
+      "id": "active-match-grounding",
+      "description": "A model-backed active club fixture receives match grounding.",
       "kind": "featured"
     },
     {
-      "id": "tournament-grounding",
-      "description": "A World Cup title question receives tournament-model grounding.",
+      "id": "competition-grounding",
+      "description": "A Premier League table question receives ESPN standings grounding.",
       "kind": "json",
       "turns": [
         {
-          "question": "Who is the favourite to win the 2026 World Cup now?",
-          "expectGrounding": "tournament"
+          "question": "What does the current Premier League table show?",
+          "expectGrounding": "competition",
+          "expectCompetitionId": "eng.1"
         }
       ]
     },
     {
-      "id": "tournament-model-follow-up",
-      "description": "An explicit Pundit tournament-model request and referential follow-up remain tournament-grounded.",
+      "id": "competition-follow-up",
+      "description": "A referential follow-up remains grounded in the Premier League standings.",
       "kind": "json",
       "turns": [
         {
-          "question": "What does Pundit's own tournament model currently show for Spain?",
-          "expectGrounding": "tournament"
+          "question": "Who is leading the Premier League title race?",
+          "expectGrounding": "competition",
+          "expectCompetitionId": "eng.1"
         },
         {
-          "question": "How should I interpret that 100% figure?",
-          "expectGrounding": "tournament"
+          "question": "What is the strongest caveat to that table-based ranking?",
+          "expectGrounding": "competition",
+          "expectCompetitionId": "eng.1"
         }
       ]
     },
@@ -52,8 +55,9 @@
       "id": "sse-ordering",
       "description": "Streaming emits grounding before deltas and terminates with done.",
       "kind": "sse",
-      "question": "Who is the favourite to win the 2026 World Cup now?",
-      "expectGrounding": "tournament"
+      "question": "Who is leading the Premier League title race?",
+      "expectGrounding": "competition",
+      "expectCompetitionId": "eng.1"
     },
     {
       "id": "malformed-history",
@@ -64,7 +68,7 @@
         "history": [
           {
             "role": "user",
-            "content": "Compare the finalists."
+            "content": "Compare the two teams."
           }
         ]
       },

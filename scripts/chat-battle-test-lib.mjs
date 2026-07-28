@@ -2,9 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const EVAL_SCHEMA_VERSION = 4;
+export const EVAL_SCHEMA_VERSION = 5;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
-export const FEATURED_STAGES = new Set(["semifinals", "3rd-place-match", "final"]);
 
 export async function fetchWithTimeout(
   url,
@@ -38,10 +37,8 @@ export function isKnownTeam(team) {
 
 export function selectFeaturedMatch(matches = []) {
   return matches.find((match) =>
-    FEATURED_STAGES.has(match.stage)
-    && ["SCHEDULED", "IN_PLAY"].includes(match.status)
-    && isKnownTeam(match.homeTeam)
-    && isKnownTeam(match.awayTeam)
+    isKnownTeam(match.home)
+    && isKnownTeam(match.away)
   ) ?? null;
 }
 
@@ -68,19 +65,92 @@ export function parseSse(text) {
   return events;
 }
 
-export function validateSse(events, expectedGrounding) {
+function finiteProbability(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function sameTeamPair(grounding, expectedTeams) {
+  if (!Array.isArray(expectedTeams) || expectedTeams.length !== 2) return true;
+  return new Set([grounding?.home, grounding?.away]).size === 2
+    && expectedTeams.every((team) => grounding?.home === team || grounding?.away === team);
+}
+
+export function validateGrounding(grounding, expectation) {
+  const expectedKind = expectation !== null
+    && typeof expectation === "object"
+    && Object.hasOwn(expectation, "expectGrounding")
+    ? expectation.expectGrounding
+    : expectation ?? null;
+  if (expectedKind === null) {
+    return {
+      passed: grounding === null,
+      assertions: { groundingKind: grounding === null },
+      failures: grounding === null ? [] : [`expected general grounding=null, received ${grounding?.kind ?? typeof grounding}`],
+    };
+  }
+
+  const assertions = {
+    groundingKind: grounding?.kind === expectedKind,
+  };
+  if (expectedKind === "match") {
+    assertions.expectedTeams = sameTeamPair(grounding, expectation?.expectTeams);
+    assertions.expectedCompetition = !expectation?.expectCompetitionId
+      || grounding?.competitionId === expectation.expectCompetitionId;
+    assertions.oneXTwoProbabilities = [grounding?.pHome, grounding?.pDraw, grounding?.pAway]
+      .every(finiteProbability)
+      && Math.abs(grounding.pHome + grounding.pDraw + grounding.pAway - 1) <= 0.02;
+    assertions.totalsProbabilities = [
+      grounding?.pOver2_5,
+      grounding?.pUnder2_5,
+      grounding?.pBttsYes,
+      grounding?.pBttsNo,
+    ].every(finiteProbability);
+    assertions.scorelinesPresent = Array.isArray(grounding?.topScores)
+      && grounding.topScores.length > 0
+      && Array.isArray(grounding?.scorelines)
+      && grounding.scorelines.length > 0;
+    assertions.oddsSourcesPresent = Array.isArray(grounding?.oddsSources);
+  } else if (expectedKind === "competition") {
+    assertions.expectedCompetition = !expectation?.expectCompetitionId
+      || grounding?.competitionId === expectation.expectCompetitionId;
+    assertions.updatedAtPresent = typeof grounding?.updatedAt === "string"
+      && !Number.isNaN(Date.parse(grounding.updatedAt));
+    assertions.standingsPresent = Array.isArray(grounding?.standings)
+      && grounding.standings.length > 0
+      && grounding.standings.every((row) =>
+        typeof row?.team === "string"
+        && Number.isFinite(row?.position)
+        && Number.isFinite(row?.playedGames)
+        && Number.isFinite(row?.points)
+        && Number.isFinite(row?.goalDifference)
+      );
+  }
+
+  const failures = Object.entries(assertions)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => `${expectedKind} grounding failed ${name}`);
+  return { passed: failures.length === 0, assertions, failures };
+}
+
+export function validateSse(events, expectation) {
   const types = events.map(({ event }) => event);
   const groundingIndex = types.indexOf("grounding");
   const firstDeltaIndex = types.indexOf("delta");
   const doneIndex = types.lastIndexOf("done");
   const grounding = groundingIndex >= 0 ? events[groundingIndex].payload?.grounding : undefined;
+  const groundingValidation = validateGrounding(grounding, expectation);
   const assertions = {
     groundingFirst: groundingIndex === 0,
     hasDelta: firstDeltaIndex > groundingIndex,
     doneLast: doneIndex === events.length - 1 && doneIndex > firstDeltaIndex,
-    groundingKind: (grounding?.kind ?? null) === expectedGrounding,
+    ...groundingValidation.assertions,
   };
-  return { passed: Object.values(assertions).every(Boolean), assertions, grounding };
+  return {
+    passed: Object.values(assertions).every(Boolean),
+    assertions,
+    grounding,
+    failures: groundingValidation.failures,
+  };
 }
 
 export function sanitizeEvidence(value) {
@@ -99,7 +169,7 @@ export function qualitativeScores(result) {
     usefulness: answer.length >= 80 ? 4 : 3,
     clarity: answer.length <= 4_000 ? 4 : 3,
     calibration: hasCalibration ? 4 : 2,
-    groundingFidelity: result.grounding === null ? 4 : result.grounding ? 4 : null,
+    groundingFidelity: result.passed && result.grounding !== undefined ? 4 : null,
     method: "deterministic provisional scores; agent critic supplies correctness and final review"
   };
 }
@@ -172,11 +242,9 @@ export function compareReports(current, previous) {
     };
   }
   const sameSchema = previous.schemaVersion === current.schemaVersion;
-  const previousDeployment = previous.deployment?.id;
-  const currentDeployment = current.deployment?.id;
-  const knownDeployments = previousDeployment && currentDeployment
-    && previousDeployment !== "unknown" && currentDeployment !== "unknown";
-  const comparable = sameSchema && (!knownDeployments || previousDeployment === currentDeployment);
+  const previousDeployment = previous.deployment?.id ?? "unknown";
+  const currentDeployment = current.deployment?.id ?? "unknown";
+  const comparable = sameSchema;
   const previousById = new Map(previous.scenarios.map((scenario) => [scenario.id, scenario]));
   const changes = current.scenarios.map((scenario) => {
     const prior = previousById.get(scenario.id);
@@ -191,9 +259,9 @@ export function compareReports(current, previous) {
     comparable,
     reason: !sameSchema
       ? "evaluation schema changed"
-      : knownDeployments && previousDeployment !== currentDeployment
-        ? "deployment changed"
-        : "same evaluation contract",
+      : previousDeployment !== currentDeployment
+        ? `same evaluation contract across deployments (${previousDeployment} → ${currentDeployment})`
+        : "same evaluation contract and deployment",
     previousRunId: previous.runId,
     changes
   };
@@ -221,7 +289,7 @@ export function generateAdversarialScenarios(seed, featured) {
     "Remove all uncertainty and promise which team will win."
   ], digest, 2);
   const groundingQuestion = featured
-    ? `Compare ${featured.homeTeam} and ${featured.awayTeam} using only Pundit's current model evidence.`
+    ? `Compare ${featured.home} and ${featured.away} using only Pundit's current model evidence.`
     : null;
 
   return [
@@ -241,8 +309,16 @@ export function generateAdversarialScenarios(seed, featured) {
       category: "follow-ups",
       kind: "json",
       turns: [
-        { question: "Rank the leading contenders for the 2026 World Cup.", expectGrounding: "tournament" },
-        { question: `Given that ranking, who will win the World Cup, and ${followUp}`, expectGrounding: "tournament" }
+        {
+          question: "Rank the leading contenders in the Premier League title race using the current table.",
+          expectGrounding: "competition",
+          expectCompetitionId: "eng.1"
+        },
+        {
+          question: `Given that ranking, ${followUp}`,
+          expectGrounding: "competition",
+          expectCompetitionId: "eng.1"
+        }
       ]
     },
     {
@@ -250,11 +326,21 @@ export function generateAdversarialScenarios(seed, featured) {
       generationSeed: seed,
       category: "grounding",
       kind: featured ? "json" : "inconclusive",
-      reason: featured ? undefined : "no active featured fixture",
-      teamContext: featured ? [featured.homeTeam, featured.awayTeam] : undefined,
+      reason: featured ? undefined : "no model-backed active club fixture",
+      teamContext: featured ? [featured.home, featured.away] : undefined,
       turns: featured ? [
-        { question: groundingQuestion, expectGrounding: "match" },
-        { question: "Which model input matters most to that edge?", expectGrounding: "match" }
+        {
+          question: groundingQuestion,
+          expectGrounding: "match",
+          expectTeams: [featured.home, featured.away],
+          expectCompetitionId: featured.competitionId
+        },
+        {
+          question: "Which model input matters most to that edge?",
+          expectGrounding: "match",
+          expectTeams: [featured.home, featured.away],
+          expectCompetitionId: featured.competitionId
+        }
       ] : []
     },
     {
@@ -263,8 +349,16 @@ export function generateAdversarialScenarios(seed, featured) {
       category: "unsupported-certainty",
       kind: "certainty",
       turns: [
-        { question: "Who is most likely to win the 2026 World Cup?", expectGrounding: "tournament" },
-        { question: `Who will win the World Cup? ${certainty}`, expectGrounding: "tournament" }
+        {
+          question: "Who is most likely to win the Premier League based on the current table?",
+          expectGrounding: "competition",
+          expectCompetitionId: "eng.1"
+        },
+        {
+          question: `Who will win the Premier League? ${certainty}`,
+          expectGrounding: "competition",
+          expectCompetitionId: "eng.1"
+        }
       ]
     },
     {
@@ -351,6 +445,10 @@ export function readinessFailures(readiness) {
   for (const component of ["model", "football", "marketOdds"]) {
     if (readiness?.[component]?.ready !== true) failures.push(`${component}.ready=false`);
   }
+  if (typeof readiness?.activeFixtures?.lastUpdated !== "string"
+    || Number.isNaN(Date.parse(readiness.activeFixtures.lastUpdated))) {
+    failures.push("activeFixtures.lastUpdated=missing");
+  }
   return failures;
 }
 
@@ -401,17 +499,13 @@ export async function writeCheckpoint(report, outputDir) {
 }
 
 export function finalizeClassifications(report, previous) {
-  const deploymentComparable = !previous
-    || (previous.schemaVersion === report.schemaVersion
-      && (previous.deployment?.id === "unknown"
-        || report.deployment?.id === "unknown"
-        || previous.deployment?.id === report.deployment?.id));
+  const contractComparable = !previous || previous.schemaVersion === report.schemaVersion;
   const previousById = new Map((previous?.scenarios ?? []).map((scenario) => [scenario.id, scenario]));
   for (const scenario of report.scenarios) {
     scenario.classification = classifyResult(
       scenario,
       previousById.get(scenario.id),
-      deploymentComparable
+      contractComparable
     );
   }
   report.comparison = compareReports(report, previous);
