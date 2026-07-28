@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 4,
+  "fixed": [
+    {
+      "id": "featured-match-grounding",
+      "description": "A currently featured late-stage fixture receives match-model grounding.",
+      "kind": "featured"
+    },
+    {
+      "id": "tournament-grounding",
+      "description": "A World Cup title question receives tournament-model grounding.",
+      "kind": "json",
+      "turns": [
+        {
+          "question": "Who is the favourite to win the 2026 World Cup now?",
+          "expectGrounding": "tournament"
+        }
+      ]
+    },
+    {
+      "id": "general-analysis-label",
+      "description": "A general football question remains explicitly ungrounded at the API boundary.",
+      "kind": "json",
+      "turns": [
+        {
+          "question": "How does a high defensive line change a team's pressing risks?",
+          "expectGrounding": null
+        }
+      ]
+    },
+    {
+      "id": "contextual-follow-up",
+      "description": "A pronoun follow-up retains the dynamically discovered featured match context.",
+      "kind": "featured-follow-up"
+    },
+    {
+      "id": "sse-ordering",
+      "description": "Streaming emits grounding before deltas and terminates with done.",
+      "kind": "sse",
+      "question": "Who is the favourite to win the 2026 World Cup now?",
+      "expectGrounding": "tournament"
+    },
+    {
+      "id": "malformed-history",
+      "description": "A dangling conversation-history turn is rejected without model traffic.",
+      "kind": "invalid",
+      "body": {
+        "question": "And what about them?",
+        "history": [
+          {
+            "role": "user",
+            "content": "Compare the finalists."
+          }
+        ]
+      },
+      "expectStatus": 400
+    }
+  ]
+}

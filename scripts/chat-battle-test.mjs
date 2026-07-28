@@ -1,0 +1,401 @@
+#!/usr/bin/env node
+
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import process from "node:process";
+import {
+  EVAL_SCHEMA_VERSION,
+  MIN_REQUEST_INTERVAL_MS,
+  createPacer,
+  finalizeClassifications,
+  generateAdversarialScenarios,
+  loadPreviousReport,
+  parseSse,
+  qualitativeScores,
+  sanitizeEvidence,
+  selectFeaturedMatch,
+  readinessFailures,
+  validateSse,
+  writeReport
+} from "./chat-battle-test-lib.mjs";
+
+const DEFAULT_API_URL = "https://sports-predictapi-production.up.railway.app";
+const DEFAULT_WEB_URL = "https://thepundit.vercel.app";
+const ROOT = path.resolve(import.meta.dirname, "..");
+
+function parseArgs(argv) {
+  const options = {
+    apiUrl: DEFAULT_API_URL,
+    webUrl: DEFAULT_WEB_URL,
+    outputDir: path.join(ROOT, "artifacts/chat-evals"),
+    scenariosPath: path.join(ROOT, "evals/chat/scenarios.json"),
+    intervalMs: MIN_REQUEST_INTERVAL_MS,
+    timeoutMs: 240_000,
+    dryRun: false,
+    deploymentId: process.env.PUNDIT_DEPLOYMENT_ID ?? null
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--") continue;
+    if (argument === "--dry-run") options.dryRun = true;
+    else if (argument === "--api-url") options.apiUrl = argv[++index];
+    else if (argument === "--web-url") options.webUrl = argv[++index];
+    else if (argument === "--output-dir") options.outputDir = path.resolve(argv[++index]);
+    else if (argument === "--interval-ms") options.intervalMs = Number(argv[++index]);
+    else if (argument === "--timeout-ms") options.timeoutMs = Number(argv[++index]);
+    else if (argument === "--deployment-id") options.deploymentId = argv[++index];
+    else throw new Error(`Unknown argument: ${argument}`);
+  }
+  if (!Number.isFinite(options.intervalMs) || options.intervalMs < 0) {
+    throw new Error("--interval-ms must be a non-negative number.");
+  }
+  return options;
+}
+
+function timestampId(date = new Date()) {
+  return date.toISOString().replace(/[:.]/g, "-");
+}
+
+async function fetchWithTimeout(url, init, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchJson(url, init, timeoutMs) {
+  const started = Date.now();
+  const response = await fetchWithTimeout(url, init, timeoutMs);
+  const text = await response.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = { invalidJson: text.slice(0, 500) };
+  }
+  return {
+    status: response.status,
+    ok: response.ok,
+    body,
+    latencyMs: Date.now() - started,
+    headers: Object.fromEntries(response.headers.entries())
+  };
+}
+
+async function preflight(options) {
+  let health;
+  let ready;
+  try {
+    health = await fetchJson(`${options.apiUrl}/health`, {}, options.timeoutMs);
+  } catch (error) {
+    throw new Error(`health unreachable: ${error.message}`);
+  }
+  if (!health.ok || health.body?.status !== "ok") {
+    throw new Error(`health failed: HTTP ${health.status} ${sanitizeEvidence(health.body)}`);
+  }
+  try {
+    ready = await fetchJson(`${options.apiUrl}/ready`, {}, options.timeoutMs);
+  } catch (error) {
+    throw new Error(`readiness unreachable: ${error.message}`);
+  }
+  const failures = readinessFailures(ready.body);
+  if (!ready.ok || failures.length > 0) {
+    throw new Error(`readiness failed: HTTP ${ready.status}; ${failures.join(", ")}; ${sanitizeEvidence(ready.body)}`);
+  }
+  return { health, ready };
+}
+
+async function discoverFeatured(options) {
+  const result = await fetchJson(`${options.apiUrl}/api/matches/upcoming`, {}, options.timeoutMs);
+  if (!result.ok || !Array.isArray(result.body?.matches)) {
+    throw new Error(`featured discovery failed: HTTP ${result.status}`);
+  }
+  return { featured: selectFeaturedMatch(result.body.matches), result };
+}
+
+function baseResult(scenario) {
+  return {
+    id: scenario.id,
+    category: scenario.category ?? "fixed",
+    passed: false,
+    outcome: "FAIL",
+    classification: null,
+    status: null,
+    latencyMs: null,
+    requestStarts: [],
+    assertions: {},
+    answer: null,
+    grounding: undefined,
+    qualitativeScores: null,
+    evidence: ""
+  };
+}
+
+async function jsonTurn(options, pacer, turn, history, teamContext) {
+  await pacer.beforeRequest();
+  const start = pacer.starts.at(-1);
+  const response = await fetchJson(`${options.apiUrl}/api/ask`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      question: turn.question,
+      history,
+      teamContext
+    })
+  }, options.timeoutMs);
+  return { ...response, start };
+}
+
+async function runJsonScenario(scenario, options, pacer) {
+  const result = baseResult(scenario);
+  const history = [];
+  const assertionFailures = [];
+  let teamContext = scenario.teamContext;
+  for (const turn of scenario.turns) {
+    const response = await jsonTurn(options, pacer, turn, history, teamContext);
+    result.requestStarts.push(response.start);
+    result.status = response.status;
+    result.latencyMs = (result.latencyMs ?? 0) + response.latencyMs;
+    if (!response.ok) {
+      result.evidence = `HTTP ${response.status}: ${sanitizeEvidence(response.body)}`;
+      return result;
+    }
+    const grounding = response.body?.grounding ?? null;
+    const expected = turn.expectGrounding;
+    const groundingMatches = (grounding?.kind ?? null) === expected;
+    result.assertions[`turn${history.length / 2 + 1}Grounding`] = groundingMatches;
+    result.answer = response.body?.answer ?? "";
+    result.grounding = grounding;
+    if (grounding?.kind === "match") teamContext = [grounding.home, grounding.away];
+    history.push(
+      { role: "user", content: turn.question },
+      { role: "assistant", content: result.answer }
+    );
+    if (!result.answer.trim()) {
+      result.evidence = `Turn ${history.length / 2} returned an empty answer.`;
+      return result;
+    }
+    if (!groundingMatches) {
+      assertionFailures.push(
+        `turn ${history.length / 2}: expected grounding ${expected ?? "null"}, received ${grounding?.kind ?? "null"}`
+      );
+    }
+  }
+  if (scenario.kind === "certainty") {
+    const resistsCertainty = /\b(probab|likely|uncertain|cannot|can't|no guarantee|not certain|model|estimate)\b/i.test(result.answer);
+    result.assertions.resistsUnsupportedCertainty = resistsCertainty;
+    if (!resistsCertainty) {
+      assertionFailures.push(
+        `final answer did not visibly resist unsupported certainty: ${sanitizeEvidence(result.answer)}`
+      );
+    }
+  }
+  result.passed = Object.values(result.assertions).every(Boolean);
+  result.outcome = result.passed ? "PASS" : "FAIL";
+  result.evidence = result.passed
+    ? `${scenario.turns.length} turn(s), grounding=${result.grounding?.kind ?? "null"}, answer=${result.answer.length} chars.`
+    : assertionFailures.join("; ");
+  result.qualitativeScores = qualitativeScores(result);
+  return result;
+}
+
+async function runInvalidScenario(scenario, options, pacer) {
+  const result = baseResult(scenario);
+  await pacer.beforeRequest();
+  result.requestStarts.push(pacer.starts.at(-1));
+  const response = await fetchJson(`${options.apiUrl}/api/ask`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(scenario.body)
+  }, options.timeoutMs);
+  result.status = response.status;
+  result.latencyMs = response.latencyMs;
+  result.assertions.expectedStatus = response.status === scenario.expectStatus;
+  result.assertions.sanitizedError = typeof response.body?.error === "string"
+    && !/(anthropic|api[_-]?key|stack|token)/i.test(response.body.error);
+  result.passed = Object.values(result.assertions).every(Boolean);
+  result.outcome = result.passed ? "PASS" : "FAIL";
+  result.evidence = `HTTP ${response.status}: ${sanitizeEvidence(response.body)}`;
+  return result;
+}
+
+async function runSseScenario(scenario, options, pacer) {
+  const result = baseResult(scenario);
+  await pacer.beforeRequest();
+  result.requestStarts.push(pacer.starts.at(-1));
+  const started = Date.now();
+  const response = await fetchWithTimeout(`${options.apiUrl}/api/ask`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question: scenario.question, stream: true })
+  }, options.timeoutMs);
+  const text = await response.text();
+  result.status = response.status;
+  result.latencyMs = Date.now() - started;
+  if (!response.ok || !response.headers.get("content-type")?.includes("text/event-stream")) {
+    result.evidence = `Expected SSE, received HTTP ${response.status}: ${sanitizeEvidence(text)}`;
+    return result;
+  }
+  const events = parseSse(text);
+  const validation = validateSse(events, scenario.expectGrounding);
+  Object.assign(result, validation);
+  result.outcome = result.passed ? "PASS" : "FAIL";
+  const done = events.findLast(({ event }) => event === "done");
+  result.answer = done?.payload?.answer ?? "";
+  result.evidence = `SSE order: ${events.map(({ event }) => event).join(" → ")}.`;
+  result.qualitativeScores = qualitativeScores(result);
+  return result;
+}
+
+async function runScenario(scenario, options, pacer, featured) {
+  if (scenario.kind === "inconclusive") {
+    return {
+      ...baseResult(scenario),
+      outcome: "INCONCLUSIVE",
+      evidence: scenario.reason
+    };
+  }
+  if (scenario.kind === "featured") {
+    if (!featured) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        evidence: "No scheduled or in-play late-stage fixture with known teams."
+      };
+    }
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      teamContext: [featured.homeTeam, featured.awayTeam],
+      turns: [{
+        question: `What does Pundit's model say about ${featured.homeTeam} vs ${featured.awayTeam}?`,
+        expectGrounding: "match"
+      }]
+    }, options, pacer);
+  }
+  if (scenario.kind === "featured-follow-up") {
+    if (!featured) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        evidence: "No active featured fixture for a valid contextual follow-up."
+      };
+    }
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      teamContext: [featured.homeTeam, featured.awayTeam],
+      turns: [
+        {
+          question: `Compare ${featured.homeTeam} and ${featured.awayTeam}.`,
+          expectGrounding: "match"
+        },
+        {
+          question: "Which side has the stronger model case, and why?",
+          expectGrounding: "match"
+        }
+      ]
+    }, options, pacer);
+  }
+  if (scenario.kind === "invalid") return runInvalidScenario(scenario, options, pacer);
+  if (scenario.kind === "sse") return runSseScenario(scenario, options, pacer);
+  return runJsonScenario(scenario, options, pacer);
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const scenarioConfig = JSON.parse(await readFile(options.scenariosPath, "utf8"));
+  if (scenarioConfig.schemaVersion !== EVAL_SCHEMA_VERSION) {
+    throw new Error(`Scenario schema ${scenarioConfig.schemaVersion} does not match evaluator schema ${EVAL_SCHEMA_VERSION}.`);
+  }
+  if (options.dryRun) {
+    const generated = generateAdversarialScenarios("dry-run", null);
+    console.log(JSON.stringify({
+      mode: "dry-run",
+      productionTraffic: false,
+      fixedScenarios: scenarioConfig.fixed.map(({ id }) => id),
+      adversarialCategories: generated.map(({ category }) => category),
+      minimumRequestIntervalMs: options.intervalMs,
+      outputDir: options.outputDir
+    }, null, 2));
+    return;
+  }
+  if (options.intervalMs < MIN_REQUEST_INTERVAL_MS) {
+    throw new Error(`Production request spacing must be at least ${MIN_REQUEST_INTERVAL_MS} ms.`);
+  }
+
+  const startedAt = new Date();
+  const runId = timestampId(startedAt);
+  const previous = await loadPreviousReport(options.outputDir);
+  const preflightResult = await preflight(options);
+  const { featured, result: fixtureDiscovery } = await discoverFeatured(options);
+  const seed = runId.slice(0, 10);
+  const adversarial = generateAdversarialScenarios(seed, featured);
+  const scenarios = [...scenarioConfig.fixed, ...adversarial];
+  const pacer = createPacer(options.intervalMs);
+  const results = [];
+  for (const scenario of scenarios) {
+    results.push(await runScenario(scenario, options, pacer, featured));
+  }
+
+  const deploymentHeader = preflightResult.health.headers["x-railway-deployment-id"]
+    ?? preflightResult.ready.headers["x-railway-deployment-id"]
+    ?? null;
+  const report = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId,
+    startedAt: startedAt.toISOString(),
+    completedAt: new Date().toISOString(),
+    apiUrl: options.apiUrl,
+    webUrl: options.webUrl,
+    deployment: {
+      id: options.deploymentId ?? deploymentHeader ?? "unknown",
+      source: options.deploymentId ? "argument/environment" : deploymentHeader ? "response header" : "unavailable",
+      readinessTimestamps: {
+        model: preflightResult.ready.body.model.lastUpdated,
+        football: preflightResult.ready.body.football.lastUpdated,
+        marketOdds: preflightResult.ready.body.marketOdds.lastUpdated
+      }
+    },
+    preflight: {
+      health: { status: preflightResult.health.status, body: preflightResult.health.body },
+      readiness: { status: preflightResult.ready.status, body: preflightResult.ready.body },
+      fixtureDiscovery: {
+        status: fixtureDiscovery.status,
+        featured: featured ? {
+          homeTeam: featured.homeTeam,
+          awayTeam: featured.awayTeam,
+          stage: featured.stage,
+          status: featured.status
+        } : null
+      }
+    },
+    pacing: {
+      minimumIntervalMs: options.intervalMs,
+      requestStarts: pacer.starts
+    },
+    scenarios: results,
+    browserEvidence: null,
+    criticReview: null,
+    recommendations: [],
+    comparison: null,
+    overall: null
+  };
+  finalizeClassifications(report, previous);
+  const paths = await writeReport(report, options.outputDir);
+  console.log(JSON.stringify({
+    runId,
+    overall: report.overall,
+    requests: pacer.starts.length,
+    featured: report.preflight.fixtureDiscovery.featured,
+    report: paths
+  }, null, 2));
+}
+
+main().catch((error) => {
+  console.error(`chat battle test failed: ${error.message}`);
+  process.exitCode = 1;
+});

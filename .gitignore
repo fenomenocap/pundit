@@ -7,3 +7,6 @@ dist/
 .vercel
 .DS_Store
 .claude/
+
+# Local production battle-test output (repo-owned evaluator, untracked evidence)
+artifacts/chat-evals/
