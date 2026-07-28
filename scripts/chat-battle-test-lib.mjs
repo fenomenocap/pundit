@@ -6,6 +6,30 @@ export const EVAL_SCHEMA_VERSION = 4;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 export const FEATURED_STAGES = new Set(["semifinals", "3rd-place-match", "final"]);
 
+export async function fetchWithTimeout(
+  url,
+  init,
+  timeoutMs,
+  fetchImpl = globalThis.fetch
+) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    return await fetchImpl(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`request timed out after ${timeoutMs}ms`, { cause: error });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function isKnownTeam(team) {
   return typeof team === "string"
     && team.trim().toLowerCase() !== "tbd"
@@ -82,6 +106,11 @@ export function qualitativeScores(result) {
 
 export function classifyResult(current, previous, comparable = true) {
   if (current.outcome === "INCONCLUSIVE") return "INCONCLUSIVE";
+  if (current.failure?.kind === "timeout") {
+    return previous?.failure?.kind === "timeout" && comparable
+      ? "EXISTING ISSUE"
+      : "INTERMITTENT";
+  }
   if (current.passed) {
     return previous && comparable && previous.passed === false ? "INTERMITTENT" : "PASS";
   }
@@ -89,6 +118,48 @@ export function classifyResult(current, previous, comparable = true) {
   if (previous.passed) return "REGRESSION";
   if (previous.classification === "PASS") return "REGRESSION";
   return "EXISTING ISSUE";
+}
+
+function skippedScenarioResult(scenario, failedScenarioId) {
+  return {
+    id: scenario.id,
+    category: scenario.category ?? "fixed",
+    passed: false,
+    outcome: "INCONCLUSIVE",
+    classification: null,
+    status: null,
+    latencyMs: null,
+    requestStarts: [],
+    assertions: {},
+    answer: null,
+    grounding: undefined,
+    qualitativeScores: null,
+    evidence: `Not run after ${failedScenarioId} stopped the evaluation.`,
+  };
+}
+
+export function recordScenarioFailure(
+  report,
+  scenarios,
+  scenarioIndex,
+  failedResult,
+  failedAt = new Date().toISOString()
+) {
+  const scenario = scenarios[scenarioIndex];
+  report.scenarios.push(failedResult);
+  for (const skipped of scenarios.slice(scenarioIndex + 1)) {
+    report.scenarios.push(skippedScenarioResult(skipped, scenario.id));
+  }
+  report.progress.status = "failed";
+  report.progress.failure = {
+    scenarioId: scenario.id,
+    request: report.progress.activeRequest,
+    kind: failedResult.failure.kind,
+    message: failedResult.failure.message,
+    failedAt,
+  };
+  report.completedAt = failedAt;
+  return report;
 }
 
 export function compareReports(current, previous) {
@@ -310,7 +381,23 @@ export async function writeReport(report, outputDir) {
   await atomicWrite(`${base}.md`, markdown);
   await atomicWrite(path.join(outputDir, "latest.json"), json);
   await atomicWrite(path.join(outputDir, "latest.md"), markdown);
+  await atomicWrite(path.join(outputDir, "latest-run.json"), json);
   return { jsonPath: `${base}.json`, markdownPath: `${base}.md` };
+}
+
+export async function writeFailureReport(report, outputDir) {
+  const base = path.join(outputDir, `${report.runId}.failed`);
+  const json = `${JSON.stringify(report, null, 2)}\n`;
+  await atomicWrite(`${base}.json`, json);
+  await atomicWrite(`${base}.md`, renderMarkdown(report));
+  await atomicWrite(path.join(outputDir, "latest-run.json"), json);
+  return { jsonPath: `${base}.json`, markdownPath: `${base}.md` };
+}
+
+export async function writeCheckpoint(report, outputDir) {
+  const checkpointPath = path.join(outputDir, `${report.runId}.partial.json`);
+  await atomicWrite(checkpointPath, `${JSON.stringify(report, null, 2)}\n`);
+  return checkpointPath;
 }
 
 export function finalizeClassifications(report, previous) {
