@@ -223,6 +223,10 @@ describe("shouldUseCompetitionGrounding", () => {
 describe("shouldUseMatchGrounding", () => {
   it("recognizes a match-specific follow-up", () => {
     expect(shouldUseMatchGrounding("What about the draw chance?")).toBe(true);
+    expect(shouldUseMatchGrounding("Which side has the stronger model case, and why?"))
+      .toBe(true);
+    expect(shouldUseMatchGrounding("Which model input matters most to that edge?"))
+      .toBe(true);
   });
 
   it("does not classify an unrelated tactical question", () => {
@@ -335,6 +339,20 @@ describe("resolveAskContext", () => {
       fixtures,
       []
     )).toEqual({ tier: "general" });
+    expect(resolveAskContext(
+      "Which side has the stronger model case, and why?",
+      history,
+      teamContext,
+      fixtures,
+      []
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
+    expect(resolveAskContext(
+      "Which model input matters most to that edge?",
+      history,
+      teamContext,
+      fixtures,
+      []
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
   });
 
   it("does not silently generalize a match follow-up while its model row is unavailable", () => {
