@@ -219,12 +219,17 @@ describe("grounded answer sanitizers", () => {
       "- Arsenal: no injury/lineup issues reported; source is general squad commentary."
     );
     expect(answer).toBe(
-      "No verified, dated injury or lineup update was established by the available evidence."
+      "No additional verified, dated injury or lineup update was established by the available evidence."
     );
     expect(sanitizeUnsupportedTeamNews(
       "No verified injury issues were found for Arsenal in this search."
     )).toBe(
-      "No verified, dated injury or lineup update was established by the available evidence."
+      "No additional verified, dated injury or lineup update was established by the available evidence."
+    );
+    expect(sanitizeUnsupportedTeamNews(
+      "Khayal Aliyev is injured. No other verified injury or lineup issues were found for either side."
+    )).toBe(
+      "Khayal Aliyev is injured. No additional verified, dated injury or lineup update was established by the available evidence."
     );
   });
 });
