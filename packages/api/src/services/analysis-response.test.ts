@@ -149,6 +149,29 @@ describe("sanitizeMatchAnswer", () => {
     expect(answer).not.toContain("points");
     expect(answer).not.toContain("counterattacking");
   });
+
+  it("catches alternate tail, away-path, and duplicate aggregate phrasing", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Kuopio",
+      away: "Sabah",
+      scorelines: [
+        { score: "1-2", probability: 0.0758 },
+        { score: "0-1", probability: 0.071 },
+      ],
+    } as Grounding;
+    const answer = sanitizeMatchAnswer(
+      "Anything not listed falls below that 0.1% threshold.\n"
+      + "For Sabah to beat the home lean, 1-0 or 1-2 would mean a defensive display.\n"
+      + "They need a two-goal swing to advance. They need extra time to advance.",
+      grounding
+    );
+    expect(answer).toContain("selected examples");
+    expect(answer).toContain("**1-2 (7.6%)** and **0-1 (7.1%)**");
+    expect(answer.match(/Aggregate advancement is outside/g)).toHaveLength(1);
+    expect(answer).not.toContain("1-0 or 1-2");
+  });
 });
 
 describe("grounded answer sanitizers", () => {
@@ -166,6 +189,11 @@ describe("grounded answer sanitizers", () => {
       "- Arsenal: no injury/lineup issues reported; source is general squad commentary."
     );
     expect(answer).toBe(
+      "No verified, dated injury or lineup update was established by the available evidence."
+    );
+    expect(sanitizeUnsupportedTeamNews(
+      "No verified injury issues were found for Arsenal in this search."
+    )).toBe(
       "No verified, dated injury or lineup update was established by the available evidence."
     );
   });

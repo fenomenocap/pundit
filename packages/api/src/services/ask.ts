@@ -185,7 +185,9 @@ You are given the current league standings from ESPN plus Monte Carlo title and 
 probabilities from Pundit's remaining-fixture simulation. Treat those numbers as ground truth.
 Do not invent or contradict them. Explain that the outlook simulates the rest of the season from
 the current table and scheduled fixtures (~10,000 runs). Pre-season tables with all zeros should
-be described plainly. You may use web_search for transfer, injury, or manager news that would
+be described plainly. Do not infer why equally ranked rows appear in their supplied order. Never
+call the order alphabetical, placeholder, default-sorted, or an ordering artifact unless that
+mechanism is an explicit field. You may use web_search for transfer, injury, or manager news that would
 change the picture, but do not search merely to re-verify the supplied table or probabilities.
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}`;
@@ -634,7 +636,7 @@ function awayWinSummary(grounding: Grounding): string {
 function replaceInvalidScorelineLines(answer: string, grounding: Grounding): string {
   return answer.split("\n").map((line) => {
     const isUnderdogInterpretation = line.toLowerCase().includes(grounding.away.toLowerCase())
-      && /\b(?:path|route|prevail|overturn|away-win)\b/i.test(line)
+      && /\b(?:path|route|prevail|overturn|away-win|beat|winning?)\b/i.test(line)
       && /\b\d+-\d+\b/.test(line);
     if (isUnderdogInterpretation) return awayWinSummary(grounding);
     const pairs = [...line.matchAll(/\b(\d+-\d+)\b[^%\n]{0,45}?(\d+(?:\.\d+)?)%/g)];
@@ -648,12 +650,13 @@ function replaceInvalidScorelineLines(answer: string, grounding: Grounding): str
 export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): string {
   let sanitized = answer;
   sanitized = sanitized.replace(
-    /(?:Any|All|Every) scorelines? not (?:listed|mentioned|shown)(?: here)?[^.!?\n]*(?:below|under)[^.!?\n]*0\.1%[^.!?\n]*[.!?]?/gi,
+    /(?:(?:Any|All|Every) scorelines?|anything) not (?:listed|mentioned|shown)(?: here)?[^.!?\n]*(?:below|under|falls below)[^.!?\n]*(?:0\.1%|threshold)[^.!?\n]*[.!?]?/gi,
     "The scorelines above are selected examples, not the full set at or above the model's 0.1% reporting threshold."
   );
+  const aggregateDisclaimer = "Aggregate advancement is outside Pundit's match payload, so this model does not determine which result would settle the tie.";
   sanitized = sanitized.replace(
     /[^.!?\n]*(?:advance|progress|qualif(?:y|ies)|extra time|two[- ]goal swing)[^.!?\n]*[.!?]?/gi,
-    " Aggregate advancement is outside Pundit's match payload, so this model does not determine which result would settle the tie."
+    ` ${aggregateDisclaimer}`
   );
   sanitized = sanitized.replace(
     /[^.!?\n]*(?:(?:entirely|solely)[^.!?\n]*(?:home[- ]field|home advantage|HFA|edge)|(?:home[- ]field|home advantage|HFA|edge)[^.!?\n]*(?:entirely|solely))[^.!?\n]*[.!?]?/gi,
@@ -673,6 +676,21 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
         .replace(/\b(?:one|1) point\b/gi, "a draw");
     }
   }
+  sanitized = sanitized
+    .replace(
+      /(?:\s*Aggregate advancement is outside Pundit's match payload, so this model does not determine which result would settle the tie\.){2,}/g,
+      ` ${aggregateDisclaimer}`
+    )
+    .replace(
+      /\s+[—-]\s+this is[^.!?\n]*(?:territorial|dominat)[^.!?\n]*[.!?]?/gi,
+      "."
+    )
+    .split("\n")
+    .filter((line, index, lines) =>
+      line.trim() !== aggregateDisclaimer
+      || lines.findIndex((candidate) => candidate.trim() === aggregateDisclaimer) === index
+    )
+    .join("\n");
   return sanitized.replace(/[ \t]+\n/g, "\n").replace(/ {2,}/g, " ").trim();
 }
 
@@ -688,7 +706,7 @@ export function sanitizeCompetitionAnswer(answer: string): string {
 
 export function sanitizeUnsupportedTeamNews(answer: string): string {
   return answer.split("\n").map((line) => {
-    if (/\bno (?:injury\/lineup|injury or lineup|injury|lineup) (?:issues|concerns|updates)?\s*(?:were )?reported\b/i.test(line)) {
+    if (/\bno (?:verified )?(?:injury\/lineup|injury or lineup|injury|lineup) (?:issues|concerns|updates)?\s*(?:were )?(?:reported|found|identified)\b/i.test(line)) {
       return "No verified, dated injury or lineup update was established by the available evidence.";
     }
     return line;
@@ -729,7 +747,9 @@ function validateAnalysisResponse(
       grounding?.kind === "match" ? grounding : undefined
     );
   }
-  if (tier === "competition") return sanitizeCompetitionAnswer(commonSafeAnswer);
+  if (tier === "competition" || tier === "season") {
+    return sanitizeCompetitionAnswer(commonSafeAnswer);
+  }
   return commonSafeAnswer;
 }
 

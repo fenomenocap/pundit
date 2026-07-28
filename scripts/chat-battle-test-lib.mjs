@@ -110,7 +110,7 @@ export function validateGrounding(grounding, expectation) {
       && Array.isArray(grounding?.scorelines)
       && grounding.scorelines.length > 0;
     assertions.oddsSourcesPresent = Array.isArray(grounding?.oddsSources);
-  } else if (expectedKind === "competition") {
+  } else if (expectedKind === "competition" || expectedKind === "season") {
     assertions.expectedCompetition = !expectation?.expectCompetitionId
       || grounding?.competitionId === expectation.expectCompetitionId;
     assertions.updatedAtPresent = typeof grounding?.updatedAt === "string"
@@ -124,6 +124,17 @@ export function validateGrounding(grounding, expectation) {
         && Number.isFinite(row?.points)
         && Number.isFinite(row?.goalDifference)
       );
+    if (expectedKind === "season") {
+      assertions.seasonOutlookPresent = Number.isFinite(grounding?.seasonOutlook?.runs)
+        && grounding.seasonOutlook.runs > 0
+        && Array.isArray(grounding.seasonOutlook.titleProbabilities)
+        && grounding.seasonOutlook.titleProbabilities.length > 0
+        && grounding.seasonOutlook.titleProbabilities.every((row) =>
+          typeof row?.team === "string" && finiteProbability(row?.probability)
+        )
+        && Array.isArray(grounding.seasonOutlook.topFourProbabilities)
+        && grounding.seasonOutlook.topFourProbabilities.length > 0;
+    }
   }
 
   const failures = Object.entries(assertions)
@@ -345,7 +356,7 @@ export function generateAdversarialScenarios(seed, featured) {
       turns: [
         {
           question: "Rank the leading contenders in the Premier League title race using the current table.",
-          expectGrounding: "competition",
+          expectGrounding: "season",
           expectCompetitionId: "eng.1"
         },
         {
@@ -385,12 +396,12 @@ export function generateAdversarialScenarios(seed, featured) {
       turns: [
         {
           question: "Who is most likely to win the Premier League based on the current table?",
-          expectGrounding: "competition",
+          expectGrounding: "season",
           expectCompetitionId: "eng.1"
         },
         {
           question: `Who will win the Premier League? ${certainty}`,
-          expectGrounding: "competition",
+          expectGrounding: "season",
           expectCompetitionId: "eng.1"
         }
       ]
