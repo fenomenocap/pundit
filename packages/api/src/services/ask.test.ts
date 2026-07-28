@@ -6,9 +6,12 @@ import {
   buildGrounding,
   findFixture,
   isCompetitionQuestion,
+  resolveAskContext,
+  resolveCompetitionContext,
   resolveQuestionTeams,
   resolveTeams,
   shouldUseCompetitionGrounding,
+  shouldUseMatchGrounding,
 } from "./ask";
 
 function fixture(home: string, away: string, overrides: Partial<ModelFixture> = {}): ModelFixture {
@@ -46,6 +49,24 @@ const fixtures = [
   fixture("Liverpool", "Manchester United"),
   fixture("Brighton & Hove Albion", "Tottenham Hotspur"),
 ];
+
+function standing(competitionId = "eng.1", team = "Arsenal") {
+  return {
+    competitionId,
+    position: 1,
+    team,
+    playedGames: 0,
+    won: 0,
+    draw: 0,
+    lost: 0,
+    points: 0,
+    goalsFor: 0,
+    goalsAgainst: 0,
+    goalDifference: 0,
+    group: null,
+    advanced: false,
+  };
+}
 
 describe("resolveTeams", () => {
   it("extracts aliases as canonical fixture names", () => {
@@ -182,5 +203,122 @@ describe("shouldUseCompetitionGrounding", () => {
       "How does a high defensive line change pressing risk?",
       competitionHistory
     )).toBe(false);
+  });
+
+  it("preserves the exact competition across multiple referential turns", () => {
+    const history = [
+      { role: "user" as const, content: "How does UCL qualifying look?" },
+      { role: "assistant" as const, content: "The qualifying picture is still developing." },
+      { role: "user" as const, content: "What about that ranking?" },
+      { role: "assistant" as const, content: "There is no league-style table." },
+      { role: "user" as const, content: "And what does that table mean?" },
+      { role: "assistant" as const, content: "It would describe the current order." },
+    ];
+
+    expect(resolveCompetitionContext("What changed in those standings?", history))
+      .toBe("uefa.champions_qual");
+  });
+});
+
+describe("shouldUseMatchGrounding", () => {
+  it("recognizes a match-specific follow-up", () => {
+    expect(shouldUseMatchGrounding("What about the draw chance?")).toBe(true);
+  });
+
+  it("does not classify an unrelated tactical question", () => {
+    expect(shouldUseMatchGrounding("Explain how a high defensive line works.")).toBe(false);
+  });
+});
+
+describe("resolveAskContext", () => {
+  it("keeps general chat available while the active model is empty or unready", () => {
+    expect(resolveAskContext(
+      "Explain how a high defensive line works.",
+      [],
+      undefined,
+      [],
+      []
+    )).toEqual({ tier: "general" });
+  });
+
+  it("uses Premier League standings even when there are no active model fixtures", () => {
+    expect(resolveAskContext(
+      "Who wins the Premier League?",
+      [],
+      undefined,
+      [],
+      [standing()]
+    )).toEqual({ tier: "competition", competitionId: "eng.1" });
+  });
+
+  it("routes a two-team title question to competition grounding", () => {
+    expect(resolveAskContext(
+      "Will Arsenal or Coventry City win the Premier League?",
+      [],
+      undefined,
+      fixtures,
+      [standing()]
+    )).toEqual({ tier: "competition", competitionId: "eng.1" });
+  });
+
+  it("routes a clear named matchup to match grounding even when the competition is named", () => {
+    expect(resolveAskContext(
+      "Arsenal vs Coventry City in the Premier League",
+      [],
+      undefined,
+      fixtures,
+      [standing()]
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
+  });
+
+  it("preserves UCL qualifier context on a standings follow-up", () => {
+    const history = [
+      { role: "user" as const, content: "How does UCL qualifying look?" },
+      { role: "assistant" as const, content: "Here is the current picture." },
+    ];
+
+    expect(resolveAskContext(
+      "What about those standings?",
+      history,
+      undefined,
+      fixtures,
+      [standing("uefa.champions_qual", "Riga FC")]
+    )).toEqual({
+      tier: "competition",
+      competitionId: "uefa.champions_qual",
+    });
+  });
+
+  it("falls back to general analysis when the requested standings are unavailable", () => {
+    expect(resolveAskContext(
+      "How does UCL qualifying look?",
+      [],
+      undefined,
+      fixtures,
+      []
+    )).toEqual({ tier: "general" });
+  });
+
+  it("reuses match context only for a relevant follow-up", () => {
+    const history = [
+      { role: "user" as const, content: "Arsenal vs Coventry City" },
+      { role: "assistant" as const, content: "Arsenal is favoured." },
+    ];
+    const teamContext: [string, string] = ["Arsenal", "Coventry City"];
+
+    expect(resolveAskContext(
+      "What about the draw chance?",
+      history,
+      teamContext,
+      fixtures,
+      []
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
+    expect(resolveAskContext(
+      "Explain how a high defensive line works.",
+      history,
+      teamContext,
+      fixtures,
+      []
+    )).toEqual({ tier: "general" });
   });
 });

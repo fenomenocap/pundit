@@ -9,18 +9,18 @@ export const metadata: Metadata = {
     template: "%s | Pundit",
   },
   description:
-    "World Cup win probabilities, live fixture odds, and a conversational match-analysis agent.",
-  keywords: ["prediction market", "sports analysis", "football", "world cup", "match analysis"],
+    "Premier League and Champions League qualifier probabilities, live fixture odds, and grounded football analysis.",
+  keywords: ["football predictions", "Premier League", "Champions League qualifiers", "sports analysis", "match analysis"],
   openGraph: {
     type: "website",
     siteName: "Pundit",
     title: "Pundit — Football Prediction Analysis",
-    description: "World Cup win probabilities, live fixture odds, and a conversational match-analysis agent.",
+    description: "Club-season probabilities, live fixture odds, and grounded football analysis.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Pundit — Football Prediction Analysis",
-    description: "World Cup win probabilities and live fixture odds.",
+    description: "Club-season probabilities, live fixture odds, and grounded football analysis.",
   },
   robots: {
     index: true,

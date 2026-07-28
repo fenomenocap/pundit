@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { ModelFixture, getModelFixtureKey } from "./model-data";
 import {
+  MARKET_ODDS_COLD_RETRY_MS,
+  MARKET_ODDS_REFRESH_INTERVAL_MS,
   getModelMarketOddsStatus,
+  marketOddsRefreshDelay,
   marketOddsFixtureKey,
   refreshModelMarketOdds,
 } from "./model-market-odds";
@@ -54,6 +57,24 @@ describe("marketOddsFixtureKey", () => {
 });
 
 describe("refreshModelMarketOdds", () => {
+  it("stays unready and skips sources when the model never initialized", async () => {
+    vi.mocked(getCachedModelData).mockReturnValue({
+      fixtures: [],
+      lastUpdated: null,
+      error: "Club ratings are not ready",
+    });
+    vi.mocked(fetchAllMarketOdds).mockClear();
+
+    await refreshModelMarketOdds();
+    const status = getModelMarketOddsStatus();
+
+    expect(fetchAllMarketOdds).not.toHaveBeenCalled();
+    expect(status.ready).toBe(false);
+    expect(status.lastUpdated).toBeNull();
+    expect(status.error).toBe("Active model is not ready.");
+    expect(marketOddsRefreshDelay(status)).toBe(MARKET_ODDS_COLD_RETRY_MS);
+  });
+
   it("warns on silent-empty sources and reports coverage", async () => {
     vi.mocked(getCachedModelData).mockReturnValue({
       fixtures: [model],
@@ -77,5 +98,6 @@ describe("refreshModelMarketOdds", () => {
       polymarket: { matched: 0, total: 1 },
       kalshi: { matched: 1, total: 1 },
     });
+    expect(marketOddsRefreshDelay(status)).toBe(MARKET_ODDS_REFRESH_INTERVAL_MS);
   });
 });

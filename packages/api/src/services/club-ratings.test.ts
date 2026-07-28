@@ -1,5 +1,25 @@
-import { describe, expect, it } from "vitest";
-import { lookupClubRating, parseClubEloCsv } from "./club-ratings";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  CLUB_RATINGS_COLD_RETRY_MS,
+  CLUB_RATINGS_REFRESH_INTERVAL_MS,
+  clubRatingsRefreshDelay,
+  fetchClubRatings,
+  getCachedClubRatings,
+  lookupClubRating,
+  parseClubEloCsv,
+  refreshClubRatings,
+} from "./club-ratings";
+
+function ratingsCsv(count = 10): string {
+  const rows = Array.from({ length: count }, (_, index) =>
+    `${index + 1},Club ${index + 1},${index < 5 ? "ENG" : "ESP"},1,${1800 - index},2026-07-01,2026-07-26`
+  );
+  return ["Rank,Club,Country,Level,Elo,From,To", ...rows].join("\n");
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("club ratings", () => {
   it("parses ClubElo CSV rows", () => {
@@ -21,5 +41,66 @@ describe("club ratings", () => {
     expect(lookupClubRating("Arsenal", "eng-clubs", ratings)).toBe(1850);
     expect(lookupClubRating("Manchester United", "eng-clubs", ratings)).toBeUndefined();
     expect(lookupClubRating("Paris Saint-Germain", "uefa-clubs", ratings)).toBe(1840);
+  });
+
+  it("fails fast after one host/network error instead of retrying every date", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network unavailable"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchClubRatings(new Date("2026-07-28T00:00:00.000Z")))
+      .rejects.toThrow("network unavailable");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses earlier dates only for a reachable 404 date miss", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => ratingsCsv(),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ratings = await fetchClubRatings(new Date("2026-07-28T00:00:00.000Z"));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(ratings["uefa-clubs"]).toHaveLength(10);
+  });
+
+  it("retains last-good ratings when a later refresh fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => ratingsCsv(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await refreshClubRatings();
+    const lastGood = getCachedClubRatings();
+
+    fetchMock.mockRejectedValueOnce(new Error("network unavailable"));
+    await refreshClubRatings();
+    const afterFailure = getCachedClubRatings();
+
+    expect(afterFailure.fetchedAt).toEqual(lastGood.fetchedAt);
+    expect(afterFailure.byProfile["uefa-clubs"]).toEqual(lastGood.byProfile["uefa-clubs"]);
+    expect(afterFailure.error).toBe("network unavailable");
+  });
+
+  it("retries a cold failure sooner and keeps successful refreshes hourly", () => {
+    const emptyProfiles = {
+      world: new Map(),
+      "eng-clubs": new Map(),
+      "uefa-clubs": new Map(),
+    };
+    expect(clubRatingsRefreshDelay({
+      byProfile: emptyProfiles,
+      fetchedAt: null,
+      error: "network unavailable",
+    })).toBe(CLUB_RATINGS_COLD_RETRY_MS);
+    expect(clubRatingsRefreshDelay({
+      byProfile: emptyProfiles,
+      fetchedAt: new Date(),
+      error: "last refresh failed",
+    })).toBe(CLUB_RATINGS_REFRESH_INTERVAL_MS);
   });
 });

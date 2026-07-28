@@ -2,6 +2,9 @@ import { canonicalClubName } from "../lib/team-names";
 import { RatingProfile } from "../config/competitions";
 
 const CLUBELO_BASE = "http://api.clubelo.com";
+const CLUBELO_TIMEOUT_MS = 8_000;
+export const CLUB_RATINGS_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+export const CLUB_RATINGS_COLD_RETRY_MS = 5 * 60 * 1000;
 
 export interface ClubRatingsCache {
   byProfile: Record<RatingProfile, Map<string, number>>;
@@ -73,12 +76,19 @@ function buildProfileMaps(rows: ReturnType<typeof parseClubEloCsv>): Record<Rati
   };
 }
 
+class ClubEloDateUnavailableError extends Error {}
+
 async function fetchClubEloForDate(date: string): Promise<ReturnType<typeof parseClubEloCsv>> {
   const response = await fetch(`${CLUBELO_BASE}/${date}`, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; pundit/1.0)" },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(CLUBELO_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`ClubElo ${response.status} for ${date}`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new ClubEloDateUnavailableError(`ClubElo ${response.status} for ${date}`);
+    }
+    throw new Error(`ClubElo ${response.status} for ${date}`);
+  }
   return parseClubEloCsv(await response.text());
 }
 
@@ -94,6 +104,11 @@ export async function fetchClubRatings(referenceDate = new Date()): Promise<Reco
       lastError = new Error(`ClubElo ${formatted} returned only ${rows.length} clubs`);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      // Only a reachable-host "no snapshot for this date" response should
+      // advance to the previous date. Retrying fourteen dates cannot recover
+      // from a host/network timeout and turns one outage into a multi-minute
+      // cold start.
+      if (!(error instanceof ClubEloDateUnavailableError)) throw lastError;
     }
   }
   throw lastError ?? new Error("ClubElo ratings unavailable");
@@ -126,16 +141,38 @@ export async function refreshClubRatings(): Promise<void> {
   }
 }
 
-const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-let cronTimer: ReturnType<typeof setInterval> | null = null;
+export function clubRatingsRefreshDelay(cacheState: ClubRatingsCache): number {
+  return cacheState.fetchedAt === null && cacheState.error !== null
+    ? CLUB_RATINGS_COLD_RETRY_MS
+    : CLUB_RATINGS_REFRESH_INTERVAL_MS;
+}
+
+let cronTimer: ReturnType<typeof setTimeout> | null = null;
+let cronEnabled = false;
+
+function scheduleClubRatingsRefresh(): void {
+  if (!cronEnabled) return;
+  const delay = clubRatingsRefreshDelay(cache);
+  cronTimer = setTimeout(() => {
+    cronTimer = null;
+    void refreshClubRatings().finally(() => {
+      if (cronEnabled) scheduleClubRatingsRefresh();
+    });
+  }, delay);
+}
 
 export async function startClubRatingsCron(): Promise<void> {
+  cronEnabled = true;
+  if (cronTimer) clearTimeout(cronTimer);
   await refreshClubRatings();
-  cronTimer = setInterval(refreshClubRatings, REFRESH_INTERVAL_MS);
-  console.log("[ClubRatings] Cron started — refreshing every hour");
+  scheduleClubRatingsRefresh();
+  console.log(
+    `[ClubRatings] Cron started — next refresh in ${clubRatingsRefreshDelay(cache) / 1000}s`
+  );
 }
 
 export function stopClubRatingsCron(): void {
-  if (cronTimer) clearInterval(cronTimer);
+  cronEnabled = false;
+  if (cronTimer) clearTimeout(cronTimer);
   cronTimer = null;
 }

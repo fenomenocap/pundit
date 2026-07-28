@@ -11,11 +11,12 @@ import evaluationRoutes from "./routes/evaluation";
 import { startClubRatingsCron } from "./services/club-ratings";
 import { getCachedModelData, startModelCron } from "./services/model-data";
 import { getCachedMatches, startFootballCron } from "./services/football-data";
-import { getActiveFixtureStatus } from "./services/active-fixtures";
+import { getActiveFixtures, getActiveFixtureStatus } from "./services/active-fixtures";
 import {
   getModelMarketOddsStatus,
   startModelMarketOddsCron,
 } from "./services/model-market-odds";
+import { evaluateReadiness } from "./services/readiness";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -65,21 +66,34 @@ app.get("/health", (_req, res) => {
 app.get("/ready", (_req, res) => {
   const model = getCachedModelData();
   const football = getCachedMatches();
+  const activeFixtures = getActiveFixtures();
   const active = getActiveFixtureStatus();
   const odds = getModelMarketOddsStatus();
-  const ready = model.lastUpdated !== null && football.lastUpdated !== null && odds.ready;
-  res.status(ready ? 200 : 503).json({
-    status: ready ? "ready" : "loading",
-    model: { ready: model.lastUpdated !== null, lastUpdated: model.lastUpdated?.toISOString() ?? null },
-    football: { ready: football.lastUpdated !== null, lastUpdated: football.lastUpdated?.toISOString() ?? null },
+  const readiness = evaluateReadiness(model, football, activeFixtures, odds);
+  res.status(readiness.ready ? 200 : 503).json({
+    status: readiness.ready ? "ready" : "loading",
+    model: {
+      ready: readiness.modelReady,
+      fixtureCount: model.fixtures.length,
+      expectedActiveFixtureCount: activeFixtures.length,
+      lastUpdated: model.lastUpdated?.toISOString() ?? null,
+      error: model.error,
+    },
+    football: {
+      ready: readiness.footballReady,
+      lastUpdated: football.lastUpdated?.toISOString() ?? null,
+      error: football.error,
+      competitionErrors: football.competitionErrors,
+    },
     activeFixtures: {
       count: active.count,
       byCompetition: active.byCompetition,
       lastUpdated: active.lastUpdated?.toISOString() ?? null,
     },
     marketOdds: {
-      ready: odds.ready,
+      ready: readiness.marketOddsReady,
       lastUpdated: odds.lastUpdated?.toISOString() ?? null,
+      error: odds.error,
       sourceWarnings: odds.sourceWarnings,
       coverage: odds.coverage,
     },

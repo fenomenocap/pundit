@@ -3,7 +3,8 @@ import { fetchAllMarketOdds } from "./fixture-market-sources";
 
 // Market prices move fastest on match day; 30 minutes keeps the comparison
 // honest while staying trivial for three public endpoints.
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+export const MARKET_ODDS_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+export const MARKET_ODDS_COLD_RETRY_MS = 2 * 60 * 1000;
 
 export interface ThreeWayOdds {
   pHome: number;
@@ -59,7 +60,13 @@ export function getModelMarketOddsStatus() {
 export async function refreshModelMarketOdds(): Promise<void> {
   console.log("[ModelMarketOdds] Refreshing active fixture odds...");
   try {
-    const active = getCachedModelData().fixtures;
+    const model = getCachedModelData();
+    if (model.lastUpdated === null) {
+      cache.error = "Active model is not ready.";
+      console.warn("[ModelMarketOdds] Active model is not ready; refresh deferred.");
+      return;
+    }
+    const active = model.fixtures;
     const sources = await fetchAllMarketOdds(active);
     const names = ["stake", "polymarket", "kalshi"] as const;
     cache.sourceWarnings = {};
@@ -99,15 +106,40 @@ export async function refreshModelMarketOdds(): Promise<void> {
   }
 }
 
-let cronTimer: ReturnType<typeof setInterval> | null = null;
+export function marketOddsRefreshDelay(
+  status: Pick<MarketOddsCache, "lastUpdated" | "error">
+): number {
+  return status.lastUpdated === null && status.error === "Active model is not ready."
+    ? MARKET_ODDS_COLD_RETRY_MS
+    : MARKET_ODDS_REFRESH_INTERVAL_MS;
+}
+
+let cronTimer: ReturnType<typeof setTimeout> | null = null;
+let cronEnabled = false;
+
+function scheduleModelMarketOddsRefresh(): void {
+  if (!cronEnabled) return;
+  const delay = marketOddsRefreshDelay(cache);
+  cronTimer = setTimeout(() => {
+    cronTimer = null;
+    void refreshModelMarketOdds().finally(() => {
+      if (cronEnabled) scheduleModelMarketOddsRefresh();
+    });
+  }, delay);
+}
 
 export async function startModelMarketOddsCron(): Promise<void> {
+  cronEnabled = true;
+  if (cronTimer) clearTimeout(cronTimer);
   await refreshModelMarketOdds();
-  cronTimer = setInterval(refreshModelMarketOdds, REFRESH_INTERVAL_MS);
-  console.log("[ModelMarketOdds] Cron started — refreshing every 30 minutes");
+  scheduleModelMarketOddsRefresh();
+  console.log(
+    `[ModelMarketOdds] Cron started — next refresh in ${marketOddsRefreshDelay(cache) / 1000}s`
+  );
 }
 
 export function stopModelMarketOddsCron(): void {
-  if (cronTimer) clearInterval(cronTimer);
+  cronEnabled = false;
+  if (cronTimer) clearTimeout(cronTimer);
   cronTimer = null;
 }
