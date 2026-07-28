@@ -93,6 +93,7 @@ pnpm test && pnpm build
 | GET | `/api/matches/standings` | Standings (ESPN) |
 | GET | `/api/model/active` | Active club fixtures with model 1X2 probabilities |
 | GET | `/api/model/fixtures` | Same as active set (optional `?competition=`) |
+| GET | `/api/evaluation/club-season` | Rolling club-season calibration artifact |
 | GET | `/api/evaluation/wc-2026` | Frozen WC 2026 backtest artifact |
 | GET | `/health` | API health check |
 | GET | `/ready` | Model, ESPN, active-fixture, and market-odds cache readiness |
@@ -106,6 +107,7 @@ pnpm test && pnpm build
 - **`/`** — chat homepage: grounded active-match analysis, competition/table questions, and general football follow-ups
 - **`/fixtures`** — multi-competition live schedule, results, and standings (ESPN-backed)
 - **`/model`** — native reference view of active club fixture model probabilities
+- **`/evaluation/club-season`** — rolling pre-kickoff club-season calibration
 - **`/evaluation/wc-2026`** — frozen WC 2026 backtest metrics and fixture table
 
 ---
@@ -146,6 +148,9 @@ cd packages/web && vercel --prod
 |---|---|
 | `NEXT_PUBLIC_API_URL` | `https://sports-predictapi-production.up.railway.app` |
 | `NEXT_PUBLIC_USE_MOCK` | `false` |
+| `NEXT_PUBLIC_DOCS_URL` | GitBook public URL after publishing `docs/` (enables footer and chat doc links) |
+
+**GitBook:** connect the repo `docs/` folder (GitHub sync), publish, then set `NEXT_PUBLIC_DOCS_URL` in Vercel to the public space URL.
 
 Required env vars for local dev are listed in `.env.example`. Never commit `ANTHROPIC_API_KEY`.
 

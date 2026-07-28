@@ -7,10 +7,11 @@ It is **not** a betting or trading product. Pundit doesn't take positions, hold 
 ### Answer types
 
 1. **Match analysis** — an upcoming Premier League or UCL qualifier fixture with win/draw/win, totals, BTTS, scoreline probabilities, and any valid active Stake/Kalshi/Polymarket prices.
-2. **Competition / season outlook** — league table questions and Premier League title or top-four probabilities from a remaining-fixture simulation.
-3. **General analysis** — football help that is explicitly labelled as not grounded in Pundit's statistical model.
+2. **Competition analysis** — league table questions grounded in ESPN standings.
+3. **Season outlook** — Premier League title or top-four probabilities from a remaining-fixture Monte Carlo simulation.
+4. **General analysis** — football help that is explicitly labelled as not grounded in Pundit's statistical model.
 
-Premier League fixtures apply home-field advantage. UCL qualifiers use the same model with home-field boost where applicable.
+Premier League fixtures apply home-field advantage. UCL qualifiers use the same Dixon-Coles model with home-field boost where configured.
 
 ### What you can do
 
@@ -18,4 +19,4 @@ Premier League fixtures apply home-field advantage. UCL qualifiers use the same 
 * Ask about the Premier League table, title race, or top-four picture
 * Browse the full fixtures, results, and standings (with Ask-about-this-match links)
 * Browse the native model reference page and use the read-only API
-* Review frozen calibration artifacts at `/evaluation/club-season` and `/evaluation/wc-2026`
+* Review calibration artifacts at `/evaluation/club-season` (rolling) and `/evaluation/wc-2026` (frozen WC backtest)

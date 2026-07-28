@@ -28,7 +28,7 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 | **Local model** (`dixon-coles.ts`, `model-data.ts`) | `/api/model/active`, `/api/model/fixtures`, `/model`, match grounding | Computes 1X2, totals, BTTS and scoreline probabilities for the 14-day active club-fixture set, including home-field advantage where configured. |
 | **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Active match grounding | Direct best-effort fetches normalize complete active 1X2 markets to no-vig probabilities every 30 minutes. Source failures remain isolated. |
 | **Frozen WC evaluation** (`wc-evaluation.ts`) | `/api/evaluation/wc-2026`, `/evaluation/wc-2026` | Read-only historical backtest. It is not a live competition pipeline and has no cron. |
-| **Anthropic API** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | Three tiers: active-match model grounding, ESPN competition-standings grounding, and clearly labelled general football analysis. Supports web search and client-sourced conversation history. |
+| **Anthropic API** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | Four tiers: active-match model grounding, ESPN competition-standings grounding, Premier League season outlook (Monte Carlo), and clearly labelled general football analysis. Supports SSE streaming, web search, and client-sourced conversation history. |
 
 ---
 
@@ -45,6 +45,7 @@ ALLOWED_ORIGINS=http://localhost:3000
 # ── Frontend (Next.js) ────────────────────────────────────────────────────────
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_USE_MOCK=true   # false hits the real API instead of mock-data.ts fallbacks
+NEXT_PUBLIC_DOCS_URL=         # optional GitBook public URL — enables "How it works" / "Learn more" links
 
 # ── Anthropic (required for POST /api/ask) ───────────────────────────────────
 ANTHROPIC_API_KEY=

@@ -255,3 +255,53 @@ export async function fetchStandings(competition?: string): Promise<StandingsPay
     : MOCK_STANDINGS;
   return { standings, lastUpdated: new Date(now).toISOString(), error: null };
 }
+
+const MOCK_CLUB_SEASON_EVALUATION = {
+  competitions: ["eng.1"],
+  method: "snapshot" as const,
+  builtAt: new Date(now).toISOString(),
+  updatedAt: new Date(now).toISOString(),
+  disclaimer: "Pre-kickoff probabilities captured when fixtures leave the scheduled "
+    + "window. Rolling club-season calibration — not a frozen backtest.",
+  fixtures: [],
+  metrics: {
+    fixtureCount: 0,
+    brierScore: 0,
+    logLoss: 0,
+    winnerAccuracy: 0,
+    drawCount: 0,
+    calibration: [],
+  },
+};
+
+const MOCK_WC2026_EVALUATION = {
+  competition: "fifa.world" as const,
+  method: "reconstructed" as const,
+  builtAt: new Date(now).toISOString(),
+  disclaimer: "Immutable pre-kickoff probabilities reconstructed for backtesting.",
+  fixtures: [],
+  metrics: {
+    fixtureCount: 0,
+    brierScore: 0,
+    logLoss: 0,
+    winnerAccuracy: 0,
+    drawCount: 0,
+    calibration: [],
+  },
+};
+
+export async function fetchClubSeasonEvaluation() {
+  if (!USE_MOCK) {
+    const { getClubSeasonEvaluation } = await import("./api");
+    return getClubSeasonEvaluation();
+  }
+  return MOCK_CLUB_SEASON_EVALUATION;
+}
+
+export async function fetchWc2026Evaluation() {
+  if (!USE_MOCK) {
+    const { getWc2026Evaluation } = await import("./api");
+    return getWc2026Evaluation();
+  }
+  return MOCK_WC2026_EVALUATION;
+}

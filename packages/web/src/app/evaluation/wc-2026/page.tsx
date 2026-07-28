@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, X } from "lucide-react";
-import { getWc2026Evaluation, type Wc2026EvaluationResponse } from "@/lib/api";
+import { type Wc2026EvaluationResponse } from "@/lib/api";
+import { fetchWc2026Evaluation } from "@/lib/mock-data";
 import { PageHeader } from "@/components/page-header";
 import { ErrorBanner } from "@/components/error-banner";
 
@@ -30,7 +31,7 @@ export default function Wc2026EvaluationPage() {
   const load = () => {
     setLoading(true);
     setError(null);
-    getWc2026Evaluation()
+    fetchWc2026Evaluation()
       .then((response) => setData(response))
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "Could not load evaluation data.");
