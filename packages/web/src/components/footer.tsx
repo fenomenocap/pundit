@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Disclaimer } from "@/components/disclaimer";
+import { getDocsUrl, getGithubUrl } from "@/lib/site-links";
 
 export function Footer() {
   const pathname = usePathname();
+  const docsUrl = getDocsUrl();
   // Chat is a full-viewport composition — keep the footer off that surface.
   if (pathname === "/") return null;
 
@@ -14,6 +16,22 @@ export function Footer() {
       <div className="flex flex-col items-center justify-between gap-2 text-xs text-muted-foreground sm:flex-row">
         <Disclaimer />
         <div className="flex items-center gap-4">
+          {docsUrl && (
+            <a
+              href={docsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-foreground"
+            >
+              How it works
+            </a>
+          )}
+          <Link
+            href="/evaluation/club-season"
+            className="transition-colors hover:text-foreground"
+          >
+            Club calibration
+          </Link>
           <Link
             href="/evaluation/wc-2026"
             className="transition-colors hover:text-foreground"
@@ -21,7 +39,7 @@ export function Footer() {
             WC Backtest
           </Link>
           <a
-            href="https://github.com/fenomenocap/pundit"
+            href={getGithubUrl()}
             target="_blank"
             rel="noopener noreferrer"
             className="transition-colors hover:text-foreground"

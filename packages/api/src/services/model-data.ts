@@ -10,6 +10,8 @@ import {
   lookupClubRating,
 } from "./club-ratings";
 import { computeMatchModel, DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
+import { getCachedMatches } from "./football-data";
+import { updateClubSeasonSnapshots } from "./club-season-snapshots";
 
 export interface ModelScoreline {
   score: string;
@@ -240,6 +242,10 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
     cache.lastUpdated = new Date();
     cache.error = null;
     console.log(`[Model] ${cache.fixtures.length} active fixtures cached.`);
+
+    const football = getCachedMatches();
+    const trackedMatches = [...football.upcoming, ...football.recent];
+    updateClubSeasonSnapshots(trackedMatches, fixtures);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     cache.error = message;

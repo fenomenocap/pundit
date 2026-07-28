@@ -210,6 +210,39 @@ export async function getWc2026Evaluation() {
   return apiFetch<Wc2026EvaluationResponse>("/api/evaluation/wc-2026");
 }
 
+export interface ClubSeasonEvaluationFixture {
+  competitionId: string;
+  fixtureId: number;
+  utcDate: string;
+  date: string;
+  stage: string;
+  home: string;
+  away: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  result: {
+    homeScore: number;
+    awayScore: number;
+    winner: "home" | "draw" | "away";
+  } | null;
+  method: "snapshot";
+}
+
+export interface ClubSeasonEvaluationResponse {
+  competitions: string[];
+  method: "snapshot";
+  builtAt: string;
+  updatedAt: string;
+  disclaimer: string;
+  fixtures: ClubSeasonEvaluationFixture[];
+  metrics: Wc2026EvaluationResponse["metrics"];
+}
+
+export async function getClubSeasonEvaluation() {
+  return apiFetch<ClubSeasonEvaluationResponse>("/api/evaluation/club-season");
+}
+
 // ─── Ask (conversational match analysis) ────────────────────────────────────
 
 export interface OddsSource {
@@ -257,7 +290,24 @@ export interface CompetitionGrounding {
   }>;
 }
 
-export type AskGrounding = MatchGrounding | CompetitionGrounding | null;
+export interface SeasonGrounding {
+  kind: "season";
+  competitionId: string;
+  competition: string;
+  updatedAt: string | null;
+  standings: CompetitionGrounding["standings"];
+  seasonOutlook: {
+    competitionId: string;
+    competition: string;
+    runs: number;
+    titleProbabilities: Array<{ team: string; probability: number }>;
+    topFourProbabilities: Array<{ team: string; probability: number }>;
+    remainingFixtures: number;
+    updatedAt: string;
+  };
+}
+
+export type AskGrounding = MatchGrounding | CompetitionGrounding | SeasonGrounding | null;
 
 export interface ConversationTurn {
   role: "user" | "assistant";

@@ -19,6 +19,8 @@ import {
   selectFeaturedMatch,
   validateGrounding,
   validateSse,
+  validateAnswerCopy,
+  validateErrorCopy,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -441,4 +443,17 @@ test("scenario failure records the active request and marks later work inconclus
   assert.equal(report.scenarios[1], failedResult);
   assert.match(report.scenarios[2].evidence, /fixed-timeout/);
   assert.equal(report.scenarios[2].outcome, "INCONCLUSIVE");
+});
+
+test("answer copy guard rejects internal methodology jargon", () => {
+  assert.equal(validateAnswerCopy("Pundit's model favours the home side.").passed, true);
+  assert.equal(validateAnswerCopy("Using Dixon-Coles probabilities here.").passed, false);
+  assert.equal(validateAnswerCopy("ClubElo ratings drive the edge.").passed, false);
+  assert.equal(validateAnswerCopy("This is model-grounded analysis.").passed, false);
+});
+
+test("400 error copy guard rejects schema field leaks", () => {
+  assert.equal(validateErrorCopy({ error: "Couldn't understand that request." }).passed, true);
+  assert.equal(validateErrorCopy({ error: "'history' must be an array." }).passed, false);
+  assert.equal(validateErrorCopy({ error: "history must be an array" }).passed, false);
 });

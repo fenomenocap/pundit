@@ -1,0 +1,16 @@
+{
+  "competitions": ["eng.1", "uefa.champions_qual"],
+  "method": "snapshot",
+  "builtAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z",
+  "disclaimer": "Pre-kickoff probabilities captured when fixtures leave the scheduled window. Rolling club-season calibration — not a frozen backtest.",
+  "fixtures": [],
+  "metrics": {
+    "fixtureCount": 0,
+    "brierScore": 0,
+    "logLoss": 0,
+    "winnerAccuracy": 0,
+    "drawCount": 0,
+    "calibration": []
+  }
+}

@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Disclaimer } from "@/components/disclaimer";
+import { getDocsUrl } from "@/lib/site-links";
 
 interface ChatMessage {
   id: number;
@@ -28,13 +29,13 @@ interface ChatMessage {
   grounding?: AskGrounding;
 }
 
-type LoadingTier = "match" | "competition" | "general" | null;
+type LoadingTier = "match" | "competition" | "season" | "general" | null;
 
 let nextId = 0;
 
 const FALLBACK_SUGGESTIONS = [
   "What does the current Premier League table show?",
-  "How does a high defensive line change pressing risk?",
+  "Who has the best chance in the next UCL qualifier?",
 ];
 
 function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
@@ -96,6 +97,7 @@ function sanitizeAskError(err: unknown): string {
 function loadingMessage(tier: LoadingTier): string {
   if (tier === "match") return "Checking model & markets…";
   if (tier === "competition") return "Loading standings…";
+  if (tier === "season") return "Simulating season outlook…";
   return "Thinking…";
 }
 
@@ -174,6 +176,9 @@ function groundingLabel(grounding: AskGrounding): string {
   if (grounding?.kind === "match") {
     return `${grounding.competition} · ${grounding.date} · Pundit model`;
   }
+  if (grounding?.kind === "season") {
+    return `${grounding.competition} · season outlook · Pundit model`;
+  }
   if (grounding?.kind === "competition") {
     return `${grounding.competition} · ESPN table`;
   }
@@ -197,6 +202,67 @@ function AssistantMarkdown({ content }: { content: string }) {
   );
 }
 
+function MessageActions({
+  content,
+  question,
+}: {
+  content: string;
+  question: string | null;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyAnswer() {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard may be unavailable
+    }
+  }
+
+  async function shareQuestion() {
+    if (!question) return;
+    const url = `${window.location.origin}/?q=${encodeURIComponent(question)}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Pundit", text: question, url });
+        return;
+      } catch {
+        // Fall through to clipboard
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard may be unavailable
+    }
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2 border-t border-border/70 pt-2">
+      <button
+        type="button"
+        className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+        onClick={() => void copyAnswer()}
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+      {question && (
+        <button
+          type="button"
+          className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => void shareQuestion()}
+        >
+          Share
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function HomeChat() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -207,6 +273,7 @@ export function HomeChat() {
   const [loadingTier, setLoadingTier] = useState<LoadingTier>(null);
   const [teamContext, setTeamContext] = useState<TeamContext>();
   const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS);
+  const [hasFeaturedFixtures, setHasFeaturedFixtures] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoAskedRef = useRef<string | null>(null);
   const askRef = useRef<(question: string) => Promise<void>>(async () => undefined);
@@ -223,6 +290,7 @@ export function HomeChat() {
         if (cancelled) return;
         const featured = fixtures.slice(0, 3).map(formatSuggestionChip);
         if (featured.length > 0) {
+          setHasFeaturedFixtures(true);
           setSuggestions(featured);
           return;
         }
@@ -230,13 +298,14 @@ export function HomeChat() {
         const active = await fetchActiveFixtures();
         if (cancelled) return;
         const activeSuggestions = active.matches.slice(0, 3).map(formatActiveFixtureChip);
-        setSuggestions(
-          activeSuggestions.length > 0
-            ? activeSuggestions
-            : FALLBACK_SUGGESTIONS
-        );
+        const hasActive = activeSuggestions.length > 0;
+        setHasFeaturedFixtures(hasActive);
+        setSuggestions(hasActive ? activeSuggestions : FALLBACK_SUGGESTIONS);
       } catch {
-        if (!cancelled) setSuggestions(FALLBACK_SUGGESTIONS);
+        if (!cancelled) {
+          setHasFeaturedFixtures(false);
+          setSuggestions(FALLBACK_SUGGESTIONS);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -266,9 +335,11 @@ export function HomeChat() {
           setLoadingTier(
             initialGrounding?.kind === "match"
               ? "match"
-              : initialGrounding?.kind === "competition"
-                ? "competition"
-                : "general"
+              : initialGrounding?.kind === "season"
+                ? "season"
+                : initialGrounding?.kind === "competition"
+                  ? "competition"
+                  : "general"
           );
         },
         onDelta: (text) => {
@@ -371,6 +442,11 @@ export function HomeChat() {
               </button>
             ))}
           </div>
+          {!hasFeaturedFixtures && (
+            <p className="mt-4 max-w-md text-xs text-muted-foreground">
+              No upcoming model fixtures — try a table question or general football analysis.
+            </p>
+          )}
           <div className="mt-8 flex items-center gap-3">
             <Link href="/fixtures">
               <Button size="sm">View Fixtures</Button>
@@ -387,13 +463,14 @@ export function HomeChat() {
             aria-relevant="additions text"
             className="flex flex-col gap-3 py-4"
           >
-            {messages.map((m) => {
+            {messages.map((m, index) => {
               const rows = m.role === "assistant" && m.grounding?.kind === "match"
                 ? oddsRows(m.grounding)
                 : [];
               const hasMarkets = rows.length > 1;
               const homeHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.home) : "Home";
               const awayHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.away) : "Away";
+              const precedingUser = [...messages.slice(0, index)].reverse().find((msg) => msg.role === "user");
               return (
                 <div
                   key={m.id}
@@ -442,6 +519,12 @@ export function HomeChat() {
                       )}
                     </div>
                   )}
+                  {m.role === "assistant" && (
+                    <MessageActions
+                      content={m.content}
+                      question={precedingUser?.content ?? null}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -474,6 +557,18 @@ export function HomeChat() {
           </Button>
         </div>
         <Disclaimer className="text-center text-xs text-muted-foreground" />
+        {getDocsUrl() && (
+          <p className="text-center text-xs text-muted-foreground">
+            <a
+              href={getDocsUrl()!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-foreground"
+            >
+              Learn more
+            </a>
+          </p>
+        )}
       </form>
     </div>
   );
