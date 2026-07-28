@@ -6,6 +6,7 @@ import {
   MODEL_REFRESH_INTERVAL_MS,
   buildActiveModelFixtures,
   buildModelFixtureFromActive,
+  findMissingClubRatingTeams,
   getCachedModelData,
   modelDataCoversActiveFixtures,
   modelRefreshDelay,
@@ -76,6 +77,13 @@ describe("active club model", () => {
     expect(model).toBeNull();
   });
 
+  it("reports the exact active teams missing from a ratings snapshot", () => {
+    expect(findMissingClubRatingTeams([
+      activeFixture({ awayTeam: "Unknown FC" }),
+      activeFixture({ id: 2, homeTeam: "Another Missing FC" }),
+    ], ratings)).toEqual(["Another Missing FC", "Unknown FC"]);
+  });
+
   it("returns only fixtures for enabled competitions", () => {
     const fixtures = buildActiveModelFixtures([
       activeFixture(),
@@ -134,7 +142,9 @@ describe("active club model", () => {
     const cached = getCachedModelData();
 
     expect(cached.fixtures).toEqual([]);
-    expect(cached.error).toBe("Club ratings are missing for 1 active fixture(s).");
+    expect(cached.error).toBe(
+      "Club ratings are missing for 1 active team(s): Coventry City."
+    );
   });
 
   it("uses retained last-good ratings after a provider refresh error", async () => {
