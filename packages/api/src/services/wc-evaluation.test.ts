@@ -51,6 +51,7 @@ describe("wc evaluation reconstruction", () => {
   const finishedMatches: FootballMatch[] = [
     {
       id: 1,
+      competitionId: "fifa.world",
       competition: "FIFA World Cup",
       homeTeam: "Mexico",
       awayTeam: "South Africa",
@@ -64,6 +65,7 @@ describe("wc evaluation reconstruction", () => {
     },
     {
       id: 2,
+      competitionId: "fifa.world",
       competition: "FIFA World Cup",
       homeTeam: "Canada",
       awayTeam: "Switzerland",
