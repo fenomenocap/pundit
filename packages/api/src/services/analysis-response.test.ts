@@ -7,6 +7,7 @@ import {
   Grounding,
   sanitizeCompetitionAnswer,
   sanitizeMatchAnswer,
+  sanitizeSeasonAnswer,
   sanitizeUnsupportedTeamNews,
 } from "./ask";
 
@@ -96,7 +97,7 @@ describe("sanitizeMatchAnswer", () => {
       "Any scoreline not listed here falls below the 0.1% probability threshold.",
       "Kuopio need a two-goal swing to advance outright.",
       "The edge is entirely due to home-field advantage.",
-    ].join(" "));
+    ].join("\n"));
     expect(answer).toContain("selected examples");
     expect(answer).toContain("Aggregate advancement is outside");
     expect(answer).toContain("does not decompose");
@@ -172,6 +173,30 @@ describe("sanitizeMatchAnswer", () => {
     expect(answer.match(/Aggregate advancement is outside/g)).toHaveLength(1);
     expect(answer).not.toContain("1-0 or 1-2");
   });
+
+  it("renders grounded goal percentages and aggregate disclaimers atomically", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Kuopio",
+      away: "Sabah",
+      pOver2_5: 0.5084,
+      pUnder2_5: 0.4916,
+      pBttsYes: 0.5596,
+      pBttsNo: 0.4404,
+      scorelines: [],
+    } as unknown as Grounding;
+    const answer = sanitizeMatchAnswer(
+      "Both teams to score is 56.0% yes and 43.4% no — a fairly open match.\n"
+      + "The draw is **28.03%**, but they need extra time to advance.",
+      grounding
+    );
+    expect(answer).toContain("**44.0%** no");
+    expect(answer).toContain("Aggregate advancement is outside");
+    expect(answer).not.toContain("43.4%");
+    expect(answer).not.toContain("28. Aggregate");
+    expect(answer).not.toContain("fairly open");
+  });
 });
 
 describe("grounded answer sanitizers", () => {
@@ -182,6 +207,11 @@ describe("grounded answer sanitizers", () => {
     expect(answer).toContain("does not establish an on-field ranking");
     expect(answer).not.toContain("alphabet");
     expect(answer).not.toContain("zero predictive value");
+  });
+
+  it("uses the correct Premier League season length", () => {
+    expect(sanitizeSeasonAnswer("Across a 90+ game Premier League season, variance matters."))
+      .toContain("38-match-per-club Premier League season");
   });
 
   it("does not infer a negative injury claim from general commentary", () => {
