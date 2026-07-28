@@ -655,10 +655,6 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
   );
   const aggregateDisclaimer = "Aggregate advancement is outside Pundit's match payload, so this model does not determine which result would settle the tie.";
   sanitized = sanitized.replace(
-    /[^.!?\n]*(?:advance|progress|qualif(?:y|ies)|extra time|two[- ]goal swing)[^.!?\n]*[.!?]?/gi,
-    ` ${aggregateDisclaimer}`
-  );
-  sanitized = sanitized.replace(
     /[^.!?\n]*(?:(?:entirely|solely)[^.!?\n]*(?:home[- ]field|home advantage|HFA|edge)|(?:home[- ]field|home advantage|HFA|edge)[^.!?\n]*(?:entirely|solely))[^.!?\n]*[.!?]?/gi,
     " Home-field advantage is applied, but this payload does not decompose the probability gap by cause."
   );
@@ -668,6 +664,10 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
   );
   if (grounding) {
     sanitized = replaceInvalidScorelineLines(sanitized, grounding);
+    sanitized = sanitized.split("\n").map((line) => {
+      if (!/\bboth teams to score\b/i.test(line)) return line;
+      return `The model gives over 2.5 goals **${(grounding.pOver2_5 * 100).toFixed(1)}%** and under 2.5 **${(grounding.pUnder2_5 * 100).toFixed(1)}%**, with both teams to score **${(grounding.pBttsYes * 100).toFixed(1)}%** yes and **${(grounding.pBttsNo * 100).toFixed(1)}%** no.`;
+    }).join("\n");
     if (grounding.competitionId === "uefa.champions_qual") {
       sanitized = sanitized
         .replace(/\b(?:a )?share of the points\b/gi, "a draw")
@@ -676,11 +676,16 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
         .replace(/\b(?:one|1) point\b/gi, "a draw");
     }
   }
+  let aggregateDisclaimerSeen = false;
+  sanitized = sanitized.split("\n").map((line) => {
+    if (!/\b(?:advance|progress|qualif(?:y|ies)|extra time|two[- ]goal swing)\b/i.test(line)) {
+      return line;
+    }
+    if (aggregateDisclaimerSeen) return "";
+    aggregateDisclaimerSeen = true;
+    return aggregateDisclaimer;
+  }).join("\n");
   sanitized = sanitized
-    .replace(
-      /(?:\s*Aggregate advancement is outside Pundit's match payload, so this model does not determine which result would settle the tie\.){2,}/g,
-      ` ${aggregateDisclaimer}`
-    )
     .replace(
       /\s+[—-]\s+this is[^.!?\n]*(?:territorial|dominat)[^.!?\n]*[.!?]?/gi,
       "."
@@ -702,6 +707,14 @@ export function sanitizeCompetitionAnswer(answer: string): string {
     }
     return line.replace(/\bzero predictive value\b/gi, "no predictive evidence from played matches");
   }).join("\n").trim();
+}
+
+export function sanitizeSeasonAnswer(answer: string): string {
+  return sanitizeCompetitionAnswer(answer)
+    .replace(
+      /\b(?:90|ninety)\+?\s*[- ]?game Premier League season\b/gi,
+      "38-match-per-club Premier League season"
+    );
 }
 
 export function sanitizeUnsupportedTeamNews(answer: string): string {
@@ -747,7 +760,8 @@ function validateAnalysisResponse(
       grounding?.kind === "match" ? grounding : undefined
     );
   }
-  if (tier === "competition" || tier === "season") {
+  if (tier === "season") return sanitizeSeasonAnswer(commonSafeAnswer);
+  if (tier === "competition") {
     return sanitizeCompetitionAnswer(commonSafeAnswer);
   }
   return commonSafeAnswer;
