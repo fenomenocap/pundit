@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { href: "/", label: "Chat" },
-  { href: "/fixtures", label: "Fixtures" },
-  { href: "/model", label: "Predictions" },
-  { href: "/evaluation/wc-2026", label: "2026 FIFA World Cup" },
+  { href: "/", label: "Chat", mobileLabel: "Chat" },
+  { href: "/fixtures", label: "Fixtures", mobileLabel: "Fixtures" },
+  { href: "/model", label: "Predictions", mobileLabel: "Model" },
+  { href: "/evaluation/wc-2026", label: "2026 FIFA World Cup", mobileLabel: "WC26" },
 ];
 
 export function Navbar() {
@@ -42,13 +42,14 @@ export function Navbar() {
                   href={link.href}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "shrink-0 px-3 py-1.5 text-xs font-medium uppercase tracking-wide transition-colors",
+                    "shrink-0 px-2 py-1.5 text-xs font-medium uppercase tracking-wide transition-colors sm:px-3",
                     isActive
                       ? "text-white"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  {link.label}
+                  <span className="sm:hidden">{link.mobileLabel}</span>
+                  <span className="hidden sm:inline">{link.label}</span>
                 </Link>
               );
             })}
