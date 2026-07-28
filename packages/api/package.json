@@ -7,6 +7,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "test": "vitest run",
+    "build:wc-evaluation": "npx ts-node --transpile-only scripts/build-wc2026-evaluation.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist"
   },
@@ -23,6 +24,7 @@
     "@types/helmet": "^4.0.0",
     "@types/node": "^20.11.0",
     "ts-node-dev": "^2.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.4.0",
     "vitest": "^2.1.9"
   }

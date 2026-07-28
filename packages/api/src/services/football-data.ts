@@ -152,6 +152,10 @@ async function fetchAllMatches(): Promise<FootballMatch[]> {
   return (data.events || []).map(parseEvent);
 }
 
+export async function fetchWorldCupMatches(): Promise<FootballMatch[]> {
+  return fetchAllMatches();
+}
+
 async function fetchStandings(): Promise<FootballStanding[]> {
   const data = await espnFetch<{ children?: any[] }>(STANDINGS_URL); // eslint-disable-line @typescript-eslint/no-explicit-any
 
