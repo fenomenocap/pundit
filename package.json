@@ -6,6 +6,10 @@
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm --filter @sports-predict/api build && pnpm --filter @sports-predict/web build",
     "test": "pnpm -r test",
+    "chat-eval:dry-run": "node scripts/chat-battle-test.mjs --dry-run",
+    "chat-eval:test": "node --test scripts/chat-battle-test.test.mjs",
+    "chat-eval:production": "node scripts/chat-battle-test.mjs",
+    "chat-eval:finalize": "node scripts/finalize-chat-report.mjs",
     "clean": "pnpm -r clean",
     "verify:prod": "bash scripts/verify-prod.sh"
   },
