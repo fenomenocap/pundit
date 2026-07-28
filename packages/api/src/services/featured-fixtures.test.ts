@@ -5,7 +5,7 @@ import { isFeaturedFootballMatch, selectFeaturedFixtures } from "./featured-fixt
 
 function football(stage: string, status: string, home = "England", away = "Argentina"): FootballMatch {
   return {
-    id: 1, competition: "FIFA World Cup", homeTeam: home, awayTeam: away,
+    id: 1, competitionId: "fifa.world", competition: "FIFA World Cup", homeTeam: home, awayTeam: away,
     utcDate: "2026-07-15T19:00:00Z", status, stage, matchday: null, group: null, score: null,
   };
 }

@@ -1,28 +1,36 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { fetchUpcomingMatches, fetchRecentMatches, fetchStandings } from "@/lib/mock-data";
+import {
+  fetchCompetitions,
+  fetchRecentMatches,
+  fetchStandings,
+  fetchUpcomingMatches,
+} from "@/lib/mock-data";
 import { formatStage, STAGE_ORDER } from "@/lib/stage-label";
 import { getTeamFlagUrl, getTeamColor } from "@/lib/team-logos";
-import type { MatchResponse, StandingResponse } from "@/lib/api";
+import type { CompetitionResponse, MatchResponse, StandingResponse } from "@/lib/api";
 
 const LIVE_POLL_MS = 60_000;
+const ALL_TAB = "all";
 
-function useFixturesData() {
+function useFixturesData(selectedCompetition: string) {
   const [matches, setMatches] = useState<MatchResponse[]>([]);
   const [standings, setStandings] = useState<StandingResponse[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const competitionFilter = selectedCompetition === ALL_TAB ? undefined : selectedCompetition;
+
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     const [upcoming, recent, standingsData] = await Promise.all([
-      fetchUpcomingMatches(),
-      fetchRecentMatches(),
-      fetchStandings(),
+      fetchUpcomingMatches(competitionFilter),
+      fetchRecentMatches(competitionFilter),
+      fetchStandings(competitionFilter),
     ]);
     const merged = [...recent.matches, ...upcoming.matches].sort(
       (a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime()
@@ -36,7 +44,7 @@ function useFixturesData() {
     );
     setError(upcoming.error || recent.error || standingsData.error);
     setLoading(false);
-  }, []);
+  }, [competitionFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,7 +54,6 @@ function useFixturesData() {
     return () => { cancelled = true; };
   }, [load]);
 
-  // While any fixture is live, re-poll so scores stay near real-time.
   useEffect(() => {
     const hasLive = matches.some((match) => match.status === "IN_PLAY");
     if (!hasLive) return;
@@ -83,8 +90,6 @@ function TeamLabel({ name, bold }: { name: string; bold?: boolean }) {
   return (
     <span className={cn("flex items-center gap-2 truncate", bold && "font-bold text-white")}>
       {flagUrl && (
-        // SVG flag assets render identically across platforms, unlike emoji
-        // flags, which Windows shows as bare letter codes.
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={flagUrl}
@@ -142,7 +147,7 @@ function MatchRow({ match }: { match: MatchResponse }) {
             Ask about this match
           </Link>
         ) : (
-          <span />
+          <span className="text-[10px] text-muted-foreground">{match.competition}</span>
         )}
         {live ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[9px] font-black uppercase text-red-400">
@@ -164,7 +169,42 @@ function MatchRow({ match }: { match: MatchResponse }) {
   );
 }
 
-function StandingsTable({ group, rows }: { group: string; rows: StandingResponse[] }) {
+function LeagueStandingsTable({ rows }: { rows: StandingResponse[] }) {
+  const sorted = [...rows].sort((a, b) => a.position - b.position);
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="border-b border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+        <h4 className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+          League table
+        </h4>
+      </div>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-left text-muted-foreground">
+            <th className="px-3 pb-1 pt-2 font-medium">Team</th>
+            <th className="pb-1 pt-2 text-center font-medium">P</th>
+            <th className="pb-1 pt-2 text-center font-medium">GD</th>
+            <th className="pb-1 pr-3 pt-2 text-center font-medium">Pts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((standing) => (
+            <tr key={standing.team} className="border-t border-border/40 text-foreground">
+              <td className="px-3 py-1.5 max-w-[160px] truncate font-semibold">{standing.team}</td>
+              <td className="py-1.5 text-center font-mono">{standing.playedGames}</td>
+              <td className="py-1.5 text-center font-mono">
+                {standing.goalDifference > 0 ? `+${standing.goalDifference}` : standing.goalDifference}
+              </td>
+              <td className="py-1.5 pr-3 text-center font-mono font-black">{standing.points}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function GroupStandingsTable({ group, rows }: { group: string; rows: StandingResponse[] }) {
   const sorted = [...rows].sort((a, b) => a.position - b.position);
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -183,23 +223,20 @@ function StandingsTable({ group, rows }: { group: string; rows: StandingResponse
           </tr>
         </thead>
         <tbody>
-          {sorted.map((s, i) => (
+          {sorted.map((standing, index) => (
             <tr
-              key={s.team}
+              key={standing.team}
               className={cn(
                 "border-t border-border/40",
-                i < 2 ? "text-white" : "text-muted-foreground"
+                index < 2 ? "text-white" : "text-muted-foreground"
               )}
             >
-              <td className="px-3 py-1.5 truncate max-w-[120px] font-semibold">
-                <span className={cn("mr-1.5 inline-block h-1.5 w-1.5 rounded-full", i < 2 ? "bg-emerald-400" : "bg-transparent")} />
-                {s.team}
-              </td>
-              <td className="py-1.5 text-center font-mono">{s.playedGames}</td>
+              <td className="px-3 py-1.5 truncate max-w-[120px] font-semibold">{standing.team}</td>
+              <td className="py-1.5 text-center font-mono">{standing.playedGames}</td>
               <td className="py-1.5 text-center font-mono">
-                {s.goalDifference > 0 ? `+${s.goalDifference}` : s.goalDifference}
+                {standing.goalDifference > 0 ? `+${standing.goalDifference}` : standing.goalDifference}
               </td>
-              <td className="py-1.5 pr-3 text-center font-mono font-black">{s.points}</td>
+              <td className="py-1.5 pr-3 text-center font-mono font-black">{standing.points}</td>
             </tr>
           ))}
         </tbody>
@@ -209,25 +246,51 @@ function StandingsTable({ group, rows }: { group: string; rows: StandingResponse
 }
 
 export default function FixturesPage() {
-  const { matches, standings, lastUpdated, error, loading } = useFixturesData();
+  const [competitions, setCompetitions] = useState<CompetitionResponse[]>([]);
+  const [selectedCompetition, setSelectedCompetition] = useState(ALL_TAB);
+  const { matches, standings, lastUpdated, error, loading } = useFixturesData(selectedCompetition);
+
+  useEffect(() => {
+    document.title = "Fixtures | Pundit";
+    void fetchCompetitions().then((payload) => {
+      setCompetitions(payload.competitions.filter((competition) => competition.enabled));
+    });
+    return () => { document.title = "Pundit"; };
+  }, []);
+
+  const enabledTabs = useMemo(
+    () => [{ id: ALL_TAB, name: "All" }, ...competitions.map((c) => ({ id: c.id, name: c.name }))],
+    [competitions]
+  );
+
+  const isKnockoutView = selectedCompetition === "fifa.world"
+    || (selectedCompetition === ALL_TAB && matches.some((match) => match.competitionId === "fifa.world"));
 
   const byStage = STAGE_ORDER.map((stage) => ({
     stage,
-    matches: matches.filter((m) => m.stage === stage),
-  })).filter((s) => s.matches.length > 0);
+    matches: matches.filter((match) => match.stage === stage),
+  })).filter((section) => section.matches.length > 0);
 
-  const groups = Array.from(new Set(standings.map((s) => s.group).filter(Boolean))) as string[];
-  groups.sort();
+  const upcomingAndRecent = matches.filter((match) => !match.stage || !STAGE_ORDER.includes(match.stage));
+  const chronological = [...matches].sort(
+    (a, b) => new Date(b.utcDate).getTime() - new Date(a.utcDate).getTime()
+  );
+
+  const groupedStandings = Array.from(
+    new Set(standings.map((row) => row.group).filter(Boolean))
+  ) as string[];
+  groupedStandings.sort();
+  const leagueStandings = standings.filter((row) => !row.group);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold text-white sm:text-3xl">
-            Fixtures &amp; Bracket
+            Fixtures
           </h1>
-          <p className="mt-1.5 text-sm text-muted-foreground max-w-lg">
-            Live FIFA World Cup 2026 schedule and results — reference only, not tradeable here.
+          <p className="mt-1.5 max-w-lg text-sm text-muted-foreground">
+            Live schedules from ESPN for enabled competitions — reference only, not tradeable here.
           </p>
         </div>
         <span className="font-mono text-[10px] text-muted-foreground">
@@ -239,6 +302,24 @@ export default function FixturesPage() {
         </span>
       </div>
 
+      <div className="mb-6 flex flex-wrap gap-2">
+        {enabledTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setSelectedCompetition(tab.id)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors",
+              selectedCompetition === tab.id
+                ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300"
+                : "border-border text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {tab.name}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <div className="mb-4 rounded-lg border border-pink-500/30 bg-pink-950 px-4 py-3 text-sm text-pink-200">
           {error}
@@ -247,45 +328,64 @@ export default function FixturesPage() {
 
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-32 animate-pulse rounded-lg bg-card" />
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="h-32 animate-pulse rounded-lg bg-card" />
           ))}
         </div>
-      ) : byStage.length === 0 ? (
+      ) : matches.length === 0 ? (
         <p className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-          No fixture data available right now.
+          No fixture data available for this competition right now.
         </p>
-      ) : (
+      ) : isKnockoutView && byStage.length > 0 ? (
         <div className="space-y-8">
-          {byStage.map(({ stage, matches: stageMatches }, idx) => (
+          {byStage.map(({ stage, matches: stageMatches }, index) => (
             <section key={stage} className="relative pl-4">
               <div className="absolute left-0 top-1 h-full w-0.5 rounded-full bg-gradient-to-b from-cyan-500 to-pink-500 opacity-40" />
               <div className="mb-3 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-secondary font-heading text-[11px] font-black text-cyan-400">
-                  {idx + 1}
+                  {index + 1}
                 </span>
                 <h2 className="font-heading text-base font-black uppercase tracking-tight text-foreground">
                   {formatStage(stage)}
                 </h2>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {stageMatches.map((m) => (
-                  <MatchRow key={m.id} match={m} />
+                {stageMatches.map((match) => (
+                  <MatchRow key={match.id} match={match} />
                 ))}
               </div>
             </section>
           ))}
         </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {(upcomingAndRecent.length > 0 ? chronological : matches).map((match) => (
+            <MatchRow key={match.id} match={match} />
+          ))}
+        </div>
       )}
 
-      {groups.length > 0 && (
+      {leagueStandings.length > 0 && (
+        <div className="mt-10">
+          <h2 className="mb-3 font-heading text-base font-black uppercase tracking-tight text-foreground">
+            Standings
+          </h2>
+          <LeagueStandingsTable rows={leagueStandings} />
+        </div>
+      )}
+
+      {groupedStandings.length > 0 && (
         <div className="mt-10">
           <h2 className="mb-3 font-heading text-base font-black uppercase tracking-tight text-foreground">
             Group Standings
           </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {groups.map((g) => (
-              <StandingsTable key={g} group={g} rows={standings.filter((s) => s.group === g)} />
+            {groupedStandings.map((group) => (
+              <GroupStandingsTable
+                key={group}
+                group={group}
+                rows={standings.filter((row) => row.group === group)}
+              />
             ))}
           </div>
         </div>
