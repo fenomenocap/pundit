@@ -1,4 +1,4 @@
-import { MatchResponse, StandingResponse } from "./api";
+import { MatchResponse, ModelFixtureResponse, StandingResponse } from "./api";
 
 const now = Date.now();
 const DAY = 86_400_000;
@@ -148,6 +148,88 @@ export async function fetchRecentMatches(competition?: string): Promise<MatchesP
     ? MOCK_RECENT_MATCHES.filter((match) => match.competitionId === competition)
     : MOCK_RECENT_MATCHES;
   return { matches, lastUpdated: new Date(now).toISOString(), error: null };
+}
+
+const MOCK_MODEL_FIXTURES: ModelFixtureResponse[] = [
+  {
+    competitionId: "eng.1",
+    competition: "Premier League",
+    fixtureId: 1,
+    utcDate: futureISO(2),
+    date: new Date(futureISO(2)).toISOString().slice(0, 10),
+    group: null,
+    stage: "match",
+    home: "Arsenal",
+    away: "Coventry City",
+    homeElo: 1850,
+    awayElo: 1520,
+    pHome: 0.72,
+    pDraw: 0.18,
+    pAway: 0.10,
+    pOver2_5: 0.55,
+    pUnder2_5: 0.45,
+    pBttsYes: 0.48,
+    pBttsNo: 0.52,
+    topScores: [{ score: "2-0", probability: 0.14 }],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    result: null,
+  },
+  {
+    competitionId: "eng.1",
+    competition: "Premier League",
+    fixtureId: 2,
+    utcDate: futureISO(4),
+    date: new Date(futureISO(4)).toISOString().slice(0, 10),
+    group: null,
+    stage: "match",
+    home: "Liverpool",
+    away: "Brighton & Hove Albion",
+    homeElo: 1880,
+    awayElo: 1680,
+    pHome: 0.58,
+    pDraw: 0.22,
+    pAway: 0.20,
+    pOver2_5: 0.62,
+    pUnder2_5: 0.38,
+    pBttsYes: 0.55,
+    pBttsNo: 0.45,
+    topScores: [{ score: "2-1", probability: 0.11 }],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    result: null,
+  },
+];
+
+export async function fetchActiveModelFixtures(): Promise<{
+  fixtures: ModelFixtureResponse[];
+  lastUpdated: string | null;
+  error: string | null;
+}> {
+  if (!USE_MOCK) {
+    try {
+      const { getActiveModelFixtures } = await import("./api");
+      const res = await getActiveModelFixtures();
+      return {
+        fixtures: res.fixtures ?? [],
+        lastUpdated: res.lastUpdated ?? null,
+        error: res.error ?? null,
+      };
+    } catch (reason) {
+      return {
+        fixtures: [],
+        lastUpdated: null,
+        error: reason instanceof Error ? reason.message : "Could not load model fixtures.",
+      };
+    }
+  }
+  return {
+    fixtures: MOCK_MODEL_FIXTURES,
+    lastUpdated: new Date(now).toISOString(),
+    error: null,
+  };
 }
 
 export async function fetchStandings(competition?: string): Promise<StandingsPayload> {

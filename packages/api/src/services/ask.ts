@@ -11,6 +11,7 @@ import {
   ModelFixture,
 } from "./model-data";
 import { getCachedMatches, FootballStanding } from "./football-data";
+import { getActiveFixtures } from "./active-fixtures";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
 
 export interface OddsSource {
@@ -71,7 +72,10 @@ export type AnalysisTier = "match" | "competition" | "general";
 export type ResolvedAskContext =
   | { tier: "match"; fixture: ModelFixture }
   | { tier: "competition"; competitionId: string }
+  | { tier: "model-unavailable"; teams: TeamContext }
   | { tier: "general" };
+
+type TeamFixture = Pick<ModelFixture, "home" | "away">;
 
 const ANTHROPIC_MODEL = "claude-sonnet-5";
 const MAX_TOKENS = 4_096;
@@ -287,7 +291,7 @@ export function shouldUseMatchGrounding(question: string): boolean {
   return MATCH_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
 }
 
-export function resolveTeams(question: string, fixtures: ModelFixture[]): [string, string] {
+export function resolveTeams(question: string, fixtures: TeamFixture[]): [string, string] {
   const normalizedQuestion = normalizeTeamText(question);
   const teamPositions = new Map<string, number>();
   const teams = new Set<string>();
@@ -344,7 +348,7 @@ export function resolveTeams(question: string, fixtures: ModelFixture[]): [strin
 
 export function resolveQuestionTeams(
   question: string,
-  fixtures: ModelFixture[]
+  fixtures: TeamFixture[]
 ): TeamContext | undefined {
   try {
     return resolveTeams(question, fixtures);
@@ -358,7 +362,11 @@ export function resolveQuestionTeams(
   }
 }
 
-export function findFixture(teamA: string, teamB: string, fixtures: ModelFixture[]): ModelFixture | undefined {
+export function findFixture<T extends TeamFixture>(
+  teamA: string,
+  teamB: string,
+  fixtures: T[]
+): T | undefined {
   const pair = new Set([teamA, teamB]);
   return fixtures.find((fixture) => new Set([fixture.home, fixture.away]).size === pair.size
     && fixture.home !== fixture.away
@@ -430,7 +438,8 @@ export function resolveAskContext(
   history: ConversationTurn[],
   teamContext: TeamContext | undefined,
   fixtures: ModelFixture[],
-  standings: FootballStanding[]
+  standings: FootballStanding[],
+  activeFixtures: TeamFixture[] = []
 ): ResolvedAskContext {
   const teams = resolveQuestionTeams(question, fixtures);
   const explicitFixture = teams ? findFixture(teams[0], teams[1], fixtures) : undefined;
@@ -444,9 +453,23 @@ export function resolveAskContext(
     return { tier: "competition", competitionId };
   }
 
+  if (!competitionId) {
+    const activeTeams = resolveQuestionTeams(question, activeFixtures);
+    const activeFixture = activeTeams
+      ? findFixture(activeTeams[0], activeTeams[1], activeFixtures)
+      : undefined;
+    if (activeFixture) {
+      return { tier: "model-unavailable", teams: [activeFixture.home, activeFixture.away] };
+    }
+  }
+
   if (!teams && !competitionId && teamContext && shouldUseMatchGrounding(question)) {
     const contextualFixture = findFixture(teamContext[0], teamContext[1], fixtures);
     if (contextualFixture) return { tier: "match", fixture: contextualFixture };
+    const activeFixture = findFixture(teamContext[0], teamContext[1], activeFixtures);
+    if (activeFixture) {
+      return { tier: "model-unavailable", teams: [activeFixture.home, activeFixture.away] };
+    }
   }
 
   return { tier: "general" };
@@ -625,13 +648,26 @@ function prepareAsk(
   const modelData = getCachedModelData();
   const { fixtures } = modelData;
   const football = getCachedMatches();
+  const activeFixtures = getActiveFixtures().map((fixture) => ({
+    home: fixture.homeTeam,
+    away: fixture.awayTeam,
+  }));
   const context = resolveAskContext(
     question,
     history,
     teamContext,
     fixtures,
-    football.standings
+    football.standings,
+    activeFixtures
   );
+
+  if (context.tier === "model-unavailable") {
+    throw new AppError(
+      503,
+      `Pundit's match model is temporarily unavailable for ${context.teams[0]} vs ${context.teams[1]}. Please try again shortly.`,
+      "MODEL_UNAVAILABLE"
+    );
+  }
 
   let grounding: AskGrounding;
   let systemPrompt: string;
@@ -656,7 +692,7 @@ function prepareAsk(
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new AppError(502, "ANTHROPIC_API_KEY is not configured.");
+  if (!apiKey) throw new AppError(502, "Analysis service is temporarily unavailable.");
 
   return {
     grounding,

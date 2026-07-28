@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Disclaimer } from "@/components/disclaimer";
 
 export function Footer() {
   const pathname = usePathname();
@@ -9,9 +11,15 @@ export function Footer() {
 
   return (
     <footer className="border-t border-border px-4 py-2.5">
-      <div className="flex flex-col items-center justify-between gap-2 text-[10px] text-muted-foreground sm:flex-row">
-        <span>Reference only &middot; not tradeable</span>
+      <div className="flex flex-col items-center justify-between gap-2 text-xs text-muted-foreground sm:flex-row">
+        <Disclaimer />
         <div className="flex items-center gap-4">
+          <Link
+            href="/evaluation/wc-2026"
+            className="transition-colors hover:text-foreground"
+          >
+            WC Backtest
+          </Link>
           <a
             href="https://github.com/fenomenocap/pundit"
             target="_blank"

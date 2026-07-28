@@ -111,7 +111,8 @@ export interface Wc2026EvaluationResponse {
 export class ApiError extends Error {
   constructor(
     message: string,
-    public status: number
+    public status: number,
+    public code?: string
   ) {
     super(message);
     this.name = "ApiError";
@@ -128,8 +129,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(body.error || `API error ${res.status}`, res.status);
+    const body = await res.json().catch(() => ({ error: res.statusText, code: undefined }));
+    throw new ApiError(body.error || `API error ${res.status}`, res.status, body.code);
   }
 
   return res.json();
@@ -321,8 +322,8 @@ export async function askQuestionStream(
 
   const contentType = res.headers.get("content-type") ?? "";
   if (!res.ok || !contentType.includes("text/event-stream") || !res.body) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(body.error || `API error ${res.status}`, res.status);
+    const body = await res.json().catch(() => ({ error: res.statusText, code: undefined }));
+    throw new ApiError(body.error || `API error ${res.status}`, res.status, body.code);
   }
 
   const reader = res.body.getReader();
@@ -342,7 +343,11 @@ export async function askQuestionStream(
       else if (event === "delta") handlers.onDelta(payload.text);
       else if (event === "done") result = payload;
       else if (event === "error") {
-        throw new ApiError(payload.error, typeof payload.status === "number" ? payload.status : 502);
+        throw new ApiError(
+          payload.error,
+          typeof payload.status === "number" ? payload.status : 502,
+          typeof payload.code === "string" ? payload.code : undefined
+        );
       }
     }
   }
