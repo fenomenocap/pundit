@@ -106,6 +106,52 @@ describe("sanitizeMatchAnswer", () => {
     expect(answer).not.toContain("entirely due");
   });
 
+  it("accepts grounded scorelines quoted at any rounding precision", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Liverpool",
+      scorelines: [
+        { score: "1-1", probability: 0.1043 },
+        { score: "1-0", probability: 0.0981 },
+      ],
+    } as Grounding;
+    const answer = "The most likely results are **1-1 (10%)** and **1-0 (9.8%)**.";
+    expect(sanitizeMatchAnswer(answer, grounding)).toBe(answer);
+  });
+
+  it("corrects a misquoted percentage in place instead of discarding the sentence", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Liverpool",
+      scorelines: [{ score: "1-1", probability: 0.1043 }],
+    } as Grounding;
+    const answer = sanitizeMatchAnswer(
+      "A 1-1 draw at **25.0%** is the single most likely result here.",
+      grounding
+    );
+    expect(answer).toBe("A 1-1 draw at **10.4%** is the single most likely result here.");
+  });
+
+  it("still replaces a line citing a scoreline absent from the grounding", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Liverpool",
+      scorelines: [
+        { score: "1-1", probability: 0.1043 },
+        { score: "0-1", probability: 0.0712 },
+      ],
+    } as Grounding;
+    const answer = sanitizeMatchAnswer("A 4-4 thriller sits at **12.0%**.", grounding);
+    expect(answer).not.toContain("4-4");
+    expect(answer).toContain("**0-1 (7.1%)**");
+  });
+
   it("replaces scoreline/probability mismatches and cup-points wording from grounding", () => {
     const grounding = {
       kind: "match",
@@ -178,7 +224,7 @@ describe("sanitizeMatchAnswer", () => {
     )).toContain("**1-2 (7.6%)** and **0-1 (7.1%)**");
   });
 
-  it("renders grounded goal percentages and aggregate disclaimers atomically", () => {
+  it("corrects goal percentages in place while keeping the surrounding prose", () => {
     const grounding = {
       kind: "match",
       competitionId: "uefa.champions_qual",
@@ -195,11 +241,75 @@ describe("sanitizeMatchAnswer", () => {
       + "The draw is **28.03%**, but they need extra time to advance.",
       grounding
     );
-    expect(answer).toContain("**44.0%** no");
+    expect(answer).toContain("56.0% yes and 44.0% no");
+    expect(answer).toContain("a fairly open match");
     expect(answer).toContain("Aggregate advancement is outside");
     expect(answer).not.toContain("43.4%");
     expect(answer).not.toContain("28. Aggregate");
-    expect(answer).not.toContain("fairly open");
+  });
+
+  it("leaves a both-teams-to-score explanation alone when it quotes no figures", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Liverpool",
+      pOver2_5: 0.5412,
+      pUnder2_5: 0.4588,
+      pBttsYes: 0.5673,
+      pBttsNo: 0.4327,
+      scorelines: [],
+    } as unknown as Grounding;
+    const answer = "The both teams to score number is driven by Liverpool's away scoring rate.";
+    expect(sanitizeMatchAnswer(answer, grounding)).toBe(answer);
+  });
+
+  it("does not repeat itself when two lines mention the goal markets", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Liverpool",
+      pOver2_5: 0.5412,
+      pUnder2_5: 0.4588,
+      pBttsYes: 0.5673,
+      pBttsNo: 0.4327,
+      scorelines: [],
+    } as unknown as Grounding;
+    const answer = sanitizeMatchAnswer(
+      "Over 2.5 is **54.1%**.\nBoth teams to score is **56.7%** yes.\n"
+      + "The both teams to score market therefore leans yes.",
+      grounding
+    );
+    expect(answer.split("\n")).toHaveLength(3);
+    expect(answer).toContain("therefore leans yes");
+    expect(answer.match(/54\.1%/g)).toHaveLength(1);
+  });
+
+  it("does not apply the aggregate disclaimer to a league fixture", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Liverpool",
+      scorelines: [],
+    } as unknown as Grounding;
+    const answer = "Liverpool have made real progress under their new setup this season.";
+    expect(sanitizeMatchAnswer(answer, grounding)).toBe(answer);
+  });
+
+  it("still blocks an aggregate advancement claim in a cup tie", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Kuopio",
+      away: "Sabah",
+      scorelines: [],
+    } as unknown as Grounding;
+    expect(sanitizeMatchAnswer(
+      "A 2-0 win would be enough for Kuopio to advance.",
+      grounding
+    )).toContain("Aggregate advancement is outside");
   });
 });
 
