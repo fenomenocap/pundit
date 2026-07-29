@@ -21,6 +21,7 @@ import {
   validateSse,
   validateAnswerCopy,
   validateErrorCopy,
+  validateTeamNewsDiscipline,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -214,6 +215,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     for (const [name, passed] of Object.entries(groundingValidation.assertions)) {
       result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
     }
+    // Non-blocking payload facts (market-source coverage) so a thin grounding is
+    // visible in the report rather than only in whoever happens to read the answer.
+    if (Object.keys(groundingValidation.observations ?? {}).length > 0) {
+      result.observations = {
+        ...result.observations,
+        [`turn${turnNumber}`]: groundingValidation.observations,
+      };
+    }
     result.answer = response.body?.answer ?? "";
     result.grounding = grounding;
     teamContext = grounding?.kind === "match"
@@ -234,6 +243,13 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     ));
     assertionFailures.push(...groundingValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
+    ));
+  }
+  if (scenario.requireSourcedTeamNews) {
+    const newsValidation = validateTeamNewsDiscipline(result.answer);
+    result.assertions.teamNewsSourced = newsValidation.passed;
+    assertionFailures.push(...newsValidation.failures.map((failure) =>
+      `final answer: ${failure} — ${sanitizeEvidence(result.answer)}`
     ));
   }
   if (scenario.kind === "certainty") {
@@ -357,6 +373,32 @@ async function runScenario(scenario, options, pacer, featured, onRequestStart) {
         expectGrounding: "match",
         expectTeams: [featured.home, featured.away],
         expectCompetitionId: featured.competitionId
+      }]
+    }, options, pacer, onRequestStart);
+  }
+  // Like "featured", but the scenario supplies the question. Team-news and
+  // market-comparison checks need to ask something specific of whichever fixture
+  // happens to be active, which the fixed "featured" wording cannot express.
+  if (scenario.kind === "featured-question") {
+    if (!featured) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        evidence: "No model-backed active club fixture with known teams."
+      };
+    }
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      teamContext: [featured.home, featured.away],
+      turns: [{
+        question: scenario.questionTemplate
+          .replaceAll("{home}", featured.home)
+          .replaceAll("{away}", featured.away),
+        expectGrounding: "match",
+        expectTeams: [featured.home, featured.away],
+        expectCompetitionId: featured.competitionId,
+        expectOddsSources: scenario.expectOddsSources ?? false
       }]
     }, options, pacer, onRequestStart);
   }

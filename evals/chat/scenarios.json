@@ -1,10 +1,23 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "fixed": [
     {
       "id": "active-match-grounding",
       "description": "A model-backed active club fixture receives match grounding.",
       "kind": "featured"
+    },
+    {
+      "id": "team-news-sourcing",
+      "description": "A team-news question either cites a source and date or states plainly that no verified update was established.",
+      "kind": "featured-question",
+      "questionTemplate": "Any injury or lineup news for {home} vs {away}?",
+      "requireSourcedTeamNews": true
+    },
+    {
+      "id": "market-comparison-coverage",
+      "description": "A market-comparison question keeps its grounded scoreline payload; the odds-source count is reported so a missing market line is visible rather than silent.",
+      "kind": "featured-question",
+      "questionTemplate": "How do the market prices for {home} vs {away} compare with the model?"
     },
     {
       "id": "competition-grounding",
