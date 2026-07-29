@@ -344,7 +344,53 @@ export function shouldUseMatchGrounding(question: string): boolean {
   return MATCH_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
 }
 
-export function resolveTeams(question: string, fixtures: TeamFixture[]): [string, string] {
+// Questions that have plainly left the followed match: standalone football
+// explainers, methodology, and all-time/global trivia.
+const MATCH_CONTEXT_EXIT_PATTERNS = [
+  /\bexplain how\b/,
+  /\bhow does a\b/,
+  /\bhow do (?:teams|players|managers|clubs)\b/,
+  /\bwhat is a\b/,
+  /\bin general\b/,
+  /\bhow (?:does|do) (?:your|the) model(?:s)? work\b/,
+  /\bbest (?:player|striker|keeper|goalkeeper|manager|team) in the (?:world|league|country)\b/,
+  /\bhistory of\b/,
+  /\ball[- ]time\b/,
+  /\bof all time\b/,
+];
+
+function mentionsTeamOutsideContext(
+  question: string,
+  teamContext: TeamContext,
+  fixtures: TeamFixture[]
+): boolean {
+  const pair = new Set<string>(teamContext);
+  return [...mentionedTeamPositions(question, fixtures).keys()]
+    .some((team) => !pair.has(team));
+}
+
+// A follow-up keeps the active match's grounding unless it points somewhere
+// else. Retention is the safe default: carrying grounding into a question that
+// did not need it costs a little unused context, whereas dropping it sends the
+// turn to the general tier, whose prompt then disclaims that Pundit has no
+// model data for a match the user is visibly still discussing.
+export function leavesMatchContext(
+  question: string,
+  teamContext: TeamContext,
+  fixtures: TeamFixture[]
+): boolean {
+  if (mentionsTeamOutsideContext(question, teamContext, fixtures)) return true;
+  const normalized = normalizeTeamText(question);
+  return MATCH_CONTEXT_EXIT_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+// Every team named in the question, mapped to where it first appears, so
+// callers can both order a matchup and detect a team the question has moved on
+// to.
+function mentionedTeamPositions(
+  question: string,
+  fixtures: TeamFixture[]
+): Map<string, number> {
   const normalizedQuestion = normalizeTeamText(question);
   const teamPositions = new Map<string, number>();
   const teams = new Set<string>();
@@ -378,7 +424,11 @@ export function resolveTeams(question: string, fixtures: TeamFixture[]): [string
     if (previous === undefined || position < previous) teamPositions.set(team, position);
   }
 
-  const orderedTeams = [...teamPositions.entries()]
+  return teamPositions;
+}
+
+export function resolveTeams(question: string, fixtures: TeamFixture[]): [string, string] {
+  const orderedTeams = [...mentionedTeamPositions(question, fixtures).entries()]
     .sort(([, positionA], [, positionB]) => positionA - positionB)
     .map(([team]) => team);
 
@@ -575,7 +625,13 @@ export function resolveAskContext(
     }
   }
 
-  if (!teams && !competitionId && teamContext && shouldUseMatchGrounding(question)) {
+  if (
+    !teams
+    && !competitionId
+    && teamContext
+    && (shouldUseMatchGrounding(question)
+      || !leavesMatchContext(question, teamContext, [...fixtures, ...activeFixtures]))
+  ) {
     const contextualFixture = findFixture(teamContext[0], teamContext[1], fixtures);
     if (contextualFixture) return { tier: "match", fixture: contextualFixture };
     const activeFixture = findFixture(teamContext[0], teamContext[1], activeFixtures);
@@ -609,14 +665,118 @@ function mapTimeoutError(error: unknown): never {
   throw error;
 }
 
+const SCORELINE_PERCENTAGE_PATTERN = /\b(\d+-\d+)\b([^%\n]{0,45}?)(\d+(?:\.\d+)?)%/g;
+
+function groundedScoreline(score: string, grounding: Grounding) {
+  return grounding.scorelines.find((row) => row.score === score);
+}
+
+// The model may quote a grounded probability at any precision ("10%", "10.4%"),
+// so a figure is correct when it rounds to the grounded value at the precision
+// the model actually used. A fixed tolerance treated ordinary rounding as a
+// hallucination and discarded correct answers.
+function roundingTolerance(percentageText: string): number {
+  const decimals = percentageText.split(".")[1]?.length ?? 0;
+  return 0.5 / 10 ** decimals + 1e-9;
+}
+
+function percentageMatches(percentageText: string, probability: number): boolean {
+  return Math.abs(probability * 100 - Number(percentageText))
+    <= roundingTolerance(percentageText);
+}
+
 function scorelinePercentageMatches(
   score: string,
-  percentage: number,
+  percentageText: string,
   grounding: Grounding
 ): boolean {
-  return grounding.scorelines.some((row) =>
-    row.score === score && Math.abs(row.probability * 100 - percentage) < 0.05
+  const row = groundedScoreline(score, grounding);
+  if (!row) return false;
+  return percentageMatches(percentageText, row.probability);
+}
+
+// Corrects a misquoted percentage in place, leaving the rest of the sentence
+// intact. Returns null when the line cites a scoreline absent from the
+// grounding entirely -- a fabrication the caller must replace rather than
+// patch.
+function correctScorelinePercentages(line: string, grounding: Grounding): string | null {
+  let citesUnknownScoreline = false;
+  const corrected = line.replace(
+    SCORELINE_PERCENTAGE_PATTERN,
+    (whole: string, score: string, gap: string, percentageText: string) => {
+      if (scorelinePercentageMatches(score, percentageText, grounding)) return whole;
+      const row = groundedScoreline(score, grounding);
+      if (!row) {
+        citesUnknownScoreline = true;
+        return whole;
+      }
+      return `${score}${gap}${(row.probability * 100).toFixed(1)}%`;
+    }
   );
+  return citesUnknownScoreline ? null : corrected;
+}
+
+const GOAL_MARKET_LINE = /both teams to score|\bbtts\b|\b(?:over|under)\s*2\.5/i;
+
+// Works out which goal-market number a percentage in the line is describing, so
+// a misquoted figure can be corrected where it stands instead of the whole
+// sentence being discarded. Returns null when the figure cannot be attributed
+// with confidence -- an unattributed number is left untouched.
+function goalMarketProbability(
+  line: string,
+  figureStart: number,
+  figureEnd: number,
+  grounding: Grounding
+): number | null {
+  const before = line.slice(Math.max(0, figureStart - 40), figureStart).toLowerCase();
+  const after = line.slice(figureEnd, figureEnd + 14).toLowerCase();
+
+  const nearestTotal = [...before.matchAll(/\b(over|under)\s*2\.5/g)].at(-1)?.[1];
+  if (nearestTotal === "under") return usableProbability(grounding.pUnder2_5);
+  if (nearestTotal === "over") return usableProbability(grounding.pOver2_5);
+
+  if (!/both teams to score|\bbtts\b/i.test(line)) return null;
+  if (/^\W*yes\b/.test(after)) return usableProbability(grounding.pBttsYes);
+  if (/^\W*no\b/.test(after)) return usableProbability(grounding.pBttsNo);
+  return null;
+}
+
+// A grounding payload missing a goal-market field must leave the text alone
+// rather than substitute a number that does not exist.
+function usableProbability(value: number | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+// Rewrites only the goal-market percentages that disagree with the grounding.
+// The previous guard replaced any line mentioning both-teams-to-score with a
+// canonical sentence, which answered a different question than the user asked
+// and repeated itself whenever two lines mentioned the market.
+function correctGoalMarketPercentages(line: string, grounding: Grounding): string {
+  if (!GOAL_MARKET_LINE.test(line)) return line;
+  let corrected = "";
+  let cursor = 0;
+  for (const match of line.matchAll(/(\d+(?:\.\d+)?)%/g)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    const expected = goalMarketProbability(line, start, end, grounding);
+    corrected += line.slice(cursor, start);
+    cursor = end;
+    corrected += expected === null || percentageMatches(match[1], expected)
+      ? match[0]
+      : `${(expected * 100).toFixed(1)}%`;
+  }
+  return corrected + line.slice(cursor);
+}
+
+// A single-leg result only settles a tie in a two-legged cup competition, and
+// only when the model actually ties a result to advancing. Bare words like
+// "progress" in league commentary are not aggregate claims.
+const AGGREGATE_OUTCOME_TERM = /\b(?:advance[ds]?|advancement|progress(?:es|ed|ion)?|through|qualif(?:y|ies|ied|ication))\b/i;
+const AGGREGATE_CLAIM_CUE = /\b(?:extra time|two[- ]goal swing|aggregate|need(?:s|ed)?|must|enough to|sends?|level(?:s)? the tie|settle(?:s)? the tie)\b|\b\d+-\d+\b/i;
+
+export function mentionsAggregateOutcome(line: string): boolean {
+  if (/\bextra time\b|\btwo[- ]goal swing\b|\bon aggregate\b/i.test(line)) return true;
+  return AGGREGATE_OUTCOME_TERM.test(line) && AGGREGATE_CLAIM_CUE.test(line);
 }
 
 function awayWinSummary(grounding: Grounding): string {
@@ -639,11 +799,7 @@ function replaceInvalidScorelineLines(answer: string, grounding: Grounding): str
       && /\b(?:path|route|prevail|overturn|away-win|beat|win|winning|spring|upset|come out on top)\b/i.test(line)
       && /\b\d+-\d+\b/.test(line);
     if (isUnderdogInterpretation) return awayWinSummary(grounding);
-    const pairs = [...line.matchAll(/\b(\d+-\d+)\b[^%\n]{0,45}?(\d+(?:\.\d+)?)%/g)];
-    const hasInvalidPair = pairs.some((match) =>
-      !scorelinePercentageMatches(match[1], Number(match[2]), grounding)
-    );
-    return hasInvalidPair ? awayWinSummary(grounding) : line;
+    return correctScorelinePercentages(line, grounding) ?? awayWinSummary(grounding);
   }).join("\n");
 }
 
@@ -664,10 +820,10 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
   );
   if (grounding) {
     sanitized = replaceInvalidScorelineLines(sanitized, grounding);
-    sanitized = sanitized.split("\n").map((line) => {
-      if (!/\bboth teams to score\b/i.test(line)) return line;
-      return `The model gives over 2.5 goals **${(grounding.pOver2_5 * 100).toFixed(1)}%** and under 2.5 **${(grounding.pUnder2_5 * 100).toFixed(1)}%**, with both teams to score **${(grounding.pBttsYes * 100).toFixed(1)}%** yes and **${(grounding.pBttsNo * 100).toFixed(1)}%** no.`;
-    }).join("\n");
+    sanitized = sanitized
+      .split("\n")
+      .map((line) => correctGoalMarketPercentages(line, grounding))
+      .join("\n");
     if (grounding.competitionId === "uefa.champions_qual") {
       sanitized = sanitized
         .replace(/\b(?:a )?share of the points\b/gi, "a draw")
@@ -676,15 +832,16 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
         .replace(/\b(?:one|1) point\b/gi, "a draw");
     }
   }
-  let aggregateDisclaimerSeen = false;
-  sanitized = sanitized.split("\n").map((line) => {
-    if (!/\b(?:advance|progress|qualif(?:y|ies)|extra time|two[- ]goal swing)\b/i.test(line)) {
-      return line;
-    }
-    if (aggregateDisclaimerSeen) return "";
-    aggregateDisclaimerSeen = true;
-    return aggregateDisclaimer;
-  }).join("\n");
+  // Only two-legged cup ties can be settled on aggregate. An ungrounded answer
+  // keeps the guard, since the competition cannot be checked.
+  const competitionType = grounding
+    ? getCompetitionById(grounding.competitionId)?.type
+    : undefined;
+  if (competitionType !== "league") {
+    sanitized = sanitized.split("\n")
+      .map((line) => (mentionsAggregateOutcome(line) ? aggregateDisclaimer : line))
+      .join("\n");
+  }
   sanitized = sanitized
     .replace(
       /\s+[—-]\s+this is[^.!?\n]*(?:territorial|dominat)[^.!?\n]*[.!?]?/gi,
