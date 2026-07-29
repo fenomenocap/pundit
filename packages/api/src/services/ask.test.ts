@@ -364,6 +364,32 @@ describe("resolveAskContext", () => {
     )).toMatchObject({ tier: "match", fixture: fixtures[0] });
   });
 
+  it("retains match grounding for conversational follow-ups without an explicit cue", () => {
+    const teamContext: [string, string] = ["Arsenal", "Coventry City"];
+    for (const question of [
+      "Why?",
+      "Tell me more",
+      "Is that a good bet?",
+      "How confident are you?",
+      "What's the value there?",
+      "And the second half?",
+    ]) {
+      expect(resolveAskContext(question, [], teamContext, fixtures, []))
+        .toMatchObject({ tier: "match", fixture: fixtures[0] });
+    }
+  });
+
+  it("releases match grounding once the question names another team", () => {
+    const teamContext: [string, string] = ["Arsenal", "Coventry City"];
+    expect(resolveAskContext(
+      "How is Tottenham Hotspur doing?",
+      [],
+      teamContext,
+      fixtures,
+      []
+    )).toEqual({ tier: "general" });
+  });
+
   it("does not silently generalize a match follow-up while its model row is unavailable", () => {
     expect(resolveAskContext(
       "What about the draw chance?",
