@@ -52,21 +52,41 @@ echo "OK"
 
 echo "=== 5. Vercel bundle ==="
 HTML=$(curl -fsS "$WEB_URL/")
-CHUNK=$(echo "$HTML" | grep -oE '/_next/static/chunks/app/page-[^"]+\.js' | head -1 || true)
-if [[ -z "${CHUNK:-}" ]]; then
-  echo "FAIL: could not extract app/page-*.js chunk from homepage"
+# Collect every JS chunk the homepage loads (page chunk + layout chunk +
+# shared/vendor chunks). API host constants live in lib/api.ts and may
+# be tree-shaken into any of them depending on the build.
+CHUNKS=$(echo "$HTML" | grep -oE '/_next/static/[^"]+\.js' | sort -u || true)
+if [[ -z "$CHUNKS" ]]; then
+  echo "FAIL: could not extract any JS chunk from homepage"
   exit 1
 fi
-CHUNK_BODY=$(curl -fsS "$WEB_URL$CHUNK")
-if ! echo "$CHUNK_BODY" | grep -Fq "$EXPECTED_API_HOST"; then
-  echo "FAIL: page chunk does not contain expected API host ($EXPECTED_API_HOST)"
+FOUND_HOST=0
+FOUND_LOCALHOST=0
+INSPECTED=""
+CHUNK_COUNT=0
+while IFS= read -r CHUNK; do
+  [[ -z "$CHUNK" ]] && continue
+  CHUNK_BODY=$(curl -fsS "$WEB_URL$CHUNK")
+  CHUNK_COUNT=$((CHUNK_COUNT + 1))
+  INSPECTED="$INSPECTED $CHUNK"
+  if echo "$CHUNK_BODY" | grep -Fq "$EXPECTED_API_HOST"; then
+    FOUND_HOST=1
+  fi
+  if echo "$CHUNK_BODY" | grep -Fq "localhost:3001"; then
+    FOUND_LOCALHOST=1
+  fi
+done <<< "$CHUNKS"
+if [[ "$FOUND_HOST" -ne 1 ]]; then
+  echo "FAIL: no homepage chunk contains expected API host ($EXPECTED_API_HOST)"
+  echo "      inspected:$INSPECTED"
   exit 1
 fi
-if echo "$CHUNK_BODY" | grep -Fq "localhost:3001"; then
-  echo "FAIL: page chunk still contains localhost:3001 API fallback"
+if [[ "$FOUND_LOCALHOST" -ne 0 ]]; then
+  echo "FAIL: a homepage chunk still contains localhost:3001 API fallback"
+  echo "      inspected:$INSPECTED"
   exit 1
 fi
-echo "OK (chunk: $CHUNK)"
+echo "OK (chunks: $CHUNK_COUNT inspected)"
 
 echo ""
 echo "PASS: production verification OK"
@@ -74,7 +94,7 @@ echo "  - API health (/health)"
 echo "  - API ready (/ready, soft)"
 echo "  - CORS allow $WEB_URL"
 echo "  - CORS reject https://evil.example"
-echo "  - Vercel bundle uses $EXPECTED_API_HOST (no localhost:3001)"
+echo "  - Vercel bundle uses $EXPECTED_API_HOST (no localhost:3001, all chunks inspected)"
 if [[ -n "$COMMIT_ARG" ]]; then
   echo "  - note: commit arg = $COMMIT_ARG"
 fi
