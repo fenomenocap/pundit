@@ -43,6 +43,7 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        "card-rim": "hsl(var(--card-rim))",
         // Sportsbook palette: swap the stock neon cyan/pink for calmer,
         // higher-contrast tones (Tailwind's own sky/rose) without touching
         // any component — every `cyan-400`/`pink-500` etc. class updates.
@@ -61,12 +62,17 @@ const config: Config = {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        card: "var(--radius)",
+      },
+      boxShadow: {
+        card: "inset 0 1px 0 0 rgba(255,255,255,0.04), 0 1px 0 0 rgba(0,0,0,0.4)",
       },
       fontFamily: {
         heading: ["'Space Grotesk'", "system-ui", "sans-serif"],
         body: ["'Space Grotesk'", "system-ui", "sans-serif"],
         sans: ["'Space Grotesk'", "system-ui", "sans-serif"],
         mono: ["'Space Mono'", "monospace"],
+        display: ["'Instrument Serif'", "'Space Grotesk'", "serif"],
       },
     },
   },

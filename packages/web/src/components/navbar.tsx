@@ -15,11 +15,14 @@ export function Navbar() {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-[hsl(228,50%,4%)]">
+    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur">
       <div className="flex h-11 items-center justify-between px-4">
         <div className="flex min-w-0 flex-1 items-center gap-4 sm:gap-6">
           <Link href="/" className="flex shrink-0 items-center gap-2">
-            <span className="font-heading text-base font-bold tracking-tight text-primary">
+            <span
+              aria-hidden="true"
+              className="flex h-6 w-6 items-center justify-center rounded border border-primary/30 bg-primary/10 font-display text-base text-primary"
+            >
               P
             </span>
             <span className="font-heading text-sm font-semibold text-white">
@@ -42,9 +45,9 @@ export function Navbar() {
                   href={link.href}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "shrink-0 px-2 py-1.5 text-xs font-medium uppercase tracking-wide transition-colors sm:px-3",
+                    "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium uppercase tracking-wide transition-colors sm:px-3",
                     isActive
-                      ? "text-white"
+                      ? "bg-secondary/60 text-white"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
