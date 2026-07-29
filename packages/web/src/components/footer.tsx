@@ -14,8 +14,15 @@ export function Footer() {
   return (
     <footer className="border-t border-border px-4 py-2.5">
       <div className="flex flex-col items-center justify-between gap-2 text-xs text-muted-foreground sm:flex-row">
-        <Disclaimer />
+        <div className="flex items-center gap-3">
+          <span className="font-display text-base text-white">Pundit</span>
+          <span className="hidden h-3 w-px bg-border sm:inline-block" aria-hidden="true" />
+          <Disclaimer />
+        </div>
         <div className="flex items-center gap-4">
+          <span className="hidden font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:inline">
+            Resources
+          </span>
           {docsUrl && (
             <a
               href={docsUrl}
@@ -46,7 +53,9 @@ export function Footer() {
           >
             GitHub
           </a>
-          <span>Pundit v0.3</span>
+          <span className="hidden font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:inline">
+            v0.3
+          </span>
         </div>
       </div>
     </footer>
