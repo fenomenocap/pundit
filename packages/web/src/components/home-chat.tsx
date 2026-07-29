@@ -357,11 +357,14 @@ export function HomeChat() {
           }
         },
       });
-      setTeamContext(
-        grounding?.kind === "match"
-          ? [grounding.home, grounding.away]
-          : undefined
-      );
+      // A competition or general answer does not establish a new match, but it
+      // does not end the one under discussion either. Keeping the context lets
+      // a later follow-up resolve back to that match instead of dropping to the
+      // general tier; the API releases it once another team is named, and "New
+      // Chat" clears it outright.
+      if (grounding?.kind === "match") {
+        setTeamContext([grounding.home, grounding.away]);
+      }
       setMessages((prev) => {
         const finalMessage: ChatMessage = { id: assistantId, role: "assistant", content: answer, grounding };
         return started
