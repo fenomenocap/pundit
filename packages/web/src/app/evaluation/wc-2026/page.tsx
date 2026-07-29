@@ -7,6 +7,7 @@ import { type Wc2026EvaluationResponse } from "@/lib/api";
 import { fetchWc2026Evaluation } from "@/lib/mock-data";
 import { PageHeader } from "@/components/page-header";
 import { ErrorBanner } from "@/components/error-banner";
+import { MetricCard } from "@/components/metric-card";
 
 function percent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -21,6 +22,28 @@ function outcomeLabel(outcome: "home" | "draw" | "away", home: string, away: str
   if (outcome === "home") return home;
   if (outcome === "away") return away;
   return "Draw";
+}
+
+function CalibrationBar({ avgPredicted, actualRate }: { avgPredicted: number; actualRate: number }) {
+  const max = Math.max(avgPredicted, actualRate, 0.001);
+  return (
+    <div
+      role="img"
+      aria-label={`Predicted ${percent(avgPredicted)} versus actual ${percent(actualRate)}`}
+      className="flex h-1.5 w-32 items-center gap-1.5"
+    >
+      <span
+        aria-hidden="true"
+        className="h-1.5 rounded-full bg-muted-foreground/60"
+        style={{ width: `${(avgPredicted / max) * 100}%` }}
+      />
+      <span
+        aria-hidden="true"
+        className="h-1.5 rounded-full bg-primary"
+        style={{ width: `${(actualRate / max) * 100}%` }}
+      />
+    </div>
+  );
 }
 
 export default function Wc2026EvaluationPage() {
@@ -49,7 +72,7 @@ export default function Wc2026EvaluationPage() {
     <div className="mx-auto w-full max-w-6xl px-4 py-6">
       <PageHeader
         title="World Cup 2026 backtest"
-        subtitle="Immutable pre-kickoff probabilities reconstructed for backtesting. Separate from the live model page, which recalculates older fixtures with current ratings."
+        eyebrow="Frozen evaluation · reconstructed pre-kickoff"
         badge={(
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="rounded border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
@@ -61,6 +84,9 @@ export default function Wc2026EvaluationPage() {
           </div>
         )}
       />
+      <p className="mb-6 -mt-4 max-w-2xl font-display text-lg leading-snug text-white">
+        Immutable pre-kickoff probabilities reconstructed for backtesting. Separate from the live model page, which recalculates older fixtures with current ratings.
+      </p>
 
       <div className="mb-6">
         <Link
@@ -122,8 +148,17 @@ export default function Wc2026EvaluationPage() {
                       <tr key={bucket.label} className="border-t border-border/60">
                         <td className="px-4 py-2 text-foreground">{bucket.label}</td>
                         <td className="font-mono text-muted-foreground">{bucket.count}</td>
-                        <td className="font-mono text-muted-foreground">{percent(bucket.avgPredicted)}</td>
-                        <td className="pr-4 font-mono text-primary">{percent(bucket.actualRate)}</td>
+                        <td className="font-mono text-muted-foreground">
+                          <span className="inline-flex items-center gap-2">
+                            {percent(bucket.avgPredicted)}
+                            <CalibrationBar avgPredicted={bucket.avgPredicted} actualRate={bucket.actualRate} />
+                          </span>
+                        </td>
+                        <td className="pr-4 font-mono text-primary">
+                          <span className="inline-flex items-center gap-2">
+                            <span>{percent(bucket.actualRate)}</span>
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -194,23 +229,5 @@ export default function Wc2026EvaluationPage() {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-}) {
-  return (
-    <dl className="rounded-lg border border-border bg-card px-4 py-3">
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className="mt-1 font-mono text-xl text-white">{value}</dd>
-      <dd className="mt-1 text-xs text-muted-foreground">{hint}</dd>
-    </dl>
   );
 }

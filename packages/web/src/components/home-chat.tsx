@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
+import { ArrowUp } from "lucide-react";
 import {
   ApiError,
   askQuestionStream,
@@ -20,7 +21,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Disclaimer } from "@/components/disclaimer";
+import { ProbabilityBar } from "@/components/probability-bar";
 import { getDocsUrl } from "@/lib/site-links";
+import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
 
 interface ChatMessage {
   id: number;
@@ -185,6 +188,53 @@ function groundingLabel(grounding: AskGrounding): string {
   return "General · no live model data";
 }
 
+// Three-segment stacked bar is imported from @/components/probability-bar.
+
+function TeamMonogram({ name }: { name: string }) {
+  const monogram = getTeamMonogram(name);
+  const color = getTeamColor(name);
+  if (!monogram) {
+    return (
+      <span
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-card-rim bg-secondary text-[10px] font-bold text-muted-foreground"
+        aria-hidden
+      >
+        ?
+      </span>
+    );
+  }
+  return (
+    <span
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white"
+      style={{ backgroundColor: color }}
+      aria-hidden
+    >
+      {monogram}
+    </span>
+  );
+}
+
+function GroundingBadge({ grounding }: { grounding: AskGrounding }) {
+  const kind = grounding?.kind ?? null;
+  const ringClass = kind === "match"
+    ? "border-primary/40 text-primary"
+    : kind === "competition"
+      ? "border-amber-400/40 text-amber-300"
+      : kind === "season"
+        ? "border-accent/40 text-accent"
+        : "border-border text-muted-foreground";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border bg-card px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.15em]",
+        ringClass
+      )}
+    >
+      {groundingLabel(grounding)}
+    </span>
+  );
+}
+
 function AssistantMarkdown({ content }: { content: string }) {
   return (
     <ReactMarkdown
@@ -263,6 +313,101 @@ function MessageActions({
   );
 }
 
+// Match-grounded fixture card — replaces the chat bubble when assistant + match grounding.
+function MatchFixtureCard({
+  content,
+  grounding,
+  streaming,
+}: {
+  content: string;
+  grounding: MatchGrounding;
+  streaming: boolean;
+}) {
+  const rows = oddsRows(grounding);
+  const hasMarkets = rows.length > 1;
+  const homeHeader = teamAbbr(grounding.home);
+  const awayHeader = teamAbbr(grounding.away);
+  return (
+    <div
+      className="mr-auto w-full max-w-[85%] overflow-hidden rounded-lg border border-card-rim bg-card text-foreground shadow-card"
+    >
+      <div className="flex items-start gap-2 border-b border-card-rim px-3 py-2.5">
+        <div className="flex flex-1 items-center gap-2">
+          <TeamMonogram name={grounding.home} />
+          <span className="truncate text-sm font-medium text-white" title={grounding.home}>
+            {teamAbbr(grounding.home)} · {grounding.home}
+          </span>
+        </div>
+        <span className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground">
+          vs
+        </span>
+        <div className="flex flex-1 items-center justify-end gap-2">
+          <span className="truncate text-right text-sm font-medium text-white" title={grounding.away}>
+            {grounding.away} · {teamAbbr(grounding.away)}
+          </span>
+          <TeamMonogram name={grounding.away} />
+        </div>
+      </div>
+      <div className="space-y-2 px-3 py-2.5">
+        <ProbabilityBar
+          pHome={grounding.pHome}
+          pDraw={grounding.pDraw}
+          pAway={grounding.pAway}
+        />
+        <div className="grid grid-cols-3 font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+          <span className="text-primary">Home {formatPercent(grounding.pHome)}</span>
+          <span className="text-center text-muted-foreground">
+            Draw {grounding.pDraw === null ? "—" : formatPercent(grounding.pDraw)}
+          </span>
+          <span className="text-right text-accent">Away {formatPercent(grounding.pAway)}</span>
+        </div>
+      </div>
+      <div className="border-t border-border/70 px-3 py-2 text-xs leading-tight text-muted-foreground">
+        <div className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 pb-1 font-mono uppercase tracking-[0.15em] sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]">
+          <span>Source</span>
+          <span className="text-right">{homeHeader}</span>
+          <span className="text-right">Draw</span>
+          <span className="text-right">{awayHeader}</span>
+        </div>
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 py-0.5 font-mono sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]"
+          >
+            <span className="text-foreground/80">{row.label}</span>
+            <span className="text-right">{formatPercent(row.pHome)}</span>
+            <span className="text-right">{formatPercent(row.pDraw)}</span>
+            <span className="text-right">{formatPercent(row.pAway)}</span>
+          </div>
+        ))}
+        {!hasMarkets && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            No live market line available
+          </p>
+        )}
+      </div>
+      <div className="border-t border-card-rim px-3 py-2.5 text-sm leading-relaxed">
+        {streaming ? (
+          <span className="animate-pulse">
+            <AssistantMarkdown content={content} />
+          </span>
+        ) : (
+          <AssistantMarkdown content={content} />
+        )}
+        <div className="mt-2 flex items-center gap-2">
+          <GroundingBadge grounding={grounding} />
+          {streaming && (
+            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+              streaming
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function HomeChat() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -277,6 +422,7 @@ export function HomeChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoAskedRef = useRef<string | null>(null);
   const askRef = useRef<(question: string) => Promise<void>>(async () => undefined);
+  const streamingIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -346,6 +492,7 @@ export function HomeChat() {
           if (!started) {
             started = true;
             setStreamStarted(true);
+            streamingIdRef.current = assistantId;
             setMessages((prev) => [
               ...prev,
               { id: assistantId, role: "assistant", content: text, grounding: streamedGrounding },
@@ -377,6 +524,7 @@ export function HomeChat() {
         { id: nextId++, role: "error", content: sanitizeAskError(err) },
       ]);
     } finally {
+      streamingIdRef.current = null;
       setLoading(false);
       setStreamStarted(false);
       setLoadingTier(null);
@@ -407,6 +555,30 @@ export function HomeChat() {
     }
   }
 
+  // Status bar state — derives a small modelState from existing signals without
+  // any new fetches. Keeps the bar live off readiness/loading without touching
+  // the `ask()` flow.
+  const modelState: "ready" | "loading" | "cold" = loadingTier === "match"
+    ? "loading"
+    : hasFeaturedFixtures
+      ? "ready"
+      : "cold";
+  const statusTone = modelState === "loading"
+    ? "bg-amber-300"
+    : modelState === "ready"
+      ? "bg-primary"
+      : "bg-slate-500";
+  const statusLabel = modelState === "loading"
+    ? `Loading match model — ${loadingMessage(loadingTier)}`
+    : modelState === "ready"
+      ? "Model grounded · active fixtures live"
+      : "Model not ready — table and general questions still work";
+  const inputStatus = modelState === "loading"
+    ? "loading"
+    : modelState === "ready"
+      ? "ready"
+      : "cold";
+
   return (
     <div className="mx-auto flex h-[calc(100vh-2.75rem)] max-w-2xl flex-col px-4">
       {messages.length > 0 && (
@@ -428,36 +600,35 @@ export function HomeChat() {
         </div>
       )}
       {messages.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
-          <h1 className="font-heading text-3xl font-bold text-white sm:text-4xl">Pundit</h1>
-          <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-            Ask about upcoming Premier League or UCL qualifier matches for a read grounded in
-            Pundit&apos;s statistical model.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                onClick={() => ask(s)}
-                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-              >
-                {s}
-              </button>
-            ))}
+        <div className="flex flex-1 flex-col items-center justify-start pt-[14vh] text-center sm:justify-center sm:pt-0">
+          <div className="space-y-3">
+            <h1
+              className="font-mono text-xs font-normal uppercase tracking-[0.2em] text-muted-foreground"
+            >
+              <span className="text-white">Pundit</span>
+              <span className="mx-1.5 text-muted-foreground/60">·</span>
+              <span>v0.3</span>
+              <span className="mx-1.5 text-muted-foreground/60">·</span>
+              <span>Premier League</span>
+              <span className="mx-1.5 text-muted-foreground/60">·</span>
+              <span>UCL qualifiers</span>
+            </h1>
+            <h2
+              data-display="true"
+              className="font-display text-5xl font-normal leading-tight text-white sm:text-6xl"
+            >
+              Football analysis, grounded.
+            </h2>
+            <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
+              Ask about upcoming Premier League or UCL qualifier matches for a read grounded in
+              Pundit&apos;s statistical model.
+            </p>
           </div>
           {!hasFeaturedFixtures && (
             <p className="mt-4 max-w-md text-xs text-muted-foreground">
               No upcoming model fixtures — try a table question or general football analysis.
             </p>
           )}
-          <div className="mt-8 flex items-center gap-3">
-            <Link href="/fixtures">
-              <Button size="sm">View Fixtures</Button>
-            </Link>
-            <Link href="/model">
-              <Button variant="secondary" size="sm">Model Reference</Button>
-            </Link>
-          </div>
         </div>
       ) : (
         <ScrollArea className="flex-1">
@@ -466,14 +637,29 @@ export function HomeChat() {
             aria-relevant="additions text"
             className="flex flex-col gap-3 py-4"
           >
-            {messages.map((m, index) => {
-              const rows = m.role === "assistant" && m.grounding?.kind === "match"
+            {messages.map((m) => {
+              const isMatchCard = m.role === "assistant" && m.grounding?.kind === "match";
+              const streaming = streamStarted && m.id === streamingIdRef.current;
+              if (isMatchCard && m.grounding?.kind === "match") {
+                return (
+                  <MatchFixtureCard
+                    key={m.id}
+                    content={m.content}
+                    grounding={m.grounding}
+                    streaming={streaming}
+                  />
+                );
+              }
+              const homeHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.home) : "Home";
+              const awayHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.away) : "Away";
+              const rows = m.grounding?.kind === "match"
                 ? oddsRows(m.grounding)
                 : [];
               const hasMarkets = rows.length > 1;
-              const homeHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.home) : "Home";
-              const awayHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.away) : "Away";
-              const precedingUser = [...messages.slice(0, index)].reverse().find((msg) => msg.role === "user");
+              const precedingUser = [...messages]
+                .slice(0, messages.indexOf(m))
+                .reverse()
+                .find((msg) => msg.role === "user");
               return (
                 <div
                   key={m.id}
@@ -481,19 +667,33 @@ export function HomeChat() {
                   className={cn(
                     "max-w-[85%] rounded-lg border px-4 py-2.5 text-sm leading-relaxed",
                     m.role === "user" &&
-                      "ml-auto border-primary/30 bg-primary/10 text-foreground",
+                      "ml-auto border-card-rim bg-card text-foreground",
                     m.role === "assistant" &&
-                      "mr-auto border-border bg-card text-foreground",
+                      "mr-auto border-card-rim bg-card text-foreground",
                     m.role === "error" &&
                       "mr-auto border-destructive/30 bg-destructive/10 text-destructive-foreground"
                   )}
                 >
-                  {m.role === "assistant"
-                    ? <AssistantMarkdown content={m.content} />
-                    : <div>{m.content}</div>}
                   {m.role === "assistant" && (
-                    <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {groundingLabel(m.grounding ?? null)}
+                    <div className="mb-2">
+                      <GroundingBadge grounding={m.grounding ?? null} />
+                    </div>
+                  )}
+                  {m.role === "assistant"
+                    ? (
+                      streaming ? (
+                        <span className="animate-pulse">
+                          <AssistantMarkdown content={m.content} />
+                        </span>
+                      ) : (
+                        <AssistantMarkdown content={m.content} />
+                      )
+                    )
+                    : <div>{m.content}</div>}
+                  {m.role === "assistant" && streaming && (
+                    <div className="mt-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                      {loadingMessage(loadingTier)}
                     </div>
                   )}
                   {rows.length > 0 && (
@@ -532,7 +732,7 @@ export function HomeChat() {
               );
             })}
             {loading && !streamStarted && (
-              <div className="mr-auto flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm text-muted-foreground">
+              <div className="mr-auto flex items-center gap-1.5 rounded-lg border border-card-rim bg-card px-4 py-2.5 text-sm text-muted-foreground">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
                 {loadingMessage(loadingTier)}
               </div>
@@ -546,6 +746,47 @@ export function HomeChat() {
         onSubmit={handleSubmit}
         className="flex flex-col gap-1.5 border-t border-border py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
+        {/* Status bar — 1px strip above the input row, color tracks model state */}
+        <div
+          aria-hidden
+          className={cn(
+            "h-px w-full transition-colors",
+            statusTone
+          )}
+        />
+        <div className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 truncate">
+            <span
+              className={cn(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                statusTone,
+                modelState === "ready" && "animate-pulse"
+              )}
+            />
+            {statusLabel}
+          </span>
+          {teamContext && (
+            <span className="hidden shrink-0 text-muted-foreground/70 sm:inline">
+              Following: {teamContext[0]} vs {teamContext[1]}
+            </span>
+          )}
+        </div>
+        {messages.length === 0 && suggestions.length > 0 && (
+          <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1">
+            {suggestions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => ask(s)}
+                className={cn(
+                  "snap-start shrink-0 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                )}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <Input
             value={input}
@@ -554,23 +795,61 @@ export function HomeChat() {
             disabled={loading}
             maxLength={500}
             aria-label="Ask a question"
+            status={inputStatus}
           />
-          <Button type="submit" disabled={loading || !input.trim()}>
-            Send
+          <Button
+            type="submit"
+            variant="mono"
+            size="icon"
+            disabled={loading || !input.trim()}
+            aria-label="Send"
+          >
+            <ArrowUp aria-hidden />
           </Button>
         </div>
         <Disclaimer className="text-center text-xs text-muted-foreground" />
-        {getDocsUrl() && (
+        {messages.length === 0 ? (
           <p className="text-center text-xs text-muted-foreground">
-            <a
-              href={getDocsUrl()!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-colors hover:text-foreground"
+            <Link
+              href="/fixtures"
+              className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
             >
-              Learn more
-            </a>
+              View Fixtures
+            </Link>
+            <span className="mx-1.5 text-muted-foreground/60">·</span>
+            <Link
+              href="/model"
+              className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              Model Reference
+            </Link>
+            {getDocsUrl() && (
+              <>
+                <span className="mx-1.5 text-muted-foreground/60">·</span>
+                <a
+                  href={getDocsUrl()!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                >
+                  Learn more
+                </a>
+              </>
+            )}
           </p>
+        ) : (
+          getDocsUrl() && (
+            <p className="text-center text-xs text-muted-foreground">
+              <a
+                href={getDocsUrl()!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-colors hover:text-foreground"
+              >
+                Learn more
+              </a>
+            </p>
+          )
         )}
       </form>
     </div>

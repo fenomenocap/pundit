@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/page-header";
 import { ErrorBanner } from "@/components/error-banner";
 import { EmptyState } from "@/components/empty-state";
 import { FilterPill } from "@/components/filter-pill";
+import { ProbabilityBar } from "@/components/probability-bar";
 
 function percent(value: number | null): string {
   return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
@@ -22,6 +23,21 @@ function stageLabel(stage: string): string {
 
 function fixtureRowKey(fixture: ModelFixtureResponse): string {
   return `${fixture.competitionId}-${fixture.fixtureId}`;
+}
+
+function kickoffTime(utcDate: string): string {
+  return new Date(utcDate).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function kickoffDay(utcDate: string): string {
+  return new Date(utcDate).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function ModelPage() {
@@ -77,9 +93,11 @@ export default function ModelPage() {
     <div className="mx-auto w-full max-w-6xl px-4 py-6">
       <PageHeader
         title="Club season model"
+        eyebrow="Predictions · Active fixtures"
         subtitle="Live 1X2 probabilities for active Premier League and UCL qualifier fixtures, with home-field advantage where applicable."
         lastUpdated={lastUpdated}
         loading={loading}
+        sticky
         badge={(
           <span className="mb-2 inline-block rounded border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
             Local model
@@ -99,7 +117,7 @@ export default function ModelPage() {
       {error && <ErrorBanner message={error} onRetry={load} />}
 
       {!error && (
-        <section className="overflow-hidden rounded-lg border border-border bg-card">
+        <section className="overflow-hidden rounded-xl border border-card-rim bg-card shadow-card">
           <div className="border-b border-border px-4 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -148,10 +166,10 @@ export default function ModelPage() {
                   <tr>
                     <th className="w-8 px-2 py-2" aria-label="Expand" />
                     <th className="px-1 py-2">Match</th>
-                    <th>Home</th>
-                    <th>Draw</th>
-                    <th>Away</th>
-                    <th>Status</th>
+                    <th className="hidden px-1 py-2 sm:table-cell">Stage</th>
+                    <th className="px-1 py-2">Kickoff</th>
+                    <th className="min-w-[140px] px-3 py-2">1X2</th>
+                    <th className="px-1 py-2">Status</th>
                     <th className="pr-3" aria-label="Ask about match" />
                   </tr>
                 </thead>
@@ -162,11 +180,18 @@ export default function ModelPage() {
                     const topScores = fixture.topScores.slice(0, 3);
                     return (
                       <Fragment key={key}>
-                        <tr className="border-t border-border/60">
+                        <tr
+                          className="cursor-pointer border-t border-border/60 transition-colors hover:bg-secondary/30"
+                          onClick={() => toggleExpanded(key)}
+                          aria-expanded={isExpanded}
+                        >
                           <td className="px-2 py-2">
                             <button
                               type="button"
-                              onClick={() => toggleExpanded(key)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleExpanded(key);
+                              }}
                               className="rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
                               aria-expanded={isExpanded}
                               aria-label={isExpanded ? "Collapse details" : "Expand details"}
@@ -181,13 +206,33 @@ export default function ModelPage() {
                           <td className="px-1 py-2">
                             <div className="font-medium text-foreground">{fixture.home} · {fixture.away}</div>
                             <div className="mt-0.5 text-xs text-muted-foreground">
-                              {fixture.competition} · {fixture.date}
-                              {fixture.stage !== "match" ? ` · ${stageLabel(fixture.stage)}` : ""}
+                              {fixture.competition}
                             </div>
                           </td>
-                          <td className="font-mono text-muted-foreground">{percent(fixture.pHome)}</td>
-                          <td className="font-mono text-muted-foreground">{percent(fixture.pDraw)}</td>
-                          <td className="font-mono text-muted-foreground">{percent(fixture.pAway)}</td>
+                          <td className="hidden px-1 py-2 font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:table-cell">
+                            {fixture.stage !== "match" ? stageLabel(fixture.stage) : "—"}
+                          </td>
+                          <td className="px-1 py-2 font-mono text-xs text-foreground">
+                            <div className="leading-tight">{kickoffTime(fixture.utcDate)}</div>
+                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                              {kickoffDay(fixture.utcDate)}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <ProbabilityBar
+                              pHome={fixture.pHome}
+                              pDraw={fixture.pDraw}
+                              pAway={fixture.pAway}
+                              size="sm"
+                              homeLabel={fixture.home}
+                              awayLabel={fixture.away}
+                            />
+                            <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-[10px] tabular-nums text-muted-foreground">
+                              <span className="text-primary">{percent(fixture.pHome)}</span>
+                              <span className="text-center text-slate-300">{percent(fixture.pDraw)}</span>
+                              <span className="text-right text-pink-400">{percent(fixture.pAway)}</span>
+                            </div>
+                          </td>
                           <td className="font-mono text-foreground">
                             {fixture.result ? `${fixture.result.homeScore}–${fixture.result.awayScore}` : "Upcoming"}
                           </td>
@@ -195,6 +240,7 @@ export default function ModelPage() {
                             <Link
                               href={`/?q=${encodeURIComponent(`${fixture.home} vs ${fixture.away}`)}`}
                               className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary/80"
+                              onClick={(event) => event.stopPropagation()}
                             >
                               Ask
                             </Link>
@@ -203,26 +249,40 @@ export default function ModelPage() {
                         {isExpanded && (
                           <tr className="border-t border-border/40 bg-secondary/20">
                             <td colSpan={7} className="px-4 py-3">
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <div>
+                              <div className="grid gap-4 sm:grid-cols-2 sm:divide-x sm:divide-border/60">
+                                <div className="space-y-1">
                                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                     Goals
                                   </p>
-                                  <p className="mt-1 text-sm text-foreground">
-                                    Over 2.5 {percent(fixture.pOver2_5)} · Under 2.5 {percent(fixture.pUnder2_5)}
-                                  </p>
-                                  <p className="mt-0.5 text-sm text-foreground">
-                                    BTTS Yes {percent(fixture.pBttsYes)} · No {percent(fixture.pBttsNo)}
-                                  </p>
+                                  <div className="flex items-center justify-between font-mono text-sm tabular-nums">
+                                    <span className="text-muted-foreground">Over 2.5</span>
+                                    <span className="text-foreground">{percent(fixture.pOver2_5)}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between font-mono text-sm tabular-nums">
+                                    <span className="text-muted-foreground">Under 2.5</span>
+                                    <span className="text-foreground">{percent(fixture.pUnder2_5)}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between font-mono text-sm tabular-nums">
+                                    <span className="text-muted-foreground">BTTS Yes</span>
+                                    <span className="text-foreground">{percent(fixture.pBttsYes)}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between font-mono text-sm tabular-nums">
+                                    <span className="text-muted-foreground">BTTS No</span>
+                                    <span className="text-foreground">{percent(fixture.pBttsNo)}</span>
+                                  </div>
                                 </div>
-                                <div>
+                                <div className="space-y-1 sm:pl-4">
                                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                     Likely scorelines
                                   </p>
-                                  <ul className="mt-1 space-y-0.5 text-sm text-foreground">
+                                  <ul className="space-y-0.5 font-mono text-sm tabular-nums">
                                     {topScores.map(({ score, probability }) => (
-                                      <li key={score}>
-                                        {score} · {percent(probability)}
+                                      <li
+                                        key={score}
+                                        className="flex items-center justify-between"
+                                      >
+                                        <span className="text-foreground">{score}</span>
+                                        <span className="text-muted-foreground">{percent(probability)}</span>
                                       </li>
                                     ))}
                                   </ul>
