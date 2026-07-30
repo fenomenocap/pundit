@@ -57,4 +57,24 @@ describe("normalizeTeamName", () => {
       expect(canonicalClubName(espnName)).toBe(clubEloName);
     }
   });
+
+  it("uses the spellings ClubElo actually publishes for the round that went unpriced", () => {
+    // Each right-hand name was read off the ClubElo daily snapshot, not
+    // inferred. The spacing and the dropped or replaced words are the whole
+    // point -- normalization strips diacritics and case but not punctuation, so an
+    // approximation here leaves the club unrated and drops its fixture.
+    const expected = new Map([
+      ["Bodo/Glimt", "Bodoe Glimt"],
+      ["Bodø/Glimt", "Bodoe Glimt"],
+      ["NEC Nijmegen", "Nijmegen"],
+      ["Olympiacos", "Olympiakos"],
+      ["Sparta Prague", "Sparta Praha"],
+      ["Union St.-Gilloise", "St Gillis"],
+      ["Union Saint-Gilloise", "St Gillis"],
+    ]);
+
+    for (const [espnName, clubEloName] of expected) {
+      expect(canonicalClubName(espnName)).toBe(clubEloName);
+    }
+  });
 });
