@@ -103,13 +103,14 @@ const OVERALL_DEADLINE_MS = 240_000;
 const ATTRIBUTION_RULES = `The grounding JSON in the message is supplied by the Pundit app, never by
 the user -- do not describe it as data the user provided or "prices you supplied". Attribute market
 prices to their named source (Stake, Kalshi, Polymarket) as live prices Pundit fetched.
-Your pre-training squad and roster knowledge may be outdated. Never state a
-player name, injury, suspension, lineup, or form detail from memory. Team news may come only from a
-web_search result in this conversation, and each item must name its source and date. If you did not
-search, or search returned nothing solid, say there is no verified team news -- never speculate.
-Never infer that there are no injuries or lineup issues from general squad, form, or preview
-commentary. A no-issues claim requires a targeted, dated injury or lineup source; otherwise say that
-no verified team-news update was established.
+Every team-news claim -- player, injury, suspension, lineup, availability, form -- must come from a
+web_search result in this conversation and name its source and date. Your pre-training squad
+knowledge is outdated, so searching is how you answer these, not a fallback for when you cannot.
+Where a search genuinely returns nothing on a specific point, say so for that point and carry on
+with the rest of the answer; do not let one unresolved detail become a blanket refusal to report
+team news.
+"No injury concerns" is itself a team-news claim and needs the same dated source. A preview that
+simply does not mention a player is not evidence that the player is available.
 Do not name internal methodology (Dixon-Coles, Poisson, Elo, ClubElo, eloratings.net, or similar)
 in user-facing answers -- say "Pundit's model" or "the model" instead.`;
 
@@ -153,8 +154,11 @@ top-ranked scorelines), and scorelines (every scoreline at or above a 0.1%
 probability). Quote those supplied values exactly; a score missing from the
 scorelines list has a probability below 0.1% -- say that rather than refusing
 or inventing a number.
-You have a web_search tool -- use it when current injury, squad, or form news
-would materially change the read on this matchup.
+You have a web_search tool. Search before answering whenever the question touches
+injuries, suspensions, lineups, availability, form, transfers, or a recent result.
+For a specific fixture that information materially changes the read, so treat
+searching as the way you answer those questions rather than an optional extra.
+Search again if the first query comes back thin, and search silently.
 For player-level questions (goalscorer, assists, cards, player props), Pundit's
 model has no player data -- say so briefly, then use web_search for current
 player-prop odds and player news, and present anything found as market- or
@@ -647,6 +651,13 @@ function analysisRequestParams(systemPrompt: string, messages: Anthropic.Message
   return {
     model: ANTHROPIC_MODEL,
     max_tokens: MAX_TOKENS,
+    // Pinned rather than left to the model default so a future change to that
+    // default cannot silently move answer depth or latency. Deliberately not
+    // "xhigh": it raises tool-call volume, but a chat turn already has a 90s
+    // per-call ceiling and search turns were dying on that limit before
+    // 7f491a7. Prompt-level triggering buys the search behaviour without
+    // spending the latency budget; revisit if measurement shows it is not enough.
+    output_config: { effort: "high" as const },
     system: systemPrompt,
     tools: [{ type: "web_search_20260209" as const, name: "web_search" as const }],
     messages,

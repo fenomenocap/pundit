@@ -27,7 +27,7 @@ This is separate from the per-fixture active cache — it answers "who wins the 
 For an active fixture in the 14-day window, Pundit treats the fixture's precomputed probabilities as ground truth. It then:
 
 1. Compares the model's win/draw/win read with complete active Stake, Kalshi, and Polymarket 1X2 prices when available
-2. Runs a live web search only if current injury, squad, or form news would materially change the read — and says plainly when a search turns up nothing
+2. Runs a live web search whenever the question touches injuries, suspensions, lineups, form, transfers, or a recent result — for a specific fixture that information changes the read, so Pundit searches rather than answering from memory. Every item it reports names its source and date, and it says plainly where a search turned up nothing
 3. Responds in plain language: headline odds, 1–2 likely scorelines, and what the underdog would need
 
 Competition questions use ESPN standings only. Season questions add the Monte Carlo outlook on top of standings.
