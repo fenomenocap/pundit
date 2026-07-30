@@ -36,10 +36,23 @@ type LoadingTier = "match" | "competition" | "season" | "general" | null;
 
 let nextId = 0;
 
-const FALLBACK_SUGGESTIONS = [
+// Shown whenever no active fixture can be grounded. Deliberately excludes match
+// prompts: between rounds there is no fixture to ground one, so a match chip
+// promises a model-backed read the model has no data for and lands the user in
+// general analysis instead.
+const NO_FIXTURE_SUGGESTIONS = [
   "What does the current Premier League table show?",
-  "Who has the best chance in the next UCL qualifier?",
+  "Who is favourite for the Premier League title?",
+  "How does a high defensive line change a team's pressing risks?",
 ];
+
+/**
+ * An empty fixture window and a failed fetch both leave chat without match
+ * grounding, but they are not the same thing to a user: one is the ordinary gap
+ * between rounds and resolves itself, the other is a fault. Reporting both as
+ * "model not ready" made a normal off-season read as an outage.
+ */
+type FixtureState = "ready" | "no-fixtures" | "unavailable";
 
 function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
@@ -422,8 +435,8 @@ export function HomeChat() {
   const [streamStarted, setStreamStarted] = useState(false);
   const [loadingTier, setLoadingTier] = useState<LoadingTier>(null);
   const [teamContext, setTeamContext] = useState<TeamContext>();
-  const [suggestions, setSuggestions] = useState(FALLBACK_SUGGESTIONS);
-  const [hasFeaturedFixtures, setHasFeaturedFixtures] = useState(true);
+  const [suggestions, setSuggestions] = useState(NO_FIXTURE_SUGGESTIONS);
+  const [fixtureState, setFixtureState] = useState<FixtureState>("ready");
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoAskedRef = useRef<string | null>(null);
   const askRef = useRef<(question: string) => Promise<void>>(async () => undefined);
@@ -441,7 +454,7 @@ export function HomeChat() {
         if (cancelled) return;
         const featured = fixtures.slice(0, 3).map(formatSuggestionChip);
         if (featured.length > 0) {
-          setHasFeaturedFixtures(true);
+          setFixtureState("ready");
           setSuggestions(featured);
           return;
         }
@@ -450,12 +463,14 @@ export function HomeChat() {
         if (cancelled) return;
         const activeSuggestions = active.matches.slice(0, 3).map(formatActiveFixtureChip);
         const hasActive = activeSuggestions.length > 0;
-        setHasFeaturedFixtures(hasActive);
-        setSuggestions(hasActive ? activeSuggestions : FALLBACK_SUGGESTIONS);
+        // Both endpoints answered; there simply is no fixture in the window.
+        setFixtureState(hasActive ? "ready" : "no-fixtures");
+        setSuggestions(hasActive ? activeSuggestions : NO_FIXTURE_SUGGESTIONS);
       } catch {
         if (!cancelled) {
-          setHasFeaturedFixtures(false);
-          setSuggestions(FALLBACK_SUGGESTIONS);
+          // An endpoint failed, so whether fixtures exist is unknown.
+          setFixtureState("unavailable");
+          setSuggestions(NO_FIXTURE_SUGGESTIONS);
         }
       }
     })();
@@ -563,11 +578,13 @@ export function HomeChat() {
   // Status bar state — derives a small modelState from existing signals without
   // any new fetches. Keeps the bar live off readiness/loading without touching
   // the `ask()` flow.
-  const modelState: "ready" | "loading" | "cold" = loadingTier === "match"
+  const modelState: "ready" | "loading" | "no-fixtures" | "cold" = loadingTier === "match"
     ? "loading"
-    : hasFeaturedFixtures
+    : fixtureState === "ready"
       ? "ready"
-      : "cold";
+      : fixtureState === "no-fixtures"
+        ? "no-fixtures"
+        : "cold";
   const statusTone = modelState === "loading"
     ? "bg-amber-300"
     : modelState === "ready"
@@ -577,7 +594,10 @@ export function HomeChat() {
     ? `Loading match model — ${loadingMessage(loadingTier)}`
     : modelState === "ready"
       ? "Model grounded · active fixtures live"
-      : "Model not ready — table and general questions still work";
+      : modelState === "no-fixtures"
+        // Between rounds nothing is broken, so this must not read as a fault.
+        ? "No fixtures scheduled — table, title race, and general questions still work"
+        : "Model not ready — table and general questions still work";
   const inputStatus = modelState === "loading"
     ? "loading"
     : modelState === "ready"
@@ -625,13 +645,21 @@ export function HomeChat() {
               Football analysis, grounded.
             </h2>
             <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
-              Ask about upcoming Premier League or UCL qualifier matches for a read grounded in
-              Pundit&apos;s statistical model.
+              {fixtureState === "ready"
+                ? "Ask about upcoming Premier League or UCL qualifier matches for a read grounded in Pundit's statistical model."
+                : "Ask about the Premier League table, the title race, or football in general."}
             </p>
           </div>
-          {!hasFeaturedFixtures && (
+          {fixtureState === "no-fixtures" && (
             <p className="mt-4 max-w-md text-xs text-muted-foreground">
-              No upcoming model fixtures — try a table question or general football analysis.
+              No Premier League or UCL qualifier fixtures in the next 14 days. Match-grounded reads
+              return with the next scheduled round — until then, table, title-race, and general
+              questions all still work.
+            </p>
+          )}
+          {fixtureState === "unavailable" && (
+            <p className="mt-4 max-w-md text-xs text-muted-foreground">
+              Couldn&apos;t load the fixture list just now — table and general questions still work.
             </p>
           )}
         </div>

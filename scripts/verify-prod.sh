@@ -31,6 +31,37 @@ if ! grep -q '"status"' "$READY_TMP"; then
   exit 1
 fi
 echo "OK (HTTP $READY_HTTP)"
+
+# Market coverage is reported, never asserted. The public odds endpoints are
+# best-effort and a fixture set can legitimately carry no market line at all
+# (early-season windows, thinly-priced qualifiers), so failing the deploy check
+# on it would cry wolf. But 0/N across every source went unnoticed for weeks
+# because nothing surfaced it where anyone looks -- /ready has carried per-source
+# coverage all along. Print it here so each deploy check states it out loud.
+echo "--- market coverage (informational) ---"
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$READY_TMP" <<'PY' || echo "  (could not parse /ready market section)"
+import json, sys
+
+with open(sys.argv[1]) as handle:
+    ready = json.load(handle)
+market = ready.get("marketOdds") or {}
+coverage = market.get("coverage") or {}
+warnings = market.get("sourceWarnings") or {}
+if not coverage:
+    print("  no coverage reported")
+for source, counts in sorted(coverage.items()):
+    matched, total = counts.get("matched", 0), counts.get("total", 0)
+    note = warnings.get(source)
+    print(f"  {source}: {matched}/{total}" + (f" — {note}" if note else ""))
+if coverage and all((c.get("matched") or 0) == 0 for c in coverage.values()) \
+        and any((c.get("total") or 0) > 0 for c in coverage.values()):
+    print("  NOTE: no market line reached any active fixture, so model-vs-market")
+    print("        comparison is unavailable in chat right now.")
+PY
+else
+  echo "  (python3 unavailable; inspect $API_URL/ready manually)"
+fi
 rm -f "$READY_TMP"
 
 echo "=== 3. CORS good origin ==="
