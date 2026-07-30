@@ -204,6 +204,15 @@ export function findMissingClubRatingTeams(
   return [...missing].sort();
 }
 
+function missingRatingsMessage(missingTeams: string[], skippedFixtures: number): string {
+  const shown = missingTeams.slice(0, 12);
+  const remainder = missingTeams.length - shown.length;
+  const suffix = remainder > 0 ? `, and ${remainder} more` : "";
+  return `Club ratings are missing for ${missingTeams.length} active team(s): `
+    + `${shown.join(", ")}${suffix}. `
+    + `${skippedFixtures} fixture(s) are unpriced as a result.`;
+}
+
 export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise<void> {
   console.log("[Model] Refreshing active fixture Dixon-Coles model...");
   try {
@@ -222,26 +231,24 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
       const detail = ratings.error ? `: ${ratings.error}` : ".";
       throw new Error(`Club ratings are not ready${detail}`);
     }
+    // A team the ratings provider does not name costs its own fixtures, not the
+    // whole window. This previously threw, so five unmatched names in a
+    // twenty-fixture round discarded all twenty and took the match tier down
+    // entirely. Partial coverage is already the expected shape downstream:
+    // resolveAskContext has a model-unavailable tier for an active fixture with
+    // no model row, and readiness still reports not-ready until coverage is
+    // complete, so nothing here claims more than it has.
     const missingTeams = findMissingClubRatingTeams(activeFixtures, ratings.byProfile);
-    if (missingTeams.length > 0) {
-      const shown = missingTeams.slice(0, 12);
-      const remainder = missingTeams.length - shown.length;
-      const suffix = remainder > 0 ? `, and ${remainder} more` : "";
-      throw new Error(
-        `Club ratings are missing for ${missingTeams.length} active team(s): `
-        + `${shown.join(", ")}${suffix}.`
-      );
-    }
     const fixtures = buildActiveModelFixtures(activeFixtures, ratings.byProfile);
-    if (fixtures.length !== activeFixtures.length) {
-      throw new Error(
-        `Club ratings are missing for ${activeFixtures.length - fixtures.length} active fixture(s).`
-      );
-    }
     cache.fixtures = fixtures;
     cache.lastUpdated = new Date();
-    cache.error = null;
-    console.log(`[Model] ${cache.fixtures.length} active fixtures cached.`);
+    cache.error = missingTeams.length > 0
+      ? missingRatingsMessage(missingTeams, activeFixtures.length - fixtures.length)
+      : null;
+    if (cache.error) console.warn(`[Model] ${cache.error}`);
+    console.log(
+      `[Model] ${fixtures.length}/${activeFixtures.length} active fixtures cached.`
+    );
 
     const football = getCachedMatches();
     const trackedMatches = [...football.upcoming, ...football.recent];
