@@ -77,18 +77,22 @@ const RAW_CLUB_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["Riga FC", "Riga"],
   ["Ararat-Armenia", "Ararat"],
   // Reported missing by /ready against a live qualifying round. The right-hand
-  // names follow the provider conventions already visible above -- Scandinavian
-  // vowels transliterated (Mjaellby), Greek k-spelling, local-language club
-  // names (Crvena Zvezda) -- but were inferred rather than read off the feed.
-  // If one is wrong the team simply stays in the model.error missing list, so
-  // the next readiness check confirms or refutes each of them.
-  ["Bodo/Glimt", "Bodoe/Glimt"],
-  ["Bodø/Glimt", "Bodoe/Glimt"],
-  ["NEC Nijmegen", "NEC"],
+  // names are read off the ClubElo daily snapshot rather than inferred: only
+  // "Sparta Praha" survived the first guess. Note the provider separates
+  // Bodoe Glimt with a space, drops the "NEC" from Nijmegen, and files Union
+  // Saint-Gilloise under the Flemish "St Gillis". Normalization only strips
+  // diacritics and lowercases, so punctuation and spacing have to match.
+  ["Bodo/Glimt", "Bodoe Glimt"],
+  ["Bodø/Glimt", "Bodoe Glimt"],
+  ["NEC Nijmegen", "Nijmegen"],
+  // Correct ClubElo spelling, confirmed via its per-club feed, but that feed's
+  // latest rating window for the club ended 2026-07-03, so it is absent from
+  // the current daily snapshot entirely. This alias cannot price the club until
+  // ClubElo publishes a current rating; its fixtures stay unpriced meanwhile.
   ["Olympiacos", "Olympiakos"],
   ["Sparta Prague", "Sparta Praha"],
-  ["Union St.-Gilloise", "Union SG"],
-  ["Union Saint-Gilloise", "Union SG"],
+  ["Union St.-Gilloise", "St Gillis"],
+  ["Union Saint-Gilloise", "St Gillis"],
 ];
 
 export function normalizeTeamText(name: string): string {
