@@ -1,5 +1,9 @@
 import { getCachedModelData, getModelFixtureKey, ModelFixture } from "./model-data";
-import { fetchAllMarketOdds } from "./fixture-market-sources";
+import {
+  fetchAllMarketOdds,
+  isSourceConfiguredForProfile,
+  marketProfilesForFixtures,
+} from "./fixture-market-sources";
 
 // Market prices move fastest on match day; 30 minutes keeps the comparison
 // honest while staying trivial for three public endpoints.
@@ -69,12 +73,23 @@ export async function refreshModelMarketOdds(): Promise<void> {
     const active = model.fixtures;
     const sources = await fetchAllMarketOdds(active);
     const names = ["stake", "polymarket", "kalshi"] as const;
+    const profiles = marketProfilesForFixtures(active);
     cache.sourceWarnings = {};
     for (const name of names) {
       const fetched = sources[name];
-      cache.sourceWarnings[name] = active.length > 0 && fetched.size === 0
-        ? `${name} returned no matching fixtures (0/${active.length})`
-        : null;
+      const configuredProfiles = profiles
+        .filter((profile) => isSourceConfiguredForProfile(name, profile));
+      if (active.length === 0 || fetched.size > 0) {
+        cache.sourceWarnings[name] = null;
+      } else if (configuredProfiles.length === 0) {
+        // Never queried. Saying it "returned no matching fixtures" invites a
+        // hunt for a broken request that was never issued.
+        cache.sourceWarnings[name] =
+          `${name} is not configured for ${profiles.join(", ") || "any active competition"}`;
+      } else {
+        cache.sourceWarnings[name] =
+          `${name} returned no matching fixtures (0/${active.length})`;
+      }
       if (cache.sourceWarnings[name]) {
         console.warn(`[ModelMarketOdds] ${cache.sourceWarnings[name]}`);
       }

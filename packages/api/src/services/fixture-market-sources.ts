@@ -437,6 +437,32 @@ export async function fetchAllMarketOdds(
   return { stake, polymarket, kalshi };
 }
 
+export type MarketSourceName = "stake" | "polymarket" | "kalshi";
+
+/**
+ * Whether a source is configured to be queried at all for a competition
+ * profile. Kalshi needs a series ticker and only the World Cup profile has one,
+ * so `fetchKalshiOdds` returns an empty map for club competitions without
+ * issuing a request. Reported separately from a query that ran and matched
+ * nothing: the two look identical in a coverage count but mean opposite things,
+ * and conflating them sends whoever reads it debugging a request that was never
+ * made.
+ */
+export function isSourceConfiguredForProfile(
+  source: MarketSourceName,
+  profile: MarketProfile
+): boolean {
+  if (source === "kalshi") {
+    return MARKET_SOURCE_PROFILES[profile].kalshi.seriesTicker !== null;
+  }
+  return true;
+}
+
+/** Competition profiles represented in an active fixture set. */
+export function marketProfilesForFixtures(fixtures: ModelFixture[]): MarketProfile[] {
+  return [...fixturesByMarketProfile(fixtures).keys()];
+}
+
 // Legacy key helper kept for tests.
 export function legacyMarketOddsFixtureKey(date: string, home: string, away: string): string {
   return modelFixtureKey("legacy", date, home, away);
