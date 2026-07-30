@@ -2,11 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CLUB_RATINGS_COLD_RETRY_MS,
   CLUB_RATINGS_REFRESH_INTERVAL_MS,
+  CLUB_RATING_FALLBACK_MAX_AGE_DAYS,
+  backfillMissingClubRatings,
+  clubEloClubPath,
   clubRatingsRefreshDelay,
   fetchClubRatings,
   getCachedClubRatings,
   lookupClubRating,
   parseClubEloCsv,
+  parseLatestClubEloRating,
   refreshClubRatings,
 } from "./club-ratings";
 
@@ -86,6 +90,120 @@ describe("club ratings", () => {
     expect(afterFailure.error).toBe("network unavailable");
   });
 
+  it("addresses a club's own feed by canonical name minus spaces", () => {
+    expect(clubEloClubPath("Bodoe Glimt")).toBe("BodoeGlimt");
+    expect(clubEloClubPath("St Gillis")).toBe("StGillis");
+    expect(clubEloClubPath("Arsenal")).toBe("Arsenal");
+  });
+
+  it("takes the last published rating from a per-club feed", () => {
+    expect(parseLatestClubEloRating(`Rank,Club,Country,Level,Elo,From,To
+100,Olympiakos,GRE,1,1650.5,2026-05-01,2026-05-23
+69,Olympiakos,GRE,1,1663.37,2026-05-24,2026-07-03`)).toEqual({
+      elo: 1663.37,
+      asOf: "2026-07-03",
+    });
+    expect(parseLatestClubEloRating("Rank,Club,Country,Level,Elo,From,To")).toBeNull();
+  });
+
+  it("prices a club whose rating window has lapsed from its own feed", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => ratingsCsv(),
+    }));
+    await refreshClubRatings();
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => `Rank,Club,Country,Level,Elo,From,To
+69,Olympiakos,GRE,1,1663.37,2026-05-24,2026-07-03`,
+    }));
+    const unresolved = await backfillMissingClubRatings(
+      [{ team: "Olympiacos", profile: "uefa-clubs" }],
+      new Date("2026-07-31T00:00:00Z")
+    );
+
+    expect(unresolved).toEqual([]);
+    const cached = getCachedClubRatings();
+    expect(lookupClubRating("Olympiacos", "uefa-clubs", cached.byProfile)).toBeCloseTo(1663.37);
+    expect(cached.staleRatings).toEqual([
+      { club: "Olympiakos", elo: 1663.37, asOf: "2026-07-03", ageDays: 28 },
+    ]);
+  });
+
+  it("leaves a club missing when its last rating is too old to price a match", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => ratingsCsv(),
+    }));
+    await refreshClubRatings();
+
+    const staleDate = new Date("2026-07-31T00:00:00Z");
+    staleDate.setUTCDate(staleDate.getUTCDate() - (CLUB_RATING_FALLBACK_MAX_AGE_DAYS + 30));
+    const asOf = staleDate.toISOString().slice(0, 10);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => `Rank,Club,Country,Level,Elo,From,To
+400,Long Gone,GRE,2,1200.0,2025-01-01,${asOf}`,
+    }));
+    const unresolved = await backfillMissingClubRatings(
+      [{ team: "Long Gone", profile: "uefa-clubs" }],
+      new Date("2026-07-31T00:00:00Z")
+    );
+
+    expect(unresolved).toEqual(["Long Gone"]);
+    const cached = getCachedClubRatings();
+    expect(lookupClubRating("Long Gone", "uefa-clubs", cached.byProfile)).toBeUndefined();
+    expect(cached.staleRatings).toEqual([]);
+  });
+
+  it("reports a club unresolved when its own feed fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => ratingsCsv(),
+    }));
+    await refreshClubRatings();
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unavailable")));
+    await expect(backfillMissingClubRatings(
+      [{ team: "Unreachable FC", profile: "uefa-clubs" }],
+      new Date("2026-07-31T00:00:00Z")
+    )).resolves.toEqual(["Unreachable FC"]);
+  });
+
+  it("drops stale fallbacks once a fresh snapshot names the club again", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => ratingsCsv(),
+    }));
+    await refreshClubRatings();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => `Rank,Club,Country,Level,Elo,From,To
+69,Olympiakos,GRE,1,1663.37,2026-05-24,2026-07-03`,
+    }));
+    await backfillMissingClubRatings(
+      [{ team: "Olympiacos", profile: "uefa-clubs" }],
+      new Date("2026-07-31T00:00:00Z")
+    );
+    expect(getCachedClubRatings().staleRatings).toHaveLength(1);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => ratingsCsv(),
+    }));
+    await refreshClubRatings();
+    expect(getCachedClubRatings().staleRatings).toEqual([]);
+  });
+
   it("retries a cold failure sooner and keeps successful refreshes hourly", () => {
     const emptyProfiles = {
       world: new Map(),
@@ -96,11 +214,13 @@ describe("club ratings", () => {
       byProfile: emptyProfiles,
       fetchedAt: null,
       error: "network unavailable",
+      staleRatings: [],
     })).toBe(CLUB_RATINGS_COLD_RETRY_MS);
     expect(clubRatingsRefreshDelay({
       byProfile: emptyProfiles,
       fetchedAt: new Date(),
       error: "last refresh failed",
+      staleRatings: [],
     })).toBe(CLUB_RATINGS_REFRESH_INTERVAL_MS);
   });
 });
