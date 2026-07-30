@@ -76,6 +76,19 @@ const RAW_CLUB_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["Iberia 1999", "Saburtalo"],
   ["Riga FC", "Riga"],
   ["Ararat-Armenia", "Ararat"],
+  // Reported missing by /ready against a live qualifying round. The right-hand
+  // names follow the provider conventions already visible above -- Scandinavian
+  // vowels transliterated (Mjaellby), Greek k-spelling, local-language club
+  // names (Crvena Zvezda) -- but were inferred rather than read off the feed.
+  // If one is wrong the team simply stays in the model.error missing list, so
+  // the next readiness check confirms or refutes each of them.
+  ["Bodo/Glimt", "Bodoe/Glimt"],
+  ["Bodø/Glimt", "Bodoe/Glimt"],
+  ["NEC Nijmegen", "NEC"],
+  ["Olympiacos", "Olympiakos"],
+  ["Sparta Prague", "Sparta Praha"],
+  ["Union St.-Gilloise", "Union SG"],
+  ["Union Saint-Gilloise", "Union SG"],
 ];
 
 export function normalizeTeamText(name: string): string {

@@ -127,7 +127,7 @@ describe("active club model", () => {
     expect(cached.error).toBe("Club ratings are not ready: network unavailable");
   });
 
-  it("fails closed when a loaded ratings snapshot lacks an active team", async () => {
+  it("skips a fixture whose team the ratings snapshot does not name", async () => {
     vi.mocked(getCachedClubRatings).mockReturnValue({
       byProfile: {
         world: new Map(),
@@ -144,7 +144,36 @@ describe("active club model", () => {
     expect(cached.fixtures).toEqual([]);
     expect(cached.error).toBe(
       "Club ratings are missing for 1 active team(s): Coventry City."
+      + " 1 fixture(s) are unpriced as a result."
     );
+  });
+
+  it("prices the fixtures it can when only some teams are unrated", async () => {
+    // The regression this guards: an unrated team used to throw, discarding
+    // every fixture in the window. A live qualifying round with five unmatched
+    // names consequently left all twenty fixtures unpriced and the match tier
+    // unreachable.
+    vi.mocked(getCachedClubRatings).mockReturnValue({
+      byProfile: {
+        world: new Map(),
+        "eng-clubs": new Map([["Arsenal", 1850], ["Coventry", 1600]]),
+        "uefa-clubs": new Map([["Arsenal", 1850], ["Coventry", 1600]]),
+      },
+      fetchedAt: new Date("2026-07-27T00:00:00.000Z"),
+      error: null,
+    });
+
+    await refreshModelData([
+      activeFixture(),
+      activeFixture({ id: 2, homeTeam: "Bodo/Glimt", awayTeam: "Olympiacos" }),
+    ]);
+    const cached = getCachedModelData();
+
+    expect(cached.fixtures).toHaveLength(1);
+    expect(cached.fixtures[0].home).toBe("Arsenal");
+    expect(cached.lastUpdated).not.toBeNull();
+    expect(cached.error).toContain("Bodo/Glimt");
+    expect(cached.error).toContain("1 fixture(s) are unpriced");
   });
 
   it("uses retained last-good ratings after a provider refresh error", async () => {

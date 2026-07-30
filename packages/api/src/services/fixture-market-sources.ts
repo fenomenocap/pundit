@@ -55,15 +55,23 @@ const MARKET_SOURCE_PROFILES: Record<MarketProfile, MarketSourceProfile> = {
       tournament: "premier-league",
       referer: "https://stake.bet/sports/soccer/england/premier-league",
     },
-    kalshi: { seriesTicker: null },
+    kalshi: { seriesTicker: "KXEPLGAME" },
   },
   "uefa-champions-league": {
+    // Covers uefa.champions_qual as well as the main competition. Stake lists
+    // qualifying rounds under their own tournament slug, so qualifier ties are
+    // expected to go unmatched here until that slug is confirmed and added --
+    // check verify:prod coverage during a qualifying round before assuming the
+    // integration is broken.
     stake: {
       category: "international-clubs",
       tournament: "uefa-champions-league",
       referer: "https://stake.bet/sports/soccer/international-clubs/uefa-champions-league",
     },
-    kalshi: { seriesTicker: null },
+    // KXUCLGAME covers the main competition. Kalshi lists no qualifying-round
+    // series, so qualifier ties stay unmatched here and Stake or Polymarket are
+    // the only sources that can price them.
+    kalshi: { seriesTicker: "KXUCLGAME" },
   },
   "world-cup": {
     stake: {
