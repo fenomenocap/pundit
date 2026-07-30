@@ -23,11 +23,17 @@ Set `"stream": true` to receive **Server-Sent Events** instead of a single JSON 
 | Event | Payload | When |
 |---|---|---|
 | `grounding` | `{ grounding }` | As soon as tier routing completes |
-| `delta` | `{ text }` | Incremental answer text |
+| `delta` | `{ text }` | Answer text, once the answer is complete |
 | `done` | `{ answer, grounding }` | Final complete response |
 | `error` | `{ error, status, code? }` | Failure after headers were sent |
 
 SSE includes `: ping` comment heartbeats every 15 seconds during long web-search turns.
+
+**`delta` is not incremental.** Match answers pass through deterministic answer
+guards that check quoted probabilities against the grounding payload, and those
+guards operate on the finished answer — so text is held until they have run and
+arrives as a single `delta`. Clients should render `delta` as it comes and treat
+`grounding` (emitted immediately) plus the heartbeats as the progress signal.
 
 ### Response shape (non-streaming)
 

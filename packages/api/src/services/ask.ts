@@ -667,6 +667,31 @@ function mapTimeoutError(error: unknown): never {
 
 const SCORELINE_PERCENTAGE_PATTERN = /\b(\d+-\d+)\b([^%\n]{0,45}?)(\d+(?:\.\d+)?)%/g;
 
+// ATTRIBUTION_RULES requires every team-news claim to name its source and date,
+// so a line carrying one is reported fact, not a model reading. The guards below
+// rewrite model claims; a sourced line must survive them untouched. Without this
+// a legitimate "Villa beat Arsenal 2-1 in the first leg (BBC Sport, 12 Apr)" was
+// swallowed by the underdog guard and deleted from the answer.
+const MONTH = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
+const SOURCED_NEWS_LINE = new RegExp([
+  // "(BBC Sport, 12 Apr)" -- the source-and-date parenthetical the attribution
+  // rules mandate. Requires both a comma and a digit inside, so a bare
+  // probability aside like "(7.1%)" does not qualify.
+  /\([^)]*,[^)]*\d[^)]*\)/.source,
+  `\\b(?:${MONTH})[a-z]*\\.?\\s+\\d{1,2}\\b`,
+  `\\b\\d{1,2}\\s+(?:${MONTH})[a-z]*\\b`,
+  /\b20\d{2}\b/.source,
+  /\b(?:according to|reported|confirmed by)\b/.source,
+].join("|"), "i");
+
+// A percentage that names its own unit belongs to that metric, not to the
+// scoreline that happens to precede it, and a comma between the two puts them in
+// separate clauses. Either way the figure is not a scoreline-probability claim
+// and must not be rewritten as one -- "won 2-1, with 65% possession" was being
+// turned into "65%" of the model's 2-1 probability.
+const NON_PROBABILITY_METRIC =
+  /^\W*(?:possession|xg|conversion|accuracy|share|duels?|aerials?|of\s+(?:the\s+)?(?:shots|passes|duels|possession))\b/i;
+
 function groundedScoreline(score: string, grounding: Grounding) {
   return grounding.scorelines.find((row) => row.score === score);
 }
@@ -703,7 +728,16 @@ function correctScorelinePercentages(line: string, grounding: Grounding): string
   let citesUnknownScoreline = false;
   const corrected = line.replace(
     SCORELINE_PERCENTAGE_PATTERN,
-    (whole: string, score: string, gap: string, percentageText: string) => {
+    (
+      whole: string,
+      score: string,
+      gap: string,
+      percentageText: string,
+      offset: number,
+      full: string
+    ) => {
+      if (gap.includes(",")) return whole;
+      if (NON_PROBABILITY_METRIC.test(full.slice(offset + whole.length))) return whole;
       if (scorelinePercentageMatches(score, percentageText, grounding)) return whole;
       const row = groundedScoreline(score, grounding);
       if (!row) {
@@ -795,6 +829,7 @@ function awayWinSummary(grounding: Grounding): string {
 
 function replaceInvalidScorelineLines(answer: string, grounding: Grounding): string {
   return answer.split("\n").map((line) => {
+    if (SOURCED_NEWS_LINE.test(line)) return line;
     const isUnderdogInterpretation = line.toLowerCase().includes(grounding.away.toLowerCase())
       && /\b(?:path|route|prevail|overturn|away-win|beat|win|winning|spring|upset|come out on top)\b/i.test(line)
       && /\b\d+-\d+\b/.test(line);

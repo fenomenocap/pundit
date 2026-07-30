@@ -69,9 +69,14 @@ function sanitizeAskError(err: unknown): string {
         return "No data for that matchup yet.";
       case 429:
         return "You're asking a lot at once — wait a moment and try again.";
+      // A timeout and an unreachable service are different problems with
+      // different user actions, and collapsing them cost real diagnostic time:
+      // a run of timeouts on search-heavy questions was read as the search tool
+      // being unwired, because every failure produced identical copy.
+      case 504:
+        return "That took too long to research — try again, or ask something more specific.";
       case 502:
       case 503:
-      case 504:
         return "Analysis is temporarily unavailable — try again shortly.";
       default:
         return "Analysis is temporarily unavailable — try again shortly.";

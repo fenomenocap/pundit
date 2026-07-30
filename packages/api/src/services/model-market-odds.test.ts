@@ -11,9 +11,16 @@ import {
 import { fetchAllMarketOdds } from "./fixture-market-sources";
 import { getCachedModelData } from "./model-data";
 
-vi.mock("./fixture-market-sources", () => ({
-  fetchAllMarketOdds: vi.fn(),
-}));
+// Only the network call is stubbed. The profile helpers are pure and carry the
+// real per-competition source configuration, which is what the warning copy
+// depends on.
+vi.mock("./fixture-market-sources", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./fixture-market-sources")>();
+  return {
+    ...actual,
+    fetchAllMarketOdds: vi.fn(),
+  };
+});
 vi.mock("./model-data", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./model-data")>();
   return {
@@ -99,5 +106,27 @@ describe("refreshModelMarketOdds", () => {
       kalshi: { matched: 1, total: 1 },
     });
     expect(marketOddsRefreshDelay(status)).toBe(MARKET_ODDS_REFRESH_INTERVAL_MS);
+  });
+
+  it("separates a source with no configuration from one that queried and matched nothing", async () => {
+    vi.mocked(getCachedModelData).mockReturnValue({
+      fixtures: [model],
+      lastUpdated: new Date(),
+      error: null,
+    });
+    vi.mocked(fetchAllMarketOdds).mockResolvedValue({
+      stake: new Map(),
+      polymarket: new Map(),
+      kalshi: new Map(),
+    });
+
+    await refreshModelMarketOdds();
+    const status = getModelMarketOddsStatus();
+    // Kalshi has no series ticker for a club competition, so no request is made.
+    expect(status.sourceWarnings.kalshi).toMatch(/not configured for premier-league/);
+    expect(status.sourceWarnings.kalshi).not.toMatch(/no matching fixtures/);
+    // Stake and Polymarket were queried and genuinely matched nothing.
+    expect(status.sourceWarnings.stake).toMatch(/no matching fixtures \(0\/1\)/);
+    expect(status.sourceWarnings.polymarket).toMatch(/no matching fixtures \(0\/1\)/);
   });
 });

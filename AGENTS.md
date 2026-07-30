@@ -38,7 +38,9 @@ After Vercel or Railway env/config changes that affect production, run `pnpm ver
 
 Production chat eval (`pnpm chat-eval:production`) hits live Anthropic credits — run manually after Tier 1+ deploys as a post-deploy smoke, not in CI. Unit tests for the harness run via `pnpm chat-eval:test` (no production traffic). Dry-run config check: `pnpm chat-eval:dry-run`.
 
-Qualitative copy guards in `scripts/chat-battle-test-lib.mjs` fail answers containing internal jargon (`Dixon-Coles`, `ClubElo`, `model-grounded`) and 400 bodies leaking schema field names.
+Qualitative copy guards in `scripts/chat-battle-test-lib.mjs` fail answers containing internal jargon (`Dixon-Coles`, `ClubElo`, `model-grounded`) and 400 bodies leaking schema field names. `validateTeamNewsDiscipline` additionally fails any answer asserting an injury, suspension, or lineup detail without naming a source and date — unless it explicitly states no verified update was established.
+
+Match scenarios report per-turn `observations.oddsSourceCount` so a fixture reaching the model with no market line is visible in the report. Empty market coverage does **not** fail by default (public sources are best-effort); set `expectOddsSources: true` on a scenario for a strict run.
 
 ## Future
 

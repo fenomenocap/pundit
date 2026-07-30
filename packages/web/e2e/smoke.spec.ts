@@ -26,7 +26,10 @@ test.describe("smoke", () => {
   test("club-season evaluation", async ({ page }) => {
     await page.goto("/evaluation/club-season");
     await expect(page.getByRole("heading", { name: "Club season calibration" })).toBeVisible();
-    await expect(page.getByText("Rolling snapshots")).toBeVisible();
+    // The page header repeats each label in an eyebrow line and a status badge,
+    // so a substring match is ambiguous under strict mode. The badge is the
+    // assertion this test intends.
+    await expect(page.getByText("Rolling snapshots", { exact: true })).toBeVisible();
     const metrics = page.getByText("Brier score (1X2)");
     const disclaimer = page.getByText("Pre-kickoff probabilities captured");
     await expect(metrics.or(disclaimer)).toBeVisible({ timeout: 15_000 });
@@ -35,8 +38,8 @@ test.describe("smoke", () => {
   test("wc-2026 evaluation", async ({ page }) => {
     await page.goto("/evaluation/wc-2026");
     await expect(page.getByRole("heading", { name: "World Cup 2026 backtest" })).toBeVisible();
-    await expect(page.getByText("Frozen evaluation")).toBeVisible();
-    await expect(page.getByText("Reconstructed pre-kickoff")).toBeVisible();
+    await expect(page.getByText("Frozen evaluation", { exact: true })).toBeVisible();
+    await expect(page.getByText("Reconstructed pre-kickoff", { exact: true })).toBeVisible();
   });
 
   test("primary nav", async ({ page }) => {

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const EVAL_SCHEMA_VERSION = 5;
+export const EVAL_SCHEMA_VERSION = 6;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 
 export async function fetchWithTimeout(
@@ -92,6 +92,7 @@ export function validateGrounding(grounding, expectation) {
   const assertions = {
     groundingKind: grounding?.kind === expectedKind,
   };
+  const observations = {};
   if (expectedKind === "match") {
     assertions.expectedTeams = sameTeamPair(grounding, expectation?.expectTeams);
     assertions.expectedCompetition = !expectation?.expectCompetitionId
@@ -110,6 +111,25 @@ export function validateGrounding(grounding, expectation) {
       && Array.isArray(grounding?.scorelines)
       && grounding.scorelines.length > 0;
     assertions.oddsSourcesPresent = Array.isArray(grounding?.oddsSources);
+    // Market sources are best-effort, so an empty list is not a deploy blocker
+    // and stays out of the pass/fail set by default. It was, however, invisible:
+    // a match answer with no market line to compare against passed silently and
+    // the shortfall only surfaced in manual review. The count is now always
+    // reported, and expectOddsSources makes it assertable for a strict run.
+    observations.oddsSourceCount = Array.isArray(grounding?.oddsSources)
+      ? grounding.oddsSources.length
+      : null;
+    observations.oddsSourceNames = Array.isArray(grounding?.oddsSources)
+      ? grounding.oddsSources.map((source) => source?.source ?? "unknown")
+      : [];
+    observations.stakePricesPresent = [
+      grounding?.stakePHome,
+      grounding?.stakePDraw,
+      grounding?.stakePAway,
+    ].some((price) => finiteProbability(price));
+    if (expectation?.expectOddsSources) {
+      assertions.oddsSourcesPopulated = observations.oddsSourceCount > 0;
+    }
   } else if (expectedKind === "competition" || expectedKind === "season") {
     assertions.expectedCompetition = !expectation?.expectCompetitionId
       || grounding?.competitionId === expectation.expectCompetitionId;
@@ -140,7 +160,7 @@ export function validateGrounding(grounding, expectation) {
   const failures = Object.entries(assertions)
     .filter(([, passed]) => !passed)
     .map(([name]) => `${expectedKind} grounding failed ${name}`);
-  return { passed: failures.length === 0, assertions, failures };
+  return { passed: failures.length === 0, assertions, failures, observations };
 }
 
 export function validateSse(events, expectation) {
@@ -194,6 +214,49 @@ export function validateAnswerCopy(answer) {
     .filter((term) => normalized.includes(term))
     .map((term) => `answer contains forbidden term: ${term}`);
   return { passed: failures.length === 0, failures };
+}
+
+/**
+ * Team-news claims the attribution rules require to be sourced and dated.
+ * Deliberately narrow: only wording that asserts squad availability, not a
+ * general mention of the word "news".
+ */
+const TEAM_NEWS_CLAIM =
+  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
+
+/** "(BBC Sport, 12 Apr)", "on 12 April", "reported on 3 May 2026". */
+const SOURCE_AND_DATE =
+  /\([^)]*,[^)]*\d[^)]*\)|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\b20\d{2}\b/i;
+
+/** The explicit abstention the prompts mandate when search finds nothing. */
+const NO_VERIFIED_NEWS =
+  /\bno (?:additional )?(?:verified|confirmed)\b[^.\n]*\b(?:team news|injury|lineup|line-up|update)\b|\bno verified team[- ]news\b/i;
+
+/**
+ * The match prompt tells the model to go and find team news, and the
+ * attribution rules tell it to cite a source and date or say plainly that
+ * nothing was established. Both halves were unmeasured: an answer could assert
+ * an injury with no source, or lose a sourced citation to a post-processing
+ * guard, and still pass every check. This asserts the contract itself.
+ */
+export function validateTeamNewsDiscipline(answer) {
+  if (typeof answer !== "string" || !answer.trim()) {
+    return { passed: false, failures: ["answer is empty"], assertions: { teamNewsSourced: false } };
+  }
+  const claims = TEAM_NEWS_CLAIM.test(answer);
+  const abstains = NO_VERIFIED_NEWS.test(answer);
+  // An abstention settles the contract on its own: there is no claim left to
+  // source. Checking it first keeps "no verified injury update" from being read
+  // as an unsourced injury claim.
+  const passed = abstains || !claims || SOURCE_AND_DATE.test(answer);
+  return {
+    passed,
+    assertions: { teamNewsSourced: passed },
+    failures: passed
+      ? []
+      : ["answer asserts team news without naming a source and date, and without"
+        + " stating that no verified update was established"],
+  };
 }
 
 export function validateErrorCopy(body) {

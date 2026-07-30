@@ -2,6 +2,11 @@ name: CI
 
 on:
   pull_request:
+  # Also run on main. With pull_request alone, anything merged or pushed
+  # directly went untested, so a break on main first surfaced on the next
+  # unrelated pull request instead of when it landed.
+  push:
+    branches: [main]
 
 jobs:
   checks:
@@ -31,6 +36,15 @@ jobs:
 
       - name: Test API
         run: pnpm --filter @sports-predict/api test
+
+      # The chat-eval harness lives in root scripts/, so pnpm -r test never
+      # reached it and its guards could rot unnoticed. Both commands are local:
+      # no production traffic and no Anthropic credits.
+      - name: Test chat-eval harness
+        run: pnpm chat-eval:test
+
+      - name: Validate chat-eval scenarios
+        run: pnpm chat-eval:dry-run
 
       - name: Build web
         run: pnpm --filter @sports-predict/web build
