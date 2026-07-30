@@ -8,7 +8,7 @@ import {
   marketOddsFixtureKey,
   refreshModelMarketOdds,
 } from "./model-market-odds";
-import { fetchAllMarketOdds } from "./fixture-market-sources";
+import { fetchAllMarketOdds, isSourceConfiguredForProfile } from "./fixture-market-sources";
 import { getCachedModelData } from "./model-data";
 
 // Only the network call is stubbed. The profile helpers are pure and carry the
@@ -19,6 +19,10 @@ vi.mock("./fixture-market-sources", async (importOriginal) => {
   return {
     ...actual,
     fetchAllMarketOdds: vi.fn(),
+    // Wrapped rather than replaced: it defaults to the real per-competition
+    // configuration, and a test can override it to exercise the unconfigured
+    // branch without depending on a source happening to be unwired today.
+    isSourceConfiguredForProfile: vi.fn(actual.isSourceConfiguredForProfile),
   };
 });
 vi.mock("./model-data", async (importOriginal) => {
@@ -119,14 +123,28 @@ describe("refreshModelMarketOdds", () => {
       polymarket: new Map(),
       kalshi: new Map(),
     });
+    vi.mocked(isSourceConfiguredForProfile).mockImplementation((source) => source !== "kalshi");
 
     await refreshModelMarketOdds();
     const status = getModelMarketOddsStatus();
-    // Kalshi has no series ticker for a club competition, so no request is made.
+    // A source with nothing configured for this competition is never queried,
+    // so it must not be reported as a query that matched nothing.
     expect(status.sourceWarnings.kalshi).toMatch(/not configured for premier-league/);
     expect(status.sourceWarnings.kalshi).not.toMatch(/no matching fixtures/);
-    // Stake and Polymarket were queried and genuinely matched nothing.
+    // Sources that did run keep the empty-result wording.
     expect(status.sourceWarnings.stake).toMatch(/no matching fixtures \(0\/1\)/);
     expect(status.sourceWarnings.polymarket).toMatch(/no matching fixtures \(0\/1\)/);
+    vi.mocked(isSourceConfiguredForProfile).mockReset();
+  });
+
+  it("keeps a Kalshi series wired for both club competitions", async () => {
+    // Regression guard against the real config table, not the test double:
+    // both club profiles shipped with seriesTicker null, so fetchKalshiOdds
+    // returned early and Kalshi was never queried in production.
+    const actual = await vi.importActual<typeof import("./fixture-market-sources")>(
+      "./fixture-market-sources"
+    );
+    expect(actual.isSourceConfiguredForProfile("kalshi", "premier-league")).toBe(true);
+    expect(actual.isSourceConfiguredForProfile("kalshi", "uefa-champions-league")).toBe(true);
   });
 });
