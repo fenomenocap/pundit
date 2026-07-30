@@ -286,6 +286,45 @@ describe("sanitizeMatchAnswer", () => {
     expect(answer.match(/54\.1%/g)).toHaveLength(1);
   });
 
+  it("leaves a sourced result line intact instead of replacing it with a scoreline summary", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Arsenal",
+      away: "Villa",
+      scorelines: [
+        { score: "1-1", probability: 0.1043 },
+        { score: "0-1", probability: 0.0712 },
+      ],
+    } as Grounding;
+    const answer = "Villa beat Arsenal 2-1 in the first leg (BBC Sport, 12 Apr).";
+    expect(sanitizeMatchAnswer(answer, grounding)).toBe(answer);
+  });
+
+  it("does not rewrite a non-probability percentage that trails a scoreline", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Liverpool",
+      scorelines: [{ score: "2-1", probability: 0.085 }],
+    } as Grounding;
+    const answer = "Arsenal won 2-1, with 65% possession across the ninety.";
+    expect(sanitizeMatchAnswer(answer, grounding)).toBe(answer);
+  });
+
+  it("still corrects a genuine scoreline-probability misquote", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Liverpool",
+      scorelines: [{ score: "2-1", probability: 0.085 }],
+    } as Grounding;
+    expect(sanitizeMatchAnswer("A 2-1 home win sits at **19.0%**.", grounding))
+      .toBe("A 2-1 home win sits at **8.5%**.");
+  });
+
   it("does not apply the aggregate disclaimer to a league fixture", () => {
     const grounding = {
       kind: "match",

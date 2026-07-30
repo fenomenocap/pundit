@@ -21,6 +21,7 @@ import {
   validateSse,
   validateAnswerCopy,
   validateErrorCopy,
+  validateTeamNewsDiscipline,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -450,6 +451,74 @@ test("answer copy guard rejects internal methodology jargon", () => {
   assert.equal(validateAnswerCopy("Using Dixon-Coles probabilities here.").passed, false);
   assert.equal(validateAnswerCopy("ClubElo ratings drive the edge.").passed, false);
   assert.equal(validateAnswerCopy("This is model-grounded analysis.").passed, false);
+});
+
+test("team-news guard accepts a sourced claim or an explicit abstention", () => {
+  assert.equal(validateTeamNewsDiscipline(
+    "Villa are without their first-choice keeper, who is suspended (BBC Sport, 12 Apr)."
+  ).passed, true);
+  assert.equal(validateTeamNewsDiscipline(
+    "Reported on 3 May 2026: their centre-back is doubtful."
+  ).passed, true);
+  assert.equal(validateTeamNewsDiscipline(
+    "No verified team-news update was established for this fixture."
+  ).passed, true);
+  assert.equal(validateTeamNewsDiscipline(
+    "No additional verified, dated injury update was established by the available evidence."
+  ).passed, true);
+  // Nothing to source: an answer that never asserts availability is unaffected.
+  assert.equal(validateTeamNewsDiscipline(
+    "The model gives the home side a clear edge on the totals market."
+  ).passed, true);
+});
+
+test("team-news guard rejects an unsourced availability claim", () => {
+  assert.equal(validateTeamNewsDiscipline(
+    "Their striker is injured and will be ruled out for this one."
+  ).passed, false);
+  assert.equal(validateTeamNewsDiscipline(
+    "Expect a much-changed starting XI after midweek."
+  ).passed, false);
+  assert.equal(validateTeamNewsDiscipline("").passed, false);
+});
+
+test("match grounding reports market-source coverage and can assert it", () => {
+  const thin = {
+    kind: "match",
+    competitionId: "eng.1",
+    home: "Arsenal",
+    away: "Villa",
+    pHome: 0.5,
+    pDraw: 0.25,
+    pAway: 0.25,
+    pOver2_5: 0.54,
+    pUnder2_5: 0.46,
+    pBttsYes: 0.56,
+    pBttsNo: 0.44,
+    topScores: [{ score: "1-0", probability: 0.1 }],
+    scorelines: [{ score: "1-0", probability: 0.1 }],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    oddsSources: []
+  };
+  // Empty market coverage is reported but does not fail by default.
+  const lenient = validateGrounding(thin, { expectGrounding: "match" });
+  assert.equal(lenient.passed, true);
+  assert.equal(lenient.observations.oddsSourceCount, 0);
+  assert.equal(lenient.observations.stakePricesPresent, false);
+
+  // A strict run can require at least one market line.
+  const strict = validateGrounding(thin, { expectGrounding: "match", expectOddsSources: true });
+  assert.equal(strict.passed, false);
+  assert.ok(strict.failures.some((failure) => failure.includes("oddsSourcesPopulated")));
+
+  const covered = validateGrounding(
+    { ...thin, oddsSources: [{ source: "kalshi", pHome: 0.5, pDraw: 0.25, pAway: 0.25 }] },
+    { expectGrounding: "match", expectOddsSources: true }
+  );
+  assert.equal(covered.passed, true);
+  assert.deepEqual(covered.observations.oddsSourceNames, ["kalshi"]);
 });
 
 test("400 error copy guard rejects schema field leaks", () => {
