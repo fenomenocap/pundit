@@ -8,7 +8,7 @@ import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
 import askRoutes from "./routes/ask";
 import evaluationRoutes from "./routes/evaluation";
-import { startClubRatingsCron } from "./services/club-ratings";
+import { getCachedClubRatings, startClubRatingsCron } from "./services/club-ratings";
 import { getCachedModelData, startModelCron } from "./services/model-data";
 import { getCachedMatches, startFootballCron } from "./services/football-data";
 import { getActiveFixtures, getActiveFixtureStatus } from "./services/active-fixtures";
@@ -78,6 +78,10 @@ app.get("/ready", (_req, res) => {
       expectedActiveFixtureCount: activeFixtures.length,
       lastUpdated: model.lastUpdated?.toISOString() ?? null,
       error: model.error,
+      // Clubs priced off a lapsed ClubElo window rather than today's snapshot.
+      // Readiness does not fail on these — the rating is real, just dated — but
+      // the model should not present them as current either.
+      staleRatings: getCachedClubRatings().staleRatings,
     },
     football: {
       ready: readiness.footballReady,

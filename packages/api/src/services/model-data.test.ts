@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveFixture } from "./active-fixtures";
-import { getCachedClubRatings } from "./club-ratings";
+import { backfillMissingClubRatings, getCachedClubRatings } from "./club-ratings";
 import {
   MODEL_COLD_RETRY_MS,
   MODEL_REFRESH_INTERVAL_MS,
@@ -18,6 +18,7 @@ vi.mock("./club-ratings", async (importOriginal) => {
   return {
     ...actual,
     getCachedClubRatings: vi.fn(),
+    backfillMissingClubRatings: vi.fn(),
   };
 });
 
@@ -54,6 +55,9 @@ const ratings = {
 describe("active club model", () => {
   beforeEach(() => {
     vi.mocked(getCachedClubRatings).mockReset();
+    // Recovers nothing by default, so these cases exercise the unrated path
+    // rather than reaching ClubElo's per-club feeds over the network.
+    vi.mocked(backfillMissingClubRatings).mockReset().mockResolvedValue([]);
   });
 
   it("builds Dixon-Coles probabilities for an active fixture", () => {
@@ -118,6 +122,7 @@ describe("active club model", () => {
       },
       fetchedAt: null,
       error: "network unavailable",
+      staleRatings: [],
     });
 
     await refreshModelData([activeFixture()]);
@@ -136,6 +141,7 @@ describe("active club model", () => {
       },
       fetchedAt: new Date("2026-07-27T00:00:00.000Z"),
       error: null,
+      staleRatings: [],
     });
 
     await refreshModelData([activeFixture()]);
@@ -161,6 +167,7 @@ describe("active club model", () => {
       },
       fetchedAt: new Date("2026-07-27T00:00:00.000Z"),
       error: null,
+      staleRatings: [],
     });
 
     await refreshModelData([
@@ -181,6 +188,7 @@ describe("active club model", () => {
       byProfile: ratings,
       fetchedAt: new Date("2026-07-27T00:00:00.000Z"),
       error: "latest refresh timed out",
+      staleRatings: [],
     });
 
     await refreshModelData([activeFixture()]);

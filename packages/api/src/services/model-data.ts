@@ -1,10 +1,11 @@
 // Active-club fixture model: Dixon-Coles probabilities for enabled competitions only.
 // WC live model/tournament sim is retired — see /api/evaluation/wc-2026 for backtest.
 
-import { getCompetitionById } from "../config/competitions";
+import { getCompetitionById, RatingProfile } from "../config/competitions";
 import { modelFixtureKey } from "../lib/team-names";
 import { ActiveFixture, getActiveFixtures } from "./active-fixtures";
 import {
+  backfillMissingClubRatings,
   ClubRatingsCache,
   getCachedClubRatings,
   lookupClubRating,
@@ -191,17 +192,27 @@ export function findMissingClubRatingTeams(
   activeFixtures: ActiveFixture[],
   ratings: ClubRatingsCache["byProfile"]
 ): string[] {
-  const missing = new Set<string>();
+  return findMissingClubRatings(activeFixtures, ratings).map(({ team }) => team);
+}
+
+/** As findMissingClubRatingTeams, keeping the profile each lookup failed under. */
+export function findMissingClubRatings(
+  activeFixtures: ActiveFixture[],
+  ratings: ClubRatingsCache["byProfile"]
+): Array<{ team: string; profile: RatingProfile }> {
+  const missing = new Map<string, RatingProfile>();
   for (const fixture of activeFixtures) {
     const competition = getCompetitionById(fixture.competitionId);
     if (!competition || !competition.enabled) continue;
     for (const team of [fixture.homeTeam, fixture.awayTeam]) {
       if (lookupClubRating(team, competition.ratingProfile, ratings) === undefined) {
-        missing.add(team);
+        missing.set(team, competition.ratingProfile);
       }
     }
   }
-  return [...missing].sort();
+  return [...missing]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([team, profile]) => ({ team, profile }));
 }
 
 function missingRatingsMessage(missingTeams: string[], skippedFixtures: number): string {
@@ -238,8 +249,18 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
     // resolveAskContext has a model-unavailable tier for an active fixture with
     // no model row, and readiness still reports not-ready until coverage is
     // complete, so nothing here claims more than it has.
-    const missingTeams = findMissingClubRatingTeams(activeFixtures, ratings.byProfile);
-    const fixtures = buildActiveModelFixtures(activeFixtures, ratings.byProfile);
+    let profiles = ratings.byProfile;
+    let missing = findMissingClubRatings(activeFixtures, profiles);
+    if (missing.length > 0) {
+      // Correctly named clubs can still be absent from the daily snapshot once
+      // their rating window lapses. Recover those from their own feeds before
+      // writing anyone off; whatever stays missing genuinely cannot be priced.
+      await backfillMissingClubRatings(missing);
+      profiles = getCachedClubRatings().byProfile;
+      missing = findMissingClubRatings(activeFixtures, profiles);
+    }
+    const missingTeams = missing.map(({ team }) => team);
+    const fixtures = buildActiveModelFixtures(activeFixtures, profiles);
     cache.fixtures = fixtures;
     cache.lastUpdated = new Date();
     cache.error = missingTeams.length > 0
