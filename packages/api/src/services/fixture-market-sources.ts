@@ -58,11 +58,12 @@ const MARKET_SOURCE_PROFILES: Record<MarketProfile, MarketSourceProfile> = {
     kalshi: { seriesTicker: "KXEPLGAME" },
   },
   "uefa-champions-league": {
-    // Covers uefa.champions_qual as well as the main competition. Stake lists
-    // qualifying rounds under their own tournament slug, so qualifier ties are
-    // expected to go unmatched here until that slug is confirmed and added --
-    // check verify:prod coverage during a qualifying round before assuming the
-    // integration is broken.
+    // Covers uefa.champions_qual as well as the main competition. Stake was
+    // checked during a live qualifying round and publishes no separate
+    // qualifier tournament: this slug is the whole competition, so a qualifier
+    // tie that goes unmatched here is a fixture-matching or access problem
+    // rather than a missing slug. Check verify:prod coverage before changing
+    // anything on this line.
     stake: {
       category: "international-clubs",
       tournament: "uefa-champions-league",
