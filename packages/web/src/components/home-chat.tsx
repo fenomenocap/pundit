@@ -10,7 +10,6 @@ import {
   askQuestionStream,
   type AskGrounding,
   type ConversationTurn,
-  type MatchResponse,
   type MatchGrounding,
   type ModelFixtureResponse,
   type TeamContext,
@@ -47,12 +46,24 @@ const NO_FIXTURE_SUGGESTIONS = [
 ];
 
 /**
- * An empty fixture window and a failed fetch both leave chat without match
- * grounding, but they are not the same thing to a user: one is the ordinary gap
- * between rounds and resolves itself, the other is a fault. Reporting both as
- * "model not ready" made a normal off-season read as an outage.
+ * Chat can lack match grounding for four different reasons and they are not
+ * interchangeable to a user:
+ *
+ * - `ready`       every active fixture is priced
+ * - `partial`     some are priced, some are not — the model reports which on
+ *                 /api/model/active's error field, and a question about an
+ *                 unpriced fixture returns 503
+ * - `unpriced`    fixtures exist but none are priced, so no match question works
+ * - `no-fixtures` the window is genuinely empty, between rounds
+ * - `unavailable` the fixture list could not be loaded at all
+ *
+ * These were previously collapsed: any active fixture at all read as `ready`,
+ * so the status bar claimed "Model grounded" while the suggestions beneath it
+ * returned 503. Partial coverage is a standing state, not a transient one — a
+ * club whose rating window has lapsed at the provider stays unpriced until the
+ * provider publishes a new one.
  */
-type FixtureState = "ready" | "no-fixtures" | "unavailable";
+type FixtureState = "ready" | "partial" | "unpriced" | "no-fixtures" | "unavailable";
 
 function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
@@ -132,12 +143,6 @@ function formatSuggestionChip(fixture: ModelFixtureResponse): string {
   const day = new Date(fixture.utcDate).toLocaleDateString(undefined, { weekday: "short" });
   const abbr = competitionAbbr(fixture.competitionId, fixture.competition);
   return `${fixture.home} vs ${fixture.away} · ${abbr} · ${day}`;
-}
-
-function formatActiveFixtureChip(fixture: MatchResponse): string {
-  const day = new Date(fixture.utcDate).toLocaleDateString(undefined, { weekday: "short" });
-  const abbr = competitionAbbr(fixture.competitionId, fixture.competition);
-  return `${fixture.homeTeam} vs ${fixture.awayTeam} · ${abbr} · ${day}`;
 }
 
 function teamAbbr(name: string): string {
@@ -450,22 +455,33 @@ export function HomeChat() {
     let cancelled = false;
     void (async () => {
       try {
-        const { fixtures } = await fetchActiveModelFixtures();
+        const model = await fetchActiveModelFixtures();
         if (cancelled) return;
-        const featured = fixtures.slice(0, 3).map(formatSuggestionChip);
+        const featured = model.fixtures.slice(0, 3).map(formatSuggestionChip);
         if (featured.length > 0) {
-          setFixtureState("ready");
+          // Every suggested fixture comes from the model, so each one grounds.
+          // A model error alongside them means other fixtures went unpriced.
+          setFixtureState(model.error ? "partial" : "ready");
           setSuggestions(featured);
           return;
         }
 
         const active = await fetchActiveFixtures();
         if (cancelled) return;
-        const activeSuggestions = active.matches.slice(0, 3).map(formatActiveFixtureChip);
-        const hasActive = activeSuggestions.length > 0;
-        // Both endpoints answered; there simply is no fixture in the window.
-        setFixtureState(hasActive ? "ready" : "no-fixtures");
-        setSuggestions(hasActive ? activeSuggestions : NO_FIXTURE_SUGGESTIONS);
+        // Nothing is priced. Suggesting the raw fixture list here is what
+        // produced chips that answered 503, so fall back to prompts that work
+        // without the match model in every one of these cases.
+        setSuggestions(NO_FIXTURE_SUGGESTIONS);
+        if (active.matches.length > 0) {
+          setFixtureState("unpriced");
+        } else if (active.error) {
+          // These wrappers report a transport failure on `error` rather than
+          // throwing, so without this check an unreachable API is indistinguishable
+          // from an empty window and gets announced as "no fixtures scheduled".
+          setFixtureState("unavailable");
+        } else {
+          setFixtureState("no-fixtures");
+        }
       } catch {
         if (!cancelled) {
           // An endpoint failed, so whether fixtures exist is unknown.
@@ -578,26 +594,31 @@ export function HomeChat() {
   // Status bar state — derives a small modelState from existing signals without
   // any new fetches. Keeps the bar live off readiness/loading without touching
   // the `ask()` flow.
-  const modelState: "ready" | "loading" | "no-fixtures" | "cold" = loadingTier === "match"
-    ? "loading"
-    : fixtureState === "ready"
-      ? "ready"
-      : fixtureState === "no-fixtures"
-        ? "no-fixtures"
-        : "cold";
-  const statusTone = modelState === "loading"
+  const modelState = loadingTier === "match" ? "loading" : fixtureState;
+  const statusTone = modelState === "loading" || modelState === "partial"
     ? "bg-amber-300"
     : modelState === "ready"
       ? "bg-primary"
       : "bg-slate-500";
-  const statusLabel = modelState === "loading"
-    ? `Loading match model — ${loadingMessage(loadingTier)}`
-    : modelState === "ready"
-      ? "Model grounded · active fixtures live"
-      : modelState === "no-fixtures"
+  const statusLabel = ((): string => {
+    switch (modelState) {
+      case "loading":
+        return `Loading match model — ${loadingMessage(loadingTier)}`;
+      case "ready":
+        return "Model grounded · active fixtures live";
+      case "partial":
+        // Claiming a clean "Model grounded" here is what made an unpriced
+        // fixture answer 503 with no warning.
+        return "Model grounded for some fixtures — a few aren't priced yet";
+      case "unpriced":
+        return "Match model is catching up — table, title race, and general questions still work";
+      case "no-fixtures":
         // Between rounds nothing is broken, so this must not read as a fault.
-        ? "No fixtures scheduled — table, title race, and general questions still work"
-        : "Model not ready — table and general questions still work";
+        return "No fixtures scheduled — table, title race, and general questions still work";
+      default:
+        return "Model not ready — table and general questions still work";
+    }
+  })();
   const inputStatus = modelState === "loading"
     ? "loading"
     : modelState === "ready"
@@ -645,11 +666,23 @@ export function HomeChat() {
               Football analysis, grounded.
             </h2>
             <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
-              {fixtureState === "ready"
+              {fixtureState === "ready" || fixtureState === "partial"
                 ? "Ask about upcoming Premier League or UCL qualifier matches for a read grounded in Pundit's statistical model."
                 : "Ask about the Premier League table, the title race, or football in general."}
             </p>
           </div>
+          {fixtureState === "partial" && (
+            <p className="mt-4 max-w-md text-xs text-muted-foreground">
+              A few fixtures in this window aren&apos;t priced yet, so the model can&apos;t read
+              those matchups. The suggestions below are all covered.
+            </p>
+          )}
+          {fixtureState === "unpriced" && (
+            <p className="mt-4 max-w-md text-xs text-muted-foreground">
+              Fixtures are scheduled, but the model hasn&apos;t priced them yet — match reads
+              return once it catches up. Table, title-race, and general questions still work.
+            </p>
+          )}
           {fixtureState === "no-fixtures" && (
             <p className="mt-4 max-w-md text-xs text-muted-foreground">
               No Premier League or UCL qualifier fixtures in the next 14 days. Match-grounded reads

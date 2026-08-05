@@ -14,7 +14,12 @@ The homepage suggests active club fixtures from the next 14 days — Premier Lea
 
 **General football questions** are clearly labelled as not grounded in Pundit's statistical model.
 
-Between rounds — after a qualifying round finishes and before the league season starts — there may be no fixtures in the 14-day window at all. The chat says so and switches its suggestions to table, title-race, and general questions; match-grounded reads return with the next scheduled round. Nothing is broken during those windows.
+Match grounding is not always available, and the chat says which case applies rather than failing silently:
+
+* **No fixtures in the window** — between rounds, or before the league season starts. Match-grounded reads return with the next scheduled round.
+* **Fixtures scheduled but not priced** — a club can be missing a current rating from the ratings provider, so its fixtures carry no model read. Sometimes only some fixtures in a round are affected, in which case the covered ones still work and only those are suggested.
+
+In every one of those cases the suggestions switch to table, title-race, and general questions, which do not depend on the match model. Nothing is broken during those windows.
 
 Every assistant message shows a grounding badge: match, competition, season outlook, or general analysis. Use **New Chat** to clear context. Up to twelve history turns (six exchanges) carry forward for follow-ups. **Copy** and **Share** actions are available on assistant answers.
 
