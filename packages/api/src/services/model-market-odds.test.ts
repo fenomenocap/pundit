@@ -94,9 +94,12 @@ describe("refreshModelMarketOdds", () => {
     });
     const key = getModelFixtureKey(model);
     vi.mocked(fetchAllMarketOdds).mockResolvedValue({
-      stake: new Map(),
-      polymarket: new Map(),
-      kalshi: new Map([[key, { pHome: 0.42, pDraw: 0.31, pAway: 0.27 }]]),
+      odds: {
+        stake: new Map(),
+        polymarket: new Map(),
+        kalshi: new Map([[key, { pHome: 0.42, pDraw: 0.31, pAway: 0.27 }]]),
+      },
+      errors: { stake: null, polymarket: null, kalshi: null },
     });
 
     await refreshModelMarketOdds();
@@ -112,6 +115,31 @@ describe("refreshModelMarketOdds", () => {
     expect(marketOddsRefreshDelay(status)).toBe(MARKET_ODDS_REFRESH_INTERVAL_MS);
   });
 
+  it("separates a source whose request failed from one that matched nothing", async () => {
+    vi.mocked(getCachedModelData).mockReturnValue({
+      fixtures: [model],
+      lastUpdated: new Date(),
+      error: null,
+    });
+    vi.mocked(fetchAllMarketOdds).mockResolvedValue({
+      odds: {
+        stake: new Map(),
+        polymarket: new Map(),
+        kalshi: new Map(),
+      },
+      errors: { stake: "403: <!DOCTYPE html>Just a moment...", polymarket: null, kalshi: null },
+    });
+
+    await refreshModelMarketOdds();
+    const status = getModelMarketOddsStatus();
+    // Blocked by Cloudflare, not a naming problem — the warning has to say so
+    // or it sends the reader after the wrong bug.
+    expect(status.sourceWarnings.stake).toMatch(/request failed/);
+    expect(status.sourceWarnings.stake).toContain("403");
+    expect(status.sourceWarnings.stake).not.toMatch(/no matching fixtures/);
+    expect(status.sourceWarnings.polymarket).toMatch(/no matching fixtures \(0\/1\)/);
+  });
+
   it("separates a source with no configuration from one that queried and matched nothing", async () => {
     vi.mocked(getCachedModelData).mockReturnValue({
       fixtures: [model],
@@ -119,9 +147,12 @@ describe("refreshModelMarketOdds", () => {
       error: null,
     });
     vi.mocked(fetchAllMarketOdds).mockResolvedValue({
-      stake: new Map(),
-      polymarket: new Map(),
-      kalshi: new Map(),
+      odds: {
+        stake: new Map(),
+        polymarket: new Map(),
+        kalshi: new Map(),
+      },
+      errors: { stake: null, polymarket: null, kalshi: null },
     });
     vi.mocked(isSourceConfiguredForProfile).mockImplementation((source) => source !== "kalshi");
 
