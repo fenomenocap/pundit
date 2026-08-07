@@ -15,3 +15,6 @@ artifacts/chat-evals/
 packages/web/test-results/
 packages/web/playwright-report/
 packages/web/blob-report/
+
+# Runtime ratings cache — written at run time, never source.
+packages/api/data/cache/
