@@ -1,10 +1,31 @@
 import { canonicalClubName } from "../lib/team-names";
 import { RatingProfile } from "../config/competitions";
+import { readJsonFile, resolveDataPath, writeJsonFileAtomic } from "./persistent-store";
 
 const CLUBELO_BASE = "http://api.clubelo.com";
 const CLUBELO_TIMEOUT_MS = 8_000;
 export const CLUB_RATINGS_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 export const CLUB_RATINGS_COLD_RETRY_MS = 5 * 60 * 1000;
+
+// A refresh failure already leaves the in-memory ratings untouched, so a running
+// instance rides out a ClubElo outage. A restart did not: the cache came back
+// empty, no model could be built, and /ready returned 503 for as long as the
+// vendor stayed down -- which is exactly what happened on 2026-08-07, when
+// ClubElo stopped answering entirely (TCP connect fine, zero response bytes).
+//
+// Persisting the last good snapshot makes the cache survive deploys and
+// restarts, so a vendor outage degrades to "pricing off ratings from N days ago"
+// rather than taking the whole chat tier down.
+const RATINGS_CACHE_FILE = "cache/club-ratings.json";
+// Elo drifts only a few points a week, so a recent snapshot prices a match
+// honestly. Past this the ratings are too far from current form to stand behind
+// and the model should go unready rather than quietly serve stale numbers.
+export const CLUB_RATINGS_MAX_PERSISTED_AGE_DAYS = 30;
+
+interface PersistedClubRatings {
+  fetchedAt: string;
+  byProfile: Record<RatingProfile, Record<string, number>>;
+}
 
 // A club can be correctly named and still absent from the daily snapshot:
 // ClubElo only lists a club while it holds a rating window covering that date,
@@ -39,6 +60,13 @@ export interface ClubRatingsCache {
    * Surfaced so readiness can admit the model is pricing these off stale data.
    */
   staleRatings: StaleClubRating[];
+  /**
+   * True while the whole rating set comes from the persisted snapshot because
+   * ClubElo could not be reached. Reported on /ready for backend monitoring; it
+   * is deliberately not surfaced in the UI, since a rating a few days old still
+   * prices a match honestly and there is nothing for a reader to act on.
+   */
+  servingPersisted: boolean;
 }
 
 const cache: ClubRatingsCache = {
@@ -50,6 +78,7 @@ const cache: ClubRatingsCache = {
   fetchedAt: null,
   error: null,
   staleRatings: [],
+  servingPersisted: false,
 };
 
 export function getCachedClubRatings(): ClubRatingsCache {
@@ -62,7 +91,88 @@ export function getCachedClubRatings(): ClubRatingsCache {
     fetchedAt: cache.fetchedAt,
     error: cache.error,
     staleRatings: cache.staleRatings.map((entry) => ({ ...entry })),
+    servingPersisted: cache.servingPersisted,
   };
+}
+
+/** Whole-days between a rating snapshot and now. */
+export function clubRatingsAgeDays(fetchedAt: Date | null, now = new Date()): number | null {
+  if (!fetchedAt) return null;
+  return Math.max(0, Math.floor((now.getTime() - fetchedAt.getTime()) / 86_400_000));
+}
+
+export function serialiseClubRatings(
+  byProfile: Record<RatingProfile, Map<string, number>>,
+  fetchedAt: Date
+): PersistedClubRatings {
+  return {
+    fetchedAt: fetchedAt.toISOString(),
+    byProfile: {
+      world: Object.fromEntries(byProfile.world),
+      "eng-clubs": Object.fromEntries(byProfile["eng-clubs"]),
+      "uefa-clubs": Object.fromEntries(byProfile["uefa-clubs"]),
+    },
+  };
+}
+
+export function deserialiseClubRatings(
+  persisted: PersistedClubRatings
+): { byProfile: Record<RatingProfile, Map<string, number>>; fetchedAt: Date } | null {
+  const parsed = Date.parse(persisted?.fetchedAt ?? "");
+  if (!Number.isFinite(parsed) || !persisted?.byProfile) return null;
+  const toMap = (entries: Record<string, number> | undefined): Map<string, number> =>
+    new Map(Object.entries(entries ?? {}).filter(([, elo]) => Number.isFinite(elo)));
+  const byProfile = {
+    world: toMap(persisted.byProfile.world),
+    "eng-clubs": toMap(persisted.byProfile["eng-clubs"]),
+    "uefa-clubs": toMap(persisted.byProfile["uefa-clubs"]),
+  };
+  if (byProfile["uefa-clubs"].size === 0) return null;
+  return { byProfile, fetchedAt: new Date(parsed) };
+}
+
+function persistClubRatings(
+  byProfile: Record<RatingProfile, Map<string, number>>,
+  fetchedAt: Date
+): void {
+  try {
+    writeJsonFileAtomic(resolveDataPath(RATINGS_CACHE_FILE), serialiseClubRatings(byProfile, fetchedAt));
+  } catch (error) {
+    // Losing the write costs resilience on the next restart, never the running
+    // model, so this must not fail the refresh.
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.warn(`[ClubRatings] Could not persist ratings cache: ${message}`);
+  }
+}
+
+/**
+ * Seeds the in-memory cache from the last persisted snapshot so a restart during
+ * a ClubElo outage still has ratings to price with. Returns whether it loaded.
+ */
+export function loadPersistedClubRatings(now = new Date()): boolean {
+  const persisted = readJsonFile<PersistedClubRatings>(resolveDataPath(RATINGS_CACHE_FILE));
+  if (!persisted) return false;
+  const restored = deserialiseClubRatings(persisted);
+  if (!restored) {
+    console.warn("[ClubRatings] Persisted ratings cache was unusable; ignoring it.");
+    return false;
+  }
+  const ageDays = clubRatingsAgeDays(restored.fetchedAt, now) ?? Number.POSITIVE_INFINITY;
+  if (ageDays > CLUB_RATINGS_MAX_PERSISTED_AGE_DAYS) {
+    console.warn(
+      `[ClubRatings] Persisted ratings rejected — ${ageDays}d old, `
+      + `limit ${CLUB_RATINGS_MAX_PERSISTED_AGE_DAYS}d.`
+    );
+    return false;
+  }
+  cache.byProfile = restored.byProfile;
+  cache.fetchedAt = restored.fetchedAt;
+  cache.servingPersisted = true;
+  console.log(
+    `[ClubRatings] Restored ${restored.byProfile["uefa-clubs"].size} UEFA clubs from persisted `
+    + `snapshot taken ${restored.fetchedAt.toISOString()} (${ageDays}d old).`
+  );
+  return true;
 }
 
 function formatClubEloDate(date: Date): string {
@@ -262,9 +372,11 @@ export async function refreshClubRatings(): Promise<void> {
   console.log("[ClubRatings] Refreshing ClubElo ratings...");
   try {
     const profiles = await fetchClubRatings();
+    const fetchedAt = new Date();
     cache.byProfile = profiles;
-    cache.fetchedAt = new Date();
+    cache.fetchedAt = fetchedAt;
     cache.error = null;
+    cache.servingPersisted = false;
     // A fresh snapshot may well name a club whose window had lapsed, so stale
     // entries are dropped here and re-established only if still needed.
     cache.staleRatings = [];
@@ -272,10 +384,36 @@ export async function refreshClubRatings(): Promise<void> {
       `[ClubRatings] ${profiles["eng-clubs"].size} ENG clubs, `
       + `${profiles["uefa-clubs"].size} UEFA clubs cached.`
     );
+    persistClubRatings(profiles, fetchedAt);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     cache.error = message;
     console.error(`[ClubRatings] Refresh error: ${message}`);
+
+    // The previous ratings stay in place so the model keeps pricing, but they
+    // stop being trustworthy eventually. Log at a level worth alerting on, and
+    // drop the set entirely once it ages out so the model goes honestly unready
+    // rather than serving numbers nobody would stand behind.
+    const ageDays = clubRatingsAgeDays(cache.fetchedAt);
+    if (ageDays === null) {
+      console.error("[ClubRatings] ALERT: no ratings available at all — model cannot be built.");
+      return;
+    }
+    cache.servingPersisted = true;
+    if (ageDays > CLUB_RATINGS_MAX_PERSISTED_AGE_DAYS) {
+      cache.byProfile = { world: new Map(), "eng-clubs": new Map(), "uefa-clubs": new Map() };
+      cache.fetchedAt = null;
+      cache.staleRatings = [];
+      console.error(
+        `[ClubRatings] ALERT: dropping ratings — ${ageDays}d old, `
+        + `past the ${CLUB_RATINGS_MAX_PERSISTED_AGE_DAYS}d limit.`
+      );
+      return;
+    }
+    console.warn(
+      `[ClubRatings] ALERT: ClubElo unreachable — pricing from the snapshot taken `
+      + `${cache.fetchedAt?.toISOString()} (${ageDays}d old).`
+    );
   }
 }
 
@@ -302,6 +440,10 @@ function scheduleClubRatingsRefresh(): void {
 export async function startClubRatingsCron(): Promise<void> {
   cronEnabled = true;
   if (cronTimer) clearTimeout(cronTimer);
+  // Seeded before the first fetch so that if ClubElo is already down at boot the
+  // model still builds from the last good snapshot instead of cold-starting into
+  // a total outage.
+  loadPersistedClubRatings();
   await refreshClubRatings();
   scheduleClubRatingsRefresh();
   console.log(

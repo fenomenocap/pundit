@@ -24,7 +24,7 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 | Source | Used by | Notes |
 |---|---|---|
 | **ESPN scoreboard/standings** (`packages/api/src/services/football-data.ts`) | `/api/matches/*`, `/fixtures`, competition grounding | Public and keyless. Enabled competitions refresh every 30 minutes; scheduled, in-play and completed fixture state is retained. |
-| **ClubElo** (`club-ratings.ts`) | Active match model | Club ratings are cached by competition rating profile and refreshed hourly. |
+| **ClubElo** (`club-ratings.ts`) | Active match model | Club ratings are cached by competition rating profile and refreshed hourly. The last good set is persisted to `PUNDIT_DATA_DIR` and reloaded on boot, so a ClubElo outage degrades to pricing off a recent snapshot instead of taking the model down. Ratings older than 30 days are dropped and the model goes unready. |
 | **Local model** (`dixon-coles.ts`, `model-data.ts`) | `/api/model/active`, `/api/model/fixtures`, `/model`, match grounding | Computes 1X2, totals, BTTS and scoreline probabilities for the 14-day active club-fixture set, including home-field advantage where configured. |
 | **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Active match grounding | Direct best-effort fetches normalize complete active 1X2 markets to no-vig probabilities every 30 minutes. Source failures remain isolated. |
 | **Frozen WC evaluation** (`wc-evaluation.ts`) | `/api/evaluation/wc-2026`, `/evaluation/wc-2026` | Read-only historical backtest. It is not a live competition pipeline and has no cron. |
@@ -38,6 +38,11 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 # ── API ──────────────────────────────────────────────────────────────────────
 API_PORT=3001
 API_URL=http://localhost:3001
+# Writable directory for state that must survive restarts: the rolling
+# club-season calibration history and the last-good ClubElo ratings cache.
+# Production points this at a mounted Railway volume (/data). Leave unset
+# locally to use the in-repo packages/api/data directory.
+PUNDIT_DATA_DIR=
 # Comma-separated browser origins for CORS. Leave empty for open CORS (dev).
 # Production should set the Vercel frontend origin(s).
 ALLOWED_ORIGINS=http://localhost:3000

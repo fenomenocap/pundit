@@ -27,6 +27,8 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 - Optional `ALLOWED_ORIGINS` (comma-separated) restricts browser CORS; leave unset only while debugging, and set it to the Vercel frontend origin(s) in production.
 - `/health` is liveness. `/ready` reports model, ESPN, active-fixture, and market-odds cache readiness without exposing secrets.
 - Cache refresh cadences: ESPN fixtures/standings and active market odds every 30 minutes; ClubElo ratings and active model every hour. All retain last-good data on refresh failure.
+- `PUNDIT_DATA_DIR=/data` on Railway is a mounted volume. It holds the rolling club-season calibration history and the persisted ClubElo ratings cache — state that must survive deploys, since the container image is rebuilt each time. Unset locally, both fall back to `packages/api/data`.
+- A ClubElo outage is deliberately **not** surfaced in the UI: a rating a few days old still prices a match honestly and there is nothing for a reader to act on. Monitor `model.ratingsServedFromCache` on `/ready` and alert on `[ClubRatings] ALERT` log lines instead.
 
 ## Production verification
 

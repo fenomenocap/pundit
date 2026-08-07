@@ -1,8 +1,12 @@
-import fs from "node:fs";
-import path from "node:path";
 import { ModelFixture } from "./model-data";
 import { FootballMatch } from "./football-data";
 import { computeEvaluationMetrics, EvaluationFixture, EvaluationMetrics } from "./wc-evaluation";
+import {
+  readJsonFile,
+  resolveDataPath,
+  resolveRepoDataPath,
+  writeJsonFileAtomic,
+} from "./persistent-store";
 
 export type ClubSeasonSnapshotMethod = "snapshot";
 
@@ -42,7 +46,11 @@ export interface ClubSeasonEvaluationArtifact {
   metrics: EvaluationMetrics;
 }
 
-const ARTIFACT_PATH = path.join(__dirname, "../../data/evaluation/club-season.json");
+// This history is the point of the artifact: it accumulates one pre-kickoff
+// snapshot per fixture and can never be regenerated, because the probabilities
+// were computed from ratings as they stood before kickoff. It therefore lives on
+// the mounted volume rather than in the container image, which a deploy replaces.
+const ARTIFACT_RELATIVE_PATH = "evaluation/club-season.json";
 
 const DEFAULT_DISCLAIMER = "Pre-kickoff probabilities captured when fixtures leave the scheduled "
   + "window. Rolling club-season calibration — not a frozen backtest.";
@@ -113,13 +121,16 @@ function emptyArtifact(): ClubSeasonEvaluationArtifact {
 }
 
 export function getClubSeasonEvaluationArtifactPath(): string {
-  return ARTIFACT_PATH;
+  return resolveDataPath(ARTIFACT_RELATIVE_PATH);
 }
 
 export function loadClubSeasonEvaluationArtifact(): ClubSeasonEvaluationArtifact {
-  if (!fs.existsSync(ARTIFACT_PATH)) return emptyArtifact();
-  const raw = fs.readFileSync(ARTIFACT_PATH, "utf8");
-  const parsed = JSON.parse(raw) as ClubSeasonEvaluationArtifact;
+  // Falls back to the repo-committed copy when the volume has no history yet, so
+  // a first deploy onto a fresh volume carries over whatever was shipped instead
+  // of silently starting from zero.
+  const parsed = readJsonFile<ClubSeasonEvaluationArtifact>(getClubSeasonEvaluationArtifactPath())
+    ?? readJsonFile<ClubSeasonEvaluationArtifact>(resolveRepoDataPath(ARTIFACT_RELATIVE_PATH));
+  if (!parsed) return emptyArtifact();
   return {
     ...parsed,
     metrics: computeArtifactMetrics(parsed.fixtures ?? []),
@@ -226,12 +237,10 @@ export function mergeSnapshots(
 }
 
 export function persistClubSeasonEvaluationArtifact(artifact: ClubSeasonEvaluationArtifact): void {
-  fs.mkdirSync(path.dirname(ARTIFACT_PATH), { recursive: true });
-  const payload = {
+  writeJsonFileAtomic(getClubSeasonEvaluationArtifactPath(), {
     ...artifact,
     metrics: computeArtifactMetrics(artifact.fixtures),
-  };
-  fs.writeFileSync(ARTIFACT_PATH, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  });
 }
 
 // Tracks last-known fixture status and pre-kickoff model between refreshes.
