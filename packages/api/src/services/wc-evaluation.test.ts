@@ -45,6 +45,36 @@ describe("wc evaluation metrics", () => {
     expect(metrics.winnerAccuracy).toBeGreaterThanOrEqual(0);
     expect(metrics.calibration.length).toBeGreaterThan(0);
   });
+
+  it("scores every forecast in the reliability curve, not only the realised one", () => {
+    const fixtures = [
+      buildEvaluationFixture({
+        id: 1,
+        utcDate: "2026-06-11T19:00Z",
+        stage: "group-stage",
+        group: "A",
+        home: "Mexico",
+        away: "South Africa",
+        homeElo: 1600,
+        awayElo: 1400,
+        homeScore: 2,
+        awayScore: 0,
+      }),
+    ];
+    const metrics = computeEvaluationMetrics(fixtures);
+
+    // One fixture carries three forecasts — home, draw and away — and exactly
+    // one of them happened.
+    const totalForecasts = metrics.calibration.reduce((sum, b) => sum + b.count, 0);
+    expect(totalForecasts).toBe(3);
+    const occurred = metrics.calibration.reduce((sum, b) => sum + b.actualRate * b.count, 0);
+    expect(Math.round(occurred)).toBe(1);
+
+    // The regression: binning only the realised outcome and counting it as
+    // having happened made every bucket read 100%, which is what a perfectly
+    // calibrated model looks like and is unachievable in practice.
+    expect(metrics.calibration.every((bucket) => bucket.actualRate === 1)).toBe(false);
+  });
 });
 
 describe("wc evaluation reconstruction", () => {

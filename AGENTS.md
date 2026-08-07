@@ -8,7 +8,7 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 
 | Area | Current behavior |
 |---|---|
-| Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/competition/season/general), active market comparisons, and suggestions from featured active club fixtures. |
+| Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/competition/season/general), active market comparisons, and suggestions from featured active club fixtures. The status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpriced`, `no-fixtures`, and `unavailable`; suggestions only ever offer fixtures the model has priced, so a chip never answers 503. |
 | `POST /api/ask` | Four tiers: active-match model grounding (ClubElo + HFA), competition standings grounding (ESPN table), Premier League season outlook (Monte Carlo title/top-four), and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, web search, a 90-second Anthropic timeout (240s overall), and 10 requests/minute limiting. Effort is pinned to `high`; team-news questions are instructed to search rather than answer from memory, and every reported item must name its source and date. |
 | Active model | `/api/model/active` and `/api/model/fixtures` serve Dixon-Coles 1X2 (plus totals/BTTS/scorelines) for active club fixtures only. |
 | Featured fixtures | Next N active fixtures across enabled competitions (EPL priority), joined to model rows for chat suggestions and market odds. |
