@@ -18,8 +18,26 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-READY=$(curl -fsS --max-time 20 "$API_URL/ready")
-MODEL=$(curl -fsS --max-time 20 "$API_URL/api/model/active")
+# Deliberately not -f. /ready answers 503 with a full JSON body exactly when it
+# is degraded, which is the only time this script is worth running; -f threw
+# that body away and exited 22, so the diagnostic failed whenever it was needed.
+fetch_json() {
+  local url="$1" body status
+  body=$(curl -sS --max-time 20 -w $'\n%{http_code}' "$url") || {
+    echo "  Could not reach $url" >&2
+    return 1
+  }
+  status=${body##*$'\n'}
+  body=${body%$'\n'*}
+  if [[ -z "$body" ]] || ! jq -e . >/dev/null 2>&1 <<<"$body"; then
+    echo "  $url returned HTTP $status with no JSON body" >&2
+    return 1
+  fi
+  printf '%s' "$body"
+}
+
+READY=$(fetch_json "$API_URL/ready")
+MODEL=$(fetch_json "$API_URL/api/model/active")
 
 echo "=== readiness ==="
 jq '{
@@ -29,7 +47,11 @@ jq '{
     fixtureCount: .model.fixtureCount,
     expectedActiveFixtureCount: .model.expectedActiveFixtureCount,
     lastUpdated: .model.lastUpdated,
-    error: .model.error
+    error: .model.error,
+    ratingsServedFromCache: .model.ratingsServedFromCache,
+    ratingsAsOf: .model.ratingsAsOf,
+    ratingsAgeDays: .model.ratingsAgeDays,
+    staleRatings: .model.staleRatings
   },
   football: {
     ready: .football.ready,
@@ -64,7 +86,15 @@ echo
 echo "=== read ==="
 MODEL_COUNT=$(jq -r '.model.fixtureCount // 0' <<<"$READY")
 ACTIVE_COUNT=$(jq -r '.activeFixtures.count // 0' <<<"$READY")
-if [[ "$ACTIVE_COUNT" -gt 0 && "$MODEL_COUNT" -eq 0 ]]; then
+MODEL_ERROR=$(jq -r '.model.error // ""' <<<"$READY")
+if [[ "$MODEL_ERROR" == *"Club ratings are not ready"* ]]; then
+  echo "  No ratings at all, so no fixture can be priced. This is the ratings"
+  echo "  provider, not the fixture names: ClubElo is unreachable and the"
+  echo "  last-good cache in PUNDIT_DATA_DIR had nothing to restore. The cache"
+  echo "  only protects an outage it did not start inside — it needs one"
+  echo "  successful fetch banked first. Check that ClubElo answers at all"
+  echo "  (curl http://api.clubelo.com/\$(date -u +%F)) before changing code."
+elif [[ "$ACTIVE_COUNT" -gt 0 && "$MODEL_COUNT" -eq 0 ]]; then
   echo "  Fixtures exist ($ACTIVE_COUNT) but the model priced none of them."
   echo "  The model covers the active set only when it holds a row for every"
   echo "  fixture, so chat cannot reach the match tier and /ready stays"

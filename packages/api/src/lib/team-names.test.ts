@@ -58,6 +58,30 @@ describe("normalizeTeamName", () => {
     }
   });
 
+  it("reaches the model's names from the spellings Kalshi prints", () => {
+    // Read off live KXUCLGAME event titles. These are matched by substring
+    // against event text, so each has to land on the same canonical name the
+    // model fixture carries or the tie goes unpriced by the market source.
+    const expected = new Map([
+      ["Bodoe/Glimt", "Bodoe Glimt"],
+      ["Union Gilloise", "St Gillis"],
+      ["Mjallby", "Mjaellby"],
+      ["Be`er Sheva", "Beer-Sheva"],
+      ["Kauno", "Kauno Zalgiris"],
+      // Already covered by the ClubElo aliases; pinned so a future tidy-up of
+      // that table cannot silently cost Kalshi coverage.
+      ["Olympiacos", "Olympiakos"],
+      ["Sparta Prague", "Sparta Praha"],
+      ["Ararat-Armenia", "Ararat"],
+      ["Levski Sofia", "Levski"],
+      ["NK Celje", "Celje"],
+    ]);
+
+    for (const [kalshiName, modelName] of expected) {
+      expect(canonicalClubName(kalshiName)).toBe(modelName);
+    }
+  });
+
   it("uses the spellings ClubElo actually publishes for the round that went unpriced", () => {
     // Each right-hand name was read off the ClubElo daily snapshot, not
     // inferred. The spacing and the dropped or replaced words are the whole

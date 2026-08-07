@@ -69,9 +69,10 @@ const MARKET_SOURCE_PROFILES: Record<MarketProfile, MarketSourceProfile> = {
       tournament: "uefa-champions-league",
       referer: "https://stake.bet/sports/soccer/international-clubs/uefa-champions-league",
     },
-    // KXUCLGAME covers the main competition. Kalshi lists no qualifying-round
-    // series, so qualifier ties stay unmatched here and Stake or Polymarket are
-    // the only sources that can price them.
+    // KXUCLGAME carries qualifying ties too, contrary to what this comment used
+    // to claim: a live third-round check returned all ten fixtures as open
+    // events under this ticker. Unmatched qualifiers here are a name-matching
+    // problem, not a missing series.
     kalshi: { seriesTicker: "KXUCLGAME" },
   },
   "world-cup": {
@@ -159,6 +160,31 @@ function selection(name: string, fixture: ModelFixture): "home" | "draw" | "away
   return null;
 }
 
+/**
+ * Which side of the fixture a market label refers to, tolerating the longer
+ * club names venues actually print.
+ *
+ * `selection` alone demands exact equality, which no sportsbook owes us:
+ * Polymarket labels its legs "SK Puntigamer Sturm Graz" and "Fenerbahce SK"
+ * against our "Sturm Graz" and "Fenerbahce", so a complete and open three-way
+ * market resolved only its draw leg and the whole event was discarded.
+ *
+ * Containment needs the ambiguity guard, because a draw label names both clubs
+ * ("Draw (A vs. B)") and would otherwise read as the home side. Trying
+ * `selection` first is what keeps that safe -- it settles draws on the leading
+ * "draw" before containment ever sees two team matches.
+ */
+function marketSelection(label: string, fixture: ModelFixture): "home" | "draw" | "away" | null {
+  const direct = selection(label, fixture);
+  if (direct) return direct;
+  const text = normalizeTeamText(label);
+  const matches: Array<"home" | "draw" | "away"> = [];
+  if (teamSearchTerms(fixture.home).some((term) => text.includes(term))) matches.push("home");
+  if (teamSearchTerms(fixture.away).some((term) => text.includes(term))) matches.push("away");
+  if (/\b(tie|draw)\b/.test(text)) matches.push("draw");
+  return matches.length === 1 ? matches[0] : null;
+}
+
 function teamSearchTerms(team: string): string[] {
   const canonical = normalizeTeamName(team);
   return [team, ...getTeamNameAliases()
@@ -230,8 +256,8 @@ export function parsePolymarketEvent(raw: unknown, fixture: ModelFixture): Three
     const yesIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === "yes");
     const yesPrice = yesIndex >= 0 ? probability(outcomePrices[yesIndex]) : null;
     if (yesPrice !== null) {
-      const key = selection(String(market.groupItemTitle ?? ""), fixture)
-        ?? selection(String(market.yes_sub_title ?? ""), fixture);
+      const key = marketSelection(String(market.groupItemTitle ?? ""), fixture)
+        ?? marketSelection(String(market.yes_sub_title ?? ""), fixture);
       const marketType = String(market.sportsMarketType ?? "").toLowerCase();
       if (key && ["moneyline", "match result", "1x2"].includes(marketType)) prices[key] = yesPrice;
     }
@@ -250,16 +276,6 @@ function kalshiPrice(market: UnknownRecord): number | null {
   return null;
 }
 
-function kalshiSelection(label: string, fixture: ModelFixture): "home" | "draw" | "away" | null {
-  const direct = selection(label, fixture);
-  if (direct) return direct;
-  const text = normalizeTeamText(label);
-  const matches: Array<"home" | "draw" | "away"> = [];
-  if (teamSearchTerms(fixture.home).some((term) => text.includes(term))) matches.push("home");
-  if (teamSearchTerms(fixture.away).some((term) => text.includes(term))) matches.push("away");
-  if (/\b(tie|draw)\b/.test(text)) matches.push("draw");
-  return matches.length === 1 ? matches[0] : null;
-}
 
 export function parseKalshiEvent(raw: unknown, fixture: ModelFixture): ThreeWayOdds | null {
   const event = record(raw);
@@ -271,7 +287,7 @@ export function parseKalshiEvent(raw: unknown, fixture: ModelFixture): ThreeWayO
     const label = [event.title, event.sub_title, market.title, market.subtitle]
       .map((value) => String(value ?? "").toLowerCase()).join(" ");
     if (!/(moneyline|match result|winner|to win|regulation time)/.test(label)) continue;
-    const key = kalshiSelection(String(market.yes_sub_title ?? market.subtitle ?? ""), fixture);
+    const key = marketSelection(String(market.yes_sub_title ?? market.subtitle ?? ""), fixture);
     const price = kalshiPrice(market);
     if (key && price !== null) prices[key] = price;
   }
@@ -418,9 +434,33 @@ export async function fetchKalshiOdds(
   return result;
 }
 
+export type MarketSourceName = "stake" | "polymarket" | "kalshi";
+
+export interface MarketOddsFetch {
+  odds: Record<MarketSourceName, Map<string, ThreeWayOdds>>;
+  /**
+   * Why a source came back empty, when the cause was the request rather than
+   * the matching. A blocked or failing source and one that answered fine and
+   * matched nothing are indistinguishable in a coverage count, and reporting
+   * the first as the second sends whoever reads it hunting a matching bug for a
+   * request that never succeeded -- Stake's Cloudflare 403 did exactly that.
+   */
+  errors: Record<MarketSourceName, string | null>;
+}
+
+function firstRejection(results: PromiseSettledResult<unknown>[]): string | null {
+  for (const result of results) {
+    if (result.status === "rejected") {
+      const reason = result.reason;
+      return reason instanceof Error ? reason.message : String(reason);
+    }
+  }
+  return null;
+}
+
 export async function fetchAllMarketOdds(
   fixtures: ModelFixture[]
-): Promise<Record<"stake" | "polymarket" | "kalshi", Map<string, ThreeWayOdds>>> {
+): Promise<MarketOddsFetch> {
   const grouped = fixturesByMarketProfile(fixtures);
   const stakeResults = await Promise.allSettled(
     [...grouped.entries()].map(([profile, profileFixtures]) =>
@@ -442,11 +482,23 @@ export async function fetchAllMarketOdds(
       for (const [key, odds] of result.value) kalshi.set(key, odds);
     }
   }
-  const polymarket = await fetchPolymarketOdds(fixtures);
-  return { stake, polymarket, kalshi };
-}
+  // Settled like the others. Awaited bare, a Polymarket failure propagated out
+  // of here and aborted the whole refresh, discarding the Stake and Kalshi
+  // results already in hand -- one source's outage cost all three.
+  const [polymarketResult] = await Promise.allSettled([fetchPolymarketOdds(fixtures)]);
+  const polymarket = polymarketResult.status === "fulfilled"
+    ? polymarketResult.value
+    : new Map<string, ThreeWayOdds>();
 
-export type MarketSourceName = "stake" | "polymarket" | "kalshi";
+  return {
+    odds: { stake, polymarket, kalshi },
+    errors: {
+      stake: stake.size > 0 ? null : firstRejection(stakeResults),
+      kalshi: kalshi.size > 0 ? null : firstRejection(kalshiResults),
+      polymarket: polymarket.size > 0 ? null : firstRejection([polymarketResult]),
+    },
+  };
+}
 
 /**
  * Whether a source is configured to be queried at all for a competition

@@ -93,6 +93,17 @@ const RAW_CLUB_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["Sparta Prague", "Sparta Praha"],
   ["Union St.-Gilloise", "St Gillis"],
   ["Union Saint-Gilloise", "St Gillis"],
+  // Spellings Kalshi prints in its KXUCLGAME event titles. These are matched by
+  // substring against the event text rather than looked up as ratings keys, so
+  // what matters is that each one reaches the same canonical name the model
+  // uses. Kalshi listed all ten fixtures of a qualifying round while only six
+  // matched; every miss was one of these.
+  ["Bodoe/Glimt", "Bodoe Glimt"],
+  ["Union Gilloise", "St Gillis"],
+  ["Mjallby", "Mjaellby"],
+  ["Be`er Sheva", "Beer-Sheva"],
+  ["Beer Sheva", "Beer-Sheva"],
+  ["Kauno", "Kauno Zalgiris"],
 ];
 
 export function normalizeTeamText(name: string): string {
