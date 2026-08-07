@@ -224,9 +224,28 @@ export function validateAnswerCopy(answer) {
 const TEAM_NEWS_CLAIM =
   /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
 
-/** "(BBC Sport, 12 Apr)", "on 12 April", "reported on 3 May 2026". */
-const SOURCE_AND_DATE =
-  /\([^)]*,[^)]*\d[^)]*\)|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\b20\d{2}\b/i;
+/**
+ * Dating a team-news claim. Absolute forms — "(BBC Sport, 12 Apr)", "on 12
+ * April", "reported on 3 May 2026" — plus relative ones.
+ *
+ * The relative forms were the gap: a live run cited "Sports Mole (1 day ago)",
+ * "Freetips.com (2 days ago)" and "Dailysports.net (12 hours ago)" and this
+ * guard failed the answer, because it only recognised calendar dates. Search
+ * results routinely carry relative timestamps, and for team news a recency
+ * claim is the more useful of the two — an injury reported "12 hours ago" says
+ * more about whether it still holds than one dated to a calendar day.
+ */
+const SOURCE_AND_DATE = new RegExp([
+  // "(BBC Sport, 12 Apr)" — a parenthetical carrying both a source and a figure.
+  /\([^)]*,[^)]*\d[^)]*\)/.source,
+  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/.source,
+  /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/.source,
+  /\b20\d{2}\b/.source,
+  // "3 hours ago", "1 day ago", "two weeks ago"
+  /\b(?:\d+|a|an|one|two|three|four|five|six|seven)\s+(?:second|minute|hour|day|week|month)s?\s+ago\b/.source,
+  /\b(?:yesterday|today|this (?:morning|afternoon|evening)|last night|earlier (?:today|this week))\b/.source,
+  /\b(?:according to|reported|confirmed by)\b/.source,
+].join("|"), "i");
 
 /** The explicit abstention the prompts mandate when search finds nothing. */
 const NO_VERIFIED_NEWS =

@@ -472,6 +472,23 @@ test("team-news guard accepts a sourced claim or an explicit abstention", () => 
   ).passed, true);
 });
 
+test("team-news guard accepts the relative dates search results actually carry", () => {
+  // Verbatim shape of a live production answer that this guard wrongly failed:
+  // every claim was attributed, but to "1 day ago" rather than a calendar date.
+  assert.equal(validateTeamNewsDiscipline(
+    "Aarhus have injury concerns: Tobias Molgaard and Nicolai Poulsen are out"
+    + " injured, per Sports Mole (1 day ago). Freetips.com (2 days ago) adds that"
+    + " Frederik Tingager is doubtful. Dailysports.net (12 hours ago) reports the"
+    + " visitors have no injury concerns."
+  ).passed, true);
+  assert.equal(validateTeamNewsDiscipline(
+    "He is suspended for this one (The Athletic, 3 hours ago)."
+  ).passed, true);
+  assert.equal(validateTeamNewsDiscipline(
+    "Their captain returned to training yesterday, per the club."
+  ).passed, true);
+});
+
 test("team-news guard rejects an unsourced availability claim", () => {
   assert.equal(validateTeamNewsDiscipline(
     "Their striker is injured and will be ruled out for this one."

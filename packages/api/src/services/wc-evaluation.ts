@@ -31,8 +31,10 @@ export interface EvaluationFixture {
 
 export interface CalibrationBucket {
   label: string;
+  /** Forecasts falling in this bucket — three per fixture, one per outcome. */
   count: number;
   avgPredicted: number;
+  /** Share of those forecasts whose outcome occurred. */
   actualRate: number;
 }
 
@@ -154,19 +156,28 @@ export function computeEvaluationMetrics(fixtures: EvaluationFixture[]): Evaluat
     if (actual === "draw") drawCount += 1;
     if (fixture.predictedOutcome === actual) winnerHits += 1;
 
-    const predictedForActual = outcomeProbabilities(
-      actual,
-      fixture.pHome,
-      fixture.pDraw,
-      fixture.pAway
-    );
-    const bucket = bucketStats.find(
-      (entry) => predictedForActual >= entry.min && predictedForActual < entry.max
-    );
-    if (bucket) {
+    // A reliability curve asks: of everything forecast at ~p, how much of it
+    // happened? So every forecast is binned by its own probability and scored
+    // against whether that outcome occurred -- all three per fixture, not only
+    // the one that came true.
+    //
+    // Binning solely the realised outcome, and then counting it as having
+    // happened, made actualRate exactly 1 in every bucket by construction: the
+    // curve reported that things which happened, happened. It looked like a
+    // perfectly calibrated model and carried no information at all.
+    const forecasts: ReadonlyArray<readonly [number, number]> = [
+      [fixture.pHome, oneHot.home],
+      [fixture.pDraw, oneHot.draw],
+      [fixture.pAway, oneHot.away],
+    ];
+    for (const [predicted, occurred] of forecasts) {
+      const bucket = bucketStats.find(
+        (entry) => predicted >= entry.min && predicted < entry.max
+      );
+      if (!bucket) continue;
       bucket.count += 1;
-      bucket.predictedSum += predictedForActual;
-      bucket.actualSum += 1;
+      bucket.predictedSum += predicted;
+      bucket.actualSum += occurred;
     }
   }
 
