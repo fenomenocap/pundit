@@ -8,7 +8,11 @@ import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
 import askRoutes from "./routes/ask";
 import evaluationRoutes from "./routes/evaluation";
-import { getCachedClubRatings, startClubRatingsCron } from "./services/club-ratings";
+import {
+  clubRatingsAgeDays,
+  getCachedClubRatings,
+  startClubRatingsCron,
+} from "./services/club-ratings";
 import { getCachedModelData, startModelCron } from "./services/model-data";
 import { getCachedMatches, startFootballCron } from "./services/football-data";
 import { getActiveFixtures, getActiveFixtureStatus } from "./services/active-fixtures";
@@ -69,6 +73,7 @@ app.get("/ready", (_req, res) => {
   const activeFixtures = getActiveFixtures();
   const active = getActiveFixtureStatus();
   const odds = getModelMarketOddsStatus();
+  const ratings = getCachedClubRatings();
   const readiness = evaluateReadiness(model, football, activeFixtures, odds);
   res.status(readiness.ready ? 200 : 503).json({
     status: readiness.ready ? "ready" : "loading",
@@ -81,7 +86,14 @@ app.get("/ready", (_req, res) => {
       // Clubs priced off a lapsed ClubElo window rather than today's snapshot.
       // Readiness does not fail on these — the rating is real, just dated — but
       // the model should not present them as current either.
-      staleRatings: getCachedClubRatings().staleRatings,
+      staleRatings: ratings.staleRatings,
+      // Whole-rating-set staleness, for backend monitoring rather than the UI: a
+      // snapshot a few days old still prices a match honestly, so readiness stays
+      // green and readers are not alarmed, but an outage must not be invisible to
+      // us. Alert on ratingsServedFromCache — it means ClubElo is unreachable.
+      ratingsAsOf: ratings.fetchedAt?.toISOString() ?? null,
+      ratingsAgeDays: clubRatingsAgeDays(ratings.fetchedAt),
+      ratingsServedFromCache: ratings.servingPersisted,
     },
     football: {
       ready: readiness.footballReady,
