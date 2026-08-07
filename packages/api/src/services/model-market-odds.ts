@@ -71,7 +71,7 @@ export async function refreshModelMarketOdds(): Promise<void> {
       return;
     }
     const active = model.fixtures;
-    const sources = await fetchAllMarketOdds(active);
+    const { odds: sources, errors } = await fetchAllMarketOdds(active);
     const names = ["stake", "polymarket", "kalshi"] as const;
     const profiles = marketProfilesForFixtures(active);
     cache.sourceWarnings = {};
@@ -81,6 +81,11 @@ export async function refreshModelMarketOdds(): Promise<void> {
         .filter((profile) => isSourceConfiguredForProfile(name, profile));
       if (active.length === 0 || fetched.size > 0) {
         cache.sourceWarnings[name] = null;
+      } else if (errors[name]) {
+        // The request itself failed. Distinct from matching nothing, and the
+        // only one of these three states that points at us rather than at the
+        // fixture names.
+        cache.sourceWarnings[name] = `${name} request failed: ${errors[name]}`;
       } else if (configuredProfiles.length === 0) {
         // Never queried. Saying it "returned no matching fixtures" invites a
         // hunt for a broken request that was never issued.
