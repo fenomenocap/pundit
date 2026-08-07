@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   CLUB_RATINGS_COLD_RETRY_MS,
   CLUB_RATINGS_REFRESH_INTERVAL_MS,
@@ -21,8 +24,22 @@ function ratingsCsv(count = 10): string {
   return ["Rank,Club,Country,Level,Elo,From,To", ...rows].join("\n");
 }
 
+// refreshClubRatings persists the ratings cache, so these tests are pointed at a
+// scratch directory. Otherwise a mocked run writes fabricated "Club 1" ratings
+// into packages/api/data, where they would be picked up as real seed data.
+const originalDataDir = process.env.PUNDIT_DATA_DIR;
+let scratchDataDir: string;
+
+beforeEach(() => {
+  scratchDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-club-ratings-"));
+  process.env.PUNDIT_DATA_DIR = scratchDataDir;
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  fs.rmSync(scratchDataDir, { recursive: true, force: true });
+  if (originalDataDir === undefined) delete process.env.PUNDIT_DATA_DIR;
+  else process.env.PUNDIT_DATA_DIR = originalDataDir;
 });
 
 describe("club ratings", () => {
@@ -215,12 +232,14 @@ describe("club ratings", () => {
       fetchedAt: null,
       error: "network unavailable",
       staleRatings: [],
+      servingPersisted: false,
     })).toBe(CLUB_RATINGS_COLD_RETRY_MS);
     expect(clubRatingsRefreshDelay({
       byProfile: emptyProfiles,
       fetchedAt: new Date(),
       error: "last refresh failed",
       staleRatings: [],
+      servingPersisted: false,
     })).toBe(CLUB_RATINGS_REFRESH_INTERVAL_MS);
   });
 });

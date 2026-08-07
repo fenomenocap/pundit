@@ -123,6 +123,7 @@ describe("active club model", () => {
       fetchedAt: null,
       error: "network unavailable",
       staleRatings: [],
+      servingPersisted: false,
     });
 
     await refreshModelData([activeFixture()]);
@@ -142,6 +143,7 @@ describe("active club model", () => {
       fetchedAt: new Date("2026-07-27T00:00:00.000Z"),
       error: null,
       staleRatings: [],
+      servingPersisted: false,
     });
 
     await refreshModelData([activeFixture()]);
@@ -168,6 +170,7 @@ describe("active club model", () => {
       fetchedAt: new Date("2026-07-27T00:00:00.000Z"),
       error: null,
       staleRatings: [],
+      servingPersisted: false,
     });
 
     await refreshModelData([
@@ -189,6 +192,7 @@ describe("active club model", () => {
       fetchedAt: new Date("2026-07-27T00:00:00.000Z"),
       error: "latest refresh timed out",
       staleRatings: [],
+      servingPersisted: false,
     });
 
     await refreshModelData([activeFixture()]);
