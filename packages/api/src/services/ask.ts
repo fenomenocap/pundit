@@ -19,6 +19,7 @@ import {
   remainingScheduledFixtures,
   simulateSeasonOutlook,
   SeasonOutlook,
+  SEASON_QUESTION_PATTERNS,
 } from "./season-simulator";
 
 export interface OddsSource {
@@ -208,7 +209,10 @@ source and date. If search returns nothing solid, say no verified player data is
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}`;
 
-const COMPETITION_KEYWORDS: ReadonlyArray<{ competitionId: string; keywords: string[] }> = [
+const COMPETITION_KEYWORDS: ReadonlyArray<{
+  competitionId: string;
+  keywords: Array<string | RegExp>;
+}> = [
   {
     competitionId: "eng.1",
     keywords: [
@@ -227,6 +231,12 @@ const COMPETITION_KEYWORDS: ReadonlyArray<{ competitionId: string; keywords: str
       "top four",
       "top 4",
       "champions league spot",
+      // The season tier is only reachable through eng.1, so every phrasing the
+      // outlook recognises has to resolve a competition here too. Sharing the
+      // patterns keeps the two lists from drifting apart, which is how
+      // "Who gets relegated?" ended up in a different tier from
+      // "Relegation battle?".
+      ...SEASON_QUESTION_PATTERNS,
     ],
   },
   {
@@ -243,7 +253,9 @@ const COMPETITION_KEYWORDS: ReadonlyArray<{ competitionId: string; keywords: str
 export function resolveCompetitionQuestion(question: string): string | undefined {
   const normalized = normalizeTeamText(question);
   for (const entry of COMPETITION_KEYWORDS) {
-    if (entry.keywords.some((keyword) => normalized.includes(keyword))) {
+    if (entry.keywords.some((keyword) => (typeof keyword === "string"
+      ? normalized.includes(keyword)
+      : keyword.test(normalized)))) {
       return entry.competitionId;
     }
   }
@@ -253,6 +265,25 @@ export function resolveCompetitionQuestion(question: string): string | undefined
 export function isCompetitionQuestion(question: string): boolean {
   return resolveCompetitionQuestion(question) !== undefined;
 }
+
+// A question about the table or the standings asks for rows the match payload
+// does not contain, so it has to reach competition grounding even mid-match --
+// while following a fixture, "How's the table looking?" and "Who's top right
+// now?" were held by match retention and answered from a payload with no
+// standings in it at all.
+const LEAGUE_TABLE_CUES = [
+  "the table",
+  "the standings",
+  "the ranking",
+  "the rankings",
+  "league table",
+  "league position",
+  "in the standings",
+  "top of the league",
+  "who's top",
+  "whos top",
+  "who is top",
+];
 
 const COMPETITION_FOLLOW_UP_CUES = [
   "that table",
@@ -265,11 +296,17 @@ const COMPETITION_FOLLOW_UP_CUES = [
   "title race",
   "the league",
   "premier league",
+  ...LEAGUE_TABLE_CUES,
 ];
 
 function hasCompetitionFollowUpCue(question: string): boolean {
   const normalized = normalizeTeamText(question);
   return COMPETITION_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
+}
+
+function hasLeagueTableCue(question: string): boolean {
+  const normalized = normalizeTeamText(question);
+  return LEAGUE_TABLE_CUES.some((cue) => normalized.includes(cue));
 }
 
 export function resolveCompetitionContext(
@@ -280,11 +317,18 @@ export function resolveCompetitionContext(
   if (explicitCompetitionId) return explicitCompetitionId;
   if (!hasCompetitionFollowUpCue(question)) return undefined;
 
-  return history
+  const historyCompetitionId = history
     .filter(({ role }) => role === "user")
     .map(({ content }) => resolveCompetitionQuestion(content))
     .reverse()
     .find((competitionId): competitionId is string => competitionId !== undefined);
+  if (historyCompetitionId) return historyCompetitionId;
+
+  // A bare table question with no competition in view still has one sensible
+  // answer: of the two competitions Pundit covers, only the league has a table
+  // -- the qualifiers are ties, not rows. Falling back to it is what lets a
+  // standings question asked mid-match be answered instead of retained.
+  return hasLeagueTableCue(question) ? "eng.1" : undefined;
 }
 
 export function shouldUseCompetitionGrounding(
