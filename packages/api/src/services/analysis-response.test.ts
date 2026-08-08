@@ -400,6 +400,75 @@ describe("generateAnalysisStream", () => {
     expect(deltas).toEqual(["First half. Second half."]);
   });
 
+  it("releases settled lines progressively and the deltas rebuild the answer", async () => {
+    const chunks = [
+      "**Verdict**\n",
+      "Arsenal are favoured.\n",
+      "\n**Goals**\n",
+      "Over 2.5 leans yes.",
+    ];
+    const stream = vi.fn().mockReturnValue(
+      streamOf(message(chunks.join(""), "end_turn"), chunks)
+    );
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    const answer = await generateAnalysisStream(
+      client, "system", [], "general", (text) => deltas.push(text)
+    );
+    // More than one delta means the client renders text while generation is
+    // still running, which is the whole point of the change.
+    expect(deltas.length).toBeGreaterThan(1);
+    expect(deltas[0]).toBe("**Verdict**");
+    expect(deltas.join("")).toBe(answer);
+    expect(answer).toBe(chunks.join("").trim());
+  });
+
+  it("runs the match guards over every line before it is released", async () => {
+    const unsafe = [
+      "Any scoreline not listed here falls below the 0.1% probability threshold.",
+      "A 1-1 draw sits at **25.0%**.",
+      "The edge is entirely due to home-field advantage.",
+      "Kuopio look the stronger side.",
+    ];
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Kuopio",
+      away: "Sabah",
+      scorelines: [{ score: "1-1", probability: 0.1043 }],
+    } as Grounding;
+    const chunks = unsafe.map((line, index) => (index === 0 ? line : `\n${line}`));
+    const stream = vi.fn().mockReturnValue(
+      streamOf(message(chunks.join(""), "end_turn"), chunks)
+    );
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    const answer = await generateAnalysisStream(
+      client, "system", [], "match", (text) => deltas.push(text), () => true, grounding
+    );
+    expect(deltas.length).toBeGreaterThan(1);
+    expect(deltas.join("")).toBe(answer);
+    // Guarded content never reaches the client, not even briefly.
+    const streamedText = deltas.join("");
+    expect(streamedText).not.toContain("not listed here falls below");
+    expect(streamedText).not.toContain("**25.0%**");
+    expect(streamedText).not.toContain("entirely due");
+    expect(answer).toContain("selected examples");
+    expect(answer).toContain("**10.4%**");
+    expect(answer).toContain("does not decompose");
+  });
+
+  it("aborts without emitting when the client has already disconnected", async () => {
+    const stream = vi.fn();
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    await expect(generateAnalysisStream(
+      client, "system", [], "match", (text) => deltas.push(text), () => false
+    )).rejects.toMatchObject({ statusCode: 499 });
+    expect(stream).not.toHaveBeenCalled();
+    expect(deltas).toEqual([]);
+  });
+
   it("retries once when the stream dies before any text was emitted", async () => {
     const stream = vi.fn()
       .mockReturnValueOnce(streamOf(null, [], new Anthropic.APIConnectionError({ message: "boom" })))
@@ -410,7 +479,10 @@ describe("generateAnalysisStream", () => {
     expect(stream).toHaveBeenCalledTimes(2);
   });
 
-  it("buffers match text until deterministic answer guards have run", async () => {
+  // Progressive release settles at line boundaries, so an answer that never
+  // completes a line has nothing to release early and is still delivered in one
+  // piece once the guards have run over the whole thing.
+  it("holds back an answer with no settled line until the guards have run", async () => {
     const unsafe = "Any scoreline not listed here falls below the 0.1% probability threshold.";
     const stream = vi.fn().mockReturnValue(streamOf(message(unsafe, "end_turn"), [unsafe]));
     const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;

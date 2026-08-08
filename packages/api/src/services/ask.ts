@@ -1042,6 +1042,26 @@ export function sanitizeUnsupportedTeamNews(answer: string): string {
   ).trim();
 }
 
+// The deterministic guard chain for a tier, factored out of
+// validateAnalysisResponse so the streaming path can run exactly the same
+// guards over a settled prefix of the answer instead of a second, weaker copy.
+function sanitizeAnswerForTier(
+  answer: string,
+  tier: AnalysisTier,
+  grounding?: AskGrounding
+): string {
+  const commonSafeAnswer = sanitizeUnsupportedTeamNews(answer);
+  if (tier === "match") {
+    return sanitizeMatchAnswer(
+      commonSafeAnswer,
+      grounding?.kind === "match" ? grounding : undefined
+    );
+  }
+  if (tier === "season") return sanitizeSeasonAnswer(commonSafeAnswer);
+  if (tier === "competition") return sanitizeCompetitionAnswer(commonSafeAnswer);
+  return commonSafeAnswer;
+}
+
 function validateAnalysisResponse(
   responses: Anthropic.Message[],
   tier: AnalysisTier,
@@ -1069,18 +1089,7 @@ function validateAnalysisResponse(
   if (stopReason === "max_tokens") {
     throw new AppError(502, "Analysis response was truncated. Please try again.");
   }
-  const commonSafeAnswer = sanitizeUnsupportedTeamNews(answer);
-  if (tier === "match") {
-    return sanitizeMatchAnswer(
-      commonSafeAnswer,
-      grounding?.kind === "match" ? grounding : undefined
-    );
-  }
-  if (tier === "season") return sanitizeSeasonAnswer(commonSafeAnswer);
-  if (tier === "competition") {
-    return sanitizeCompetitionAnswer(commonSafeAnswer);
-  }
-  return commonSafeAnswer;
+  return sanitizeAnswerForTier(answer, tier, grounding);
 }
 
 function appendPausedTurn(
@@ -1130,6 +1139,78 @@ function isRetryableStreamError(error: unknown): boolean {
     && (RETRYABLE_STATUS.has(error.status) || error.status >= 500);
 }
 
+// Number of completed lines held back behind the line the model is still
+// writing. The guards are line-scoped, but a handful of their patterns can
+// begin on the previous line (a parenthetical carried over, a trailing
+// " -- this is ..." clause opening a new line), so a line is only released once
+// the following line exists to give the guards their context.
+const GUARD_BAND_LINES = 1;
+
+// Everything up to the last newline is "complete", minus the guard band. An
+// answer shorter than the band never settles early and is delivered whole by
+// `finish`.
+function settledPrefix(raw: string): string {
+  const lines = raw.split("\n");
+  const settledCount = lines.length - 1 - GUARD_BAND_LINES;
+  return settledCount > 0 ? lines.slice(0, settledCount).join("\n") : "";
+}
+
+/**
+ * Releases the answer to the client progressively without ever sending text
+ * the deterministic guards have not seen.
+ *
+ * Each chunk is appended to a raw buffer; the settled prefix of that buffer is
+ * put through the full tier guard chain, and only the part of the *sanitized*
+ * output beyond what was already sent is emitted. Because the guards are
+ * line-scoped, sanitizing a longer prefix normally extends the previous
+ * sanitized output rather than rewriting it. If it ever does rewrite it -- a
+ * guard reaching back further than the band -- the already-sent bytes cannot be
+ * recalled, so progressive flushing stops for the rest of the turn and the
+ * authoritative answer is left to the `done` event, which the client uses to
+ * replace the message content wholesale.
+ */
+class GuardedFlusher {
+  private raw = "";
+  private emitted = "";
+  private diverged = false;
+
+  constructor(
+    private readonly tier: AnalysisTier,
+    private readonly grounding: AskGrounding | undefined,
+    private readonly onDelta: (text: string) => void
+  ) {}
+
+  push(text: string): void {
+    this.raw += text;
+    if (this.diverged) return;
+    const settled = settledPrefix(this.raw);
+    if (!settled) return;
+    this.emit(sanitizeAnswerForTier(settled, this.tier, this.grounding));
+  }
+
+  // `answer` is the validated whole-answer result, which is authoritative.
+  finish(answer: string): void {
+    this.emit(answer);
+  }
+
+  private emit(sanitized: string): void {
+    if (this.diverged) return;
+    if (!sanitized.startsWith(this.emitted)) {
+      this.diverged = true;
+      console.log(JSON.stringify({
+        event: "analysis_stream_flush_diverged",
+        tier: this.tier,
+        emittedChars: this.emitted.length,
+      }));
+      return;
+    }
+    const delta = sanitized.slice(this.emitted.length);
+    if (!delta) return;
+    this.emitted = sanitized;
+    this.onDelta(delta);
+  }
+}
+
 export async function generateAnalysisStream(
   client: Pick<Anthropic, "messages">,
   systemPrompt: string,
@@ -1143,6 +1224,7 @@ export async function generateAnalysisStream(
   const collected: Anthropic.Message[] = [];
   let convo = toMessageParams(messages);
   let anyDeltaSeen = false;
+  const flusher = new GuardedFlusher(tier, grounding, onDelta);
   const abort = new AbortController();
   for (let turn = 0; turn <= MAX_CONTINUATIONS; turn += 1) {
     if (!shouldContinue()) {
@@ -1170,6 +1252,9 @@ export async function generateAnalysisStream(
           }
           deltaSeen = true;
           anyDeltaSeen = true;
+          // Retries are already gated on `anyDeltaSeen`, so nothing buffered
+          // here can be replayed by a second attempt and duplicated.
+          flusher.push(text);
         });
         response = await stream.finalMessage();
       } catch (error) {
@@ -1188,7 +1273,7 @@ export async function generateAnalysisStream(
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
   const answer = validateAnalysisResponse(collected, tier, startedAt, grounding);
-  onDelta(answer);
+  flusher.finish(answer);
   return answer;
 }
 
