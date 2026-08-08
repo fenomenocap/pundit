@@ -3,6 +3,7 @@ import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import {
   MATCH_ANSWER_GUARDS,
+  MATCH_QUESTION_SCOPE,
   buildCompetitionGrounding,
   buildGrounding,
   findFixture,
@@ -20,6 +21,21 @@ describe("MATCH_ANSWER_GUARDS", () => {
     expect(MATCH_ANSWER_GUARDS).toContain("aggregate advancement is outside this model payload");
     expect(MATCH_ANSWER_GUARDS).toContain("omitted from your prose");
     expect(MATCH_ANSWER_GUARDS).toContain("never say it entirely causes the edge");
+  });
+});
+
+describe("MATCH_QUESTION_SCOPE", () => {
+  it("tells the model to answer the question actually asked", () => {
+    expect(MATCH_QUESTION_SCOPE).toContain("Answer the question the user actually\nasked.");
+    expect(MATCH_QUESTION_SCOPE).toContain("leave the fixture data out instead of steering back to the matchup");
+  });
+
+  it("keeps oblique follow-ups answered from the grounding", () => {
+    expect(MATCH_QUESTION_SCOPE).toContain("however short or indirect");
+    expect(MATCH_QUESTION_SCOPE).toContain("answer them in full from the grounding");
+    expect(MATCH_QUESTION_SCOPE)
+      .toContain("never tell the user you have no model data for this matchup");
+    expect(MATCH_QUESTION_SCOPE).toContain("treat\nit as a question about the fixture");
   });
 });
 
@@ -472,6 +488,21 @@ describe("resolveAskContext", () => {
       fixtures,
       [standing("uefa.champions_qual", "Riga FC")]
     )).toEqual({ tier: "competition", competitionId: "uefa.champions_qual" });
+  });
+
+  // Routing keeps grounding on these rather than risking a cue list that drops a
+  // genuine follow-up; MATCH_QUESTION_SCOPE is what stops the answer being bent
+  // back to the fixture.
+  it("still retains match grounding for questions with no match intent", () => {
+    const teamContext: [string, string] = ["Arsenal", "Coventry City"];
+    for (const question of [
+      "What's the weather like?",
+      "Who won the 1966 World Cup?",
+      "Tell me about VAR",
+    ]) {
+      expect(resolveAskContext(question, [], teamContext, fixtures, []))
+        .toMatchObject({ tier: "match", fixture: fixtures[0] });
+    }
   });
 
   it("releases match grounding once the question names another team", () => {

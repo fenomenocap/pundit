@@ -139,6 +139,28 @@ contribution, or invent attacking, defensive, form, or team-strength drivers tha
 For knockout or qualifier fixtures, use win/draw/loss language only. Never describe an outcome as
 earning, sharing, taking, or securing league points.`;
 
+// Match grounding is retained across a conversation on purpose: dropping it on a
+// bare follow-up ("Why?") sent the turn to the general tier, whose prompt then
+// disclaimed model data the user could see on screen. Retention means the
+// grounding also rides along on turns that have nothing to do with the fixture,
+// so the scoping is done here in the prompt rather than by routing keywords --
+// a cue list cannot anticipate real phrasings, and the failure it produces
+// (a genuine follow-up getting a hedged non-answer) is far worse than the one it
+// fixes. Hence the deliberate asymmetry below: anything arguably about the match
+// is answered from the grounding, and only a plainly unrelated question is
+// answered without it.
+export const MATCH_QUESTION_SCOPE = `The fixture grounding is attached to every turn in this
+conversation, including turns that are not about the fixture. Answer the question the user actually
+asked. Anything that bears on this matchup counts as a question about it, however short or indirect
+-- "Why?", "Tell me more", "Is that a good bet?", "the underdog", a question about either club, or
+anything that follows on from your previous answer. Read those as questions about this fixture and
+answer them in full from the grounding; never tell the user you have no model data for this matchup.
+Only when a question is plainly about something else -- a different match, era or competition, a
+rule or concept of the game in general, a non-football topic -- answer that question on its own
+terms, leave the fixture data out instead of steering back to the matchup, and say briefly that the
+answer does not come from Pundit's model. When it is unclear which of the two a question is, treat
+it as a question about the fixture.`;
+
 const MATCH_SYSTEM_PROMPT = `You are a club-football match-analysis assistant for Pundit. You are given
 precomputed probabilities from Pundit's match model for a specific matchup. Treat these numbers as ground truth for the statistical
 analysis. Do not invent or contradict them. When homeFieldAdvantage is true, the model applies a
@@ -165,12 +187,13 @@ model has no player data -- say so briefly, then use web_search for current
 player-prop odds and player news, and present anything found as market- or
 search-sourced with its source and date, never as Pundit model output. If search
 returns nothing solid, say no verified player data is available.
+${MATCH_QUESTION_SCOPE}
 ${MATCH_ANSWER_GUARDS}
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}
-State the headline win/draw/win and O/U 2.5 numbers, mention 1-2 most likely
-scorelines, and give a one-line read on what would need to be true for the
-underdog.`;
+Whenever the answer covers this fixture, state the headline win/draw/win and
+O/U 2.5 numbers, mention 1-2 most likely scorelines, and give a one-line read on
+what would need to be true for the underdog.`;
 
 const COMPETITION_SYSTEM_PROMPT = `You are a club-football competition-analysis assistant for Pundit.
 You are given the current league or cup standings table from ESPN for a specific competition.
