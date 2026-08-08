@@ -130,6 +130,12 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
               if (!res.writableEnded) res.write(": ping\n\n");
             }, 15_000);
           },
+          // Deltas carry guard-checked text as it settles, so a client can
+          // append them as they arrive. `done` still carries the authoritative
+          // answer and clients should replace the message content with it: on
+          // the rare turn where a guard rewrites text that had already been
+          // released, the server stops emitting deltas and only `done` is
+          // complete.
           onDelta: (text) => {
             if (clientGone || res.writableEnded) return;
             sseSend(res, "delta", { text });
