@@ -379,6 +379,68 @@ describe("resolveAskContext", () => {
     }
   });
 
+  // Two phrasings of the relegation/title question used to split across tiers.
+  it.each([
+    "Who gets relegated?",
+    "Which teams go down?",
+    "Who is going to finish first?",
+  ])("routes %s to the season outlook", (question) => {
+    expect(resolveAskContext(question, [], undefined, fixtures, [standing()]))
+      .toEqual({ tier: "season", competitionId: "eng.1" });
+  });
+
+  // Match grounding carries no standings, so a table question asked mid-match
+  // could not be answered from the payload it was being held in.
+  it.each([
+    "How's the table looking?",
+    "Who's top right now?",
+    "Where do they sit in the standings?",
+    "What does the Premier League table show?",
+  ])("lets %s reach competition grounding while a match is in context", (question) => {
+    expect(resolveAskContext(
+      question,
+      [],
+      ["Arsenal", "Coventry City"],
+      fixtures,
+      [standing()]
+    )).toEqual({ tier: "competition", competitionId: "eng.1" });
+  });
+
+  // The guard on the above: retention exists because "Why?" and "Tell me more"
+  // once fell through to the disclaiming general tier. Broadening the table
+  // cues must not reopen that.
+  it.each([
+    "Why?",
+    "Tell me more",
+    "Is that a good bet?",
+    "How confident are you?",
+    "What about BTTS?",
+    "What about goals?",
+  ])("keeps %s on the followed match", (question) => {
+    expect(resolveAskContext(
+      question,
+      [],
+      ["Arsenal", "Coventry City"],
+      fixtures,
+      [standing()]
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
+  });
+
+  it("prefers the competition already in view over the league-table fallback", () => {
+    const history = [
+      { role: "user" as const, content: "How does UCL qualifying look?" },
+      { role: "assistant" as const, content: "Here is the current picture." },
+    ];
+
+    expect(resolveAskContext(
+      "How's the table looking?",
+      history,
+      undefined,
+      fixtures,
+      [standing("uefa.champions_qual", "Riga FC")]
+    )).toEqual({ tier: "competition", competitionId: "uefa.champions_qual" });
+  });
+
   it("releases match grounding once the question names another team", () => {
     const teamContext: [string, string] = ["Arsenal", "Coventry City"];
     expect(resolveAskContext(
