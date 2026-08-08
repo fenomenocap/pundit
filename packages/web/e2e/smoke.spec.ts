@@ -42,6 +42,32 @@ test.describe("smoke", () => {
     await expect(page.getByText("Reconstructed pre-kickoff", { exact: true })).toBeVisible();
   });
 
+  // The server's 400 copy is normally replaced with generic "try rephrasing"
+  // text, so a better message alone never reached the user. MULTIPLE_FIXTURES
+  // is the exception: it names the real fixtures the question contained, and
+  // this asserts that whole path end to end.
+  test("multi-matchup question shows the fixtures the server named", async ({ page }) => {
+    await page.route("**/api/ask", (route) => route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: "I can analyse one match at a time — did you mean Arsenal vs Liverpool, or Chelsea vs Manchester City?",
+        code: "MULTIPLE_FIXTURES",
+      }),
+    }));
+
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "Ask a question" })
+      .fill("Compare Arsenal vs Liverpool and Chelsea vs Manchester City");
+    await page.getByRole("button", { name: "Send" }).click();
+
+    // Next.js renders its own empty route-announcer alert, so scope to the
+    // chat's error bubble rather than every alert on the page.
+    await expect(page.getByRole("alert").first()).toContainText(
+      "did you mean Arsenal vs Liverpool, or Chelsea vs Manchester City?"
+    );
+  });
+
   test("primary nav", async ({ page }) => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Main navigation" });

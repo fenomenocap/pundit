@@ -86,6 +86,13 @@ function sanitizeAskError(err: unknown): string {
     if (err.code === "MODEL_UNAVAILABLE") {
       return "Pundit's match model is temporarily unavailable — competition and general questions still work.";
     }
+    // Naming more than one matchup is the one 400 with a useful next step in
+    // it: the server lists the real fixtures it recognised. Collapsing it into
+    // the generic "try rephrasing" line below threw that away and left the user
+    // guessing which of their matchups to ask about.
+    if (err.code === "MULTIPLE_FIXTURES") {
+      return err.message;
+    }
     switch (err.status) {
       case 400:
         return "Couldn't understand that — try rephrasing your question.";

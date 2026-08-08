@@ -475,22 +475,66 @@ function mentionedTeamPositions(
   return teamPositions;
 }
 
+// Error codes for the two ways team resolution fails. The frontend collapses
+// every other 400 into one generic "try rephrasing" line, so a code is what
+// lets a specific, actionable message through.
+export const MULTIPLE_TEAMS_CODE = "MULTIPLE_TEAMS";
+export const MULTIPLE_FIXTURES_CODE = "MULTIPLE_FIXTURES";
+export const TEAMS_NOT_IDENTIFIED_CODE = "TEAMS_NOT_IDENTIFIED";
+
+// The fixtures the named teams actually form, deduplicated across the two legs
+// of a tie so a home-and-away pair is offered once.
+function fixturesAmongTeams(teams: string[], fixtures: TeamFixture[]): TeamFixture[] {
+  const named = new Set(teams);
+  const seen = new Set<string>();
+  const found: TeamFixture[] = [];
+  for (const fixture of fixtures) {
+    if (!named.has(fixture.home) || !named.has(fixture.away)) continue;
+    const key = [fixture.home, fixture.away].sort().join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    found.push(fixture);
+  }
+  return found;
+}
+
+function listMatchups(fixtures: TeamFixture[]): string {
+  const names = fixtures.map((fixture) => `${fixture.home} vs ${fixture.away}`);
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
+}
+
 export function resolveTeams(question: string, fixtures: TeamFixture[]): [string, string] {
   const orderedTeams = [...mentionedTeamPositions(question, fixtures).entries()]
     .sort(([, positionA], [, positionB]) => positionA - positionB)
     .map(([team]) => team);
 
   if (orderedTeams.length > 2) {
+    // Grounding models exactly one match, so more than one matchup cannot be
+    // answered in a turn. Naming the fixtures the question actually contains
+    // turns that limit into a next step instead of a dead end -- the previous
+    // message told the user the request was wrong without saying what to ask
+    // instead, and the frontend replaced even that with generic copy.
+    const named = fixturesAmongTeams(orderedTeams, fixtures).slice(0, 3);
+    if (named.length > 0) {
+      throw new AppError(
+        400,
+        `I can analyse one match at a time — did you mean ${listMatchups(named)}?`,
+        MULTIPLE_FIXTURES_CODE
+      );
+    }
     throw new AppError(
       400,
-      "Please name exactly one matchup with two teams, e.g. 'Arsenal vs Liverpool'."
+      "Please name exactly one matchup with two teams, e.g. 'Arsenal vs Liverpool'.",
+      MULTIPLE_TEAMS_CODE
     );
   }
 
   if (orderedTeams.length < 2) {
     throw new AppError(
       400,
-      "Could not identify two teams in your question. Try naming both teams, e.g. 'Arsenal vs Liverpool'."
+      "Could not identify two teams in your question. Try naming both teams, e.g. 'Arsenal vs Liverpool'.",
+      TEAMS_NOT_IDENTIFIED_CODE
     );
   }
 
@@ -505,8 +549,12 @@ export function resolveQuestionTeams(
     return resolveTeams(question, fixtures);
   } catch (err) {
     if (!(err instanceof AppError) || err.statusCode !== 400) throw err;
-    const isMissingTeams = err.message.startsWith("Could not identify two teams");
-    const isCompetitionMultiTeam = err.message.startsWith("Please name exactly one matchup")
+    // Matched on the error code rather than its wording: the multi-team message
+    // now names the fixtures it found, so a prefix check would silently stop
+    // recognising it.
+    const isMissingTeams = err.code === TEAMS_NOT_IDENTIFIED_CODE;
+    const isCompetitionMultiTeam =
+      (err.code === MULTIPLE_TEAMS_CODE || err.code === MULTIPLE_FIXTURES_CODE)
       && isCompetitionQuestion(question);
     if (!isMissingTeams && !isCompetitionMultiTeam) throw err;
     return undefined;
