@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getModelFixtureKey, ModelFixture } from "./model-data";
 import {
+  disabledSourceReason,
+  extractEventDates,
   fetchAllMarketOdds,
   fetchKalshiOdds,
   fetchPolymarketOdds,
+  polymarketSearchQueries,
   noVigFromDecimal,
   parseKalshiEvent,
   parsePolymarketEvent,
@@ -144,6 +147,8 @@ describe("local fixture market normalization", () => {
       competition: "UEFA Champions League Qualifiers",
       home: "Bodoe Glimt",
       away: "St Gillis",
+      utcDate: "2026-08-11T16:00:00Z",
+      date: "2026-08-11",
     };
     const odds = parseKalshiEvent({
       title: "Bodoe/Glimt vs Union Gilloise: Regulation Time Moneyline",
@@ -160,6 +165,74 @@ describe("local fixture market normalization", () => {
     expect(odds?.pAway).toBeCloseTo(0.30 / total);
   });
 
+  // Both legs of a tie name the same two clubs, so without the date the wrong
+  // leg can price a fixture.
+  it("rejects the other leg of a two-legged tie", () => {
+    const secondLeg: ModelFixture = {
+      ...fixture,
+      competitionId: "uefa.champions_qual",
+      home: "Bodoe Glimt",
+      away: "St Gillis",
+      utcDate: "2026-08-11T16:00:00Z",
+      date: "2026-08-11",
+    };
+    const markets = [
+      { status: "active", yes_sub_title: "Bodoe/Glimt", yes_ask_dollars: 0.55 },
+      { status: "active", yes_sub_title: "Tie", yes_ask_dollars: 0.25 },
+      { status: "active", yes_sub_title: "Union Gilloise", yes_ask_dollars: 0.30 },
+    ];
+    // Same clubs, first leg six days earlier.
+    expect(parseKalshiEvent({
+      event_ticker: "KXUCLGAME-26AUG05USGBOG",
+      title: "Union Gilloise vs Bodoe/Glimt: Regulation Time Moneyline",
+      sub_title: "USG vs BOG (Aug 5)",
+      markets,
+    }, secondLeg)).toBeNull();
+    // The leg we asked for still matches.
+    expect(parseKalshiEvent({
+      event_ticker: "KXUCLGAME-26AUG11BOGUSG",
+      title: "Bodoe/Glimt vs Union Gilloise: Regulation Time Moneyline",
+      sub_title: "BOG vs USG (Aug 11)",
+      markets,
+    }, secondLeg)).not.toBeNull();
+  });
+
+  it("tolerates a label a day off the stored UTC date, and no label at all", () => {
+    expect(extractEventDates("ucl-stu1-fen-2026-08-11")).toEqual([{ month: 8, day: 11 }]);
+    expect(extractEventDates("kxuclgame-26aug11almlev")).toEqual([{ month: 8, day: 11 }]);
+    expect(extractEventDates("alm vs lev (aug 11)")).toEqual([{ month: 8, day: 11 }]);
+    // A late kick-off can be published a day either side of the UTC date we
+    // hold, and an event with no readable date must not be discarded.
+    const uclFixture: ModelFixture = {
+      ...fixture, home: "Sturm Graz", away: "Fenerbahce",
+      utcDate: "2026-08-11T18:30:00Z", date: "2026-08-11",
+    };
+    const markets = [
+      ["Sturm Graz", "0.25"], ["Draw", "0.25"], ["Fenerbahce", "0.5"],
+    ].map(([groupItemTitle, yes]) => ({
+      active: true, closed: false, groupItemTitle, sportsMarketType: "moneyline",
+      outcomes: '["Yes","No"]', outcomePrices: JSON.stringify([yes, String(1 - Number(yes))]),
+    }));
+    expect(parsePolymarketEvent({
+      title: "Sturm Graz vs. Fenerbahce", slug: "ucl-stu-fen-2026-08-12", markets,
+    }, uclFixture)).not.toBeNull();
+    expect(parsePolymarketEvent({
+      title: "Sturm Graz vs. Fenerbahce", markets,
+    }, uclFixture)).not.toBeNull();
+  });
+
+  it("searches Polymarket with the fuller club names, not ClubElo's short ones", () => {
+    const uclFixture: ModelFixture = {
+      ...fixture, home: "St Gillis", away: "Bodoe Glimt",
+    };
+    const queries = polymarketSearchQueries(uclFixture);
+    // The model carries ClubElo's abbreviations; the alias table holds the names
+    // Polymarket titles its events with.
+    expect(queries[0]).toBe("St Gillis Bodoe Glimt");
+    expect(queries.length).toBeGreaterThan(1);
+    expect(queries.slice(1).join(" ")).toMatch(/Gilloise/);
+  });
+
   // Shape cut from the live KXWCGAME series response: outcome labels carry a
   // "Reg Time:" prefix and prices live only in the *_dollars fields.
   it("parses a KXWCGAME event with prefixed labels and dollar-only prices", () => {
@@ -172,7 +245,10 @@ describe("local fixture market normalization", () => {
     }));
     const odds = parseKalshiEvent({
       title: "England vs Argentina: Regulation Time Moneyline",
-      sub_title: "ENG vs ARG (Jul 19)",
+      // Dated to the fixture. It read "Jul 19" against a 15 July fixture while
+      // nothing checked the date, which is exactly the mismatch that let the
+      // wrong leg of a tie match.
+      sub_title: "ENG vs ARG (Jul 15)",
       markets,
     }, fixture);
     const total = 0.43 + 0.32 + 0.27;
@@ -238,27 +314,36 @@ describe("market source fetchers", () => {
       .toEqual({ pHome: 0.5, pDraw: 0.25, pAway: 0.25 });
   });
 
-  // Stake sits behind Cloudflare and answers the GraphQL call with a 403
-  // challenge page. Reported as "no matching fixtures" that reads as a naming
-  // problem, so the cause has to survive as far as the caller.
+  // A source rejected outright must not be reported as "no matching fixtures",
+  // which reads as a naming problem: the cause has to survive to the caller.
+  // Exercised through Kalshi because Stake is no longer queried at all.
   it("reports why a source came back empty when the request itself failed", async () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: unknown) => {
       const href = String(url);
-      if (href.includes("stake.bet")) {
-        return Promise.resolve(new Response("<!DOCTYPE html><title>Just a moment...</title>", {
-          status: 403,
-        }));
+      if (href.includes("kalshi")) {
+        return Promise.resolve(new Response("rate limited", { status: 429 }));
       }
-      return Promise.resolve(jsonResponse({ events: [], cursor: "" }));
+      return Promise.resolve(jsonResponse({ events: [] }));
     }));
 
     const { odds, errors } = await fetchAllMarketOdds([fixture]);
-    expect(odds.stake.size).toBe(0);
-    expect(errors.stake).toContain("403");
+    expect(odds.kalshi.size).toBe(0);
+    expect(errors.kalshi).toContain("429");
     // Queried cleanly and matched nothing: no error, so the caller keeps saying
-    // "no matching fixtures" for these.
-    expect(errors.kalshi).toBeNull();
+    // "no matching fixtures" for this one.
     expect(errors.polymarket).toBeNull();
+  });
+
+  it("does not query a disabled source at all", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ events: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { odds, errors } = await fetchAllMarketOdds([fixture]);
+    expect(disabledSourceReason("stake")).toContain("Cloudflare");
+    expect(odds.stake.size).toBe(0);
+    // Never asked, so there is no failure to report and no request spent.
+    expect(errors.stake).toBeNull();
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("stake.bet"))).toBe(true);
   });
 
   it("keeps the other sources when Polymarket fails", async () => {
