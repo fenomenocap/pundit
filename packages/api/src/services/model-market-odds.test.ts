@@ -104,7 +104,8 @@ describe("refreshModelMarketOdds", () => {
 
     await refreshModelMarketOdds();
     const status = getModelMarketOddsStatus();
-    expect(status.sourceWarnings.stake).toMatch(/no matching fixtures \(0\/1\)/);
+    // Stake is switched off, so it reports as deliberate rather than as a miss.
+    expect(status.sourceWarnings.stake).toMatch(/disabled/);
     expect(status.sourceWarnings.polymarket).toMatch(/no matching fixtures \(0\/1\)/);
     expect(status.sourceWarnings.kalshi).toBeNull();
     expect(status.coverage).toEqual({
@@ -127,16 +128,16 @@ describe("refreshModelMarketOdds", () => {
         polymarket: new Map(),
         kalshi: new Map(),
       },
-      errors: { stake: "403: <!DOCTYPE html>Just a moment...", polymarket: null, kalshi: null },
+      errors: { stake: null, polymarket: null, kalshi: "429: rate limited" },
     });
 
     await refreshModelMarketOdds();
     const status = getModelMarketOddsStatus();
-    // Blocked by Cloudflare, not a naming problem — the warning has to say so
-    // or it sends the reader after the wrong bug.
-    expect(status.sourceWarnings.stake).toMatch(/request failed/);
-    expect(status.sourceWarnings.stake).toContain("403");
-    expect(status.sourceWarnings.stake).not.toMatch(/no matching fixtures/);
+    // Rejected outright, not a naming problem — the warning has to say so or it
+    // sends the reader after the wrong bug.
+    expect(status.sourceWarnings.kalshi).toMatch(/request failed/);
+    expect(status.sourceWarnings.kalshi).toContain("429");
+    expect(status.sourceWarnings.kalshi).not.toMatch(/no matching fixtures/);
     expect(status.sourceWarnings.polymarket).toMatch(/no matching fixtures \(0\/1\)/);
   });
 
@@ -162,8 +163,7 @@ describe("refreshModelMarketOdds", () => {
     // so it must not be reported as a query that matched nothing.
     expect(status.sourceWarnings.kalshi).toMatch(/not configured for premier-league/);
     expect(status.sourceWarnings.kalshi).not.toMatch(/no matching fixtures/);
-    // Sources that did run keep the empty-result wording.
-    expect(status.sourceWarnings.stake).toMatch(/no matching fixtures \(0\/1\)/);
+    // A source that did run keeps the empty-result wording.
     expect(status.sourceWarnings.polymarket).toMatch(/no matching fixtures \(0\/1\)/);
     vi.mocked(isSourceConfiguredForProfile).mockReset();
   });
