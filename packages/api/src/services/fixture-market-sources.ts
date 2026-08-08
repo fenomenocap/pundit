@@ -193,13 +193,67 @@ function teamSearchTerms(team: string): string[] {
     .map(normalizeTeamText);
 }
 
+const MONTHS = [
+  "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+];
+
+/**
+ * Month/day pairs a venue put in its event text, in any of the shapes the two
+ * sources actually publish: an ISO date in a Polymarket slug or question
+ * ("2026-08-11"), a Kalshi ticker stem ("26AUG11"), or a Kalshi sub-title
+ * ("ALM vs LEV (Aug 11)").
+ */
+export function extractEventDates(text: string): Array<{ month: number; day: number }> {
+  const found: Array<{ month: number; day: number }> = [];
+  for (const [, month, day] of text.matchAll(/\d{4}-(\d{2})-(\d{2})/g)) {
+    found.push({ month: Number(month), day: Number(day) });
+  }
+  for (const [, name, day] of text.matchAll(/\d{2}([a-z]{3})(\d{2})/g)) {
+    const month = MONTHS.indexOf(name) + 1;
+    if (month > 0) found.push({ month, day: Number(day) });
+  }
+  for (const [, name, day] of text.matchAll(/\b([a-z]{3})[a-z]*\.?\s+(\d{1,2})\b/g)) {
+    const month = MONTHS.indexOf(name) + 1;
+    if (month > 0) found.push({ month, day: Number(day) });
+  }
+  return found;
+}
+
+/**
+ * Both legs of a two-legged tie carry the same two club names, so names alone
+ * cannot tell them apart -- a fixture could be priced off the other leg's
+ * market. Today the settled leg is usually skipped for being closed, but that
+ * is incidental: while both legs are open at once, nothing else separates them.
+ *
+ * A day either side is allowed because these labels are published in local time
+ * and a late kick-off crosses the UTC date we hold. Text with no date we can
+ * read is accepted rather than rejected -- absence of a date is not evidence of
+ * the wrong match, and rejecting on it would silently cost coverage from any
+ * venue that omits one.
+ */
+function eventDateMatches(text: string, fixture: ModelFixture): boolean {
+  const dates = extractEventDates(text);
+  if (dates.length === 0) return true;
+  const kickoff = new Date(`${fixture.date}T00:00:00Z`);
+  if (Number.isNaN(kickoff.getTime())) return true;
+  return dates.some(({ month, day }) => {
+    for (const offset of [-1, 0, 1]) {
+      const candidate = new Date(kickoff);
+      candidate.setUTCDate(candidate.getUTCDate() + offset);
+      if (candidate.getUTCMonth() + 1 === month && candidate.getUTCDate() === day) return true;
+    }
+    return false;
+  });
+}
+
 function eventMatchesFixture(event: UnknownRecord, fixture: ModelFixture): boolean {
-  const text = normalizeTeamText(["title", "subtitle", "sub_title", "slug"]
+  const text = normalizeTeamText(["title", "subtitle", "sub_title", "slug", "event_ticker"]
     .map((key) => String(event[key] ?? ""))
     .join(" "));
-  return [fixture.home, fixture.away].every((team) =>
+  const namesMatch = [fixture.home, fixture.away].every((team) =>
     teamSearchTerms(team).some((term) => text.includes(term))
   );
+  return namesMatch && eventDateMatches(text, fixture);
 }
 
 export function parseStakeFixture(raw: unknown, fixtures: ModelFixture[]) {
@@ -370,26 +424,61 @@ async function fetchPolymarketOddsBySlug(slug: string, fixture: ModelFixture): P
   return null;
 }
 
+/** Longest first: the fuller name is the more distinctive search term. */
+function searchNameCandidates(team: string): string[] {
+  const canonical = normalizeTeamName(team);
+  const aliases = getTeamNameAliases()
+    .filter(([, target]) => normalizeTeamName(target) === canonical)
+    .map(([alias]) => alias)
+    .sort((a, b) => b.length - a.length);
+  return [...new Set([team, ...aliases])];
+}
+
+const POLYMARKET_QUERIES_PER_FIXTURE = 2;
+
+/**
+ * Search strings to try for one fixture, most promising first.
+ *
+ * The model carries ClubElo's abbreviated names ("St Gillis", "Bodoe Glimt"),
+ * which are the weakest possible query against a venue that titles its events
+ * with full club names. The alias table already holds the longer forms the rest
+ * of football uses, so the second attempt is built from those. Capped, because
+ * this is one request per attempt per fixture.
+ */
+export function polymarketSearchQueries(fixture: ModelFixture): string[] {
+  const homes = searchNameCandidates(fixture.home);
+  const aways = searchNameCandidates(fixture.away);
+  const queries: string[] = [];
+  for (let index = 0; index < Math.max(homes.length, aways.length); index += 1) {
+    queries.push(`${homes[Math.min(index, homes.length - 1)]} `
+      + `${aways[Math.min(index, aways.length - 1)]}`);
+  }
+  return [...new Set(queries)].slice(0, POLYMARKET_QUERIES_PER_FIXTURE);
+}
+
 export async function fetchPolymarketOdds(fixtures: ModelFixture[]): Promise<Map<string, ThreeWayOdds>> {
   const result = new Map<string, ThreeWayOdds>();
   let firstError: unknown = null;
   for (const fixture of fixtures) {
     try {
-      const query = encodeURIComponent(`${fixture.home} ${fixture.away}`);
-      const payload = record(await jsonFetch(`${POLYMARKET_SEARCH_URL}?q=${query}`, {
-        headers: { Accept: "application/json" },
-      }));
-      for (const raw of array(payload?.events)) {
-        const event = record(raw);
-        if (!event || !eventMatchesFixture(event, fixture)) continue;
-        let odds = parsePolymarketEvent(event, fixture);
-        if (!odds && typeof event.slug === "string" && event.slug) {
-          odds = await fetchPolymarketOddsBySlug(event.slug, fixture).catch(() => null);
+      for (const search of polymarketSearchQueries(fixture)) {
+        const payload = record(await jsonFetch(
+          `${POLYMARKET_SEARCH_URL}?q=${encodeURIComponent(search)}`,
+          { headers: { Accept: "application/json" } }
+        ));
+        for (const raw of array(payload?.events)) {
+          const event = record(raw);
+          if (!event || !eventMatchesFixture(event, fixture)) continue;
+          let odds = parsePolymarketEvent(event, fixture);
+          if (!odds && typeof event.slug === "string" && event.slug) {
+            odds = await fetchPolymarketOddsBySlug(event.slug, fixture).catch(() => null);
+          }
+          if (odds) {
+            result.set(getModelFixtureKey(fixture), odds);
+            break;
+          }
         }
-        if (odds) {
-          result.set(getModelFixtureKey(fixture), odds);
-          break;
-        }
+        if (result.has(getModelFixtureKey(fixture))) break;
       }
     } catch (error) {
       firstError = firstError ?? error;
@@ -436,6 +525,24 @@ export async function fetchKalshiOdds(
 
 export type MarketSourceName = "stake" | "polymarket" | "kalshi";
 
+/**
+ * Sources switched off, and why. A disabled source is not queried at all, so it
+ * stops spending a request per refresh on a call that cannot succeed, and its
+ * empty coverage is reported as deliberate rather than as a failure to chase.
+ *
+ * Stake answers the GraphQL endpoint with a Cloudflare interstitial (HTTP 403,
+ * "Just a moment..."), for every fixture, regardless of tournament slug. Getting
+ * around that is bot-detection circumvention, so the source stays off until
+ * there is a supported way in. Removing the key here re-enables it.
+ */
+export const DISABLED_SOURCES: Partial<Record<MarketSourceName, string>> = {
+  stake: "Stake serves a Cloudflare challenge (HTTP 403) instead of the odds API",
+};
+
+export function disabledSourceReason(source: MarketSourceName): string | null {
+  return DISABLED_SOURCES[source] ?? null;
+}
+
 export interface MarketOddsFetch {
   odds: Record<MarketSourceName, Map<string, ThreeWayOdds>>;
   /**
@@ -462,10 +569,12 @@ export async function fetchAllMarketOdds(
   fixtures: ModelFixture[]
 ): Promise<MarketOddsFetch> {
   const grouped = fixturesByMarketProfile(fixtures);
-  const stakeResults = await Promise.allSettled(
-    [...grouped.entries()].map(([profile, profileFixtures]) =>
-      fetchStakeOdds(profileFixtures, profile))
-  );
+  const stakeResults = disabledSourceReason("stake")
+    ? []
+    : await Promise.allSettled(
+      [...grouped.entries()].map(([profile, profileFixtures]) =>
+        fetchStakeOdds(profileFixtures, profile))
+    );
   const kalshiResults = await Promise.allSettled(
     [...grouped.entries()].map(([profile, profileFixtures]) =>
       fetchKalshiOdds(profileFixtures, profile))
@@ -502,9 +611,10 @@ export async function fetchAllMarketOdds(
 
 /**
  * Whether a source is configured to be queried at all for a competition
- * profile. Kalshi needs a series ticker and only the World Cup profile has one,
- * so `fetchKalshiOdds` returns an empty map for club competitions without
- * issuing a request. Reported separately from a query that ran and matched
+ * profile. Kalshi needs a series ticker; all three profiles now carry one, so
+ * this only bites a profile added without one, for which `fetchKalshiOdds`
+ * returns an empty map without issuing a request. Reported separately from a
+ * query that ran and matched
  * nothing: the two look identical in a coverage count but mean opposite things,
  * and conflating them sends whoever reads it debugging a request that was never
  * made.

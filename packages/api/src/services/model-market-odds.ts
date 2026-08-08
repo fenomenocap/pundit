@@ -1,5 +1,6 @@
 import { getCachedModelData, getModelFixtureKey, ModelFixture } from "./model-data";
 import {
+  disabledSourceReason,
   fetchAllMarketOdds,
   isSourceConfiguredForProfile,
   marketProfilesForFixtures,
@@ -79,8 +80,13 @@ export async function refreshModelMarketOdds(): Promise<void> {
       const fetched = sources[name];
       const configuredProfiles = profiles
         .filter((profile) => isSourceConfiguredForProfile(name, profile));
+      const disabled = disabledSourceReason(name);
       if (active.length === 0 || fetched.size > 0) {
         cache.sourceWarnings[name] = null;
+      } else if (disabled) {
+        // Switched off on purpose and never queried. Distinct from both a
+        // failure and a miss: there is nothing here to investigate.
+        cache.sourceWarnings[name] = `${name} is disabled — ${disabled}`;
       } else if (errors[name]) {
         // The request itself failed. Distinct from matching nothing, and the
         // only one of these three states that points at us rather than at the
