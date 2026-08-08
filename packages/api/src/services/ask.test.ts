@@ -89,6 +89,39 @@ describe("resolveTeams", () => {
     expect(() => resolveTeams("Arsenal vs Liverpool, then Brighton", fixtures))
       .toThrowError(AppError);
   });
+
+  // Grounding models exactly one match, so several matchups cannot be answered
+  // in one turn -- but the limit is only useful if the error says which match
+  // to ask about. The code is what carries the message past the frontend's
+  // generic 400 copy.
+  it("names the real fixtures when the question holds more than one matchup", () => {
+    const multiFixtures = [
+      fixture("Arsenal", "Liverpool"),
+      fixture("Coventry City", "Tottenham Hotspur", { fixtureId: 2 }),
+    ];
+    try {
+      resolveTeams("Compare Arsenal vs Liverpool and Coventry City vs Tottenham", multiFixtures);
+      throw new Error("expected resolveTeams to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      const appError = err as AppError;
+      expect(appError.statusCode).toBe(400);
+      expect(appError.code).toBe("MULTIPLE_FIXTURES");
+      expect(appError.message).toContain("Arsenal vs Liverpool");
+      expect(appError.message).toContain("Coventry City vs Tottenham Hotspur");
+    }
+  });
+
+  it("falls back to the generic message when the teams form no fixture", () => {
+    try {
+      resolveTeams("Arsenal, Liverpool and Brighton", fixtures);
+      throw new Error("expected resolveTeams to throw");
+    } catch (err) {
+      const appError = err as AppError;
+      expect(appError.code).toBe("MULTIPLE_TEAMS");
+      expect(appError.message).toContain("exactly one matchup");
+    }
+  });
 });
 
 describe("resolveQuestionTeams", () => {
