@@ -175,7 +175,25 @@ export const SEASON_QUESTION_CUES = [
   "relegation",
 ];
 
+// Literal cues only fire on the exact phrasing a user happened to type, so two
+// wordings of one question landed in different tiers: "Relegation battle?" got
+// the season outlook while "Who gets relegated?" and "Which teams go down?"
+// fell through to the disclaiming general tier. These patterns cover the
+// inflections of the same question.
+//
+// Deliberately narrow where a phrase is ambiguous: "go down" alone also means a
+// price or a probability falling, so it only counts when the subject is a team
+// ("who goes down", "which clubs go down"), never on its own.
+export const SEASON_QUESTION_PATTERNS: RegExp[] = [
+  /\brelegat(?:e|es|ed|ing|ion)\b/,
+  /\b(?:who|which (?:teams?|clubs?|sides?))\b[^?.!]*\b(?:go|goes|going|drop|drops|dropping) down\b/,
+  /\b(?:who|which (?:teams?|clubs?|sides?))\b[^?.!]*\b(?:stay|stays|staying) up\b/,
+  /\bfinish(?:es|ing)? (?:first|top|1st|in the top)\b/,
+  /\b(?:win|wins|winning|take|takes) the title\b/,
+];
+
 export function isSeasonOutlookQuestion(question: string): boolean {
   const normalized = question.toLowerCase();
-  return SEASON_QUESTION_CUES.some((cue) => normalized.includes(cue));
+  return SEASON_QUESTION_CUES.some((cue) => normalized.includes(cue))
+    || SEASON_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized));
 }
