@@ -1,0 +1,10 @@
+# Railway config for @sports-predict/api
+# In the Railway service settings, set "Config file path" to:
+#   /packages/api/railway.toml
+# if the repo root is the linked directory.
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
