@@ -1,0 +1,18 @@
+name: Production Health
+
+# Railway healthchecks only run at deploy time — they do not watch a live
+# service. This scheduled job pings production every 15 minutes so a crash
+# or bad deploy surfaces in GitHub (email to watchers) without manual polling.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify production endpoints
+        run: bash scripts/verify-prod.sh
