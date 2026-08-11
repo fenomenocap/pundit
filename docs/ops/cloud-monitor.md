@@ -114,26 +114,38 @@ therefore invisible unless watched for.
 Alert on either of:
 
 - `consecutiveFailures` climbing above ~3 — every enabled provider is failing.
-- `lastGoodProvider` no longer `minimax` — the primary is down and a fallback is carrying
-  traffic, which costs money the primary did not.
+- `lastGoodProvider` stuck at an old `lastGoodAt` while `totalSearches` climbs — searches
+  are running but none are succeeding.
 
 **Why the primary is the fragile part.** MiniMax's search endpoint
 (`POST /v1/coding_plan/search`) is undocumented; it was identified from the source of
 MiniMax's published `minimax-coding-plan-mcp` server. It uses the same key and coding-plan
 quota as inference, so it adds no vendor or bill, but it can change shape without notice.
 
-**Recovery without a deploy:** set `BRAVE_API_KEY` in Railway. `web-search.ts` tries
-providers in order and Brave activates as soon as its key exists — no code change needed.
-Confirm by watching `lastGoodProvider` flip to `brave` on `/ready`.
+**Recovery** is a code change: the response shape is parsed in one place (`web-search.ts`,
+`minimaxProvider.run`), so adapting to a changed payload — or slotting in a replacement
+backend — touches that file only. There is deliberately no second vendor configured; search
+rides the key and quota Pundit already pays for.
 
-### Step 1c — Rate limiting is per-instance
+### Step 1c — Rate limiting and replica count
 
-`/api/ask` is limited to 10 requests/minute, but `express-rate-limit` keeps counters in
-process memory and production runs more than one replica — a single burst returns several
-different `reset` values. The effective ceiling is therefore *replicas × 10*, not 10. It
-still bites (a 40-request burst reliably produces 429s), but do not read the configured
-number as a hard global cap when reasoning about LLM spend. A true global limit would need
-a shared store, which this project deliberately does not run.
+`express-rate-limit` keeps counters in process memory, so each replica enforces its own
+limit. `/api/ask` therefore divides the intended global budget by the declared replica
+count: `ASK_RATE_LIMIT_PER_MINUTE` (default 10) ÷ `API_REPLICAS` (default 2).
+
+`GET /ready` reports the resolved values:
+
+```json
+"askRateLimit": { "perMinute": 10, "replicas": 2, "perInstance": 5 }
+```
+
+**If you change Railway's replica count, change `API_REPLICAS` to match.** If it drifts
+low the limit only gets stricter than intended, which is the safe direction; if it drifts
+high, users get throttled more than intended on an endpoint that costs LLM quota per call.
+
+To confirm the real ceiling, send ~14 *sequential* requests and watch for 429s. A
+concurrent burst is a poor test: it spreads across replicas and can slip under every
+per-instance counter.
 
 ### Step 2 — Decide
 
@@ -165,7 +177,7 @@ Logs point to a fixable bug in this repo (missing handler, bad import, crash in 
 
 #### C) Unclear / env / secret
 
-Missing `ANTHROPIC_API_KEY`, Railway misconfiguration, or cause not obvious from logs.
+Missing `MINIMAX_API_KEY`, Railway misconfiguration, or cause not obvious from logs.
 
 **Action:**
 

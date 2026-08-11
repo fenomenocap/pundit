@@ -12,22 +12,11 @@ function minimaxBody(results: Array<Record<string, unknown>>) {
   return { ok: true, json: async () => ({ organic: results }) };
 }
 
-function braveBody(results: Array<Record<string, unknown>>) {
-  return { ok: true, json: async () => ({ web: { results } }) };
-}
-
 const MINIMAX_RESULT = {
   title: "Arsenal team news",
   link: "https://example.com/a",
   snippet: "Timber returns",
   date: "12 Apr 2026",
-};
-
-const BRAVE_RESULT = {
-  title: "Arsenal injury list",
-  url: "https://example.com/b",
-  description: "Saka doubtful",
-  page_age: "2026-08-10T00:00:00Z",
 };
 
 describe("normalizeSearchDate", () => {
@@ -75,12 +64,10 @@ describe("searchWeb provider chain", () => {
     fetchMock.mockReset();
     resetWebSearchStatus();
     process.env.MINIMAX_API_KEY = "test-key";
-    delete process.env.BRAVE_API_KEY;
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete process.env.BRAVE_API_KEY;
   });
 
   it("uses MiniMax first and reports it as the serving provider", async () => {
@@ -96,37 +83,41 @@ describe("searchWeb provider chain", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falls over to Brave when the MiniMax endpoint breaks", async () => {
-    // The reason Brave exists: the MiniMax endpoint is undocumented and can
-    // change shape without notice.
-    process.env.BRAVE_API_KEY = "brave-key";
-    fetchMock
-      .mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) })
-      .mockResolvedValueOnce(braveBody([BRAVE_RESULT]));
-    const results = await searchWeb("arsenal team news");
-    expect(results).toHaveLength(1);
-    expect(results[0].link).toBe("https://example.com/b");
-    expect(results[0].date).toBe("2026-08-10");
+  it("records the failure and degrades when the MiniMax endpoint breaks", async () => {
+    // Search rides MiniMax's own key and quota by design; there is no second
+    // vendor to fall back to, so a break must be counted and visible on /ready
+    // rather than silently looking like the model not searching.
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+    expect(await searchWeb("arsenal team news")).toEqual([]);
     const status = getWebSearchStatus();
-    expect(status.lastGoodProvider).toBe("brave");
     expect(status.providerFailures.minimax).toBe(1);
-    expect(status.consecutiveFailures).toBe(0);
+    expect(status.consecutiveFailures).toBe(1);
+    expect(status.lastGoodProvider).toBeNull();
   });
 
-  it("falls through a provider that succeeds but returns nothing", async () => {
-    process.env.BRAVE_API_KEY = "brave-key";
-    fetchMock
-      .mockResolvedValueOnce(minimaxBody([]))
-      .mockResolvedValueOnce(braveBody([BRAVE_RESULT]));
-    expect(await searchWeb("arsenal")).toHaveLength(1);
-    expect(getWebSearchStatus().lastGoodProvider).toBe("brave");
+  it("treats a structurally valid empty payload as no results", async () => {
+    fetchMock.mockResolvedValueOnce(minimaxBody([]));
+    expect(await searchWeb("arsenal")).toEqual([]);
+    expect(getWebSearchStatus().consecutiveFailures).toBe(1);
   });
 
-  it("skips Brave entirely when no key is configured", async () => {
+  it("makes exactly one upstream call and enables only MiniMax", async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
     expect(await searchWeb("arsenal")).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getWebSearchStatus().enabledProviders).toEqual(["minimax"]);
+  });
+
+  it("clears the failure streak once a search succeeds again", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+    await searchWeb("one");
+    expect(getWebSearchStatus().consecutiveFailures).toBe(1);
+    await searchWeb("two");
+    const status = getWebSearchStatus();
+    expect(status.consecutiveFailures).toBe(0);
+    expect(status.lastGoodProvider).toBe("minimax");
   });
 
   it("counts consecutive total failures so an outage is visible", async () => {

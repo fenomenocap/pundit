@@ -3,19 +3,17 @@
 // Anthropic's hosted web_search server tool had no MiniMax equivalent, so
 // Pundit executes search itself and hands results back as a tool_result.
 //
-// Providers are tried in order and the first to return results wins:
+// The backend is MiniMax's own search endpoint: it authenticates with the same
+// MINIMAX_API_KEY as inference and draws on the same coding-plan quota, so no
+// second vendor, key or bill is involved. That is the whole point -- a
+// third-party search API was considered and deliberately rejected.
 //
-//   1. MiniMax  -- same MINIMAX_API_KEY as inference, same coding-plan quota,
-//                  so no second vendor, key or bill. Always enabled.
-//   2. Brave    -- only when BRAVE_API_KEY is set. Present because the MiniMax
-//                  endpoint is undocumented: it was identified from the source
-//                  of MiniMax's published `minimax-coding-plan-mcp` server and
-//                  can change without notice. Setting the key restores search
-//                  through an environment variable rather than a code deploy.
-//
-// Every detail of each wire format is confined to this file. The rest of the
-// codebase depends only on searchWeb's contract, so adding or reordering
-// providers never reaches ask.ts.
+// The endpoint is undocumented; it was identified from the source of MiniMax's
+// published `minimax-coding-plan-mcp` server, which is a thin wrapper over this
+// call. It can therefore change without notice, which is handled two ways:
+// every detail of the wire format is confined to this file behind searchWeb's
+// contract, and getWebSearchStatus() reports failures so a break is visible on
+// /ready instead of looking like the model choosing not to search.
 
 // Well inside ask.ts's 90s REQUEST_TIMEOUT_MS: a turn may run several searches
 // plus the model round trips, so no single search may monopolise the budget.
@@ -145,33 +143,11 @@ const minimaxProvider: SearchProvider = {
   },
 };
 
-// Standby for the day the undocumented MiniMax endpoint changes shape.
-const braveProvider: SearchProvider = {
-  name: "brave",
-  enabled: () => Boolean(process.env.BRAVE_API_KEY),
-  async run(query) {
-    const url = new URL("https://api.search.brave.com/res/v1/web/search");
-    url.searchParams.set("q", query);
-    url.searchParams.set("count", String(MAX_RESULTS));
-    const response = await fetch(url, {
-      headers: {
-        accept: "application/json",
-        "x-subscription-token": String(process.env.BRAVE_API_KEY),
-      },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!response.ok) throw new Error(`status ${response.status}`);
-    const body = await response.json() as { web?: { results?: unknown } };
-    return normalizeResults(body.web?.results, (entry) => ({
-      title: asString(entry.title),
-      link: asString(entry.url),
-      snippet: asString(entry.description),
-      date: asString(entry.page_age ?? entry.age),
-    }));
-  },
-};
-
-const PROVIDERS: SearchProvider[] = [minimaxProvider, braveProvider];
+// Deliberately one provider. The chain shape is kept because it costs nothing
+// and is where a replacement would slot in if MiniMax's endpoint ever changes,
+// but no second vendor is configured: search rides the key and quota Pundit
+// already pays for.
+const PROVIDERS: SearchProvider[] = [minimaxProvider];
 
 export interface WebSearchStatus {
   /** Provider that answered the most recent successful search. */
