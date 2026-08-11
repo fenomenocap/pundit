@@ -154,6 +154,14 @@ describe("stripProcessNarration", () => {
     )).toBe("**Verdict**\nArsenal are favoured.\n\n**Goals**");
   });
 
+  it("removes narration whose verb is not a retrieval word", () => {
+    // Reached production: "get" was outside the original verb list, so the
+    // clause survived into a live answer.
+    expect(stripProcessNarration(
+      "I have no verified updates. Let me get more concrete details from the Telegraph."
+    )).toBe("I have no verified updates.");
+  });
+
   it("keeps the negated disclaimer the general tier depends on", () => {
     const answer = "I'm not pulling this from Pundit's model data — Pundit has no injury feed.";
     expect(stripProcessNarration(answer)).toBe(answer);
