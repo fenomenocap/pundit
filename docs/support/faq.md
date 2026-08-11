@@ -24,4 +24,4 @@ For Premier League fixtures, yes — the model applies a configured home-field b
 `/evaluation/club-season` shows rolling pre-kickoff calibration snapshots for finished club fixtures. `/evaluation/wc-2026` is a frozen World Cup 2026 backtest — historical only, not live forecasts.
 
 **Is there an API?**
-Yes, all data shown in the app is available read-only with no authentication (except chat, which requires `ANTHROPIC_API_KEY` on the server). See the [API Reference](../api-reference/overview.md).
+Yes, all data shown in the app is available read-only with no authentication (except chat, which requires `MINIMAX_API_KEY` on the server). See the [API Reference](../api-reference/overview.md).
