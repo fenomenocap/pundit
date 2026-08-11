@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
 import {
   generateAnalysis,
@@ -9,7 +9,33 @@ import {
   sanitizeMatchAnswer,
   sanitizeSeasonAnswer,
   sanitizeUnsupportedTeamNews,
+  stripProcessNarration,
+  ensureGeneralDisclaimer,
+  normalizeSectionBreaks,
 } from "./ask";
+
+// The tool loop executes searches for real; stub the backend so these tests
+// stay offline and deterministic.
+const searchWeb = vi.hoisted(() => vi.fn());
+vi.mock("./web-search", () => ({ searchWeb }));
+
+beforeEach(() => {
+  searchWeb.mockReset();
+  searchWeb.mockResolvedValue([
+    { title: "Arsenal team news", link: "https://example.com/a", snippet: "s", date: "2026-08-10" },
+  ]);
+});
+
+// A response asking for one web search, as MiniMax returns it.
+function toolUseMessage(text: string, id = "tool-1") {
+  return {
+    content: [
+      { type: "text", text, citations: [] },
+      { type: "tool_use", id, name: "web_search", input: { query: "arsenal team news" } },
+    ],
+    stop_reason: "tool_use",
+  };
+}
 
 function clientWith(response: unknown): Pick<Anthropic, "messages"> {
   return {
@@ -37,7 +63,7 @@ describe("generateAnalysis", () => {
   it("returns trimmed text and accepts web-search content blocks", async () => {
     const client = clientWith({
       content: [
-        { type: "server_tool_use", id: "tool", name: "web_search", input: {} },
+        { type: "tool_use", id: "tool", name: "web_search", input: { query: "q" } },
         { type: "text", text: "  Grounded answer.  ", citations: [] },
       ],
       stop_reason: "end_turn",
@@ -69,25 +95,151 @@ describe("generateAnalysis", () => {
     }
   });
 
-  it("continues a paused web-search turn, replaying its content as an assistant turn", async () => {
+  it("runs a requested search and replays the assistant turn plus its tool_result", async () => {
     const create = vi.fn()
-      .mockResolvedValueOnce(message("First half. ", "pause_turn"))
+      .mockResolvedValueOnce(toolUseMessage("First half. "))
       .mockResolvedValueOnce(message("Second half.", "end_turn"));
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
     await expect(generateAnalysis(client, "system", [
       { role: "user", content: "q" },
     ], "match")).resolves.toBe("First half. Second half.");
     expect(create).toHaveBeenCalledTimes(2);
+    expect(searchWeb).toHaveBeenCalledWith("arsenal team news");
+
+    // The API rejects a tool_use with no matching result, so the continuation
+    // must carry the assistant turn followed by a tool_result keyed to its id.
     const continuationMessages = create.mock.calls[1][0].messages;
-    expect(continuationMessages.at(-1)).toMatchObject({ role: "assistant" });
+    expect(continuationMessages.at(-2)).toMatchObject({ role: "assistant" });
+    const toolResultTurn = continuationMessages.at(-1);
+    expect(toolResultTurn).toMatchObject({ role: "user" });
+    expect(toolResultTurn.content[0]).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "tool-1",
+    });
+    expect(toolResultTurn.content[0].content).toContain("2026-08-10");
   });
 
-  it("gives up with a 504 when the turn never resumes", async () => {
-    const create = vi.fn().mockResolvedValue(message("still searching", "pause_turn"));
+  it("still returns a tool_result when the search finds nothing", async () => {
+    searchWeb.mockResolvedValue([]);
+    const create = vi.fn()
+      .mockResolvedValueOnce(toolUseMessage("Checking. "))
+      .mockResolvedValueOnce(message("Done.", "end_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    // The general tier appends its own disclaimer, so assert on the answer text.
+    await expect(generateAnalysis(client, "system", [], "general"))
+      .resolves.toContain("Checking. Done.");
+    const toolResultTurn = create.mock.calls[1][0].messages.at(-1);
+    expect(toolResultTurn.content[0].content).toMatch(/no search results/i);
+  });
+
+  it("gives up with a 504 when the model never stops searching", async () => {
+    const create = vi.fn().mockResolvedValue(toolUseMessage("still searching"));
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
     await expect(generateAnalysis(client, "system", [], "match"))
       .rejects.toMatchObject({ statusCode: 504 });
     expect(create).toHaveBeenCalledTimes(6); // initial call + MAX_CONTINUATIONS
+  });
+});
+
+describe("stripProcessNarration", () => {
+  it("removes tool-use narration run together with the first section label", () => {
+    expect(stripProcessNarration(
+      "I'll search for the latest on Arsenal's top scorer.**Top scorer**\nGyokeres leads."
+    )).toBe("**Top scorer**\nGyokeres leads.");
+  });
+
+  it("removes narration on its own line mid-answer", () => {
+    expect(stripProcessNarration(
+      "**Verdict**\nArsenal are favoured.\nLet me check the latest team news.\n**Goals**"
+    )).toBe("**Verdict**\nArsenal are favoured.\n\n**Goals**");
+  });
+
+  it("keeps the negated disclaimer the general tier depends on", () => {
+    const answer = "I'm not pulling this from Pundit's model data — Pundit has no injury feed.";
+    expect(stripProcessNarration(answer)).toBe(answer);
+  });
+
+  it("keeps ordinary analysis that happens to open in the first person", () => {
+    const answer = "I rate Arsenal's chances highly given their away form.";
+    expect(stripProcessNarration(answer)).toBe(answer);
+  });
+
+  it("removes a narration clause tacked onto a legitimate sentence", () => {
+    expect(stripProcessNarration(
+      "I don't have verified current data on Arsenal's top scorer, so let me search for the latest."
+      + "The most recent results are from last season."
+    )).toBe(
+      "I don't have verified current data on Arsenal's top scorer. "
+      + "The most recent results are from last season."
+    );
+  });
+
+  it("removes narration that follows another sentence on the same line", () => {
+    expect(stripProcessNarration(
+      "That is not the current season. Let me check for the new 2026/27 season."
+    )).toBe("That is not the current season.");
+  });
+});
+
+describe("normalizeSectionBreaks", () => {
+  it("moves a section label that trails the previous sentence onto its own line", () => {
+    expect(normalizeSectionBreaks("My squad knowledge is out of date. **Top scorer**\nGyokeres."))
+      .toBe("My squad knowledge is out of date.\n\n**Top scorer**\nGyokeres.");
+  });
+
+  it("leaves inline emphasis on a figure where it is", () => {
+    const answer = "- Arsenal **15.4%**\n- Man City **18.2%**";
+    expect(normalizeSectionBreaks(answer)).toBe(answer);
+  });
+
+  it("leaves a label that already starts its own line", () => {
+    const answer = "**Verdict**\nArsenal are favoured.\n\n**Goals**\nOver 2.5 leads.";
+    expect(normalizeSectionBreaks(answer)).toBe(answer);
+  });
+});
+
+describe("sanitizeCompetitionAnswer fabricated model odds", () => {
+  it("replaces a model-attributed odds list, dropping its bullets", () => {
+    const answer = sanitizeCompetitionAnswer(
+      "**Standings**\n"
+      + "Arsenal lead on 12 points.\n"
+      + "**Title odds (Pundit model)** — pre-season:\n"
+      + "- Arsenal **15.4%**\n"
+      + "- Man City **18.2%**\n"
+      + "**Note**\nThe season is young."
+    );
+    expect(answer).toContain("Arsenal lead on 12 points.");
+    expect(answer).toContain("does not produce title or placing probabilities");
+    expect(answer).not.toContain("15.4%");
+    expect(answer).not.toContain("18.2%");
+    expect(answer).toContain("The season is young.");
+  });
+
+  it("leaves standings prose that quotes no model probabilities alone", () => {
+    const answer = "Arsenal lead on 12 points, three clear of Man City.";
+    expect(sanitizeCompetitionAnswer(answer)).toBe(answer);
+  });
+
+  it("does not strip the season tier's legitimate simulated probabilities", () => {
+    const answer = "Pundit's model gives Arsenal a 45.4% title chance.";
+    expect(sanitizeSeasonAnswer(answer)).toBe(answer);
+  });
+});
+
+describe("ensureGeneralDisclaimer", () => {
+  it("appends the disclaimer when the answer does not distance itself from the model", () => {
+    expect(ensureGeneralDisclaimer("The inverted full-back creates central overloads."))
+      .toBe(
+        "The inverted full-back creates central overloads.\n\n"
+        + "This is general football analysis, not based on Pundit's model data."
+      );
+  });
+
+  it("leaves an answer that already carries a disclaimer untouched", () => {
+    const withPhrase = "This response is general football analysis.\n\nThe rest follows.";
+    expect(ensureGeneralDisclaimer(withPhrase)).toBe(withPhrase);
+    const withNegation = "I'm not pulling this from Pundit's model data — there is no feed.";
+    expect(ensureGeneralDisclaimer(withNegation)).toBe(withNegation);
   });
 });
 
@@ -248,6 +400,48 @@ describe("sanitizeMatchAnswer", () => {
     expect(answer).not.toContain("28. Aggregate");
   });
 
+  it("binds a leading both-teams-to-score label to the figure it introduces", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Bodoe Glimt",
+      away: "St Gillis",
+      pOver2_5: 0.5096,
+      pUnder2_5: 0.4904,
+      pBttsYes: 0.5588,
+      pBttsNo: 0.4412,
+      scorelines: [],
+    } as unknown as Grounding;
+    // "(no at ...)" labels the figure that follows it. Binding it backwards
+    // rewrote the correct yes figure with the no probability, so both read
+    // 44.1% and the answer contradicted itself.
+    const answer = sanitizeMatchAnswer(
+      "Both teams to score is favoured at 55.9% (no at 44.1%).",
+      grounding
+    );
+    expect(answer).toBe("Both teams to score is favoured at 55.9% (no at 44.1%).");
+  });
+
+  it("still corrects a leading label that quotes the wrong figure", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Bodoe Glimt",
+      away: "St Gillis",
+      pOver2_5: 0.5096,
+      pUnder2_5: 0.4904,
+      pBttsYes: 0.5588,
+      pBttsNo: 0.4412,
+      scorelines: [],
+    } as unknown as Grounding;
+    const answer = sanitizeMatchAnswer(
+      "Both teams to score is favoured at 55.9% (no at 39.0%), with under 2.5 at 12.0%.",
+      grounding
+    );
+    expect(answer).toContain("(no at 44.1%)");
+    expect(answer).toContain("under 2.5 at 49.0%");
+  });
+
   it("leaves a both-teams-to-score explanation alone when it quotes no figures", () => {
     const grounding = {
       kind: "match",
@@ -390,7 +584,7 @@ describe("grounded answer sanitizers", () => {
 describe("generateAnalysisStream", () => {
   it("emits deltas across continuations and joins the final text", async () => {
     const stream = vi.fn()
-      .mockReturnValueOnce(streamOf(message("First half. ", "pause_turn"), ["First half. "]))
+      .mockReturnValueOnce(streamOf(toolUseMessage("First half. "), ["First half. "]))
       .mockReturnValueOnce(streamOf(message("Second half.", "end_turn"), ["Second half."]));
     const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
     const deltas: string[] = [];
@@ -420,7 +614,26 @@ describe("generateAnalysisStream", () => {
     expect(deltas.length).toBeGreaterThan(1);
     expect(deltas[0]).toBe("**Verdict**");
     expect(deltas.join("")).toBe(answer);
-    expect(answer).toBe(chunks.join("").trim());
+    // The general tier appends its disclaimer to the whole answer only, so the
+    // streamed text is the body and the final event carries the rest.
+    expect(answer.startsWith(chunks.join("").trim())).toBe(true);
+    expect(answer).toContain("not based on Pundit's model data");
+  });
+
+  it("does not repeat the general disclaimer into each streamed prefix", async () => {
+    const chunks = ["First line.\n", "Second line.\n", "Third line."];
+    const stream = vi.fn().mockReturnValue(
+      streamOf(message(chunks.join(""), "end_turn"), chunks)
+    );
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    const answer = await generateAnalysisStream(
+      client, "system", [], "general", (text) => deltas.push(text)
+    );
+    // Appending it per prefix broke prefix-stability, so the flusher diverged
+    // and the client fell back to a single delta at the end.
+    expect(deltas.length).toBeGreaterThan(1);
+    expect(answer.match(/not based on Pundit's model data/g)).toHaveLength(1);
   });
 
   it("runs the match guards over every line before it is released", async () => {
