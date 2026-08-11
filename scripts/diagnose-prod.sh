@@ -11,7 +11,7 @@
 #   bash scripts/diagnose-prod.sh https://some-other-host
 set -euo pipefail
 
-API_URL="${1:-https://sports-predictapi-production.up.railway.app}"
+API_URL="${1:-https://thepundit.up.railway.app}"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required (brew install jq)" >&2

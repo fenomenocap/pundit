@@ -1,4 +1,5 @@
-# Railway config for @sports-predict/api
+# Railway config for the Railway service @pundit/api
+# (the pnpm package it builds is still named @sports-predict/api)
 # In the Railway service settings, set "Config file path" to:
 #   /packages/api/railway.toml
 # if the repo root is the linked directory.

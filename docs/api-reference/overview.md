@@ -1,8 +1,8 @@
 # API Reference — Overview
 
-Pundit's backend is a small read-mostly REST API. All documented endpoints below are public — no API key or authentication required (except `POST /api/ask`, which requires `ANTHROPIC_API_KEY` on the server).
+Pundit's backend is a small read-mostly REST API. All documented endpoints below are public — no API key or authentication required (except `POST /api/ask`, which requires `MINIMAX_API_KEY` on the server).
 
-**Base URL:** the Pundit API deployment (production: `https://sports-predictapi-production.up.railway.app`).
+**Base URL:** the Pundit API deployment (production: `https://thepundit.up.railway.app`).
 
 **Rate limits:**
 
