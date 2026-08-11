@@ -115,7 +115,11 @@ function sanitizeAskError(err: unknown): string {
       return "Connection problem — check your network and try again.";
     }
     if (
-      msg.includes("anthropic")
+      // "anthropic" is still matched alongside "minimax": the backend talks to
+      // MiniMax through the Anthropic SDK, so SDK-shaped failures can surface
+      // either name.
+      msg.includes("minimax")
+      || msg.includes("anthropic")
       || msg.includes("api_key")
       || msg.includes("stream ended")
       || msg.includes("configured")
