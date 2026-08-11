@@ -3,6 +3,7 @@ import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import {
   MATCH_ANSWER_GUARDS,
+  MATCH_QUESTION_SCOPE,
   buildCompetitionGrounding,
   buildGrounding,
   findFixture,
@@ -20,6 +21,21 @@ describe("MATCH_ANSWER_GUARDS", () => {
     expect(MATCH_ANSWER_GUARDS).toContain("aggregate advancement is outside this model payload");
     expect(MATCH_ANSWER_GUARDS).toContain("omitted from your prose");
     expect(MATCH_ANSWER_GUARDS).toContain("never say it entirely causes the edge");
+  });
+});
+
+describe("MATCH_QUESTION_SCOPE", () => {
+  it("tells the model to answer the question actually asked", () => {
+    expect(MATCH_QUESTION_SCOPE).toContain("Answer the question the user actually\nasked.");
+    expect(MATCH_QUESTION_SCOPE).toContain("leave the fixture data out instead of steering back to the matchup");
+  });
+
+  it("keeps oblique follow-ups answered from the grounding", () => {
+    expect(MATCH_QUESTION_SCOPE).toContain("however short or indirect");
+    expect(MATCH_QUESTION_SCOPE).toContain("answer them in full from the grounding");
+    expect(MATCH_QUESTION_SCOPE)
+      .toContain("never tell the user you have no model data for this matchup");
+    expect(MATCH_QUESTION_SCOPE).toContain("treat\nit as a question about the fixture");
   });
 });
 
@@ -88,6 +104,39 @@ describe("resolveTeams", () => {
   it("rejects questions naming more than one matchup", () => {
     expect(() => resolveTeams("Arsenal vs Liverpool, then Brighton", fixtures))
       .toThrowError(AppError);
+  });
+
+  // Grounding models exactly one match, so several matchups cannot be answered
+  // in one turn -- but the limit is only useful if the error says which match
+  // to ask about. The code is what carries the message past the frontend's
+  // generic 400 copy.
+  it("names the real fixtures when the question holds more than one matchup", () => {
+    const multiFixtures = [
+      fixture("Arsenal", "Liverpool"),
+      fixture("Coventry City", "Tottenham Hotspur", { fixtureId: 2 }),
+    ];
+    try {
+      resolveTeams("Compare Arsenal vs Liverpool and Coventry City vs Tottenham", multiFixtures);
+      throw new Error("expected resolveTeams to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      const appError = err as AppError;
+      expect(appError.statusCode).toBe(400);
+      expect(appError.code).toBe("MULTIPLE_FIXTURES");
+      expect(appError.message).toContain("Arsenal vs Liverpool");
+      expect(appError.message).toContain("Coventry City vs Tottenham Hotspur");
+    }
+  });
+
+  it("falls back to the generic message when the teams form no fixture", () => {
+    try {
+      resolveTeams("Arsenal, Liverpool and Brighton", fixtures);
+      throw new Error("expected resolveTeams to throw");
+    } catch (err) {
+      const appError = err as AppError;
+      expect(appError.code).toBe("MULTIPLE_TEAMS");
+      expect(appError.message).toContain("exactly one matchup");
+    }
   });
 });
 
@@ -373,6 +422,83 @@ describe("resolveAskContext", () => {
       "How confident are you?",
       "What's the value there?",
       "And the second half?",
+    ]) {
+      expect(resolveAskContext(question, [], teamContext, fixtures, []))
+        .toMatchObject({ tier: "match", fixture: fixtures[0] });
+    }
+  });
+
+  // Two phrasings of the relegation/title question used to split across tiers.
+  it.each([
+    "Who gets relegated?",
+    "Which teams go down?",
+    "Who is going to finish first?",
+  ])("routes %s to the season outlook", (question) => {
+    expect(resolveAskContext(question, [], undefined, fixtures, [standing()]))
+      .toEqual({ tier: "season", competitionId: "eng.1" });
+  });
+
+  // Match grounding carries no standings, so a table question asked mid-match
+  // could not be answered from the payload it was being held in.
+  it.each([
+    "How's the table looking?",
+    "Who's top right now?",
+    "Where do they sit in the standings?",
+    "What does the Premier League table show?",
+  ])("lets %s reach competition grounding while a match is in context", (question) => {
+    expect(resolveAskContext(
+      question,
+      [],
+      ["Arsenal", "Coventry City"],
+      fixtures,
+      [standing()]
+    )).toEqual({ tier: "competition", competitionId: "eng.1" });
+  });
+
+  // The guard on the above: retention exists because "Why?" and "Tell me more"
+  // once fell through to the disclaiming general tier. Broadening the table
+  // cues must not reopen that.
+  it.each([
+    "Why?",
+    "Tell me more",
+    "Is that a good bet?",
+    "How confident are you?",
+    "What about BTTS?",
+    "What about goals?",
+  ])("keeps %s on the followed match", (question) => {
+    expect(resolveAskContext(
+      question,
+      [],
+      ["Arsenal", "Coventry City"],
+      fixtures,
+      [standing()]
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
+  });
+
+  it("prefers the competition already in view over the league-table fallback", () => {
+    const history = [
+      { role: "user" as const, content: "How does UCL qualifying look?" },
+      { role: "assistant" as const, content: "Here is the current picture." },
+    ];
+
+    expect(resolveAskContext(
+      "How's the table looking?",
+      history,
+      undefined,
+      fixtures,
+      [standing("uefa.champions_qual", "Riga FC")]
+    )).toEqual({ tier: "competition", competitionId: "uefa.champions_qual" });
+  });
+
+  // Routing keeps grounding on these rather than risking a cue list that drops a
+  // genuine follow-up; MATCH_QUESTION_SCOPE is what stops the answer being bent
+  // back to the fixture.
+  it("still retains match grounding for questions with no match intent", () => {
+    const teamContext: [string, string] = ["Arsenal", "Coventry City"];
+    for (const question of [
+      "What's the weather like?",
+      "Who won the 1966 World Cup?",
+      "Tell me about VAR",
     ]) {
       expect(resolveAskContext(question, [], teamContext, fixtures, []))
         .toMatchObject({ tier: "match", fixture: fixtures[0] });
