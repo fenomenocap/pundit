@@ -1,3 +1,4 @@
+import "./load-env";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -28,7 +29,7 @@ const port = process.env.PORT || process.env.API_PORT || 3001;
 
 // Comma-separated browser origins allowed to call the API. When unset, CORS
 // stays open (current production behaviour). Set this in Railway to the Vercel
-// frontend origin(s) so the Anthropic-backed /api/ask route cannot be called
+// frontend origin(s) so the MiniMax-backed /api/ask route cannot be called
 // from arbitrary third-party sites.
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
   .split(",")

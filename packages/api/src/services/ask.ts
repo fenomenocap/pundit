@@ -1,3 +1,8 @@
+// Pundit's chat backend runs on MiniMax, not Anthropic. The Anthropic SDK is
+// retained deliberately as the wire client: MiniMax publishes an
+// Anthropic-compatible endpoint, so this keeps the message/stream/error types
+// and the retry classification below working unchanged. Do not "correct" this
+// to an Anthropic model or key -- see MINIMAX_BASE_URL.
 import Anthropic from "@anthropic-ai/sdk";
 import { getCompetitionById } from "../config/competitions";
 import { AppError } from "../middleware";
@@ -14,6 +19,7 @@ import { getCachedMatches, FootballStanding } from "./football-data";
 import { getActiveFixtures } from "./active-fixtures";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
 import { getCachedClubRatings } from "./club-ratings";
+import { searchWeb } from "./web-search";
 import {
   isSeasonOutlookQuestion,
   remainingScheduledFixtures,
@@ -95,7 +101,35 @@ export type ResolvedAskContext =
 
 type TeamFixture = Pick<ModelFixture, "home" | "away">;
 
-const ANTHROPIC_MODEL = "claude-sonnet-5";
+// The date field matters: ATTRIBUTION_RULES makes the model name a source and
+// date for every team-news claim, and web-search.ts normalizes what the search
+// backend returns into ISO form or "".
+const WEB_SEARCH_TOOL = {
+  name: "web_search" as const,
+  description:
+    "Search the web for current football information: transfers, injuries, "
+    + "manager changes, team news, player form and recent results. Returns a "
+    + "JSON array of {title, link, snippet, date}, where date is ISO "
+    + "yyyy-mm-dd or empty when the source published none. Never cite a date "
+    + "that is not present in these results.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      query: {
+        type: "string" as const,
+        description: "The search query.",
+      },
+    },
+    required: ["query"],
+  },
+};
+
+const MINIMAX_MODEL = process.env.MINIMAX_MODEL ?? "MiniMax-M3";
+// The international host. Keys are region-scoped: a key issued for mainland
+// China authenticates only against https://api.minimaxi.com/anthropic, so that
+// deployment overrides this rather than editing the default.
+const MINIMAX_BASE_URL =
+  process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/anthropic";
 const MAX_TOKENS = 4_096;
 const REQUEST_TIMEOUT_MS = 90_000;
 const MAX_CONTINUATIONS = 5;
@@ -112,6 +146,12 @@ with the rest of the answer; do not let one unresolved detail become a blanket r
 team news.
 "No injury concerns" is itself a team-news claim and needs the same dated source. A preview that
 simply does not mention a player is not evidence that the player is available.
+Check each result's date against today's date before using it. A result more than about two months
+old is history, not team news -- either say plainly that it is the most recent thing found and give
+its date, or leave the point unresolved; never present it as the current situation. A result with no
+date cannot support a dated claim, so do not invent a date for it or imply it is recent. Prefer
+football news outlets and club sources over social posts and video listings, which are frequently
+undated or recycled.
 Do not name internal methodology (Dixon-Coles, Poisson, Elo, ClubElo, eloratings.net, or similar)
 in user-facing answers -- say "Pundit's model" or "the model" instead.`;
 
@@ -762,19 +802,32 @@ export function resolveAskContext(
   return { tier: "general" };
 }
 
+function todayPreamble(): string {
+  return `Today's date is ${new Date().toISOString().slice(0, 10)}. Your own knowledge of squads, `
+    + "transfers, injuries, managers and league positions is out of date -- defer to the grounding "
+    + "data and to web_search results, and judge whether a search result is current by comparing its "
+    + "date to today's.";
+}
+
 function analysisRequestParams(systemPrompt: string, messages: Anthropic.MessageParam[]) {
   return {
-    model: ANTHROPIC_MODEL,
+    model: MINIMAX_MODEL,
     max_tokens: MAX_TOKENS,
-    // Pinned rather than left to the model default so a future change to that
-    // default cannot silently move answer depth or latency. Deliberately not
-    // "xhigh": it raises tool-call volume, but a chat turn already has a 90s
-    // per-call ceiling and search turns were dying on that limit before
-    // 7f491a7. Prompt-level triggering buys the search behaviour without
-    // spending the latency budget; revisit if measurement shows it is not enough.
-    output_config: { effort: "high" as const },
-    system: systemPrompt,
-    tools: [{ type: "web_search_20260209" as const, name: "web_search" as const }],
+    // Anthropic's output_config/effort was dropped in the MiniMax migration: the
+    // endpoint accepts the field without erroring but does not act on it, so
+    // keeping it would read as a live control that does nothing. MiniMax's own
+    // depth lever is `thinking: { type: "adaptive" }`, deliberately left off --
+    // it emits an extra thinking block and costs latency against the 90s
+    // per-call ceiling that search turns were already dying on before 7f491a7.
+    // Turn it on only if answer depth measurably suffers.
+    // The date is prepended rather than baked into each prompt constant
+    // because the model has no clock: MiniMax-M3's training data ends in
+    // January 2026, so without today's date it read a January 2026 article as
+    // current team news and cited it as the live squad situation.
+    system: `${todayPreamble()}\n\n${systemPrompt}`,
+    // Client-defined, unlike Anthropic's hosted server tool: MiniMax returns a
+    // tool_use block and Pundit runs the search itself. See runToolUses.
+    tools: [WEB_SEARCH_TOOL],
     messages,
   };
 }
@@ -882,22 +935,76 @@ const GOAL_MARKET_LINE = /both teams to score|\bbtts\b|\b(?:over|under)\s*2\.5/i
 // a misquoted figure can be corrected where it stands instead of the whole
 // sentence being discarded. Returns null when the figure cannot be attributed
 // with confidence -- an unattributed number is left untouched.
+// Only punctuation, or a short connector, may sit between a label and the
+// figure it describes: "no at 44.1%", "over 2.5: 51%", "56.0% yes".
+const LABEL_ADJACENT = /^\W*(?:at|of|is|to|=|:)?\W*$/;
+// A label followed by a connector and then a digit is describing the figure
+// that comes next, not the one just before it. This is what separates
+// "55.9% (no at 44.1%)" -- where "no" belongs to 44.1% -- from
+// "56.0% yes and 43.4% no", where each label trails its own figure.
+const LABELS_NEXT_FIGURE = /^\W*(?:at|of|is|to|=|:)\W*\d/;
+
+/**
+ * Finds the label that describes the figure at [figureStart, figureEnd).
+ *
+ * Search is bounded by the neighbouring percentages so a label can never be
+ * claimed by a figure on the far side of another figure. Labels are matched in
+ * both directions because the two phrasings are equally common, and preferring
+ * only one silently corrupts the other: reading labels solely from the text
+ * *after* a figure made "55.9% (no at 44.1%)" bind "no" to the 55.9%, which
+ * overwrote a correct both-teams-to-score yes figure with the no probability.
+ */
+function nearestLabel(
+  line: string,
+  figureStart: number,
+  figureEnd: number,
+  pattern: RegExp
+): string | null {
+  const lower = line.toLowerCase();
+
+  const precedingFigure = [...lower.slice(0, figureStart).matchAll(/\d+(?:\.\d+)?%/g)].at(-1);
+  const gapStart = precedingFigure
+    ? (precedingFigure.index ?? 0) + precedingFigure[0].length
+    : 0;
+  const gap = lower.slice(gapStart, figureStart);
+
+  // Label before the figure: take the closest one still adjacent to it.
+  const leading = [...gap.matchAll(pattern)].at(-1);
+  if (leading && LABEL_ADJACENT.test(gap.slice((leading.index ?? 0) + leading[0].length))) {
+    return leading[1];
+  }
+
+  const followingFigure = /\d+(?:\.\d+)?%/.exec(lower.slice(figureEnd));
+  const aheadEnd = followingFigure ? figureEnd + followingFigure.index : lower.length;
+  const ahead = lower.slice(figureEnd, aheadEnd);
+
+  // Label after the figure, unless it is really introducing the next one.
+  const trailing = [...ahead.matchAll(pattern)][0];
+  if (
+    trailing
+    && LABEL_ADJACENT.test(ahead.slice(0, trailing.index ?? 0))
+    && !LABELS_NEXT_FIGURE.test(lower.slice(figureEnd + (trailing.index ?? 0) + trailing[0].length))
+  ) {
+    return trailing[1];
+  }
+
+  return null;
+}
+
 function goalMarketProbability(
   line: string,
   figureStart: number,
   figureEnd: number,
   grounding: Grounding
 ): number | null {
-  const before = line.slice(Math.max(0, figureStart - 40), figureStart).toLowerCase();
-  const after = line.slice(figureEnd, figureEnd + 14).toLowerCase();
-
-  const nearestTotal = [...before.matchAll(/\b(over|under)\s*2\.5/g)].at(-1)?.[1];
-  if (nearestTotal === "under") return usableProbability(grounding.pUnder2_5);
-  if (nearestTotal === "over") return usableProbability(grounding.pOver2_5);
+  const total = nearestLabel(line, figureStart, figureEnd, /\b(over|under)\s*2\.5/g);
+  if (total === "under") return usableProbability(grounding.pUnder2_5);
+  if (total === "over") return usableProbability(grounding.pOver2_5);
 
   if (!/both teams to score|\bbtts\b/i.test(line)) return null;
-  if (/^\W*yes\b/.test(after)) return usableProbability(grounding.pBttsYes);
-  if (/^\W*no\b/.test(after)) return usableProbability(grounding.pBttsNo);
+  const btts = nearestLabel(line, figureStart, figureEnd, /\b(yes|no)\b/g);
+  if (btts === "yes") return usableProbability(grounding.pBttsYes);
+  if (btts === "no") return usableProbability(grounding.pBttsNo);
   return null;
 }
 
@@ -1017,7 +1124,7 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
   return sanitized.replace(/[ \t]+\n/g, "\n").replace(/ {2,}/g, " ").trim();
 }
 
-export function sanitizeCompetitionAnswer(answer: string): string {
+function sanitizeStandingsLanguage(answer: string): string {
   const orderCorrection = "The supplied all-zero table does not establish an on-field ranking or explain why equally ranked teams appear in this order.";
   return answer.split("\n").map((line) => {
     if (/\b(?:alphabet|placeholder|default sort|default-sorted|artifact of ordering)/i.test(line)) {
@@ -1027,8 +1134,51 @@ export function sanitizeCompetitionAnswer(answer: string): string {
   }).join("\n").trim();
 }
 
+// Competition grounding carries standings only -- position, team, played games,
+// points, goal difference -- and no probabilities of any kind. So a percentage
+// presented at this tier as a Pundit model output is fabricated: one answer
+// produced a "Title odds (Pundit model)" list giving Arsenal 15.4% when the
+// season tier's actual simulation, in the same run, said 45.4%.
+//
+// The season tier is deliberately not subject to this guard: SeasonGrounding
+// does supply a simulated outlook, so model-attributed probabilities are
+// legitimate there.
+const PROBABILITY_CLAIM = /\d+(?:\.\d+)?%|\b(?:title|winner|top[- ]four|relegation)\s+odds\b/i;
+
+const MODEL_CLAIM = /\bpundit'?s?\s+model\b|\bthe model\b|\bmodel'?s\b|\(\s*pundit[^)]*\)/i;
+
+const FABRICATED_ODDS_CORRECTION =
+  "Pundit's model does not produce title or placing probabilities for a standings question -- "
+  + "the table above is the grounded data for this competition.";
+
+const ODDS_BULLET = /^\s*[-*]\s.*\d+(?:\.\d+)?%/;
+
+export function sanitizeCompetitionAnswer(answer: string): string {
+  let corrected = false;
+  let inOddsList = false;
+  const kept: string[] = [];
+
+  for (const line of sanitizeStandingsLanguage(answer).split("\n")) {
+    if (PROBABILITY_CLAIM.test(line) && MODEL_CLAIM.test(line)) {
+      // The heading names the model; its bullets usually do not, so the list
+      // that follows has to be dropped with it or orphaned percentages remain.
+      inOddsList = true;
+      if (!corrected) {
+        corrected = true;
+        kept.push(FABRICATED_ODDS_CORRECTION);
+      }
+      continue;
+    }
+    if (inOddsList && ODDS_BULLET.test(line)) continue;
+    if (line.trim() !== "") inOddsList = false;
+    kept.push(line);
+  }
+
+  return kept.join("\n").trim();
+}
+
 export function sanitizeSeasonAnswer(answer: string): string {
-  return sanitizeCompetitionAnswer(answer)
+  return sanitizeStandingsLanguage(answer)
     .replace(
       /\b(?:90|ninety)\+?\s*[- ]?game Premier League season\b/gi,
       "38-match-per-club Premier League season"
@@ -1042,15 +1192,96 @@ export function sanitizeUnsupportedTeamNews(answer: string): string {
   ).trim();
 }
 
+// FORMAT_RULES already forbids narrating tool use, but MiniMax does it anyway
+// ("I'll search for the latest Arsenal injury news."), and because every text
+// block is shown verbatim the narration reaches the user -- typically run
+// together with the first bold label, as in "...injury news.**Latest**".
+// Prompt-level instruction did not hold, so it is removed deterministically.
+// Narration is matched as a clause rather than a whole sentence: it arrives
+// both on its own ("Let me check for the new season.") and tacked onto a
+// legitimate one ("I don't have verified data, so let me search for the
+// latest."), where only the trailing clause should go.
+const PROCESS_NARRATION = new RegExp(
+  "(^|\\n|(?<=[.!?])[ \\t]|[,;][ \\t]*(?:so|then|and)?[ \\t]*)"
+  + "(?:let me|let'?s|i'?ll|i will|i'?m going to|i am going to|i need to|now i'?ll"
+  + "|first,?[ \\t]+let me)\\b"
+  + "[^.!?\\n]*?\\b(?:search|look|check|find|pull|gather|research|browse)\\w*\\b"
+  + "[^.!?\\n]*[.!?]*[ \\t]*",
+  "gi"
+);
+
+// A negation attached to the verb makes the clause a statement of limitation,
+// not narration -- "I'm not pulling this from Pundit's model data" is the
+// disclaimer the general tier requires. The negation has to sit before the
+// verb to count: testing the whole clause let real narration through whenever
+// an unrelated later phrase happened to contain "not".
+const NARRATION_EXEMPT = /\b(?:not|cannot|unable|never)\b|n't/i;
+const NARRATION_VERB = /\b(?:search|look|check|find|pull|gather|research|browse)\w*\b/i;
+
+export function stripProcessNarration(answer: string): string {
+  return answer
+    .replace(PROCESS_NARRATION, (match: string, lead: string) => {
+      const verb = NARRATION_VERB.exec(match);
+      if (NARRATION_EXEMPT.test(verb ? match.slice(0, verb.index) : match)) return match;
+      // A clause cut from mid-sentence leaves the sentence needing an ending;
+      // one cut at a boundary just gives its boundary back.
+      return /^[,;]/.test(lead) ? ". " : lead;
+    })
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
+// FORMAT_RULES requires every bold section label to begin its own line, but
+// MiniMax regularly runs one onto the end of the preceding sentence
+// ("...my squad knowledge is out of date. **Top scorer**"). Only labels that
+// already end their line are moved, and only when made of words -- so inline
+// emphasis on a figure, like "Arsenal **15.4%**", is left where it is.
+const INLINE_SECTION_LABEL = /([^\n\s])[ \t]*(\*\*[A-Za-z][A-Za-z \-/&']{2,30}\*\*)(?=\n|$)/g;
+
+export function normalizeSectionBreaks(answer: string): string {
+  return answer.replace(INLINE_SECTION_LABEL, "$1\n\n$2");
+}
+
+// The general tier must say it is not model-grounded. GENERAL_SYSTEM_PROMPT
+// asks for it, but MiniMax supplies it only sometimes -- it labelled a player
+// question and left an adjacent tactical question unlabelled -- so the
+// guarantee is enforced here rather than left to prompt compliance.
+const GENERAL_DISCLAIMER =
+  "This is general football analysis, not based on Pundit's model data.";
+
+const HAS_GENERAL_DISCLAIMER =
+  /general (?:football )?analysis|(?:not|n't|outside|beyond)[^.\n]{0,80}(?:pundit'?s model|model data|model output|model's data)/i;
+
+export function ensureGeneralDisclaimer(answer: string): string {
+  if (!answer.trim()) return answer;
+  return HAS_GENERAL_DISCLAIMER.test(answer)
+    ? answer
+    : `${answer.trimEnd()}\n\n${GENERAL_DISCLAIMER}`;
+}
+
 // The deterministic guard chain for a tier, factored out of
 // validateAnalysisResponse so the streaming path can run exactly the same
 // guards over a settled prefix of the answer instead of a second, weaker copy.
+//
+// The MiniMax guards run first and for every tier: narration and fused section
+// labels are properties of the raw text, so stripping them before the
+// tier-specific guards means those guards see the same shape they were written
+// against.
+//
+// `final` gates the general-tier disclaimer, which appends rather than rewrites
+// and so is a property of the whole answer, not of any prefix of it. Running it
+// on settled prefixes put the disclaimer after the first line, and the next,
+// longer prefix then no longer extended what had already been sent -- the
+// flusher read that as divergence and stopped streaming after one delta.
 function sanitizeAnswerForTier(
   answer: string,
   tier: AnalysisTier,
-  grounding?: AskGrounding
+  grounding?: AskGrounding,
+  final = false
 ): string {
-  const commonSafeAnswer = sanitizeUnsupportedTeamNews(answer);
+  const commonSafeAnswer = sanitizeUnsupportedTeamNews(
+    normalizeSectionBreaks(stripProcessNarration(answer))
+  );
   if (tier === "match") {
     return sanitizeMatchAnswer(
       commonSafeAnswer,
@@ -1059,7 +1290,7 @@ function sanitizeAnswerForTier(
   }
   if (tier === "season") return sanitizeSeasonAnswer(commonSafeAnswer);
   if (tier === "competition") return sanitizeCompetitionAnswer(commonSafeAnswer);
-  return commonSafeAnswer;
+  return final ? ensureGeneralDisclaimer(commonSafeAnswer) : commonSafeAnswer;
 }
 
 function validateAnalysisResponse(
@@ -1069,12 +1300,17 @@ function validateAnalysisResponse(
   grounding?: AskGrounding
 ): string {
   const blocks = responses.flatMap((response) => response.content);
-  const answer = blocks.reduce(
-    (text, block) => block.type === "text" ? text + block.text : text,
-    ""
-  ).trim();
+  // Separate text blocks that would otherwise collide. MiniMax splits an answer
+  // across blocks around tool calls without carrying whitespace at the seam, so
+  // a plain concatenation produced "...from web searches.This is a web-search
+  // answer" -- two sentences fused mid-line.
+  const answer = blocks.reduce((text, block) => {
+    if (block.type !== "text") return text;
+    const fuses = text !== "" && !/\s$/.test(text) && !/^\s/.test(block.text);
+    return `${text}${fuses ? " " : ""}${block.text}`;
+  }, "").trim();
   const usedWebSearch = blocks.some((block) =>
-    block.type === "server_tool_use" || block.type === "web_search_tool_result"
+    block.type === "tool_use" && block.name === WEB_SEARCH_TOOL.name
   );
   const stopReason = responses.at(-1)?.stop_reason ?? null;
   console.log(JSON.stringify({
@@ -1089,14 +1325,50 @@ function validateAnalysisResponse(
   if (stopReason === "max_tokens") {
     throw new AppError(502, "Analysis response was truncated. Please try again.");
   }
-  return sanitizeAnswerForTier(answer, tier, grounding);
+  return sanitizeAnswerForTier(answer, tier, grounding, true);
 }
 
-function appendPausedTurn(
+function appendAssistantTurn(
   convo: Anthropic.MessageParam[],
   response: Anthropic.Message
 ): Anthropic.MessageParam[] {
   return [...convo, { role: "assistant", content: response.content as Anthropic.ContentBlockParam[] }];
+}
+
+/**
+ * Runs every tool_use block in a response and returns the user turn carrying
+ * the results. Anthropic's hosted search did this server-side and handed back
+ * pause_turn; on MiniMax the round trip is ours to complete.
+ *
+ * A failed or empty search still yields a tool_result -- the API rejects a
+ * conversation where a tool_use has no matching result, and an explicit "no
+ * results" tells the model to fall back rather than silently retry.
+ */
+async function runToolUses(
+  response: Anthropic.Message
+): Promise<Anthropic.MessageParam | null> {
+  const toolUses = response.content.filter(
+    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+  );
+  if (toolUses.length === 0) return null;
+
+  const results = await Promise.all(toolUses.map(async (toolUse) => {
+    const query =
+      toolUse.name === WEB_SEARCH_TOOL.name
+      && typeof (toolUse.input as { query?: unknown })?.query === "string"
+        ? (toolUse.input as { query: string }).query
+        : "";
+    const found = query ? await searchWeb(query) : [];
+    return {
+      type: "tool_result" as const,
+      tool_use_id: toolUse.id,
+      content: found.length
+        ? JSON.stringify(found)
+        : "No search results were returned for this query.",
+    };
+  }));
+
+  return { role: "user", content: results };
 }
 
 export async function generateAnalysis(
@@ -1121,10 +1393,12 @@ export async function generateAnalysis(
       mapTimeoutError(error);
     }
     collected.push(response);
-    if (response.stop_reason !== "pause_turn") break;
-    convo = appendPausedTurn(convo, response);
+    if (response.stop_reason !== "tool_use") break;
+    const toolResults = await runToolUses(response);
+    if (!toolResults) break;
+    convo = [...appendAssistantTurn(convo, response), toolResults];
   }
-  if (collected.at(-1)?.stop_reason === "pause_turn") {
+  if (collected.at(-1)?.stop_reason === "tool_use") {
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
   return validateAnalysisResponse(collected, tier, startedAt, grounding);
@@ -1266,10 +1540,12 @@ export async function generateAnalysisStream(
       }
     }
     collected.push(response);
-    if (response.stop_reason !== "pause_turn") break;
-    convo = appendPausedTurn(convo, response);
+    if (response.stop_reason !== "tool_use") break;
+    const toolResults = await runToolUses(response);
+    if (!toolResults) break;
+    convo = [...appendAssistantTurn(convo, response), toolResults];
   }
-  if (collected.at(-1)?.stop_reason === "pause_turn") {
+  if (collected.at(-1)?.stop_reason === "tool_use") {
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
   const answer = validateAnalysisResponse(collected, tier, startedAt, grounding);
@@ -1352,7 +1628,7 @@ function prepareAsk(
     currentMessage = `User question: ${question}`;
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.MINIMAX_API_KEY;
   if (!apiKey) throw new AppError(502, "Analysis service is temporarily unavailable.");
 
   return {
@@ -1360,7 +1636,7 @@ function prepareAsk(
     systemPrompt,
     messages: [...history, { role: "user", content: currentMessage }],
     tier: grounding?.kind ?? "general",
-    client: new Anthropic({ apiKey, maxRetries: 2 }),
+    client: new Anthropic({ apiKey, baseURL: MINIMAX_BASE_URL, maxRetries: 2 }),
   };
 }
 
