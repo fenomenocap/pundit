@@ -1315,8 +1315,34 @@ const PROCESS_NARRATION = new RegExp(
 const NARRATION_EXEMPT = /\b(?:not|cannot|unable|never)\b|n't/i;
 const NARRATION_VERB = new RegExp(`\\b(?:${NARRATION_VERBS})\\w*\\b`, "i");
 
+/**
+ * The other half of tool-loop narration: a status report on the model's own
+ * information state, left behind between the search and the answer. FORMAT_RULES
+ * bans it by name ("Now I have enough...") but MiniMax still emits it in roughly
+ * one search answer in three -- observed live as "I have a clear picture now."
+ * and "I have enough verified, recent information."
+ *
+ * PROCESS_NARRATION cannot catch these: they announce no action, so there is no
+ * intent-phrase-plus-verb to match on.
+ *
+ * A negated form is the opposite of narration -- "I don't have enough verified
+ * information" is a limitation the answer should keep -- so NARRATION_EXEMPT
+ * applies here too.
+ */
+const SEARCH_STATUS_NARRATION = new RegExp(
+  "(^|\\n|(?<=[.!?])[ \\t]+)"
+  + "[^.!?\\n]*?\\b(?:(?:i|we)[ \\t]+(?:now[ \\t]+)?have[ \\t]+(?:enough|a[ \\t]+clear)"
+  + "|(?:i|we)[ \\t]+have[ \\t]+what[ \\t]+(?:i|we)[ \\t]+need"
+  + "|that[ \\t]+gives[ \\t]+(?:me|us)[ \\t]+enough"
+  + "|clear[ \\t]+picture[ \\t]+now)\\b"
+  + "[^.!?\\n]*[.!?]+[ \\t]*",
+  "gi"
+);
+
 export function stripProcessNarration(answer: string): string {
   return answer
+    .replace(SEARCH_STATUS_NARRATION, (match: string, lead: string) =>
+      NARRATION_EXEMPT.test(match) ? match : lead)
     .replace(PROCESS_NARRATION, (match: string, lead: string) => {
       const verb = NARRATION_VERB.exec(match);
       if (NARRATION_EXEMPT.test(verb ? match.slice(0, verb.index) : match)) return match;
