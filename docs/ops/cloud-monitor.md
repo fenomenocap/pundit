@@ -131,21 +131,24 @@ rides the key and quota Pundit already pays for.
 
 `express-rate-limit` keeps counters in process memory, so each replica enforces its own
 limit. `/api/ask` therefore divides the intended global budget by the declared replica
-count: `ASK_RATE_LIMIT_PER_MINUTE` (default 10) ÷ `API_REPLICAS` (default 2).
+count: `ASK_RATE_LIMIT_PER_MINUTE` (default 10) ÷ `API_REPLICAS` (default 1, matching
+Railway's current single replica).
 
 `GET /ready` reports the resolved values:
 
 ```json
-"askRateLimit": { "perMinute": 10, "replicas": 2, "perInstance": 5 }
+"askRateLimit": { "perMinute": 10, "replicas": 1, "perInstance": 10 }
 ```
 
 **If you change Railway's replica count, change `API_REPLICAS` to match.** If it drifts
 low the limit only gets stricter than intended, which is the safe direction; if it drifts
 high, users get throttled more than intended on an endpoint that costs LLM quota per call.
 
-To confirm the real ceiling, send ~14 *sequential* requests and watch for 429s. A
-concurrent burst is a poor test: it spreads across replicas and can slip under every
-per-instance counter.
+To confirm the real ceiling, send ~14 *sequential* requests from a fresh window and watch
+for 429s: the count decrements by one per request and the request after the limit is
+refused. A concurrent burst is a poor test — the in-memory counter increments
+asynchronously, so simultaneous requests can all read the same remaining count and slip
+through together. That overshoot is a property of the store, not of the budget.
 
 ### Step 2 — Decide
 
