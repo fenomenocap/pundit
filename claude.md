@@ -63,10 +63,11 @@ MINIMAX_BASE_URL=https://api.minimax.io/anthropic
 # ── Rate limiting for POST /api/ask ──────────────────────────────────────────
 # The intended limit across the whole deployment. express-rate-limit counts in
 # process memory, so the per-instance budget is this divided by API_REPLICAS.
-# Keep API_REPLICAS in step with Railway's replica setting; /ready reports the
-# resolved values under askRateLimit.
+# Railway runs a single replica today, so the default of 1 makes the configured
+# limit the real one. Raise it only if the replica count is raised. /ready
+# reports the resolved values under askRateLimit.
 ASK_RATE_LIMIT_PER_MINUTE=10
-API_REPLICAS=2
+API_REPLICAS=1
 ```
 
 ---
