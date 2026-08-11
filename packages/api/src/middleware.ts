@@ -33,6 +33,15 @@ function isBodyParseError(err: Error): boolean {
   return (err as { type?: unknown }).type === "entity.parse.failed";
 }
 
+// A body over express.json()'s 32kb limit is also the client's doing. It was
+// reaching the generic branch and answering 500, which reads as "the server
+// broke" and invites a retry of a request that can never succeed. The route's
+// own 500-character question guard never sees these: body-parser rejects the
+// payload before any handler runs.
+function isBodyTooLargeError(err: Error): boolean {
+  return (err as { type?: unknown }).type === "entity.too.large";
+}
+
 export function errorHandler(
   err: Error,
   _req: Request,
@@ -51,6 +60,11 @@ export function errorHandler(
 
   if (isBodyParseError(err)) {
     res.status(400).json({ error: "Request body must be valid JSON." });
+    return;
+  }
+
+  if (isBodyTooLargeError(err)) {
+    res.status(413).json({ error: "Request body is too large." });
     return;
   }
 
