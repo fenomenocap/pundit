@@ -12,6 +12,7 @@ import {
   stripProcessNarration,
   ensureGeneralDisclaimer,
   normalizeSectionBreaks,
+  dropMisbucketedTotalsScorelines,
 } from "./ask";
 
 // The tool loop executes searches for real; stub the backend so these tests
@@ -188,6 +189,38 @@ describe("stripProcessNarration", () => {
     expect(stripProcessNarration(
       "That is not the current season. Let me check for the new 2026/27 season."
     )).toBe("That is not the current season.");
+  });
+});
+
+describe("dropMisbucketedTotalsScorelines", () => {
+  it("drops scorelines that are not over 2.5 from an over-2.5 list", () => {
+    // Reached production: 1-1 is two goals, so it is under 2.5, not over it.
+    expect(dropMisbucketedTotalsScorelines(
+      "The most likely 2.5-over scorelines are 1-1 (11.9%), 1-2 (9.9%), 1-3 (6.0%) and 2-2 (5.1%)."
+      // 1-1 is two goals and goes; 1-2 is three and stays.
+    )).toBe("The most likely 2.5-over scorelines are 1-2 (9.9%), 1-3 (6.0%) and 2-2 (5.1%).");
+  });
+
+  it("drops scorelines that are not under 2.5 from an under-2.5 list", () => {
+    expect(dropMisbucketedTotalsScorelines(
+      "Under 2.5 is led by 1-1 (11.9%), 3-1 (4.0%) and 0-0 (7.0%)."
+    )).toBe("Under 2.5 is led by 1-1 (11.9%) and 0-0 (7.0%).");
+  });
+
+  it("leaves a sentence comparing both sides of the line alone", () => {
+    const line = "Over 2.5 sits at 53.6% and Under 2.5 at 46.4%, with 1-1 (11.9%) the modal score.";
+    expect(dropMisbucketedTotalsScorelines(line)).toBe(line);
+  });
+
+  it("leaves a scoreline list with no totals context alone", () => {
+    const line = "The model peaks at 1-1 (11.9%), then 0-2 (9.9%).";
+    expect(dropMisbucketedTotalsScorelines(line)).toBe(line);
+  });
+
+  it("replaces the sentence when every example was misbucketed", () => {
+    expect(dropMisbucketedTotalsScorelines(
+      "The most likely over 2.5 scorelines are 1-1 (11.9%) and 0-0 (7.0%)."
+    )).toBe("The model's scoreline distribution does not single out examples for this total.");
   });
 });
 
