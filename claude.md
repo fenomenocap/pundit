@@ -28,6 +28,7 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 | **Local model** (`dixon-coles.ts`, `model-data.ts`) | `/api/model/active`, `/api/model/fixtures`, `/model`, match grounding | Computes 1X2, totals, BTTS and scoreline probabilities for the 14-day active club-fixture set, including home-field advantage where configured. |
 | **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Active match grounding | Direct best-effort fetches normalize complete active 1X2 markets to no-vig probabilities every 30 minutes. Source failures remain isolated. |
 | **Frozen WC evaluation** (`wc-evaluation.ts`) | `/api/evaluation/wc-2026`, `/evaluation/wc-2026` | Read-only historical backtest. It is not a live competition pipeline and has no cron. |
+| **Web search** (`web-search.ts`) | `POST /api/ask` | Pundit-executed search tool, since MiniMax has no hosted equivalent. Providers tried in order: MiniMax's own endpoint (same key and quota), then Brave when `BRAVE_API_KEY` is set. Failures degrade the answer to grounding-only rather than erroring; health is reported on `/ready` under `webSearch`. |
 | **MiniMax API** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | `MiniMax-M3` over MiniMax's Anthropic-compatible endpoint. Four tiers: active-match model grounding, ESPN competition-standings grounding, Premier League season outlook (Monte Carlo), and clearly labelled general football analysis. Supports SSE streaming, web search, and client-sourced conversation history. |
 
 ---
@@ -58,6 +59,13 @@ MINIMAX_API_KEY=
 # China authenticate only against https://api.minimaxi.com/anthropic.
 MINIMAX_MODEL=MiniMax-M3
 MINIMAX_BASE_URL=https://api.minimax.io/anthropic
+
+# ── Web search fallback (optional) ────────────────────────────────────────────
+# Chat search runs on MiniMax's own endpoint by default, on the key above. That
+# endpoint is undocumented, so setting this activates Brave as a fallback with
+# no code change; providers are tried in order in web-search.ts. Watch
+# /ready -> webSearch to see which one is serving.
+BRAVE_API_KEY=
 ```
 
 ---
