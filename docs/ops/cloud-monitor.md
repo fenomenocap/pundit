@@ -88,7 +88,52 @@ bash scripts/diagnose-prod.sh
 
 Use **Railway MCP** to fetch latest deploy/build logs for `@sports-predict/api` in production.
 
-Grep logs for: `fatal`, `[Bootstrap]`, `[ClubRatings] ALERT`, `unhandledRejection`, `uncaughtException`.
+Grep logs for: `fatal`, `[Bootstrap]`, `[ClubRatings] ALERT`, `unhandledRejection`, `uncaughtException`,
+`web_search_provider_failed`, `web_search_failed`.
+
+### Step 1b — Chat answers degraded but the service is up
+
+Chat runs on MiniMax M3, and its web search is a Pundit-executed tool rather than a hosted
+one. Search failing does **not** fail a request: answers fall back to model grounding and
+pre-training, which for team news, transfers and injuries means quietly stale content. It is
+therefore invisible unless watched for.
+
+`GET /ready` reports `webSearch`:
+
+```json
+"webSearch": {
+  "lastGoodProvider": "minimax",
+  "lastGoodAt": "2026-08-11T10:31:02.104Z",
+  "consecutiveFailures": 0,
+  "totalSearches": 41,
+  "providerFailures": {},
+  "enabledProviders": ["minimax"]
+}
+```
+
+Alert on either of:
+
+- `consecutiveFailures` climbing above ~3 — every enabled provider is failing.
+- `lastGoodProvider` no longer `minimax` — the primary is down and a fallback is carrying
+  traffic, which costs money the primary did not.
+
+**Why the primary is the fragile part.** MiniMax's search endpoint
+(`POST /v1/coding_plan/search`) is undocumented; it was identified from the source of
+MiniMax's published `minimax-coding-plan-mcp` server. It uses the same key and coding-plan
+quota as inference, so it adds no vendor or bill, but it can change shape without notice.
+
+**Recovery without a deploy:** set `BRAVE_API_KEY` in Railway. `web-search.ts` tries
+providers in order and Brave activates as soon as its key exists — no code change needed.
+Confirm by watching `lastGoodProvider` flip to `brave` on `/ready`.
+
+### Step 1c — Rate limiting is per-instance
+
+`/api/ask` is limited to 10 requests/minute, but `express-rate-limit` keeps counters in
+process memory and production runs more than one replica — a single burst returns several
+different `reset` values. The effective ceiling is therefore *replicas × 10*, not 10. It
+still bites (a 40-request burst reliably produces 429s), but do not read the configured
+number as a hard global cap when reasoning about LLM spend. A true global limit would need
+a shared store, which this project deliberately does not run.
 
 ### Step 2 — Decide
 
