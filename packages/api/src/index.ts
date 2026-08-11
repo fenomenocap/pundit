@@ -7,7 +7,7 @@ import { requestLogger, errorHandler } from "./middleware";
 import matchRoutes from "./routes/matches";
 import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
-import askRoutes from "./routes/ask";
+import askRoutes, { askRateLimitConfig } from "./routes/ask";
 import evaluationRoutes from "./routes/evaluation";
 import {
   clubRatingsAgeDays,
@@ -116,6 +116,10 @@ app.get("/ready", (_req, res) => {
     // not to search. Alert on consecutiveFailures climbing, or on
     // lastGoodProvider moving off "minimax".
     webSearch: getWebSearchStatus(),
+    // Surfaced because the effective limit is a function of replica count, and
+    // a mismatch between API_REPLICAS and Railway's actual setting is
+    // otherwise invisible until someone bursts the endpoint.
+    askRateLimit: askRateLimitConfig,
     marketOdds: {
       ready: readiness.marketOddsReady,
       lastUpdated: odds.lastUpdated?.toISOString() ?? null,

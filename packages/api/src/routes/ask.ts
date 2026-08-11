@@ -57,10 +57,36 @@ function parseTeamContext(raw: unknown): TeamContext | undefined {
   return [raw[0].trim(), raw[1].trim()];
 }
 
+// The limit users actually get, across the whole deployment.
+const ASK_LIMIT_PER_MINUTE = Number(process.env.ASK_RATE_LIMIT_PER_MINUTE ?? 10);
+
+/**
+ * express-rate-limit keeps its counters in process memory, so each replica
+ * enforces the limit independently and the real ceiling is limit x replicas.
+ * Production runs two: a burst of 20 requests split 10/10 and neither instance
+ * crossed a limit of 10, so nothing was throttled at all -- on an endpoint that
+ * spends LLM quota per call.
+ *
+ * A shared store would fix it exactly, but that means Redis, which this project
+ * deliberately does not run. Instead the replica count is declared and the
+ * per-instance budget derived from it, so the configured number is the number
+ * that actually applies. Keep API_REPLICAS in step with Railway's replica
+ * setting; if it drifts low the limit only becomes stricter than intended,
+ * which is the safe direction.
+ */
+const API_REPLICAS = Math.max(1, Number(process.env.API_REPLICAS ?? 2));
+const PER_INSTANCE_LIMIT = Math.max(1, Math.floor(ASK_LIMIT_PER_MINUTE / API_REPLICAS));
+
+export const askRateLimitConfig = {
+  perMinute: ASK_LIMIT_PER_MINUTE,
+  replicas: API_REPLICAS,
+  perInstance: PER_INSTANCE_LIMIT,
+};
+
 router.use(
   rateLimit({
     windowMs: 60 * 1000,
-    limit: 10,
+    limit: PER_INSTANCE_LIMIT,
     standardHeaders: "draft-7",
     legacyHeaders: false,
     message: { error: "Too many requests, try again shortly." },
