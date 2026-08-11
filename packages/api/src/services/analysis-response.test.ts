@@ -100,9 +100,11 @@ describe("generateAnalysis", () => {
       .mockResolvedValueOnce(toolUseMessage("First half. "))
       .mockResolvedValueOnce(message("Second half.", "end_turn"));
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    // Only the settled turn survives: the pre-search text is a draft MiniMax
+    // rewrites once results arrive, and keeping both shipped two answers.
     await expect(generateAnalysis(client, "system", [
       { role: "user", content: "q" },
-    ], "match")).resolves.toBe("First half. Second half.");
+    ], "match")).resolves.toBe("Second half.");
     expect(create).toHaveBeenCalledTimes(2);
     expect(searchWeb).toHaveBeenCalledWith("arsenal team news");
 
@@ -127,7 +129,7 @@ describe("generateAnalysis", () => {
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
     // The general tier appends its own disclaimer, so assert on the answer text.
     await expect(generateAnalysis(client, "system", [], "general"))
-      .resolves.toContain("Checking. Done.");
+      .resolves.toContain("Done.");
     const toolResultTurn = create.mock.calls[1][0].messages.at(-1);
     expect(toolResultTurn.content[0].content).toMatch(/no search results/i);
   });
@@ -590,16 +592,20 @@ describe("grounded answer sanitizers", () => {
 });
 
 describe("generateAnalysisStream", () => {
-  it("emits deltas across continuations and joins the final text", async () => {
+  it("discards the pre-search draft rather than streaming it under the rewrite", async () => {
     const stream = vi.fn()
       .mockReturnValueOnce(streamOf(toolUseMessage("First half. "), ["First half. "]))
       .mockReturnValueOnce(streamOf(message("Second half.", "end_turn"), ["Second half."]));
     const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
     const deltas: string[] = [];
+    // The draft is what MiniMax writes before it searches; it then rewrites the
+    // answer against the results. Appending the rewrite beneath the draft gave
+    // the reader two answers, so flushing stops at the tool call and the `done`
+    // event replaces the message with the settled turn.
     await expect(generateAnalysisStream(client, "system", [
       { role: "user", content: "q" },
-    ], "match", (text) => deltas.push(text))).resolves.toBe("First half. Second half.");
-    expect(deltas).toEqual(["First half. Second half."]);
+    ], "match", (text) => deltas.push(text))).resolves.toBe("Second half.");
+    expect(deltas.join("")).not.toContain("First half.");
   });
 
   it("releases settled lines progressively and the deltas rebuild the answer", async () => {
