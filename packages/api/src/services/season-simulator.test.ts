@@ -61,6 +61,34 @@ describe("season simulator", () => {
     expect(isSeasonOutlookQuestion("What does the table show?")).toBe(false);
   });
 
+  // One question asked two ways used to land in two different tiers:
+  // "Relegation battle?" got the outlook, "Who gets relegated?" got the
+  // disclaiming general answer, because the cues were literal substrings.
+  it.each([
+    "Who gets relegated?",
+    "Which teams are relegated this season?",
+    "Which teams go down?",
+    "Who goes down from the Premier League?",
+    "Which clubs stay up?",
+    "Who is going to finish first?",
+    "Who finishes top?",
+    "Who takes the title?",
+  ])("treats %s as a season outlook question", (question) => {
+    expect(isSeasonOutlookQuestion(question)).toBe(true);
+  });
+
+  // The narrow half of the same change: "down" and "top" are ordinary words in
+  // match talk, and must not drag a match or general question into the outlook.
+  it.each([
+    "What does the table show?",
+    "Will the odds go down before kickoff?",
+    "Has the price dropped since this morning?",
+    "Explain how a high defensive line works.",
+    "Which side is the top scorer likely to come from?",
+  ])("does not treat %s as a season outlook question", (question) => {
+    expect(isSeasonOutlookQuestion(question)).toBe(false);
+  });
+
   it("filters remaining scheduled fixtures for a competition", () => {
     const fixtures = remainingScheduledFixtures([
       ...scheduled,

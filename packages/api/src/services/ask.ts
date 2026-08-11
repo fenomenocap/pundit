@@ -25,6 +25,7 @@ import {
   remainingScheduledFixtures,
   simulateSeasonOutlook,
   SeasonOutlook,
+  SEASON_QUESTION_PATTERNS,
 } from "./season-simulator";
 
 export interface OddsSource {
@@ -178,6 +179,28 @@ contribution, or invent attacking, defensive, form, or team-strength drivers tha
 For knockout or qualifier fixtures, use win/draw/loss language only. Never describe an outcome as
 earning, sharing, taking, or securing league points.`;
 
+// Match grounding is retained across a conversation on purpose: dropping it on a
+// bare follow-up ("Why?") sent the turn to the general tier, whose prompt then
+// disclaimed model data the user could see on screen. Retention means the
+// grounding also rides along on turns that have nothing to do with the fixture,
+// so the scoping is done here in the prompt rather than by routing keywords --
+// a cue list cannot anticipate real phrasings, and the failure it produces
+// (a genuine follow-up getting a hedged non-answer) is far worse than the one it
+// fixes. Hence the deliberate asymmetry below: anything arguably about the match
+// is answered from the grounding, and only a plainly unrelated question is
+// answered without it.
+export const MATCH_QUESTION_SCOPE = `The fixture grounding is attached to every turn in this
+conversation, including turns that are not about the fixture. Answer the question the user actually
+asked. Anything that bears on this matchup counts as a question about it, however short or indirect
+-- "Why?", "Tell me more", "Is that a good bet?", "the underdog", a question about either club, or
+anything that follows on from your previous answer. Read those as questions about this fixture and
+answer them in full from the grounding; never tell the user you have no model data for this matchup.
+Only when a question is plainly about something else -- a different match, era or competition, a
+rule or concept of the game in general, a non-football topic -- answer that question on its own
+terms, leave the fixture data out instead of steering back to the matchup, and say briefly that the
+answer does not come from Pundit's model. When it is unclear which of the two a question is, treat
+it as a question about the fixture.`;
+
 const MATCH_SYSTEM_PROMPT = `You are a club-football match-analysis assistant for Pundit. You are given
 precomputed probabilities from Pundit's match model for a specific matchup. Treat these numbers as ground truth for the statistical
 analysis. Do not invent or contradict them. When homeFieldAdvantage is true, the model applies a
@@ -204,12 +227,13 @@ model has no player data -- say so briefly, then use web_search for current
 player-prop odds and player news, and present anything found as market- or
 search-sourced with its source and date, never as Pundit model output. If search
 returns nothing solid, say no verified player data is available.
+${MATCH_QUESTION_SCOPE}
 ${MATCH_ANSWER_GUARDS}
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}
-State the headline win/draw/win and O/U 2.5 numbers, mention 1-2 most likely
-scorelines, and give a one-line read on what would need to be true for the
-underdog.`;
+Whenever the answer covers this fixture, state the headline win/draw/win and
+O/U 2.5 numbers, mention 1-2 most likely scorelines, and give a one-line read on
+what would need to be true for the underdog.`;
 
 const COMPETITION_SYSTEM_PROMPT = `You are a club-football competition-analysis assistant for Pundit.
 You are given the current league or cup standings table from ESPN for a specific competition.
@@ -248,7 +272,10 @@ source and date. If search returns nothing solid, say no verified player data is
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}`;
 
-const COMPETITION_KEYWORDS: ReadonlyArray<{ competitionId: string; keywords: string[] }> = [
+const COMPETITION_KEYWORDS: ReadonlyArray<{
+  competitionId: string;
+  keywords: Array<string | RegExp>;
+}> = [
   {
     competitionId: "eng.1",
     keywords: [
@@ -267,6 +294,12 @@ const COMPETITION_KEYWORDS: ReadonlyArray<{ competitionId: string; keywords: str
       "top four",
       "top 4",
       "champions league spot",
+      // The season tier is only reachable through eng.1, so every phrasing the
+      // outlook recognises has to resolve a competition here too. Sharing the
+      // patterns keeps the two lists from drifting apart, which is how
+      // "Who gets relegated?" ended up in a different tier from
+      // "Relegation battle?".
+      ...SEASON_QUESTION_PATTERNS,
     ],
   },
   {
@@ -283,7 +316,9 @@ const COMPETITION_KEYWORDS: ReadonlyArray<{ competitionId: string; keywords: str
 export function resolveCompetitionQuestion(question: string): string | undefined {
   const normalized = normalizeTeamText(question);
   for (const entry of COMPETITION_KEYWORDS) {
-    if (entry.keywords.some((keyword) => normalized.includes(keyword))) {
+    if (entry.keywords.some((keyword) => (typeof keyword === "string"
+      ? normalized.includes(keyword)
+      : keyword.test(normalized)))) {
       return entry.competitionId;
     }
   }
@@ -293,6 +328,25 @@ export function resolveCompetitionQuestion(question: string): string | undefined
 export function isCompetitionQuestion(question: string): boolean {
   return resolveCompetitionQuestion(question) !== undefined;
 }
+
+// A question about the table or the standings asks for rows the match payload
+// does not contain, so it has to reach competition grounding even mid-match --
+// while following a fixture, "How's the table looking?" and "Who's top right
+// now?" were held by match retention and answered from a payload with no
+// standings in it at all.
+const LEAGUE_TABLE_CUES = [
+  "the table",
+  "the standings",
+  "the ranking",
+  "the rankings",
+  "league table",
+  "league position",
+  "in the standings",
+  "top of the league",
+  "who's top",
+  "whos top",
+  "who is top",
+];
 
 const COMPETITION_FOLLOW_UP_CUES = [
   "that table",
@@ -305,11 +359,17 @@ const COMPETITION_FOLLOW_UP_CUES = [
   "title race",
   "the league",
   "premier league",
+  ...LEAGUE_TABLE_CUES,
 ];
 
 function hasCompetitionFollowUpCue(question: string): boolean {
   const normalized = normalizeTeamText(question);
   return COMPETITION_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
+}
+
+function hasLeagueTableCue(question: string): boolean {
+  const normalized = normalizeTeamText(question);
+  return LEAGUE_TABLE_CUES.some((cue) => normalized.includes(cue));
 }
 
 export function resolveCompetitionContext(
@@ -320,11 +380,18 @@ export function resolveCompetitionContext(
   if (explicitCompetitionId) return explicitCompetitionId;
   if (!hasCompetitionFollowUpCue(question)) return undefined;
 
-  return history
+  const historyCompetitionId = history
     .filter(({ role }) => role === "user")
     .map(({ content }) => resolveCompetitionQuestion(content))
     .reverse()
     .find((competitionId): competitionId is string => competitionId !== undefined);
+  if (historyCompetitionId) return historyCompetitionId;
+
+  // A bare table question with no competition in view still has one sensible
+  // answer: of the two competitions Pundit covers, only the league has a table
+  // -- the qualifiers are ties, not rows. Falling back to it is what lets a
+  // standings question asked mid-match be answered instead of retained.
+  return hasLeagueTableCue(question) ? "eng.1" : undefined;
 }
 
 export function shouldUseCompetitionGrounding(
@@ -471,22 +538,66 @@ function mentionedTeamPositions(
   return teamPositions;
 }
 
+// Error codes for the two ways team resolution fails. The frontend collapses
+// every other 400 into one generic "try rephrasing" line, so a code is what
+// lets a specific, actionable message through.
+export const MULTIPLE_TEAMS_CODE = "MULTIPLE_TEAMS";
+export const MULTIPLE_FIXTURES_CODE = "MULTIPLE_FIXTURES";
+export const TEAMS_NOT_IDENTIFIED_CODE = "TEAMS_NOT_IDENTIFIED";
+
+// The fixtures the named teams actually form, deduplicated across the two legs
+// of a tie so a home-and-away pair is offered once.
+function fixturesAmongTeams(teams: string[], fixtures: TeamFixture[]): TeamFixture[] {
+  const named = new Set(teams);
+  const seen = new Set<string>();
+  const found: TeamFixture[] = [];
+  for (const fixture of fixtures) {
+    if (!named.has(fixture.home) || !named.has(fixture.away)) continue;
+    const key = [fixture.home, fixture.away].sort().join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    found.push(fixture);
+  }
+  return found;
+}
+
+function listMatchups(fixtures: TeamFixture[]): string {
+  const names = fixtures.map((fixture) => `${fixture.home} vs ${fixture.away}`);
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
+}
+
 export function resolveTeams(question: string, fixtures: TeamFixture[]): [string, string] {
   const orderedTeams = [...mentionedTeamPositions(question, fixtures).entries()]
     .sort(([, positionA], [, positionB]) => positionA - positionB)
     .map(([team]) => team);
 
   if (orderedTeams.length > 2) {
+    // Grounding models exactly one match, so more than one matchup cannot be
+    // answered in a turn. Naming the fixtures the question actually contains
+    // turns that limit into a next step instead of a dead end -- the previous
+    // message told the user the request was wrong without saying what to ask
+    // instead, and the frontend replaced even that with generic copy.
+    const named = fixturesAmongTeams(orderedTeams, fixtures).slice(0, 3);
+    if (named.length > 0) {
+      throw new AppError(
+        400,
+        `I can analyse one match at a time — did you mean ${listMatchups(named)}?`,
+        MULTIPLE_FIXTURES_CODE
+      );
+    }
     throw new AppError(
       400,
-      "Please name exactly one matchup with two teams, e.g. 'Arsenal vs Liverpool'."
+      "Please name exactly one matchup with two teams, e.g. 'Arsenal vs Liverpool'.",
+      MULTIPLE_TEAMS_CODE
     );
   }
 
   if (orderedTeams.length < 2) {
     throw new AppError(
       400,
-      "Could not identify two teams in your question. Try naming both teams, e.g. 'Arsenal vs Liverpool'."
+      "Could not identify two teams in your question. Try naming both teams, e.g. 'Arsenal vs Liverpool'.",
+      TEAMS_NOT_IDENTIFIED_CODE
     );
   }
 
@@ -501,8 +612,12 @@ export function resolveQuestionTeams(
     return resolveTeams(question, fixtures);
   } catch (err) {
     if (!(err instanceof AppError) || err.statusCode !== 400) throw err;
-    const isMissingTeams = err.message.startsWith("Could not identify two teams");
-    const isCompetitionMultiTeam = err.message.startsWith("Please name exactly one matchup")
+    // Matched on the error code rather than its wording: the multi-team message
+    // now names the fixtures it found, so a prefix check would silently stop
+    // recognising it.
+    const isMissingTeams = err.code === TEAMS_NOT_IDENTIFIED_CODE;
+    const isCompetitionMultiTeam =
+      (err.code === MULTIPLE_TEAMS_CODE || err.code === MULTIPLE_FIXTURES_CODE)
       && isCompetitionQuestion(question);
     if (!isMissingTeams && !isCompetitionMultiTeam) throw err;
     return undefined;
@@ -1144,6 +1259,40 @@ export function ensureGeneralDisclaimer(answer: string): string {
     : `${answer.trimEnd()}\n\n${GENERAL_DISCLAIMER}`;
 }
 
+// The deterministic guard chain for a tier, factored out of
+// validateAnalysisResponse so the streaming path can run exactly the same
+// guards over a settled prefix of the answer instead of a second, weaker copy.
+//
+// The MiniMax guards run first and for every tier: narration and fused section
+// labels are properties of the raw text, so stripping them before the
+// tier-specific guards means those guards see the same shape they were written
+// against.
+//
+// `final` gates the general-tier disclaimer, which appends rather than rewrites
+// and so is a property of the whole answer, not of any prefix of it. Running it
+// on settled prefixes put the disclaimer after the first line, and the next,
+// longer prefix then no longer extended what had already been sent -- the
+// flusher read that as divergence and stopped streaming after one delta.
+function sanitizeAnswerForTier(
+  answer: string,
+  tier: AnalysisTier,
+  grounding?: AskGrounding,
+  final = false
+): string {
+  const commonSafeAnswer = sanitizeUnsupportedTeamNews(
+    normalizeSectionBreaks(stripProcessNarration(answer))
+  );
+  if (tier === "match") {
+    return sanitizeMatchAnswer(
+      commonSafeAnswer,
+      grounding?.kind === "match" ? grounding : undefined
+    );
+  }
+  if (tier === "season") return sanitizeSeasonAnswer(commonSafeAnswer);
+  if (tier === "competition") return sanitizeCompetitionAnswer(commonSafeAnswer);
+  return final ? ensureGeneralDisclaimer(commonSafeAnswer) : commonSafeAnswer;
+}
+
 function validateAnalysisResponse(
   responses: Anthropic.Message[],
   tier: AnalysisTier,
@@ -1176,20 +1325,7 @@ function validateAnalysisResponse(
   if (stopReason === "max_tokens") {
     throw new AppError(502, "Analysis response was truncated. Please try again.");
   }
-  const commonSafeAnswer = sanitizeUnsupportedTeamNews(
-    normalizeSectionBreaks(stripProcessNarration(answer))
-  );
-  if (tier === "match") {
-    return sanitizeMatchAnswer(
-      commonSafeAnswer,
-      grounding?.kind === "match" ? grounding : undefined
-    );
-  }
-  if (tier === "season") return sanitizeSeasonAnswer(commonSafeAnswer);
-  if (tier === "competition") {
-    return sanitizeCompetitionAnswer(commonSafeAnswer);
-  }
-  return ensureGeneralDisclaimer(commonSafeAnswer);
+  return sanitizeAnswerForTier(answer, tier, grounding, true);
 }
 
 function appendAssistantTurn(
@@ -1277,6 +1413,78 @@ function isRetryableStreamError(error: unknown): boolean {
     && (RETRYABLE_STATUS.has(error.status) || error.status >= 500);
 }
 
+// Number of completed lines held back behind the line the model is still
+// writing. The guards are line-scoped, but a handful of their patterns can
+// begin on the previous line (a parenthetical carried over, a trailing
+// " -- this is ..." clause opening a new line), so a line is only released once
+// the following line exists to give the guards their context.
+const GUARD_BAND_LINES = 1;
+
+// Everything up to the last newline is "complete", minus the guard band. An
+// answer shorter than the band never settles early and is delivered whole by
+// `finish`.
+function settledPrefix(raw: string): string {
+  const lines = raw.split("\n");
+  const settledCount = lines.length - 1 - GUARD_BAND_LINES;
+  return settledCount > 0 ? lines.slice(0, settledCount).join("\n") : "";
+}
+
+/**
+ * Releases the answer to the client progressively without ever sending text
+ * the deterministic guards have not seen.
+ *
+ * Each chunk is appended to a raw buffer; the settled prefix of that buffer is
+ * put through the full tier guard chain, and only the part of the *sanitized*
+ * output beyond what was already sent is emitted. Because the guards are
+ * line-scoped, sanitizing a longer prefix normally extends the previous
+ * sanitized output rather than rewriting it. If it ever does rewrite it -- a
+ * guard reaching back further than the band -- the already-sent bytes cannot be
+ * recalled, so progressive flushing stops for the rest of the turn and the
+ * authoritative answer is left to the `done` event, which the client uses to
+ * replace the message content wholesale.
+ */
+class GuardedFlusher {
+  private raw = "";
+  private emitted = "";
+  private diverged = false;
+
+  constructor(
+    private readonly tier: AnalysisTier,
+    private readonly grounding: AskGrounding | undefined,
+    private readonly onDelta: (text: string) => void
+  ) {}
+
+  push(text: string): void {
+    this.raw += text;
+    if (this.diverged) return;
+    const settled = settledPrefix(this.raw);
+    if (!settled) return;
+    this.emit(sanitizeAnswerForTier(settled, this.tier, this.grounding));
+  }
+
+  // `answer` is the validated whole-answer result, which is authoritative.
+  finish(answer: string): void {
+    this.emit(answer);
+  }
+
+  private emit(sanitized: string): void {
+    if (this.diverged) return;
+    if (!sanitized.startsWith(this.emitted)) {
+      this.diverged = true;
+      console.log(JSON.stringify({
+        event: "analysis_stream_flush_diverged",
+        tier: this.tier,
+        emittedChars: this.emitted.length,
+      }));
+      return;
+    }
+    const delta = sanitized.slice(this.emitted.length);
+    if (!delta) return;
+    this.emitted = sanitized;
+    this.onDelta(delta);
+  }
+}
+
 export async function generateAnalysisStream(
   client: Pick<Anthropic, "messages">,
   systemPrompt: string,
@@ -1290,6 +1498,7 @@ export async function generateAnalysisStream(
   const collected: Anthropic.Message[] = [];
   let convo = toMessageParams(messages);
   let anyDeltaSeen = false;
+  const flusher = new GuardedFlusher(tier, grounding, onDelta);
   const abort = new AbortController();
   for (let turn = 0; turn <= MAX_CONTINUATIONS; turn += 1) {
     if (!shouldContinue()) {
@@ -1317,6 +1526,9 @@ export async function generateAnalysisStream(
           }
           deltaSeen = true;
           anyDeltaSeen = true;
+          // Retries are already gated on `anyDeltaSeen`, so nothing buffered
+          // here can be replayed by a second attempt and duplicated.
+          flusher.push(text);
         });
         response = await stream.finalMessage();
       } catch (error) {
@@ -1337,7 +1549,7 @@ export async function generateAnalysisStream(
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
   const answer = validateAnalysisResponse(collected, tier, startedAt, grounding);
-  onDelta(answer);
+  flusher.finish(answer);
   return answer;
 }
 

@@ -221,6 +221,22 @@ describe("local fixture market normalization", () => {
     }, uclFixture)).not.toBeNull();
   });
 
+  it("does not read a club whose name starts with a month as a date", () => {
+    // Every one of these is a real club followed by a scoreline, and each
+    // phantom date could only disagree with the true kick-off -- costing the
+    // event its market coverage. Septemvri plays in the UCL qualifiers Pundit
+    // actually prices.
+    expect(extractEventDates("marseille 1 - lyon 0")).toEqual([]);
+    expect(extractEventDates("septemvri 1 levski 0")).toEqual([]);
+    expect(extractEventDates("novara 3 como 1")).toEqual([]);
+    expect(extractEventDates("junior 2 nacional 1")).toEqual([]);
+    expect(extractEventDates("decatur 5 augusta 2")).toEqual([]);
+    // Real month words, short and full, still read as dates.
+    expect(extractEventDates("august 11")).toEqual([{ month: 8, day: 11 }]);
+    expect(extractEventDates("sep. 4")).toEqual([{ month: 9, day: 4 }]);
+    expect(extractEventDates("sept 4")).toEqual([{ month: 9, day: 4 }]);
+  });
+
   it("searches Polymarket with the fuller club names, not ClubElo's short ones", () => {
     const uclFixture: ModelFixture = {
       ...fixture, home: "St Gillis", away: "Bodoe Glimt",

@@ -197,6 +197,24 @@ const MONTHS = [
   "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
 ];
 
+const FULL_MONTHS = [
+  "january", "february", "march", "april", "may", "june", "july",
+  "august", "september", "october", "november", "december",
+];
+
+// Only a word that *is* a month names a date. Matching a month-prefixed prefix
+// instead read club names as dates -- "Marseille 1 - Lyon 0" parsed as Mar 1,
+// "Septemvri 1 Levski 0" as Sep 1, "Novara 3 Como 1" as Nov 3 -- and every one
+// of those phantom dates could only disagree with the real kick-off, so the
+// event was rejected and its market coverage silently lost.
+const MONTH_WORDS = new Map<string, number>([
+  ...MONTHS.map((name, index): [string, number] => [name, index + 1]),
+  ...FULL_MONTHS.map((name, index): [string, number] => [name, index + 1]),
+  // The one abbreviation that is neither the three-letter stem nor the full
+  // name, and common enough in published event text to be worth listing.
+  ["sept", 9],
+]);
+
 /**
  * Month/day pairs a venue put in its event text, in any of the shapes the two
  * sources actually publish: an ISO date in a Polymarket slug or question
@@ -212,9 +230,9 @@ export function extractEventDates(text: string): Array<{ month: number; day: num
     const month = MONTHS.indexOf(name) + 1;
     if (month > 0) found.push({ month, day: Number(day) });
   }
-  for (const [, name, day] of text.matchAll(/\b([a-z]{3})[a-z]*\.?\s+(\d{1,2})\b/g)) {
-    const month = MONTHS.indexOf(name) + 1;
-    if (month > 0) found.push({ month, day: Number(day) });
+  for (const [, name, day] of text.matchAll(/\b([a-z]{3,9})\.?\s+(\d{1,2})\b/g)) {
+    const month = MONTH_WORDS.get(name);
+    if (month !== undefined) found.push({ month, day: Number(day) });
   }
   return found;
 }

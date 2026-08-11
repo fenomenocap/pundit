@@ -129,6 +129,26 @@ app.use(errorHandler);
 
 // ─── Start ──────────────────────────────────────────────────────────────────
 
+function logFatalProcessError(label: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+  console.error(JSON.stringify({
+    level: "fatal",
+    source: label,
+    message,
+    ...(stack ? { stack } : {}),
+  }));
+}
+
+process.on("unhandledRejection", (reason) => {
+  logFatalProcessError("unhandledRejection", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  logFatalProcessError("uncaughtException", error);
+  process.exit(1);
+});
+
 app.listen(port, () => {
   console.log(`API server running on port ${port}`);
 
@@ -138,7 +158,6 @@ app.listen(port, () => {
     await startModelCron();
     await startModelMarketOddsCron();
   })().catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[Bootstrap] ${message}`);
+    logFatalProcessError("Bootstrap", error);
   });
 });
