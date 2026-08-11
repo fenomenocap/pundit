@@ -1201,11 +1201,20 @@ export function sanitizeUnsupportedTeamNews(answer: string): string {
 // both on its own ("Let me check for the new season.") and tacked onto a
 // legitimate one ("I don't have verified data, so let me search for the
 // latest."), where only the trailing clause should go.
+//
+// The verb list is deliberately broad. It began as the obvious retrieval verbs
+// and missed "Let me get more concrete details from the Telegraph", which
+// reached production; the intent-phrase prefix ("let me", "I'll", ...) is what
+// makes a clause narration, so the verb only has to name the act.
+const NARRATION_VERBS =
+  "search|look|check|find|pull|gather|research|browse|get|dig|confirm|verify"
+  + "|review|read|see|retrieve|fetch|scan";
+
 const PROCESS_NARRATION = new RegExp(
   "(^|\\n|(?<=[.!?])[ \\t]|[,;][ \\t]*(?:so|then|and)?[ \\t]*)"
   + "(?:let me|let'?s|i'?ll|i will|i'?m going to|i am going to|i need to|now i'?ll"
   + "|first,?[ \\t]+let me)\\b"
-  + "[^.!?\\n]*?\\b(?:search|look|check|find|pull|gather|research|browse)\\w*\\b"
+  + `[^.!?\\n]*?\\b(?:${NARRATION_VERBS})\\w*\\b`
   + "[^.!?\\n]*[.!?]*[ \\t]*",
   "gi"
 );
@@ -1216,7 +1225,7 @@ const PROCESS_NARRATION = new RegExp(
 // verb to count: testing the whole clause let real narration through whenever
 // an unrelated later phrase happened to contain "not".
 const NARRATION_EXEMPT = /\b(?:not|cannot|unable|never)\b|n't/i;
-const NARRATION_VERB = /\b(?:search|look|check|find|pull|gather|research|browse)\w*\b/i;
+const NARRATION_VERB = new RegExp(`\\b(?:${NARRATION_VERBS})\\w*\\b`, "i");
 
 export function stripProcessNarration(answer: string): string {
   return answer
