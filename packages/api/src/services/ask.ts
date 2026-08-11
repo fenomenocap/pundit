@@ -1071,8 +1071,65 @@ function replaceInvalidScorelineLines(answer: string, grounding: Grounding): str
   }).join("\n");
 }
 
+// Which side of the 2.5 line a sentence is illustrating. "2.5-over" and
+// "over 2.5" are both used by the model, so the number may sit on either side.
+const OVER_CONTEXT = /(?:over|above)\s*2\.5|2\.5[-\s]*over/i;
+const UNDER_CONTEXT = /(?:under|below)\s*2\.5|2\.5[-\s]*under/i;
+
+// A cited scoreline with its probability, e.g. "1-2 (9.9%)".
+const CITED_SCORELINE = /\b(\d+)-(\d+)\b\s*\((\d+(?:\.\d+)?)%\)/g;
+
+/**
+ * Drops scorelines offered as examples of a totals market they do not belong
+ * to. A live follow-up listed "the most likely 2.5-over scorelines" as
+ * "1-1 (11.9%), 1-2 (9.9%), 1-3 (6.0%)" -- 1-1 is two goals, so it is under
+ * 2.5, not over it. The scoreline and its probability are both real model
+ * output; only the bucket is wrong, which makes this checkable arithmetic
+ * rather than a judgement call.
+ *
+ * A sentence naming both sides of the line is left alone: it is comparing
+ * them, not illustrating one, and there is no single correct bucket to test
+ * against.
+ */
+export function dropMisbucketedTotalsScorelines(line: string): string {
+  const over = OVER_CONTEXT.test(line);
+  const under = UNDER_CONTEXT.test(line);
+  if (over === under) return line;
+
+  let removed = 0;
+  const pruned = line.replace(CITED_SCORELINE, (match, home: string, away: string) => {
+    const goals = Number(home) + Number(away);
+    const belongs = over ? goals >= 3 : goals <= 2;
+    if (belongs) return match;
+    removed += 1;
+    return "";
+  });
+  if (removed === 0) return line;
+
+  // Removing list members leaves the punctuation that joined them.
+  const tidied = pruned
+    .replace(/,\s*(?=,)/g, "")
+    // A removed leading item leaves its separator behind the words that
+    // introduced the list: "scorelines are , 1-2 (9.9%)".
+    .replace(/\s+,\s*/g, " ")
+    .replace(/([:,])\s*(?=and\b)/gi, " ")
+    .replace(/\s*,\s*(?=[.!?]|$)/g, "")
+    .replace(/\b(?:and|,)\s*(?=[.!?]|$)/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([.!?,])/g, "$1")
+    .trim();
+
+  // If pruning emptied the list, the sentence no longer says anything true.
+  return /\d+-\d+/.test(tidied)
+    ? tidied
+    : "The model's scoreline distribution does not single out examples for this total.";
+}
+
 export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): string {
-  let sanitized = answer;
+  let sanitized = answer
+    .split("\n")
+    .map(dropMisbucketedTotalsScorelines)
+    .join("\n");
   sanitized = sanitized.replace(
     /(?:(?:Any|All|Every) scorelines?|anything) not (?:listed|mentioned|shown)(?: here)?[^.!?\n]*(?:below|under|falls below)[^.!?\n]*(?:0\.1%|threshold)[^.!?\n]*[.!?]?/gi,
     "The scorelines above are selected examples, not the full set at or above the model's 0.1% reporting threshold."
