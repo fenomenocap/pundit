@@ -167,6 +167,26 @@ describe("stripProcessNarration", () => {
     )).toBe("I have no verified updates.");
   });
 
+  it("removes the search-status report left between tool call and answer", () => {
+    // Both strings are verbatim from live answers.
+    expect(stripProcessNarration(
+      "I have a clear picture now.\n\n**Transfers**\nChelsea signed a keeper."
+    )).toBe("**Transfers**\nChelsea signed a keeper.");
+    expect(stripProcessNarration(
+      "I have enough verified, recent information. **Team news**"
+    )).toBe("**Team news**");
+  });
+
+  it("keeps a negated information-state statement, which is a real limitation", () => {
+    const answer = "I don't have enough verified information to name a return date.";
+    expect(stripProcessNarration(answer)).toBe(answer);
+  });
+
+  it("does not strip a squad claim that happens to use the same words", () => {
+    const answer = "Arsenal have enough depth to cover both full-back slots.";
+    expect(stripProcessNarration(answer)).toBe(answer);
+  });
+
   it("keeps the negated disclaimer the general tier depends on", () => {
     const answer = "I'm not pulling this from Pundit's model data — Pundit has no injury feed.";
     expect(stripProcessNarration(answer)).toBe(answer);
