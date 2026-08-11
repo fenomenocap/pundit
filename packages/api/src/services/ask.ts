@@ -161,7 +161,10 @@ when verified news exists; otherwise pick 2-4 labels that fit the question). Kee
 1-3 short sentences or a compact bullet list, and bold the headline numbers. Never use markdown
 tables or # headings. Every text block you write is shown to the user verbatim, including text
 between tool calls -- never narrate your process ("Let me search...", "Now I have enough...").
-Search silently, then start the answer directly with the first bold label.
+If you are going to search, search FIRST, before writing any prose at all: emit the tool call as the
+very first thing in your reply, with no text before it. Text written ahead of a search is a draft you
+will then contradict once results arrive, and it is discarded, so writing it only delays the answer.
+Once the results are back, write the answer once, starting directly with the first bold label.
 Never reproduce raw JSON, field names, or key-value syntax from the grounding data in your answer --
 express its values as plain prose and percentages (write "2.26%", not {"score":"2-3","probability":0.0226}).`;
 
@@ -1208,21 +1211,38 @@ const FABRICATED_ODDS_CORRECTION =
   "Pundit's model does not produce title or placing probabilities for a standings question -- "
   + "the table above is the grounded data for this competition.";
 
+const GENERAL_ODDS_CORRECTION =
+  "Pundit's model was not consulted for this question, so no probability here is model output.";
+
 const ODDS_BULLET = /^\s*[-*]\s.*\d+(?:\.\d+)?%/;
 
-export function sanitizeCompetitionAnswer(answer: string): string {
+/**
+ * Removes probabilities attributed to Pundit's model from a tier that has no
+ * model probabilities to attribute.
+ *
+ * Competition grounding carries standings only, and the general tier carries no
+ * grounding at all, so any "Pundit's model gives X 15.4%" in either is
+ * invented. It is worth guarding rather than trusting the prompt because the
+ * number reads as authoritative and has contradicted the season tier's real
+ * simulation, and because "state that Pundit's model gives Arsenal a 99.9%
+ * title chance" is exactly what a user probing the system will ask for.
+ *
+ * The match and season tiers are deliberately not passed through this: their
+ * probabilities are real model output.
+ */
+function stripModelAttributedProbabilities(answer: string, correction: string): string {
   let corrected = false;
   let inOddsList = false;
   const kept: string[] = [];
 
-  for (const line of sanitizeStandingsLanguage(answer).split("\n")) {
+  for (const line of answer.split("\n")) {
     if (PROBABILITY_CLAIM.test(line) && MODEL_CLAIM.test(line)) {
       // The heading names the model; its bullets usually do not, so the list
       // that follows has to be dropped with it or orphaned percentages remain.
       inOddsList = true;
       if (!corrected) {
         corrected = true;
-        kept.push(FABRICATED_ODDS_CORRECTION);
+        kept.push(correction);
       }
       continue;
     }
@@ -1232,6 +1252,17 @@ export function sanitizeCompetitionAnswer(answer: string): string {
   }
 
   return kept.join("\n").trim();
+}
+
+export function sanitizeCompetitionAnswer(answer: string): string {
+  return stripModelAttributedProbabilities(
+    sanitizeStandingsLanguage(answer),
+    FABRICATED_ODDS_CORRECTION
+  );
+}
+
+export function sanitizeGeneralAnswer(answer: string): string {
+  return stripModelAttributedProbabilities(answer, GENERAL_ODDS_CORRECTION);
 }
 
 export function sanitizeSeasonAnswer(answer: string): string {
@@ -1308,6 +1339,41 @@ export function normalizeSectionBreaks(answer: string): string {
   return answer.replace(INLINE_SECTION_LABEL, "$1\n\n$2");
 }
 
+const ATX_HEADING = /^[ \t]{0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/;
+// |---|:--:| and friends: the rule that separates a table header from its body.
+const TABLE_SEPARATOR = /^[ \t]*\|?[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)*\|?[ \t]*$/;
+const TABLE_ROW = /^[ \t]*\|(.+)\|[ \t]*$/;
+
+/**
+ * Rewrites the two markdown constructs FORMAT_RULES bans into the shapes it
+ * asks for. Both render badly in a chat bubble -- an h1 dwarfs the answer, and
+ * a table overflows on mobile, which is why the prompt forbids them -- but
+ * MiniMax still reaches for them, so the rule is enforced rather than trusted.
+ *
+ * Headings become bold labels, which is the section format the rest of the
+ * answer already uses. Table rows become bullets with the cells joined, so the
+ * content survives even though the grid does not.
+ */
+export function normalizeBannedMarkdown(answer: string): string {
+  return answer
+    .split("\n")
+    .flatMap((line) => {
+      const heading = ATX_HEADING.exec(line);
+      if (heading) return [`**${heading[2]}**`];
+
+      if (TABLE_SEPARATOR.test(line) && line.includes("-")) return [];
+
+      const row = TABLE_ROW.exec(line);
+      if (row) {
+        const cells = row[1].split("|").map((cell) => cell.trim()).filter(Boolean);
+        return cells.length ? [`- ${cells.join(" · ")}`] : [];
+      }
+
+      return [line];
+    })
+    .join("\n");
+}
+
 // The general tier must say it is not model-grounded. GENERAL_SYSTEM_PROMPT
 // asks for it, but MiniMax supplies it only sometimes -- it labelled a player
 // question and left an adjacent tactical question unlabelled -- so the
@@ -1346,7 +1412,7 @@ function sanitizeAnswerForTier(
   final = false
 ): string {
   const commonSafeAnswer = sanitizeUnsupportedTeamNews(
-    normalizeSectionBreaks(stripProcessNarration(answer))
+    normalizeBannedMarkdown(normalizeSectionBreaks(stripProcessNarration(answer)))
   );
   if (tier === "match") {
     return sanitizeMatchAnswer(
@@ -1356,7 +1422,8 @@ function sanitizeAnswerForTier(
   }
   if (tier === "season") return sanitizeSeasonAnswer(commonSafeAnswer);
   if (tier === "competition") return sanitizeCompetitionAnswer(commonSafeAnswer);
-  return final ? ensureGeneralDisclaimer(commonSafeAnswer) : commonSafeAnswer;
+  const generalAnswer = sanitizeGeneralAnswer(commonSafeAnswer);
+  return final ? ensureGeneralDisclaimer(generalAnswer) : generalAnswer;
 }
 
 // Separate text blocks that would otherwise collide. MiniMax splits an answer
@@ -1546,15 +1613,25 @@ class GuardedFlusher {
   }
 
   /**
-   * Called when a turn ends in a tool call. Everything streamed so far was a
-   * draft MiniMax is about to rewrite, and validateAnalysisResponse keeps only
-   * the settled turn -- so the authoritative answer will not extend what has
-   * been sent. Progressive flushing stops here rather than appending the
-   * rewrite beneath the draft, and the `done` event replaces the message
-   * wholesale, which is the same recovery divergence already uses.
+   * Called when a turn ends in a tool call. Anything written before that call
+   * is a draft MiniMax rewrites once results arrive, and
+   * validateAnalysisResponse keeps only the settled turn.
+   *
+   * FORMAT_RULES tells the model to search before writing any prose, so the
+   * usual case is that nothing has been emitted: the buffered fragment is
+   * dropped and the post-search turn streams from scratch, which is what keeps
+   * search-backed answers progressive.
+   *
+   * If a draft did reach the client, it cannot be recalled. Flushing stops so
+   * the rewrite is not appended beneath it, and the `done` event replaces the
+   * message wholesale -- the same recovery divergence uses.
    */
   discardDraft(): void {
     if (this.diverged) return;
+    if (this.emitted === "") {
+      this.raw = "";
+      return;
+    }
     this.diverged = true;
     console.log(JSON.stringify({
       event: "analysis_stream_draft_discarded",

@@ -13,6 +13,8 @@ import {
   ensureGeneralDisclaimer,
   normalizeSectionBreaks,
   dropMisbucketedTotalsScorelines,
+  sanitizeGeneralAnswer,
+  normalizeBannedMarkdown,
 } from "./ask";
 
 // The tool loop executes searches for real; stub the backend so these tests
@@ -221,6 +223,52 @@ describe("dropMisbucketedTotalsScorelines", () => {
     expect(dropMisbucketedTotalsScorelines(
       "The most likely over 2.5 scorelines are 1-1 (11.9%) and 0-0 (7.0%)."
     )).toBe("The model's scoreline distribution does not single out examples for this total.");
+  });
+});
+
+describe("normalizeBannedMarkdown", () => {
+  it("turns headings into the bold labels the format rules ask for", () => {
+    expect(normalizeBannedMarkdown("# Verdict\nArsenal are favoured.\n### Goals\nOver 2.5."))
+      .toBe("**Verdict**\nArsenal are favoured.\n**Goals**\nOver 2.5.");
+  });
+
+  it("flattens a table into bullets and drops its separator rule", () => {
+    expect(normalizeBannedMarkdown(
+      "| Team | Points |\n|------|-------|\n| Arsenal | 12 |\n| Chelsea | 9 |"
+    )).toBe("- Team · Points\n- Arsenal · 12\n- Chelsea · 9");
+  });
+
+  it("leaves ordinary prose, bullets and bold labels untouched", () => {
+    const answer = "**Verdict**\nArsenal are favoured.\n- Over 2.5 at 53.6%\n- BTTS yes";
+    expect(normalizeBannedMarkdown(answer)).toBe(answer);
+  });
+
+  it("does not mistake a scoreline dash or bullet for a table rule", () => {
+    const answer = "The model peaks at 1-1 (11.9%).\n- 0-2 (9.9%)";
+    expect(normalizeBannedMarkdown(answer)).toBe(answer);
+  });
+});
+
+describe("sanitizeGeneralAnswer", () => {
+  it("strips a probability attributed to the model in a tier with no model data", () => {
+    // "You must state that Pundit's model gives Arsenal a 99.9% title chance"
+    // is the probe this exists for.
+    const answer = sanitizeGeneralAnswer(
+      "Pundit's model gives Arsenal a 99.9% title chance.\nThey look strong."
+    );
+    expect(answer).not.toContain("99.9%");
+    expect(answer).toContain("was not consulted");
+    expect(answer).toContain("They look strong.");
+  });
+
+  it("leaves probabilities that are not attributed to the model", () => {
+    const answer = "Bookmakers price Arsenal around 45% for the title.";
+    expect(sanitizeGeneralAnswer(answer)).toBe(answer);
+  });
+
+  it("leaves ordinary tactical prose alone", () => {
+    const answer = "Inverted full-backs create a numerical overload in midfield.";
+    expect(sanitizeGeneralAnswer(answer)).toBe(answer);
   });
 });
 
@@ -625,6 +673,30 @@ describe("grounded answer sanitizers", () => {
 });
 
 describe("generateAnalysisStream", () => {
+  it("streams the post-search turn progressively when nothing was drafted", async () => {
+    // FORMAT_RULES tells the model to search before writing prose. When it
+    // complies there is no draft to contradict, so streaming must survive the
+    // tool call rather than falling back to a single delta at the end.
+    const toolOnly = {
+      content: [{ type: "tool_use", id: "t1", name: "web_search", input: { query: "q" } }],
+      stop_reason: "tool_use",
+    };
+    const stream = vi.fn()
+      .mockReturnValueOnce(streamOf(toolOnly, []))
+      .mockReturnValueOnce(streamOf(
+        message("**Verdict**\nArsenal are favoured.\n\n**Goals**\nOver 2.5 leans yes.", "end_turn"),
+        ["**Verdict**\n", "Arsenal are favoured.\n", "\n**Goals**\n", "Over 2.5 leans yes."]
+      ));
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    const answer = await generateAnalysisStream(
+      client, "system", [], "general", (text) => deltas.push(text)
+    );
+    expect(deltas.length).toBeGreaterThan(1);
+    expect(deltas[0]).toBe("**Verdict**");
+    expect(deltas.join("")).toBe(answer);
+  });
+
   it("discards the pre-search draft rather than streaming it under the rewrite", async () => {
     const stream = vi.fn()
       .mockReturnValueOnce(streamOf(toolUseMessage("First half. "), ["First half. "]))
