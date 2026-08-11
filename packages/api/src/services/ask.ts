@@ -1302,6 +1302,18 @@ function sanitizeAnswerForTier(
   return final ? ensureGeneralDisclaimer(commonSafeAnswer) : commonSafeAnswer;
 }
 
+// Separate text blocks that would otherwise collide. MiniMax splits an answer
+// across blocks without carrying whitespace at the seam, so a plain
+// concatenation produced "...from web searches.This is a web-search answer" --
+// two sentences fused mid-line.
+function joinTextBlocks(blocks: Anthropic.ContentBlock[]): string {
+  return blocks.reduce((text, block) => {
+    if (block.type !== "text") return text;
+    const fuses = text !== "" && !/\s$/.test(text) && !/^\s/.test(block.text);
+    return `${text}${fuses ? " " : ""}${block.text}`;
+  }, "").trim();
+}
+
 function validateAnalysisResponse(
   responses: Anthropic.Message[],
   tier: AnalysisTier,
@@ -1309,15 +1321,15 @@ function validateAnalysisResponse(
   grounding?: AskGrounding
 ): string {
   const blocks = responses.flatMap((response) => response.content);
-  // Separate text blocks that would otherwise collide. MiniMax splits an answer
-  // across blocks around tool calls without carrying whitespace at the seam, so
-  // a plain concatenation produced "...from web searches.This is a web-search
-  // answer" -- two sentences fused mid-line.
-  const answer = blocks.reduce((text, block) => {
-    if (block.type !== "text") return text;
-    const fuses = text !== "" && !/\s$/.test(text) && !/^\s/.test(block.text);
-    return `${text}${fuses ? " " : ""}${block.text}`;
-  }, "").trim();
+  // Only the settled turn's text is the answer. MiniMax drafts a provisional
+  // answer, calls the search tool, then rewrites it once results arrive, so
+  // concatenating every turn shipped both: a live reply carried a short
+  // pre-search injury list, the giveaway line "I have a clear recent picture
+  // now.", and then a fuller list that repeated and partly contradicted it.
+  // Anthropic's hosted search never did this -- it resumed one answer rather
+  // than restarting it. Turns before the last are drafts and are dropped.
+  const finalBlocks = responses.at(-1)?.content ?? [];
+  const answer = joinTextBlocks(finalBlocks) || joinTextBlocks(blocks);
   const usedWebSearch = blocks.some((block) =>
     block.type === "tool_use" && block.name === WEB_SEARCH_TOOL.name
   );
@@ -1476,6 +1488,24 @@ class GuardedFlusher {
     this.emit(answer);
   }
 
+  /**
+   * Called when a turn ends in a tool call. Everything streamed so far was a
+   * draft MiniMax is about to rewrite, and validateAnalysisResponse keeps only
+   * the settled turn -- so the authoritative answer will not extend what has
+   * been sent. Progressive flushing stops here rather than appending the
+   * rewrite beneath the draft, and the `done` event replaces the message
+   * wholesale, which is the same recovery divergence already uses.
+   */
+  discardDraft(): void {
+    if (this.diverged) return;
+    this.diverged = true;
+    console.log(JSON.stringify({
+      event: "analysis_stream_draft_discarded",
+      tier: this.tier,
+      emittedChars: this.emitted.length,
+    }));
+  }
+
   private emit(sanitized: string): void {
     if (this.diverged) return;
     if (!sanitized.startsWith(this.emitted)) {
@@ -1550,6 +1580,7 @@ export async function generateAnalysisStream(
     }
     collected.push(response);
     if (response.stop_reason !== "tool_use") break;
+    flusher.discardDraft();
     const toolResults = await runToolUses(response);
     if (!toolResults) break;
     convo = [...appendAssistantTurn(convo, response), toolResults];
