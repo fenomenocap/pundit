@@ -27,7 +27,7 @@ import {
   writeReport
 } from "./chat-battle-test-lib.mjs";
 
-const DEFAULT_API_URL = "https://sports-predictapi-production.up.railway.app";
+const DEFAULT_API_URL = "https://thepundit.up.railway.app";
 const DEFAULT_WEB_URL = "https://thepundit.vercel.app";
 const ROOT = path.resolve(import.meta.dirname, "..");
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_URL="https://sports-predictapi-production.up.railway.app"
+API_URL="https://thepundit.up.railway.app"
 WEB_URL="https://thepundit.vercel.app"
-EXPECTED_API_HOST="sports-predictapi-production.up.railway.app"
+EXPECTED_API_HOST="thepundit.up.railway.app"
 
 COMMIT_ARG="${1:-}"
 
