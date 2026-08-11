@@ -9,7 +9,7 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 | Area | Current behavior |
 |---|---|
 | Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/competition/season/general), active market comparisons, and suggestions from featured active club fixtures. The status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpriced`, `no-fixtures`, and `unavailable`; suggestions only ever offer fixtures the model has priced, so a chip never answers 503. |
-| `POST /api/ask` | Four tiers: active-match model grounding (ClubElo + HFA), competition standings grounding (ESPN table), Premier League season outlook (Monte Carlo title/top-four), and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, web search, a 90-second Anthropic timeout (240s overall), and 10 requests/minute limiting. Effort is pinned to `high`; team-news questions are instructed to search rather than answer from memory, and every reported item must name its source and date. |
+| `POST /api/ask` | Four tiers: active-match model grounding (ClubElo + HFA), competition standings grounding (ESPN table), Premier League season outlook (Monte Carlo title/top-four), and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, web search, a 90-second MiniMax timeout (240s overall), and a 10 requests/minute deployment-wide limit divided across replicas. Team-news questions are instructed to search rather than answer from memory, and every reported item must name its source and date. |
 | Active model | `/api/model/active` and `/api/model/fixtures` serve Dixon-Coles 1X2 (plus totals/BTTS/scorelines) for active club fixtures only. |
 | Featured fixtures | Next N active fixtures across enabled competitions (EPL priority), joined to model rows for chat suggestions and market odds. |
 | Fixture markets | `fixture-market-sources.ts` fetches Stake/Kalshi/Polymarket by market profile; `model-market-odds.ts` caches no-vig 1X2 for the active fixture set. Source failures stay isolated. |
@@ -23,7 +23,7 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 
 ## Production and secrets
 
-- `ANTHROPIC_API_KEY` is configured on the Railway `@sports-predict/api` service. Never read it back, log it, hardcode it, or store it in the repository.
+- `MINIMAX_API_KEY` is configured on the Railway `@pundit/api` service. Never read it back, log it, hardcode it, or store it in the repository.
 - Optional `ALLOWED_ORIGINS` (comma-separated) restricts browser CORS; leave unset only while debugging, and set it to the Vercel frontend origin(s) in production.
 - `/health` is liveness. `/ready` reports model, ESPN, active-fixture, and market-odds cache readiness without exposing secrets.
 - Cache refresh cadences: ESPN fixtures/standings and active market odds every 30 minutes; ClubElo ratings and active model every hour. All retain last-good data on refresh failure.
@@ -32,13 +32,13 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 
 ## Production verification
 
-Live URLs: **Web** [thepundit.vercel.app](https://thepundit.vercel.app) · **API** [sports-predictapi-production.up.railway.app](https://sports-predictapi-production.up.railway.app)
+Live URLs: **Web** [thepundit.vercel.app](https://thepundit.vercel.app) · **API** [thepundit.up.railway.app](https://thepundit.up.railway.app)
 
 After Vercel or Railway env/config changes that affect production, run `pnpm verify:prod` from the repo root (~15s). For local dev against running servers, use `bash scripts/verify-local.sh`.
 
 ## Chat eval cadence
 
-Production chat eval (`pnpm chat-eval:production`) hits live Anthropic credits — run manually after Tier 1+ deploys as a post-deploy smoke, not in CI. Unit tests for the harness run via `pnpm chat-eval:test` (no production traffic). Dry-run config check: `pnpm chat-eval:dry-run`.
+Production chat eval (`pnpm chat-eval:production`) hits live MiniMax credits — run manually after Tier 1+ deploys as a post-deploy smoke, not in CI. Unit tests for the harness run via `pnpm chat-eval:test` (no production traffic). Dry-run config check: `pnpm chat-eval:dry-run`.
 
 Qualitative copy guards in `scripts/chat-battle-test-lib.mjs` fail answers containing internal jargon (`Dixon-Coles`, `ClubElo`, `model-grounded`) and 400 bodies leaking schema field names. `validateTeamNewsDiscipline` additionally fails any answer asserting an injury, suspension, or lineup detail without naming a source and date — unless it explicitly states no verified update was established.
 
@@ -55,7 +55,7 @@ packages/api/src/
   index.ts                         — Express routes, readiness, ordered cache bootstrap
   routes/ask.ts                    — validation, history limits, 10/min limiter
   services/
-    ask.ts                         — four-tier Anthropic orchestration and grounding
+    ask.ts                         — four-tier MiniMax orchestration and grounding
     club-ratings.ts                — ClubElo CSV fetch/cache by rating profile
     dixon-coles.ts                 — Elo-to-goal and analytical score model (+ HFA)
     model-data.ts                  — active-club fixture model cache

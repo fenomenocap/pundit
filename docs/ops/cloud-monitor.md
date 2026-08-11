@@ -10,8 +10,8 @@ No subagent required — automation prompts point here.
 |----------|-------|
 | GitHub repo | `fenomenocap/pundit` |
 | Railway project | `pundit` |
-| Railway API service | `@sports-predict/api` |
-| Production API URL | `https://sports-predictapi-production.up.railway.app` |
+| Railway API service | `@pundit/api` |
+| Production API URL | `https://thepundit.up.railway.app` |
 | Web frontend URL | `https://thepundit.vercel.app` |
 | Railway config file | `/packages/api/railway.toml` |
 | Health endpoint | `/health` |
@@ -29,7 +29,7 @@ Stops `cursor[bot]` "Bugbot is not enabled" emails.
 
 ### 2. Railway config-as-code
 
-Railway service `@sports-predict/api` → Settings → **Config file path** → `/packages/api/railway.toml`
+Railway service `@pundit/api` → Settings → **Config file path** → `/packages/api/railway.toml`
 
 Deploy healthcheck hits `/health`; `ON_FAILURE` auto-restarts up to 10 times.
 
@@ -66,7 +66,7 @@ Scheduled production health check.
 **Prompt:**
 
 ```
-Railway webhook: deployment failure or crash for @sports-predict/api.
+Railway webhook: deployment failure or crash for @pundit/api.
 
 Parse the webhook payload, then read and follow docs/ops/cloud-monitor.md completely (Incident playbook section).
 ```
@@ -86,7 +86,7 @@ bash scripts/verify-prod.sh
 bash scripts/diagnose-prod.sh
 ```
 
-Use **Railway MCP** to fetch latest deploy/build logs for `@sports-predict/api` in production.
+Use **Railway MCP** to fetch latest deploy/build logs for `@pundit/api` in production.
 
 Grep logs for: `fatal`, `[Bootstrap]`, `[ClubRatings] ALERT`, `unhandledRejection`, `uncaughtException`,
 `web_search_provider_failed`, `web_search_failed`.

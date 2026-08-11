@@ -59,7 +59,7 @@ Season grounding adds `seasonOutlook` with per-team `titleProb` and `topFourProb
 
 * **90 seconds** per Anthropic upstream call (with up to 5 continuations)
 * **240 seconds** overall deadline per request
-* Requires `ANTHROPIC_API_KEY` on the API server
+* Requires `MINIMAX_API_KEY` on the API server
 * No server-side conversation session — the client supplies history
 
 The API rejects empty or truncated Claude output. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.

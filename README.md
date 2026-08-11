@@ -10,7 +10,7 @@ World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluati
 
 ```
 ┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
-│   Next.js 14     │────────▶│   Express API    │────────▶│   Anthropic API  │
+│   Next.js 14     │────────▶│   Express API    │────────▶│   MiniMax API    │
 │   (chat UI)      │         │                  │         │   (chat answers) │
 └──────────────────┘         └────────┬─────────┘         └──────────────────┘
                                        │
@@ -23,7 +23,7 @@ World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluati
                  └───────────┘  └────────────┘  └──────────────┘
 ```
 
-Public football/model/market sources are keyless and cached server-side on a cadence (ESPN + active market odds every 30 minutes, ClubElo + active model hourly). Anthropic powers the live chat through a Railway-managed secret. No database — everything is in-memory.
+Public football/model/market sources are keyless and cached server-side on a cadence (ESPN + active market odds every 30 minutes, ClubElo + active model hourly). MiniMax powers the live chat through a Railway-managed secret. No database — everything is in-memory.
 
 ---
 
@@ -33,7 +33,7 @@ Public football/model/market sources are keyless and cached server-side on a cad
 |---|---|
 | Monorepo | pnpm workspaces (Node ≥18, pnpm 9.15.4) |
 | Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui |
-| Backend | Express + TypeScript, `@anthropic-ai/sdk` |
+| Backend | Express + TypeScript, `@anthropic-ai/sdk` (wire client for MiniMax's Anthropic-compatible endpoint) |
 
 ---
 
@@ -57,7 +57,7 @@ pnpm install
 export NEXT_PUBLIC_USE_MOCK=false
 export NEXT_PUBLIC_API_URL=http://localhost:3001
 export ALLOWED_ORIGINS=http://localhost:3000
-export ANTHROPIC_API_KEY=sk-...   # required for /api/ask
+export MINIMAX_API_KEY=sk-cp-...  # required for /api/ask
 
 # Terminal 1 — API
 cd packages/api && pnpm dev
@@ -70,7 +70,7 @@ cd packages/web && pnpm dev
 
 `NEXT_PUBLIC_USE_MOCK=true` (the default) uses small hardcoded fixtures for `/fixtures` — no API needed to browse the frontend. Set it to `false` to hit the real API.
 
-Chat requires `ANTHROPIC_API_KEY` in the API environment. It is configured in Railway production; local development must export its own key.
+Chat requires `MINIMAX_API_KEY` in the API environment. It is configured in Railway production; local development must export its own key.
 
 Local smoke checks (API must be running):
 
@@ -85,7 +85,7 @@ pnpm test && pnpm build
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/ask` | Multi-turn match, competition, or general football analysis. Requires `ANTHROPIC_API_KEY`. |
+| POST | `/api/ask` | Multi-turn match, competition, or general football analysis. Requires `MINIMAX_API_KEY`. |
 | GET | `/api/matches/competitions` | Enabled competition registry |
 | GET | `/api/matches/active` | Active fixtures (14-day horizon) |
 | GET | `/api/matches/upcoming` | Upcoming fixtures (ESPN, optional `?competition=`) |
@@ -119,7 +119,7 @@ Production (July 2026):
 | Service | URL |
 |---|---|
 | **Web (Vercel)** | [https://thepundit.vercel.app](https://thepundit.vercel.app) — project `sports-prediction-markets-web`, **Root Directory** `packages/web` |
-| **API (Railway)** | [https://sports-predictapi-production.up.railway.app](https://sports-predictapi-production.up.railway.app) — service `@sports-predict/api` |
+| **API (Railway)** | [https://thepundit.up.railway.app](https://thepundit.up.railway.app) — service `@pundit/api` |
 
 Verify the live stack after env or deploy changes:
 
@@ -127,7 +127,7 @@ Verify the live stack after env or deploy changes:
 pnpm verify:prod
 ```
 
-### Railway (`@sports-predict/api`)
+### Railway (`@pundit/api`)
 
 ```bash
 cd packages/api && railway up
@@ -135,7 +135,7 @@ cd packages/api && railway up
 
 | Variable | Production value |
 |---|---|
-| `ANTHROPIC_API_KEY` | Railway secret (required for chat) |
+| `MINIMAX_API_KEY` | Railway secret (required for chat) |
 | `ALLOWED_ORIGINS` | `https://thepundit.vercel.app` (comma-separate extra origins if needed) |
 
 ### Vercel (`packages/web`)
@@ -146,13 +146,13 @@ cd packages/web && vercel --prod
 
 | Variable | Production value |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | `https://sports-predictapi-production.up.railway.app` |
+| `NEXT_PUBLIC_API_URL` | `https://thepundit.up.railway.app` |
 | `NEXT_PUBLIC_USE_MOCK` | `false` |
 | `NEXT_PUBLIC_DOCS_URL` | GitBook public URL after publishing `docs/` (enables footer and chat doc links) |
 
 **GitBook:** connect the repo `docs/` folder (GitHub sync), publish, then set `NEXT_PUBLIC_DOCS_URL` in Vercel to the public space URL.
 
-Required env vars for local dev are listed in `.env.example`. Never commit `ANTHROPIC_API_KEY`.
+Required env vars for local dev are listed in `.env.example`. Never commit `MINIMAX_API_KEY`.
 
 ## Backtesting note
 
