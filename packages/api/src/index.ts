@@ -22,6 +22,7 @@ import {
   startModelMarketOddsCron,
 } from "./services/model-market-odds";
 import { evaluateReadiness } from "./services/readiness";
+import { getWebSearchStatus } from "./services/web-search";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -107,6 +108,14 @@ app.get("/ready", (_req, res) => {
       byCompetition: active.byCompetition,
       lastUpdated: active.lastUpdated?.toISOString() ?? null,
     },
+    // Deliberately outside the ready/not-ready decision: chat answers still
+    // carry model grounding without search, so a search outage degrades an
+    // answer rather than taking the service down. It must not be invisible
+    // either -- the primary provider is an undocumented endpoint, and a silent
+    // format change there would otherwise look like the model simply choosing
+    // not to search. Alert on consecutiveFailures climbing, or on
+    // lastGoodProvider moving off "minimax".
+    webSearch: getWebSearchStatus(),
     marketOdds: {
       ready: readiness.marketOddsReady,
       lastUpdated: odds.lastUpdated?.toISOString() ?? null,
