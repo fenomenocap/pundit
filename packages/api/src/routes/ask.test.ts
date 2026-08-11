@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { parseHistory } from "./ask";
+import { parseHistory, askRateLimitConfig } from "./ask";
+
+describe("askRateLimitConfig", () => {
+  it("divides the intended global budget across replicas", () => {
+    // express-rate-limit counts per process, so the per-instance budget has to
+    // be the global one divided by replica count. Production runs two: with a
+    // flat limit of 10 each, a 20-request burst split 10/10 and nothing was
+    // throttled at all on an endpoint that spends LLM quota per call.
+    expect(askRateLimitConfig.perInstance)
+      .toBe(Math.floor(askRateLimitConfig.perMinute / askRateLimitConfig.replicas));
+  });
+
+  it("never drops below one request per instance", () => {
+    // A replica count above the limit would otherwise floor to zero and refuse
+    // every request.
+    expect(askRateLimitConfig.perInstance).toBeGreaterThanOrEqual(1);
+    expect(askRateLimitConfig.replicas).toBeGreaterThanOrEqual(1);
+  });
+});
 
 describe("parseHistory", () => {
   it("accepts complete user/assistant exchanges", () => {
