@@ -258,7 +258,11 @@ export async function retrieveEvidencePages(
 ): Promise<RetrievedEvidencePage[]> {
   const rank: Record<EvidenceAuthority, number> = { official: 0, reputable: 1, other: 2 };
   const selected = [...candidates]
-    .filter((candidate) => candidate.id.trim() && candidate.url.trim())
+    .filter((candidate) =>
+      candidate.id.trim()
+      && candidate.url.trim()
+      && (candidate.authority === "official" || candidate.authority === "reputable")
+    )
     .sort((a, b) => rank[a.authority] - rank[b.authority])
     .filter((candidate, index, all) => all.findIndex((entry) => entry.url === candidate.url) === index)
     .slice(0, MAX_PAGES);

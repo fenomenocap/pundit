@@ -283,6 +283,28 @@ const OFFICIAL_EVIDENCE_DOMAINS = [
   "fifa.com",
   "thefa.com",
   "englandfootball.com",
+  // Supported-club first-party domains. Unknown hosts deliberately remain
+  // `other`; a search result does not become reputable merely by existing.
+  "arsenal.com",
+  "avfc.co.uk",
+  "afcb.co.uk",
+  "brentfordfc.com",
+  "brightonandhovealbion.com",
+  "burnleyfootballclub.com",
+  "chelseafc.com",
+  "cpfc.co.uk",
+  "evertonfc.com",
+  "fulhamfc.com",
+  "leedsunited.com",
+  "liverpoolfc.com",
+  "mancity.com",
+  "manutd.com",
+  "newcastleunited.com",
+  "nottinghamforest.co.uk",
+  "safc.com",
+  "tottenhamhotspur.com",
+  "whufc.com",
+  "wolves.co.uk",
 ];
 const REPUTABLE_EVIDENCE_DOMAINS = [
   "espn.com",
@@ -412,6 +434,28 @@ export function sanitizeUnrecognizedCandidateAnswer(answer: string): string {
   ).join("\n").trim();
   const notice = "I could not establish an authoritative structured fixture identity for that matchup; no verified fixture identity was established, so it remains a discovery candidate and has no Pundit fixture badge or probabilities.";
   return safe ? `${notice}\n\n${safe}` : notice;
+}
+
+/**
+ * Generated prose is never a server-owned market record. Even a verifier can
+ * support that a page contains numbers without proving that all three 1X2 legs
+ * came from one source at one instant or that 1/decimal and no-vig arithmetic
+ * were applied. Remove such blocks unless a future caller constructs them from
+ * `validateCompleteOneXTwoMarket`; the structured grounding/UI remains the
+ * only public market-comparison surface today.
+ */
+export function stripUnvalidatedExternalMarketClaims(answer: string): string {
+  const externalMarket = /\b(?:bookmaker|betting market|market[- ]implied|third[- ]party market|stake|kalshi|polymarket|decimal odds)\b/i;
+  const numericMarket = /\b\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?\s*(?:decimal|to 1)\b|\b(?:home|draw|away)\s*[:=–—-]\s*\d+(?:\.\d+)?\b/i;
+  let removed = false;
+  const retained = answer.split(/\n{2,}/).filter((block) => {
+    const unsafe = externalMarket.test(block) && numericMarket.test(block);
+    removed ||= unsafe;
+    return !unsafe;
+  }).join("\n\n").trim();
+  if (!removed) return answer;
+  const notice = "I could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers.";
+  return retained ? `${retained}\n\n${notice}` : notice;
 }
 
 function acknowledgeCorrection(answer: string, verification: AskVerification): string {
@@ -2507,9 +2551,10 @@ export async function answerQuestion(
             removedClaimCount: 0,
           },
         };
+    const marketSafeAnswer = stripUnvalidatedExternalMarketClaims(checked.answer);
     const checkedAnswer = containsCorrectionCue(question)
-      ? acknowledgeCorrection(checked.answer, checked.verification)
-      : checked.answer;
+      ? acknowledgeCorrection(marketSafeAnswer, checked.verification)
+      : marketSafeAnswer;
     const rendered = renderEvidenceCitations(
       checkedAnswer,
       bundle,
@@ -2629,9 +2674,10 @@ export async function answerQuestionStream(
             removedClaimCount: 0,
           },
         };
+    const marketSafeAnswer = stripUnvalidatedExternalMarketClaims(checked.answer);
     const checkedAnswer = containsCorrectionCue(question)
-      ? acknowledgeCorrection(checked.answer, checked.verification)
-      : checked.answer;
+      ? acknowledgeCorrection(marketSafeAnswer, checked.verification)
+      : marketSafeAnswer;
     const rendered = renderEvidenceCitations(
       checkedAnswer,
       bundle,

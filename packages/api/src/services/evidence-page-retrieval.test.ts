@@ -9,7 +9,7 @@ const candidates: EvidencePageCandidate[] = [
   { id: "S3", url: "https://blog.example/three", title: "Other", date: "2026-08-13", authority: "other" },
   { id: "S1", url: "https://club.example/one", title: "Official", date: "2026-08-13", authority: "official" },
   { id: "S2", url: "https://news.example/two", title: "Reputable", date: "2026-08-13", authority: "reputable" },
-  { id: "S4", url: "https://other.example/four", title: "Fourth", date: "2026-08-13", authority: "other" },
+  { id: "S4", url: "https://wire.example/four", title: "Fourth", date: "2026-08-13", authority: "reputable" },
 ];
 
 const publicResolver = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
@@ -34,9 +34,19 @@ describe("evidence page retrieval", () => {
     });
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(fetch.mock.calls.every((call) => call[2]?.address === "93.184.216.34")).toBe(true);
-    expect(pages.map((page) => page.id)).toEqual(["S1", "S2", "S3"]);
+    expect(pages.map((page) => page.id)).toEqual(["S1", "S2", "S4"]);
+    expect(pages.some((page) => page.authority === "other")).toBe(false);
     expect(pages[0].text).not.toContain("ignore me");
     expect(pages[0].retrievedAt).toBe("2026-08-13T12:00:00.000Z");
+  });
+
+  it("does not retrieve unknown-domain evidence as official or reputable", async () => {
+    const fetch = vi.fn();
+    expect(await retrieveEvidencePages(candidates.slice(0, 1), undefined, {
+      fetch,
+      resolveHost: publicResolver,
+    })).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("pins the validated DNS address into the connection seam", async () => {
@@ -48,7 +58,7 @@ describe("evidence page retrieval", () => {
         headers: { "content-type": "text/plain" },
       });
     });
-    const pages = await retrieveEvidencePages(candidates.slice(0, 1), undefined, { fetch, resolveHost });
+    const pages = await retrieveEvidencePages(candidates.slice(1, 2), undefined, { fetch, resolveHost });
     expect(pages).toHaveLength(1);
     expect(resolveHost).toHaveBeenCalledTimes(1);
   });
@@ -60,7 +70,7 @@ describe("evidence page retrieval", () => {
     const fetch = vi.fn(async () => new Response(null, {
       status: 302, headers: { location: "http://private.example/admin" },
     }));
-    expect(await retrieveEvidencePages(candidates.slice(0, 1), undefined, {
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
       fetch, resolveHost: privateResolver,
     })).toEqual([]);
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -70,7 +80,7 @@ describe("evidence page retrieval", () => {
     const fetch = vi.fn(async () => new Response(null, {
       status: 302, headers: { location: "https://different.example/story" },
     }));
-    expect(await retrieveEvidencePages(candidates.slice(0, 1), undefined, {
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
       fetch, resolveHost: publicResolver,
     })).toEqual([]);
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -80,13 +90,13 @@ describe("evidence page retrieval", () => {
     const tooLarge = vi.fn(async () => new Response("x".repeat(20), {
       status: 200, headers: { "content-type": "text/plain", "content-length": "20" },
     }));
-    expect(await retrieveEvidencePages(candidates.slice(0, 1), undefined, {
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
       fetch: tooLarge, resolveHost: publicResolver, maxResponseBytes: 10,
     })).toEqual([]);
     const json = vi.fn(async () => new Response("{}", {
       status: 200, headers: { "content-type": "application/json" },
     }));
-    expect(await retrieveEvidencePages(candidates.slice(0, 1), undefined, {
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
       fetch: json, resolveHost: publicResolver,
     })).toEqual([]);
   });
@@ -94,7 +104,7 @@ describe("evidence page retrieval", () => {
   it("propagates the request abort instead of degrading it", async () => {
     const controller = new AbortController();
     controller.abort(new Error("deadline"));
-    await expect(retrieveEvidencePages(candidates.slice(0, 1), controller.signal, {
+    await expect(retrieveEvidencePages(candidates.slice(1, 2), controller.signal, {
       fetch: vi.fn(), resolveHost: publicResolver,
     })).rejects.toThrow("deadline");
   });
@@ -107,7 +117,7 @@ describe("evidence page retrieval", () => {
         signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
       });
     });
-    expect(await retrieveEvidencePages(candidates.slice(0, 1), undefined, {
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
       fetch: vi.fn(),
       resolveHost,
       timeoutMs: 5,

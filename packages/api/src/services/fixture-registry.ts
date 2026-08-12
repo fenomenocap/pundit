@@ -183,17 +183,73 @@ export function recognizeEspnFixture(
 export function isRecognizedFixture(value: unknown): value is RecognizedFixture {
   if (!value || typeof value !== "object") return false;
   const fixture = value as Partial<RecognizedFixture>;
+  const validSources = new Set<FixtureObservedSource["source"]>([
+    "espn",
+    "official-competition",
+    "official-federation",
+    "official-club",
+  ]);
+  const validCategories = new Set<FixtureCompetitionCategory>([
+    "domestic-league",
+    "domestic-cup",
+    "club-continental",
+    "club-friendly",
+    "international-tournament",
+    "international-qualifier",
+    "international-friendly",
+  ]);
+  const validStatuses = new Set<RecognizedFixtureStatus>([
+    "scheduled",
+    "in-play",
+    "completed",
+    "postponed",
+    "cancelled",
+  ]);
+  const validInstant = (instant: unknown) =>
+    typeof instant === "string" && Number.isFinite(Date.parse(instant));
   return typeof fixture.fixtureId === "string"
+    && fixture.fixtureId.trim().length > 0
+    && validSources.has(fixture.primarySource as FixtureObservedSource["source"])
     && typeof fixture.primarySourceFixtureId === "string"
-    && typeof fixture.kickoff === "string"
+    && fixture.primarySourceFixtureId.trim().length > 0
+    && validInstant(fixture.kickoff)
+    && (fixture.venue === null || typeof fixture.venue === "string")
+    && (fixture.neutralVenue === null || typeof fixture.neutralVenue === "boolean")
     && typeof fixture.homeTeam?.id === "string"
+    && fixture.homeTeam.id.trim().length > 0
     && typeof fixture.homeTeam?.name === "string"
+    && fixture.homeTeam.name.trim().length > 0
     && typeof fixture.awayTeam?.id === "string"
+    && fixture.awayTeam.id.trim().length > 0
     && typeof fixture.awayTeam?.name === "string"
+    && fixture.awayTeam.name.trim().length > 0
     && typeof fixture.competition?.id === "string"
+    && fixture.competition.id.trim().length > 0
+    && typeof fixture.competition?.name === "string"
+    && fixture.competition.name.trim().length > 0
+    && validCategories.has(fixture.competition.category as FixtureCompetitionCategory)
+    && validStatuses.has(fixture.status as RecognizedFixtureStatus)
     && Array.isArray(fixture.observedSources)
     && fixture.observedSources.length > 0
+    && fixture.observedSources.every((source) =>
+      validSources.has(source?.source)
+      && typeof source.sourceFixtureId === "string"
+      && source.sourceFixtureId.trim().length > 0
+      && (source.authority === "authoritative" || source.authority === "corroborating")
+      && validInstant(source.observedAt)
+    )
     && Array.isArray(fixture.observationHistory)
+    && fixture.observationHistory.length > 0
+    && fixture.observationHistory.every((observation) =>
+      validSources.has(observation?.source)
+      && typeof observation.sourceFixtureId === "string"
+      && observation.sourceFixtureId.trim().length > 0
+      && validInstant(observation.observedAt)
+      && validInstant(observation.kickoff)
+      && (observation.venue === null || typeof observation.venue === "string")
+      && (observation.neutralVenue === null || typeof observation.neutralVenue === "boolean")
+      && validStatuses.has(observation.status)
+    )
     && (fixture.recognition === "authoritative" || fixture.recognition === "corroborated");
 }
 
