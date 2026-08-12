@@ -1724,7 +1724,9 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
       || lines.findIndex((candidate) => candidate.trim() === aggregateDisclaimer) === index
     )
     .join("\n");
-  return sanitized.replace(/[ \t]+\n/g, "\n").replace(/ {2,}/g, " ").trim();
+  return stripUnvalidatedExternalMarketClaims(
+    sanitized.replace(/[ \t]+\n/g, "\n").replace(/ {2,}/g, " ").trim()
+  );
 }
 
 function sanitizeStandingsLanguage(answer: string): string {
