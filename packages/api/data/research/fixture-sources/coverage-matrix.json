@@ -1,0 +1,407 @@
+{
+  "schemaVersion": 1,
+  "auditedAt": "2026-08-12T17:01:05Z",
+  "purpose": "Fixture recognition source research; not runtime configuration or permission to ingest.",
+  "decision": {
+    "technicalPrimary": "espn-public-scoreboard",
+    "authorizationState": "unresolved-for-expanded-automated-use",
+    "officialStructuredGapFillApproved": [],
+    "searchMayRecognizeFixture": false,
+    "rawSamplesCommitted": false
+  },
+  "requiredFields": [
+    "stableCompetitionId",
+    "stableEventId",
+    "stableHomeTeamId",
+    "stableAwayTeamId",
+    "scheduledKickoffUtc",
+    "sourceTimezoneOrOffset",
+    "venue",
+    "neutralSite",
+    "status",
+    "observedAt"
+  ],
+  "sources": [
+    {
+      "id": "espn-public-scoreboard",
+      "owner": "ESPN / Disney",
+      "kind": "undocumented-public-json",
+      "baseUrl": "https://site.api.espn.com/apis/site/v2/sports/soccer/{competition}/scoreboard",
+      "machineUseDecision": "conditional-existing-only-pending-rights-review",
+      "sourceRole": "technical-primary-where-competition-validated",
+      "identity": {
+        "stableCompetitionId": "observed: league id, uid, slug",
+        "stableEventId": "observed: event id and uid",
+        "stableTeamId": "observed: team id and uid",
+        "crossSourceId": false,
+        "notes": "Retain source names with IDs; never match on canonical name alone."
+      },
+      "schedule": {
+        "kickoff": "ISO-8601 UTC event and competition date",
+        "sourceTimezoneOrOffset": "not observed in core sampled event",
+        "revisionId": null,
+        "sourceObservedAt": null,
+        "changeHistory": false,
+        "latency": "inconclusive; no source event update timestamp or published SLA"
+      },
+      "venueAndNeutral": {
+        "venueId": "nullable",
+        "venueName": "nullable",
+        "neutralSite": "nullable",
+        "wasSuspended": "nullable",
+        "unknownMustNotBecomeFalse": true
+      },
+      "status": {
+        "structured": true,
+        "observedNames": [
+          "STATUS_SCHEDULED",
+          "STATUS_IN_PROGRESS",
+          "STATUS_FULL_TIME",
+          "STATUS_FINAL_AET",
+          "STATUS_FINAL_PEN",
+          "STATUS_CANCELED"
+        ],
+        "postponedSuspendedCoverage": "fields/status taxonomy exist but no postponed example was retained in bounded samples",
+        "unknownStatusPolicy": "fail-closed"
+      },
+      "terms": {
+        "documentedApi": false,
+        "machineUseLicenseFound": false,
+        "automatedCollectionRestriction": "Disney terms prohibit automated access, monitoring, copying, or extraction without express written permission.",
+        "termsUrl": "https://disneytermsofuse.com/",
+        "releaseGate": "written authorization or documented license plus legal/product review"
+      },
+      "operations": {
+        "publishedRateLimit": null,
+        "publishedSla": null,
+        "authentication": "none observed",
+        "currentPunditPolling": "30 minutes",
+        "notes": "Current cadence is not evidence of permitted capacity."
+      }
+    },
+    {
+      "id": "premier-league-web-ecal",
+      "owner": "Football Association Premier League Limited / ECAL",
+      "kind": "official-web-and-calendar",
+      "baseUrl": "https://www.premierleague.com/en/matches/premier-league",
+      "machineUseDecision": "not-approved",
+      "sourceRole": "official-corroboration-only",
+      "identity": {
+        "stableCompetitionId": "not documented",
+        "stableEventId": "stable-looking official match path ID observed",
+        "stableTeamId": "not evaluated as a public contract",
+        "crossSourceId": false,
+        "notes": "PL match 2561895 corresponds to ESPN event 740596; IDs are source-specific."
+      },
+      "schedule": {
+        "kickoff": "official local display; calendar auto-updates reschedules",
+        "sourceTimezoneOrOffset": "display timezone available; calendar details not contract-tested",
+        "revisionId": "dated amendment circulars, not linked as event revisions",
+        "sourceObservedAt": "publication date for circulars",
+        "changeHistory": true,
+        "latency": "not measured; official calendar promises automatic updates"
+      },
+      "venueAndNeutral": {
+        "venueId": "not documented",
+        "venueName": "observed on match page",
+        "neutralSite": "not documented",
+        "unknownMustNotBecomeFalse": true
+      },
+      "status": {
+        "structured": "not documented as a public feed contract",
+        "observedNames": ["fixture", "live", "result"],
+        "postponedSuspendedCoverage": "amendment notices available",
+        "unknownStatusPolicy": "corroborate-only"
+      },
+      "terms": {
+        "documentedApi": false,
+        "machineUseLicenseFound": false,
+        "automatedCollectionRestriction": "Terms restrict use to private/personal use and prohibit re-use to create a database without prior written approval.",
+        "termsUrl": "https://www.premierleague.com/en/terms-and-conditions",
+        "releaseGate": "written permission covering website/calendar data and ECAL terms"
+      },
+      "operations": {
+        "publishedRateLimit": null,
+        "publishedSla": null,
+        "authentication": "calendar subscription may involve third-party flow",
+        "currentPunditPolling": null,
+        "notes": "Do not automate."
+      }
+    },
+    {
+      "id": "uefa-match-centre",
+      "owner": "UEFA",
+      "kind": "official-web-with-internal-structured-data",
+      "baseUrl": "https://www.uefa.com/",
+      "machineUseDecision": "prohibited-without-separate-license",
+      "sourceRole": "official-corroboration-only",
+      "identity": {
+        "stableCompetitionId": "official competition paths",
+        "stableEventId": "match number appears in official match URLs",
+        "stableTeamId": "not evaluated as an approved public contract",
+        "crossSourceId": false,
+        "notes": "A visible ID does not grant collection rights."
+      },
+      "schedule": {
+        "kickoff": "official fixtures and local-time display",
+        "sourceTimezoneOrOffset": "localized display",
+        "revisionId": null,
+        "sourceObservedAt": null,
+        "changeHistory": "competition regulations define rescheduling authority",
+        "latency": "not measured"
+      },
+      "venueAndNeutral": {
+        "venueId": "not approved for ingestion",
+        "venueName": "available on official match materials",
+        "neutralSite": "competition-dependent",
+        "unknownMustNotBecomeFalse": true
+      },
+      "status": {
+        "structured": "internal only; no approved public contract",
+        "observedNames": [],
+        "postponedSuspendedCoverage": "rules and official notices, not an approved machine taxonomy",
+        "unknownStatusPolicy": "corroborate-only"
+      },
+      "terms": {
+        "documentedApi": false,
+        "machineUseLicenseFound": false,
+        "automatedCollectionRestriction": "UEFA terms prohibit systematic collection and automated scraping and restrict use in software/models.",
+        "termsUrl": "https://www.uefa.com/termsconditions/",
+        "releaseGate": "separate UEFA license"
+      },
+      "operations": {
+        "publishedRateLimit": null,
+        "publishedSla": null,
+        "authentication": "public pages; private/internal feeds not eligible",
+        "currentPunditPolling": null,
+        "notes": "Do not reverse-engineer site/app payloads."
+      }
+    },
+    {
+      "id": "fifa-public-match-centre",
+      "owner": "FIFA",
+      "kind": "official-web",
+      "baseUrl": "https://www.fifa.com/en/tournaments/",
+      "machineUseDecision": "not-approved-no-public-contract-found",
+      "sourceRole": "official-corroboration-only",
+      "identity": {
+        "stableCompetitionId": "tournament path",
+        "stableEventId": "not documented as a public API contract",
+        "stableTeamId": "not documented as a public API contract",
+        "crossSourceId": false,
+        "notes": "Official 104-match schedule supports completeness checks."
+      },
+      "schedule": {
+        "kickoff": "official local times and venues",
+        "sourceTimezoneOrOffset": "local time context supplied in schedule articles",
+        "revisionId": null,
+        "sourceObservedAt": "article publication dates",
+        "changeHistory": "schedule versions described editorially",
+        "latency": "not measured"
+      },
+      "venueAndNeutral": {
+        "venueId": "not documented",
+        "venueName": "official tournament naming",
+        "neutralSite": "not a machine field",
+        "unknownMustNotBecomeFalse": true
+      },
+      "status": {
+        "structured": "not documented as a public feed contract",
+        "observedNames": [],
+        "postponedSuspendedCoverage": "not documented",
+        "unknownStatusPolicy": "corroborate-only"
+      },
+      "terms": {
+        "documentedApi": false,
+        "machineUseLicenseFound": false,
+        "automatedCollectionRestriction": "No applicable open fixture-data license was found; absence of a restriction finding is not permission.",
+        "termsUrl": null,
+        "releaseGate": "documented FIFA machine-use license or written permission"
+      },
+      "operations": {
+        "publishedRateLimit": null,
+        "publishedSla": null,
+        "authentication": "public pages",
+        "currentPunditPolling": null,
+        "notes": "Do not reverse-engineer private page payloads."
+      }
+    },
+    {
+      "id": "fa-england-football",
+      "owner": "The Football Association",
+      "kind": "official-web-and-calendar-links",
+      "baseUrl": "https://www.thefa.com/",
+      "machineUseDecision": "prohibited-without-separate-license",
+      "sourceRole": "official-corroboration-only",
+      "identity": {
+        "stableCompetitionId": "not documented",
+        "stableEventId": "not documented as a public contract",
+        "stableTeamId": "not documented as a public contract",
+        "crossSourceId": false,
+        "notes": "Full-Time public API request was declined by The FA support."
+      },
+      "schedule": {
+        "kickoff": "official local display and dated notices",
+        "sourceTimezoneOrOffset": "localized display",
+        "revisionId": null,
+        "sourceObservedAt": "article publication date where present",
+        "changeHistory": "notices available",
+        "latency": "not measured"
+      },
+      "venueAndNeutral": {
+        "venueId": "not documented",
+        "venueName": "observed on England fixture pages",
+        "neutralSite": "not documented",
+        "unknownMustNotBecomeFalse": true
+      },
+      "status": {
+        "structured": "not documented as a public feed contract",
+        "observedNames": ["TBC", "FT", "AET"],
+        "postponedSuspendedCoverage": "official notices",
+        "unknownStatusPolicy": "corroborate-only"
+      },
+      "terms": {
+        "documentedApi": false,
+        "machineUseLicenseFound": false,
+        "automatedCollectionRestriction": "The FA terms explicitly prohibit web scraping or crawling.",
+        "termsUrl": "https://www.thefa.com/public/terms",
+        "releaseGate": "separate FA license"
+      },
+      "operations": {
+        "publishedRateLimit": null,
+        "publishedSla": null,
+        "authentication": "public pages; Full-Time admin exports/embeds are access-controlled",
+        "currentPunditPolling": null,
+        "notes": "Do not automate."
+      }
+    },
+    {
+      "id": "official-club-pages",
+      "owner": "individual clubs",
+      "kind": "heterogeneous-official-web",
+      "baseUrl": null,
+      "machineUseDecision": "not-a-feed",
+      "sourceRole": "friendly-discovery-and-corroboration-only",
+      "identity": {
+        "stableCompetitionId": false,
+        "stableEventId": "not common; require explicit approved structured ID",
+        "stableTeamId": false,
+        "crossSourceId": false,
+        "notes": "Never recognize from a club page alone."
+      },
+      "schedule": {
+        "kickoff": "often local editorial text",
+        "sourceTimezoneOrOffset": "varies",
+        "revisionId": null,
+        "sourceObservedAt": "article publication/update date when present",
+        "changeHistory": "varies",
+        "latency": "not measurable across clubs"
+      },
+      "venueAndNeutral": {
+        "venueId": false,
+        "venueName": "often present",
+        "neutralSite": "rarely explicit",
+        "unknownMustNotBecomeFalse": true
+      },
+      "status": {
+        "structured": false,
+        "observedNames": [],
+        "postponedSuspendedCoverage": "editorial announcements only",
+        "unknownStatusPolicy": "candidate-or-corroborate-only"
+      },
+      "terms": {
+        "documentedApi": false,
+        "machineUseLicenseFound": false,
+        "automatedCollectionRestriction": "varies by club",
+        "termsUrl": null,
+        "releaseGate": "approved stable structured event ID, terms, and second-source mapping"
+      },
+      "operations": {
+        "publishedRateLimit": null,
+        "publishedSla": null,
+        "authentication": "varies",
+        "currentPunditPolling": null,
+        "notes": "No common ingestion contract."
+      }
+    }
+  ],
+  "coverage": [
+    {
+      "category": "domestic-leagues",
+      "espnSlugsSampled": ["eng.1"],
+      "technicalCoverage": "strong-sampled",
+      "completeness": "validated-count-only-for-sampled-premier-league-season",
+      "officialCorroboration": ["premier-league-web-ecal"],
+      "registryDecision": "existing-competition-only-pending-rights-and-change-certification"
+    },
+    {
+      "category": "domestic-cups",
+      "espnSlugsSampled": ["eng.fa", "eng.league_cup"],
+      "technicalCoverage": "strong-for-sampled-proper-rounds",
+      "completeness": "not-certified-across-early-qualifying-rounds",
+      "officialCorroboration": ["fa-england-football"],
+      "registryDecision": "validate-each-competition-and-round"
+    },
+    {
+      "category": "uefa-club-competitions",
+      "espnSlugsSampled": ["uefa.champions", "uefa.champions_qual"],
+      "technicalCoverage": "strong-sampled",
+      "completeness": "not-certified-for-all-seasons-rounds",
+      "officialCorroboration": ["uefa-match-centre"],
+      "registryDecision": "espn-technical-primary-uefa-corroboration-only-under-current-terms"
+    },
+    {
+      "category": "club-friendlies",
+      "espnSlugsSampled": ["club.friendly"],
+      "technicalCoverage": "broad-but-open-ended",
+      "completeness": "not-certifiable-from-global-count",
+      "officialCorroboration": ["official-club-pages"],
+      "registryDecision": "require-stable-espn-id-and-authoritative-corroboration; outside-public-model-policy"
+    },
+    {
+      "category": "senior-international-tournaments",
+      "espnSlugsSampled": ["fifa.world"],
+      "technicalCoverage": "strong-sampled",
+      "completeness": "104-event-count-corroborated-for-world-cup-2026",
+      "officialCorroboration": ["fifa-public-match-centre", "fa-england-football"],
+      "registryDecision": "validate-per-tournament; organizer-resolves-venue-and-status-conflicts"
+    },
+    {
+      "category": "qualifiers",
+      "espnSlugsSampled": ["fifa.worldq.uefa"],
+      "technicalCoverage": "strong-sampled-for-uefa",
+      "completeness": "not-certified-for-other-confederations",
+      "officialCorroboration": ["uefa-match-centre", "fifa-public-match-centre", "fa-england-football"],
+      "registryDecision": "validate-each-confederation-and-competition"
+    },
+    {
+      "category": "international-friendlies",
+      "espnSlugsSampled": ["fifa.friendly"],
+      "technicalCoverage": "broad-with-cancellations-retained",
+      "completeness": "not-certifiable-from-global-count",
+      "officialCorroboration": ["uefa-match-centre", "fa-england-football"],
+      "registryDecision": "require-stable-espn-id-and-federation-or-organizer-corroboration; outside-public-model-policy"
+    }
+  ],
+  "conflictPolicy": {
+    "preserveAllObservedValues": true,
+    "requireObservationTimestamp": true,
+    "mapStableIdsExplicitly": true,
+    "nameSimilarityMayCreateMapping": false,
+    "priority": [
+      "competition-organizer-for-competition-status-venue-and-schedule",
+      "national-federation-for-national-team-status",
+      "club-for-its-own-announcement",
+      "approved-structured-technical-primary",
+      "reputable-secondary-corroboration"
+    ],
+    "unresolvedRequiredField": "insufficient-model-input(required-context-missing)"
+  },
+  "latency": {
+    "sourcePublicationLatencyMeasured": false,
+    "result": "INCONCLUSIVE",
+    "reason": "No audited source supplies a public per-event updated timestamp or SLA, and no longitudinal shadow observation was authorized in this one-day study.",
+    "existingEspnDetectionBound": "up to approximately 30 minutes after ESPN exposes a change, subject to refresh success",
+    "requiredNextEvidence": "timestamped shadow observations over a complete change cycle compared with dated official notices"
+  }
+}
