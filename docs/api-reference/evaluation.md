@@ -1,18 +1,19 @@
 # Evaluation
 
-Read-only calibration artifacts. Neither endpoint triggers live fetches or connects to chat/model cron — they serve static JSON built offline or updated by snapshot persistence.
+Read-only calibration artifacts. The endpoints do not trigger live fetches. The World Cup artifact is static; the club-season response is read from the durable evidence ledger maintained by the existing model and market refresh cadences.
 
 ### `GET /api/evaluation/club-season`
 
-Rolling pre-kickoff probability snapshots for finished club-season fixtures (Premier League and UCL qualifiers). A snapshot is captured when a fixture leaves the scheduled window, freezing the model probabilities that were live at kickoff time.
+Rolling pre-kickoff forecasts for club-season fixtures (Premier League and UCL qualifiers). The first eligible Fundamental forecast observed within 90 minutes of kickoff is sealed. Result evidence and distinct timestamped pre-kickoff market comparisons can be appended, but a later model recalculation cannot replace the forecast.
 
 ```json
 {
+  "schemaVersion": 2,
   "competitions": ["eng.1", "uefa.champions_qual"],
   "method": "snapshot",
   "builtAt": "2026-07-01T00:00:00.000Z",
   "updatedAt": "2026-07-28T10:00:00.000Z",
-  "disclaimer": "Pre-kickoff probabilities captured when fixtures leave the scheduled window...",
+  "disclaimer": "Immutable pre-kickoff Pundit Fundamental forecasts...",
   "metrics": {
     "fixtureCount": 42,
     "brierScore": 0.5821,
@@ -23,7 +24,13 @@ Rolling pre-kickoff probability snapshots for finished club-season fixtures (Pre
       { "label": "0.0–0.2", "count": 5, "avgPredicted": 0.14, "actualRate": 0.20 }
     ]
   },
-  "fixtures": [ /* per-fixture snapshot rows with result */ ]
+  "evaluation": {
+    "metricVersion": "multiclass-v1",
+    "segments": [ /* contributor/version/competition/season/checkpoint/source-state metrics */ ],
+    "exclusions": { "total": 3, "byReason": { /* explicit audit counts */ } }
+  },
+  "missedCheckpoints": [ /* fixtures for which no eligible pre-kickoff forecast existed */ ],
+  "fixtures": [ /* sealed forecast, provenance, market observations, and result */ ]
 }
 ```
 
@@ -61,5 +68,7 @@ UI: [`/evaluation/wc-2026`](https://thepundit.vercel.app/evaluation/wc-2026)
 | **Log loss** | Cross-entropy of predicted vs actual outcome. Lower is better. |
 | **Outcome accuracy** | Share of fixtures where the highest-probability outcome matched the result. |
 | **Calibration buckets** | Average predicted probability vs actual frequency within probability bands. |
+
+When there are no finished eligible samples, Brier score, log loss and outcome accuracy are `null`; a zero would falsely imply perfect forecasting. Older schema-v1 fixture rows are loaded as partial-provenance records without inventing rating timestamps that were never captured. Legacy, incomplete-source, invalid-timestamp and post-kickoff rows remain preserved but are excluded from official metrics and reported in `evaluation.exclusions`.
 
 Do not treat either artifact as current forecasts. The live Model page recalculates with today's ClubElo ratings; evaluation artifacts preserve pre-kickoff views only.

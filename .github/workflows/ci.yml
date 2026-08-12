@@ -39,7 +39,7 @@ jobs:
 
       # The chat-eval harness lives in root scripts/, so pnpm -r test never
       # reached it and its guards could rot unnoticed. Both commands are local:
-      # no production traffic and no Anthropic credits.
+      # no production traffic and no MiniMax credits.
       - name: Test chat-eval harness
         run: pnpm chat-eval:test
 

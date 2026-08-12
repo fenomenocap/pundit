@@ -2,7 +2,7 @@
 // WC live model/tournament sim is retired — see /api/evaluation/wc-2026 for backtest.
 
 import { getCompetitionById, RatingProfile } from "../config/competitions";
-import { modelFixtureKey } from "../lib/team-names";
+import { canonicalClubName, modelFixtureKey } from "../lib/team-names";
 import { ActiveFixture, getActiveFixtures } from "./active-fixtures";
 import {
   backfillMissingClubRatings,
@@ -10,9 +10,15 @@ import {
   getCachedClubRatings,
   lookupClubRating,
 } from "./club-ratings";
-import { computeMatchModel, DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
+import { DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
 import { getCachedMatches } from "./football-data";
 import { updateClubSeasonSnapshots } from "./club-season-snapshots";
+import {
+  ELO_CHAMPION,
+  ELO_CHAMPION_CONFIG,
+  PUNDIT_FUNDAMENTAL_MODEL_ID,
+  PUNDIT_FUNDAMENTAL_MODEL_VERSION,
+} from "./model-contributors";
 
 export interface ModelScoreline {
   score: string;
@@ -49,6 +55,30 @@ export interface ModelFixture {
     status: string;
     winner: string | null;
   } | null;
+  forecastProvenance?: ModelFixtureForecastProvenance;
+}
+
+export interface ModelFixtureForecastProvenance {
+  modelId: string;
+  modelVersion: string;
+  contributorId: string;
+  contributorVersion: string;
+  methodId: string;
+  forecastAt: string;
+  ratingProfile: RatingProfile;
+  ratingSnapshotAt: string | null;
+  ratingAgeMinutes: number | null;
+  ratingSourceState: "live" | "persisted" | "unknown";
+  homeAdvantageElo: number;
+  config: typeof ELO_CHAMPION_CONFIG;
+}
+
+export interface ForecastBuildContext {
+  forecastAt?: Date;
+  ratingSnapshotAt?: Date | null;
+  ratingSourceState?: ModelFixtureForecastProvenance["ratingSourceState"];
+  /** Clubs whose value came from an individual lapsed-window fallback feed. */
+  fallbackRatingClubs?: ReadonlySet<string>;
 }
 
 export interface ModelDataCache {
@@ -87,7 +117,8 @@ function matchWinner(fixture: ActiveFixture): string | null {
 
 export function buildModelFixtureFromActive(
   fixture: ActiveFixture,
-  ratings = getCachedClubRatings().byProfile
+  ratings = getCachedClubRatings().byProfile,
+  context: ForecastBuildContext = {}
 ): ModelFixture | null {
   const competition = getCompetitionById(fixture.competitionId);
   if (!competition || !competition.enabled) return null;
@@ -96,8 +127,23 @@ export function buildModelFixtureFromActive(
   const awayElo = lookupClubRating(fixture.awayTeam, competition.ratingProfile, ratings);
   if (homeElo === undefined || awayElo === undefined) return null;
   const homeAdvantageElo = competition.homeFieldAdvantage ? DEFAULT_HOME_ADVANTAGE_ELO : 0;
-  const model = computeMatchModel(homeElo, awayElo, homeAdvantageElo);
+  const model = ELO_CHAMPION.forecast({
+    homeStrength: homeElo,
+    awayStrength: awayElo,
+    homeAdvantageElo,
+  });
   const completed = fixture.status === "FINISHED" && fixture.score;
+  const forecastAt = context.forecastAt ?? new Date();
+  const usesFallbackRating = context.fallbackRatingClubs?.has(canonicalClubName(fixture.homeTeam))
+    || context.fallbackRatingClubs?.has(canonicalClubName(fixture.awayTeam));
+  // A fixture mixing the daily snapshot with an individual lapsed-window feed
+  // has no single honest snapshot timestamp. Keep the exact input values but
+  // mark the aggregate source provenance unknown instead of attributing both
+  // ratings to the daily snapshot.
+  const ratingSnapshotAt = usesFallbackRating ? null : context.ratingSnapshotAt ?? null;
+  const ratingAgeMinutes = ratingSnapshotAt
+    ? Math.max(0, Math.floor((forecastAt.getTime() - ratingSnapshotAt.getTime()) / 60_000))
+    : null;
 
   return {
     competitionId: fixture.competitionId,
@@ -137,15 +183,30 @@ export function buildModelFixtureFromActive(
           winner: matchWinner(fixture),
         }
       : null,
+    forecastProvenance: {
+      modelId: PUNDIT_FUNDAMENTAL_MODEL_ID,
+      modelVersion: PUNDIT_FUNDAMENTAL_MODEL_VERSION,
+      contributorId: ELO_CHAMPION.id,
+      contributorVersion: ELO_CHAMPION.version,
+      methodId: ELO_CHAMPION.methodId,
+      forecastAt: forecastAt.toISOString(),
+      ratingProfile: competition.ratingProfile,
+      ratingSnapshotAt: ratingSnapshotAt?.toISOString() ?? null,
+      ratingAgeMinutes,
+      ratingSourceState: usesFallbackRating ? "unknown" : context.ratingSourceState ?? "unknown",
+      homeAdvantageElo,
+      config: ELO_CHAMPION_CONFIG,
+    },
   };
 }
 
 export function buildActiveModelFixtures(
   fixtures: ActiveFixture[],
-  ratings = getCachedClubRatings().byProfile
+  ratings = getCachedClubRatings().byProfile,
+  context: ForecastBuildContext = {}
 ): ModelFixture[] {
   return fixtures
-    .map((fixture) => buildModelFixtureFromActive(fixture, ratings))
+    .map((fixture) => buildModelFixtureFromActive(fixture, ratings, context))
     .filter((fixture): fixture is ModelFixture => fixture !== null)
     .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
 }
@@ -224,6 +285,11 @@ function missingRatingsMessage(missingTeams: string[], skippedFixtures: number):
     + `${skippedFixtures} fixture(s) are unpriced as a result.`;
 }
 
+function syncClubSeasonEvidence(fixtures: ModelFixture[], now = new Date()): void {
+  const football = getCachedMatches();
+  updateClubSeasonSnapshots([...football.upcoming, ...football.recent], fixtures, now);
+}
+
 export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise<void> {
   console.log("[Model] Refreshing active fixture Dixon-Coles model...");
   try {
@@ -233,6 +299,7 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
       cache.fixtures = [];
       cache.lastUpdated = new Date();
       cache.error = null;
+      syncClubSeasonEvidence([], cache.lastUpdated);
       console.log("[Model] 0 active fixtures cached.");
       return;
     }
@@ -249,18 +316,26 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
     // resolveAskContext has a model-unavailable tier for an active fixture with
     // no model row, and readiness still reports not-ready until coverage is
     // complete, so nothing here claims more than it has.
-    let profiles = ratings.byProfile;
+    let ratingState = ratings;
+    let profiles = ratingState.byProfile;
     let missing = findMissingClubRatings(activeFixtures, profiles);
     if (missing.length > 0) {
       // Correctly named clubs can still be absent from the daily snapshot once
       // their rating window lapses. Recover those from their own feeds before
       // writing anyone off; whatever stays missing genuinely cannot be priced.
       await backfillMissingClubRatings(missing);
-      profiles = getCachedClubRatings().byProfile;
+      ratingState = getCachedClubRatings();
+      profiles = ratingState.byProfile;
       missing = findMissingClubRatings(activeFixtures, profiles);
     }
     const missingTeams = missing.map(({ team }) => team);
-    const fixtures = buildActiveModelFixtures(activeFixtures, profiles);
+    const forecastAt = new Date();
+    const fixtures = buildActiveModelFixtures(activeFixtures, profiles, {
+      forecastAt,
+      ratingSnapshotAt: ratingState.fetchedAt,
+      ratingSourceState: ratingState.servingPersisted ? "persisted" : "live",
+      fallbackRatingClubs: new Set(ratingState.staleRatings.map((entry) => entry.club)),
+    });
     cache.fixtures = fixtures;
     cache.lastUpdated = new Date();
     cache.error = missingTeams.length > 0
@@ -271,13 +346,16 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
       `[Model] ${fixtures.length}/${activeFixtures.length} active fixtures cached.`
     );
 
-    const football = getCachedMatches();
-    const trackedMatches = [...football.upcoming, ...football.recent];
-    updateClubSeasonSnapshots(trackedMatches, fixtures);
+    syncClubSeasonEvidence(fixtures, forecastAt);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     cache.error = message;
     console.error(`[Model] Refresh error: ${message}`);
+    // Even an unpriced scheduled fixture must enter the checkpoint state so a
+    // later transition can be recorded as a miss instead of disappearing from
+    // the evidence trail. Existing cached forecasts remain immutable inputs;
+    // this does not make an unavailable model ready.
+    syncClubSeasonEvidence(cache.fixtures);
   }
 }
 

@@ -257,20 +257,34 @@ export async function fetchStandings(competition?: string): Promise<StandingsPay
 }
 
 const MOCK_CLUB_SEASON_EVALUATION = {
+  schemaVersion: 2 as const,
   competitions: ["eng.1"],
   method: "snapshot" as const,
   builtAt: new Date(now).toISOString(),
   updatedAt: new Date(now).toISOString(),
-  disclaimer: "Pre-kickoff probabilities captured when fixtures leave the scheduled "
-    + "window. Rolling club-season calibration — not a frozen backtest.",
+  disclaimer: "Immutable pre-kickoff Pundit Fundamental forecasts captured by a deterministic checkpoint policy.",
   fixtures: [],
+  missedCheckpoints: [],
   metrics: {
     fixtureCount: 0,
-    brierScore: 0,
-    logLoss: 0,
-    winnerAccuracy: 0,
+    brierScore: null,
+    logLoss: null,
+    winnerAccuracy: null,
     drawCount: 0,
     calibration: [],
+  },
+  evaluation: {
+    metricVersion: "multiclass-v1" as const,
+    segments: [],
+    exclusions: {
+      total: 0,
+      byReason: {
+        legacyPartialProvenance: 0,
+        incompleteInputProvenance: 0,
+        postKickoffForecast: 0,
+        invalidForecastTimestamp: 0,
+      },
+    },
   },
 };
 
@@ -282,9 +296,9 @@ const MOCK_WC2026_EVALUATION = {
   fixtures: [],
   metrics: {
     fixtureCount: 0,
-    brierScore: 0,
-    logLoss: 0,
-    winnerAccuracy: 0,
+    brierScore: null,
+    logLoss: null,
+    winnerAccuracy: null,
     drawCount: 0,
     calibration: [],
   },

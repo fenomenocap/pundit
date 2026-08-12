@@ -80,7 +80,7 @@ export default function ClubSeasonEvaluationPage() {
         )}
       />
       <p className="mb-6 -mt-4 max-w-2xl font-display text-lg leading-snug text-white">
-        Rolling pre-kickoff probability snapshots captured when fixtures leave the scheduled window. Separate from the live model page, which recalculates with current ratings.
+        Immutable Fundamental forecasts sealed inside the 90-minute pre-kickoff window. Separate from the live model page, which recalculates with current ratings.
       </p>
 
       <div className="mb-6 flex flex-wrap gap-4">
@@ -116,9 +116,9 @@ export default function ClubSeasonEvaluationPage() {
           {metrics && metrics.fixtureCount > 0 ? (
             <>
               <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <MetricCard label="Brier score (1X2)" value={metrics.brierScore.toFixed(4)} hint="Lower is better" />
-                <MetricCard label="Log loss" value={metrics.logLoss.toFixed(4)} hint="Lower is better" />
-                <MetricCard label="Outcome accuracy" value={percent(metrics.winnerAccuracy)} hint="Predicted 1X2 vs actual" />
+                <MetricCard label="Brier score (1X2)" value={metrics.brierScore?.toFixed(4) ?? "—"} hint="Lower is better" />
+                <MetricCard label="Log loss" value={metrics.logLoss?.toFixed(4) ?? "—"} hint="Lower is better" />
+                <MetricCard label="Outcome accuracy" value={metrics.winnerAccuracy === null ? "—" : percent(metrics.winnerAccuracy)} hint="Predicted 1X2 vs actual" />
                 <MetricCard label="Draws" value={String(metrics.drawCount)} hint="Finished matches" />
               </section>
 
@@ -164,7 +164,7 @@ export default function ClubSeasonEvaluationPage() {
           ) : (
             <section className="rounded-lg border border-border bg-card p-6 text-center">
               <p className="text-sm text-muted-foreground">
-                No finished snapshots yet. Probabilities are captured when scheduled fixtures kick off.
+                No finished forecasts yet. Eligible probabilities are sealed before kickoff; unavailable checkpoints are recorded rather than reconstructed later.
               </p>
             </section>
           )}

@@ -203,6 +203,58 @@ describe("active club model", () => {
     expect(cached.error).toBeNull();
   });
 
+  it("does not misattribute a per-club fallback rating to the daily snapshot", () => {
+    const model = buildModelFixtureFromActive(activeFixture(), ratings, {
+      forecastAt: new Date("2026-08-02T12:00:00.000Z"),
+      ratingSnapshotAt: new Date("2026-08-02T11:00:00.000Z"),
+      ratingSourceState: "live",
+      fallbackRatingClubs: new Set(["Coventry"]),
+    });
+
+    expect(model).not.toBeNull();
+    expect(model!.homeElo).toBe(1850);
+    expect(model!.awayElo).toBe(1600);
+    expect(model!.forecastProvenance).toMatchObject({
+      ratingSnapshotAt: null,
+      ratingAgeMinutes: null,
+      ratingSourceState: "unknown",
+    });
+  });
+
+  it("marks refreshed model provenance unknown when backfill supplies an input", async () => {
+    const fetchedAt = new Date("2026-08-02T11:00:00.000Z");
+    vi.mocked(getCachedClubRatings)
+      .mockReturnValueOnce({
+        byProfile: {
+          world: new Map(),
+          "eng-clubs": new Map([["Arsenal", 1850]]),
+          "uefa-clubs": new Map([["Arsenal", 1850]]),
+        },
+        fetchedAt,
+        error: null,
+        staleRatings: [],
+        servingPersisted: false,
+      })
+      .mockReturnValue({
+        byProfile: ratings,
+        fetchedAt,
+        error: null,
+        staleRatings: [{ club: "Coventry", elo: 1600, asOf: "2026-07-01", ageDays: 32 }],
+        servingPersisted: false,
+      });
+
+    await refreshModelData([activeFixture()]);
+
+    const model = getCachedModelData().fixtures[0];
+    expect(backfillMissingClubRatings).toHaveBeenCalledOnce();
+    expect(model).toMatchObject({ homeElo: 1850, awayElo: 1600 });
+    expect(model.forecastProvenance).toMatchObject({
+      ratingSnapshotAt: null,
+      ratingAgeMinutes: null,
+      ratingSourceState: "unknown",
+    });
+  });
+
   it("uses fixture identities for readiness and adaptive retry timing", () => {
     const current = {
       fixtures: [buildModelFixtureFromActive(activeFixture(), ratings)!],

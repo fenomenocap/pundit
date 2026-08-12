@@ -3,11 +3,16 @@
   "version": "0.0.1",
   "private": true,
   "main": "./dist/index.js",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "test": "vitest run",
     "build:wc-evaluation": "npx ts-node --transpile-only scripts/build-wc2026-evaluation.ts",
+    "build:club-history": "ts-node --transpile-only scripts/build-club-history-corpus.ts",
+    "backup:club-season-ledger": "ts-node --transpile-only scripts/backup-club-season-ledger.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist"
   },
