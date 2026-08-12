@@ -81,6 +81,8 @@ describe("private friendly shadow forecasts", () => {
     expect(built.forecast.uncertaintyShrinkage).toBe(0.2);
     expect(built.forecast.expectedSquadEvidenceIds).toEqual(["S1", "S2"]);
     expect(built.forecast).toMatchObject({
+      fixtureSource: "official-club",
+      sourceFixtureId: "friendly-2026-01",
       homeRating: 1800,
       awayRating: 1750,
       modelVersion: "dixon-coles-club-v1",
@@ -98,11 +100,19 @@ describe("private friendly shadow forecasts", () => {
     expect(appendFriendlyShadowForecast({ ...built.forecast, pHome: 0.99 }))
       .toMatchObject({ inserted: false, conflict: true });
     const before = { ...inserted.ledger.forecasts[0], result: null };
+    expect(appendFriendlyShadowResult(built.forecast.forecastId, {
+      homeScore: 1,
+      awayScore: 1,
+      observedAt: "2026-08-20T14:00:00.000Z",
+      source: "espn",
+      sourceFixtureId: "different-event",
+      fixtureStatus: "finished",
+    }, new Date("2026-08-20T15:00:00Z")).updated).toBe(false);
     const result = {
       homeScore: 1,
       awayScore: 1,
       observedAt: "2026-08-20T14:00:00.000Z",
-      source: "official-club",
+      source: "official-club" as const,
       sourceFixtureId: "friendly-2026-01",
       fixtureStatus: "finished" as const,
     };
