@@ -3,6 +3,8 @@ import { ModelFixture, getModelFixtureKey } from "./model-data";
 import {
   MARKET_ODDS_COLD_RETRY_MS,
   MARKET_ODDS_REFRESH_INTERVAL_MS,
+  buildLedgerMarketComparisons,
+  changedMarketSourceWarnings,
   getModelMarketOddsStatus,
   marketOddsRefreshDelay,
   marketOddsFixtureKey,
@@ -64,6 +66,36 @@ describe("marketOddsFixtureKey", () => {
   it("uses the competition-aware fixture key", () => {
     expect(marketOddsFixtureKey(model)).toContain("eng.1");
     expect(marketOddsFixtureKey(model)).toContain("2026-08-02");
+  });
+
+  it("logs a disabled-source warning only when its status changes", () => {
+    const disabled = "stake is disabled — known Cloudflare challenge";
+    expect(changedMarketSourceWarnings({}, { stake: disabled })).toEqual([disabled]);
+    expect(changedMarketSourceWarnings({ stake: disabled }, { stake: disabled })).toEqual([]);
+    expect(changedMarketSourceWarnings(
+      { stake: disabled },
+      { stake: "stake request failed: unexpected failure" }
+    )).toEqual(["stake request failed: unexpected failure"]);
+  });
+
+  it("maps available no-vig rows into timestamped ledger evidence", () => {
+    const key = getModelFixtureKey(model);
+    const comparisons = buildLedgerMarketComparisons(
+      [model],
+      new Map([[key, {
+        stake: null,
+        polymarket: null,
+        kalshi: { pHome: 0.42, pDraw: 0.31, pAway: 0.27 },
+      }]]),
+      "2026-08-02T13:30:00.000Z"
+    );
+    expect(comparisons.get("eng.1:1")).toEqual([{
+      source: "kalshi",
+      sourceTimestamp: "2026-08-02T13:30:00.000Z",
+      pHome: 0.42,
+      pDraw: 0.31,
+      pAway: 0.27,
+    }]);
   });
 });
 

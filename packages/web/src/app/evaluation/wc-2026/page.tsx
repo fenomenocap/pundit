@@ -119,9 +119,9 @@ export default function Wc2026EvaluationPage() {
           </section>
 
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard label="Brier score (1X2)" value={metrics ? metrics.brierScore.toFixed(4) : "—"} hint="Lower is better" />
-            <MetricCard label="Log loss" value={metrics ? metrics.logLoss.toFixed(4) : "—"} hint="Lower is better" />
-            <MetricCard label="Outcome accuracy" value={metrics ? percent(metrics.winnerAccuracy) : "—"} hint="Predicted 1X2 vs actual" />
+            <MetricCard label="Brier score (1X2)" value={metrics?.brierScore?.toFixed(4) ?? "—"} hint="Lower is better" />
+            <MetricCard label="Log loss" value={metrics?.logLoss?.toFixed(4) ?? "—"} hint="Lower is better" />
+            <MetricCard label="Outcome accuracy" value={metrics?.winnerAccuracy === null || !metrics ? "—" : percent(metrics.winnerAccuracy)} hint="Predicted 1X2 vs actual" />
             <MetricCard label="Draws" value={metrics ? String(metrics.drawCount) : "—"} hint="Finished matches" />
           </section>
 

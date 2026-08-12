@@ -10,6 +10,17 @@ import {
 import { FootballMatch } from "./football-data";
 
 describe("wc evaluation metrics", () => {
+  it("reports unavailable scores rather than perfect zero loss for no samples", () => {
+    expect(computeEvaluationMetrics([])).toEqual({
+      fixtureCount: 0,
+      brierScore: null,
+      logLoss: null,
+      winnerAccuracy: null,
+      drawCount: 0,
+      calibration: [],
+    });
+  });
+
   it("computes multi-class brier and log loss for known outcomes", () => {
     const fixtures = [
       buildEvaluationFixture({

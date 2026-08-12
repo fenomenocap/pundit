@@ -93,9 +93,9 @@ export interface Wc2026EvaluationResponse {
   fixtures: Wc2026EvaluationFixture[];
   metrics: {
     fixtureCount: number;
-    brierScore: number;
-    logLoss: number;
-    winnerAccuracy: number;
+    brierScore: number | null;
+    logLoss: number | null;
+    winnerAccuracy: number | null;
     drawCount: number;
     calibration: Array<{
       label: string;
@@ -211,6 +211,8 @@ export async function getWc2026Evaluation() {
 }
 
 export interface ClubSeasonEvaluationFixture {
+  schemaVersion: 1 | 2;
+  forecastId: string;
   competitionId: string;
   fixtureId: number;
   utcDate: string;
@@ -230,13 +232,52 @@ export interface ClubSeasonEvaluationFixture {
 }
 
 export interface ClubSeasonEvaluationResponse {
+  schemaVersion: 2;
   competitions: string[];
   method: "snapshot";
   builtAt: string;
   updatedAt: string;
   disclaimer: string;
   fixtures: ClubSeasonEvaluationFixture[];
-  metrics: Wc2026EvaluationResponse["metrics"];
+  missedCheckpoints: Array<{
+    competitionId: string;
+    fixtureId: number;
+    utcDate: string;
+    home: string;
+    away: string;
+    checkpointPolicyId: string;
+    recordedAt: string;
+    reason: "fixture_unpriced" | "no_eligible_pre_kickoff_forecast";
+  }>;
+  metrics: Omit<Wc2026EvaluationResponse["metrics"], "brierScore" | "logLoss" | "winnerAccuracy"> & {
+    brierScore: number | null;
+    logLoss: number | null;
+    winnerAccuracy: number | null;
+  };
+  evaluation: {
+    metricVersion: "multiclass-v1";
+    segments: Array<{
+      modelId: string;
+      modelVersion: string;
+      contributorId: string;
+      contributorVersion: string;
+      competitionId: string;
+      seasonId: string;
+      checkpointPolicyId: string;
+      ratingSourceState: string;
+      sampleCount: number;
+      metrics: ClubSeasonEvaluationResponse["metrics"];
+    }>;
+    exclusions: {
+      total: number;
+      byReason: {
+        legacyPartialProvenance: number;
+        incompleteInputProvenance: number;
+        postKickoffForecast: number;
+        invalidForecastTimestamp: number;
+      };
+    };
+  };
 }
 
 export async function getClubSeasonEvaluation() {

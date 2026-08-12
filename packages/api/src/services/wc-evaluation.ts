@@ -40,9 +40,9 @@ export interface CalibrationBucket {
 
 export interface EvaluationMetrics {
   fixtureCount: number;
-  brierScore: number;
-  logLoss: number;
-  winnerAccuracy: number;
+  brierScore: number | null;
+  logLoss: number | null;
+  winnerAccuracy: number | null;
   drawCount: number;
   calibration: CalibrationBucket[];
 }
@@ -109,9 +109,9 @@ export function computeEvaluationMetrics(fixtures: EvaluationFixture[]): Evaluat
   if (fixtures.length === 0) {
     return {
       fixtureCount: 0,
-      brierScore: 0,
-      logLoss: 0,
-      winnerAccuracy: 0,
+      brierScore: null,
+      logLoss: null,
+      winnerAccuracy: null,
       drawCount: 0,
       calibration: [],
     };
