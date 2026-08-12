@@ -25,6 +25,7 @@ import {
   verifyCurrentClaims,
   type FixtureGrounding,
   shouldHoldCoverageDeltas,
+  stripUnvalidatedExternalMarketClaims,
 } from "./ask";
 
 describe("current-news evidence hardening", () => {
@@ -46,8 +47,21 @@ describe("current-news evidence hardening", () => {
 
   it("does not promote unknown search domains to reputable evidence", () => {
     expect(evidenceAuthority("https://www.uefa.com/story")).toBe("official");
+    expect(evidenceAuthority("https://www.arsenal.com/news/team-update")).toBe("official");
     expect(evidenceAuthority("https://www.reuters.com/story")).toBe("reputable");
     expect(evidenceAuthority("https://football-rumours.example/story")).toBe("other");
+  });
+
+  it("fails closed on generated bookmaker numbers that lack a complete server-owned market", () => {
+    const answer = [
+      "The official fixture is scheduled for Saturday.",
+      "Stake market: home 2.10, draw 3.40, away 3.60 (48.0%, 29.7%, 22.3%).",
+    ].join("\n\n");
+    const sanitized = stripUnvalidatedExternalMarketClaims(answer);
+    expect(sanitized).toContain("official fixture is scheduled");
+    expect(sanitized).toContain("complete same-source, same-time bookmaker 1X2 market");
+    expect(sanitized).not.toContain("2.10");
+    expect(sanitized).not.toContain("48.0%");
   });
 
   it("extracts only server-marked external claims for the verifier", () => {

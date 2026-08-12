@@ -202,6 +202,25 @@ describe("fixture registry", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("rejects structurally invalid recognized identities and falls back to last-good", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-invalid-"));
+    process.env.PUNDIT_DATA_DIR = dir;
+    refreshFixtureRegistryFromEspn([footballFixture()], new Date("2026-08-13T01:00:00.000Z"));
+    const primary = path.join(dir, "fixture-registry", "recognized-fixtures-v1.json");
+    const invalid = JSON.parse(fs.readFileSync(primary, "utf8"));
+    invalid.fixtures[0].status = "rumoured";
+    invalid.fixtures[0].observedSources[0].source = "search";
+    fs.writeFileSync(primary, JSON.stringify(invalid), "utf8");
+
+    replaceFixtureRegistryForTests([]);
+    loadFixtureRegistry();
+
+    expect(getRecognizedFixtures()).toHaveLength(1);
+    expect(getRecognizedFixtures()[0].status).toBe("scheduled");
+    expect(getFixtureRegistryStatus().loadedFrom).toBe("last-good");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("retains bounded material observation history for kickoff and status changes", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-history-"));
     process.env.PUNDIT_DATA_DIR = dir;
