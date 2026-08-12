@@ -5,9 +5,61 @@ API_URL="https://thepundit.up.railway.app"
 WEB_URL="https://thepundit.vercel.app"
 EXPECTED_API_HOST="thepundit.up.railway.app"
 
-COMMIT_ARG="${1:-}"
+EXPECTED_SHA="${1:-$(git rev-parse HEAD)}"
+POLL_ATTEMPTS="${VERIFY_PROD_POLL_ATTEMPTS:-40}"
+POLL_INTERVAL_SECONDS="${VERIFY_PROD_POLL_INTERVAL_SECONDS:-5}"
 
-echo "=== 1. API health ==="
+json_sha() {
+  python3 -c 'import json,sys; print((json.load(sys.stdin).get("sha") or ""))'
+}
+
+sha_matches() {
+  local actual="$1"
+  [[ -n "$actual" && "$actual" != "unknown" ]] \
+    && { [[ "$actual" == "$EXPECTED_SHA" ]] \
+      || [[ "$actual" == "$EXPECTED_SHA"* ]] \
+      || [[ "$EXPECTED_SHA" == "$actual"* ]]; }
+}
+
+echo "=== 1. Intended build SHA ==="
+echo "$EXPECTED_SHA"
+
+echo "=== 2. Poll API startup/version ==="
+API_SHA=""
+for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
+  STARTUP_HTTP=$(curl -sS -o /dev/null -w "%{http_code}" "$API_URL/startup" || true)
+  API_VERSION=$(curl -fsS "$API_URL/version" 2>/dev/null || true)
+  API_SHA=$(printf '%s' "$API_VERSION" | json_sha 2>/dev/null || true)
+  if [[ "$STARTUP_HTTP" == "200" ]] && sha_matches "$API_SHA"; then
+    echo "OK (SHA $API_SHA)"
+    break
+  fi
+  if [[ "$attempt" -eq "$POLL_ATTEMPTS" ]]; then
+    echo "FAIL: API did not serve ready startup and intended SHA"
+    echo "      /startup HTTP $STARTUP_HTTP, served SHA ${API_SHA:-missing}"
+    exit 1
+  fi
+  sleep "$POLL_INTERVAL_SECONDS"
+done
+
+echo "=== 3. Poll frontend version ==="
+WEB_SHA=""
+for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
+  WEB_VERSION=$(curl -fsS "$WEB_URL/api/version" 2>/dev/null || true)
+  WEB_SHA=$(printf '%s' "$WEB_VERSION" | json_sha 2>/dev/null || true)
+  if sha_matches "$WEB_SHA"; then
+    echo "OK (SHA $WEB_SHA)"
+    break
+  fi
+  if [[ "$attempt" -eq "$POLL_ATTEMPTS" ]]; then
+    echo "FAIL: frontend did not serve intended SHA"
+    echo "      served SHA ${WEB_SHA:-missing}"
+    exit 1
+  fi
+  sleep "$POLL_INTERVAL_SECONDS"
+done
+
+echo "=== 4. API health ==="
 HEALTH=$(curl -fsS "$API_URL/health")
 if ! echo "$HEALTH" | grep -q '"status":"ok"'; then
   echo "FAIL: /health did not contain \"status\":\"ok\""
@@ -16,11 +68,11 @@ if ! echo "$HEALTH" | grep -q '"status":"ok"'; then
 fi
 echo "OK"
 
-echo "=== 2. API ready (soft) ==="
+echo "=== 5. API ready ==="
 READY_TMP=$(mktemp)
 READY_HTTP=$(curl -sS -w "%{http_code}" -o "$READY_TMP" "$API_URL/ready" || true)
-if [[ "$READY_HTTP" != "200" && "$READY_HTTP" != "503" ]]; then
-  echo "FAIL: /ready returned HTTP $READY_HTTP (expected 200 or 503)"
+if [[ "$READY_HTTP" != "200" ]]; then
+  echo "FAIL: /ready returned HTTP $READY_HTTP (expected 200)"
   rm -f "$READY_TMP"
   exit 1
 fi
@@ -64,7 +116,7 @@ else
 fi
 rm -f "$READY_TMP"
 
-echo "=== 3. CORS good origin ==="
+echo "=== 6. CORS good origin ==="
 CORS_GOOD_HEADERS=$(curl -fsS -D - -o /dev/null -H "Origin: $WEB_URL" "$API_URL/api/matches/standings")
 if ! echo "$CORS_GOOD_HEADERS" | grep -i "access-control-allow-origin:" | grep -Fq "$WEB_URL"; then
   echo "FAIL: missing access-control-allow-origin: $WEB_URL"
@@ -73,7 +125,7 @@ if ! echo "$CORS_GOOD_HEADERS" | grep -i "access-control-allow-origin:" | grep -
 fi
 echo "OK"
 
-echo "=== 4. CORS bad origin ==="
+echo "=== 7. CORS bad origin ==="
 CORS_BAD_HEADERS=$(curl -fsS -D - -o /dev/null -H "Origin: https://evil.example" "$API_URL/api/matches/standings")
 if echo "$CORS_BAD_HEADERS" | grep -i "access-control-allow-origin:" | grep -Fq "https://evil.example"; then
   echo "FAIL: evil origin was reflected in access-control-allow-origin"
@@ -81,7 +133,7 @@ if echo "$CORS_BAD_HEADERS" | grep -i "access-control-allow-origin:" | grep -Fq 
 fi
 echo "OK"
 
-echo "=== 5. Vercel bundle ==="
+echo "=== 8. Vercel bundle ==="
 HTML=$(curl -fsS "$WEB_URL/")
 # Collect every JS chunk the homepage loads (page chunk + layout chunk +
 # shared/vendor chunks). API host constants live in lib/api.ts and may
@@ -122,10 +174,8 @@ echo "OK (chunks: $CHUNK_COUNT inspected)"
 echo ""
 echo "PASS: production verification OK"
 echo "  - API health (/health)"
-echo "  - API ready (/ready, soft)"
+echo "  - API startup and ready"
+echo "  - API and web serve intended SHA $EXPECTED_SHA"
 echo "  - CORS allow $WEB_URL"
 echo "  - CORS reject https://evil.example"
 echo "  - Vercel bundle uses $EXPECTED_API_HOST (no localhost:3001, all chunks inspected)"
-if [[ -n "$COMMIT_ARG" ]]; then
-  echo "  - note: commit arg = $COMMIT_ARG"
-fi

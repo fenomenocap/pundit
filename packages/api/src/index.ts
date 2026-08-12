@@ -23,6 +23,7 @@ import {
 } from "./services/model-market-odds";
 import { evaluateReadiness } from "./services/readiness";
 import { getWebSearchStatus } from "./services/web-search";
+import { getRuntimeVersion } from "./services/runtime-version";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -69,7 +70,11 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.get("/ready", (_req, res) => {
+app.get("/version", (_req, res) => {
+  res.set("Cache-Control", "no-store").json(getRuntimeVersion());
+});
+
+function currentReadiness() {
   const model = getCachedModelData();
   const football = getCachedMatches();
   const activeFixtures = getActiveFixtures();
@@ -77,8 +82,36 @@ app.get("/ready", (_req, res) => {
   const odds = getModelMarketOddsStatus();
   const ratings = getCachedClubRatings();
   const readiness = evaluateReadiness(model, football, activeFixtures, odds);
+  return { model, football, activeFixtures, active, odds, ratings, readiness };
+}
+
+app.get("/startup", (_req, res) => {
+  const { model, football, activeFixtures, readiness } = currentReadiness();
+  res.status(readiness.ready ? 200 : 503).json({
+    status: readiness.ready ? "started" : "starting",
+    version: getRuntimeVersion(),
+    model: {
+      ready: readiness.modelReady,
+      fixtureCount: model.fixtures.length,
+      expectedActiveFixtureCount: activeFixtures.length,
+      lastUpdated: model.lastUpdated?.toISOString() ?? null,
+      error: model.error,
+    },
+    football: {
+      ready: readiness.footballReady,
+      lastUpdated: football.lastUpdated?.toISOString() ?? null,
+      error: football.error,
+    },
+  });
+});
+
+app.get("/ready", (_req, res) => {
+  const {
+    model, football, activeFixtures, active, odds, ratings, readiness,
+  } = currentReadiness();
   res.status(readiness.ready ? 200 : 503).json({
     status: readiness.ready ? "ready" : "loading",
+    version: getRuntimeVersion(),
     model: {
       ready: readiness.modelReady,
       fixtureCount: model.fixtures.length,

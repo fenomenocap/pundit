@@ -1,5 +1,6 @@
 {
   "framework": "nextjs",
   "installCommand": "cd ../.. && corepack enable && pnpm install",
-  "buildCommand": "next build"
+  "buildCommand": "next build",
+  "ignoreCommand": "node ../../scripts/vercel-ignore-build.mjs"
 }

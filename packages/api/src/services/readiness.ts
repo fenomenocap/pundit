@@ -35,7 +35,9 @@ export function evaluateReadiness(
   const marketOddsReady = marketOdds.ready && marketOdds.lastUpdated !== null;
 
   return {
-    ready: modelReady && footballReady && marketOddsReady,
+    // Search and public market feeds are explicitly degradable. Only the
+    // football authority and active model are startup/readiness dependencies.
+    ready: modelReady && footballReady,
     modelReady,
     footballReady,
     marketOddsReady,
