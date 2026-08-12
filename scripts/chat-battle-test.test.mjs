@@ -22,8 +22,12 @@ import {
   validateAnswerCopy,
   validateCitationContract,
   validateErrorCopy,
+  validateFixtureGrounding,
   validateNoDraftLeak,
+  validateOneXTwoMarket,
+  validateResponseCorrectness,
   validateTeamNewsDiscipline,
+  validateVerification,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -546,7 +550,7 @@ test("400 error copy guard rejects schema field leaks", () => {
   assert.equal(validateErrorCopy({ error: "history must be an array" }).passed, false);
 });
 
-test("schema-8 gates exact clickable citations and rejects draft narration", () => {
+test("citation provenance gates exact clickable citations and rejects draft narration", () => {
   const citation = { id: "S1", title: "Club update", url: "https://example.com/news", date: "2026-08-12" };
   assert.equal(validateCitationContract(
     "Player is available ([Club update](https://example.com/news), 2026-08-12).",
@@ -558,7 +562,7 @@ test("schema-8 gates exact clickable citations and rejects draft narration", () 
   assert.equal(validateNoDraftLeak("No verified injury update was established.").passed, true);
 });
 
-test("schema-8 latency gate uses individual requests and enforces p90 after ten samples", () => {
+test("latency gate uses individual requests and enforces p90 after ten samples", () => {
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     scenarios: Array.from({ length: 10 }, (_, index) => ({
@@ -575,4 +579,150 @@ test("schema-8 latency gate uses individual requests and enforces p90 after ten 
     everyRequestUnder90s: true,
     p90Under20s: true,
   });
+});
+
+test("schema-9 fixture grounding distinguishes capability without leaking model probabilities", () => {
+  const fixture = {
+    fixtureId: "espn:club.friendly:800",
+    primarySource: "espn",
+    primarySourceFixtureId: "800",
+    homeTeam: { id: "ars", name: "Arsenal" },
+    awayTeam: { id: "liv", name: "Liverpool" },
+    kickoff: "2026-08-18T19:00:00.000Z",
+    venue: "National Stadium",
+    neutralVenue: true,
+    competition: { id: "club.friendly", name: "Club Friendly", category: "club-friendly" },
+    status: "scheduled",
+    recognition: "authoritative",
+    observedSources: [{ source: "espn", sourceFixtureId: "800", authority: "authoritative", observedAt: "2026-08-13T10:00:00Z" }],
+    observationHistory: [],
+  };
+  const valid = validateFixtureGrounding({
+    kind: "fixture",
+    fixture,
+    capability: { status: "outside-coverage", reason: "friendly-policy-disabled" },
+  }, {
+    expectFixtureId: fixture.fixtureId,
+    expectTeams: ["Liverpool", "Arsenal"],
+    expectCapability: { status: "outside-coverage", reason: "friendly-policy-disabled" },
+    expectCompetitionCategory: "club-friendly",
+    expectNeutralVenue: true,
+  });
+  assert.equal(valid.passed, true);
+  assert.equal(validateFixtureGrounding({
+    kind: "fixture",
+    fixture,
+    capability: { status: "outside-coverage", reason: "friendly-policy-disabled" },
+    pHome: 0.5,
+  }).passed, false);
+  assert.equal(validateFixtureGrounding({
+    kind: "fixture",
+    fixture,
+    capability: { status: "outside-coverage", reason: "ratings-unavailable" },
+  }).passed, false);
+});
+
+test("schema-9 verification contract enforces shape, counts, and abstention semantics", () => {
+  assert.equal(validateVerification({
+    status: "verified", supportedClaimCount: 1, removedClaimCount: 0,
+  }, { expectVerification: ["verified"] }).passed, true);
+  assert.equal(validateVerification({
+    status: "verified", supportedClaimCount: 0, removedClaimCount: 0,
+  }).passed, false);
+  assert.equal(validateVerification({
+    status: "abstain", supportedClaimCount: 0, removedClaimCount: 1,
+  }, { requireCitation: true, allowAbstention: true }).passed, true);
+  assert.equal(validateVerification(null).passed, false);
+});
+
+test("schema-9 complete market validator enforces source, time, legs and arithmetic", () => {
+  const legs = [
+    { outcome: "home", decimalOdds: 2, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
+    { outcome: "draw", decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
+    { outcome: "away", decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
+  ];
+  const valid = validateOneXTwoMarket(legs);
+  assert.equal(valid.passed, true);
+  assert.deepEqual(valid.market.impliedProbabilities, { home: 0.5, draw: 0.25, away: 0.25 });
+  assert.deepEqual(valid.market.noVigProbabilities, { home: 0.5, draw: 0.25, away: 0.25 });
+  assert.equal(validateOneXTwoMarket(legs.slice(0, 2)).reason, "missing-or-duplicate-leg");
+  assert.equal(validateOneXTwoMarket([{ ...legs[0], source: "Other" }, legs[1], legs[2]]).reason, "mixed-source");
+  assert.equal(validateOneXTwoMarket([{ ...legs[0], observedAt: "2026-08-13T10:01:00Z" }, legs[1], legs[2]]).reason, "mixed-observation-time");
+});
+
+test("schema-9 correctness guard catches the four screenshot-class failures", () => {
+  assert.equal(validateResponseCorrectness(
+    "Pundit's forecast is 52% home, 25% draw and 23% away.",
+    [],
+    { kind: "fixture" },
+    { expectNoPunditProbabilities: true }
+  ).passed, false);
+  assert.equal(validateResponseCorrectness(
+    "These are bookmaker probabilities from third-party data, not a Pundit forecast.",
+    [],
+    null,
+    { expectThirdPartyLabel: true }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "A 1-1 result lands over 2.5 goals.",
+    [],
+    null,
+    { expectOneOneNotOver25: true }
+  ).passed, false);
+  assert.equal(validateResponseCorrectness(
+    "The old manager remains in charge.",
+    [],
+    null,
+    { expectCorrectionAcknowledgement: true }
+  ).passed, false);
+  assert.equal(validateResponseCorrectness(
+    "You're right; correction: the official club update confirms the new manager ([Club update](https://club.example/update)).",
+    [{ id: "S1", title: "Club update", url: "https://club.example/update", date: "2026-08-13" }],
+    null,
+    { expectCorrectionAcknowledgement: true }
+  ).passed, true);
+});
+
+test("schema-9 certification cannot pass required inconclusive or unsupported correctness", () => {
+  const report = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    scenarios: [
+      { id: "friendly", passed: false, outcome: "INCONCLUSIVE", requiredForCertification: true },
+      { id: "answer", passed: true, outcome: "PASS", answer: "An answer", qualitativeScores: { correctness: null } },
+    ],
+  };
+  finalizeClassifications(report, null);
+  assert.equal(report.overall, "ISSUES FOUND");
+  assert.deepEqual(report.certificationGate.requiredInconclusive, ["friendly"]);
+  assert.deepEqual(report.certificationGate.unsupportedCorrectness, ["answer"]);
+});
+
+test("schema-9 permanent certification matrix names every authorized regression family", async () => {
+  const config = JSON.parse(await readFile(
+    path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
+    "utf8"
+  ));
+  assert.equal(config.schemaVersion, EVAL_SCHEMA_VERSION);
+  const ids = new Set(config.fixed.map(({ id }) => id));
+  for (const id of [
+    "active-match-grounding",
+    "temporary-fixture-unavailability",
+    "recognized-friendly-outside-coverage",
+    "candidate-never-becomes-fixture",
+    "unsupported-followup-and-matchup-replacement",
+    "table-route-preserves-match",
+    "replacing-is-not-epl",
+    "priced-fixture-retains-1x2-context",
+    "incomplete-market-fails-closed",
+    "complete-market-arithmetic",
+    "third-party-probability-labelling",
+    "neutral-venue-missing-input",
+    "stale-manager-official-conflict",
+    "correction-after-wrong-history",
+    "one-one-is-not-over-two-five",
+    "unrelated-citation-rejected",
+    "degraded-search-retrieval-verifier",
+  ]) {
+    assert.equal(ids.has(id), true, `missing permanent scenario ${id}`);
+  }
 });

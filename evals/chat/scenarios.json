@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 8,
+  "schemaVersion": 9,
   "fixed": [
     {
       "id": "active-match-grounding",
@@ -7,12 +7,203 @@
       "kind": "featured"
     },
     {
+      "id": "priced-fixture-retains-1x2-context",
+      "description": "An explicit 1X2 follow-up cannot lose or replace the exact priced fixture.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "What will the 1X2 be?",
+          "expectGrounding": "match"
+        }
+      ]
+    },
+    {
+      "id": "table-route-preserves-match",
+      "description": "A table detour routes as competition grounding without deleting the retained fixture.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "What does the current Premier League table show?",
+          "expectGrounding": "competition",
+          "expectCompetitionId": "eng.1"
+        },
+        {
+          "question": "Back to that match: what will the 1X2 be?",
+          "expectGrounding": "match"
+        }
+      ]
+    },
+    {
+      "id": "replacing-is-not-epl",
+      "description": "The token epl inside replacing never creates competition grounding.",
+      "kind": "json",
+      "turns": [
+        {
+          "question": "Who is replacing the injured manager?",
+          "expectGrounding": null,
+          "requireCitation": true
+        }
+      ]
+    },
+    {
+      "id": "candidate-never-becomes-fixture",
+      "description": "A search-shaped, non-authoritative matchup candidate receives no fixture badge or Pundit probabilities.",
+      "kind": "json",
+      "turns": [
+        {
+          "question": "What are Pundit's probabilities for Northbridge Athletic vs Southbank Rovers tomorrow?",
+          "expectGrounding": null,
+          "expectNoPunditProbabilities": true,
+          "expectNoScorelines": true,
+          "expectEvidenceAbstention": true
+        }
+      ]
+    },
+    {
+      "id": "recognized-friendly-outside-coverage",
+      "description": "An exact authoritative friendly must be fixture-grounded, context-retaining and unable to emit Pundit probabilities.",
+      "kind": "recognized",
+      "capabilityStatus": "outside-coverage",
+      "capabilityReason": "friendly-policy-disabled",
+      "competitionCategory": "club-friendly",
+      "turns": [
+        { "questionTemplate": "What are Pundit's probabilities for {home} vs {away}?" },
+        { "questionTemplate": "What about that fixture's 1X2?" }
+      ]
+    },
+    {
+      "id": "temporary-fixture-unavailability",
+      "description": "A recognized eligible fixture in model initialization or ratings refresh reports a temporary capability.",
+      "kind": "recognized",
+      "capabilityStatus": "temporarily-unpriced",
+      "turns": [
+        { "questionTemplate": "Analyse {home} vs {away}." }
+      ]
+    },
+    {
+      "id": "unsupported-followup-and-matchup-replacement",
+      "description": "An unsupported fixture survives follow-ups until a new exact recognized matchup replaces it.",
+      "kind": "recognized-replacement"
+    },
+    {
+      "id": "complete-market-arithmetic",
+      "description": "A complete same-source/time decimal 1X2 market uses 1/odds and normalizes to 100 percent.",
+      "kind": "deterministic",
+      "validator": "one-x-two-market",
+      "input": [
+        { "outcome": "home", "decimalOdds": 2, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
+        { "outcome": "draw", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
+        { "outcome": "away", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" }
+      ]
+    },
+    {
+      "id": "incomplete-market-fails-closed",
+      "description": "A missing 1X2 leg is never guessed or normalized.",
+      "kind": "deterministic",
+      "validator": "response-correctness",
+      "input": {
+        "answer": "No complete three-way market was established, so no probabilities are shown.",
+        "citations": [],
+        "grounding": null
+      },
+      "expectation": {
+        "expectEvidenceAbstention": true
+      }
+    },
+    {
+      "id": "third-party-probability-labelling",
+      "description": "External probabilities are explicitly labelled as third-party and not Pundit output.",
+      "kind": "deterministic",
+      "validator": "response-correctness",
+      "input": {
+        "answer": "These are bookmaker market-implied probabilities from third-party data, not a Pundit forecast.",
+        "citations": [],
+        "grounding": null
+      },
+      "expectation": {
+        "expectThirdPartyLabel": true
+      }
+    },
+    {
+      "id": "neutral-venue-missing-input",
+      "description": "A recognized neutral-site fixture remains unpriced when required venue context is unavailable.",
+      "kind": "recognized",
+      "capabilityStatus": "insufficient-model-input",
+      "capabilityReason": "neutral-venue-unknown",
+      "turns": [
+        { "questionTemplate": "What is the forecast for {home} vs {away}?" }
+      ]
+    },
+    {
+      "id": "stale-manager-official-conflict",
+      "description": "A stale manager claim loses to dated official evidence and the manager era is attributed correctly.",
+      "kind": "deterministic",
+      "validator": "response-correctness",
+      "input": {
+        "answer": "Correction: the official club announcement names the current manager ([Club announcement](https://club.example/manager)).",
+        "citations": [{ "id": "S1", "title": "Club announcement", "url": "https://club.example/manager", "date": "2026-08-13" }],
+        "grounding": null
+      },
+      "expectation": { "expectCorrectionAcknowledgement": true, "expectOfficialCitation": ["club.example"] }
+    },
+    {
+      "id": "correction-after-wrong-history",
+      "description": "A correction cue treats prior assistant text as untrusted, acknowledges the error and re-verifies it.",
+      "kind": "deterministic",
+      "validator": "response-correctness",
+      "input": {
+        "answer": "You're right; correction: I re-verified the claim against the official update ([Official update](https://club.example/correction)).",
+        "citations": [{ "id": "S1", "title": "Official update", "url": "https://club.example/correction", "date": "2026-08-13" }],
+        "grounding": null
+      },
+      "expectation": { "expectCorrectionAcknowledgement": true, "expectOfficialCitation": ["club.example"] }
+    },
+    {
+      "id": "one-one-is-not-over-two-five",
+      "description": "A 1-1 scoreline is never described as over 2.5 goals.",
+      "kind": "deterministic",
+      "validator": "response-correctness",
+      "input": {
+        "answer": "A 1-1 scoreline has two total goals, so it is under 2.5.",
+        "citations": [],
+        "grounding": null
+      },
+      "expectation": {
+        "expectOneOneNotOver25": true
+      }
+    },
+    {
+      "id": "unrelated-citation-rejected",
+      "description": "A factual current claim must be supported by a directly relevant official/reputable citation.",
+      "kind": "deterministic",
+      "validator": "response-correctness",
+      "input": { "answer": "I could not establish that claim from relevant evidence.", "citations": [], "grounding": null },
+      "expectation": { "expectEvidenceAbstention": true, "expectCitationUrls": [] }
+    },
+    {
+      "id": "degraded-search-retrieval-verifier",
+      "description": "Search, retrieval or verifier degradation fails closed without unsupported current claims.",
+      "kind": "deterministic",
+      "validator": "response-correctness",
+      "input": { "answer": "I could not establish a supported current answer because verification was unavailable.", "citations": [], "grounding": null },
+      "expectation": { "expectEvidenceAbstention": true, "expectCitationUrls": [] }
+    },
+    {
       "id": "team-news-sourcing",
       "description": "A team-news question either cites a source and date or states plainly that no verified update was established.",
       "kind": "featured-question",
       "questionTemplate": "Any injury or lineup news for {home} vs {away}?",
       "requireSourcedTeamNews": true,
-      "requireCitation": true
+      "requireCitation": true,
+      "allowAbstention": true
     },
     {
       "id": "market-comparison-coverage",

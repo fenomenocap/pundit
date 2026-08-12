@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -22,8 +23,12 @@ import {
   validateAnswerCopy,
   validateCitationContract,
   validateErrorCopy,
+  validateFixtureGrounding,
   validateNoDraftLeak,
+  validateOneXTwoMarket,
+  validateResponseCorrectness,
   validateTeamNewsDiscipline,
+  validateVerification,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -42,7 +47,8 @@ function parseArgs(argv) {
     intervalMs: MIN_REQUEST_INTERVAL_MS,
     timeoutMs: 240_000,
     dryRun: false,
-    deploymentId: process.env.PUNDIT_DEPLOYMENT_ID ?? null
+    deploymentId: process.env.PUNDIT_DEPLOYMENT_ID ?? null,
+    sourceSha: process.env.PUNDIT_SOURCE_SHA ?? null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -55,6 +61,7 @@ function parseArgs(argv) {
     else if (argument === "--interval-ms") options.intervalMs = Number(argv[++index]);
     else if (argument === "--timeout-ms") options.timeoutMs = Number(argv[++index]);
     else if (argument === "--deployment-id") options.deploymentId = argv[++index];
+    else if (argument === "--source-sha") options.sourceSha = argv[++index];
     else throw new Error(`Unknown argument: ${argument}`);
   }
   if (!Number.isFinite(options.intervalMs) || options.intervalMs < 0) {
@@ -106,7 +113,17 @@ async function preflight(options) {
   if (!ready.ok || failures.length > 0) {
     throw new Error(`readiness failed: HTTP ${ready.status}; ${failures.join(", ")}; ${sanitizeEvidence(ready.body)}`);
   }
-  return { health, ready };
+  const [apiVersion, webVersion] = await Promise.all([
+    fetchJson(`${options.apiUrl}/version`, {}, options.timeoutMs),
+    fetchJson(`${options.webUrl}/api/version`, {}, options.timeoutMs),
+  ]);
+  if (!apiVersion.ok || !/^[0-9a-f]{7,40}$/i.test(apiVersion.body?.sha ?? "")) {
+    throw new Error(`API version unavailable: HTTP ${apiVersion.status}`);
+  }
+  if (!webVersion.ok || !/^[0-9a-f]{7,40}$/i.test(webVersion.body?.sha ?? "")) {
+    throw new Error(`web version unavailable: HTTP ${webVersion.status}`);
+  }
+  return { health, ready, apiVersion, webVersion };
 }
 
 async function discoverFeatured(options) {
@@ -115,6 +132,29 @@ async function discoverFeatured(options) {
     throw new Error(`active model discovery failed: HTTP ${result.status}`);
   }
   return { featured: selectFeaturedMatch(result.body.fixtures), result };
+}
+
+async function discoverRecognized(options) {
+  const result = await fetchJson(`${options.apiUrl}/api/fixtures/recognized`, {}, options.timeoutMs);
+  if (!result.ok || !Array.isArray(result.body?.fixtures)) {
+    throw new Error(`recognized fixture discovery failed: HTTP ${result.status}`);
+  }
+  for (const [index, entry] of result.body.fixtures.entries()) {
+    const validation = validateFixtureGrounding({ kind: "fixture", ...entry });
+    if (!validation.passed) {
+      throw new Error(`recognized fixture ${index} violated contract: ${validation.failures.join(", ")}`);
+    }
+  }
+  return { entries: result.body.fixtures, result };
+}
+
+function exactRecognizedEntry(entries, featured) {
+  if (!featured) return null;
+  return entries.find(({ fixture, capability }) =>
+    capability?.status === "priced"
+    && fixture?.competition?.id === featured.competitionId
+    && fixture?.primarySourceFixtureId === String(featured.fixtureId)
+  ) ?? null;
 }
 
 function baseResult(scenario) {
@@ -130,7 +170,12 @@ function baseResult(scenario) {
     assertions: {},
     answer: null,
     grounding: undefined,
+    verification: null,
     qualitativeScores: null,
+    correctnessCertified: false,
+    requiredForCertification: scenario.requiredForCertification !== false,
+    turnResults: [],
+    reproduction: { requests: [] },
     evidence: ""
   };
 }
@@ -164,6 +209,7 @@ async function jsonTurn(
   turn,
   history,
   teamContext,
+  fixtureContext,
   onRequestStart
 ) {
   await pacer.beforeRequest();
@@ -176,23 +222,27 @@ async function jsonTurn(
     question: turn.question,
     startedAt: start,
   });
+  const requestBody = {
+    question: turn.question,
+    history,
+    teamContext,
+    fixtureContext,
+  };
   const response = await fetchJson(`${options.apiUrl}/api/ask`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      question: turn.question,
-      history,
-      teamContext
-    })
+    body: JSON.stringify(requestBody)
   }, options.timeoutMs);
-  return { ...response, start };
+  return { ...response, start, requestBody };
 }
 
 async function runJsonScenario(scenario, options, pacer, onRequestStart) {
   const result = baseResult(scenario);
   const history = [];
   const assertionFailures = [];
+  let semanticCheckCount = 0;
   let teamContext = scenario.teamContext;
+  let fixtureContext = scenario.fixtureContext;
   for (const [turnIndex, turn] of scenario.turns.entries()) {
     const response = await jsonTurn(
       scenario,
@@ -202,9 +252,15 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       turn,
       history,
       teamContext,
+      fixtureContext,
       onRequestStart
     );
     result.requestStarts.push(response.start);
+    result.reproduction.requests.push({
+      method: "POST",
+      path: "/api/ask",
+      body: response.requestBody,
+    });
     result.requestLatencies = [...(result.requestLatencies ?? []), response.latencyMs];
     result.status = response.status;
     result.latencyMs = (result.latencyMs ?? 0) + response.latencyMs;
@@ -228,10 +284,15 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     }
     result.answer = response.body?.answer ?? "";
     result.citations = response.body?.citations ?? [];
+    result.verification = response.body?.verification ?? null;
     result.grounding = grounding;
-    teamContext = grounding?.kind === "match"
-      ? [grounding.home, grounding.away]
-      : undefined;
+    if (grounding?.kind === "match") {
+      teamContext = [grounding.home, grounding.away];
+      fixtureContext = grounding.fixtureId ? { fixtureId: grounding.fixtureId } : fixtureContext;
+    } else if (grounding?.kind === "fixture") {
+      teamContext = [grounding.fixture.homeTeam.name, grounding.fixture.awayTeam.name];
+      fixtureContext = { fixtureId: grounding.fixture.fixtureId };
+    }
     history.push(
       { role: "user", content: turn.question },
       { role: "assistant", content: result.answer }
@@ -242,12 +303,25 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     }
     const copyValidation = validateAnswerCopy(result.answer);
     result.assertions.plainLanguageCopy = copyValidation.passed;
+    const citationRequired = Boolean(turn.requireCitation || scenario.requireCitation)
+      && result.verification?.status !== "abstain";
     const citationValidation = validateCitationContract(
       result.answer,
       result.citations,
-      Boolean(turn.requireCitation || scenario.requireCitation)
+      citationRequired
     );
-    Object.assign(result.assertions, citationValidation.assertions);
+    const verificationValidation = validateVerification(result.verification, {
+      ...turn,
+      requireCitation: Boolean(turn.requireCitation || scenario.requireCitation),
+      allowAbstention: Boolean(turn.allowAbstention || scenario.allowAbstention),
+    });
+    for (const [name, passed] of Object.entries(verificationValidation.assertions)) {
+      result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+    }
+    assertionFailures.push(...verificationValidation.failures.map((failure) => `turn ${turnNumber}: ${failure}`));
+    for (const [name, passed] of Object.entries(citationValidation.assertions)) {
+      result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+    }
     const draftValidation = validateNoDraftLeak(result.answer);
     result.assertions.noDraftLeak = draftValidation.passed;
     assertionFailures.push(...copyValidation.failures.map((failure) =>
@@ -262,10 +336,36 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     assertionFailures.push(...groundingValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
+    const correctnessValidation = validateResponseCorrectness(
+      result.answer,
+      result.citations,
+      grounding,
+      turn
+    );
+    semanticCheckCount += Object.keys(correctnessValidation.assertions).length;
+    for (const [name, passed] of Object.entries(correctnessValidation.assertions)) {
+      result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+    }
+    assertionFailures.push(...correctnessValidation.failures.map((failure) =>
+      `turn ${history.length / 2}: ${failure}`
+    ));
+    result.turnResults.push({
+      turn: turnNumber,
+      request: response.requestBody,
+      status: response.status,
+      latencyMs: response.latencyMs,
+      grounding,
+      capability: grounding?.capability ?? (grounding?.kind === "match" ? { status: "priced", modelFixtureId: grounding.fixtureId } : null),
+      citations: result.citations,
+      verification: result.verification,
+      answer: result.answer,
+      assertions: Object.fromEntries(Object.entries(result.assertions).filter(([name]) => name.startsWith(`turn${turnNumber}`))),
+    });
   }
   if (scenario.requireSourcedTeamNews) {
     const newsValidation = validateTeamNewsDiscipline(result.answer);
     result.assertions.teamNewsSourced = newsValidation.passed;
+    semanticCheckCount += 1;
     assertionFailures.push(...newsValidation.failures.map((failure) =>
       `final answer: ${failure} — ${sanitizeEvidence(result.answer)}`
     ));
@@ -280,9 +380,10 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     }
   }
   result.passed = Object.values(result.assertions).every(Boolean);
+  result.correctnessCertified = result.passed && semanticCheckCount > 0;
   result.outcome = result.passed ? "PASS" : "FAIL";
   result.evidence = result.passed
-    ? `${scenario.turns.length} turn(s), grounding=${result.grounding?.kind ?? "null"}, answer=${result.answer.length} chars.`
+    ? `${scenario.turns.length} turn(s), grounding=${result.grounding?.kind ?? "null"}, fixture=${result.grounding?.fixtureId ?? result.grounding?.fixture?.fixtureId ?? "none"}, capability=${result.grounding?.capability?.status ?? "priced-or-n/a"}, verification=${result.verification?.status ?? "missing"}, citations=${result.citations.length}, answer=${result.answer.length} chars.`
     : assertionFailures.join("; ");
   result.qualitativeScores = qualitativeScores(result);
   return result;
@@ -307,6 +408,7 @@ async function runInvalidScenario(scenario, options, pacer, onRequestStart) {
     body: JSON.stringify(scenario.body)
   }, options.timeoutMs);
   result.status = response.status;
+  result.reproduction.requests.push({ method: "POST", path: "/api/ask", body: scenario.body });
   result.latencyMs = response.latencyMs;
   result.requestLatencies = [response.latencyMs];
   result.assertions.expectedStatus = response.status === scenario.expectStatus;
@@ -350,12 +452,25 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
     return result;
   }
   const events = parseSse(text);
+  result.reproduction.requests.push({
+    method: "POST",
+    path: "/api/ask",
+    body: { question: scenario.question, stream: true },
+  });
+  result.sse = { eventOrder: events.map(({ event }) => event) };
   const validation = validateSse(events, scenario);
   Object.assign(result, validation);
   result.outcome = result.passed ? "PASS" : "FAIL";
   const done = events.findLast(({ event }) => event === "done");
   result.answer = done?.payload?.answer ?? "";
   result.citations = done?.payload?.citations ?? [];
+  result.verification = done?.payload?.verification ?? null;
+  const verificationValidation = validateVerification(result.verification, scenario);
+  Object.assign(result.assertions, verificationValidation.assertions);
+  if (!verificationValidation.passed) {
+    result.passed = false;
+    result.failures = [...(result.failures ?? []), ...verificationValidation.failures];
+  }
   const copyValidation = validateAnswerCopy(result.answer);
   result.assertions.plainLanguageCopy = copyValidation.passed;
   if (!copyValidation.passed) {
@@ -380,6 +495,20 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
   result.evidence = result.passed
     ? `SSE order: ${events.map(({ event }) => event).join(" → ")}.`
     : [...(result.failures ?? []), `SSE order: ${events.map(({ event }) => event).join(" → ")}.`].join("; ");
+  result.correctnessCertified = false;
+  result.turnResults.push({
+    turn: 1,
+    request: { question: scenario.question, stream: true },
+    status: result.status,
+    latencyMs: result.latencyMs,
+    grounding: result.grounding,
+    capability: result.grounding?.capability ?? null,
+    citations: result.citations,
+    verification: result.verification,
+    answer: result.answer,
+    assertions: result.assertions,
+    sse: result.sse,
+  });
   result.qualitativeScores = qualitativeScores(result);
   return result;
 }
@@ -401,6 +530,12 @@ async function runCancellationScenario(scenario, options, pacer, onRequestStart)
   const cancel = setTimeout(() => controller.abort(), 250);
   const started = Date.now();
   try {
+    result.reproduction.requests.push({
+      method: "POST",
+      path: "/api/ask",
+      body: { question: scenario.question, stream: true },
+      abortAfterMs: 250,
+    });
     await fetch(`${options.apiUrl}/api/ask`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -422,13 +557,89 @@ async function runCancellationScenario(scenario, options, pacer, onRequestStart)
   return result;
 }
 
-async function runScenario(scenario, options, pacer, featured, onRequestStart) {
+async function runScenario(scenario, options, pacer, featured, recognized, onRequestStart) {
+  if (scenario.kind === "deterministic") {
+    const result = baseResult(scenario);
+    let validation;
+    if (scenario.validator === "one-x-two-market") {
+      validation = validateOneXTwoMarket(scenario.input);
+    } else if (scenario.validator === "response-correctness") {
+      validation = validateResponseCorrectness(
+        scenario.input?.answer,
+        scenario.input?.citations,
+        scenario.input?.grounding,
+        scenario.expectation
+      );
+    } else {
+      throw new Error(`Unknown deterministic validator: ${scenario.validator}`);
+    }
+    result.assertions = validation.assertions ?? { contractPassed: validation.passed };
+    result.passed = validation.passed;
+    result.correctnessCertified = validation.passed;
+    result.outcome = result.passed ? "PASS" : "FAIL";
+    result.answer = scenario.input?.answer ?? null;
+    result.citations = scenario.input?.citations ?? [];
+    result.grounding = scenario.input?.grounding;
+    result.evidence = result.passed
+      ? `Deterministic ${scenario.validator} contract passed.`
+      : `Deterministic ${scenario.validator} contract failed: ${validation.reason ?? validation.failures?.join("; ") ?? "unknown"}.`;
+    result.qualitativeScores = qualitativeScores(result);
+    return result;
+  }
   if (scenario.kind === "inconclusive") {
     return {
       ...baseResult(scenario),
       outcome: "INCONCLUSIVE",
       evidence: scenario.reason
     };
+  }
+  if (scenario.kind === "recognized") {
+    const entry = recognized.find(({ fixture, capability }) =>
+      (!scenario.capabilityStatus || capability?.status === scenario.capabilityStatus)
+      && (!scenario.capabilityReason || capability?.reason === scenario.capabilityReason)
+      && (!scenario.competitionCategory || fixture?.competition?.category === scenario.competitionCategory)
+    );
+    if (!entry) return { ...baseResult(scenario), outcome: "INCONCLUSIVE", evidence: `No exact recognized fixture matched ${scenario.capabilityStatus ?? "any"}/${scenario.capabilityReason ?? "any"}.` };
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      fixtureContext: { fixtureId: entry.fixture.fixtureId },
+      teamContext: [entry.fixture.homeTeam.name, entry.fixture.awayTeam.name],
+      turns: scenario.turns.map((turn) => ({
+        ...turn,
+        question: turn.questionTemplate.replaceAll("{home}", entry.fixture.homeTeam.name).replaceAll("{away}", entry.fixture.awayTeam.name),
+        expectGrounding: "fixture",
+        expectFixtureId: entry.fixture.fixtureId,
+        expectTeams: [entry.fixture.homeTeam.name, entry.fixture.awayTeam.name],
+        expectCapability: { status: entry.capability.status, reason: entry.capability.reason },
+        expectCompetitionCategory: entry.fixture.competition.category,
+        expectNoPunditProbabilities: true,
+        expectNoScorelines: true,
+      })),
+    }, options, pacer, onRequestStart);
+  }
+  if (scenario.kind === "recognized-replacement") {
+    const entries = recognized.filter(({ capability }) => capability?.status !== "priced").slice(0, 2);
+    if (entries.length < 2) return { ...baseResult(scenario), outcome: "INCONCLUSIVE", evidence: "Fewer than two exact recognized non-priced fixtures; substitution is forbidden." };
+    const expected = (entry, question) => ({
+      question,
+      expectGrounding: "fixture",
+      expectFixtureId: entry.fixture.fixtureId,
+      expectTeams: [entry.fixture.homeTeam.name, entry.fixture.awayTeam.name],
+      expectCapability: { status: entry.capability.status, reason: entry.capability.reason },
+      expectNoPunditProbabilities: true,
+      expectNoScorelines: true,
+    });
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      fixtureContext: { fixtureId: entries[0].fixture.fixtureId },
+      turns: [
+        expected(entries[0], `${entries[0].fixture.homeTeam.name} vs ${entries[0].fixture.awayTeam.name}`),
+        expected(entries[0], "What about that fixture's 1X2?"),
+        expected(entries[1], `${entries[1].fixture.homeTeam.name} vs ${entries[1].fixture.awayTeam.name}`),
+      ],
+    }, options, pacer, onRequestStart);
   }
   if (scenario.kind === "featured") {
     if (!featured) {
@@ -441,11 +652,13 @@ async function runScenario(scenario, options, pacer, featured, onRequestStart) {
     return runJsonScenario({
       ...scenario,
       kind: "json",
+      fixtureContext: { fixtureId: featured.recognizedFixtureId },
       teamContext: [featured.home, featured.away],
       turns: [{
         question: `What does Pundit's model say about ${featured.home} vs ${featured.away}?`,
         expectGrounding: "match",
         expectTeams: [featured.home, featured.away],
+        expectFixtureId: featured.recognizedFixtureId,
         expectCompetitionId: featured.competitionId
       }]
     }, options, pacer, onRequestStart);
@@ -464,6 +677,7 @@ async function runScenario(scenario, options, pacer, featured, onRequestStart) {
     return runJsonScenario({
       ...scenario,
       kind: "json",
+      fixtureContext: { fixtureId: featured.recognizedFixtureId },
       teamContext: [featured.home, featured.away],
       turns: [{
         question: scenario.questionTemplate
@@ -471,6 +685,7 @@ async function runScenario(scenario, options, pacer, featured, onRequestStart) {
           .replaceAll("{away}", featured.away),
         expectGrounding: "match",
         expectTeams: [featured.home, featured.away],
+        expectFixtureId: featured.recognizedFixtureId,
         expectCompetitionId: featured.competitionId,
         expectOddsSources: scenario.expectOddsSources ?? false
       }]
@@ -487,21 +702,50 @@ async function runScenario(scenario, options, pacer, featured, onRequestStart) {
     return runJsonScenario({
       ...scenario,
       kind: "json",
+      fixtureContext: { fixtureId: featured.recognizedFixtureId },
       teamContext: [featured.home, featured.away],
       turns: [
         {
           question: `Compare ${featured.home} and ${featured.away}.`,
           expectGrounding: "match",
           expectTeams: [featured.home, featured.away],
+          expectFixtureId: featured.recognizedFixtureId,
           expectCompetitionId: featured.competitionId
         },
         {
           question: "Which side has the stronger model case, and why?",
           expectGrounding: "match",
           expectTeams: [featured.home, featured.away],
+          expectFixtureId: featured.recognizedFixtureId,
           expectCompetitionId: featured.competitionId
         }
       ]
+    }, options, pacer, onRequestStart);
+  }
+  if (scenario.kind === "featured-turns") {
+    if (!featured) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        requiredForCertification: true,
+        evidence: "No exact model-backed fixture was available; fixture substitution is forbidden."
+      };
+    }
+    const recognizedFixtureId = featured.recognizedFixtureId;
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      fixtureContext: { fixtureId: recognizedFixtureId },
+      teamContext: [featured.home, featured.away],
+      turns: scenario.turns.map((turn) => ({
+        ...turn,
+        question: turn.questionTemplate
+          ? turn.questionTemplate.replaceAll("{home}", featured.home).replaceAll("{away}", featured.away)
+          : turn.question,
+        expectTeams: turn.expectGrounding === "match" ? [featured.home, featured.away] : turn.expectTeams,
+        expectFixtureId: turn.expectGrounding === "match" ? recognizedFixtureId : turn.expectFixtureId,
+        expectCompetitionId: turn.expectGrounding === "match" ? featured.competitionId : turn.expectCompetitionId,
+      })),
     }, options, pacer, onRequestStart);
   }
   if (scenario.kind === "invalid") {
@@ -542,9 +786,17 @@ async function main() {
   const runId = timestampId(startedAt);
   const previous = await loadPreviousReport(options.outputDir);
   const preflightResult = await preflight(options);
-  const { featured, result: fixtureDiscovery } = await discoverFeatured(options);
+  const [{ featured, result: fixtureDiscovery }, recognizedDiscovery] = await Promise.all([
+    discoverFeatured(options), discoverRecognized(options),
+  ]);
+  const pricedRecognized = exactRecognizedEntry(recognizedDiscovery.entries, featured);
+  if (featured && !pricedRecognized) throw new Error("featured model fixture has no exact recognized identity");
+  const exactFeatured = featured ? { ...featured, recognizedFixtureId: pricedRecognized.fixture.fixtureId } : null;
+  const sourceSha = options.sourceSha ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+  if (!/^[0-9a-f]{7,40}$/i.test(sourceSha)) throw new Error("--source-sha must be a real Git commit SHA");
   const seed = runId.slice(0, 10);
-  const adversarial = generateAdversarialScenarios(seed, featured);
+  const adversarial = generateAdversarialScenarios(seed, exactFeatured)
+    .map((scenario) => ({ ...scenario, requiredForCertification: false }));
   const scenarios = [...scenarioConfig.fixed, ...adversarial];
   const pacer = createPacer(options.intervalMs);
   const deploymentHeader = preflightResult.health.headers["x-railway-deployment-id"]
@@ -560,6 +812,10 @@ async function main() {
     deployment: {
       id: options.deploymentId ?? deploymentHeader ?? "unknown",
       source: options.deploymentId ? "argument/environment" : deploymentHeader ? "response header" : "unavailable",
+      sourceSha,
+      apiSha: preflightResult.apiVersion.body.sha,
+      webSha: preflightResult.webVersion.body.sha,
+      shaConverged: sourceSha === preflightResult.apiVersion.body.sha && sourceSha === preflightResult.webVersion.body.sha,
       readinessTimestamps: {
         model: preflightResult.ready.body.model.lastUpdated,
         football: preflightResult.ready.body.football.lastUpdated,
@@ -570,8 +826,13 @@ async function main() {
     preflight: {
       health: { status: preflightResult.health.status, body: preflightResult.health.body },
       readiness: { status: preflightResult.ready.status, body: preflightResult.ready.body },
+      versions: {
+        api: preflightResult.apiVersion.body,
+        web: preflightResult.webVersion.body,
+      },
       fixtureDiscovery: {
         status: fixtureDiscovery.status,
+        recognized: recognizedDiscovery.result.body,
         featured: featured ? {
           homeTeam: featured.home,
           awayTeam: featured.away,
@@ -579,6 +840,7 @@ async function main() {
           competition: featured.competition,
           utcDate: featured.utcDate,
           stage: featured.stage,
+          recognizedFixtureId: exactFeatured.recognizedFixtureId,
         } : null
       }
     },
@@ -617,7 +879,8 @@ async function main() {
         scenario,
         options,
         pacer,
-        featured,
+        exactFeatured,
+        recognizedDiscovery.entries,
         async (request) => {
           report.progress.activeRequest = request;
           report.completedAt = new Date().toISOString();
