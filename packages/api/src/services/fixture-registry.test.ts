@@ -221,6 +221,24 @@ describe("fixture registry", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("fails closed without overwriting when both registry copies are invalid", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-unrecoverable-"));
+    const registryDir = path.join(dir, "fixture-registry");
+    fs.mkdirSync(registryDir, { recursive: true });
+    const primary = path.join(registryDir, "recognized-fixtures-v1.json");
+    const lastGood = path.join(registryDir, "recognized-fixtures-v1.last-good.json");
+    fs.writeFileSync(primary, "{ broken primary", "utf8");
+    fs.writeFileSync(lastGood, "{ broken fallback", "utf8");
+    process.env.PUNDIT_DATA_DIR = dir;
+
+    expect(() => loadFixtureRegistry()).toThrow(/persistence is blocked/i);
+    expect(refreshFixtureRegistryShadowSafely()).toBe(false);
+    expect(getFixtureRegistryStatus()).toMatchObject({ storageBlocked: true });
+    expect(fs.readFileSync(primary, "utf8")).toBe("{ broken primary");
+    expect(fs.readFileSync(lastGood, "utf8")).toBe("{ broken fallback");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("retains bounded material observation history for kickoff and status changes", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-history-"));
     process.env.PUNDIT_DATA_DIR = dir;
