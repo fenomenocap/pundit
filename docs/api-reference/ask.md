@@ -2,7 +2,7 @@
 
 ### `POST /api/ask`
 
-Claude-powered conversational football analysis. **Rate limit:** 10 requests/minute per client.
+MiniMax M3-powered conversational football analysis. **Rate limit:** 10 requests/minute per client.
 
 ```json
 {
@@ -23,24 +23,26 @@ Set `"stream": true` to receive **Server-Sent Events** instead of a single JSON 
 | Event | Payload | When |
 |---|---|---|
 | `grounding` | `{ grounding }` | As soon as tier routing completes |
-| `delta` | `{ text }` | Answer text, once the answer is complete |
-| `done` | `{ answer, grounding }` | Final complete response |
+| `delta` | `{ text }` | Progressive validated answer text; search-backed turns may hold text until citations are bound |
+| `done` | `{ answer, grounding, citations? }` | Authoritative complete response with optional server-owned citation metadata |
 | `error` | `{ error, status, code? }` | Failure after headers were sent |
 
 SSE includes `: ping` comment heartbeats every 15 seconds during long web-search turns.
 
-**`delta` is not incremental.** Match answers pass through deterministic answer
-guards that check quoted probabilities against the grounding payload, and those
-guards operate on the finished answer — so text is held until they have run and
-arrives as a single `delta`. Clients should render `delta` as it comes and treat
-`grounding` (emitted immediately) plus the heartbeats as the progress signal.
+Ordinary no-search answers stream progressively after deterministic line guards.
+Search-backed answers never stream tool drafts: the server binds evidence markers
+to exact links and dates before releasing text. Clients should render `delta` as
+it comes and always treat `done.answer` as authoritative.
 
 ### Response shape (non-streaming)
 
 ```json
 {
   "answer": "**Verdict**\n\nArsenal are strong favourites...",
-  "grounding": { "kind": "match", "...": "..." }
+  "grounding": { "kind": "match", "...": "..." },
+  "citations": [
+    { "id": "S1", "title": "Club update", "url": "https://example.com/update", "date": "2026-08-12" }
+  ]
 }
 ```
 
@@ -57,9 +59,10 @@ Season grounding adds `seasonOutlook` with per-team `titleProb` and `topFourProb
 
 ### Timeouts and limits
 
-* **90 seconds** per Anthropic upstream call (with up to 5 continuations)
-* **240 seconds** overall deadline per request
+* **90 seconds** shared request deadline across MiniMax inference, search, streaming, and disconnect cancellation
+* At most 2 generations, 2 deduplicated search queries, and 3 provider calls for the bounded fallback path
+* Search calls are capped at 10 seconds; MiniMax output is capped at 1,536 tokens
 * Requires `MINIMAX_API_KEY` on the API server
 * No server-side conversation session — the client supplies history
 
-The API rejects empty or truncated Claude output. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.
+The API rejects empty or truncated MiniMax output. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.

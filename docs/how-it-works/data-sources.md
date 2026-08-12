@@ -8,7 +8,7 @@ Pundit generates its own model probabilities from public inputs and refreshes an
 | **ClubElo CSV feeds** | Current club ratings by competition profile, used by the Dixon-Coles model | Every hour (with the model) |
 | **Stake, Kalshi, and Polymarket public endpoints** | Best-effort active 1X2 prices normalized to no-vig probabilities for the active fixture set | Every 30 minutes |
 | **Pundit's local model** | Dixon-Coles fixture matrices for the 14-day active club-fixture window; Monte Carlo season outlook for the Premier League | Every hour |
-| **Claude** (Anthropic) | Powers the chat's natural-language answers, grounded in the data above; can run a live web search for current injury/squad news | Per request |
+| **MiniMax M3** | Powers the chat's natural-language answers, grounded in the data above; Pundit pre-searches clearly current injury/squad questions and can make one bounded search fallback for ambiguous requests | Per request |
 
 If an upstream source is temporarily unavailable, Pundit keeps serving the last-known-good cached data rather than showing nothing — so figures may occasionally lag by up to the refresh window above.
 

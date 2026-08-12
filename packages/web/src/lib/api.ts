@@ -309,6 +309,19 @@ export interface SeasonGrounding {
 
 export type AskGrounding = MatchGrounding | CompetitionGrounding | SeasonGrounding | null;
 
+export interface AskCitation {
+  id: string;
+  title: string;
+  url: string;
+  date: string;
+}
+
+export interface AskResult {
+  answer: string;
+  grounding: AskGrounding;
+  citations?: AskCitation[];
+}
+
 export interface ConversationTurn {
   role: "user" | "assistant";
   content: string;
@@ -320,11 +333,8 @@ export async function askQuestion(
   question: string,
   history: ConversationTurn[] = [],
   teamContext?: TeamContext
-): Promise<{
-  answer: string;
-  grounding: AskGrounding;
-}> {
-  return apiFetch<{ answer: string; grounding: AskGrounding }>("/api/ask", {
+): Promise<AskResult> {
+  return apiFetch<AskResult>("/api/ask", {
     method: "POST",
     body: JSON.stringify({ question, history, teamContext }),
   });
@@ -363,7 +373,7 @@ export async function askQuestionStream(
   history: ConversationTurn[] = [],
   teamContext: TeamContext | undefined,
   handlers: AskStreamHandlers
-): Promise<{ answer: string; grounding: AskGrounding }> {
+): Promise<AskResult> {
   const res = await fetch(`${API_URL}/api/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -379,7 +389,7 @@ export async function askQuestionStream(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let result: { answer: string; grounding: AskGrounding } | null = null;
+  let result: AskResult | null = null;
 
   for (;;) {
     const { done, value } = await reader.read();

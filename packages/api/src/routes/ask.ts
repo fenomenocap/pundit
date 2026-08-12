@@ -114,10 +114,23 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
 
     const history = parseHistory(req.body?.history);
     const teamContext = parseTeamContext(req.body?.teamContext);
+    const requestAbort = new AbortController();
+    const deadline = setTimeout(() => requestAbort.abort(new Error("request deadline exceeded")), 90_000);
+    const abortOnDisconnect = () => {
+      if (!res.writableEnded) requestAbort.abort(new Error("client disconnected"));
+    };
+    req.once("aborted", abortOnDisconnect);
+    res.once("close", abortOnDisconnect);
 
     if (req.body?.stream !== true) {
-      const result = await answerQuestion(trimmedQuestion, history, teamContext);
-      res.json(result);
+      try {
+        const result = await answerQuestion(trimmedQuestion, history, teamContext, requestAbort.signal);
+        res.json(result);
+      } finally {
+        clearTimeout(deadline);
+        req.off("aborted", abortOnDisconnect);
+        res.off("close", abortOnDisconnect);
+      }
       return;
     }
 
@@ -135,12 +148,13 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     };
     const onClose = () => {
       clientGone = true;
+      requestAbort.abort(new Error("client disconnected"));
       stopHeartbeat();
     };
     req.on("close", onClose);
     res.on("close", onClose);
     try {
-      const { answer, grounding } = await answerQuestionStream(
+      const { answer, grounding, citations } = await answerQuestionStream(
         trimmedQuestion,
         history,
         teamContext,
@@ -170,11 +184,12 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
             sseSend(res, "delta", { text });
           },
           shouldContinue: () => !clientGone && !res.writableEnded,
+          signal: requestAbort.signal,
         }
       );
       stopHeartbeat();
       if (!clientGone && !res.writableEnded) {
-        sseSend(res, "done", { answer, grounding });
+        sseSend(res, "done", { answer, grounding, ...(citations ? { citations } : {}) });
         res.end();
       }
     } catch (err) {
@@ -193,6 +208,9 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     } finally {
       req.off("close", onClose);
       res.off("close", onClose);
+      req.off("aborted", abortOnDisconnect);
+      res.off("close", abortOnDisconnect);
+      clearTimeout(deadline);
     }
   } catch (err) {
     next(err);

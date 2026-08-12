@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const EVAL_SCHEMA_VERSION = 6;
+export const EVAL_SCHEMA_VERSION = 8;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 
 export async function fetchWithTimeout(
@@ -214,6 +214,31 @@ export function validateAnswerCopy(answer) {
     .filter((term) => normalized.includes(term))
     .map((term) => `answer contains forbidden term: ${term}`);
   return { passed: failures.length === 0, failures };
+}
+
+export function validateCitationContract(answer, citations, required = false) {
+  const list = Array.isArray(citations) ? citations : [];
+  const valid = list.every((citation) => {
+    if (!/^S\d+$/.test(citation?.id ?? "") || !citation?.title || !citation?.date) return false;
+    try {
+      return ["http:", "https:"].includes(new URL(citation.url).protocol);
+    } catch {
+      return false;
+    }
+  });
+  const clickable = list.some((citation) => answer.includes(`](${citation.url})`));
+  const rawMarkersAbsent = !/\[\[S\d+\]\]/.test(answer);
+  const passed = valid && rawMarkersAbsent && (!required || (list.length > 0 && clickable));
+  return {
+    passed,
+    assertions: { citationsValid: valid, rawCitationMarkersAbsent: rawMarkersAbsent, clickableCitation: !required || clickable },
+    failures: passed ? [] : ["citation metadata/provenance contract failed"],
+  };
+}
+
+export function validateNoDraftLeak(answer) {
+  const leaked = /\b(?:let me (?:search|check|look)|i(?:'ll| will) (?:search|check|look)|now i have enough|search results show)\b/i.test(answer ?? "");
+  return { passed: !leaked, failures: leaked ? ["answer leaked a search/tool draft"] : [] };
 }
 
 /**
@@ -639,6 +664,18 @@ export function finalizeClassifications(report, previous) {
   const failures = report.scenarios.filter((scenario) =>
     !["PASS", "INCONCLUSIVE"].includes(scenario.classification)
   );
-  report.overall = failures.length > 0 ? "ISSUES FOUND" : "PASS";
+  const latencies = report.scenarios.flatMap((scenario) =>
+    Array.isArray(scenario.requestLatencies) ? scenario.requestLatencies : [scenario.latencyMs]
+  )
+    .filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  const p90 = latencies.length ? latencies[Math.ceil(latencies.length * 0.9) - 1] : null;
+  report.latencyGate = {
+    samples: latencies.length,
+    p90Ms: p90,
+    everyRequestUnder90s: latencies.every((value) => value < 90_000),
+    p90Under20s: latencies.length < 10 ? null : p90 <= 20_000,
+  };
+  const latencyFailed = !report.latencyGate.everyRequestUnder90s || report.latencyGate.p90Under20s === false;
+  report.overall = failures.length > 0 || latencyFailed ? "ISSUES FOUND" : "PASS";
   return report;
 }

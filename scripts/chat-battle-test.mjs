@@ -20,7 +20,9 @@ import {
   validateGrounding,
   validateSse,
   validateAnswerCopy,
+  validateCitationContract,
   validateErrorCopy,
+  validateNoDraftLeak,
   validateTeamNewsDiscipline,
   writeCheckpoint,
   writeFailureReport,
@@ -203,6 +205,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       onRequestStart
     );
     result.requestStarts.push(response.start);
+    result.requestLatencies = [...(result.requestLatencies ?? []), response.latencyMs];
     result.status = response.status;
     result.latencyMs = (result.latencyMs ?? 0) + response.latencyMs;
     if (!response.ok) {
@@ -224,6 +227,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       };
     }
     result.answer = response.body?.answer ?? "";
+    result.citations = response.body?.citations ?? [];
     result.grounding = grounding;
     teamContext = grounding?.kind === "match"
       ? [grounding.home, grounding.away]
@@ -238,7 +242,21 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     }
     const copyValidation = validateAnswerCopy(result.answer);
     result.assertions.plainLanguageCopy = copyValidation.passed;
+    const citationValidation = validateCitationContract(
+      result.answer,
+      result.citations,
+      Boolean(turn.requireCitation || scenario.requireCitation)
+    );
+    Object.assign(result.assertions, citationValidation.assertions);
+    const draftValidation = validateNoDraftLeak(result.answer);
+    result.assertions.noDraftLeak = draftValidation.passed;
     assertionFailures.push(...copyValidation.failures.map((failure) =>
+      `turn ${history.length / 2}: ${failure}`
+    ));
+    assertionFailures.push(...citationValidation.failures.map((failure) =>
+      `turn ${history.length / 2}: ${failure}`
+    ));
+    assertionFailures.push(...draftValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
     assertionFailures.push(...groundingValidation.failures.map((failure) =>
@@ -290,6 +308,7 @@ async function runInvalidScenario(scenario, options, pacer, onRequestStart) {
   }, options.timeoutMs);
   result.status = response.status;
   result.latencyMs = response.latencyMs;
+  result.requestLatencies = [response.latencyMs];
   result.assertions.expectedStatus = response.status === scenario.expectStatus;
   result.assertions.sanitizedError = typeof response.body?.error === "string"
     && !/(anthropic|api[_-]?key|stack|token)/i.test(response.body.error);
@@ -325,6 +344,7 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
   const text = await response.text();
   result.status = response.status;
   result.latencyMs = Date.now() - started;
+  result.requestLatencies = [result.latencyMs];
   if (!response.ok || !response.headers.get("content-type")?.includes("text/event-stream")) {
     result.evidence = `Expected SSE, received HTTP ${response.status}: ${sanitizeEvidence(text)}`;
     return result;
@@ -335,16 +355,70 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
   result.outcome = result.passed ? "PASS" : "FAIL";
   const done = events.findLast(({ event }) => event === "done");
   result.answer = done?.payload?.answer ?? "";
+  result.citations = done?.payload?.citations ?? [];
   const copyValidation = validateAnswerCopy(result.answer);
   result.assertions.plainLanguageCopy = copyValidation.passed;
   if (!copyValidation.passed) {
     result.passed = false;
     result.failures = [...(result.failures ?? []), ...copyValidation.failures];
   }
+  const citationValidation = validateCitationContract(
+    result.answer,
+    result.citations,
+    Boolean(scenario.requireCitation)
+  );
+  const draftValidation = validateNoDraftLeak(result.answer);
+  Object.assign(result.assertions, citationValidation.assertions, { noDraftLeak: draftValidation.passed });
+  if (!citationValidation.passed || !draftValidation.passed) {
+    result.passed = false;
+    result.failures = [
+      ...(result.failures ?? []),
+      ...citationValidation.failures,
+      ...draftValidation.failures,
+    ];
+  }
   result.evidence = result.passed
     ? `SSE order: ${events.map(({ event }) => event).join(" → ")}.`
     : [...(result.failures ?? []), `SSE order: ${events.map(({ event }) => event).join(" → ")}.`].join("; ");
   result.qualitativeScores = qualitativeScores(result);
+  return result;
+}
+
+async function runCancellationScenario(scenario, options, pacer, onRequestStart) {
+  const result = baseResult(scenario);
+  await pacer.beforeRequest();
+  const start = pacer.starts.at(-1);
+  result.requestStarts.push(start);
+  await onRequestStart({
+    scenarioId: scenario.id,
+    category: scenario.category ?? "fixed",
+    requestKind: "cancellation",
+    turn: 1,
+    question: scenario.question,
+    startedAt: start,
+  });
+  const controller = new AbortController();
+  const cancel = setTimeout(() => controller.abort(), 250);
+  const started = Date.now();
+  try {
+    await fetch(`${options.apiUrl}/api/ask`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: scenario.question, stream: true }),
+      signal: controller.signal,
+    });
+    result.evidence = "Request completed before the evaluator could exercise cancellation.";
+  } catch (error) {
+    result.latencyMs = Date.now() - started;
+    result.requestLatencies = [result.latencyMs];
+    result.assertions.clientAbortObserved = error?.name === "AbortError";
+    result.assertions.cancelledPromptly = result.latencyMs < 5_000;
+    result.passed = Object.values(result.assertions).every(Boolean);
+    result.outcome = result.passed ? "PASS" : "FAIL";
+    result.evidence = `Client abort observed after ${result.latencyMs}ms.`;
+  } finally {
+    clearTimeout(cancel);
+  }
   return result;
 }
 
@@ -435,6 +509,9 @@ async function runScenario(scenario, options, pacer, featured, onRequestStart) {
   }
   if (scenario.kind === "sse") {
     return runSseScenario(scenario, options, pacer, onRequestStart);
+  }
+  if (scenario.kind === "cancellation") {
+    return runCancellationScenario(scenario, options, pacer, onRequestStart);
   }
   return runJsonScenario(scenario, options, pacer, onRequestStart);
 }

@@ -68,6 +68,35 @@ test.describe("smoke", () => {
     );
   });
 
+  test("search citation is clickable and provenance-bound after authoritative done", async ({ page }) => {
+    const url = "https://example.com/club-update";
+    const answer = `Player is available ([Club update](${url}), 2026-08-12).`;
+    const sse = [
+      `event: grounding\ndata: ${JSON.stringify({ grounding: null })}`,
+      `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+      `event: done\ndata: ${JSON.stringify({
+        answer,
+        grounding: null,
+        citations: [{ id: "S1", title: "Club update", url, date: "2026-08-12" }],
+      })}`,
+      "",
+    ].join("\n\n");
+    await page.route("**/api/ask", (route) => route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: sse,
+    }));
+
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "Ask a question" }).fill("Latest availability news?");
+    await page.getByRole("button", { name: "Send" }).click();
+    const citation = page.getByRole("link", { name: "Club update" });
+    await expect(citation).toHaveAttribute("href", url);
+    await expect(citation).toHaveAttribute("target", "_blank");
+    await expect(citation).toHaveAttribute("rel", /noopener noreferrer nofollow/);
+    await expect(page.getByText("[[S1]]")).not.toBeVisible();
+  });
+
   test("primary nav", async ({ page }) => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Main navigation" });
