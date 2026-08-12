@@ -269,16 +269,49 @@ function GroundingBadge({ grounding }: { grounding: AskGrounding }) {
   );
 }
 
+// Answers cite team news by source and date, and the search tool knows the URL
+// each claim came from. Without "a" in the allow-list, unwrapDisallowed kept the
+// link text and silently dropped the href, so a citation the model had grounded
+// arrived as unverifiable prose. Rendering the link makes the source checkable
+// in one click and lets the answer spend two words on it instead of eight.
+//
+// Links are the one element here that leaves the page, so they are constrained:
+// http(s) only, opened in a new tab, and rel-guarded. react-markdown blocks
+// javascript: URLs by default; the explicit check means a change to that
+// default cannot quietly re-open the hole.
+function isSafeHref(href: string | undefined): boolean {
+  if (!href) return false;
+  try {
+    return ["http:", "https:"].includes(new URL(href).protocol);
+  } catch {
+    return false;
+  }
+}
+
 function AssistantMarkdown({ content }: { content: string }) {
   return (
     <ReactMarkdown
-      allowedElements={["p", "strong", "em", "ul", "ol", "li", "br", "code"]}
+      allowedElements={["p", "strong", "em", "ul", "ol", "li", "br", "code", "a"]}
       unwrapDisallowed
       components={{
         p: (props) => <p className="mb-2 last:mb-0" {...props} />,
         ul: (props) => <ul className="mb-2 list-disc space-y-1 pl-4 last:mb-0" {...props} />,
         ol: (props) => <ol className="mb-2 list-decimal space-y-1 pl-4 last:mb-0" {...props} />,
         strong: (props) => <strong className="font-semibold text-white" {...props} />,
+        a: ({ href, children, ...props }) =>
+          isSafeHref(href) ? (
+            <a
+              {...props}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="text-cyan-400 underline decoration-cyan-400/40 underline-offset-2 hover:decoration-cyan-400"
+            >
+              {children}
+            </a>
+          ) : (
+            <>{children}</>
+          ),
       }}
     >
       {content}
