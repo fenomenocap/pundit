@@ -20,6 +20,7 @@ import {
   dropMisbucketedTotalsScorelines,
   renderEvidenceCitations,
   sanitizeFixtureCoverageAnswer,
+  sanitizeMatchAnswer,
   sanitizeUnrecognizedCandidateAnswer,
   verifiableCurrentClaims,
   verifyCurrentClaims,
@@ -62,6 +63,8 @@ describe("current-news evidence hardening", () => {
     expect(sanitized).toContain("complete same-source, same-time bookmaker 1X2 market");
     expect(sanitized).not.toContain("2.10");
     expect(sanitized).not.toContain("48.0%");
+    expect(sanitizeMatchAnswer("Kalshi market-implied home 48.0%, draw 28.0%, away 24.0%."))
+      .toContain("omitted those numbers");
   });
 
   it("extracts only server-marked external claims for the verifier", () => {
