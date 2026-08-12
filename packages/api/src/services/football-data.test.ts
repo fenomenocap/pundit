@@ -48,6 +48,44 @@ describe("ESPN model inputs", () => {
     });
   });
 
+  it.each([
+    ["STATUS_CANCELED", "CANCELLED"],
+    ["STATUS_POSTPONED", "POSTPONED"],
+  ])("preserves exact ESPN %s status instead of treating state=post as finished", (
+    statusName,
+    expected
+  ) => {
+    const match = parseEvent({
+      id: "3",
+      date: "2026-08-18T19:00Z",
+      competitions: [{
+        status: { type: { state: "post", completed: false, name: statusName } },
+        competitors: [
+          { homeAway: "home", team: { displayName: "Arsenal" } },
+          { homeAway: "away", team: { displayName: "Liverpool" } },
+        ],
+      }],
+    }, wcContext);
+    expect(match.status).toBe(expected);
+  });
+
+  it("preserves ESPN venue and neutral-site metadata for fixture recognition", () => {
+    const match = parseEvent({
+      id: "4",
+      date: "2026-08-18T19:00Z",
+      competitions: [{
+        neutralSite: true,
+        venue: { fullName: "National Stadium" },
+        status: { type: { state: "pre", completed: false } },
+        competitors: [
+          { homeAway: "home", team: { displayName: "Arsenal" } },
+          { homeAway: "away", team: { displayName: "Liverpool" } },
+        ],
+      }],
+    }, wcContext);
+    expect(match).toMatchObject({ venue: "National Stadium", neutralVenue: true });
+  });
+
   it("builds rolling fetch windows for club competitions", () => {
     const range = buildFetchDateRange({
       id: "eng.1",

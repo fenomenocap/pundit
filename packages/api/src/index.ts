@@ -1,5 +1,5 @@
 import "./load-env";
-import express from "express";
+import express, { type Express } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -14,7 +14,7 @@ import {
   getCachedClubRatings,
   startClubRatingsCron,
 } from "./services/club-ratings";
-import { getCachedModelData, startModelCron } from "./services/model-data";
+import { getCachedModelData, getModelRefreshState, startModelCron } from "./services/model-data";
 import { getCachedMatches, startFootballCron } from "./services/football-data";
 import { getActiveFixtures, getActiveFixtureStatus } from "./services/active-fixtures";
 import {
@@ -24,8 +24,13 @@ import {
 import { evaluateReadiness } from "./services/readiness";
 import { getWebSearchStatus } from "./services/web-search";
 import { getRuntimeVersion } from "./services/runtime-version";
+import {
+  getFixtureRegistryStatus,
+  getRecognizedFixtureSnapshot,
+  startFixtureRegistryShadow,
+} from "./services/fixture-registry";
 
-const app = express();
+export const app: Express = express();
 app.set("trust proxy", 1);
 const port = process.env.PORT || process.env.API_PORT || 3001;
 
@@ -72,6 +77,22 @@ app.get("/health", (_req, res) => {
 
 app.get("/version", (_req, res) => {
   res.set("Cache-Control", "no-store").json(getRuntimeVersion());
+});
+
+// Read-only certification surface. It contains approved structured identities
+// and capability decisions only; discovery candidates/search results never
+// enter the registry and therefore cannot appear here.
+app.get("/api/fixtures/recognized", (_req, res) => {
+  const model = getCachedModelData();
+  const modelRefresh = getModelRefreshState();
+  const ratings = getCachedClubRatings();
+  res.set("Cache-Control", "no-store").json(getRecognizedFixtureSnapshot({
+    modelFixtures: model.fixtures,
+    modelInitialized: model.lastUpdated !== null,
+    modelRefreshing: modelRefresh.refreshing,
+    ratingsAvailable: ratings.fetchedAt !== null,
+    missingRatingTeamIds: modelRefresh.missingRatingTeamIds,
+  }));
 });
 
 function currentReadiness() {
@@ -160,6 +181,7 @@ app.get("/ready", (_req, res) => {
       sourceWarnings: odds.sourceWarnings,
       coverage: odds.coverage,
     },
+    fixtureRegistry: getFixtureRegistryStatus(),
   });
 });
 
@@ -186,24 +208,37 @@ function logFatalProcessError(label: string, error: unknown): void {
   }));
 }
 
-process.on("unhandledRejection", (reason) => {
-  logFatalProcessError("unhandledRejection", reason);
-});
+let processHandlersInstalled = false;
 
-process.on("uncaughtException", (error) => {
-  logFatalProcessError("uncaughtException", error);
-  process.exit(1);
-});
+function installProcessErrorHandlers(): void {
+  if (processHandlersInstalled) return;
+  processHandlersInstalled = true;
+  process.on("unhandledRejection", (reason) => {
+    logFatalProcessError("unhandledRejection", reason);
+  });
+  process.on("uncaughtException", (error) => {
+    logFatalProcessError("uncaughtException", error);
+    process.exit(1);
+  });
+}
 
-app.listen(port, () => {
+export function startServer() {
+  installProcessErrorHandlers();
+  return app.listen(port, () => {
   console.log(`API server running on port ${port}`);
 
   void (async () => {
     await startFootballCron();
+    // The registry observes the same authoritative ESPN cache in shadow mode
+    // by default. Enabling expanded routing is a separate release flag.
+    startFixtureRegistryShadow();
     await startClubRatingsCron();
     await startModelCron();
     await startModelMarketOddsCron();
   })().catch((error) => {
     logFatalProcessError("Bootstrap", error);
   });
-});
+  });
+}
+
+if (require.main === module) startServer();

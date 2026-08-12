@@ -5,6 +5,7 @@ import {
   answerQuestion,
   answerQuestionStream,
   ConversationTurn,
+  FixtureContext,
   TeamContext,
 } from "../services/ask";
 
@@ -55,6 +56,16 @@ function parseTeamContext(raw: unknown): TeamContext | undefined {
     throw new AppError(400, "'teamContext' must contain exactly two team names.");
   }
   return [raw[0].trim(), raw[1].trim()];
+}
+
+export function parseFixtureContext(raw: unknown): FixtureContext | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object"
+    || typeof (raw as { fixtureId?: unknown }).fixtureId !== "string"
+    || !(raw as { fixtureId: string }).fixtureId.trim()) {
+    throw new AppError(400, "'fixtureContext' must contain a fixtureId.");
+  }
+  return { fixtureId: (raw as { fixtureId: string }).fixtureId.trim() };
 }
 
 // The limit users actually get, across the whole deployment.
@@ -114,6 +125,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
 
     const history = parseHistory(req.body?.history);
     const teamContext = parseTeamContext(req.body?.teamContext);
+    const fixtureContext = parseFixtureContext(req.body?.fixtureContext);
     const requestAbort = new AbortController();
     const deadline = setTimeout(() => requestAbort.abort(new Error("request deadline exceeded")), 90_000);
     const abortOnDisconnect = () => {
@@ -124,7 +136,13 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
 
     if (req.body?.stream !== true) {
       try {
-        const result = await answerQuestion(trimmedQuestion, history, teamContext, requestAbort.signal);
+        const result = await answerQuestion(
+          trimmedQuestion,
+          history,
+          teamContext,
+          requestAbort.signal,
+          fixtureContext
+        );
         res.json(result);
       } finally {
         clearTimeout(deadline);
@@ -154,7 +172,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     req.on("close", onClose);
     res.on("close", onClose);
     try {
-      const { answer, grounding, citations } = await answerQuestionStream(
+      const { answer, grounding, citations, verification } = await answerQuestionStream(
         trimmedQuestion,
         history,
         teamContext,
@@ -185,11 +203,17 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           },
           shouldContinue: () => !clientGone && !res.writableEnded,
           signal: requestAbort.signal,
-        }
+        },
+        fixtureContext
       );
       stopHeartbeat();
       if (!clientGone && !res.writableEnded) {
-        sseSend(res, "done", { answer, grounding, ...(citations ? { citations } : {}) });
+        sseSend(res, "done", {
+          answer,
+          grounding,
+          verification,
+          ...(citations ? { citations } : {}),
+        });
         res.end();
       }
     } catch (err) {
