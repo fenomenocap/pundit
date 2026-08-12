@@ -20,7 +20,7 @@ Run from the repository root:
 
 | Gate | Reproduction | Result on this branch |
 |---|---|---|
-| API behavior and deterministic regressions | `pnpm --filter api test` | PASS — 31 files, 355 tests |
+| API behavior and deterministic regressions | `pnpm --filter api test` | PASS — 31 files, 356 tests |
 | API types | `pnpm --filter api exec tsc --noEmit` | PASS |
 | Web types | `pnpm --filter web exec tsc --noEmit` | PASS |
 | Schema-9 evaluator | `pnpm chat-eval:test` | PASS — 29 tests |
@@ -45,7 +45,8 @@ input.
    or raw sample was added.
 3. **Registry and capability — local PASS, shadowed.** Candidates cannot enter
    the persisted registry. Recognized identities are strictly validated,
-   written atomically with last-good recovery, bounded for routing, and exposed
+   written atomically with last-good recovery, fail closed without overwriting
+   when both copies are invalid, bounded for routing, and exposed
    through the read-only certification endpoint. Expansion remains disabled by
    default.
 4. **Routing/API/UI — local PASS.** Typed fixture precedence, retained context,

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { getCompetitionById } from "../config/competitions";
 import { normalizeTeamName } from "../lib/team-names";
 import { getCachedMatches, type FootballMatch } from "./football-data";
@@ -105,6 +106,7 @@ let updatedAt: Date | null = null;
 let loadedFrom: "empty" | "primary" | "last-good" = "empty";
 let timer: ReturnType<typeof setInterval> | null = null;
 let lastError: string | null = null;
+let storageBlocked = false;
 
 const ROUTING_PAST_HORIZON_MS = 30 * 24 * 60 * 60 * 1000;
 const ROUTING_FUTURE_HORIZON_MS = 400 * 24 * 60 * 60 * 1000;
@@ -276,12 +278,22 @@ export function loadFixtureRegistry(): void {
     : validArtifact(fallback)
       ? fallback
       : null;
+  const existingButUnrecoverable = !artifact
+    && (fs.existsSync(artifactPath()) || fs.existsSync(artifactPath(true)));
+  if (existingButUnrecoverable) {
+    storageBlocked = true;
+    throw new Error("Fixture registry and last-good copy are invalid; persistence is blocked");
+  }
+  storageBlocked = false;
   registry = new Map(artifact?.fixtures.map((fixture) => [fixture.fixtureId, fixture]) ?? []);
   updatedAt = artifact ? new Date(artifact.updatedAt) : null;
   loadedFrom = validArtifact(primary) ? "primary" : artifact ? "last-good" : "empty";
 }
 
 function persistFixtureRegistry(): void {
+  if (storageBlocked) {
+    throw new Error("Fixture registry persistence is blocked until a valid artifact is restored");
+  }
   const artifact: FixtureRegistryArtifact = {
     schemaVersion: 1,
     updatedAt: (updatedAt ?? new Date()).toISOString(),
@@ -327,8 +339,8 @@ export function refreshFixtureRegistryFromEspn(
     }
   }
   updatedAt = now;
-  loadedFrom = "primary";
   persistFixtureRegistry();
+  loadedFrom = "primary";
   lastError = null;
   return getRecognizedFixtures();
 }
@@ -420,6 +432,7 @@ export function getFixtureRegistryStatus() {
     updatedAt: updatedAt?.toISOString() ?? null,
     loadedFrom,
     error: lastError,
+    storageBlocked,
   };
 }
 
@@ -491,4 +504,5 @@ export function replaceFixtureRegistryForTests(fixtures: RecognizedFixture[]): v
   updatedAt = new Date();
   loadedFrom = "empty";
   lastError = null;
+  storageBlocked = false;
 }
