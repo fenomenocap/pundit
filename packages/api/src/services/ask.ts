@@ -152,8 +152,26 @@ its date, or leave the point unresolved; never present it as the current situati
 date cannot support a dated claim, so do not invent a date for it or imply it is recent. Prefer
 football news outlets and club sources over social posts and video listings, which are frequently
 undated or recycled.
+Cite a searched claim as a markdown link on the source name, with the date outside it:
+"([BBC Sport](https://...), 3 Aug 2026)". The link URL must be the exact link field from the
+search result you used -- never construct, shorten or guess a URL. Where a result has no usable
+link, fall back to naming the source in plain text. Linking is how a citation stays short: the
+source name and date carry the claim and the URL carries the proof, so there is no need to
+describe the outlet or restate its headline.
 Do not name internal methodology (Dixon-Coles, Poisson, Elo, ClubElo, eloratings.net, or similar)
 in user-facing answers -- say "Pundit's model" or "the model" instead.`;
+
+// A stated budget is followed far more reliably than "short" or "compact". The
+// general tier had every local rule satisfied -- sections of 1-3 sentences --
+// and still ran to 461 words across 8 sections, because nothing constrained the
+// whole answer. This is a target the model plans against, not a truncation:
+// nothing in the pipeline cuts an answer that exceeds it, so a genuinely
+// information-dense answer is never clipped mid-citation.
+const LENGTH_BUDGET = `Answer in about 180 words, and never more than 4 sections. Most questions
+deserve fewer: a single-fact question takes one short section. Spend the budget on numbers,
+sourced facts and the direct answer. Cut restatements of the question, throat-clearing, caveats
+that repeat a caveat already given, and summary sections that add nothing to what is above them.
+If a point needs a citation to be trustworthy, keep the citation and cut prose elsewhere.`;
 
 const FORMAT_RULES = `Format the answer as short markdown sections, each starting with a bold label
 on its own line (for a match: **Verdict**, **Goals**, **Likely scorelines**, and **Team news** only
@@ -204,6 +222,27 @@ terms, leave the fixture data out instead of steering back to the matchup, and s
 answer does not come from Pundit's model. When it is unclear which of the two a question is, treat
 it as a question about the fixture.`;
 
+// Worked examples do what the rules cannot: they set length, density and
+// register by demonstration. The numbers here are illustrative only -- the
+// grounding payload is always the source of truth -- so the example is written
+// with a fixture that cannot collide with a real one.
+const MATCH_EXAMPLE = `A well-judged answer for a match question looks like this, in length and
+density as much as shape:
+
+**Verdict**
+Pundit's model makes **Riverton the favourite at 48.2%**, with **Ashcombe at 27.1%** and the
+**draw at 24.7%**. Kalshi is tighter at 41.0% / 32.4% / 26.6%, so the model sees about **7 points**
+more edge on the home win than the market does.
+
+**Goals**
+**Over 2.5 at 56.3%** and **both teams to score at 58.9%** point to an open game.
+
+**Likely scorelines**
+**2-1 (11.4%)** and **1-1 (10.2%)** lead, with **1-2 (7.8%)** the best of the away wins.
+
+**Read on the underdog**
+Ashcombe need the game to stay low-scoring; their win comes mostly through **0-1** and **1-2**.`;
+
 const MATCH_SYSTEM_PROMPT = `You are a club-football match-analysis assistant for Pundit. You are given
 precomputed probabilities from Pundit's match model for a specific matchup. Treat these numbers as ground truth for the statistical
 analysis. Do not invent or contradict them. When homeFieldAdvantage is true, the model applies a
@@ -234,9 +273,12 @@ ${MATCH_QUESTION_SCOPE}
 ${MATCH_ANSWER_GUARDS}
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}
+${LENGTH_BUDGET}
 Whenever the answer covers this fixture, state the headline win/draw/win and
 O/U 2.5 numbers, mention 1-2 most likely scorelines, and give a one-line read on
-what would need to be true for the underdog.`;
+what would need to be true for the underdog.
+${MATCH_EXAMPLE}`;
+
 
 const COMPETITION_SYSTEM_PROMPT = `You are a club-football competition-analysis assistant for Pundit.
 You are given the current league or cup standings table from ESPN for a specific competition.
@@ -249,7 +291,8 @@ title or qualification picture, but do not search merely to re-verify the suppli
 For historical World Cup 2026 questions, note that Pundit's frozen backtest lives at /evaluation/wc-2026
 and this payload does not include WC title probabilities.
 ${ATTRIBUTION_RULES}
-${FORMAT_RULES}`;
+${FORMAT_RULES}
+${LENGTH_BUDGET}`;
 
 const SEASON_SYSTEM_PROMPT = `You are a club-football season-outlook assistant for Pundit.
 You are given the current league standings from ESPN plus Monte Carlo title and top-four
@@ -261,7 +304,28 @@ call the order alphabetical, placeholder, default-sorted, or an ordering artifac
 mechanism is an explicit field. You may use web_search for transfer, injury, or manager news that would
 change the picture, but do not search merely to re-verify the supplied table or probabilities.
 ${ATTRIBUTION_RULES}
-${FORMAT_RULES}`;
+${FORMAT_RULES}
+${LENGTH_BUDGET}`;
+
+// The general tier is where length ran away: 461 words over 8 sections, every
+// section individually obeying the rules. This example is deliberately a
+// search-backed team-news question, the shape most prone to sprawl, and shows
+// that two linked citations carry more weight than a page of hedging.
+const GENERAL_EXAMPLE = `A well-judged answer for a general question looks like this, in length
+and density as much as shape:
+
+**Latest team news**
+Riverton are without **Dale Okonkwo** (hamstring), out until early September per
+([Club Statement](https://example.com/a), 8 Aug 2026). **Marc Feryn** returned to full training
+this week ([The Athletic](https://example.com/b), 10 Aug 2026).
+
+**What it changes**
+Losing Okonkwo removes their main outlet in behind, which is why recent previews expect a
+lower-tempo game.
+
+**Caveat**
+This is general football analysis, not based on Pundit's model data, and no dated source was
+found on the fitness of the back four.`;
 
 const GENERAL_SYSTEM_PROMPT = `You are a general football analyst for Pundit. This request is not
 grounded in Pundit's model data. Make that limitation clear in the response and
@@ -273,7 +337,9 @@ For player-level questions (goalscorer, assists, cards, player props), use web_s
 player-prop odds and player news, and present anything found as market- or search-sourced with its
 source and date. If search returns nothing solid, say no verified player data is available.
 ${ATTRIBUTION_RULES}
-${FORMAT_RULES}`;
+${FORMAT_RULES}
+${LENGTH_BUDGET}
+${GENERAL_EXAMPLE}`;
 
 const COMPETITION_KEYWORDS: ReadonlyArray<{
   competitionId: string;
