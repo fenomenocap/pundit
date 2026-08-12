@@ -31,7 +31,7 @@ Public football/model/market sources are keyless and cached server-side on a cad
 
 | Layer | Technology |
 |---|---|
-| Monorepo | pnpm workspaces (Node ≥18, pnpm 9.15.4) |
+| Monorepo | pnpm workspaces (Node 22, pnpm 9.15.4) |
 | Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui |
 | Backend | Express + TypeScript, `@anthropic-ai/sdk` (wire client for MiniMax's Anthropic-compatible endpoint) |
 
@@ -95,8 +95,10 @@ pnpm test && pnpm build
 | GET | `/api/model/fixtures` | Same as active set (optional `?competition=`) |
 | GET | `/api/evaluation/club-season` | Rolling club-season calibration artifact |
 | GET | `/api/evaluation/wc-2026` | Frozen WC 2026 backtest artifact |
-| GET | `/health` | API health check |
-| GET | `/ready` | Model, ESPN, active-fixture, and market-odds cache readiness |
+| GET | `/health` | Process liveness |
+| GET | `/startup` | Startup gate for usable football and active-model caches |
+| GET | `/ready` | Runtime readiness and degradable-source status |
+| GET | `/version` | API build SHA |
 
 `GET /api/model/wc` returns **410 Gone** — live WC model retired.
 

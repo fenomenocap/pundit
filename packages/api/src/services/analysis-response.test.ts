@@ -63,6 +63,19 @@ function streamOf(final: unknown, deltas: string[] = [], error?: unknown) {
 }
 
 describe("generateAnalysis", () => {
+  it("caps combined inference, retry, and search provider calls at three", async () => {
+    const create = vi.fn()
+      .mockRejectedValueOnce(new Anthropic.APIConnectionError({ message: "boom" }))
+      .mockResolvedValueOnce(toolUseMessage(""));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const bundle = { queries: [], results: [], providerCalls: 0 };
+    await expect(generateAnalysis(client, "system", [], "general", undefined, bundle))
+      .rejects.toMatchObject({ statusCode: 504 });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(searchWeb).toHaveBeenCalledTimes(1);
+    expect(bundle.providerCalls).toBe(3);
+  });
+
   it("returns trimmed text and accepts web-search content blocks", async () => {
     const client = clientWith({
       content: [
@@ -109,7 +122,7 @@ describe("generateAnalysis", () => {
       { role: "user", content: "q" },
     ], "match")).resolves.toBe("Second half.");
     expect(create).toHaveBeenCalledTimes(2);
-    expect(searchWeb).toHaveBeenCalledWith("arsenal team news");
+    expect(searchWeb).toHaveBeenCalledWith("arsenal team news", undefined);
 
     // The API rejects a tool_use with no matching result, so the continuation
     // must carry the assistant turn followed by a tool_result keyed to its id.
@@ -142,7 +155,7 @@ describe("generateAnalysis", () => {
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
     await expect(generateAnalysis(client, "system", [], "match"))
       .rejects.toMatchObject({ statusCode: 504 });
-    expect(create).toHaveBeenCalledTimes(6); // initial call + MAX_CONTINUATIONS
+    expect(create).toHaveBeenCalledTimes(2); // initial call + one bounded continuation
   });
 });
 

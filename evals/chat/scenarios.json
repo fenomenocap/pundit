@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 6,
+  "schemaVersion": 8,
   "fixed": [
     {
       "id": "active-match-grounding",
@@ -11,7 +11,8 @@
       "description": "A team-news question either cites a source and date or states plainly that no verified update was established.",
       "kind": "featured-question",
       "questionTemplate": "Any injury or lineup news for {home} vs {away}?",
-      "requireSourcedTeamNews": true
+      "requireSourcedTeamNews": true,
+      "requireCitation": true
     },
     {
       "id": "market-comparison-coverage",
@@ -71,6 +72,12 @@
       "question": "Who is leading the Premier League title race?",
       "expectGrounding": "season",
       "expectCompetitionId": "eng.1"
+    },
+    {
+      "id": "client-cancellation",
+      "description": "A disconnected streaming client cancels its request promptly without a transport failure response.",
+      "kind": "cancellation",
+      "question": "What is the latest injury and availability news for Arsenal?"
     },
     {
       "id": "malformed-history",

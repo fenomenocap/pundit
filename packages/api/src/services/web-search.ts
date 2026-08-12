@@ -17,7 +17,15 @@
 
 // Well inside ask.ts's 90s REQUEST_TIMEOUT_MS: a turn may run several searches
 // plus the model round trips, so no single search may monopolise the budget.
-const TIMEOUT_MS = 15_000;
+const TIMEOUT_MS = 10_000;
+const CACHE_TTL_MS = 5 * 60_000;
+const BREAKER_FAILURES = 3;
+const BREAKER_OPEN_MS = 5 * 60_000;
+const MAX_QUERY_LENGTH = 256;
+const MAX_TITLE_LENGTH = 200;
+const MAX_SNIPPET_LENGTH = 600;
+const MAX_URL_LENGTH = 2_048;
+const MAX_RESPONSE_BYTES = 256 * 1024;
 
 // Results past this add tokens without adding much signal -- the endpoints
 // return ~9 and the tail is typically aggregator pages.
@@ -33,6 +41,20 @@ export interface WebSearchResult {
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function bounded(value: unknown, max: number): string {
+  return asString(value).slice(0, max);
+}
+
+function safeHttpUrl(value: unknown): string {
+  const candidate = bounded(value, MAX_URL_LENGTH);
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
 }
 
 const RELATIVE_DATE = /^(\d+)\s+(minute|hour|day|week|month|year)s?\s+ago$/i;
@@ -79,7 +101,7 @@ export function normalizeSearchDate(raw: string, now: Date = new Date()): string
 
   // Already a calendar date: return it untouched. Round-tripping it through
   // Date would reintroduce the timezone shift this function exists to avoid.
-  if (ISO_DATE_ONLY.test(value)) return value;
+  if (ISO_DATE_ONLY.test(value)) return value <= now.toISOString().slice(0, 10) ? value : "";
 
   const parsed = Date.parse(value);
   if (Number.isNaN(parsed)) return "";
@@ -90,9 +112,10 @@ export function normalizeSearchDate(raw: string, now: Date = new Date()): string
   // east of Greenwich -- a published date silently off by one. Local
   // components give the date back as written. Anything carrying a real instant
   // is formatted as UTC, which is what its source meant.
-  return HAS_TIME_OR_ZONE.test(value)
+  const normalized = HAS_TIME_OR_ZONE.test(value)
     ? date.toISOString().slice(0, 10)
     : `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return normalized <= now.toISOString().slice(0, 10) ? normalized : "";
 }
 
 function normalizeResults(
@@ -104,7 +127,12 @@ function normalizeResults(
     .slice(0, MAX_RESULTS)
     .map((entry) => {
       const raw = read((entry ?? {}) as Record<string, unknown>);
-      return { ...raw, date: normalizeSearchDate(raw.date) };
+      return {
+        title: bounded(raw.title, MAX_TITLE_LENGTH),
+        link: safeHttpUrl(raw.link),
+        snippet: bounded(raw.snippet, MAX_SNIPPET_LENGTH),
+        date: normalizeSearchDate(raw.date),
+      };
     })
     .filter((result) => result.title !== "" && result.link !== "");
 }
@@ -112,14 +140,16 @@ function normalizeResults(
 interface SearchProvider {
   name: string;
   enabled(): boolean;
-  run(query: string): Promise<WebSearchResult[]>;
+  run(query: string, signal?: AbortSignal): Promise<WebSearchResult[]>;
 }
 
 // MiniMax's own search, behind the same key and quota as inference.
 const minimaxProvider: SearchProvider = {
   name: "minimax",
   enabled: () => Boolean(process.env.MINIMAX_API_KEY),
-  async run(query) {
+  async run(query, requestSignal) {
+    const timeout = AbortSignal.timeout(TIMEOUT_MS);
+    const signal = requestSignal ? AbortSignal.any([requestSignal, timeout]) : timeout;
     const response = await fetch("https://api.minimax.io/v1/coding_plan/search", {
       method: "POST",
       headers: {
@@ -130,10 +160,16 @@ const minimaxProvider: SearchProvider = {
         "MM-API-Source": "Minimax-MCP",
       },
       body: JSON.stringify({ q: query }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal,
     });
     if (!response.ok) throw new Error(`status ${response.status}`);
-    const body = await response.json() as { organic?: unknown };
+    const rawBody = typeof (response as { text?: unknown }).text === "function"
+      ? await response.text()
+      : JSON.stringify(await response.json());
+    if (new TextEncoder().encode(rawBody).byteLength > MAX_RESPONSE_BYTES) {
+      throw new Error("response exceeded 256KB");
+    }
+    const body = JSON.parse(rawBody) as { organic?: unknown };
     return normalizeResults(body.organic, (entry) => ({
       title: asString(entry.title),
       link: asString(entry.link),
@@ -170,6 +206,12 @@ const status: WebSearchStatus = {
   enabledProviders: [],
 };
 
+type CacheEntry = { expiresAt: number; results: WebSearchResult[] };
+const cache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<WebSearchResult[]>>();
+let breakerOpenedAt = 0;
+let halfOpenProbe = false;
+
 export function getWebSearchStatus(): WebSearchStatus {
   return {
     ...status,
@@ -186,6 +228,10 @@ export function resetWebSearchStatus(): void {
   status.consecutiveFailures = 0;
   status.totalSearches = 0;
   status.providerFailures = {};
+  cache.clear();
+  inFlight.clear();
+  breakerOpenedAt = 0;
+  halfOpenProbe = false;
 }
 
 /**
@@ -194,16 +240,41 @@ export function resetWebSearchStatus(): void {
  * degrade the answer rather than fail the request -- the same posture
  * fixture-market-sources.ts takes toward odds providers.
  */
-export async function searchWeb(query: string): Promise<WebSearchResult[]> {
-  const trimmed = query.trim();
+export async function searchWeb(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
+  const trimmed = query.trim().slice(0, MAX_QUERY_LENGTH);
   if (!trimmed) return [];
 
+  const cacheKey = trimmed.toLocaleLowerCase();
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.results.map((result) => ({ ...result }));
+
+  if (breakerOpenedAt) {
+    if (Date.now() - breakerOpenedAt < BREAKER_OPEN_MS || halfOpenProbe) {
+      console.warn(JSON.stringify({ event: "web_search_circuit_open" }));
+      return [];
+    }
+    halfOpenProbe = true;
+  }
+
+  const existing = inFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const request = searchUncached(trimmed, signal).finally(() => {
+    inFlight.delete(cacheKey);
+    halfOpenProbe = false;
+  });
+  inFlight.set(cacheKey, request);
+  return request;
+}
+
+async function searchUncached(trimmed: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
+  const startedAt = Date.now();
   status.totalSearches += 1;
 
   for (const provider of PROVIDERS) {
     if (!provider.enabled()) continue;
     try {
-      const results = await provider.run(trimmed);
+      const results = await provider.run(trimmed, signal);
       if (results.length === 0) {
         // Not an error, but not usable either: fall through so a provider
         // returning structurally valid emptiness cannot mask a working one.
@@ -212,8 +283,21 @@ export async function searchWeb(query: string): Promise<WebSearchResult[]> {
       status.lastGoodProvider = provider.name;
       status.lastGoodAt = new Date().toISOString();
       status.consecutiveFailures = 0;
+      breakerOpenedAt = 0;
+      cache.set(trimmed.toLocaleLowerCase(), {
+        expiresAt: Date.now() + CACHE_TTL_MS,
+        results,
+      });
+      console.log(JSON.stringify({
+        event: "web_search_completed",
+        provider: provider.name,
+        outcome: "success",
+        resultCount: results.length,
+        durationMs: Date.now() - startedAt,
+      }));
       return results;
     } catch (error) {
+      if (signal?.aborted) throw error;
       status.providerFailures[provider.name] =
         (status.providerFailures[provider.name] ?? 0) + 1;
       console.warn(JSON.stringify({
@@ -225,8 +309,11 @@ export async function searchWeb(query: string): Promise<WebSearchResult[]> {
   }
 
   status.consecutiveFailures += 1;
+  if (status.consecutiveFailures >= BREAKER_FAILURES) breakerOpenedAt = Date.now();
   console.warn(JSON.stringify({
     event: "web_search_failed",
+    outcome: "degraded",
+    durationMs: Date.now() - startedAt,
     consecutiveFailures: status.consecutiveFailures,
     enabledProviders: PROVIDERS.filter((p) => p.enabled()).map((p) => p.name),
   }));

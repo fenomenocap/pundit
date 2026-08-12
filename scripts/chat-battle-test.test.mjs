@@ -20,7 +20,9 @@ import {
   validateGrounding,
   validateSse,
   validateAnswerCopy,
+  validateCitationContract,
   validateErrorCopy,
+  validateNoDraftLeak,
   validateTeamNewsDiscipline,
   writeCheckpoint,
   writeFailureReport,
@@ -542,4 +544,35 @@ test("400 error copy guard rejects schema field leaks", () => {
   assert.equal(validateErrorCopy({ error: "Couldn't understand that request." }).passed, true);
   assert.equal(validateErrorCopy({ error: "'history' must be an array." }).passed, false);
   assert.equal(validateErrorCopy({ error: "history must be an array" }).passed, false);
+});
+
+test("schema-8 gates exact clickable citations and rejects draft narration", () => {
+  const citation = { id: "S1", title: "Club update", url: "https://example.com/news", date: "2026-08-12" };
+  assert.equal(validateCitationContract(
+    "Player is available ([Club update](https://example.com/news), 2026-08-12).",
+    [citation],
+    true
+  ).passed, true);
+  assert.equal(validateCitationContract("Player is available. [[S99]]", [], true).passed, false);
+  assert.equal(validateNoDraftLeak("Let me search for the latest injuries.").passed, false);
+  assert.equal(validateNoDraftLeak("No verified injury update was established.").passed, true);
+});
+
+test("schema-8 latency gate uses individual requests and enforces p90 after ten samples", () => {
+  const report = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    scenarios: Array.from({ length: 10 }, (_, index) => ({
+      id: `s${index}`,
+      passed: true,
+      classification: null,
+      requestLatencies: [index === 9 ? 19_999 : 1_000],
+    })),
+  };
+  finalizeClassifications(report, null);
+  assert.deepEqual(report.latencyGate, {
+    samples: 10,
+    p90Ms: 1_000,
+    everyRequestUnder90s: true,
+    p90Under20s: true,
+  });
 });

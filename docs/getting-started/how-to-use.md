@@ -23,7 +23,7 @@ In every one of those cases the suggestions switch to table, title-race, and gen
 
 Every assistant message shows a grounding badge: match, competition, season outlook, or general analysis. Use **New Chat** to clear context. Up to twelve history turns (six exchanges) carry forward for follow-ups. **Copy** and **Share** actions are available on assistant answers.
 
-Answers can take several seconds — Claude runs a live web search for injury, squad, and form news, and names the source and date of anything it reports. Questions are capped at 500 characters; the API allows 10 requests per minute.
+Answers can take several seconds — Pundit searches before asking MiniMax M3 to answer clearly current injury, squad, and form questions. Every positive current-news claim must carry a clickable, server-bound source and date; otherwise the answer removes the unsupported claim or abstains. Questions are capped at 500 characters; the API allows 10 requests per minute.
 
 ### Fixtures & Standings
 

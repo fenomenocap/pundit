@@ -14,7 +14,89 @@ import {
   resolveTeams,
   shouldUseCompetitionGrounding,
   shouldUseMatchGrounding,
+  deterministicSearchQuery,
+  renderEvidenceCitations,
 } from "./ask";
+
+describe("current-news evidence hardening", () => {
+  it("deterministically pre-searches clearly current questions", () => {
+    for (const question of [
+      "Latest Arsenal injuries?",
+      "Is Saka available today?",
+      "Recent form and current manager?",
+      "Any transfer or lineup news?",
+    ]) {
+      expect(deterministicSearchQuery(question)).toContain("football latest");
+    }
+    expect(deterministicSearchQuery("Explain the offside rule")).toBeNull();
+  });
+
+  it("renders exact server evidence and removes invented or unsupported claims", () => {
+    const bundle = {
+      queries: ["arsenal injury"],
+      results: [{
+        id: "S1",
+        title: "Club update",
+        url: "https://example.com/team-news",
+        date: "2026-08-12",
+        snippet: "A player returned to training.",
+      }],
+    };
+    const rendered = renderEvidenceCitations(
+      "The player is available. [[S1]]\nAnother player is injured. [[S99]]",
+      bundle,
+      true
+    );
+    expect(rendered.answer).toContain("[Club update](https://example.com/team-news)");
+    expect(rendered.answer).not.toContain("Another player");
+    expect(rendered.citations).toEqual([expect.objectContaining({ id: "S1" })]);
+  });
+
+  it("abstains when a positive current claim has no provenance marker", () => {
+    const rendered = renderEvidenceCitations(
+      "The player is ruled out for Sunday.",
+      { queries: ["query"], results: [] },
+      true
+    );
+    expect(rendered.answer).toMatch(/could not establish a verified current update/i);
+  });
+
+  it("requires a dated marker in each sentence, not merely elsewhere on the line", () => {
+    const bundle = {
+      queries: ["query"],
+      results: [{
+        id: "S1",
+        title: "Club update",
+        url: "https://example.com/update",
+        date: "2026-08-12",
+        snippet: "One player is available.",
+      }],
+    };
+    const rendered = renderEvidenceCitations(
+      "One player is available [[S1]]. Another player is ruled out.",
+      bundle,
+      true
+    );
+    expect(rendered.answer).toContain("One player");
+    expect(rendered.answer).not.toContain("Another player");
+  });
+
+  it("does not render undated evidence for positive current-news claims", () => {
+    const rendered = renderEvidenceCitations(
+      "The player is available [[S1]].",
+      { queries: ["query"], results: [{
+        id: "S1",
+        title: "Undated result",
+        url: "https://example.com/undated",
+        date: "",
+        snippet: "Available",
+      }] },
+      true
+    );
+    expect(rendered.answer).toMatch(/could not establish a verified current update/i);
+    expect(rendered.citations).toEqual([]);
+  });
+});
 
 describe("MATCH_ANSWER_GUARDS", () => {
   it("blocks unsupported aggregate, scoreline-tail, and causal claims", () => {
