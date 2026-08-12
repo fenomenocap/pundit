@@ -29,13 +29,17 @@ export interface FixtureMarketOdds {
   kalshi: ThreeWayOdds | null;
 }
 
+export interface TimestampedFixtureMarketOdds extends FixtureMarketOdds {
+  observedAt: string;
+}
+
 interface SourceCoverage {
   matched: number;
   total: number;
 }
 
 interface MarketOddsCache {
-  byFixture: Map<string, FixtureMarketOdds>;
+  byFixture: Map<string, TimestampedFixtureMarketOdds>;
   lastUpdated: Date | null;
   error: string | null;
   sourceWarnings: Record<string, string | null>;
@@ -54,7 +58,7 @@ export function marketOddsFixtureKey(fixture: ModelFixture): string {
   return getModelFixtureKey(fixture);
 }
 
-export function getCachedFixtureMarketOdds(fixture: ModelFixture): FixtureMarketOdds | null {
+export function getCachedFixtureMarketOdds(fixture: ModelFixture): TimestampedFixtureMarketOdds | null {
   return cache.byFixture.get(getModelFixtureKey(fixture)) ?? null;
 }
 
@@ -152,15 +156,17 @@ export async function refreshModelMarketOdds(): Promise<void> {
       ...Object.fromEntries(names.map((name) =>
         [name, `${sources[name].size}/${active.length}`])),
     }));
+    const observedAt = new Date().toISOString();
     cache.byFixture = new Map(active.map((fixture) => {
       const key = getModelFixtureKey(fixture);
       return [key, {
+        observedAt,
         stake: sources.stake.get(key) ?? null,
         polymarket: sources.polymarket.get(key) ?? null,
         kalshi: sources.kalshi.get(key) ?? null,
       }];
     }));
-    cache.lastUpdated = new Date();
+    cache.lastUpdated = new Date(observedAt);
     cache.error = null;
     console.log(`[ModelMarketOdds] ${cache.byFixture.size}/${active.length} active fixtures cached.`);
 

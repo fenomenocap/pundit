@@ -2,7 +2,7 @@
 // WC live model/tournament sim is retired — see /api/evaluation/wc-2026 for backtest.
 
 import { getCompetitionById, RatingProfile } from "../config/competitions";
-import { canonicalClubName, modelFixtureKey } from "../lib/team-names";
+import { canonicalClubName, modelFixtureKey, normalizeTeamName } from "../lib/team-names";
 import { ActiveFixture, getActiveFixtures } from "./active-fixtures";
 import {
   backfillMissingClubRatings,
@@ -19,6 +19,7 @@ import {
   PUNDIT_FUNDAMENTAL_MODEL_ID,
   PUNDIT_FUNDAMENTAL_MODEL_VERSION,
 } from "./model-contributors";
+import { isModelPolicyEligible, recognizeEspnFixture } from "./fixture-registry";
 
 export interface ModelScoreline {
   score: string;
@@ -92,9 +93,18 @@ const cache: ModelDataCache = {
   lastUpdated: null,
   error: null,
 };
+let refreshInProgress = false;
+let missingRatingTeamIds = new Set<string>();
 
 export function getCachedModelData(): ModelDataCache {
   return { ...cache };
+}
+
+export function getModelRefreshState(): {
+  refreshing: boolean;
+  missingRatingTeamIds: ReadonlySet<string>;
+} {
+  return { refreshing: refreshInProgress, missingRatingTeamIds: new Set(missingRatingTeamIds) };
 }
 
 function rounded(value: number, digits = 4): number {
@@ -120,6 +130,11 @@ export function buildModelFixtureFromActive(
   ratings = getCachedClubRatings().byProfile,
   context: ForecastBuildContext = {}
 ): ModelFixture | null {
+  // Recognition is an identity/policy gate, not a source of numeric inputs.
+  // Every legacy supported fixture is recognized from the exact same ESPN row
+  // before the unchanged champion calculation below, preserving probabilities.
+  const recognized = recognizeEspnFixture(fixture);
+  if (!isModelPolicyEligible(recognized)) return null;
   const competition = getCompetitionById(fixture.competitionId);
   if (!competition || !competition.enabled) return null;
 
@@ -292,6 +307,7 @@ function syncClubSeasonEvidence(fixtures: ModelFixture[], now = new Date()): voi
 
 export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise<void> {
   console.log("[Model] Refreshing active fixture Dixon-Coles model...");
+  refreshInProgress = true;
   try {
     // An empty active window is a valid state between rounds or seasons and
     // does not need the ratings provider at all.
@@ -299,6 +315,7 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
       cache.fixtures = [];
       cache.lastUpdated = new Date();
       cache.error = null;
+      missingRatingTeamIds = new Set();
       syncClubSeasonEvidence([], cache.lastUpdated);
       console.log("[Model] 0 active fixtures cached.");
       return;
@@ -329,6 +346,7 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
       missing = findMissingClubRatings(activeFixtures, profiles);
     }
     const missingTeams = missing.map(({ team }) => team);
+    missingRatingTeamIds = new Set(missingTeams.map(normalizeTeamName));
     const forecastAt = new Date();
     const fixtures = buildActiveModelFixtures(activeFixtures, profiles, {
       forecastAt,
@@ -350,12 +368,20 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     cache.error = message;
+    if (getCachedClubRatings().fetchedAt === null) {
+      missingRatingTeamIds = new Set(
+        activeFixtures.flatMap((fixture) => [fixture.homeTeam, fixture.awayTeam])
+          .map(normalizeTeamName)
+      );
+    }
     console.error(`[Model] Refresh error: ${message}`);
     // Even an unpriced scheduled fixture must enter the checkpoint state so a
     // later transition can be recorded as a miss instead of disappearing from
     // the evidence trail. Existing cached forecasts remain immutable inputs;
     // this does not make an unavailable model ready.
     syncClubSeasonEvidence(cache.fixtures);
+  } finally {
+    refreshInProgress = false;
   }
 }
 

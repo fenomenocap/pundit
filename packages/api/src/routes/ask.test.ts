@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseHistory, askRateLimitConfig } from "./ask";
+import { parseHistory, askRateLimitConfig, parseFixtureContext } from "./ask";
 
 describe("askRateLimitConfig", () => {
   it("divides the intended global budget across replicas", () => {
@@ -36,4 +36,16 @@ describe("parseHistory", () => {
       content: large,
     })))).toThrow(/12000/);
   });
+});
+
+describe("parseFixtureContext", () => {
+  it("accepts a stable fixture identity", () => {
+    expect(parseFixtureContext({ fixtureId: "espn:eng.1:401" }))
+      .toEqual({ fixtureId: "espn:eng.1:401" });
+  });
+
+  it.each([null, {}, { fixtureId: "" }, { fixtureId: 401 }])(
+    "rejects malformed fixture context %#",
+    (value) => expect(() => parseFixtureContext(value)).toThrow(/fixtureContext/)
+  );
 });

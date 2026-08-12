@@ -10,6 +10,7 @@ import {
   askQuestionStream,
   type AskGrounding,
   type ConversationTurn,
+  type FixtureContext,
   type MatchGrounding,
   type ModelFixtureResponse,
   type TeamContext,
@@ -31,7 +32,7 @@ interface ChatMessage {
   grounding?: AskGrounding;
 }
 
-type LoadingTier = "match" | "competition" | "season" | "general" | null;
+type LoadingTier = "match" | "fixture" | "competition" | "season" | "general" | null;
 
 let nextId = 0;
 
@@ -139,6 +140,7 @@ function sanitizeAskError(err: unknown): string {
 
 function loadingMessage(tier: LoadingTier): string {
   if (tier === "match") return "Checking model & markets…";
+  if (tier === "fixture") return "Checking fixture coverage…";
   if (tier === "competition") return "Loading standings…";
   if (tier === "season") return "Simulating season outlook…";
   return "Thinking…";
@@ -219,6 +221,15 @@ function groundingLabel(grounding: AskGrounding): string {
   if (grounding?.kind === "competition") {
     return `${grounding.competition} · ESPN table`;
   }
+  if (grounding?.kind === "fixture") {
+    const capability = grounding.capability;
+    const label = capability.status === "outside-coverage"
+      ? "Outside Pundit model coverage"
+      : capability.status === "temporarily-unpriced"
+        ? "Model temporarily unavailable"
+        : "Model input unavailable";
+    return `${grounding.fixture.competition.name} · ${label}`;
+  }
   return "General · no live model data";
 }
 
@@ -252,6 +263,8 @@ function GroundingBadge({ grounding }: { grounding: AskGrounding }) {
   const kind = grounding?.kind ?? null;
   const ringClass = kind === "match"
     ? "border-primary/40 text-primary"
+    : kind === "fixture"
+      ? "border-slate-400/40 text-slate-300"
     : kind === "competition"
       ? "border-amber-400/40 text-amber-300"
       : kind === "season"
@@ -484,6 +497,8 @@ export function HomeChat() {
   const [streamStarted, setStreamStarted] = useState(false);
   const [loadingTier, setLoadingTier] = useState<LoadingTier>(null);
   const [teamContext, setTeamContext] = useState<TeamContext>();
+  const [fixtureContext, setFixtureContext] = useState<FixtureContext>();
+  const [fixtureContextTeams, setFixtureContextTeams] = useState<TeamContext>();
   const [suggestions, setSuggestions] = useState(NO_FIXTURE_SUGGESTIONS);
   const [fixtureState, setFixtureState] = useState<FixtureState>("ready");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -555,12 +570,19 @@ export function HomeChat() {
     let streamedGrounding: AskGrounding = null;
 
     try {
-      const { answer, grounding } = await askQuestionStream(trimmed, history, teamContext, {
+      const { answer, grounding } = await askQuestionStream(
+        trimmed,
+        history,
+        teamContext,
+        fixtureContext,
+        {
         onGrounding: (initialGrounding) => {
           streamedGrounding = initialGrounding;
           setLoadingTier(
             initialGrounding?.kind === "match"
               ? "match"
+              : initialGrounding?.kind === "fixture"
+                ? "fixture"
               : initialGrounding?.kind === "season"
                 ? "season"
                 : initialGrounding?.kind === "competition"
@@ -583,7 +605,8 @@ export function HomeChat() {
             ));
           }
         },
-      });
+        }
+      );
       // A competition or general answer does not establish a new match, but it
       // does not end the one under discussion either. Keeping the context lets
       // a later follow-up resolve back to that match instead of dropping to the
@@ -591,6 +614,14 @@ export function HomeChat() {
       // Chat" clears it outright.
       if (grounding?.kind === "match") {
         setTeamContext([grounding.home, grounding.away]);
+        setFixtureContext({ fixtureId: grounding.fixtureId });
+        setFixtureContextTeams([grounding.home, grounding.away]);
+      } else if (grounding?.kind === "fixture") {
+        setFixtureContext({ fixtureId: grounding.fixture.fixtureId });
+        setFixtureContextTeams([
+          grounding.fixture.homeTeam.name,
+          grounding.fixture.awayTeam.name,
+        ]);
       }
       setMessages((prev) => {
         const finalMessage: ChatMessage = { id: assistantId, role: "assistant", content: answer, grounding };
@@ -629,6 +660,8 @@ export function HomeChat() {
     setMessages([]);
     setInput("");
     setTeamContext(undefined);
+    setFixtureContext(undefined);
+    setFixtureContextTeams(undefined);
     autoAskedRef.current = null;
     if (searchParams.get("q")) {
       router.replace("/", { scroll: false });
@@ -673,9 +706,9 @@ export function HomeChat() {
     <div className="mx-auto flex h-[calc(100vh-2.75rem)] max-w-2xl flex-col px-4">
       {messages.length > 0 && (
         <div className="flex items-center justify-end gap-2 pt-3">
-          {teamContext && (
+          {fixtureContextTeams && (
             <span className="rounded-full border border-border bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
-              Following: {teamContext[0]} vs {teamContext[1]}
+              Following: {fixtureContextTeams[0]} vs {fixtureContextTeams[1]}
             </span>
           )}
           <Button
@@ -789,6 +822,15 @@ export function HomeChat() {
                       <GroundingBadge grounding={m.grounding ?? null} />
                     </div>
                   )}
+                  {m.role === "assistant" && m.grounding?.kind === "fixture" && (
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      {m.grounding.capability.status === "outside-coverage"
+                        ? "Fixture details and current news may be sourced, but no Pundit probabilities are available."
+                        : m.grounding.capability.status === "temporarily-unpriced"
+                          ? "This recognized fixture is waiting for the match model to finish loading."
+                          : "This recognized fixture is missing a required model input, so Pundit will not estimate probabilities."}
+                    </p>
+                  )}
                   {m.role === "assistant"
                     ? (
                       streaming ? (
@@ -875,9 +917,9 @@ export function HomeChat() {
             />
             {statusLabel}
           </span>
-          {teamContext && (
+          {fixtureContextTeams && (
             <span className="hidden shrink-0 text-muted-foreground/70 sm:inline">
-              Following: {teamContext[0]} vs {teamContext[1]}
+              Following: {fixtureContextTeams[0]} vs {fixtureContextTeams[1]}
             </span>
           )}
         </div>

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { ActiveFixture } from "./active-fixtures";
 import { backfillMissingClubRatings, getCachedClubRatings } from "./club-ratings";
 import {
@@ -8,6 +9,7 @@ import {
   buildModelFixtureFromActive,
   findMissingClubRatingTeams,
   getCachedModelData,
+  getModelRefreshState,
   modelDataCoversActiveFixtures,
   modelRefreshDelay,
   refreshModelData,
@@ -71,6 +73,25 @@ describe("active club model", () => {
     });
     expect(model!.pHome + model!.pDraw + model!.pAway).toBeCloseTo(1, 4);
     expect(model!.pHome).toBeGreaterThan(model!.pAway);
+  });
+
+  it("preserves the exact deployed supported-fixture probability payload behind recognition", () => {
+    const model = buildModelFixtureFromActive(activeFixture(), ratings, {
+      forecastAt: new Date("2026-08-01T00:00:00.000Z"),
+    })!;
+    const protectedPayload = {
+      pHome: model.pHome,
+      pDraw: model.pDraw,
+      pAway: model.pAway,
+      pOver2_5: model.pOver2_5,
+      pUnder2_5: model.pUnder2_5,
+      pBttsYes: model.pBttsYes,
+      pBttsNo: model.pBttsNo,
+      topScores: model.topScores,
+      scorelines: model.scorelines,
+    };
+    expect(createHash("sha256").update(JSON.stringify(protectedPayload)).digest("hex"))
+      .toBe("bbed9ea46635bf3f15bf3475f376e182b9d5ccf80d403ca543ff2403b2ee6959");
   });
 
   it("does not fabricate a default rating when a team is missing from ClubElo", () => {
@@ -154,6 +175,10 @@ describe("active club model", () => {
       "Club ratings are missing for 1 active team(s): Coventry City."
       + " 1 fixture(s) are unpriced as a result."
     );
+    expect(getModelRefreshState()).toEqual({
+      refreshing: false,
+      missingRatingTeamIds: new Set(["coventry"]),
+    });
   });
 
   it("prices the fixtures it can when only some teams are unrated", async () => {

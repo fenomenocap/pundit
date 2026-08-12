@@ -11,12 +11,13 @@ MiniMax M3-powered conversational football analysis. **Rate limit:** 10 requests
     { "role": "user", "content": "Arsenal vs Coventry" },
     { "role": "assistant", "content": "Arsenal are strong favourites at home..." }
   ],
+  "fixtureContext": { "fixtureId": "espn:eng.1:401879301" },
   "teamContext": ["Arsenal", "Coventry City"],
   "stream": false
 }
 ```
 
-`question` is required and limited to 500 characters. `history` is optional, must contain complete user/assistant exchanges, and is limited to 12 turns and 12,000 characters total. `teamContext` enables follow-ups that do not repeat both team names.
+`question` is required and limited to 500 characters. `history` is optional, must contain complete user/assistant exchanges, and is limited to 12 turns and 12,000 characters total. `fixtureContext` retains the server-owned recognized identity across follow-ups and wins when the temporary compatibility field `teamContext` is also present.
 
 Set `"stream": true` to receive **Server-Sent Events** instead of a single JSON body:
 
@@ -24,7 +25,7 @@ Set `"stream": true` to receive **Server-Sent Events** instead of a single JSON 
 |---|---|---|
 | `grounding` | `{ grounding }` | As soon as tier routing completes |
 | `delta` | `{ text }` | Progressive validated answer text; search-backed turns may hold text until citations are bound |
-| `done` | `{ answer, grounding, citations? }` | Authoritative complete response with optional server-owned citation metadata |
+| `done` | `{ answer, grounding, citations?, verification }` | Authoritative complete response with optional server-owned citation metadata and claim-verification verdict |
 | `error` | `{ error, status, code? }` | Failure after headers were sent |
 
 SSE includes `: ping` comment heartbeats every 15 seconds during long web-search turns.
@@ -42,13 +43,15 @@ it comes and always treat `done.answer` as authoritative.
   "grounding": { "kind": "match", "...": "..." },
   "citations": [
     { "id": "S1", "title": "Club update", "url": "https://example.com/update", "date": "2026-08-12" }
-  ]
+  ],
+  "verification": { "status": "verified", "supportedClaimCount": 1, "removedClaimCount": 0 }
 }
 ```
 
 `grounding` is one of:
 
 * **`kind: "match"`** — an active fixture in the 14-day window with model 1X2, O/U 2.5, BTTS, top scorelines, and available active market prices
+* **`kind: "fixture"`** — an authoritative/corroborated recognized fixture plus a non-priced capability; it contains no Pundit probabilities
 * **`kind: "competition"`** — ESPN standings for an enabled competition
 * **`kind: "season"`** — Premier League standings plus Monte Carlo title/top-four outlook
 * **`null`** — clearly labelled general football analysis with no model-grounding claim

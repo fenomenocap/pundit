@@ -44,6 +44,11 @@ API_URL=http://localhost:3001
 # Production points this at a mounted Railway volume (/data). Leave unset
 # locally to use the in-repo packages/api/data directory.
 PUNDIT_DATA_DIR=
+# Shadow registry observes existing approved fixtures by default. Setting true
+# enables expanded recognized-fixture routing; it never enables friendly prices.
+FIXTURE_REGISTRY_ENABLED=false
+# Private-only, fail-closed friendly forecast collection. No public API/UI path.
+FRIENDLY_SHADOW_ENABLED=false
 # Comma-separated browser origins for CORS. Leave empty for open CORS (dev).
 # Production should set the Vercel frontend origin(s).
 ALLOWED_ORIGINS=http://localhost:3000

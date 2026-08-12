@@ -295,6 +295,7 @@ export interface OddsSource {
 
 export interface MatchGrounding {
   kind: "match";
+  fixtureId: string;
   competitionId: string;
   competition: string;
   homeFieldAdvantage: boolean;
@@ -315,6 +316,36 @@ export interface MatchGrounding {
   stakePDraw: number | null;
   stakePAway: number | null;
   oddsSources: OddsSource[];
+}
+
+export type FixtureCapability =
+  | { status: "priced"; modelFixtureId: string }
+  | { status: "temporarily-unpriced"; reason: "model-initializing" | "ratings-refreshing" }
+  | { status: "outside-coverage"; reason: "unsupported-competition" | "friendly-policy-disabled" | "model-policy-disabled" }
+  | { status: "insufficient-model-input"; reason: "ratings-unavailable" | "neutral-venue-unknown" | "required-context-missing" };
+
+export interface RecognizedFixture {
+  fixtureId: string;
+  primarySource: "espn" | "official-competition" | "official-federation" | "official-club";
+  primarySourceFixtureId: string;
+  homeTeam: { id: string; name: string };
+  awayTeam: { id: string; name: string };
+  kickoff: string;
+  venue: string | null;
+  neutralVenue: boolean | null;
+  competition: {
+    id: string;
+    name: string;
+    category: "domestic-league" | "domestic-cup" | "club-continental" | "club-friendly" | "international-tournament" | "international-qualifier" | "international-friendly";
+  };
+  status: "scheduled" | "in-play" | "completed" | "postponed" | "cancelled";
+  recognition: "authoritative" | "corroborated";
+}
+
+export interface FixtureGrounding {
+  kind: "fixture";
+  fixture: RecognizedFixture;
+  capability: Exclude<FixtureCapability, { status: "priced" }>;
 }
 
 export interface CompetitionGrounding {
@@ -348,7 +379,7 @@ export interface SeasonGrounding {
   };
 }
 
-export type AskGrounding = MatchGrounding | CompetitionGrounding | SeasonGrounding | null;
+export type AskGrounding = MatchGrounding | FixtureGrounding | CompetitionGrounding | SeasonGrounding | null;
 
 export interface AskCitation {
   id: string;
@@ -361,6 +392,11 @@ export interface AskResult {
   answer: string;
   grounding: AskGrounding;
   citations?: AskCitation[];
+  verification: {
+    status: "not-required" | "verified" | "conflict" | "abstain" | "unavailable";
+    supportedClaimCount: number;
+    removedClaimCount: number;
+  };
 }
 
 export interface ConversationTurn {
@@ -369,15 +405,17 @@ export interface ConversationTurn {
 }
 
 export type TeamContext = [string, string];
+export interface FixtureContext { fixtureId: string }
 
 export async function askQuestion(
   question: string,
   history: ConversationTurn[] = [],
-  teamContext?: TeamContext
+  teamContext?: TeamContext,
+  fixtureContext?: FixtureContext
 ): Promise<AskResult> {
   return apiFetch<AskResult>("/api/ask", {
     method: "POST",
-    body: JSON.stringify({ question, history, teamContext }),
+    body: JSON.stringify({ question, history, teamContext, fixtureContext }),
   });
 }
 
@@ -413,12 +451,13 @@ export async function askQuestionStream(
   question: string,
   history: ConversationTurn[] = [],
   teamContext: TeamContext | undefined,
+  fixtureContext: FixtureContext | undefined,
   handlers: AskStreamHandlers
 ): Promise<AskResult> {
   const res = await fetch(`${API_URL}/api/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, history, teamContext, stream: true }),
+    body: JSON.stringify({ question, history, teamContext, fixtureContext, stream: true }),
   });
 
   const contentType = res.headers.get("content-type") ?? "";
