@@ -37,6 +37,8 @@ export interface FriendlyShadowForecast {
   schemaVersion: 1;
   forecastId: string;
   fixtureId: string;
+  fixtureSource: RecognizedFixture["primarySource"];
+  sourceFixtureId: string;
   kickoff: string;
   forecastAt: string;
   policyId: typeof FRIENDLY_SHADOW_POLICY_ID;
@@ -63,7 +65,7 @@ export interface FriendlyShadowForecast {
     homeScore: number;
     awayScore: number;
     observedAt: string;
-    source: string;
+    source: RecognizedFixture["primarySource"];
     sourceFixtureId: string;
     fixtureStatus: "finished";
   } | null;
@@ -149,6 +151,8 @@ export function buildFriendlyShadowForecast(
       schemaVersion: 1,
       forecastId: forecastIdentity(fixture),
       fixtureId: fixture.fixtureId,
+      fixtureSource: fixture.primarySource,
+      sourceFixtureId: fixture.primarySourceFixtureId,
       kickoff: kickoff.toISOString(),
       forecastAt: forecastAt.toISOString(),
       policyId: FRIENDLY_SHADOW_POLICY_ID,
@@ -197,6 +201,10 @@ function validLedger(value: FriendlyShadowLedger | null): value is FriendlyShado
       forecast?.schemaVersion === 1
       && typeof forecast.forecastId === "string"
       && typeof forecast.fixtureId === "string"
+      && ["espn", "official-competition", "official-federation", "official-club"]
+        .includes(forecast.fixtureSource)
+      && typeof forecast.sourceFixtureId === "string"
+      && forecast.sourceFixtureId.trim().length > 0
       && forecast.visibility === "private-shadow"
       && forecast.modelVersion === FRIENDLY_SHADOW_MODEL_VERSION
       && Number.isFinite(forecast.homeRating)
@@ -296,6 +304,8 @@ export function appendFriendlyShadowResult(
     let updated = false;
     const forecasts = ledger.forecasts.map((forecast) => {
       if (forecast.forecastId !== forecastId || forecast.result
+        || result.source !== forecast.fixtureSource
+        || result.sourceFixtureId !== forecast.sourceFixtureId
         || observedAt < Date.parse(forecast.kickoff)) return forecast;
       updated = true;
       return { ...forecast, result };
