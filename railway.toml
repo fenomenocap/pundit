@@ -1,9 +1,5 @@
-# Compatibility copy of the root Railway config for the Railway service @pundit/api.
-# (the pnpm package it builds is still named @sports-predict/api)
-# In the Railway service settings, set "Config file path" to:
-#   /packages/api/railway.toml
-# only if Railway is explicitly configured to use this nested path. The
-# repository-root railway.toml is canonical for the current root-linked service.
+# Canonical Railway service configuration. The API service links the repository
+# root, so Railway discovers this file without a dashboard-only config mapping.
 
 [build]
 builder = "RAILPACK"

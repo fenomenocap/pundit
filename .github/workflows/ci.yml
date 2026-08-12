@@ -18,7 +18,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .node-version
 
       - name: Enable Corepack
         run: corepack enable
@@ -45,6 +45,9 @@ jobs:
 
       - name: Validate chat-eval scenarios
         run: pnpm chat-eval:dry-run
+
+      - name: Test Vercel ignored-build policy
+        run: pnpm test:vercel-ignore
 
       - name: Build web
         run: pnpm --filter @sports-predict/web build
