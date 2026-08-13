@@ -17,9 +17,12 @@ import {
   shouldUseMatchGrounding,
   deterministicSearchQuery,
   evidenceAuthority,
+  failClosedEmptyCurrentVerification,
   dropMisbucketedTotalsScorelines,
   renderEvidenceCitations,
   sanitizeFixtureCoverageAnswer,
+  sanitizeFootballGeometry,
+  sanitizeGroundedMatchNarrative,
   sanitizeContradictoryRationales,
   sanitizeManagerEraClaims,
   sanitizeMatchAnswer,
@@ -30,6 +33,7 @@ import {
   type FixtureGrounding,
   shouldHoldCoverageDeltas,
   stripUnvalidatedExternalMarketClaims,
+  type Grounding,
 } from "./ask";
 
 describe("current-news evidence hardening", () => {
@@ -233,6 +237,63 @@ describe("current-news evidence hardening", () => {
     );
     expect(checked.verification.status).toBe("abstain");
     expect(checked.answer).not.toMatch(/52%|25%|23%/);
+  });
+
+  it("removes artifact-shaped positive team news when verification supported nothing", () => {
+    const candidateNotice = "I could not establish an authoritative structured fixture identity for that matchup; no verified fixture identity was established, so it remains a discovery candidate and has no Pundit fixture badge or probabilities.";
+    const unsafe = `${candidateNotice}\n\nLyon: Jason Denayer is out with a knock. Paulo Fonseca expects key Fenerbahce attackers to be unavailable.`;
+    const safe = failClosedEmptyCurrentVerification(unsafe, {
+      status: "abstain",
+      supportedClaimCount: 0,
+      removedClaimCount: 0,
+    }, true);
+    expect(safe).toContain(candidateNotice);
+    expect(safe).toContain("could not establish a supported current answer");
+    expect(safe).not.toMatch(/Jason Denayer|is out|attackers to be unavailable/);
+    expect(failClosedEmptyCurrentVerification(unsafe, {
+      status: "not-required",
+      supportedClaimCount: 0,
+      removedClaimCount: 0,
+    }, false)).toBe(unsafe);
+  });
+
+  it("drops deterministic model and market interpretations that contradict grounding", () => {
+    const grounding = {
+      kind: "match",
+      home: "Fenerbahce",
+      away: "Lyon",
+      pHome: 0.2997,
+      pDraw: 0.279,
+      pAway: 0.4213,
+      oddsSources: [
+        { source: "kalshi", observedAt: "2026-08-13T05:12:27Z", pHome: 0.4653, pDraw: 0.2475, pAway: 0.2872 },
+        { source: "polymarket", observedAt: "2026-08-13T05:12:27Z", pHome: 0.4581, pDraw: 0.2562, pAway: 0.2857 },
+      ],
+    } as unknown as Grounding;
+    const sanitized = sanitizeGroundedMatchNarrative([
+      "Lyon are the model underdogs here.",
+      "**Read on the underdog**\nFor Lyon to overturn the model, they must counter well.",
+      "The draw contributes to Fenerbahce's win probability.",
+      "The market favours Lyon.",
+      "Kalshi gives Lyon the edge.",
+      "Pundit's model favours Lyon.",
+      "Kalshi favours Fenerbahce.",
+    ].join("\n"), grounding);
+    expect(sanitized).not.toMatch(/model underdogs|Read on the underdog|Lyon to overturn|draw contributes|market favours Lyon|Kalshi gives Lyon/);
+    expect(sanitized).toContain("Pundit's model favours Lyon.");
+    expect(sanitized).toContain("Kalshi favours Fenerbahce.");
+  });
+
+  it("removes only the backwards high-line geometry claim", () => {
+    expect(sanitizeFootballGeometry(
+      "A higher defensive line shrinks the space behind the defenders. It can compress midfield space."
+    )).toBe("It can compress midfield space.");
+    expect(sanitizeFootballGeometry(
+      "A higher line shrinks space behind defenders. Keep the rest."
+    )).toBe("Keep the rest.");
+    expect(sanitizeFootballGeometry(
+      "A higher defensive line can leave more space behind the defenders."
+    )).toBe("A higher defensive line can leave more space behind the defenders.");
   });
 
   it("reconciles plain scoreline arithmetic even without a probability suffix", () => {
@@ -814,6 +875,65 @@ describe("resolveAskContext", () => {
       { recognizedFixtures: [first, second] }
     )).toEqual({ tier: "candidate" });
   });
+
+  it("uses stable fixtureContext to disambiguate repeated priced legs while a different matchup replaces it", () => {
+    const firstLeg = fixture("Fenerbahce", "Lyon", {
+      competitionId: "uefa.champions_qual",
+      competition: "UEFA Champions League Qualifying",
+      fixtureId: 9101,
+      utcDate: "2026-08-18T19:00:00.000Z",
+      date: "2026-08-18",
+    });
+    const secondLeg = fixture("Lyon", "Fenerbahce", {
+      competitionId: "uefa.champions_qual",
+      competition: "UEFA Champions League Qualifying",
+      fixtureId: 9102,
+      utcDate: "2026-08-25T19:00:00.000Z",
+      date: "2026-08-25",
+    });
+    const arsenalFixture = fixture("Arsenal", "Coventry City", { fixtureId: 9103 });
+    const recognizeModelFixture = (model: ModelFixture) => recognizeEspnFixture({
+      id: model.fixtureId,
+      competitionId: model.competitionId,
+      competition: model.competition,
+      homeTeam: model.home,
+      awayTeam: model.away,
+      utcDate: model.utcDate,
+      status: "SCHEDULED",
+      stage: model.stage,
+      matchday: null,
+      group: model.group,
+      score: null,
+    });
+    const recognized = [firstLeg, secondLeg, arsenalFixture].map(recognizeModelFixture);
+
+    expect(resolveAskContext(
+      "Fenerbahce vs Lyon — what are the 1X2 probabilities?",
+      [],
+      undefined,
+      [firstLeg, secondLeg, arsenalFixture],
+      [],
+      [],
+      {
+        recognizedFixtures: recognized,
+        fixtureContext: { fixtureId: recognized[1].fixtureId },
+      }
+    )).toEqual({ tier: "match", fixture: secondLeg });
+
+    expect(resolveAskContext(
+      "Arsenal vs Coventry City — what are the 1X2 probabilities?",
+      [],
+      undefined,
+      [firstLeg, secondLeg, arsenalFixture],
+      [],
+      [],
+      {
+        recognizedFixtures: recognized,
+        fixtureContext: { fixtureId: recognized[1].fixtureId },
+      }
+    )).toEqual({ tier: "match", fixture: arsenalFixture });
+  });
+
   it("keeps general chat available while the active model is empty or unready", () => {
     expect(resolveAskContext(
       "Explain how a high defensive line works.",

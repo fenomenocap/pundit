@@ -197,6 +197,23 @@ function capabilityForFixture(
   });
 }
 
+function resolveRecognizedFixture(
+  fixture: RecognizedFixture,
+  modelFixtures: ModelFixture[],
+  routing: FixtureRoutingState
+): Extract<ResolvedAskContext, { tier: "match" | "fixture" }> {
+  const modelFixture = modelFixtures.find((candidate) =>
+    candidate.competitionId === fixture.competition.id
+    && String(candidate.fixtureId) === fixture.primarySourceFixtureId
+  );
+  const capability = capabilityForFixture(fixture, modelFixture, routing);
+  if (capability.status === "priced") {
+    if (modelFixture) return { tier: "match", fixture: modelFixture };
+    throw new Error("Priced fixture capability is missing its model fixture.");
+  }
+  return { tier: "fixture", fixture, capability };
+}
+
 // The date field matters: ATTRIBUTION_RULES makes the model name a source and
 // date for every team-news claim, and web-search.ts normalizes what the search
 // backend returns into ISO form or "".
@@ -597,17 +614,131 @@ export function sanitizeContradictoryRationales(answer: string, grounding?: Grou
   return retained ? `${retained}\n\n${notice}` : notice;
 }
 
+function escapedPattern(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+type MatchOutcome = "home" | "draw" | "away";
+
+function strongestOutcome(probabilities: Record<MatchOutcome, number>): MatchOutcome | null {
+  const ordered = (Object.entries(probabilities) as Array<[MatchOutcome, number]>)
+    .filter(([, probability]) => Number.isFinite(probability))
+    .sort((a, b) => b[1] - a[1]);
+  return ordered.length >= 2 && ordered[0][1] > ordered[1][1] ? ordered[0][0] : null;
+}
+
+function mentionedTeamOutcome(sentence: string, grounding: Grounding): "home" | "away" | null {
+  const home = new RegExp(`\\b${escapedPattern(grounding.home)}\\b`, "i").test(sentence);
+  const away = new RegExp(`\\b${escapedPattern(grounding.away)}\\b`, "i").test(sentence);
+  return home === away ? null : home ? "home" : "away";
+}
+
+/**
+ * Removes model/market interpretations that deterministically disagree with
+ * the structured grounding. Numeric payloads remain untouched; ambiguous prose
+ * is omitted rather than rewritten into a new football claim.
+ */
+export function sanitizeGroundedMatchNarrative(answer: string, grounding: Grounding): string {
+  const modelFavorite = strongestOutcome({
+    home: grounding.pHome,
+    draw: grounding.pDraw,
+    away: grounding.pAway,
+  });
+  const completeMarkets = (grounding.oddsSources ?? []).filter((source) =>
+    Number.isFinite(source.pHome) && Number.isFinite(source.pDraw) && Number.isFinite(source.pAway)
+  );
+  const favoriteTeam = modelFavorite === "home"
+    ? grounding.home
+    : modelFavorite === "away"
+      ? grounding.away
+      : null;
+  const lines = answer.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/\b(?:read on the )?underdog\b/i.test(lines[index])) continue;
+    const next = lines.slice(index + 1).find((line) => line.trim());
+    if (favoriteTeam && next && new RegExp(`\\b${escapedPattern(favoriteTeam)}\\b`, "i").test(next)) {
+      lines[index] = "";
+    }
+  }
+  const retained = lines.join("\n").replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) => {
+    const claimedTeam = mentionedTeamOutcome(sentence, grounding);
+    if (claimedTeam) {
+      const claimsUnderdog = /\b(?:underdogs?|outsiders?|upset|overturn\s+the\s+model|spring\s+an?\s+upset)\b/i.test(sentence);
+      const claimsFavorite = /\b(?:favou?rite|favou?rs?|most likely (?:winner|side)|model edge)\b/i.test(sentence);
+      if (claimsUnderdog && modelFavorite === claimedTeam) return "";
+      if (claimsFavorite && modelFavorite !== claimedTeam && /\bmodel|pundit\b/i.test(sentence)) return "";
+    }
+
+    const homeProbability = new RegExp(
+      `\\b(?:pHome|home(?:[- ]win)? (?:probability|chance|share)|${escapedPattern(grounding.home)}(?:'s)? (?:win )?(?:probability|chance|share))\\b`,
+      "i"
+    );
+    const drawAssociation = /\b(?:includes?|contributes?|counts? toward|adds? to|boosts?|forms? part of|combined into)\b/i;
+    if (/\bdraw\b/i.test(sentence) && drawAssociation.test(sentence) && homeProbability.test(sentence)) {
+      return "";
+    }
+
+    if (claimedTeam
+      && /\b(?:market|odds|price|kalshi|polymarket|stake)\b/i.test(sentence)
+      && /\b(?:favou?rite|favou?rs?|backs?|leans? (?:to|toward)|gives?[^.!?\n]{0,20}(?:edge|advantage))\b/i.test(sentence)) {
+      const named = completeMarkets.filter((source) =>
+        sentence.toLocaleLowerCase().includes(source.source.toLocaleLowerCase())
+      );
+      const relevant = named.length ? named : completeMarkets;
+      const favorites = new Set(relevant.map((source) => strongestOutcome({
+        home: source.pHome,
+        draw: source.pDraw!,
+        away: source.pAway,
+      })).filter((outcome): outcome is MatchOutcome => outcome !== null));
+      if (relevant.length && (favorites.size !== 1 || !favorites.has(claimedTeam))) return "";
+    }
+    return sentence;
+  }).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return retained || "The structured probabilities are available, but the unsupported interpretation was omitted.";
+}
+
+export function sanitizeFootballGeometry(answer: string): string {
+  return answer.replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) =>
+    /\b(?:higher|high)(?: defensive)? line\b/i.test(sentence)
+      && /\b(?:shrink|reduce|lessen|decrease)s?\b/i.test(sentence)
+      && /\bspace behind (?:the )?(?:defenders|defence|defense|back line)\b/i.test(sentence)
+      ? ""
+      : sentence
+  ).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function sanitizeRuntimeResponseCorrectness(
   answer: string,
   grounding?: Grounding,
   context: ResponseCorrectnessContext = {}
 ): string {
-  const managerSafe = sanitizeManagerEraClaims(answer, context.managerEra);
+  const geometrySafe = sanitizeFootballGeometry(answer);
+  const managerSafe = sanitizeManagerEraClaims(geometrySafe, context.managerEra);
   const rationaleSafe = sanitizeContradictoryRationales(managerSafe, grounding);
   return stripUnvalidatedExternalMarketClaims(
     rationaleSafe,
     context.externalOneXTwoMarkets
   );
+}
+
+export function failClosedEmptyCurrentVerification(
+  answer: string,
+  verification: AskVerification,
+  evidenceRequired: boolean
+): string {
+  if (!evidenceRequired || verification.supportedClaimCount > 0
+    || (verification.status !== "abstain" && verification.status !== "unavailable")) {
+    return answer;
+  }
+  const safetyNotices = answer.split("\n").map((line) => line.trim()).filter((line) =>
+    /^This recognized fixture (?:is outside Pundit's model coverage|is temporarily unpriced|is missing a required model input)/.test(line)
+    || /^I could not establish an authoritative structured fixture identity/.test(line)
+    || /^This is general football analysis, not based on Pundit's model data\.$/.test(line)
+  );
+  const abstention = verification.status === "unavailable"
+    ? "I could not establish a supported current answer because verification was unavailable."
+    : "I could not establish a supported current answer from the retrieved evidence.";
+  return [...new Set([...safetyNotices, abstention])].join("\n\n");
 }
 
 function acknowledgeCorrection(answer: string, verification: AskVerification): string {
@@ -1383,6 +1514,23 @@ export function resolveAskContext(
     : [];
   const explicitRecognized = recognizedMatches.length === 1 ? recognizedMatches[0] : undefined;
   const competitionId = resolveCompetitionContext(question, history);
+  const contextualFixture = routing.fixtureContext
+    ? recognizedFixtures.find((fixture) => fixture.fixtureId === routing.fixtureContext?.fixtureId)
+    : undefined;
+  const explicitTeamsMatchContext = Boolean(teams && contextualFixture
+    && new Set(teams.map(normalizeTeamName)).size === 2
+    && new Set([
+      ...teams.map(normalizeTeamName),
+      contextualFixture.homeTeam.id,
+      contextualFixture.awayTeam.id,
+    ]).size === 2);
+
+  // A stable server-owned identity disambiguates two legs between the same
+  // clubs, even when the user repeats both team names. A different explicit
+  // matchup does not match this pair and continues to the replacement path.
+  if (contextualFixture && explicitTeamsMatchContext && hasExplicitMatchupCue(question)) {
+    return resolveRecognizedFixture(contextualFixture, fixtures, routing);
+  }
 
   if (recognizedMatches.length > 1 && hasExplicitMatchupCue(question)) {
     return { tier: "candidate" };
@@ -1392,16 +1540,7 @@ export function resolveAskContext(
   // cached model row can be allowed to emit probabilities.
   if (explicitRecognized
     && (!competitionId || hasExplicitMatchupCue(question))) {
-    const modelFixture = fixtures.find((fixture) =>
-      fixture.competitionId === explicitRecognized.competition.id
-      && String(fixture.fixtureId) === explicitRecognized.primarySourceFixtureId
-    );
-    const capability = capabilityForFixture(explicitRecognized, modelFixture, routing);
-    if (capability.status === "priced") {
-      if (modelFixture) return { tier: "match", fixture: modelFixture };
-      throw new Error("Priced fixture capability is missing its model fixture.");
-    }
-    return { tier: "fixture", fixture: explicitRecognized, capability };
+    return resolveRecognizedFixture(explicitRecognized, fixtures, routing);
   }
 
   if (explicitFixture && (!competitionId || hasExplicitMatchupCue(question))) {
@@ -1435,9 +1574,6 @@ export function resolveAskContext(
   // fixtureContext is server-owned identity returned by a previous grounding.
   // It wins over the temporary legacy teamContext when both are supplied.
   if (!teams && routing.fixtureContext && (!competitionId || hasMatchOutcomeIntent(question))) {
-    const contextualFixture = recognizedFixtures.find(
-      (fixture) => fixture.fixtureId === routing.fixtureContext?.fixtureId
-    );
     if (contextualFixture
       && (shouldUseMatchGrounding(question)
         || !leavesMatchContext(
@@ -1445,16 +1581,7 @@ export function resolveAskContext(
           [contextualFixture.homeTeam.name, contextualFixture.awayTeam.name],
           searchableFixtures
         ))) {
-      const modelFixture = fixtures.find((fixture) =>
-        fixture.competitionId === contextualFixture.competition.id
-        && String(fixture.fixtureId) === contextualFixture.primarySourceFixtureId
-      );
-      const capability = capabilityForFixture(contextualFixture, modelFixture, routing);
-      if (capability.status === "priced") {
-        if (modelFixture) return { tier: "match", fixture: modelFixture };
-        throw new Error("Priced fixture capability is missing its model fixture.");
-      }
-      return { tier: "fixture", fixture: contextualFixture, capability };
+      return resolveRecognizedFixture(contextualFixture, fixtures, routing);
     }
   }
 
@@ -1847,6 +1974,7 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
       .split("\n")
       .map((line) => correctGoalMarketPercentages(line, grounding))
       .join("\n");
+    sanitized = sanitizeGroundedMatchNarrative(sanitized, grounding);
     if (grounding.competitionId === "uefa.champions_qual") {
       sanitized = sanitized
         .replace(/\b(?:a )?share of the points\b/gi, "a draw")
@@ -2639,8 +2767,13 @@ export async function answerQuestion(
             removedClaimCount: 0,
           },
         };
-    const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
+    const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
       checked.answer,
+      checked.verification,
+      Boolean(query || bundle.queries.length)
+    );
+    const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
+      evidenceSafeAnswer,
       grounding?.kind === "match" ? grounding : undefined
     );
     const checkedAnswer = containsCorrectionCue(question)
@@ -2765,8 +2898,13 @@ export async function answerQuestionStream(
             removedClaimCount: 0,
           },
         };
-    const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
+    const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
       checked.answer,
+      checked.verification,
+      Boolean(query || bundle.queries.length)
+    );
+    const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
+      evidenceSafeAnswer,
       grounding?.kind === "match" ? grounding : undefined
     );
     const checkedAnswer = containsCorrectionCue(question)

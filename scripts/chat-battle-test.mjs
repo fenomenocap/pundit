@@ -19,6 +19,7 @@ import {
   recordScenarioFailure,
   sanitizeEvidence,
   selectFeaturedMatch,
+  snapshotAskRequest,
   readinessFailures,
   validateGrounding,
   validateSse,
@@ -224,12 +225,12 @@ async function jsonTurn(
     question: turn.question,
     startedAt: start,
   });
-  const requestBody = {
+  const requestBody = snapshotAskRequest({
     question: turn.question,
     history,
     teamContext,
     fixtureContext,
-  };
+  });
   const response = await fetchJson(`${options.apiUrl}/api/ask`, {
     method: "POST",
     headers: { "content-type": "application/json" },

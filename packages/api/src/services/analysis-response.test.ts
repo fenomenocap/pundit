@@ -384,6 +384,23 @@ describe("ensureGeneralDisclaimer", () => {
 });
 
 describe("sanitizeMatchAnswer", () => {
+  it("corrects an artifact-shaped 1-0 probability to the exact grounding value", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Fenerbahce",
+      away: "Lyon",
+      pHome: 0.2997,
+      pDraw: 0.279,
+      pAway: 0.4213,
+      scorelines: [{ score: "1-0", probability: 0.0691 }],
+      oddsSources: [],
+    } as unknown as Grounding;
+    const answer = sanitizeMatchAnswer("A 1-0 home win is quoted at 9.9%.", grounding);
+    expect(answer).toContain("1-0 home win is quoted at 6.9%");
+    expect(answer).not.toContain("9.9%");
+  });
+
   it("replaces unsupported scoreline-tail, aggregate, and causal claims", () => {
     const answer = sanitizeMatchAnswer([
       "Any scoreline not listed here falls below the 0.1% probability threshold.",
