@@ -36,6 +36,18 @@ export function loadApiRuntimeFixtureHelpers(repoRoot = path.resolve(import.meta
 export const EVAL_SCHEMA_VERSION = 9;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 
+/** Capture request evidence by value so later conversation turns cannot mutate it. */
+export function snapshotAskRequest({ question, history, teamContext, fixtureContext }) {
+  return {
+    question,
+    history: Array.isArray(history) ? history.map((turn) => ({ ...turn })) : history,
+    teamContext: Array.isArray(teamContext) ? [...teamContext] : teamContext,
+    fixtureContext: fixtureContext && typeof fixtureContext === "object"
+      ? { ...fixtureContext }
+      : fixtureContext,
+  };
+}
+
 export async function fetchWithTimeout(
   url,
   init,
