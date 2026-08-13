@@ -1,6 +1,6 @@
 # Model
 
-Cached output from Pundit's local ClubElo + Dixon-Coles engine for the **active club-fixture set** (14-day horizon). See [The Model](../how-it-works/the-model.md).
+Cached output from Pundit's local Dixon-Coles engine, using the release's pinned ClubElo strength artifact, for the **active club-fixture set** (14-day horizon). See [The Model](../how-it-works/the-model.md).
 
 ### `GET /api/model/active`
 
@@ -49,4 +49,4 @@ Returns **410 Gone**. The live World Cup tournament model is retired. See [Evalu
 
 ### Important caveat
 
-The active fixture cache recalculates probabilities with **current** ClubElo ratings on each refresh. It is not an immutable pre-kickoff archive. For calibration metrics, use [Evaluation](evaluation.md).
+The active fixture cache recalculates probabilities from the release's pinned **ClubElo rating artifact** on each refresh. The artifact is content-addressed and freshness-gated, but the active endpoint is still not an immutable pre-kickoff archive. For calibration metrics, use [Evaluation](evaluation.md).

@@ -59,7 +59,7 @@ withheld by the server.
 * **`kind: "match"`** — an active fixture in the 14-day window with model 1X2, O/U 2.5, BTTS, top scorelines, and available active market prices
 * **`kind: "fixture"`** — an authoritative/corroborated recognized fixture plus a non-priced capability; it contains no Pundit probabilities
 * **`kind: "competition"`** — ESPN standings for an enabled competition
-* **`kind: "season"`** — Premier League standings plus Monte Carlo title/top-four outlook
+* **`kind: "season"`** — Premier League standings plus Monte Carlo title/top-four outlook, when the complete persisted season schedule and all required ratings are available
 * **`null`** — clearly labelled general football analysis with no model-grounding claim
 
 Match grounding includes `pHome`, `pDraw`, `pAway`, `pOver2_5`, `pUnder2_5`, `pBttsYes`, `pBttsNo`, `topScores`, `homeFieldAdvantage`, nullable Stake columns, and sparse Kalshi/Polymarket `oddsSources`.
@@ -67,6 +67,9 @@ Match grounding includes `pHome`, `pDraw`, `pAway`, `pOver2_5`, `pUnder2_5`, `pB
 Fixture grounding includes the stable recognized identity and one typed capability: `temporarily-unpriced`, `outside-coverage`, or `insufficient-model-input`. Discovery-only fixture candidates return no fixture grounding or badge. A new explicit recognized matchup replaces retained context; a competition/table detour does not delete it. Match/1X2 intent keeps fixture routing priority, and competition aliases use token boundaries.
 
 Season grounding adds `seasonOutlook` with per-team `titleProb` and `topFourProb`.
+If those complete inputs are unavailable, a season-shaped question degrades to
+`kind: "competition"` with current standings instead of returning HTTP 503. It
+does not invent or partially simulate season probabilities.
 
 ### Timeouts and limits
 

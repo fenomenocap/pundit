@@ -1,6 +1,6 @@
 # The Model
 
-Pundit's match probabilities come from a **Dixon-Coles Poisson model** calibrated on **ClubElo** ratings and computed locally inside the API. Club ratings refresh hourly; the active fixture set (14-day horizon across enabled competitions) is recomputed on the same cadence.
+Pundit's match probabilities come from a **Dixon-Coles Poisson model** calibrated on a reviewed **ClubElo** ratings artifact and computed locally inside the API. The content-addressed ratings snapshot ships with a release; the active fixture set (14-day horizon across enabled competitions) is recomputed hourly without contacting ClubElo at runtime.
 
 ### Active fixture model
 
@@ -10,7 +10,7 @@ For each recognized, policy-eligible upcoming club fixture in the active window:
 * **Over/under 2.5, BTTS, and likely scorelines** derived from the score matrix
 * **Home-field advantage** applied for Premier League home teams (not for neutral-site tournaments)
 
-Team strength comes from ClubElo CSV feeds, scoped by competition rating profile (domestic league vs continental).
+Team strength comes from a pinned `clubelo@1` snapshot, scoped by competition rating profile (domestic league vs continental). Its selector, payload hash, source timestamp, minimum coverage and 30-day freshness are validated before use. A corrupt, expired or incomplete artifact fails closed rather than guessing ratings.
 
 Fixture recognition is a gate, not a numeric input. The registry binds approved structured source IDs to canonical teams, kickoff, venue/neutral state, competition, and status. Cancelled, postponed, unsupported, ambiguous, or incomplete fixtures fail closed before pricing; this does not alter the numeric output for existing eligible fixtures.
 
@@ -45,7 +45,7 @@ Two read-only evaluation artifacts measure how well pre-kickoff probabilities ma
 | **Club season (rolling)** | `/evaluation/club-season` | Immutable pre-kickoff snapshots captured when fixtures leave the scheduled window |
 | **WC 2026 (frozen)** | `/evaluation/wc-2026` | Reconstructed pre-kickoff probabilities for every finished World Cup 2026 match |
 
-The live Model page recalculates older fixtures with **current** ClubElo ratings — useful for exploration, but not a look-ahead-free backtest. Rigorous calibration uses the evaluation artifacts above.
+The live Model page recalculates older fixtures with the release's **pinned, freshness-gated** ratings artifact — useful for exploration, but not a look-ahead-free backtest. Rigorous calibration uses the evaluation artifacts above.
 
 ### Historical note: World Cup 2026
 

@@ -17,7 +17,7 @@ A recognized fixture can still be outside public model coverage, temporarily una
 Model probabilities are computed locally by Pundit's Dixon-Coles engine from ClubElo ratings — they are Pundit's independent estimate of match outcomes. Market comparison odds are reference prices from Stake, Kalshi, and Polymarket, normalized to no-vig 1X2 probabilities. When both appear in a match answer, they show where public markets agree or disagree with the model. Pundit does not execute trades on any platform.
 
 **How current is the data?**
-ESPN fixtures/standings and active market odds refresh every 30 minutes; ClubElo ratings and the active model refresh hourly. If a source is briefly unavailable, Pundit keeps the last-known-good data. The Fixtures page shows the ESPN cache timestamp and re-polls while matches are live.
+ESPN fixtures/standings and active market odds refresh every 30 minutes, and the active model recomputes hourly. Club strengths are loaded from a reviewed content-addressed release artifact, so ClubElo availability cannot affect startup or a running deployment. Hash, coverage and 30-day freshness checks fail closed. The Fixtures page shows the ESPN cache timestamp and re-polls while matches are live.
 
 **Does recognizing a fixture mean Pundit has priced it?**
 No. Recognition establishes a structured identity; capability separately decides whether the public model can price it. Friendlies remain outside public model coverage, and missing ratings or venue context fail closed.
