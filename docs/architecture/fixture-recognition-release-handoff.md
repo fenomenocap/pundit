@@ -20,10 +20,10 @@ Run from the repository root:
 
 | Gate | Reproduction | Result on this branch |
 |---|---|---|
-| API behavior and deterministic regressions | `pnpm --filter api test` | PASS — 31 files, 356 tests |
+| API behavior and deterministic regressions | `pnpm --filter api test` | PASS — 31 files, 362 tests |
 | API types | `pnpm --filter api exec tsc --noEmit` | PASS |
 | Web types | `pnpm --filter web exec tsc --noEmit` | PASS |
-| Schema-9 evaluator | `pnpm chat-eval:test` | PASS — 29 tests |
+| Schema-9 evaluator | `pnpm chat-eval:test` | PASS — 32 tests |
 | Evaluator configuration | `pnpm chat-eval:dry-run` | PASS; production traffic false; pacing 13,000 ms |
 | Production builds | `pnpm build` | PASS — API and web |
 | Browser smoke | `pnpm --filter web test:e2e` | PASS — Chromium 9/9 |
@@ -55,33 +55,39 @@ input.
    tests.
 5. **Response correctness — local PASS.** Current-fact search, bounded pinned
    retrieval, one no-retry verifier call, correction acknowledgement, citation
-   binding, scoreline arithmetic, and fail-closed external markets have
-   permanent regressions. Generated bookmaker numbers are omitted unless a
-   future server-owned record can prove all three same-source/time decimal legs.
+   binding, scoreline arithmetic, and fail-closed external markets have focused
+   service tests. The evaluator runs the built deterministic utility contracts;
+   end-to-end generated-answer correctness is separately critic-gated and is not
+   inferred from a helper result. Generated bookmaker numbers are omitted unless
+   a server-owned record proves all three same-source/time decimal legs.
 6. **Evaluator/certification — local PASS.** Schema 9 records immutable
    per-turn request, response, grounding, capability, citations, verification,
    latency, SSE, reproduction, and independent source/API/web SHAs. Required
    null or `INCONCLUSIVE` correctness blocks overall PASS; fixtures are never
    substituted.
-7. **Private friendly shadow — local PASS, disabled.** It has no public route or
-   UI, applies zero HFA and wider uncertainty, fails closed on missing inputs,
-   and writes a recoverable immutable private ledger with chronological Brier,
-   log-loss, calibration, and segment metrics. There is no automatic public
-   promotion.
+7. **Private friendly shadow policy — local PASS, disabled and library-only.**
+   It has no public route or UI, applies zero HFA and wider uncertainty, fails
+   closed on missing inputs, and can write a recoverable immutable private
+   ledger with chronological Brier, log-loss, calibration, and segment metrics.
+   This release intentionally has no scheduled collector or automatic public
+   promotion; setting the flag alone does not acquire or append forecasts.
 
-The four screenshot-class failures are permanent scenarios: stale manager
-evidence, correction after wrong history, `1-1` misclassified as over 2.5, and
-invalid or misattributed 1X2 data. An authoritative friendly is tested as a
-recognized, context-retaining, outside-coverage fixture that cannot emit Pundit
-probabilities or scorelines.
+The four screenshot-class failures are permanent local contracts: stale-manager
+era conflict, correction-cue detection plus re-verification service behavior,
+`1-1` settlement against over 2.5, and complete/attributed 1X2 validation. Live
+generated answers require an explicit per-scenario critic verdict before the
+report can pass. An authoritative friendly is locally tested as recognized and
+outside public coverage; live discovery is informational when no exact friendly
+exists and fixtures are never substituted.
 
 ## Remaining release risks and authorization boundary
 
 - The branch has not been pushed or deployed. Source, Railway API, and Vercel
   web SHAs therefore intentionally do not yet converge on these changes.
-- Registry expansion and friendly shadow collection remain disabled. Enabling
-  either is a separate operational decision after source rights and `/data`
-  persistence are verified on the deployed revision.
+- Registry expansion remains disabled. Enabling it is a separate operational
+  decision after source rights and `/data` persistence are verified. Friendly
+  shadow collection also needs a separately reviewed private collector; the
+  present flag only gates the policy library.
 - Source update latency and cross-source conflict rates need a longitudinal
   shadow observation window; the read-only study cannot honestly certify them.
 - Production MiniMax search, retrieval, verifier behavior, latency, SSE, and
@@ -92,5 +98,6 @@ probabilities or scorelines.
   `/data`, recognized fixtures, search status, runtime version, and exact
   source/API/web SHA convergence before any PASS claim.
 
-No push, pull request, deployment, flag change, live MiniMax request, or
-production evaluator run should occur without explicit release authority.
+Release and one bounded production-evaluation authority was granted on
+2026-08-13. This handoff must be amended with exact production evidence before
+the release is classified.

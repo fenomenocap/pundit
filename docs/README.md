@@ -7,7 +7,9 @@ Under the hood, every answer is backed by:
 * A **Dixon-Coles match model** (ClubElo ratings plus home-field advantage where applicable) that produces win/draw/loss, totals, BTTS, and scoreline probabilities for active fixtures
 * A **season outlook simulator** for Premier League title and top-four probabilities
 * Active **Stake, Kalshi, and Polymarket** 1X2 prices for featured matches, shown alongside the model when available
-* Live **fixtures, results, and standings** from ESPN
+* Live **fixtures, results, and standings** from ESPN, with approved structured identities separated from discovery-only fixture candidates
+
+Recognized fixtures that the public model cannot price stay available as context with a specific coverage or input label. They never receive invented Pundit probabilities.
 
 Pundit doesn't run its own markets and there's nothing to trade here — it's an analysis layer on top of public data.
 

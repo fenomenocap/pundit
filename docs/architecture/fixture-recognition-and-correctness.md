@@ -52,23 +52,25 @@ scorelines from non-priced fixture answers.
 
 ## Current-fact verification
 
-Dated fixtures, managers, injuries, lineups, transfers, recent results, odds,
-and corrections pre-search. At most three official/reputable pages are
+Dated-fixture, manager, injury, lineup, transfer, recent-result, odds, and
+correction cue classes trigger deterministic pre-search. At most three official/reputable pages are
 retrieved with protocol, DNS/address, redirect, content-type, size, timeout, and
 shared-request-abort guards. One MiniMax M3 verification call selects supported
 server-owned evidence IDs. Unsupported claims are removed, conflicts are
 reported, and missing/retrieval/verifier failures abstain. The JSON and SSE
 `done` contracts include verification status and counts.
 
-Deterministic utilities separately enforce decimal-odds arithmetic, complete
+Deterministic answer-path guards and supporting utilities enforce decimal-odds arithmetic, complete
 same-source/time 1X2 markets, no-vig totals, external-data labels, scoreline
 totals, manager-era attribution, correction cues, and contradictory-rationale
 removal.
 
 ## Private friendly shadow policy
 
-`FRIENDLY_SHADOW_ENABLED` defaults to false. Even when enabled, the policy has
-no public API or UI path. It requires an authoritative/corroborated club
+`FRIENDLY_SHADOW_ENABLED` defaults to false. The current release provides a
+private policy/ledger library, not a scheduled collector; setting the flag alone
+does not acquire fixtures or write forecasts. The library has no public API or
+UI path and requires an authoritative/corroborated club
 friendly, explicit neutral-site state, ratings provenance, expected-squad
 evidence, rotation assessment, substitution format, and a pre-kickoff timestamp.
 It applies zero home-field advantage and shrinks 1X2 probabilities toward equal
@@ -83,4 +85,4 @@ overwritten. Results require an authoritative finished source, must be observed
 between kickoff and the write time, and append without altering inputs. Zero-sample
 Brier/log loss are null, with chronological completed rows producing Brier,
 log loss, calibration buckets, and neutral/rotation segments. There is no
-automatic public promotion.
+automatic collection or public promotion in this release.

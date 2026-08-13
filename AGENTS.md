@@ -8,7 +8,7 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 
 | Area | Current behavior |
 |---|---|
-| Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/competition/season/general), active market comparisons, and suggestions from featured active club fixtures. The status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpriced`, `no-fixtures`, and `unavailable`; suggestions only ever offer fixtures the model has priced, so a chip never answers 503. |
+| Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/recognized fixture/competition/season/general), active market comparisons, and suggestions from featured active club fixtures. Recognized non-priced fixtures retain context and show distinct outside-coverage, temporary-unavailability, or missing-input labels without Pundit probabilities; discovery-only candidates receive no fixture badge. The status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpriced`, `no-fixtures`, and `unavailable`; suggestions only ever offer fixtures the model has priced, so a chip never answers 503. |
 | `POST /api/ask` | Four tiers: active-match model grounding (ClubElo + HFA), competition standings grounding (ESPN table), Premier League season outlook (Monte Carlo title/top-four), and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, a shared 90-second request deadline, deterministic pre-search for clearly current questions, one bounded ambiguous fallback, and a 10 requests/minute deployment-wide limit divided across replicas. Positive current-news claims require same-sentence server-owned citations; unsupported claims are removed or the answer abstains. |
 | Active model | `/api/model/active` and `/api/model/fixtures` serve Dixon-Coles 1X2 (plus totals/BTTS/scorelines) for active club fixtures only. |
 | Fixture registry | Approved structured identities persist atomically under `/data`; `/api/fixtures/recognized` exposes read-only capability decisions. Candidates/search never become grounding. Expanded routing is flag-gated and friendlies remain outside public model coverage. |
@@ -28,7 +28,7 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 - Optional `ALLOWED_ORIGINS` (comma-separated) restricts browser CORS; leave unset only while debugging, and set it to the Vercel frontend origin(s) in production.
 - `/health` is liveness. `/ready` reports model, ESPN, active-fixture, and market-odds cache readiness without exposing secrets.
 - Cache refresh cadences: ESPN fixtures/standings and active market odds every 30 minutes; ClubElo ratings and active model every hour. All retain last-good data on refresh failure.
-- `PUNDIT_DATA_DIR=/data` on Railway is a mounted volume. It holds the rolling club-season calibration history and the persisted ClubElo ratings cache — state that must survive deploys, since the container image is rebuilt each time. Unset locally, both fall back to `packages/api/data`.
+- `PUNDIT_DATA_DIR=/data` on Railway is a mounted volume. It holds the rolling club-season calibration history, persisted ClubElo ratings, atomic recognized-fixture registry plus last-good recovery copy, and (only when separately enabled) the private friendly-shadow ledger. This state must survive deploys, since the container image is rebuilt each time. Unset locally, paths fall back to `packages/api/data`.
 - A ClubElo outage is deliberately **not** surfaced in the UI: a rating a few days old still prices a match honestly and there is nothing for a reader to act on. Monitor `model.ratingsServedFromCache` on `/ready` and alert on `[ClubRatings] ALERT` log lines instead.
 
 ## Production verification
@@ -61,6 +61,7 @@ packages/api/src/
     dixon-coles.ts                 — Elo-to-goal and analytical score model (+ HFA)
     model-data.ts                  — active-club fixture model cache
     football-data.ts               — ESPN fixtures/results/standings cache
+    fixture-registry.ts            — recognized identities, capabilities, atomic persistence
     active-fixtures.ts             — 14-day active fixture index
     featured-fixtures.ts           — cross-comp featured selector
     fixture-market-sources.ts      — Stake/Kalshi/Polymarket by market profile

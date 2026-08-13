@@ -24,16 +24,13 @@ Set `"stream": true` to receive **Server-Sent Events** instead of a single JSON 
 | Event | Payload | When |
 |---|---|---|
 | `grounding` | `{ grounding }` | As soon as tier routing completes |
-| `delta` | `{ text }` | Progressive validated answer text; search-backed turns may hold text until citations are bound |
+| `delta` | `{ text }` | One whole-answer-validated text payload after deterministic and evidence guards complete |
 | `done` | `{ answer, grounding, citations?, verification }` | Authoritative complete response with optional server-owned citation metadata and claim-verification verdict |
 | `error` | `{ error, status, code? }` | Failure after headers were sent |
 
 SSE includes `: ping` comment heartbeats every 15 seconds during long web-search turns.
 
-Ordinary no-search answers stream progressively after deterministic line guards.
-Search-backed answers never stream tool drafts: the server binds evidence markers
-to exact links and dates before releasing text. Clients should render `delta` as
-it comes and always treat `done.answer` as authoritative.
+All answers are held until whole-answer deterministic guards complete, then released as one safe `delta` followed by authoritative `done`. This prevents a later sentence from invalidating an earlier streamed rationale or market claim. Grounding is still sent first, and heartbeats keep long search/generation turns alive. Search-backed answers never stream tool drafts: the server binds evidence markers to exact links and dates before releasing text. Clients should render the `delta` and always treat `done.answer` as authoritative.
 
 ### Response shape (non-streaming)
 
@@ -48,6 +45,15 @@ it comes and always treat `done.answer` as authoritative.
 }
 ```
 
+`verification.status` describes the extracted current factual claims, not a
+blanket certification of every sentence. `verified` means at least one such
+claim was supported; `not-required` means the turn contained no claim in the
+verification cue classes; `conflict` reports incompatible supported sources;
+`abstain` means no extracted claim survived; and `unavailable` means retrieval
+or verification could not establish support. `supportedClaimCount` counts
+retained extracted claims and `removedClaimCount` counts claims removed or
+withheld by the server.
+
 `grounding` is one of:
 
 * **`kind: "match"`** — an active fixture in the 14-day window with model 1X2, O/U 2.5, BTTS, top scorelines, and available active market prices
@@ -57,6 +63,8 @@ it comes and always treat `done.answer` as authoritative.
 * **`null`** — clearly labelled general football analysis with no model-grounding claim
 
 Match grounding includes `pHome`, `pDraw`, `pAway`, `pOver2_5`, `pUnder2_5`, `pBttsYes`, `pBttsNo`, `topScores`, `homeFieldAdvantage`, nullable Stake columns, and sparse Kalshi/Polymarket `oddsSources`.
+
+Fixture grounding includes the stable recognized identity and one typed capability: `temporarily-unpriced`, `outside-coverage`, or `insufficient-model-input`. Discovery-only fixture candidates return no fixture grounding or badge. A new explicit recognized matchup replaces retained context; a competition/table detour does not delete it. Match/1X2 intent keeps fixture routing priority, and competition aliases use token boundaries.
 
 Season grounding adds `seasonOutlook` with per-team `titleProb` and `topFourProb`.
 
