@@ -19,6 +19,7 @@ import {
   recordScenarioFailure,
   readinessFailures,
   selectFeaturedMatch,
+  snapshotAskRequest,
   validateGrounding,
   validateSse,
   validateAnswerCopy,
@@ -150,6 +151,36 @@ test("fetch timeout keeps explicit attributable evidence", async () => {
     fetchWithTimeout("https://example.test", {}, 5, neverCompletes),
     /request timed out after 5ms/
   );
+});
+
+test("request evidence snapshots do not gain later conversation turns", () => {
+  const history = [];
+  const turn1 = snapshotAskRequest({
+    question: "First question",
+    history,
+    teamContext: ["Alpha", "Beta"],
+    fixtureContext: { fixtureId: "fixture-1" },
+  });
+  history.push(
+    { role: "user", content: "First question" },
+    { role: "assistant", content: "First answer" }
+  );
+  const turn2 = snapshotAskRequest({
+    question: "Second question",
+    history,
+    teamContext: ["Alpha", "Beta"],
+    fixtureContext: { fixtureId: "fixture-1" },
+  });
+  history.push(
+    { role: "user", content: "Second question" },
+    { role: "assistant", content: "Second answer" }
+  );
+  assert.deepEqual(turn1.history, []);
+  assert.deepEqual(turn2.history, [
+    { role: "user", content: "First question" },
+    { role: "assistant", content: "First answer" },
+  ]);
+  assert.notEqual(turn2.history, history);
 });
 
 test("readiness gating names each failed component", () => {
