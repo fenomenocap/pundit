@@ -264,6 +264,20 @@ export function modelDataCoversActiveFixtures(
     && [...activeKeys].every((key) => modelKeys.has(key));
 }
 
+/**
+ * Readiness accepts an initialized current subset because missing ratings are
+ * represented explicitly as unpriced fixture capabilities. It still rejects
+ * stale/foreign model rows; exact coverage remains the refresh-cadence gate.
+ */
+export function modelDataIsCurrentSubset(
+  model: Pick<ModelDataCache, "fixtures" | "lastUpdated">,
+  activeFixtures: ActiveFixture[]
+): boolean {
+  if (model.lastUpdated === null) return false;
+  const activeKeys = new Set(activeFixtures.map(activeFixtureIdentity));
+  return model.fixtures.every((fixture) => activeKeys.has(cachedFixtureIdentity(fixture)));
+}
+
 export function findMissingClubRatingTeams(
   activeFixtures: ActiveFixture[],
   ratings: ClubRatingsCache["byProfile"]

@@ -93,6 +93,20 @@ describe("evaluateReadiness", () => {
       .toBe(false);
   });
 
+  it("accepts a freshly initialized partial model while rejecting foreign rows", () => {
+    const active = [activeFixture(1), { ...activeFixture(2), homeTeam: "Liverpool", awayTeam: "Everton" }];
+    const partial = model({ fixtures: [modelFixture(1)], lastUpdated: new Date(), error: "one fixture is unpriced" });
+    expect(evaluateReadiness(partial, football, active, odds)).toMatchObject({
+      ready: true,
+      modelReady: true,
+    });
+    const foreign = model({ fixtures: [modelFixture(99)], lastUpdated: new Date() });
+    expect(evaluateReadiness(foreign, football, active, odds)).toMatchObject({
+      ready: false,
+      modelReady: false,
+    });
+  });
+
   it("reports football and market dependency failures independently", () => {
     const currentModel = model({
       fixtures: [modelFixture()],
