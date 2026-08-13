@@ -20,7 +20,7 @@ Run from the repository root:
 
 | Gate | Reproduction | Result on this branch |
 |---|---|---|
-| API behavior and deterministic regressions | `pnpm --filter api test` | PASS — 34 files, 402 tests |
+| API behavior and deterministic regressions | `pnpm --filter api test` | PASS — 34 files, 403 tests |
 | API types | `pnpm --filter api exec tsc --noEmit` | PASS |
 | Web types | `pnpm --filter web exec tsc --noEmit` | PASS |
 | Schema-10 evaluator | `pnpm chat-eval:test` | PASS — 38 tests |

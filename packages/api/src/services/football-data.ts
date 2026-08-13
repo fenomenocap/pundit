@@ -410,9 +410,15 @@ export function parseEvent(e: any, context: ParseEventContext): FootballMatch {
     venue: typeof competitionMeta?.venue?.fullName === "string"
       ? competitionMeta.venue.fullName
       : null,
+    // ESPN omits `neutralSite` for ordinary home/away fixtures. In the two
+    // explicitly validated model competitions, that omission is the provider's
+    // false representation; preserving it as unknown would unprice the entire
+    // legacy model set. Unsupported competitions retain null and fail closed.
     neutralVenue: typeof competitionMeta?.neutralSite === "boolean"
       ? competitionMeta.neutralSite
-      : null,
+      : getCompetitionById(context.competitionId)?.enabled
+        ? false
+        : null,
     score: completed || state === "in" || hasScore
       ? { home: homeScore ?? 0, away: awayScore ?? 0 }
       : null,
