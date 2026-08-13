@@ -16,22 +16,22 @@ const MAX_HISTORY_TOTAL_LENGTH = 12_000;
 
 export function parseHistory(raw: unknown): ConversationTurn[] {
   if (raw === undefined) return [];
-  if (!Array.isArray(raw)) throw new AppError(400, "'history' must be an array.");
+  if (!Array.isArray(raw)) throw new AppError(400, "The conversation context is invalid. Start a new chat and try again.");
 
   const history = raw.slice(-MAX_HISTORY_TURNS).map((turn) => {
     if (!turn || typeof turn !== "object") {
-      throw new AppError(400, "Each history turn must contain a role and content.");
+      throw new AppError(400, "The conversation context is invalid. Start a new chat and try again.");
     }
 
     const role = (turn as { role?: unknown }).role;
     const content = (turn as { content?: unknown }).content;
     if ((role !== "user" && role !== "assistant") || typeof content !== "string") {
-      throw new AppError(400, "History roles must be 'user' or 'assistant' with text content.");
+      throw new AppError(400, "The conversation context is invalid. Start a new chat and try again.");
     }
 
     const trimmedContent = content.trim();
     if (!trimmedContent || trimmedContent.length > MAX_HISTORY_CONTENT_LENGTH) {
-      throw new AppError(400, "History content must be between 1 and 4000 characters.");
+      throw new AppError(400, "The conversation context is invalid. Start a new chat and try again.");
     }
 
     return { role, content: trimmedContent } as ConversationTurn;
@@ -40,22 +40,33 @@ export function parseHistory(raw: unknown): ConversationTurn[] {
   if (history.length % 2 !== 0 || history.some((turn, index) =>
     turn.role !== (index % 2 === 0 ? "user" : "assistant")
   )) {
-    throw new AppError(400, "Conversation must contain complete user/assistant exchanges.");
+    throw new AppError(400, "The conversation context is invalid. Start a new chat and try again.");
   }
   const totalLength = history.reduce((total, turn) => total + turn.content.length, 0);
   if (totalLength > MAX_HISTORY_TOTAL_LENGTH) {
-    throw new AppError(400, "History must be 12000 characters or fewer in total.");
+    throw new AppError(400, "The conversation context is too long. Start a new chat and try again.");
   }
   return history;
 }
 
-function parseTeamContext(raw: unknown): TeamContext | undefined {
+export function parseTeamContext(raw: unknown): TeamContext | undefined {
   if (raw === undefined) return undefined;
   if (!Array.isArray(raw) || raw.length !== 2
     || raw.some((team) => typeof team !== "string" || !team.trim())) {
-    throw new AppError(400, "'teamContext' must contain exactly two team names.");
+    throw new AppError(400, "The selected match context is invalid. Start a new chat and try again.");
   }
   return [raw[0].trim(), raw[1].trim()];
+}
+
+export function parseQuestion(raw: unknown): string {
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new AppError(400, "Please enter a question.");
+  }
+  const question = raw.trim();
+  if (question.length > 500) {
+    throw new AppError(400, "Your question is too long. Please shorten it and try again.");
+  }
+  return question;
 }
 
 export function parseFixtureContext(raw: unknown): FixtureContext | undefined {
@@ -63,49 +74,64 @@ export function parseFixtureContext(raw: unknown): FixtureContext | undefined {
   if (!raw || typeof raw !== "object"
     || typeof (raw as { fixtureId?: unknown }).fixtureId !== "string"
     || !(raw as { fixtureId: string }).fixtureId.trim()) {
-    throw new AppError(400, "'fixtureContext' must contain a fixtureId.");
+    throw new AppError(400, "The selected match context is invalid. Start a new chat and try again.");
   }
   return { fixtureId: (raw as { fixtureId: string }).fixtureId.trim() };
 }
 
-// The limit users actually get, across the whole deployment.
-const ASK_LIMIT_PER_MINUTE = Number(process.env.ASK_RATE_LIMIT_PER_MINUTE ?? 10);
+export interface AskRateLimitConfig {
+  scope: "deployment";
+  perMinute: number;
+  replicas: number;
+  perInstance: number;
+}
 
-/**
- * express-rate-limit keeps its counters in process memory, so each replica
- * enforces the limit independently and the real ceiling is limit x replicas.
- * Railway currently runs a single replica, which is why the default is 1 and
- * nothing needs setting for the configured limit to be the real one. Raise it
- * only if the replica count is raised, or the deployment-wide budget silently
- * multiplies.
- *
- * A shared store would make this exact regardless of replica count, but that
- * means Redis, which this project deliberately does not run.
- *
- * Note what this does *not* fix: the in-memory counter increments
- * asynchronously, so a burst of simultaneous requests can all read the same
- * remaining count and slip through together. Sequential traffic is limited
- * exactly -- request 11 of 10 is refused -- while a hard concurrent burst
- * overshoots. That is a property of the store, not of the budget arithmetic.
- */
-const API_REPLICAS = Math.max(1, Number(process.env.API_REPLICAS ?? 1));
-const PER_INSTANCE_LIMIT = Math.max(1, Math.floor(ASK_LIMIT_PER_MINUTE / API_REPLICAS));
+function positiveInteger(value: string | undefined, fallback: number, name: string): number {
+  const parsed = value === undefined ? fallback : Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return parsed;
+}
 
-export const askRateLimitConfig = {
-  perMinute: ASK_LIMIT_PER_MINUTE,
-  replicas: API_REPLICAS,
-  perInstance: PER_INSTANCE_LIMIT,
-};
+export function resolveAskRateLimitConfig(
+  env: Record<string, string | undefined> = process.env
+): AskRateLimitConfig {
+  const perMinute = positiveInteger(env.ASK_RATE_LIMIT_PER_MINUTE, 10, "ASK_RATE_LIMIT_PER_MINUTE");
+  const replicas = positiveInteger(env.API_REPLICAS, 1, "API_REPLICAS");
+  if (replicas > perMinute) {
+    throw new Error("API_REPLICAS cannot exceed ASK_RATE_LIMIT_PER_MINUTE.");
+  }
+  return {
+    scope: "deployment",
+    perMinute,
+    replicas,
+    perInstance: Math.floor(perMinute / replicas),
+  };
+}
 
-router.use(
-  rateLimit({
+export const askRateLimitConfig = resolveAskRateLimitConfig();
+
+// One process-wide bucket, not one bucket per source IP. Combined with the
+// validated per-replica division, unrelated clients cannot each consume the
+// full MiniMax budget. Exact cross-replica coordination would require a shared
+// store; Railway's declared replica count is therefore part of readiness.
+export function askRateLimitKey(): string {
+  return "deployment";
+}
+
+export function createAskRateLimiter(config = askRateLimitConfig) {
+  return rateLimit({
     windowMs: 60 * 1000,
-    limit: PER_INSTANCE_LIMIT,
+    limit: config.perInstance,
+    keyGenerator: askRateLimitKey,
     standardHeaders: "draft-7",
     legacyHeaders: false,
     message: { error: "Too many requests, try again shortly." },
-  })
-);
+  });
+}
+
+router.use(createAskRateLimiter());
 
 function sseSend(res: Response, event: string, data: unknown): void {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -113,15 +139,7 @@ function sseSend(res: Response, event: string, data: unknown): void {
 
 router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const question = req.body?.question;
-    if (typeof question !== "string" || !question.trim()) {
-      throw new AppError(400, "Missing 'question' in request body.");
-    }
-
-    const trimmedQuestion = question.trim();
-    if (trimmedQuestion.length > 500) {
-      throw new AppError(400, "Question must be 500 characters or fewer.");
-    }
+    const trimmedQuestion = parseQuestion(req.body?.question);
 
     const history = parseHistory(req.body?.history);
     const teamContext = parseTeamContext(req.body?.teamContext);

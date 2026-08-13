@@ -8,18 +8,22 @@ import {
   EVAL_SCHEMA_VERSION,
   classifyResult,
   compareReports,
+  createComparisonBaseline,
   createPacer,
+  executeRuntimeHelperScenario,
   fetchWithTimeout,
   finalizeClassifications,
   generateAdversarialScenarios,
   loadPreviousReport,
   loadApiRuntimeCorrectnessHelpers,
   loadApiRuntimeFixtureHelpers,
+  loadApiRuntimeRoutingHelpers,
   parseSse,
   recordScenarioFailure,
   readinessFailures,
   selectFeaturedMatch,
   snapshotAskRequest,
+  snapshotSseReproduction,
   validateGrounding,
   validateSse,
   validateAnswerCopy,
@@ -51,6 +55,57 @@ function runNode(args) {
     child.on("error", reject);
     child.on("close", (code) => resolve({ code, stdout, stderr }));
   });
+}
+
+function completeBrowserEvidence(identity, overrides = {}) {
+  return {
+    ...identity,
+    url: "https://thepundit.vercel.app/",
+    viewport: { width: 390, height: 844 },
+    console: { errors: [], warnings: [] },
+    passed: true,
+    summary: "Required production browser contracts passed.",
+    checks: [
+      {
+        id: "fixture-capability-label",
+        passed: true,
+        evidence: "Observed the recognized-fixture capability label.",
+        reproduction: ["Open the recognized fixture", "Submit the fixture question"],
+        scenarioIds: ["recognized-friendly-outside-coverage"],
+      },
+      {
+        id: "fixture-context-retention",
+        passed: true,
+        evidence: "Observed the same fixture after a table detour and follow-up.",
+        reproduction: ["Ask about the fixture", "Ask for the table", "Return to the fixture"],
+        scenarioIds: ["table-route-preserves-match", "unsupported-followup-and-matchup-replacement"],
+      },
+      {
+        id: "new-chat-clears-context",
+        passed: true,
+        evidence: "New Chat removed the retained fixture and visible transcript.",
+        reproduction: ["Establish fixture context", "Choose New Chat", "Inspect cleared state"],
+        scenarioIds: [],
+      },
+      {
+        id: "candidate-no-fixture-badge",
+        passed: true,
+        evidence: "An unrecognized candidate displayed no fixture badge.",
+        reproduction: ["Submit the candidate matchup", "Inspect the assistant badge area"],
+        scenarioIds: ["candidate-never-becomes-fixture"],
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function browserContractScenarios() {
+  return [
+    "recognized-friendly-outside-coverage",
+    "table-route-preserves-match",
+    "unsupported-followup-and-matchup-replacement",
+    "candidate-never-becomes-fixture",
+  ].map((id) => ({ id, passed: true, outcome: "PASS", evidence: "Browser contract prerequisite." }));
 }
 
 test("selectFeaturedMatch uses a model-backed active club fixture with known teams", () => {
@@ -183,6 +238,21 @@ test("request evidence snapshots do not gain later conversation turns", () => {
   assert.notEqual(turn2.history, history);
 });
 
+test("failed SSE requests have an immutable reproduction before transport validation", () => {
+  const reproduction = snapshotSseReproduction("What does the current table show?");
+  assert.deepEqual(reproduction, {
+    method: "POST",
+    path: "/api/ask",
+    body: {
+      question: "What does the current table show?",
+      history: [],
+      teamContext: undefined,
+      fixtureContext: undefined,
+      stream: true,
+    },
+  });
+});
+
 test("readiness gating names each failed component", () => {
   assert.deepEqual(readinessFailures({
     status: "loading",
@@ -272,6 +342,53 @@ test("same-schema deployment failures classify against the prior complete report
   finalizeClassifications(current, previous);
   assert.equal(current.scenarios[0].classification, "REGRESSION");
   assert.equal(current.comparison.comparable, true);
+});
+
+test("comparison baseline preserves only immutable fields needed by the finalizer", () => {
+  const previous = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "prior-run",
+    deployment: { id: "deploy-a", sourceSha: "secretly-irrelevant" },
+    scenarios: [{
+      id: "answer",
+      passed: true,
+      outcome: "PASS",
+      classification: "PASS",
+      answer: "Large answer must not be copied.",
+    }],
+  };
+  const baseline = createComparisonBaseline(previous);
+  previous.scenarios[0].classification = "REGRESSION";
+  assert.deepEqual(baseline, {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "prior-run",
+    deployment: { id: "deploy-a" },
+    scenarios: [{
+      id: "answer",
+      passed: true,
+      outcome: "PASS",
+      classification: "PASS",
+      failure: undefined,
+    }],
+  });
+});
+
+test("preserved comparator classifies a recovered same-schema scenario intermittent", () => {
+  const prior = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "prior-failure",
+    deployment: { id: "deploy-a" },
+    scenarios: [{ id: "answer", passed: false, outcome: "FAIL", classification: "EXISTING ISSUE" }],
+  };
+  const current = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "current-pass",
+    deployment: { id: "deploy-b" },
+    scenarios: [{ id: "answer", passed: true, outcome: "PASS" }],
+  };
+  finalizeClassifications(current, createComparisonBaseline(prior));
+  assert.equal(current.scenarios[0].classification, "INTERMITTENT");
+  assert.equal(current.comparison.previousRunId, "prior-failure");
 });
 
 test("adversarial generation covers exactly five required categories", () => {
@@ -374,6 +491,7 @@ test("finalizer enriches the latest failed run without replacing latest complete
     startedAt: "2026-07-27T00:00:00.000Z",
     completedAt: "2026-07-27T00:01:00.000Z",
     deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234" },
+    webUrl: "https://thepundit.vercel.app",
     scenarios: [{
       id: "scenario",
       passed: true,
@@ -413,10 +531,7 @@ test("finalizer enriches the latest failed run without replacing latest complete
     deploymentId: "deploy-a",
     capturedAt: "2026-07-27T00:06:00.000Z",
   };
-  await writeFile(browserPath, JSON.stringify({
-    ...evidenceIdentity, passed: true, summary: "browser passed",
-    checks: [{ name: "chat flow", passed: true, evidence: "Observed grounding and answer." }],
-  }));
+  await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(evidenceIdentity)));
   await writeFile(criticPath, JSON.stringify({
     ...evidenceIdentity,
     materialIssue: false,
@@ -437,7 +552,7 @@ test("finalizer enriches the latest failed run without replacing latest complete
     await readFile(path.join(directory, "latest-run.json"), "utf8")
   );
   assert.equal(latestRun.runId, "failed");
-  assert.equal(latestRun.browserEvidence.summary, "browser passed");
+  assert.equal(latestRun.browserEvidence.summary, "Required production browser contracts passed.");
   assert.deepEqual(latestRun.recommendations, ["Keep monitoring."]);
 });
 
@@ -448,7 +563,8 @@ test("finalizer rejects browser or critic evidence from another run", async () =
     runId: "expected-run",
     startedAt: "2026-08-13T10:00:00.000Z",
     deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234" },
-    scenarios: [],
+    webUrl: "https://thepundit.vercel.app",
+    scenarios: browserContractScenarios(),
     progress: { status: "complete" },
     browserEvidence: null,
     recommendations: [],
@@ -463,10 +579,7 @@ test("finalizer rejects browser or critic evidence from another run", async () =
     deploymentId: "deploy-a",
     capturedAt: "2026-08-13T10:01:00.000Z",
   };
-  await writeFile(browserPath, JSON.stringify({
-    ...identity, passed: true, summary: "browser passed",
-    checks: [{ name: "chat flow", passed: true, evidence: "Observed." }],
-  }));
+  await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
   await writeFile(criticPath, JSON.stringify({
     ...identity,
     materialIssue: false,
@@ -483,6 +596,61 @@ test("finalizer rejects browser or critic evidence from another run", async () =
   assert.match(result.stderr, /runId mismatch/);
 });
 
+test("finalizer rejects a generic browser pass without named UI contract coverage", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-browser-schema-"));
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "browser-contract-run",
+    startedAt: "2026-08-13T10:00:00.000Z",
+    webUrl: "https://thepundit.vercel.app",
+    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+    scenarios: browserContractScenarios(),
+    progress: { status: "complete" },
+    browserEvidence: null,
+    recommendations: [],
+  }, null);
+  await writeReport(report, directory);
+  const identity = {
+    runId: "browser-contract-run",
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: "abc1234",
+    deploymentId: "deploy-a",
+    capturedAt: "2026-08-13T10:01:00.000Z",
+  };
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  await writeFile(browserPath, JSON.stringify({
+    ...identity,
+    url: "https://thepundit.vercel.app/",
+    viewport: { width: 390, height: 844 },
+    console: { errors: [], warnings: [] },
+    passed: true,
+    summary: "Generic browser flow passed.",
+    checks: [{
+      id: "chat-flow",
+      passed: true,
+      evidence: "The page rendered.",
+      reproduction: ["Open the homepage"],
+      scenarioIds: [],
+    }],
+  }));
+  await writeFile(criticPath, JSON.stringify({
+    ...identity,
+    materialIssue: false,
+    overallVerdict: "PASS",
+    scenarioVerdicts: [],
+  }));
+
+  const result = await runNode([
+    "scripts/finalize-chat-report.mjs",
+    "--output-dir", directory,
+    "--browser-json", browserPath,
+    "--critic-json", criticPath,
+  ]);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /missing required check: fixture-capability-label/);
+});
+
 test("finalizer requires and applies explicit critic correctness for every passed answer", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-correctness-"));
   const report = finalizeClassifications({
@@ -490,7 +658,8 @@ test("finalizer requires and applies explicit critic correctness for every passe
     runId: "critic-run",
     startedAt: "2026-08-13T10:00:00.000Z",
     deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
-    scenarios: [{
+    webUrl: "https://thepundit.vercel.app",
+    scenarios: [...browserContractScenarios(), {
       id: "answer-scenario", passed: true, outcome: "PASS", answer: "Grounded answer.",
       qualitativeScores: { correctness: null }, requiredForCertification: true,
     }],
@@ -504,10 +673,7 @@ test("finalizer requires and applies explicit critic correctness for every passe
   };
   const browserPath = path.join(directory, "browser.json");
   const criticPath = path.join(directory, "critic.json");
-  await writeFile(browserPath, JSON.stringify({
-    ...identity, passed: true, summary: "Browser flow passed.",
-    checks: [{ name: "chat flow", passed: true, evidence: "Observed exact response." }],
-  }));
+  await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
   await writeFile(criticPath, JSON.stringify({
     ...identity, materialIssue: false, overallVerdict: "PASS", recommendations: [],
     scenarioVerdicts: [{ scenarioId: "answer-scenario", verdict: "PASS", correctness: 4, reason: "Verified." }],
@@ -517,7 +683,48 @@ test("finalizer requires and applies explicit critic correctness for every passe
   assert.equal(result.code, 0, result.stderr);
   const finalized = JSON.parse(await readFile(path.join(directory, "latest.json"), "utf8"));
   assert.equal(finalized.overall, "PASS");
-  assert.equal(finalized.scenarios[0].qualitativeScores.correctness, 4);
+  assert.equal(
+    finalized.scenarios.find(({ id }) => id === "answer-scenario").qualitativeScores.correctness,
+    4
+  );
+});
+
+test("finalizer preserves same-schema comparator when critic turns a prior pass into a failure", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-comparator-"));
+  const prior = {
+    schemaVersion: EVAL_SCHEMA_VERSION, runId: "prior", deployment: { id: "deploy-a" },
+    scenarios: [{ id: "answer-scenario", passed: true, outcome: "PASS", classification: "PASS" }],
+  };
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION, runId: "critic-regression",
+    startedAt: "2026-08-13T10:00:00.000Z",
+    deployment: { id: "deploy-b", source: "test", sourceSha: "abc1234", shaConverged: true },
+    webUrl: "https://thepundit.vercel.app",
+    scenarios: [...browserContractScenarios(),
+      { id: "answer-scenario", passed: true, outcome: "PASS", answer: "Wrong answer.",
+        qualitativeScores: { correctness: null }, requiredForCertification: true }],
+    progress: { status: "complete" }, browserEvidence: null, recommendations: [],
+    comparisonBaseline: createComparisonBaseline(prior),
+  }, prior);
+  await writeReport(report, directory);
+  const identity = { runId: "critic-regression", schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: "abc1234", deploymentId: "deploy-b", capturedAt: "2026-08-13T10:01:00.000Z" };
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
+  await writeFile(criticPath, JSON.stringify({ ...identity, materialIssue: true,
+    overallVerdict: "ISSUES FOUND", recommendations: [], scenarioVerdicts: [{
+      scenarioId: "answer-scenario", verdict: "ISSUES FOUND", correctness: 1, reason: "Factually wrong.",
+    }] }));
+  const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
+    "--browser-json", browserPath, "--critic-json", criticPath]);
+  assert.equal(result.code, 0, result.stderr);
+  const finalized = JSON.parse(await readFile(path.join(directory, "latest.json"), "utf8"));
+  assert.equal(
+    finalized.scenarios.find(({ id }) => id === "answer-scenario").classification,
+    "REGRESSION"
+  );
+  assert.equal(finalized.comparison.previousRunId, "prior");
 });
 
 test("scenario failure records the active request and marks later work inconclusive", () => {
@@ -706,7 +913,7 @@ test("latency gate uses individual requests and enforces p90 after ten samples",
   });
 });
 
-test("schema-9 fixture grounding distinguishes capability without leaking model probabilities", () => {
+test("schema-10 fixture grounding distinguishes capability without leaking model probabilities", () => {
   const fixture = {
     fixtureId: "espn:club.friendly:800",
     primarySource: "espn",
@@ -747,7 +954,7 @@ test("schema-9 fixture grounding distinguishes capability without leaking model 
   }).passed, false);
 });
 
-test("schema-9 verification contract enforces shape, counts, and abstention semantics", () => {
+test("schema-10 verification contract enforces shape, counts, and abstention semantics", () => {
   assert.equal(validateVerification({
     status: "verified", supportedClaimCount: 1, removedClaimCount: 0,
   }, { expectVerification: ["verified"] }).passed, true);
@@ -760,7 +967,7 @@ test("schema-9 verification contract enforces shape, counts, and abstention sema
   assert.equal(validateVerification(null).passed, false);
 });
 
-test("schema-9 complete market validator enforces source, time, legs and arithmetic", () => {
+test("schema-10 complete market validator enforces source, time, legs and arithmetic", () => {
   const legs = [
     { outcome: "home", decimalOdds: 2, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
     { outcome: "draw", decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
@@ -783,7 +990,24 @@ test("runtime-helper scenarios execute the current API correctness module, not c
   ));
   const runtime = new Map(config.fixed.filter(({ kind }) => kind === "runtime-helper")
     .map((scenario) => [scenario.id, scenario]));
-  assert.equal(runtime.size, 10);
+  for (const id of [
+    "complete-market-arithmetic",
+    "incomplete-market-fails-closed",
+    "third-party-probability-labelling",
+    "recognized-friendly-outside-coverage",
+    "temporary-fixture-unavailability",
+    "unsupported-followup-and-matchup-replacement",
+    "neutral-venue-missing-input",
+    "friendly-capability-runtime-contract",
+    "temporary-capability-runtime-contract",
+    "stale-manager-official-conflict",
+    "correction-after-wrong-history",
+    "one-one-is-not-over-two-five",
+    "unrelated-citation-rejected",
+    "degraded-search-retrieval-verifier",
+  ]) {
+    assert.equal(runtime.has(id), true, `missing built runtime helper scenario ${id}`);
+  }
   assert.equal(helpers.validateCompleteOneXTwoMarket(runtime.get("complete-market-arithmetic").args[0]).valid, true);
   assert.deepEqual(
     helpers.validateCompleteOneXTwoMarket(runtime.get("incomplete-market-fails-closed").args[0]),
@@ -815,9 +1039,24 @@ test("runtime-helper scenarios execute the current API correctness module, not c
     fixtureHelpers.evaluateFixtureCapability(...runtime.get("temporary-capability-runtime-contract").args),
     runtime.get("temporary-capability-runtime-contract").expect
   );
+  const routingHelpers = loadApiRuntimeRoutingHelpers(path.resolve(import.meta.dirname, ".."));
+  assert.equal(typeof routingHelpers.resolveAskContext, "function");
+  for (const id of [
+    "recognized-friendly-outside-coverage",
+    "temporary-fixture-unavailability",
+    "unsupported-followup-and-matchup-replacement",
+    "neutral-venue-missing-input",
+  ]) {
+    assert.equal(runtime.get(id).helper, "resolveFixtureRoutingSequence");
+    assert.deepEqual(
+      executeRuntimeHelperScenario(runtime.get(id), path.resolve(import.meta.dirname, "..")),
+      runtime.get(id).expect,
+      `built routing result mismatch for ${id}`
+    );
+  }
 });
 
-test("schema-9 correctness guard catches the four screenshot-class failures", () => {
+test("schema-10 correctness guard catches the four screenshot-class failures", () => {
   assert.equal(validateResponseCorrectness(
     "Pundit's forecast is 52% home, 25% draw and 23% away.",
     [],
@@ -850,7 +1089,7 @@ test("schema-9 correctness guard catches the four screenshot-class failures", ()
   ).passed, true);
 });
 
-test("schema-9 certification cannot pass required inconclusive or unsupported correctness", () => {
+test("schema-10 certification cannot pass required inconclusive or unsupported correctness", () => {
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     scenarios: [
@@ -864,7 +1103,7 @@ test("schema-9 certification cannot pass required inconclusive or unsupported co
   assert.deepEqual(report.certificationGate.unsupportedCorrectness, ["answer"]);
 });
 
-test("schema-9 permanent certification matrix names every authorized regression family", async () => {
+test("schema-10 permanent certification matrix names every authorized regression family", async () => {
   const config = JSON.parse(await readFile(
     path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
     "utf8"
@@ -892,4 +1131,30 @@ test("schema-9 permanent certification matrix names every authorized regression 
   ]) {
     assert.equal(ids.has(id), true, `missing permanent scenario ${id}`);
   }
+  const byId = new Map(config.fixed.map((scenario) => [scenario.id, scenario]));
+  for (const id of [
+    "recognized-friendly-outside-coverage",
+    "temporary-fixture-unavailability",
+    "unsupported-followup-and-matchup-replacement",
+    "neutral-venue-missing-input",
+  ]) {
+    assert.equal(byId.get(id).kind, "runtime-helper");
+    assert.notEqual(byId.get(id).requiredForCertification, false);
+  }
+  for (const id of [
+    "observational-live-friendly",
+    "observational-live-temporary",
+    "observational-live-replacement",
+    "observational-live-neutral-venue",
+  ]) {
+    assert.equal(byId.get(id).requiredForCertification, false);
+  }
+  assert.deepEqual(byId.get("sse-ordering"), {
+    id: "sse-ordering",
+    description: "Streaming emits grounding before deltas and terminates with done.",
+    kind: "sse",
+    question: "What does the current Premier League table show?",
+    expectGrounding: "competition",
+    expectCompetitionId: "eng.1",
+  });
 });

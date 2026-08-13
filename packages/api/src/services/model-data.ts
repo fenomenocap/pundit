@@ -69,7 +69,9 @@ export interface ModelFixtureForecastProvenance {
   ratingProfile: RatingProfile;
   ratingSnapshotAt: string | null;
   ratingAgeMinutes: number | null;
-  ratingSourceState: "live" | "persisted" | "unknown";
+  ratingSourceState: "live" | "artifact" | "persisted" | "unknown";
+  ratingArtifactId?: string;
+  ratingArtifactSha256?: string;
   homeAdvantageElo: number;
   config: typeof ELO_CHAMPION_CONFIG;
 }
@@ -80,6 +82,8 @@ export interface ForecastBuildContext {
   ratingSourceState?: ModelFixtureForecastProvenance["ratingSourceState"];
   /** Clubs whose value came from an individual lapsed-window fallback feed. */
   fallbackRatingClubs?: ReadonlySet<string>;
+  ratingArtifactId?: string | null;
+  ratingArtifactSha256?: string | null;
 }
 
 export interface ModelDataCache {
@@ -135,13 +139,18 @@ export function buildModelFixtureFromActive(
   // before the unchanged champion calculation below, preserving probabilities.
   const recognized = recognizeEspnFixture(fixture);
   if (!isModelPolicyEligible(recognized)) return null;
+  // Home-field adjustment is a numeric model input, so an authoritative
+  // fixture must establish whether the venue is neutral before construction.
+  if (recognized.neutralVenue === null) return null;
   const competition = getCompetitionById(fixture.competitionId);
   if (!competition || !competition.enabled) return null;
 
   const homeElo = lookupClubRating(fixture.homeTeam, competition.ratingProfile, ratings);
   const awayElo = lookupClubRating(fixture.awayTeam, competition.ratingProfile, ratings);
   if (homeElo === undefined || awayElo === undefined) return null;
-  const homeAdvantageElo = competition.homeFieldAdvantage ? DEFAULT_HOME_ADVANTAGE_ELO : 0;
+  const homeAdvantageElo = competition.homeFieldAdvantage && !recognized.neutralVenue
+    ? DEFAULT_HOME_ADVANTAGE_ELO
+    : 0;
   const model = ELO_CHAMPION.forecast({
     homeStrength: homeElo,
     awayStrength: awayElo,
@@ -209,6 +218,8 @@ export function buildModelFixtureFromActive(
       ratingSnapshotAt: ratingSnapshotAt?.toISOString() ?? null,
       ratingAgeMinutes,
       ratingSourceState: usesFallbackRating ? "unknown" : context.ratingSourceState ?? "unknown",
+      ...(context.ratingArtifactId ? { ratingArtifactId: context.ratingArtifactId } : {}),
+      ...(context.ratingArtifactSha256 ? { ratingArtifactSha256: context.ratingArtifactSha256 } : {}),
       homeAdvantageElo,
       config: ELO_CHAMPION_CONFIG,
     },
@@ -365,7 +376,9 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
     const fixtures = buildActiveModelFixtures(activeFixtures, profiles, {
       forecastAt,
       ratingSnapshotAt: ratingState.fetchedAt,
-      ratingSourceState: ratingState.servingPersisted ? "persisted" : "live",
+      ratingSourceState: ratingState.servingPersisted ? "persisted" : "artifact",
+      ratingArtifactId: ratingState.artifactId,
+      ratingArtifactSha256: ratingState.artifactSha256,
       fallbackRatingClubs: new Set(ratingState.staleRatings.map((entry) => entry.club)),
     });
     cache.fixtures = fixtures;

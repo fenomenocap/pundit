@@ -10,7 +10,7 @@ Pundit is an informational analysis tool. Nothing in this product — the chat, 
 
 **Market data is reference-only.** Stake, Kalshi, and Polymarket prices shown or referenced in Pundit are pulled from public sources for comparison against the model's output. Pundit is not affiliated with or endorsed by those platforms and cannot execute trades or bets.
 
-**Model output is probabilistic, not predictive.** The Dixon-Coles Poisson model produces statistical estimates based on ClubElo ratings and match context — it does not guarantee any outcome, and real matches routinely diverge from model expectations. Season outlook simulations (title race, top-four) are Monte Carlo estimates over remaining fixtures, not forecasts of certainty.
+**Model output is probabilistic, not predictive.** The Dixon-Coles Poisson model produces statistical estimates from a dated, pinned ClubElo strength artifact and match context — it does not guarantee any outcome, and real matches routinely diverge from model expectations. Season outlook simulations (title race, top-four) are Monte Carlo estimates over a verified complete remaining schedule, not forecasts of certainty.
 
 **Evaluation metrics measure past calibration, not future performance.** Brier scores and accuracy on `/evaluation/*` pages describe how pre-kickoff probabilities matched completed results. They do not predict future model performance.
 

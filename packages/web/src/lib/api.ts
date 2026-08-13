@@ -511,6 +511,11 @@ export async function getReadiness() {
       expectedActiveFixtureCount: number;
       lastUpdated: string | null;
       error: string | null;
+      ratingsAsOf: string | null;
+      ratingsAgeDays: number | null;
+      ratingsServedFromCache: boolean;
+      ratingArtifactId: string | null;
+      ratingArtifactSha256: string | null;
     };
     football: {
       ready: boolean;
@@ -518,10 +523,24 @@ export async function getReadiness() {
       error: string | null;
       competitionErrors: Record<string, string | null>;
     };
+    seasonSchedule: {
+      ready: boolean;
+      competitionId: string;
+      seasonId: string;
+      fixtureCount: number;
+      lastUpdated: string | null;
+      error: string | null;
+    };
     activeFixtures: {
       count: number;
       byCompetition: Record<string, number>;
       lastUpdated: string | null;
+    };
+    askRateLimit: {
+      perMinute: number;
+      replicas: number;
+      perInstance: number;
+      scope: "deployment";
     };
     marketOdds: {
       ready: boolean;

@@ -7,19 +7,20 @@ import process from "node:process";
 import {
   EVAL_SCHEMA_VERSION,
   MIN_REQUEST_INTERVAL_MS,
+  createComparisonBaseline,
   createPacer,
+  executeRuntimeHelperScenario,
   fetchWithTimeout,
   finalizeClassifications,
   generateAdversarialScenarios,
   loadPreviousReport,
-  loadApiRuntimeCorrectnessHelpers,
-  loadApiRuntimeFixtureHelpers,
   parseSse,
   qualitativeScores,
   recordScenarioFailure,
   sanitizeEvidence,
   selectFeaturedMatch,
   snapshotAskRequest,
+  snapshotSseReproduction,
   readinessFailures,
   validateGrounding,
   validateSse,
@@ -440,11 +441,16 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
     question: scenario.question,
     startedAt: start,
   });
+  const reproduction = snapshotSseReproduction(scenario.question);
+  const requestBody = reproduction.body;
+  // Record before transport validation so HTTP failures retain an exact,
+  // immutable reproduction instead of returning with an empty evidence list.
+  result.reproduction.requests.push(reproduction);
   const started = Date.now();
   const response = await fetchWithTimeout(`${options.apiUrl}/api/ask`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ question: scenario.question, stream: true })
+    body: JSON.stringify(requestBody)
   }, options.timeoutMs);
   const text = await response.text();
   result.status = response.status;
@@ -455,11 +461,6 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
     return result;
   }
   const events = parseSse(text);
-  result.reproduction.requests.push({
-    method: "POST",
-    path: "/api/ask",
-    body: { question: scenario.question, stream: true },
-  });
   result.sse = { eventOrder: events.map(({ event }) => event) };
   const validation = validateSse(events, scenario);
   Object.assign(result, validation);
@@ -563,32 +564,14 @@ async function runCancellationScenario(scenario, options, pacer, onRequestStart)
 async function runScenario(scenario, options, pacer, featured, recognized, onRequestStart) {
   if (scenario.kind === "runtime-helper") {
     const result = baseResult(scenario);
-    const helpers = loadApiRuntimeCorrectnessHelpers(ROOT);
-    let actual;
-    if (scenario.helper === "evaluateFixtureCapability") {
-      const fixtureHelpers = loadApiRuntimeFixtureHelpers(ROOT);
-      actual = fixtureHelpers.evaluateFixtureCapability(scenario.args[0], scenario.args[1]);
-    } else if (scenario.helper === "validateCompleteOneXTwoMarket") {
-      actual = helpers.validateCompleteOneXTwoMarket(scenario.args[0]);
-    } else if (scenario.helper === "probabilityAttribution") {
-      const label = helpers.probabilityAttributionLabel(scenario.args[0]);
-      actual = { label, valid: helpers.hasValidProbabilityAttribution(label, scenario.args[0]) };
-    } else if (scenario.helper === "attributeManagerEra") {
-      actual = helpers.attributeManagerEra(...scenario.args);
-    } else if (scenario.helper === "containsCorrectionCue") {
-      actual = helpers.containsCorrectionCue(scenario.args[0]);
-    } else if (scenario.helper === "settleScorelineTotal") {
-      actual = helpers.settleScorelineTotal(...scenario.args);
-    } else if (scenario.helper === "applyClaimDecisions") {
-      actual = helpers.applyClaimDecisions(...scenario.args);
-    } else {
-      throw new Error(`Unknown runtime correctness helper: ${scenario.helper}`);
-    }
+    const actual = executeRuntimeHelperScenario(scenario, ROOT);
     const serialized = JSON.stringify(actual);
     const assertions = {
-      exactRuntimeResult: Object.entries(scenario.expect ?? {}).every(([key, value]) =>
-        JSON.stringify(actual?.[key]) === JSON.stringify(value)
-      ),
+      exactRuntimeResult: Array.isArray(scenario.expect)
+        ? serialized === JSON.stringify(scenario.expect)
+        : Object.entries(scenario.expect ?? {}).every(([key, value]) =>
+          JSON.stringify(actual?.[key]) === JSON.stringify(value)
+        ),
       requiredText: !scenario.expectText || scenario.expectText.every((text) => serialized.includes(text)),
       forbiddenText: !scenario.forbidText || scenario.forbidText.every((text) => !serialized.includes(text)),
     };
@@ -597,9 +580,11 @@ async function runScenario(scenario, options, pacer, featured, recognized, onReq
     result.correctnessCertified = result.passed;
     result.outcome = result.passed ? "PASS" : "FAIL";
     result.runtimeHelper = {
-      module: scenario.helper === "evaluateFixtureCapability"
-        ? "packages/api/src/services/fixture-registry.ts"
-        : "packages/api/src/services/response-correctness.ts",
+      module: scenario.helper === "resolveFixtureRoutingSequence"
+        ? "packages/api/src/services/ask.ts"
+        : scenario.helper === "evaluateFixtureCapability"
+          ? "packages/api/src/services/fixture-registry.ts"
+          : "packages/api/src/services/response-correctness.ts",
       name: scenario.helper,
       actual,
     };
@@ -911,6 +896,7 @@ async function main() {
     browserEvidence: null,
     criticReview: null,
     recommendations: [],
+    comparisonBaseline: createComparisonBaseline(previous),
     comparison: null,
     overall: null
   };
