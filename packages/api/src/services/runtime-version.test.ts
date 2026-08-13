@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { getRuntimeVersion } from "./runtime-version";
 
 describe("getRuntimeVersion", () => {
-  it("prefers an explicitly injected build SHA", () => {
+  it("prefers the platform commit SHA over a stale configured build SHA", () => {
     expect(getRuntimeVersion({
       BUILD_SHA: " build-123 ",
       RAILWAY_GIT_COMMIT_SHA: "railway-456",
-    })).toEqual({ sha: "build-123" });
+    })).toEqual({ sha: "railway-456" });
   });
 
   it("uses Railway's commit SHA in production", () => {

@@ -3,10 +3,10 @@ export interface RuntimeVersion {
 }
 
 const SHA_ENV_KEYS = [
-  "BUILD_SHA",
   "RAILWAY_GIT_COMMIT_SHA",
   "VERCEL_GIT_COMMIT_SHA",
   "GITHUB_SHA",
+  "BUILD_SHA",
 ] as const;
 
 export function getRuntimeVersion(
