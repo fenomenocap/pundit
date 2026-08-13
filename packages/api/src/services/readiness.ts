@@ -1,7 +1,7 @@
 import type { ActiveFixture } from "./active-fixtures";
 import {
   ModelDataCache,
-  modelDataCoversActiveFixtures,
+  modelDataIsCurrentSubset,
 } from "./model-data";
 
 interface FootballReadiness {
@@ -28,9 +28,10 @@ export function evaluateReadiness(
   activeFixtures: ActiveFixture[],
   marketOdds: MarketOddsReadiness
 ): ReadinessState {
-  // A failed refresh may retain an exact last-good fixture set. That remains
-  // usable; a cold/empty/stale model does not.
-  const modelReady = modelDataCoversActiveFixtures(model, activeFixtures);
+  // An initialized current subset remains usable: fixtures skipped for missing
+  // ratings are explicitly unpriced downstream. Cold or stale/foreign rows do
+  // not pass readiness.
+  const modelReady = modelDataIsCurrentSubset(model, activeFixtures);
   const footballReady = football.lastUpdated !== null && football.error === null;
   const marketOddsReady = marketOdds.ready && marketOdds.lastUpdated !== null;
 
