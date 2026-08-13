@@ -20,10 +20,10 @@ Run from the repository root:
 
 | Gate | Reproduction | Result on this branch |
 |---|---|---|
-| API behavior and deterministic regressions | `pnpm --filter api test` | PASS — 31 files, 362 tests |
+| API behavior and deterministic regressions | `pnpm --filter api test` | PASS — 31 files, 369 tests |
 | API types | `pnpm --filter api exec tsc --noEmit` | PASS |
 | Web types | `pnpm --filter web exec tsc --noEmit` | PASS |
-| Schema-9 evaluator | `pnpm chat-eval:test` | PASS — 32 tests |
+| Schema-9 evaluator | `pnpm chat-eval:test` | PASS — 33 tests |
 | Evaluator configuration | `pnpm chat-eval:dry-run` | PASS; production traffic false; pacing 13,000 ms |
 | Production builds | `pnpm build` | PASS — API and web |
 | Browser smoke | `pnpm --filter web test:e2e` | PASS — Chromium 9/9 |
@@ -80,24 +80,63 @@ report can pass. An authoritative friendly is locally tested as recognized and
 outside public coverage; live discovery is informational when no exact friendly
 exists and fixtures are never substituted.
 
+## Production release and certification evidence
+
+Release authority was granted and the feature release plus startup hotfixes
+were merged through PRs 53-55. Railway deployment
+`0ae16866-c90e-46bd-9d7f-c3911f3d6307` reached terminal `SUCCESS`; Railway API,
+Vercel web, and source all reported
+`e4579eb5d5e20e8d4a02ac98e70875f5dfb7f924`. The hardened production verifier
+passed health, startup, readiness, registry shadow isolation, candidate-free
+fixture exposure, search/runtime status, one-replica rate limiting, CORS, and
+the production bundle host check.
+
+Railway reported one running deployment instance and a ready 5 GB volume at
+`/data`. A read-only filesystem check found the registry primary and last-good
+artifacts, club-season calibration artifact, and ClubElo cache. Startup restored
+594 ratings from that cache after ClubElo timed out, priced 18 of 24 active
+fixtures, and continued to serve `/ready` with HTTP 200. Six fixtures remained
+honestly unpriced because three active teams had no bounded rating input.
+
+The single authorized production evaluation was run once, with 28 requests
+paced at 13 seconds, no retries or fixture substitution, and exact deployment
+identity. Its p90 latency was 9.223 seconds and every request completed within
+the 90-second deadline. The final browser/critic-backed classification is
+`ISSUES FOUND`, not PASS. Evidence is preserved under the ignored
+`artifacts/chat-evals/2026-08-13T05-21-38-959Z*` files.
+
+That run exposed three material defects now covered by local regressions in the
+follow-up hotfix: stable fixture context did not disambiguate two legs between
+the same clubs; current team-news prose could survive a zero-supported
+verification abstention; and generated model/market prose could contradict
+structured probabilities. It also exposed mutable request-history evidence,
+which is now snapshotted by value. A 390x844 browser check reproduced the
+fixture-context failure, found no console errors or horizontal overflow, and
+confirmed New Chat reset. Screenshot capture itself timed out twice, so the
+browser evidence correctly remains failed rather than claiming an image.
+
 ## Remaining release risks and authorization boundary
 
-- The branch has not been pushed or deployed. Source, Railway API, and Vercel
-  web SHAs therefore intentionally do not yet converge on these changes.
 - Registry expansion remains disabled. Enabling it is a separate operational
   decision after source rights and `/data` persistence are verified. Friendly
   shadow collection also needs a separately reviewed private collector; the
   present flag only gates the policy library.
 - Source update latency and cross-source conflict rates need a longitudinal
   shadow observation window; the read-only study cannot honestly certify them.
-- Production MiniMax search, retrieval, verifier behavior, latency, SSE, and
-  browser follow-ups remain untested for this branch. The only authorized next
-  evaluation is one artifact-preserving run, paced at least 13 seconds between
-  requests, with no retries or fixture substitution.
-- A release must verify terminal deployment state, replicas, health/readiness,
-  `/data`, recognized fixtures, search status, runtime version, and exact
-  source/API/web SHA convergence before any PASS claim.
+- The production evaluation has already consumed its one authorized run and
+  cannot honestly be upgraded to PASS after code changes. The follow-up hotfix
+  must pass CI, deploy, and pass deterministic production verification; another
+  paced evaluator run requires fresh authority.
+- The evaluator's season/SSE probes returned 503 because the season simulator
+  had no usable preseason outlook. With no same-schema prior comparator these
+  remain `INCONCLUSIVE`, not a proven regression.
+- ClubElo was unavailable during release startup. Last-good persistence worked
+  as designed, but the missing AEK Athens, LASK Linz, and Viking FK inputs left
+  six fixtures unpriced.
+- The MiniMax credential was inadvertently exposed in protected release-tool
+  output. It was never copied into the repository or report, but it must be
+  rotated after the authorized release work.
 
 Release and one bounded production-evaluation authority was granted on
-2026-08-13. This handoff must be amended with exact production evidence before
-the release is classified.
+2026-08-13. This handoff records the exact evidence and the non-PASS production
+classification without substituting fixtures or rerunning failed scenarios.
