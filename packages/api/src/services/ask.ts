@@ -28,8 +28,15 @@ import {
 } from "./evidence-page-retrieval";
 import {
   applyClaimDecisions,
+  attributeManagerEra,
   containsCorrectionCue,
+  probabilityAttributionLabel,
+  reconcileContradictoryRationales,
   settleScorelineTotal,
+  validateCompleteOneXTwoMarket,
+  type DirectionalRationale,
+  type ManagerTenure,
+  type OneXTwoMarketLeg,
   type VerifiableClaim,
 } from "./response-correctness";
 import {
@@ -440,22 +447,167 @@ export function sanitizeUnrecognizedCandidateAnswer(answer: string): string {
  * Generated prose is never a server-owned market record. Even a verifier can
  * support that a page contains numbers without proving that all three 1X2 legs
  * came from one source at one instant or that 1/decimal and no-vig arithmetic
- * were applied. Remove such blocks unless a future caller constructs them from
- * `validateCompleteOneXTwoMarket`; the structured grounding/UI remains the
- * only public market-comparison surface today.
+ * were applied. Generated figures are replaced only when a caller supplies a
+ * complete record accepted by `validateCompleteOneXTwoMarket`; the structured
+ * grounding/UI remains the only public market-comparison surface today.
  */
-export function stripUnvalidatedExternalMarketClaims(answer: string): string {
+function renderValidatedOneXTwoMarket(legs: readonly OneXTwoMarketLeg[]): string | null {
+  const validation = validateCompleteOneXTwoMarket(legs);
+  if (!validation.valid) return null;
+  const { market } = validation;
+  const label = probabilityAttributionLabel({
+    kind: "external-market",
+    source: market.source,
+    observedAt: market.observedAt,
+  });
+  const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
+  return `${label}: home ${percent(market.noVigProbabilities.home)}, draw ${percent(market.noVigProbabilities.draw)}, away ${percent(market.noVigProbabilities.away)} (observed ${market.observedAt}).`;
+}
+
+export function stripUnvalidatedExternalMarketClaims(
+  answer: string,
+  marketLegSets: readonly (readonly OneXTwoMarketLeg[])[] = []
+): string {
   const externalMarket = /\b(?:bookmaker|betting market|market[- ]implied|third[- ]party market|stake|kalshi|polymarket|decimal odds)\b/i;
   const numericMarket = /\b\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?\s*(?:decimal|to 1)\b|\b(?:home|draw|away)\s*[:=–—-]\s*\d+(?:\.\d+)?\b/i;
+  const validated = marketLegSets.flatMap((legs) => {
+    const result = validateCompleteOneXTwoMarket(legs);
+    if (!result.valid) return [];
+    const rendered = renderValidatedOneXTwoMarket(legs)!;
+    return [{ source: result.market.source.toLocaleLowerCase(), rendered }];
+  });
+  const emittedSources = new Set<string>();
+  const lines = answer.split("\n");
+  const removedLines = new Set<number>();
   let removed = false;
-  const retained = answer.split(/\n{2,}/).filter((block) => {
-    const unsafe = externalMarket.test(block) && numericMarket.test(block);
-    removed ||= unsafe;
-    return !unsafe;
-  }).join("\n\n").trim();
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!externalMarket.test(lines[index])) continue;
+    const numericLines: number[] = [];
+    if (numericMarket.test(lines[index])) numericLines.push(index);
+    for (let next = index + 1; next < Math.min(lines.length, index + 5); next += 1) {
+      if (!lines[next].trim() || !numericMarket.test(lines[next])) break;
+      numericLines.push(next);
+    }
+    if (!numericLines.length) continue;
+    removed = true;
+    removedLines.add(index);
+    numericLines.forEach((line) => removedLines.add(line));
+    const matching = validated.find(({ source }) =>
+      source && lines[index].toLocaleLowerCase().includes(source)
+    );
+    if (!matching || emittedSources.has(matching.source)) continue;
+    emittedSources.add(matching.source);
+    lines[index] = matching.rendered;
+    removedLines.delete(index);
+  }
+  const retained = lines.filter((_line, index) => !removedLines.has(index)).join("\n").trim();
   if (!removed) return answer;
+  if (emittedSources.size > 0) return retained;
   const notice = "I could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers.";
   return retained ? `${retained}\n\n${notice}` : notice;
+}
+
+export interface ManagerEraContext {
+  eventAt: string;
+  tenures: readonly ManagerTenure[];
+}
+
+export interface ResponseCorrectnessContext {
+  managerEra?: ManagerEraContext;
+  externalOneXTwoMarkets?: readonly (readonly OneXTwoMarketLeg[])[];
+}
+
+// Keep detection syntactically explicit. A bare "under Arsenal pressure" or
+// "during Premier League matches" is ordinary football prose, not a manager
+// attribution. Runtime callers currently have no structured tenure record, so
+// explicit manager-era claims take the unknown branch and fail closed.
+const MANAGER_ERA_ASSERTION = /\b(?:[Uu]nder|[Dd]uring)\s+([\p{Lu}][\p{L}’-]+(?:\s+[\p{Lu}][\p{L}’-]+){0,3})(?:['’]s)?\s+(?:tenure|era|management)\b|\b[Uu]nder\s+manager\s+([\p{Lu}][\p{L}’-]+(?:\s+[\p{Lu}][\p{L}’-]+){0,3})\b|\b[Ww]hen\s+([\p{Lu}][\p{L}’-]+(?:\s+[\p{Lu}][\p{L}’-]+){0,3})\s+was\s+(?:the\s+)?manager\b/u;
+
+export function sanitizeManagerEraClaims(
+  answer: string,
+  context?: ManagerEraContext
+): string {
+  let removed = false;
+  let conflictManager: string | null = null;
+  const retained = answer.replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) => {
+    const match = MANAGER_ERA_ASSERTION.exec(sentence);
+    if (!match) return sentence;
+    const assertedManager = match.slice(1).find(Boolean)?.trim() ?? "";
+    const attribution = attributeManagerEra(
+      context?.eventAt ?? "",
+      context?.tenures ?? [],
+      assertedManager
+    );
+    if (attribution.status === "supported") return sentence;
+    removed = true;
+    if (attribution.status === "conflict") conflictManager = attribution.manager;
+    return "";
+  }).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  if (!removed) return answer;
+  const notice = conflictManager
+    ? `A manager-era claim was omitted because the structured tenure record attributes that date to ${conflictManager}.`
+    : "A manager-era claim was omitted because it could not be tied to a structured tenure record for that date.";
+  return retained ? `${retained}\n\n${notice}` : notice;
+}
+
+const DIRECTIONAL_TOPICS = [
+  { topic: "midfield", pattern: /\bmidfield\b/i },
+  { topic: "form", pattern: /\bform\b/i },
+  { topic: "pressing", pattern: /\bpress(?:ing)?\b/i },
+  { topic: "defence", pattern: /\bdefen[cs]e|defensive\b/i },
+  { topic: "attack", pattern: /\battack(?:ing)?\b/i },
+  { topic: "venue", pattern: /\bvenue|home[- ]field|home advantage\b/i },
+  { topic: "injuries", pattern: /\binjur(?:y|ies)|availability\b/i },
+  { topic: "rest", pattern: /\brest|schedule|fatigue\b/i },
+] as const;
+const DIRECTIONAL_LANGUAGE = /\b(?:favou?rs?|benefits?|helps?|supports?|gives?[^.!?\n]{0,20}(?:edge|advantage)|edge|advantage)\b/i;
+
+function rationaleDirection(line: string, grounding?: Grounding): DirectionalRationale["direction"] {
+  const lower = line.toLocaleLowerCase();
+  const homeTokens = ["home side", "home team", grounding?.home].filter(Boolean) as string[];
+  const awayTokens = ["away side", "away team", grounding?.away].filter(Boolean) as string[];
+  const hasHome = homeTokens.some((token) => lower.includes(token.toLocaleLowerCase()));
+  const hasAway = awayTokens.some((token) => lower.includes(token.toLocaleLowerCase()));
+  return hasHome === hasAway ? "neutral" : hasHome ? "home" : "away";
+}
+
+export function sanitizeContradictoryRationales(answer: string, grounding?: Grounding): string {
+  const sentences = answer.match(/[^.!?\n]+(?:[.!?]+|$)/g) ?? [];
+  const rationales: DirectionalRationale[] = [];
+  for (const sentence of sentences) {
+    if (!DIRECTIONAL_LANGUAGE.test(sentence)) continue;
+    const direction = rationaleDirection(sentence, grounding);
+    for (const candidate of DIRECTIONAL_TOPICS) {
+      if (candidate.pattern.test(sentence)) {
+        rationales.push({ topic: candidate.topic, direction, text: sentence });
+      }
+    }
+  }
+  const reconciled = reconcileContradictoryRationales(rationales);
+  if (!reconciled.conflictingTopics.length) return answer;
+  const conflictingSentences = new Set(
+    rationales
+      .filter((rationale) => reconciled.conflictingTopics.includes(rationale.topic))
+      .map((rationale) => rationale.text)
+  );
+  let retained = answer;
+  for (const sentence of conflictingSentences) retained = retained.replace(sentence, "");
+  retained = retained.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  const notice = `Conflicting ${reconciled.conflictingTopics.join("/")} rationales were omitted rather than used to support both sides.`;
+  return retained ? `${retained}\n\n${notice}` : notice;
+}
+
+export function sanitizeRuntimeResponseCorrectness(
+  answer: string,
+  grounding?: Grounding,
+  context: ResponseCorrectnessContext = {}
+): string {
+  const managerSafe = sanitizeManagerEraClaims(answer, context.managerEra);
+  const rationaleSafe = sanitizeContradictoryRationales(managerSafe, grounding);
+  return stripUnvalidatedExternalMarketClaims(
+    rationaleSafe,
+    context.externalOneXTwoMarkets
+  );
 }
 
 function acknowledgeCorrection(answer: string, verification: AskVerification): string {
@@ -1724,8 +1876,9 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
       || lines.findIndex((candidate) => candidate.trim() === aggregateDisclaimer) === index
     )
     .join("\n");
-  return stripUnvalidatedExternalMarketClaims(
-    sanitized.replace(/[ \t]+\n/g, "\n").replace(/ {2,}/g, " ").trim()
+  return sanitizeRuntimeResponseCorrectness(
+    sanitized.replace(/[ \t]+\n/g, "\n").replace(/ {2,}/g, " ").trim(),
+    grounding
   );
 }
 
@@ -1982,9 +2135,9 @@ function sanitizeAnswerForTier(
   grounding?: AskGrounding,
   final = false
 ): string {
-  const commonSafeAnswer = sanitizeUnsupportedTeamNews(
+  const commonSafeAnswer = sanitizeRuntimeResponseCorrectness(sanitizeUnsupportedTeamNews(
     normalizeBannedMarkdown(normalizeSectionBreaks(stripProcessNarration(answer)))
-  );
+  ), grounding?.kind === "match" ? grounding : undefined);
   if (tier === "match") {
     return sanitizeMatchAnswer(
       commonSafeAnswer,
@@ -2172,58 +2325,23 @@ function isRetryableStreamError(error: unknown): boolean {
     && (RETRYABLE_STATUS.has(error.status) || error.status >= 500);
 }
 
-// Number of completed lines held back behind the line the model is still
-// writing. The guards are line-scoped, but a handful of their patterns can
-// begin on the previous line (a parenthetical carried over, a trailing
-// " -- this is ..." clause opening a new line), so a line is only released once
-// the following line exists to give the guards their context.
-const GUARD_BAND_LINES = 1;
-
-// Everything up to the last newline is "complete", minus the guard band. An
-// answer shorter than the band never settles early and is delivered whole by
-// `finish`.
-function settledPrefix(raw: string): string {
-  const lines = raw.split("\n");
-  const settledCount = lines.length - 1 - GUARD_BAND_LINES;
-  return settledCount > 0 ? lines.slice(0, settledCount).join("\n") : "";
-}
-
 /**
- * Releases the answer to the client progressively without ever sending text
- * the deterministic guards have not seen.
- *
- * Each chunk is appended to a raw buffer; the settled prefix of that buffer is
- * put through the full tier guard chain, and only the part of the *sanitized*
- * output beyond what was already sent is emitted. Because the guards are
- * line-scoped, sanitizing a longer prefix normally extends the previous
- * sanitized output rather than rewriting it. If it ever does rewrite it -- a
- * guard reaching back further than the band -- the already-sent bytes cannot be
- * recalled, so progressive flushing stops for the rest of the turn and the
- * authoritative answer is left to the `done` event, which the client uses to
- * replace the message content wholesale.
+ * Buffers model text until the whole answer has passed deterministic guards.
+ * Some correctness decisions are inherently non-local: a later sentence can
+ * contradict an earlier rationale, and a multiline market can bind numeric
+ * legs to a source named on a preceding line. Releasing prefixes would expose
+ * text that the authoritative answer subsequently removes. The SSE route still
+ * sends grounding first and heartbeats while generation is in flight, then one
+ * safe delta followed by the authoritative `done` event.
  */
 class GuardedFlusher {
-  private raw = "";
-  private emitted = "";
-  private diverged = false;
+  constructor(private readonly onDelta: (text: string) => void) {}
 
-  constructor(
-    private readonly tier: AnalysisTier,
-    private readonly grounding: AskGrounding | undefined,
-    private readonly onDelta: (text: string) => void
-  ) {}
-
-  push(text: string): void {
-    this.raw += text;
-    if (this.diverged) return;
-    const settled = settledPrefix(this.raw);
-    if (!settled) return;
-    this.emit(sanitizeAnswerForTier(settled, this.tier, this.grounding));
-  }
+  push(_text: string): void {}
 
   // `answer` is the validated whole-answer result, which is authoritative.
   finish(answer: string): void {
-    this.emit(answer);
+    if (answer) this.onDelta(answer);
   }
 
   /**
@@ -2231,44 +2349,12 @@ class GuardedFlusher {
    * is a draft MiniMax rewrites once results arrive, and
    * validateAnalysisResponse keeps only the settled turn.
    *
-   * FORMAT_RULES tells the model to search before writing any prose, so the
-   * usual case is that nothing has been emitted: the buffered fragment is
-   * dropped and the post-search turn streams from scratch, which is what keeps
-   * search-backed answers progressive.
-   *
-   * If a draft did reach the client, it cannot be recalled. Flushing stops so
-   * the rewrite is not appended beneath it, and the `done` event replaces the
-   * message wholesale -- the same recovery divergence uses.
+   * FORMAT_RULES tells the model to search before writing any prose. Any draft
+   * is buffered, never emitted, and can therefore be discarded safely before
+   * the post-search turn is generated.
    */
   discardDraft(): void {
-    if (this.diverged) return;
-    if (this.emitted === "") {
-      this.raw = "";
-      return;
-    }
-    this.diverged = true;
-    console.log(JSON.stringify({
-      event: "analysis_stream_draft_discarded",
-      tier: this.tier,
-      emittedChars: this.emitted.length,
-    }));
-  }
-
-  private emit(sanitized: string): void {
-    if (this.diverged) return;
-    if (!sanitized.startsWith(this.emitted)) {
-      this.diverged = true;
-      console.log(JSON.stringify({
-        event: "analysis_stream_flush_diverged",
-        tier: this.tier,
-        emittedChars: this.emitted.length,
-      }));
-      return;
-    }
-    const delta = sanitized.slice(this.emitted.length);
-    if (!delta) return;
-    this.emitted = sanitized;
-    this.onDelta(delta);
+    // Draft text has not been emitted, so no client-visible action is needed.
   }
 }
 
@@ -2288,7 +2374,7 @@ export async function generateAnalysisStream(
   const collected: Anthropic.Message[] = [];
   let convo = toMessageParams(messages);
   let anyDeltaSeen = false;
-  const flusher = new GuardedFlusher(tier, grounding, onDelta);
+  const flusher = new GuardedFlusher(onDelta);
   const abort = new AbortController();
   const signal = requestSignal ? AbortSignal.any([requestSignal, abort.signal]) : abort.signal;
   for (let turn = 0; turn <= MAX_CONTINUATIONS; turn += 1) {
@@ -2553,7 +2639,10 @@ export async function answerQuestion(
             removedClaimCount: 0,
           },
         };
-    const marketSafeAnswer = stripUnvalidatedExternalMarketClaims(checked.answer);
+    const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
+      checked.answer,
+      grounding?.kind === "match" ? grounding : undefined
+    );
     const checkedAnswer = containsCorrectionCue(question)
       ? acknowledgeCorrection(marketSafeAnswer, checked.verification)
       : marketSafeAnswer;
@@ -2676,7 +2765,10 @@ export async function answerQuestionStream(
             removedClaimCount: 0,
           },
         };
-    const marketSafeAnswer = stripUnvalidatedExternalMarketClaims(checked.answer);
+    const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
+      checked.answer,
+      grounding?.kind === "match" ? grounding : undefined
+    );
     const checkedAnswer = containsCorrectionCue(question)
       ? acknowledgeCorrection(marketSafeAnswer, checked.verification)
       : marketSafeAnswer;

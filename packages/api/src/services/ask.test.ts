@@ -20,7 +20,10 @@ import {
   dropMisbucketedTotalsScorelines,
   renderEvidenceCitations,
   sanitizeFixtureCoverageAnswer,
+  sanitizeContradictoryRationales,
+  sanitizeManagerEraClaims,
   sanitizeMatchAnswer,
+  sanitizeRuntimeResponseCorrectness,
   sanitizeUnrecognizedCandidateAnswer,
   verifiableCurrentClaims,
   verifyCurrentClaims,
@@ -65,6 +68,73 @@ describe("current-news evidence hardening", () => {
     expect(sanitized).not.toContain("48.0%");
     expect(sanitizeMatchAnswer("Kalshi market-implied home 48.0%, draw 28.0%, away 24.0%."))
       .toContain("omitted those numbers");
+  });
+
+  it("renders only a complete same-source, same-time market with third-party attribution", () => {
+    const legs = [
+      { outcome: "home" as const, decimalOdds: 2, source: "Stake", observedAt: "2026-08-13T12:00:00Z" },
+      { outcome: "draw" as const, decimalOdds: 4, source: "Stake", observedAt: "2026-08-13T12:00:00Z" },
+      { outcome: "away" as const, decimalOdds: 4, source: "Stake", observedAt: "2026-08-13T12:00:00Z" },
+    ];
+    const sanitized = stripUnvalidatedExternalMarketClaims(
+      "Stake market: home 99%, draw 0.5%, away 0.5%.",
+      [legs]
+    );
+    expect(sanitized).toContain("Stake market-implied probabilities (third-party data, not a Pundit forecast)");
+    expect(sanitized).toContain("home 50.0%, draw 25.0%, away 25.0%");
+    expect(sanitized).not.toContain("99%");
+
+    expect(stripUnvalidatedExternalMarketClaims(
+      "Stake market: home 50%, draw 25%, away 25%.",
+      [legs.slice(0, 2)]
+    )).toContain("omitted those numbers");
+    expect(stripUnvalidatedExternalMarketClaims([
+      "Stake market:",
+      "home: 2.00",
+      "draw: 4.00",
+      "away: 4.00",
+      "Safe unrelated sentence.",
+    ].join("\n"))).toBe(
+      "Safe unrelated sentence.\n\nI could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers."
+    );
+  });
+
+  it("fails manager-era assertions closed unless the dated tenure record supports them", () => {
+    const claim = "The win came during Mikel Arteta's tenure.";
+    expect(sanitizeManagerEraClaims(claim)).toContain("could not be tied to a structured tenure record");
+    expect(sanitizeManagerEraClaims(claim)).not.toContain("The win came");
+
+    const context = {
+      eventAt: "2024-02-01T00:00:00Z",
+      tenures: [
+        { manager: "Mikel Arteta", startedAt: "2019-12-22T00:00:00Z" },
+      ],
+    };
+    expect(sanitizeManagerEraClaims(claim, context)).toBe(claim);
+    expect(sanitizeManagerEraClaims("The win came under manager Unai Emery.", context))
+      .toContain("attributes that date to Mikel Arteta");
+    for (const normalProse of [
+      "Arsenal struggled under sustained pressure.",
+      "The match occurred during Premier League fixtures.",
+      "They played under Arsenal floodlights.",
+    ]) expect(sanitizeManagerEraClaims(normalProse)).toBe(normalProse);
+  });
+
+  it("removes both sides of a recognizable contradictory rationale", () => {
+    const answer = [
+      "The home side's midfield gives it an edge.",
+      "The away side's midfield gives it an advantage.",
+      "The fixture remains close.",
+    ].join("\n");
+    const sanitized = sanitizeContradictoryRationales(answer);
+    expect(sanitized).not.toContain("home side's midfield");
+    expect(sanitized).not.toContain("away side's midfield");
+    expect(sanitized).toContain("Conflicting midfield rationales were omitted");
+    expect(sanitized).toContain("fixture remains close");
+    expect(sanitizeRuntimeResponseCorrectness(answer)).toBe(sanitized);
+    const sameParagraph = "The home side's midfield gives it an edge. The away side's midfield gives it an advantage. The fixture remains close.";
+    expect(sanitizeContradictoryRationales(sameParagraph)).not.toMatch(/home side|away side/);
+    expect(sanitizeContradictoryRationales(sameParagraph)).toContain("fixture remains close");
   });
 
   it("extracts only server-marked external claims for the verifier", () => {
