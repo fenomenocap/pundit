@@ -86,6 +86,12 @@ bash scripts/verify-prod.sh
 bash scripts/diagnose-prod.sh
 ```
 
+With no SHA arguments, `verify-prod.sh` resolves the latest commits that touched
+the API and web deployment watch sets independently. A documentation-only main
+commit is skipped by Railway/Vercel and must not create a false SHA alarm. For
+an authorized release, explicit expected SHAs remain supported:
+`bash scripts/verify-prod.sh <api-sha> <web-sha> shadow`.
+
 Use **Railway MCP** to fetch latest deploy/build logs for `@pundit/api` in production.
 
 Grep logs for: `fatal`, `[Bootstrap]`, `[ClubRatings] ALERT`, `unhandledRejection`, `uncaughtException`,
@@ -94,9 +100,10 @@ Grep logs for: `fatal`, `[Bootstrap]`, `[ClubRatings] ALERT`, `unhandledRejectio
 ### Step 1b — Chat answers degraded but the service is up
 
 Chat runs on MiniMax M3, and its web search is a Pundit-executed tool rather than a hosted
-one. Search failing does **not** fail a request: answers fall back to model grounding and
-pre-training, which for team news, transfers and injuries means quietly stale content. It is
-therefore invisible unless watched for.
+one. Search failing does **not** take the whole service down. Structured model/competition
+grounding remains usable, while current-fact requests fail closed or abstain instead of
+falling back to stale pre-training. The degradation is safe for claims but still operationally
+important.
 
 `GET /ready` reports `webSearch`:
 
@@ -129,7 +136,8 @@ rides the key and quota Pundit already pays for.
 
 ### Step 1c — Rate limiting and replica count
 
-`express-rate-limit` keeps counters in process memory, so each replica enforces its own
+`express-rate-limit` keeps counters in process memory. `/api/ask` uses one
+process-wide bucket rather than a bucket per client IP, and each replica enforces its own
 limit. `/api/ask` therefore divides the intended global budget by the declared replica
 count: `ASK_RATE_LIMIT_PER_MINUTE` (default 10) ÷ `API_REPLICAS` (default 1, matching
 Railway's current single replica).
@@ -137,18 +145,21 @@ Railway's current single replica).
 `GET /ready` reports the resolved values:
 
 ```json
-"askRateLimit": { "perMinute": 10, "replicas": 1, "perInstance": 10 }
+"askRateLimit": { "scope": "deployment", "perMinute": 10, "replicas": 1, "perInstance": 10 }
 ```
 
-**If you change Railway's replica count, change `API_REPLICAS` to match.** If it drifts
-low the limit only gets stricter than intended, which is the safe direction; if it drifts
-high, users get throttled more than intended on an endpoint that costs LLM quota per call.
+The same response reports `seasonSchedule` with the current season, 380-row
+completeness, age, refresh error, and `servingLastGood`. `ready` is true only
+for a current-season, complete, error-free snapshot younger than six hours.
 
-To confirm the real ceiling, send ~14 *sequential* requests from a fresh window and watch
-for 429s: the count decrements by one per request and the request after the limit is
-refused. A concurrent burst is a poor test — the in-memory counter increments
-asynchronously, so simultaneous requests can all read the same remaining count and slip
-through together. That overshoot is a property of the store, not of the budget.
+**If you change Railway's replica count, change `API_REPLICAS` to match.** If the
+declared count is lower than the actual replica count, the effective deployment ceiling
+becomes too permissive; if it is higher, each replica throttles more aggressively. Treat
+either mismatch as configuration drift.
+
+The limiter uses one process-wide bucket, so different client IPs share the same per-instance
+allowance. Confirming it with production requests spends live MiniMax traffic and requires
+explicit authorization and pacing; use the local behavioral regression test for routine checks.
 
 ### Step 2 — Decide
 

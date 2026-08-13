@@ -9,7 +9,7 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 | Area | Current behavior |
 |---|---|
 | Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/recognized fixture/competition/season/general), active market comparisons, and suggestions from featured active club fixtures. Recognized non-priced fixtures retain context and show distinct outside-coverage, temporary-unavailability, or missing-input labels without Pundit probabilities; discovery-only candidates receive no fixture badge. The status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpriced`, `no-fixtures`, and `unavailable`; suggestions only ever offer fixtures the model has priced, so a chip never answers 503. |
-| `POST /api/ask` | Four tiers: active-match model grounding (ClubElo + HFA), competition standings grounding (ESPN table), Premier League season outlook (Monte Carlo title/top-four), and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, a shared 90-second request deadline, deterministic pre-search for clearly current questions, one bounded ambiguous fallback, and a 10 requests/minute deployment-wide limit divided across replicas. Positive current-news claims require same-sentence server-owned citations; unsupported claims are removed or the answer abstains. |
+| `POST /api/ask` | Four tiers: active-match model grounding (pinned club-strength artifact + HFA), competition standings grounding (ESPN table), Premier League season outlook (Monte Carlo title/top-four), and clearly labelled general football analysis. Uses aliases, a 12-turn/12,000-character history cap, a shared 90-second request deadline, deterministic pre-search for clearly current questions, one bounded ambiguous fallback, and a 10 requests/minute deployment-wide limit divided across replicas. Positive current-news claims require same-sentence server-owned citations; unsupported claims are removed or the answer abstains. |
 | Active model | `/api/model/active` and `/api/model/fixtures` serve Dixon-Coles 1X2 (plus totals/BTTS/scorelines) for active club fixtures only. |
 | Fixture registry | Approved structured identities persist atomically under `/data`; `/api/fixtures/recognized` exposes read-only capability decisions. Candidates/search never become grounding. Expanded routing is flag-gated and friendlies remain outside public model coverage. |
 | Featured fixtures | Next N active fixtures across enabled competitions (EPL priority), joined to model rows for chat suggestions and market odds. |
@@ -27,9 +27,10 @@ Pundit is a deployed chat-first club-season analysis app (Premier League + UCL q
 - `MINIMAX_API_KEY` is configured on the Railway `@pundit/api` service. Never read it back, log it, hardcode it, or store it in the repository.
 - Optional `ALLOWED_ORIGINS` (comma-separated) restricts browser CORS; leave unset only while debugging, and set it to the Vercel frontend origin(s) in production.
 - `/health` is liveness. `/ready` reports model, ESPN, active-fixture, and market-odds cache readiness without exposing secrets.
-- Cache refresh cadences: ESPN fixtures/standings and active market odds every 30 minutes; ClubElo ratings and active model every hour. All retain last-good data on refresh failure.
-- `PUNDIT_DATA_DIR=/data` on Railway is a mounted volume. It holds the rolling club-season calibration history, persisted ClubElo ratings, atomic recognized-fixture registry plus last-good recovery copy, and (only when separately enabled) the private friendly-shadow ledger. This state must survive deploys, since the container image is rebuilt each time. Unset locally, paths fall back to `packages/api/data`.
-- A ClubElo outage is deliberately **not** surfaced in the UI: a rating a few days old still prices a match honestly and there is nothing for a reader to act on. Monitor `model.ratingsServedFromCache` on `/ready` and alert on `[ClubRatings] ALERT` log lines instead.
+- Cache refresh cadences: ESPN fixtures/standings and active market odds every 30 minutes; the active model every hour. Club strengths come from a reviewed local release artifact; production runtime never contacts ClubElo.
+- `PUNDIT_DATA_DIR=/data` on Railway is a mounted volume. It holds the rolling club-season calibration history, club-strength artifact current/last-good recovery copies, atomic recognized-fixture registry plus last-good recovery copy, and (only when separately enabled) the private friendly-shadow ledger. This state must survive deploys, since the container image is rebuilt each time. Unset locally, paths fall back to `packages/api/data`.
+- Reviewed recognition-only fixtures ship in `packages/api/data/fixture-registry/approved-fixtures-v1.json`. A friendly requires an ESPN stable event ID plus an official competition, federation, or club URL; it remains outside public pricing and is merged into the atomic registry at startup.
+- Club-strength artifact hash, coverage and 30-day freshness fail closed. Monitor `model.ratingArtifactId`, `model.ratingArtifactSha256`, `model.ratingsAgeDays`, and `[ClubRatings] ALERT` log lines. New source snapshots enter production only through reviewed releases.
 
 ## Production verification
 
@@ -57,7 +58,8 @@ packages/api/src/
   routes/ask.ts                    — validation, history limits, 10/min limiter
   services/
     ask.ts                         — four-tier MiniMax orchestration and grounding
-    club-ratings.ts                — ClubElo CSV fetch/cache by rating profile
+    club-strength-artifact.ts      — pinned artifact schema/hash/freshness validation
+    club-ratings.ts                — local artifact adapter by rating profile
     dixon-coles.ts                 — Elo-to-goal and analytical score model (+ HFA)
     model-data.ts                  — active-club fixture model cache
     football-data.ts               — ESPN fixtures/results/standings cache

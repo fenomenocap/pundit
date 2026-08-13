@@ -17,13 +17,13 @@ World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluati
                         ┌──────────────┼──────────────┐
                         ▼              ▼              ▼
                  ┌───────────┐  ┌────────────┐  ┌──────────────┐
-                 │ ESPN data │  │ ClubElo +  │  │ Stake/Kalshi │
-                 │ + results │  │ Dixon-Coles│  │ /Polymarket  │
-                 │           │  │ active set │  │ public odds  │
+                 │ ESPN data │  │ Pinned club │  │ Stake/Kalshi │
+                 │ + results │  │ strength +  │  │ /Polymarket  │
+                 │           │  │ local model │  │ public odds  │
                  └───────────┘  └────────────┘  └──────────────┘
 ```
 
-Public football/model/market sources are keyless and cached server-side on a cadence (ESPN + active market odds every 30 minutes, ClubElo + active model hourly). MiniMax powers the live chat through a Railway-managed secret. There is no database: runtime caches are in memory, while restart-critical ratings, calibration, recognized-fixture mappings, and optional private-shadow artifacts use atomic JSON files under `PUNDIT_DATA_DIR`.
+Public football and market sources are keyless and cached server-side on a cadence (ESPN and active market odds every 30 minutes; the complete Premier League schedule at most every six hours). The active model recomputes hourly from a reviewed, content-addressed club-strength artifact and never contacts ClubElo at runtime. MiniMax powers the live chat through a Railway-managed secret. There is no database: runtime caches are in memory, while restart-critical artifact recovery copies, the season schedule, calibration, recognized-fixture mappings, and optional private-shadow artifacts use atomic JSON files under `PUNDIT_DATA_DIR`.
 
 ---
 
@@ -162,7 +162,7 @@ Required env vars for local dev are listed in `.env.example`. Never commit `MINI
 
 ## Backtesting note
 
-The WC 2026 evaluation at `/evaluation/wc-2026` uses a frozen reconstructed artifact. Live model views are recalculated on each ClubElo refresh; look-ahead-free club-season calibration uses the immutable pre-kickoff snapshots exposed at `/evaluation/club-season`.
+The WC 2026 evaluation at `/evaluation/wc-2026` uses a frozen reconstructed artifact. Live model views are recalculated hourly from the release's pinned strength artifact; look-ahead-free club-season calibration uses the immutable pre-kickoff snapshots exposed at `/evaluation/club-season`.
 
 ---
 
