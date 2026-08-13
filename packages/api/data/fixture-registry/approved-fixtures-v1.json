@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "fixtureId": "espn:club.friendly:401867142",
+      "primarySource": "espn",
+      "primarySourceFixtureId": "401867142",
+      "homeTeam": {
+        "id": "arsenal",
+        "name": "Arsenal"
+      },
+      "awayTeam": {
+        "id": "betis",
+        "name": "Real Betis"
+      },
+      "kickoff": "2026-08-05T18:30:00.000Z",
+      "venue": "Aviva Stadium",
+      "neutralVenue": true,
+      "competition": {
+        "id": "club.friendly",
+        "name": "Club Friendly",
+        "category": "club-friendly"
+      },
+      "status": "completed",
+      "recognition": "corroborated",
+      "observedSources": [
+        {
+          "source": "espn",
+          "sourceFixtureId": "401867142",
+          "authority": "authoritative",
+          "observedAt": "2026-08-13T00:00:00.000Z",
+          "sourceUrl": "https://www.espn.com/soccer/match/_/gameId/401867142/real-betis-arsenal"
+        },
+        {
+          "source": "official-club",
+          "sourceFixtureId": "realbetis:32296",
+          "authority": "corroborating",
+          "observedAt": "2026-08-13T00:00:00.000Z",
+          "sourceUrl": "https://www.realbetisbalompie.es/noticias/primer-equipo/el-real-betis-y-el-arsenal-se-enfrentaran-en-el-aviva-stadium-de-dublin-el-proximo-5-de-agosto-32296"
+        }
+      ],
+      "observationHistory": [
+        {
+          "source": "espn",
+          "sourceFixtureId": "401867142",
+          "observedAt": "2026-08-13T00:00:00.000Z",
+          "kickoff": "2026-08-05T18:30:00.000Z",
+          "venue": "Aviva Stadium",
+          "neutralVenue": true,
+          "status": "completed"
+        }
+      ]
+    }
+  ]
+}

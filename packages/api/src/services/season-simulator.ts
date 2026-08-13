@@ -94,7 +94,7 @@ export function remainingScheduledFixtures(
   return matches
     .filter((match) =>
       match.competitionId === competitionId
-      && match.status === "SCHEDULED"
+      && (match.status === "SCHEDULED" || match.status === "POSTPONED")
     )
     .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
 }

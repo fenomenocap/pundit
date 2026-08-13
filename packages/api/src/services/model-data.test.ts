@@ -37,6 +37,7 @@ function activeFixture(overrides: Partial<ActiveFixture> = {}): ActiveFixture {
     matchday: null,
     group: null,
     score: null,
+    neutralVenue: false,
     featured: false,
     ...overrides,
   };
@@ -73,6 +74,16 @@ describe("active club model", () => {
     });
     expect(model!.pHome + model!.pDraw + model!.pAway).toBeCloseTo(1, 4);
     expect(model!.pHome).toBeGreaterThan(model!.pAway);
+  });
+
+  it("does not construct a model row until neutral-venue state is known", () => {
+    expect(buildModelFixtureFromActive(
+      activeFixture({ neutralVenue: null }), ratings
+    )).toBeNull();
+    const neutral = buildModelFixtureFromActive(
+      activeFixture({ neutralVenue: true }), ratings
+    );
+    expect(neutral?.forecastProvenance?.homeAdvantageElo).toBe(0);
   });
 
   it("preserves the exact deployed supported-fixture probability payload behind recognition", () => {
@@ -218,6 +229,8 @@ describe("active club model", () => {
       error: "latest refresh timed out",
       staleRatings: [],
       servingPersisted: false,
+      artifactId: "clubelo@1:test-artifact",
+      artifactSha256: "test-artifact",
     });
 
     await refreshModelData([activeFixture()]);
@@ -225,6 +238,11 @@ describe("active club model", () => {
 
     expect(cached.fixtures).toHaveLength(1);
     expect(cached.fixtures[0]).toMatchObject({ homeElo: 1850, awayElo: 1600 });
+    expect(cached.fixtures[0].forecastProvenance).toMatchObject({
+      ratingSourceState: "artifact",
+      ratingArtifactId: "clubelo@1:test-artifact",
+      ratingArtifactSha256: "test-artifact",
+    });
     expect(cached.error).toBeNull();
   });
 

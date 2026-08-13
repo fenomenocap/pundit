@@ -11,6 +11,7 @@
     "chat-eval:production": "node scripts/chat-battle-test.mjs",
     "chat-eval:finalize": "node scripts/finalize-chat-report.mjs",
     "test:vercel-ignore": "node --test scripts/vercel-ignore-build.test.mjs",
+    "test:deployed-sha": "node --test scripts/resolve-deployed-sha.test.mjs",
     "clean": "pnpm -r clean",
     "verify:prod": "bash scripts/verify-prod.sh",
     "verify:local": "bash scripts/verify-local.sh"

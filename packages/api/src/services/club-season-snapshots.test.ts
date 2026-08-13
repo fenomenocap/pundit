@@ -297,6 +297,37 @@ describe("club-season snapshots", () => {
     expect(artifact.evaluation.exclusions.byReason.incompleteInputProvenance).toBe(1);
   });
 
+  it("excludes artifact-backed forecasts without matching immutable identity provenance", () => {
+    const completeSha = "a".repeat(64);
+    const makeRow = (ratingArtifactId?: string, ratingArtifactSha256?: string) =>
+      buildSnapshotFromModel(sampleModelFixture({
+        result: { homeScore: 2, awayScore: 1, status: "FINISHED", winner: "Arsenal" },
+        forecastProvenance: {
+          ...sampleModelFixture().forecastProvenance!,
+          ratingSourceState: "artifact",
+          ratingArtifactId,
+          ratingArtifactSha256,
+        },
+      }), "2026-08-15T13:31:00.000Z");
+
+    for (const row of [
+      makeRow(),
+      makeRow(`clubelo@1:${completeSha}`, "b".repeat(64)),
+      makeRow(`clubelo@1:${completeSha}`, "not-a-sha"),
+    ]) {
+      const artifact = migrateClubSeasonEvaluationArtifact({ fixtures: [row] });
+      expect(artifact.fixtures[0].provenanceCompleteness).toBe("source_partial");
+      expect(artifact.metrics.fixtureCount).toBe(0);
+      expect(artifact.evaluation.exclusions.byReason.incompleteInputProvenance).toBe(1);
+    }
+
+    const valid = migrateClubSeasonEvaluationArtifact({
+      fixtures: [makeRow(`clubelo@1:${completeSha}`, completeSha)],
+    });
+    expect(valid.fixtures[0].provenanceCompleteness).toBe("complete");
+    expect(valid.metrics.fixtureCount).toBe(1);
+  });
+
   it("timestamp-backs up the exact legacy bytes before migration persistence", () => {
     useTempDataDir();
     const target = path.join(tempDataDir!, "evaluation", "club-season.json");

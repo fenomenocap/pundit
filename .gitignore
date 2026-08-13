@@ -21,6 +21,9 @@ packages/api/data/cache/
 
 # Runtime fixture identity and private shadow evidence — `/data` in production.
 packages/api/data/fixture-registry/
+!packages/api/data/fixture-registry/
+packages/api/data/fixture-registry/*
+!packages/api/data/fixture-registry/approved-fixtures-v1.json
 packages/api/data/evaluation/friendly-shadow-v1.json
 packages/api/data/evaluation/friendly-shadow-v1.json.last-good
 

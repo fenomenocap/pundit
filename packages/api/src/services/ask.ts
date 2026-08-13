@@ -16,10 +16,10 @@ import {
   getModelRefreshState,
   ModelFixture,
 } from "./model-data";
-import { getCachedMatches, FootballStanding } from "./football-data";
+import { getCachedMatches, getCachedSeasonSchedule, FootballStanding } from "./football-data";
 import { getActiveFixtures } from "./active-fixtures";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
-import { getCachedClubRatings } from "./club-ratings";
+import { clubRatingsAreCurrent, getCachedClubRatings } from "./club-ratings";
 import { searchWeb } from "./web-search";
 import { verifyClaimsOnce } from "./claim-verifier";
 import {
@@ -190,7 +190,9 @@ function capabilityForFixture(
     && !missing?.has(fixture.homeTeam.id)
     && !missing?.has(fixture.awayTeam.id);
   return evaluateFixtureCapability(fixture, {
-    modelFixture,
+    // A cached model row is not priceable after its immutable rating artifact
+    // expires or otherwise becomes invalid.
+    modelFixture: fixtureRatingsAvailable ? modelFixture : undefined,
     modelInitialized: routing.modelInitialized ?? true,
     modelRefreshing: routing.modelRefreshing,
     ratingsAvailable: fixtureRatingsAvailable,
@@ -1466,13 +1468,13 @@ export function buildSeasonGrounding(
   const competition = getCompetitionById(competitionId);
   if (!competition || competitionId !== "eng.1") return null;
 
-  const football = getCachedMatches();
+  const seasonSchedule = getCachedSeasonSchedule(competitionId);
   const scheduled = remainingScheduledFixtures(
-    [...football.upcoming, ...football.recent],
+    seasonSchedule.fixtures,
     competitionId
   );
   const ratings = getCachedClubRatings();
-  if (ratings.fetchedAt === null) return null;
+  if (!clubRatingsAreCurrent(ratings)) return null;
 
   const seasonOutlook = simulateSeasonOutlook(
     competitionId,
@@ -1490,6 +1492,24 @@ export function buildSeasonGrounding(
     standings: competitionStandingsRows(competitionId, standings),
     seasonOutlook,
   };
+}
+
+export function buildSeasonOrCompetitionGrounding(
+  competitionId: string,
+  standings: FootballStanding[],
+  lastUpdated: Date | null
+): SeasonGrounding | CompetitionGrounding {
+  return seasonOrCompetitionGrounding(
+    buildSeasonGrounding(competitionId, standings, lastUpdated),
+    buildCompetitionGrounding(competitionId, standings, lastUpdated)
+  );
+}
+
+export function seasonOrCompetitionGrounding(
+  season: SeasonGrounding | null,
+  competition: CompetitionGrounding
+): SeasonGrounding | CompetitionGrounding {
+  return season ?? competition;
 }
 
 export function resolveAskContext(
@@ -2571,7 +2591,7 @@ interface PreparedAsk {
   candidateUnrecognized: boolean;
 }
 
-function prepareAsk(
+export function prepareAsk(
   question: string,
   history: ConversationTurn[],
   teamContext?: TeamContext,
@@ -2579,7 +2599,9 @@ function prepareAsk(
 ): PreparedAsk {
   const modelData = getCachedModelData();
   const modelRefresh = getModelRefreshState();
-  const { fixtures } = modelData;
+  const ratings = getCachedClubRatings();
+  const ratingsAvailable = clubRatingsAreCurrent(ratings);
+  const fixtures = ratingsAvailable ? modelData.fixtures : [];
   const football = getCachedMatches();
   const activeFixtures = getActiveFixtures().map((fixture) => ({
     home: fixture.homeTeam,
@@ -2602,7 +2624,7 @@ function prepareAsk(
       fixtureContext,
       modelInitialized: modelData.lastUpdated !== null,
       modelRefreshing: modelRefresh.refreshing,
-      ratingsAvailable: getCachedClubRatings().fetchedAt !== null,
+      ratingsAvailable,
       missingRatingTeamIds: modelRefresh.missingRatingTeamIds,
     }
   );
@@ -2638,21 +2660,20 @@ function prepareAsk(
     systemPrompt = COMPETITION_SYSTEM_PROMPT;
     currentMessage = `Competition standings: ${JSON.stringify(grounding)}\nUser question: ${question}`;
   } else if (context.tier === "season") {
-    const seasonGrounding = buildSeasonGrounding(
+    const seasonGrounding = buildSeasonOrCompetitionGrounding(
       context.competitionId,
       football.standings,
       football.lastUpdated
     );
-    if (!seasonGrounding) {
-      throw new AppError(
-        503,
-        "Pundit's season outlook is temporarily unavailable. Try a table question instead.",
-        "MODEL_UNAVAILABLE"
-      );
-    }
     grounding = seasonGrounding;
-    systemPrompt = SEASON_SYSTEM_PROMPT;
-    currentMessage = `Season outlook: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+    if (seasonGrounding.kind === "season") {
+      systemPrompt = SEASON_SYSTEM_PROMPT;
+      currentMessage = `Season outlook: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+    } else {
+      systemPrompt = COMPETITION_SYSTEM_PROMPT;
+      currentMessage = "The complete season outlook is temporarily unavailable. Answer only from "
+        + `the current competition standings: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+    }
   } else if (context.tier === "match") {
     grounding = buildGrounding(context.fixture);
     systemPrompt = MATCH_SYSTEM_PROMPT;

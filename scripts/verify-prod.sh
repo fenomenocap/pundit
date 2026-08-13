@@ -5,8 +5,20 @@ API_URL="https://thepundit.up.railway.app"
 WEB_URL="https://thepundit.vercel.app"
 EXPECTED_API_HOST="thepundit.up.railway.app"
 
-EXPECTED_API_SHA="${1:-$(git rev-parse HEAD)}"
-EXPECTED_WEB_SHA="${2:-${EXPECTED_WEB_SHA:-$EXPECTED_API_SHA}}"
+if [[ -n "${1:-}" ]]; then
+  EXPECTED_API_SHA="$1"
+else
+  EXPECTED_API_SHA="$(bash scripts/resolve-deployed-sha.sh api)"
+fi
+if [[ -n "${2:-}" ]]; then
+  EXPECTED_WEB_SHA="$2"
+elif [[ -n "${EXPECTED_WEB_SHA:-}" ]]; then
+  EXPECTED_WEB_SHA="$EXPECTED_WEB_SHA"
+elif [[ -n "${1:-}" ]]; then
+  EXPECTED_WEB_SHA="$EXPECTED_API_SHA"
+else
+  EXPECTED_WEB_SHA="$(bash scripts/resolve-deployed-sha.sh web)"
+fi
 EXPECTED_REGISTRY_MODE="${3:-${EXPECTED_REGISTRY_MODE:-shadow}}"
 POLL_ATTEMPTS="${VERIFY_PROD_POLL_ATTEMPTS:-40}"
 POLL_INTERVAL_SECONDS="${VERIFY_PROD_POLL_INTERVAL_SECONDS:-5}"
@@ -131,6 +143,7 @@ if [[ "$REGISTRY_HTTP" != "200" || "$MODEL_HTTP" != "200" ]]; then
 fi
 python3 - "$READY_TMP" "$REGISTRY_TMP" "$MODEL_TMP" "$EXPECTED_REGISTRY_MODE" <<'PY'
 import json, sys
+from datetime import datetime, timezone
 
 with open(sys.argv[1]) as handle:
     ready = json.load(handle)
@@ -149,8 +162,30 @@ if registry.get("storageBlocked") is not False or registry.get("error") is not N
 if not isinstance(ready.get("webSearch"), dict):
     raise SystemExit("/ready is missing webSearch status")
 rate = ready.get("askRateLimit") or {}
-if rate.get("replicas") != 1 or rate.get("perMinute") != 10 or rate.get("perInstance") != 10:
+if (rate.get("scope") != "deployment" or rate.get("replicas") != 1
+        or rate.get("perMinute") != 10 or rate.get("perInstance") != 10):
     raise SystemExit("ask rate-limit settings do not match the one-replica production contract")
+ratings = ready.get("model") or {}
+artifact_id = ratings.get("ratingArtifactId")
+artifact_sha = ratings.get("ratingArtifactSha256")
+if (not isinstance(artifact_id, str) or not artifact_id.startswith("clubelo@1:")
+        or not isinstance(artifact_sha, str) or len(artifact_sha) != 64
+        or not artifact_id.endswith(artifact_sha)
+        or not isinstance(ratings.get("ratingsAgeDays"), int)
+        or ratings.get("ratingsAgeDays") > 30
+        or ratings.get("ratingsServedFromCache") is not False):
+    raise SystemExit("club-strength artifact identity, hash, or freshness is invalid")
+season = ready.get("seasonSchedule") or {}
+now = datetime.now(timezone.utc)
+start_year = now.year if now.month >= 7 else now.year - 1
+expected_season = f"{start_year}-{str(start_year + 1)[-2:]}"
+if (season.get("ready") is not True or season.get("fixtureCount") != 380
+        or season.get("seasonId") != expected_season
+        or season.get("error") is not None
+        or season.get("servingLastGood") is not False
+        or not isinstance(season.get("ageMinutes"), int)
+        or season.get("ageMinutes") >= 360):
+    raise SystemExit("complete Premier League season schedule is not ready and healthy")
 endpoint_registry = snapshot.get("registry") or {}
 for field in ("mode", "enabled", "storageBlocked"):
     if endpoint_registry.get(field) != registry.get(field):
@@ -171,10 +206,34 @@ model_ids = {
     f"{row.get('competitionId')}:{row.get('fixtureId')}"
     for row in model_rows if isinstance(row, dict)
 }
+approved_friendly = next((row for row in fixtures
+    if (row.get("fixture") or {}).get("fixtureId") == "espn:club.friendly:401867142"), None)
+if not approved_friendly:
+    raise SystemExit("approved Arsenal-Real Betis friendly is missing from the registry")
+friendly_fixture = approved_friendly.get("fixture") or {}
+friendly_sources = friendly_fixture.get("observedSources") or []
+if ((approved_friendly.get("capability") or {}) != {
+        "status": "outside-coverage", "reason": "friendly-policy-disabled"}
+        or friendly_fixture.get("recognition") != "corroborated"
+        or not any(source.get("source") == "espn"
+                   and source.get("authority") == "authoritative"
+                   for source in friendly_sources)
+        or not any(source.get("source") == "official-club"
+                   and source.get("authority") == "corroborating"
+                   for source in friendly_sources)):
+    raise SystemExit("approved friendly identity/corroboration/capability contract failed")
 for row in fixtures:
     capability = row.get("capability") or {}
     if capability.get("status") == "priced" and capability.get("modelFixtureId") not in model_ids:
         raise SystemExit("recognized priced fixture does not join to the active model")
+priced_ids = {
+    (row.get("capability") or {}).get("modelFixtureId")
+    for row in fixtures
+    if (row.get("capability") or {}).get("status") == "priced"
+}
+for model_id in model_ids:
+    if model_id not in priced_ids:
+        raise SystemExit("active model row does not join to a recognized priced fixture")
 print(f"OK ({len(fixtures)} recognized fixtures; {expected_mode} registry healthy)")
 PY
 rm -f "$REGISTRY_TMP" "$MODEL_TMP" "$READY_TMP"

@@ -11,11 +11,17 @@ import askRoutes, { askRateLimitConfig } from "./routes/ask";
 import evaluationRoutes from "./routes/evaluation";
 import {
   clubRatingsAgeDays,
+  clubRatingsAreCurrent,
   getCachedClubRatings,
   startClubRatingsCron,
 } from "./services/club-ratings";
 import { getCachedModelData, getModelRefreshState, startModelCron } from "./services/model-data";
-import { getCachedMatches, startFootballCron } from "./services/football-data";
+import {
+  getCachedMatches,
+  getCachedSeasonSchedule,
+  seasonScheduleStatus,
+  startFootballCron,
+} from "./services/football-data";
 import { getActiveFixtures, getActiveFixtureStatus } from "./services/active-fixtures";
 import {
   getModelMarketOddsStatus,
@@ -90,7 +96,7 @@ app.get("/api/fixtures/recognized", (_req, res) => {
     modelFixtures: model.fixtures,
     modelInitialized: model.lastUpdated !== null,
     modelRefreshing: modelRefresh.refreshing,
-    ratingsAvailable: ratings.fetchedAt !== null,
+    ratingsAvailable: clubRatingsAreCurrent(ratings),
     missingRatingTeamIds: modelRefresh.missingRatingTeamIds,
   }));
 });
@@ -102,7 +108,9 @@ function currentReadiness() {
   const active = getActiveFixtureStatus();
   const odds = getModelMarketOddsStatus();
   const ratings = getCachedClubRatings();
-  const readiness = evaluateReadiness(model, football, activeFixtures, odds);
+  const readiness = evaluateReadiness(
+    model, football, activeFixtures, odds, clubRatingsAreCurrent(ratings)
+  );
   return { model, football, activeFixtures, active, odds, ratings, readiness };
 }
 
@@ -130,6 +138,8 @@ app.get("/ready", (_req, res) => {
   const {
     model, football, activeFixtures, active, odds, ratings, readiness,
   } = currentReadiness();
+  const seasonSchedule = getCachedSeasonSchedule();
+  const seasonStatus = seasonScheduleStatus(seasonSchedule);
   res.status(readiness.ready ? 200 : 503).json({
     status: readiness.ready ? "ready" : "loading",
     version: getRuntimeVersion(),
@@ -139,23 +149,37 @@ app.get("/ready", (_req, res) => {
       expectedActiveFixtureCount: activeFixtures.length,
       lastUpdated: model.lastUpdated?.toISOString() ?? null,
       error: model.error,
-      // Clubs priced off a lapsed ClubElo window rather than today's snapshot.
-      // Readiness does not fail on these — the rating is real, just dated — but
-      // the model should not present them as current either.
+      // Retained for schema compatibility with older readiness consumers. The
+      // release artifact has one coherent timestamp and no per-club fallback,
+      // so new deployments normally report an empty list.
       staleRatings: ratings.staleRatings,
-      // Whole-rating-set staleness, for backend monitoring rather than the UI: a
-      // snapshot a few days old still prices a match honestly, so readiness stays
-      // green and readers are not alarmed, but an outage must not be invisible to
-      // us. Alert on ratingsServedFromCache — it means ClubElo is unreachable.
+      // Whole-artifact age and recovery state. The legacy field name remains in
+      // the response for compatibility; true now means the bundled selector was
+      // invalid and a validated /data current/last-good artifact was recovered.
       ratingsAsOf: ratings.fetchedAt?.toISOString() ?? null,
       ratingsAgeDays: clubRatingsAgeDays(ratings.fetchedAt),
       ratingsServedFromCache: ratings.servingPersisted,
+      ratingArtifactId: ratings.artifactId,
+      ratingArtifactSha256: ratings.artifactSha256,
     },
     football: {
       ready: readiness.footballReady,
       lastUpdated: football.lastUpdated?.toISOString() ?? null,
       error: football.error,
       competitionErrors: football.competitionErrors,
+    },
+    // The complete season schedule is degradable: table grounding remains
+    // available if it is absent, while a persisted last-good schedule can keep
+    // the simulator useful through an ESPN refresh failure.
+    seasonSchedule: {
+      ready: seasonStatus.ready,
+      competitionId: seasonSchedule.competitionId,
+      seasonId: seasonSchedule.seasonId,
+      fixtureCount: seasonSchedule.fixtures.length,
+      lastUpdated: seasonSchedule.lastUpdated?.toISOString() ?? null,
+      error: seasonSchedule.error,
+      servingLastGood: seasonStatus.servingLastGood,
+      ageMinutes: seasonStatus.ageMinutes,
     },
     activeFixtures: {
       count: active.count,

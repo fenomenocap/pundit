@@ -112,6 +112,14 @@ describe("season simulator", () => {
     expect(fixtures[0].id).toBe(201);
   });
 
+  it("keeps postponed fixtures as unplayed inputs and excludes cancellations", () => {
+    const fixtures = remainingScheduledFixtures([
+      { ...scheduled[0], id: 301, status: "POSTPONED" },
+      { ...scheduled[0], id: 302, status: "CANCELLED" },
+    ], "eng.1");
+    expect(fixtures.map((fixture) => fixture.id)).toEqual([301]);
+  });
+
   it("fails closed when the remaining league schedule is incomplete", () => {
     const preSeason = standings.map((row) => ({ ...row, playedGames: 0, points: 0 }));
     expect(hasCompleteLeagueSchedule(preSeason, scheduled)).toBe(false);
