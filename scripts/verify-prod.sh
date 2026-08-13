@@ -5,7 +5,9 @@ API_URL="https://thepundit.up.railway.app"
 WEB_URL="https://thepundit.vercel.app"
 EXPECTED_API_HOST="thepundit.up.railway.app"
 
-EXPECTED_SHA="${1:-$(git rev-parse HEAD)}"
+EXPECTED_API_SHA="${1:-$(git rev-parse HEAD)}"
+EXPECTED_WEB_SHA="${2:-${EXPECTED_WEB_SHA:-$EXPECTED_API_SHA}}"
+EXPECTED_REGISTRY_MODE="${3:-${EXPECTED_REGISTRY_MODE:-shadow}}"
 POLL_ATTEMPTS="${VERIFY_PROD_POLL_ATTEMPTS:-40}"
 POLL_INTERVAL_SECONDS="${VERIFY_PROD_POLL_INTERVAL_SECONDS:-5}"
 
@@ -15,14 +17,17 @@ json_sha() {
 
 sha_matches() {
   local actual="$1"
+  local expected="${2:-$EXPECTED_API_SHA}"
   [[ -n "$actual" && "$actual" != "unknown" ]] \
-    && { [[ "$actual" == "$EXPECTED_SHA" ]] \
-      || [[ "$actual" == "$EXPECTED_SHA"* ]] \
-      || [[ "$EXPECTED_SHA" == "$actual"* ]]; }
+    && { [[ "$actual" == "$expected" ]] \
+      || [[ "$actual" == "$expected"* ]] \
+      || [[ "$expected" == "$actual"* ]]; }
 }
 
 echo "=== 1. Intended build SHA ==="
-echo "$EXPECTED_SHA"
+echo "API:        $EXPECTED_API_SHA"
+echo "web:        $EXPECTED_WEB_SHA"
+echo "registry:   $EXPECTED_REGISTRY_MODE"
 
 echo "=== 2. Poll API startup/version ==="
 API_SHA=""
@@ -30,7 +35,7 @@ for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
   STARTUP_HTTP=$(curl -sS -o /dev/null -w "%{http_code}" "$API_URL/startup" || true)
   API_VERSION=$(curl -fsS "$API_URL/version" 2>/dev/null || true)
   API_SHA=$(printf '%s' "$API_VERSION" | json_sha 2>/dev/null || true)
-  if [[ "$STARTUP_HTTP" == "200" ]] && sha_matches "$API_SHA"; then
+  if [[ "$STARTUP_HTTP" == "200" ]] && sha_matches "$API_SHA" "$EXPECTED_API_SHA"; then
     echo "OK (SHA $API_SHA)"
     break
   fi
@@ -47,7 +52,7 @@ WEB_SHA=""
 for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
   WEB_VERSION=$(curl -fsS "$WEB_URL/api/version" 2>/dev/null || true)
   WEB_SHA=$(printf '%s' "$WEB_VERSION" | json_sha 2>/dev/null || true)
-  if sha_matches "$WEB_SHA"; then
+  if sha_matches "$WEB_SHA" "$EXPECTED_WEB_SHA"; then
     echo "OK (SHA $WEB_SHA)"
     break
   fi
@@ -114,9 +119,67 @@ PY
 else
   echo "  (python3 unavailable; inspect $API_URL/ready manually)"
 fi
-rm -f "$READY_TMP"
+echo "=== 6. Registry, search, and runtime controls ==="
+REGISTRY_TMP=$(mktemp)
+REGISTRY_HTTP=$(curl -sS -w "%{http_code}" -o "$REGISTRY_TMP" "$API_URL/api/fixtures/recognized" || true)
+MODEL_TMP=$(mktemp)
+MODEL_HTTP=$(curl -sS -w "%{http_code}" -o "$MODEL_TMP" "$API_URL/api/model/active" || true)
+if [[ "$REGISTRY_HTTP" != "200" || "$MODEL_HTTP" != "200" ]]; then
+  echo "FAIL: registry/model certification surfaces returned HTTP $REGISTRY_HTTP/$MODEL_HTTP"
+  rm -f "$REGISTRY_TMP" "$MODEL_TMP" "$READY_TMP"
+  exit 1
+fi
+python3 - "$READY_TMP" "$REGISTRY_TMP" "$MODEL_TMP" "$EXPECTED_REGISTRY_MODE" <<'PY'
+import json, sys
 
-echo "=== 6. CORS good origin ==="
+with open(sys.argv[1]) as handle:
+    ready = json.load(handle)
+with open(sys.argv[2]) as handle:
+    snapshot = json.load(handle)
+with open(sys.argv[3]) as handle:
+    model = json.load(handle)
+
+registry = ready.get("fixtureRegistry") or {}
+expected_mode = sys.argv[4]
+expected_enabled = expected_mode == "enabled"
+if registry.get("mode") != expected_mode or registry.get("enabled") is not expected_enabled:
+    raise SystemExit(f"fixture registry is not in expected {expected_mode} mode")
+if registry.get("storageBlocked") is not False or registry.get("error") is not None:
+    raise SystemExit("fixture registry reports blocked or failed storage")
+if not isinstance(ready.get("webSearch"), dict):
+    raise SystemExit("/ready is missing webSearch status")
+rate = ready.get("askRateLimit") or {}
+if rate.get("replicas") != 1 or rate.get("perMinute") != 10 or rate.get("perInstance") != 10:
+    raise SystemExit("ask rate-limit settings do not match the one-replica production contract")
+endpoint_registry = snapshot.get("registry") or {}
+for field in ("mode", "enabled", "storageBlocked"):
+    if endpoint_registry.get(field) != registry.get(field):
+        raise SystemExit(f"registry endpoint invariant {field} differs from /ready")
+if endpoint_registry.get("error") is not None:
+    raise SystemExit("registry endpoint reports an error")
+fixtures = snapshot.get("fixtures")
+if not isinstance(fixtures, list):
+    raise SystemExit("registry endpoint is missing fixtures")
+serialized = json.dumps(snapshot).lower()
+if "candidateid" in serialized or "discoveredby" in serialized:
+    raise SystemExit("candidate/search discovery data leaked into the recognized registry")
+
+model_rows = model.get("fixtures") if isinstance(model, dict) else None
+if not isinstance(model_rows, list):
+    raise SystemExit("model endpoint is missing fixtures")
+model_ids = {
+    f"{row.get('competitionId')}:{row.get('fixtureId')}"
+    for row in model_rows if isinstance(row, dict)
+}
+for row in fixtures:
+    capability = row.get("capability") or {}
+    if capability.get("status") == "priced" and capability.get("modelFixtureId") not in model_ids:
+        raise SystemExit("recognized priced fixture does not join to the active model")
+print(f"OK ({len(fixtures)} recognized fixtures; {expected_mode} registry healthy)")
+PY
+rm -f "$REGISTRY_TMP" "$MODEL_TMP" "$READY_TMP"
+
+echo "=== 7. CORS good origin ==="
 CORS_GOOD_HEADERS=$(curl -fsS -D - -o /dev/null -H "Origin: $WEB_URL" "$API_URL/api/matches/standings")
 if ! echo "$CORS_GOOD_HEADERS" | grep -i "access-control-allow-origin:" | grep -Fq "$WEB_URL"; then
   echo "FAIL: missing access-control-allow-origin: $WEB_URL"
@@ -125,7 +188,7 @@ if ! echo "$CORS_GOOD_HEADERS" | grep -i "access-control-allow-origin:" | grep -
 fi
 echo "OK"
 
-echo "=== 7. CORS bad origin ==="
+echo "=== 8. CORS bad origin ==="
 CORS_BAD_HEADERS=$(curl -fsS -D - -o /dev/null -H "Origin: https://evil.example" "$API_URL/api/matches/standings")
 if echo "$CORS_BAD_HEADERS" | grep -i "access-control-allow-origin:" | grep -Fq "https://evil.example"; then
   echo "FAIL: evil origin was reflected in access-control-allow-origin"
@@ -133,7 +196,7 @@ if echo "$CORS_BAD_HEADERS" | grep -i "access-control-allow-origin:" | grep -Fq 
 fi
 echo "OK"
 
-echo "=== 8. Vercel bundle ==="
+echo "=== 9. Vercel bundle ==="
 HTML=$(curl -fsS "$WEB_URL/")
 # Collect every JS chunk the homepage loads (page chunk + layout chunk +
 # shared/vendor chunks). API host constants live in lib/api.ts and may
@@ -175,7 +238,10 @@ echo ""
 echo "PASS: production verification OK"
 echo "  - API health (/health)"
 echo "  - API startup and ready"
-echo "  - API and web serve intended SHA $EXPECTED_SHA"
+echo "  - API serves intended SHA $EXPECTED_API_SHA"
+echo "  - web serves intended SHA $EXPECTED_WEB_SHA"
+echo "  - registry is $EXPECTED_REGISTRY_MODE, healthy, candidate-free, and model-joined"
+echo "  - search and one-replica rate-limit status are exposed"
 echo "  - CORS allow $WEB_URL"
 echo "  - CORS reject https://evil.example"
 echo "  - Vercel bundle uses $EXPECTED_API_HOST (no localhost:3001, all chunks inspected)"

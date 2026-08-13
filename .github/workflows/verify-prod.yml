@@ -10,5 +10,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - run: bash scripts/verify-prod.sh
+      - name: Resolve deployed web SHA
+        id: web-sha
+        shell: bash
+        run: |
+          sha=$(git log -1 --format=%H -- packages/web packages/shared package.json pnpm-lock.yaml pnpm-workspace.yaml .node-version .nvmrc scripts/vercel-ignore-build.mjs)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve deployed API SHA
+        id: api-sha
+        shell: bash
+        run: |
+          sha=$(git log -1 --format=%H -- packages/api package.json pnpm-lock.yaml pnpm-workspace.yaml .node-version .nvmrc railway.toml)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - run: bash scripts/verify-prod.sh "${{ steps.api-sha.outputs.sha }}" "${{ steps.web-sha.outputs.sha }}" shadow
