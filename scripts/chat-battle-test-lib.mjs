@@ -33,8 +33,69 @@ export function loadApiRuntimeFixtureHelpers(repoRoot = path.resolve(import.meta
   }
 }
 
-export const EVAL_SCHEMA_VERSION = 9;
+export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta.dirname, "..")) {
+  const previousProject = process.env.TS_NODE_PROJECT;
+  try {
+    process.env.TS_NODE_PROJECT = path.join(repoRoot, "packages/api/tsconfig.json");
+    require(path.join(repoRoot, "packages/api/node_modules/ts-node/register/transpile-only"));
+    return require(path.join(repoRoot, "packages/api/src/services/ask.ts"));
+  } catch (error) {
+    throw new Error("routing runtime-helper scenarios require installed API development dependencies", { cause: error });
+  } finally {
+    if (previousProject === undefined) delete process.env.TS_NODE_PROJECT;
+    else process.env.TS_NODE_PROJECT = previousProject;
+  }
+}
+
+export const EVAL_SCHEMA_VERSION = 10;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
+
+export function executeRuntimeHelperScenario(scenario, repoRoot = path.resolve(import.meta.dirname, "..")) {
+  const correctnessHelpers = loadApiRuntimeCorrectnessHelpers(repoRoot);
+  if (scenario.helper === "resolveFixtureRoutingSequence") {
+    const routingHelpers = loadApiRuntimeRoutingHelpers(repoRoot);
+    return scenario.args.steps.map((step) => {
+      const resolved = routingHelpers.resolveAskContext(
+        step.question,
+        step.history ?? [],
+        step.teamContext,
+        scenario.args.modelFixtures ?? [],
+        scenario.args.standings ?? [],
+        scenario.args.activeFixtures ?? [],
+        {
+          recognizedFixtures: scenario.args.recognizedFixtures ?? [],
+          fixtureContext: step.fixtureContext,
+          ...(scenario.args.routingState ?? {}),
+        }
+      );
+      return {
+        tier: resolved.tier,
+        fixtureId: resolved.tier === "fixture"
+          ? resolved.fixture.fixtureId
+          : resolved.tier === "match"
+            ? `${resolved.fixture.competitionId}:${resolved.fixture.fixtureId}`
+            : null,
+        capability: resolved.tier === "fixture" ? resolved.capability : null,
+      };
+    });
+  }
+  if (scenario.helper === "evaluateFixtureCapability") {
+    const fixtureHelpers = loadApiRuntimeFixtureHelpers(repoRoot);
+    return fixtureHelpers.evaluateFixtureCapability(scenario.args[0], scenario.args[1]);
+  }
+  if (scenario.helper === "validateCompleteOneXTwoMarket") {
+    return correctnessHelpers.validateCompleteOneXTwoMarket(scenario.args[0]);
+  }
+  if (scenario.helper === "probabilityAttribution") {
+    const label = correctnessHelpers.probabilityAttributionLabel(scenario.args[0]);
+    return { label, valid: correctnessHelpers.hasValidProbabilityAttribution(label, scenario.args[0]) };
+  }
+  if (scenario.helper === "attributeManagerEra") return correctnessHelpers.attributeManagerEra(...scenario.args);
+  if (scenario.helper === "containsCorrectionCue") return correctnessHelpers.containsCorrectionCue(scenario.args[0]);
+  if (scenario.helper === "settleScorelineTotal") return correctnessHelpers.settleScorelineTotal(...scenario.args);
+  if (scenario.helper === "applyClaimDecisions") return correctnessHelpers.applyClaimDecisions(...scenario.args);
+  throw new Error(`Unknown runtime correctness helper: ${scenario.helper}`);
+}
 
 /** Capture request evidence by value so later conversation turns cannot mutate it. */
 export function snapshotAskRequest({ question, history, teamContext, fixtureContext }) {
@@ -46,6 +107,17 @@ export function snapshotAskRequest({ question, history, teamContext, fixtureCont
       ? { ...fixtureContext }
       : fixtureContext,
   };
+}
+
+export function snapshotSseReproduction(question) {
+  const body = snapshotAskRequest({
+    question,
+    history: [],
+    teamContext: undefined,
+    fixtureContext: undefined,
+  });
+  body.stream = true;
+  return { method: "POST", path: "/api/ask", body };
 }
 
 export async function fetchWithTimeout(
@@ -575,7 +647,7 @@ export function qualitativeScores(result) {
     clarity: answer.length <= 4_000 ? 4 : 3,
     calibration: hasCalibration ? 4 : 2,
     groundingFidelity: result.passed && result.grounding !== undefined ? 4 : null,
-    method: "deterministic schema-9 certification checks; agent critic supplies final review"
+    method: "deterministic schema-10 certification checks; agent critic supplies final review"
   };
 }
 
@@ -670,6 +742,27 @@ export function compareReports(current, previous) {
         : "same evaluation contract and deployment",
     previousRunId: previous.runId,
     changes
+  };
+}
+
+/**
+ * Preserve only the prior fields classification needs. The current report
+ * replaces `latest.json` before browser/critic finalization, so the finalizer
+ * cannot reliably rediscover the comparator from disk afterwards.
+ */
+export function createComparisonBaseline(previous) {
+  if (!previous) return null;
+  return {
+    schemaVersion: previous.schemaVersion,
+    runId: previous.runId,
+    deployment: previous.deployment ? { id: previous.deployment.id ?? "unknown" } : undefined,
+    scenarios: (previous.scenarios ?? []).map((scenario) => ({
+      id: scenario.id,
+      passed: scenario.passed,
+      outcome: scenario.outcome,
+      classification: scenario.classification,
+      failure: scenario.failure?.kind ? { kind: scenario.failure.kind } : undefined,
+    })),
   };
 }
 

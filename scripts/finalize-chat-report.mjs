@@ -11,6 +11,16 @@ import {
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 
+export const REQUIRED_BROWSER_CHECKS = Object.freeze({
+  "fixture-capability-label": ["recognized-friendly-outside-coverage"],
+  "fixture-context-retention": [
+    "table-route-preserves-match",
+    "unsupported-followup-and-matchup-replacement",
+  ],
+  "new-chat-clears-context": [],
+  "candidate-no-fixture-badge": ["candidate-never-becomes-fixture"],
+});
+
 function parseArgs(argv) {
   const options = {
     outputDir: path.join(ROOT, "artifacts/chat-evals"),
@@ -61,10 +71,56 @@ export function evidenceCompatibilityFailures(report, evidence, label) {
 export function evidenceSchemaFailures(report, browserEvidence, criticReview) {
   const failures = [];
   const browserChecks = browserEvidence?.checks;
+  const productionUrl = (() => {
+    try {
+      const parsed = new URL(browserEvidence?.url ?? "");
+      return parsed.protocol === "https:" && parsed.origin === new URL(report.webUrl ?? "").origin;
+    } catch {
+      return false;
+    }
+  })();
+  if (!productionUrl) failures.push("browser evidence URL must match the evaluated production web origin");
+  const viewport = browserEvidence?.viewport;
+  if (!Number.isInteger(viewport?.width) || viewport.width < 320
+    || !Number.isInteger(viewport?.height) || viewport.height < 568) {
+    failures.push("browser evidence requires a valid viewport of at least 320x568");
+  }
+  const consoleEvidence = browserEvidence?.console;
+  if (!Array.isArray(consoleEvidence?.errors) || !Array.isArray(consoleEvidence?.warnings)) {
+    failures.push("browser evidence requires captured console errors and warnings arrays");
+  } else if (consoleEvidence.errors.length > 0) {
+    failures.push("browser evidence contains console errors");
+  }
   if (typeof browserEvidence?.passed !== "boolean" || typeof browserEvidence?.summary !== "string" || !browserEvidence.summary.trim()
     || !Array.isArray(browserChecks) || browserChecks.length === 0
-    || browserChecks.some((check) => typeof check?.name !== "string" || typeof check?.passed !== "boolean" || typeof check?.evidence !== "string")) {
-    failures.push("browser evidence requires passed, summary, and non-empty typed checks");
+    || browserChecks.some((check) => typeof check?.id !== "string"
+      || typeof check?.passed !== "boolean"
+      || typeof check?.evidence !== "string" || !check.evidence.trim()
+      || !Array.isArray(check?.reproduction) || check.reproduction.length === 0
+      || check.reproduction.some((step) => typeof step !== "string" || !step.trim())
+      || !Array.isArray(check?.scenarioIds))) {
+    failures.push("browser evidence requires typed checks with id, evidence, reproduction steps, and scenario IDs");
+  } else {
+    const byId = new Map(browserChecks.map((check) => [check.id, check]));
+    if (byId.size !== browserChecks.length) failures.push("browser evidence contains duplicate check IDs");
+    const scenarioById = new Map((report.scenarios ?? []).map((scenario) => [scenario.id, scenario]));
+    for (const [checkId, requiredScenarioIds] of Object.entries(REQUIRED_BROWSER_CHECKS)) {
+      const check = byId.get(checkId);
+      if (!check) {
+        failures.push(`browser evidence missing required check: ${checkId}`);
+        continue;
+      }
+      for (const scenarioId of requiredScenarioIds) {
+        if (!check.scenarioIds.includes(scenarioId)) {
+          failures.push(`browser check ${checkId} missing scenario coverage: ${scenarioId}`);
+        }
+        const scenario = scenarioById.get(scenarioId);
+        if (report.progress?.status !== "failed"
+          && (!scenario || scenario.passed !== true || scenario.outcome !== "PASS")) {
+          failures.push(`browser check ${checkId} references a non-passing scenario: ${scenarioId}`);
+        }
+      }
+    }
   }
   if (typeof criticReview?.materialIssue !== "boolean" || !["PASS", "ISSUES FOUND"].includes(criticReview?.overallVerdict)) {
     failures.push("critic evidence requires materialIssue:boolean and overallVerdict");
@@ -113,9 +169,11 @@ async function main() {
       scenario.evidence = `${scenario.evidence}; critic: ${verdict.reason ?? "correctness issue"}`;
     }
   }
-  finalizeClassifications(report, null);
+  finalizeClassifications(report, report.comparisonBaseline ?? null);
   report.recommendations = (criticReview.recommendations ?? []).slice(0, 3);
-  const browserPassed = browserEvidence.passed && browserEvidence.checks.every((check) => check.passed);
+  const browserPassed = browserEvidence.passed
+    && browserEvidence.console.errors.length === 0
+    && browserEvidence.checks.every((check) => check.passed);
   const criticPassed = criticReview.materialIssue === false && criticReview.overallVerdict === "PASS";
   report.certificationGate.browserPassed = browserPassed;
   report.certificationGate.criticPassed = criticPassed;
