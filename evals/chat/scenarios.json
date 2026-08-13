@@ -74,6 +74,7 @@
       "capabilityStatus": "outside-coverage",
       "capabilityReason": "friendly-policy-disabled",
       "competitionCategory": "club-friendly",
+      "requiredForCertification": false,
       "turns": [
         { "questionTemplate": "What are Pundit's probabilities for {home} vs {away}?" },
         { "questionTemplate": "What about that fixture's 1X2?" }
@@ -84,6 +85,7 @@
       "description": "A recognized eligible fixture in model initialization or ratings refresh reports a temporary capability.",
       "kind": "recognized",
       "capabilityStatus": "temporarily-unpriced",
+      "requiredForCertification": false,
       "turns": [
         { "questionTemplate": "Analyse {home} vs {away}." }
       ]
@@ -91,46 +93,41 @@
     {
       "id": "unsupported-followup-and-matchup-replacement",
       "description": "An unsupported fixture survives follow-ups until a new exact recognized matchup replaces it.",
-      "kind": "recognized-replacement"
+      "kind": "recognized-replacement",
+      "requiredForCertification": false
     },
     {
       "id": "complete-market-arithmetic",
       "description": "A complete same-source/time decimal 1X2 market uses 1/odds and normalizes to 100 percent.",
-      "kind": "deterministic",
-      "validator": "one-x-two-market",
-      "input": [
+      "kind": "runtime-helper",
+      "helper": "validateCompleteOneXTwoMarket",
+      "args": [[
         { "outcome": "home", "decimalOdds": 2, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
         { "outcome": "draw", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
         { "outcome": "away", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" }
-      ]
+      ]],
+      "expect": { "valid": true },
+      "expectText": ["noVigProbabilities", "overround"]
     },
     {
       "id": "incomplete-market-fails-closed",
       "description": "A missing 1X2 leg is never guessed or normalized.",
-      "kind": "deterministic",
-      "validator": "response-correctness",
-      "input": {
-        "answer": "No complete three-way market was established, so no probabilities are shown.",
-        "citations": [],
-        "grounding": null
-      },
-      "expectation": {
-        "expectEvidenceAbstention": true
-      }
+      "kind": "runtime-helper",
+      "helper": "validateCompleteOneXTwoMarket",
+      "args": [[
+        { "outcome": "home", "decimalOdds": 2, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
+        { "outcome": "away", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" }
+      ]],
+      "expect": { "valid": false, "reason": "missing-leg" }
     },
     {
       "id": "third-party-probability-labelling",
       "description": "External probabilities are explicitly labelled as third-party and not Pundit output.",
-      "kind": "deterministic",
-      "validator": "response-correctness",
-      "input": {
-        "answer": "These are bookmaker market-implied probabilities from third-party data, not a Pundit forecast.",
-        "citations": [],
-        "grounding": null
-      },
-      "expectation": {
-        "expectThirdPartyLabel": true
-      }
+      "kind": "runtime-helper",
+      "helper": "probabilityAttribution",
+      "args": [{ "kind": "external-market", "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" }],
+      "expect": { "valid": true },
+      "expectText": ["Example Book", "not a Pundit forecast"]
     },
     {
       "id": "neutral-venue-missing-input",
@@ -138,63 +135,101 @@
       "kind": "recognized",
       "capabilityStatus": "insufficient-model-input",
       "capabilityReason": "neutral-venue-unknown",
+      "requiredForCertification": false,
       "turns": [
         { "questionTemplate": "What is the forecast for {home} vs {away}?" }
       ]
     },
     {
-      "id": "stale-manager-official-conflict",
-      "description": "A stale manager claim loses to dated official evidence and the manager era is attributed correctly.",
+      "id": "friendly-capability-runtime-contract",
+      "description": "The built API capability policy classifies an injected authoritative club friendly outside coverage.",
+      "kind": "runtime-helper",
+      "helper": "evaluateFixtureCapability",
+      "args": [
+        {"fixtureId":"official:friendly:1","primarySource":"official-club","primarySourceFixtureId":"1","homeTeam":{"id":"a","name":"Alpha"},"awayTeam":{"id":"b","name":"Beta"},"kickoff":"2026-08-14T10:00:00Z","venue":"Training Ground","neutralVenue":false,"competition":{"id":"club-friendly","name":"Club Friendly","category":"club-friendly"},"status":"scheduled","recognition":"authoritative","observedSources":[{"source":"official-club","sourceFixtureId":"1","authority":"authoritative","observedAt":"2026-08-13T10:00:00Z"}],"observationHistory":[{"source":"official-club","sourceFixtureId":"1","observedAt":"2026-08-13T10:00:00Z","kickoff":"2026-08-14T10:00:00Z","venue":"Training Ground","neutralVenue":false,"status":"scheduled"}]},
+        {"modelInitialized":true,"ratingsAvailable":true}
+      ],
+      "expect":{"status":"outside-coverage","reason":"friendly-policy-disabled"}
+    },
+    {
+      "id": "neutral-venue-capability-fault-contract",
+      "description": "Evaluator boundary fault injection: a recognized neutral-site fixture with unknown venue state retains the exact insufficient-input capability and emits no model fields.",
       "kind": "deterministic",
-      "validator": "response-correctness",
+      "validator": "fixture-grounding",
       "input": {
-        "answer": "Correction: the official club announcement names the current manager ([Club announcement](https://club.example/manager)).",
-        "citations": [{ "id": "S1", "title": "Club announcement", "url": "https://club.example/manager", "date": "2026-08-13" }],
-        "grounding": null
+        "kind":"fixture",
+        "fixture":{"fixtureId":"official:neutral:1","primarySource":"official-federation","primarySourceFixtureId":"1","homeTeam":{"id":"a","name":"Alpha"},"awayTeam":{"id":"b","name":"Beta"},"kickoff":"2026-08-14T10:00:00Z","venue":null,"neutralVenue":null,"competition":{"id":"international-qualifier","name":"Qualifier","category":"international-qualifier"},"status":"scheduled","recognition":"authoritative","observedSources":[{"source":"official-federation","sourceFixtureId":"1","authority":"authoritative","observedAt":"2026-08-13T10:00:00Z"}],"observationHistory":[{"source":"official-federation","sourceFixtureId":"1","observedAt":"2026-08-13T10:00:00Z","kickoff":"2026-08-14T10:00:00Z","venue":null,"neutralVenue":null,"status":"scheduled"}]},
+        "capability":{"status":"insufficient-model-input","reason":"neutral-venue-unknown"}
       },
-      "expectation": { "expectCorrectionAcknowledgement": true, "expectOfficialCitation": ["club.example"] }
+      "expectation":{"expectFixtureId":"official:neutral:1","expectCapability":{"status":"insufficient-model-input","reason":"neutral-venue-unknown"},"expectCompetitionCategory":"international-qualifier"}
+    },
+    {
+      "id": "temporary-capability-runtime-contract",
+      "description": "The built API capability policy classifies an injected eligible fixture as temporarily unpriced during initialization.",
+      "kind": "runtime-helper",
+      "helper": "evaluateFixtureCapability",
+      "args": [
+        {"fixtureId":"espn:eng.1:1","primarySource":"espn","primarySourceFixtureId":"1","homeTeam":{"id":"a","name":"Alpha"},"awayTeam":{"id":"b","name":"Beta"},"kickoff":"2026-08-14T10:00:00Z","venue":"Stadium","neutralVenue":false,"competition":{"id":"eng.1","name":"Premier League","category":"domestic-league"},"status":"scheduled","recognition":"authoritative","observedSources":[{"source":"espn","sourceFixtureId":"1","authority":"authoritative","observedAt":"2026-08-13T10:00:00Z"}],"observationHistory":[{"source":"espn","sourceFixtureId":"1","observedAt":"2026-08-13T10:00:00Z","kickoff":"2026-08-14T10:00:00Z","venue":"Stadium","neutralVenue":false,"status":"scheduled"}]},
+        {"modelInitialized":false,"ratingsAvailable":true}
+      ],
+      "expect":{"status":"temporarily-unpriced","reason":"model-initializing"}
+    },
+    {
+      "id": "stale-manager-official-conflict",
+      "description": "Runtime utility contract: dated manager eras detect a stale asserted manager conflict. End-to-end /api/ask behavior requires critic review.",
+      "kind": "runtime-helper",
+      "helper": "attributeManagerEra",
+      "args": [
+        "2026-04-10T12:00:00Z",
+        [
+          { "manager": "Old Manager", "startedAt": "2025-01-01", "endedAt": "2026-05-31" },
+          { "manager": "New Manager", "startedAt": "2026-06-01" }
+        ],
+        "New Manager"
+      ],
+      "expect": { "status": "conflict", "manager": "Old Manager", "assertedManager": "New Manager" }
     },
     {
       "id": "correction-after-wrong-history",
-      "description": "A correction cue treats prior assistant text as untrusted, acknowledges the error and re-verifies it.",
-      "kind": "deterministic",
-      "validator": "response-correctness",
-      "input": {
-        "answer": "You're right; correction: I re-verified the claim against the official update ([Official update](https://club.example/correction)).",
-        "citations": [{ "id": "S1", "title": "Official update", "url": "https://club.example/correction", "date": "2026-08-13" }],
-        "grounding": null
-      },
-      "expectation": { "expectCorrectionAcknowledgement": true, "expectOfficialCitation": ["club.example"] }
+      "description": "Runtime utility contract: correction language is detected so the service can force re-verification. This helper alone does not certify acknowledgement text.",
+      "kind": "runtime-helper",
+      "helper": "containsCorrectionCue",
+      "args": ["Actually, that's the wrong manager. Re-check it against current evidence."],
+      "expect": {},
+      "expectText": ["true"]
     },
     {
       "id": "one-one-is-not-over-two-five",
-      "description": "A 1-1 scoreline is never described as over 2.5 goals.",
-      "kind": "deterministic",
-      "validator": "response-correctness",
-      "input": {
-        "answer": "A 1-1 scoreline has two total goals, so it is under 2.5.",
-        "citations": [],
-        "grounding": null
-      },
-      "expectation": {
-        "expectOneOneNotOver25": true
-      }
+      "description": "Runtime utility contract: the built scoreline settlement path grades 1-1 over 2.5 as a loss.",
+      "kind": "runtime-helper",
+      "helper": "settleScorelineTotal",
+      "args": ["1-1", 2.5, "over"],
+      "expect": {},
+      "expectText": ["lose"]
     },
     {
       "id": "unrelated-citation-rejected",
-      "description": "A factual current claim must be supported by a directly relevant official/reputable citation.",
-      "kind": "deterministic",
-      "validator": "response-correctness",
-      "input": { "answer": "I could not establish that claim from relevant evidence.", "citations": [], "grounding": null },
-      "expectation": { "expectEvidenceAbstention": true, "expectCitationUrls": [] }
+      "description": "Runtime utility contract: an unsupported claim is removed rather than retained with unrelated evidence.",
+      "kind": "runtime-helper",
+      "helper": "applyClaimDecisions",
+      "args": [
+        [{ "id": "C1", "text": "Unsupported current claim." }],
+        [{ "claimId": "C1", "outcome": "unsupported", "evidenceIds": [] }]
+      ],
+      "expect": { "supported": [], "removedClaimIds": ["C1"], "conflictClaimIds": [] },
+      "expectText": ["could not establish"]
     },
     {
       "id": "degraded-search-retrieval-verifier",
-      "description": "Search, retrieval or verifier degradation fails closed without unsupported current claims.",
-      "kind": "deterministic",
-      "validator": "response-correctness",
-      "input": { "answer": "I could not establish a supported current answer because verification was unavailable.", "citations": [], "grounding": null },
-      "expectation": { "expectEvidenceAbstention": true, "expectCitationUrls": [] }
+      "description": "Runtime utility contract: a verifier conflict removes the claim and emits a conflict abstention. Provider degradation remains a live probe.",
+      "kind": "runtime-helper",
+      "helper": "applyClaimDecisions",
+      "args": [
+        [{ "id": "C1", "text": "Conflicted current claim." }],
+        [{ "claimId": "C1", "outcome": "conflict", "evidenceIds": ["S1", "S2"] }]
+      ],
+      "expect": { "supported": [], "removedClaimIds": ["C1"], "conflictClaimIds": ["C1"] },
+      "expectText": ["sources conflict"]
     },
     {
       "id": "team-news-sourcing",

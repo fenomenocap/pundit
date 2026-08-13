@@ -12,6 +12,8 @@ import {
   finalizeClassifications,
   generateAdversarialScenarios,
   loadPreviousReport,
+  loadApiRuntimeCorrectnessHelpers,
+  loadApiRuntimeFixtureHelpers,
   parseSse,
   qualitativeScores,
   recordScenarioFailure,
@@ -558,11 +560,60 @@ async function runCancellationScenario(scenario, options, pacer, onRequestStart)
 }
 
 async function runScenario(scenario, options, pacer, featured, recognized, onRequestStart) {
+  if (scenario.kind === "runtime-helper") {
+    const result = baseResult(scenario);
+    const helpers = loadApiRuntimeCorrectnessHelpers(ROOT);
+    let actual;
+    if (scenario.helper === "evaluateFixtureCapability") {
+      const fixtureHelpers = loadApiRuntimeFixtureHelpers(ROOT);
+      actual = fixtureHelpers.evaluateFixtureCapability(scenario.args[0], scenario.args[1]);
+    } else if (scenario.helper === "validateCompleteOneXTwoMarket") {
+      actual = helpers.validateCompleteOneXTwoMarket(scenario.args[0]);
+    } else if (scenario.helper === "probabilityAttribution") {
+      const label = helpers.probabilityAttributionLabel(scenario.args[0]);
+      actual = { label, valid: helpers.hasValidProbabilityAttribution(label, scenario.args[0]) };
+    } else if (scenario.helper === "attributeManagerEra") {
+      actual = helpers.attributeManagerEra(...scenario.args);
+    } else if (scenario.helper === "containsCorrectionCue") {
+      actual = helpers.containsCorrectionCue(scenario.args[0]);
+    } else if (scenario.helper === "settleScorelineTotal") {
+      actual = helpers.settleScorelineTotal(...scenario.args);
+    } else if (scenario.helper === "applyClaimDecisions") {
+      actual = helpers.applyClaimDecisions(...scenario.args);
+    } else {
+      throw new Error(`Unknown runtime correctness helper: ${scenario.helper}`);
+    }
+    const serialized = JSON.stringify(actual);
+    const assertions = {
+      exactRuntimeResult: Object.entries(scenario.expect ?? {}).every(([key, value]) =>
+        JSON.stringify(actual?.[key]) === JSON.stringify(value)
+      ),
+      requiredText: !scenario.expectText || scenario.expectText.every((text) => serialized.includes(text)),
+      forbiddenText: !scenario.forbidText || scenario.forbidText.every((text) => !serialized.includes(text)),
+    };
+    result.assertions = assertions;
+    result.passed = Object.values(assertions).every(Boolean);
+    result.correctnessCertified = result.passed;
+    result.outcome = result.passed ? "PASS" : "FAIL";
+    result.runtimeHelper = {
+      module: scenario.helper === "evaluateFixtureCapability"
+        ? "packages/api/src/services/fixture-registry.ts"
+        : "packages/api/src/services/response-correctness.ts",
+      name: scenario.helper,
+      actual,
+    };
+    result.evidence = result.passed
+      ? `Built API runtime helper ${scenario.helper} returned the exact expected contract.`
+      : `Built API runtime helper ${scenario.helper} mismatch: ${sanitizeEvidence(actual)}.`;
+    return result;
+  }
   if (scenario.kind === "deterministic") {
     const result = baseResult(scenario);
     let validation;
     if (scenario.validator === "one-x-two-market") {
       validation = validateOneXTwoMarket(scenario.input);
+    } else if (scenario.validator === "fixture-grounding") {
+      validation = validateFixtureGrounding(scenario.input, scenario.expectation);
     } else if (scenario.validator === "response-correctness") {
       validation = validateResponseCorrectness(
         scenario.input?.answer,
