@@ -26,12 +26,13 @@ export function evaluateReadiness(
   model: ModelDataCache,
   football: FootballReadiness,
   activeFixtures: ActiveFixture[],
-  marketOdds: MarketOddsReadiness
+  marketOdds: MarketOddsReadiness,
+  ratingsAvailable = true
 ): ReadinessState {
   // An initialized current subset remains usable: fixtures skipped for missing
   // ratings are explicitly unpriced downstream. Cold or stale/foreign rows do
   // not pass readiness.
-  const modelReady = modelDataIsCurrentSubset(model, activeFixtures);
+  const modelReady = ratingsAvailable && modelDataIsCurrentSubset(model, activeFixtures);
   const footballReady = football.lastUpdated !== null && football.error === null;
   const marketOddsReady = marketOdds.ready && marketOdds.lastUpdated !== null;
 

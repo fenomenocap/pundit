@@ -13,7 +13,7 @@ Chat-first club-season analysis for the Premier League and UEFA Champions League
 | Monorepo | pnpm workspaces (Node 22, pnpm 9.15.4), 2 packages: `api`, `web` |
 | Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui primitives (`components/ui/`) |
 | Backend | Express + TypeScript, `@anthropic-ai/sdk` (used as the wire client for MiniMax's Anthropic-compatible endpoint) |
-| Data | ESPN, ClubElo, Stake, Kalshi, and Polymarket public endpoints; model computed locally |
+| Data | ESPN, Stake, Kalshi, and Polymarket public endpoints; pinned ClubElo-derived strength artifact; model computed locally |
 
 No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't reintroduce any of these without discussing it first — the whole point of the last pivot was to drop the trading platform.
 
@@ -23,9 +23,9 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 
 | Source | Used by | Notes |
 |---|---|---|
-| **ESPN scoreboard/standings** (`packages/api/src/services/football-data.ts`) | `/api/matches/*`, `/fixtures`, competition grounding | Public and keyless. Enabled competitions refresh every 30 minutes; scheduled, in-play and completed fixture state is retained. |
-| **Fixture registry** (`fixture-registry.ts`) | `/api/fixtures/recognized`, chat routing, model eligibility | Approved structured ESPN identities are observed in shadow mode by default and persisted atomically with last-good recovery. Search and user text create candidates only and never become registry, grounding, or model input. Expanded routing is controlled by `FIXTURE_REGISTRY_ENABLED`; friendly pricing remains disabled. |
-| **ClubElo** (`club-ratings.ts`) | Active match model | Club ratings are cached by competition rating profile and refreshed hourly. The last good set is persisted to `PUNDIT_DATA_DIR` and reloaded on boot, so a ClubElo outage degrades to pricing off a recent snapshot instead of taking the model down. Ratings older than 30 days are dropped and the model goes unready. |
+| **ESPN scoreboard/standings** (`packages/api/src/services/football-data.ts`) | `/api/matches/*`, `/fixtures`, competition and season grounding | Public and keyless. Enabled competition windows refresh every 30 minutes through bounded requests; scheduled, in-play, postponed and completed fixture state is retained. A separate strictly complete season-aware Premier League schedule refreshes at most every six hours and is persisted atomically with prior-generation recovery for the simulator. |
+| **Fixture registry** (`fixture-registry.ts`) | `/api/fixtures/recognized`, chat routing, model eligibility | Approved structured ESPN identities are observed in shadow mode by default and persisted atomically with last-good recovery. Reviewed friendly records require an ESPN stable ID plus an official corroborating URL. Search and user text create candidates only and never become registry, grounding, or model input. Expanded routing is controlled by `FIXTURE_REGISTRY_ENABLED`; friendly pricing remains disabled. |
+| **Pinned ClubElo artifact** (`club-strength-artifact.ts`, `club-ratings.ts`) | Active match model | A reviewed, content-addressed `clubelo@1` snapshot ships with each release and is loaded locally. Production runtime never contacts ClubElo. Hash, coverage and a 30-day freshness gate fail closed; atomic `/data` current/last-good copies recover a damaged release selector without changing inputs. |
 | **Local model** (`dixon-coles.ts`, `model-data.ts`) | `/api/model/active`, `/api/model/fixtures`, `/model`, match grounding | Computes 1X2, totals, BTTS and scoreline probabilities for the 14-day active club-fixture set, including home-field advantage where configured. |
 | **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Active match grounding | Direct best-effort fetches normalize complete active 1X2 markets to no-vig probabilities every 30 minutes. Source failures remain isolated. |
 | **Frozen WC evaluation** (`wc-evaluation.ts`) | `/api/evaluation/wc-2026`, `/evaluation/wc-2026` | Read-only historical backtest. It is not a live competition pipeline and has no cron. |
@@ -41,7 +41,7 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 API_PORT=3001
 API_URL=http://localhost:3001
 # Writable directory for state that must survive restarts: rolling club-season
-# calibration, the ClubElo cache, recognized-fixture registry/recovery copy,
+# calibration, the club-strength artifact recovery copies, recognized-fixture registry/recovery copy,
 # and the separately disabled private friendly-shadow ledger.
 # Production points this at a mounted Railway volume (/data). Leave unset
 # locally to use the in-repo packages/api/data directory.
@@ -69,8 +69,8 @@ MINIMAX_MODEL=MiniMax-M3
 MINIMAX_BASE_URL=https://api.minimax.io/anthropic
 
 # ── Rate limiting for POST /api/ask ──────────────────────────────────────────
-# The intended limit across the whole deployment. express-rate-limit counts in
-# process memory, so the per-instance budget is this divided by API_REPLICAS.
+# The intended limit across the whole deployment. Every instance uses one
+# process-wide bucket (not one per client IP), divided by API_REPLICAS.
 # Railway runs a single replica today, so the default of 1 makes the configured
 # limit the real one. Raise it only if the replica count is raised. /ready
 # reports the resolved values under askRateLimit.

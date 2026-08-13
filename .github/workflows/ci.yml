@@ -30,6 +30,9 @@ jobs:
         working-directory: packages/api
         run: npx tsc --noEmit
 
+      - name: Verify pinned club-strength artifact
+        run: pnpm --filter @sports-predict/api verify:club-strength-artifact data/model-artifacts/clubelo/production.json
+
       - name: Type-check web
         working-directory: packages/web
         run: npx tsc --noEmit
@@ -48,6 +51,9 @@ jobs:
 
       - name: Test Vercel ignored-build policy
         run: pnpm test:vercel-ignore
+
+      - name: Test deployed SHA resolution
+        run: pnpm test:deployed-sha
 
       - name: Build web
         run: pnpm --filter @sports-predict/web build

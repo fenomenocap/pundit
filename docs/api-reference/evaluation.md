@@ -71,4 +71,4 @@ UI: [`/evaluation/wc-2026`](https://thepundit.vercel.app/evaluation/wc-2026)
 
 When there are no finished eligible samples, Brier score, log loss and outcome accuracy are `null`; a zero would falsely imply perfect forecasting. Older schema-v1 fixture rows are loaded as partial-provenance records without inventing rating timestamps that were never captured. Legacy, incomplete-source, invalid-timestamp and post-kickoff rows remain preserved but are excluded from official metrics and reported in `evaluation.exclusions`.
 
-Do not treat either artifact as current forecasts. The live Model page recalculates with today's ClubElo ratings; evaluation artifacts preserve pre-kickoff views only.
+Do not treat either evaluation artifact as current forecasts. The live Model page recalculates from the release's freshness-gated club-strength artifact; evaluation artifacts preserve pre-kickoff views only.

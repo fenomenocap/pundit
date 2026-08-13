@@ -21,7 +21,7 @@ Exceeding a limit returns an HTTP error with a JSON body like `{ "error": "Too m
 }
 ```
 
-`lastUpdated` is when the underlying cache was last refreshed (ESPN and active market odds every 30 minutes, ClubElo + active model hourly). `error` is non-null only if the most recent refresh attempt failed — in that case you're still getting the last-known-good cached data, not an empty response.
+`lastUpdated` is when the underlying cache was last refreshed (ESPN and active market odds every 30 minutes; active model hourly). Club strengths are a pinned local release artifact rather than a runtime vendor cache. `error` is non-null when the relevant refresh or artifact validation failed.
 
 **Endpoints:**
 

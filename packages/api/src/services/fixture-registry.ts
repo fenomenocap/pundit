@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { getCompetitionById } from "../config/competitions";
 import { normalizeTeamName } from "../lib/team-names";
 import { getCachedMatches, type FootballMatch } from "./football-data";
@@ -44,6 +45,7 @@ export interface FixtureObservedSource {
   sourceFixtureId: string;
   authority: "authoritative" | "corroborating";
   observedAt: string;
+  sourceUrl?: string;
 }
 
 export interface FixtureObservation {
@@ -97,8 +99,17 @@ interface FixtureRegistryArtifact {
   fixtures: RecognizedFixture[];
 }
 
+interface ApprovedFixtureManifest {
+  schemaVersion: 1;
+  fixtures: RecognizedFixture[];
+}
+
 const REGISTRY_FILE = "fixture-registry/recognized-fixtures-v1.json";
 const LAST_GOOD_FILE = "fixture-registry/recognized-fixtures-v1.last-good.json";
+const APPROVED_FIXTURE_MANIFEST = path.resolve(
+  __dirname,
+  "../../data/fixture-registry/approved-fixtures-v1.json"
+);
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 
 let registry = new Map<string, RecognizedFixture>();
@@ -239,6 +250,8 @@ export function isRecognizedFixture(value: unknown): value is RecognizedFixture 
       && source.sourceFixtureId.trim().length > 0
       && (source.authority === "authoritative" || source.authority === "corroborating")
       && validInstant(source.observedAt)
+      && (source.sourceUrl === undefined
+        || (typeof source.sourceUrl === "string" && /^https:\/\//.test(source.sourceUrl)))
     )
     && Array.isArray(fixture.observationHistory)
     && fixture.observationHistory.length > 0
@@ -253,6 +266,49 @@ export function isRecognizedFixture(value: unknown): value is RecognizedFixture 
       && validStatuses.has(observation.status)
     )
     && (fixture.recognition === "authoritative" || fixture.recognition === "corroborated");
+}
+
+function isApprovedFixture(fixture: RecognizedFixture): boolean {
+  if (!isRecognizedFixture(fixture)) return false;
+  if (fixture.competition.category !== "club-friendly"
+    && fixture.competition.category !== "international-friendly") return true;
+  return fixture.primarySource === "espn"
+    && fixture.recognition === "corroborated"
+    && fixture.observedSources.some((source) =>
+      source.source === "espn"
+      && source.authority === "authoritative"
+      && source.sourceFixtureId === fixture.primarySourceFixtureId
+      && typeof source.sourceUrl === "string"
+    )
+    && fixture.observedSources.some((source) =>
+      source.source !== "espn"
+      && source.authority === "corroborating"
+      && typeof source.sourceUrl === "string"
+    );
+}
+
+export function loadBundledApprovedFixtures(): RecognizedFixture[] {
+  const manifest = readJsonFile<unknown>(APPROVED_FIXTURE_MANIFEST);
+  if (!manifest || typeof manifest !== "object") {
+    throw new Error("Approved fixture manifest is missing or invalid");
+  }
+  const candidate = manifest as Partial<ApprovedFixtureManifest>;
+  if (candidate.schemaVersion !== 1
+    || !Array.isArray(candidate.fixtures)
+    || !candidate.fixtures.every(isApprovedFixture)) {
+    throw new Error("Approved fixture manifest failed its authority contract");
+  }
+  return candidate.fixtures;
+}
+
+function mergeBundledApprovedFixtures(target: Map<string, RecognizedFixture>): void {
+  for (const fixture of loadBundledApprovedFixtures()) {
+    const existing = target.get(fixture.fixtureId);
+    if (!existing || Date.parse(existing.observationHistory.at(-1)?.observedAt ?? "")
+      < Date.parse(fixture.observationHistory.at(-1)?.observedAt ?? "")) {
+      target.set(fixture.fixtureId, fixture);
+    }
+  }
 }
 
 function validArtifact(value: unknown): value is FixtureRegistryArtifact {
@@ -409,6 +465,11 @@ export function evaluateFixtureCapability(
   if (!isModelPolicyEligible(fixture)) {
     return { status: "outside-coverage", reason: "model-policy-disabled" };
   }
+  // Venue certainty is an input gate and cannot be overridden by a stale or
+  // injected cached model row.
+  if (fixture.neutralVenue === null) {
+    return { status: "insufficient-model-input", reason: "neutral-venue-unknown" };
+  }
   if (state.modelFixture) {
     return { status: "priced", modelFixtureId: modelFixtureId(state.modelFixture) };
   }
@@ -465,6 +526,7 @@ export function getRecognizedFixtureSnapshot(state: {
 }
 
 function refreshFromFootballCache(): void {
+  mergeBundledApprovedFixtures(registry);
   const football = getCachedMatches();
   refreshFixtureRegistryFromEspn([...football.upcoming, ...football.recent]);
 }
@@ -487,6 +549,12 @@ export function startFixtureRegistryShadow(): void {
   } catch (error) {
     lastError = error instanceof Error ? error.message : String(error);
     console.error(`[FixtureRegistry] Last-good load failed: ${lastError}`);
+  }
+  try {
+    mergeBundledApprovedFixtures(registry);
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : String(error);
+    console.error(`[FixtureRegistry] Approved fixture import failed: ${lastError}`);
   }
   refreshFixtureRegistryShadowSafely();
   if (timer) clearInterval(timer);

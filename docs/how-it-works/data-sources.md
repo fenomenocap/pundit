@@ -8,15 +8,18 @@ server-side API key.
 | Source | What it provides | Refresh |
 |---|---|---|
 | **ESPN public scoreboard API** | Fixtures, live/final scores, match stage, and league standings for Premier League and UCL qualifiers | Every 30 minutes |
-| **Recognized-fixture registry** | Approved structured identities, observed source history, and model-capability decisions; persisted atomically with last-good recovery | Every ESPN refresh |
-| **ClubElo CSV feeds** | Current club ratings by competition profile, used by the Dixon-Coles model | Every hour (with the model) |
+| **Recognized-fixture registry** | Approved structured identities, observed source history, and model-capability decisions; persisted atomically with last-good recovery. Reviewed friendly records require an ESPN stable event ID plus official corroboration and remain outside pricing. | Every ESPN refresh and release-approved manifest load |
+| **Pinned ClubElo artifact** | Reviewed club ratings by competition profile, used by the Dixon-Coles model | Content-addressed release artifact; active model recomputes hourly with no runtime ClubElo call |
 | **Stake, Kalshi, and Polymarket public endpoints** | Best-effort active 1X2 prices normalized to no-vig probabilities for the active fixture set | Every 30 minutes |
-| **Pundit's local model** | Dixon-Coles fixture matrices for the 14-day active club-fixture window; Monte Carlo season outlook for the Premier League | Every hour |
+| **Pundit's local model** | Dixon-Coles fixture matrices for the active club-fixture window; Monte Carlo season outlook from a complete, season-aware Premier League schedule | Model hourly; complete schedule at most every six hours |
 | **MiniMax M3** | Powers the chat's natural-language answers, grounded in the data above; Pundit pre-searches clearly current injury/squad questions and can make one bounded search fallback for ambiguous requests | Per request |
 
-If a cached ESPN, ratings, or model source is temporarily unavailable, Pundit
-keeps serving its validated last-known-good snapshot where one exists — so
-figures may occasionally lag by up to the refresh window above. Registry
+If ESPN or a refreshable model input is temporarily unavailable, Pundit keeps
+serving a validated last-known-good snapshot where one exists, so those figures
+may occasionally lag by up to the applicable refresh window above. Club
+strengths are different: they are immutable within a release and fail closed
+after the artifact's 30-day freshness limit rather than drifting with a runtime
+provider. Registry
 persistence failure is isolated from the live model and exposed in registry
 status rather than promoting incomplete data. Market sources are best-effort;
 search, retrieval, or verifier failure removes unsupported current claims or

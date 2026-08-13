@@ -4,8 +4,8 @@ Pundit is a chat-first analysis app for the club season — Premier League and U
 
 Under the hood, every answer is backed by:
 
-* A **Dixon-Coles match model** (ClubElo ratings plus home-field advantage where applicable) that produces win/draw/loss, totals, BTTS, and scoreline probabilities for active fixtures
-* A **season outlook simulator** for Premier League title and top-four probabilities
+* A **Dixon-Coles match model** (a reviewed, pinned ClubElo strength artifact plus home-field advantage where applicable) that produces win/draw/loss, totals, BTTS, and scoreline probabilities for active fixtures without a runtime ClubElo call
+* A **season outlook simulator** for Premier League title and top-four probabilities, gated on a complete persisted schedule and full rating coverage
 * Active **Stake, Kalshi, and Polymarket** 1X2 prices for featured matches, shown alongside the model when available
 * Live **fixtures, results, and standings** from ESPN, with approved structured identities separated from discovery-only fixture candidates
 

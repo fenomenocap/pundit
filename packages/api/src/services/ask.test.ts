@@ -28,6 +28,8 @@ import {
   sanitizeMatchAnswer,
   sanitizeRuntimeResponseCorrectness,
   sanitizeUnrecognizedCandidateAnswer,
+  seasonOrCompetitionGrounding,
+  prepareAsk,
   verifiableCurrentClaims,
   verifyCurrentClaims,
   type FixtureGrounding,
@@ -35,6 +37,116 @@ import {
   stripUnvalidatedExternalMarketClaims,
   type Grounding,
 } from "./ask";
+import {
+  replaceFootballDataForTests,
+  replaceSeasonScheduleForTests,
+} from "./football-data";
+
+describe("season grounding degradation", () => {
+  it("uses explicit competition grounding instead of failing when outlook inputs are unavailable", () => {
+    const competition = buildCompetitionGrounding("eng.1", [], new Date("2026-08-13T00:00:00Z"));
+    expect(seasonOrCompetitionGrounding(null, competition)).toEqual(competition);
+    expect(seasonOrCompetitionGrounding(null, competition).kind).toBe("competition");
+  });
+
+  it("prepares the same explicit competition fallback for JSON and SSE transports", () => {
+    const originalKey = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const table = [standing()];
+    replaceFootballDataForTests({
+      standings: table,
+      upcoming: [],
+      recent: [],
+      lastUpdated: new Date("2026-08-13T00:00:00Z"),
+      error: null,
+    });
+    replaceSeasonScheduleForTests({
+      competitionId: "eng.1",
+      seasonId: "unknown",
+      fixtures: [],
+      lastUpdated: null,
+      error: "unavailable",
+      servingLastGood: false,
+    });
+    try {
+      const jsonPrepared = prepareAsk("Who wins the Premier League?", []);
+      const ssePrepared = prepareAsk("Who wins the Premier League?", []);
+      expect(jsonPrepared.grounding).toMatchObject({ kind: "competition", competitionId: "eng.1" });
+      expect(ssePrepared.grounding).toEqual(jsonPrepared.grounding);
+      expect(jsonPrepared.tier).toBe("competition");
+      expect(ssePrepared.tier).toBe("competition");
+    } finally {
+      if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = originalKey;
+      replaceFootballDataForTests({ standings: [], upcoming: [], recent: [], lastUpdated: null, error: null });
+      replaceSeasonScheduleForTests({
+        competitionId: "eng.1", seasonId: "unknown", fixtures: [], lastUpdated: null,
+        error: null, servingLastGood: false,
+      });
+    }
+  });
+});
+
+describe("expired rating artifact routing", () => {
+  it("does not treat a retained cached model row as priced", () => {
+    const fixture = {
+      competitionId: "eng.1",
+      competition: "Premier League",
+      fixtureId: 1,
+      utcDate: "2026-08-15T14:00:00.000Z",
+      date: "2026-08-15",
+      group: null,
+      stage: "match",
+      home: "Arsenal",
+      away: "Liverpool",
+      homeElo: 1850,
+      awayElo: 1840,
+      pHome: 0.42,
+      pDraw: 0.28,
+      pAway: 0.3,
+      pOver2_5: 0.55,
+      pUnder2_5: 0.45,
+      pBttsYes: 0.58,
+      pBttsNo: 0.42,
+      topScores: [],
+      scorelines: [],
+      stakePHome: null,
+      stakePDraw: null,
+      stakePAway: null,
+      result: null,
+    } satisfies ModelFixture;
+    const recognized = recognizeEspnFixture({
+      id: 1,
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeTeam: "Arsenal",
+      awayTeam: "Liverpool",
+      utcDate: fixture.utcDate,
+      status: "SCHEDULED",
+      stage: null,
+      matchday: null,
+      group: null,
+      score: null,
+      neutralVenue: false,
+    });
+    expect(resolveAskContext(
+      "Arsenal vs Liverpool 1X2",
+      [],
+      undefined,
+      [fixture],
+      [],
+      [],
+      {
+        recognizedFixtures: [recognized],
+        modelInitialized: true,
+        ratingsAvailable: false,
+      }
+    )).toMatchObject({
+      tier: "fixture",
+      capability: { status: "insufficient-model-input", reason: "ratings-unavailable" },
+    });
+  });
+});
 
 describe("current-news evidence hardening", () => {
   it("deterministically pre-searches clearly current questions", () => {
@@ -904,6 +1016,7 @@ describe("resolveAskContext", () => {
       matchday: null,
       group: model.group,
       score: null,
+      neutralVenue: false,
     });
     const recognized = [firstLeg, secondLeg, arsenalFixture].map(recognizeModelFixture);
 
