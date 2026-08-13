@@ -193,6 +193,27 @@ describe("club ratings", () => {
     )).resolves.toEqual(["Unreachable FC"]);
   });
 
+  it("starts bounded missing-club fallbacks concurrently", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => ratingsCsv(),
+    }));
+    await refreshClubRatings();
+
+    const resolvers: Array<(value: unknown) => void> = [];
+    const fallbackFetch = vi.fn(() => new Promise((resolve) => resolvers.push(resolve)));
+    vi.stubGlobal("fetch", fallbackFetch);
+    const pending = backfillMissingClubRatings([
+      { team: "Missing One", profile: "uefa-clubs" },
+      { team: "Missing Two", profile: "uefa-clubs" },
+    ]);
+    await Promise.resolve();
+    expect(fallbackFetch).toHaveBeenCalledTimes(2);
+    for (const resolve of resolvers) resolve({ ok: false, status: 404, text: async () => "" });
+    await expect(pending).resolves.toEqual(["Missing One", "Missing Two"]);
+  });
+
   it("drops stale fallbacks once a fresh snapshot names the club again", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
