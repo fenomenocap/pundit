@@ -17,6 +17,7 @@ import {
   parseSse,
   qualitativeScores,
   recordScenarioFailure,
+  recordOptionalScenarioFailure,
   sanitizeEvidence,
   selectFeaturedMatch,
   snapshotAskRequest,
@@ -218,6 +219,12 @@ async function jsonTurn(
 ) {
   await pacer.beforeRequest();
   const start = pacer.starts.at(-1);
+  const requestBody = snapshotAskRequest({
+    question: turn.question,
+    history,
+    teamContext,
+    fixtureContext,
+  });
   await onRequestStart({
     scenarioId: scenario.id,
     category: scenario.category ?? "fixed",
@@ -225,12 +232,7 @@ async function jsonTurn(
     turn: turnIndex + 1,
     question: turn.question,
     startedAt: start,
-  });
-  const requestBody = snapshotAskRequest({
-    question: turn.question,
-    history,
-    teamContext,
-    fixtureContext,
+    reproduction: { method: "POST", path: "/api/ask", body: requestBody },
   });
   const response = await fetchJson(`${options.apiUrl}/api/ask`, {
     method: "POST",
@@ -937,6 +939,11 @@ async function main() {
         error,
         pacer.starts.slice(requestStartIndex)
       );
+      if (scenario.requiredForCertification === false) {
+        recordOptionalScenarioFailure(report, failed);
+        await writeCheckpoint(report, options.outputDir);
+        continue;
+      }
       recordScenarioFailure(report, scenarios, scenarioIndex, failed);
       finalizeClassifications(report, previous);
       const checkpointPath = await writeCheckpoint(report, options.outputDir);
