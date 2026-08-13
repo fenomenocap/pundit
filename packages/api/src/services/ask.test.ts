@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
+import { recognizeEspnFixture, type RecognizedFixture } from "./fixture-registry";
 import {
   MATCH_ANSWER_GUARDS,
   MATCH_QUESTION_SCOPE,
@@ -14,7 +15,366 @@ import {
   resolveTeams,
   shouldUseCompetitionGrounding,
   shouldUseMatchGrounding,
+  deterministicSearchQuery,
+  evidenceAuthority,
+  dropMisbucketedTotalsScorelines,
+  renderEvidenceCitations,
+  sanitizeFixtureCoverageAnswer,
+  sanitizeContradictoryRationales,
+  sanitizeManagerEraClaims,
+  sanitizeMatchAnswer,
+  sanitizeRuntimeResponseCorrectness,
+  sanitizeUnrecognizedCandidateAnswer,
+  verifiableCurrentClaims,
+  verifyCurrentClaims,
+  type FixtureGrounding,
+  shouldHoldCoverageDeltas,
+  stripUnvalidatedExternalMarketClaims,
 } from "./ask";
+
+describe("current-news evidence hardening", () => {
+  it("deterministically pre-searches clearly current questions", () => {
+    for (const question of [
+      "Latest Arsenal injuries?",
+      "Is Saka available today?",
+      "Recent form and current manager?",
+      "Any transfer or lineup news?",
+      "What are the current odds?",
+      "You're wrong about the manager — check again",
+    ]) {
+      expect(deterministicSearchQuery(question)).toContain("football latest");
+    }
+    expect(deterministicSearchQuery("Explain the offside rule")).toBeNull();
+    expect(deterministicSearchQuery("Actually that manager is wrong", "Arsenal Pat Doe"))
+      .toContain("Arsenal Pat Doe");
+  });
+
+  it("does not promote unknown search domains to reputable evidence", () => {
+    expect(evidenceAuthority("https://www.uefa.com/story")).toBe("official");
+    expect(evidenceAuthority("https://www.arsenal.com/news/team-update")).toBe("official");
+    expect(evidenceAuthority("https://www.reuters.com/story")).toBe("reputable");
+    expect(evidenceAuthority("https://football-rumours.example/story")).toBe("other");
+  });
+
+  it("fails closed on generated bookmaker numbers that lack a complete server-owned market", () => {
+    const answer = [
+      "The official fixture is scheduled for Saturday.",
+      "Stake market: home 2.10, draw 3.40, away 3.60 (48.0%, 29.7%, 22.3%).",
+    ].join("\n\n");
+    const sanitized = stripUnvalidatedExternalMarketClaims(answer);
+    expect(sanitized).toContain("official fixture is scheduled");
+    expect(sanitized).toContain("complete same-source, same-time bookmaker 1X2 market");
+    expect(sanitized).not.toContain("2.10");
+    expect(sanitized).not.toContain("48.0%");
+    expect(sanitizeMatchAnswer("Kalshi market-implied home 48.0%, draw 28.0%, away 24.0%."))
+      .toContain("omitted those numbers");
+  });
+
+  it("renders only a complete same-source, same-time market with third-party attribution", () => {
+    const legs = [
+      { outcome: "home" as const, decimalOdds: 2, source: "Stake", observedAt: "2026-08-13T12:00:00Z" },
+      { outcome: "draw" as const, decimalOdds: 4, source: "Stake", observedAt: "2026-08-13T12:00:00Z" },
+      { outcome: "away" as const, decimalOdds: 4, source: "Stake", observedAt: "2026-08-13T12:00:00Z" },
+    ];
+    const sanitized = stripUnvalidatedExternalMarketClaims(
+      "Stake market: home 99%, draw 0.5%, away 0.5%.",
+      [legs]
+    );
+    expect(sanitized).toContain("Stake market-implied probabilities (third-party data, not a Pundit forecast)");
+    expect(sanitized).toContain("home 50.0%, draw 25.0%, away 25.0%");
+    expect(sanitized).not.toContain("99%");
+
+    expect(stripUnvalidatedExternalMarketClaims(
+      "Stake market: home 50%, draw 25%, away 25%.",
+      [legs.slice(0, 2)]
+    )).toContain("omitted those numbers");
+    expect(stripUnvalidatedExternalMarketClaims([
+      "Stake market:",
+      "home: 2.00",
+      "draw: 4.00",
+      "away: 4.00",
+      "Safe unrelated sentence.",
+    ].join("\n"))).toBe(
+      "Safe unrelated sentence.\n\nI could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers."
+    );
+  });
+
+  it("fails manager-era assertions closed unless the dated tenure record supports them", () => {
+    const claim = "The win came during Mikel Arteta's tenure.";
+    expect(sanitizeManagerEraClaims(claim)).toContain("could not be tied to a structured tenure record");
+    expect(sanitizeManagerEraClaims(claim)).not.toContain("The win came");
+
+    const context = {
+      eventAt: "2024-02-01T00:00:00Z",
+      tenures: [
+        { manager: "Mikel Arteta", startedAt: "2019-12-22T00:00:00Z" },
+      ],
+    };
+    expect(sanitizeManagerEraClaims(claim, context)).toBe(claim);
+    expect(sanitizeManagerEraClaims("The win came under manager Unai Emery.", context))
+      .toContain("attributes that date to Mikel Arteta");
+    for (const normalProse of [
+      "Arsenal struggled under sustained pressure.",
+      "The match occurred during Premier League fixtures.",
+      "They played under Arsenal floodlights.",
+    ]) expect(sanitizeManagerEraClaims(normalProse)).toBe(normalProse);
+  });
+
+  it("removes both sides of a recognizable contradictory rationale", () => {
+    const answer = [
+      "The home side's midfield gives it an edge.",
+      "The away side's midfield gives it an advantage.",
+      "The fixture remains close.",
+    ].join("\n");
+    const sanitized = sanitizeContradictoryRationales(answer);
+    expect(sanitized).not.toContain("home side's midfield");
+    expect(sanitized).not.toContain("away side's midfield");
+    expect(sanitized).toContain("Conflicting midfield rationales were omitted");
+    expect(sanitized).toContain("fixture remains close");
+    expect(sanitizeRuntimeResponseCorrectness(answer)).toBe(sanitized);
+    const sameParagraph = "The home side's midfield gives it an edge. The away side's midfield gives it an advantage. The fixture remains close.";
+    expect(sanitizeContradictoryRationales(sameParagraph)).not.toMatch(/home side|away side/);
+    expect(sanitizeContradictoryRationales(sameParagraph)).toContain("fixture remains close");
+  });
+
+  it("extracts only server-marked external claims for the verifier", () => {
+    expect(verifiableCurrentClaims(
+      "Pundit's model has Arsenal at 45%. The manager is Pat Doe [[S1]]. Unverified aside."
+    )).toEqual([{ id: "C1", text: "The manager is Pat Doe [[S1]]." }]);
+  });
+
+  it("binds accepted claims to the verifier-selected server evidence ID", async () => {
+    const bundle = {
+      queries: ["current manager"],
+      providerCalls: 0,
+      results: [
+        { id: "S1", title: "Official", url: "https://uefa.com/one", date: "2026-08-13", snippet: "Pat Doe is manager." },
+        { id: "S2", title: "Other", url: "https://news.example/two", date: "2026-08-13", snippet: "Unrelated." },
+      ],
+    };
+    const checked = await verifyCurrentClaims(
+      "Pat Doe is the current manager [[S2]].",
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      {
+        retrieve: async (candidates) => candidates.slice(0, 1).map((candidate) => ({
+          ...candidate,
+          finalUrl: candidate.url,
+          text: "Pat Doe is manager.",
+          retrievedAt: "2026-08-13T00:00:00.000Z",
+        })),
+        verify: async () => ({
+          status: "verified",
+          decisions: [{ claimId: "C1", outcome: "supported", evidenceIds: ["S1"] }],
+          summary: "supported",
+        }),
+      }
+    );
+    expect(checked.answer).toContain("[[S1]]");
+    expect(checked.answer).not.toContain("[[S2]]");
+    expect(checked.verification).toEqual({
+      status: "verified",
+      supportedClaimCount: 1,
+      removedClaimCount: 0,
+    });
+    expect(bundle.providerCalls).toBe(1);
+  });
+
+  it("preserves server-authored outside-coverage safety text while filtering factual claims", async () => {
+    const bundle = {
+      queries: ["fixture date"],
+      providerCalls: 0,
+      results: [{
+        id: "S1",
+        title: "Official",
+        url: "https://uefa.com/fixture",
+        date: "2026-08-13",
+        snippet: "The fixture is Thursday.",
+      }],
+    };
+    const checked = await verifyCurrentClaims(
+      "This recognized fixture is outside Pundit's model coverage, so no Pundit probabilities or scoreline estimates are available.\n\n"
+        + "The fixture is Thursday [[S1]]. An unsupported lineup is confirmed [[S1]].",
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      {
+        retrieve: async (candidates) => candidates.map((candidate) => ({
+          ...candidate,
+          finalUrl: candidate.url,
+          text: "The fixture is Thursday.",
+          retrievedAt: "2026-08-13T00:00:00.000Z",
+        })),
+        verify: async () => ({
+          status: "verified",
+          decisions: [
+            { claimId: "C1", outcome: "supported", evidenceIds: ["S1"] },
+            { claimId: "C2", outcome: "unsupported", evidenceIds: [] },
+          ],
+          summary: "checked",
+        }),
+      }
+    );
+    expect(checked.answer).toMatch(/outside Pundit's model coverage/i);
+    expect(checked.answer).toContain("The fixture is Thursday [[S1]].");
+    expect(checked.answer).not.toContain("unsupported lineup");
+  });
+
+  it("does not let uncited generated bookmaker percentages use the structured-market exception", async () => {
+    const checked = await verifyCurrentClaims(
+      "Stake market: Arsenal 52%, draw 25%, away 23%. No verified injury update was established.",
+      { queries: ["current odds"], providerCalls: 2, results: [] },
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      true
+    );
+    expect(checked.verification.status).toBe("abstain");
+    expect(checked.answer).not.toMatch(/52%|25%|23%/);
+  });
+
+  it("reconciles plain scoreline arithmetic even without a probability suffix", () => {
+    expect(dropMisbucketedTotalsScorelines("A 1-1 result lands over 2.5 goals."))
+      .toBe("A 1-1 scoreline has 2 total goals, so it is under 2.5.");
+    expect(dropMisbucketedTotalsScorelines("Under 2.5 examples include 2-1 and 1-1."))
+      .not.toContain("2-1");
+  });
+
+  it("deterministically strips public probabilities and scorelines from non-priced fixtures", () => {
+    const fixture = recognizeEspnFixture({
+      id: 900,
+      competitionId: "club.friendly",
+      competition: "Club Friendly",
+      homeTeam: "Arsenal",
+      awayTeam: "AC Milan",
+      utcDate: "2026-08-20T12:00:00.000Z",
+      status: "SCHEDULED",
+      stage: null,
+      matchday: null,
+      group: null,
+      score: null,
+    });
+    fixture.competition.category = "club-friendly";
+    const grounding: FixtureGrounding = {
+      kind: "fixture",
+      fixture,
+      capability: { status: "outside-coverage", reason: "friendly-policy-disabled" },
+    };
+    const safe = sanitizeFixtureCoverageAnswer(
+      "Arsenal 48%, draw 25%, Milan 27%. Likely score 2-1. The fixture is on Thursday [[S1]].",
+      grounding
+    );
+    expect(safe).toMatch(/outside Pundit's model coverage/i);
+    expect(safe).not.toMatch(/48%|2-1/);
+  });
+
+  it("keeps an unrecognized matchup candidate ungrounded and strips invented output", () => {
+    expect(resolveAskContext(
+      "Northbridge Athletic vs Southbank Rovers tomorrow",
+      [],
+      undefined,
+      [],
+      []
+    )).toEqual({ tier: "candidate" });
+    const safe = sanitizeUnrecognizedCandidateAnswer(
+      "Pundit's probabilities are 50%, 25%, 25%. Likely score 2-1."
+    );
+    expect(safe).toMatch(/could not establish an authoritative structured fixture identity/i);
+    expect(safe).not.toMatch(/50%|2-1/);
+  });
+
+  it("holds all candidate and non-priced fixture SSE deltas until sanitization", () => {
+    const fixture = recognizeEspnFixture({
+      id: 900,
+      competitionId: "club.friendly",
+      competition: "Club Friendly",
+      homeTeam: "Arsenal",
+      awayTeam: "Liverpool",
+      utcDate: "2026-08-18T19:00:00.000Z",
+      status: "SCHEDULED",
+      stage: null,
+      matchday: null,
+      group: null,
+      score: null,
+    });
+    fixture.competition.category = "club-friendly";
+    expect(shouldHoldCoverageDeltas({
+      kind: "fixture",
+      fixture,
+      capability: { status: "outside-coverage", reason: "friendly-policy-disabled" },
+    }, false)).toBe(true);
+    expect(shouldHoldCoverageDeltas(null, true)).toBe(true);
+    expect(shouldHoldCoverageDeltas(null, false)).toBe(false);
+  });
+
+  it("renders exact server evidence and removes invented or unsupported claims", () => {
+    const bundle = {
+      queries: ["arsenal injury"],
+      results: [{
+        id: "S1",
+        title: "Club update",
+        url: "https://example.com/team-news",
+        date: "2026-08-12",
+        snippet: "A player returned to training.",
+      }],
+    };
+    const rendered = renderEvidenceCitations(
+      "The player is available. [[S1]]\nAnother player is injured. [[S99]]",
+      bundle,
+      true
+    );
+    expect(rendered.answer).toContain("[Club update](https://example.com/team-news)");
+    expect(rendered.answer).not.toContain("Another player");
+    expect(rendered.citations).toEqual([expect.objectContaining({ id: "S1" })]);
+  });
+
+  it("abstains when a positive current claim has no provenance marker", () => {
+    const rendered = renderEvidenceCitations(
+      "The player is ruled out for Sunday.",
+      { queries: ["query"], results: [] },
+      true
+    );
+    expect(rendered.answer).toMatch(/could not establish a verified current update/i);
+  });
+
+  it("requires a dated marker in each sentence, not merely elsewhere on the line", () => {
+    const bundle = {
+      queries: ["query"],
+      results: [{
+        id: "S1",
+        title: "Club update",
+        url: "https://example.com/update",
+        date: "2026-08-12",
+        snippet: "One player is available.",
+      }],
+    };
+    const rendered = renderEvidenceCitations(
+      "One player is available [[S1]]. Another player is ruled out.",
+      bundle,
+      true
+    );
+    expect(rendered.answer).toContain("One player");
+    expect(rendered.answer).not.toContain("Another player");
+  });
+
+  it("does not render undated evidence for positive current-news claims", () => {
+    const rendered = renderEvidenceCitations(
+      "The player is available [[S1]].",
+      { queries: ["query"], results: [{
+        id: "S1",
+        title: "Undated result",
+        url: "https://example.com/undated",
+        date: "",
+        snippet: "Available",
+      }] },
+      true
+    );
+    expect(rendered.answer).toMatch(/could not establish a verified current update/i);
+    expect(rendered.citations).toEqual([]);
+  });
+});
 
 describe("MATCH_ANSWER_GUARDS", () => {
   it("blocks unsupported aggregate, scoreline-tail, and causal claims", () => {
@@ -293,6 +653,167 @@ describe("shouldUseMatchGrounding", () => {
 });
 
 describe("resolveAskContext", () => {
+  function recognizedFriendly(
+    id: number,
+    home: string,
+    away: string
+  ): RecognizedFixture {
+    const recognized = recognizeEspnFixture({
+      id,
+      competitionId: "club.friendly",
+      competition: "Club Friendly",
+      homeTeam: home,
+      awayTeam: away,
+      utcDate: "2026-08-18T19:00:00.000Z",
+      status: "SCHEDULED",
+      stage: null,
+      matchday: null,
+      group: null,
+      score: null,
+    });
+    return {
+      ...recognized,
+      competition: { ...recognized.competition, category: "club-friendly" },
+      neutralVenue: true,
+    };
+  }
+
+  it("recognizes an authoritative friendly as outside coverage and retains fixture identity", () => {
+    const friendly = recognizedFriendly(800, "Arsenal", "Liverpool");
+    const explicit = resolveAskContext(
+      "Arsenal vs Liverpool friendly",
+      [],
+      undefined,
+      [],
+      [],
+      [],
+      { recognizedFixtures: [friendly] }
+    );
+    expect(explicit).toMatchObject({
+      tier: "fixture",
+      fixture: { fixtureId: friendly.fixtureId },
+      capability: { status: "outside-coverage", reason: "friendly-policy-disabled" },
+    });
+    expect(resolveAskContext(
+      "What will the 1X2 be?",
+      [],
+      ["Chelsea", "Manchester City"],
+      [],
+      [],
+      [],
+      {
+        recognizedFixtures: [friendly],
+        fixtureContext: { fixtureId: friendly.fixtureId },
+      }
+    )).toMatchObject({ tier: "fixture", fixture: { fixtureId: friendly.fixtureId } });
+  });
+
+  it("lets a new recognized matchup replace retained fixture context", () => {
+    const oldFixture = recognizedFriendly(800, "Arsenal", "Liverpool");
+    const newFixture = recognizedFriendly(801, "Chelsea", "Manchester City");
+    expect(resolveAskContext(
+      "Chelsea vs Manchester City",
+      [],
+      undefined,
+      [],
+      [],
+      [],
+      {
+        recognizedFixtures: [oldFixture, newFixture],
+        fixtureContext: { fixtureId: oldFixture.fixtureId },
+      }
+    )).toMatchObject({ tier: "fixture", fixture: { fixtureId: newFixture.fixtureId } });
+  });
+
+  it("routes table questions temporarily without deleting retained fixture context", () => {
+    const friendly = recognizedFriendly(800, "Arsenal", "Liverpool");
+    expect(resolveAskContext(
+      "How does the Premier League table look?",
+      [],
+      undefined,
+      [],
+      [standing()],
+      [],
+      {
+        recognizedFixtures: [friendly],
+        fixtureContext: { fixtureId: friendly.fixtureId },
+      }
+    )).toEqual({ tier: "competition", competitionId: "eng.1" });
+    expect(resolveAskContext(
+      "What about that match?",
+      [],
+      undefined,
+      [],
+      [],
+      [],
+      {
+        recognizedFixtures: [friendly],
+        fixtureContext: { fixtureId: friendly.fixtureId },
+      }
+    )).toMatchObject({ tier: "fixture", fixture: { fixtureId: friendly.fixtureId } });
+  });
+
+  it("does not let an EPL token override explicit 1X2 intent for the retained fixture", () => {
+    const friendly = recognizedFriendly(800, "Arsenal", "Liverpool");
+    expect(resolveAskContext(
+      "What will the 1X2 be for that EPL match?",
+      [],
+      undefined,
+      [],
+      [standing()],
+      [],
+      {
+        recognizedFixtures: [friendly],
+        fixtureContext: { fixtureId: friendly.fixtureId },
+      }
+    )).toMatchObject({ tier: "fixture", fixture: { fixtureId: friendly.fixtureId } });
+  });
+
+  it("does not match the epl token inside replacing", () => {
+    expect(isCompetitionQuestion("Who is replacing the injured manager?")).toBe(false);
+  });
+
+  it("does not route a stale priced row after authoritative cancellation", () => {
+    const cancelled = recognizeEspnFixture({
+      id: fixtures[0].fixtureId,
+      competitionId: fixtures[0].competitionId,
+      competition: fixtures[0].competition,
+      homeTeam: fixtures[0].home,
+      awayTeam: fixtures[0].away,
+      utcDate: fixtures[0].utcDate,
+      status: "CANCELLED",
+      stage: null,
+      matchday: null,
+      group: null,
+      score: null,
+    });
+    expect(resolveAskContext(
+      "Arsenal vs Coventry City",
+      [],
+      undefined,
+      fixtures,
+      [],
+      [],
+      { recognizedFixtures: [cancelled] }
+    )).toMatchObject({
+      tier: "fixture",
+      capability: { status: "outside-coverage", reason: "model-policy-disabled" },
+    });
+  });
+
+  it("fails closed on two current recognized fixtures for the same teams", () => {
+    const first = recognizedFriendly(800, "Arsenal", "Liverpool");
+    const second = recognizedFriendly(801, "Arsenal", "Liverpool");
+    expect(resolveAskContext(
+      "Arsenal vs Liverpool",
+      [],
+      undefined,
+      [],
+      [],
+      [],
+      { recognizedFixtures: [first, second] }
+    )).toEqual({ tier: "candidate" });
+  });
   it("keeps general chat available while the active model is empty or unready", () => {
     expect(resolveAskContext(
       "Explain how a high defensive line works.",

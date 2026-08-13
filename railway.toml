@@ -1,0 +1,21 @@
+# Canonical Railway service configuration. The API service links the repository
+# root, so Railway discovers this file without a dashboard-only config mapping.
+
+[build]
+builder = "RAILPACK"
+buildCommand = "corepack enable && pnpm --filter @sports-predict/api build"
+watchPatterns = [
+  "/packages/api/**",
+  "/package.json",
+  "/pnpm-lock.yaml",
+  "/pnpm-workspace.yaml",
+  "/.node-version",
+  "/.nvmrc",
+]
+
+[deploy]
+startCommand = "pnpm --filter @sports-predict/api start"
+healthcheckPath = "/startup"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

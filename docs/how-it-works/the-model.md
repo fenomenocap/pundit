@@ -4,13 +4,15 @@ Pundit's match probabilities come from a **Dixon-Coles Poisson model** calibrate
 
 ### Active fixture model
 
-For each upcoming club fixture in the active window:
+For each recognized, policy-eligible upcoming club fixture in the active window:
 
 * **Win / draw / win probabilities** (`pHome`, `pDraw`, `pAway`) — Dixon-Coles output for that specific matchup
 * **Over/under 2.5, BTTS, and likely scorelines** derived from the score matrix
 * **Home-field advantage** applied for Premier League home teams (not for neutral-site tournaments)
 
 Team strength comes from ClubElo CSV feeds, scoped by competition rating profile (domestic league vs continental).
+
+Fixture recognition is a gate, not a numeric input. The registry binds approved structured source IDs to canonical teams, kickoff, venue/neutral state, competition, and status. Cancelled, postponed, unsupported, ambiguous, or incomplete fixtures fail closed before pricing; this does not alter the numeric output for existing eligible fixtures.
 
 ### Season outlook simulator
 
@@ -24,13 +26,15 @@ This is separate from the per-fixture active cache — it answers "who wins the 
 
 ### How the chat uses it
 
-For an active fixture in the 14-day window, Pundit treats the fixture's precomputed probabilities as ground truth. It then:
+For a recognized, priced fixture in the 14-day window, Pundit treats the fixture's precomputed probabilities as ground truth. It then:
 
 1. Compares the model's win/draw/win read with complete active Stake, Kalshi, and Polymarket 1X2 prices when available
 2. Runs a live web search whenever the question touches injuries, suspensions, lineups, form, transfers, or a recent result — for a specific fixture that information changes the read, so Pundit searches rather than answering from memory. Every item it reports names its source and date, and it says plainly where a search turned up nothing
 3. Responds in plain language: headline odds, 1–2 likely scorelines, and what the underdog would need
 
 Competition questions use ESPN standings only. Season questions add the Monte Carlo outlook on top of standings.
+
+Recognized non-priced fixtures use a separate fixture grounding contract with a typed capability reason and no Pundit probabilities or scorelines. Discovery-only candidates are not grounding and never reach the model.
 
 ### Evaluation and calibration
 

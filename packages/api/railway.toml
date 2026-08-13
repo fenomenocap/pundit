@@ -1,11 +1,25 @@
-# Railway config for the Railway service @pundit/api
+# Compatibility copy of the root Railway config for the Railway service @pundit/api.
 # (the pnpm package it builds is still named @sports-predict/api)
 # In the Railway service settings, set "Config file path" to:
 #   /packages/api/railway.toml
-# if the repo root is the linked directory.
+# only if Railway is explicitly configured to use this nested path. The
+# repository-root railway.toml is canonical for the current root-linked service.
+
+[build]
+builder = "RAILPACK"
+buildCommand = "corepack enable && pnpm --filter @sports-predict/api build"
+watchPatterns = [
+  "/packages/api/**",
+  "/package.json",
+  "/pnpm-lock.yaml",
+  "/pnpm-workspace.yaml",
+  "/.node-version",
+  "/.nvmrc",
+]
 
 [deploy]
-healthcheckPath = "/health"
+startCommand = "pnpm --filter @sports-predict/api start"
+healthcheckPath = "/startup"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

@@ -26,6 +26,8 @@ export interface FootballMatch {
   stage: string | null;
   matchday: number | null;
   group: string | null;
+  venue?: string | null;
+  neutralVenue?: boolean | null;
   score: {
     home: number | null;
     away: number | null;
@@ -126,7 +128,10 @@ export function buildFetchDateRange(competition: CompetitionConfig): string {
 
 // ─── Data Transformers ──────────────────────────────────────────────────────
 
-function statusFromState(state: string): string {
+function statusFromState(state: string, statusName = ""): string {
+  const normalizedName = statusName.toUpperCase();
+  if (/CANCEL/.test(normalizedName)) return "CANCELLED";
+  if (/POSTPON/.test(normalizedName)) return "POSTPONED";
   if (state === "post") return "FINISHED";
   if (state === "in") return "IN_PLAY";
   return "SCHEDULED";
@@ -164,10 +169,19 @@ export function parseEvent(e: any, context: ParseEventContext): FootballMatch {
     homeTeam: canonicalTeamName(home?.team?.displayName || "TBD"),
     awayTeam: canonicalTeamName(away?.team?.displayName || "TBD"),
     utcDate: e.date,
-    status: statusFromState(state),
+    // ESPN marks cancelled events `state=post` even though they were never
+    // played. The exact status name must win over the broad state bucket or a
+    // cancellation is silently normalized as a completed match.
+    status: statusFromState(state, statusType.name || statusType.description || ""),
     stage: e.season?.slug || null,
     matchday: null,
     group: groupMatch ? groupMatch[1] : null,
+    venue: typeof competitionMeta?.venue?.fullName === "string"
+      ? competitionMeta.venue.fullName
+      : null,
+    neutralVenue: typeof competitionMeta?.neutralSite === "boolean"
+      ? competitionMeta.neutralSite
+      : null,
     score: completed || state === "in" || hasScore
       ? { home: homeScore ?? 0, away: awayScore ?? 0 }
       : null,

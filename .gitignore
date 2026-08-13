@@ -18,3 +18,11 @@ packages/web/blob-report/
 
 # Runtime ratings cache — written at run time, never source.
 packages/api/data/cache/
+
+# Runtime fixture identity and private shadow evidence — `/data` in production.
+packages/api/data/fixture-registry/
+packages/api/data/evaluation/friendly-shadow-v1.json
+packages/api/data/evaluation/friendly-shadow-v1.json.last-good
+
+# Source-study captures are evidence-only; commit the normalized matrix, not raw payloads.
+packages/api/data/research/fixture-sources/raw/

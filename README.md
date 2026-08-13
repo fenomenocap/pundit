@@ -23,7 +23,7 @@ World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluati
                  └───────────┘  └────────────┘  └──────────────┘
 ```
 
-Public football/model/market sources are keyless and cached server-side on a cadence (ESPN + active market odds every 30 minutes, ClubElo + active model hourly). MiniMax powers the live chat through a Railway-managed secret. No database — everything is in-memory.
+Public football/model/market sources are keyless and cached server-side on a cadence (ESPN + active market odds every 30 minutes, ClubElo + active model hourly). MiniMax powers the live chat through a Railway-managed secret. There is no database: runtime caches are in memory, while restart-critical ratings, calibration, recognized-fixture mappings, and optional private-shadow artifacts use atomic JSON files under `PUNDIT_DATA_DIR`.
 
 ---
 
@@ -31,7 +31,7 @@ Public football/model/market sources are keyless and cached server-side on a cad
 
 | Layer | Technology |
 |---|---|
-| Monorepo | pnpm workspaces (Node ≥18, pnpm 9.15.4) |
+| Monorepo | pnpm workspaces (Node 22, pnpm 9.15.4) |
 | Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui |
 | Backend | Express + TypeScript, `@anthropic-ai/sdk` (wire client for MiniMax's Anthropic-compatible endpoint) |
 
@@ -49,7 +49,10 @@ packages/
 
 ## Quick Start
 
-Every env var has a sane default (see `.env.example`) — nothing needs to be configured to run this locally, and `packages/api` does not auto-load `.env` (no `dotenv` dependency), so exporting variables into your shell is what actually takes effect, not just editing the file.
+Most env vars have safe local defaults (see `.env.example`). The API loads the
+gitignored repository-root `.env` for local development; exported shell values
+remain valid and Railway injects production values directly. Chat still needs a
+local `MINIMAX_API_KEY`.
 
 ```bash
 pnpm install
@@ -91,12 +94,15 @@ pnpm test && pnpm build
 | GET | `/api/matches/upcoming` | Upcoming fixtures (ESPN, optional `?competition=`) |
 | GET | `/api/matches/recent` | Recent results (ESPN) |
 | GET | `/api/matches/standings` | Standings (ESPN) |
+| GET | `/api/fixtures/recognized` | Approved structured fixture identities and current capability decisions; never discovery candidates |
 | GET | `/api/model/active` | Active club fixtures with model 1X2 probabilities |
 | GET | `/api/model/fixtures` | Same as active set (optional `?competition=`) |
 | GET | `/api/evaluation/club-season` | Rolling club-season calibration artifact |
 | GET | `/api/evaluation/wc-2026` | Frozen WC 2026 backtest artifact |
-| GET | `/health` | API health check |
-| GET | `/ready` | Model, ESPN, active-fixture, and market-odds cache readiness |
+| GET | `/health` | Process liveness |
+| GET | `/startup` | Startup gate for usable football and active-model caches |
+| GET | `/ready` | Runtime readiness and degradable-source status |
+| GET | `/version` | API build SHA |
 
 `GET /api/model/wc` returns **410 Gone** — live WC model retired.
 
@@ -114,7 +120,7 @@ pnpm test && pnpm build
 
 ## Deploy
 
-Production (July 2026):
+Production (August 2026):
 
 | Service | URL |
 |---|---|
@@ -156,7 +162,7 @@ Required env vars for local dev are listed in `.env.example`. Never commit `MINI
 
 ## Backtesting note
 
-The WC 2026 evaluation at `/evaluation/wc-2026` uses a frozen reconstructed artifact. Live club-season fixtures are recalculated on each ClubElo refresh; rigorous ongoing calibration will require immutable pre-kickoff snapshots in a later pass.
+The WC 2026 evaluation at `/evaluation/wc-2026` uses a frozen reconstructed artifact. Live model views are recalculated on each ClubElo refresh; look-ahead-free club-season calibration uses the immutable pre-kickoff snapshots exposed at `/evaluation/club-season`.
 
 ---
 

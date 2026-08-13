@@ -1,8 +1,39 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const EVAL_SCHEMA_VERSION = 6;
+const require = createRequire(import.meta.url);
+
+export function loadApiRuntimeCorrectnessHelpers(repoRoot = path.resolve(import.meta.dirname, "..")) {
+  const previousProject = process.env.TS_NODE_PROJECT;
+  try {
+    process.env.TS_NODE_PROJECT = path.join(repoRoot, "packages/api/tsconfig.json");
+    require(path.join(repoRoot, "packages/api/node_modules/ts-node/register/transpile-only"));
+    return require(path.join(repoRoot, "packages/api/src/services/response-correctness.ts"));
+  } catch (error) {
+    throw new Error("runtime-helper scenarios require installed API development dependencies", { cause: error });
+  } finally {
+    if (previousProject === undefined) delete process.env.TS_NODE_PROJECT;
+    else process.env.TS_NODE_PROJECT = previousProject;
+  }
+}
+
+export function loadApiRuntimeFixtureHelpers(repoRoot = path.resolve(import.meta.dirname, "..")) {
+  const previousProject = process.env.TS_NODE_PROJECT;
+  try {
+    process.env.TS_NODE_PROJECT = path.join(repoRoot, "packages/api/tsconfig.json");
+    require(path.join(repoRoot, "packages/api/node_modules/ts-node/register/transpile-only"));
+    return require(path.join(repoRoot, "packages/api/src/services/fixture-registry.ts"));
+  } catch (error) {
+    throw new Error("fixture runtime-helper scenarios require installed API development dependencies", { cause: error });
+  } finally {
+    if (previousProject === undefined) delete process.env.TS_NODE_PROJECT;
+    else process.env.TS_NODE_PROJECT = previousProject;
+  }
+}
+
+export const EVAL_SCHEMA_VERSION = 9;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 
 export async function fetchWithTimeout(
@@ -69,6 +100,205 @@ function finiteProbability(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
+const MODEL_PROBABILITY_FIELDS = [
+  "pHome", "pDraw", "pAway", "pOver2_5", "pUnder2_5", "pBttsYes", "pBttsNo",
+  "topScores", "scorelines",
+];
+
+const FIXTURE_CAPABILITIES = {
+  "temporarily-unpriced": new Set(["model-initializing", "ratings-refreshing"]),
+  "outside-coverage": new Set([
+    "unsupported-competition", "friendly-policy-disabled", "model-policy-disabled",
+  ]),
+  "insufficient-model-input": new Set([
+    "ratings-unavailable", "neutral-venue-unknown", "required-context-missing",
+  ]),
+};
+const FIXTURE_SOURCES = new Set(["espn", "official-competition", "official-federation", "official-club"]);
+const FIXTURE_CATEGORIES = new Set([
+  "domestic-league", "domestic-cup", "club-continental", "club-friendly",
+  "international-tournament", "international-qualifier", "international-friendly",
+]);
+
+function validIsoDate(value) {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
+/** Validate the non-priced fixture contract without accepting model-shaped data. */
+export function validateFixtureGrounding(grounding, expectation = {}) {
+  const fixture = grounding?.fixture;
+  const capability = grounding?.capability;
+  const validCapability = capability?.status === "priced"
+    ? typeof capability.modelFixtureId === "string" && capability.modelFixtureId.length > 0
+    : capability
+      && Object.hasOwn(FIXTURE_CAPABILITIES, capability.status)
+      && FIXTURE_CAPABILITIES[capability.status].has(capability.reason);
+  const assertions = {
+    fixtureShape: grounding?.kind === "fixture"
+      && typeof fixture?.fixtureId === "string"
+      && fixture.fixtureId.length > 0
+      && FIXTURE_SOURCES.has(fixture?.primarySource)
+      && typeof fixture?.primarySourceFixtureId === "string"
+      && typeof fixture?.homeTeam?.id === "string"
+      && typeof fixture?.homeTeam?.name === "string"
+      && typeof fixture?.awayTeam?.id === "string"
+      && typeof fixture?.awayTeam?.name === "string"
+      && validIsoDate(fixture?.kickoff)
+      && [true, false, null].includes(fixture?.neutralVenue)
+      && typeof fixture?.competition?.id === "string"
+      && typeof fixture?.competition?.name === "string"
+      && FIXTURE_CATEGORIES.has(fixture?.competition?.category)
+      && ["scheduled", "in-play", "completed", "postponed", "cancelled"].includes(fixture?.status)
+      && ["authoritative", "corroborated"].includes(fixture?.recognition)
+      && Array.isArray(fixture?.observedSources)
+      && fixture.observedSources.length > 0
+      && fixture.observedSources.every((source) => FIXTURE_SOURCES.has(source?.source)
+        && typeof source?.sourceFixtureId === "string"
+        && ["authoritative", "corroborating"].includes(source?.authority)
+        && validIsoDate(source?.observedAt))
+      && Array.isArray(fixture?.observationHistory)
+      && fixture.observationHistory.every((item) => FIXTURE_SOURCES.has(item?.source)
+        && typeof item?.sourceFixtureId === "string"
+        && validIsoDate(item?.observedAt)
+        && validIsoDate(item?.kickoff)
+        && [true, false, null].includes(item?.neutralVenue)
+        && ["scheduled", "in-play", "completed", "postponed", "cancelled"].includes(item?.status)),
+    capabilityShape: Boolean(validCapability),
+    exactFixture: !expectation.expectFixtureId || fixture?.fixtureId === expectation.expectFixtureId,
+    exactTeams: !expectation.expectTeams || new Set([
+      fixture?.homeTeam?.name, fixture?.awayTeam?.name,
+    ]).size === 2 && expectation.expectTeams.every((team) =>
+      team === fixture?.homeTeam?.name || team === fixture?.awayTeam?.name
+    ),
+    exactCapability: !expectation.expectCapability
+      || capability?.status === expectation.expectCapability.status
+        && (!expectation.expectCapability.reason
+          || capability?.reason === expectation.expectCapability.reason),
+    exactCompetitionCategory: !expectation.expectCompetitionCategory
+      || fixture?.competition?.category === expectation.expectCompetitionCategory,
+    exactNeutralVenue: !Object.hasOwn(expectation, "expectNeutralVenue")
+      || fixture?.neutralVenue === expectation.expectNeutralVenue,
+    noModelProbabilities: MODEL_PROBABILITY_FIELDS.every((field) => !Object.hasOwn(grounding ?? {}, field)),
+  };
+  const failures = Object.entries(assertions)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => `fixture grounding failed ${name}`);
+  return { passed: failures.length === 0, assertions, failures };
+}
+
+/** Independently certify complete same-source/time decimal-odds arithmetic. */
+export function validateOneXTwoMarket(legs) {
+  const outcomes = ["home", "draw", "away"];
+  if (!Array.isArray(legs) || legs.length !== outcomes.length) {
+    return { passed: false, reason: "missing-or-duplicate-leg" };
+  }
+  const byOutcome = new Map(legs.map((leg) => [leg?.outcome, leg]));
+  if (byOutcome.size !== outcomes.length || outcomes.some((outcome) => !byOutcome.has(outcome))) {
+    return { passed: false, reason: "missing-or-duplicate-leg" };
+  }
+  const sources = new Set(legs.map((leg) => leg?.source).filter(Boolean));
+  if (sources.size !== 1) return { passed: false, reason: "mixed-source" };
+  const observedTimes = new Set(legs.map((leg) => leg?.observedAt).filter(validIsoDate));
+  if (observedTimes.size !== 1) return { passed: false, reason: "mixed-observation-time" };
+  const implied = Object.fromEntries(outcomes.map((outcome) => {
+    const odds = byOutcome.get(outcome)?.decimalOdds;
+    return [outcome, Number.isFinite(odds) && odds > 1 ? 1 / odds : null];
+  }));
+  if (Object.values(implied).some((value) => value === null)) {
+    return { passed: false, reason: "invalid-odds" };
+  }
+  const overround = Object.values(implied).reduce((sum, value) => sum + value, 0);
+  const noVig = Object.fromEntries(outcomes.map((outcome) => [outcome, implied[outcome] / overround]));
+  const noVigTotal = Object.values(noVig).reduce((sum, value) => sum + value, 0);
+  if (Math.abs(noVigTotal - 1) > 0.002 + Number.EPSILON) {
+    return { passed: false, reason: "invalid-no-vig-total" };
+  }
+  return {
+    passed: true,
+    market: {
+      source: [...sources][0],
+      observedAt: [...observedTimes][0],
+      impliedProbabilities: implied,
+      noVigProbabilities: noVig,
+      overround,
+    },
+  };
+}
+
+export function validateResponseCorrectness(answer, citations, grounding, expectation = {}) {
+  const text = typeof answer === "string" ? answer : "";
+  const citationList = Array.isArray(citations) ? citations : [];
+  const punditProbabilityClaim = /\bpundit(?:'s)?\b[^.!?\n]{0,80}\b(?:\d{1,3}(?:\.\d+)?%|(?:probabilit|forecast|prediction)[^.!?\n]{0,30}\d)/i;
+  const scoreline = /(?<![\d-])\d{1,2}\s*[-:–—]\s*\d{1,2}(?![\d-])/;
+  const assertions = {};
+  if (expectation.expectNoPunditProbabilities) {
+    assertions.noPunditProbabilities = !punditProbabilityClaim.test(text)
+      && MODEL_PROBABILITY_FIELDS.every((field) => !Object.hasOwn(grounding ?? {}, field));
+  }
+  if (expectation.expectNoScorelines) assertions.noInventedScoreline = !scoreline.test(text);
+  if (expectation.expectThirdPartyLabel) {
+    assertions.thirdPartyLabel = /\b(?:bookmaker|market|third[- ]party)\b/i.test(text)
+      && /\bnot\s+(?:a\s+)?pundit(?:'s)?\b/i.test(text);
+  }
+  if (expectation.expectOneOneNotOver25) {
+    assertions.scorelineTotalCorrect = !/\b1\s*[-:–—]\s*1\b[^.!?\n]*\bover\s*2\.5\b/i.test(text)
+      && !/\bover\s*2\.5\b[^.!?\n]*\b1\s*[-:–—]\s*1\b/i.test(text);
+  }
+  if (expectation.expectCorrectionAcknowledgement) {
+    assertions.correctionAcknowledged = /\b(?:you(?:'re| are) right|correction|correct(?:ed|ion)?|sorry|apolog)/i.test(text);
+    assertions.correctionCited = citationList.length > 0
+      && citationList.some((citation) => text.includes(`](${citation.url})`));
+  }
+  if (expectation.expectEvidenceAbstention) {
+    assertions.evidenceAbstention = /\b(?:could not|couldn't|unable to|no verified|not establish|cannot verify|conflict)\b/i.test(text);
+  }
+  if (expectation.expectOfficialCitation) {
+    assertions.officialCitation = citationList.some((citation) => {
+      try {
+        const host = new URL(citation.url).hostname.toLowerCase();
+        return expectation.expectOfficialCitation.some((domain) =>
+          host === domain || host.endsWith(`.${domain}`)
+        );
+      } catch {
+        return false;
+      }
+    });
+  }
+  if (expectation.expectCitationUrls) {
+    assertions.exactCitationSet = citationList.length === expectation.expectCitationUrls.length
+      && citationList.every((citation) => expectation.expectCitationUrls.includes(citation.url));
+  }
+  const failures = Object.entries(assertions)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => `response correctness failed ${name}`);
+  return { passed: failures.length === 0, assertions, failures };
+}
+
+export function validateVerification(verification, expectation = {}) {
+  const statuses = new Set(["not-required", "verified", "conflict", "abstain", "unavailable"]);
+  const shape = statuses.has(verification?.status)
+    && Number.isInteger(verification?.supportedClaimCount)
+    && verification.supportedClaimCount >= 0
+    && Number.isInteger(verification?.removedClaimCount)
+    && verification.removedClaimCount >= 0;
+  const semantics = shape && (
+    verification.status === "verified" ? verification.supportedClaimCount > 0
+      : verification.status === "not-required" ? verification.supportedClaimCount === 0
+      : verification.status === "abstain" || verification.status === "unavailable"
+        ? verification.supportedClaimCount === 0
+        : true
+  );
+  const allowed = expectation.expectVerification
+    ?? (expectation.requireCitation || expectation.requireVerification
+      ? (expectation.allowAbstention ? ["verified", "abstain"] : ["verified"])
+      : statuses);
+  const expectedStatus = shape && (allowed instanceof Set ? allowed : new Set(allowed)).has(verification.status);
+  const assertions = { verificationShape: shape, verificationSemantics: semantics, verificationStatus: expectedStatus };
+  const failures = Object.entries(assertions).filter(([, passed]) => !passed)
+    .map(([name]) => `verification failed ${name}`);
+  return { passed: failures.length === 0, assertions, failures };
+}
+
 function sameTeamPair(grounding, expectedTeams) {
   if (!Array.isArray(expectedTeams) || expectedTeams.length !== 2) return true;
   return new Set([grounding?.home, grounding?.away]).size === 2
@@ -93,7 +323,11 @@ export function validateGrounding(grounding, expectation) {
     groundingKind: grounding?.kind === expectedKind,
   };
   const observations = {};
-  if (expectedKind === "match") {
+  if (expectedKind === "fixture") {
+    return validateFixtureGrounding(grounding, expectation);
+  } else if (expectedKind === "match") {
+    assertions.exactFixture = !expectation?.expectFixtureId
+      || grounding?.fixtureId === expectation.expectFixtureId;
     assertions.expectedTeams = sameTeamPair(grounding, expectation?.expectTeams);
     assertions.expectedCompetition = !expectation?.expectCompetitionId
       || grounding?.competitionId === expectation.expectCompetitionId;
@@ -111,6 +345,13 @@ export function validateGrounding(grounding, expectation) {
       && Array.isArray(grounding?.scorelines)
       && grounding.scorelines.length > 0;
     assertions.oddsSourcesPresent = Array.isArray(grounding?.oddsSources);
+    assertions.completeMarketIntegrity = !Array.isArray(grounding?.oddsSources)
+      || grounding.oddsSources.every((source) => {
+        const probabilities = [source?.pHome, source?.pDraw, source?.pAway];
+        return typeof source?.source === "string"
+          && probabilities.every(finiteProbability)
+          && Math.abs(probabilities.reduce((sum, value) => sum + value, 0) - 1) <= 0.002 + Number.EPSILON;
+      });
     // Market sources are best-effort, so an empty list is not a deploy blocker
     // and stays out of the pass/fail set by default. It was, however, invisible:
     // a match answer with no market line to compare against passed silently and
@@ -216,6 +457,31 @@ export function validateAnswerCopy(answer) {
   return { passed: failures.length === 0, failures };
 }
 
+export function validateCitationContract(answer, citations, required = false) {
+  const list = Array.isArray(citations) ? citations : [];
+  const valid = list.every((citation) => {
+    if (!/^S\d+$/.test(citation?.id ?? "") || !citation?.title || !citation?.date) return false;
+    try {
+      return ["http:", "https:"].includes(new URL(citation.url).protocol);
+    } catch {
+      return false;
+    }
+  });
+  const clickable = list.some((citation) => answer.includes(`](${citation.url})`));
+  const rawMarkersAbsent = !/\[\[S\d+\]\]/.test(answer);
+  const passed = valid && rawMarkersAbsent && (!required || (list.length > 0 && clickable));
+  return {
+    passed,
+    assertions: { citationsValid: valid, rawCitationMarkersAbsent: rawMarkersAbsent, clickableCitation: !required || clickable },
+    failures: passed ? [] : ["citation metadata/provenance contract failed"],
+  };
+}
+
+export function validateNoDraftLeak(answer) {
+  const leaked = /\b(?:let me (?:search|check|look)|i(?:'ll| will) (?:search|check|look)|now i have enough|search results show)\b/i.test(answer ?? "");
+  return { passed: !leaked, failures: leaked ? ["answer leaked a search/tool draft"] : [] };
+}
+
 /**
  * Team-news claims the attribution rules require to be sourced and dated.
  * Deliberately narrow: only wording that asserts squad availability, not a
@@ -292,12 +558,12 @@ export function qualitativeScores(result) {
   const answer = result.answer;
   const hasCalibration = /\b(likely|unlikely|probab|uncertain|confidence|model|estimate|cannot|can't|not certain)\b/i.test(answer);
   return {
-    correctness: null,
+    correctness: result.correctnessCertified === true ? 4 : null,
     usefulness: answer.length >= 80 ? 4 : 3,
     clarity: answer.length <= 4_000 ? 4 : 3,
     calibration: hasCalibration ? 4 : 2,
     groundingFidelity: result.passed && result.grounding !== undefined ? 4 : null,
-    method: "deterministic provisional scores; agent critic supplies correctness and final review"
+    method: "deterministic schema-9 certification checks; agent critic supplies final review"
   };
 }
 
@@ -331,6 +597,7 @@ function skippedScenarioResult(scenario, failedScenarioId) {
     answer: null,
     grounding: undefined,
     qualitativeScores: null,
+    reproduction: { requests: [] },
     evidence: `Not run after ${failedScenarioId} stopped the evaluation.`,
   };
 }
@@ -455,17 +722,20 @@ export function generateAdversarialScenarios(seed, featured) {
       kind: featured ? "json" : "inconclusive",
       reason: featured ? undefined : "no model-backed active club fixture",
       teamContext: featured ? [featured.home, featured.away] : undefined,
+      fixtureContext: featured ? { fixtureId: featured.recognizedFixtureId } : undefined,
       turns: featured ? [
         {
           question: groundingQuestion,
           expectGrounding: "match",
           expectTeams: [featured.home, featured.away],
+          expectFixtureId: featured.recognizedFixtureId,
           expectCompetitionId: featured.competitionId
         },
         {
           question: "Which model input matters most to that edge?",
           expectGrounding: "match",
           expectTeams: [featured.home, featured.away],
+          expectFixtureId: featured.recognizedFixtureId,
           expectCompetitionId: featured.competitionId
         }
       ] : []
@@ -516,9 +786,12 @@ export function renderMarkdown(report) {
     "",
     `- Run: \`${report.runId}\``,
     `- Deployment: \`${report.deployment.id}\` (${report.deployment.source})`,
+    `- Source/API/Web SHAs: \`${report.deployment.sourceSha ?? "unknown"}\` / \`${report.deployment.apiSha ?? "unknown"}\` / \`${report.deployment.webSha ?? "unknown"}\``,
+    `- SHA convergence: ${report.deployment.shaConverged === true ? "PASS" : report.deployment.shaConverged === false ? "FAIL" : "INCONCLUSIVE"}`,
     `- Evaluation schema: \`${report.schemaVersion}\``,
     `- Previous comparison: ${report.comparison.reason}`,
     `- Overall: **${report.overall}**`,
+    `- Certification gate: ${report.certificationGate?.passed ? "PASS" : "FAIL"}`,
     "",
     "## Scenario Results",
     "",
@@ -634,11 +907,42 @@ export function finalizeClassifications(report, previous) {
       previousById.get(scenario.id),
       contractComparable
     );
+    scenario.verdict = scenario.classification;
   }
   report.comparison = compareReports(report, previous);
   const failures = report.scenarios.filter((scenario) =>
     !["PASS", "INCONCLUSIVE"].includes(scenario.classification)
   );
-  report.overall = failures.length > 0 ? "ISSUES FOUND" : "PASS";
+  const requiredInconclusive = report.scenarios.filter((scenario) =>
+    scenario.outcome === "INCONCLUSIVE" && scenario.requiredForCertification === true
+  );
+  const unsupportedCorrectness = report.scenarios.filter((scenario) =>
+    scenario.outcome === "PASS"
+    && scenario.answer
+    && !Number.isFinite(scenario.qualitativeScores?.correctness)
+  );
+  const latencies = report.scenarios.flatMap((scenario) =>
+    Array.isArray(scenario.requestLatencies) ? scenario.requestLatencies : [scenario.latencyMs]
+  )
+    .filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  const p90 = latencies.length ? latencies[Math.ceil(latencies.length * 0.9) - 1] : null;
+  report.latencyGate = {
+    samples: latencies.length,
+    p90Ms: p90,
+    everyRequestUnder90s: latencies.every((value) => value < 90_000),
+    p90Under20s: latencies.length < 10 ? null : p90 <= 20_000,
+  };
+  const latencyFailed = !report.latencyGate.everyRequestUnder90s || report.latencyGate.p90Under20s === false;
+  report.certificationGate = {
+    requiredInconclusive: requiredInconclusive.map(({ id }) => id),
+    unsupportedCorrectness: unsupportedCorrectness.map(({ id }) => id),
+    shaConverged: report.deployment?.shaConverged ?? null,
+    passed: requiredInconclusive.length === 0
+      && unsupportedCorrectness.length === 0
+      && report.deployment?.shaConverged !== false,
+  };
+  report.overall = failures.length > 0 || latencyFailed || !report.certificationGate.passed
+    ? "ISSUES FOUND"
+    : "PASS";
   return report;
 }

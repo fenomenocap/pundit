@@ -93,9 +93,9 @@ export interface Wc2026EvaluationResponse {
   fixtures: Wc2026EvaluationFixture[];
   metrics: {
     fixtureCount: number;
-    brierScore: number;
-    logLoss: number;
-    winnerAccuracy: number;
+    brierScore: number | null;
+    logLoss: number | null;
+    winnerAccuracy: number | null;
     drawCount: number;
     calibration: Array<{
       label: string;
@@ -211,6 +211,8 @@ export async function getWc2026Evaluation() {
 }
 
 export interface ClubSeasonEvaluationFixture {
+  schemaVersion: 1 | 2;
+  forecastId: string;
   competitionId: string;
   fixtureId: number;
   utcDate: string;
@@ -230,13 +232,52 @@ export interface ClubSeasonEvaluationFixture {
 }
 
 export interface ClubSeasonEvaluationResponse {
+  schemaVersion: 2;
   competitions: string[];
   method: "snapshot";
   builtAt: string;
   updatedAt: string;
   disclaimer: string;
   fixtures: ClubSeasonEvaluationFixture[];
-  metrics: Wc2026EvaluationResponse["metrics"];
+  missedCheckpoints: Array<{
+    competitionId: string;
+    fixtureId: number;
+    utcDate: string;
+    home: string;
+    away: string;
+    checkpointPolicyId: string;
+    recordedAt: string;
+    reason: "fixture_unpriced" | "no_eligible_pre_kickoff_forecast";
+  }>;
+  metrics: Omit<Wc2026EvaluationResponse["metrics"], "brierScore" | "logLoss" | "winnerAccuracy"> & {
+    brierScore: number | null;
+    logLoss: number | null;
+    winnerAccuracy: number | null;
+  };
+  evaluation: {
+    metricVersion: "multiclass-v1";
+    segments: Array<{
+      modelId: string;
+      modelVersion: string;
+      contributorId: string;
+      contributorVersion: string;
+      competitionId: string;
+      seasonId: string;
+      checkpointPolicyId: string;
+      ratingSourceState: string;
+      sampleCount: number;
+      metrics: ClubSeasonEvaluationResponse["metrics"];
+    }>;
+    exclusions: {
+      total: number;
+      byReason: {
+        legacyPartialProvenance: number;
+        incompleteInputProvenance: number;
+        postKickoffForecast: number;
+        invalidForecastTimestamp: number;
+      };
+    };
+  };
 }
 
 export async function getClubSeasonEvaluation() {
@@ -254,6 +295,7 @@ export interface OddsSource {
 
 export interface MatchGrounding {
   kind: "match";
+  fixtureId: string;
   competitionId: string;
   competition: string;
   homeFieldAdvantage: boolean;
@@ -274,6 +316,36 @@ export interface MatchGrounding {
   stakePDraw: number | null;
   stakePAway: number | null;
   oddsSources: OddsSource[];
+}
+
+export type FixtureCapability =
+  | { status: "priced"; modelFixtureId: string }
+  | { status: "temporarily-unpriced"; reason: "model-initializing" | "ratings-refreshing" }
+  | { status: "outside-coverage"; reason: "unsupported-competition" | "friendly-policy-disabled" | "model-policy-disabled" }
+  | { status: "insufficient-model-input"; reason: "ratings-unavailable" | "neutral-venue-unknown" | "required-context-missing" };
+
+export interface RecognizedFixture {
+  fixtureId: string;
+  primarySource: "espn" | "official-competition" | "official-federation" | "official-club";
+  primarySourceFixtureId: string;
+  homeTeam: { id: string; name: string };
+  awayTeam: { id: string; name: string };
+  kickoff: string;
+  venue: string | null;
+  neutralVenue: boolean | null;
+  competition: {
+    id: string;
+    name: string;
+    category: "domestic-league" | "domestic-cup" | "club-continental" | "club-friendly" | "international-tournament" | "international-qualifier" | "international-friendly";
+  };
+  status: "scheduled" | "in-play" | "completed" | "postponed" | "cancelled";
+  recognition: "authoritative" | "corroborated";
+}
+
+export interface FixtureGrounding {
+  kind: "fixture";
+  fixture: RecognizedFixture;
+  capability: Exclude<FixtureCapability, { status: "priced" }>;
 }
 
 export interface CompetitionGrounding {
@@ -307,7 +379,25 @@ export interface SeasonGrounding {
   };
 }
 
-export type AskGrounding = MatchGrounding | CompetitionGrounding | SeasonGrounding | null;
+export type AskGrounding = MatchGrounding | FixtureGrounding | CompetitionGrounding | SeasonGrounding | null;
+
+export interface AskCitation {
+  id: string;
+  title: string;
+  url: string;
+  date: string;
+}
+
+export interface AskResult {
+  answer: string;
+  grounding: AskGrounding;
+  citations?: AskCitation[];
+  verification: {
+    status: "not-required" | "verified" | "conflict" | "abstain" | "unavailable";
+    supportedClaimCount: number;
+    removedClaimCount: number;
+  };
+}
 
 export interface ConversationTurn {
   role: "user" | "assistant";
@@ -315,18 +405,17 @@ export interface ConversationTurn {
 }
 
 export type TeamContext = [string, string];
+export interface FixtureContext { fixtureId: string }
 
 export async function askQuestion(
   question: string,
   history: ConversationTurn[] = [],
-  teamContext?: TeamContext
-): Promise<{
-  answer: string;
-  grounding: AskGrounding;
-}> {
-  return apiFetch<{ answer: string; grounding: AskGrounding }>("/api/ask", {
+  teamContext?: TeamContext,
+  fixtureContext?: FixtureContext
+): Promise<AskResult> {
+  return apiFetch<AskResult>("/api/ask", {
     method: "POST",
-    body: JSON.stringify({ question, history, teamContext }),
+    body: JSON.stringify({ question, history, teamContext, fixtureContext }),
   });
 }
 
@@ -362,12 +451,13 @@ export async function askQuestionStream(
   question: string,
   history: ConversationTurn[] = [],
   teamContext: TeamContext | undefined,
+  fixtureContext: FixtureContext | undefined,
   handlers: AskStreamHandlers
-): Promise<{ answer: string; grounding: AskGrounding }> {
+): Promise<AskResult> {
   const res = await fetch(`${API_URL}/api/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, history, teamContext, stream: true }),
+    body: JSON.stringify({ question, history, teamContext, fixtureContext, stream: true }),
   });
 
   const contentType = res.headers.get("content-type") ?? "";
@@ -379,7 +469,7 @@ export async function askQuestionStream(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let result: { answer: string; grounding: AskGrounding } | null = null;
+  let result: AskResult | null = null;
 
   for (;;) {
     const { done, value } = await reader.read();

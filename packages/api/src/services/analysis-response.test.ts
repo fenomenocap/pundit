@@ -63,6 +63,19 @@ function streamOf(final: unknown, deltas: string[] = [], error?: unknown) {
 }
 
 describe("generateAnalysis", () => {
+  it("caps combined inference, retry, and search provider calls at three", async () => {
+    const create = vi.fn()
+      .mockRejectedValueOnce(new Anthropic.APIConnectionError({ message: "boom" }))
+      .mockResolvedValueOnce(toolUseMessage(""));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const bundle = { queries: [], results: [], providerCalls: 0 };
+    await expect(generateAnalysis(client, "system", [], "general", undefined, bundle))
+      .rejects.toMatchObject({ statusCode: 504 });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(searchWeb).toHaveBeenCalledTimes(1);
+    expect(bundle.providerCalls).toBe(3);
+  });
+
   it("returns trimmed text and accepts web-search content blocks", async () => {
     const client = clientWith({
       content: [
@@ -74,6 +87,22 @@ describe("generateAnalysis", () => {
     await expect(generateAnalysis(client, "system", [
       { role: "user", content: "question" },
     ], "match")).resolves.toBe("Grounded answer.");
+  });
+
+  it("applies manager-era, contradictory-rationale, and market gates on the real service path", async () => {
+    const client = clientWith(message([
+      "The win came during Wrong Manager's tenure.",
+      "The home side's midfield gives it an edge.",
+      "The away side's midfield gives it an advantage.",
+      "Stake market: home 99%, draw 0.5%, away 0.5%.",
+      "The matchup remains close.",
+    ].join("\n"), "end_turn"));
+    const answer = await generateAnalysis(client, "system", [], "general");
+    expect(answer).not.toMatch(/Wrong Manager|99%|home side's midfield|away side's midfield/);
+    expect(answer).toContain("structured tenure record");
+    expect(answer).toContain("Conflicting midfield rationales were omitted");
+    expect(answer).toContain("complete same-source, same-time bookmaker 1X2 market");
+    expect(answer).toContain("The matchup remains close.");
   });
 
   it("rejects empty and token-exhausted responses", async () => {
@@ -109,7 +138,7 @@ describe("generateAnalysis", () => {
       { role: "user", content: "q" },
     ], "match")).resolves.toBe("Second half.");
     expect(create).toHaveBeenCalledTimes(2);
-    expect(searchWeb).toHaveBeenCalledWith("arsenal team news");
+    expect(searchWeb).toHaveBeenCalledWith("arsenal team news", undefined);
 
     // The API rejects a tool_use with no matching result, so the continuation
     // must carry the assistant turn followed by a tool_result keyed to its id.
@@ -142,7 +171,7 @@ describe("generateAnalysis", () => {
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
     await expect(generateAnalysis(client, "system", [], "match"))
       .rejects.toMatchObject({ statusCode: 504 });
-    expect(create).toHaveBeenCalledTimes(6); // initial call + MAX_CONTINUATIONS
+    expect(create).toHaveBeenCalledTimes(2); // initial call + one bounded continuation
   });
 });
 
@@ -693,7 +722,7 @@ describe("grounded answer sanitizers", () => {
 });
 
 describe("generateAnalysisStream", () => {
-  it("streams the post-search turn progressively when nothing was drafted", async () => {
+  it("releases the post-search turn only after whole-answer guards", async () => {
     // FORMAT_RULES tells the model to search before writing prose. When it
     // complies there is no draft to contradict, so streaming must survive the
     // tool call rather than falling back to a single delta at the end.
@@ -712,8 +741,7 @@ describe("generateAnalysisStream", () => {
     const answer = await generateAnalysisStream(
       client, "system", [], "general", (text) => deltas.push(text)
     );
-    expect(deltas.length).toBeGreaterThan(1);
-    expect(deltas[0]).toBe("**Verdict**");
+    expect(deltas).toHaveLength(1);
     expect(deltas.join("")).toBe(answer);
   });
 
@@ -733,7 +761,7 @@ describe("generateAnalysisStream", () => {
     expect(deltas.join("")).not.toContain("First half.");
   });
 
-  it("releases settled lines progressively and the deltas rebuild the answer", async () => {
+  it("holds ordinary no-search lines until the whole answer is safe", async () => {
     const chunks = [
       "**Verdict**\n",
       "Arsenal are favoured.\n",
@@ -748,10 +776,7 @@ describe("generateAnalysisStream", () => {
     const answer = await generateAnalysisStream(
       client, "system", [], "general", (text) => deltas.push(text)
     );
-    // More than one delta means the client renders text while generation is
-    // still running, which is the whole point of the change.
-    expect(deltas.length).toBeGreaterThan(1);
-    expect(deltas[0]).toBe("**Verdict**");
+    expect(deltas).toHaveLength(1);
     expect(deltas.join("")).toBe(answer);
     // The general tier appends its disclaimer to the whole answer only, so the
     // streamed text is the body and the final event carries the rest.
@@ -759,7 +784,7 @@ describe("generateAnalysisStream", () => {
     expect(answer).toContain("not based on Pundit's model data");
   });
 
-  it("does not repeat the general disclaimer into each streamed prefix", async () => {
+  it("adds the general disclaimer once to the guarded whole-answer delta", async () => {
     const chunks = ["First line.\n", "Second line.\n", "Third line."];
     const stream = vi.fn().mockReturnValue(
       streamOf(message(chunks.join(""), "end_turn"), chunks)
@@ -769,9 +794,7 @@ describe("generateAnalysisStream", () => {
     const answer = await generateAnalysisStream(
       client, "system", [], "general", (text) => deltas.push(text)
     );
-    // Appending it per prefix broke prefix-stability, so the flusher diverged
-    // and the client fell back to a single delta at the end.
-    expect(deltas.length).toBeGreaterThan(1);
+    expect(deltas).toHaveLength(1);
     expect(answer.match(/not based on Pundit's model data/g)).toHaveLength(1);
   });
 
@@ -798,7 +821,7 @@ describe("generateAnalysisStream", () => {
     const answer = await generateAnalysisStream(
       client, "system", [], "match", (text) => deltas.push(text), () => true, grounding
     );
-    expect(deltas.length).toBeGreaterThan(1);
+    expect(deltas).toHaveLength(1);
     expect(deltas.join("")).toBe(answer);
     // Guarded content never reaches the client, not even briefly.
     const streamedText = deltas.join("");
@@ -808,6 +831,49 @@ describe("generateAnalysisStream", () => {
     expect(answer).toContain("selected examples");
     expect(answer).toContain("**10.4%**");
     expect(answer).toContain("does not decompose");
+  });
+
+  it("never streams manager-era, contradictory-rationale, or unbound market prose", async () => {
+    const unsafe = [
+      "The win came under manager Wrong Manager.",
+      "The home side's midfield gives it an edge.",
+      "The away side's midfield gives it an advantage.",
+      "Stake market: home 99%, draw 0.5%, away 0.5%.",
+      "The matchup remains close.",
+    ];
+    const chunks = unsafe.map((line, index) => (index === 0 ? line : `\n${line}`));
+    const stream = vi.fn().mockReturnValue(
+      streamOf(message(chunks.join(""), "end_turn"), chunks)
+    );
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    const answer = await generateAnalysisStream(
+      client, "system", [], "general", (text) => deltas.push(text)
+    );
+    expect(deltas.join("")).not.toMatch(/Wrong Manager|99%|home side's midfield|away side's midfield/);
+    expect(answer).not.toMatch(/Wrong Manager|99%|home side's midfield|away side's midfield/);
+    expect(answer).toContain("The matchup remains close.");
+  });
+
+  it("does not release either rationale when a later sentence creates a conflict", async () => {
+    const unsafe = [
+      "The home side's midfield gives it an edge.",
+      "The away side's midfield gives it an advantage.",
+      "The matchup remains close.",
+    ];
+    const chunks = unsafe.map((line, index) => (index === 0 ? line : `\n${line}`));
+    const stream = vi.fn().mockReturnValue(
+      streamOf(message(chunks.join(""), "end_turn"), chunks)
+    );
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    const answer = await generateAnalysisStream(
+      client, "system", [], "general", (text) => deltas.push(text)
+    );
+    expect(deltas).toHaveLength(1);
+    expect(deltas.join("")).toBe(answer);
+    expect(deltas[0]).not.toMatch(/home side's midfield|away side's midfield/);
+    expect(deltas[0]).toContain("Conflicting midfield rationales were omitted");
   });
 
   it("aborts without emitting when the client has already disconnected", async () => {
@@ -831,10 +897,9 @@ describe("generateAnalysisStream", () => {
     expect(stream).toHaveBeenCalledTimes(2);
   });
 
-  // Progressive release settles at line boundaries, so an answer that never
-  // completes a line has nothing to release early and is still delivered in one
-  // piece once the guards have run over the whole thing.
-  it("holds back an answer with no settled line until the guards have run", async () => {
+  // Even a one-line answer is delivered only after the guards run over the
+  // complete response.
+  it("holds a one-line answer until whole-answer guards have run", async () => {
     const unsafe = "Any scoreline not listed here falls below the 0.1% probability threshold.";
     const stream = vi.fn().mockReturnValue(streamOf(message(unsafe, "end_turn"), [unsafe]));
     const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;

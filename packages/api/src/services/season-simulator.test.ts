@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasCompleteLeagueSchedule,
   isSeasonOutlookQuestion,
   remainingScheduledFixtures,
   simulateSeasonOutlook,
 } from "./season-simulator";
 import type { FootballMatch, FootballStanding } from "./football-data";
+import { computeMatchModel, eloToLambdas, simulateMatch } from "./dixon-coles";
+import type { ForecastContributor } from "./model-contributors";
 
 const standings: FootballStanding[] = [
   {
@@ -109,6 +112,39 @@ describe("season simulator", () => {
     expect(fixtures[0].id).toBe(201);
   });
 
+  it("fails closed when the remaining league schedule is incomplete", () => {
+    const preSeason = standings.map((row) => ({ ...row, playedGames: 0, points: 0 }));
+    expect(hasCompleteLeagueSchedule(preSeason, scheduled)).toBe(false);
+    expect(simulateSeasonOutlook(
+      "eng.1",
+      preSeason,
+      scheduled,
+      {
+        world: new Map<string, number>(),
+        "eng-clubs": new Map([
+          ["Arsenal", 1850],
+          ["Liverpool", 1840],
+        ]),
+        "uefa-clubs": new Map<string, number>(),
+      },
+      10
+    )).toBeNull();
+  });
+
+  it("fails closed when any scheduled team rating is missing", () => {
+    expect(simulateSeasonOutlook(
+      "eng.1",
+      standings,
+      scheduled,
+      {
+        world: new Map<string, number>(),
+        "eng-clubs": new Map([["Arsenal", 1850]]),
+        "uefa-clubs": new Map<string, number>(),
+      },
+      10
+    )).toBeNull();
+  });
+
   it("produces title probabilities that sum to ~1", () => {
     const ratings = {
       world: new Map<string, number>(),
@@ -136,5 +172,48 @@ describe("season simulator", () => {
     expect(titleSum).toBeGreaterThan(0.95);
     expect(titleSum).toBeLessThanOrEqual(1.01);
     expect(outlook!.titleProbabilities[0].team).toMatch(/Arsenal|Liverpool/);
+  });
+
+  it("preserves seeded season output and RNG consumption through the contributor boundary", () => {
+    const ratings = {
+      world: new Map<string, number>(),
+      "eng-clubs": new Map(["Arsenal", "Liverpool"].map((team, index) =>
+        [team, 1850 - index * 10] as const)),
+      "uefa-clubs": new Map<string, number>(),
+    };
+    const legacy: ForecastContributor = {
+      id: "legacy-equivalence-test",
+      version: "1",
+      methodId: "legacy-direct-functions",
+      status: "challenger",
+      forecast: ({ homeStrength, awayStrength, homeAdvantageElo }) =>
+        computeMatchModel(homeStrength, awayStrength, homeAdvantageElo),
+      sampleScore: ({ homeStrength, awayStrength, homeAdvantageElo }, random = Math.random) =>
+        simulateMatch(...eloToLambdas(homeStrength, awayStrength, homeAdvantageElo), false, random),
+    };
+    const seeded = () => {
+      let state = 123456789;
+      let calls = 0;
+      return {
+        random: () => {
+          calls += 1;
+          state = (state * 1664525 + 1013904223) % 4294967296;
+          return state / 4294967296;
+        },
+        calls: () => calls,
+      };
+    };
+    const championRandom = seeded();
+    const legacyRandom = seeded();
+    const champion = simulateSeasonOutlook(
+      "eng.1", standings, scheduled, ratings, 500, championRandom.random
+    );
+    const beforeBoundary = simulateSeasonOutlook(
+      "eng.1", standings, scheduled, ratings, 500, legacyRandom.random, legacy
+    );
+    const { updatedAt: _championAt, ...championComparable } = champion!;
+    const { updatedAt: _legacyAt, ...legacyComparable } = beforeBoundary!;
+    expect(championComparable).toEqual(legacyComparable);
+    expect(championRandom.calls()).toBe(legacyRandom.calls());
   });
 });

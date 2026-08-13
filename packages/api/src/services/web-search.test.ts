@@ -53,6 +53,7 @@ describe("normalizeSearchDate", () => {
     expect(normalizeSearchDate("", NOW)).toBe("");
     expect(normalizeSearchDate("recently", NOW)).toBe("");
     expect(normalizeSearchDate("last season", NOW)).toBe("");
+    expect(normalizeSearchDate("2026-08-13", NOW)).toBe("");
   });
 });
 
@@ -67,6 +68,7 @@ describe("searchWeb provider chain", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -161,5 +163,54 @@ describe("searchWeb provider chain", () => {
       }))
     ));
     expect(await searchWeb("arsenal")).toHaveLength(6);
+  });
+
+  it("rejects unsafe URLs and bounds untrusted fields", async () => {
+    fetchMock.mockResolvedValueOnce(minimaxBody([
+      { title: "unsafe", link: "javascript:alert(1)", snippet: "x", date: "" },
+      { title: "t".repeat(300), link: "https://example.com/ok", snippet: "s".repeat(800), date: "" },
+    ]));
+    const results = await searchWeb("bounds");
+    expect(results).toHaveLength(1);
+    expect(results[0].title).toHaveLength(200);
+    expect(results[0].snippet).toHaveLength(600);
+  });
+
+  it("coalesces concurrent searches and serves a five-minute cache", async () => {
+    fetchMock.mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+    const [first, second] = await Promise.all([
+      searchWeb("same query"),
+      searchWeb("SAME QUERY"),
+    ]);
+    expect(first).toEqual(second);
+    expect(await searchWeb("same query")).toEqual(first);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the circuit after three consecutive provider failures", async () => {
+    fetchMock.mockRejectedValue(new Error("network down"));
+    await searchWeb("one");
+    await searchWeb("two");
+    await searchWeb("three");
+    await searchWeb("four");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("allows one half-open probe after five minutes and closes on recovery", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    fetchMock.mockRejectedValue(new Error("network down"));
+    await searchWeb("one");
+    await searchWeb("two");
+    await searchWeb("three");
+    expect(await searchWeb("blocked")).toEqual([]);
+
+    vi.advanceTimersByTime(5 * 60_000);
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+    expect(await searchWeb("probe")).toHaveLength(1);
+    fetchMock.mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+    expect(await searchWeb("after recovery")).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
