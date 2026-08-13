@@ -149,6 +149,26 @@ describe("ESPN model inputs", () => {
     expect(match).toMatchObject({ venue: "National Stadium", neutralVenue: true });
   });
 
+  it("normalizes ESPN's omitted neutral flag only for validated model competitions", () => {
+    const event = {
+      id: "5",
+      date: "2026-08-22T14:00Z",
+      competitions: [{
+        venue: { fullName: "Emirates Stadium" },
+        status: { type: { state: "pre", completed: false } },
+        competitors: [
+          { homeAway: "home", team: { displayName: "Arsenal" } },
+          { homeAway: "away", team: { displayName: "Liverpool" } },
+        ],
+      }],
+    };
+    expect(parseEvent(event, {
+      competitionId: "eng.1",
+      competitionName: "Premier League",
+    }).neutralVenue).toBe(false);
+    expect(parseEvent(event, wcContext).neutralVenue).toBeNull();
+  });
+
   it("builds rolling fetch windows for club competitions", () => {
     const range = buildFetchDateRange({
       id: "eng.1",

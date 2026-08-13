@@ -202,6 +202,8 @@ if "candidateid" in serialized or "discoveredby" in serialized:
 model_rows = model.get("fixtures") if isinstance(model, dict) else None
 if not isinstance(model_rows, list):
     raise SystemExit("model endpoint is missing fixtures")
+if (ready.get("activeFixtures") or {}).get("count", 0) > 0 and len(model_rows) == 0:
+    raise SystemExit("active fixtures exist but the model has no priced rows")
 model_ids = {
     f"{row.get('competitionId')}:{row.get('fixtureId')}"
     for row in model_rows if isinstance(row, dict)
