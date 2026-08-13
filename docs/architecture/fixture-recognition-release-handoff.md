@@ -86,10 +86,13 @@ Release authority was granted and the feature release plus startup hotfixes
 were merged through PRs 53-55. Railway deployment
 `0ae16866-c90e-46bd-9d7f-c3911f3d6307` reached terminal `SUCCESS`; Railway API,
 Vercel web, and source all reported
-`e4579eb5d5e20e8d4a02ac98e70875f5dfb7f924`. The hardened production verifier
-passed health, startup, readiness, registry shadow isolation, candidate-free
-fixture exposure, search/runtime status, one-replica rate limiting, CORS, and
-the production bundle host check.
+`e4579eb5d5e20e8d4a02ac98e70875f5dfb7f924`. The production-evaluation fixes
+were then merged in PR 56 and deployed as Railway deployment
+`d3b60bec-779b-479d-af74-4fac2ef5602c`; Railway API, Vercel web, and source all
+reported `32ada0a47ae09d77be6dcdb57cbbf679732da20c`. The hardened production
+verifier passed after both deployments: health, startup, readiness, registry
+shadow isolation, candidate-free fixture exposure, search/runtime status,
+one-replica rate limiting, CORS, and the production bundle host check.
 
 Railway reported one running deployment instance and a ready 5 GB volume at
 `/data`. A read-only filesystem check found the registry primary and last-good
@@ -105,12 +108,13 @@ the 90-second deadline. The final browser/critic-backed classification is
 `ISSUES FOUND`, not PASS. Evidence is preserved under the ignored
 `artifacts/chat-evals/2026-08-13T05-21-38-959Z*` files.
 
-That run exposed three material defects now covered by local regressions in the
-follow-up hotfix: stable fixture context did not disambiguate two legs between
-the same clubs; current team-news prose could survive a zero-supported
-verification abstention; and generated model/market prose could contradict
-structured probabilities. It also exposed mutable request-history evidence,
-which is now snapshotted by value. A 390x844 browser check reproduced the
+That run exposed three material defects now fixed, regression-tested, merged,
+and deployed in the follow-up hotfix: stable fixture context did not
+disambiguate two legs between the same clubs; current team-news prose could
+survive a zero-supported verification abstention; and generated model/market
+prose could contradict structured probabilities. It also exposed mutable
+request-history evidence, which is now snapshotted by value. A 390x844 browser
+check against the evaluated pre-hotfix deployment reproduced the
 fixture-context failure, found no console errors or horizontal overflow, and
 confirmed New Chat reset. Screenshot capture itself timed out twice, so the
 browser evidence correctly remains failed rather than claiming an image.
@@ -125,8 +129,8 @@ browser evidence correctly remains failed rather than claiming an image.
   shadow observation window; the read-only study cannot honestly certify them.
 - The production evaluation has already consumed its one authorized run and
   cannot honestly be upgraded to PASS after code changes. The follow-up hotfix
-  must pass CI, deploy, and pass deterministic production verification; another
-  paced evaluator run requires fresh authority.
+  passed CI and deterministic production verification, but another paced
+  evaluator run requires fresh authority.
 - The evaluator's season/SSE probes returned 503 because the season simulator
   had no usable preseason outlook. With no same-schema prior comparator these
   remain `INCONCLUSIVE`, not a proven regression.
