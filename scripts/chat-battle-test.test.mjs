@@ -20,6 +20,7 @@ import {
   loadApiRuntimeRoutingHelpers,
   parseSse,
   recordScenarioFailure,
+  recordOptionalScenarioFailure,
   readinessFailures,
   selectFeaturedMatch,
   snapshotAskRequest,
@@ -782,6 +783,35 @@ test("scenario failure records the active request and marks later work inconclus
   assert.equal(report.scenarios[1], failedResult);
   assert.match(report.scenarios[2].evidence, /fixed-timeout/);
   assert.equal(report.scenarios[2].outcome, "INCONCLUSIVE");
+});
+
+test("observational request failure is preserved as inconclusive and does not stop certification", () => {
+  const reproduction = { method: "POST", path: "/api/ask", body: { question: "A vs B" } };
+  const report = {
+    completedAt: null,
+    scenarios: [],
+    progress: {
+      status: "running",
+      activeScenario: { id: "observational-live-replacement" },
+      activeRequest: { scenarioId: "observational-live-replacement", reproduction },
+      completedScenarioIds: [],
+    },
+  };
+  const recorded = recordOptionalScenarioFailure(report, {
+    id: "observational-live-replacement",
+    passed: false,
+    outcome: "FAIL",
+    requiredForCertification: false,
+    reproduction: { requests: [] },
+    evidence: "Evaluator request failed: fetch failed",
+    failure: { kind: "request_error", message: "fetch failed" },
+  });
+  assert.equal(recorded.outcome, "INCONCLUSIVE");
+  assert.deepEqual(recorded.reproduction.requests, [reproduction]);
+  assert.match(recorded.evidence, /continued without retry/);
+  assert.deepEqual(report.progress.completedScenarioIds, ["observational-live-replacement"]);
+  assert.equal(report.progress.status, "running");
+  assert.equal(report.progress.activeScenario, null);
 });
 
 test("answer copy guard rejects internal methodology jargon", () => {
