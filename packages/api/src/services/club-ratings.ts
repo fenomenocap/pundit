@@ -325,14 +325,12 @@ export async function backfillMissingClubRatings(
   teams: ReadonlyArray<{ team: string; profile: RatingProfile }>,
   referenceDate = new Date()
 ): Promise<string[]> {
-  const unresolved: string[] = [];
   let attempted = 0;
-  for (const { team, profile } of teams) {
+  const results = await Promise.all(teams.map(async ({ team, profile }) => {
     const name = canonicalClubName(team);
-    if (cache.byProfile[profile]?.get(name) !== undefined) continue;
+    if (cache.byProfile[profile]?.get(name) !== undefined) return null;
     if (attempted >= CLUB_RATING_FALLBACK_MAX_CLUBS) {
-      unresolved.push(team);
-      continue;
+      return team;
     }
     attempted += 1;
     let latest: { elo: number; asOf: string } | null = null;
@@ -343,8 +341,7 @@ export async function backfillMissingClubRatings(
       console.warn(`[ClubRatings] Fallback fetch failed for ${name}: ${message}`);
     }
     if (!latest) {
-      unresolved.push(team);
-      continue;
+      return team;
     }
     const ageDays = ratingAgeDays(latest.asOf, referenceDate);
     if (ageDays > CLUB_RATING_FALLBACK_MAX_AGE_DAYS) {
@@ -352,8 +349,7 @@ export async function backfillMissingClubRatings(
         `[ClubRatings] Fallback for ${name} rejected — last rated ${latest.asOf} `
         + `(${ageDays}d old, limit ${CLUB_RATING_FALLBACK_MAX_AGE_DAYS}d).`
       );
-      unresolved.push(team);
-      continue;
+      return team;
     }
     cache.byProfile[profile].set(name, latest.elo);
     cache.staleRatings = [
@@ -364,8 +360,9 @@ export async function backfillMissingClubRatings(
       `[ClubRatings] ${name} priced from its lapsed window: `
       + `${latest.elo.toFixed(1)} as of ${latest.asOf} (${ageDays}d old).`
     );
-  }
-  return unresolved;
+    return null;
+  }));
+  return results.filter((team): team is string => team !== null);
 }
 
 export async function refreshClubRatings(): Promise<void> {
