@@ -32,7 +32,8 @@ test.describe("smoke", () => {
     await expect(page.getByText("Rolling snapshots", { exact: true })).toBeVisible();
     const metrics = page.getByText("Brier score (1X2)");
     const disclaimer = page.getByText("Pre-kickoff probabilities captured");
-    await expect(metrics.or(disclaimer)).toBeVisible({ timeout: 15_000 });
+    const zeroSample = page.getByText("No finished forecasts yet", { exact: false });
+    await expect(metrics.or(disclaimer).or(zeroSample)).toBeVisible({ timeout: 15_000 });
   });
 
   test("wc-2026 evaluation", async ({ page }) => {
@@ -66,6 +67,95 @@ test.describe("smoke", () => {
     await expect(page.getByRole("alert").first()).toContainText(
       "did you mean Arsenal vs Liverpool, or Chelsea vs Manchester City?"
     );
+  });
+
+  test("search citation is clickable and provenance-bound after authoritative done", async ({ page }) => {
+    const url = "https://example.com/club-update";
+    const answer = `Player is available ([Club update](${url}), 2026-08-12).`;
+    const sse = [
+      `event: grounding\ndata: ${JSON.stringify({ grounding: null })}`,
+      `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+      `event: done\ndata: ${JSON.stringify({
+        answer,
+        grounding: null,
+        citations: [{ id: "S1", title: "Club update", url, date: "2026-08-12" }],
+      })}`,
+      "",
+    ].join("\n\n");
+    await page.route("**/api/ask", (route) => route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: sse,
+    }));
+
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "Ask a question" }).fill("Latest availability news?");
+    await page.getByRole("button", { name: "Send" }).click();
+    const citation = page.getByRole("link", { name: "Club update" });
+    await expect(citation).toHaveAttribute("href", url);
+    await expect(citation).toHaveAttribute("target", "_blank");
+    await expect(citation).toHaveAttribute("rel", /noopener noreferrer nofollow/);
+    await expect(page.getByText("[[S1]]")).not.toBeVisible();
+  });
+
+  test("recognized outside-coverage fixture keeps typed context across a table detour", async ({ page }) => {
+    const fixture = {
+      fixtureId: "espn:club.friendly:991",
+      primarySource: "espn",
+      primarySourceFixtureId: "991",
+      homeTeam: { id: "arsenal", name: "Arsenal" },
+      awayTeam: { id: "liverpool", name: "Liverpool" },
+      kickoff: "2026-08-18T19:00:00.000Z",
+      venue: "National Stadium",
+      neutralVenue: true,
+      competition: { id: "club.friendly", name: "Club Friendly", category: "club-friendly" },
+      status: "scheduled",
+      recognition: "authoritative",
+    };
+    const received: Array<Record<string, unknown>> = [];
+    let turn = 0;
+    await page.route("**/api/ask", async (route) => {
+      received.push(route.request().postDataJSON());
+      const grounding = turn === 1
+        ? {
+            kind: "competition",
+            competitionId: "eng.1",
+            competition: "Premier League",
+            updatedAt: "2026-08-13T00:00:00.000Z",
+            standings: [],
+          }
+        : {
+            kind: "fixture",
+            fixture,
+            capability: { status: "outside-coverage", reason: "friendly-policy-disabled" },
+          };
+      const answer = turn === 1 ? "Here is the table." : "No Pundit probabilities are available.";
+      turn += 1;
+      const sse = [
+        `event: grounding\ndata: ${JSON.stringify({ grounding })}`,
+        `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+        `event: done\ndata: ${JSON.stringify({ answer, grounding })}`,
+        "",
+      ].join("\n\n");
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+    });
+
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await input.fill("Arsenal vs Liverpool friendly");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByText(/Club Friendly · Outside Pundit model coverage/i)).toBeVisible();
+    await expect(page.getByText("Following: Arsenal vs Liverpool").first()).toBeVisible();
+
+    await input.fill("How does the Premier League table look?");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByText(/Premier League · ESPN table/i)).toBeVisible();
+
+    await input.fill("What about that match?");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect.poll(() => received.length).toBe(3);
+    expect(received[1].fixtureContext).toEqual({ fixtureId: fixture.fixtureId });
+    expect(received[2].fixtureContext).toEqual({ fixtureId: fixture.fixtureId });
   });
 
   test("primary nav", async ({ page }) => {

@@ -17,13 +17,16 @@ The homepage suggests active club fixtures from the next 14 days — Premier Lea
 Match grounding is not always available, and the chat says which case applies rather than failing silently:
 
 * **No fixtures in the window** — between rounds, or before the league season starts. Match-grounded reads return with the next scheduled round.
-* **Fixtures scheduled but not priced** — a club can be missing a current rating from the ratings provider, so its fixtures carry no model read. Sometimes only some fixtures in a round are affected, in which case the covered ones still work and only those are suggested.
+* **Recognized but outside coverage** — the structured fixture identity is established, but its competition or policy is outside the public model. This includes recognized friendlies. The chat retains the fixture context but shows no Pundit probabilities or invented scorelines.
+* **Temporarily unavailable** — the model is initializing or refreshing. The chat keeps the recognized fixture context and identifies the temporary state.
+* **Missing model input** — required ratings, venue state, or other context is unavailable. The chat keeps the recognized fixture context and fails closed without probabilities.
+* **Identity not established** — user text or a search result may suggest a matchup, but without an approved structured identity it remains a discovery candidate. It receives no fixture badge and cannot be grounded or priced.
 
 In every one of those cases the suggestions switch to table, title-race, and general questions, which do not depend on the match model. Nothing is broken during those windows.
 
-Every assistant message shows a grounding badge: match, competition, season outlook, or general analysis. Use **New Chat** to clear context. Up to twelve history turns (six exchanges) carry forward for follow-ups. **Copy** and **Share** actions are available on assistant answers.
+Grounded assistant messages show a match, recognized-fixture, competition, or season-outlook badge; general answers are labelled separately, while discovery-only candidates receive no fixture badge. A recognized fixture remains the context for follow-ups, including a temporary table/season detour, until a new explicit recognized matchup replaces it. Use **New Chat** to clear both conversation and retained fixture context. Up to twelve history turns (six exchanges) carry forward for follow-ups. **Copy** and **Share** actions are available on assistant answers.
 
-Answers can take several seconds — Claude runs a live web search for injury, squad, and form news, and names the source and date of anything it reports. Questions are capped at 500 characters; the API allows 10 requests per minute.
+Answers can take several seconds — Pundit searches before asking MiniMax M3 to answer clearly current injury, squad, and form questions. Every positive current-news claim must carry a clickable, server-bound source and date; otherwise the answer removes the unsupported claim or abstains. Questions are capped at 500 characters; the API allows 10 requests per minute.
 
 ### Fixtures & Standings
 

@@ -1,7 +1,8 @@
-import { DEFAULT_HOME_ADVANTAGE_ELO, eloToLambdas, simulateMatch } from "./dixon-coles";
+import { DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
 import { FootballMatch, FootballStanding } from "./football-data";
 import { lookupClubRating, ClubRatingsCache } from "./club-ratings";
 import { getCompetitionById } from "../config/competitions";
+import { ELO_CHAMPION, ForecastContributor } from "./model-contributors";
 
 export const SEASON_SIM_RUNS = 10_000;
 
@@ -98,13 +99,45 @@ export function remainingScheduledFixtures(
     .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
 }
 
+export function hasCompleteLeagueSchedule(
+  standings: FootballStanding[],
+  fixtures: FootballMatch[]
+): boolean {
+  const teamRows = new Map(standings.map((row) => [row.team, row]));
+  const teamCount = teamRows.size;
+  if (teamCount < 2 || new Set(fixtures.map((fixture) => fixture.id)).size !== fixtures.length) {
+    return false;
+  }
+  const playedAppearances = standings.reduce((sum, row) => sum + row.playedGames, 0);
+  if (playedAppearances % 2 !== 0) return false;
+  const expectedRemaining = teamCount * (teamCount - 1) - playedAppearances / 2;
+  if (fixtures.length !== expectedRemaining) return false;
+
+  const scheduledAppearances = new Map<string, number>();
+  for (const fixture of fixtures) {
+    if (!teamRows.has(fixture.homeTeam) || !teamRows.has(fixture.awayTeam)) return false;
+    scheduledAppearances.set(
+      fixture.homeTeam,
+      (scheduledAppearances.get(fixture.homeTeam) ?? 0) + 1
+    );
+    scheduledAppearances.set(
+      fixture.awayTeam,
+      (scheduledAppearances.get(fixture.awayTeam) ?? 0) + 1
+    );
+  }
+  return standings.every((row) =>
+    (scheduledAppearances.get(row.team) ?? 0) === 2 * (teamCount - 1) - row.playedGames
+  );
+}
+
 export function simulateSeasonOutlook(
   competitionId: string,
   standings: FootballStanding[],
   scheduledFixtures: FootballMatch[],
   ratings: ClubRatingsCache["byProfile"],
   runs = SEASON_SIM_RUNS,
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  contributor: ForecastContributor = ELO_CHAMPION
 ): SeasonOutlook | null {
   const competition = getCompetitionById(competitionId);
   if (!competition || competition.type !== "league") return null;
@@ -117,23 +150,31 @@ export function simulateSeasonOutlook(
   const fixtures = scheduledFixtures.filter((fixture) =>
     baseState.has(fixture.homeTeam) && baseState.has(fixture.awayTeam)
   );
-  if (fixtures.length === 0) return null;
+  const competitionStandings = standings.filter((row) => row.competitionId === competitionId);
+  if (fixtures.length === 0 || !hasCompleteLeagueSchedule(competitionStandings, fixtures)) {
+    return null;
+  }
+  const ratedFixtures = fixtures.map((fixture) => ({
+    fixture,
+    homeElo: lookupClubRating(fixture.homeTeam, competition.ratingProfile, ratings),
+    awayElo: lookupClubRating(fixture.awayTeam, competition.ratingProfile, ratings),
+  }));
+  if (ratedFixtures.some(({ homeElo, awayElo }) => homeElo === undefined || awayElo === undefined)) {
+    return null;
+  }
 
   const titleCounts = new Map<string, number>();
   const topFourCounts = new Map<string, number>();
 
   for (let run = 0; run < runs; run += 1) {
     const state = cloneState(baseState);
-    for (const fixture of fixtures) {
-      const homeElo = lookupClubRating(fixture.homeTeam, competition.ratingProfile, ratings);
-      const awayElo = lookupClubRating(fixture.awayTeam, competition.ratingProfile, ratings);
-      if (homeElo === undefined || awayElo === undefined) continue;
+    for (const { fixture, homeElo, awayElo } of ratedFixtures) {
       const homeAdvantage = competition.homeFieldAdvantage ? DEFAULT_HOME_ADVANTAGE_ELO : 0;
-      const [homeGoals, awayGoals] = simulateMatch(
-        ...eloToLambdas(homeElo, awayElo, homeAdvantage),
-        false,
-        random
-      );
+      const [homeGoals, awayGoals] = contributor.sampleScore({
+        homeStrength: homeElo!,
+        awayStrength: awayElo!,
+        homeAdvantageElo: homeAdvantage,
+      }, random);
       applyResult(state, fixture.homeTeam, fixture.awayTeam, homeGoals, awayGoals);
     }
     const ranked = rankTeams(state);

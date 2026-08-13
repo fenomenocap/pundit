@@ -26,6 +26,7 @@ Exceeding a limit returns an HTTP error with a JSON body like `{ "error": "Too m
 **Endpoints:**
 
 * [Matches](matches.md) — `GET /api/matches/*`
+* [Recognized fixtures](matches.md#recognized-fixtures) — `GET /api/fixtures/recognized`
 * [Model](model.md) — `GET /api/model/active`, `GET /api/model/fixtures`
 * [Ask](ask.md) — `POST /api/ask`
 * [Evaluation](evaluation.md) — `GET /api/evaluation/*`

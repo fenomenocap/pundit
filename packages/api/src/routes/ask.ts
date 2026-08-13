@@ -5,6 +5,7 @@ import {
   answerQuestion,
   answerQuestionStream,
   ConversationTurn,
+  FixtureContext,
   TeamContext,
 } from "../services/ask";
 
@@ -55,6 +56,16 @@ function parseTeamContext(raw: unknown): TeamContext | undefined {
     throw new AppError(400, "'teamContext' must contain exactly two team names.");
   }
   return [raw[0].trim(), raw[1].trim()];
+}
+
+export function parseFixtureContext(raw: unknown): FixtureContext | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object"
+    || typeof (raw as { fixtureId?: unknown }).fixtureId !== "string"
+    || !(raw as { fixtureId: string }).fixtureId.trim()) {
+    throw new AppError(400, "'fixtureContext' must contain a fixtureId.");
+  }
+  return { fixtureId: (raw as { fixtureId: string }).fixtureId.trim() };
 }
 
 // The limit users actually get, across the whole deployment.
@@ -114,10 +125,30 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
 
     const history = parseHistory(req.body?.history);
     const teamContext = parseTeamContext(req.body?.teamContext);
+    const fixtureContext = parseFixtureContext(req.body?.fixtureContext);
+    const requestAbort = new AbortController();
+    const deadline = setTimeout(() => requestAbort.abort(new Error("request deadline exceeded")), 90_000);
+    const abortOnDisconnect = () => {
+      if (!res.writableEnded) requestAbort.abort(new Error("client disconnected"));
+    };
+    req.once("aborted", abortOnDisconnect);
+    res.once("close", abortOnDisconnect);
 
     if (req.body?.stream !== true) {
-      const result = await answerQuestion(trimmedQuestion, history, teamContext);
-      res.json(result);
+      try {
+        const result = await answerQuestion(
+          trimmedQuestion,
+          history,
+          teamContext,
+          requestAbort.signal,
+          fixtureContext
+        );
+        res.json(result);
+      } finally {
+        clearTimeout(deadline);
+        req.off("aborted", abortOnDisconnect);
+        res.off("close", abortOnDisconnect);
+      }
       return;
     }
 
@@ -135,12 +166,13 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     };
     const onClose = () => {
       clientGone = true;
+      requestAbort.abort(new Error("client disconnected"));
       stopHeartbeat();
     };
     req.on("close", onClose);
     res.on("close", onClose);
     try {
-      const { answer, grounding } = await answerQuestionStream(
+      const { answer, grounding, citations, verification } = await answerQuestionStream(
         trimmedQuestion,
         history,
         teamContext,
@@ -159,22 +191,27 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
               if (!res.writableEnded) res.write(": ping\n\n");
             }, 15_000);
           },
-          // Deltas carry guard-checked text as it settles, so a client can
-          // append them as they arrive. `done` still carries the authoritative
-          // answer and clients should replace the message content with it: on
-          // the rare turn where a guard rewrites text that had already been
-          // released, the server stops emitting deltas and only `done` is
-          // complete.
+          // Whole-answer guards can invalidate an earlier sentence after a
+          // later contradiction or multiline market leg arrives. Generation
+          // is therefore buffered and released as one safe delta; `done`
+          // remains authoritative and clients replace message content with it.
           onDelta: (text) => {
             if (clientGone || res.writableEnded) return;
             sseSend(res, "delta", { text });
           },
           shouldContinue: () => !clientGone && !res.writableEnded,
-        }
+          signal: requestAbort.signal,
+        },
+        fixtureContext
       );
       stopHeartbeat();
       if (!clientGone && !res.writableEnded) {
-        sseSend(res, "done", { answer, grounding });
+        sseSend(res, "done", {
+          answer,
+          grounding,
+          verification,
+          ...(citations ? { citations } : {}),
+        });
         res.end();
       }
     } catch (err) {
@@ -193,6 +230,9 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     } finally {
       req.off("close", onClose);
       res.off("close", onClose);
+      req.off("aborted", abortOnDisconnect);
+      res.off("close", abortOnDisconnect);
+      clearTimeout(deadline);
     }
   } catch (err) {
     next(err);

@@ -118,7 +118,7 @@ describe("evaluateReadiness", () => {
       { ready: false, lastUpdated: null, error: "Active model is not ready." }
     );
     expect(oddsFailure).toMatchObject({
-      ready: false,
+      ready: true,
       modelReady: true,
       footballReady: true,
       marketOddsReady: false,

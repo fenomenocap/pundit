@@ -1,6 +1,6 @@
 # Pundit — Football Prediction Analysis
 
-Chat-first club-season analysis for the Premier League and UEFA Champions League qualifiers. Active fixtures are grounded in locally computed match probabilities; competition questions use ESPN standings, and other football questions are clearly labelled general analysis. World Cup 2026 live pipelines are retired, with historical credibility retained in the frozen backtest at `/evaluation/wc-2026`. No blockchain, database, or trading. The former platform is archived at `archive/onchain-trading-v1`.
+Chat-first club-season analysis for the Premier League and UEFA Champions League qualifiers. Recognized, policy-eligible active fixtures are grounded in locally computed match probabilities; recognized non-priced fixtures retain context with an explicit capability reason and no Pundit probabilities. Competition questions use ESPN standings, and other football questions are clearly labelled general analysis. World Cup 2026 live pipelines are retired, with historical credibility retained in the frozen backtest at `/evaluation/wc-2026`. No blockchain, database, or trading. The former platform is archived at `archive/onchain-trading-v1`.
 
 **Status:** Deployed (Vercel + Railway). `POST /api/ask` is live in production with the MiniMax key managed in Railway.
 
@@ -10,7 +10,7 @@ Chat-first club-season analysis for the Premier League and UEFA Champions League
 
 | Layer | Technology |
 |---|---|
-| Monorepo | pnpm workspaces (Node ≥18, pnpm 9.15.4), 2 packages: `api`, `web` |
+| Monorepo | pnpm workspaces (Node 22, pnpm 9.15.4), 2 packages: `api`, `web` |
 | Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui primitives (`components/ui/`) |
 | Backend | Express + TypeScript, `@anthropic-ai/sdk` (used as the wire client for MiniMax's Anthropic-compatible endpoint) |
 | Data | ESPN, ClubElo, Stake, Kalshi, and Polymarket public endpoints; model computed locally |
@@ -24,6 +24,7 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 | Source | Used by | Notes |
 |---|---|---|
 | **ESPN scoreboard/standings** (`packages/api/src/services/football-data.ts`) | `/api/matches/*`, `/fixtures`, competition grounding | Public and keyless. Enabled competitions refresh every 30 minutes; scheduled, in-play and completed fixture state is retained. |
+| **Fixture registry** (`fixture-registry.ts`) | `/api/fixtures/recognized`, chat routing, model eligibility | Approved structured ESPN identities are observed in shadow mode by default and persisted atomically with last-good recovery. Search and user text create candidates only and never become registry, grounding, or model input. Expanded routing is controlled by `FIXTURE_REGISTRY_ENABLED`; friendly pricing remains disabled. |
 | **ClubElo** (`club-ratings.ts`) | Active match model | Club ratings are cached by competition rating profile and refreshed hourly. The last good set is persisted to `PUNDIT_DATA_DIR` and reloaded on boot, so a ClubElo outage degrades to pricing off a recent snapshot instead of taking the model down. Ratings older than 30 days are dropped and the model goes unready. |
 | **Local model** (`dixon-coles.ts`, `model-data.ts`) | `/api/model/active`, `/api/model/fixtures`, `/model`, match grounding | Computes 1X2, totals, BTTS and scoreline probabilities for the 14-day active club-fixture set, including home-field advantage where configured. |
 | **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Active match grounding | Direct best-effort fetches normalize complete active 1X2 markets to no-vig probabilities every 30 minutes. Source failures remain isolated. |
@@ -39,11 +40,18 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 # ── API ──────────────────────────────────────────────────────────────────────
 API_PORT=3001
 API_URL=http://localhost:3001
-# Writable directory for state that must survive restarts: the rolling
-# club-season calibration history and the last-good ClubElo ratings cache.
+# Writable directory for state that must survive restarts: rolling club-season
+# calibration, the ClubElo cache, recognized-fixture registry/recovery copy,
+# and the separately disabled private friendly-shadow ledger.
 # Production points this at a mounted Railway volume (/data). Leave unset
 # locally to use the in-repo packages/api/data directory.
 PUNDIT_DATA_DIR=
+# Shadow registry observes existing approved fixtures by default. Setting true
+# enables expanded recognized-fixture routing; it never enables friendly prices.
+FIXTURE_REGISTRY_ENABLED=false
+# Private-only friendly policy/ledger library. No collector or public API/UI path;
+# setting the flag alone does not acquire or append forecasts.
+FRIENDLY_SHADOW_ENABLED=false
 # Comma-separated browser origins for CORS. Leave empty for open CORS (dev).
 # Production should set the Vercel frontend origin(s).
 ALLOWED_ORIGINS=http://localhost:3000
