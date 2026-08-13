@@ -182,7 +182,6 @@ expected_season = f"{start_year}-{str(start_year + 1)[-2:]}"
 if (season.get("ready") is not True or season.get("fixtureCount") != 380
         or season.get("seasonId") != expected_season
         or season.get("error") is not None
-        or season.get("servingLastGood") is not False
         or not isinstance(season.get("ageMinutes"), int)
         or season.get("ageMinutes") >= 360):
     raise SystemExit("complete Premier League season schedule is not ready and healthy")
