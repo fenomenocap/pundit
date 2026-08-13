@@ -120,6 +120,25 @@ export function snapshotSseReproduction(question) {
   return { method: "POST", path: "/api/ask", body };
 }
 
+export function recordOptionalScenarioFailure(report, failedResult) {
+  const activeRequest = report.progress?.activeRequest ?? null;
+  const failed = {
+    ...failedResult,
+    outcome: "INCONCLUSIVE",
+    requiredForCertification: false,
+    reproduction: activeRequest?.reproduction
+      ? { requests: [activeRequest.reproduction] }
+      : failedResult.reproduction,
+    evidence: `${failedResult.evidence} Observational scenario; certification continued without retry.`,
+  };
+  report.scenarios.push(failed);
+  report.progress.completedScenarioIds.push(failed.id);
+  report.progress.activeScenario = null;
+  report.progress.activeRequest = null;
+  report.completedAt = new Date().toISOString();
+  return failed;
+}
+
 export async function fetchWithTimeout(
   url,
   init,
