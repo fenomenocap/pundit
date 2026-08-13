@@ -3,6 +3,8 @@ export interface RuntimeVersion {
 }
 
 const SHA_ENV_KEYS = [
+  // Platform metadata must win over a manually configured fallback so a
+  // completed Railway deployment always reports the artifact it is serving.
   "RAILWAY_GIT_COMMIT_SHA",
   "VERCEL_GIT_COMMIT_SHA",
   "GITHUB_SHA",
