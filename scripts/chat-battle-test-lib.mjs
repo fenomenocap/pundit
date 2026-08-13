@@ -1,6 +1,37 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+const require = createRequire(import.meta.url);
+
+export function loadApiRuntimeCorrectnessHelpers(repoRoot = path.resolve(import.meta.dirname, "..")) {
+  const previousProject = process.env.TS_NODE_PROJECT;
+  try {
+    process.env.TS_NODE_PROJECT = path.join(repoRoot, "packages/api/tsconfig.json");
+    require(path.join(repoRoot, "packages/api/node_modules/ts-node/register/transpile-only"));
+    return require(path.join(repoRoot, "packages/api/src/services/response-correctness.ts"));
+  } catch (error) {
+    throw new Error("runtime-helper scenarios require installed API development dependencies", { cause: error });
+  } finally {
+    if (previousProject === undefined) delete process.env.TS_NODE_PROJECT;
+    else process.env.TS_NODE_PROJECT = previousProject;
+  }
+}
+
+export function loadApiRuntimeFixtureHelpers(repoRoot = path.resolve(import.meta.dirname, "..")) {
+  const previousProject = process.env.TS_NODE_PROJECT;
+  try {
+    process.env.TS_NODE_PROJECT = path.join(repoRoot, "packages/api/tsconfig.json");
+    require(path.join(repoRoot, "packages/api/node_modules/ts-node/register/transpile-only"));
+    return require(path.join(repoRoot, "packages/api/src/services/fixture-registry.ts"));
+  } catch (error) {
+    throw new Error("fixture runtime-helper scenarios require installed API development dependencies", { cause: error });
+  } finally {
+    if (previousProject === undefined) delete process.env.TS_NODE_PROJECT;
+    else process.env.TS_NODE_PROJECT = previousProject;
+  }
+}
 
 export const EVAL_SCHEMA_VERSION = 9;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;

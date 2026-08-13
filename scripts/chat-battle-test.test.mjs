@@ -13,6 +13,8 @@ import {
   finalizeClassifications,
   generateAdversarialScenarios,
   loadPreviousReport,
+  loadApiRuntimeCorrectnessHelpers,
+  loadApiRuntimeFixtureHelpers,
   parseSse,
   recordScenarioFailure,
   readinessFailures,
@@ -261,7 +263,7 @@ test("atomic report writing preserves the previous report and updates latest", a
     schemaVersion: EVAL_SCHEMA_VERSION,
     runId,
     startedAt: "2026-07-27T00:00:00.000Z",
-    deployment: { id: "deploy-a", source: "test" },
+    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234" },
     scenarios: [{
       id: "scenario",
       passed,
@@ -289,7 +291,7 @@ test("checkpoint writing preserves latest while recording active request", async
     schemaVersion: EVAL_SCHEMA_VERSION,
     runId: "previous",
     startedAt: "2026-07-27T00:00:00.000Z",
-    deployment: { id: "deploy-a", source: "test" },
+    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234" },
     scenarios: [{
       id: "scenario",
       passed: true,
@@ -340,7 +342,7 @@ test("finalizer enriches the latest failed run without replacing latest complete
     runId: "complete",
     startedAt: "2026-07-27T00:00:00.000Z",
     completedAt: "2026-07-27T00:01:00.000Z",
-    deployment: { id: "deploy-a", source: "test" },
+    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234" },
     scenarios: [{
       id: "scenario",
       passed: true,
@@ -373,9 +375,22 @@ test("finalizer enriches the latest failed run without replacing latest complete
   await writeFailureReport(failed, directory);
   const browserPath = path.join(directory, "browser.json");
   const criticPath = path.join(directory, "critic.json");
-  await writeFile(browserPath, JSON.stringify({ passed: true, summary: "browser passed" }));
+  const evidenceIdentity = {
+    runId: "failed",
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: "abc1234",
+    deploymentId: "deploy-a",
+    capturedAt: "2026-07-27T00:06:00.000Z",
+  };
+  await writeFile(browserPath, JSON.stringify({
+    ...evidenceIdentity, passed: true, summary: "browser passed",
+    checks: [{ name: "chat flow", passed: true, evidence: "Observed grounding and answer." }],
+  }));
   await writeFile(criticPath, JSON.stringify({
+    ...evidenceIdentity,
     materialIssue: false,
+    overallVerdict: "PASS",
+    scenarioVerdicts: [],
     recommendations: ["Keep monitoring."],
   }));
 
@@ -393,6 +408,85 @@ test("finalizer enriches the latest failed run without replacing latest complete
   assert.equal(latestRun.runId, "failed");
   assert.equal(latestRun.browserEvidence.summary, "browser passed");
   assert.deepEqual(latestRun.recommendations, ["Keep monitoring."]);
+});
+
+test("finalizer rejects browser or critic evidence from another run", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-mismatch-"));
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "expected-run",
+    startedAt: "2026-08-13T10:00:00.000Z",
+    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234" },
+    scenarios: [],
+    progress: { status: "complete" },
+    browserEvidence: null,
+    recommendations: [],
+  }, null);
+  await writeReport(report, directory);
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  const identity = {
+    runId: "wrong-run",
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: "abc1234",
+    deploymentId: "deploy-a",
+    capturedAt: "2026-08-13T10:01:00.000Z",
+  };
+  await writeFile(browserPath, JSON.stringify({
+    ...identity, passed: true, summary: "browser passed",
+    checks: [{ name: "chat flow", passed: true, evidence: "Observed." }],
+  }));
+  await writeFile(criticPath, JSON.stringify({
+    ...identity,
+    materialIssue: false,
+    overallVerdict: "PASS",
+    scenarioVerdicts: [],
+  }));
+  const result = await runNode([
+    "scripts/finalize-chat-report.mjs",
+    "--output-dir", directory,
+    "--browser-json", browserPath,
+    "--critic-json", criticPath,
+  ]);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /runId mismatch/);
+});
+
+test("finalizer requires and applies explicit critic correctness for every passed answer", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-correctness-"));
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "critic-run",
+    startedAt: "2026-08-13T10:00:00.000Z",
+    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+    scenarios: [{
+      id: "answer-scenario", passed: true, outcome: "PASS", answer: "Grounded answer.",
+      qualitativeScores: { correctness: null }, requiredForCertification: true,
+    }],
+    progress: { status: "complete" }, browserEvidence: null, recommendations: [],
+  }, null);
+  assert.equal(report.overall, "ISSUES FOUND");
+  await writeReport(report, directory);
+  const identity = {
+    runId: "critic-run", schemaVersion: EVAL_SCHEMA_VERSION, sourceSha: "abc1234",
+    deploymentId: "deploy-a", capturedAt: "2026-08-13T10:01:00.000Z",
+  };
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  await writeFile(browserPath, JSON.stringify({
+    ...identity, passed: true, summary: "Browser flow passed.",
+    checks: [{ name: "chat flow", passed: true, evidence: "Observed exact response." }],
+  }));
+  await writeFile(criticPath, JSON.stringify({
+    ...identity, materialIssue: false, overallVerdict: "PASS", recommendations: [],
+    scenarioVerdicts: [{ scenarioId: "answer-scenario", verdict: "PASS", correctness: 4, reason: "Verified." }],
+  }));
+  const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
+    "--browser-json", browserPath, "--critic-json", criticPath]);
+  assert.equal(result.code, 0, result.stderr);
+  const finalized = JSON.parse(await readFile(path.join(directory, "latest.json"), "utf8"));
+  assert.equal(finalized.overall, "PASS");
+  assert.equal(finalized.scenarios[0].qualitativeScores.correctness, 4);
 });
 
 test("scenario failure records the active request and marks later work inconclusive", () => {
@@ -648,6 +742,48 @@ test("schema-9 complete market validator enforces source, time, legs and arithme
   assert.equal(validateOneXTwoMarket(legs.slice(0, 2)).reason, "missing-or-duplicate-leg");
   assert.equal(validateOneXTwoMarket([{ ...legs[0], source: "Other" }, legs[1], legs[2]]).reason, "mixed-source");
   assert.equal(validateOneXTwoMarket([{ ...legs[0], observedAt: "2026-08-13T10:01:00Z" }, legs[1], legs[2]]).reason, "mixed-observation-time");
+});
+
+test("runtime-helper scenarios execute the current API correctness module, not canned prose", async () => {
+  const helpers = loadApiRuntimeCorrectnessHelpers(path.resolve(import.meta.dirname, ".."));
+  const config = JSON.parse(await readFile(
+    path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
+    "utf8"
+  ));
+  const runtime = new Map(config.fixed.filter(({ kind }) => kind === "runtime-helper")
+    .map((scenario) => [scenario.id, scenario]));
+  assert.equal(runtime.size, 10);
+  assert.equal(helpers.validateCompleteOneXTwoMarket(runtime.get("complete-market-arithmetic").args[0]).valid, true);
+  assert.deepEqual(
+    helpers.validateCompleteOneXTwoMarket(runtime.get("incomplete-market-fails-closed").args[0]),
+    { valid: false, reason: "missing-leg" }
+  );
+  const attribution = runtime.get("third-party-probability-labelling").args[0];
+  const label = helpers.probabilityAttributionLabel(attribution);
+  assert.equal(helpers.hasValidProbabilityAttribution(label, attribution), true);
+  assert.deepEqual(
+    helpers.attributeManagerEra(...runtime.get("stale-manager-official-conflict").args),
+    runtime.get("stale-manager-official-conflict").expect
+  );
+  assert.equal(helpers.containsCorrectionCue(runtime.get("correction-after-wrong-history").args[0]), true);
+  assert.equal(helpers.settleScorelineTotal(...runtime.get("one-one-is-not-over-two-five").args), "lose");
+  assert.match(
+    helpers.applyClaimDecisions(...runtime.get("unrelated-citation-rejected").args).answer,
+    /could not establish/i
+  );
+  assert.match(
+    helpers.applyClaimDecisions(...runtime.get("degraded-search-retrieval-verifier").args).answer,
+    /sources conflict/i
+  );
+  const fixtureHelpers = loadApiRuntimeFixtureHelpers(path.resolve(import.meta.dirname, ".."));
+  assert.deepEqual(
+    fixtureHelpers.evaluateFixtureCapability(...runtime.get("friendly-capability-runtime-contract").args),
+    runtime.get("friendly-capability-runtime-contract").expect
+  );
+  assert.deepEqual(
+    fixtureHelpers.evaluateFixtureCapability(...runtime.get("temporary-capability-runtime-contract").args),
+    runtime.get("temporary-capability-runtime-contract").expect
+  );
 });
 
 test("schema-9 correctness guard catches the four screenshot-class failures", () => {
