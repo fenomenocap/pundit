@@ -51,6 +51,8 @@ jq '{
     ratingsServedFromCache: .model.ratingsServedFromCache,
     ratingsAsOf: .model.ratingsAsOf,
     ratingsAgeDays: .model.ratingsAgeDays,
+    ratingArtifactId: .model.ratingArtifactId,
+    ratingArtifactSha256: .model.ratingArtifactSha256,
     staleRatings: .model.staleRatings
   },
   football: {
@@ -59,6 +61,8 @@ jq '{
     error: .football.error,
     competitionErrors: .football.competitionErrors
   },
+  seasonSchedule,
+  askRateLimit,
   activeFixtures: {
     count: .activeFixtures.count,
     byCompetition: .activeFixtures.byCompetition,
@@ -88,22 +92,18 @@ MODEL_COUNT=$(jq -r '.model.fixtureCount // 0' <<<"$READY")
 ACTIVE_COUNT=$(jq -r '.activeFixtures.count // 0' <<<"$READY")
 MODEL_ERROR=$(jq -r '.model.error // ""' <<<"$READY")
 if [[ "$MODEL_ERROR" == *"Club ratings are not ready"* ]]; then
-  echo "  No ratings at all, so no fixture can be priced. This is the ratings"
-  echo "  provider, not the fixture names: ClubElo is unreachable and the"
-  echo "  last-good cache in PUNDIT_DATA_DIR had nothing to restore. The cache"
-  echo "  only protects an outage it did not start inside — it needs one"
-  echo "  successful fetch banked first. Check that ClubElo answers at all"
-  echo "  (curl http://api.clubelo.com/\$(date -u +%F)) before changing code."
+  echo "  No validated local strength artifact loaded, so no fixture can be"
+  echo "  priced. Production does not contact ClubElo. Check ratingArtifactId,"
+  echo "  ratingsAgeDays, the release selector/hash, /data recovery copies, and"
+  echo "  [ClubRatings] ALERT logs; do not debug this as a vendor outage."
 elif [[ "$ACTIVE_COUNT" -gt 0 && "$MODEL_COUNT" -eq 0 ]]; then
   echo "  Fixtures exist ($ACTIVE_COUNT) but the model priced none of them."
-  echo "  The model covers the active set only when it holds a row for every"
-  echo "  fixture, so chat cannot reach the match tier and /ready stays"
-  echo "  'loading'. Usual cause is missing club ratings for teams new to the"
-  echo "  window; check model.error above and the API's [ClubRatings] logs."
+  echo "  Usual cause is missing artifact mappings for teams new to the window;"
+  echo "  check model.error above and the API's [ClubRatings] logs."
 elif [[ "$ACTIVE_COUNT" -gt 0 && "$MODEL_COUNT" -lt "$ACTIVE_COUNT" ]]; then
   echo "  Model covers $MODEL_COUNT of $ACTIVE_COUNT active fixtures — partial"
-  echo "  coverage still leaves /ready 'loading'. Check which competition the"
-  echo "  uncovered fixtures belong to."
+  echo "  coverage remains explicit while priced fixtures stay usable. Check"
+  echo "  which artifact mappings the uncovered fixtures require."
 elif [[ "$ACTIVE_COUNT" -eq 0 ]]; then
   echo "  No active fixtures in the window. Match grounding is unavailable by"
   echo "  design until the next scheduled round; nothing is broken."

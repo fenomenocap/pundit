@@ -8,10 +8,12 @@
   },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc",
+    "build": "pnpm verify:club-strength-artifact && tsc",
     "test": "vitest run",
     "build:wc-evaluation": "npx ts-node --transpile-only scripts/build-wc2026-evaluation.ts",
     "build:club-history": "ts-node --transpile-only scripts/build-club-history-corpus.ts",
+    "build:club-strength-artifact": "ts-node --transpile-only scripts/build-club-strength-artifact.ts",
+    "verify:club-strength-artifact": "ts-node --transpile-only scripts/verify-club-strength-artifact.ts",
     "backup:club-season-ledger": "ts-node --transpile-only scripts/backup-club-season-ledger.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist"

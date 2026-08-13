@@ -9,6 +9,7 @@ import {
   getCompetitionById,
   getEnabledCompetitions,
 } from "../config/competitions";
+import { readJsonFile, resolveDataPath, writeJsonFileAtomic } from "./persistent-store";
 
 const ESPN_SCOREBOARD_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 const ESPN_STANDINGS_BASE = "https://site.api.espn.com/apis/v2/sports/soccer";
@@ -68,6 +69,28 @@ interface CachedData {
   competitionErrors: Record<string, string>;
 }
 
+export interface SeasonScheduleCache {
+  competitionId: string;
+  seasonId: string;
+  fixtures: FootballMatch[];
+  lastUpdated: Date | null;
+  error: string | null;
+  servingLastGood: boolean;
+}
+
+interface PersistedSeasonSchedule {
+  schemaVersion: 1;
+  competitionId: "eng.1";
+  seasonId: string;
+  fixtures: FootballMatch[];
+  lastUpdated: string;
+}
+
+const SEASON_SCHEDULE_FILE = "cache/eng-1-season-schedule.json";
+const SEASON_SCHEDULE_RECOVERY_FILE = "cache/eng-1-season-schedule.last-good.json";
+export const SEASON_SCHEDULE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export const ESPN_FETCH_TIMEOUT_MS = 15_000;
+
 // ─── Cache ──────────────────────────────────────────────────────────────────
 
 const cache: CachedData = {
@@ -80,8 +103,26 @@ const cache: CachedData = {
   competitionErrors: {},
 };
 
+// The ordinary fixture cache is deliberately a small rolling window for chat
+// and model freshness. The season simulator needs a different contract: every
+// remaining Premier League fixture. Keep that complete schedule in its own
+// cache so a transient ESPN failure cannot replace the last-good season with a
+// truncated rolling window.
+const seasonScheduleCache: SeasonScheduleCache = {
+  competitionId: "eng.1",
+  seasonId: "unknown",
+  fixtures: [],
+  lastUpdated: null,
+  error: null,
+  servingLastGood: false,
+};
+
 export function getCachedMatches(): CachedData {
   return { ...cache };
+}
+
+export function replaceFootballDataForTests(state: Partial<CachedData>): void {
+  Object.assign(cache, state);
 }
 
 export function getCachedMatchesForCompetition(competitionId: string): CompetitionCache {
@@ -93,10 +134,160 @@ export function getCachedMatchesForCompetition(competitionId: string): Competiti
   };
 }
 
+export function getCachedSeasonSchedule(competitionId = "eng.1"): SeasonScheduleCache {
+  if (competitionId !== seasonScheduleCache.competitionId) {
+    return {
+      competitionId,
+      seasonId: "unknown",
+      fixtures: [],
+      lastUpdated: null,
+      error: "Complete season schedule is not configured for this competition.",
+      servingLastGood: false,
+    };
+  }
+  return { ...seasonScheduleCache, fixtures: [...seasonScheduleCache.fixtures] };
+}
+
+export function replaceSeasonScheduleForTests(state: SeasonScheduleCache): void {
+  Object.assign(seasonScheduleCache, { ...state, fixtures: [...state.fixtures] });
+}
+
+export function seasonScheduleStatus(state: SeasonScheduleCache, now = new Date()): {
+  ready: boolean;
+  ageMinutes: number | null;
+  servingLastGood: boolean;
+} {
+  const ageMinutes = state.lastUpdated === null
+    ? null
+    : Math.max(0, Math.floor((now.getTime() - state.lastUpdated.getTime()) / 60_000));
+  let complete = false;
+  try {
+    validateCompletePremierLeagueSchedule(state.fixtures);
+    complete = true;
+  } catch {
+    complete = false;
+  }
+  const currentSeason = state.seasonId === premierLeagueSeasonWindow(now).seasonId;
+  const fresh = ageMinutes !== null
+    && ageMinutes * 60_000 < SEASON_SCHEDULE_REFRESH_INTERVAL_MS;
+  return {
+    ready: complete && currentSeason && fresh && state.error === null,
+    ageMinutes,
+    servingLastGood: state.servingLastGood,
+  };
+}
+
+export function seasonScheduleRefreshDue(
+  state: Pick<SeasonScheduleCache, "seasonId" | "lastUpdated">,
+  now = new Date()
+): boolean {
+  return state.seasonId !== premierLeagueSeasonWindow(now).seasonId
+    || state.lastUpdated === null
+    || now.getTime() - state.lastUpdated.getTime() >= SEASON_SCHEDULE_REFRESH_INTERVAL_MS;
+}
+
+export function serialiseSeasonSchedule(
+  state: SeasonScheduleCache
+): PersistedSeasonSchedule | null {
+  if (state.competitionId !== "eng.1" || state.lastUpdated === null || state.fixtures.length === 0) {
+    return null;
+  }
+  try {
+    validateCompletePremierLeagueSchedule(state.fixtures);
+  } catch {
+    return null;
+  }
+  return {
+    schemaVersion: 1,
+    competitionId: "eng.1",
+    seasonId: state.seasonId,
+    fixtures: state.fixtures,
+    lastUpdated: state.lastUpdated.toISOString(),
+  };
+}
+
+export function deserialiseSeasonSchedule(
+  persisted: PersistedSeasonSchedule
+): SeasonScheduleCache | null {
+  const lastUpdated = new Date(persisted?.lastUpdated ?? "");
+  if (persisted?.schemaVersion !== 1 || persisted?.competitionId !== "eng.1"
+    || !persisted.seasonId || !Array.isArray(persisted.fixtures)
+    || persisted.fixtures.length === 0 || !Number.isFinite(lastUpdated.getTime())) {
+    return null;
+  }
+  const validFixtures = persisted.fixtures.every((fixture) =>
+    Number.isFinite(fixture?.id) && fixture.competitionId === "eng.1"
+    && typeof fixture.homeTeam === "string" && typeof fixture.awayTeam === "string"
+    && Number.isFinite(Date.parse(fixture.utcDate))
+  );
+  if (!validFixtures) return null;
+  try {
+    validateCompletePremierLeagueSchedule(persisted.fixtures);
+  } catch {
+    return null;
+  }
+  return {
+    ...persisted,
+    fixtures: [...persisted.fixtures],
+    lastUpdated,
+    error: null,
+    servingLastGood: true,
+  };
+}
+
+export function persistSeasonSchedule(
+  state: SeasonScheduleCache,
+  write: typeof writeJsonFileAtomic = writeJsonFileAtomic
+): void {
+  const persisted = serialiseSeasonSchedule(state);
+  if (!persisted) return;
+  try {
+    const primaryPath = resolveDataPath(SEASON_SCHEDULE_FILE);
+    const recoveryPath = resolveDataPath(SEASON_SCHEDULE_RECOVERY_FILE);
+    const current = readJsonFile<PersistedSeasonSchedule>(primaryPath);
+    const validatedCurrent = current ? deserialiseSeasonSchedule(current) : null;
+    if (validatedCurrent) {
+      const previous = serialiseSeasonSchedule(validatedCurrent);
+      if (previous) write(recoveryPath, previous);
+      write(primaryPath, persisted);
+    } else {
+      // With no usable prior generation, install the primary first. Only then
+      // seed recovery; a failed primary write must not claim a usable release.
+      write(primaryPath, persisted);
+      write(recoveryPath, persisted);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.warn(`[FootballData] Could not persist complete season schedule: ${message}`);
+  }
+}
+
+export function loadPersistedSeasonSchedule(): boolean {
+  const candidates = [SEASON_SCHEDULE_FILE, SEASON_SCHEDULE_RECOVERY_FILE];
+  for (const relativePath of candidates) {
+    const persisted = readJsonFile<PersistedSeasonSchedule>(resolveDataPath(relativePath));
+    const restored = persisted ? deserialiseSeasonSchedule(persisted) : null;
+    if (!restored) continue;
+    Object.assign(seasonScheduleCache, restored);
+    console.log(
+      `[FootballData] Restored ${restored.fixtures.length} fixtures for `
+      + `${restored.seasonId} from persisted complete-season schedule.`
+    );
+    return true;
+  }
+  return false;
+}
+
 // ─── API Fetcher ────────────────────────────────────────────────────────────
 
-async function espnFetch<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+export async function espnFetch<T>(
+  url: string,
+  timeoutMs = ESPN_FETCH_TIMEOUT_MS
+): Promise<T> {
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -124,6 +315,46 @@ export function buildFetchDateRange(competition: CompetitionConfig): string {
   const end = new Date(now);
   end.setUTCDate(end.getUTCDate() + (competition.fetchDaysFuture ?? 21));
   return `${formatEspnDate(start)}-${formatEspnDate(end)}`;
+}
+
+export function premierLeagueSeasonWindow(now = new Date()): {
+  seasonId: string;
+  dateRange: string;
+} {
+  const year = now.getUTCFullYear();
+  // July is treated as the start of the next English season so the published
+  // schedule can be loaded before the first August kickoff.
+  const startYear = now.getUTCMonth() >= 6 ? year : year - 1;
+  return {
+    seasonId: `${startYear}-${String(startYear + 1).slice(-2)}`,
+    dateRange: `${startYear}0701-${startYear + 1}0630`,
+  };
+}
+
+export function validateCompletePremierLeagueSchedule(fixtures: FootballMatch[]): void {
+  const fixtureIds = new Set(fixtures.map((fixture) => fixture.id));
+  const teams = new Set(fixtures.flatMap((fixture) => [fixture.homeTeam, fixture.awayTeam]));
+  const appearances = new Map<string, number>();
+  const directedPairs = new Set<string>();
+  for (const fixture of fixtures) {
+    if (!Number.isFinite(fixture.id) || fixture.competitionId !== "eng.1"
+      || !fixture.homeTeam || !fixture.awayTeam || fixture.homeTeam === fixture.awayTeam) {
+      throw new Error("Premier League complete-season response contains an invalid fixture.");
+    }
+    appearances.set(fixture.homeTeam, (appearances.get(fixture.homeTeam) ?? 0) + 1);
+    appearances.set(fixture.awayTeam, (appearances.get(fixture.awayTeam) ?? 0) + 1);
+    directedPairs.add(`${fixture.homeTeam}>${fixture.awayTeam}`);
+  }
+  const complete = fixtures.length === 380
+    && fixtureIds.size === 380
+    && teams.size === 20
+    && directedPairs.size === 380
+    && [...teams].every((team) => appearances.get(team) === 38);
+  if (!complete) {
+    throw new Error(
+      "Premier League complete-season response failed the 380-fixture, 20-team round-robin gate."
+    );
+  }
 }
 
 // ─── Data Transformers ──────────────────────────────────────────────────────
@@ -244,6 +475,48 @@ async function fetchCompetitionMatches(competition: CompetitionConfig): Promise<
   return (data.events || []).map((event) => parseEvent(event, context));
 }
 
+export async function fetchCompletePremierLeagueSchedule(
+  now = new Date()
+): Promise<{ seasonId: string; fixtures: FootballMatch[] }> {
+  const competition = getCompetitionById("eng.1");
+  if (!competition) throw new Error("Premier League competition is not configured.");
+  const { seasonId, dateRange } = premierLeagueSeasonWindow(now);
+  const data = await espnFetch<{ events?: unknown[] }>(
+    `${ESPN_SCOREBOARD_BASE}/${competition.espnScoreboardPath}`
+      + `/scoreboard?dates=${dateRange}&limit=1000`
+  );
+  const context = { competitionId: competition.id, competitionName: competition.name };
+  const fixtures = (data.events ?? []).map((event) => parseEvent(event, context));
+  // Validate the source rows before deduplication so duplicate identifiers or
+  // pairings cannot masquerade as a complete response and replace last-good.
+  validateCompletePremierLeagueSchedule(fixtures);
+  return { seasonId, fixtures };
+}
+
+export function nextSeasonScheduleCache(
+  previous: SeasonScheduleCache,
+  result: PromiseSettledResult<{ seasonId: string; fixtures: FootballMatch[] }>,
+  updatedAt = new Date()
+): SeasonScheduleCache {
+  if (result.status === "fulfilled") {
+    return {
+      competitionId: "eng.1",
+      seasonId: result.value.seasonId,
+      fixtures: result.value.fixtures,
+      lastUpdated: updatedAt,
+      error: null,
+      servingLastGood: false,
+    };
+  }
+  const message = result.reason instanceof Error ? result.reason.message : "Unknown error";
+  return {
+    ...previous,
+    fixtures: [...previous.fixtures],
+    error: message,
+    servingLastGood: previous.fixtures.length > 0,
+  };
+}
+
 async function fetchCompetitionStandings(competition: CompetitionConfig): Promise<FootballStanding[]> {
   if (!competition.espnStandingsPath) return [];
   const data = await espnFetch<{ children?: any[] }>( // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -311,7 +584,9 @@ function mergeCaches(byCompetition: Record<string, CompetitionCache>): void {
 
 // ─── Refresh All Data ───────────────────────────────────────────────────────
 
-export async function refreshFootballData(): Promise<void> {
+export async function refreshFootballData(dependencies: {
+  fetchSeason?: typeof fetchCompletePremierLeagueSchedule;
+} = {}): Promise<void> {
   console.log("[FootballData] Refreshing data from ESPN...");
   const enabled = getEnabledCompetitions();
   if (enabled.length === 0) {
@@ -320,18 +595,24 @@ export async function refreshFootballData(): Promise<void> {
     return;
   }
 
-  const results = await Promise.allSettled(
-    enabled.map(async (competition) => {
+  const shouldRefreshSeason = seasonScheduleRefreshDue(seasonScheduleCache);
+  const [competitionResults, seasonResult] = await Promise.all([
+    Promise.allSettled(enabled.map(async (competition) => {
       const data = await refreshCompetition(competition);
       return { competition, data };
-    })
-  );
+    })),
+    shouldRefreshSeason
+      ? Promise.allSettled([
+        (dependencies.fetchSeason ?? fetchCompletePremierLeagueSchedule)(),
+      ]).then(([result]) => result)
+      : Promise.resolve(null),
+  ]);
 
   const byCompetition: Record<string, CompetitionCache> = { ...cache.byCompetition };
   const competitionErrors: Record<string, string> = {};
 
-  for (let index = 0; index < results.length; index += 1) {
-    const result = results[index];
+  for (let index = 0; index < competitionResults.length; index += 1) {
+    const result = competitionResults[index];
     const competition = enabled[index];
     if (result.status === "fulfilled") {
       const { data } = result.value;
@@ -356,6 +637,23 @@ export async function refreshFootballData(): Promise<void> {
     }
   }
 
+  if (seasonResult !== null) {
+    const nextSeason = nextSeasonScheduleCache(seasonScheduleCache, seasonResult);
+    Object.assign(seasonScheduleCache, nextSeason);
+    if (seasonResult.status === "fulfilled") {
+      persistSeasonSchedule(nextSeason);
+      console.log(
+        `[FootballData]   eng.1 season ${seasonResult.value.seasonId}: `
+        + `${seasonResult.value.fixtures.length} complete-schedule fixtures`
+      );
+    } else {
+      // Retain the prior fixture rows and timestamp. Consumers can distinguish a
+      // last-good schedule from a fresh one through `error` without losing the
+      // only complete input during a transient source failure.
+      console.error(`[FootballData] eng.1 complete-season refresh error: ${nextSeason.error}`);
+    }
+  }
+
   mergeCaches(byCompetition);
   cache.competitionErrors = competitionErrors;
   cache.error = Object.keys(competitionErrors).length === enabled.length
@@ -374,6 +672,7 @@ const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 let cronTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function startFootballCron(): Promise<void> {
+  loadPersistedSeasonSchedule();
   await refreshFootballData();
   cronTimer = setInterval(refreshFootballData, REFRESH_INTERVAL_MS);
   console.log("[FootballData] Cron started — refreshing every 30 minutes");

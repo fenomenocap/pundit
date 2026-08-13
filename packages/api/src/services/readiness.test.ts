@@ -138,4 +138,14 @@ describe("evaluateReadiness", () => {
       marketOddsReady: false,
     });
   });
+
+  it("fails readiness when a previously built model outlives its rating artifact", () => {
+    const cachedModel = model({
+      fixtures: [modelFixture()],
+      lastUpdated: new Date(),
+    });
+    expect(evaluateReadiness(
+      cachedModel, football, [activeFixture()], odds, false
+    )).toMatchObject({ ready: false, modelReady: false });
+  });
 });

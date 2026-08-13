@@ -3,8 +3,8 @@ import path from "node:path";
 
 // Railway rebuilds the container image on every deploy and restarts it freely,
 // so anything written next to the source is lost without warning. State that is
-// meant to accumulate -- the rolling calibration history, the last-good ClubElo
-// ratings -- has to live on a mounted volume instead.
+// meant to accumulate -- the rolling calibration history, complete season
+// schedule, and artifact recovery copies -- has to live on a mounted volume.
 //
 // PUNDIT_DATA_DIR points at that volume in production. Unset, this resolves to
 // the in-repo data directory, which keeps local dev and tests working exactly as

@@ -66,7 +66,9 @@ export interface ClubSeasonSnapshotFixture {
     awayRating: number;
     ratingSnapshotAt: string | null;
     ratingAgeMinutes: number | null;
-    ratingSourceState: "live" | "persisted" | "unknown";
+    ratingSourceState: "live" | "artifact" | "persisted" | "unknown";
+    ratingArtifactId?: string;
+    ratingArtifactSha256?: string;
     homeAdvantageElo: number | null;
     config: typeof ELO_CHAMPION_CONFIG | null;
   };
@@ -185,6 +187,14 @@ type OfficialExclusionReason = "legacyPartialProvenance" | "incompleteInputProve
   | "postKickoffForecast"
   | "invalidForecastTimestamp";
 
+function validArtifactInputProvenance(inputs: ClubSeasonSnapshotFixture["inputs"]): boolean {
+  if (inputs.ratingSourceState !== "artifact") return true;
+  const sha = inputs.ratingArtifactSha256;
+  return typeof sha === "string"
+    && /^[a-f0-9]{64}$/.test(sha)
+    && inputs.ratingArtifactId === `clubelo@1:${sha}`;
+}
+
 function officialExclusionReason(fixture: ClubSeasonSnapshotFixture): OfficialExclusionReason | null {
   if (fixture.provenanceCompleteness !== "complete" || fixture.schemaVersion !== 2) {
     return fixture.provenanceCompleteness === "legacy_partial" || fixture.schemaVersion !== 2
@@ -192,7 +202,8 @@ function officialExclusionReason(fixture: ClubSeasonSnapshotFixture): OfficialEx
       : "incompleteInputProvenance";
   }
   if (!fixture.inputs.ratingSnapshotAt || fixture.inputs.ratingSourceState === "unknown"
-    || fixture.inputs.config === null || fixture.inputs.homeAdvantageElo === null) {
+    || fixture.inputs.config === null || fixture.inputs.homeAdvantageElo === null
+    || !validArtifactInputProvenance(fixture.inputs)) {
     return "incompleteInputProvenance";
   }
   const forecastAt = Date.parse(fixture.forecastAt);
@@ -427,6 +438,18 @@ export function buildSnapshotFromModel(
     provenanceCompleteness: !provenance
       ? "legacy_partial"
       : provenance.ratingSnapshotAt && provenance.ratingSourceState !== "unknown"
+        && validArtifactInputProvenance({
+          ratingProfile: provenance.ratingProfile,
+          homeRating: fixture.homeElo,
+          awayRating: fixture.awayElo,
+          ratingSnapshotAt: provenance.ratingSnapshotAt,
+          ratingAgeMinutes: provenance.ratingAgeMinutes,
+          ratingSourceState: provenance.ratingSourceState,
+          ratingArtifactId: provenance.ratingArtifactId,
+          ratingArtifactSha256: provenance.ratingArtifactSha256,
+          homeAdvantageElo: provenance.homeAdvantageElo,
+          config: provenance.config,
+        })
         ? "complete"
         : "source_partial",
     inputs: {
@@ -436,6 +459,10 @@ export function buildSnapshotFromModel(
       ratingSnapshotAt: provenance?.ratingSnapshotAt ?? null,
       ratingAgeMinutes: provenance?.ratingAgeMinutes ?? null,
       ratingSourceState: provenance?.ratingSourceState ?? "unknown",
+      ...(provenance?.ratingArtifactId ? { ratingArtifactId: provenance.ratingArtifactId } : {}),
+      ...(provenance?.ratingArtifactSha256
+        ? { ratingArtifactSha256: provenance.ratingArtifactSha256 }
+        : {}),
       homeAdvantageElo: provenance?.homeAdvantageElo ?? null,
       config: provenance?.config ?? null,
     },

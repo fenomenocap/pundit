@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getCachedModelData } from "../services/model-data";
+import { clubRatingsAreCurrent } from "../services/club-ratings";
 
 const router: Router = Router();
 
@@ -20,6 +21,12 @@ router.get("/wc", (_req: Request, res: Response) => {
 
 router.get("/active", (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!clubRatingsAreCurrent()) {
+      return res.status(503).json({
+        error: "Pundit's match model is temporarily unavailable.",
+        code: "MODEL_UNAVAILABLE",
+      });
+    }
     const cached = getCachedModelData();
     const competition = typeof req.query.competition === "string"
       ? req.query.competition.trim()
@@ -41,6 +48,12 @@ router.get("/active", (req: Request, res: Response, next: NextFunction) => {
 
 router.get("/fixtures", (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!clubRatingsAreCurrent()) {
+      return res.status(503).json({
+        error: "Pundit's match model is temporarily unavailable.",
+        code: "MODEL_UNAVAILABLE",
+      });
+    }
     const cached = getCachedModelData();
     const competition = typeof req.query.competition === "string"
       ? req.query.competition.trim()

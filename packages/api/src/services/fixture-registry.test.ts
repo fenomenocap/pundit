@@ -10,6 +10,7 @@ import {
   getRecognizedFixtureSnapshot,
   getRecognizedFixtures,
   isModelPolicyEligible,
+  loadBundledApprovedFixtures,
   loadFixtureRegistry,
   recognizeEspnFixture,
   refreshFixtureRegistryFromEspn,
@@ -36,6 +37,7 @@ function footballFixture(overrides: Partial<FootballMatch> = {}): FootballMatch 
     matchday: 2,
     group: null,
     score: null,
+    neutralVenue: false,
     ...overrides,
   };
 }
@@ -65,6 +67,29 @@ afterEach(() => {
 });
 
 describe("fixture registry", () => {
+  it("imports a real stable-ID friendly only with official corroboration", () => {
+    const fixtures = loadBundledApprovedFixtures();
+    expect(fixtures).toContainEqual(expect.objectContaining({
+      fixtureId: "espn:club.friendly:401867142",
+      primarySourceFixtureId: "401867142",
+      homeTeam: { id: "arsenal", name: "Arsenal" },
+      awayTeam: { id: "betis", name: "Real Betis" },
+      venue: "Aviva Stadium",
+      neutralVenue: true,
+      recognition: "corroborated",
+      competition: expect.objectContaining({ category: "club-friendly" }),
+    }));
+    const approved = fixtures.find((fixture) => fixture.fixtureId === "espn:club.friendly:401867142")!;
+    expect(approved.observedSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: "espn", authority: "authoritative" }),
+      expect.objectContaining({ source: "official-club", authority: "corroborating" }),
+    ]));
+    expect(evaluateFixtureCapability(approved, {
+      modelInitialized: true,
+      ratingsAvailable: true,
+    })).toEqual({ status: "outside-coverage", reason: "friendly-policy-disabled" });
+  });
+
   it("keeps discovery candidates structurally separate from recognized fixtures", () => {
     const candidate: FixtureCandidate = {
       candidateId: "search:arsenal-liverpool",
@@ -136,6 +161,15 @@ describe("fixture registry", () => {
       modelInitialized: true,
       ratingsAvailable: true,
     })).toEqual({ status: "outside-coverage", reason: "model-policy-disabled" });
+  });
+
+  it("identifies unknown neutral venue as the specific missing model input", () => {
+    const unknownVenue = recognizeEspnFixture(footballFixture({ neutralVenue: null }));
+    expect(evaluateFixtureCapability(unknownVenue, {
+      modelFixture: { competitionId: "eng.1", fixtureId: 401 } as never,
+      modelInitialized: true,
+      ratingsAvailable: true,
+    })).toEqual({ status: "insufficient-model-input", reason: "neutral-venue-unknown" });
   });
 
   it("fails closed when the same teams have multiple current recognized fixtures", () => {

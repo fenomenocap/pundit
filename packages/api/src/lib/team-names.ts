@@ -76,6 +76,9 @@ const RAW_CLUB_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["Iberia 1999", "Saburtalo"],
   ["Riga FC", "Riga"],
   ["Ararat-Armenia", "Ararat"],
+  ["AEK Athens", "AEK"],
+  ["LASK Linz", "LASK"],
+  ["Viking FK", "Viking"],
   // Reported missing by /ready against a live qualifying round. The right-hand
   // names are read off the ClubElo daily snapshot rather than inferred: only
   // "Sparta Praha" survived the first guess. Note the provider separates
@@ -85,10 +88,8 @@ const RAW_CLUB_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["Bodo/Glimt", "Bodoe Glimt"],
   ["Bodø/Glimt", "Bodoe Glimt"],
   ["NEC Nijmegen", "Nijmegen"],
-  // Correct ClubElo spelling, confirmed via its per-club feed, but that feed's
-  // latest rating window for the club ended 2026-07-03, so it is absent from
-  // the current daily snapshot entirely. This alias cannot price the club until
-  // ClubElo publishes a current rating; its fixtures stay unpriced meanwhile.
+  // Correct provider spelling retained in the pinned release artifact. Missing
+  // artifact rows fail closed; runtime never fetches an individual club feed.
   ["Olympiacos", "Olympiakos"],
   ["Sparta Prague", "Sparta Praha"],
   ["Union St.-Gilloise", "St Gillis"],
