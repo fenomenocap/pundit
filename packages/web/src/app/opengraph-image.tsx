@@ -16,15 +16,15 @@ export default function OpenGraphImage() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #0a1628 0%, #0f1f35 50%, #0a1628 100%)",
+          background: "#0f0f0d",
           fontFamily: "system-ui, sans-serif",
         }}
       >
         <div
           style={{
             fontSize: 96,
-            fontWeight: 700,
-            color: "#22d3ee",
+            fontWeight: 600,
+            color: "#c8a96a",
             letterSpacing: "-0.02em",
           }}
         >
@@ -34,7 +34,7 @@ export default function OpenGraphImage() {
           style={{
             marginTop: 24,
             fontSize: 32,
-            color: "#94a3b8",
+            color: "#bbb5a8",
             textAlign: "center",
             maxWidth: 900,
             lineHeight: 1.4,

@@ -99,7 +99,7 @@ export default function ModelPage() {
         loading={loading}
         sticky
         badge={(
-          <span className="mb-2 inline-block rounded border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+          <span className="mb-2 inline-block rounded border border-border bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
             Local model
           </span>
         )}
@@ -121,7 +121,7 @@ export default function ModelPage() {
           <div className="border-b border-border px-4 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-white">Active fixtures</h2>
+                <h2 className="text-sm font-semibold text-foreground">Active fixtures</h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {loading ? "…" : filteredFixtures.length} upcoming matches with model 1X2 probabilities.
                 </p>
@@ -229,8 +229,8 @@ export default function ModelPage() {
                             />
                             <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-[10px] tabular-nums text-muted-foreground">
                               <span className="text-primary">{percent(fixture.pHome)}</span>
-                              <span className="text-center text-slate-300">{percent(fixture.pDraw)}</span>
-                              <span className="text-right text-pink-400">{percent(fixture.pAway)}</span>
+                              <span className="text-center text-muted-foreground">{percent(fixture.pDraw)}</span>
+                              <span className="text-right text-accent">{percent(fixture.pAway)}</span>
                             </div>
                           </td>
                           <td className="font-mono text-foreground">

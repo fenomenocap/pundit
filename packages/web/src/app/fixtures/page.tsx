@@ -410,7 +410,7 @@ export default function FixturesPage() {
 
       {leagueStandings.length > 0 && (
         <div className="mt-10">
-          <h2 className="mb-3 font-heading text-base font-black uppercase tracking-tight text-foreground">
+          <h2 className="mb-3 font-heading text-base font-semibold tracking-tight text-foreground">
             Standings
           </h2>
           <LeagueStandingsTable
@@ -422,7 +422,7 @@ export default function FixturesPage() {
 
       {groupedStandings.length > 0 && (
         <div className="mt-10">
-          <h2 className="mb-3 font-heading text-base font-black uppercase tracking-tight text-foreground">
+          <h2 className="mb-3 font-heading text-base font-semibold tracking-tight text-foreground">
             Group Standings
           </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">

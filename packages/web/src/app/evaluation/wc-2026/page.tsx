@@ -75,16 +75,16 @@ export default function Wc2026EvaluationPage() {
         eyebrow="Frozen evaluation · reconstructed pre-kickoff"
         badge={(
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="rounded border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
+            <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
               Frozen evaluation
             </span>
-            <span className="rounded border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+            <span className="rounded border border-border bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
               Reconstructed pre-kickoff
             </span>
           </div>
         )}
       />
-      <p className="mb-6 -mt-4 max-w-2xl font-display text-lg leading-snug text-white">
+      <p className="mb-6 -mt-4 max-w-2xl text-lg leading-snug text-foreground">
         Immutable pre-kickoff probabilities reconstructed for backtesting. Separate from the live model page, which recalculates older fixtures with current ratings.
       </p>
 
@@ -128,7 +128,7 @@ export default function Wc2026EvaluationPage() {
           {metrics && metrics.calibration.length > 0 ? (
             <section className="overflow-hidden rounded-lg border border-border bg-card">
               <div className="border-b border-border px-4 py-3">
-                <h2 className="text-sm font-semibold text-white">Calibration buckets</h2>
+                <h2 className="text-sm font-semibold text-foreground">Calibration buckets</h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Average predicted probability for the outcome that happened vs observed frequency.
                 </p>
@@ -169,7 +169,7 @@ export default function Wc2026EvaluationPage() {
 
           <section className="overflow-hidden rounded-lg border border-border bg-card">
             <div className="border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold text-white">Fixture results vs model</h2>
+              <h2 className="text-sm font-semibold text-foreground">Fixture results vs model</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Pre-kickoff 1X2 probabilities and authoritative ESPN results.
               </p>

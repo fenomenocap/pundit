@@ -264,11 +264,11 @@ function GroundingBadge({ grounding }: { grounding: AskGrounding }) {
   const ringClass = kind === "match"
     ? "border-primary/40 text-primary"
     : kind === "fixture"
-      ? "border-slate-400/40 text-slate-300"
+      ? "border-border text-muted-foreground"
     : kind === "competition"
-      ? "border-amber-400/40 text-amber-300"
+      ? "border-primary/30 text-primary/90"
       : kind === "season"
-        ? "border-accent/40 text-accent"
+        ? "border-accent-strong/40 text-accent-strong"
         : "border-border text-muted-foreground";
   return (
     <span
@@ -310,7 +310,7 @@ function AssistantMarkdown({ content }: { content: string }) {
         p: (props) => <p className="mb-2 last:mb-0" {...props} />,
         ul: (props) => <ul className="mb-2 list-disc space-y-1 pl-4 last:mb-0" {...props} />,
         ol: (props) => <ol className="mb-2 list-decimal space-y-1 pl-4 last:mb-0" {...props} />,
-        strong: (props) => <strong className="font-semibold text-white" {...props} />,
+        strong: (props) => <strong className="font-semibold text-foreground" {...props} />,
         a: ({ href, children, ...props }) =>
           isSafeHref(href) ? (
             <a
@@ -318,7 +318,7 @@ function AssistantMarkdown({ content }: { content: string }) {
               href={href}
               target="_blank"
               rel="noopener noreferrer nofollow"
-              className="text-cyan-400 underline decoration-cyan-400/40 underline-offset-2 hover:decoration-cyan-400"
+              className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
             >
               {children}
             </a>
@@ -414,7 +414,7 @@ function MatchFixtureCard({
       <div className="flex items-start gap-2 border-b border-card-rim px-3 py-2.5">
         <div className="flex flex-1 items-center gap-2">
           <TeamMonogram name={grounding.home} />
-          <span className="truncate text-sm font-medium text-white" title={grounding.home}>
+          <span className="truncate text-sm font-medium text-foreground" title={grounding.home}>
             {teamAbbr(grounding.home)} · {grounding.home}
           </span>
         </div>
@@ -422,7 +422,7 @@ function MatchFixtureCard({
           vs
         </span>
         <div className="flex flex-1 items-center justify-end gap-2">
-          <span className="truncate text-right text-sm font-medium text-white" title={grounding.away}>
+          <span className="truncate text-right text-sm font-medium text-foreground" title={grounding.away}>
             {grounding.away} · {teamAbbr(grounding.away)}
           </span>
           <TeamMonogram name={grounding.away} />
@@ -673,10 +673,10 @@ export function HomeChat() {
   // the `ask()` flow.
   const modelState = loadingTier === "match" ? "loading" : fixtureState;
   const statusTone = modelState === "loading" || modelState === "partial"
-    ? "bg-amber-300"
+    ? "bg-accent-strong"
     : modelState === "ready"
       ? "bg-primary"
-      : "bg-slate-500";
+      : "bg-muted-foreground/50";
   const statusLabel = ((): string => {
     switch (modelState) {
       case "loading":
@@ -728,7 +728,7 @@ export function HomeChat() {
             <h1
               className="font-mono text-xs font-normal uppercase tracking-[0.2em] text-muted-foreground"
             >
-              <span className="text-white">Pundit</span>
+              <span className="text-foreground">Pundit</span>
               <span className="mx-1.5 text-muted-foreground/60">·</span>
               <span>v0.3</span>
               <span className="mx-1.5 text-muted-foreground/60">·</span>
@@ -738,7 +738,7 @@ export function HomeChat() {
             </h1>
             <h2
               data-display="true"
-              className="font-display text-5xl font-normal leading-tight text-white sm:text-6xl"
+              className="font-heading text-4xl font-semibold leading-tight text-foreground sm:text-5xl"
             >
               Football analysis, grounded.
             </h2>

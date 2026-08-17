@@ -38,7 +38,7 @@ export function PageHeader({
           </p>
         )}
         {badge}
-        <h1 className="font-heading text-2xl font-bold text-white sm:text-3xl">{title}</h1>
+        <h1 className="font-heading text-2xl font-semibold text-foreground sm:text-3xl">{title}</h1>
         {subtitle && (
           <p className="mt-1.5 max-w-lg text-sm text-muted-foreground">{subtitle}</p>
         )}

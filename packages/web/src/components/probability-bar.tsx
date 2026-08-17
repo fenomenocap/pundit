@@ -18,7 +18,7 @@ function clampPct(value: number): number {
 
 /**
  * Pure CSS horizontal stacked bar for 1X2 probabilities.
- * Home (cyan), Draw (slate), Away (pink). Draw segment is hidden when null.
+ * Home (gold), Draw (muted warm gray), Away (cream gray).
  */
 export function ProbabilityBar({
   pHome,
@@ -46,13 +46,13 @@ export function ProbabilityBar({
       aria-label={ariaLabel}
       title={`${homeLabel} ${homeText} · Draw ${drawText} · ${awayLabel} ${awayText}`}
       className={cn(
-        "flex w-full overflow-hidden rounded-full bg-secondary/40 font-mono",
+        "flex w-full overflow-hidden rounded-full bg-secondary/60 font-mono",
         size === "sm" ? "h-1.5" : "h-2",
         className,
       )}
     >
       <span
-        className="flex items-center justify-end bg-primary/80 px-1 text-[9px] font-bold text-primary-foreground"
+        className="flex items-center justify-end bg-primary px-1 text-[9px] font-medium text-primary-foreground"
         style={{ width: `${homePct}%` }}
         aria-hidden
       >
@@ -60,7 +60,7 @@ export function ProbabilityBar({
       </span>
       {drawRaw !== null && (
         <span
-          className="flex items-center justify-center bg-slate-500/70 px-1 text-[9px] font-bold text-white"
+          className="flex items-center justify-center bg-[hsl(var(--prob-draw))] px-1 text-[9px] font-medium text-foreground/70"
           style={{ width: `${drawPct}%` }}
           aria-hidden
         >
@@ -68,7 +68,7 @@ export function ProbabilityBar({
         </span>
       )}
       <span
-        className="flex items-center justify-start bg-pink-500/70 px-1 text-[9px] font-bold text-white"
+        className="flex items-center justify-start bg-accent/80 px-1 text-[9px] font-medium text-accent-foreground"
         style={{ width: `${awayPct}%` }}
         aria-hidden
       >

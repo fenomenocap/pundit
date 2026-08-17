@@ -70,16 +70,16 @@ export default function ClubSeasonEvaluationPage() {
         eyebrow="Rolling snapshots · Premier League & UCL qualifiers"
         badge={(
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="rounded border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-xs font-medium text-cyan-400">
+            <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
               Rolling snapshots
             </span>
-            <span className="rounded border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+            <span className="rounded border border-border bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
               Premier League &amp; UCL qualifiers
             </span>
           </div>
         )}
       />
-      <p className="mb-6 -mt-4 max-w-2xl font-display text-lg leading-snug text-white">
+      <p className="mb-6 -mt-4 max-w-2xl text-lg leading-snug text-foreground">
         Immutable Fundamental forecasts sealed inside the 90-minute pre-kickoff window. Separate from the live model page, which recalculates with current ratings.
       </p>
 
@@ -125,7 +125,7 @@ export default function ClubSeasonEvaluationPage() {
               {metrics.calibration.length > 0 ? (
                 <section className="overflow-hidden rounded-lg border border-border bg-card">
                   <div className="border-b border-border px-4 py-3">
-                    <h2 className="text-sm font-semibold text-white">Calibration buckets</h2>
+                    <h2 className="text-sm font-semibold text-foreground">Calibration buckets</h2>
                   </div>
                   <div className="overflow-auto">
                     <table className="w-full text-left text-xs">
@@ -172,7 +172,7 @@ export default function ClubSeasonEvaluationPage() {
           {data.fixtures.length > 0 ? (
             <section className="overflow-hidden rounded-lg border border-border bg-card">
               <div className="border-b border-border px-4 py-3">
-                <h2 className="text-sm font-semibold text-white">Snapshotted fixtures</h2>
+                <h2 className="text-sm font-semibold text-foreground">Snapshotted fixtures</h2>
               </div>
               <div className="max-h-[70vh] overflow-auto">
                 <table className="w-full text-left text-xs">

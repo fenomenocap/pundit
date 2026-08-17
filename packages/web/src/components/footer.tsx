@@ -15,7 +15,7 @@ export function Footer() {
     <footer className="border-t border-border px-4 py-2.5">
       <div className="flex flex-col items-center justify-between gap-2 text-xs text-muted-foreground sm:flex-row">
         <div className="flex items-center gap-3">
-          <span className="font-display text-base text-white">Pundit</span>
+          <span className="font-heading text-sm font-semibold text-foreground">Pundit</span>
           <span className="hidden h-3 w-px bg-border sm:inline-block" aria-hidden="true" />
           <Disclaimer />
         </div>

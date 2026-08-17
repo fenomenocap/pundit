@@ -44,19 +44,7 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))",
         },
         "card-rim": "hsl(var(--card-rim))",
-        // Sportsbook palette: swap the stock neon cyan/pink for calmer,
-        // higher-contrast tones (Tailwind's own sky/rose) without touching
-        // any component — every `cyan-400`/`pink-500` etc. class updates.
-        cyan: {
-          50: "#EFF9FF", 100: "#DEF1FF", 200: "#B6E6FE", 300: "#75D3FE",
-          400: "#38BDF8", 500: "#0EA5E9", 600: "#0284C7", 700: "#0369A1",
-          800: "#075985", 900: "#0C4A6E",
-        },
-        pink: {
-          50: "#FFF1F2", 100: "#FFE4E6", 200: "#FECDD3", 300: "#FDA4AF",
-          400: "#FB7185", 500: "#F43F5E", 600: "#E11D48", 700: "#BE123C",
-          800: "#9F1239", 900: "#881337",
-        },
+        "accent-strong": "hsl(var(--accent-strong))",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -65,14 +53,13 @@ const config: Config = {
         card: "var(--radius)",
       },
       boxShadow: {
-        card: "inset 0 1px 0 0 rgba(255,255,255,0.04), 0 1px 0 0 rgba(0,0,0,0.4)",
+        card: "inset 0 1px 0 0 rgba(243, 240, 232, 0.04), 0 1px 0 0 rgba(0, 0, 0, 0.35)",
       },
       fontFamily: {
-        heading: ["'Space Grotesk'", "system-ui", "sans-serif"],
-        body: ["'Space Grotesk'", "system-ui", "sans-serif"],
-        sans: ["'Space Grotesk'", "system-ui", "sans-serif"],
-        mono: ["'Space Mono'", "monospace"],
-        display: ["'Instrument Serif'", "'Space Grotesk'", "serif"],
+        heading: ["var(--font-inter)", "system-ui", "sans-serif"],
+        body: ["var(--font-inter)", "system-ui", "sans-serif"],
+        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        mono: ["var(--font-ibm-plex-mono)", "ui-monospace", "monospace"],
       },
     },
   },
