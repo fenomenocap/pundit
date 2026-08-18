@@ -840,7 +840,11 @@ very first thing in your reply, with no text before it. Text written ahead of a 
 will then contradict once results arrive, and it is discarded, so writing it only delays the answer.
 Once the results are back, write the answer once, starting directly with the first bold label.
 Never reproduce raw JSON, field names, or key-value syntax from the grounding data in your answer --
-express its values as plain prose and percentages (write "2.26%", not {"score":"2-3","probability":0.0226}).`;
+express its values as plain prose and percentages (write "2.26%", not {"score":"2-3","probability":0.0226}).
+Ask for a search only through the tool-call channel, one tool call at a time. Never write tool syntax
+into your answer text -- no <tool_call> or <invoke> tags, no {"search_queries": [...]} payload, no
+control tokens. Text is shown to the user verbatim, so a search written as text is a search that never
+runs and a reply the user cannot read.`;
 
 export const MATCH_ANSWER_GUARDS = `The match grounding describes this fixture only, not the state of
 an aggregate tie. Even if web search finds a first-leg result, do not calculate or state which
@@ -2126,6 +2130,217 @@ export function sanitizeUnsupportedTeamNews(answer: string): string {
   ).trim();
 }
 
+// ---------------------------------------------------------------------------
+// Tool-call markup leakage
+// ---------------------------------------------------------------------------
+//
+// MiniMax intermittently emits its tool-call *intent* as ordinary assistant
+// text instead of a structured tool_use block. Two shapes reached production:
+//
+//   ]<]minimax[>[<tool_call> <invoke name="web_search"> <query>...</query>
+//   </invoke> ... </tool_call>
+//
+//   {  "search_queries": ["Arsenal team news ...", "Coventry injuries ..."]
+//
+// Such a text block carries stop_reason "end_turn", so the tool loop never
+// runs, nothing downstream recognised it as anything but prose, and it was
+// rendered verbatim in a chat bubble. Both leaks are the same failure -- the
+// tool channel breaking out into the text channel -- so they are handled as
+// one class rather than as two string patterns, and the live leaks were
+// malformed, doubled and truncated often enough that a paired-tag regex is
+// not sufficient.
+
+/**
+ * Framing bytes of MiniMax's own control tokens, and the generic "<|...|>"
+ * sentinel shape used by most chat templates. These never occur in football
+ * prose, so they are removed wherever they appear.
+ */
+const CONTROL_TOKEN_FRAGMENT = /\]<\]\s*minimax\s*\[>\[|\]<\]|\[>\[|<\|[^|\n>]{0,60}\|>/gi;
+
+/**
+ * Tags that open a tool-call region on their own. Encountering one in answer
+ * text is unambiguous -- no football answer contains "<tool_call>" -- so
+ * everything the region encloses can safely be treated as markup.
+ */
+const TOOL_REGION_TAGS = new Set([
+  "tool_call", "tool_calls", "tool_use", "tool_result", "tool_response",
+  "function_call", "function_calls", "invoke",
+]);
+
+/**
+ * Tags that are markup only *inside* a tool-call region. "<query>" is the
+ * important one: the leak nests it inside <invoke>, but a user can also ask
+ * "what does <query> mean in SQL?" and see it quoted back, so at depth zero it
+ * is left alone.
+ */
+const TOOL_INNER_TAGS = new Set([
+  "query", "queries", "parameter", "parameters", "arg", "args", "argument",
+  "arguments", "search_query", "tool_name",
+]);
+
+const ANY_TAG = /<\s*\/?\s*(?:antml:)?([A-Za-z_][A-Za-z0-9_.:-]*)\b[^>]*?>/g;
+
+/** A tag cut off mid-emission by truncation, e.g. a trailing `<invoke name="`. */
+const TRUNCATED_TOOL_TAG = new RegExp(
+  `<\\s*/?\\s*(?:antml:)?(?:${[...TOOL_REGION_TAGS, ...TOOL_INNER_TAGS].join("|")})\\b[^>]*$`,
+  "i"
+);
+
+/**
+ * Removes tool-call regions by walking the text and tracking how deep inside
+ * one it currently is, rather than by matching a well-formed pair. The
+ * production leak was doubled and unclosed ("<tool_call> <tool_call> ...
+ * </tool_call>"), which a paired regex misses entirely; a depth walk drops the
+ * unterminated remainder instead.
+ */
+function stripToolRegions(answer: string): string {
+  let out = "";
+  let depth = 0;
+  let cursor = 0;
+  ANY_TAG.lastIndex = 0;
+  for (let match = ANY_TAG.exec(answer); match; match = ANY_TAG.exec(answer)) {
+    const raw = match[0];
+    const name = match[1].toLowerCase();
+    const closing = /^<\s*\//.test(raw);
+    const selfClosing = /\/\s*>$/.test(raw);
+    if (depth === 0) out += answer.slice(cursor, match.index);
+    cursor = match.index + raw.length;
+
+    if (depth === 0) {
+      // Ordinary prose angle brackets, including a bare <query>, survive.
+      if (!TOOL_REGION_TAGS.has(name)) out += raw;
+      else if (!closing && !selfClosing) depth = 1;
+      continue;
+    }
+
+    if (selfClosing || !(TOOL_REGION_TAGS.has(name) || TOOL_INNER_TAGS.has(name))) continue;
+    depth = closing ? Math.max(0, depth - 1) : depth + 1;
+  }
+  // An unterminated region swallows the rest of the text: past an unclosed
+  // <tool_call> everything MiniMax wrote is tool syntax, not an answer.
+  if (depth === 0) out += answer.slice(cursor);
+  return out.replace(TRUNCATED_TOOL_TAG, "");
+}
+
+/** Keys that make a leading JSON object a tool payload rather than prose. */
+const TOOL_JSON_KEY =
+  /"(?:search_queries|search_query|queries|query|tool|tool_name|tool_call|tool_calls|function|name|arguments|parameters)"\s*:/i;
+
+/** Characters that can appear outside a string in JSON (incl. true/false/null). */
+const JSON_OUTSIDE_STRING = /[\s{}[\],:0-9+\-.eEtrufalsn]/;
+
+/**
+ * Removes a leading bare JSON object whose keys are tool-ish. The live leak
+ * ('{  "search_queries": [...]' followed by a real answer) was never closed,
+ * so the scan also accepts a truncated object: it stops at the first character
+ * that cannot continue JSON and rewinds to the last structural boundary, which
+ * preserves the prose that follows.
+ */
+function stripLeadingToolJson(answer: string): string {
+  const lead = /^\s*/.exec(answer)?.[0] ?? "";
+  const rest = answer.slice(lead.length);
+  if (!rest.startsWith("{")) return answer;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let lastBoundary = -1;
+  let end = -1;
+  for (let i = 0; i < rest.length; i += 1) {
+    const ch = rest[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') { inString = false; lastBoundary = i + 1; }
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === "{" || ch === "[") { depth += 1; continue; }
+    if (ch === "}" || ch === "]") {
+      depth -= 1;
+      lastBoundary = i + 1;
+      if (depth === 0) { end = i + 1; break; }
+      continue;
+    }
+    if (JSON_OUTSIDE_STRING.test(ch)) continue;
+    // Prose resumed inside an unclosed object: keep it, drop the fragment.
+    end = lastBoundary;
+    break;
+  }
+  if (end <= 0) end = depth > 0 ? lastBoundary : -1;
+  if (end <= 0 || !TOOL_JSON_KEY.test(rest.slice(0, end))) return answer;
+  return rest.slice(end).replace(/^[\s,}\]]+/, "");
+}
+
+interface ToolMarkupStrip {
+  text: string;
+  removed: boolean;
+}
+
+function stripToolCallMarkupDetailed(answer: string): ToolMarkupStrip {
+  const stripped = stripLeadingToolJson(
+    stripToolRegions(answer.replace(CONTROL_TOKEN_FRAGMENT, ""))
+  );
+  if (stripped === answer) return { text: answer, removed: false };
+  return {
+    text: stripped.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(),
+    removed: true,
+  };
+}
+
+/**
+ * Defence in depth for the tool-call leak. Runs ahead of every tier-specific
+ * guard, because those guards read the answer as prose and a leak is not
+ * prose. Idempotent, so the streaming path can apply it to settled prefixes.
+ */
+export function stripToolCallMarkup(answer: string): string {
+  return stripToolCallMarkupDetailed(answer).text;
+}
+
+/**
+ * Whether what survived stripping is still an answer. Used only to choose
+ * between shipping a stripped answer and failing the request: an answer that
+ * was *entirely* markup must surface as an error rather than as an empty or
+ * fragmentary chat bubble.
+ */
+function hasMeaningfulProse(answer: string): boolean {
+  return (answer.match(/\p{L}/gu)?.length ?? 0) >= 20
+    && answer.trim().split(/\s+/).filter(Boolean).length >= 4;
+}
+
+const LEAKED_QUERY_PATTERNS = [
+  /<\s*(?:antml:)?query\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
+  /<\s*(?:antml:)?parameter\s+name\s*=\s*"query"\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
+  /"(?:search_query|query)"\s*:\s*"((?:[^"\\]|\\.)*)"/gi,
+];
+
+const LEAKED_QUERY_ARRAY = /"(?:search_queries|queries)"\s*:\s*\[([\s\S]*?)(?:\]|$)/i;
+
+/**
+ * Pulls the searches MiniMax asked for out of a leaked text tool call, so a
+ * request can be recovered by actually running them rather than by discarding
+ * the turn. Deliberately tolerant of truncation: the live leaks were unclosed.
+ */
+export function extractLeakedSearchQueries(text: string): string[] {
+  const found: string[] = [];
+  for (const pattern of LEAKED_QUERY_PATTERNS) {
+    pattern.lastIndex = 0;
+    for (let m = pattern.exec(text); m; m = pattern.exec(text)) found.push(m[1]);
+  }
+  const array = LEAKED_QUERY_ARRAY.exec(text);
+  if (array) {
+    for (const m of array[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)) found.push(m[1]);
+  }
+  const unique = new Map<string, string>();
+  for (const raw of found) {
+    const query = raw.replace(/\s+/g, " ").trim().slice(0, 256);
+    if (query.length >= 3 && !unique.has(query.toLocaleLowerCase())) {
+      unique.set(query.toLocaleLowerCase(), query);
+    }
+  }
+  return [...unique.values()];
+}
+
 // FORMAT_RULES already forbids narrating tool use, but MiniMax does it anyway
 // ("I'll search for the latest Arsenal injury news."), and because every text
 // block is shown verbatim the narration reaches the user -- typically run
@@ -2267,10 +2482,12 @@ export function ensureGeneralDisclaimer(answer: string): string {
 // validateAnalysisResponse so the streaming path can run exactly the same
 // guards over a settled prefix of the answer instead of a second, weaker copy.
 //
-// The MiniMax guards run first and for every tier: narration and fused section
-// labels are properties of the raw text, so stripping them before the
-// tier-specific guards means those guards see the same shape they were written
-// against.
+// The MiniMax guards run first and for every tier: leaked tool-call markup,
+// narration and fused section labels are properties of the raw text, so
+// stripping them before the tier-specific guards means those guards see the
+// same shape they were written against. Tool-call markup is stripped before
+// even the narration guard, because a leak is not prose and every guard after
+// it reads the answer as prose.
 //
 // `final` gates the general-tier disclaimer, which appends rather than rewrites
 // and so is a property of the whole answer, not of any prefix of it. Running it
@@ -2284,7 +2501,9 @@ function sanitizeAnswerForTier(
   final = false
 ): string {
   const commonSafeAnswer = sanitizeRuntimeResponseCorrectness(sanitizeUnsupportedTeamNews(
-    normalizeBannedMarkdown(normalizeSectionBreaks(stripProcessNarration(answer)))
+    normalizeBannedMarkdown(normalizeSectionBreaks(
+      stripProcessNarration(stripToolCallMarkup(answer))
+    ))
   ), grounding?.kind === "match" ? grounding : undefined);
   if (tier === "match") {
     return sanitizeMatchAnswer(
@@ -2330,17 +2549,25 @@ function validateAnalysisResponse(
     block.type === "tool_use" && block.name === WEB_SEARCH_TOOL.name
   );
   const stopReason = responses.at(-1)?.stop_reason ?? null;
+  const withoutToolMarkup = stripToolCallMarkupDetailed(answer);
   console.log(JSON.stringify({
     event: "analysis_generated",
     tier,
     durationMs: Date.now() - startedAt,
     stopReason,
     usedWebSearch,
+    leakedToolMarkup: withoutToolMarkup.removed,
     continuations: responses.length - 1,
   }));
   if (!answer) throw new AppError(502, "Analysis service returned an empty response.");
   if (stopReason === "max_tokens") {
     throw new AppError(502, "Analysis response was truncated. Please try again.");
+  }
+  // An answer that was nothing but a leaked tool call has no prose left after
+  // stripping. Shipping the remainder would put an empty or fragmentary bubble
+  // on screen, so it fails the same way an empty response does.
+  if (withoutToolMarkup.removed && !hasMeaningfulProse(withoutToolMarkup.text)) {
+    throw new AppError(502, "Analysis service returned an empty response.");
   }
   return sanitizeAnswerForTier(answer, tier, grounding, true);
 }
@@ -2418,6 +2645,104 @@ async function runToolUses(
   return { role: "user", content: results };
 }
 
+/**
+ * Stands in for a leaked tool call in the replayed conversation. The leaked
+ * text is never echoed back: showing the model its own broken syntax invites
+ * it to continue in the same shape, and the leak is not an answer worth
+ * conditioning on. The placeholder says only what the tool call meant.
+ */
+const TOOL_MARKUP_PLACEHOLDER = "I need current information before I can answer.";
+
+const TOOL_MARKUP_RECOVERY_NOTE =
+  "Your previous reply was tool-call syntax written as answer text, which the user cannot read. "
+  + "Never write tool tags, <invoke> blocks, or JSON tool payloads as text. Write the final answer "
+  + "now, as plain prose, starting directly with the first bold label.";
+
+/**
+ * The leaked text of a turn that asked for a tool in prose, or null when the
+ * turn is a usable answer. Turns that merely *carry* a leak alongside a real
+ * answer (the live "Arsenal vs Coventry" reply opened with a JSON tool payload
+ * and then answered properly) are left to the sanitizer: they need stripping,
+ * not another round trip against the 90s deadline.
+ */
+function leakedToolCallText(response: Anthropic.Message): string | null {
+  const text = joinTextBlocks(response.content);
+  const stripped = stripToolCallMarkupDetailed(text);
+  return stripped.removed && !hasMeaningfulProse(stripped.text) ? text : null;
+}
+
+function nextSourceOrdinal(bundle?: EvidenceBundle): number {
+  return (bundle?.results ?? []).reduce(
+    (max, source) => Math.max(max, Number(/^S(\d+)$/.exec(source.id)?.[1] ?? 0)),
+    0
+  );
+}
+
+async function runLeakedSearchQueries(
+  queries: string[],
+  bundle?: EvidenceBundle,
+  signal?: AbortSignal
+): Promise<EvidenceSource[]> {
+  const collected: EvidenceSource[] = [];
+  let ordinal = nextSourceOrdinal(bundle);
+  for (const query of queries) {
+    if (!reserveProviderCall(bundle)) break;
+    // A search failure degrades the recovery to grounding-only, exactly as it
+    // does on the structured tool path; it must not fail the request.
+    const found = await searchWeb(query, signal).catch(() => []);
+    const sources = found.map((result) => ({
+      id: `S${(ordinal += 1)}`,
+      title: result.title,
+      url: result.link,
+      date: result.date,
+      snippet: result.snippet,
+    }));
+    if (bundle) {
+      bundle.queries.push(query);
+      bundle.results.push(...sources);
+    }
+    collected.push(...sources);
+  }
+  return collected;
+}
+
+/**
+ * Recovers a turn whose tool call arrived as text rather than as a tool_use
+ * block, by honouring what the model asked for: the searches are extracted and
+ * actually run, and the results are handed back on a plain user turn -- a
+ * tool_result is not an option, because the API pairs it with a tool_use id
+ * that this turn never produced.
+ *
+ * Returns the conversation to retry with, or null when the turn is fine.
+ */
+async function recoverLeakedToolCall(
+  response: Anthropic.Message,
+  convo: Anthropic.MessageParam[],
+  bundle?: EvidenceBundle,
+  signal?: AbortSignal
+): Promise<Anthropic.MessageParam[] | null> {
+  const leaked = leakedToolCallText(response);
+  if (leaked === null) return null;
+  // One search only. The three-call provider budget already spent a call on
+  // the turn that leaked and must still fund the retry turn, so a second
+  // search here would starve the answer itself.
+  const queries = extractLeakedSearchQueries(leaked).slice(0, 1);
+  const sources = queries.length ? await runLeakedSearchQueries(queries, bundle, signal) : [];
+  const evidence = sources.length
+    ? `Web search results for ${JSON.stringify(queries)}:\n${JSON.stringify(sources)}`
+    : "No search results were returned; use the grounding data or abstain.";
+  console.log(JSON.stringify({
+    event: "tool_call_text_leak_recovered",
+    queries: queries.length,
+    sources: sources.length,
+  }));
+  return [
+    ...convo,
+    { role: "assistant", content: [{ type: "text", text: TOOL_MARKUP_PLACEHOLDER }] },
+    { role: "user", content: `${evidence}\n\n${TOOL_MARKUP_RECOVERY_NOTE}` },
+  ];
+}
+
 export async function generateAnalysis(
   client: Pick<Anthropic, "messages">,
   systemPrompt: string,
@@ -2431,6 +2756,10 @@ export async function generateAnalysis(
   const startedAt = Date.now();
   const collected: Anthropic.Message[] = [];
   let convo = toMessageParams(messages);
+  // A leaked tool call means the tool channel is misbehaving for this request,
+  // so the retry turn is asked for prose with tools off, and only ever once.
+  let toolsAllowed = allowTools;
+  let recoveredLeak = false;
   for (let turn = 0; turn <= MAX_CONTINUATIONS; turn += 1) {
     if (turn > 0 && Date.now() - startedAt > OVERALL_DEADLINE_MS) break;
     let response: Anthropic.Message | undefined;
@@ -2441,7 +2770,7 @@ export async function generateAnalysis(
           throw new AppError(504, "Analysis request exhausted its provider-call budget.");
         }
         response = await client.messages.create(
-          analysisRequestParams(systemPrompt, convo, allowTools && !bundle?.queries.length),
+          analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
           { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
         );
       } catch (error) {
@@ -2453,7 +2782,16 @@ export async function generateAnalysis(
       }
     }
     collected.push(response);
-    if (response.stop_reason !== "tool_use") break;
+    if (response.stop_reason !== "tool_use") {
+      const recovery = recoveredLeak
+        ? null
+        : await recoverLeakedToolCall(response, convo, bundle, signal);
+      if (!recovery) break;
+      recoveredLeak = true;
+      toolsAllowed = false;
+      convo = recovery;
+      continue;
+    }
     const toolResults = await runToolUses(response, bundle, signal);
     if (!toolResults) break;
     convo = [...appendAssistantTurn(convo, response), toolResults];
@@ -2522,6 +2860,8 @@ export async function generateAnalysisStream(
   const collected: Anthropic.Message[] = [];
   let convo = toMessageParams(messages);
   let anyDeltaSeen = false;
+  let toolsAllowed = allowTools;
+  let recoveredLeak = false;
   const flusher = new GuardedFlusher(onDelta);
   const abort = new AbortController();
   const signal = requestSignal ? AbortSignal.any([requestSignal, abort.signal]) : abort.signal;
@@ -2544,7 +2884,7 @@ export async function generateAnalysisStream(
           throw new AppError(504, "Analysis request exhausted its provider-call budget.");
         }
         const stream = client.messages.stream(
-          analysisRequestParams(systemPrompt, convo, allowTools && !bundle?.queries.length),
+          analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
           { timeout: REQUEST_TIMEOUT_MS, signal }
         );
         stream.on("text", (text) => {
@@ -2568,7 +2908,17 @@ export async function generateAnalysisStream(
       }
     }
     collected.push(response);
-    if (response.stop_reason !== "tool_use") break;
+    if (response.stop_reason !== "tool_use") {
+      const recovery = recoveredLeak
+        ? null
+        : await recoverLeakedToolCall(response, convo, bundle, signal);
+      if (!recovery) break;
+      flusher.discardDraft();
+      recoveredLeak = true;
+      toolsAllowed = false;
+      convo = recovery;
+      continue;
+    }
     flusher.discardDraft();
     const toolResults = await runToolUses(response, bundle, signal);
     if (!toolResults) break;

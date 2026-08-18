@@ -924,6 +924,41 @@ test("citation provenance gates exact clickable citations and rejects draft narr
   assert.equal(validateNoDraftLeak("No verified injury update was established.").passed, true);
 });
 
+test("draft-leak gate catches structural tool-call markup, not just narration", () => {
+  // The exact answer a user was shown in production.
+  const screenshot = ']<]minimax[>[<tool_call> ]<]minimax[>[<tool_call> <invoke name="web_search">'
+    + " <query>Dinamo Zagreb vs Viking FK Champions League qualifier 2026 team news injuries"
+    + " lineup</query> </invoke> </tool_call>";
+  const leaks = [
+    screenshot,
+    // Truncated / unclosed variants: the live leaks were malformed.
+    '<tool_call> <invoke name="web_search',
+    "<invoke name=\"web_search\"> <query>arsenal injuries</query>",
+    "]<]minimax[>[",
+    "<|tool_calls_begin|>",
+    '<parameter name="query">arsenal injuries</parameter>',
+    // The second live shape: a bare, unclosed JSON tool payload.
+    '{  "search_queries": ["Arsenal team news injuries Premier League August 2026"]',
+    '{"name": "web_search", "arguments": {"query": "arsenal injuries"}}',
+  ];
+  for (const leak of leaks) {
+    const result = validateNoDraftLeak(leak);
+    assert.equal(result.passed, false, `expected a leak failure for: ${leak}`);
+    assert.ok(result.failures.length > 0);
+  }
+
+  // Legitimate answers must not be failed by the widened gate.
+  for (const clean of [
+    "Arsenal are favoured at 61.2%, with expected goals <1.5 for Coventry.",
+    "Your query about away form: Arsenal win 54% of away fixtures this season.",
+    "In SQL a <query> is a statement sent to the database, not a football term.",
+    "No verified injury update was established by the available evidence.",
+    "{Note} the model rates Arsenal the stronger side at 61%.",
+  ]) {
+    assert.equal(validateNoDraftLeak(clean).passed, true, `expected a pass for: ${clean}`);
+  }
+});
+
 test("latency gate uses individual requests and enforces p90 after ten samples", () => {
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,

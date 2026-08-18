@@ -15,7 +15,23 @@ import {
   dropMisbucketedTotalsScorelines,
   sanitizeGeneralAnswer,
   normalizeBannedMarkdown,
+  stripToolCallMarkup,
+  extractLeakedSearchQueries,
 } from "./ask";
+
+// The exact string a user was shown in production: MiniMax's tool-call channel
+// leaking into the text channel, doubled and unterminated.
+const SCREENSHOT_LEAK = "]<]minimax[>[<tool_call> ]<]minimax[>[<tool_call> "
+  + '<invoke name="web_search"> <query>Dinamo Zagreb vs Viking FK Champions League qualifier '
+  + "2026 team news injuries lineup</query> </invoke> "
+  + '<invoke name="web_search"> <query>Dinamo Zagreb injury news Champions League playoff '
+  + "August 2026</query> </invoke> "
+  + '<invoke name="web_search"> <query>Viking FK Champions League playoff 2026 injury news '
+  + "squad</query> </invoke> </tool_call>";
+
+// A second live leak: a bare, unclosed JSON tool payload ahead of a real answer.
+const JSON_LEAK = '{  "search_queries": ["Arsenal team news injuries Premier League August 2026", '
+  + '"Coventry City injuries squad news August 2026"]';
 
 // The tool loop executes searches for real; stub the backend so these tests
 // stay offline and deterministic.
@@ -935,5 +951,128 @@ describe("generateAnalysisStream", () => {
     await expect(generateAnalysisStream(client, "system", [], "match", () => {}))
       .rejects.toThrow();
     expect(stream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("stripToolCallMarkup", () => {
+  it("removes the doubled, unterminated tool call shipped to a user", () => {
+    expect(stripToolCallMarkup(SCREENSHOT_LEAK)).toBe("");
+  });
+
+  it("removes a leading JSON tool payload and keeps the answer after it", () => {
+    expect(stripToolCallMarkup(`${JSON_LEAK}\n\n**Verdict**\nArsenal are favoured at 78.4%.`))
+      .toBe("**Verdict**\nArsenal are favoured at 78.4%.");
+  });
+
+  it("removes a closed name/arguments tool payload", () => {
+    expect(stripToolCallMarkup(
+      '{"name": "web_search", "arguments": {"query": "viking fk news"}}\nViking FK lead 1-0.'
+    )).toBe("Viking FK lead 1-0.");
+  });
+
+  it("removes a well-formed tool call and a truncated one alike", () => {
+    expect(stripToolCallMarkup(
+      '<tool_call>\n<invoke name="web_search">\n<query>arsenal injuries</query>\n</invoke>\n</tool_call>'
+    )).toBe("");
+    expect(stripToolCallMarkup(
+      '**Verdict**\nArsenal are favoured at 61.2%.\n<tool_call> <invoke name="web_search'
+    )).toBe("**Verdict**\nArsenal are favoured at 61.2%.");
+  });
+
+  it("removes bare control-token fragments and stray closing tags", () => {
+    expect(stripToolCallMarkup("]<]minimax[>[ <|tool_calls_begin|> <tool_call>")).toBe("");
+    expect(stripToolCallMarkup("Arsenal are favoured.</tool_call> Coventry counter well."))
+      .toBe("Arsenal are favoured. Coventry counter well.");
+  });
+
+  it("leaves ordinary prose containing angle brackets or 'query' untouched", () => {
+    for (const prose of [
+      "In SQL a <query> is the statement you send to the database, nothing to do with football.",
+      "Expected goals <1.5 here, and >2.5 only 31% of the time, so the under is favoured.",
+      "Your query about Arsenal's away form: they win 54% of away fixtures this season.",
+      "{Note} Arsenal are favoured at 61% and Coventry are the weaker side on the model.",
+      "The token `tool_call` is model syntax, not a football term.",
+    ]) {
+      expect(stripToolCallMarkup(prose)).toBe(prose);
+    }
+  });
+});
+
+describe("extractLeakedSearchQueries", () => {
+  it("recovers every query from the leaked parallel invoke block", () => {
+    expect(extractLeakedSearchQueries(SCREENSHOT_LEAK)).toEqual([
+      "Dinamo Zagreb vs Viking FK Champions League qualifier 2026 team news injuries lineup",
+      "Dinamo Zagreb injury news Champions League playoff August 2026",
+      "Viking FK Champions League playoff 2026 injury news squad",
+    ]);
+  });
+
+  it("recovers queries from an unclosed JSON payload", () => {
+    expect(extractLeakedSearchQueries(JSON_LEAK)).toEqual([
+      "Arsenal team news injuries Premier League August 2026",
+      "Coventry City injuries squad news August 2026",
+    ]);
+  });
+
+  it("returns nothing for an answer that only mentions searching", () => {
+    expect(extractLeakedSearchQueries("Arsenal are favoured at 61% on the model.")).toEqual([]);
+  });
+});
+
+describe("text-form tool call recovery", () => {
+  it("runs the leaked searches and answers from the retry turn", async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(message(SCREENSHOT_LEAK, "end_turn"))
+      .mockResolvedValueOnce(message(
+        "**Verdict**\nDinamo Zagreb are favoured at 58.1% on the model.", "end_turn"
+      ));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const bundle = { queries: [] as string[], results: [], providerCalls: 0 };
+    const answer = await generateAnalysis(client, "system", [], "match", undefined, bundle);
+    expect(answer).toContain("Dinamo Zagreb are favoured at 58.1%");
+    expect(answer).not.toMatch(/tool_call|invoke|minimax/i);
+    // One search: the provider budget must still fund the retry turn.
+    expect(searchWeb).toHaveBeenCalledTimes(1);
+    expect(searchWeb.mock.calls[0][0]).toBe(
+      "Dinamo Zagreb vs Viking FK Champions League qualifier 2026 team news injuries lineup"
+    );
+    expect(bundle.queries).toHaveLength(1);
+    // The retry turn is asked for prose, not for another tool call.
+    expect(create.mock.calls[1][0].tools).toBeUndefined();
+  });
+
+  it("fails with a 502 rather than shipping an empty bubble when the retry leaks too", async () => {
+    const create = vi.fn().mockResolvedValue(message(SCREENSHOT_LEAK, "end_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    await expect(generateAnalysis(client, "system", [], "general"))
+      .rejects.toMatchObject({ statusCode: 502 });
+  });
+
+  it("strips a leak that rides along with a usable answer without a second turn", async () => {
+    const create = vi.fn().mockResolvedValue(message(
+      `${JSON_LEAK}\n\n**Verdict**\nArsenal are strong favourites at 78.4% on the model.`,
+      "end_turn"
+    ));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const answer = await generateAnalysis(client, "system", [], "match");
+    expect(answer).toContain("Arsenal are strong favourites at 78.4%");
+    expect(answer).not.toContain("search_queries");
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("never emits a leaked draft on the streaming path", async () => {
+    const stream = vi.fn()
+      .mockReturnValueOnce(streamOf(message(SCREENSHOT_LEAK, "end_turn"), [SCREENSHOT_LEAK]))
+      .mockReturnValueOnce(streamOf(
+        message("**Verdict**\nViking FK are 41.9% to advance on the model.", "end_turn"),
+        ["**Verdict**\nViking FK are 41.9% to advance on the model."]
+      ));
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    const answer = await generateAnalysisStream(
+      client, "system", [], "match", (text) => deltas.push(text)
+    );
+    expect(answer).toContain("Viking FK are 41.9%");
+    expect(deltas.join("")).not.toMatch(/tool_call|invoke|minimax/i);
   });
 });
