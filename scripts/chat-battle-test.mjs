@@ -20,6 +20,8 @@ import {
   recordOptionalScenarioFailure,
   sanitizeEvidence,
   selectFeaturedMatch,
+  selectSuggestionChips,
+  selectTwoLeggedTie,
   snapshotAskRequest,
   snapshotSseReproduction,
   readinessFailures,
@@ -581,7 +583,15 @@ async function runCancellationScenario(scenario, options, pacer, onRequestStart)
   return result;
 }
 
-async function runScenario(scenario, options, pacer, featured, recognized, onRequestStart) {
+async function runScenario(
+  scenario,
+  options,
+  pacer,
+  featured,
+  recognized,
+  onRequestStart,
+  activeFixtures = []
+) {
   if (scenario.kind === "runtime-helper") {
     const result = baseResult(scenario);
     const actual = executeRuntimeHelperScenario(scenario, ROOT);
@@ -806,6 +816,63 @@ async function runScenario(scenario, options, pacer, featured, recognized, onReq
       })),
     }, options, pacer, onRequestStart);
   }
+  // The question every other fixture scenario avoids: a bare matchup, with no
+  // fixtureContext and no teamContext, for a club pair that forms two fixtures.
+  // Both legs carry the same two clubs, so this used to resolve to nothing at
+  // all -- and because every fixture-backed scenario here supplies an identity,
+  // no scenario could see it.
+  if (scenario.kind === "two-legged-matchup") {
+    const legs = selectTwoLeggedTie(activeFixtures);
+    if (!legs) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        evidence: "No two-legged tie in the active model set; substitution is forbidden.",
+      };
+    }
+    const [leg] = legs;
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      turns: [{
+        question: (scenario.questionTemplate ?? "What does Pundit's model say about {home} vs {away}?")
+          .replaceAll("{home}", leg.home)
+          .replaceAll("{away}", leg.away),
+        expectGrounding: "match",
+        expectTeams: [leg.home, leg.away],
+        expectCompetitionId: leg.competitionId,
+      }],
+    }, options, pacer, onRequestStart);
+  }
+  // The homepage's default entry point, reproduced exactly: the chip's own
+  // label plus the identity of the fixture it was rendered from. A chip must
+  // land on that fixture and no other.
+  if (scenario.kind === "suggestion-chip") {
+    const chips = selectSuggestionChips(activeFixtures);
+    const tie = selectTwoLeggedTie(activeFixtures);
+    const tieIds = new Set((tie ?? []).map((leg) => `espn:${leg.competitionId}:${leg.fixtureId}`));
+    // Prefer the ambiguous case when the live set offers one.
+    const chip = chips.find(({ fixtureId }) => tieIds.has(fixtureId)) ?? chips[0];
+    if (!chip) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        evidence: "No model-backed suggestion chip was rendered from the active model set.",
+      };
+    }
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      fixtureContext: { fixtureId: chip.fixtureId },
+      turns: [{
+        question: chip.text,
+        expectGrounding: "match",
+        expectTeams: [chip.fixture.home, chip.fixture.away],
+        expectFixtureId: chip.fixtureId,
+        expectCompetitionId: chip.fixture.competitionId,
+      }],
+    }, options, pacer, onRequestStart);
+  }
   if (scenario.kind === "invalid") {
     return runInvalidScenario(scenario, options, pacer, onRequestStart);
   }
@@ -944,7 +1011,8 @@ async function main() {
           report.progress.activeRequest = request;
           report.completedAt = new Date().toISOString();
           await writeCheckpoint(report, options.outputDir);
-        }
+        },
+        fixtureDiscovery.body?.fixtures ?? []
       );
       report.scenarios.push(result);
       report.progress.completedScenarioIds.push(scenario.id);

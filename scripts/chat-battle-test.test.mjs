@@ -23,6 +23,8 @@ import {
   recordOptionalScenarioFailure,
   readinessFailures,
   selectFeaturedMatch,
+  selectSuggestionChips,
+  selectTwoLeggedTie,
   snapshotAskRequest,
   snapshotSseReproduction,
   validateGrounding,
@@ -118,6 +120,35 @@ test("selectFeaturedMatch uses a model-backed active club fixture with known tea
   ]);
   assert.equal(match.home, "Riga FC");
   assert.equal(selectFeaturedMatch([]), null);
+});
+
+// The evaluator could not see the two-legged shape at all: every fixture
+// scenario supplies a fixtureContext, so none of them asked a bare "X vs Y" of
+// a club pair that forms two fixtures -- the question that returned no
+// grounding in production.
+test("selectTwoLeggedTie finds the earliest club pair that meets twice", () => {
+  const legs = selectTwoLeggedTie([
+    { competitionId: "eng.1", home: "Arsenal", away: "Coventry City", fixtureId: 1, utcDate: "2026-08-17T15:00:00Z" },
+    { competitionId: "uefa.champions_qual", home: "Viking", away: "Dinamo Zagreb", fixtureId: 3, utcDate: "2026-08-26T19:00:00Z" },
+    { competitionId: "uefa.champions_qual", home: "Dinamo Zagreb", away: "Viking", fixtureId: 2, utcDate: "2026-08-18T19:00:00Z" },
+  ]);
+  assert.equal(legs.length, 2);
+  assert.equal(legs[0].fixtureId, 2, "legs are ordered by kickoff");
+  assert.equal(legs[1].fixtureId, 3);
+  assert.equal(selectTwoLeggedTie([
+    { competitionId: "eng.1", home: "Arsenal", away: "Coventry City", fixtureId: 1, utcDate: "2026-08-17T15:00:00Z" },
+  ]), null);
+  assert.equal(selectTwoLeggedTie([]), null);
+});
+
+test("selectSuggestionChips reproduces the homepage chips with their fixture identity", () => {
+  const chips = selectSuggestionChips([
+    { competitionId: "uefa.champions_qual", competition: "UEFA Champions League Qualifiers", home: "Dinamo Zagreb", away: "Viking", fixtureId: 2, utcDate: "2026-08-18T19:00:00Z" },
+    { competitionId: "eng.1", competition: "Premier League", home: "TBD", away: "Arsenal", fixtureId: 4, utcDate: "2026-08-19T19:00:00Z" },
+  ]);
+  assert.equal(chips.length, 1);
+  assert.equal(chips[0].fixtureId, "espn:uefa.champions_qual:2");
+  assert.match(chips[0].text, /^Dinamo Zagreb vs Viking · UCL · /);
 });
 
 test("SSE parser and validator enforce grounding, delta, done order", () => {
@@ -1117,6 +1148,8 @@ test("runtime-helper scenarios execute the current API correctness module, not c
     "one-one-is-not-over-two-five",
     "unrelated-citation-rejected",
     "degraded-search-retrieval-verifier",
+    "two-legged-tie-resolves-to-a-real-leg",
+    "suggestion-chip-identity-selects-its-leg",
   ]) {
     assert.equal(runtime.has(id), true, `missing built runtime helper scenario ${id}`);
   }
@@ -1158,6 +1191,11 @@ test("runtime-helper scenarios execute the current API correctness module, not c
     "temporary-fixture-unavailability",
     "unsupported-followup-and-matchup-replacement",
     "neutral-venue-missing-input",
+    // Both legs of a tie carry the same two clubs. Asking for one used to
+    // resolve to nothing at all, and no scenario here could see it because
+    // every other fixture scenario supplies a fixtureContext.
+    "two-legged-tie-resolves-to-a-real-leg",
+    "suggestion-chip-identity-selects-its-leg",
   ]) {
     assert.equal(runtime.get(id).helper, "resolveFixtureRoutingSequence");
     assert.deepEqual(
@@ -1242,6 +1280,10 @@ test("schema-10 permanent certification matrix names every authorized regression
     "one-one-is-not-over-two-five",
     "unrelated-citation-rejected",
     "degraded-search-retrieval-verifier",
+    "two-legged-tie-resolves-to-a-real-leg",
+    "suggestion-chip-identity-selects-its-leg",
+    "observational-live-two-legged-matchup",
+    "observational-live-suggestion-chip",
   ]) {
     assert.equal(ids.has(id), true, `missing permanent scenario ${id}`);
   }
@@ -1251,15 +1293,23 @@ test("schema-10 permanent certification matrix names every authorized regression
     "temporary-fixture-unavailability",
     "unsupported-followup-and-matchup-replacement",
     "neutral-venue-missing-input",
+    "two-legged-tie-resolves-to-a-real-leg",
+    "suggestion-chip-identity-selects-its-leg",
   ]) {
     assert.equal(byId.get(id).kind, "runtime-helper");
     assert.notEqual(byId.get(id).requiredForCertification, false);
   }
+  // Live-set shape decides whether these can run at all, so they stay
+  // observational -- but a failure, as opposed to an absent tie, still counts.
+  assert.equal(byId.get("observational-live-two-legged-matchup").kind, "two-legged-matchup");
+  assert.equal(byId.get("observational-live-suggestion-chip").kind, "suggestion-chip");
   for (const id of [
     "observational-live-friendly",
     "observational-live-temporary",
     "observational-live-replacement",
     "observational-live-neutral-venue",
+    "observational-live-two-legged-matchup",
+    "observational-live-suggestion-chip",
   ]) {
     assert.equal(byId.get(id).requiredForCertification, false);
   }

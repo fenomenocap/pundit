@@ -185,6 +185,58 @@ export function selectFeaturedMatch(matches = []) {
   ) ?? null;
 }
 
+function clubPairKey(match) {
+  return [match?.home, match?.away]
+    .map((team) => String(team ?? "").trim().toLowerCase())
+    .sort()
+    .join("|");
+}
+
+/**
+ * The earliest active fixture whose two clubs meet twice -- a two-legged tie.
+ *
+ * This is the shape the evaluator could not see before: every fixture-backed
+ * scenario supplies `fixtureContext`, so none of them ever asked a bare
+ * "X vs Y" of a pair that forms two fixtures, which is exactly the question
+ * that used to fail. Roughly a quarter of the live active pairs are two-legged
+ * and the date-sorted qualifiers lead the list, so this normally resolves.
+ */
+export function selectTwoLeggedTie(matches = []) {
+  const byPair = new Map();
+  for (const match of matches) {
+    if (!isKnownTeam(match?.home) || !isKnownTeam(match?.away)) continue;
+    const key = clubPairKey(match);
+    byPair.set(key, [...(byPair.get(key) ?? []), match]);
+  }
+  const ties = [...byPair.values()]
+    .filter((legs) => legs.length > 1)
+    .map((legs) => [...legs].sort((a, b) => String(a.utcDate).localeCompare(String(b.utcDate))))
+    .sort((a, b) => String(a[0].utcDate).localeCompare(String(b[0].utcDate)));
+  return ties[0] ?? null;
+}
+
+function competitionAbbr(competitionId, competition) {
+  if (competitionId === "eng.1") return "PL";
+  if (String(competitionId).includes("champions")) return "UCL";
+  return String(competition).split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
+}
+
+/**
+ * The homepage's suggestion chips, reproduced from the same source the page
+ * uses: the first `limit` fixtures of `/api/model/active`, labelled the same
+ * way, each carrying the identity of the fixture it was rendered from.
+ */
+export function selectSuggestionChips(matches = [], limit = 3) {
+  return matches.slice(0, limit)
+    .filter((match) => isKnownTeam(match?.home) && isKnownTeam(match?.away))
+    .map((match) => ({
+      fixture: match,
+      fixtureId: `espn:${match.competitionId}:${match.fixtureId}`,
+      text: `${match.home} vs ${match.away} · ${competitionAbbr(match.competitionId, match.competition)}`
+        + ` · ${new Date(match.utcDate).toLocaleDateString("en-US", { weekday: "short" })}`,
+    }));
+}
+
 export function parseSse(text) {
   const events = [];
   for (const block of text.replace(/\r\n/g, "\n").split("\n\n")) {
