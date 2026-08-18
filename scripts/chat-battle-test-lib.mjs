@@ -580,9 +580,47 @@ export function validateCitationContract(answer, citations, required = false) {
   };
 }
 
+/** Prose narration of the search process: "Let me check the latest news...". */
+const PROSE_DRAFT_LEAK =
+  /\b(?:let me (?:search|check|look)|i(?:'ll| will) (?:search|check|look)|now i have enough|search results show)\b/i;
+
+/**
+ * Structural tool-call markup. This is the half the battle test was missing:
+ * it only ever matched narration, so a production answer that opened with
+ * "]<]minimax[>[<tool_call> <invoke name=\"web_search\">..." passed every
+ * check and shipped to a user. MiniMax leaks its tool-call intent as text in
+ * at least two shapes — pseudo-XML with control-token fragments, and a bare
+ * JSON payload — and the leaks are routinely truncated, so each marker is
+ * matched on its own rather than as a well-formed pair.
+ */
+const STRUCTURAL_TOOL_LEAK = [
+  // Region tags, opening or closing, closed or cut off mid-emission.
+  /<\s*\/?\s*(?:antml:)?(?:tool_call|tool_calls|tool_use|tool_result|tool_response|function_call|function_calls|invoke)\b/i,
+  // <parameter name="query"> and the <query> element nested inside an invoke.
+  /<\s*(?:antml:)?parameter\s+name\s*=/i,
+  /<\s*(?:antml:)?query\s*>[\s\S]*<\s*\/\s*(?:antml:)?(?:query|invoke|tool_call)/i,
+  // Chat-template control tokens: MiniMax's own framing bytes and <|...|>.
+  /\]<\]\s*minimax\s*\[>\[|<\|[^|\n>]{0,60}\|>/i,
+];
+
+/**
+ * A JSON tool payload written as the answer, e.g. the live leak
+ * '{  "search_queries": ["Arsenal team news ...", ...]'. Anchored to the start
+ * of the answer, and requires a tool-ish key, so an answer that merely
+ * discusses JSON or quotes a brace is not failed.
+ */
+const JSON_TOOL_PAYLOAD_LEAK =
+  /^\s*\{[\s\S]{0,200}?"(?:search_queries|search_query|queries|tool|tool_name|tool_call|tool_calls|function|arguments|parameters)"\s*:/i;
+
 export function validateNoDraftLeak(answer) {
-  const leaked = /\b(?:let me (?:search|check|look)|i(?:'ll| will) (?:search|check|look)|now i have enough|search results show)\b/i.test(answer ?? "");
-  return { passed: !leaked, failures: leaked ? ["answer leaked a search/tool draft"] : [] };
+  const text = answer ?? "";
+  const failures = [];
+  if (PROSE_DRAFT_LEAK.test(text)) failures.push("answer leaked a search/tool draft");
+  if (STRUCTURAL_TOOL_LEAK.some((pattern) => pattern.test(text))) {
+    failures.push("answer leaked raw tool-call markup");
+  }
+  if (JSON_TOOL_PAYLOAD_LEAK.test(text)) failures.push("answer leaked a JSON tool payload");
+  return { passed: failures.length === 0, failures };
 }
 
 /**
