@@ -483,12 +483,110 @@ function renderValidatedOneXTwoMarket(legs: readonly OneXTwoMarketLeg[]): string
   return `${label}: home ${percent(market.noVigProbabilities.home)}, draw ${percent(market.noVigProbabilities.draw)}, away ${percent(market.noVigProbabilities.away)} (observed ${market.observedAt}).`;
 }
 
+/**
+ * Naming an external market source. `stake` is also an ordinary English noun,
+ * so "at stake" is excluded -- "three points are at stake" used to make the
+ * whole surrounding block look like a bookmaker quote.
+ */
+const EXTERNAL_MARKET_MENTION =
+  /\b(?:bookmakers?|bookies?|betting markets?|market[- ]implied|third[- ]party markets?|kalshi|polymarket|decimal odds)\b|(?<!\bat\s)\bstake\b/i;
+
+/** A number that could be a price: a percentage, a decimal quote, or a leg value. */
+const MARKET_PRICE_NUMBER =
+  /\d+(?:\.\d+)?\s*%|\b\d+\.\d{1,2}\b|\b\d+(?:\.\d+)?\s*(?:decimal|to 1)\b|\b(?:home|draw|away)\s*[:=–—-]\s*\d/i;
+
+/**
+ * Saying that a source has *no* line is the opposite of quoting one, and
+ * MATCH_SYSTEM_PROMPT explicitly asks for it ("if no market source is present
+ * at all, say plainly that no market line is available"). The negation has to
+ * govern the market noun, so "no Kalshi market is available" qualifies while
+ * "Kalshi has no doubt about the favourite, home 62%" does not.
+ */
+const MARKET_ABSENCE_STATEMENT =
+  /\b(?:no|not|neither|nor|never|without|absent|unavailable|unpriced|missing|lacks?|lacking|none)\b[^.!?\n]{0,40}?\b(?:markets?|lines?|prices?|priced|quotes?|odds|sources?|listings?|listed|coverage)\b|\b(?:markets?|lines?|prices?|quotes?|odds|sources?)\b[^.!?\n]{0,30}?\b(?:unavailable|not available|not present|absent|missing|unpriced)\b/i;
+
+/**
+ * A price positively attributed to an external source. This overrides the
+ * absence exemption, so a sentence cannot smuggle a quote in behind a
+ * "no market" clause. Only attributive verbs are listed -- "sits"/"is"/"at"
+ * are ordinary model prose ("the model sits at 77.6%") and would re-open the
+ * hole this guard exists to close in the other direction.
+ */
+const EXTERNAL_PRICE_ATTRIBUTION = new RegExp([
+  String.raw`\b(?:bookmakers?|bookies?|betting markets?|third[- ]party markets?|kalshi|polymarket|stake)\b[^.!?\n]{0,40}?\b(?:has|have|had|prices?|priced|pricing|quotes?|quoted|lists?|listed|shows?|puts?|offers?|trades?|trading|pegs?|rates?|impl(?:y|ies|ied))\b[^.!?\n]{0,25}?\d`,
+  String.raw`\b(?:bookmakers?|betting markets?|kalshi|polymarket|stake)\b[^.!?\n]{0,20}?[:=][^.!?\n]{0,40}?\d`,
+  String.raw`\b(?:market[- ]implied|decimal odds)\b[^.!?\n]{0,30}?\d`,
+].join("|"), "i");
+
+/**
+ * A bare leg of a quoted market block ("home: 2.00"), which is what a
+ * source-naming header line is allowed to carry with it. Deliberately narrow:
+ * the old guard swallowed any four following numeric lines, which is how one
+ * "no Kalshi market is available" sentence deleted a whole answer body.
+ */
+const MARKET_LEG_LINE =
+  /^\s*(?:[-*•]\s*)?\*{0,2}(?:home|draw|away|1|x|2)\*{0,2}\s*[:=]\s*\*{0,2}\d+(?:\.\d+)?%?\*{0,2}\s*$/i;
+
+/**
+ * Does this sentence assert an external market *price*? Pundit's own model
+ * numbers never do, because they name no external source.
+ */
+function assertsExternalMarketPrice(sentence: string): boolean {
+  if (EXTERNAL_PRICE_ATTRIBUTION.test(sentence)) return true;
+  if (!EXTERNAL_MARKET_MENTION.test(sentence)) return false;
+  if (!MARKET_PRICE_NUMBER.test(sentence)) return false;
+  return !MARKET_ABSENCE_STATEMENT.test(sentence);
+}
+
+/**
+ * Sentence split that survives prices. The file's usual
+ * `/[^.!?\n]+(?:[.!?]+|$)/g` treats the point in "3.40" as a full stop, which
+ * would leave "40 and the away win at 3.60." behind after a removal. A
+ * terminator only ends a sentence when it is not between two digits and is
+ * followed by whitespace or end of line. Trailing whitespace stays inside each
+ * piece so the surviving pieces rejoin into the original line.
+ */
+function splitPriceSafeSentences(line: string): string[] {
+  const sentences: string[] = [];
+  let start = 0;
+  for (let index = 0; index < line.length; index += 1) {
+    if (!/[.!?]/.test(line[index])) continue;
+    if (line[index] === "."
+      && /\d/.test(line[index - 1] ?? "")
+      && /\d/.test(line[index + 1] ?? "")) continue;
+    let end = index + 1;
+    while (end < line.length && /[.!?]/.test(line[end])) end += 1;
+    if (end < line.length && !/\s/.test(line[end])) continue;
+    while (end < line.length && /\s/.test(line[end])) end += 1;
+    sentences.push(line.slice(start, end));
+    start = end;
+    index = end - 1;
+  }
+  if (start < line.length) sentences.push(line.slice(start));
+  return sentences;
+}
+
+/**
+ * Sentence-level rather than line-level, so "No Kalshi market is available."
+ * and "Man United win 77.6%." sharing a line no longer share a fate.
+ */
+function stripExternalPriceSentences(line: string): { text: string; removed: boolean } {
+  const sentences = splitPriceSafeSentences(line);
+  if (!sentences.length) return { text: line, removed: false };
+  let removed = false;
+  const kept = sentences.filter((sentence) => {
+    if (!assertsExternalMarketPrice(sentence)) return true;
+    removed = true;
+    return false;
+  });
+  if (!removed) return { text: line, removed: false };
+  return { text: kept.join("").replace(/\s{2,}/g, " ").trim(), removed: true };
+}
+
 export function stripUnvalidatedExternalMarketClaims(
   answer: string,
   marketLegSets: readonly (readonly OneXTwoMarketLeg[])[] = []
 ): string {
-  const externalMarket = /\b(?:bookmaker|betting market|market[- ]implied|third[- ]party market|stake|kalshi|polymarket|decimal odds)\b/i;
-  const numericMarket = /\b\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?\s*(?:decimal|to 1)\b|\b(?:home|draw|away)\s*[:=–—-]\s*\d+(?:\.\d+)?\b/i;
   const validated = marketLegSets.flatMap((legs) => {
     const result = validateCompleteOneXTwoMarket(legs);
     if (!result.valid) return [];
@@ -500,30 +598,66 @@ export function stripUnvalidatedExternalMarketClaims(
   const removedLines = new Set<number>();
   let removed = false;
   for (let index = 0; index < lines.length; index += 1) {
-    if (!externalMarket.test(lines[index])) continue;
-    const numericLines: number[] = [];
-    if (numericMarket.test(lines[index])) numericLines.push(index);
-    for (let next = index + 1; next < Math.min(lines.length, index + 5); next += 1) {
-      if (!lines[next].trim() || !numericMarket.test(lines[next])) break;
-      numericLines.push(next);
+    const line = lines[index];
+    // A source-naming header only carries the bare market legs directly under
+    // it, never arbitrary numeric prose.
+    const legLines: number[] = [];
+    if (EXTERNAL_MARKET_MENTION.test(line)) {
+      for (let next = index + 1; next < lines.length && legLines.length < 4; next += 1) {
+        if (!MARKET_LEG_LINE.test(lines[next])) break;
+        legLines.push(next);
+      }
     }
-    if (!numericLines.length) continue;
+    const sentences = stripExternalPriceSentences(line);
+    if (!sentences.removed && !legLines.length) continue;
     removed = true;
-    removedLines.add(index);
-    numericLines.forEach((line) => removedLines.add(line));
+    legLines.forEach((legIndex) => removedLines.add(legIndex));
     const matching = validated.find(({ source }) =>
-      source && lines[index].toLocaleLowerCase().includes(source)
+      source && line.toLocaleLowerCase().includes(source)
     );
-    if (!matching || emittedSources.has(matching.source)) continue;
-    emittedSources.add(matching.source);
-    lines[index] = matching.rendered;
-    removedLines.delete(index);
+    if (matching && !emittedSources.has(matching.source)) {
+      emittedSources.add(matching.source);
+      lines[index] = matching.rendered;
+      continue;
+    }
+    // Keep whatever the line said outside the priced clause.
+    if (sentences.removed && sentences.text) lines[index] = sentences.text;
+    else removedLines.add(index);
   }
   const retained = lines.filter((_line, index) => !removedLines.has(index)).join("\n").trim();
   if (!removed) return answer;
   if (emittedSources.size > 0) return retained;
   const notice = "I could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers.";
   return retained ? `${retained}\n\n${notice}` : notice;
+}
+
+/** A standalone bold section label, e.g. `**Verdict**` or `**Verdict:**`. */
+const SECTION_LABEL_LINE = /^\s*\*\*[^*\n]+\*\*:?\s*$/;
+
+/**
+ * Every guard above removes content without knowing which section heading
+ * introduced it, so a fully-stripped section leaves its label stranded over
+ * blank space. Blank lines do not decide the question -- the repo's own answer
+ * format puts a blank line between a label and its body -- only the next
+ * non-blank line does: real body text keeps the label, another label (or the
+ * end of the answer) means nothing was left to introduce.
+ *
+ * Callers must run this only on a settled answer. On a streaming prefix a
+ * label legitimately has no body yet, and dropping it then re-adding it on the
+ * next, longer prefix reads as divergence to the flusher.
+ */
+export function dropOrphanedSectionLabels(answer: string): string {
+  const lines = answer.split("\n");
+  const retained = lines.filter((line, index) => {
+    if (!SECTION_LABEL_LINE.test(line)) return true;
+    for (let next = index + 1; next < lines.length; next += 1) {
+      if (!lines[next].trim()) continue;
+      return !SECTION_LABEL_LINE.test(lines[next]);
+    }
+    return false;
+  });
+  if (retained.length === lines.length) return answer;
+  return retained.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export interface ManagerEraContext {
@@ -2552,16 +2686,20 @@ function sanitizeAnswerForTier(
       stripProcessNarration(stripToolCallMarkup(answer))
     ))
   ), grounding?.kind === "match" ? grounding : undefined);
+  // Section labels left stranded by the guards above are also a property of
+  // the whole answer -- a label on a streaming prefix is simply waiting for its
+  // body -- so the cleanup is gated on `final` for the same reason.
+  const settled = (tierAnswer: string) => (final ? dropOrphanedSectionLabels(tierAnswer) : tierAnswer);
   if (tier === "match") {
-    return sanitizeMatchAnswer(
+    return settled(sanitizeMatchAnswer(
       commonSafeAnswer,
       grounding?.kind === "match" ? grounding : undefined
-    );
+    ));
   }
-  if (tier === "season") return sanitizeSeasonAnswer(commonSafeAnswer);
-  if (tier === "competition") return sanitizeCompetitionAnswer(commonSafeAnswer);
+  if (tier === "season") return settled(sanitizeSeasonAnswer(commonSafeAnswer));
+  if (tier === "competition") return settled(sanitizeCompetitionAnswer(commonSafeAnswer));
   const generalAnswer = sanitizeGeneralAnswer(commonSafeAnswer);
-  return final ? ensureGeneralDisclaimer(generalAnswer) : generalAnswer;
+  return settled(final ? ensureGeneralDisclaimer(generalAnswer) : generalAnswer);
 }
 
 // Separate text blocks that would otherwise collide. MiniMax splits an answer
@@ -3203,7 +3341,9 @@ export async function answerQuestion(
       Boolean(query || bundle.queries.length)
     );
     return {
-      answer: rendered.answer,
+      // Evidence, correction and market guards run again after the tier chain,
+      // so the settled answer is re-checked for labels they emptied.
+      answer: dropOrphanedSectionLabels(rendered.answer),
       grounding,
       verification: checked.verification,
       ...(rendered.citations.length ? { citations: rendered.citations } : {}),
@@ -3333,13 +3473,17 @@ export async function answerQuestionStream(
       bundle,
       Boolean(query || bundle.queries.length)
     );
+    // Evidence, correction and market guards run again after the tier chain,
+    // so the settled answer is re-checked for labels they emptied. The held
+    // delta and the done payload carry the same settled text.
+    const settledAnswer = dropOrphanedSectionLabels(rendered.answer);
     if ((query || ambiguousFallback || holdForCoverageGuard)
-      && rendered.answer
+      && settledAnswer
       && (handlers.shouldContinue ?? (() => true))()) {
-      handlers.onDelta(rendered.answer);
+      handlers.onDelta(settledAnswer);
     }
     return {
-      answer: rendered.answer,
+      answer: settledAnswer,
       grounding,
       verification: checked.verification,
       ...(rendered.citations.length ? { citations: rendered.citations } : {}),

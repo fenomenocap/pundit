@@ -35,6 +35,7 @@ import {
   type FixtureGrounding,
   shouldHoldCoverageDeltas,
   stripUnvalidatedExternalMarketClaims,
+  dropOrphanedSectionLabels,
   type Grounding,
 } from "./ask";
 import {
@@ -213,6 +214,80 @@ describe("current-news evidence hardening", () => {
     ].join("\n"))).toBe(
       "Safe unrelated sentence.\n\nI could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers."
     );
+  });
+
+  it("keeps the model's own numbers and the prompt-mandated no-market sentence", () => {
+    // MATCH_SYSTEM_PROMPT tells the model to say plainly when no market source
+    // is present. That sentence used to trigger the market guard, which then
+    // deleted up to four following numeric lines -- the whole answer body.
+    const reported = [
+      "**Verdict**",
+      "No Kalshi market is available.",
+      "Man United win **77.6%**, draw **14.2%**, Hull **8.2%**.",
+      "Over 2.5 sits at **77.6%**.",
+      "BTTS No at **61.0%**.",
+    ].join("\n");
+    expect(stripUnvalidatedExternalMarketClaims(reported)).toBe(reported);
+    expect(sanitizeMatchAnswer(reported)).toContain("77.6%");
+    expect(sanitizeMatchAnswer(reported)).not.toContain("omitted those numbers");
+
+    for (const survivor of [
+      "No Kalshi or Polymarket line is available for this fixture.\nThe model has the home side at **48.0%**.",
+      "Neither bookmaker line is available, so the model's **55.0%** stands alone.",
+      // "stake" is also an ordinary English noun.
+      "Three points are at stake for both sides.\nLiverpool win **55.5%**, draw **24.0%**, Everton **20.5%**.",
+      // A model line under a market heading is not a market quote.
+      "**Market**\nNo market source is present.\n\n**Verdict**\nMan City win **70.1%**, draw **18.2%**, Burnley **11.7%**.",
+    ]) expect(stripUnvalidatedExternalMarketClaims(survivor)).toBe(survivor);
+  });
+
+  it("still removes an asserted external market price, including bare decimal quotes", () => {
+    for (const priced of [
+      "Kalshi has Arsenal at 62%, so the model is a touch higher.",
+      "The bookmakers price the draw at 3.40 and the away win at 3.60.",
+      "Polymarket prices the home win at 58.0%.",
+      "Kalshi market-implied home 48.0%, draw 28.0%, away 24.0%.",
+      "Stake market: home 2.10, draw 3.40, away 3.60.",
+    ]) {
+      const sanitized = stripUnvalidatedExternalMarketClaims(priced);
+      expect(sanitized).toContain("omitted those numbers");
+      expect(sanitized).not.toMatch(/\d+(?:\.\d+)?%|\b\d+\.\d\d\b/);
+    }
+    // Only the priced clause goes; neighbouring model prose survives intact.
+    const mixed = stripUnvalidatedExternalMarketClaims([
+      "Polymarket prices the home win at 58.0%.",
+      "The model has the home win at **77.6%**.",
+      "Over 2.5 sits at **54.0%**.",
+    ].join("\n"));
+    expect(mixed).not.toContain("58.0%");
+    expect(mixed).toContain("**77.6%**");
+    expect(mixed).toContain("**54.0%**");
+  });
+
+  it("drops a section label the guards emptied and keeps one whose body follows a blank line", () => {
+    expect(dropOrphanedSectionLabels(
+      "**Verdict**\n\nI could not establish a complete same-source, same-time bookmaker 1X2 market."
+    )).toBe("**Verdict**\n\nI could not establish a complete same-source, same-time bookmaker 1X2 market.");
+    expect(dropOrphanedSectionLabels("**Verdict**")).toBe("");
+    expect(dropOrphanedSectionLabels(
+      "**Verdict**\n\n**Read on the underdog**\nAshcombe need a low-scoring game."
+    )).toBe("**Read on the underdog**\nAshcombe need a low-scoring game.");
+    const intact = "**Verdict**\nArsenal win **61.0%**.\n\n**Likely scorelines**\n**2-1 (11.4%)** leads.";
+    expect(dropOrphanedSectionLabels(intact)).toBe(intact);
+
+    // End to end: the guard removes a real market quote and its heading goes too.
+    expect(dropOrphanedSectionLabels(sanitizeMatchAnswer([
+      "**Verdict**",
+      "Stake market: home 2.10, draw 3.40, away 3.60.",
+      "",
+      "**Read on the underdog**",
+      "Ashcombe need the game to stay low-scoring.",
+    ].join("\n")))).toBe([
+      "**Read on the underdog**",
+      "Ashcombe need the game to stay low-scoring.",
+      "",
+      "I could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers.",
+    ].join("\n"));
   });
 
   it("fails manager-era assertions closed unless the dated tenure record supports them", () => {
