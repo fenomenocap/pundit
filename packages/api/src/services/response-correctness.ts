@@ -252,3 +252,64 @@ export function applyClaimDecisions(
     : conflictNotice || "I could not establish a supported answer from the retrieved evidence.";
   return { answer, supported, removedClaimIds, conflictClaimIds };
 }
+
+/**
+ * The same claim bookkeeping as `applyClaimDecisions`, but the answer is
+ * *revised* rather than *rebuilt*.
+ *
+ * `applyClaimDecisions` composes its answer out of the supported claims alone,
+ * which is right when the claims are the whole answer and destructive when they
+ * are not: everything the generator wrote from Pundit's own grounding --
+ * probabilities, reasoning, the verdict -- carries no citation marker, was never
+ * a claim, and is discarded along with the unsupported ones. This walks the
+ * original text instead. Each claim's span is replaced by its re-marked
+ * supported text, or by nothing if the verifier did not support it, and every
+ * other character is left exactly as written.
+ *
+ * `applyClaimDecisions` is deliberately untouched: callers that genuinely want
+ * an evidence-only answer still have it.
+ */
+export function reviseAnswerWithClaimDecisions(
+  answer: string,
+  claims: readonly VerifiableClaim[],
+  decisions: readonly ClaimDecision[]
+): {
+  answer: string;
+  supported: VerifiableClaim[];
+  removedClaimIds: string[];
+  conflictClaimIds: string[];
+} {
+  const applied = applyClaimDecisions(claims, decisions);
+  const supportedTextById = new Map(applied.supported.map((claim) => [claim.id, claim.text]));
+
+  let cursor = 0;
+  let revised = "";
+  for (const claim of claims) {
+    // Claim text is verbatim from the answer, so placing a claim is a search
+    // rather than a reconstruction. Claims are located in order from a moving
+    // cursor, so two identical sentences resolve to their own spans. A claim
+    // that cannot be located is left alone: deleting text that failed to match
+    // would be exactly the failure this function exists to remove.
+    const index = answer.indexOf(claim.text, cursor);
+    if (index < 0) continue;
+    revised += answer.slice(cursor, index) + (supportedTextById.get(claim.id) ?? "");
+    cursor = index + claim.text.length;
+  }
+  revised += answer.slice(cursor);
+
+  // Duplicated from `applyClaimDecisions` rather than shared, so that function
+  // stays byte-for-byte what its own tests and the battle harness assert.
+  const conflictNotice = applied.conflictClaimIds.length
+    ? "The retrieved sources conflict on one or more requested facts, so those claims were omitted."
+    : "";
+  const withNotice = conflictNotice
+    ? (revised.trim() ? `${revised.trimEnd()} ${conflictNotice}` : conflictNotice)
+    : revised;
+
+  return {
+    answer: withNotice,
+    supported: applied.supported,
+    removedClaimIds: applied.removedClaimIds,
+    conflictClaimIds: applied.conflictClaimIds,
+  };
+}

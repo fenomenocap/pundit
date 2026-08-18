@@ -27,6 +27,11 @@ import {
   type EvidenceAuthority,
 } from "./evidence-page-retrieval";
 import {
+  SECTION_LABEL_LINE,
+  splitAnswerSentences,
+  splitPriceSafeSentences,
+} from "./answer-provenance";
+import {
   applyClaimDecisions,
   attributeManagerEra,
   containsCorrectionCue,
@@ -359,16 +364,7 @@ export function evidenceAuthority(rawUrl: string): EvidenceAuthority {
 }
 
 export function verifiableCurrentClaims(answer: string): VerifiableClaim[] {
-  const sentences = answer.match(/[^.!?\n]+(?:[.!?]+|$)/g) ?? [];
-  const joined: string[] = [];
-  for (const sentence of sentences.map((value) => value.trim()).filter(Boolean)) {
-    if (/^(?:\[\[S\d+\]\]\s*)+$/.test(sentence) && joined.length) {
-      joined[joined.length - 1] = `${joined[joined.length - 1]} ${sentence}`;
-    } else {
-      joined.push(sentence);
-    }
-  }
-  return joined
+  return splitAnswerSentences(answer)
     // Server-owned citation markers identify the externally sourced claims.
     // Model-grounded numeric sentences have no marker and are not sent to the
     // current-fact verifier, so live evidence can never rewrite probabilities.
@@ -541,34 +537,6 @@ function assertsExternalMarketPrice(sentence: string): boolean {
 }
 
 /**
- * Sentence split that survives prices. The file's usual
- * `/[^.!?\n]+(?:[.!?]+|$)/g` treats the point in "3.40" as a full stop, which
- * would leave "40 and the away win at 3.60." behind after a removal. A
- * terminator only ends a sentence when it is not between two digits and is
- * followed by whitespace or end of line. Trailing whitespace stays inside each
- * piece so the surviving pieces rejoin into the original line.
- */
-function splitPriceSafeSentences(line: string): string[] {
-  const sentences: string[] = [];
-  let start = 0;
-  for (let index = 0; index < line.length; index += 1) {
-    if (!/[.!?]/.test(line[index])) continue;
-    if (line[index] === "."
-      && /\d/.test(line[index - 1] ?? "")
-      && /\d/.test(line[index + 1] ?? "")) continue;
-    let end = index + 1;
-    while (end < line.length && /[.!?]/.test(line[end])) end += 1;
-    if (end < line.length && !/\s/.test(line[end])) continue;
-    while (end < line.length && /\s/.test(line[end])) end += 1;
-    sentences.push(line.slice(start, end));
-    start = end;
-    index = end - 1;
-  }
-  if (start < line.length) sentences.push(line.slice(start));
-  return sentences;
-}
-
-/**
  * Sentence-level rather than line-level, so "No Kalshi market is available."
  * and "Man United win 77.6%." sharing a line no longer share a fate.
  */
@@ -632,9 +600,6 @@ export function stripUnvalidatedExternalMarketClaims(
   const notice = "I could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers.";
   return retained ? `${retained}\n\n${notice}` : notice;
 }
-
-/** A standalone bold section label, e.g. `**Verdict**` or `**Verdict:**`. */
-const SECTION_LABEL_LINE = /^\s*\*\*[^*\n]+\*\*:?\s*$/;
 
 /**
  * Every guard above removes content without knowing which section heading
@@ -2508,7 +2473,7 @@ export function stripToolCallMarkup(answer: string): string {
  * was *entirely* markup must surface as an error rather than as an empty or
  * fragmentary chat bubble.
  */
-function hasMeaningfulProse(answer: string): boolean {
+export function hasMeaningfulProse(answer: string): boolean {
   return (answer.match(/\p{L}/gu)?.length ?? 0) >= 20
     && answer.trim().split(/\s+/).filter(Boolean).length >= 4;
 }
@@ -2699,7 +2664,7 @@ export function ensureGeneralDisclaimer(answer: string): string {
 // on settled prefixes put the disclaimer after the first line, and the next,
 // longer prefix then no longer extended what had already been sent -- the
 // flusher read that as divergence and stopped streaming after one delta.
-function sanitizeAnswerForTier(
+export function sanitizeAnswerForTier(
   answer: string,
   tier: AnalysisTier,
   grounding?: AskGrounding,
@@ -3279,6 +3244,118 @@ function mapAnalysisError(err: unknown): never {
   throw new AppError(502, "Analysis generation failed. Please try again.");
 }
 
+/**
+ * Everything that happens to a generated answer between the model returning it
+ * and the route replying: the coverage/candidate sanitizer, current-claim
+ * verification against the retrieved evidence, the empty-verification fail-close,
+ * the market-correctness sanitizer, the correction acknowledgement, citation
+ * rendering, and the final orphaned-label sweep.
+ *
+ * `answerQuestion` and `answerQuestionStream` carried this tail verbatim, twice.
+ * Two copies of a guard chain is two places for a fix to land in one of, so it
+ * lives here once and both call sites delegate. The only thing that ever
+ * differed between the copies was where the abort signal came from, which is now
+ * simply an argument.
+ */
+export async function deliverAnswer(args: {
+  /** The raw generated answer, before the coverage/candidate sanitizer. */
+  answer: string;
+  tier: AnalysisTier;
+  grounding: AskGrounding;
+  bundle: EvidenceBundle;
+  client: Pick<Anthropic, "messages">;
+  question: string;
+  /** Whether a search ran, so verification is owed rather than not-required. */
+  evidenceRequired: boolean;
+  candidateUnrecognized: boolean;
+  signal?: AbortSignal;
+}): Promise<{ answer: string; citations: AskCitation[]; verification: AskVerification }> {
+  const {
+    answer: rawAnswer,
+    grounding,
+    bundle,
+    client,
+    question,
+    evidenceRequired,
+    candidateUnrecognized,
+    signal,
+  } = args;
+  // `tier` is carried for the guards that will need it; the chain below is
+  // tier-agnostic because the tier chain already ran inside generateAnalysis.
+  void args.tier;
+  const answer = grounding?.kind === "fixture"
+    ? sanitizeFixtureCoverageAnswer(rawAnswer, grounding)
+    : candidateUnrecognized
+      ? sanitizeUnrecognizedCandidateAnswer(rawAnswer)
+      : rawAnswer;
+  const checked = candidateUnrecognized
+    ? {
+        answer,
+        verification: {
+          status: "abstain" as const,
+          supportedClaimCount: 0,
+          removedClaimCount: 0,
+        },
+      }
+    : evidenceRequired
+    ? await verifyCurrentClaims(
+        answer,
+        bundle,
+        client,
+        signal,
+        grounding?.kind === "match" && /\b(?:odds|price|market)\b/i.test(question)
+      )
+    : {
+        answer,
+        verification: {
+          status: "not-required" as const,
+          supportedClaimCount: 0,
+          removedClaimCount: 0,
+        },
+      };
+  const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
+    checked.answer,
+    checked.verification,
+    evidenceRequired
+  );
+  const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
+    evidenceSafeAnswer,
+    grounding?.kind === "match" ? grounding : undefined
+  );
+  const checkedAnswer = containsCorrectionCue(question)
+    ? acknowledgeCorrection(marketSafeAnswer, checked.verification)
+    : marketSafeAnswer;
+  const rendered = renderEvidenceCitations(
+    checkedAnswer,
+    bundle,
+    evidenceRequired
+  );
+  return {
+    // Evidence, correction and market guards run again after the tier chain,
+    // so the settled answer is re-checked for labels they emptied.
+    answer: dropOrphanedSectionLabels(rendered.answer),
+    citations: rendered.citations,
+    verification: checked.verification,
+  };
+}
+
+/**
+ * The pure part of the delivery chain: the tier sanitizer run as a settled
+ * answer, the market-correctness sanitizer, and the orphaned-label sweep. No
+ * network, no verifier -- usable wherever an answer has to be checked without
+ * an evidence round trip.
+ */
+export function sanitizeDeliveredAnswer(
+  answer: string,
+  tier: AnalysisTier,
+  grounding?: AskGrounding
+): string {
+  return dropOrphanedSectionLabels(sanitizeRuntimeResponseCorrectness(
+    sanitizeAnswerForTier(answer, tier, grounding, true),
+    grounding?.kind === "match" ? grounding : undefined
+  ));
+}
+
 export async function answerQuestion(
   question: string,
   history: ConversationTurn[] = [],
@@ -3317,60 +3394,22 @@ export async function answerQuestion(
       signal,
       allowAmbiguousFallback(question)
     );
-    const answer = grounding?.kind === "fixture"
-      ? sanitizeFixtureCoverageAnswer(rawAnswer, grounding)
-      : candidateUnrecognized
-        ? sanitizeUnrecognizedCandidateAnswer(rawAnswer)
-        : rawAnswer;
-    const checked = candidateUnrecognized
-      ? {
-          answer,
-          verification: {
-            status: "abstain" as const,
-            supportedClaimCount: 0,
-            removedClaimCount: 0,
-          },
-        }
-      : query || bundle.queries.length
-      ? await verifyCurrentClaims(
-          answer,
-          bundle,
-          client,
-          signal,
-          grounding?.kind === "match" && /\b(?:odds|price|market)\b/i.test(question)
-        )
-      : {
-          answer,
-          verification: {
-            status: "not-required" as const,
-            supportedClaimCount: 0,
-            removedClaimCount: 0,
-          },
-        };
-    const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
-      checked.answer,
-      checked.verification,
-      Boolean(query || bundle.queries.length)
-    );
-    const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
-      evidenceSafeAnswer,
-      grounding?.kind === "match" ? grounding : undefined
-    );
-    const checkedAnswer = containsCorrectionCue(question)
-      ? acknowledgeCorrection(marketSafeAnswer, checked.verification)
-      : marketSafeAnswer;
-    const rendered = renderEvidenceCitations(
-      checkedAnswer,
-      bundle,
-      Boolean(query || bundle.queries.length)
-    );
-    return {
-      // Evidence, correction and market guards run again after the tier chain,
-      // so the settled answer is re-checked for labels they emptied.
-      answer: dropOrphanedSectionLabels(rendered.answer),
+    const delivered = await deliverAnswer({
+      answer: rawAnswer,
+      tier,
       grounding,
-      verification: checked.verification,
-      ...(rendered.citations.length ? { citations: rendered.citations } : {}),
+      bundle,
+      client,
+      question,
+      evidenceRequired: Boolean(query || bundle.queries.length),
+      candidateUnrecognized,
+      signal,
+    });
+    return {
+      answer: delivered.answer,
+      grounding,
+      verification: delivered.verification,
+      ...(delivered.citations.length ? { citations: delivered.citations } : {}),
     };
   } catch (err) {
     mapAnalysisError(err);
@@ -3450,57 +3489,19 @@ export async function answerQuestionStream(
         handlers.signal,
         false
       );
-    const answer = grounding?.kind === "fixture"
-      ? sanitizeFixtureCoverageAnswer(rawAnswer, grounding)
-      : candidateUnrecognized
-        ? sanitizeUnrecognizedCandidateAnswer(rawAnswer)
-        : rawAnswer;
-    const checked = candidateUnrecognized
-      ? {
-          answer,
-          verification: {
-            status: "abstain" as const,
-            supportedClaimCount: 0,
-            removedClaimCount: 0,
-          },
-        }
-      : query || bundle.queries.length
-      ? await verifyCurrentClaims(
-          answer,
-          bundle,
-          client,
-          handlers.signal,
-          grounding?.kind === "match" && /\b(?:odds|price|market)\b/i.test(question)
-        )
-      : {
-          answer,
-          verification: {
-            status: "not-required" as const,
-            supportedClaimCount: 0,
-            removedClaimCount: 0,
-          },
-        };
-    const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
-      checked.answer,
-      checked.verification,
-      Boolean(query || bundle.queries.length)
-    );
-    const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
-      evidenceSafeAnswer,
-      grounding?.kind === "match" ? grounding : undefined
-    );
-    const checkedAnswer = containsCorrectionCue(question)
-      ? acknowledgeCorrection(marketSafeAnswer, checked.verification)
-      : marketSafeAnswer;
-    const rendered = renderEvidenceCitations(
-      checkedAnswer,
+    const delivered = await deliverAnswer({
+      answer: rawAnswer,
+      tier,
+      grounding,
       bundle,
-      Boolean(query || bundle.queries.length)
-    );
-    // Evidence, correction and market guards run again after the tier chain,
-    // so the settled answer is re-checked for labels they emptied. The held
-    // delta and the done payload carry the same settled text.
-    const settledAnswer = dropOrphanedSectionLabels(rendered.answer);
+      client,
+      question,
+      evidenceRequired: Boolean(query || bundle.queries.length),
+      candidateUnrecognized,
+      signal: handlers.signal,
+    });
+    // The held delta and the done payload carry the same settled text.
+    const settledAnswer = delivered.answer;
     if ((query || ambiguousFallback || holdForCoverageGuard)
       && settledAnswer
       && (handlers.shouldContinue ?? (() => true))()) {
@@ -3509,8 +3510,8 @@ export async function answerQuestionStream(
     return {
       answer: settledAnswer,
       grounding,
-      verification: checked.verification,
-      ...(rendered.citations.length ? { citations: rendered.citations } : {}),
+      verification: delivered.verification,
+      ...(delivered.citations.length ? { citations: delivered.citations } : {}),
     };
   } catch (err) {
     mapAnalysisError(err);
