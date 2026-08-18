@@ -14,6 +14,7 @@ import {
   type MatchGrounding,
   type ModelFixtureResponse,
   type TeamContext,
+  modelFixtureIdentity,
 } from "@/lib/api";
 import { fetchActiveFixtures, fetchActiveModelFixtures } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
@@ -36,14 +37,26 @@ type LoadingTier = "match" | "fixture" | "competition" | "season" | "general" | 
 
 let nextId = 0;
 
+/**
+ * A chip is a question plus, for a fixture-backed chip, the identity of the
+ * fixture it was rendered from. The label alone is ambiguous: both legs of a
+ * two-legged tie read "X vs Y", so a chip that sent only its text made the API
+ * guess which leg the user had clicked. Carrying the identity makes the click
+ * resolve to the rendered fixture and nothing else.
+ */
+interface Suggestion {
+  text: string;
+  fixtureContext?: FixtureContext;
+}
+
 // Shown whenever no active fixture can be grounded. Deliberately excludes match
 // prompts: between rounds there is no fixture to ground one, so a match chip
 // promises a model-backed read the model has no data for and lands the user in
 // general analysis instead.
-const NO_FIXTURE_SUGGESTIONS = [
-  "What does the current Premier League table show?",
-  "Who is favourite for the Premier League title?",
-  "How does a high defensive line change a team's pressing risks?",
+const NO_FIXTURE_SUGGESTIONS: Suggestion[] = [
+  { text: "What does the current Premier League table show?" },
+  { text: "Who is favourite for the Premier League title?" },
+  { text: "How does a high defensive line change a team's pressing risks?" },
 ];
 
 /**
@@ -152,10 +165,13 @@ function competitionAbbr(competitionId: string, competition: string): string {
   return competition.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 }
 
-function formatSuggestionChip(fixture: ModelFixtureResponse): string {
+function formatSuggestionChip(fixture: ModelFixtureResponse): Suggestion {
   const day = new Date(fixture.utcDate).toLocaleDateString(undefined, { weekday: "short" });
   const abbr = competitionAbbr(fixture.competitionId, fixture.competition);
-  return `${fixture.home} vs ${fixture.away} · ${abbr} · ${day}`;
+  return {
+    text: `${fixture.home} vs ${fixture.away} · ${abbr} · ${day}`,
+    fixtureContext: { fixtureId: modelFixtureIdentity(fixture) },
+  };
 }
 
 function teamAbbr(name: string): string {
@@ -552,7 +568,10 @@ export function HomeChat() {
     return () => { cancelled = true; };
   }, []);
 
-  async function ask(question: string) {
+  // `chipFixtureContext` is the identity of a clicked suggestion. It overrides
+  // the followed fixture for that turn so a chip opens the fixture it shows
+  // rather than continuing whatever was in context.
+  async function ask(question: string, chipFixtureContext?: FixtureContext) {
     const trimmed = question.trim();
     if (!trimmed || loading) return;
 
@@ -573,8 +592,8 @@ export function HomeChat() {
       const { answer, grounding } = await askQuestionStream(
         trimmed,
         history,
-        teamContext,
-        fixtureContext,
+        chipFixtureContext ? undefined : teamContext,
+        chipFixtureContext ?? fixtureContext,
         {
         onGrounding: (initialGrounding) => {
           streamedGrounding = initialGrounding;
@@ -927,14 +946,14 @@ export function HomeChat() {
           <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1">
             {suggestions.map((s) => (
               <button
-                key={s}
+                key={s.text}
                 type="button"
-                onClick={() => ask(s)}
+                onClick={() => ask(s.text, s.fixtureContext)}
                 className={cn(
                   "snap-start shrink-0 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                 )}
               >
-                {s}
+                {s.text}
               </button>
             ))}
           </div>

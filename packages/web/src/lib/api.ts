@@ -35,6 +35,19 @@ export interface StandingResponse {
   advanced: boolean;
 }
 
+/**
+ * The identity `/api/ask` accepts as `fixtureContext`, derived from a model row
+ * exactly as the API derives it (`espnFixtureIdentity`). Match grounding hands
+ * the same string back, so a suggestion chip and a follow-up address a fixture
+ * the same way -- which is what stops a chip for one leg of a two-legged tie
+ * from resolving to the other leg.
+ */
+export function modelFixtureIdentity(
+  fixture: Pick<ModelFixtureResponse, "competitionId" | "fixtureId">
+): string {
+  return `espn:${fixture.competitionId}:${fixture.fixtureId}`;
+}
+
 export interface ModelFixtureResponse {
   competitionId: string;
   competition: string;
