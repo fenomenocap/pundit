@@ -979,6 +979,22 @@ describe("stripToolCallMarkup", () => {
     )).toBe("**Verdict**\nArsenal are favoured at 61.2%.");
   });
 
+  it("resumes a clean answer written underneath an unterminated leak", () => {
+    expect(stripToolCallMarkup(
+      `${SCREENSHOT_LEAK}\n\n**Verdict**\nDinamo Zagreb win **48.0%**.`
+    )).toBe("**Verdict**\nDinamo Zagreb win **48.0%**.");
+  });
+
+  it("refuses to resume a tail that still carries tool markup", () => {
+    // A bold label is not enough: the remainder must be free of tool syntax,
+    // so a half-parsed payload underneath the leak still fails closed.
+    expect(stripToolCallMarkup(
+      `${SCREENSHOT_LEAK}\n\n**Verdict**\n<query>Dinamo Zagreb form</query>`
+    )).toBe("");
+    // Trailing prose with no section boundary is not an answer either.
+    expect(stripToolCallMarkup(`${SCREENSHOT_LEAK}\nDinamo Zagreb form 2026`)).toBe("");
+  });
+
   it("removes bare control-token fragments and stray closing tags", () => {
     expect(stripToolCallMarkup("]<]minimax[>[ <|tool_calls_begin|> <tool_call>")).toBe("");
     expect(stripToolCallMarkup("Arsenal are favoured.</tool_call> Coventry counter well."))
@@ -1039,6 +1055,21 @@ describe("text-form tool call recovery", () => {
     expect(bundle.queries).toHaveLength(1);
     // The retry turn is asked for prose, not for another tool call.
     expect(create.mock.calls[1][0].tools).toBeUndefined();
+  });
+
+  it("keeps an answer written underneath an unterminated leak without a retry", async () => {
+    // The same predicate classifies the turn, so resuming the answer also
+    // stops this being mis-read as leak-only and spending a continuation.
+    const create = vi.fn().mockResolvedValue(message(
+      `${SCREENSHOT_LEAK}\n\n**Verdict**\nDinamo Zagreb win **48.0%** on the model.`,
+      "end_turn"
+    ));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const answer = await generateAnalysis(client, "system", [], "match");
+    expect(answer).toContain("Dinamo Zagreb win **48.0%**");
+    expect(answer).not.toMatch(/tool_call|invoke|minimax/i);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(searchWeb).not.toHaveBeenCalled();
   });
 
   it("fails with a 502 rather than shipping an empty bubble when the retry leaks too", async () => {

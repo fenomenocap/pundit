@@ -2187,6 +2187,46 @@ const TRUNCATED_TOOL_TAG = new RegExp(
 );
 
 /**
+ * Anything that would make a resumed tail suspect: a tool tag of either
+ * vocabulary, a JSON tool key, or a control-token fragment.
+ */
+const TOOL_RESIDUE = new RegExp([
+  `<\\s*/?\\s*(?:antml:)?(?:${[...TOOL_REGION_TAGS, ...TOOL_INNER_TAGS].join("|")})\\b`,
+  /"(?:search_queries|search_query|queries|tool_call|tool_name|arguments)"\s*:/.source,
+  /\]<\]|\[>\[|<\|/.source,
+].join("|"), "i");
+
+/**
+ * A bold section label alone on its line -- the shape FORMAT_RULES mandates
+ * for the start of every answer section, and one no tool payload produces.
+ */
+const ANSWER_RESUME_ANCHOR = /(?:^|\n)[ \t]*\*\*[^\n*]/g;
+
+/**
+ * Recovers the answer that follows an unterminated tool-call region.
+ *
+ * Dropping the whole remainder is the safe default -- past an unclosed
+ * <tool_call> the text could be more payload -- but MiniMax also emits the
+ * leak and then writes a perfectly good answer underneath it, and discarding
+ * that costs the user a real answer (and, because leakedToolCallText shares
+ * this predicate, mis-classifies the turn as leak-only and spends a retry).
+ *
+ * So the remainder is resumed only from a markdown structural boundary, and
+ * only when everything from that boundary on is free of tool markup. Both
+ * conditions have to hold: a bold label on its own line is the documented
+ * start of an answer section, and the residue check means a partially parsed
+ * payload still fails closed.
+ */
+function resumeAnswerAfterUnterminatedRegion(tail: string): string {
+  ANSWER_RESUME_ANCHOR.lastIndex = 0;
+  for (let m = ANSWER_RESUME_ANCHOR.exec(tail); m; m = ANSWER_RESUME_ANCHOR.exec(tail)) {
+    const candidate = tail.slice(m.index + (tail[m.index] === "\n" ? 1 : 0));
+    if (!TOOL_RESIDUE.test(candidate)) return candidate;
+  }
+  return "";
+}
+
+/**
  * Removes tool-call regions by walking the text and tracking how deep inside
  * one it currently is, rather than by matching a well-formed pair. The
  * production leak was doubled and unclosed ("<tool_call> <tool_call> ...
@@ -2197,6 +2237,7 @@ function stripToolRegions(answer: string): string {
   let out = "";
   let depth = 0;
   let cursor = 0;
+  let regionStart = 0;
   ANY_TAG.lastIndex = 0;
   for (let match = ANY_TAG.exec(answer); match; match = ANY_TAG.exec(answer)) {
     const raw = match[0];
@@ -2209,16 +2250,22 @@ function stripToolRegions(answer: string): string {
     if (depth === 0) {
       // Ordinary prose angle brackets, including a bare <query>, survive.
       if (!TOOL_REGION_TAGS.has(name)) out += raw;
-      else if (!closing && !selfClosing) depth = 1;
+      else if (!closing && !selfClosing) {
+        depth = 1;
+        regionStart = match.index;
+      }
       continue;
     }
 
     if (selfClosing || !(TOOL_REGION_TAGS.has(name) || TOOL_INNER_TAGS.has(name))) continue;
     depth = closing ? Math.max(0, depth - 1) : depth + 1;
   }
-  // An unterminated region swallows the rest of the text: past an unclosed
-  // <tool_call> everything MiniMax wrote is tool syntax, not an answer.
-  if (depth === 0) out += answer.slice(cursor);
+  // An unterminated region swallows the rest of the text -- past an unclosed
+  // <tool_call> everything MiniMax wrote is presumed tool syntax -- except for
+  // a clean answer resumed at a section boundary.
+  out += depth === 0
+    ? answer.slice(cursor)
+    : resumeAnswerAfterUnterminatedRegion(answer.slice(regionStart));
   return out.replace(TRUNCATED_TOOL_TAG, "");
 }
 
