@@ -158,6 +158,35 @@ test.describe("smoke", () => {
     expect(received[2].fixtureContext).toEqual({ fixtureId: fixture.fixtureId });
   });
 
+  // A suggestion chip is the product's default entry point, and its label
+  // ("X vs Y · UCL · Tue") reads the same for both legs of a two-legged tie.
+  // The click has to carry the identity of the fixture it rendered, or the API
+  // is left guessing which leg was meant -- which is how every default chip
+  // ended up on the ungrounded discovery-candidate path.
+  test("suggestion chip sends the fixture identity it was rendered from", async ({ page }) => {
+    const received: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      received.push(route.request().postDataJSON());
+      const answer = "Here is the read.";
+      const sse = [
+        `event: grounding\ndata: ${JSON.stringify({ grounding: null })}`,
+        `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+        `event: done\ndata: ${JSON.stringify({ answer, grounding: null })}`,
+        "",
+      ].join("\n\n");
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+    });
+
+    await page.goto("/");
+    const chip = page.getByRole("button", { name: /Dinamo Zagreb vs Viking/ });
+    await expect(chip).toBeVisible();
+    await chip.click();
+
+    await expect.poll(() => received.length).toBe(1);
+    expect(received[0].fixtureContext).toEqual({ fixtureId: "espn:uefa.champions_qual:3" });
+    expect(received[0].question).toContain("Dinamo Zagreb vs Viking");
+  });
+
   test("primary nav", async ({ page }) => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Main navigation" });

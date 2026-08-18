@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
-import { recognizeEspnFixture, type RecognizedFixture } from "./fixture-registry";
+import {
+  espnFixtureIdentity,
+  recognizeEspnFixture,
+  type RecognizedFixture,
+} from "./fixture-registry";
 import {
   MATCH_ANSWER_GUARDS,
   MATCH_QUESTION_SCOPE,
@@ -1120,6 +1124,239 @@ describe("resolveAskContext", () => {
         fixtureContext: { fixtureId: recognized[1].fixtureId },
       }
     )).toEqual({ tier: "match", fixture: arsenalFixture });
+  });
+
+  // BUG: every two-legged tie was unreachable. Both legs carry the same two
+  // clubs, so "X vs Y" matched two recognized fixtures and bailed to the
+  // discovery-candidate tier -- "no authoritative structured fixture identity"
+  // and no probabilities for a fixture Pundit had priced. Seven of the active
+  // club pairs are two-legged and the date-sorted qualifiers lead the list, so
+  // all three homepage suggestion chips landed on that dead end.
+  describe("two-legged ties", () => {
+    const firstLeg = fixture("Dinamo Zagreb", "Viking", {
+      competitionId: "uefa.champions_qual",
+      competition: "UEFA Champions League Qualifying",
+      fixtureId: 9201,
+      utcDate: "2026-08-18T19:00:00.000Z",
+      date: "2026-08-18",
+    });
+    const secondLeg = fixture("Viking", "Dinamo Zagreb", {
+      competitionId: "uefa.champions_qual",
+      competition: "UEFA Champions League Qualifying",
+      fixtureId: 9202,
+      utcDate: "2026-08-26T19:00:00.000Z",
+      date: "2026-08-26",
+    });
+    const legs = [firstLeg, secondLeg];
+
+    function recognize(model: ModelFixture, status = "SCHEDULED") {
+      return recognizeEspnFixture({
+        id: model.fixtureId,
+        competitionId: model.competitionId,
+        competition: model.competition,
+        homeTeam: model.home,
+        awayTeam: model.away,
+        utcDate: model.utcDate,
+        status,
+        stage: model.stage,
+        matchday: null,
+        group: model.group,
+        score: null,
+        neutralVenue: false,
+      });
+    }
+
+    function resolve(question: string, recognized = legs.map((leg) => recognize(leg))) {
+      return resolveAskContext(
+        question,
+        [],
+        undefined,
+        legs,
+        [],
+        [],
+        { recognizedFixtures: recognized }
+      );
+    }
+
+    it("resolves a bare matchup to the next unplayed leg", () => {
+      expect(resolve("Dinamo Zagreb vs Viking")).toEqual({ tier: "match", fixture: firstLeg });
+      expect(resolve("What are the 1X2 probabilities for Dinamo Zagreb vs Viking?"))
+        .toEqual({ tier: "match", fixture: firstLeg });
+    });
+
+    it("never falls back to the discovery-candidate dead end for a priced tie", () => {
+      for (const question of [
+        "Dinamo Zagreb vs Viking",
+        "Viking against Dinamo Zagreb",
+        "How does the Dinamo Zagreb vs Viking match look?",
+        "Will Dinamo Zagreb beat Viking?",
+      ]) {
+        expect(resolve(question)).not.toEqual({ tier: "candidate" });
+      }
+    });
+
+    it("honours an explicit leg cue", () => {
+      expect(resolve("Dinamo Zagreb vs Viking first leg"))
+        .toEqual({ tier: "match", fixture: firstLeg });
+      expect(resolve("Dinamo Zagreb vs Viking second leg"))
+        .toEqual({ tier: "match", fixture: secondLeg });
+      expect(resolve("What about the return leg of Dinamo Zagreb vs Viking?"))
+        .toEqual({ tier: "match", fixture: secondLeg });
+    });
+
+    it("honours a date cue that identifies exactly one leg", () => {
+      for (const question of [
+        "Dinamo Zagreb vs Viking on the 26th",
+        "Dinamo Zagreb vs Viking on 2026-08-26",
+        "Dinamo Zagreb vs Viking on August 26",
+        "Dinamo Zagreb vs Viking on Wednesday",
+      ]) {
+        expect(resolve(question)).toEqual({ tier: "match", fixture: secondLeg });
+      }
+      // Tuesday is the first leg, and a totals cue must not read as a date.
+      expect(resolve("Dinamo Zagreb vs Viking on Tuesday"))
+        .toEqual({ tier: "match", fixture: firstLeg });
+      expect(resolve("Dinamo Zagreb vs Viking over 2.5 goals"))
+        .toEqual({ tier: "match", fixture: firstLeg });
+    });
+
+    // recognizedFixtureMatchesByTeams drops completed legs while one is still
+    // to be played, so ambiguity only survives once the whole tie is done --
+    // and then the question is about the last thing that happened.
+    it("uses the most recent leg once the tie is complete", () => {
+      const played = legs.map((leg) => recognize(leg, "FINISHED"));
+      expect(resolve("Dinamo Zagreb vs Viking", played))
+        .toMatchObject({ tier: "match", fixture: secondLeg });
+    });
+
+    it("still fails closed when two fixtures for the same clubs are indistinguishable", () => {
+      const clash = fixture("Viking", "Dinamo Zagreb", {
+        competitionId: "uefa.champions_qual",
+        competition: "UEFA Champions League Qualifying",
+        fixtureId: 9203,
+        utcDate: firstLeg.utcDate,
+        date: firstLeg.date,
+      });
+      expect(resolve("Dinamo Zagreb vs Viking", [firstLeg, clash].map((leg) => recognize(leg))))
+        .toEqual({ tier: "candidate" });
+    });
+
+    it("leaves single-leg resolution untouched", () => {
+      expect(resolveAskContext(
+        "Arsenal vs Coventry City",
+        [],
+        undefined,
+        fixtures,
+        [],
+        [],
+        { recognizedFixtures: [recognize(fixtures[0])] }
+      )).toEqual({ tier: "match", fixture: fixtures[0] });
+    });
+
+    // A suggestion chip sends the fixture identity alongside its text, so the
+    // click lands on the leg that was rendered rather than on a leg rule.
+    it("resolves a suggestion chip to its own leg through fixtureContext", () => {
+      const recognized = legs.map((leg) => recognize(leg));
+      for (const [index, leg] of legs.entries()) {
+        expect(resolveAskContext(
+          `${leg.home} vs ${leg.away} · UCL · Tue`,
+          [],
+          undefined,
+          legs,
+          [],
+          [],
+          {
+            recognizedFixtures: recognized,
+            fixtureContext: { fixtureId: recognized[index].fixtureId },
+          }
+        )).toEqual({ tier: "match", fixture: leg });
+      }
+    });
+
+    // The registry can be cold or a step behind the priced rows; a chip still
+    // has to land on the fixture it rendered, so the identity also addresses
+    // the model row directly.
+    it("resolves a chip identity against the model rows with an empty registry", () => {
+      expect(resolveAskContext(
+        "Viking vs Dinamo Zagreb · UCL · Wed",
+        [],
+        undefined,
+        legs,
+        [],
+        [],
+        { recognizedFixtures: [], fixtureContext: { fixtureId: espnFixtureIdentity(secondLeg) } }
+      )).toEqual({ tier: "match", fixture: secondLeg });
+    });
+
+    // The chip sets fixtureContext, so the conversational follow-ups that
+    // regressed once before now travel that path instead of teamContext.
+    it.each([
+      "Why?",
+      "Tell me more",
+      "Is that a good bet?",
+      "How confident are you?",
+      "What about BTTS?",
+    ])("keeps %s on the leg the chip opened", (question) => {
+      const recognized = legs.map((leg) => recognize(leg));
+      expect(resolveAskContext(
+        question,
+        [],
+        undefined,
+        legs,
+        [standing()],
+        [],
+        {
+          recognizedFixtures: recognized,
+          fixtureContext: { fixtureId: recognized[1].fixtureId },
+        }
+      )).toEqual({ tier: "match", fixture: secondLeg });
+    });
+
+    it.each([
+      "How's the table looking?",
+      "Who's top right now?",
+    ])("lets %s reach competition grounding from a chip-opened leg", (question) => {
+      const recognized = legs.map((leg) => recognize(leg));
+      expect(resolveAskContext(
+        question,
+        [],
+        undefined,
+        legs,
+        [standing()],
+        [],
+        {
+          recognizedFixtures: recognized,
+          fixtureContext: { fixtureId: recognized[1].fixtureId },
+        }
+      )).toEqual({ tier: "competition", competitionId: "eng.1" });
+    });
+
+    // Two legs of the SAME pair are one tie and resolve; two DIFFERENT pairs
+    // are two matches and must keep asking which one is meant.
+    it("still refuses two different fixtures with MULTIPLE_FIXTURES", () => {
+      const multi = [
+        fixture("Arsenal", "Liverpool", { fixtureId: 9301 }),
+        fixture("Coventry City", "Tottenham Hotspur", { fixtureId: 9302 }),
+      ];
+      try {
+        resolveAskContext(
+          "Compare Arsenal vs Liverpool and Coventry City vs Tottenham",
+          [],
+          undefined,
+          multi,
+          [],
+          [],
+          { recognizedFixtures: multi.map((leg) => recognize(leg)) }
+        );
+        throw new Error("expected resolveAskContext to throw");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AppError);
+        const appError = err as AppError;
+        expect(appError.code).toBe("MULTIPLE_FIXTURES");
+        expect(appError.message).toContain("Arsenal vs Liverpool");
+        expect(appError.message).toContain("Coventry City vs Tottenham Hotspur");
+      }
+    });
   });
 
   it("keeps general chat available while the active model is empty or unready", () => {

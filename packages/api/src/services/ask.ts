@@ -45,9 +45,11 @@ import {
   getRecognizedFixtures,
   recognizedFixtureMatchesByTeams,
   recognizeEspnFixture,
+  espnFixtureIdentity,
   type FixtureCapability,
   type RecognizedFixture,
 } from "./fixture-registry";
+import { selectRecognizedLeg } from "./fixture-leg-selection";
 import {
   isSeasonOutlookQuestion,
   remainingScheduledFixtures,
@@ -1071,6 +1073,9 @@ ${LENGTH_BUDGET}
 Whenever the answer covers this fixture, state the headline win/draw/win and
 O/U 2.5 numbers, mention 1-2 most likely scorelines, and give a one-line read on
 what would need to be true for the underdog.
+The model data names one specific fixture and its date. Two clubs can meet twice
+in a two-legged tie, so name that date when you give the numbers -- the user has
+to be able to tell which leg they are reading.
 ${MATCH_EXAMPLE}`;
 
 
@@ -1675,23 +1680,45 @@ export function resolveAskContext(
   const contextualFixture = routing.fixtureContext
     ? recognizedFixtures.find((fixture) => fixture.fixtureId === routing.fixtureContext?.fixtureId)
     : undefined;
-  const explicitTeamsMatchContext = Boolean(teams && contextualFixture
+  // The same identity addressed against the priced rows. A homepage suggestion
+  // chip carries the identity of a fixture the registry may not hold yet -- a
+  // cold registry, or a model row ahead of the next observation -- and it must
+  // still land on exactly the fixture the user clicked rather than on whichever
+  // leg happens to sort first.
+  const contextualModelFixture = routing.fixtureContext && !contextualFixture
+    ? fixtures.find((fixture) => espnFixtureIdentity(fixture) === routing.fixtureContext?.fixtureId)
+    : undefined;
+  const contextualTeams: TeamContext | undefined = contextualFixture
+    ? [contextualFixture.homeTeam.name, contextualFixture.awayTeam.name]
+    : contextualModelFixture
+      ? [contextualModelFixture.home, contextualModelFixture.away]
+      : undefined;
+  const explicitTeamsMatchContext = Boolean(teams && contextualTeams
     && new Set(teams.map(normalizeTeamName)).size === 2
     && new Set([
       ...teams.map(normalizeTeamName),
-      contextualFixture.homeTeam.id,
-      contextualFixture.awayTeam.id,
+      ...contextualTeams.map(normalizeTeamName),
     ]).size === 2);
 
   // A stable server-owned identity disambiguates two legs between the same
   // clubs, even when the user repeats both team names. A different explicit
   // matchup does not match this pair and continues to the replacement path.
-  if (contextualFixture && explicitTeamsMatchContext && hasExplicitMatchupCue(question)) {
-    return resolveRecognizedFixture(contextualFixture, fixtures, routing);
+  if (explicitTeamsMatchContext && hasExplicitMatchupCue(question)) {
+    if (contextualFixture) return resolveRecognizedFixture(contextualFixture, fixtures, routing);
+    if (contextualModelFixture) return { tier: "match", fixture: contextualModelFixture };
   }
 
-  if (recognizedMatches.length > 1 && hasExplicitMatchupCue(question)) {
-    return { tier: "candidate" };
+  // Both legs of a two-legged tie carry the same two clubs, so "X vs Y" matches
+  // more than one recognized fixture. Failing closed here sent every such
+  // question to the discovery-candidate dead end -- no probabilities for a
+  // fixture Pundit had priced -- so pick the leg the question means instead,
+  // and only fail closed when the legs are genuinely indistinguishable.
+  if (recognizedMatches.length > 1) {
+    const leg = selectRecognizedLeg(question, recognizedMatches);
+    if (leg && (!competitionId || hasExplicitMatchupCue(question))) {
+      return resolveRecognizedFixture(leg, fixtures, routing);
+    }
+    if (!leg && hasExplicitMatchupCue(question)) return { tier: "candidate" };
   }
 
   // Authoritative status/policy must be evaluated before a possibly stale
@@ -1732,14 +1759,11 @@ export function resolveAskContext(
   // fixtureContext is server-owned identity returned by a previous grounding.
   // It wins over the temporary legacy teamContext when both are supplied.
   if (!teams && routing.fixtureContext && (!competitionId || hasMatchOutcomeIntent(question))) {
-    if (contextualFixture
+    if (contextualTeams
       && (shouldUseMatchGrounding(question)
-        || !leavesMatchContext(
-          question,
-          [contextualFixture.homeTeam.name, contextualFixture.awayTeam.name],
-          searchableFixtures
-        ))) {
-      return resolveRecognizedFixture(contextualFixture, fixtures, routing);
+        || !leavesMatchContext(question, contextualTeams, searchableFixtures))) {
+      if (contextualFixture) return resolveRecognizedFixture(contextualFixture, fixtures, routing);
+      if (contextualModelFixture) return { tier: "match", fixture: contextualModelFixture };
     }
   }
 

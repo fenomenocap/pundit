@@ -165,7 +165,10 @@ export function recognizeEspnFixture(
     observedAt,
   };
   return {
-    fixtureId: `espn:${fixture.competitionId}:${sourceFixtureId}`,
+    fixtureId: espnFixtureIdentity({
+      competitionId: fixture.competitionId,
+      fixtureId: sourceFixtureId,
+    }),
     primarySource: "espn",
     primarySourceFixtureId: sourceFixtureId,
     homeTeam: canonicalTeam(fixture.homeTeam),
@@ -442,6 +445,18 @@ export function isModelPolicyEligible(fixture: RecognizedFixture): boolean {
 
 export function modelFixtureId(fixture: Pick<ModelFixture, "competitionId" | "fixtureId">): string {
   return `${fixture.competitionId}:${fixture.fixtureId}`;
+}
+
+/**
+ * The stable public identity of an ESPN-sourced fixture. Recognized fixtures
+ * carry it as `fixtureId`, match grounding hands it back to the client, and the
+ * client returns it as `fixtureContext`, so a model row and its registry entry
+ * must derive it identically or a round-tripped identity stops resolving.
+ */
+export function espnFixtureIdentity(
+  fixture: { competitionId: string; fixtureId: string | number }
+): string {
+  return `espn:${fixture.competitionId}:${fixture.fixtureId}`;
 }
 
 export interface CapabilityState {
