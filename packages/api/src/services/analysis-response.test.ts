@@ -18,6 +18,12 @@ import {
   stripToolCallMarkup,
   extractLeakedSearchQueries,
 } from "./ask";
+import {
+  clientWith,
+  message,
+  streamOf,
+  toolUseMessage,
+} from "./__fixtures__/anthropic-stubs";
 
 // The exact string a user was shown in production: MiniMax's tool-call channel
 // leaking into the text channel, doubled and unterminated.
@@ -44,39 +50,6 @@ beforeEach(() => {
     { title: "Arsenal team news", link: "https://example.com/a", snippet: "s", date: "2026-08-10" },
   ]);
 });
-
-// A response asking for one web search, as MiniMax returns it.
-function toolUseMessage(text: string, id = "tool-1") {
-  return {
-    content: [
-      { type: "text", text, citations: [] },
-      { type: "tool_use", id, name: "web_search", input: { query: "arsenal team news" } },
-    ],
-    stop_reason: "tool_use",
-  };
-}
-
-function clientWith(response: unknown): Pick<Anthropic, "messages"> {
-  return {
-    messages: { create: vi.fn().mockResolvedValue(response) },
-  } as unknown as Pick<Anthropic, "messages">;
-}
-
-function message(text: string, stopReason: string) {
-  return { content: [{ type: "text", text, citations: [] }], stop_reason: stopReason };
-}
-
-// Stub of the SDK's MessageStream: emits deltas on subscribe, then resolves
-// (or rejects) finalMessage.
-function streamOf(final: unknown, deltas: string[] = [], error?: unknown) {
-  return {
-    on(event: string, handler: (text: string) => void) {
-      if (event === "text") deltas.forEach(handler);
-      return this;
-    },
-    finalMessage: () => (error ? Promise.reject(error) : Promise.resolve(final)),
-  };
-}
 
 describe("generateAnalysis", () => {
   it("caps combined inference, retry, and search provider calls at three", async () => {
