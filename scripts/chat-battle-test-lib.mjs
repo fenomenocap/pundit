@@ -83,6 +83,15 @@ export function executeRuntimeHelperScenario(scenario, repoRoot = path.resolve(i
     const fixtureHelpers = loadApiRuntimeFixtureHelpers(repoRoot);
     return fixtureHelpers.evaluateFixtureCapability(scenario.args[0], scenario.args[1]);
   }
+  if (scenario.helper === "sanitizeFinalMatchAnswer") {
+    // The settled match-tier guard chain, in the order a delivered answer sees
+    // it. Runs the built module, so a guard that eats the model's own numbers
+    // fails here instead of only in production.
+    const routingHelpers = loadApiRuntimeRoutingHelpers(repoRoot);
+    return routingHelpers.dropOrphanedSectionLabels(
+      routingHelpers.sanitizeMatchAnswer(scenario.args[0], scenario.args[1])
+    );
+  }
   if (scenario.helper === "validateCompleteOneXTwoMarket") {
     return correctnessHelpers.validateCompleteOneXTwoMarket(scenario.args[0]);
   }
@@ -558,6 +567,40 @@ export function validateAnswerCopy(answer) {
     .filter((term) => normalized.includes(term))
     .map((term) => `answer contains forbidden term: ${term}`);
   return { passed: failures.length === 0, failures };
+}
+
+/** A standalone bold section label, e.g. `**Verdict**`. */
+const SECTION_LABEL_LINE = /^\s*\*\*[^*\n]+\*\*:?\s*$/;
+
+/**
+ * Structural integrity of a delivered answer, which no other validator here
+ * looks at. Both shapes below shipped to production: a guard emptied a section
+ * and left `**Verdict**` standing over blank space, and the same guard deleted
+ * the headline win/draw/win line the match prompt requires. Every other check
+ * passed on the wreckage, because nothing forbidden was present in it.
+ */
+export function validateAnswerStructure(answer, expectation = {}) {
+  const lines = typeof answer === "string" ? answer.split("\n") : [];
+  const orphaned = lines.filter((line, index) => {
+    if (!SECTION_LABEL_LINE.test(line)) return false;
+    for (let next = index + 1; next < lines.length; next += 1) {
+      if (!lines[next].trim()) continue;
+      return SECTION_LABEL_LINE.test(lines[next]);
+    }
+    return true;
+  }).map((line) => line.trim());
+  const assertions = { noOrphanedSectionLabel: orphaned.length === 0 };
+  if (expectation.expectHeadlineOneXTwo) {
+    assertions.headlineOneXTwoPresent = lines.some((line) =>
+      (line.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(line)
+    );
+  }
+  const failures = Object.entries(assertions)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => name === "noOrphanedSectionLabel"
+      ? `answer left an empty section label: ${orphaned.join(", ")}`
+      : "match answer is missing its headline win/draw/win line");
+  return { passed: failures.length === 0, assertions, failures };
 }
 
 export function validateCitationContract(answer, citations, required = false) {

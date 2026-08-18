@@ -26,6 +26,7 @@ import {
   validateGrounding,
   validateSse,
   validateAnswerCopy,
+  validateAnswerStructure,
   validateCitationContract,
   validateErrorCopy,
   validateFixtureGrounding,
@@ -309,6 +310,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     }
     const copyValidation = validateAnswerCopy(result.answer);
     result.assertions.plainLanguageCopy = copyValidation.passed;
+    // A guard that empties a section leaves a label with nothing under it, and
+    // a match answer can lose its headline 1X2 line while every content check
+    // still passes.
+    const structureValidation = validateAnswerStructure(result.answer, {
+      expectHeadlineOneXTwo: grounding?.kind === "match"
+        && Boolean(turn.expectHeadlineOneXTwo ?? scenario.expectHeadlineOneXTwo),
+    });
+    Object.assign(result.assertions, structureValidation.assertions);
     const citationRequired = Boolean(turn.requireCitation || scenario.requireCitation)
       && result.verification?.status !== "abstain";
     const citationValidation = validateCitationContract(
@@ -330,6 +339,9 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     }
     const draftValidation = validateNoDraftLeak(result.answer);
     result.assertions.noDraftLeak = draftValidation.passed;
+    assertionFailures.push(...structureValidation.failures.map((failure) =>
+      `turn ${history.length / 2}: ${failure}`
+    ));
     assertionFailures.push(...copyValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
@@ -479,9 +491,15 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
   }
   const copyValidation = validateAnswerCopy(result.answer);
   result.assertions.plainLanguageCopy = copyValidation.passed;
-  if (!copyValidation.passed) {
+  const structureValidation = validateAnswerStructure(result.answer, scenario);
+  Object.assign(result.assertions, structureValidation.assertions);
+  if (!copyValidation.passed || !structureValidation.passed) {
     result.passed = false;
-    result.failures = [...(result.failures ?? []), ...copyValidation.failures];
+    result.failures = [
+      ...(result.failures ?? []),
+      ...copyValidation.failures,
+      ...structureValidation.failures,
+    ];
   }
   const citationValidation = validateCitationContract(
     result.answer,
@@ -583,6 +601,7 @@ async function runScenario(scenario, options, pacer, featured, recognized, onReq
     result.outcome = result.passed ? "PASS" : "FAIL";
     result.runtimeHelper = {
       module: scenario.helper === "resolveFixtureRoutingSequence"
+        || scenario.helper === "sanitizeFinalMatchAnswer"
         ? "packages/api/src/services/ask.ts"
         : scenario.helper === "evaluateFixtureCapability"
           ? "packages/api/src/services/fixture-registry.ts"

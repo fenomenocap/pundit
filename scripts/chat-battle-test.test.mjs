@@ -28,6 +28,7 @@ import {
   validateGrounding,
   validateSse,
   validateAnswerCopy,
+  validateAnswerStructure,
   validateCitationContract,
   validateErrorCopy,
   validateFixtureGrounding,
@@ -821,6 +822,52 @@ test("answer copy guard rejects internal methodology jargon", () => {
   assert.equal(validateAnswerCopy("This is model-grounded analysis.").passed, false);
 });
 
+test("answer structure guard catches an emptied section and a missing headline 1X2", () => {
+  // The shape production actually served: a bold label over nothing.
+  assert.equal(validateAnswerStructure("**Verdict**").passed, false);
+  assert.equal(validateAnswerStructure("**Verdict**\n\n**Likely scorelines**\n**2-1 (11.4%)** leads.")
+    .assertions.noOrphanedSectionLabel, false);
+  const intact = "**Verdict**\nMan United win **77.6%**, draw **14.2%**, Hull **8.2%**.";
+  assert.equal(validateAnswerStructure(intact, { expectHeadlineOneXTwo: true }).passed, true);
+  // A label whose body legitimately follows a blank line is not orphaned.
+  assert.equal(validateAnswerStructure("**Verdict**\n\nArsenal win **61.0%**.").passed, true);
+  assert.equal(
+    validateAnswerStructure(
+      "**Verdict**\nI could not establish a complete same-source, same-time bookmaker 1X2 market.",
+      { expectHeadlineOneXTwo: true }
+    ).assertions.headlineOneXTwoPresent,
+    false
+  );
+});
+
+test("the built match guard chain keeps model numbers and still drops external prices", async () => {
+  const repoRoot = path.resolve(import.meta.dirname, "..");
+  const config = JSON.parse(await readFile(path.join(repoRoot, "evals/chat/scenarios.json"), "utf8"));
+  const byId = new Map(config.fixed.map((scenario) => [scenario.id, scenario]));
+  for (const id of [
+    "model-probabilities-survive-market-guard",
+    "external-market-price-still-fails-closed",
+  ]) {
+    const scenario = byId.get(id);
+    assert.equal(scenario?.helper, "sanitizeFinalMatchAnswer", `missing built guard scenario ${id}`);
+    const actual = executeRuntimeHelperScenario(scenario, repoRoot);
+    for (const text of scenario.expectText ?? []) {
+      assert.equal(actual.includes(text), true, `${id} lost required text: ${text}`);
+    }
+    for (const text of scenario.forbidText ?? []) {
+      assert.equal(actual.includes(text), false, `${id} retained forbidden text: ${text}`);
+    }
+    assert.equal(validateAnswerStructure(actual).passed, true, `${id} left an empty section label`);
+  }
+  assert.equal(
+    validateAnswerStructure(
+      executeRuntimeHelperScenario(byId.get("model-probabilities-survive-market-guard"), repoRoot),
+      { expectHeadlineOneXTwo: true }
+    ).passed,
+    true
+  );
+});
+
 test("team-news guard accepts a sourced claim or an explicit abstention", () => {
   assert.equal(validateTeamNewsDiscipline(
     "Villa are without their first-choice keeper, who is suspended (BBC Sport, 12 Apr)."
@@ -1187,6 +1234,8 @@ test("schema-10 permanent certification matrix names every authorized regression
     "incomplete-market-fails-closed",
     "complete-market-arithmetic",
     "third-party-probability-labelling",
+    "model-probabilities-survive-market-guard",
+    "external-market-price-still-fails-closed",
     "neutral-venue-missing-input",
     "stale-manager-official-conflict",
     "correction-after-wrong-history",

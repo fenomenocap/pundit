@@ -3,8 +3,9 @@
   "fixed": [
     {
       "id": "active-match-grounding",
-      "description": "A model-backed active club fixture receives match grounding.",
-      "kind": "featured"
+      "description": "A model-backed active club fixture receives match grounding and delivers its headline win/draw/win line under a section label that is not left empty.",
+      "kind": "featured",
+      "expectHeadlineOneXTwo": true
     },
     {
       "id": "priced-fixture-retains-1x2-context",
@@ -193,6 +194,26 @@
       "args": [{ "kind": "external-market", "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" }],
       "expect": { "valid": true },
       "expectText": ["Example Book", "not a Pundit forecast"]
+    },
+    {
+      "id": "model-probabilities-survive-market-guard",
+      "description": "The settled match guard chain keeps Pundit's own headline 1X2, totals and BTTS numbers when the answer also states plainly that no market line is available, which the match prompt requires it to say.",
+      "kind": "runtime-helper",
+      "helper": "sanitizeFinalMatchAnswer",
+      "args": ["**Verdict**\nNo Kalshi market is available.\nMan United win **77.6%**, draw **14.2%**, Hull **8.2%**.\nOver 2.5 sits at **77.6%**.\nBTTS No at **61.0%**."],
+      "expect": {},
+      "expectText": ["**Verdict**", "No Kalshi market is available.", "77.6%", "14.2%", "8.2%", "61.0%"],
+      "forbidText": ["omitted those numbers"]
+    },
+    {
+      "id": "external-market-price-still-fails-closed",
+      "description": "A price positively attributed to a named external source is still removed for the fail-closed notice, and the section label it emptied does not survive as a heading over blank space.",
+      "kind": "runtime-helper",
+      "helper": "sanitizeFinalMatchAnswer",
+      "args": ["**Verdict**\nKalshi has Arsenal at 62% and the bookmakers price the draw at 3.40.\n\n**Read on the underdog**\nChelsea need an early goal."],
+      "expect": {},
+      "expectText": ["omitted those numbers", "**Read on the underdog**"],
+      "forbidText": ["62%", "3.40", "**Verdict**"]
     },
     {
       "id": "neutral-venue-missing-input",
