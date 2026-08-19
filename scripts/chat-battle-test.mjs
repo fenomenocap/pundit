@@ -612,6 +612,7 @@ async function runScenario(
     result.runtimeHelper = {
       module: scenario.helper === "resolveFixtureRoutingSequence"
         || scenario.helper === "sanitizeFinalMatchAnswer"
+        || scenario.helper === "deliverMatchAnswerOffline"
         ? "packages/api/src/services/ask.ts"
         : scenario.helper === "evaluateFixtureCapability"
           ? "packages/api/src/services/fixture-registry.ts"
