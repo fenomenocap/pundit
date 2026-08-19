@@ -4,6 +4,7 @@ import {
   buildGrounding,
   deliverAnswer,
   generateAnalysis,
+  hasGroundedAnswerShape,
   hasMeaningfulProse,
   type AskGrounding,
   type CompetitionGrounding,
@@ -594,6 +595,15 @@ describe("the final safety gate", () => {
       "a single labelled section carrying no number":
         "**Read on the underdog**\nCoventry City need the game to stay tight; their"
         + " route runs through a low-scoring draw or a one-goal away win.",
+      // The two shapes a pure team-news question produces. Both legitimately
+      // carry no label and no percentage, and substituting the 1X2 fallback for
+      // either would answer a question the user did not ask -- destroying
+      // correct content from the opposite direction to the leak.
+      "a cited team-news answer with no label and no percentage":
+        "Coventry City's first-choice keeper is suspended"
+        + " ([Coventry City team news](https://example.com/coventry-team-news), 2026-08-01).",
+      "an abstention standing as the answer to a pure team-news question":
+        "No verified, dated team-news update was established for this fixture.",
     };
 
     for (const [shape, answer] of Object.entries(SHORT_BUT_LEGITIMATE)) {
@@ -611,6 +621,53 @@ describe("the final safety gate", () => {
         expect(normalizeWhitespace(delivered.answer))
           .toContain(normalizeWhitespace(answer));
       });
+    }
+  });
+
+  /**
+   * Both directions of the shape gate, pinned as one table.
+   *
+   * A positive gate has two ways to be wrong, and the second is the more
+   * dangerous: rejecting a leak is the point, but rejecting a correct answer is
+   * the exact failure -- destroying correct content -- that this whole repair
+   * exists to eliminate. So the accept column is not a courtesy, it is half the
+   * contract, and it is stated here rather than left implicit in the end-to-end
+   * tests above.
+   */
+  describe("the shape gate's accept/reject matrix", () => {
+    const REJECTED: Record<string, string> = {
+      "the production leak": "[web_search:Celtic LASK Champions League playoff 2026"
+        + " team news injuries]\n[web_search:Celtic lineup news August 2026]",
+      "an invented bare directive": "SEARCH -> Celtic LASK second leg team news",
+      "an invented conversational request": "I am going to look up the latest Celtic and"
+        + " LASK team news before answering, and then check the first leg result.",
+      "a bare tool JSON payload":
+        '{"search_queries": ["Celtic LASK team news", "LASK squad August 2026"]}',
+    };
+
+    const ACCEPTED: Record<string, string> = {
+      "a full match answer":
+        "**Verdict**\nCeltic win **51.2%**, the draw **26.3%**, LASK **22.5%**.",
+      "a label with no number":
+        "**Read on the underdog**\nLASK need the game to stay tight and low-scoring.",
+      "a number with no label":
+        "Celtic are the side the model prefers, at 51.2% against LASK's 22.5%.",
+      "a short percentage follow-up": "About 26.3%.",
+      // The false positive the first cut of this gate had: a correctly cited
+      // team-news answer carries neither a label nor a percentage, and the gate
+      // would have thrown it away to substitute 1X2 probabilities instead.
+      "a cited team-news answer": "Saka is out ([BBC](https://bbc.co.uk/x), 2026-08-18).",
+      "an abstention standing alone":
+        "No verified, dated team-news update was established.",
+      "an abstention in the could-not-verify wording":
+        "Pundit could not verify any current squad news for this fixture.",
+    };
+
+    for (const [shape, text] of Object.entries(REJECTED)) {
+      it(`rejects ${shape}`, () => expect(hasGroundedAnswerShape(text)).toBe(false));
+    }
+    for (const [shape, text] of Object.entries(ACCEPTED)) {
+      it(`accepts ${shape}`, () => expect(hasGroundedAnswerShape(text)).toBe(true));
     }
   });
 

@@ -2910,6 +2910,15 @@ export function hasMeaningfulProse(answer: string): boolean {
 const PERCENT_FIGURE = /\d[\d.,]*\s?%/;
 
 /**
+ * A citation the server itself resolved and rendered. `renderEvidenceCitations`
+ * turns a `[[S1]]` marker into `[title](url)`, so this shape cannot be written
+ * by the model at all -- it only exists downstream of evidence that survived
+ * verification, which makes it the strongest possible signal that the text is a
+ * real answer.
+ */
+const RESOLVED_CITATION_LINK = /\]\(https?:\/\//i;
+
+/**
  * Whether a grounded answer LOOKS like an answer, rather than like something
  * else that happens to be made of words.
  *
@@ -2926,18 +2935,38 @@ const PERCENT_FIGURE = /\d[\d.,]*\s?%/;
  * prompt mandates instead of asking for the absence of things we have
  * catalogued. `FORMAT_RULES` requires every section to start with a bold label
  * on its own line, and `MATCH_EXAMPLE` expresses every grounded figure as a
- * percentage. An answer with neither is not an answer in the shape this system
- * asks for, whatever else it contains.
+ * percentage.
  *
- * The two signals are OR-ed rather than AND-ed deliberately: either one alone
- * is enough, so the shortest legitimate reply the prompt permits -- a one-line
- * response to a follow-up, or a single labelled section -- still passes. What
- * cannot pass is text carrying no label and no number at all, which is what a
- * tool request written as prose always is: it names a tool and a query, and it
- * has no reason to contain either signal in any format anyone invents next.
+ * Two further signals cover the answers those two do not describe. A pure
+ * team-news question ("any injury news for Celtic vs LASK?") is answered either
+ * from evidence -- "Saka is out ([BBC](...), 2026-08-18)." -- or by abstaining,
+ * and both shapes legitimately carry no label and no percentage. Discarding
+ * either one to substitute 1X2 probabilities the user never asked for would be
+ * this repair destroying correct content from the opposite direction, and would
+ * undo the deliberate decision not to pad a pure injury question with the
+ * grounded fallback.
+ *
+ * Every signal is OR-ed, never AND-ed, so the shortest legitimate reply the
+ * prompt permits still passes on whichever one it happens to carry: a one-line
+ * follow-up on its percentage, a single labelled section on its label, a cited
+ * team-news sentence on its resolved link, an abstention on its wording.
+ *
+ * What cannot pass is text with none of the four, which is what a tool request
+ * written as prose always is: it names a tool and states a query, and it has no
+ * reason to carry a label, a percentage, a server-rendered citation or an
+ * abstention in any format anyone invents next.
+ *
+ * There is no fifth legitimate shape to worry about. `FORMAT_RULES` is on every
+ * match-tier turn without exception -- including the off-topic ones
+ * `MATCH_QUESTION_SCOPE` permits, where it still says to pick labels that fit
+ * the question -- and no guard in the chain removes a label from a section
+ * whose body survives, so any match answer with prose in it has at least a
+ * label.
  */
 export function hasGroundedAnswerShape(answer: string): boolean {
   return PERCENT_FIGURE.test(answer)
+    || RESOLVED_CITATION_LINK.test(answer)
+    || ABSTENTION.test(answer)
     || answer.split("\n").some((line) => SECTION_LABEL_LINE.test(line));
 }
 
