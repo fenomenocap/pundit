@@ -2723,24 +2723,124 @@ export function dropMisbucketedTotalsScorelines(line: string): string {
 }
 
 /**
- * A knockout tie pays no league points, so "one point" as the *return from
- * this fixture* is wrong on a qualifier and is rewritten to a draw.
+ * League-points language on a two-legged qualifier, where no league points are
+ * on offer at all.
  *
- * The rewrite used to be an unconditional `/\b(?:one|1) point\b/` and mangled
- * every other use of the word: "the model is one point higher on the draw"
- * became "the model is a draw higher on the draw", and "Celtic lead the group
- * by one point" -- ordinary standings prose, not a claim about this tie at all
- * -- shipped as "Celtic lead the group by a draw". So the phrase has to assert
- * a points return before it is touched: a verb of earning, or a point taken
- * *from* the tie. A point as a unit of measurement ("one point higher", "11
- * percentage points", "lead by one point") is left exactly as written.
+ * Two separate failures live here, and both produce text a reader can see.
+ *
+ * The first was over-firing. The rewrite was an unconditional
+ * `/\b(?:one|1) point\b/` -> "a draw" and mangled every other use of the word:
+ * "the model is one point higher on the draw" became "the model is a draw
+ * higher on the draw", and "Celtic lead the group by one point" -- ordinary
+ * standings prose making no claim about this tie at all -- shipped as "lead the
+ * group by a draw". So a phrase must now assert a points *return from this
+ * fixture* before it is touched. A point as a unit of measurement ("one point
+ * higher", "11 percentage points", "lead by one point") is left as written.
+ *
+ * The second is that a token swap ignores the syntax around it. Firing on "A
+ * draw is worth one point to Celtic." is correct -- that is exactly the false
+ * points claim this guard exists to stop -- but swapping the noun phrase for
+ * "a draw" yielded "A draw is worth a draw to Celtic.", and the reader gets
+ * broken English instead of a corrected statement. So each rule now emits a
+ * phrase that fits where it lands: verbs are rewritten as verbs and keep their
+ * tense, noun phrases are rewritten as noun phrases, and a replacement that
+ * begins a sentence keeps its capital letter.
  */
-const POINTS_RETURN_FROM_TIE =
-  /\b(?:take|takes|taking|took|claim|claims|claiming|claimed|earn|earns|earning|earned|secure|secures|securing|secured|gain|gains|gaining|gained|collect|collects|collecting|collected|settle for|settles for|settling for|settled for|come away with|comes away with|coming away with|came away with|walk away with|walks away with)\s+(?:just\s+|only\s+|at least\s+)?(?:one|1|a)\s+point\b/gi;
+type PointsVerbForm = "base" | "third" | "past" | "gerund";
 
-/** "worth one point", "a point from the tie" -- still a points return. */
+const DRAW_FORMS: Record<PointsVerbForm, string> = {
+  base: "draw", third: "draws", past: "drew", gerund: "drawing",
+};
+const WIN_FORMS: Record<PointsVerbForm, string> = {
+  base: "win", third: "wins", past: "won", gerund: "winning",
+};
+
+/**
+ * Which form the matched verb was in, so the replacement can match it. Reading
+ * "Celtic claimed three points" as "Celtic win" is grammatical but wrong about
+ * time, and the irregulars are listed because -ed does not reach them.
+ */
+function pointsVerbForm(verb: string): PointsVerbForm {
+  if (/\b\w+ing\b/i.test(verb)) return "gerund";
+  if (/\b(?:took|came|won|drew|got)\b/i.test(verb) || /\b\w+ed\b/i.test(verb)) return "past";
+  if (/\b\w+s\b/i.test(verb)) return "third";
+  return "base";
+}
+
+/**
+ * Whether the offset begins a sentence, allowing for the markdown that can sit
+ * in front of one. A rewrite that lands here has to supply its own capital,
+ * because the words that carried it were the ones removed.
+ */
+const SENTENCE_START = /(?:^|[.!?\n])[\s*_>#-]*$/;
+
+function capitalizeFirst(text: string): string {
+  return text.charAt(0).toLocaleUpperCase() + text.slice(1);
+}
+
+function replacePointsPhrase(
+  text: string,
+  pattern: RegExp,
+  phraseFor: (groups: (string | undefined)[]) => string
+): string {
+  return text.replace(pattern, (...args) => {
+    const full = args[args.length - 1] as string;
+    const offset = args[args.length - 2] as number;
+    const phrase = phraseFor(args.slice(1, -2) as (string | undefined)[]);
+    return SENTENCE_START.test(full.slice(0, offset)) ? capitalizeFirst(phrase) : phrase;
+  });
+}
+
+/** Verbs of earning: what a side does to a points return it never receives. */
+const POINTS_EARNING_VERB = [
+  "take", "takes", "taking", "took",
+  "claim", "claims", "claiming", "claimed",
+  "earn", "earns", "earning", "earned",
+  "secure", "secures", "securing", "secured",
+  "gain", "gains", "gaining", "gained",
+  "collect", "collects", "collecting", "collected",
+  "pick up", "picks up", "picking up", "picked up",
+  "settle for", "settles for", "settling for", "settled for",
+  "come away with", "comes away with", "coming away with", "came away with",
+  "walk away with", "walks away with", "walking away with", "walked away with",
+].join("|");
+
+const THREE_POINTS_RETURN = new RegExp(
+  `\\b(${POINTS_EARNING_VERB}|win|wins|winning|won)\\s+(?:just\\s+|only\\s+|all\\s+)?(?:three|3)\\s+points\\b`,
+  "gi"
+);
+const ONE_POINT_RETURN = new RegExp(
+  `\\b(${POINTS_EARNING_VERB})\\s+(?:just\\s+|only\\s+|at least\\s+)?(?:one|1|a)\\s+point\\b`,
+  "gi"
+);
+/** "is worth one point" -- a noun-phrase claim, so the fix is a noun phrase. */
 const POINT_WORTH_OF_TIE =
-  /\b(worth\s+)(?:one|1|a)\s+point\b|\b(?:one|1|a)\s+point\b(?=\s+from\s+(?:the\s+)?(?:tie|game|match|fixture|first leg|second leg|two legs))/gi;
+  /\b(?:just\s+|only\s+|merely\s+)?worth\s+(?:just\s+|only\s+|merely\s+)?(?:one|1|a)\s+point\b/gi;
+/** "a point from the tie" -- the object is kept so the clause still reads. */
+const POINT_FROM_THE_TIE =
+  /\b(?:one|1|a)\s+point\s+from\s+((?:the\s+)?(?:tie|game|match|fixture|first leg|second leg|two legs))\b/gi;
+const SHARE_OF_THE_POINTS = /\ba share of the points\b/gi;
+const SHARE_THE_POINTS = /\b(share|shares|sharing|shared)\s+the\s+points\b/gi;
+/** "Kuopio's share of the points" -- no article to rewrite, so keep the idiom. */
+const BARE_SHARE_OF_THE_POINTS = /\bshare of the points\b/gi;
+const ROUTE_TO_THREE_POINTS = /\broute to (?:three|3) points\b/gi;
+
+function rewriteQualifierPointsClaims(text: string): string {
+  const rules: [RegExp, (groups: (string | undefined)[]) => string][] = [
+    [SHARE_OF_THE_POINTS, () => "a draw"],
+    [SHARE_THE_POINTS, ([verb]) => DRAW_FORMS[pointsVerbForm(verb ?? "")]],
+    [BARE_SHARE_OF_THE_POINTS, () => "share of the spoils"],
+    [ROUTE_TO_THREE_POINTS, () => "route to victory"],
+    [THREE_POINTS_RETURN, ([verb]) => WIN_FORMS[pointsVerbForm(verb ?? "")]],
+    [ONE_POINT_RETURN, ([verb]) => DRAW_FORMS[pointsVerbForm(verb ?? "")]],
+    [POINT_WORTH_OF_TIE, () => "worth no league points"],
+    [POINT_FROM_THE_TIE, ([object]) => `a draw in ${object ?? "the tie"}`],
+  ];
+  return rules.reduce(
+    (current, [pattern, phraseFor]) => replacePointsPhrase(current, pattern, phraseFor),
+    text
+  );
+}
 
 export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): string {
   let sanitized = answer
@@ -2768,12 +2868,7 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
       .join("\n");
     sanitized = sanitizeGroundedMatchNarrative(sanitized, grounding);
     if (grounding.competitionId === "uefa.champions_qual") {
-      sanitized = sanitized
-        .replace(/\b(?:a )?share of the points\b/gi, "a draw")
-        .replace(/\b(?:take|claim|earn|secure)(?:s|ed|ing)? (?:all )?(?:three|3) points\b/gi, "win")
-        .replace(/\broute to (?:three|3) points\b/gi, "route to victory")
-        .replace(POINTS_RETURN_FROM_TIE, "draw")
-        .replace(POINT_WORTH_OF_TIE, "$1a draw");
+      sanitized = rewriteQualifierPointsClaims(sanitized);
     }
   }
   // Only two-legged cup ties can be settled on aggregate. An ungrounded answer
