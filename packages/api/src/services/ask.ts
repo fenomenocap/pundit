@@ -2590,20 +2590,34 @@ export function sanitizeUnsupportedTeamNews(answer: string): string {
 // leaks were malformed, doubled and truncated often enough that a paired-tag
 // regex is not sufficient.
 //
-// The class has exactly two members, and each is recognised by its own
-// vocabulary rather than by its punctuation:
+//   [web_search:Celtic LASK Champions League playoff 2026 team news injuries]
+//
+// The class has three members, and each is recognised by its own vocabulary
+// rather than by its punctuation:
 //
 //   1. Markup: a control-token fragment, or a tag whose *name* opens a
 //      tool-call region.
 //   2. A JSON literal -- object or array, at any nesting, anywhere in the text
 //      -- whose *keys* are the keys of a tool invocation.
+//   3. A bracketed directive whose leading *token* is the name of a search
+//      tool, with its query after a colon.
 //
-// The fourth shape is member 2 with an array wrapper, so it needs no new
+// The third shape above is member 2 with an array wrapper, so it needs no new
 // pattern, only the removal of the assumption that a JSON payload can only
 // lead the answer. Crucially it is not recognised by its `[[ ... ]]` framing:
 // widening the citation-marker sweep to a general `\[\[[^\]]*\]\]` would eat
 // ordinary bracketed prose, so brackets alone decide nothing and the JSON
-// tool keys decide everything.
+// tool keys decide everything. Member 3 obeys the same discipline for the same
+// reason: the tool name decides, the brackets do not.
+//
+// None of this is the primary defence any more, and it must not be mistaken
+// for one. Three of these forms shipped to users precisely because each new
+// leak was a shape the previous strippers had no vocabulary for, so the load
+// is now carried by `hasGroundedAnswerShape` in `deliverAnswer`, which tests
+// for the answer we want instead of for the leaks we have seen. Recognising a
+// form here buys something the shape gate cannot: the search the model asked
+// for gets run, so the user gets a researched answer rather than the grounded
+// fallback.
 
 /**
  * Framing bytes of MiniMax's own control tokens, and the generic "<|...|>"
@@ -2611,6 +2625,34 @@ export function sanitizeUnsupportedTeamNews(answer: string): string {
  * prose, so they are removed wherever they appear.
  */
 const CONTROL_TOKEN_FRAGMENT = /\]<\]\s*minimax\s*\[>\[|\]<\]|\[>\[|<\|[^|\n>]{0,60}\|>/gi;
+
+/**
+ * Names MiniMax uses for a search tool: the one Pundit actually exposes, plus
+ * the hosted names it invents for searches it cannot run.
+ */
+const SEARCH_TOOL_NAME =
+  "web_search|websearch|search_web|web-search|google_search|bing_search|search";
+
+/**
+ * A bracketed directive naming a search tool, e.g.
+ * `[web_search:Celtic lineup news August 2026]`.
+ *
+ * This is a third member of the class rather than a third stripper: like the
+ * tag and JSON members it is recognised by the tool *name* and not by its
+ * punctuation, which is what keeps it off `[[S1]]`, `[[a, b]]` and markdown
+ * links -- all of which fail on the very first token after the bracket. The
+ * closing bracket is optional because these leaks arrive truncated, and the
+ * query cannot span a line, so an unterminated one eats a line and no more.
+ *
+ * The structural shape gate in `deliverAnswer` is what actually makes this form
+ * safe; recognising it here is what makes it *recoverable*, by handing the
+ * query to `extractLeakedSearchQueries` so the search the model asked for is
+ * run instead of discarded.
+ */
+const BRACKETED_TOOL_DIRECTIVE = new RegExp(
+  `\\[[ \\t]*(?:${SEARCH_TOOL_NAME})[ \\t]*[:=][ \\t]*([^\\]\\n]{0,256})\\]?`,
+  "gi"
+);
 
 /**
  * Tags that open a tool-call region on their own. Encountering one in answer
@@ -2649,6 +2691,7 @@ const TOOL_RESIDUE = new RegExp([
   `<\\s*/?\\s*(?:antml:)?(?:${[...TOOL_REGION_TAGS, ...TOOL_INNER_TAGS].join("|")})\\b`,
   /"(?:search_queries|search_query|queries|query|tool_call|tool_name|arguments|params)"\s*:/.source,
   /\]<\]|\[>\[|<\|/.source,
+  `\\[[ \\t]*(?:${SEARCH_TOOL_NAME})[ \\t]*[:=]`,
 ].join("|"), "i");
 
 /**
@@ -2832,7 +2875,9 @@ interface ToolMarkupStrip {
 
 function stripToolCallMarkupDetailed(answer: string): ToolMarkupStrip {
   const stripped = stripEmbeddedToolJson(stripLeadingToolJson(
-    stripToolRegions(answer.replace(CONTROL_TOKEN_FRAGMENT, ""))
+    stripToolRegions(answer
+      .replace(CONTROL_TOKEN_FRAGMENT, "")
+      .replace(BRACKETED_TOOL_DIRECTIVE, ""))
   ));
   if (stripped === answer) return { text: answer, removed: false };
   return {
@@ -2900,6 +2945,7 @@ const LEAKED_QUERY_PATTERNS = [
   /<\s*(?:antml:)?query\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
   /<\s*(?:antml:)?parameter\s+name\s*=\s*"query"\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
   /"(?:search_query|query)"\s*:\s*"((?:[^"\\]|\\.)*)"/gi,
+  BRACKETED_TOOL_DIRECTIVE,
 ];
 
 const LEAKED_QUERY_ARRAY = /"(?:search_queries|queries)"\s*:\s*\[([\s\S]*?)(?:\]|$)/i;
