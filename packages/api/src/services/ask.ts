@@ -30,9 +30,11 @@ import {
   SECTION_LABEL_LINE,
   splitAnswerSentences,
   splitPriceSafeSentences,
+  segmentAnswer,
+  TEAM_NEWS_CLAIM,
 } from "./answer-provenance";
 import {
-  applyClaimDecisions,
+  reviseAnswerWithClaimDecisions,
   attributeManagerEra,
   containsCorrectionCue,
   probabilityAttributionLabel,
@@ -259,8 +261,119 @@ const OVERALL_DEADLINE_MS = 90_000;
 
 const CURRENT_NEWS_QUESTION = /\b(latest|current|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
 const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it))\b/i;
-const POSITIVE_CURRENT_NEWS = /\b(is|are|has|have|will|set to|expected to|ruled out|doubtful|injur(?:ed|y)|suspend(?:ed|sion)|available|unavailable|lineup|transfer(?:red)?|appointed|sacked|won|lost|drawn)\b/i;
 const ABSTENTION = /\b(no verified|could not verify|not established|no usable|no current|unconfirmed|unknown)\b/i;
+
+/**
+ * A server-owned citation marker, in every shape the generator actually emits.
+ *
+ * The prompt asks for `[[S1]]`, but the `S` is dropped often enough to matter,
+ * and `[[1]]` matched nothing: it was neither resolved into a source nor
+ * stripped, so the literal text "[[1]]" reached the chat bubble -- and, worse,
+ * the sentence carrying it counted as uncited and was deleted. The digits are
+ * normalised back to `S<n>` before lookup. Bounded to a marker's own shape on
+ * purpose; a general `\[\[[^\]]*\]\]` would swallow ordinary prose.
+ */
+const EVIDENCE_MARKER = /\[\[\s*S?(\d{1,3})\s*\]\]/g;
+
+function evidenceMarkerIds(sentence: string): string[] {
+  return [...sentence.matchAll(new RegExp(EVIDENCE_MARKER.source, "g"))]
+    .map((match) => `S${Number(match[1])}`);
+}
+
+/**
+ * The sentence is about a betting market rather than a squad. Needed because
+ * the availability vocabulary below is shared with market-capability prose:
+ * MATCH_SYSTEM_PROMPT explicitly asks for "no Kalshi market is available", and
+ * that sentence is a statement about Pundit's own data, not team news.
+ */
+const MARKET_SUBJECT = /\b(?:markets?|lines?|prices?|odds|kalshi|polymarket|bookmakers?|bookies?)\b/i;
+
+/**
+ * Squad-availability wording that the canonical `TEAM_NEWS_CLAIM` does not
+ * cover on its own. `TEAM_NEWS_CLAIM` matches "unavailable for selection" but
+ * not the far commoner "expected to be unavailable", and matches nothing at
+ * all in "the player is available". Both are claims about the outside world
+ * that Pundit's grounding cannot support, so the guards have to see them.
+ *
+ * This stays a *supplement*, never a replacement. The predecessor
+ * (`POSITIVE_CURRENT_NEWS`) matched `is|are|has|have`, which is to say almost
+ * every English sentence, and that is precisely how the evidence guards came
+ * to delete the model's own probabilities.
+ */
+const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
+  /\b(?:available|unavailable|out injured|out with a|will miss|misses? out|back in (?:training|contention)|match ?fit|fitness test|doubt)\b/i;
+
+/**
+ * Does this sentence make a squad-availability claim -- the narrow class that
+ * genuinely needs an outside source? Market prose is excluded outright: it
+ * shares vocabulary with team news and has its own dedicated guard.
+ */
+function assertsTeamNews(sentence: string): boolean {
+  if (TEAM_NEWS_CLAIM.test(sentence)) return true;
+  if (MARKET_SUBJECT.test(sentence)) return false;
+  return SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence);
+}
+
+/**
+ * Applies `fn` to each sentence of `answer` in place, leaving every character
+ * between sentences -- line breaks, list markers, indentation -- exactly as
+ * written. Sentences come from `splitAnswerSentences`, so a price is never cut
+ * in half at the point in "3.40" and a trailing citation marker stays attached
+ * to the sentence it cites.
+ *
+ * Each sentence is located by searching forward from a moving cursor, so two
+ * identical sentences resolve to their own spans. A sentence that cannot be
+ * located is left untouched rather than guessed at.
+ */
+function reviseAnswerSentences(answer: string, fn: (sentence: string) => string): string {
+  let cursor = 0;
+  let revised = "";
+  for (const sentence of splitAnswerSentences(answer)) {
+    const index = answer.indexOf(sentence, cursor);
+    if (index < 0) continue;
+    revised += answer.slice(cursor, index) + fn(sentence);
+    cursor = index + sentence.length;
+  }
+  return revised + answer.slice(cursor);
+}
+
+/**
+ * Is this segment an externally sourced claim? `segmentAnswer` is the canonical
+ * answer, widened only by the supplementary availability wording above.
+ */
+function isEvidenceSegment(segment: { text: string; provenance: string }): boolean {
+  return segment.provenance === "evidence" || assertsTeamNews(segment.text);
+}
+
+/**
+ * Confines an abstention to the evidence-derived regions of `answer`.
+ *
+ * Every guard that used to abstain replaced the *whole* answer, which threw
+ * away the probabilities, the verdict and the reasoning -- none of which came
+ * from search and none of which the evidence layer has any standing to judge.
+ * The abstention now stands in for the claims that actually needed a source,
+ * once, and everything else is returned byte for byte.
+ *
+ * Section labels are left alone: a label whose body genuinely went is removed
+ * by `dropOrphanedSectionLabels`, which unlike this function knows whether the
+ * answer has settled or is still a streaming prefix.
+ */
+function abstainEvidenceClaims(answer: string, notice: string): string {
+  let emitted = false;
+  const revised = segmentAnswer(answer).map((segment) => {
+    const { text } = segment;
+    if (!isEvidenceSegment(segment)) return text;
+    if (SECTION_LABEL_LINE.test(text)) return text;
+    // An abstention is already the thing this function would write.
+    if (ABSTENTION.test(text)) return text;
+    const trailing = /\s*$/.exec(text)?.[0] ?? "";
+    if (emitted) return trailing;
+    emitted = true;
+    return `${notice}${trailing}`;
+  }).join("");
+  if (!emitted) return answer;
+  return revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
 
 export function deterministicSearchQuery(question: string, correctionContext = ""): string | null {
   if (!CURRENT_NEWS_QUESTION.test(question)
@@ -368,7 +481,10 @@ export function verifiableCurrentClaims(answer: string): VerifiableClaim[] {
     // Server-owned citation markers identify the externally sourced claims.
     // Model-grounded numeric sentences have no marker and are not sent to the
     // current-fact verifier, so live evidence can never rewrite probabilities.
-    .filter((sentence) => /\[\[S\d+\]\]/.test(sentence) && !ABSTENTION.test(sentence))
+    // Marker-shaped rather than strictly `[[S1]]`: a claim the generator wrote
+    // as `[[1]]` still has to face the verifier, or widening the renderer's
+    // marker regex would hand it a citation nobody checked.
+    .filter((sentence) => evidenceMarkerIds(sentence).length > 0 && !ABSTENTION.test(sentence))
     .slice(0, 24)
     .map((text, index) => ({ id: `C${index + 1}`, text }));
 }
@@ -388,12 +504,22 @@ export async function verifyCurrentClaims(
   if (!claims.length) {
     // `allowStructuredMarketOnly` records why the caller expected server-owned
     // market data, but raw generated prose is not itself that structured data.
-    // Returning it here let an uncited bookmaker percentage bypass both the
-    // verifier and citation renderer. Until the answer is constructed directly
-    // from Grounding.oddsSources, fail closed rather than trusting the prose.
+    // The market prose is not this function's problem, though:
+    // `stripUnvalidatedExternalMarketClaims` runs immediately downstream with
+    // the grounding in hand and is the only thing that can tell a quotable
+    // server-owned market from an invented one.
     void allowStructuredMarketOnly;
+    // No citation markers means no verifiable claims, and there is nothing to
+    // verify in an answer that made no external claim. Replacing the whole
+    // answer here was the single largest source of destroyed answers: a
+    // perfectly good verdict built entirely from Pundit's own probabilities
+    // was thrown away for failing a check it was never subject to. Abstain
+    // over the evidence regions only.
     return {
-      answer: "I could not establish a supported current answer from the retrieved evidence.",
+      answer: abstainEvidenceClaims(
+        answer,
+        "I could not establish a supported current answer from the retrieved evidence."
+      ),
       verification: { status: "abstain", supportedClaimCount: 0, removedClaimCount: 0 },
     };
   }
@@ -406,7 +532,10 @@ export async function verifyCurrentClaims(
   })), signal);
   if (!pages.length || !reserveProviderCall(bundle)) {
     return {
-      answer: "I could not establish a supported current answer from retrievable evidence.",
+      answer: abstainEvidenceClaims(
+        answer,
+        "I could not establish a supported current answer from retrievable evidence."
+      ),
       verification: {
         status: pages.length ? "unavailable" : "abstain",
         supportedClaimCount: 0,
@@ -415,20 +544,16 @@ export async function verifyCurrentClaims(
     };
   }
   const result = await (dependencies.verify ?? verifyClaimsOnce)(client, claims, pages, signal);
-  const applied = applyClaimDecisions(claims, result.decisions);
-  // Verification operates only on externally sourced factual claims. Preserve
-  // server-authored safety/capability notices that were added before this step;
-  // rebuilding the whole answer from claims used to erase the outside-coverage
-  // warning as soon as a fixture-date or team-news sentence was verified.
-  const safetyNotices = answer.split("\n").map((line) => line.trim()).filter((line) =>
-    /^This recognized fixture (?:is outside Pundit's model coverage|is temporarily unpriced|is missing a required model input)/.test(line)
-    || /^This is general football analysis, not based on Pundit's model data\.$/.test(line)
-  );
-  const checkedAnswer = [...new Set([...safetyNotices, applied.answer])]
-    .filter(Boolean)
-    .join("\n\n");
+  // Verification operates only on externally sourced factual claims, so the
+  // answer is *revised* rather than rebuilt: each unsupported claim's span is
+  // excised and every other character survives. Rebuilding from the supported
+  // claims alone discarded the probabilities, the verdict, the reasoning and
+  // the server-authored capability notices, none of which were ever claims.
+  // The notices no longer need re-adding by hand -- they are simply never
+  // touched.
+  const applied = reviseAnswerWithClaimDecisions(answer, claims, result.decisions);
   return {
-    answer: checkedAnswer,
+    answer: applied.answer.trim(),
     verification: {
       status: result.status,
       supportedClaimCount: applied.supported.length,
@@ -553,6 +678,19 @@ function stripExternalPriceSentences(line: string): { text: string; removed: boo
   return { text: kept.join("").replace(/\s{2,}/g, " ").trim(), removed: true };
 }
 
+/**
+ * What a source-header line says once the market naming is taken out of it.
+ * "Stake market:" is nothing but the header and goes; "The model favours
+ * Arsenal. Stake market:" keeps its first sentence.
+ */
+function stripMarketHeaderSentences(line: string): string {
+  return splitPriceSafeSentences(line)
+    .filter((sentence) => !EXTERNAL_MARKET_MENTION.test(sentence))
+    .join("")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export function stripUnvalidatedExternalMarketClaims(
   answer: string,
   marketLegSets: readonly (readonly OneXTwoMarketLeg[])[] = []
@@ -585,13 +723,19 @@ export function stripUnvalidatedExternalMarketClaims(
     const matching = validated.find(({ source }) =>
       source && line.toLocaleLowerCase().includes(source)
     );
+    // Whatever the line said outside the priced clause is not a market claim
+    // and survives. A line is dropped whole only when the market clause was
+    // all it carried -- a bare leg, or a source header whose entire body was
+    // the legs beneath it.
+    const remainder = sentences.removed
+      ? sentences.text
+      : stripMarketHeaderSentences(line);
     if (matching && !emittedSources.has(matching.source)) {
       emittedSources.add(matching.source);
-      lines[index] = matching.rendered;
+      lines[index] = remainder ? `${remainder} ${matching.rendered}` : matching.rendered;
       continue;
     }
-    // Keep whatever the line said outside the priced clause.
-    if (sentences.removed && sentences.text) lines[index] = sentences.text;
+    if (remainder) lines[index] = remainder;
     else removedLines.add(index);
   }
   const retained = lines.filter((_line, index) => !removedLines.has(index)).join("\n").trim();
@@ -810,6 +954,67 @@ export function sanitizeFootballGeometry(answer: string): string {
   ).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/**
+ * How stale a market observation may be and still be quotable. The collectors
+ * refresh on a 30-minute cadence, so six hours is many missed cycles -- long
+ * enough to survive a transient source outage, short enough that a price the
+ * user is shown is still recognisably the current one.
+ */
+const MARKET_OBSERVATION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * The server-owned 1X2 markets in `grounding`, as leg sets for
+ * `validateCompleteOneXTwoMarket`.
+ *
+ * `stripUnvalidatedExternalMarketClaims` has always had an escape hatch for a
+ * price it could attribute to a complete, same-source, same-instant record --
+ * and it was dead code, because no caller ever supplied one. Every market
+ * sentence therefore fell through to the deletion branch, including ones
+ * quoting the very Kalshi and Polymarket figures Pundit itself fetched and put
+ * in the grounding. This populates the hatch rather than inverting the default:
+ * inverting would spare unattributable prices too, which is the hallucinated-
+ * price hole the guard exists to close.
+ *
+ * All three legs are built from a single `OddsSource`, so a mixed-source or
+ * mixed-time record is impossible by construction rather than merely rejected.
+ * `oddsSources` probabilities are already no-vig, and `decimalOdds = 1/p`
+ * round-trips through the validator's `1/decimalOdds` and its renormalisation
+ * exactly, so the rendered figures are the grounding's own numbers.
+ */
+function groundingOneXTwoMarketLegs(
+  grounding?: Grounding,
+  now = Date.now()
+): OneXTwoMarketLeg[][] {
+  return (grounding?.oddsSources ?? []).flatMap((source) => {
+    const observed = Date.parse(source.observedAt);
+    if (!Number.isFinite(observed)) return [];
+    // Stale in either direction: a clock-skewed future timestamp is no more
+    // quotable than a day-old one.
+    if (Math.abs(now - observed) > MARKET_OBSERVATION_MAX_AGE_MS) return [];
+    const probabilities: Record<MatchOutcome, number | null> = {
+      home: source.pHome,
+      draw: source.pDraw,
+      away: source.pAway,
+    };
+    const legs: OneXTwoMarketLeg[] = [];
+    for (const outcome of ["home", "draw", "away"] as const) {
+      const probability = probabilities[outcome];
+      // `decimalOdds > 1` is the validator's own admissibility test, so a
+      // zero, negative or certain probability is rejected here rather than
+      // producing a leg the validator would only reject later.
+      if (probability === null || !Number.isFinite(probability)
+        || probability <= 0 || probability >= 1) return [];
+      legs.push({
+        outcome,
+        decimalOdds: 1 / probability,
+        source: source.source,
+        observedAt: source.observedAt,
+      });
+    }
+    return [legs];
+  });
+}
+
 export function sanitizeRuntimeResponseCorrectness(
   answer: string,
   grounding?: Grounding,
@@ -820,7 +1025,7 @@ export function sanitizeRuntimeResponseCorrectness(
   const rationaleSafe = sanitizeContradictoryRationales(managerSafe, grounding);
   return stripUnvalidatedExternalMarketClaims(
     rationaleSafe,
-    context.externalOneXTwoMarkets
+    context.externalOneXTwoMarkets ?? groundingOneXTwoMarketLegs(grounding)
   );
 }
 
@@ -833,15 +1038,16 @@ export function failClosedEmptyCurrentVerification(
     || (verification.status !== "abstain" && verification.status !== "unavailable")) {
     return answer;
   }
-  const safetyNotices = answer.split("\n").map((line) => line.trim()).filter((line) =>
-    /^This recognized fixture (?:is outside Pundit's model coverage|is temporarily unpriced|is missing a required model input)/.test(line)
-    || /^I could not establish an authoritative structured fixture identity/.test(line)
-    || /^This is general football analysis, not based on Pundit's model data\.$/.test(line)
-  );
   const abstention = verification.status === "unavailable"
     ? "I could not establish a supported current answer because verification was unavailable."
     : "I could not establish a supported current answer from the retrieved evidence.";
-  return [...new Set([...safetyNotices, abstention])].join("\n\n");
+  // Scoped to the evidence regions. The previous form kept a hand-maintained
+  // allowlist of server-authored notices and discarded literally everything
+  // else -- so a verification that supported no *team-news* claim also deleted
+  // the model's probabilities, which had never been up for verification.
+  // Keeping model content is not a loosening: an unsupported squad claim is
+  // still replaced by the abstention, wherever in the answer it was written.
+  return abstainEvidenceClaims(answer, abstention);
 }
 
 function acknowledgeCorrection(answer: string, verification: AskVerification): string {
@@ -860,33 +1066,59 @@ export function renderEvidenceCitations(
 ): { answer: string; citations: AskCitation[] } {
   const byId = new Map((bundle?.results ?? []).map((source) => [source.id, source]));
   const cited = new Map<string, AskCitation>();
-  const lines = answer.split("\n").flatMap((line) => {
-    if (!line.trim()) return [line];
-    const prefix = line.match(/^\s*(?:[-*]|\d+\.)\s+/)?.[0] ?? "";
-    const body = line.slice(prefix.length);
-    const sentences = body.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [body];
-    const safeSentences = sentences.flatMap((sentence) => {
-      const ids = [...sentence.matchAll(/\[\[(S\d+)\]\]/g)].map((match) => match[1]);
-      const sources = ids.map((id) => byId.get(id));
-      const invented = sources.some((source) => !source);
-      const positiveNews = evidenceRequired && POSITIVE_CURRENT_NEWS.test(sentence) && !ABSTENTION.test(sentence);
-      const dated = sources.some((source) => Boolean(source?.date));
-      if (invented || (positiveNews && (!dated || ids.length === 0))) return [];
-      return sentence.replace(/\[\[(S\d+)\]\]/g, (_marker, id: string) => {
-        const source = byId.get(id);
-        if (!source?.date) return "";
-        cited.set(id, source);
-        const safeTitle = source.title.replace(/[\[\]]/g, "");
-        return `([${safeTitle}](${source.url}), ${source.date})`;
-      });
+  const notice = "I could not establish a verified current update from the available dated sources.";
+  let abstained = false;
+  const abstain = () => {
+    if (abstained) return "";
+    abstained = true;
+    return notice;
+  };
+
+  let rendered = reviseAnswerSentences(answer, (sentence) => {
+    const ids = evidenceMarkerIds(sentence);
+    const sources = ids.map((id) => byId.get(id));
+    const invented = sources.some((source) => !source);
+    // Gated on a squad-availability claim rather than on the old
+    // `POSITIVE_CURRENT_NEWS`, which matched `is|are|has|have` and therefore
+    // condemned essentially every sentence Pundit's model produced.
+    const teamNews = evidenceRequired && assertsTeamNews(sentence) && !ABSTENTION.test(sentence);
+    const dated = sources.some((source) => Boolean(source?.date));
+    if (invented || (teamNews && (!dated || ids.length === 0))) {
+      // A dropped squad claim leaves the abstention in its place, once, so the
+      // section says why it is empty instead of vanishing silently.
+      return teamNews ? abstain() : "";
+    }
+    // One rendered link per source per sentence. The verifier re-marks a claim
+    // it accepted, so a claim the generator wrote as `[[1]]` arrives carrying
+    // both that marker and the verifier's `[[S1]]`; the reader wants the source
+    // once, not twice.
+    const renderedIds = new Set<string>();
+    return sentence.replace(EVIDENCE_MARKER, (_marker, digits: string) => {
+      const source = byId.get(`S${Number(digits)}`);
+      if (!source?.date) return "";
+      cited.set(source.id, source);
+      if (renderedIds.has(source.id)) return "";
+      renderedIds.add(source.id);
+      const safeTitle = source.title.replace(/[\[\]]/g, "");
+      return `([${safeTitle}](${source.url}), ${source.date})`;
     });
-    let rendered = `${prefix}${safeSentences.join("")}`;
-    rendered = rendered.replace(/ {2,}/g, " ").trimEnd();
-    return rendered ? [rendered] : [];
   });
-  let rendered = lines.join("\n").trim();
-  if (evidenceRequired && cited.size === 0 && !ABSTENTION.test(rendered)) {
-    rendered = "I could not establish a verified current update from the available dated sources.";
+
+  // Nothing bracket-shaped reaches the browser. Deliberately bounded to a
+  // marker's own shape: a general `\[\[[^\]]*\]\]` would eat prose that merely
+  // opened a double bracket.
+  rendered = rendered
+    .replace(/\[\[\s*[A-Za-z]{0,2}\d{1,3}\s*\]\]/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (evidenceRequired && cited.size === 0 && !abstained && !ABSTENTION.test(rendered)) {
+    // Scoped to the evidence regions. Replacing the whole answer here deleted
+    // the model's probabilities whenever a search returned nothing datable --
+    // the commonest outcome of all, and the one this branch is meant to handle.
+    const scoped = abstainEvidenceClaims(rendered, notice);
+    rendered = scoped.trim() ? scoped : notice;
   }
   return { answer: rendered, citations: [...cited.values()] };
 }
