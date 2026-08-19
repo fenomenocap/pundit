@@ -45,6 +45,14 @@ const JSON_LEAK = '{  "search_queries": ["Arsenal team news injuries Premier Lea
 const BRACKETED_JSON_LEAK = '[[{"id":"google_search","params":{"query":"Arsenal vs Coventry '
   + 'Premier League 21 August 2026 lineup injuries","topn":10,"recency_days":30}}]]';
 
+// Verbatim from production: the entire 117-character answer a user received for
+// "Celtic vs LASK second leg". Neither markup nor JSON -- single brackets, a
+// colon, and a query of ordinary English words -- so every stripper written for
+// the three leaks above passed it straight through to the chat bubble.
+const BRACKETED_DIRECTIVE_LEAK =
+  "[web_search:Celtic LASK Champions League playoff 2026 team news injuries]\n"
+  + "[web_search:Celtic lineup news August 2026]";
+
 // The tool loop executes searches for real; stub the backend so these tests
 // stay offline and deterministic.
 const searchWeb = vi.hoisted(() => vi.fn());
@@ -1048,6 +1056,39 @@ describe("extractLeakedSearchQueries", () => {
   it("returns nothing for an answer that only mentions searching", () => {
     expect(extractLeakedSearchQueries("Arsenal are favoured at 61% on the model.")).toEqual([]);
   });
+
+  it("recovers queries from the bracketed directive form", () => {
+    expect(extractLeakedSearchQueries(BRACKETED_DIRECTIVE_LEAK)).toEqual([
+      "Celtic LASK Champions League playoff 2026 team news injuries",
+      "Celtic lineup news August 2026",
+    ]);
+  });
+});
+
+describe("the bracketed directive leak", () => {
+  it("is stripped out of an answer it rides along with", () => {
+    expect(stripToolCallMarkup(
+      `${BRACKETED_DIRECTIVE_LEAK}\n\n**Verdict**\nCeltic win **51.2%** on the model.`
+    )).toBe("**Verdict**\nCeltic win **51.2%** on the model.");
+  });
+
+  /**
+   * The tool name is what decides, not the brackets. Citation markers, bracket
+   * arithmetic and markdown links all put a colon near a bracket, and none of
+   * them may be touched -- the general bracket sweep this deliberately is not
+   * is what once shipped an answer consisting of `[[1]]`.
+   */
+  it("leaves bracketed prose, citations and links alone", () => {
+    for (const prose of [
+      "The keeper is suspended [[S1]], so the back line changes.",
+      "Celtic's route runs through [[1]] and the low-scoring draw.",
+      "See the [match preview](https://example.com/preview) for the line-ups.",
+      "Read the note [Celtic: a tactical history] before the second leg.",
+      "The model's inputs [ratings: ClubElo] are pinned per release.",
+    ]) {
+      expect(stripToolCallMarkup(prose)).toBe(prose);
+    }
+  });
 });
 
 describe("text-form tool call recovery", () => {
@@ -1069,6 +1110,27 @@ describe("text-form tool call recovery", () => {
     );
     expect(bundle.queries).toHaveLength(1);
     // The retry turn is asked for prose, not for another tool call.
+    expect(create.mock.calls[1][0].tools).toBeUndefined();
+  });
+
+  it("runs the search a bracketed directive asked for instead of discarding it", async () => {
+    // The structural shape gate in `deliverAnswer` already stops this reaching
+    // the user. Recognising it at the boundary buys the better outcome: the
+    // search the model wanted actually runs, so the user gets a researched
+    // answer rather than the grounded fallback.
+    const create = vi.fn()
+      .mockResolvedValueOnce(message(BRACKETED_DIRECTIVE_LEAK, "end_turn"))
+      .mockResolvedValueOnce(message(
+        "**Verdict**\nCeltic are favoured at 51.2% on the model.", "end_turn"
+      ));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const bundle = { queries: [] as string[], results: [], providerCalls: 0 };
+    const answer = await generateAnalysis(client, "system", [], "match", undefined, bundle);
+    expect(answer).toContain("Celtic are favoured at 51.2%");
+    expect(answer).not.toContain("web_search");
+    expect(searchWeb).toHaveBeenCalledTimes(1);
+    expect(searchWeb.mock.calls[0][0])
+      .toBe("Celtic LASK Champions League playoff 2026 team news injuries");
     expect(create.mock.calls[1][0].tools).toBeUndefined();
   });
 
