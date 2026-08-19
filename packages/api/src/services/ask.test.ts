@@ -1748,13 +1748,30 @@ describe("evidence guards leave model-derived answers intact", () => {
     // The escape hatch used to be dead code -- declared, read once, never
     // populated -- so this was wiped to the notice even though Pundit had
     // fetched the price itself and put it in the grounding.
+    //
+    // DELIBERATE CHANGE OF CONTRACT. This used to assert that the hatch
+    // *replaced* the sentence with the rendered recital. Verified-and-kept is
+    // now the correct outcome: 50.0% is exactly what the grounding observed
+    // from Kalshi, so the sentence presents no unvalidated price and its
+    // comparison against the model is the thing the match prompt asked for.
+    // The recital is asserted below, where it belongs -- on figures that
+    // cannot be reconciled.
     const quoted = sanitizeRuntimeResponseCorrectness(
       "Kalshi has Arsenal at 50.0%, so the model is a touch higher.",
       grounding
     );
-    expect(quoted).toContain("Kalshi market-implied probabilities (third-party data, not a Pundit forecast)");
-    expect(quoted).toContain("home 50.0%, draw 25.0%, away 25.0%");
+    expect(quoted).toBe("Kalshi has Arsenal at 50.0%, so the model is a touch higher.");
     expect(quoted).not.toContain("omitted those numbers");
+
+    // The same sentence with a figure Kalshi never showed is still removed,
+    // and the recital is what stands in its place.
+    const misquoted = sanitizeRuntimeResponseCorrectness(
+      "Kalshi has Arsenal at 62.0%, so the model is a touch higher.",
+      grounding
+    );
+    expect(misquoted).toContain("Kalshi market-implied probabilities (third-party data, not a Pundit forecast)");
+    expect(misquoted).toContain("home 50.0%, draw 25.0%, away 25.0%");
+    expect(misquoted).not.toContain("62.0%");
 
     // A price attributed to a source the grounding does not carry is still
     // removed, and the model's own numbers on neighbouring lines survive.
@@ -1869,5 +1886,128 @@ describe("evidence guards leave model-derived answers intact", () => {
     // re-issued through the notice branch.
     const intact = "**Verdict**\nOver 2.5 lands at **54.0%**.";
     expect(sanitizeGroundedMatchNarrative(intact, groundedMatch())).toBe(intact);
+  });
+});
+
+/**
+ * The market guard verifies a quote instead of replacing it.
+ *
+ * It used to substitute `renderValidatedOneXTwoMarket` for the model's whole
+ * line whenever a market was named. `MATCH_SYSTEM_PROMPT` asks the model to
+ * compare its probability against the market and state the edge, and
+ * `MATCH_EXAMPLE` demonstrates exactly that -- so the substitution deleted the
+ * reasoning the prompt had just requested. A production answer had Celtic at
+ * 66.9% against Kalshi's 55.4%, an eleven-point divergence and the single most
+ * decision-relevant fact available, and the delivered text never mentioned it:
+ * it was three bare percentages with `observed 2026-08-19T09:33:30.001Z` on
+ * the end.
+ *
+ * The protection the guard exists for is unchanged and is re-asserted here
+ * from every angle that could have been weakened by the change: a price with
+ * no validated record behind it, one attributed to a source the grounding does
+ * not carry, one that is plausible but simply absent, and one that contradicts
+ * the record all still go.
+ */
+describe("the market guard verifies rather than replaces", () => {
+  const observedAt = "2026-08-19T09:33:30.001Z";
+  const kalshiLegs = (probabilities: [number, number, number] = [0.554, 0.238, 0.208]) =>
+    (["home", "draw", "away"] as const).map((outcome, index) => ({
+      outcome,
+      decimalOdds: 1 / probabilities[index],
+      source: "Kalshi",
+      observedAt,
+    }));
+
+  it("keeps the model's edge analysis when the quoted figures reconcile", () => {
+    // The production sentence, in the shape MATCH_EXAMPLE demonstrates.
+    const analysis = "The model gives Celtic **66.9%**, while Kalshi is tighter at 55.4% / 23.8% / 20.8%, so the model sees about **11 points** more edge on the home win.";
+    expect(stripUnvalidatedExternalMarketClaims(analysis, [kalshiLegs()])).toBe(analysis);
+
+    for (const survivor of [
+      // Labelled legs, the other order, and a lower precision than the record.
+      "Kalshi has the home side at 55.4%, the draw at 23.8% and the away side at 20.8%.",
+      "At 55.4% / 23.8% / 20.8%, Kalshi is well below the model's 66.9% on Celtic.",
+      "Kalshi market-implied: home 55%, draw 24%, away 21%.",
+      // The model's own figures share the sentence and are not held against
+      // the market record.
+      "Kalshi puts the home win at 55.4%, whereas the model has it at 66.9% and over 2.5 at 54.0%.",
+    ]) {
+      expect(stripUnvalidatedExternalMarketClaims(survivor, [kalshiLegs()])).toBe(survivor);
+    }
+  });
+
+  it("corrects a single slipped figure in place and keeps the sentence", () => {
+    // A repair leaves no unvalidated price standing: the wrong figure is
+    // replaced by the record's own, at the precision the model wrote.
+    expect(stripUnvalidatedExternalMarketClaims(
+      "Kalshi has home 55.4%, draw 23.9% and away 20.8%, so the model is 11 points higher.",
+      [kalshiLegs()]
+    )).toBe("Kalshi has home 55.4%, draw 23.8% and away 20.8%, so the model is 11 points higher.");
+    expect(stripUnvalidatedExternalMarketClaims(
+      "Kalshi has home 55.4%, draw 23.8% and away 25.0%, a wider book than the model's.",
+      [kalshiLegs()]
+    )).toBe("Kalshi has home 55.4%, draw 23.8% and away 20.8%, a wider book than the model's.");
+  });
+
+  it("never emits a raw ISO timestamp when it does fall back to a recital", () => {
+    const recited = stripUnvalidatedExternalMarketClaims(
+      "Kalshi has home 10.0%, draw 80.0% and away 10.0%.",
+      [kalshiLegs()]
+    );
+    expect(recited).not.toContain(observedAt);
+    expect(recited).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(recited).toContain("observed 19 August 2026 at 09:33 UTC");
+    expect(recited).toContain("home 55.4%, draw 23.8%, away 20.8%");
+  });
+
+  it("still removes a price that cannot be attributed to a validated record", () => {
+    // No record at all -- the long-standing default, unchanged.
+    for (const priced of [
+      "Kalshi has Arsenal at 62%, so the model is a touch higher.",
+      "The bookmakers price the draw at 3.40 and the away win at 3.60.",
+      "Kalshi market-implied home 48.0%, draw 28.0%, away 24.0%.",
+    ]) {
+      expect(stripUnvalidatedExternalMarketClaims(priced)).toContain("omitted those numbers");
+    }
+
+    // A record exists, but not for the source the sentence names. Kalshi's
+    // record cannot vouch for a Polymarket price, and the guard does not
+    // silently re-attribute one source's numbers to another's sentence.
+    const otherSource = stripUnvalidatedExternalMarketClaims(
+      "Polymarket prices the home win at 58.0%.",
+      [kalshiLegs()]
+    );
+    expect(otherSource).not.toContain("58.0%");
+    expect(otherSource).not.toContain("Kalshi");
+    expect(otherSource).toContain("omitted those numbers");
+
+    // Plausible, well-formed, correctly attributed -- and simply not a figure
+    // the record contains. Nearness is not validation.
+    for (const absent of [
+      "Kalshi has Arsenal at 57.0%.",
+      "Kalshi is at 55.9% on the home win.",
+      // More than one leg out of step is a different book, not a slip.
+      "Kalshi has home 55.4%, draw 30.0% and away 25.0%, a wider book than the model's.",
+    ]) {
+      const sanitized = stripUnvalidatedExternalMarketClaims(absent, [kalshiLegs()]);
+      expect(sanitized).not.toBe(absent);
+      expect(sanitized).toContain("Kalshi market-implied probabilities");
+      expect(sanitized).toContain("home 55.4%, draw 23.8%, away 20.8%");
+    }
+
+    // Figures that contradict the record wholesale are replaced, not repaired:
+    // rewriting every leg would be authoring the quote rather than checking it.
+    const contradicting = stripUnvalidatedExternalMarketClaims(
+      "Kalshi market: home 99%, draw 0.5%, away 0.5%.",
+      [kalshiLegs()]
+    );
+    expect(contradicting).not.toContain("99%");
+    expect(contradicting).toContain("home 55.4%, draw 23.8%, away 20.8%");
+
+    // An incomplete record is no record: the hatch never opens on two legs.
+    expect(stripUnvalidatedExternalMarketClaims(
+      "Kalshi has home 55.4%, draw 23.8% and away 20.8%.",
+      [kalshiLegs().slice(0, 2)]
+    )).toContain("omitted those numbers");
   });
 });
