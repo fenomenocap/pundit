@@ -420,15 +420,28 @@ describe("current-news evidence hardening", () => {
   });
 
   it("does not let uncited generated bookmaker percentages use the structured-market exception", async () => {
+    const generated = "Stake market: Arsenal 52%, draw 25%, away 23%. No verified injury update was established.";
     const checked = await verifyCurrentClaims(
-      "Stake market: Arsenal 52%, draw 25%, away 23%. No verified injury update was established.",
+      generated,
       { queries: ["current odds"], providerCalls: 2, results: [] },
       {} as Parameters<typeof verifyCurrentClaims>[2],
       undefined,
       true
     );
     expect(checked.verification.status).toBe("abstain");
-    expect(checked.answer).not.toMatch(/52%|25%|23%/);
+    // Deliberate change of ownership, not of outcome. `verifyCurrentClaims`
+    // used to enforce this by replacing the entire answer with an abstention,
+    // which is also how it deleted every model-derived verdict that happened
+    // to carry no citation marker. Market prose belongs to the market guard,
+    // which runs immediately downstream with the grounding in hand and is the
+    // only thing able to tell a quotable server-owned market from an invented
+    // one. The guarantee asserted here is the pipeline's, and it is unchanged:
+    // an unattributable bookmaker price never reaches the user.
+    const delivered = sanitizeRuntimeResponseCorrectness(
+      failClosedEmptyCurrentVerification(checked.answer, checked.verification, true)
+    );
+    expect(delivered).not.toMatch(/52%|25%|23%/);
+    expect(delivered).toContain("omitted those numbers");
   });
 
   it("removes artifact-shaped positive team news when verification supported nothing", () => {
@@ -471,9 +484,21 @@ describe("current-news evidence hardening", () => {
       "Pundit's model favours Lyon.",
       "Kalshi favours Fenerbahce.",
     ].join("\n"), grounding);
-    expect(sanitized).not.toMatch(/model underdogs|Read on the underdog|Lyon to overturn|draw contributes|market favours Lyon|Kalshi gives Lyon/);
+    expect(sanitized).not.toMatch(/model underdogs|Lyon to overturn|draw contributes|market favours Lyon|Kalshi gives Lyon/);
     expect(sanitized).toContain("Pundit's model favours Lyon.");
     expect(sanitized).toContain("Kalshi favours Fenerbahce.");
+    // Deliberate change: this used to assert that the "**Read on the
+    // underdog**" label was blanked here. It was blanked by a rule that
+    // deleted any line mentioning "underdog" whose next non-blank line named
+    // the model's favourite -- which is what a read-on-the-underdog section is
+    // for, and which also blanked the label in answers whose body survived.
+    // The label is now dropped only once its body has genuinely gone, by the
+    // settled-answer sweep the delivery chain already runs.
+    expect(sanitized).toContain("**Read on the underdog**");
+    expect(dropOrphanedSectionLabels(sanitizeGroundedMatchNarrative(
+      "**Read on the underdog**\nFor Lyon to overturn the model, they must counter well.",
+      grounding
+    ))).not.toContain("Read on the underdog");
   });
 
   it("removes only the backwards high-line geometry claim", () => {
