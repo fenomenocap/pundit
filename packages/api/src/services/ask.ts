@@ -902,25 +902,43 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
   // over a body that genuinely went is removed by `dropOrphanedSectionLabels`,
   // which -- unlike this function, which also runs on streaming prefixes --
   // knows whether the answer has settled.
+  let removedClaim = false;
+  const drop = () => {
+    removedClaim = true;
+    return "";
+  };
   const retained = reviseAnswerSentences(answer, (sentence) => {
     const claimedTeam = mentionedTeamOutcome(sentence, grounding);
     if (claimedTeam) {
       const claimsUnderdog = /\b(?:underdogs?|outsiders?|upset|overturn\s+the\s+model|spring\s+an?\s+upset)\b/i.test(sentence);
       const claimsFavorite = /\b(?:favou?rite|favou?rs?|most likely (?:winner|side)|model edge)\b/i.test(sentence);
-      if (claimsUnderdog && modelFavorite === claimedTeam) return "";
+      if (claimsUnderdog && modelFavorite === claimedTeam) return drop();
       // `/\bmodel|pundit\b/` is an unparenthesised alternation: it parsed as
       // `(\bmodel)|(pundit\b)`, so it fired on "modelling" and on "bepundit".
-      if (claimsFavorite && modelFavorite !== claimedTeam && /\b(?:model|pundit)\b/i.test(sentence)) return "";
+      if (claimsFavorite && modelFavorite !== claimedTeam && /\b(?:model|pundit)\b/i.test(sentence)) return drop();
     }
 
     const homeProbability = new RegExp(
       `\\b(?:pHome|home(?:[- ]win)? (?:probability|chance|share)|${escapedPattern(grounding.home)}(?:'s)? (?:win )?(?:probability|chance|share))\\b`,
       "i"
     );
-    const drawAssociation = /\b(?:includes?|contributes?|counts? toward|adds? to|boosts?|forms? part of|combined into)\b/i;
-    if (/\bdraw\b/i.test(sentence) && drawAssociation.test(sentence) && homeProbability.test(sentence)) {
-      return "";
-    }
+    // The claim being caught is that the draw is folded INTO the home win
+    // probability, which the payload contradicts -- pDraw and pHome are
+    // disjoint. Testing the three parts independently made that far too broad:
+    // "The draw at 18.0% adds to the uncertainty around Arsenal's win
+    // probability" is a true, ordinary sentence, and it was deleted because it
+    // happened to contain a draw, an association verb, and a home-probability
+    // phrase somewhere. So the association verb must actually take the home
+    // probability as its object, immediately, rather than merely share a
+    // sentence with it.
+    const drawFoldedIntoHome = new RegExp(
+      "\\bdraw\\b[^.!?\\n]*?"
+      + "\\b(?:includes?|included in|contributes? to|counts? toward|adds? to|boosts?"
+      + "|forms? part of|combined into|part of)\\s+(?:the\\s+)?"
+      + homeProbability.source,
+      "i"
+    );
+    if (drawFoldedIntoHome.test(sentence)) return drop();
 
     if (claimedTeam
       // "stake" is an ordinary English noun, so the "at stake" idiom is
@@ -952,11 +970,31 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
       if (relevant.length
         && favorites.size === 1
         && teamFavorites.length === 1
-        && teamFavorites[0] !== claimedTeam) return "";
+        && teamFavorites[0] !== claimedTeam) return drop();
     }
     return sentence;
   }).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-  return retained || "The structured probabilities are available, but the unsupported interpretation was omitted.";
+  if (retained) return retained;
+  // Nothing survived. There are two ways to arrive here and they are not the
+  // same thing.
+  //
+  // If this function removed a claim, the notice is honest: a one-sentence
+  // answer whose one sentence contradicted the grounding has genuinely nothing
+  // left, and saying so beats shipping the contradiction.
+  //
+  // If it removed nothing, the answer was already empty when it arrived --
+  // stripped to nothing by the tool-markup and narration guards upstream,
+  // which is exactly what a leaked-tool-call turn looks like by the time it
+  // reaches here. That was the production path behind a 91-character reply to
+  // a live match question: this guard, which had removed nothing and had no
+  // opinion, invented boilerplate for an empty string, and because the
+  // boilerplate is plausible prose it satisfied `hasMeaningfulProse` and
+  // suppressed the grounded fallback in `deliverAnswer` -- the fallback whose
+  // entire purpose is to answer that question from the server's own numbers.
+  // Returning the empty answer unchanged lets that fallback fire.
+  return removedClaim
+    ? "The structured probabilities are available, but the unsupported interpretation was omitted."
+    : answer;
 }
 
 export function sanitizeFootballGeometry(answer: string): string {

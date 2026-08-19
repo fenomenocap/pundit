@@ -1844,4 +1844,26 @@ describe("evidence guards leave model-derived answers intact", () => {
       })
     )).toContain("unsupported interpretation was omitted");
   });
+
+  /**
+   * The other way to reach "nothing survived", and the one that was serving
+   * users a 91-character reply to a live match question.
+   *
+   * When the tool-markup and narration guards upstream strip a leaked turn to
+   * nothing, this guard is handed "" -- it has removed nothing and has no
+   * opinion about anything. It nevertheless answered with its own fail-closed
+   * notice, and because that notice is plausible prose it passed
+   * `hasMeaningfulProse` and suppressed the grounded fallback in
+   * `deliverAnswer`, which is precisely the thing that could have answered the
+   * question from Pundit's own numbers.
+   */
+  it("does not invent a notice for an answer that was already empty", () => {
+    for (const empty of ["", "   ", "\n\n"]) {
+      expect(sanitizeGroundedMatchNarrative(empty, groundedMatch())).toBe(empty);
+    }
+    // And an answer it leaves entirely alone is returned untouched, not
+    // re-issued through the notice branch.
+    const intact = "**Verdict**\nOver 2.5 lands at **54.0%**.";
+    expect(sanitizeGroundedMatchNarrative(intact, groundedMatch())).toBe(intact);
+  });
 });
