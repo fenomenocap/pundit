@@ -899,6 +899,43 @@ test("the built match guard chain keeps model numbers and still drops external p
   );
 });
 
+// `chat-eval:dry-run` only lints the manifest -- it never executes a scenario --
+// so an answer-survival scenario that is not pinned here is dead weight that CI
+// never runs. These four are the guardrail: each is a shape production actually
+// served, and each must be checked by the real delivery chain on every push.
+test("a correct match answer survives the whole delivery chain", async () => {
+  const repoRoot = path.resolve(import.meta.dirname, "..");
+  const config = JSON.parse(await readFile(path.join(repoRoot, "evals/chat/scenarios.json"), "utf8"));
+  const byId = new Map(config.fixed.map((scenario) => [scenario.id, scenario]));
+  for (const id of [
+    "full-match-answer-survives-intact",
+    "uncited-injury-claim-is-still-removed",
+    "bare-numeric-marker-never-reaches-user",
+    "team-news-abstains-without-wiping-verdict",
+  ]) {
+    const scenario = byId.get(id);
+    assert.equal(scenario?.kind, "runtime-helper", `missing answer-survival scenario ${id}`);
+    const actual = executeRuntimeHelperScenario(scenario, repoRoot);
+    for (const text of scenario.expectText ?? []) {
+      assert.equal(actual.includes(text), true, `${id} lost required text: ${text}`);
+    }
+    for (const text of scenario.forbidText ?? []) {
+      assert.equal(actual.includes(text), false, `${id} retained forbidden text: ${text}`);
+    }
+    // Every one of these is a match answer that still has something to say, so
+    // the structural contract applies to all of them and not only to the
+    // untouched one.
+    assert.equal(
+      validateAnswerStructure(actual, { expectHeadlineOneXTwo: true }).passed,
+      true,
+      `${id} lost its structure or headline 1X2`
+    );
+    assert.equal(validateAnswerCopy(actual).passed, true, `${id} leaked internal jargon`);
+    assert.equal(validateNoDraftLeak(actual).passed, true, `${id} leaked a draft or tool call`);
+    assert.equal(validateTeamNewsDiscipline(actual).passed, true, `${id} left team news unsourced`);
+  }
+});
+
 test("team-news guard accepts a sourced claim or an explicit abstention", () => {
   assert.equal(validateTeamNewsDiscipline(
     "Villa are without their first-choice keeper, who is suspended (BBC Sport, 12 Apr)."
