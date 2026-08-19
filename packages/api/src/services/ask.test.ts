@@ -2086,21 +2086,55 @@ describe("the qualifier points rewrite", () => {
     }
   });
 
-  it("still rewrites a points return claimed from the tie itself", () => {
+  /**
+   * Firing is only half the job. Swapping the noun phrase "one point" for the
+   * noun phrase "a draw" produced "A draw is worth a draw to Celtic." -- the
+   * claim was correctly identified as false and the reader still got broken
+   * English. Every rule here is asserted on its whole output sentence, not on
+   * the presence or absence of a token, because a token assertion is exactly
+   * what let the gibberish through.
+   */
+  it("rewrites a points return into prose that reads", () => {
     for (const [claimed, expected] of [
+      // The reported defect.
+      ["A draw is worth one point to Celtic.", "A draw is worth no league points to Celtic."],
+      ["A 1-1 is worth one point.", "A 1-1 is worth no league points."],
+      ["A draw is only worth one point.", "A draw is worth no league points."],
+      // A noun phrase keeps its object, and a sentence-initial rewrite keeps
+      // its capital -- the words carrying it are the ones removed.
+      ["One point from the tie keeps LASK alive.", "A draw in the tie keeps LASK alive."],
+      ["A share of the points would suit LASK.", "A draw would suit LASK."],
+      // A verb is rewritten as a verb, in the tense it was written in.
       ["LASK would take one point from a 1-1.", "LASK would draw from a 1-1."],
       ["LASK could earn a point here.", "LASK could draw here."],
       ["Celtic will settle for one point.", "Celtic will draw."],
-      ["A 1-1 is worth one point.", "A 1-1 is worth a draw."],
-      ["One point from the tie keeps LASK alive.", "a draw from the tie keeps LASK alive."],
+      ["Celtic settled for one point in the first leg.", "Celtic drew in the first leg."],
+      ["Celtic share the points at 1-1.", "Celtic draw at 1-1."],
+      ["Celtic shared the points in the first leg.", "Celtic drew in the first leg."],
+      ["Celtic claimed three points in the first leg.", "Celtic won in the first leg."],
+      ["Celtic are taking three points from this.", "Celtic are winning from this."],
+      // No article to rewrite, so the idiom is kept and the points claim goes.
+      ["Kuopio's share of the points came at 1-1.", "Kuopio's share of the spoils came at 1-1."],
+      // The pre-existing rewrites still land, and still read.
+      ["A 1-1 gives Celtic a share of the points.", "A 1-1 gives Celtic a draw."],
+      ["Celtic take all three points with a 2-0.", "Celtic win with a 2-0."],
+      ["Sabah's route to three points is a 1-0.", "Sabah's route to victory is a 1-0."],
     ]) {
       expect(sanitizeMatchAnswer(claimed, qualifier)).toBe(expected);
     }
-    // The three-points and shared-points rewrites are untouched.
-    expect(sanitizeMatchAnswer("A 1-1 gives Celtic a share of the points.", qualifier))
-      .toBe("A 1-1 gives Celtic a draw.");
-    expect(sanitizeMatchAnswer("Celtic take all three points with a 2-0.", qualifier))
-      .toBe("Celtic win with a 2-0.");
+
+    // No rewrite may leave a league-points claim behind it, and none may leave
+    // the doubled noun phrase that prompted this fix.
+    for (const claimed of [
+      "A draw is worth one point to Celtic.",
+      "One point from the tie keeps LASK alive.",
+      "Celtic take all three points with a 2-0.",
+      "A 1-1 gives Celtic a share of the points.",
+    ]) {
+      const rewritten = sanitizeMatchAnswer(claimed, qualifier);
+      expect(rewritten).not.toMatch(/\bone point\b|\bthree points\b/i);
+      expect(rewritten).not.toMatch(/\ba draw is worth a draw\b|\ba draw a draw\b/i);
+    }
   });
 
   it("does not touch league prose outside a qualifier", () => {
