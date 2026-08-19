@@ -2655,31 +2655,76 @@ const BRACKETED_TOOL_DIRECTIVE = new RegExp(
 );
 
 /**
- * Tags that open a tool-call region on their own. Encountering one in answer
- * text is unambiguous -- no football answer contains "<tool_call>" -- so
- * everything the region encloses can safely be treated as markup.
+ * A tool-invocation element name, written as its words.
+ *
+ * The vocabulary is spelled out in words rather than in one fixed spelling
+ * because the leak keeps arriving under a new one: `<tool_call>` first, then a
+ * production sample of six `<tool name="web_search"> </tool>` pairs sitting on
+ * top of an otherwise perfect answer, which the tag stripper passed through
+ * untouched because it only knew the name `tool_call`. Joining the words with
+ * an optional separator makes `tool_call`, `tool-call`, `tool.call`, `toolcall`
+ * and `tool` one class instead of five entries, so the next spelling of the
+ * same leak is already covered.
  */
-const TOOL_REGION_TAGS = new Set([
-  "tool_call", "tool_calls", "tool_use", "tool_result", "tool_response",
-  "function_call", "function_calls", "invoke",
-]);
+type TagWords = readonly string[];
+
+const normalizedTagName = (words: TagWords) => words.join("");
+/** The same name as a regex fragment, tolerating `_`, `-` or `.` between words. */
+const tagNamePattern = (words: TagWords) => words.join("[_.-]?");
 
 /**
- * Tags that are markup only *inside* a tool-call region. "<query>" is the
+ * Names that open a tool-call region on their own. Encountering one in answer
+ * text is unambiguous -- no football answer contains "<tool_call>" or a bare
+ * "<tool>" element -- so everything the region encloses can safely be treated
+ * as markup, whether the tag is paired or self-closing, bare or attributed,
+ * and whether the region is empty or carries a payload.
+ */
+const TOOL_REGION_TAG_WORDS: readonly TagWords[] = [
+  ["tool"], ["tools"],
+  ["tool", "call"], ["tool", "calls"], ["tool", "use"], ["tool", "uses"],
+  ["tool", "result"], ["tool", "results"], ["tool", "response"],
+  ["tool", "responses"], ["tool", "invocation"], ["tool", "invocations"],
+  ["function", "call"], ["function", "calls"],
+  ["use", "tool"], ["call", "tool"], ["invoke"],
+];
+
+/**
+ * Names that are markup only *inside* a tool-call region. "<query>" is the
  * important one: the leak nests it inside <invoke>, but a user can also ask
  * "what does <query> mean in SQL?" and see it quoted back, so at depth zero it
  * is left alone.
  */
-const TOOL_INNER_TAGS = new Set([
-  "query", "queries", "parameter", "parameters", "arg", "args", "argument",
-  "arguments", "search_query", "tool_name",
-]);
+const TOOL_INNER_TAG_WORDS: readonly TagWords[] = [
+  ["query"], ["queries"], ["parameter"], ["parameters"], ["arg"], ["args"],
+  ["argument"], ["arguments"], ["search", "query"], ["tool", "name"],
+];
 
-const ANY_TAG = /<\s*\/?\s*(?:antml:)?([A-Za-z_][A-Za-z0-9_.:-]*)\b[^>]*?>/g;
+const TOOL_REGION_TAGS = new Set(TOOL_REGION_TAG_WORDS.map(normalizedTagName));
+const TOOL_INNER_TAGS = new Set(TOOL_INNER_TAG_WORDS.map(normalizedTagName));
+
+/**
+ * Every tool name as one alternation. Longest first so `tool_call` is never
+ * consumed as `tool` followed by an unmatchable remainder.
+ */
+const TOOL_TAG_NAME_PATTERN = [...TOOL_REGION_TAG_WORDS, ...TOOL_INNER_TAG_WORDS]
+  .map(tagNamePattern)
+  .sort((left, right) => right.length - left.length)
+  .join("|");
+
+const ANY_TAG = /<\s*\/?\s*([A-Za-z_][A-Za-z0-9_.:-]*)\b[^>]*?>/g;
+
+/**
+ * The comparable form of a tag name: lower-cased, stripped of any namespace
+ * prefix (`antml:`, and any other the wire format invents) and of the
+ * separators that distinguish one spelling of a name from another.
+ */
+function normalizeTagName(rawName: string): string {
+  return rawName.toLocaleLowerCase().replace(/^[a-z0-9_-]+:/, "").replace(/[_.:-]/g, "");
+}
 
 /** A tag cut off mid-emission by truncation, e.g. a trailing `<invoke name="`. */
 const TRUNCATED_TOOL_TAG = new RegExp(
-  `<\\s*/?\\s*(?:antml:)?(?:${[...TOOL_REGION_TAGS, ...TOOL_INNER_TAGS].join("|")})\\b[^>]*$`,
+  `<\\s*/?\\s*(?:[a-z0-9_-]+:)?(?:${TOOL_TAG_NAME_PATTERN})\\b[^>]*$`,
   "i"
 );
 
@@ -2688,7 +2733,7 @@ const TRUNCATED_TOOL_TAG = new RegExp(
  * vocabulary, a JSON tool key, or a control-token fragment.
  */
 const TOOL_RESIDUE = new RegExp([
-  `<\\s*/?\\s*(?:antml:)?(?:${[...TOOL_REGION_TAGS, ...TOOL_INNER_TAGS].join("|")})\\b`,
+  `<\\s*/?\\s*(?:[a-z0-9_-]+:)?(?:${TOOL_TAG_NAME_PATTERN})\\b`,
   /"(?:search_queries|search_query|queries|query|tool_call|tool_name|arguments|params)"\s*:/.source,
   /\]<\]|\[>\[|<\|/.source,
   `\\[[ \\t]*(?:${SEARCH_TOOL_NAME})[ \\t]*[:=]`,
@@ -2739,7 +2784,7 @@ function stripToolRegions(answer: string): string {
   ANY_TAG.lastIndex = 0;
   for (let match = ANY_TAG.exec(answer); match; match = ANY_TAG.exec(answer)) {
     const raw = match[0];
-    const name = match[1].toLowerCase();
+    const name = normalizeTagName(match[1]);
     const closing = /^<\s*\//.test(raw);
     const selfClosing = /\/\s*>$/.test(raw);
     if (depth === 0) out += answer.slice(cursor, match.index);
