@@ -364,7 +364,7 @@
     },
     {
       "id": "bare-numeric-marker-never-reaches-user",
-      "description": "A citation marker written as [[1]] rather than [[S1]] resolves to the source it meant and is rendered as a link. A production answer consisting of literally [[1]] was served to a user; nothing bracketed may survive delivery.",
+      "description": "A citation marker written as [[1]] rather than [[S1]] resolves to the source it meant and is rendered as a link. A production answer consisting of literally [[1]] was served to a user; nothing bracketed may survive delivery. The required model text above is what asserts the answer was not replaced wholesale, since the abstention wording is legitimate inside the team-news section.",
       "kind": "runtime-helper",
       "helper": "deliverMatchAnswerOffline",
       "args": [
@@ -381,11 +381,11 @@
       ],
       "expect": {},
       "expectText": ["**Verdict**", "56.3%", "23.4%", "20.3%", "](https://example.com/arsenal)", "2026-08-01"],
-      "forbidText": ["[[", "]]", "could not establish a verified current update"]
+      "forbidText": ["[[", "]]"]
     },
     {
       "id": "team-news-abstains-without-wiping-verdict",
-      "description": "When search establishes nothing, the abstention replaces the team-news sentence only. Replacing the whole answer with it is the exact regression that reduced three of five live match answers to a single boilerplate line.",
+      "description": "When search establishes nothing, the abstention replaces the team-news sentence only. Replacing the whole answer with it is the exact regression that reduced three of five live match answers to a single boilerplate line. That property is enforced by the required model text above, not by forbidding the abstention wording: the same sentence is correct inside the team-news section and only wrong when it stands as the answer, so a plain substring ban would now fail the target shape.",
       "kind": "runtime-helper",
       "helper": "deliverMatchAnswerOffline",
       "args": [
@@ -398,7 +398,6 @@
       "expectText": ["**Verdict**", "56.3%", "23.4%", "20.3%", "**Goals**", "54.0%", "52.1%", "No verified team-news update was established"],
       "forbidText": [
         "I could not establish a supported",
-        "could not establish a verified current update",
         "The structured probabilities are available"
       ]
     },
