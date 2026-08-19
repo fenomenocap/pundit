@@ -41,6 +41,9 @@ import {
   shouldHoldCoverageDeltas,
   stripUnvalidatedExternalMarketClaims,
   dropOrphanedSectionLabels,
+  MATCH_ANALYSIS_PRIORITIES,
+  MATCH_CAPABILITY_BOUNDS,
+  sanitizeDeliveredAnswer,
   type Grounding,
 } from "./ask";
 import {
@@ -2141,5 +2144,197 @@ describe("the qualifier points rewrite", () => {
     const league = { ...qualifier, competitionId: "eng.1" } as Grounding;
     const prose = "Arsenal would take one point from a 1-1 and lead by one point.";
     expect(sanitizeMatchAnswer(prose, league)).toBe(prose);
+  });
+});
+
+/**
+ * The match answer's job is to reason from the grounding, not to read it out.
+ *
+ * The live failure these tests stand for: an answer to Celtic vs LASK that
+ * quoted the model at 66.9% and Kalshi at 55.4% in adjacent clauses, and never
+ * said that they disagree by eleven and a half points -- the one fact on the
+ * card that could have changed a decision.
+ *
+ * Two things have to hold for the fix to be real, and only one of them is a
+ * prompt edit. The prompt has to ask for divergence, conditionality and honest
+ * abstention; and the answer shape it asks for has to survive the guard chain,
+ * which has a long history of deleting exactly the sentences a prompt just
+ * asked for. The second half is what the sanitizer cases below check, using the
+ * real Celtic vs LASK numbers.
+ */
+describe("match-tier analytical priorities", () => {
+  const celticLask = (overrides: Partial<Grounding> = {}): Grounding => ({
+    kind: "match",
+    fixtureId: "espn:uefa.champions_qual:1",
+    competitionId: "uefa.champions_qual",
+    competition: "UEFA Champions League Qualifying",
+    homeFieldAdvantage: true,
+    date: "2026-08-19T19:00:00Z",
+    stage: "Playoff Round - First Leg",
+    home: "Celtic",
+    away: "LASK",
+    pHome: 0.669,
+    pDraw: 0.208,
+    pAway: 0.124,
+    pOver2_5: 0.579,
+    pUnder2_5: 0.421,
+    pBttsYes: 0.513,
+    pBttsNo: 0.487,
+    topScores: [
+      { score: "2-0", probability: 0.116 },
+      { score: "1-1", probability: 0.099 },
+      { score: "1-0", probability: 0.098 },
+    ],
+    scorelines: [
+      { score: "2-0", probability: 0.116 },
+      { score: "1-1", probability: 0.099 },
+      { score: "1-0", probability: 0.098 },
+      { score: "1-2", probability: 0.038 },
+      { score: "0-1", probability: 0.033 },
+    ],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    oddsSources: [
+      { source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.554, pDraw: 0.238, pAway: 0.208 },
+      { source: "polymarket", observedAt: new Date().toISOString(), pHome: 0.565, pDraw: 0.235, pAway: 0.2 },
+    ],
+    ...overrides,
+  });
+
+  it("asks for quantified divergence, honest agreement and a conditional read", () => {
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Reason from the numbers rather than reciting them");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Lead with model-versus-market disagreement");
+    expect(MATCH_ANALYSIS_PRIORITIES)
+      .toContain("how many percentage points it is, and which way it runs");
+    // Agreement has to be reportable as a conclusion, or the prompt has just
+    // taught the model to invent an edge on every efficiently priced fixture.
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Agreement is a conclusion, not a hole to fill");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("no meaningful disagreement here");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Never manufacture an edge");
+    expect(MATCH_ANALYSIS_PRIORITIES)
+      .toContain("Name the biggest unknown and make the read conditional on it");
+    // The recital is replaced, not the numbers: no correctness regression.
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Keep every grounded number you would have reported");
+  });
+
+  it("names the capabilities Pundit does not have so ambition cannot license invention", () => {
+    for (const missing of [
+      "no bookmaker odds",
+      "no betting splits",
+      "handle or money percentages",
+      "no opening lines or line-movement history",
+      "player-level data of any kind",
+    ]) expect(MATCH_CAPABILITY_BOUNDS).toContain(missing);
+    expect(MATCH_CAPABILITY_BOUNDS)
+      .toContain("never quote a price in decimal, fractional or American form");
+    expect(MATCH_CAPABILITY_BOUNDS).toContain("say Pundit cannot see it");
+  });
+
+  it("keeps market quoting and interpretation in separate sentences, as the guards require", () => {
+    // Not a style rule. `stripUnvalidatedExternalMarketClaims` replaces any
+    // sentence naming a market source with Pundit's own rendering of that
+    // market, so reasoning written inside such a sentence is deleted along with
+    // the quote. The prompt has to say so; the sanitizer cases below are why.
+    expect(MATCH_CAPABILITY_BOUNDS).toContain("Quote market probabilities one source per sentence");
+    expect(MATCH_CAPABILITY_BOUNDS)
+      .toContain("put your interpretation of the gap in a separate sentence");
+    expect(MATCH_CAPABILITY_BOUNDS).toContain("percentage points");
+  });
+
+  it("delivers a divergence-led answer through the real guard chain intact", () => {
+    const answer = [
+      "**Model vs market**",
+      "Pundit's model makes **Celtic 66.9%**, the **draw 20.8%** and **LASK 12.4%** for the"
+      + " 19 August playoff first leg. Kalshi: home 55.4%, draw 23.8%, away 20.8%. The"
+      + " disagreement is concentrated on the home win, where the model is about"
+      + " **11 percentage points** higher than the priced probability; the draw is within three"
+      + " points and LASK within eight, so the value such as it is sits on Celtic and nowhere else.",
+      "",
+      "**Goals**",
+      "**Over 2.5 at 57.9%** and **both teams to score at 51.3%** point to an open game.",
+      "",
+      "**Likely scorelines**",
+      "**2-0 (11.6%)**, **1-1 (9.9%)** and **1-0 (9.8%)** lead the table.",
+      "",
+      "**What would change this**",
+      "No dated team-news source was found for either side, and the model's edge assumes a normal"
+      + " Celtic XI. If the first-choice back line starts, the gap on the home win stands; if two"
+      + " of them are missing, that gap is the first thing to shrink and the draw becomes the"
+      + " better-priced outcome.",
+    ].join("\n");
+    // One instance, because the market observation timestamp is rendered into
+    // the answer and a second `celticLask()` would move it.
+    const grounding = celticLask();
+    const delivered = sanitizeDeliveredAnswer(answer, "match", grounding);
+    // The interpretation is the whole point of the rewrite, so it is the thing
+    // asserted to survive -- alongside every number the old recital got right.
+    expect(delivered).toContain("the model is about **11 percentage points** higher");
+    expect(delivered).toContain("so the value such as it is sits on Celtic and nowhere else");
+    expect(delivered).toContain("that gap is the first thing to shrink");
+    for (const figure of ["66.9%", "20.8%", "12.4%", "57.9%", "51.3%", "11.6%", "9.9%", "9.8%"]) {
+      expect(delivered).toContain(figure);
+    }
+    // Pundit re-renders the quoted market from its own record; the figures are
+    // the grounding's own, so nothing is lost by that substitution.
+    expect(delivered).toMatch(/Kalshi[^\n]*home 55\.4%, draw 23\.8%, away 20\.8%/);
+    expect(delivered).toContain("**What would change this**");
+    // Idempotent: the delivery chain runs more than once on a settled answer.
+    expect(sanitizeDeliveredAnswer(delivered, "match", grounding)).toBe(delivered);
+  });
+
+  it("carries an agreement finding and an actionable abstention through the guards", () => {
+    const agreed = celticLask({
+      oddsSources: [{
+        source: "kalshi",
+        observedAt: new Date().toISOString(),
+        pHome: 0.664,
+        pDraw: 0.214,
+        pAway: 0.122,
+      }],
+    });
+    const answer = [
+      "**Model vs market**",
+      "Pundit's model makes **Celtic 66.9%**, the **draw 20.8%** and **LASK 12.4%** on 19 August."
+      + " Kalshi: home 66.4%, draw 21.4%, away 12.2%. There is no meaningful disagreement here:"
+      + " every outcome sits within a point of the priced probability, so the fixture looks"
+      + " efficiently priced and there is no edge to take on the result.",
+      "",
+      "**What would change this**",
+      "No dated team-news source was found. If a first-choice striker is ruled out before kickoff,"
+      + " the under and the draw are where that shows up first; check a lineup report an hour"
+      + " before kickoff.",
+    ].join("\n");
+    const delivered = sanitizeDeliveredAnswer(answer, "match", agreed);
+    expect(delivered).toContain("There is no meaningful disagreement here");
+    expect(delivered).toContain("there is no edge to take on the result");
+    expect(delivered).toContain("check a lineup report an hour before kickoff");
+    expect(delivered).not.toContain("omitted those numbers");
+  });
+
+  it("keeps the fused shape, and still deletes the market-favours shape", () => {
+    // The fused shape USED to lose its reasoning, which is why the prompt has a
+    // rule asking the model to split the quote from the interpretation. The
+    // market guard now verifies a quote instead of replacing the line, so a
+    // fused sentence whose figures reconcile survives whole -- the prompt rule
+    // is belt-and-braces rather than load-bearing. Pinned here so a regression
+    // in the guard shows up as the reasoning disappearing again.
+    const fused = sanitizeDeliveredAnswer(
+      "**Model vs market**\nKalshi has Celtic at 55.4%, some 11.5 points below Pundit's model at"
+      + " 66.9%, which is the largest disagreement on the card.",
+      "match",
+      celticLask()
+    );
+    expect(fused).toContain("largest disagreement on the card");
+    expect(fused).toContain("55.4%");
+
+    const favours = sanitizeDeliveredAnswer(
+      "**Model vs market**\nThe market gives LASK more of an edge than the model does.\n"
+      + "The market prices LASK about 8 points higher than the model does.",
+      "match",
+      celticLask()
+    );
+    expect(favours).not.toContain("gives LASK more of an edge");
+    expect(favours).toContain("The market prices LASK about 8 points higher than the model does.");
   });
 });
