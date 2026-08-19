@@ -2917,27 +2917,104 @@ export function sanitizeAnswerForTier(
   answer: string,
   tier: AnalysisTier,
   grounding?: AskGrounding,
-  final = false
+  final = false,
+  trace?: GuardRemoval[]
 ): string {
-  const commonSafeAnswer = sanitizeRuntimeResponseCorrectness(sanitizeUnsupportedTeamNews(
-    normalizeBannedMarkdown(normalizeSectionBreaks(
-      stripProcessNarration(stripToolCallMarkup(answer))
-    ))
-  ), grounding?.kind === "match" ? grounding : undefined);
+  const matchGrounding = grounding?.kind === "match" ? grounding : undefined;
+  const step = (guard: string, input: string, run: (text: string) => string) =>
+    traceGuard(trace, guard, input, run);
+  const commonSafeAnswer = step("sanitizeRuntimeResponseCorrectness",
+    step("sanitizeUnsupportedTeamNews",
+      step("normalizeBannedMarkdown",
+        step("normalizeSectionBreaks",
+          step("stripProcessNarration",
+            step("stripToolCallMarkup", answer, stripToolCallMarkup),
+            stripProcessNarration),
+          normalizeSectionBreaks),
+        normalizeBannedMarkdown),
+      sanitizeUnsupportedTeamNews),
+    (text) => sanitizeRuntimeResponseCorrectness(text, matchGrounding));
   // Section labels left stranded by the guards above are also a property of
   // the whole answer -- a label on a streaming prefix is simply waiting for its
   // body -- so the cleanup is gated on `final` for the same reason.
-  const settled = (tierAnswer: string) => (final ? dropOrphanedSectionLabels(tierAnswer) : tierAnswer);
+  const settled = (tierAnswer: string) => (final
+    ? step("dropOrphanedSectionLabels", tierAnswer, dropOrphanedSectionLabels)
+    : tierAnswer);
   if (tier === "match") {
-    return settled(sanitizeMatchAnswer(
-      commonSafeAnswer,
-      grounding?.kind === "match" ? grounding : undefined
-    ));
+    return settled(step("sanitizeMatchAnswer", commonSafeAnswer,
+      (text) => sanitizeMatchAnswer(text, matchGrounding)));
   }
-  if (tier === "season") return settled(sanitizeSeasonAnswer(commonSafeAnswer));
-  if (tier === "competition") return settled(sanitizeCompetitionAnswer(commonSafeAnswer));
-  const generalAnswer = sanitizeGeneralAnswer(commonSafeAnswer);
+  if (tier === "season") {
+    return settled(step("sanitizeSeasonAnswer", commonSafeAnswer, sanitizeSeasonAnswer));
+  }
+  if (tier === "competition") {
+    return settled(step("sanitizeCompetitionAnswer", commonSafeAnswer, sanitizeCompetitionAnswer));
+  }
+  const generalAnswer = step("sanitizeGeneralAnswer", commonSafeAnswer, sanitizeGeneralAnswer);
   return settled(final ? ensureGeneralDisclaimer(generalAnswer) : generalAnswer);
+}
+
+/**
+ * What one guard took out of the answer it was handed.
+ *
+ * Four separate guards have each shipped a bug whose only symptom was that
+ * correct content vanished, and each was invisible in production because the
+ * pipeline logs only whether an answer was generated, never how much of it
+ * survived. Names and lengths are enough to identify the culprit; the sample is
+ * capped hard because the removed text is the user's answer, not telemetry.
+ */
+export interface GuardRemoval {
+  guard: string;
+  removedChars: number;
+  removedPct: number;
+  /** At most `GUARD_SAMPLE_CHARS` of what the guard removed, whitespace-collapsed. */
+  sample: string;
+}
+
+/** Above this share of the input, a guard is deleting the answer, not cleaning it. */
+const MAJORITY_REMOVAL_PCT = 60;
+
+const GUARD_SAMPLE_CHARS = 120;
+
+/**
+ * The removed span, found by trimming the common prefix and suffix. Exact
+ * enough to name the offending sentence and cheap enough to run per guard.
+ */
+function removedTextSample(input: string, output: string): string {
+  let prefix = 0;
+  while (prefix < output.length && input[prefix] === output[prefix]) prefix += 1;
+  let suffix = 0;
+  while (suffix < output.length - prefix
+    && input[input.length - 1 - suffix] === output[output.length - 1 - suffix]) suffix += 1;
+  return input.slice(prefix, input.length - suffix)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, GUARD_SAMPLE_CHARS);
+}
+
+/**
+ * Runs one guard and records what it removed. Instrumentation lives at the call
+ * site rather than inside each guard: the guards are pure string functions
+ * reused from several chains, and a logging side effect buried in one of them
+ * would fire on prefixes, on tests and on the eval harness alike.
+ */
+function traceGuard(
+  trace: GuardRemoval[] | undefined,
+  guard: string,
+  input: string,
+  run: (text: string) => string
+): string {
+  const output = run(input);
+  if (!trace || output.length >= input.length) return output;
+  const removedChars = input.length - output.length;
+  const removedPct = input.length
+    ? Math.round((removedChars / input.length) * 1000) / 10
+    : 0;
+  trace.push({ guard, removedChars, removedPct, sample: removedTextSample(input, output) });
+  if (removedPct > MAJORITY_REMOVAL_PCT) {
+    console.warn(JSON.stringify({ event: "guard_removed_majority", guard, removedPct }));
+  }
+  return output;
 }
 
 // Separate text blocks that would otherwise collide. MiniMax splits an answer
@@ -2992,7 +3069,22 @@ function validateAnalysisResponse(
   if (withoutToolMarkup.removed && !hasMeaningfulProse(withoutToolMarkup.text)) {
     throw new AppError(502, "Analysis service returned an empty response.");
   }
-  return sanitizeAnswerForTier(answer, tier, grounding, true);
+  const removals: GuardRemoval[] = [];
+  const sanitized = sanitizeAnswerForTier(answer, tier, grounding, true, removals);
+  // Emitted next to `analysis_generated` so one request produces one before/after
+  // record of the guard chain. Every historical answer-deletion bug was a single
+  // guard removing most of the answer on its first production request; that is
+  // now a `guard_removed_majority` warning at the moment it happens rather than
+  // an unreproducible screenshot days later.
+  console.log(JSON.stringify({
+    event: "answer_guard_summary",
+    tier,
+    inputChars: answer.length,
+    outputChars: sanitized.length,
+    removals,
+    degraded: !hasMeaningfulProse(sanitized),
+  }));
+  return sanitized;
 }
 
 function appendAssistantTurn(
@@ -3521,6 +3613,7 @@ export async function deliverAnswer(args: {
 }): Promise<{ answer: string; citations: AskCitation[]; verification: AskVerification }> {
   const {
     answer: rawAnswer,
+    tier,
     grounding,
     bundle,
     client,
@@ -3529,9 +3622,6 @@ export async function deliverAnswer(args: {
     candidateUnrecognized,
     signal,
   } = args;
-  // `tier` is carried for the guards that will need it; the chain below is
-  // tier-agnostic because the tier chain already ran inside generateAnalysis.
-  void args.tier;
   const answer = grounding?.kind === "fixture"
     ? sanitizeFixtureCoverageAnswer(rawAnswer, grounding)
     : candidateUnrecognized
@@ -3579,13 +3669,96 @@ export async function deliverAnswer(args: {
     bundle,
     evidenceRequired
   );
-  return {
-    // Evidence, correction and market guards run again after the tier chain,
-    // so the settled answer is re-checked for labels they emptied.
-    answer: dropOrphanedSectionLabels(rendered.answer),
-    citations: rendered.citations,
-    verification: checked.verification,
-  };
+  // Evidence, correction and market guards run again after the tier chain,
+  // so the settled answer is re-checked for labels they emptied.
+  const settledAnswer = dropOrphanedSectionLabels(rendered.answer);
+  if (hasMeaningfulProse(settledAnswer)) {
+    return {
+      answer: settledAnswer,
+      citations: rendered.citations,
+      verification: checked.verification,
+    };
+  }
+  // Nothing readable survived the chain. On a match question the server still
+  // owns every number the answer needed, so the honest reply is to write it
+  // from the grounding rather than to hand the user a blank bubble or a 502 for
+  // a question Pundit can in fact answer. The citations are dropped with the
+  // text they belonged to -- the fallback quotes no evidence.
+  if (grounding?.kind === "match") {
+    console.warn(JSON.stringify({
+      event: "answer_degraded",
+      tier,
+      reason: "guard_chain_left_no_prose",
+    }));
+    return {
+      answer: renderGroundedMatchFallback(grounding),
+      citations: [],
+      verification: checked.verification,
+    };
+  }
+  // General, competition and season answers have no server-owned payload to
+  // rebuild from, so a canned one-liner there would be a fabricated answer
+  // rather than a degraded one. Those fail the way an empty generation does.
+  throw new AppError(502, "Analysis service returned an empty response.");
+}
+
+/** "2026-08-02" as "2 August 2026". Fixed English, no locale dependency. */
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function formatGroundingDate(date: string): string {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!parts) return date;
+  const month = MONTH_NAMES[Number(parts[2]) - 1];
+  return month ? `${Number(parts[3])} ${month} ${parts[1]}` : date;
+}
+
+function asPercent(probability: number): string {
+  return `${(probability * 100).toFixed(1)}%`;
+}
+
+/**
+ * The last-resort match answer, composed only from the grounding payload.
+ *
+ * Every figure here is server-owned, so the fallback cannot invent, misquote or
+ * contradict the model -- which is exactly why it is safe to serve without the
+ * guard chain that just emptied the generated answer. It abstains on team news
+ * explicitly, because no evidence survived to support a squad claim.
+ *
+ * The shape follows FORMAT_RULES: bold section labels on their own lines, the
+ * headline win/draw/win first, and the fixture date named so a two-legged tie
+ * cannot be read as the wrong leg.
+ */
+export function renderGroundedMatchFallback(grounding: Grounding): string {
+  const sections = [
+    "**Verdict**",
+    `Pundit's model gives **${grounding.home} ${asPercent(grounding.pHome)}**, the `
+      + `**draw ${asPercent(grounding.pDraw)}** and **${grounding.away} `
+      + `${asPercent(grounding.pAway)}** for the ${formatGroundingDate(grounding.date)} fixture.`,
+    "",
+    "**Goals**",
+    `**Over 2.5 at ${asPercent(grounding.pOver2_5)}** and **both teams to score at `
+      + `${asPercent(grounding.pBttsYes)}**, against under 2.5 at `
+      + `${asPercent(grounding.pUnder2_5)}.`,
+  ];
+  const topScores = grounding.topScores.slice(0, 3);
+  if (topScores.length) {
+    sections.push(
+      "",
+      "**Likely scorelines**",
+      `${topScores
+        .map((entry) => `**${entry.score} (${asPercent(entry.probability)})**`)
+        .join(", ")}.`
+    );
+  }
+  sections.push(
+    "",
+    "**Team news**",
+    "No verified team-news update was established for this fixture."
+  );
+  return sections.join("\n");
 }
 
 /**

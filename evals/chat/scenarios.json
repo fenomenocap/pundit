@@ -309,6 +309,100 @@
       "forbidText": ["62%", "3.40", "**Verdict**"]
     },
     {
+      "id": "full-match-answer-survives-intact",
+      "description": "A complete, correctly formatted match answer passes the whole settled delivery chain untouched. Every guard here is unit-tested for what it removes and nothing asserted that a correct answer survives, which is how four separate answer-deleting bugs reached production.",
+      "kind": "runtime-helper",
+      "helper": "sanitizeFinalMatchAnswer",
+      "args": [
+        "**Verdict**\nPundit's model gives Arsenal **56.3%**, the draw **23.4%** and Chelsea **20.3%** for the 2 August 2026 fixture.\n\n**Goals**\nOver 2.5 lands at **54.0%**, BTTS yes at **52.1%**.\n\n**Likely scorelines**\n**2-1 (11.4%)** and **1-1 (10.2%)** lead, with **1-2 (7.8%)** the best of the away wins.\n\n**Team news**\nNo verified team-news update was established.",
+        {
+          "fixtureId": "espn:eng.1:1",
+          "competitionId": "eng.1",
+          "competition": "Premier League",
+          "homeFieldAdvantage": true,
+          "date": "2026-08-02",
+          "stage": "match",
+          "home": "Arsenal",
+          "away": "Chelsea",
+          "pHome": 0.563,
+          "pDraw": 0.234,
+          "pAway": 0.203,
+          "pOver2_5": 0.54,
+          "pUnder2_5": 0.46,
+          "pBttsYes": 0.521,
+          "pBttsNo": 0.479,
+          "topScores": [{"score":"2-1","probability":0.114},{"score":"1-1","probability":0.102}],
+          "scorelines": [{"score":"2-1","probability":0.114},{"score":"1-1","probability":0.102},{"score":"1-2","probability":0.078}],
+          "stakePHome": null,
+          "stakePDraw": null,
+          "stakePAway": null,
+          "oddsSources": []
+        }
+      ],
+      "expect": {},
+      "expectText": [
+        "**Verdict**", "**Goals**", "**Likely scorelines**", "**Team news**",
+        "56.3%", "23.4%", "20.3%", "54.0%", "52.1%", "11.4%", "10.2%", "7.8%",
+        "2 August 2026"
+      ],
+      "forbidText": [
+        "I could not establish a supported",
+        "omitted those numbers",
+        "The structured probabilities are available",
+        "could not establish a verified current update"
+      ]
+    },
+    {
+      "id": "uncited-injury-claim-is-still-removed",
+      "description": "Survival must not become permissiveness: an availability claim with no source or date is replaced by the explicit abstention, while the model's own headline numbers are left standing.",
+      "kind": "runtime-helper",
+      "helper": "sanitizeFinalMatchAnswer",
+      "args": ["**Verdict**\nPundit's model gives Arsenal **56.3%**, the draw **23.4%** and Chelsea **20.3%**.\n\n**Team news**\nNo injury concerns were reported for either side."],
+      "expect": {},
+      "expectText": ["**Verdict**", "56.3%", "23.4%", "20.3%", "**Team news**", "No additional verified, dated injury or lineup update was established"],
+      "forbidText": ["No injury concerns were reported", "I could not establish a supported"]
+    },
+    {
+      "id": "bare-numeric-marker-never-reaches-user",
+      "description": "A citation marker written as [[1]] rather than [[S1]] resolves to the source it meant and is rendered as a link. A production answer consisting of literally [[1]] was served to a user; nothing bracketed may survive delivery.",
+      "kind": "runtime-helper",
+      "helper": "deliverMatchAnswerOffline",
+      "args": [
+        "**Verdict**\nPundit's model gives Arsenal **56.3%**, the draw **23.4%** and Chelsea **20.3%**.\n\n**Team news**\nTheir captain is suspended for this fixture [[1]].",
+        null,
+        {
+          "queries": ["arsenal team news"],
+          "results": [
+            {"id":"S1","title":"Arsenal team news","url":"https://example.com/arsenal","date":"2026-08-01","snippet":"captain suspended"}
+          ],
+          "providerCalls": 1
+        },
+        true
+      ],
+      "expect": {},
+      "expectText": ["**Verdict**", "56.3%", "23.4%", "20.3%", "](https://example.com/arsenal)", "2026-08-01"],
+      "forbidText": ["[[", "]]", "could not establish a verified current update"]
+    },
+    {
+      "id": "team-news-abstains-without-wiping-verdict",
+      "description": "When search establishes nothing, the abstention replaces the team-news sentence only. Replacing the whole answer with it is the exact regression that reduced three of five live match answers to a single boilerplate line.",
+      "kind": "runtime-helper",
+      "helper": "deliverMatchAnswerOffline",
+      "args": [
+        "**Verdict**\nPundit's model gives Arsenal **56.3%**, the draw **23.4%** and Chelsea **20.3%**.\n\n**Goals**\nOver 2.5 lands at **54.0%**, BTTS yes at **52.1%**.\n\n**Team news**\nNo verified team-news update was established.",
+        null,
+        {"queries": ["arsenal team news"], "results": [], "providerCalls": 1},
+        true
+      ],
+      "expect": {},
+      "expectText": ["**Verdict**", "56.3%", "23.4%", "20.3%", "**Goals**", "54.0%", "52.1%", "No verified team-news update was established"],
+      "forbidText": [
+        "I could not establish a supported",
+        "could not establish a verified current update",
+        "The structured probabilities are available"
+      ]
+    },
+    {
       "id": "neutral-venue-missing-input",
       "description": "The built routing path retains an exact recognized neutral-site fixture and its required missing-input capability.",
       "kind": "runtime-helper",

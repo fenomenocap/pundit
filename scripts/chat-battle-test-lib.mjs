@@ -87,10 +87,35 @@ export function executeRuntimeHelperScenario(scenario, repoRoot = path.resolve(i
     // The settled match-tier guard chain, in the order a delivered answer sees
     // it. Runs the built module, so a guard that eats the model's own numbers
     // fails here instead of only in production.
+    //
+    // This used to run `dropOrphanedSectionLabels(sanitizeMatchAnswer(...))`
+    // while claiming to be the whole chain. That skipped the six MiniMax-shape
+    // guards that run ahead of the tier guard and the entire post-tier stage,
+    // which is how four answer-deleting bugs shipped past a harness that was
+    // pointed at them. `sanitizeDeliveredAnswer` is the production tail itself,
+    // so there is no second copy left to drift.
     const routingHelpers = loadApiRuntimeRoutingHelpers(repoRoot);
-    return routingHelpers.dropOrphanedSectionLabels(
-      routingHelpers.sanitizeMatchAnswer(scenario.args[0], scenario.args[1])
-    );
+    const grounding = scenario.args[1]
+      ? { kind: "match", ...scenario.args[1] }
+      : undefined;
+    return routingHelpers.sanitizeDeliveredAnswer(scenario.args[0], "match", grounding);
+  }
+  if (scenario.helper === "deliverMatchAnswerOffline") {
+    // The delivery tail as far as it runs without a network round trip: the
+    // settled guard chain, then the citation renderer. The verifier is the only
+    // step left out, because it calls the model. This exists so a citation
+    // marker that never becomes a link -- the `[[1]]` a user was actually served
+    // -- is measured against the function that owns it rather than against the
+    // guard chain, which cannot see markers at all.
+    const routingHelpers = loadApiRuntimeRoutingHelpers(repoRoot);
+    const [answer, groundingArgs, bundle, evidenceRequired] = scenario.args;
+    const grounding = groundingArgs ? { kind: "match", ...groundingArgs } : undefined;
+    const settled = routingHelpers.sanitizeDeliveredAnswer(answer, "match", grounding);
+    return routingHelpers.renderEvidenceCitations(
+      settled,
+      bundle ?? { queries: [], results: [], providerCalls: 0 },
+      Boolean(evidenceRequired)
+    ).answer;
   }
   if (scenario.helper === "validateCompleteOneXTwoMarket") {
     return correctnessHelpers.validateCompleteOneXTwoMarket(scenario.args[0]);
