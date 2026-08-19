@@ -894,26 +894,23 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
   const completeMarkets = (grounding.oddsSources ?? []).filter((source) =>
     Number.isFinite(source.pHome) && Number.isFinite(source.pDraw) && Number.isFinite(source.pAway)
   );
-  const favoriteTeam = modelFavorite === "home"
-    ? grounding.home
-    : modelFavorite === "away"
-      ? grounding.away
-      : null;
-  const lines = answer.split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    if (!/\b(?:read on the )?underdog\b/i.test(lines[index])) continue;
-    const next = lines.slice(index + 1).find((line) => line.trim());
-    if (favoriteTeam && next && new RegExp(`\\b${escapedPattern(favoriteTeam)}\\b`, "i").test(next)) {
-      lines[index] = "";
-    }
-  }
-  const retained = lines.join("\n").replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) => {
+  // The label blanker that used to live here deleted any line containing
+  // "underdog" whose next non-blank line named the model's favourite. Its
+  // premise was wrong twice over: a section called "**Read on the underdog**"
+  // is *supposed* to discuss what the favourite does well, and a heading
+  // asserts nothing that could contradict the grounding. A label left standing
+  // over a body that genuinely went is removed by `dropOrphanedSectionLabels`,
+  // which -- unlike this function, which also runs on streaming prefixes --
+  // knows whether the answer has settled.
+  const retained = reviseAnswerSentences(answer, (sentence) => {
     const claimedTeam = mentionedTeamOutcome(sentence, grounding);
     if (claimedTeam) {
       const claimsUnderdog = /\b(?:underdogs?|outsiders?|upset|overturn\s+the\s+model|spring\s+an?\s+upset)\b/i.test(sentence);
       const claimsFavorite = /\b(?:favou?rite|favou?rs?|most likely (?:winner|side)|model edge)\b/i.test(sentence);
       if (claimsUnderdog && modelFavorite === claimedTeam) return "";
-      if (claimsFavorite && modelFavorite !== claimedTeam && /\bmodel|pundit\b/i.test(sentence)) return "";
+      // `/\bmodel|pundit\b/` is an unparenthesised alternation: it parsed as
+      // `(\bmodel)|(pundit\b)`, so it fired on "modelling" and on "bepundit".
+      if (claimsFavorite && modelFavorite !== claimedTeam && /\b(?:model|pundit)\b/i.test(sentence)) return "";
     }
 
     const homeProbability = new RegExp(
@@ -926,7 +923,12 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
     }
 
     if (claimedTeam
-      && /\b(?:market|odds|price|kalshi|polymarket|stake)\b/i.test(sentence)
+      // "stake" is an ordinary English noun, so the "at stake" idiom is
+      // excluded exactly as it is in EXTERNAL_MARKET_MENTION. Without this,
+      // "three points are at stake for Arsenal" read as a bookmaker quote and
+      // was deleted as one.
+      && (/\b(?:markets?|odds|prices?|kalshi|polymarket|bookmakers?)\b/i.test(sentence)
+        || /(?<!\bat\s)\bstake\b/i.test(sentence))
       && /\b(?:favou?rite|favou?rs?|backs?|leans? (?:to|toward)|gives?[^.!?\n]{0,20}(?:edge|advantage))\b/i.test(sentence)) {
       const named = completeMarkets.filter((source) =>
         sentence.toLocaleLowerCase().includes(source.source.toLocaleLowerCase())
@@ -937,7 +939,20 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
         draw: source.pDraw!,
         away: source.pAway,
       })).filter((outcome): outcome is MatchOutcome => outcome !== null));
-      if (relevant.length && (favorites.size !== 1 || !favorites.has(claimedTeam))) return "";
+      // Deletion needs the market to say something unambiguous that the
+      // sentence actually contradicts. Two conditions used to be treated as
+      // contradictions and are not:
+      //   - the sources disagree (`favorites.size > 1`), in which case there is
+      //     no single market view for the sentence to be wrong about;
+      //   - the market's strongest outcome is the draw, which says nothing
+      //     about which of the two *teams* it leans to. `claimedTeam` is only
+      //     ever home or away, so a draw favourite guaranteed a mismatch and
+      //     guaranteed deletion.
+      const teamFavorites = [...favorites].filter((outcome) => outcome !== "draw");
+      if (relevant.length
+        && favorites.size === 1
+        && teamFavorites.length === 1
+        && teamFavorites[0] !== claimedTeam) return "";
     }
     return sentence;
   }).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
