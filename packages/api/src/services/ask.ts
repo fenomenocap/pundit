@@ -44,6 +44,8 @@ import {
   type DirectionalRationale,
   type ManagerTenure,
   type OneXTwoMarketLeg,
+  type OneXTwoOutcome,
+  type ValidatedOneXTwoMarket,
   type VerifiableClaim,
 } from "./response-correctness";
 import {
@@ -612,12 +614,36 @@ export function sanitizeUnrecognizedCandidateAnswer(answer: string): string {
 }
 
 /**
+ * An observation instant as prose. A raw ISO string is a machine timestamp and
+ * was being emitted verbatim into a user-facing sentence ("observed
+ * 2026-08-19T09:33:30.001Z"). Fixed English and UTC, matching
+ * `formatGroundingDate`, so nothing here depends on the server's locale or
+ * zone. Returns null for an unparseable value, in which case the caller says
+ * nothing about the time rather than guessing at one.
+ */
+function describeMarketObservation(observedAt: string): string | null {
+  const at = Date.parse(observedAt);
+  if (!Number.isFinite(at)) return null;
+  const when = new Date(at);
+  const month = MONTH_NAMES[when.getUTCMonth()];
+  if (!month) return null;
+  const hours = String(when.getUTCHours()).padStart(2, "0");
+  const minutes = String(when.getUTCMinutes()).padStart(2, "0");
+  return `${when.getUTCDate()} ${month} ${when.getUTCFullYear()} at ${hours}:${minutes} UTC`;
+}
+
+/**
  * Generated prose is never a server-owned market record. Even a verifier can
  * support that a page contains numbers without proving that all three 1X2 legs
  * came from one source at one instant or that 1/decimal and no-vig arithmetic
  * were applied. Generated figures are replaced only when a caller supplies a
  * complete record accepted by `validateCompleteOneXTwoMarket`; the structured
  * grounding/UI remains the only public market-comparison surface today.
+ *
+ * This recital is now the *fallback*, not the default. A model sentence whose
+ * figures reconcile against the same record keeps its own wording -- see
+ * `reconcileMarketSentence` -- because replacing it deleted the comparison the
+ * match prompt asks for.
  */
 function renderValidatedOneXTwoMarket(legs: readonly OneXTwoMarketLeg[]): string | null {
   const validation = validateCompleteOneXTwoMarket(legs);
@@ -629,7 +655,11 @@ function renderValidatedOneXTwoMarket(legs: readonly OneXTwoMarketLeg[]): string
     observedAt: market.observedAt,
   });
   const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
-  return `${label}: home ${percent(market.noVigProbabilities.home)}, draw ${percent(market.noVigProbabilities.draw)}, away ${percent(market.noVigProbabilities.away)} (observed ${market.observedAt}).`;
+  const observed = describeMarketObservation(market.observedAt);
+  const legsText = `home ${percent(market.noVigProbabilities.home)}, draw ${percent(market.noVigProbabilities.draw)}, away ${percent(market.noVigProbabilities.away)}`;
+  return observed
+    ? `${label}: ${legsText}, observed ${observed}.`
+    : `${label}: ${legsText}.`;
 }
 
 /**
@@ -688,19 +718,241 @@ function assertsExternalMarketPrice(sentence: string): boolean {
 }
 
 /**
+ * A validated market, with everything needed both to judge a sentence against
+ * it and to fall back to a rendered recital when the sentence cannot be judged.
+ */
+interface ValidatedMarketRecord {
+  /** Lower-cased source name, for finding the sentence that names it. */
+  source: string;
+  market: ValidatedOneXTwoMarket;
+  rendered: string;
+}
+
+/**
+ * Where the clause quoting an external source stops and the rest of the
+ * sentence begins.
+ *
+ * The match prompt asks the model to compare its own probability against the
+ * market and state the edge, so one sentence routinely carries figures from
+ * both -- "the model gives Celtic 66.9%, while Kalshi is tighter at 55.4%".
+ * Only the market's own figures may be held against the market record; the
+ * model's must not be, or every compliant comparison would read as a
+ * contradiction and be deleted. These are the words that end the market clause
+ * in either direction: the connectives that start a contrasting clause, and any
+ * mention of the model itself.
+ */
+const MARKET_CLAUSE_BOUNDARY =
+  /\b(?:so|while|whilst|whereas|but|though|although|however|meanwhile|versus|vs|against|compared|than|model|pundit|edge|forecast|forecasts|projection|projections|implies|implying)\b|[;]/gi;
+
+/**
+ * The span of `sentence` that is quoting `source`, bounded on both sides by the
+ * nearest clause boundary. Bidirectional because both orders occur: "Kalshi is
+ * tighter at 55.4%" puts the figures after the source name, "at 55.4%, Kalshi
+ * is tighter" puts them before it.
+ */
+function marketClauseSpan(
+  sentence: string,
+  source: string
+): { start: number; end: number } | null {
+  const at = sentence.toLocaleLowerCase().indexOf(source);
+  if (at < 0) return null;
+  const sourceEnd = at + source.length;
+  let start = 0;
+  let end = sentence.length;
+  MARKET_CLAUSE_BOUNDARY.lastIndex = 0;
+  for (
+    let match = MARKET_CLAUSE_BOUNDARY.exec(sentence);
+    match;
+    match = MARKET_CLAUSE_BOUNDARY.exec(sentence)
+  ) {
+    const boundaryEnd = match.index + match[0].length;
+    if (boundaryEnd <= at) start = boundaryEnd;
+    else if (match.index >= sourceEnd) { end = match.index; break; }
+  }
+  return { start, end };
+}
+
+/** A price figure inside a market clause, located so it can be corrected. */
+interface MarketFigure {
+  /** Offsets of the numeric text alone, within the whole sentence. */
+  start: number;
+  end: number;
+  text: string;
+  percentage: boolean;
+  outcome: OneXTwoOutcome | null;
+}
+
+const MARKET_FIGURE = /(\d+(?:\.\d+)?)\s*%|\b(\d+\.\d{1,2})\b/g;
+
+/**
+ * A leg label attached to the figure beside it. Only punctuation and short
+ * connectives may sit between the two, and never another figure, so a label can
+ * never be claimed across an intervening number -- the same discipline the
+ * goal-market label attribution uses.
+ */
+const LEG_LABEL_BEFORE = /\b(home|draw|away)\b[^%\d]{0,14}$/i;
+const LEG_LABEL_AFTER = /^[^%\d]{0,10}\b(home|draw|away)\b/i;
+
+function collectMarketFigures(sentence: string, start: number, end: number): MarketFigure[] {
+  const clause = sentence.slice(start, end);
+  const figures: MarketFigure[] = [];
+  // Clause-relative end of the previous figure, so a label search backwards can
+  // never reach across an intervening number to a label that belongs to it.
+  let previousEnd = 0;
+  MARKET_FIGURE.lastIndex = 0;
+  for (let match = MARKET_FIGURE.exec(clause); match; match = MARKET_FIGURE.exec(clause)) {
+    const text = match[1] ?? match[2];
+    const offset = match.index + match[0].indexOf(text);
+    const before = LEG_LABEL_BEFORE.exec(clause.slice(previousEnd, offset));
+    const after = LEG_LABEL_AFTER.exec(clause.slice(offset + text.length));
+    const label = (before?.[1] ?? after?.[1])?.toLocaleLowerCase() as OneXTwoOutcome | undefined;
+    figures.push({
+      start: start + offset,
+      end: start + offset + text.length,
+      text,
+      percentage: match[1] !== undefined,
+      outcome: label ?? null,
+    });
+    previousEnd = offset + text.length;
+  }
+  return figures;
+}
+
+/** Decimal odds quoted at the model's own precision, same rule as percentages. */
+function decimalOddsMatch(quoted: string, odds: number): boolean {
+  return Math.abs(odds - Number(quoted)) <= roundingTolerance(quoted);
+}
+
+function figureMatchesLeg(
+  figure: MarketFigure,
+  market: ValidatedOneXTwoMarket,
+  outcome: OneXTwoOutcome
+): boolean {
+  return figure.percentage
+    ? percentageMatches(figure.text, market.noVigProbabilities[outcome])
+    : decimalOddsMatch(figure.text, market.decimalOdds[outcome]);
+}
+
+/** The figure the record says belongs there, at the precision the model used. */
+function correctedFigureText(
+  figure: MarketFigure,
+  market: ValidatedOneXTwoMarket,
+  outcome: OneXTwoOutcome
+): string {
+  const decimals = figure.text.split(".")[1]?.length ?? 0;
+  return figure.percentage
+    ? (market.noVigProbabilities[outcome] * 100).toFixed(decimals)
+    : market.decimalOdds[outcome].toFixed(decimals);
+}
+
+const OUTCOME_ORDER: readonly OneXTwoOutcome[] = ["home", "draw", "away"];
+
+/**
+ * Verifies a model sentence that quotes an external market, instead of
+ * replacing it.
+ *
+ * This guard used to substitute a machine-rendered recital for the whole line
+ * whenever a market was named. That destroyed the analysis: `MATCH_SYSTEM_PROMPT`
+ * asks the model to compare its own probability against the market and state
+ * the edge, the model complied, and a production answer that had Celtic at
+ * **66.9%** against Kalshi's 55.4% -- an eleven-point divergence, the single
+ * most decision-relevant fact in the answer -- shipped as three bare
+ * percentages with an ISO timestamp on the end.
+ *
+ * The guard's actual purpose is narrower than what it was doing: generated
+ * prose must never present an unvalidated or fabricated market price as fact.
+ * A sentence whose market figures reconcile against the validated record is not
+ * presenting a fabricated price, so it survives verbatim, edge analysis
+ * included. Returns the sentence to keep (with at most one figure corrected in
+ * place), or null when the figures cannot be validated at all and the caller
+ * must fall back to the recital.
+ *
+ * What is deliberately *not* validated is which team a figure is attached to:
+ * an unlabelled figure passes when it matches any leg of the record. The claim
+ * being guarded is "this price came from that source at that time", and it did.
+ * A misattributed but real leg is a different, much smaller error than an
+ * invented price, and the labelled forms -- which are what the prompt asks for
+ * -- are checked leg by leg.
+ */
+function reconcileMarketSentence(
+  sentence: string,
+  records: readonly ValidatedMarketRecord[]
+): string | null {
+  const lower = sentence.toLocaleLowerCase();
+  const record = records.find(({ source }) => source && lower.includes(source));
+  if (!record) return null;
+  const span = marketClauseSpan(sentence, record.source);
+  if (!span) return null;
+  const figures = collectMarketFigures(sentence, span.start, span.end);
+  // The sentence asserted a price, but not one this clause exposes for
+  // checking. Nothing to validate means nothing is validated.
+  if (!figures.length) return null;
+
+  // A bare triple is the shape MATCH_EXAMPLE demonstrates ("41.0% / 32.4% /
+  // 26.6%"), and 1X2 order is the only order Pundit ever writes or reads.
+  if (figures.length === OUTCOME_ORDER.length && figures.every((figure) => !figure.outcome)) {
+    figures.forEach((figure, index) => { figure.outcome = OUTCOME_ORDER[index]; });
+  }
+
+  const wrong: { figure: MarketFigure; outcome: OneXTwoOutcome }[] = [];
+  for (const figure of figures) {
+    if (figure.outcome) {
+      if (!figureMatchesLeg(figure, record.market, figure.outcome)) {
+        wrong.push({ figure, outcome: figure.outcome });
+      }
+      continue;
+    }
+    // Unlabelled: it has to be one of this record's legs, or it is a number
+    // attributed to a market that never produced it.
+    if (!OUTCOME_ORDER.some((outcome) => figureMatchesLeg(figure, record.market, outcome))) {
+      return null;
+    }
+  }
+
+  if (!wrong.length) return sentence;
+  // One figure out of step with an otherwise correct quote is a transcription
+  // slip and is safe to repair where it stands. Several are not: a wholesale
+  // disagreement is a different market, a stale one, or an invented one, and
+  // rewriting every figure would be authoring the quote rather than checking
+  // it -- so that falls through to the rendered recital.
+  if (wrong.length > 1) return null;
+  const { figure, outcome } = wrong[0];
+  return sentence.slice(0, figure.start)
+    + correctedFigureText(figure, record.market, outcome)
+    + sentence.slice(figure.end);
+}
+
+/**
  * Sentence-level rather than line-level, so "No Kalshi market is available."
  * and "Man United win 77.6%." sharing a line no longer share a fate.
  */
-function stripExternalPriceSentences(line: string): { text: string; removed: boolean } {
+function stripExternalPriceSentences(
+  line: string,
+  records: readonly ValidatedMarketRecord[]
+): { text: string; removed: boolean } {
   const sentences = splitPriceSafeSentences(line);
   if (!sentences.length) return { text: line, removed: false };
   let removed = false;
-  const kept = sentences.filter((sentence) => {
-    if (!assertsExternalMarketPrice(sentence)) return true;
+  const kept: string[] = [];
+  for (const sentence of sentences) {
+    if (!assertsExternalMarketPrice(sentence)) {
+      kept.push(sentence);
+      continue;
+    }
+    const reconciled = reconcileMarketSentence(sentence, records);
+    if (reconciled !== null) {
+      kept.push(reconciled);
+      continue;
+    }
     removed = true;
-    return false;
-  });
-  if (!removed) return { text: line, removed: false };
+  }
+  // The pieces rejoin into the original line by construction, so a
+  // verification-only pass returns the line with at most a corrected digit in
+  // it and never disturbs its indentation.
+  if (!removed) {
+    const verified = kept.join("");
+    return { text: verified === line ? line : verified, removed: false };
+  }
   return { text: kept.join("").replace(/\s{2,}/g, " ").trim(), removed: true };
 }
 
@@ -721,16 +973,21 @@ export function stripUnvalidatedExternalMarketClaims(
   answer: string,
   marketLegSets: readonly (readonly OneXTwoMarketLeg[])[] = []
 ): string {
-  const validated = marketLegSets.flatMap((legs) => {
+  const validated: ValidatedMarketRecord[] = marketLegSets.flatMap((legs) => {
     const result = validateCompleteOneXTwoMarket(legs);
     if (!result.valid) return [];
     const rendered = renderValidatedOneXTwoMarket(legs)!;
-    return [{ source: result.market.source.toLocaleLowerCase(), rendered }];
+    return [{
+      source: result.market.source.toLocaleLowerCase(),
+      market: result.market,
+      rendered,
+    }];
   });
   const emittedSources = new Set<string>();
   const lines = answer.split("\n");
   const removedLines = new Set<number>();
   let removed = false;
+  let corrected = false;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     // A source-naming header only carries the bare market legs directly under
@@ -742,8 +999,18 @@ export function stripUnvalidatedExternalMarketClaims(
         legLines.push(next);
       }
     }
-    const sentences = stripExternalPriceSentences(line);
-    if (!sentences.removed && !legLines.length) continue;
+    const sentences = stripExternalPriceSentences(line, validated);
+    if (!sentences.removed && !legLines.length) {
+      // The line's market quote was verified rather than deleted. It keeps its
+      // own wording -- and its edge analysis -- with at most a single figure
+      // corrected against the record, so nothing was removed and no recital is
+      // owed.
+      if (sentences.text !== line) {
+        lines[index] = sentences.text;
+        corrected = true;
+      }
+      continue;
+    }
     removed = true;
     legLines.forEach((legIndex) => removedLines.add(legIndex));
     const matching = validated.find(({ source }) =>
@@ -765,7 +1032,10 @@ export function stripUnvalidatedExternalMarketClaims(
     else removedLines.add(index);
   }
   const retained = lines.filter((_line, index) => !removedLines.has(index)).join("\n").trim();
-  if (!removed) return answer;
+  // Nothing was removed: either the answer is untouched, or a verified quote
+  // had one figure repaired where it stood. Neither owes a fail-closed notice,
+  // and the repaired form keeps the answer's own leading and trailing shape.
+  if (!removed) return corrected ? lines.join("\n") : answer;
   if (emittedSources.size > 0) return retained;
   const notice = "I could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers.";
   return retained ? `${retained}\n\n${notice}` : notice;
