@@ -367,6 +367,123 @@ describe("a correct match answer survives the real delivery path", () => {
   });
 });
 
+/**
+ * The prompt tells the model to compare its numbers against the market and to
+ * give a read on the underdog, so a well-formed match answer necessarily
+ * contains exactly the language `sanitizeGroundedMatchNarrative` inspects:
+ * both team names, favourite/underdog wording, market comparisons, and
+ * percentages mixed into prose. The single-sentence probes that guard is
+ * unit-tested with never look like this, which is how it kept shipping
+ * deletions that only appeared against real output.
+ */
+describe("realistic match answers are not eaten by the narrative guard", () => {
+  /** The same fixture, priced, so the market cross-check has something to do. */
+  const pricedGrounding: Grounding = {
+    ...matchGrounding,
+    oddsSources: [{
+      source: "kalshi",
+      observedAt: new Date().toISOString(),
+      pHome: 0.41,
+      pDraw: 0.27,
+      pAway: 0.32,
+    }],
+  };
+
+  /**
+   * Each variant lists the prose the guard must not touch. Byte-identity is
+   * not the assertion: the market-price sanitizer legitimately rewrites a
+   * quoted Kalshi triple into the server-owned rendering, and that is a
+   * correction, not a deletion. What must survive is the reasoning.
+   */
+  const VARIANTS: Record<string, { answer: string; intact: string[] }> = {
+    "market comparison and an underdog read": { answer: [
+      "**Verdict**",
+      "Pundit's model makes **Arsenal the favourite at 40.0%**, with the **draw at 30.0%**"
+        + " and **Coventry City at 30.0%** for the 2 August 2026 fixture. Kalshi is at"
+        + " 41.0% / 27.0% / 32.0%, so the model sees marginally less edge on the home win.",
+      "",
+      "**Goals**",
+      "**Over 2.5 at 55.0%** and **both teams to score at 52.0%** point to an open game.",
+      "",
+      "**Likely scorelines**",
+      "**1-1 (12.0%)** leads, with **3-2 (1.1%)** among the outside results.",
+      "",
+      "**Read on the underdog**",
+      "Coventry City need the game to stay low-scoring; the market prices them at 32.0%,"
+        + " a shade above where the model has them.",
+    ].join("\n"), intact: [
+      "Pundit's model makes **Arsenal the favourite at 40.0%**",
+      "point to an open game",
+      "**1-1 (12.0%)** leads",
+      "Coventry City need the game to stay low-scoring",
+      "a shade above where the model has them",
+    ] },
+    "the draw discussed alongside the home probability": { answer: [
+      "**Verdict**",
+      "Arsenal are the model's favourite at **40.0%**, with **Coventry City at 30.0%**."
+        + " The **draw at 30.0%** adds to the uncertainty around Arsenal's win probability"
+        + " rather than resolving it.",
+      "",
+      "**Goals**",
+      "**Over 2.5 at 55.0%** and **both teams to score at 52.0%**.",
+      "",
+      "**Likely scorelines**",
+      "**1-1 (12.0%)** leads, with **3-2 (1.1%)** an outside result.",
+      "",
+      "**Read on the underdog**",
+      "Three points are at stake for Coventry City, and the model still gives them 30.0%.",
+    ].join("\n"), intact: [
+      "Arsenal are the model's favourite at **40.0%**",
+      // The draw sentence is true and the guard has no business touching it:
+      // pDraw is not folded into pHome here, it is merely discussed near it.
+      "adds to the uncertainty around Arsenal's win probability",
+      "Three points are at stake for Coventry City",
+    ] },
+    "the market and the model agreeing": { answer: [
+      "**Verdict**",
+      "Pundit's model favours Arsenal at **40.0%**, the **draw at 30.0%** and"
+        + " **Coventry City at 30.0%**. Kalshi favours Arsenal too, so there is no live edge.",
+      "",
+      "**Goals**",
+      "**Over 2.5 at 55.0%** and **both teams to score at 52.0%**.",
+      "",
+      "**Likely scorelines**",
+      "**1-1 (12.0%)** leads, ahead of **3-2 (1.1%)**.",
+      "",
+      "**Read on the underdog**",
+      "Coventry City are underdogs on both the model and the market, and their route runs"
+        + " through a tight, low-scoring game.",
+    ].join("\n"), intact: [
+      "Pundit's model favours Arsenal at **40.0%**",
+      "Kalshi favours Arsenal too, so there is no live edge",
+      "Coventry City are underdogs on both the model and the market",
+    ] },
+  };
+
+  for (const [shape, variant] of Object.entries(VARIANTS)) {
+    it(`survives with ${shape}`, async () => {
+      const delivered = await deliver({
+        answer: variant.answer,
+        tier: "match",
+        grounding: pricedGrounding,
+        bundle: emptyBundle(),
+        evidenceRequired: false,
+      });
+      expectDeliverable(delivered.answer, true);
+      for (const number of MODEL_NUMBERS) expect(delivered.answer).toContain(number);
+      // The guard's job is to remove claims the grounding contradicts. None of
+      // these contradicts anything, so the reasoning must arrive intact.
+      const normalized = normalizeWhitespace(delivered.answer);
+      for (const phrase of variant.intact) {
+        expect(normalized).toContain(normalizeWhitespace(phrase));
+      }
+      for (const label of ["**Verdict**", "**Goals**", "**Likely scorelines**"]) {
+        expect(delivered.answer).toContain(label);
+      }
+    });
+  }
+});
+
 describe("the final safety gate", () => {
   /** An answer the chain empties: a label with no body is swept, leaving "". */
   const EMPTIED = "**Verdict**";
