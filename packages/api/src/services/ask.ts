@@ -2861,6 +2861,41 @@ export function hasMeaningfulProse(answer: string): boolean {
     && answer.trim().split(/\s+/).filter(Boolean).length >= 4;
 }
 
+/** A percentage figure, the unit every grounded number is expressed in. */
+const PERCENT_FIGURE = /\d[\d.,]*\s?%/;
+
+/**
+ * Whether a grounded answer LOOKS like an answer, rather than like something
+ * else that happens to be made of words.
+ *
+ * Every guard above this one is negative: it recognises a known bad shape and
+ * removes it. That race has been lost four times running -- markup tags, a bare
+ * `{"search_queries": [...]}`, `[[{"id":"google_search",...}]]`, and then
+ * `[web_search:Celtic lineup news August 2026]`, which is neither markup nor
+ * JSON and whose payload is ordinary English words, so both the stripper and
+ * `hasMeaningfulProse` waved it through and it reached a user as the entire
+ * 117-character answer. Enumerating surface forms cannot win, because the next
+ * form is by definition not in the enumeration.
+ *
+ * So this test is positive and format-agnostic: it asks for the thing the
+ * prompt mandates instead of asking for the absence of things we have
+ * catalogued. `FORMAT_RULES` requires every section to start with a bold label
+ * on its own line, and `MATCH_EXAMPLE` expresses every grounded figure as a
+ * percentage. An answer with neither is not an answer in the shape this system
+ * asks for, whatever else it contains.
+ *
+ * The two signals are OR-ed rather than AND-ed deliberately: either one alone
+ * is enough, so the shortest legitimate reply the prompt permits -- a one-line
+ * response to a follow-up, or a single labelled section -- still passes. What
+ * cannot pass is text carrying no label and no number at all, which is what a
+ * tool request written as prose always is: it names a tool and a query, and it
+ * has no reason to contain either signal in any format anyone invents next.
+ */
+export function hasGroundedAnswerShape(answer: string): boolean {
+  return PERCENT_FIGURE.test(answer)
+    || answer.split("\n").some((line) => SECTION_LABEL_LINE.test(line));
+}
+
 const LEAKED_QUERY_PATTERNS = [
   /<\s*(?:antml:)?query\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
   /<\s*(?:antml:)?parameter\s+name\s*=\s*"query"\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
@@ -3806,23 +3841,34 @@ export async function deliverAnswer(args: {
   // Evidence, correction and market guards run again after the tier chain,
   // so the settled answer is re-checked for labels they emptied.
   const settledAnswer = dropOrphanedSectionLabels(rendered.answer);
-  if (hasMeaningfulProse(settledAnswer)) {
+  const readable = hasMeaningfulProse(settledAnswer);
+  // The structural gate is scoped to the match tier on purpose. It asks for a
+  // label or a percentage, and only match grounding actually supplies the
+  // numbers that make a percentage mandatory -- a general-tier answer ("a
+  // player is offside when...") legitimately has none, and there is no
+  // server-owned payload to fall back to there anyway.
+  const shaped = grounding?.kind !== "match" || hasGroundedAnswerShape(settledAnswer);
+  if (readable && shaped) {
     return {
       answer: settledAnswer,
       citations: rendered.citations,
       verification: checked.verification,
     };
   }
-  // Nothing readable survived the chain. On a match question the server still
-  // owns every number the answer needed, so the honest reply is to write it
-  // from the grounding rather than to hand the user a blank bubble or a 502 for
-  // a question Pundit can in fact answer. The citations are dropped with the
-  // text they belonged to -- the fallback quotes no evidence.
+  // Either nothing readable survived the chain, or what survived is not shaped
+  // like an answer. On a match question the server still owns every number the
+  // answer needed, so the honest reply is to write it from the grounding rather
+  // than to hand the user a blank bubble, a leaked tool request, or a 502 for a
+  // question Pundit can in fact answer. The citations are dropped with the text
+  // they belonged to -- the fallback quotes no evidence.
   if (grounding?.kind === "match") {
     console.warn(JSON.stringify({
       event: "answer_degraded",
       tier,
-      reason: "guard_chain_left_no_prose",
+      // The two causes are distinguished because they mean different things:
+      // an emptied answer is the guard chain doing its job too well, while an
+      // unrecognisable one is the model never having written an answer at all.
+      reason: readable ? "answer_not_shaped_like_an_answer" : "guard_chain_left_no_prose",
     }));
     return {
       answer: renderGroundedMatchFallback(grounding),
