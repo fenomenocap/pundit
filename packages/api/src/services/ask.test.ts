@@ -1936,6 +1936,45 @@ describe("the market guard verifies rather than replaces", () => {
     }
   });
 
+  it("keeps the fused quote-and-interpretation sentence the prompt produces", () => {
+    // Source quote and interpretation in ONE sentence. The prompt has a rule
+    // asking the model to split them, added only to dodge the replace
+    // behaviour; this assertion is what makes that rule belt-and-braces rather
+    // than load-bearing on MiniMax's compliance.
+    const fused = "Kalshi has Celtic at 55.4%, some 11.5 points below the model, the largest disagreement on the card.";
+    expect(stripUnvalidatedExternalMarketClaims(fused, [kalshiLegs()])).toBe(fused);
+
+    // The edge magnitude is a unit, not a price, in each form it is written.
+    for (const survivor of [
+      "Kalshi has Celtic at 55.4%, some **11.5 points** below the model.",
+      "Kalshi has Celtic at 55.4%, 11.5 percentage points below the model.",
+    ]) {
+      expect(stripUnvalidatedExternalMarketClaims(survivor, [kalshiLegs()])).toBe(survivor);
+    }
+  });
+
+  it("lets two named sources in one sentence each answer for their own figures", () => {
+    const polymarketLegs = (["home", "draw", "away"] as const).map((outcome, index) => ({
+      outcome,
+      decimalOdds: 1 / [0.57, 0.23, 0.2][index],
+      source: "Polymarket",
+      observedAt,
+    }));
+    const both = "Kalshi has the home win at 55.4% and Polymarket at 57.0%, either way below the model.";
+    expect(stripUnvalidatedExternalMarketClaims(both, [kalshiLegs(), polymarketLegs]))
+      .toBe(both);
+
+    // One record cannot vouch for the other's price: with only Kalshi
+    // validated, the Polymarket figure is unattributable and the sentence goes.
+    expect(stripUnvalidatedExternalMarketClaims(both, [kalshiLegs()])).not.toContain("57.0%");
+    // Nor can the sentence pass by quoting one source correctly and the other
+    // with a number that source never showed.
+    expect(stripUnvalidatedExternalMarketClaims(
+      "Kalshi has the home win at 55.4% and Polymarket at 61.0%.",
+      [kalshiLegs(), polymarketLegs]
+    )).not.toContain("61.0%");
+  });
+
   it("corrects a single slipped figure in place and keeps the sentence", () => {
     // A repair leaves no unvalidated price standing: the wrong figure is
     // replaced by the record's own, at the precision the model wrote.
@@ -2009,5 +2048,64 @@ describe("the market guard verifies rather than replaces", () => {
       "Kalshi has home 55.4%, draw 23.8% and away 20.8%.",
       [kalshiLegs().slice(0, 2)]
     )).toContain("omitted those numbers");
+  });
+});
+
+/**
+ * The qualifier points rewrite fires on a points *return*, not on the word.
+ *
+ * A knockout tie pays no league points, so describing a draw as "one point" is
+ * wrong on a qualifier and the rewrite is legitimate. It was written as an
+ * unconditional `/\b(?:one|1) point\b/` though, which mangled every other use
+ * of the word -- including "Celtic lead the group by one point", ordinary
+ * standings prose that makes no claim about this tie at all and shipped as
+ * "lead the group by a draw" on every qualifier fixture.
+ *
+ * The new prompt makes this worse rather than rarer: it asks for the edge in
+ * points ("the model is one point higher"), which is a unit of measurement and
+ * the exact phrase the old rewrite destroyed.
+ */
+describe("the qualifier points rewrite", () => {
+  const qualifier = {
+    kind: "match",
+    competitionId: "uefa.champions_qual",
+    home: "Celtic",
+    away: "LASK",
+    scorelines: [],
+  } as unknown as Grounding;
+
+  it("leaves a point used as a unit of measurement alone", () => {
+    for (const prose of [
+      "The model is one point higher on the draw than the market.",
+      "Celtic lead the group by one point.",
+      "The model is 1 point higher on the home win.",
+      "The model is about 11 percentage points higher on the home win.",
+      "A one point swing would not change the read.",
+    ]) {
+      expect(sanitizeMatchAnswer(prose, qualifier)).toBe(prose);
+    }
+  });
+
+  it("still rewrites a points return claimed from the tie itself", () => {
+    for (const [claimed, expected] of [
+      ["LASK would take one point from a 1-1.", "LASK would draw from a 1-1."],
+      ["LASK could earn a point here.", "LASK could draw here."],
+      ["Celtic will settle for one point.", "Celtic will draw."],
+      ["A 1-1 is worth one point.", "A 1-1 is worth a draw."],
+      ["One point from the tie keeps LASK alive.", "a draw from the tie keeps LASK alive."],
+    ]) {
+      expect(sanitizeMatchAnswer(claimed, qualifier)).toBe(expected);
+    }
+    // The three-points and shared-points rewrites are untouched.
+    expect(sanitizeMatchAnswer("A 1-1 gives Celtic a share of the points.", qualifier))
+      .toBe("A 1-1 gives Celtic a draw.");
+    expect(sanitizeMatchAnswer("Celtic take all three points with a 2-0.", qualifier))
+      .toBe("Celtic win with a 2-0.");
+  });
+
+  it("does not touch league prose outside a qualifier", () => {
+    const league = { ...qualifier, competitionId: "eng.1" } as Grounding;
+    const prose = "Arsenal would take one point from a 1-1 and lead by one point.";
+    expect(sanitizeMatchAnswer(prose, league)).toBe(prose);
   });
 });
