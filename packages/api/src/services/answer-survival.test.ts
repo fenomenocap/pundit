@@ -521,6 +521,99 @@ describe("the final safety gate", () => {
     warn.mockRestore();
   });
 
+  /**
+   * The negative guards lost this race four times: each new surface form of a
+   * tool request written as text passed the stripper that was written for the
+   * last one. The structural gate is the answer to that, so it is tested the
+   * way it is meant to work -- against one form that actually shipped and two
+   * that nobody has ever seen, which is the point.
+   */
+  describe("rejects a turn that is a tool request rather than an answer", () => {
+    const LEAKS: Record<string, string> = {
+      // Verbatim production output: the entire answer served for "Celtic vs
+      // LASK second leg", 117 characters, with full match grounding attached.
+      "the bracket-and-colon form that reached production":
+        "[web_search:Celtic LASK Champions League playoff 2026 team news injuries]\n"
+        + "[web_search:Celtic lineup news August 2026]",
+      // Invented. Neither markup, nor JSON, nor bracketed -- a shape no
+      // existing stripper has any vocabulary for.
+      "an invented bare directive form":
+        "SEARCH -> Celtic LASK second leg team news\n"
+        + "SEARCH -> Celtic starting eleven confirmed August 2026",
+      // Invented. Reads as ordinary sentences, so every prose heuristic in the
+      // pipeline is satisfied; it is still not an answer.
+      "an invented conversational form":
+        "I am going to look up the latest Celtic and LASK team news before answering, "
+        + "and then I will check whether the first leg result has been confirmed anywhere.",
+    };
+
+    for (const [shape, leak] of Object.entries(LEAKS)) {
+      it(`falls back to the grounded answer for ${shape}`, async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const delivered = await deliverAnswer({
+          answer: leak,
+          tier: "match",
+          grounding: matchGrounding,
+          bundle: emptyBundle(),
+          client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+          question: "Celtic vs LASK second leg",
+          evidenceRequired: false,
+          candidateUnrecognized: false,
+        });
+        // Not one byte of the request may reach the user.
+        expect(delivered.answer).not.toContain("web_search");
+        expect(delivered.answer).not.toContain("SEARCH");
+        expect(delivered.answer).not.toContain("look up the latest");
+        // And what does reach them is the server-owned answer.
+        expectDeliverable(delivered.answer, true);
+        for (const label of SECTION_LABELS) expect(delivered.answer).toContain(label);
+        for (const number of ["40.0%", "30.0%", "55.0%", "52.0%"]) {
+          expect(delivered.answer).toContain(number);
+        }
+        // Distinguished from the emptied-answer case: this answer was readable,
+        // it just was not an answer.
+        expect(warn.mock.calls.map(([line]) => JSON.parse(String(line)))).toContainEqual({
+          event: "answer_degraded",
+          tier: "match",
+          reason: "answer_not_shaped_like_an_answer",
+        });
+        warn.mockRestore();
+      });
+    }
+
+    /**
+     * The other half of the contract. A positive shape test is only safe if the
+     * shortest thing the prompt permits still passes it, so both signals are
+     * exercised alone: a follow-up answered in one unlabelled sentence with a
+     * number, and a labelled section carrying no number at all.
+     */
+    const SHORT_BUT_LEGITIMATE: Record<string, string> = {
+      "a one-line follow-up carrying only a percentage":
+        "Arsenal are the side the model prefers here, at **40.0%** against"
+        + " Coventry City's 30.0%.",
+      "a single labelled section carrying no number":
+        "**Read on the underdog**\nCoventry City need the game to stay tight; their"
+        + " route runs through a low-scoring draw or a one-goal away win.",
+    };
+
+    for (const [shape, answer] of Object.entries(SHORT_BUT_LEGITIMATE)) {
+      it(`still delivers ${shape}`, async () => {
+        const delivered = await deliverAnswer({
+          answer,
+          tier: "match",
+          grounding: matchGrounding,
+          bundle: emptyBundle(),
+          client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+          question: "Why?",
+          evidenceRequired: false,
+          candidateUnrecognized: false,
+        });
+        expect(normalizeWhitespace(delivered.answer))
+          .toContain(normalizeWhitespace(answer));
+      });
+    }
+  });
+
   it("fails the request where there is no server-owned payload to rebuild from", async () => {
     // A canned one-liner for a general question would be a fabricated answer
     // rather than a degraded one, so these fail the way an empty generation does.
