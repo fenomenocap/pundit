@@ -11,6 +11,7 @@ import {
   type Grounding,
   type SeasonGrounding,
 } from "./ask";
+import { segmentAnswer, SECTION_LABEL_LINE } from "./answer-provenance";
 import { fixture } from "./__fixtures__/model-fixture";
 import { clientWith, message } from "./__fixtures__/anthropic-stubs";
 import {
@@ -105,16 +106,72 @@ const MODEL_NUMBERS = ["40.0%", "30.0%", "55.0%", "52.0%", "12.0%", "1.1%"];
 const SECTION_LABELS = ["**Verdict**", "**Goals**", "**Likely scorelines**", "**Team news**"];
 
 /**
- * The fail-closed one-liners. Each is a legitimate answer in its own narrow
- * case and a catastrophe when it replaces a correct one, which is what all four
- * shipped bugs did.
+ * Fail-closed one-liners that can only ever mean the answer was destroyed.
+ * There is no scope at which "the structured probabilities are available, but
+ * the unsupported interpretation was omitted" belongs inside an otherwise
+ * intact match answer, so these stay blocked outright, anywhere in the text.
  */
 const BOILERPLATE = [
   "I could not establish a supported",
   "omitted those numbers",
   "The structured probabilities are available",
-  "could not establish a verified current update",
 ];
+
+/**
+ * The one fail-closed phrase that is not inherently a destroyed answer.
+ *
+ * It used to be. Before the evidence guards were scoped, this sentence only
+ * ever appeared having replaced the entire answer, so forbidding it outright
+ * was the correct assertion. Now that those guards confine themselves to
+ * evidence-derived regions, the same sentence is the legitimate team-news
+ * abstention: verdict, goals and scorelines intact, and this under
+ * **Team news**. Forbidding it everywhere would now fail the target shape.
+ *
+ * So the assertion is re-targeted, not dropped. The property that always
+ * mattered was never "this phrase is absent" -- it was "this phrase never
+ * REPLACES the answer" -- and `segmentAnswer` states exactly that. Under a
+ * team-news label the sentence is an `"evidence"` segment; standing alone as
+ * the whole answer it is a `"model"` segment, because it makes no squad claim
+ * and no team-news label precedes it. The destruction shape therefore still
+ * fails this check, and only the scoped abstention passes it.
+ */
+const SCOPED_ABSTENTION = "could not establish a verified current update";
+
+/**
+ * Asserts that the scoped abstention, wherever it appears, appears only inside
+ * an evidence-derived region -- and never as the answer itself.
+ */
+function expectAbstentionStaysScoped(answer: string) {
+  const carrying = segmentAnswer(answer).filter((segment) =>
+    segment.text.includes(SCOPED_ABSTENTION));
+  for (const segment of carrying) expect(segment.provenance).toBe("evidence");
+  if (carrying.length) {
+    // Belt and braces on top of provenance: a replaced answer is one sentence
+    // with no sections above it, so the abstention is neither the opening line
+    // nor the only thing in the answer.
+    const lines = answer.split("\n").filter((line) => line.trim());
+    expect(lines[0]).not.toContain(SCOPED_ABSTENTION);
+    expect(lines.filter((line) => SECTION_LABEL_LINE.test(line)).length)
+      .toBeGreaterThan(1);
+  }
+}
+
+/** Either wording the pipeline uses to abstain on squad availability. */
+const ABSTENTION_WORDING =
+  /could not establish a verified current update|no (?:additional )?(?:verified|confirmed)\b/i;
+
+/**
+ * Asserts the abstention landed where it belongs: under the team-news label,
+ * as that section's body. This is the positive half of the re-targeted
+ * assertion -- the answer must not merely avoid being destroyed, the section
+ * that lost its claim has to say so.
+ */
+function expectTeamNewsAbstained(answer: string) {
+  const lines = answer.split("\n").filter((line) => line.trim());
+  const label = lines.findIndex((line) => /^\s*\*\*Team news\*\*:?\s*$/.test(line));
+  expect(label).toBeGreaterThanOrEqual(0);
+  expect(lines.slice(label + 1).join(" ")).toMatch(ABSTENTION_WORDING);
+}
 
 /** The answer body, minus the team-news sentence, which each variant supplies. */
 const ANSWER_BODY = [
@@ -196,6 +253,7 @@ function expectDeliverable(answer: string, expectHeadlineOneXTwo = false) {
   expect(validateAnswerCopy(answer).failures).toEqual([]);
   expect(validateNoDraftLeak(answer).failures).toEqual([]);
   for (const phrase of BOILERPLATE) expect(answer).not.toContain(phrase);
+  expectAbstentionStaysScoped(answer);
 }
 
 /** The match-specific contract: the model's own numbers and its sections. */
@@ -255,7 +313,7 @@ describe("a correct match answer survives the real delivery path", () => {
     // is the exact regression that produced three boilerplate replies in five.
     expectMatchContentIntact(delivered.answer);
     expect(delivered.answer).not.toContain("first-choice keeper is suspended");
-    expect(delivered.answer).toMatch(/no (?:additional )?(?:verified|confirmed)\b/i);
+    expectTeamNewsAbstained(delivered.answer);
   });
 
   it("never lets a bare numeric marker reach the user", async () => {
@@ -286,6 +344,26 @@ describe("a correct match answer survives the real delivery path", () => {
     expectMatchContentIntact(withoutSource.answer);
     expect(withoutSource.answer).not.toContain("[[");
     expect(withoutSource.answer).not.toContain("]]");
+  });
+
+  /**
+   * The re-targeted assertion has to keep catching what the blocklist caught.
+   * Loosening "this phrase is absent" to "this phrase stays inside an evidence
+   * region" is only safe if the destruction shape still fails, so that is
+   * asserted directly rather than assumed: this is the exact text three of five
+   * live match questions returned, and it must never be accepted.
+   */
+  it("still rejects the abstention standing as the whole answer", () => {
+    const destroyed = "I could not establish a verified current update from the"
+      + " available dated sources.";
+    expect(segmentAnswer(destroyed).every((segment) => segment.provenance === "model"))
+      .toBe(true);
+    expect(() => expectAbstentionStaysScoped(destroyed)).toThrow();
+    // And the same sentence under a team-news label is accepted, which is the
+    // whole point of the distinction.
+    expect(() => expectAbstentionStaysScoped(`**Verdict**\nArsenal win **40.0%**,`
+      + ` the draw **30.0%**, Coventry City **30.0%**.\n\n**Team news**\n${destroyed}`))
+      .not.toThrow();
   });
 });
 
