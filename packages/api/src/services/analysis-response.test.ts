@@ -39,6 +39,12 @@ const SCREENSHOT_LEAK = "]<]minimax[>[<tool_call> ]<]minimax[>[<tool_call> "
 const JSON_LEAK = '{  "search_queries": ["Arsenal team news injuries Premier League August 2026", '
   + '"Coventry City injuries squad news August 2026"]';
 
+// Verbatim from production: the entire 141-character answer a user received for
+// "Arsenal vs Coventry". A different tool name (`google_search`) and a
+// different envelope (a doubly-bracketed array) from anything handled before.
+const BRACKETED_JSON_LEAK = '[[{"id":"google_search","params":{"query":"Arsenal vs Coventry '
+  + 'Premier League 21 August 2026 lineup injuries","topn":10,"recency_days":30}}]]';
+
 // The tool loop executes searches for real; stub the backend so these tests
 // stay offline and deterministic.
 const searchWeb = vi.hoisted(() => vi.fn());
@@ -101,6 +107,17 @@ describe("generateAnalysis", () => {
       content: [{ type: "text", text: "truncated", citations: [] }],
       stop_reason: "max_tokens",
     }), "system", [], "general")).rejects.toMatchObject({ statusCode: 502 });
+  });
+
+  // The bracketed envelope shipped as a whole answer in production. It must
+  // reach the user as an error, never as a chat bubble, on the same path an
+  // all-markup answer already takes.
+  it("never ships a bracketed JSON tool envelope as the answer", async () => {
+    await expect(generateAnalysis(clientWith({
+      content: [{ type: "text", text: BRACKETED_JSON_LEAK, citations: [] }],
+      stop_reason: "end_turn",
+    }), "system", [], "general", undefined, undefined, undefined, false))
+      .rejects.toMatchObject({ statusCode: 502 });
   });
 
   it("maps SDK timeouts to a 504", async () => {
@@ -972,6 +989,31 @@ describe("stripToolCallMarkup", () => {
     expect(stripToolCallMarkup("]<]minimax[>[ <|tool_calls_begin|> <tool_call>")).toBe("");
     expect(stripToolCallMarkup("Arsenal are favoured.</tool_call> Coventry counter well."))
       .toBe("Arsenal are favoured. Coventry counter well.");
+  });
+
+  // The fourth production shape: a bracketed JSON invocation envelope, seen
+  // live as the *entire* answer to "Arsenal vs Coventry". It is recognised as
+  // JSON carrying tool keys, never as "something inside [[ ]]" -- the citation
+  // sweep stays narrow precisely so bracketed prose survives.
+  it("removes a bracketed JSON tool envelope that is the whole answer", () => {
+    expect(stripToolCallMarkup(BRACKETED_JSON_LEAK)).toBe("");
+  });
+
+  it("removes a bracketed JSON tool envelope written mid-answer", () => {
+    expect(stripToolCallMarkup(
+      `**Verdict**\nArsenal are favoured at 78.4%.\n${BRACKETED_JSON_LEAK}\n**Goals**\nOver 2.5 at 55.0%.`
+    )).toBe("**Verdict**\nArsenal are favoured at 78.4%.\n\n**Goals**\nOver 2.5 at 55.0%.");
+  });
+
+  it("leaves citation markers and bracketed prose alone", () => {
+    for (const prose of [
+      "Saka is out with a hamstring injury [[S1]].",
+      "The unresolved marker [[1]] is the citation sweep's business, not this guard's.",
+      "The shortlist [[a, b]] is bracketed prose and stays.",
+      "Arsenal [[S1]] and Coventry [[S2]] both reported clean bills of health.",
+    ]) {
+      expect(stripToolCallMarkup(prose)).toBe(prose);
+    }
   });
 
   it("leaves ordinary prose containing angle brackets or 'query' untouched", () => {

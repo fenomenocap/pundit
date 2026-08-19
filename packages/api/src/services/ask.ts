@@ -2507,20 +2507,39 @@ export function sanitizeUnsupportedTeamNews(answer: string): string {
 // ---------------------------------------------------------------------------
 //
 // MiniMax intermittently emits its tool-call *intent* as ordinary assistant
-// text instead of a structured tool_use block. Two shapes reached production:
+// text instead of a structured tool_use block. Four shapes have reached
+// production so far:
 //
 //   ]<]minimax[>[<tool_call> <invoke name="web_search"> <query>...</query>
 //   </invoke> ... </tool_call>
 //
 //   {  "search_queries": ["Arsenal team news ...", "Coventry injuries ..."]
 //
+//   [[{"id":"google_search","params":{"query":"Arsenal vs Coventry ...",
+//   "topn":10,"recency_days":30}}]]
+//
 // Such a text block carries stop_reason "end_turn", so the tool loop never
 // runs, nothing downstream recognised it as anything but prose, and it was
-// rendered verbatim in a chat bubble. Both leaks are the same failure -- the
-// tool channel breaking out into the text channel -- so they are handled as
-// one class rather than as two string patterns, and the live leaks were
-// malformed, doubled and truncated often enough that a paired-tag regex is
-// not sufficient.
+// rendered verbatim in a chat bubble. Every one of them is the same failure --
+// the tool channel breaking out into the text channel -- so they are handled
+// as one class rather than as a growing list of string patterns, and the live
+// leaks were malformed, doubled and truncated often enough that a paired-tag
+// regex is not sufficient.
+//
+// The class has exactly two members, and each is recognised by its own
+// vocabulary rather than by its punctuation:
+//
+//   1. Markup: a control-token fragment, or a tag whose *name* opens a
+//      tool-call region.
+//   2. A JSON literal -- object or array, at any nesting, anywhere in the text
+//      -- whose *keys* are the keys of a tool invocation.
+//
+// The fourth shape is member 2 with an array wrapper, so it needs no new
+// pattern, only the removal of the assumption that a JSON payload can only
+// lead the answer. Crucially it is not recognised by its `[[ ... ]]` framing:
+// widening the citation-marker sweep to a general `\[\[[^\]]*\]\]` would eat
+// ordinary bracketed prose, so brackets alone decide nothing and the JSON
+// tool keys decide everything.
 
 /**
  * Framing bytes of MiniMax's own control tokens, and the generic "<|...|>"
@@ -2564,7 +2583,7 @@ const TRUNCATED_TOOL_TAG = new RegExp(
  */
 const TOOL_RESIDUE = new RegExp([
   `<\\s*/?\\s*(?:antml:)?(?:${[...TOOL_REGION_TAGS, ...TOOL_INNER_TAGS].join("|")})\\b`,
-  /"(?:search_queries|search_query|queries|tool_call|tool_name|arguments)"\s*:/.source,
+  /"(?:search_queries|search_query|queries|query|tool_call|tool_name|arguments|params)"\s*:/.source,
   /\]<\]|\[>\[|<\|/.source,
 ].join("|"), "i");
 
@@ -2641,32 +2660,47 @@ function stripToolRegions(answer: string): string {
   return out.replace(TRUNCATED_TOOL_TAG, "");
 }
 
-/** Keys that make a leading JSON object a tool payload rather than prose. */
+/**
+ * Keys that make a JSON literal a tool payload rather than prose.
+ *
+ * `params` and `id` were added for the `[[{"id":"google_search","params":
+ * {...}}]]` leak; both are keys of an invocation envelope and neither occurs
+ * in football prose in JSON-quoted, colon-terminated form. Membership is
+ * checked against the literal's whole text, so a nested `"query"` inside
+ * `"params"` identifies the envelope that carries it.
+ */
 const TOOL_JSON_KEY =
-  /"(?:search_queries|search_query|queries|query|tool|tool_name|tool_call|tool_calls|function|name|arguments|parameters)"\s*:/i;
+  /"(?:search_queries|search_query|queries|query|tool|tool_name|tool_call|tool_calls|function|name|id|arguments|parameters|params|input)"\s*:/i;
 
 /** Characters that can appear outside a string in JSON (incl. true/false/null). */
 const JSON_OUTSIDE_STRING = /[\s{}[\],:0-9+\-.eEtrufalsn]/;
 
-/**
- * Removes a leading bare JSON object whose keys are tool-ish. The live leak
- * ('{  "search_queries": [...]' followed by a real answer) was never closed,
- * so the scan also accepts a truncated object: it stops at the first character
- * that cannot continue JSON and rewinds to the last structural boundary, which
- * preserves the prose that follows.
- */
-function stripLeadingToolJson(answer: string): string {
-  const lead = /^\s*/.exec(answer)?.[0] ?? "";
-  const rest = answer.slice(lead.length);
-  if (!rest.startsWith("{")) return answer;
+interface JsonExtent {
+  /** Offset one past the last character of the literal. */
+  end: number;
+  /** Whether the literal closed its own brackets rather than being cut short. */
+  complete: boolean;
+}
 
+/**
+ * The extent of the JSON literal starting at `from`, or null when there is no
+ * plausible one there.
+ *
+ * Tolerant of truncation on purpose: the live `{"search_queries": [...]`
+ * leak was never closed and had a real answer written under it. On hitting a
+ * character that cannot continue JSON the scan rewinds to the last structural
+ * boundary, which keeps the prose that follows, and reports `complete: false`
+ * so a caller can insist on a well-formed literal where guessing would be
+ * unsafe.
+ */
+function scanJsonExtent(text: string, from: number): JsonExtent | null {
+  if (text[from] !== "{" && text[from] !== "[") return null;
   let depth = 0;
   let inString = false;
   let escaped = false;
   let lastBoundary = -1;
-  let end = -1;
-  for (let i = 0; i < rest.length; i += 1) {
-    const ch = rest[i];
+  for (let i = from; i < text.length; i += 1) {
+    const ch = text[i];
     if (inString) {
       if (escaped) escaped = false;
       else if (ch === "\\") escaped = true;
@@ -2678,17 +2712,53 @@ function stripLeadingToolJson(answer: string): string {
     if (ch === "}" || ch === "]") {
       depth -= 1;
       lastBoundary = i + 1;
-      if (depth === 0) { end = i + 1; break; }
+      if (depth === 0) return { end: i + 1, complete: true };
       continue;
     }
     if (JSON_OUTSIDE_STRING.test(ch)) continue;
-    // Prose resumed inside an unclosed object: keep it, drop the fragment.
-    end = lastBoundary;
     break;
   }
-  if (end <= 0) end = depth > 0 ? lastBoundary : -1;
-  if (end <= 0 || !TOOL_JSON_KEY.test(rest.slice(0, end))) return answer;
-  return rest.slice(end).replace(/^[\s,}\]]+/, "");
+  return lastBoundary > from ? { end: lastBoundary, complete: false } : null;
+}
+
+/**
+ * Removes a leading bare JSON literal whose keys are tool-ish, including a
+ * truncated one -- the position where a payload is most likely to be cut short,
+ * because the model wrote it first and then carried on with the answer.
+ */
+function stripLeadingToolJson(answer: string): string {
+  const lead = /^\s*/.exec(answer)?.[0] ?? "";
+  const rest = answer.slice(lead.length);
+  const extent = scanJsonExtent(rest, 0);
+  if (!extent || !TOOL_JSON_KEY.test(rest.slice(0, extent.end))) return answer;
+  return rest.slice(extent.end).replace(/^[\s,}\]]+/, "");
+}
+
+/**
+ * Removes well-formed tool-payload JSON literals wherever they appear.
+ *
+ * Away from the start of the answer the literal has to close itself: at offset
+ * zero a truncated payload is the overwhelmingly likely reading, but mid-prose
+ * a stray `{` followed by an unrelated `"name":` must not be licensed to eat
+ * the rest of the answer. Requiring balanced brackets is what keeps this from
+ * becoming the general bracket sweep the citation markers cannot survive --
+ * `[[S1]]` and `[[a, b]]` both fail the scan on their first non-JSON character
+ * and, even when they parse (`[[1]]`), carry no tool key.
+ */
+function stripEmbeddedToolJson(answer: string): string {
+  let out = "";
+  let cursor = 0;
+  for (let i = 0; i < answer.length; i += 1) {
+    const ch = answer[i];
+    if (ch !== "{" && ch !== "[") continue;
+    const extent = scanJsonExtent(answer, i);
+    if (!extent || !extent.complete) continue;
+    if (!TOOL_JSON_KEY.test(answer.slice(i, extent.end))) continue;
+    out += answer.slice(cursor, i);
+    cursor = extent.end;
+    i = extent.end - 1;
+  }
+  return out + answer.slice(cursor);
 }
 
 interface ToolMarkupStrip {
@@ -2697,9 +2767,9 @@ interface ToolMarkupStrip {
 }
 
 function stripToolCallMarkupDetailed(answer: string): ToolMarkupStrip {
-  const stripped = stripLeadingToolJson(
+  const stripped = stripEmbeddedToolJson(stripLeadingToolJson(
     stripToolRegions(answer.replace(CONTROL_TOKEN_FRAGMENT, ""))
-  );
+  ));
   if (stripped === answer) return { text: answer, removed: false };
   return {
     text: stripped.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(),
