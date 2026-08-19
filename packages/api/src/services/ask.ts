@@ -1022,7 +1022,9 @@ function groundingOneXTwoMarketLegs(
       legs.push({
         outcome,
         decimalOdds: 1 / probability,
-        source: source.source,
+        // Capitalised because the source name is rendered verbatim into
+        // user-facing attribution text.
+        source: `${source.source[0].toLocaleUpperCase()}${source.source.slice(1)}`,
         observedAt: source.observedAt,
       });
     }
