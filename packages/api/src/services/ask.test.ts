@@ -453,7 +453,11 @@ describe("current-news evidence hardening", () => {
       removedClaimCount: 0,
     }, true);
     expect(safe).toContain(candidateNotice);
-    expect(safe).toContain("could not establish a supported current answer");
+    // Deliberate wording change: the abstention now names what was missing --
+    // a dated team-news update -- instead of declaring the whole question
+    // unanswerable. The removal it stands for is unchanged, and is asserted on
+    // the next line exactly as before.
+    expect(safe).toContain("No verified, dated team-news update was established");
     expect(safe).not.toMatch(/Jason Denayer|is out|attackers to be unavailable/);
     expect(failClosedEmptyCurrentVerification(unsafe, {
       status: "not-required",
@@ -614,7 +618,7 @@ describe("current-news evidence hardening", () => {
       { queries: ["query"], results: [] },
       true
     );
-    expect(rendered.answer).toMatch(/could not establish a verified current update/i);
+    expect(rendered.answer).toMatch(/No verified, dated team-news update was established/i);
   });
 
   it("requires a dated marker in each sentence, not merely elsewhere on the line", () => {
@@ -649,7 +653,7 @@ describe("current-news evidence hardening", () => {
       }] },
       true
     );
-    expect(rendered.answer).toMatch(/could not establish a verified current update/i);
+    expect(rendered.answer).toMatch(/No verified, dated team-news update was established/i);
     expect(rendered.citations).toEqual([]);
   });
 });
@@ -1689,7 +1693,7 @@ describe("evidence guards leave model-derived answers intact", () => {
     );
     expect(checked.answer).toContain("**56.3%**");
     expect(checked.answer).not.toMatch(/Saka|ruled out|knee injury/);
-    expect(checked.answer).toContain("could not establish a supported current answer");
+    expect(checked.answer).toContain("No verified, dated team-news update was established");
 
     for (const guarded of [
       failClosedEmptyCurrentVerification(smuggled, {
@@ -1701,7 +1705,7 @@ describe("evidence guards leave model-derived answers intact", () => {
     ]) {
       expect(guarded).toContain("**56.3%**");
       expect(guarded).not.toMatch(/Saka|ruled out|knee injury/);
-      expect(guarded).toMatch(/could not establish/i);
+      expect(guarded).toMatch(/No verified, dated team-news update was established/i);
     }
   });
 

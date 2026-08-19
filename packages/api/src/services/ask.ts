@@ -264,6 +264,32 @@ const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| i
 const ABSTENTION = /\b(no verified|could not verify|not established|no usable|no current|unconfirmed|unknown)\b/i;
 
 /**
+ * What the pipeline says when it removes a claim that needed an outside source
+ * and could not get one.
+ *
+ * These notices only ever stand in for evidence-derived content -- every path
+ * that emits one routes through `abstainEvidenceClaims`, which leaves model
+ * segments alone -- so they have to be *scoped* to that content. They were not.
+ * "I could not establish a supported current answer from the retrieved
+ * evidence" reads as a total failure of the question, and it was the entire
+ * 77-character reply a user received to "Any injury news for Celtic vs LASK?"
+ * -- a question the server had answered correctly, having established no team
+ * news, over a grounding carrying full probabilities. The repo's own harness
+ * already treats that string as the signature of a destroyed answer and
+ * forbids it in the pinned scenarios; the pipeline was emitting it anyway.
+ *
+ * So the wording now names the thing that was actually missing. As a bonus the
+ * scoped form satisfies both `ABSTENTION` above and the battle harness's
+ * `NO_VERIFIED_NEWS`, which the old wording matched neither of -- meaning an
+ * answer that had already abstained could be abstained over a second time.
+ */
+const TEAM_NEWS_ABSTENTION = "No verified, dated team-news update was established.";
+const TEAM_NEWS_ABSTENTION_UNRETRIEVABLE =
+  "No verified, dated team-news update was established from retrievable sources.";
+const TEAM_NEWS_ABSTENTION_UNAVAILABLE =
+  "No verified, dated team-news update was established, because verification was unavailable.";
+
+/**
  * A server-owned citation marker, in every shape the generator actually emits.
  *
  * The prompt asks for `[[S1]]`, but the `S` is dropped often enough to matter,
@@ -518,7 +544,7 @@ export async function verifyCurrentClaims(
     return {
       answer: abstainEvidenceClaims(
         answer,
-        "I could not establish a supported current answer from the retrieved evidence."
+        TEAM_NEWS_ABSTENTION
       ),
       verification: { status: "abstain", supportedClaimCount: 0, removedClaimCount: 0 },
     };
@@ -534,7 +560,7 @@ export async function verifyCurrentClaims(
     return {
       answer: abstainEvidenceClaims(
         answer,
-        "I could not establish a supported current answer from retrievable evidence."
+        TEAM_NEWS_ABSTENTION_UNRETRIEVABLE
       ),
       verification: {
         status: pages.length ? "unavailable" : "abstain",
@@ -1094,8 +1120,8 @@ export function failClosedEmptyCurrentVerification(
     return answer;
   }
   const abstention = verification.status === "unavailable"
-    ? "I could not establish a supported current answer because verification was unavailable."
-    : "I could not establish a supported current answer from the retrieved evidence.";
+    ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
+    : TEAM_NEWS_ABSTENTION;
   // Scoped to the evidence regions. The previous form kept a hand-maintained
   // allowlist of server-authored notices and discarded literally everything
   // else -- so a verification that supported no *team-news* claim also deleted
@@ -1121,7 +1147,7 @@ export function renderEvidenceCitations(
 ): { answer: string; citations: AskCitation[] } {
   const byId = new Map((bundle?.results ?? []).map((source) => [source.id, source]));
   const cited = new Map<string, AskCitation>();
-  const notice = "I could not establish a verified current update from the available dated sources.";
+  const notice = TEAM_NEWS_ABSTENTION;
   let abstained = false;
   const abstain = () => {
     if (abstained) return "";

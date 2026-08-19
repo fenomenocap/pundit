@@ -135,7 +135,7 @@ const BOILERPLATE = [
  * and no team-news label precedes it. The destruction shape therefore still
  * fails this check, and only the scoped abstention passes it.
  */
-const SCOPED_ABSTENTION = "could not establish a verified current update";
+const SCOPED_ABSTENTION = "No verified, dated team-news update was established";
 
 /**
  * Asserts that the scoped abstention, wherever it appears, appears only inside
@@ -354,8 +354,7 @@ describe("a correct match answer survives the real delivery path", () => {
    * live match questions returned, and it must never be accepted.
    */
   it("still rejects the abstention standing as the whole answer", () => {
-    const destroyed = "I could not establish a verified current update from the"
-      + " available dated sources.";
+    const destroyed = "No verified, dated team-news update was established.";
     expect(segmentAnswer(destroyed).every((segment) => segment.provenance === "model"))
       .toBe(true);
     expect(() => expectAbstentionStaysScoped(destroyed)).toThrow();
