@@ -36,7 +36,7 @@ All answers are held until whole-answer deterministic guards complete, then rele
 
 ```json
 {
-  "answer": "**Verdict**\n\nArsenal are strong favourites...",
+  "answer": "**Model vs market**\n\nPundit's model makes Arsenal 56.3%, about 6 percentage points above the priced probability...",
   "grounding": { "kind": "match", "...": "..." },
   "citations": [
     { "id": "S1", "title": "Club update", "url": "https://example.com/update", "date": "2026-08-12" }
