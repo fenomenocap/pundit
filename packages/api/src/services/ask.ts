@@ -785,6 +785,16 @@ interface MarketFigure {
 const MARKET_FIGURE = /(\d+(?:\.\d+)?)\s*%|\b(\d+\.\d{1,2})\b/g;
 
 /**
+ * A number that names its own non-price unit is a magnitude, not a quote.
+ *
+ * The edge the match prompt asks for is written in exactly this form -- "some
+ * **11.5 points** below the model" -- and reading 11.5 as a price meant the
+ * whole comparison failed validation and was deleted, which is the bug the
+ * verification was introduced to fix in the first place.
+ */
+const NON_PRICE_UNIT = /^\s*\**\s*(?:percentage\s+|pct\s+|pp\b\s*)?(?:points?|pp|goals?|xg)\b/i;
+
+/**
  * A leg label attached to the figure beside it. Only punctuation and short
  * connectives may sit between the two, and never another figure, so a label can
  * never be claimed across an intervening number -- the same discipline the
@@ -803,6 +813,11 @@ function collectMarketFigures(sentence: string, start: number, end: number): Mar
   for (let match = MARKET_FIGURE.exec(clause); match; match = MARKET_FIGURE.exec(clause)) {
     const text = match[1] ?? match[2];
     const offset = match.index + match[0].indexOf(text);
+    const trailing = clause.slice(match.index + match[0].length);
+    if (NON_PRICE_UNIT.test(trailing)) {
+      previousEnd = offset + text.length;
+      continue;
+    }
     const before = LEG_LABEL_BEFORE.exec(clause.slice(previousEnd, offset));
     const after = LEG_LABEL_AFTER.exec(clause.slice(offset + text.length));
     const label = (before?.[1] ?? after?.[1])?.toLocaleLowerCase() as OneXTwoOutcome | undefined;
@@ -867,58 +882,85 @@ const OUTCOME_ORDER: readonly OneXTwoOutcome[] = ["home", "draw", "away"];
  * place), or null when the figures cannot be validated at all and the caller
  * must fall back to the recital.
  *
+ * A sentence may name more than one source, and each source answers only for
+ * its own figures: a figure belongs to the nearest source named before it, or
+ * to the nearest one named after it when none precedes. Judging every figure
+ * against whichever record happened to be found first would fail a correct
+ * two-source comparison, and one record can never vouch for another's price.
+ *
  * What is deliberately *not* validated is which team a figure is attached to:
- * an unlabelled figure passes when it matches any leg of the record. The claim
- * being guarded is "this price came from that source at that time", and it did.
- * A misattributed but real leg is a different, much smaller error than an
- * invented price, and the labelled forms -- which are what the prompt asks for
- * -- are checked leg by leg.
+ * an unlabelled figure passes when it matches any leg of its own record. The
+ * claim being guarded is "this price came from that source at that time", and
+ * it did. A misattributed but real leg is a different, much smaller error than
+ * an invented price, and the labelled forms -- which are what the prompt asks
+ * for -- are checked leg by leg.
  */
 function reconcileMarketSentence(
   sentence: string,
   records: readonly ValidatedMarketRecord[]
 ): string | null {
   const lower = sentence.toLocaleLowerCase();
-  const record = records.find(({ source }) => source && lower.includes(source));
-  if (!record) return null;
-  const span = marketClauseSpan(sentence, record.source);
-  if (!span) return null;
-  const figures = collectMarketFigures(sentence, span.start, span.end);
-  // The sentence asserted a price, but not one this clause exposes for
-  // checking. Nothing to validate means nothing is validated.
-  if (!figures.length) return null;
+  const mentioned = records
+    .map((record) => ({ record, at: record.source ? lower.indexOf(record.source) : -1 }))
+    .filter(({ at }) => at >= 0)
+    .sort((left, right) => left.at - right.at);
+  if (!mentioned.length) return null;
 
-  // A bare triple is the shape MATCH_EXAMPLE demonstrates ("41.0% / 32.4% /
-  // 26.6%"), and 1X2 order is the only order Pundit ever writes or reads.
-  if (figures.length === OUTCOME_ORDER.length && figures.every((figure) => !figure.outcome)) {
-    figures.forEach((figure, index) => { figure.outcome = OUTCOME_ORDER[index]; });
+  const owned = new Map<ValidatedMarketRecord, MarketFigure[]>();
+  for (const { record } of mentioned) {
+    const span = marketClauseSpan(sentence, record.source);
+    if (!span) continue;
+    for (const figure of collectMarketFigures(sentence, span.start, span.end)) {
+      // Nearest source named before the figure; failing that, the nearest one
+      // named after it, which is the "at 55.4%, Kalshi is tighter" order.
+      const before = mentioned.filter((entry) => entry.at <= figure.start).at(-1);
+      const owner = (before ?? mentioned[0]).record;
+      if (owner !== record) continue;
+      const figures = owned.get(record) ?? [];
+      if (figures.some((existing) => existing.start === figure.start)) continue;
+      figures.push(figure);
+      owned.set(record, figures);
+    }
   }
 
-  const wrong: { figure: MarketFigure; outcome: OneXTwoOutcome }[] = [];
-  for (const figure of figures) {
-    if (figure.outcome) {
-      if (!figureMatchesLeg(figure, record.market, figure.outcome)) {
-        wrong.push({ figure, outcome: figure.outcome });
-      }
-      continue;
+  const checked = [...owned.values()].reduce((count, figures) => count + figures.length, 0);
+  // The sentence asserted a price, but exposed no figure any named source
+  // answers for. Nothing to validate means nothing is validated.
+  if (!checked) return null;
+
+  const wrong: { figure: MarketFigure; outcome: OneXTwoOutcome; market: ValidatedOneXTwoMarket }[] = [];
+  for (const [record, figures] of owned) {
+    // A bare triple is the shape MATCH_EXAMPLE demonstrates ("41.0% / 32.4% /
+    // 26.6%"), and 1X2 order is the only order Pundit ever writes or reads.
+    if (figures.length === OUTCOME_ORDER.length && figures.every((figure) => !figure.outcome)) {
+      figures.forEach((figure, index) => { figure.outcome = OUTCOME_ORDER[index]; });
     }
-    // Unlabelled: it has to be one of this record's legs, or it is a number
-    // attributed to a market that never produced it.
-    if (!OUTCOME_ORDER.some((outcome) => figureMatchesLeg(figure, record.market, outcome))) {
-      return null;
+    for (const figure of figures) {
+      if (figure.outcome) {
+        if (!figureMatchesLeg(figure, record.market, figure.outcome)) {
+          wrong.push({ figure, outcome: figure.outcome, market: record.market });
+        }
+        continue;
+      }
+      // Unlabelled: it has to be one of this record's legs, or it is a number
+      // attributed to a market that never produced it.
+      if (!OUTCOME_ORDER.some((outcome) => figureMatchesLeg(figure, record.market, outcome))) {
+        return null;
+      }
     }
   }
 
   if (!wrong.length) return sentence;
   // One figure out of step with an otherwise correct quote is a transcription
-  // slip and is safe to repair where it stands. Several are not: a wholesale
-  // disagreement is a different market, a stale one, or an invented one, and
-  // rewriting every figure would be authoring the quote rather than checking
-  // it -- so that falls through to the rendered recital.
+  // slip and is safe to repair where it stands: the record's own value replaces
+  // it, so no unvalidated price is left standing either way. Several are not a
+  // slip -- a wholesale disagreement is a different market, a stale one or an
+  // invented one, and rewriting every figure would be authoring the quote
+  // rather than checking it -- so that falls through to the rendered recital.
   if (wrong.length > 1) return null;
-  const { figure, outcome } = wrong[0];
+  const { figure, outcome, market } = wrong[0];
   return sentence.slice(0, figure.start)
-    + correctedFigureText(figure, record.market, outcome)
+    + correctedFigureText(figure, market, outcome)
     + sentence.slice(figure.end);
 }
 
@@ -2680,6 +2722,26 @@ export function dropMisbucketedTotalsScorelines(line: string): string {
     : "The model's scoreline distribution does not single out examples for this total.";
 }
 
+/**
+ * A knockout tie pays no league points, so "one point" as the *return from
+ * this fixture* is wrong on a qualifier and is rewritten to a draw.
+ *
+ * The rewrite used to be an unconditional `/\b(?:one|1) point\b/` and mangled
+ * every other use of the word: "the model is one point higher on the draw"
+ * became "the model is a draw higher on the draw", and "Celtic lead the group
+ * by one point" -- ordinary standings prose, not a claim about this tie at all
+ * -- shipped as "Celtic lead the group by a draw". So the phrase has to assert
+ * a points return before it is touched: a verb of earning, or a point taken
+ * *from* the tie. A point as a unit of measurement ("one point higher", "11
+ * percentage points", "lead by one point") is left exactly as written.
+ */
+const POINTS_RETURN_FROM_TIE =
+  /\b(?:take|takes|taking|took|claim|claims|claiming|claimed|earn|earns|earning|earned|secure|secures|securing|secured|gain|gains|gaining|gained|collect|collects|collecting|collected|settle for|settles for|settling for|settled for|come away with|comes away with|coming away with|came away with|walk away with|walks away with)\s+(?:just\s+|only\s+|at least\s+)?(?:one|1|a)\s+point\b/gi;
+
+/** "worth one point", "a point from the tie" -- still a points return. */
+const POINT_WORTH_OF_TIE =
+  /\b(worth\s+)(?:one|1|a)\s+point\b|\b(?:one|1|a)\s+point\b(?=\s+from\s+(?:the\s+)?(?:tie|game|match|fixture|first leg|second leg|two legs))/gi;
+
 export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): string {
   let sanitized = answer
     .split("\n")
@@ -2710,7 +2772,8 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
         .replace(/\b(?:a )?share of the points\b/gi, "a draw")
         .replace(/\b(?:take|claim|earn|secure)(?:s|ed|ing)? (?:all )?(?:three|3) points\b/gi, "win")
         .replace(/\broute to (?:three|3) points\b/gi, "route to victory")
-        .replace(/\b(?:one|1) point\b/gi, "a draw");
+        .replace(POINTS_RETURN_FROM_TIE, "draw")
+        .replace(POINT_WORTH_OF_TIE, "$1a draw");
     }
   }
   // Only two-legged cup ties can be settled on aggregate. An ungrounded answer
