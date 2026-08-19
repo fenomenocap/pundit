@@ -1184,3 +1184,72 @@ describe("text-form tool call recovery", () => {
     expect(deltas.join("")).not.toMatch(/tool_call|invoke|minimax/i);
   });
 });
+
+/**
+ * The fifth production leak shape: a `<tool name="web_search">` element.
+ *
+ * Six empty pairs of it arrived on top of an otherwise perfect answer, so the
+ * structural shape gate correctly did not fire -- the answer really was
+ * answer-shaped -- and stripping was the only defence. It was also the only
+ * defence that did nothing, because the tag vocabulary knew the name
+ * `tool_call` and not the plain name `tool`.
+ *
+ * The fix is a class, not a sixth special case: a tag is markup when its
+ * element name, normalised for case, namespace prefix and word separators, is
+ * a tool-invocation name. These tests state that rule from both sides -- every
+ * spelling of the name opens a strippable region, and the punctuation-heavy
+ * prose the stripper has always had to survive still does.
+ */
+describe("the bare <tool> element leak", () => {
+  const TOOL_ELEMENT_LEAK = [
+    '<tool name="web_search"> </tool> <tool name="web_search"> </tool> <tool name="web_search"> </tool>',
+    '<tool name="web_search"> </tool> <tool name="web_search"> </tool> <tool name="web_search"> </tool>',
+  ].join("\n");
+
+  it("is stripped off the top of the answer it rode along with", () => {
+    expect(stripToolCallMarkup(
+      `${TOOL_ELEMENT_LEAK}\n\n**Verdict**\nCeltic win **66.9%**, the draw **19.4%**.`
+    )).toBe("**Verdict**\nCeltic win **66.9%**, the draw **19.4%**.");
+  });
+
+  it("is stripped whether the element is paired, self-closing, bare or attributed", () => {
+    for (const leak of [
+      "<tool>",
+      "<tool></tool>",
+      "<tool/>",
+      '<tool name="web_search"/>',
+      '<tool name="web_search" id="1">{"query": "celtic team news"}</tool>',
+      '<TOOL NAME="web_search"> </TOOL>',
+      '<tools><tool name="web_search"></tool></tools>',
+      "<tool-call> </tool-call>",
+      "<tool.call> </tool.call>",
+      "<toolcall> </toolcall>",
+      "<tool_invocation> </tool_invocation>",
+      '<use_tool name="web_search"> </use_tool>',
+      '<minimax:tool name="web_search"> </minimax:tool>',
+    ]) {
+      expect(stripToolCallMarkup(leak)).toBe("");
+    }
+  });
+
+  it("carries the payload nested inside it out too", () => {
+    expect(stripToolCallMarkup(
+      '<tool name="web_search">\n<query>celtic lask team news</query>\n</tool>\n\n**Verdict**\nCeltic win **66.9%**.'
+    )).toBe("**Verdict**\nCeltic win **66.9%**.");
+  });
+
+  it("does not damage the prose the stripper has always had to survive", () => {
+    for (const prose of [
+      "Saka is out with a hamstring injury [[S1]].",
+      "The shortlist [[a, b]] is bracketed prose and stays.",
+      "Rotation options are [2, 5] deep across the back line.",
+      "Read more at [the preview](https://www.premierleague.com/news/12345) before kick-off.",
+      "The model likes over >2.5 goals here, with under <2.5 the weaker side of the line.",
+      "In SQL a `<query>` block is the statement you send to the database.",
+      "Arsenal's toolkit of set-piece routines is the best in the league.",
+      "The token `tool` is model syntax; the tools a coach has are not.",
+    ]) {
+      expect(stripToolCallMarkup(prose)).toBe(prose);
+    }
+  });
+});
