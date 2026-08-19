@@ -1595,3 +1595,253 @@ describe("resolveAskContext", () => {
     });
   });
 });
+
+/**
+ * The policy these guards now implement: model-derived content always
+ * survives, evidence guards govern only claims that actually came from search,
+ * and missing team news abstains in its own section rather than taking the
+ * answer with it.
+ *
+ * Each guard below has already shipped a delete-correct-content bug once. The
+ * mirror failure is loosening one until a real hallucination gets through, so
+ * every case proving that content survives is paired with one proving the
+ * original hallucination is still blocked.
+ */
+describe("evidence guards leave model-derived answers intact", () => {
+  const modelAnswer = [
+    "**Verdict**",
+    "Pundit's model gives Arsenal **56.3%**, the draw **23.4%** and Chelsea **20.3%**.",
+    "",
+    "**Goals**",
+    "Over 2.5 lands at **54.0%**, BTTS yes at **52.1%**.",
+    "",
+    "**Team news**",
+    "No verified update was established.",
+  ].join("\n");
+
+  const groundedMatch = (overrides: Partial<Grounding> = {}): Grounding => ({
+    kind: "match",
+    fixtureId: "espn:eng.1:1",
+    competitionId: "eng.1",
+    competition: "Premier League",
+    homeFieldAdvantage: true,
+    date: "2026-08-22T14:00:00Z",
+    stage: "Regular Season",
+    home: "Arsenal",
+    away: "Chelsea",
+    pHome: 0.563,
+    pDraw: 0.234,
+    pAway: 0.203,
+    pOver2_5: 0.54,
+    pUnder2_5: 0.46,
+    pBttsYes: 0.521,
+    pBttsNo: 0.479,
+    topScores: [],
+    scorelines: [],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    oddsSources: [{
+      source: "kalshi",
+      observedAt: new Date().toISOString(),
+      pHome: 0.5,
+      pDraw: 0.25,
+      pAway: 0.25,
+    }],
+    ...overrides,
+  });
+
+  it("keeps the whole answer when it made no externally sourced claim", async () => {
+    // An answer with no citation markers has no verifiable claims, and there
+    // is nothing to verify in a claim that was never made. All three guards
+    // used to replace the entire answer -- probabilities and all -- with an
+    // abstention, which was the single largest source of destroyed answers.
+    const checked = await verifyCurrentClaims(
+      modelAnswer,
+      { queries: ["q"], results: [] },
+      {} as Parameters<typeof verifyCurrentClaims>[2]
+    );
+    expect(checked.answer).toBe(modelAnswer);
+    expect(checked.verification.status).toBe("abstain");
+
+    expect(failClosedEmptyCurrentVerification(modelAnswer, {
+      status: "abstain",
+      supportedClaimCount: 0,
+      removedClaimCount: 0,
+    }, true)).toBe(modelAnswer);
+
+    expect(renderEvidenceCitations(
+      modelAnswer,
+      { queries: ["q"], results: [] },
+      true
+    ).answer).toBe(modelAnswer);
+  });
+
+  it("still removes an uncited squad claim, including inside a Verdict section", async () => {
+    // The hole that excise-not-rebuild could have opened, closed by the
+    // sentence-level team-news rule: a squad claim smuggled into a verdict
+    // paragraph is still a claim about the outside world.
+    const smuggled = "**Verdict**\nArsenal are at **56.3%**. Saka is ruled out with a knee injury.";
+    const checked = await verifyCurrentClaims(
+      smuggled,
+      { queries: ["q"], results: [] },
+      {} as Parameters<typeof verifyCurrentClaims>[2]
+    );
+    expect(checked.answer).toContain("**56.3%**");
+    expect(checked.answer).not.toMatch(/Saka|ruled out|knee injury/);
+    expect(checked.answer).toContain("could not establish a supported current answer");
+
+    for (const guarded of [
+      failClosedEmptyCurrentVerification(smuggled, {
+        status: "abstain",
+        supportedClaimCount: 0,
+        removedClaimCount: 0,
+      }, true),
+      renderEvidenceCitations(smuggled, { queries: ["q"], results: [] }, true).answer,
+    ]) {
+      expect(guarded).toContain("**56.3%**");
+      expect(guarded).not.toMatch(/Saka|ruled out|knee injury/);
+      expect(guarded).toMatch(/could not establish/i);
+    }
+  });
+
+  it("resolves a marker the generator wrote without its S prefix", () => {
+    // "[[1]]" matched no marker pattern, so it was neither resolved into a
+    // source nor stripped: the sentence counted as uncited and was deleted,
+    // and the literal bracket text was what reached the chat bubble.
+    const bundle = {
+      queries: ["q"],
+      results: [{
+        id: "S1",
+        title: "Saka trains",
+        url: "https://bbc.co.uk/x",
+        date: "2026-08-18",
+        snippet: "Saka trained.",
+      }],
+    };
+    const rendered = renderEvidenceCitations("Saka is back in training [[1]].", bundle, true);
+    expect(rendered.answer).toBe(
+      "Saka is back in training ([Saka trains](https://bbc.co.uk/x), 2026-08-18)."
+    );
+    expect(rendered.citations).toEqual([expect.objectContaining({ id: "S1" })]);
+
+    // A marker naming an id the bundle does not contain is still removed, in
+    // every bracket shape, and no bracket form survives to the browser.
+    for (const invented of ["[[99]]", "[[S99]]", "[[ S99 ]]"]) {
+      const guarded = renderEvidenceCitations(
+        `Arsenal are at **56.3%**.\nSaka is fit again ${invented}.`,
+        bundle,
+        true
+      ).answer;
+      expect(guarded).toContain("**56.3%**");
+      expect(guarded).not.toMatch(/Saka|fit again/);
+      expect(guarded).not.toContain("[[");
+    }
+  });
+
+  it("quotes a market the grounding actually observed, and only that one", () => {
+    const grounding = groundedMatch();
+    // The escape hatch used to be dead code -- declared, read once, never
+    // populated -- so this was wiped to the notice even though Pundit had
+    // fetched the price itself and put it in the grounding.
+    const quoted = sanitizeRuntimeResponseCorrectness(
+      "Kalshi has Arsenal at 50.0%, so the model is a touch higher.",
+      grounding
+    );
+    expect(quoted).toContain("Kalshi market-implied probabilities (third-party data, not a Pundit forecast)");
+    expect(quoted).toContain("home 50.0%, draw 25.0%, away 25.0%");
+    expect(quoted).not.toContain("omitted those numbers");
+
+    // A price attributed to a source the grounding does not carry is still
+    // removed, and the model's own numbers on neighbouring lines survive.
+    const unattributable = sanitizeRuntimeResponseCorrectness(
+      "Polymarket prices the home win at 58.0%.\nThe model has the home win at **77.6%**.",
+      grounding
+    );
+    expect(unattributable).not.toContain("58.0%");
+    expect(unattributable).toContain("**77.6%**");
+    expect(unattributable).toContain("omitted those numbers");
+
+    // Six hours is many missed 30-minute cycles; a stale observation is not
+    // quotable even though it is complete and same-source.
+    expect(sanitizeRuntimeResponseCorrectness(
+      "Kalshi has Arsenal at 50.0%.",
+      groundedMatch({
+        oddsSources: [{
+          source: "kalshi",
+          observedAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+          pHome: 0.5,
+          pDraw: 0.25,
+          pAway: 0.25,
+        }],
+      })
+    )).toContain("omitted those numbers");
+  });
+
+  it("keeps an underdog section, the at-stake idiom, and prices split across a decimal point", () => {
+    const grounding = groundedMatch({
+      oddsSources: [{
+        source: "kalshi",
+        observedAt: new Date().toISOString(),
+        pHome: 0.3,
+        pDraw: 0.4,
+        pAway: 0.3,
+      }],
+    });
+
+    // A read-on-the-underdog section is supposed to discuss what the favourite
+    // does well; the label used to be blanked for exactly that.
+    const underdog = sanitizeGroundedMatchNarrative([
+      "**Read on the underdog**",
+      "Chelsea need Arsenal to be sloppy at the back.",
+      "Arsenal are the model favourite at 56.3%.",
+    ].join("\n"), grounding);
+    expect(underdog).toContain("**Read on the underdog**");
+    expect(underdog).toContain("Chelsea need Arsenal to be sloppy at the back.");
+    // The naive splitter cut "56.3%" at the point, leaving "3% ..." behind.
+    expect(underdog).toContain("Arsenal are the model favourite at 56.3%.");
+
+    // A draw-favouring market says nothing about which of the two teams it
+    // leans to, and "at stake" is an idiom rather than a bookmaker.
+    expect(sanitizeGroundedMatchNarrative(
+      "The market favours Arsenal on the Kalshi line.",
+      grounding
+    )).toBe("The market favours Arsenal on the Kalshi line.");
+    const atStake = "Arsenal are the favourite at 56.3% in the model. Three points are at stake for Arsenal, and the market backs them.";
+    expect(sanitizeGroundedMatchNarrative(atStake, grounding)).toBe(atStake);
+
+    // Sources that disagree cannot establish a single market view for the
+    // sentence to be wrong about, so it stands.
+    const split = groundedMatch({
+      oddsSources: [
+        { source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.55, pDraw: 0.25, pAway: 0.2 },
+        { source: "polymarket", observedAt: new Date().toISOString(), pHome: 0.2, pDraw: 0.25, pAway: 0.55 },
+      ],
+    });
+    expect(sanitizeGroundedMatchNarrative("The market backs Arsenal here.", split))
+      .toBe("The market backs Arsenal here.");
+  });
+
+  it("still removes a claim that contradicts the model's own favourite", () => {
+    const contradiction = sanitizeGroundedMatchNarrative(
+      "Arsenal are the underdogs here.\nOver 2.5 lands at **54.0%**.",
+      groundedMatch()
+    );
+    expect(contradiction).not.toContain("underdogs");
+    expect(contradiction).toContain("**54.0%**");
+
+    // And a market claim that a single agreed market plainly contradicts.
+    expect(sanitizeGroundedMatchNarrative(
+      "Kalshi favours Chelsea.",
+      groundedMatch({
+        oddsSources: [{
+          source: "kalshi",
+          observedAt: new Date().toISOString(),
+          pHome: 0.62,
+          pDraw: 0.2,
+          pAway: 0.18,
+        }],
+      })
+    )).toContain("unsupported interpretation was omitted");
+  });
+});
