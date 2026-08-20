@@ -8,30 +8,22 @@ vi.mock("./web-search", () => ({ searchWeb: vi.fn().mockResolvedValue([]) }));
  * Two faults the 2026-08-20 production battle test surfaced, both fixed at the
  * cause rather than by pattern-matching the symptom.
  */
-describe("a truncated turn is retried once, not failed outright", () => {
-  // Across 460 recorded answers the median output is ~300 tokens and the
-  // longest ~605, against a 1,536 budget: hitting the ceiling means the model
-  // ran roughly 2.5x past its longest normal answer. That is a runaway, not a
-  // budget shortfall, so raising the ceiling would only buy a longer ramble.
-  it("asks again when a turn comes back truncated", async () => {
-    const create = vi.fn()
-      .mockResolvedValueOnce(message("runaway that never stopped", "max_tokens"))
-      .mockResolvedValueOnce(message("**Verdict**\nA proper answer.", "end_turn"));
-    const client = { messages: { create } } as never;
-    await expect(generateAnalysis(client, "system", [], "general"))
-      .resolves.toContain("A proper answer.");
-    expect(create).toHaveBeenCalledTimes(2);
+describe("the output budget leaves room for MiniMax's reasoning", () => {
+  // MiniMax counts internal reasoning against max_tokens and shares that budget
+  // with the visible answer, so a ~100-token competition answer could still
+  // stop on `max_tokens`, or return no text at all after an 8-12s generation.
+  // Truncation and an empty completion are the two faces of one budget fault.
+  it("still reports a truncated turn rather than shipping half an answer", async () => {
+    await expect(generateAnalysis(clientWith(message("cut off", "max_tokens")),
+      "system", [], "general")).rejects.toMatchObject({ statusCode: 502 });
   });
 
-  it("still fails when the retry truncates too, and retries only once", async () => {
-    const create = vi.fn().mockResolvedValue(message("runaway", "max_tokens"));
-    const client = { messages: { create } } as never;
-    await expect(generateAnalysis(client, "system", [], "general"))
-      .rejects.toMatchObject({ statusCode: 502 });
-    expect(create).toHaveBeenCalledTimes(2);
+  it("still reports an empty completion", async () => {
+    await expect(generateAnalysis(clientWith({ content: [], stop_reason: "end_turn" }),
+      "system", [], "general")).rejects.toMatchObject({ statusCode: 502 });
   });
 
-  it("spends no extra call on an answer that finished normally", async () => {
+  it("spends exactly one provider call on an answer that finished normally", async () => {
     const client = clientWith(message("**Verdict**\nFine.", "end_turn"));
     await generateAnalysis(client, "system", [], "general");
     expect(client.messages.create).toHaveBeenCalledTimes(1);
