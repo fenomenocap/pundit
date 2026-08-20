@@ -114,7 +114,7 @@ export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta
   }
 }
 
-export const EVAL_SCHEMA_VERSION = 10;
+export const EVAL_SCHEMA_VERSION = 11;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 
 export function executeRuntimeHelperScenario(scenario, repoRoot = path.resolve(import.meta.dirname, "..")) {
@@ -378,6 +378,44 @@ const FIXTURE_CATEGORIES = new Set([
 
 function validIsoDate(value) {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
+/**
+ * Narrow discovered recognized identities to the ones `/api/ask` will actually
+ * route to on this deployment.
+ *
+ * `/api/fixtures/recognized` publishes every approved identity the registry has
+ * *observed*, which is not the same set the chat tier *routes*. With
+ * FIXTURE_REGISTRY_ENABLED unset -- the production default, reported as
+ * `registry.mode: "shadow"` -- ask.ts deliberately routes against the
+ * authoritative ESPN fixtures of the enabled competition windows instead of the
+ * registry. An observed identity outside those windows (a club friendly, say)
+ * is therefore correctly unrecognized by chat, and asking it for fixture
+ * grounding can only ever produce an abstention.
+ *
+ * Selecting such an entry and then asserting the routed contract is not a
+ * product failure, it is a scenario that the deployment's configuration cannot
+ * exercise -- the same situation the other observational scenarios already
+ * report as INCONCLUSIVE.
+ */
+export function routableRecognizedEntries(entries, { registryEnabled = false, enabledCompetitionIds = [] } = {}) {
+  // Expanded routing serves the registry itself, so every approved identity is
+  // routable and nothing needs narrowing.
+  if (registryEnabled) return entries ?? [];
+  const enabled = new Set(enabledCompetitionIds);
+  return (entries ?? []).filter((entry) => enabled.has(entry?.fixture?.competition?.id));
+}
+
+/** Competitions whose ESPN windows the deployment is actually refreshing. */
+export function enabledCompetitionIds(readiness) {
+  return Object.keys(readiness?.activeFixtures?.byCompetition ?? {});
+}
+
+export function describeRecognizedRoutability({ registryEnabled, enabledCompetitionIds: ids = [], observed = 0, routable = 0 }) {
+  return registryEnabled
+    ? `registry routing enabled; ${routable} of ${observed} observed identities routable`
+    : `registry in shadow mode, so chat routes only ${ids.join(", ") || "no"} competition windows; `
+      + `${routable} of ${observed} observed identities routable`;
 }
 
 /** Validate the non-priced fixture contract without accepting model-shaped data. */
