@@ -4037,7 +4037,13 @@ export function sanitizeAnswerForTier(
     return settled(step("sanitizeCompetitionAnswer", commonSafeAnswer, sanitizeCompetitionAnswer));
   }
   const generalAnswer = step("sanitizeGeneralAnswer", commonSafeAnswer, sanitizeGeneralAnswer);
-  return settled(final ? ensureGeneralDisclaimer(generalAnswer) : generalAnswer);
+  // Sweep stranded labels BEFORE the disclaimer is appended. Appending first
+  // gives an orphaned label a body, so the sweep no longer recognises it and
+  // the answer ships a header promising something its body does not deliver --
+  // production showed "**What would change this**" followed by the general
+  // disclaimer.
+  const sweptAnswer = settled(generalAnswer);
+  return final ? ensureGeneralDisclaimer(sweptAnswer) : sweptAnswer;
 }
 
 /**
@@ -4361,6 +4367,14 @@ export async function generateAnalysis(
   // so the retry turn is asked for prose with tools off, and only ever once.
   let toolsAllowed = allowTools;
   let recoveredLeak = false;
+  // A truncated turn is a runaway generation, not a budget shortfall: across 460
+  // recorded answers the median output is ~300 tokens and the longest ~605,
+  // against a 1,536 budget, so hitting the ceiling means the model ran ~2.5x
+  // past its longest normal answer. Raising the ceiling would only buy a longer
+  // ramble. Asking again once costs one provider call (already budgeted by
+  // reserveProviderCall) and almost always returns a normal-length answer;
+  // only a second truncation is a real failure.
+  let retriedTruncation = false;
   for (let turn = 0; turn <= MAX_CONTINUATIONS; turn += 1) {
     if (turn > 0 && Date.now() - startedAt > OVERALL_DEADLINE_MS) break;
     let response: Anthropic.Message | undefined;
@@ -4374,6 +4388,11 @@ export async function generateAnalysis(
           analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
           { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
         );
+        if (response.stop_reason === "max_tokens" && !retriedTruncation
+          && !signal?.aborted && Date.now() - startedAt < OVERALL_DEADLINE_MS) {
+          retriedTruncation = true;
+          response = undefined;
+        }
       } catch (error) {
         if (signal?.aborted || retried || !isRetryableStreamError(error)
           || Date.now() - startedAt >= OVERALL_DEADLINE_MS) {
