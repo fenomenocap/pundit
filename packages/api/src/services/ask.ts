@@ -712,9 +712,45 @@ function renderValidatedOneXTwoMarket(legs: readonly OneXTwoMarketLeg[]): string
 const EXTERNAL_MARKET_MENTION =
   /\b(?:bookmakers?|bookies?|betting markets?|market[- ]implied|third[- ]party markets?|kalshi|polymarket|decimal odds)\b|(?<!\bat\s)\bstake\b/i;
 
-/** A number that could be a price: a percentage, a decimal quote, or a leg value. */
+/**
+ * A number that could be a price: a percentage, a decimal quote, or a leg
+ * value. Global and capturing, because the guard needs each candidate's offset
+ * and not merely the fact that one exists -- see `quotesMarketPrice`.
+ */
 const MARKET_PRICE_NUMBER =
-  /\d+(?:\.\d+)?\s*%|\b\d+\.\d{1,2}\b|\b\d+(?:\.\d+)?\s*(?:decimal|to 1)\b|\b(?:home|draw|away)\s*[:=–—-]\s*\d/i;
+  /(\d+(?:\.\d+)?)\s*%|\b(\d+\.\d{1,2})\b|\b(\d+(?:\.\d+)?)\s*(?:decimal|to 1)\b|\b(?:home|draw|away)\s*[:=–—-]\s*(\d+(?:\.\d+)?)/gi;
+
+/**
+ * A gap stated as a magnitude in points: "11.5 percentage points",
+ * "about 11 points", "3 pts". `NON_PRICE_UNIT` recognises the same shapes when
+ * it decides a number inside a market clause is not a price, and
+ * `statesMarketDivergence` uses this same pattern to decide the answer has
+ * already told the reader where the edge is, so all three agree on what a gap
+ * looks like.
+ */
+const GAP_IN_POINTS = /(\d+(?:\.\d+)?)\s*\**\s*(?:percentage\s+|pct\s+|pp\s+)?(?:points?|pts?|pp)\b/gi;
+
+/**
+ * A gap stated as a bare magnitude against a comparative of difference: "the
+ * model is 11.4 higher", "some 8.4 below the market". The unit is left
+ * implicit, which is ordinary writing and still tells the reader the size and
+ * direction of the disagreement rather than quoting anyone a price.
+ *
+ * Stricter than `GAP_AS_COMPARISON`, its sibling in the divergence detector,
+ * in one deliberate way: a number carrying a percent sign is excluded. The two
+ * guards are answering different questions and a mistake costs differently.
+ * There, a false positive costs one sentence of the model's own writing, so
+ * "the model is 11.5% higher" is worth counting as a gap. Here, a false
+ * positive would let an unvalidated *price* stand -- "Kalshi has Arsenal at
+ * 62.0% above the model" would be waved through unchecked -- so a percent sign
+ * always means a percentage, and a percentage beside a market source is a
+ * price until the record says otherwise.
+ *
+ * Punctuation ends the reach on both patterns, so "at 55.4%, well above the
+ * model" is a quoted price followed by a remark, not a magnitude.
+ */
+const UNITLESS_GAP_COMPARISON =
+  /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:\w+\s+){0,2}?(?:higher|lower|above|below|clear of|ahead of|adrift|apart|wider|shy of|short of)\b/gi;
 
 /**
  * Saying that a source has *no* line is the opposite of quoting one, and
@@ -749,13 +785,76 @@ const MARKET_LEG_LINE =
   /^\s*(?:[-*•]\s*)?\*{0,2}(?:home|draw|away|1|x|2)\*{0,2}\s*[:=]\s*\*{0,2}\d+(?:\.\d+)?%?\*{0,2}\s*$/i;
 
 /**
+ * Where in `sentence` a number is written as a gap magnitude rather than a
+ * price. Offsets, not a yes/no, so a sentence carrying both kinds -- which is
+ * the comparison the match prompt actually asks for -- can be judged number by
+ * number instead of wholesale.
+ */
+function gapMagnitudeOffsets(sentence: string): Set<number> {
+  const offsets = new Set<number>();
+  for (const pattern of [GAP_IN_POINTS, UNITLESS_GAP_COMPARISON]) {
+    pattern.lastIndex = 0;
+    for (let match = pattern.exec(sentence); match; match = pattern.exec(sentence)) {
+      offsets.add(match.index + match[0].indexOf(match[1]));
+    }
+  }
+  return offsets;
+}
+
+/**
+ * Does this sentence quote a number that could be an external market's price?
+ *
+ * A gap is not a price. "11.5 percentage points" is a *difference* between two
+ * probabilities: no market ever published it, so no market can have published
+ * it wrongly, and there is nothing about it that could be fabricated in the way
+ * this guard exists to catch. Every price-shaped number the sentence carries is
+ * therefore matched against the offsets a gap magnitude claims, and a sentence
+ * left holding none is not quoting a price at all.
+ *
+ * The test is positional: it reads the whole sentence and does not care where
+ * the number sits relative to the source name. That is the point. The narrower
+ * rule this replaces only exempted a gap sitting inside the clause the source
+ * opened, so word order decided the outcome -- "Kalshi has Celtic at 55.4%,
+ * some 11.5 points below the model" survived while "the model is 11.5
+ * percentage points higher than Kalshi" was deleted as an unattributable price
+ * claim, though the second quotes no price whatsoever.
+ *
+ * A price-shaped number that is neither a percentage-point magnitude nor a bare
+ * comparative is treated as a price. Bare integers never reach here -- a price
+ * has to be a percentage, a two-decimal quote or a labelled leg -- so what is
+ * left in that bucket is a figure written exactly like a quote and carrying
+ * nothing to say it is not one. Checking it against the record is the cheap
+ * direction of the error: a real quote is confirmed, an invented one is caught.
+ */
+function quotesMarketPrice(sentence: string): boolean {
+  const gaps = gapMagnitudeOffsets(sentence);
+  MARKET_PRICE_NUMBER.lastIndex = 0;
+  for (
+    let match = MARKET_PRICE_NUMBER.exec(sentence);
+    match;
+    match = MARKET_PRICE_NUMBER.exec(sentence)
+  ) {
+    const text = match[1] ?? match[2] ?? match[3] ?? match[4];
+    if (!gaps.has(match.index + match[0].indexOf(text))) return true;
+  }
+  return false;
+}
+
+/**
  * Does this sentence assert an external market *price*? Pundit's own model
  * numbers never do, because they name no external source.
+ *
+ * Quoting no price at all is checked first and governs every other branch,
+ * including the positive-attribution override. That override exists so a quote
+ * cannot be smuggled in behind a "no market is available" clause; with no
+ * price-shaped figure in the sentence there is no quote to smuggle, and
+ * "Kalshi prices Celtic some 11.5 points under the model" is the comparison
+ * the prompt asked for rather than an attribution to check.
  */
 function assertsExternalMarketPrice(sentence: string): boolean {
+  if (!quotesMarketPrice(sentence)) return false;
   if (EXTERNAL_PRICE_ATTRIBUTION.test(sentence)) return true;
   if (!EXTERNAL_MARKET_MENTION.test(sentence)) return false;
-  if (!MARKET_PRICE_NUMBER.test(sentence)) return false;
   return !MARKET_ABSENCE_STATEMENT.test(sentence);
 }
 
@@ -4546,19 +4645,17 @@ function headlineDivergence(
 }
 
 /**
- * A gap stated as a magnitude in points: "11.5 percentage points",
- * "about 11 points", "3 pts". `NON_PRICE_UNIT` recognises the same shapes when
- * it decides a number is not a price, so the two guards agree on what a gap
- * looks like.
- */
-const GAP_IN_POINTS = /(\d+(?:\.\d+)?)\s*\**\s*(?:percentage\s+|pct\s+|pp\s+)?(?:points?|pts?|pp)\b/gi;
-
-/**
  * A gap stated as a bare magnitude against a comparative: "the model is 11.4
  * higher", "some 8.4 below the market". The unit is left implicit, which is
  * ordinary writing and still tells the reader the size and direction, so it has
  * to count. The comparative is required precisely because a bare number beside
  * a market is otherwise indistinguishable from a quoted price.
+ *
+ * Deliberately looser than `UNITLESS_GAP_COMPARISON`, which the market guard
+ * uses for the same shape: a percent sign is allowed here, because failing to
+ * recognise "the model is 11.5% higher" as a stated gap costs the reader a
+ * duplicated sentence, while the market guard pays for the same mistake in
+ * unvalidated prices. `GAP_IN_POINTS` is shared between the two unchanged.
  */
 const GAP_AS_COMPARISON =
   /(\d+(?:\.\d+)?)\s*%?\s*(?:\w+\s+){0,2}?(?:higher|lower|above|below|clear of|ahead of|adrift|apart|wider|shy of|short of)\b/gi;

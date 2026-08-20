@@ -1975,6 +1975,108 @@ describe("the market guard verifies rather than replaces", () => {
     }
   });
 
+  /**
+   * A gap is not a price, wherever in the sentence it sits.
+   *
+   * The guard used to exempt a gap magnitude only inside the clause the source
+   * name opened, which made word order decide the outcome: "Kalshi has Celtic
+   * at 55.4%, some 11.5 points below the model" survived, while "the model is
+   * 11.5 percentage points higher than Kalshi" -- the same claim, and exactly
+   * what MATCH_SYSTEM_PROMPT asks for -- was deleted as an unattributable
+   * price. It quotes no price at all. A difference between two probabilities
+   * was never published by any market and so cannot be a fabricated quote.
+   */
+  it("keeps a sentence that names a source but quotes only a gap", () => {
+    for (const survivor of [
+      // The gap before the source name, and the source name before the gap.
+      "The model is 11.5 percentage points higher than Kalshi on Celtic.",
+      "Kalshi is 11.5 percentage points below the model on Celtic.",
+      "11.5 percentage points separate the model from Kalshi on Celtic.",
+      "On Celtic, the gap to Kalshi is 11.5 percentage points.",
+      "Pundit's model sits 11.5 points clear of Kalshi here.",
+      "The model's edge over the betting markets is 11.5 points.",
+      // A bare magnitude against a comparative, unit left implicit.
+      "The model is 11.5 higher than Kalshi on Celtic.",
+      // An attributive verb does not make a gap into a quote.
+      "Kalshi prices Celtic some 11.5 points under the model.",
+    ]) {
+      expect(stripUnvalidatedExternalMarketClaims(survivor, [kalshiLegs()])).toBe(survivor);
+      // The gap is not a price whether or not a record exists, so a sentence
+      // quoting none cannot be owed the fail-closed notice either.
+      expect(stripUnvalidatedExternalMarketClaims(survivor)).toBe(survivor);
+    }
+  });
+
+  /**
+   * The exemption is for magnitudes, not for comparatives. A percent sign means
+   * a percentage, and a percentage beside a market source is a price until the
+   * record says otherwise -- otherwise "Kalshi has Arsenal at 62.0% above the
+   * model" would wave an invented quote straight through on the strength of the
+   * word "above".
+   */
+  it("does not let a comparative excuse a percentage from being checked", () => {
+    for (const priced of [
+      "Kalshi has Arsenal at 62.0% above the model's read.",
+      "Kalshi has Arsenal at 62.0% higher than the model.",
+      "Kalshi has Arsenal at 57.0%, well above the model.",
+    ]) {
+      const sanitized = stripUnvalidatedExternalMarketClaims(priced, [kalshiLegs()]);
+      expect(sanitized).not.toBe(priced);
+      expect(sanitized).toContain("home 55.4%, draw 23.8%, away 20.8%");
+    }
+  });
+
+  /**
+   * Every protection the guard exists for, asserted in the reversed word order
+   * too. The fix is positional, so anything that only held in one direction
+   * would be a hole in the other.
+   */
+  it("still removes an unvalidated price written either way round", () => {
+    // No record at all.
+    for (const priced of [
+      "Kalshi has Arsenal at 62%, so the model is a touch higher.",
+      "At 62%, Kalshi has Arsenal, so the model is a touch higher.",
+    ]) expect(stripUnvalidatedExternalMarketClaims(priced)).toContain("omitted those numbers");
+
+    // A source the grounding does not carry.
+    for (const priced of [
+      "Polymarket prices the home win at 58.0%.",
+      "At 58.0% on the home win, Polymarket is below the model.",
+    ]) {
+      const sanitized = stripUnvalidatedExternalMarketClaims(priced, [kalshiLegs()]);
+      expect(sanitized).not.toContain("58.0%");
+      expect(sanitized).toContain("omitted those numbers");
+    }
+
+    // Plausible but simply absent from the record.
+    for (const absent of [
+      "Kalshi has Arsenal at 57.0%.",
+      "At 57.0%, Kalshi has Arsenal.",
+    ]) {
+      expect(stripUnvalidatedExternalMarketClaims(absent, [kalshiLegs()]))
+        .toContain("home 55.4%, draw 23.8%, away 20.8%");
+    }
+
+    // Contradicting the record wholesale.
+    for (const contradicting of [
+      "Kalshi market: home 99%, draw 0.5%, away 0.5%.",
+      "Home 99%, draw 0.5%, away 0.5% is the Kalshi market.",
+    ]) {
+      const sanitized = stripUnvalidatedExternalMarketClaims(contradicting, [kalshiLegs()]);
+      expect(sanitized).not.toContain("99%");
+      expect(sanitized).toContain("home 55.4%, draw 23.8%, away 20.8%");
+    }
+
+    // A stale or incomplete record is no record, in either order.
+    for (const priced of [
+      "Kalshi has home 55.4%, draw 23.8% and away 20.8%.",
+      "Home 55.4%, draw 23.8% and away 20.8% is what Kalshi shows.",
+    ]) {
+      expect(stripUnvalidatedExternalMarketClaims(priced, [kalshiLegs().slice(0, 2)]))
+        .toContain("omitted those numbers");
+    }
+  });
+
   it("lets two named sources in one sentence each answer for their own figures", () => {
     const polymarketLegs = (["home", "draw", "away"] as const).map((outcome, index) => ({
       outcome,
