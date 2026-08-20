@@ -857,6 +857,10 @@ describe("the divergence a match answer must state", () => {
       "Against the market, Pundit is 11.4 higher on the home win.",
       // A different leg is still a divergence: the reader was told where a gap is.
       "The model is 8.4 percentage points under the market on LASK.",
+      // The gap ahead of the source name, and the source name ahead of the gap.
+      // Neither quotes a price, so neither is the market guard's business.
+      "The model is 11.5 percentage points higher than Kalshi on Celtic.",
+      "Kalshi sits 11.5 percentage points below the model on Celtic.",
     ];
     for (const line of phrasings) {
       const delivered = await deliverCeltic(
@@ -933,21 +937,32 @@ describe("the divergence a match answer must state", () => {
   });
 
   /**
-   * The guarantee also covers a divergence the model wrote and the chain then
-   * removed, which is not hypothetical: "the model is 11.5 percentage points
-   * higher than Kalshi on Celtic" puts its only figure outside the clause the
-   * source opens, so `reconcileMarketSentence` finds nothing it can validate
-   * and drops the sentence. Before this change that answer reached the user
-   * with no divergence in it at all despite the model having complied.
+   * A divergence the model stated in its own words reaches the user in its own
+   * words, and exactly once.
+   *
+   * "The model is 11.5 percentage points higher than Kalshi on Celtic" quotes
+   * no market price at all -- only the difference between two probabilities --
+   * so the market guard has nothing to validate and nothing to object to. This
+   * assertion previously ran the other way: it required the sentence to be
+   * deleted and the server's own copy substituted, because the guard read the
+   * gap figure as an unattributable price purely on word order. That was the
+   * defect, not the contract; the guarantee is the floor under a missing
+   * divergence, never a reason to overwrite one the model supplied.
    */
-  it("restores a divergence the market guard removed", async () => {
+  it("keeps a divergence the model stated in its own words, once", async () => {
+    const stated = "The model is 11.5 percentage points higher than Kalshi on Celtic.";
     const delivered = await deliverCeltic(CELTIC_BODY.replace(
       "**Goals**",
-      "The model is 11.5 percentage points higher than Kalshi on Celtic.\n\n**Goals**"
+      `${stated}\n\n**Goals**`
     ));
     expectDeliverable(delivered.answer, true);
-    expect(delivered.answer).not.toContain("higher than Kalshi on Celtic");
-    expect(delivered.answer).toContain("11.5 percentage points higher");
+    expect(delivered.answer).toContain(stated);
+    // `statesMarketDivergence` recognises it, so no second copy is appended.
+    expect(delivered.answer).not.toContain("the widest gap between the two");
+    expect(delivered.answer.match(/11\.5 percentage points/g)).toHaveLength(1);
+    // And it is stable: re-running the settled answer changes nothing.
+    expect(sanitizeDeliveredAnswer(delivered.answer, "match", celtic))
+      .toBe(delivered.answer);
   });
 
   it("gives the grounded fallback the divergence too", async () => {
