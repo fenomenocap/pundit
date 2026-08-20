@@ -2357,3 +2357,164 @@ describe("match-tier analytical priorities", () => {
     expect(favours).toContain("The market prices LASK about 8 points higher than the model does.");
   });
 });
+
+/**
+ * The precomputed divergence and the sentence the delivery guarantee composes
+ * from it.
+ *
+ * Both halves of this feature exist because MiniMax followed a prompt
+ * instruction roughly half the time, and neither half can be checked against
+ * MiniMax from here. What *can* be checked is that the arithmetic is right,
+ * that the composed sentence survives the guard chain that has historically
+ * deleted market prose, and that a model which already stated the gap is not
+ * made to state it twice.
+ */
+describe("model-versus-market divergence", () => {
+  // The live market cache is empty in tests, so the built grounding's own
+  // divergence is empty; dropping it lets `withDivergence` recompute against
+  // the sources this suite supplies.
+  const { marketDivergence: _unpriced, ...celticBase } = buildGrounding(
+    fixture("Celtic", "LASK", {
+      competitionId: "uefa.champions_qual",
+      competition: "UEFA Champions League Qualifying",
+      pHome: 0.669,
+      pDraw: 0.208,
+      pAway: 0.124,
+    })
+  );
+
+  /** The real Celtic vs LASK payload: model 66.9/20.8/12.4 against two books. */
+  const celtic = withDivergence({
+    ...celticBase,
+    oddsSources: [
+      { source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.554, pDraw: 0.238, pAway: 0.208 },
+      { source: "polymarket", observedAt: new Date().toISOString(), pHome: 0.565, pDraw: 0.235, pAway: 0.2 },
+    ],
+  });
+
+  const kalshi = celtic.marketDivergence[0];
+
+  it("differences every leg of every complete source", () => {
+    expect(celtic.marketDivergence.map((entry) => entry.source))
+      .toEqual(["kalshi", "polymarket"]);
+    expect(kalshi.legs).toEqual([
+      { outcome: "home", label: "Celtic", modelPercent: 66.9, marketPercent: 55.4, gapPoints: 11.5 },
+      { outcome: "draw", label: "the draw", modelPercent: 20.8, marketPercent: 23.8, gapPoints: -3 },
+      { outcome: "away", label: "LASK", modelPercent: 12.4, marketPercent: 20.8, gapPoints: -8.4 },
+    ]);
+    // The headline is the widest absolute gap, not the widest positive one.
+    expect(kalshi.largest.outcome).toBe("home");
+    expect(celtic.marketDivergence[1].largest)
+      .toMatchObject({ outcome: "home", marketPercent: 56.5, gapPoints: 10.4 });
+  });
+
+  /**
+   * The gap is the difference of the two percentages the sentence quotes, so a
+   * reader can check it on the page. Differencing the raw probabilities gives
+   * 11.4 here, which would read as an arithmetic error next to 66.9% and 55.4%.
+   */
+  it("differences the quoted percentages rather than the raw probabilities", () => {
+    expect(kalshi.largest.gapPoints)
+      .toBeCloseTo(kalshi.largest.modelPercent - kalshi.largest.marketPercent, 6);
+    expect(kalshi.largest.gapPoints).toBe(11.5);
+    // Unrounded inputs are where the two conventions part company: 0.66879 and
+    // 0.55437 display as 66.9% and 55.4%, but their raw difference is 11.4.
+    // Reporting that would put "66.9%", "55.4%" and "11.4 percentage points" in
+    // one sentence and invite the reader to call it an error.
+    const unrounded = computeMarketDivergence(
+      { home: "Celtic", away: "LASK", pHome: 0.66879, pDraw: 0.208, pAway: 0.124 },
+      [{ source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.55437, pDraw: 0.238, pAway: 0.208 }]
+    )[0].legs[0];
+    expect([unrounded.modelPercent, unrounded.marketPercent]).toEqual([66.9, 55.4]);
+    expect((0.66879 - 0.55437) * 100).toBeCloseTo(11.44, 2);
+    expect(unrounded.gapPoints).toBe(11.5);
+  });
+
+  it("produces nothing for an absent or incomplete market", () => {
+    expect(computeMarketDivergence(celtic, [])).toEqual([]);
+    expect(computeMarketDivergence(celtic, [
+      { source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.554, pDraw: null, pAway: 0.208 },
+    ])).toEqual([]);
+    // A certainty is not a price, and the market guard would refuse to vouch
+    // for one, so no divergence may be built from it either.
+    expect(computeMarketDivergence(celtic, [
+      { source: "kalshi", observedAt: new Date().toISOString(), pHome: 1, pDraw: 0, pAway: 0 },
+    ])).toEqual([]);
+  });
+
+  /**
+   * The whole point of composing the sentence server-side is that the guard
+   * chain cannot delete it. `stripUnvalidatedExternalMarketClaims` removes any
+   * market claim it cannot reconcile against the validated record, and this
+   * sentence is built from that record, so the chain must be a no-op on it --
+   * on a `uefa.champions_qual` fixture, where the qualifier points rewrites
+   * also run over the word "points".
+   */
+  it("composes a sentence the guard chain returns unchanged", () => {
+    const answer = "**Model vs market**\nPundit's model makes **Celtic 66.9%**, the"
+      + " **draw 20.8%** and **LASK 12.4%**. "
+      + composeMarketDivergenceSentence(kalshi, kalshi.largest);
+    expect(answer).toContain(
+      "Against Kalshi, which prices Celtic at 55.4%, Pundit's model at 66.9% is"
+      + " 11.5 percentage points higher"
+    );
+    expect(sanitizeDeliveredAnswer(answer, "match", celtic)).toBe(answer);
+  });
+
+  it("survives the chain for a draw and an away headline too", () => {
+    for (const leg of kalshi.legs) {
+      const answer = `**Model vs market**\n${composeMarketDivergenceSentence(kalshi, leg)}`;
+      expect(sanitizeDeliveredAnswer(answer, "match", celtic)).toBe(answer);
+      expect(answer).toContain(`${leg.marketPercent.toFixed(1)}%`);
+    }
+  });
+
+  it("reports a level market as agreement rather than as an edge", () => {
+    const level = computeMarketDivergence(celtic, [
+      { source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.669, pDraw: 0.208, pAway: 0.123 },
+    ])[0];
+    const sentence = composeMarketDivergenceSentence(level, level.legs[0]);
+    expect(sentence).toContain("lands on the same number");
+    expect(sentence).not.toContain("percentage points");
+  });
+
+  /**
+   * Detection has to be robust to phrasing, or the guarantee prints the model's
+   * own point twice. These are the same claim written four ways, and none of
+   * them may be read as a missing divergence.
+   */
+  it("recognises a divergence however the model phrased it", () => {
+    const stated = [
+      "The model is 11.5 percentage points higher than Kalshi on the home win.",
+      "About 11 points above the market on Celtic, which is where the edge sits.",
+      "Pundit is 11.4 higher, in points, than the books here.",
+      "That leaves the model 8.4 pts under the market on LASK.",
+      "**Model vs market**\nKalshi has Celtic at 55.4%, some 11.5 points below"
+        + " Pundit's model at 66.9%.",
+    ];
+    for (const answer of stated) {
+      expect(statesMarketDivergence(answer, celtic.marketDivergence)).toBe(true);
+    }
+  });
+
+  it("does not mistake other prose for a stated divergence", () => {
+    const silent = [
+      "Pundit's model makes Celtic 66.9%, the draw 20.8% and LASK 12.4%.",
+      // A points figure with nothing to do with the market comparison.
+      "Celtic lead the group by one point.",
+      // The market named, but no gap given -- the exact half-compliance shape
+      // this feature exists to catch.
+      "Kalshi prices Celtic at 55.4%, so the market is a little tighter.",
+      // A gap in points that matches no leg of this payload.
+      "The model is 30 percentage points clear of the market on the draw.",
+    ];
+    for (const answer of silent) {
+      expect(statesMarketDivergence(answer, celtic.marketDivergence)).toBe(false);
+    }
+    // And with no market at all there is nothing to have stated.
+    expect(statesMarketDivergence(
+      "The model is 11.5 percentage points higher than the market.",
+      []
+    )).toBe(false);
+  });
+});
