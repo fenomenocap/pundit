@@ -1672,12 +1672,13 @@ it as a question about the fixture.`;
 export const MATCH_ANALYSIS_PRIORITIES = `Reason from the numbers rather than reciting them. The user
 can already see the probabilities; what they cannot see is which of them matters. Every sentence
 should be able to change a decision.
-Lead with model-versus-market disagreement. For each of home, draw and away, take the gap between
-Pundit's model probability and the market-implied probability in the payload, then open the answer
-with the outcome carrying the largest gap: how many percentage points it is, and which way it runs.
-State it as a number and a direction -- "the model is about 11 percentage points higher on the home
+Lead with model-versus-market disagreement. The payload has already differenced it for you: open the
+answer with marketDivergence's largest leg and report its gapPoints -- that is
+how many percentage points it is, and which way it runs. Do not derive the gap yourself and do not
+round it away.
+State it as a number and a direction -- "the model is 11.5 percentage points higher on the home
 win than the priced probability" -- never as a vague "the model is more bullish".
-Agreement is a conclusion, not a hole to fill. When model and market sit within about two points on
+Agreement is a conclusion, not a hole to fill. When every gapPoints sits within about two points on
 every outcome, say plainly that there is no meaningful disagreement here and the fixture looks
 efficiently priced. That is a real, useful finding. Never manufacture an edge to have something to
 report, and never dress a gap smaller than the model's own noise as a signal.
