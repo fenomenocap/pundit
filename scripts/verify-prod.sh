@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 API_URL="https://thepundit.up.railway.app"
 WEB_URL="https://thepundit.vercel.app"
 EXPECTED_API_HOST="thepundit.up.railway.app"
@@ -8,7 +10,7 @@ EXPECTED_API_HOST="thepundit.up.railway.app"
 if [[ -n "${1:-}" ]]; then
   EXPECTED_API_SHA="$1"
 else
-  EXPECTED_API_SHA="$(bash scripts/resolve-deployed-sha.sh api)"
+  EXPECTED_API_SHA="$(bash "$SCRIPT_DIR/resolve-deployed-sha.sh" api)"
 fi
 if [[ -n "${2:-}" ]]; then
   EXPECTED_WEB_SHA="$2"
@@ -17,7 +19,7 @@ elif [[ -n "${EXPECTED_WEB_SHA:-}" ]]; then
 elif [[ -n "${1:-}" ]]; then
   EXPECTED_WEB_SHA="$EXPECTED_API_SHA"
 else
-  EXPECTED_WEB_SHA="$(bash scripts/resolve-deployed-sha.sh web)"
+  EXPECTED_WEB_SHA="$(bash "$SCRIPT_DIR/resolve-deployed-sha.sh" web)"
 fi
 EXPECTED_REGISTRY_MODE="${3:-${EXPECTED_REGISTRY_MODE:-shadow}}"
 POLL_ATTEMPTS="${VERIFY_PROD_POLL_ATTEMPTS:-40}"
@@ -27,16 +29,32 @@ json_sha() {
   python3 -c 'import json,sys; print((json.load(sys.stdin).get("sha") or ""))'
 }
 
-sha_matches() {
-  local actual="$1"
-  local expected="${2:-$EXPECTED_API_SHA}"
-  [[ -n "$actual" && "$actual" != "unknown" ]] \
-    && { [[ "$actual" == "$expected" ]] \
-      || [[ "$actual" == "$expected"* ]] \
-      || [[ "$expected" == "$actual"* ]]; }
+# The resolved SHA is the oldest commit a target is allowed to be serving, not
+# the only one. Vercel's ignore-build step fails open to a build whenever the
+# commit range is unusable, and Railway redeploys for causes outside its
+# watchPatterns, so a healthy deployment routinely serves a commit *newer* than
+# the last one that had to rebuild it. Demanding equality turned that normal
+# case into a red run on every push. Serving something *older* than the floor
+# still fails: that is a stale or failed deploy.
+sha_state() {
+  node "$SCRIPT_DIR/resolve-deployed-sha.mjs" compare --floor "${2:-$EXPECTED_API_SHA}" --served "$1" 2>/dev/null || echo "error"
 }
 
-echo "=== 1. Intended build SHA ==="
+sha_matches() {
+  local state
+  state=$(sha_state "$1" "${2:-$EXPECTED_API_SHA}")
+  # A commit this clone has never seen is usually a push that landed while the
+  # check was polling. Refresh history once before treating it as a fault.
+  if [[ "$state" == "unknown" && "$HISTORY_REFRESHED" == "0" ]]; then
+    HISTORY_REFRESHED=1
+    git fetch --quiet origin main >/dev/null 2>&1 || true
+    state=$(sha_state "$1" "${2:-$EXPECTED_API_SHA}")
+  fi
+  [[ "$state" == "match" || "$state" == "ahead" ]]
+}
+HISTORY_REFRESHED=0
+
+echo "=== 1. Minimum deployed SHA (last commit that had to rebuild each target) ==="
 echo "API:        $EXPECTED_API_SHA"
 echo "web:        $EXPECTED_WEB_SHA"
 echo "registry:   $EXPECTED_REGISTRY_MODE"
@@ -52,8 +70,8 @@ for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
     break
   fi
   if [[ "$attempt" -eq "$POLL_ATTEMPTS" ]]; then
-    echo "FAIL: API did not serve ready startup and intended SHA"
-    echo "      /startup HTTP $STARTUP_HTTP, served SHA ${API_SHA:-missing}"
+    echo "FAIL: API did not serve ready startup and a SHA at or after $EXPECTED_API_SHA"
+    echo "      /startup HTTP $STARTUP_HTTP, served SHA ${API_SHA:-missing} ($(sha_state "$API_SHA" "$EXPECTED_API_SHA"))"
     exit 1
   fi
   sleep "$POLL_INTERVAL_SECONDS"
@@ -69,8 +87,9 @@ for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
     break
   fi
   if [[ "$attempt" -eq "$POLL_ATTEMPTS" ]]; then
-    echo "FAIL: frontend did not serve intended SHA"
-    echo "      served SHA ${WEB_SHA:-missing}"
+    echo "FAIL: frontend is not serving the web build it must have taken"
+    echo "      required at or after $EXPECTED_WEB_SHA"
+    echo "      served SHA ${WEB_SHA:-missing} ($(sha_state "$WEB_SHA" "$EXPECTED_WEB_SHA"))"
     exit 1
   fi
   sleep "$POLL_INTERVAL_SECONDS"
@@ -298,8 +317,8 @@ echo ""
 echo "PASS: production verification OK"
 echo "  - API health (/health)"
 echo "  - API startup and ready"
-echo "  - API serves intended SHA $EXPECTED_API_SHA"
-echo "  - web serves intended SHA $EXPECTED_WEB_SHA"
+echo "  - API serves $API_SHA (at or after required $EXPECTED_API_SHA)"
+echo "  - web serves $WEB_SHA (at or after required $EXPECTED_WEB_SHA)"
 echo "  - registry is $EXPECTED_REGISTRY_MODE, healthy, candidate-free, and model-joined"
 echo "  - search and one-replica rate-limit status are exposed"
 echo "  - CORS allow $WEB_URL"

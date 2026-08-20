@@ -4,20 +4,11 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const BUILD_PATHS = [
-  /^packages\/web\//,
-  /^packages\/shared\//,
-  /^package\.json$/,
-  /^pnpm-lock\.yaml$/,
-  /^pnpm-workspace\.yaml$/,
-  /^\.node-version$/,
-  /^\.nvmrc$/,
-  /^scripts\/vercel-ignore-build\.mjs$/,
-];
+import { shouldBuildWeb } from "./deploy-build-paths.mjs";
 
-export function shouldBuildWeb(changedPaths) {
-  return changedPaths.some((file) => BUILD_PATHS.some((pattern) => pattern.test(file)));
-}
+// The path list lives in deploy-build-paths.mjs so the deploy-SHA resolver
+// applies the identical rule. Re-exported for the existing tests and callers.
+export { shouldBuildWeb };
 
 export function changedPathsBetween(previousSha, commitSha, cwd) {
   if (!previousSha || !commitSha) return null;
@@ -40,7 +31,11 @@ export function decideIgnoredBuild(env = process.env) {
     repoRoot
   );
 
-  // Missing or unusable Git metadata must build, never silently skip.
+  // Missing or unusable Git metadata must build, never silently skip. This
+  // branch is why the served frontend SHA can legitimately be *newer* than the
+  // newest web-touching commit: Vercel builds a commit the diff rule alone
+  // would have skipped. verify-prod.sh therefore treats the resolved SHA as a
+  // floor, not an equality.
   if (changedPaths === null) return { build: true, reason: "commit range unavailable" };
   if (shouldBuildWeb(changedPaths)) return { build: true, reason: "web/shared input changed" };
   return { build: false, reason: "only API, corpus, or documentation changed" };
