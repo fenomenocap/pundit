@@ -13,6 +13,7 @@ import {
   fetchWithTimeout,
   finalizeClassifications,
   generateAdversarialScenarios,
+  gradeDeploymentShas,
   loadPreviousReport,
   parseSse,
   qualitativeScores,
@@ -920,6 +921,14 @@ async function main() {
   const exactFeatured = featured ? { ...featured, recognizedFixtureId: pricedRecognized.fixture.fixtureId } : null;
   const sourceSha = options.sourceSha ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
   if (!/^[0-9a-f]{7,40}$/i.test(sourceSha)) throw new Error("--source-sha must be a real Git commit SHA");
+  // Convergence is graded against the per-target build floor, not string
+  // equality: an API-only commit legitimately leaves the web deploy behind.
+  const shaGrading = gradeDeploymentShas({
+    sourceSha,
+    apiSha: preflightResult.apiVersion.body.sha,
+    webSha: preflightResult.webVersion.body.sha,
+    cwd: ROOT,
+  });
   const seed = runId.slice(0, 10);
   const adversarial = generateAdversarialScenarios(seed, exactFeatured)
     .map((scenario) => ({ ...scenario, requiredForCertification: false }));
@@ -941,7 +950,8 @@ async function main() {
       sourceSha,
       apiSha: preflightResult.apiVersion.body.sha,
       webSha: preflightResult.webVersion.body.sha,
-      shaConverged: sourceSha === preflightResult.apiVersion.body.sha && sourceSha === preflightResult.webVersion.body.sha,
+      shaGrading: shaGrading.targets,
+      shaConverged: shaGrading.shaConverged,
       readinessTimestamps: {
         model: preflightResult.ready.body.model.lastUpdated,
         football: preflightResult.ready.body.football.lastUpdated,
