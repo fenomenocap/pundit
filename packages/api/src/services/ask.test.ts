@@ -44,12 +44,31 @@ import {
   MATCH_ANALYSIS_PRIORITIES,
   MATCH_CAPABILITY_BOUNDS,
   sanitizeDeliveredAnswer,
+  computeMarketDivergence,
+  composeMarketDivergenceSentence,
+  statesMarketDivergence,
   type Grounding,
+  type MarketDivergence,
 } from "./ask";
 import {
   replaceFootballDataForTests,
   replaceSeasonScheduleForTests,
 } from "./football-data";
+
+/**
+ * Fills in the precomputed model-versus-market field from the payload's own
+ * odds, so a hand-built grounding cannot silently carry a divergence that
+ * disagrees with its own `oddsSources`.
+ */
+function withDivergence(
+  grounding: Omit<Grounding, "marketDivergence"> & { marketDivergence?: MarketDivergence[] }
+): Grounding {
+  return {
+    ...grounding,
+    marketDivergence: grounding.marketDivergence
+      ?? computeMarketDivergence(grounding, grounding.oddsSources),
+  };
+}
 
 describe("season grounding degradation", () => {
   it("uses explicit competition grounding instead of failing when outlook inputs are unavailable", () => {
@@ -1626,7 +1645,7 @@ describe("evidence guards leave model-derived answers intact", () => {
     "No verified update was established.",
   ].join("\n");
 
-  const groundedMatch = (overrides: Partial<Grounding> = {}): Grounding => ({
+  const groundedMatch = (overrides: Partial<Grounding> = {}): Grounding => withDivergence({
     kind: "match",
     fixtureId: "espn:eng.1:1",
     competitionId: "eng.1",
@@ -2163,7 +2182,7 @@ describe("the qualifier points rewrite", () => {
  * real Celtic vs LASK numbers.
  */
 describe("match-tier analytical priorities", () => {
-  const celticLask = (overrides: Partial<Grounding> = {}): Grounding => ({
+  const celticLask = (overrides: Partial<Grounding> = {}): Grounding => withDivergence({
     kind: "match",
     fixtureId: "espn:uefa.champions_qual:1",
     competitionId: "uefa.champions_qual",
