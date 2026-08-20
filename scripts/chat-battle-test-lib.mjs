@@ -3,7 +3,74 @@ import { createRequire } from "node:module";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { classifyServedSha, isAcceptableServedSha, resolveDeployedSha } from "./resolve-deployed-sha.mjs";
+
 const require = createRequire(import.meta.url);
+
+const REPO_ROOT = () => path.resolve(import.meta.dirname, "..");
+
+export const DEPLOY_TARGETS = ["api", "web"];
+
+/**
+ * Grade what production serves against the commit each target was *required*
+ * to reach, using the one shared rule in deploy-build-paths.mjs.
+ *
+ * This check used to demand `source === api === web`. That is wrong for this
+ * repo: vercel-ignore-build.mjs deliberately skips a web rebuild for a commit
+ * that touches only API paths, so a perfectly healthy frontend legitimately
+ * serves an older SHA than main. Every API-only push turned the certification
+ * gate red for no reason -- the identical false alarm already fixed in
+ * scripts/verify-prod.sh, which grades against a floor via this same module.
+ *
+ * The floor is resolved *as of the source commit*, so the run grades the
+ * deployment it actually tested rather than whatever has landed on main since.
+ */
+function resolveFloorSha(target, ref, cwd) {
+  try {
+    return resolveDeployedSha(target, { ref, cwd });
+  } catch {
+    // No usable git history (a clone without the commit, or no repo at all).
+    // That makes the requirement unknowable, not violated.
+    return null;
+  }
+}
+
+export function gradeDeploymentShas({ sourceSha = null, apiSha = null, webSha = null, cwd = REPO_ROOT() } = {}) {
+  const served = { api: apiSha, web: webSha };
+  const targets = {};
+  for (const target of DEPLOY_TARGETS) {
+    const servedSha = served[target] ?? null;
+    const floorSha = sourceSha ? resolveFloorSha(target, sourceSha, cwd) : null;
+    targets[target] = {
+      floorSha,
+      servedSha,
+      // Without a floor there is nothing to grade against; a target that
+      // reported no SHA at all is still a fault regardless.
+      state: floorSha ? classifyServedSha(floorSha, servedSha, { cwd })
+        : servedSha ? "unknown"
+        : "missing",
+    };
+  }
+  const states = DEPLOY_TARGETS.map((target) => targets[target].state);
+  const shaConverged = states.every((state) => isAcceptableServedSha(state)) ? true
+    // A stale target never reached the commit it had to; a missing one never
+    // said which commit it is. Both are real deployment faults.
+    : states.some((state) => state === "stale" || state === "missing") ? false
+    // Anything left is a commit this clone has never seen: report it rather
+    // than convict the deployment on evidence the checkout does not have.
+    : null;
+  return { targets, shaConverged };
+}
+
+export function describeDeploymentShas(deployment) {
+  return DEPLOY_TARGETS
+    .map((target) => {
+      const graded = deployment?.shaGrading?.[target];
+      if (!graded) return `${target}=${deployment?.[`${target}Sha`] ?? "unknown"}`;
+      return `${target}=${graded.servedSha ?? "unknown"} (${graded.state} vs floor ${graded.floorSha ?? "unresolved"})`;
+    })
+    .join(", ");
+}
 
 export function loadApiRuntimeCorrectnessHelpers(repoRoot = path.resolve(import.meta.dirname, "..")) {
   const previousProject = process.env.TS_NODE_PROJECT;
@@ -1069,7 +1136,7 @@ export function renderMarkdown(report) {
     `- Run: \`${report.runId}\``,
     `- Deployment: \`${report.deployment.id}\` (${report.deployment.source})`,
     `- Source/API/Web SHAs: \`${report.deployment.sourceSha ?? "unknown"}\` / \`${report.deployment.apiSha ?? "unknown"}\` / \`${report.deployment.webSha ?? "unknown"}\``,
-    `- SHA convergence: ${report.deployment.shaConverged === true ? "PASS" : report.deployment.shaConverged === false ? "FAIL" : "INCONCLUSIVE"}`,
+    `- SHA convergence: ${report.deployment.shaConverged === true ? "PASS" : report.deployment.shaConverged === false ? "FAIL" : "INCONCLUSIVE"} — ${describeDeploymentShas(report.deployment)}`,
     `- Evaluation schema: \`${report.schemaVersion}\``,
     `- Previous comparison: ${report.comparison.reason}`,
     `- Overall: **${report.overall}**`,
@@ -1219,6 +1286,7 @@ export function finalizeClassifications(report, previous) {
     requiredInconclusive: requiredInconclusive.map(({ id }) => id),
     unsupportedCorrectness: unsupportedCorrectness.map(({ id }) => id),
     shaConverged: report.deployment?.shaConverged ?? null,
+    shaGrading: report.deployment?.shaGrading ?? null,
     passed: requiredInconclusive.length === 0
       && unsupportedCorrectness.length === 0
       && report.deployment?.shaConverged !== false,

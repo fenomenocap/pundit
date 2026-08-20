@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import fs from "node:fs";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +15,8 @@ import {
   fetchWithTimeout,
   finalizeClassifications,
   generateAdversarialScenarios,
+  gradeDeploymentShas,
+  describeDeploymentShas,
   loadPreviousReport,
   loadApiRuntimeCorrectnessHelpers,
   loadApiRuntimeFixtureHelpers,
@@ -1357,5 +1360,127 @@ test("schema-10 permanent certification matrix names every authorized regression
     question: "What does the current Premier League table show?",
     expectGrounding: "competition",
     expectCompetitionId: "eng.1",
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deployment SHA convergence
+//
+// The gate used to demand source === api === web. vercel-ignore-build.mjs
+// skips a web rebuild for an API-only commit, so that equality is false on
+// every API-only push. Convergence now means "served is at or ahead of the
+// floor that commit forced for that target", graded through the one shared
+// rule in deploy-build-paths.mjs.
+// ---------------------------------------------------------------------------
+
+function gitIn(cwd, ...args) {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}
+
+function writeIn(cwd, relative, content) {
+  const target = path.join(cwd, relative);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, content);
+}
+
+function commitIn(cwd, message, files) {
+  for (const [relative, content] of Object.entries(files)) writeIn(cwd, relative, content);
+  gitIn(cwd, "add", ".");
+  gitIn(cwd, "commit", "-qm", message);
+  return gitIn(cwd, "rev-parse", "HEAD");
+}
+
+async function withDeployRepo(run) {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "pundit-battle-sha-"));
+  try {
+    gitIn(cwd, "init", "-q", "-b", "main");
+    gitIn(cwd, "config", "user.email", "test@example.com");
+    gitIn(cwd, "config", "user.name", "Test");
+    const seed = commitIn(cwd, "seed", {
+      "package.json": "{}",
+      "packages/api/src.ts": "api-0",
+      "packages/web/page.tsx": "web-0",
+    });
+    await run(cwd, seed);
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
+test("an API-only commit converges even though the web deploy legitimately lags", async () => {
+  await withDeployRepo(async (cwd, seed) => {
+    const apiOnly = commitIn(cwd, "api only", { "packages/api/src.ts": "api-1" });
+    const graded = gradeDeploymentShas({ sourceSha: apiOnly, apiSha: apiOnly, webSha: seed, cwd });
+    assert.equal(graded.targets.api.floorSha, apiOnly);
+    // Vercel skipped this commit, so the seed is still the web floor.
+    assert.equal(graded.targets.web.floorSha, seed);
+    assert.equal(graded.targets.api.state, "match");
+    assert.equal(graded.targets.web.state, "match");
+    assert.equal(graded.shaConverged, true);
+  });
+});
+
+test("a served commit newer than the floor is ahead, not a fault", async () => {
+  await withDeployRepo(async (cwd, seed) => {
+    const apiOnly = commitIn(cwd, "api only", { "packages/api/src.ts": "api-1" });
+    // Vercel fails open to a build when the commit range is unusable, so the
+    // web deploy can carry a commit its floor never demanded.
+    const graded = gradeDeploymentShas({ sourceSha: apiOnly, apiSha: apiOnly, webSha: apiOnly, cwd });
+    assert.equal(graded.targets.web.floorSha, seed);
+    assert.equal(graded.targets.web.state, "ahead");
+    assert.equal(graded.shaConverged, true);
+  });
+});
+
+test("a genuinely stale API deploy still fails convergence", async () => {
+  await withDeployRepo(async (cwd, seed) => {
+    const apiOnly = commitIn(cwd, "api only", { "packages/api/src.ts": "api-1" });
+    // Railway had to rebuild for this commit and is still serving the parent.
+    const graded = gradeDeploymentShas({ sourceSha: apiOnly, apiSha: seed, webSha: seed, cwd });
+    assert.equal(graded.targets.api.state, "stale");
+    assert.equal(graded.shaConverged, false);
+  });
+});
+
+test("a genuinely stale web deploy still fails convergence", async () => {
+  await withDeployRepo(async (cwd, seed) => {
+    const webCommit = commitIn(cwd, "web change", { "packages/web/page.tsx": "web-1" });
+    const graded = gradeDeploymentShas({ sourceSha: webCommit, apiSha: webCommit, webSha: seed, cwd });
+    assert.equal(graded.targets.web.floorSha, webCommit);
+    assert.equal(graded.targets.web.state, "stale");
+    assert.equal(graded.shaConverged, false);
+  });
+});
+
+test("a target that reports no SHA at all fails convergence", async () => {
+  await withDeployRepo(async (cwd, seed) => {
+    const graded = gradeDeploymentShas({ sourceSha: seed, apiSha: seed, webSha: null, cwd });
+    assert.equal(graded.targets.web.state, "missing");
+    assert.equal(graded.shaConverged, false);
+  });
+});
+
+test("a served commit this clone has never seen is inconclusive, not a false failure", async () => {
+  await withDeployRepo(async (cwd, seed) => {
+    const graded = gradeDeploymentShas({
+      sourceSha: seed,
+      apiSha: "0".repeat(40),
+      webSha: seed,
+      cwd,
+    });
+    assert.equal(graded.targets.api.state, "unknown");
+    assert.equal(graded.shaConverged, null);
+  });
+});
+
+test("the rendered report names each target's served SHA, state and floor", async () => {
+  await withDeployRepo(async (cwd, seed) => {
+    const apiOnly = commitIn(cwd, "api only", { "packages/api/src.ts": "api-1" });
+    const graded = gradeDeploymentShas({ sourceSha: apiOnly, apiSha: apiOnly, webSha: seed, cwd });
+    const described = describeDeploymentShas({
+      apiSha: apiOnly, webSha: seed, shaGrading: graded.targets,
+    });
+    assert.match(described, /api=.*\(match vs floor/);
+    assert.match(described, /web=.*\(match vs floor/);
   });
 });
