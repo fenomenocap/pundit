@@ -2333,8 +2333,19 @@ describe("match-tier analytical priorities", () => {
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("Agreement is a conclusion, not a hole to fill");
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("no meaningful disagreement here");
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("Never manufacture an edge");
+    // The verdict half. The band is named so the prompt and the deterministic
+    // floor cannot contradict each other in front of the reader, and the
+    // no-edge verdict is stated as a result worth giving rather than a
+    // fallback -- "the moneyline is efficiently priced" is the answer more
+    // often than an edge is.
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Say where the value is and where it is not");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("inside about two points either");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("efficiently priced -- skip it");
+    // The close half, stated as a completeness rule rather than a preference.
     expect(MATCH_ANALYSIS_PRIORITIES)
-      .toContain("Name the biggest unknown and make the read conditional on it");
+      .toContain("Close on what would change the read, and make it conditional");
+    expect(MATCH_ANALYSIS_PRIORITIES)
+      .toContain("what would move it is incomplete, however correct its numbers");
     // The recital is replaced, not the numbers: no correctness regression.
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("Keep every grounded number you would have reported");
   });
