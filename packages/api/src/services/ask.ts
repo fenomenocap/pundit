@@ -75,6 +75,36 @@ export interface OddsSource {
   pAway: number;
 }
 
+/**
+ * One outcome's model-versus-market comparison, already differenced.
+ *
+ * Every figure is a percentage to one decimal place rather than a 0-1
+ * probability, and `gapPoints` is the difference of those two *rounded*
+ * percentages rather than of the raw probabilities. That is deliberate: these
+ * three numbers are quoted together in one sentence, so a reader can do the
+ * subtraction on the page. Differencing the raw probabilities would print
+ * "66.9%", "55.4%" and "11.4 percentage points" side by side, and the sentence
+ * would appear to contain an arithmetic error.
+ */
+export interface MarketDivergenceLeg {
+  outcome: OneXTwoOutcome;
+  /** How the answer names this outcome: the home club, "the draw", the away club. */
+  label: string;
+  modelPercent: number;
+  marketPercent: number;
+  /** modelPercent - marketPercent. Positive means the model rates it higher. */
+  gapPoints: number;
+}
+
+/** The full model-versus-market comparison against one market source. */
+export interface MarketDivergence {
+  source: "kalshi" | "polymarket";
+  observedAt: string;
+  legs: MarketDivergenceLeg[];
+  /** The leg carrying the largest absolute gap -- the headline divergence. */
+  largest: MarketDivergenceLeg;
+}
+
 export interface Grounding {
   kind: "match";
   fixtureId: string;
@@ -98,6 +128,18 @@ export interface Grounding {
   stakePDraw: number | null;
   stakePAway: number | null;
   oddsSources: OddsSource[];
+  /**
+   * `oddsSources` differenced against the model, one entry per complete source.
+   *
+   * The prompt used to ask the model to do this subtraction itself, across two
+   * separate arrays of the payload. Arithmetic spanning arrays is exactly the
+   * instruction a model drops under length pressure, and the divergence -- the
+   * single most decision-relevant number Pundit holds -- reached the user in
+   * roughly half of live samples. Supplying it as data turns "derive the gap
+   * and report it" into "report this number", and gives `deliverAnswer` a
+   * server-owned figure to guarantee it with when the model still omits it.
+   */
+  marketDivergence: MarketDivergence[];
 }
 
 export interface FixtureGrounding {
@@ -1691,9 +1733,10 @@ density as much as shape:
 
 **Model vs market**
 Pundit's model makes **Riverton 48.2%**, the **draw 24.7%** and **Ashcombe 27.1%** for the 14 March
-fixture. Kalshi: home 41.0%, draw 32.4%, away 26.6%. Nearly all the disagreement sits on the home
-win, where the model is about **7 percentage points** higher; the away side is priced within half a
-point of the model, so there is nothing to act on there.
+fixture. Kalshi: home 41.0%, draw 32.4%, away 26.6%. The widest gap is on the home win, where the
+model is **7.2 percentage points** higher — that is where the edge is, and it is worth taking only if
+the home side lines up as expected. The away side sits half a point apart, so there is nothing to act
+on there.
 
 **Goals**
 **Over 2.5 at 56.3%** and **both teams to score at 58.9%** point to an open game, which fits a
@@ -1713,12 +1756,18 @@ precomputed probabilities from Pundit's match model for a specific matchup. Trea
 analysis. Do not invent or contradict them. When homeFieldAdvantage is true, the model applies a
 home-field boost to the home side before computing probabilities -- mention that when relevant.
 The data may include oddsSources -- no-vig implied 1X2 probabilities from live
-market prices (Kalshi and/or Polymarket). Compare the model's win probability
-against whichever sources are present and note the edge (model minus market,
-positive means the model favours that outcome more than the market does). It may
-also include stakePHome/stakePDraw/stakePAway from Stake, though those are often
-absent (null) -- when a source is absent, never guess its price; if no market
-source is present at all, say plainly that no market line is available.
+market prices (Kalshi and/or Polymarket). Alongside them, marketDivergence
+carries that comparison already computed for you, one entry per source: each leg
+gives label, modelPercent, marketPercent and gapPoints (modelPercent minus
+marketPercent, so a positive gap means the model rates that outcome more highly
+than the market does), and largest is the leg with the widest absolute gap.
+Report those supplied numbers; do not recompute them from oddsSources, and never
+state a gap marketDivergence does not contain. Lead the answer with the largest
+gap: its size in percentage points, its direction, and what a bettor should make
+of it. It may also include stakePHome/stakePDraw/stakePAway from Stake, though
+those are often absent (null) -- when a source is absent, never guess its price;
+if marketDivergence is empty and no market source is present at all, say plainly
+that no market line is available.
 The data also includes over/under 2.5, both-teams-to-score, topScores (the
 top-ranked scorelines), and scorelines (every scoreline at or above a 0.1%
 probability). Quote those supplied values exactly; a score missing from the
@@ -1747,7 +1796,7 @@ moment you are restating numbers the reader can already see, you are over budget
 whatever the word count says.
 Whenever the answer covers this fixture, state the headline win/draw/win and
 O/U 2.5 numbers, mention 1-2 most likely scorelines, give the size and direction
-of the largest model-versus-market gap when a market source is present, and name
+of marketDivergence's largest gap whenever marketDivergence is non-empty, and name
 the biggest unresolved unknown together with what it would change.
 The model data names one specific fixture and its date. Two clubs can meet twice
 in a two-legged tie, so name that date when you give the numbers -- the user has
@@ -2194,6 +2243,62 @@ export function findFixture<T extends TeamFixture>(
     && pair.has(fixture.away));
 }
 
+/** A probability as a percentage to one decimal place, as a number. */
+const asPercentNumber = (probability: number) => Math.round(probability * 1000) / 10;
+/** Two one-decimal percentages differenced without reintroducing binary drift. */
+const percentGap = (left: number, right: number) => Math.round((left - right) * 10) / 10;
+
+/**
+ * Differences each complete market source against the model's own 1X2.
+ *
+ * A source is skipped entirely unless all three legs are finite probabilities
+ * strictly inside (0, 1) -- the same admissibility test
+ * `groundingOneXTwoMarketLegs` applies before a price may be quoted at all. A
+ * partial market cannot produce a comparison a reader could act on, and a
+ * divergence computed from one would be a number no guard could vouch for.
+ */
+export function computeMarketDivergence(
+  model: Pick<Grounding, "home" | "away" | "pHome" | "pDraw" | "pAway">,
+  oddsSources: readonly OddsSource[]
+): MarketDivergence[] {
+  const modelProbabilities: Record<OneXTwoOutcome, number> = {
+    home: model.pHome, draw: model.pDraw, away: model.pAway,
+  };
+  // How a sentence names the outcome. The clubs are named rather than called
+  // "the home win" because the sentence has to read like the model's own prose,
+  // and because a bare "home"/"away" beside a figure is the shape
+  // `stripUnvalidatedExternalMarketClaims` reads as a labelled market leg.
+  const labels: Record<OneXTwoOutcome, string> = {
+    home: model.home, draw: "the draw", away: model.away,
+  };
+  return oddsSources.flatMap((source) => {
+    const marketProbabilities: Record<OneXTwoOutcome, number | null> = {
+      home: source.pHome, draw: source.pDraw, away: source.pAway,
+    };
+    const legs: MarketDivergenceLeg[] = [];
+    for (const outcome of OUTCOME_ORDER) {
+      const market = marketProbabilities[outcome];
+      const modelProbability = modelProbabilities[outcome];
+      if (market === null || !Number.isFinite(market) || market <= 0 || market >= 1) return [];
+      if (!Number.isFinite(modelProbability)) return [];
+      const modelPercent = asPercentNumber(modelProbability);
+      const marketPercent = asPercentNumber(market);
+      legs.push({
+        outcome,
+        label: labels[outcome],
+        modelPercent,
+        marketPercent,
+        gapPoints: percentGap(modelPercent, marketPercent),
+      });
+    }
+    // Ties resolve to 1X2 order, which is the order the answer reads in, so
+    // the same payload always produces the same headline.
+    const largest = legs.reduce((best, leg) =>
+      Math.abs(leg.gapPoints) > Math.abs(best.gapPoints) ? leg : best);
+    return [{ source: source.source, observedAt: source.observedAt, legs, largest }];
+  });
+}
+
 export function buildGrounding(fixture: ModelFixture): Grounding {
   const oddsSources: OddsSource[] = [];
   const markets = getCachedFixtureMarketOdds(fixture);
@@ -2233,6 +2338,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
     stakePAway: stake?.pAway ?? fixture.stakePAway,
     oddsSources,
+    marketDivergence: computeMarketDivergence(fixture, oddsSources),
   };
 }
 
@@ -4401,6 +4507,204 @@ function mapAnalysisError(err: unknown): never {
  * differed between the copies was where the abort signal came from, which is now
  * simply an argument.
  */
+/**
+ * The divergences that may actually be stated in a delivered answer.
+ *
+ * Two filters, and both matter. `computeMarketDivergence` is re-run over
+ * `oddsSources` rather than reading `grounding.marketDivergence`, so the
+ * guarantee and the model-facing payload can never disagree about the numbers
+ * -- one function, two consumers. Then only sources that still produce a
+ * complete, in-date record for `stripUnvalidatedExternalMarketClaims` are kept,
+ * because a sentence quoting a price that guard would not vouch for is exactly
+ * the fabricated-market claim it exists to remove.
+ */
+function deliverableMarketDivergence(
+  grounding: Grounding,
+  now = Date.now()
+): MarketDivergence[] {
+  const quotable = new Set(
+    groundingOneXTwoMarketLegs(grounding, now)
+      .map((legs) => legs[0]?.source?.toLocaleLowerCase())
+      .filter((source): source is string => Boolean(source))
+  );
+  return computeMarketDivergence(grounding, grounding.oddsSources)
+    .filter((divergence) => quotable.has(divergence.source));
+}
+
+/** The headline divergence: the largest absolute gap across every source. */
+function headlineDivergence(
+  divergences: readonly MarketDivergence[]
+): { divergence: MarketDivergence; leg: MarketDivergenceLeg } | null {
+  let best: { divergence: MarketDivergence; leg: MarketDivergenceLeg } | null = null;
+  for (const divergence of divergences) {
+    if (!best || Math.abs(divergence.largest.gapPoints) > Math.abs(best.leg.gapPoints)) {
+      best = { divergence, leg: divergence.largest };
+    }
+  }
+  return best;
+}
+
+/**
+ * A gap stated as a magnitude in points: "11.5 percentage points",
+ * "about 11 points", "3 pts". `NON_PRICE_UNIT` recognises the same shapes when
+ * it decides a number is not a price, so the two guards agree on what a gap
+ * looks like.
+ */
+const GAP_IN_POINTS = /(\d+(?:\.\d+)?)\s*\**\s*(?:percentage\s+|pct\s+|pp\s+)?(?:points?|pts?|pp)\b/gi;
+
+/** Words that make a sentence about the model-versus-market comparison. */
+const DIVERGENCE_CONTEXT =
+  /\b(?:kalshi|polymarket|markets?|priced?|prices|pricing|model|pundit)\b/i;
+
+/**
+ * How far a stated gap may sit from the computed one and still count as the
+ * same claim. The model rounds ("about 11 points" for 11.5) and may quote the
+ * raw-probability difference rather than the difference of the rounded
+ * percentages, so an exact match is the wrong test. One point is wide enough to
+ * absorb both and narrow enough that a different outcome's gap is a different
+ * claim.
+ */
+const GAP_STATEMENT_TOLERANCE = 1;
+
+/**
+ * Whether the answer already tells the reader where the model and the market
+ * disagree, by *any* phrasing.
+ *
+ * Matching one fixed sentence would be useless here -- "11.4 percentage points
+ * higher", "about 11 points above the market" and "the model is 11.4 higher"
+ * are the same claim -- so the test is structural instead: some sentence talks
+ * about the model or a market and states a magnitude in points that reconciles
+ * with a gap this payload actually contains. Any leg of any deliverable source
+ * counts, because the model electing to lead on the draw rather than the home
+ * win has still told the reader where the edge is.
+ *
+ * A false positive here costs the reader one sentence of the model's own
+ * writing; a false negative prints the same fact twice. The test is therefore
+ * deliberately permissive.
+ */
+export function statesMarketDivergence(
+  answer: string,
+  divergences: readonly MarketDivergence[]
+): boolean {
+  const gaps = divergences.flatMap((divergence) =>
+    divergence.legs.map((leg) => Math.abs(leg.gapPoints)));
+  if (!gaps.length) return false;
+  return answer.split("\n").some((line) =>
+    splitPriceSafeSentences(line).some((sentence) => {
+      if (!DIVERGENCE_CONTEXT.test(sentence)) return false;
+      GAP_IN_POINTS.lastIndex = 0;
+      for (
+        let match = GAP_IN_POINTS.exec(sentence);
+        match;
+        match = GAP_IN_POINTS.exec(sentence)
+      ) {
+        const stated = Number(match[1]);
+        if (gaps.some((gap) => Math.abs(gap - stated) <= GAP_STATEMENT_TOLERANCE)) return true;
+      }
+      return false;
+    }));
+}
+
+/** "kalshi" -> "Kalshi": the source name as user-facing attribution. */
+function marketSourceName(source: string): string {
+  return `${source[0].toLocaleUpperCase()}${source.slice(1)}`;
+}
+
+const asPercentText = (percent: number) => `${percent.toFixed(1)}%`;
+
+/**
+ * The server-composed divergence sentence.
+ *
+ * Its word order is load-bearing, not stylistic.
+ * `stripUnvalidatedExternalMarketClaims` attributes every figure in a sentence
+ * to the nearest market source named before it, and holds that figure against
+ * that source's record. So the market's own figure is the only one inside the
+ * clause the source opens, and the model's figure sits behind a
+ * `MARKET_CLAUSE_BOUNDARY` word ("Pundit") that closes the clause before it.
+ * Written the other way round, the model's 66.9% would be checked against
+ * Kalshi's legs, fail, and the whole sentence would be deleted as an invented
+ * price.
+ *
+ * The observation time is deliberately absent. An earlier version of the market
+ * guard replaced the analysis with a recital carrying a raw ISO timestamp, and
+ * that is what destroyed answer quality; the payload's freshness gate already
+ * refuses to quote a stale price, so the timestamp adds nothing a reader wants.
+ */
+export function composeMarketDivergenceSentence(
+  divergence: MarketDivergence,
+  leg: MarketDivergenceLeg
+): string {
+  const source = marketSourceName(divergence.source);
+  const market = asPercentText(leg.marketPercent);
+  const model = asPercentText(leg.modelPercent);
+  if (leg.gapPoints === 0) {
+    return `Against ${source}, which prices ${leg.label} at ${market}, `
+      + `Pundit's model lands on the same number, so there is no edge to take there.`;
+  }
+  const direction = leg.gapPoints > 0 ? "higher" : "lower";
+  const size = Math.abs(leg.gapPoints).toFixed(1);
+  return `Against ${source}, which prices ${leg.label} at ${market}, `
+    + `Pundit's model at ${model} is ${size} percentage points ${direction} — `
+    + `the widest gap between the two on this fixture.`;
+}
+
+/**
+ * Puts the sentence where a reader meets the numbers, which is the first body
+ * paragraph carrying percentages -- normally the verdict. Only if the answer
+ * has no such paragraph does it get its own section, because a trailing
+ * orphaned observation reads as machinery rather than analysis.
+ */
+function placeDivergenceSentence(answer: string, sentence: string): string {
+  const lines = answer.split("\n");
+  const index = lines.findIndex((line) =>
+    line.trim() && !SECTION_LABEL_LINE.test(line) && /\d+(?:\.\d+)?\s*%/.test(line));
+  if (index < 0) return `${answer.trimEnd()}\n\n**Model vs market**\n${sentence}`;
+  lines[index] = `${lines[index].trimEnd()} ${sentence}`;
+  return lines.join("\n");
+}
+
+/**
+ * Guarantees that a match answer states the model-versus-market divergence.
+ *
+ * The prompt asks for it and MiniMax supplies it inconsistently -- roughly half
+ * of live samples on a fixture whose home-win gap was eleven points, the single
+ * most decision-relevant number in the answer. The prompt layer is still the
+ * one that produces good writing; this is the floor underneath it, composed
+ * from the server's own validated record so it cannot be wrong.
+ *
+ * Nothing is added when no source validates completely: there is no divergence
+ * to state, and inventing a market is worse than omitting one.
+ */
+function guaranteeMarketDivergence(
+  answer: string,
+  tier: AnalysisTier,
+  grounding: AskGrounding
+): string {
+  if (tier !== "match" || grounding?.kind !== "match") return answer;
+  const divergences = deliverableMarketDivergence(grounding);
+  const headline = headlineDivergence(divergences);
+  if (!headline) return answer;
+  const stated = statesMarketDivergence(answer, divergences);
+  // The counter is the measurement the prompt layer is otherwise invisible to:
+  // `stated: false` is one answer in which MiniMax dropped the instruction, and
+  // its rate over time is the only read available on whether the precomputed
+  // payload is working.
+  console.log(JSON.stringify({
+    event: "match_divergence_guarantee",
+    tier,
+    source: headline.divergence.source,
+    outcome: headline.leg.outcome,
+    gapPoints: headline.leg.gapPoints,
+    stated,
+    inserted: !stated,
+  }));
+  if (stated) return answer;
+  return placeDivergenceSentence(
+    answer,
+    composeMarketDivergenceSentence(headline.divergence, headline.leg)
+  );
+}
+
 export async function deliverAnswer(args: {
   /** The raw generated answer, before the coverage/candidate sanitizer. */
   answer: string;
@@ -4484,7 +4788,10 @@ export async function deliverAnswer(args: {
   const shaped = grounding?.kind !== "match" || hasGroundedAnswerShape(settledAnswer);
   if (readable && shaped) {
     return {
-      answer: settledAnswer,
+      // Last, after every guard: the sentence is composed from the same
+      // validated record those guards check against, so running it back
+      // through them could only ever return it unchanged.
+      answer: guaranteeMarketDivergence(settledAnswer, tier, grounding),
       citations: rendered.citations,
       verification: checked.verification,
     };
@@ -4505,7 +4812,13 @@ export async function deliverAnswer(args: {
       reason: readable ? "answer_not_shaped_like_an_answer" : "guard_chain_left_no_prose",
     }));
     return {
-      answer: renderGroundedMatchFallback(grounding),
+      // The fallback answers from the grounding, so it owes the reader the
+      // divergence for exactly the reason a generated answer does.
+      answer: guaranteeMarketDivergence(
+        renderGroundedMatchFallback(grounding),
+        tier,
+        grounding
+      ),
       citations: [],
       verification: checked.verification,
     };
