@@ -12,6 +12,8 @@ test("builds web and shared-root changes", () => {
     ".node-version",
     ".nvmrc",
     "scripts/vercel-ignore-build.mjs",
+    // The rule module both the ignore step and the deploy-SHA resolver import.
+    "scripts/deploy-build-paths.mjs",
   ]) {
     assert.equal(shouldBuildWeb([file]), true, file);
   }
