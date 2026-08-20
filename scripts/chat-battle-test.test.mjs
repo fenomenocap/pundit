@@ -1538,6 +1538,34 @@ test("shadow mode still routes non-priced fixtures inside an enabled window", ()
   assert.ok(routable.some(({ capability }) => capability.status === "insufficient-model-input"));
 });
 
+test("a completed fixture is not routable, in either registry mode", () => {
+  // Chat routes against the forward-looking active ESPN set, so a match already
+  // played is outside the window for the same reason a friendly is outside the
+  // routed competitions. Verified live: a recognized, routed, completed fixture
+  // ("Kairat vs Levski") returns grounding: null and the discovery-candidate
+  // notice, never fixture-tier grounding -- so selecting one could only ever
+  // fail the routed contract.
+  const played = {
+    fixture: {
+      fixtureId: "espn:uefa.champions_qual:9",
+      competition: { id: "uefa.champions_qual", category: "continental-club" },
+      status: "completed",
+    },
+    capability: { status: "insufficient-model-input", reason: "required-context-missing" },
+  };
+  const entries = [...OBSERVED_ENTRIES, played];
+  for (const registryEnabled of [false, true]) {
+    const routable = routableRecognizedEntries(entries, {
+      registryEnabled,
+      enabledCompetitionIds: ["eng.1", "uefa.champions_qual"],
+    });
+    assert.ok(
+      !routable.some((entry) => entry.fixture.fixtureId === played.fixture.fixtureId),
+      `completed fixture leaked with registryEnabled=${registryEnabled}`
+    );
+  }
+});
+
 test("the routed competition windows come from readiness, not from a hardcoded list", () => {
   assert.deepEqual(
     enabledCompetitionIds({ activeFixtures: { byCompetition: { "eng.1": 20, "uefa.champions_qual": 7 } } }),
