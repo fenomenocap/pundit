@@ -255,6 +255,49 @@ describe("stripProcessNarration", () => {
       "That is not the current season. Let me check for the new 2026/27 season."
     )).toBe("That is not the current season.");
   });
+
+  it("removes the retrieval report and running-order preamble that opened a live answer", () => {
+    // Verbatim from the delivered answer in the 2026-08-20 battle test, scenario
+    // `team-news-sourcing`: a report on what the search returned, then an
+    // announcement of the answer's own order, both ahead of the first label.
+    expect(stripProcessNarration(
+      "Searches returned dated previews that establish current absences for both sides;"
+      + " reporting those first, then the read.\n\n"
+      + "**Team news**\nSaliba (back) is out."
+    )).toBe("**Team news**\nSaliba (back) is out.");
+  });
+
+  it("removes a running-order preamble on its own", () => {
+    expect(stripProcessNarration("Here's the read: Arsenal by two."))
+      .toBe("Arsenal by two.");
+    expect(stripProcessNarration("Let me lay this out.\n**Verdict**\nArsenal are favoured."))
+      .toBe("**Verdict**\nArsenal are favoured.");
+  });
+
+  it("keeps a negated retrieval report, which is a real limitation", () => {
+    const answer = "Searches did not turn up a dated return date for Saliba.";
+    expect(stripProcessNarration(answer)).toBe(answer);
+  });
+
+  it("keeps football prose that merely contains the word search", () => {
+    const kept = [
+      "Arsenal's search for a first-choice left-back continues into deadline day.",
+      "The search for a new striker returned to Sesko after Watkins stalled.",
+    ];
+    for (const answer of kept) expect(stripProcessNarration(answer)).toBe(answer);
+  });
+
+  it("keeps sourced team-news prose whose verbs overlap the narration list", () => {
+    // "start", "cover" and "report" are narration verbs only behind an intent
+    // phrase; "first ... then" is a running order only when it opens a clause.
+    const kept = [
+      "Ben White and Cristhian Mosquera are reported to cover at the back,"
+      + " with White expected to start ([ESPN](https://www.espn.com/x), 2026-08-19).",
+      "Arteta will start with Saka first, then bring on Havertz after the hour.",
+      "Reports on 2026-08-19 confirm Timber is out with an ankle problem.",
+    ];
+    for (const answer of kept) expect(stripProcessNarration(answer)).toBe(answer);
+  });
 });
 
 describe("dropMisbucketedTotalsScorelines", () => {
