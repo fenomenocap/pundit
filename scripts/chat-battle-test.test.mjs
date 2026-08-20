@@ -25,6 +25,9 @@ import {
   recordScenarioFailure,
   recordOptionalScenarioFailure,
   readinessFailures,
+  routableRecognizedEntries,
+  enabledCompetitionIds,
+  describeRecognizedRoutability,
   selectFeaturedMatch,
   selectSuggestionChips,
   selectTwoLeggedTie,
@@ -1483,4 +1486,76 @@ test("the rendered report names each target's served SHA, state and floor", asyn
     assert.match(described, /api=.*\(match vs floor/);
     assert.match(described, /web=.*\(match vs floor/);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Recognized-fixture routability
+//
+// `/api/fixtures/recognized` publishes every *observed* identity; in shadow
+// mode chat routes only the enabled ESPN competition windows. Selecting an
+// observed-but-unrouted identity and then demanding fixture grounding produced
+// a guaranteed failure that was not a product fault.
+// ---------------------------------------------------------------------------
+
+const routableEntry = (fixtureId, competitionId, category, capability) => ({
+  fixture: { fixtureId, competition: { id: competitionId, category } },
+  capability,
+});
+
+const OBSERVED_ENTRIES = [
+  routableEntry("espn:club.friendly:1", "club.friendly", "club-friendly",
+    { status: "outside-coverage", reason: "friendly-policy-disabled" }),
+  routableEntry("espn:eng.1:2", "eng.1", "domestic-league", { status: "priced" }),
+  routableEntry("espn:uefa.champions_qual:3", "uefa.champions_qual", "continental-club",
+    { status: "insufficient-model-input", reason: "required-context-missing" }),
+];
+
+test("shadow mode drops identities outside the routed competition windows", () => {
+  const routable = routableRecognizedEntries(OBSERVED_ENTRIES, {
+    registryEnabled: false,
+    enabledCompetitionIds: ["eng.1", "uefa.champions_qual"],
+  });
+  // The friendly is observed and published, but chat cannot route it, so a
+  // scenario asserting its routed contract could only ever fail.
+  assert.deepEqual(routable.map((entry) => entry.fixture.fixtureId), ["espn:eng.1:2", "espn:uefa.champions_qual:3"]);
+});
+
+test("expanded routing keeps every observed identity, friendlies included", () => {
+  const routable = routableRecognizedEntries(OBSERVED_ENTRIES, {
+    registryEnabled: true,
+    enabledCompetitionIds: ["eng.1"],
+  });
+  assert.equal(routable.length, OBSERVED_ENTRIES.length);
+});
+
+test("shadow mode still routes non-priced fixtures inside an enabled window", () => {
+  const routable = routableRecognizedEntries(OBSERVED_ENTRIES, {
+    registryEnabled: false,
+    enabledCompetitionIds: ["eng.1", "uefa.champions_qual"],
+  });
+  // The filter narrows by competition window, not by capability: a recognized
+  // non-priced fixture in a routed window is still a real, testable case.
+  assert.ok(routable.some(({ capability }) => capability.status === "insufficient-model-input"));
+});
+
+test("the routed competition windows come from readiness, not from a hardcoded list", () => {
+  assert.deepEqual(
+    enabledCompetitionIds({ activeFixtures: { byCompetition: { "eng.1": 20, "uefa.champions_qual": 7 } } }),
+    ["eng.1", "uefa.champions_qual"]
+  );
+  assert.deepEqual(enabledCompetitionIds({}), []);
+  assert.deepEqual(enabledCompetitionIds(null), []);
+});
+
+test("routability evidence names the mode and the windows it routes", () => {
+  const shadow = describeRecognizedRoutability({
+    registryEnabled: false, enabledCompetitionIds: ["eng.1"], observed: 75, routable: 74,
+  });
+  assert.match(shadow, /shadow mode/);
+  assert.match(shadow, /eng\.1/);
+  assert.match(shadow, /74 of 75/);
+  assert.match(
+    describeRecognizedRoutability({ registryEnabled: true, observed: 75, routable: 75 }),
+    /routing enabled/
+  );
 });

@@ -9,6 +9,8 @@ import {
   MIN_REQUEST_INTERVAL_MS,
   createComparisonBaseline,
   createPacer,
+  describeRecognizedRoutability,
+  enabledCompetitionIds,
   executeRuntimeHelperScenario,
   fetchWithTimeout,
   finalizeClassifications,
@@ -26,6 +28,7 @@ import {
   snapshotAskRequest,
   snapshotSseReproduction,
   readinessFailures,
+  routableRecognizedEntries,
   validateGrounding,
   validateSse,
   validateAnswerCopy,
@@ -154,7 +157,7 @@ async function discoverRecognized(options) {
       throw new Error(`recognized fixture ${index} violated contract: ${validation.failures.join(", ")}`);
     }
   }
-  return { entries: result.body.fixtures, result };
+  return { entries: result.body.fixtures, registry: result.body.registry ?? null, result };
 }
 
 function exactRecognizedEntry(entries, featured) {
@@ -591,7 +594,8 @@ async function runScenario(
   featured,
   recognized,
   onRequestStart,
-  activeFixtures = []
+  activeFixtures = [],
+  recognizedRoutability = null
 ) {
   if (scenario.kind === "runtime-helper") {
     const result = baseResult(scenario);
@@ -669,7 +673,14 @@ async function runScenario(
       && (!scenario.capabilityReason || capability?.reason === scenario.capabilityReason)
       && (!scenario.competitionCategory || fixture?.competition?.category === scenario.competitionCategory)
     );
-    if (!entry) return { ...baseResult(scenario), outcome: "INCONCLUSIVE", evidence: `No exact recognized fixture matched ${scenario.capabilityStatus ?? "any"}/${scenario.capabilityReason ?? "any"}.` };
+    if (!entry) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        evidence: `No routable recognized fixture matched ${scenario.capabilityStatus ?? "any"}/${scenario.capabilityReason ?? "any"}`
+          + `${recognizedRoutability ? ` (${recognizedRoutability})` : ""}.`,
+      };
+    }
     return runJsonScenario({
       ...scenario,
       kind: "json",
@@ -690,7 +701,14 @@ async function runScenario(
   }
   if (scenario.kind === "recognized-replacement") {
     const entries = recognized.filter(({ capability }) => capability?.status !== "priced").slice(0, 2);
-    if (entries.length < 2) return { ...baseResult(scenario), outcome: "INCONCLUSIVE", evidence: "Fewer than two exact recognized non-priced fixtures; substitution is forbidden." };
+    if (entries.length < 2) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        evidence: "Fewer than two routable recognized non-priced fixtures; substitution is forbidden"
+          + `${recognizedRoutability ? ` (${recognizedRoutability})` : ""}.`,
+      };
+    }
     const expected = (entry, question) => ({
       question,
       expectGrounding: "fixture",
@@ -916,6 +934,23 @@ async function main() {
   const [{ featured, result: fixtureDiscovery }, recognizedDiscovery] = await Promise.all([
     discoverFeatured(options), discoverRecognized(options),
   ]);
+  // `/api/fixtures/recognized` publishes every *observed* identity. In shadow
+  // mode -- the production default -- chat routes only the enabled ESPN
+  // competition windows, so observed-but-unrouted identities (a club friendly)
+  // can never reach fixture grounding. Scenarios must select from what the
+  // deployment routes, or they assert a contract it is configured not to serve.
+  const registryEnabled = recognizedDiscovery.registry?.enabled === true;
+  const routedCompetitionIds = enabledCompetitionIds(preflightResult.ready.body);
+  const routableRecognized = routableRecognizedEntries(recognizedDiscovery.entries, {
+    registryEnabled,
+    enabledCompetitionIds: routedCompetitionIds,
+  });
+  const recognizedRoutability = describeRecognizedRoutability({
+    registryEnabled,
+    enabledCompetitionIds: routedCompetitionIds,
+    observed: recognizedDiscovery.entries.length,
+    routable: routableRecognized.length,
+  });
   const pricedRecognized = exactRecognizedEntry(recognizedDiscovery.entries, featured);
   if (featured && !pricedRecognized) throw new Error("featured model fixture has no exact recognized identity");
   const exactFeatured = featured ? { ...featured, recognizedFixtureId: pricedRecognized.fixture.fixtureId } : null;
@@ -969,6 +1004,13 @@ async function main() {
       fixtureDiscovery: {
         status: fixtureDiscovery.status,
         recognized: recognizedDiscovery.result.body,
+        recognizedRoutability: {
+          registryEnabled,
+          routedCompetitionIds,
+          observed: recognizedDiscovery.entries.length,
+          routable: routableRecognized.length,
+          summary: recognizedRoutability,
+        },
         featured: featured ? {
           homeTeam: featured.home,
           awayTeam: featured.away,
@@ -1017,13 +1059,14 @@ async function main() {
         options,
         pacer,
         exactFeatured,
-        recognizedDiscovery.entries,
+        routableRecognized,
         async (request) => {
           report.progress.activeRequest = request;
           report.completedAt = new Date().toISOString();
           await writeCheckpoint(report, options.outputDir);
         },
-        fixtureDiscovery.body?.fixtures ?? []
+        fixtureDiscovery.body?.fixtures ?? [],
+        recognizedRoutability
       );
       report.scenarios.push(result);
       report.progress.completedScenarioIds.push(scenario.id);
