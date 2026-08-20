@@ -7,6 +7,8 @@ import {
   hasGroundedAnswerShape,
   hasMeaningfulProse,
   sanitizeDeliveredAnswer,
+  statesConditionalClose,
+  statesValueVerdict,
   type AskGrounding,
   type CompetitionGrounding,
   type EvidenceBundle,
@@ -269,7 +271,23 @@ function expectMatchContentIntact(answer: string) {
 const normalizeWhitespace = (text: string) => text.replace(/\s+/g, " ").trim();
 
 describe("a correct match answer survives the real delivery path", () => {
-  it("is returned byte-identical when no search ran", async () => {
+  /**
+   * Re-targeted, not weakened, and for the same reason `SCOPED_ABSTENTION` was.
+   *
+   * The property this test has always been about is that the guard chain
+   * changes nothing the model wrote. It used to state that as byte-identity,
+   * which was exact while the chain only ever removed text. It no longer only
+   * removes: `guaranteeMatchReadCompleteness` appends a conditional close to a
+   * full match read that has none, and this answer is precisely the shape it
+   * exists for -- one that ends on "No verified team-news update was
+   * established for this fixture.", a true sentence that tells the reader
+   * nothing about what would move the read.
+   *
+   * So the assertion is split into the two halves byte-identity was conflating:
+   * every byte the model wrote survives, in order, at the front; and the only
+   * thing after it is the server's own close.
+   */
+  it("returns the model's own text unchanged when no search ran", async () => {
     const delivered = await deliver({
       answer: ABSTAINING_ANSWER,
       tier: "match",
@@ -278,7 +296,10 @@ describe("a correct match answer survives the real delivery path", () => {
       evidenceRequired: false,
     });
     expectMatchContentIntact(delivered.answer);
-    expect(normalizeWhitespace(delivered.answer)).toBe(normalizeWhitespace(ABSTAINING_ANSWER));
+    expect(delivered.answer.startsWith(ABSTAINING_ANSWER)).toBe(true);
+    const appended = delivered.answer.slice(ABSTAINING_ANSWER.length);
+    expect(appended).toContain("**What would change this**");
+    expect(statesConditionalClose(appended)).toBe(true);
     expect(delivered.verification.status).toBe("not-required");
   });
 
@@ -879,8 +900,26 @@ describe("the divergence a match answer must state", () => {
    * arrive exactly as written.
    */
   it("says nothing about a market it does not have", async () => {
+    /**
+     * The same re-targeting as above, and for the same reason: this test's
+     * subject is the market, and byte-identity was only ever a convenient way
+     * to say "nothing about a market was added". The conditional close is added
+     * to a full match read whatever the payload holds, so the market property
+     * is now stated directly -- no source named, no gap, no value verdict --
+     * and the close is checked to be anchored on the model's own lean rather
+     * than on an edge Pundit is in no position to claim.
+     */
+    const expectNoMarketInvented = (answer: string) => {
+      expect(answer.startsWith(CELTIC_BODY)).toBe(true);
+      const appended = answer.slice(CELTIC_BODY.length);
+      expect(appended).not.toMatch(/kalshi|polymarket|market/i);
+      expect(appended).not.toMatch(/percentage points|the value is on|priced/i);
+      expect(appended).toContain("the model's lean towards Celtic");
+      expect(statesConditionalClose(appended)).toBe(true);
+    };
+
     const unpriced = await deliverCeltic(CELTIC_BODY, { ...celtic, oddsSources: [] });
-    expect(unpriced.answer).toBe(CELTIC_BODY);
+    expectNoMarketInvented(unpriced.answer);
 
     const stale = await deliverCeltic(CELTIC_BODY, {
       ...celtic,
@@ -892,7 +931,7 @@ describe("the divergence a match answer must state", () => {
         pAway: 0.208,
       }],
     });
-    expect(stale.answer).toBe(CELTIC_BODY);
+    expectNoMarketInvented(stale.answer);
 
     const partial = await deliverCeltic(CELTIC_BODY, {
       ...celtic,
@@ -904,7 +943,7 @@ describe("the divergence a match answer must state", () => {
         pAway: 0.208,
       }],
     });
-    expect(partial.answer).toBe(CELTIC_BODY);
+    expectNoMarketInvented(partial.answer);
   });
 
   /**
@@ -929,9 +968,12 @@ describe("the divergence a match answer must state", () => {
     const counted = log.mock.calls
       .map(([line]) => { try { return JSON.parse(String(line)); } catch { return {}; } })
       .filter((entry) => entry.event === "match_divergence_guarantee");
+    // The verdict and the close are counted alongside the divergence, because
+    // they are floors under the same prompt instruction and the insertion rate
+    // is the only read available on whether the prompt layer is working.
     expect(counted).toEqual([
-      { event: "match_divergence_guarantee", tier: "match", source: "kalshi", outcome: "home", gapPoints: 11.5, stated: false, inserted: true },
-      { event: "match_divergence_guarantee", tier: "match", source: "kalshi", outcome: "home", gapPoints: 11.5, stated: true, inserted: false },
+      { event: "match_divergence_guarantee", tier: "match", source: "kalshi", outcome: "home", gapPoints: 11.5, stated: false, inserted: true, statedValueVerdict: false, statedConditionalClose: false },
+      { event: "match_divergence_guarantee", tier: "match", source: "kalshi", outcome: "home", gapPoints: 11.5, stated: true, inserted: false, statedValueVerdict: false, statedConditionalClose: false },
     ]);
     log.mockRestore();
   });
@@ -979,6 +1021,264 @@ describe("the divergence a match answer must state", () => {
     });
     expectDeliverable(delivered.answer, true);
     expect(delivered.answer).toContain("11.5 percentage points higher");
+    warn.mockRestore();
+  });
+});
+
+/**
+ * The two things a good match answer does that a correct one need not, and
+ * that MiniMax supplied only sometimes.
+ *
+ * The divergence repair established the pattern: what the server can determine,
+ * the server determines, and the prompt keeps the writing. These follow it, and
+ * the split between them is drawn at derivability.
+ *
+ * The value verdict is derivable. Given the signed gaps and a noise band, which
+ * outcome the value is on and which are priced about right is arithmetic, so
+ * the floor under it is exact -- including the answer nobody wants to give,
+ * that the fixture is efficiently priced and there is nothing to take.
+ *
+ * The conditional close is NOT derivable. Which unknown matters most is a
+ * judgement, and the server has no basis for it. What it can guarantee is
+ * presence: a match answer that ends without saying what would move the read is
+ * incomplete, and the composed fallback names the one unknown that is
+ * unresolved on every pre-match fixture by construction -- who starts -- while
+ * asserting nothing about who is fit.
+ *
+ * The probe these were built against was an answer that stated the divergence
+ * and did neither, and it passed through the whole chain untouched.
+ */
+describe("the verdict and the close a match answer must carry", () => {
+  const celticFixture = (overrides: Partial<Grounding> = {}): Grounding => ({
+    ...buildGrounding(fixture("Celtic", "LASK", {
+      competitionId: "uefa.champions_qual",
+      competition: "UEFA Champions League Qualifying",
+      pHome: 0.669,
+      pDraw: 0.208,
+      pAway: 0.124,
+    })),
+    oddsSources: [
+      { source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.554, pDraw: 0.238, pAway: 0.208 },
+      { source: "polymarket", observedAt: new Date().toISOString(), pHome: 0.565, pDraw: 0.235, pAway: 0.2 },
+    ],
+    ...overrides,
+  });
+
+  /** Model 66.9/20.8/12.4 against Kalshi 55.4/23.8/20.8 and Polymarket. */
+  const priced = celticFixture();
+
+  /** The same fixture with every leg inside the two-point agreement band. */
+  const efficient = celticFixture({
+    oddsSources: [{
+      source: "kalshi",
+      observedAt: new Date().toISOString(),
+      pHome: 0.675,
+      pDraw: 0.2,
+      pAway: 0.125,
+    }],
+  });
+
+  /**
+   * The reproduction probe: a realistic answer that states the divergence in
+   * the model's own words, gives no verdict on it, and ends in a dead end.
+   */
+  const DIVERGENCE_ONLY = [
+    "**Model vs market**",
+    "Pundit's model makes **Celtic 66.9%**, the **draw 20.8%** and **LASK 12.4%** for the"
+      + " 2 August 2026 fixture. The model is 11.5 percentage points higher than Kalshi on Celtic.",
+    "",
+    "**Goals**",
+    "**Over 2.5 at 55.0%** and **both teams to score at 52.0%**.",
+    "",
+    "**Likely scorelines**",
+    "**1-1 (12.0%)** leads.",
+    "",
+    "**Team news**",
+    "No verified team-news update was established for this fixture.",
+  ].join("\n");
+
+  const deliverCeltic = (answer: string, grounding: Grounding = priced) => deliver({
+    answer,
+    tier: "match",
+    grounding,
+    bundle: emptyBundle(),
+    evidenceRequired: false,
+    question: "Celtic vs LASK second leg",
+  });
+
+  it("rules on where the value is when the model only stated the gap", async () => {
+    const delivered = await deliverCeltic(DIVERGENCE_ONLY);
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).toContain(
+      "The value is on Celtic; the market has the draw and LASK above where the model"
+      + " does, so there is nothing to take there."
+    );
+    // A verdict is a direction, not a second recital: the sizes were stated one
+    // sentence earlier, and every figure it repeated would be one the market
+    // guard has to attribute to a source.
+    const verdict = delivered.answer.split("\n")
+      .flatMap((line) => line.split(". "))
+      .find((sentence) => sentence.includes("The value is on"))!;
+    expect(verdict).not.toMatch(/\d/);
+    // It lands beside the gap it judges, not as a trailing aside.
+    expect(delivered.answer.split("\n")[1]).toContain("The value is on Celtic");
+    // The model's own divergence sentence is untouched and still stated once.
+    expect(delivered.answer.match(/11\.5 percentage points/g)).toHaveLength(1);
+  });
+
+  it("calls an efficiently priced fixture efficiently priced", async () => {
+    const delivered = await deliverCeltic(DIVERGENCE_ONLY, efficient);
+    expectDeliverable(delivered.answer, true);
+    // Saying there is no edge is a finding, and the one the prompt is most
+    // likely to talk itself out of. Every leg here is inside the band, so the
+    // floor must produce the abstention rather than dress 0.8 points as value.
+    expect(delivered.answer).toContain(
+      "No outcome here is more than two percentage points from the model, so the fixture"
+      + " looks efficiently priced and there is no edge to take."
+    );
+    expect(delivered.answer).not.toContain("The value is on");
+  });
+
+  it("adds no second verdict when the model already gave one, however phrased", async () => {
+    const phrasings = [
+      "The value is on Celtic and the draw looks overpriced.",
+      "LASK are priced above where the model has them, so there is nothing to take there.",
+      "The moneyline is efficiently priced -- skip it.",
+      "Kalshi's price on the draw is generous relative to the model.",
+      "There is no real edge on the away win at this price.",
+      "Celtic look cheap against the market here.",
+    ];
+    for (const line of phrasings) {
+      expect(statesValueVerdict(line, priced)).toBe(true);
+      const delivered = await deliverCeltic(
+        DIVERGENCE_ONLY.replace("**Goals**", `${line}\n\n**Goals**`)
+      );
+      expectDeliverable(delivered.answer, true);
+      expect(delivered.answer).not.toContain("The value is on Celtic;");
+      expect(delivered.answer).not.toContain("looks efficiently priced and there is no edge");
+    }
+  });
+
+  /**
+   * The other half of the detector. Its error budget runs the opposite way to
+   * `statesMarketDivergence`'s: a false positive there costs a duplicated
+   * sentence, one here costs the verdict entirely. So the ambiguous words --
+   * "edge", "value" -- are only a verdict beside a price, and these are the
+   * sentences that must NOT suppress the floor.
+   */
+  it("does not mistake a statement about the model's favourite for a verdict", () => {
+    for (const line of [
+      "The model gives Celtic the edge in this tie.",
+      "Celtic's edge comes from a stronger squad rather than the venue.",
+      "**Value**",
+      "Pundit's model makes Celtic 66.9%, the draw 20.8% and LASK 12.4%.",
+    ]) {
+      expect(statesValueVerdict(line, priced)).toBe(false);
+    }
+  });
+
+  it("closes on what would change the read when the answer ends in a dead end", async () => {
+    const delivered = await deliverCeltic(DIVERGENCE_ONLY);
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).toContain("**What would change this**");
+    expect(delivered.answer).toContain(
+      "Confirmed team sheets are what would move this: if both sides start close to full"
+      + " strength, the gap on Celtic stands; if either is without first-choice starters,"
+      + " that gap is the first thing to shrink."
+    );
+    // It invents nothing. No player, no absence, no injury -- only the unknown
+    // that is unresolved on every pre-match fixture, and which way it moves the
+    // read. The model's dead-end team-news line is left exactly as written.
+    expect(delivered.answer).toContain("No verified team-news update was established");
+    expect(delivered.answer).not.toMatch(/\b(?:injur|suspend|doubtful|ruled out|sidelined)/i);
+    expect(statesConditionalClose(delivered.answer)).toBe(true);
+  });
+
+  it("adds no second close when the model already wrote one", async () => {
+    const phrasings = [
+      "If the first-choice back line starts, the gap holds; if two are missing, that gap"
+        + " is the first thing to shrink.",
+      "A confirmed lineup would change this read either way.",
+      "Unless Celtic rotate heavily, the model's edge stands.",
+      "Until the team sheets land, treat the gap on the home win as provisional -- it"
+        + " narrows quickly if the back line changes.",
+    ];
+    for (const line of phrasings) {
+      expect(statesConditionalClose(line)).toBe(true);
+      const delivered = await deliverCeltic(`${DIVERGENCE_ONLY}\n\n${line}`);
+      expectDeliverable(delivered.answer, true);
+      expect(delivered.answer).not.toContain("**What would change this**");
+      expect(delivered.answer).not.toContain("Confirmed team sheets are what would move this");
+    }
+  });
+
+  it("does not read an ordinary conditional as a close", () => {
+    for (const line of [
+      "Celtic should hold on if they score first.",
+      "If the game stays open, 2-1 is the most likely finish.",
+    ]) {
+      expect(statesConditionalClose(line)).toBe(false);
+    }
+  });
+
+  /**
+   * A one-line follow-up is complete as written. Appending "what would change
+   * this" to "About 26.3%." would be machinery, which is precisely the failure
+   * the raw-timestamp recital was removed for.
+   */
+  it("leaves a short follow-up without a section it does not need", async () => {
+    const answer = "Celtic are the side the model prefers here, at **66.9%** against LASK's 12.4%.";
+    const delivered = await deliverAnswer({
+      answer,
+      tier: "match",
+      grounding: priced,
+      bundle: emptyBundle(),
+      client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+      question: "Why?",
+      evidenceRequired: false,
+      candidateUnrecognized: false,
+    });
+    expect(delivered.answer).not.toContain("**What would change this**");
+    expect(delivered.answer).not.toContain("Confirmed team sheets");
+  });
+
+  /**
+   * Everything composed has to survive the chain it is added after. Checked on
+   * a `uefa.champions_qual` fixture, where the qualifier points rewrites run
+   * over the word "points" and the market guard runs over every figure --
+   * a sentence the guards strip is worse than no sentence.
+   */
+  it("composes prose the guard chain returns unchanged", async () => {
+    for (const grounding of [priced, efficient, celticFixture({ oddsSources: [] })]) {
+      const delivered = await deliverCeltic(DIVERGENCE_ONLY, grounding);
+      expect(sanitizeDeliveredAnswer(delivered.answer, "match", grounding))
+        .toBe(delivered.answer);
+      // And the composed prose is prose: no leaked field names, no ISO stamp,
+      // no bare source header standing where a sentence belongs.
+      expect(delivered.answer).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+      expect(delivered.answer).not.toMatch(/gapPoints|marketPercent|modelPercent/);
+      expectDeliverable(delivered.answer, true);
+    }
+  });
+
+  it("gives the grounded fallback the verdict and the close too", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const delivered = await deliverAnswer({
+      answer: "**Verdict**",
+      tier: "match",
+      grounding: priced,
+      bundle: emptyBundle(),
+      client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+      question: "Celtic vs LASK second leg",
+      evidenceRequired: false,
+      candidateUnrecognized: false,
+    });
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).toContain("11.5 percentage points higher");
+    expect(delivered.answer).toContain("The value is on Celtic");
+    expect(statesConditionalClose(delivered.answer)).toBe(true);
+    expect(sanitizeDeliveredAnswer(delivered.answer, "match", priced))
+      .toBe(delivered.answer);
     warn.mockRestore();
   });
 });

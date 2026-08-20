@@ -1781,13 +1781,18 @@ Agreement is a conclusion, not a hole to fill. When every gapPoints sits within 
 every outcome, say plainly that there is no meaningful disagreement here and the fixture looks
 efficiently priced. That is a real, useful finding. Never manufacture an edge to have something to
 report, and never dress a gap smaller than the model's own noise as a signal.
-Say where the value is and where it is not, in those words. If only one outcome diverges, say the
-other two look fairly priced instead of leaving the user to infer it from numbers you listed.
-Name the biggest unknown and make the read conditional on it. Most often that is unverified team
-news. Say what you would need to confirm and what it would change -- "if the first-choice back line
-starts, the low-scoring lines hold up; if two of them are missing, the model's edge on the favourite
-is the first thing to shrink" -- rather than "team news unconfirmed". An abstention follows the same
-shape: what to check, and how the read moves either way. A dead end helps nobody.
+Say where the value is and where it is not, in those words. Every outcome gets a verdict: the one
+with the largest positive gapPoints is where the value is, anything inside about two points either
+way is priced about right, and a negative gap means the market is above the model there and there is
+nothing to take. Two points is the whole agreement band, so do not call a 1.5-point gap an edge.
+Saying "the moneyline is efficiently priced -- skip it" is as useful as finding an edge, and far more
+often true.
+Close on what would change the read, and make it conditional. Most often the unknown is unverified
+team news. Say what you would need to confirm and what it would change -- "if the first-choice back
+line starts, the low-scoring lines hold up; if two of them are missing, the model's edge on the
+favourite is the first thing to shrink" -- rather than "team news unconfirmed". An abstention follows
+the same shape: what to check, and how the read moves either way. An answer that ends without saying
+what would move it is incomplete, however correct its numbers. A dead end helps nobody.
 Keep every grounded number you would have reported anyway: the 1X2 probabilities, over/under 2.5,
 both teams to score, the leading scorelines, and the fixture date. Interpretation replaces the
 recital around those numbers, never the numbers themselves.`;
@@ -1896,8 +1901,9 @@ moment you are restating numbers the reader can already see, you are over budget
 whatever the word count says.
 Whenever the answer covers this fixture, state the headline win/draw/win and
 O/U 2.5 numbers, mention 1-2 most likely scorelines, give the size and direction
-of marketDivergence's largest gap whenever marketDivergence is non-empty, and name
-the biggest unresolved unknown together with what it would change.
+of marketDivergence's largest gap whenever marketDivergence is non-empty, say which
+outcome the value is on and which are priced about right, and name the biggest
+unresolved unknown together with what it would change.
 The model data names one specific fixture and its date. Two clubs can meet twice
 in a two-legged tie, so name that date when you give the numbers -- the user has
 to be able to tell which leg they are reading.
@@ -4694,10 +4700,26 @@ export function statesMarketDivergence(
   answer: string,
   divergences: readonly MarketDivergence[]
 ): boolean {
+  return divergenceStatementLine(answer, divergences) >= 0;
+}
+
+/**
+ * Which line of `answer` states the divergence, or -1 for none.
+ *
+ * The boolean above is this function's only historical caller, but the value
+ * verdict needs the *position* as well: "the value is on Celtic" has to land
+ * beside the gap it is a verdict on, whether the gap is the model's sentence or
+ * the server's. Splitting the search out is what lets both consumers agree on
+ * where the comparison lives instead of guessing at it twice.
+ */
+function divergenceStatementLine(
+  answer: string,
+  divergences: readonly MarketDivergence[]
+): number {
   const gaps = divergences.flatMap((divergence) =>
     divergence.legs.map((leg) => Math.abs(leg.gapPoints)));
-  if (!gaps.length) return false;
-  return answer.split("\n").some((line) =>
+  if (!gaps.length) return -1;
+  return answer.split("\n").findIndex((line) =>
     splitPriceSafeSentences(line).some((sentence) => {
       if (!DIVERGENCE_CONTEXT.test(sentence)) return false;
       return [GAP_IN_POINTS, GAP_AS_COMPARISON].some((pattern) => {
@@ -4770,18 +4792,276 @@ function placeDivergenceSentence(answer: string, sentence: string): string {
 }
 
 /**
- * Guarantees that a match answer states the model-versus-market divergence.
+ * How far a model-market gap has to run before it is a signal rather than
+ * agreement.
  *
- * The prompt asks for it and MiniMax supplies it inconsistently -- roughly half
- * of live samples on a fixture whose home-win gap was eleven points, the single
- * most decision-relevant number in the answer. The prompt layer is still the
- * one that produces good writing; this is the floor underneath it, composed
- * from the server's own validated record so it cannot be wrong.
+ * Two percentage points, which is the band `MATCH_ANALYSIS_PRIORITIES` already
+ * reasons in ("when every gapPoints sits within about two points on every
+ * outcome, say plainly that there is no meaningful disagreement here"). Fixing
+ * the same number here rather than a tighter or looser one keeps the prompt and
+ * the deterministic floor from contradicting each other in front of the reader
+ * -- the failure mode where the model calls a fixture efficiently priced and
+ * the server appends a verdict claiming an edge on the same leg.
+ *
+ * It is also about the right size on the merits. Both sides of the subtraction
+ * are rounded to a tenth and the model's own calibration is not sharper than a
+ * point or two, so a gap inside this band is not distinguishable from noise,
+ * and `MATCH_ANALYSIS_PRIORITIES` is explicit that dressing one as a signal is
+ * the failure to avoid.
+ */
+const VALUE_NOISE_BAND_POINTS = 2;
+
+/** The legs of one source, split into where the value is and where it is not. */
+interface ValueBuckets {
+  /** Model above the market beyond the band: the market underprices this. */
+  edge: MarketDivergenceLeg[];
+  /** Model below the market beyond the band: nothing to take. */
+  against: MarketDivergenceLeg[];
+  /** Inside the band: priced about right. */
+  fair: MarketDivergenceLeg[];
+}
+
+function valueBuckets(divergence: MarketDivergence): ValueBuckets {
+  return {
+    edge: divergence.legs
+      .filter((leg) => leg.gapPoints >= VALUE_NOISE_BAND_POINTS)
+      .sort((left, right) => right.gapPoints - left.gapPoints),
+    // 1X2 order, which is the order the answer listed the probabilities in, so
+    // the verdict reads back over them rather than reshuffling them. Only the
+    // edge bucket is re-sorted, because there the biggest gap is the headline.
+    against: divergence.legs.filter((leg) => leg.gapPoints <= -VALUE_NOISE_BAND_POINTS),
+    fair: divergence.legs.filter((leg) =>
+      Math.abs(leg.gapPoints) < VALUE_NOISE_BAND_POINTS),
+  };
+}
+
+/** "Celtic", "Celtic and LASK", "Celtic, the draw and LASK". */
+function joinLabels(labels: readonly string[]): string {
+  if (labels.length <= 1) return labels[0] ?? "";
+  return `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * The server-composed value verdict.
+ *
+ * The divergence sentence tells the reader that the model and the market
+ * disagree and by how much. It does not tell them what to do with that, and the
+ * product owner's benchmark is emphatic that the second half is the half worth
+ * reading -- including when the answer is "there is nothing here", which is a
+ * finding rather than a hole.
+ *
+ * That second half is derivable. The sign of each `gapPoints` says which side
+ * of the price the model sits on, and `VALUE_NOISE_BAND_POINTS` says which of
+ * those differences are large enough to mean anything. So this is composed the
+ * same way the divergence sentence is: from the server's own validated record,
+ * over one source's three legs, so the buckets always partition the same
+ * comparison rather than mixing books.
+ *
+ * Deliberately carries no figures at all. Every number in it would be one
+ * `stripUnvalidatedExternalMarketClaims` has to attribute to a source, and the
+ * sizes were just stated one sentence earlier; a verdict is a direction, not a
+ * second recital. It also never writes "favours" or "backs" beside a single
+ * club, which is the shape `sanitizeGroundedMatchNarrative` reads as a claim
+ * about who the market prefers. All three legs are always named, so that guard
+ * sees both clubs in the sentence and correctly declines to read it as a claim
+ * about either one.
+ */
+export function composeValueVerdictSentence(divergence: MarketDivergence): string {
+  const { edge, against, fair } = valueBuckets(divergence);
+  if (!edge.length) {
+    return "No outcome here is more than two percentage points from the model, so the "
+      + "fixture looks efficiently priced and there is no edge to take.";
+  }
+  const parts = [`the value is on ${joinLabels(edge.map((leg) => leg.label))}`];
+  if (against.length) {
+    parts.push(`the market has ${joinLabels(against.map((leg) => leg.label))} above `
+      + "where the model does, so there is nothing to take there");
+  }
+  if (fair.length) {
+    parts.push(`${joinLabels(fair.map((leg) => leg.label))} `
+      + `${fair.length > 1 ? "are" : "is"} priced about right`);
+  }
+  return `${capitalizeFirst(parts.join("; "))}.`;
+}
+
+/**
+ * Verdict language that settles the question on its own: it names a side of the
+ * price, or says outright that there is no side worth taking.
+ */
+const VALUE_VERDICT_EXPLICIT =
+  /\b(?:over[- ]?priced|under[- ]?priced|mis[- ]?priced|fairly priced|efficiently priced|priced (?:about |roughly )?right|priced fairly|priced above|priced below|no (?:real |live )?edge|nothing to (?:take|act on|play|do)|not worth (?:taking|backing|playing)|skip (?:it|this|the)|leave (?:it|that|them) alone|worth backing|worth taking|value is on|value sits on|value here is)\b/i;
+
+/**
+ * Verdict language that only becomes a verdict beside a price. "The model gives
+ * Celtic the edge" is a statement about the model's favourite and settles
+ * nothing about the market; "the model sees less edge than Kalshi does" is a
+ * verdict. So the weak vocabulary is admitted only when the sentence is also
+ * about pricing.
+ */
+const VALUE_VERDICT_WEAK = /\b(?:value|edge|cheap|expensive|generous|overrated|underrated)\b/i;
+const PRICING_CONTEXT = /\b(?:market|markets|price|prices|priced|pricing|kalshi|polymarket|book|books)\b/i;
+
+/** Anything that identifies which outcome a verdict is about. */
+const OUTCOME_REFERENCE =
+  /\b(?:draw|home win|away win|moneyline|outcome|leg|favou?rite|underdog)\b/i;
+
+/**
+ * Whether the answer already tells the reader where the value is, by *any*
+ * phrasing.
+ *
+ * Structural for the same reason `statesMarketDivergence` is: "the draw looks
+ * overpriced", "there is nothing to take on LASK" and "the moneyline is
+ * efficiently priced -- skip it" are one claim in three shapes, and matching a
+ * fixed sentence would append a second verdict beside every one of them.
+ *
+ * The error budget runs the opposite way to the divergence detector's. A false
+ * positive here costs the reader the verdict entirely -- the thing being
+ * guaranteed -- while a false negative costs a redundant sentence, so this test
+ * is the stricter of the two: explicit verdict language stands alone, and the
+ * ambiguous words need pricing context or a named outcome beside them.
+ */
+export function statesValueVerdict(answer: string, grounding: Grounding): boolean {
+  const clubs = new RegExp(
+    `\\b(?:${escapedPattern(grounding.home)}|${escapedPattern(grounding.away)})\\b`, "i");
+  return answer.split("\n").some((line) =>
+    splitPriceSafeSentences(line).some((sentence) => {
+      if (VALUE_VERDICT_EXPLICIT.test(sentence)) return true;
+      if (!VALUE_VERDICT_WEAK.test(sentence)) return false;
+      return PRICING_CONTEXT.test(sentence)
+        && (OUTCOME_REFERENCE.test(sentence) || clubs.test(sentence));
+    }));
+}
+
+/**
+ * A supposition: the reader is being told the read rests on something.
+ *
+ * "would" and "could" earn their place despite being everywhere in ordinary
+ * prose, because "a confirmed lineup would change this read" is a conditional
+ * close with no conjunction in it at all. They are only ever half the test --
+ * something has to move, and the read has to be the thing moving -- so the
+ * breadth is paid for by the two conditions beside this one.
+ */
+const CONDITIONAL_CUE =
+  /\b(?:if|unless|until|should|were|once|assuming|provided that|depending on|in the event|would|could)\b/i;
+
+/** What the supposition does to the read. */
+const READ_MOVEMENT =
+  /\b(?:chang\w*|shrink\w*|widen\w*|narrow\w*|shift\w*|swing\w*|flip\w*|revers\w*|tighten\w*|soften\w*|evaporat\w*|disappear\w*|revis\w*|reconsider\w*|rethink\w*|move|moves|moved|hold|holds|stand|stands|survives?)\b/i;
+
+/** What is being moved: the read itself, not some incidental thing. */
+const READ_SUBJECT =
+  /\b(?:gap|gaps|edge|value|read|call|model|market|price|priced|pricing|probabilit\w*|number|numbers|line|lines|gulf|margin)\b/i;
+
+/**
+ * Whether the answer says what would change the read.
+ *
+ * Presence, not content: which unknown matters is a judgement the server has no
+ * way to make, so all three conditions are about the *shape* of the sentence --
+ * a supposition, something that moves, and the read as the thing that moves.
+ * "If the first-choice back line starts, the gap holds" satisfies all three;
+ * "Celtic should hold on" satisfies two and is correctly not a conditional
+ * close.
+ */
+export function statesConditionalClose(answer: string): boolean {
+  return answer.split("\n").some((line) =>
+    splitPriceSafeSentences(line).some((sentence) =>
+      CONDITIONAL_CUE.test(sentence)
+      && READ_MOVEMENT.test(sentence)
+      && READ_SUBJECT.test(sentence)));
+}
+
+/**
+ * The server-composed conditional close.
+ *
+ * This one is a floor under *presence*, not under content. The server cannot
+ * know which unknown matters most for a given fixture -- that is exactly the
+ * judgement the model is there for -- but it can refuse to let a match answer
+ * end in a dead end, which is what "No verified team-news update was
+ * established for this fixture." is: a true sentence that tells the reader
+ * nothing about what to do next.
+ *
+ * So it invents nothing. It asserts no injury, no absence and no lineup; it
+ * names the one unknown that is unresolved on every pre-match fixture by
+ * construction -- who actually starts -- and says which way the read moves
+ * either way. Both branches are honest with or without a verified team-news
+ * source in the answer above it, because neither claims anyone is missing.
+ *
+ * The anchor is the gap when a market validated, because that is what the
+ * answer's read rests on, and the model's own lean when no market did. Saying
+ * "the edge" with no market in the payload would imply a comparison Pundit did
+ * not make.
+ */
+export function composeConditionalCloseSentence(
+  grounding: Grounding,
+  leg: MarketDivergenceLeg | null
+): string {
+  const anchor = leg
+    ? `the gap on ${leg.label}`
+    : `the model's lean towards ${grounding.pHome >= grounding.pAway ? grounding.home : grounding.away}`;
+  const shortAnchor = leg ? "that gap" : "that lean";
+  return "Confirmed team sheets are what would move this: if both sides start close to full "
+    + `strength, ${anchor} stands; if either is without first-choice starters, `
+    + `${shortAnchor} is the first thing to shrink.`;
+}
+
+/** A section that is already about what the read depends on. */
+const CHANGE_SECTION_LABEL =
+  /\b(?:what would change|what could change|what changes|what to watch|unknowns?|risks?|caveats?|swing factors?)\b/i;
+
+/**
+ * Puts the close where a "what would change this" section already is, or gives
+ * it one.
+ *
+ * Never appended into a team-news section, even though that is often where the
+ * dead end sits: everything under that label is an `"evidence"` region to
+ * `segmentAnswer`, and a server-composed sentence has no evidence behind it. A
+ * section of its own is also the shape `FORMAT_RULES` and `MATCH_EXAMPLE`
+ * prescribe for exactly this content.
+ */
+function placeConditionalClose(answer: string, sentence: string): string {
+  const lines = answer.split("\n");
+  const label = lines.reduce((found, line, index) =>
+    SECTION_LABEL_LINE.test(line) && CHANGE_SECTION_LABEL.test(line) ? index : found, -1);
+  if (label < 0) return `${answer.trimEnd()}\n\n**What would change this**\n${sentence}`;
+  const body = lines.reduce((found, line, index) =>
+    index > label && line.trim() && !SECTION_LABEL_LINE.test(line) ? found < 0 ? index : found : found, -1);
+  if (body < 0) return `${answer.trimEnd()}\n\n**What would change this**\n${sentence}`;
+  lines[body] = `${lines[body].trimEnd()} ${sentence}`;
+  return lines.join("\n");
+}
+
+/**
+ * A full match read, as opposed to a one-line follow-up.
+ *
+ * The close belongs on an answer that made a read of the fixture. A reply to
+ * "Why?" that is one sentence, or a pure team-news answer carrying a single
+ * cited fact, is complete as written, and appending "what would change this"
+ * to it would be machinery rather than analysis. Two section labels is the
+ * `FORMAT_RULES` shape of an answer that actually worked the fixture.
+ */
+function isFullMatchRead(answer: string): boolean {
+  return answer.split("\n").filter((line) => SECTION_LABEL_LINE.test(line)).length >= 2;
+}
+
+/**
+ * Guarantees that a match answer states the model-versus-market divergence,
+ * says where the value is and is not, and closes on what would change the read.
+ *
+ * All three are asked for by `MATCH_ANALYSIS_PRIORITIES` and all three arrive
+ * inconsistently, which is the whole argument for a floor: asking harder did
+ * not make the divergence reliable either, and supplying it deterministically
+ * did. The two added here follow the same rule -- what the server can determine,
+ * the server determines -- with the split drawn at derivability. The value
+ * verdict is arithmetic over signed gaps and a noise band, so the server owns
+ * it outright. Which unknown matters is a judgement, so the server guarantees
+ * only that the answer has a conditional close at all, in wording that asserts
+ * no fact it has not got.
  *
  * Nothing is added when no source validates completely: there is no divergence
- * to state, and inventing a market is worse than omitting one.
+ * to state and no value to rule on, and inventing a market is worse than
+ * omitting one. The close still lands, anchored on the model's own lean.
  */
-function guaranteeMarketDivergence(
+function guaranteeMatchReadCompleteness(
   answer: string,
   tier: AnalysisTier,
   grounding: AskGrounding
@@ -4789,26 +5069,84 @@ function guaranteeMarketDivergence(
   if (tier !== "match" || grounding?.kind !== "match") return answer;
   const divergences = deliverableMarketDivergence(grounding);
   const headline = headlineDivergence(divergences);
-  if (!headline) return answer;
   const stated = statesMarketDivergence(answer, divergences);
+  const hadVerdict = statesValueVerdict(answer, grounding);
+  const hadClose = statesConditionalClose(answer);
   // The counter is the measurement the prompt layer is otherwise invisible to:
   // `stated: false` is one answer in which MiniMax dropped the instruction, and
   // its rate over time is the only read available on whether the precomputed
-  // payload is working.
+  // payload is working. The verdict and the close are counted the same way, so
+  // a prompt change that improves compliance is visible as a falling insertion
+  // rate rather than having to be taken on faith.
   console.log(JSON.stringify({
     event: "match_divergence_guarantee",
     tier,
-    source: headline.divergence.source,
-    outcome: headline.leg.outcome,
-    gapPoints: headline.leg.gapPoints,
+    ...(headline
+      ? {
+        source: headline.divergence.source,
+        outcome: headline.leg.outcome,
+        gapPoints: headline.leg.gapPoints,
+      }
+      : {}),
     stated,
-    inserted: !stated,
+    inserted: Boolean(headline) && !stated,
+    statedValueVerdict: hadVerdict,
+    statedConditionalClose: hadClose,
   }));
-  if (stated) return answer;
-  return placeDivergenceSentence(
-    answer,
-    composeMarketDivergenceSentence(headline.divergence, headline.leg)
-  );
+
+  let composed = answer;
+  if (headline && !stated) {
+    composed = placeDivergenceSentence(
+      composed,
+      composeMarketDivergenceSentence(headline.divergence, headline.leg)
+    );
+  }
+  // Re-read on the composed text rather than reusing `hadVerdict`. The two
+  // differ in exactly one case: a payload whose widest gap is zero, where the
+  // divergence sentence itself already says there is no edge to take, and a
+  // verdict repeating that would be the duplicate this guarantee exists to
+  // avoid. `hadVerdict` stays the logged figure because the counter is
+  // measuring the model, not the server's own additions.
+  if (headline && !statesValueVerdict(composed, grounding)) {
+    // Placing re-reads the composed text too, so the verdict lands beside the
+    // gap it judges, whoever wrote that gap -- the model's own sentence or the
+    // one inserted a moment ago.
+    composed = placeValueVerdict(
+      composed,
+      composeValueVerdictSentence(headline.divergence),
+      divergences
+    );
+  }
+  if (!statesConditionalClose(composed) && isFullMatchRead(composed)) {
+    composed = placeConditionalClose(
+      composed,
+      composeConditionalCloseSentence(grounding, headline?.leg ?? null)
+    );
+  }
+  return composed;
+}
+
+/**
+ * Puts the verdict immediately after the sentence stating the gap, which is the
+ * only place it reads as a conclusion rather than an aside. Falling back to the
+ * first paragraph carrying percentages matches `placeDivergenceSentence`, for
+ * the case where the gap was stated in a shape the detector recognises but the
+ * line search cannot re-find.
+ */
+function placeValueVerdict(
+  answer: string,
+  sentence: string,
+  divergences: readonly MarketDivergence[]
+): string {
+  const lines = answer.split("\n");
+  const at = divergenceStatementLine(answer, divergences);
+  const index = at >= 0
+    ? at
+    : lines.findIndex((line) =>
+      line.trim() && !SECTION_LABEL_LINE.test(line) && /\d+(?:\.\d+)?\s*%/.test(line));
+  if (index < 0) return `${answer.trimEnd()}\n\n**Model vs market**\n${sentence}`;
+  lines[index] = `${lines[index].trimEnd()} ${sentence}`;
+  return lines.join("\n");
 }
 
 export async function deliverAnswer(args: {
@@ -4897,7 +5235,7 @@ export async function deliverAnswer(args: {
       // Last, after every guard: the sentence is composed from the same
       // validated record those guards check against, so running it back
       // through them could only ever return it unchanged.
-      answer: guaranteeMarketDivergence(settledAnswer, tier, grounding),
+      answer: guaranteeMatchReadCompleteness(settledAnswer, tier, grounding),
       citations: rendered.citations,
       verification: checked.verification,
     };
@@ -4920,7 +5258,7 @@ export async function deliverAnswer(args: {
     return {
       // The fallback answers from the grounding, so it owes the reader the
       // divergence for exactly the reason a generated answer does.
-      answer: guaranteeMarketDivergence(
+      answer: guaranteeMatchReadCompleteness(
         renderGroundedMatchFallback(grounding),
         tier,
         grounding
