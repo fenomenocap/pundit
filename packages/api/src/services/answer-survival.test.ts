@@ -6,6 +6,7 @@ import {
   generateAnalysis,
   hasGroundedAnswerShape,
   hasMeaningfulProse,
+  sanitizeDeliveredAnswer,
   type AskGrounding,
   type CompetitionGrounding,
   type EvidenceBundle,
@@ -780,5 +781,189 @@ describe("the other tiers keep their answers too", () => {
     expectDeliverable(delivered.answer);
     expect(delivered.answer).toContain("second-last opponent");
     expect(delivered.answer).toMatch(/general football analysis/i);
+  });
+});
+
+/**
+ * The delivery-time guarantee that a match answer states where the model and
+ * the market disagree.
+ *
+ * The prompt asks for it; MiniMax supplied it in roughly half of live samples,
+ * and this file's own probe -- a complete Celtic-vs-LASK grounding carrying an
+ * eleven-point gap, delivered byte-identical with no mention of a market --
+ * reproduced that. Since MiniMax's real compliance cannot be observed offline,
+ * the assertion is on the floor underneath it: the server states the gap when
+ * the answer did not, states it only when a market actually validates, and
+ * never states it twice.
+ */
+describe("the divergence a match answer must state", () => {
+  /** The real Celtic vs LASK payload: model 66.9/20.8/12.4 against two books. */
+  const celtic: Grounding = {
+    ...buildGrounding(fixture("Celtic", "LASK", {
+      competitionId: "uefa.champions_qual",
+      competition: "UEFA Champions League Qualifying",
+      pHome: 0.669,
+      pDraw: 0.208,
+      pAway: 0.124,
+    })),
+    oddsSources: [
+      { source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.554, pDraw: 0.238, pAway: 0.208 },
+      { source: "polymarket", observedAt: new Date().toISOString(), pHome: 0.565, pDraw: 0.235, pAway: 0.2 },
+    ],
+  };
+
+  const CELTIC_BODY = [
+    "**Verdict**",
+    "Pundit's model makes **Celtic 66.9%**, the **draw 20.8%** and **LASK 12.4%**"
+      + " for the 2 August 2026 fixture.",
+    "",
+    "**Goals**",
+    "**Over 2.5 at 55.0%** and **both teams to score at 52.0%**.",
+    "",
+    "**Team news**",
+    "No verified team-news update was established for this fixture.",
+  ].join("\n");
+
+  const deliverCeltic = (answer: string, grounding: Grounding = celtic) => deliver({
+    answer,
+    tier: "match",
+    grounding,
+    bundle: emptyBundle(),
+    evidenceRequired: false,
+    question: "Celtic vs LASK second leg",
+  });
+
+  it("states the gap when the model left it out", async () => {
+    const delivered = await deliverCeltic(CELTIC_BODY);
+    expectDeliverable(delivered.answer, true);
+    // Server-composed from the validated record, so every figure in it is one
+    // the market guard would vouch for.
+    expect(delivered.answer).toContain(
+      "Against Kalshi, which prices Celtic at 55.4%, Pundit's model at 66.9% is"
+      + " 11.5 percentage points higher"
+    );
+    // It lands beside the numbers rather than as a trailing recital, and the
+    // model's own text is untouched.
+    expect(delivered.answer.split("\n")[1]).toContain("66.9%");
+    expect(delivered.answer).toContain("No verified team-news update");
+    // Nothing machine-shaped: no ISO timestamp, no bare source header.
+    expect(delivered.answer).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("adds nothing when the model already stated a gap, however phrased", async () => {
+    const phrasings = [
+      "Kalshi has Celtic at 55.4%, some 11.5 points below the model.",
+      "The model is about 11 percentage points higher than the market on Celtic.",
+      "Against the market, Pundit is 11.4 higher on the home win.",
+      // A different leg is still a divergence: the reader was told where a gap is.
+      "The model is 8.4 percentage points under the market on LASK.",
+    ];
+    for (const line of phrasings) {
+      const delivered = await deliverCeltic(
+        CELTIC_BODY.replace("**Goals**", `${line}\n\n**Goals**`)
+      );
+      expectDeliverable(delivered.answer, true);
+      expect(delivered.answer).not.toContain("the widest gap between the two");
+      // Exactly one statement of the gap, which is the model's own.
+      expect(delivered.answer).toContain(line.split(",")[0].split(" than")[0].slice(0, 20));
+    }
+  });
+
+  /**
+   * Never invent a market. With no source, or with one too stale for the market
+   * guard to vouch for, there is no divergence to state and the answer must
+   * arrive exactly as written.
+   */
+  it("says nothing about a market it does not have", async () => {
+    const unpriced = await deliverCeltic(CELTIC_BODY, { ...celtic, oddsSources: [] });
+    expect(unpriced.answer).toBe(CELTIC_BODY);
+
+    const stale = await deliverCeltic(CELTIC_BODY, {
+      ...celtic,
+      oddsSources: [{
+        source: "kalshi",
+        observedAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+        pHome: 0.554,
+        pDraw: 0.238,
+        pAway: 0.208,
+      }],
+    });
+    expect(stale.answer).toBe(CELTIC_BODY);
+
+    const partial = await deliverCeltic(CELTIC_BODY, {
+      ...celtic,
+      oddsSources: [{
+        source: "kalshi",
+        observedAt: new Date().toISOString(),
+        pHome: 0.554,
+        pDraw: null,
+        pAway: 0.208,
+      }],
+    });
+    expect(partial.answer).toBe(CELTIC_BODY);
+  });
+
+  /**
+   * The composed sentence has to survive the same chain it bypasses. It is
+   * built from the validated record, so re-running the settled answer through
+   * the guards must be a no-op -- checked on a `uefa.champions_qual` fixture,
+   * where the qualifier points rewrites also run over the word "points".
+   */
+  it("composes a sentence the guard chain returns unchanged", async () => {
+    const delivered = await deliverCeltic(CELTIC_BODY);
+    expect(sanitizeDeliveredAnswer(delivered.answer, "match", celtic))
+      .toBe(delivered.answer);
+  });
+
+  it("counts model non-compliance so the prompt layer can be measured", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await deliverCeltic(CELTIC_BODY);
+    await deliverCeltic(CELTIC_BODY.replace(
+      "**Goals**",
+      "Kalshi has Celtic at 55.4%, some 11.5 points below the model.\n\n**Goals**"
+    ));
+    const counted = log.mock.calls
+      .map(([line]) => { try { return JSON.parse(String(line)); } catch { return {}; } })
+      .filter((entry) => entry.event === "match_divergence_guarantee");
+    expect(counted).toEqual([
+      { event: "match_divergence_guarantee", tier: "match", source: "kalshi", outcome: "home", gapPoints: 11.5, stated: false, inserted: true },
+      { event: "match_divergence_guarantee", tier: "match", source: "kalshi", outcome: "home", gapPoints: 11.5, stated: true, inserted: false },
+    ]);
+    log.mockRestore();
+  });
+
+  /**
+   * The guarantee also covers a divergence the model wrote and the chain then
+   * removed, which is not hypothetical: "the model is 11.5 percentage points
+   * higher than Kalshi on Celtic" puts its only figure outside the clause the
+   * source opens, so `reconcileMarketSentence` finds nothing it can validate
+   * and drops the sentence. Before this change that answer reached the user
+   * with no divergence in it at all despite the model having complied.
+   */
+  it("restores a divergence the market guard removed", async () => {
+    const delivered = await deliverCeltic(CELTIC_BODY.replace(
+      "**Goals**",
+      "The model is 11.5 percentage points higher than Kalshi on Celtic.\n\n**Goals**"
+    ));
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).not.toContain("higher than Kalshi on Celtic");
+    expect(delivered.answer).toContain("11.5 percentage points higher");
+  });
+
+  it("gives the grounded fallback the divergence too", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const delivered = await deliverAnswer({
+      answer: "**Verdict**",
+      tier: "match",
+      grounding: celtic,
+      bundle: emptyBundle(),
+      client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+      question: "Celtic vs LASK second leg",
+      evidenceRequired: false,
+      candidateUnrecognized: false,
+    });
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).toContain("11.5 percentage points higher");
+    warn.mockRestore();
   });
 });

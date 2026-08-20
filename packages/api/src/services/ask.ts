@@ -4552,6 +4552,16 @@ function headlineDivergence(
  */
 const GAP_IN_POINTS = /(\d+(?:\.\d+)?)\s*\**\s*(?:percentage\s+|pct\s+|pp\s+)?(?:points?|pts?|pp)\b/gi;
 
+/**
+ * A gap stated as a bare magnitude against a comparative: "the model is 11.4
+ * higher", "some 8.4 below the market". The unit is left implicit, which is
+ * ordinary writing and still tells the reader the size and direction, so it has
+ * to count. The comparative is required precisely because a bare number beside
+ * a market is otherwise indistinguishable from a quoted price.
+ */
+const GAP_AS_COMPARISON =
+  /(\d+(?:\.\d+)?)\s*%?\s*(?:\w+\s+){0,2}?(?:higher|lower|above|below|clear of|ahead of|adrift|apart|wider|shy of|short of)\b/gi;
+
 /** Words that make a sentence about the model-versus-market comparison. */
 const DIVERGENCE_CONTEXT =
   /\b(?:kalshi|polymarket|markets?|priced?|prices|pricing|model|pundit)\b/i;
@@ -4592,16 +4602,14 @@ export function statesMarketDivergence(
   return answer.split("\n").some((line) =>
     splitPriceSafeSentences(line).some((sentence) => {
       if (!DIVERGENCE_CONTEXT.test(sentence)) return false;
-      GAP_IN_POINTS.lastIndex = 0;
-      for (
-        let match = GAP_IN_POINTS.exec(sentence);
-        match;
-        match = GAP_IN_POINTS.exec(sentence)
-      ) {
-        const stated = Number(match[1]);
-        if (gaps.some((gap) => Math.abs(gap - stated) <= GAP_STATEMENT_TOLERANCE)) return true;
-      }
-      return false;
+      return [GAP_IN_POINTS, GAP_AS_COMPARISON].some((pattern) => {
+        pattern.lastIndex = 0;
+        for (let match = pattern.exec(sentence); match; match = pattern.exec(sentence)) {
+          const stated = Number(match[1]);
+          if (gaps.some((gap) => Math.abs(gap - stated) <= GAP_STATEMENT_TOLERANCE)) return true;
+        }
+        return false;
+      });
     }));
 }
 
