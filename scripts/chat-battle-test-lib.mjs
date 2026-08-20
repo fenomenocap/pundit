@@ -399,11 +399,19 @@ function validIsoDate(value) {
  * report as INCONCLUSIVE.
  */
 export function routableRecognizedEntries(entries, { registryEnabled = false, enabledCompetitionIds = [] } = {}) {
-  // Expanded routing serves the registry itself, so every approved identity is
-  // routable and nothing needs narrowing.
-  if (registryEnabled) return entries ?? [];
+  // A completed fixture is outside the active window for the same reason a
+  // friendly is outside the routed competitions: chat routes against the
+  // forward-looking active ESPN set, so asking about a match already played can
+  // only ever produce an abstention. Verified live -- a recognized, routed,
+  // completed fixture returns grounding: null and the discovery-candidate
+  // notice, never fixture-tier grounding. This narrowing applies whether or not
+  // the registry is enabled, since the active window bounds both modes.
+  const current = (entries ?? []).filter((entry) => entry?.fixture?.status !== "completed");
+  // Expanded routing serves the registry itself, so every approved identity in
+  // the active window is routable and nothing further needs narrowing.
+  if (registryEnabled) return current;
   const enabled = new Set(enabledCompetitionIds);
-  return (entries ?? []).filter((entry) => enabled.has(entry?.fixture?.competition?.id));
+  return current.filter((entry) => enabled.has(entry?.fixture?.competition?.id));
 }
 
 /** Competitions whose ESPN windows the deployment is actually refreshing. */
