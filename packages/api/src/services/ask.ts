@@ -3789,9 +3789,17 @@ export function extractLeakedSearchQueries(text: string): string[] {
 // and missed "Let me get more concrete details from the Telegraph", which
 // reached production; the intent-phrase prefix ("let me", "I'll", ...) is what
 // makes a clause narration, so the verb only has to name the act.
+//
+// The second group are presentation verbs rather than retrieval ones. Behind
+// the same intent-phrase prefix they narrate the answer's own construction
+// ("let me lay this out", "I'll break this down") rather than any tool use,
+// which FORMAT_RULES bans under the same rule. They are only ever consulted
+// after an intent phrase, so an ordinary sentence that happens to use "start"
+// or "cover" is never a candidate.
 const NARRATION_VERBS =
   "search|look|check|find|pull|gather|research|browse|get|dig|confirm|verify"
-  + "|review|read|see|retrieve|fetch|scan";
+  + "|review|read|see|retrieve|fetch|scan"
+  + "|lay|outline|walk|run|break|start|begin|cover|report|unpack|summari[sz]e";
 
 const PROCESS_NARRATION = new RegExp(
   "(^|\\n|(?<=[.!?])[ \\t]|[,;][ \\t]*(?:so|then|and)?[ \\t]*)"
@@ -3834,10 +3842,73 @@ const SEARCH_STATUS_NARRATION = new RegExp(
   "gi"
 );
 
+/**
+ * A third shape of tool-loop narration: a report on what the retrieval itself
+ * came back with, written about the search rather than about football. Observed
+ * live as the opening line of a delivered team-news answer -- "Searches returned
+ * dated previews that establish current absences for both sides".
+ *
+ * Neither pattern above catches it. There is no intent phrase (the search has
+ * already happened, so nothing is announced), and it reports on the evidence
+ * rather than on the model's own information state.
+ *
+ * Precision comes from requiring the retrieval verb to sit directly on a
+ * subject that names the search. "Arsenal's search for a striker continues" and
+ * "the search for a new striker returned little" both fail that test -- the
+ * first because the subject does not begin at a clause boundary, the second
+ * because "for" stands between the subject and its verb -- so an ordinary
+ * sentence that merely contains the word "search" is untouched. The clause is
+ * bounded at `;` as well as at sentence punctuation so that a semicolon-joined
+ * remainder is left standing rather than swallowed.
+ */
+const SEARCH_RESULT_NARRATION = new RegExp(
+  "(^|\\n|(?<=[.!?;])[ \\t]|[,;][ \\t]*(?:so|then|and)?[ \\t]*)"
+  + "(?:the|my|our|these|those)?[ \\t]*(?:web[ \\t]+|initial[ \\t]+|latest[ \\t]+)?"
+  + "search(?:es)?(?:[ \\t]+results?)?[ \\t]+"
+  + "(?:just[ \\t]+|only[ \\t]+|all[ \\t]+|both[ \\t]+)?"
+  + "(?:returned|turned[ \\t]+up|surfaced|yielded|gave|came[ \\t]+back|produced"
+  + "|brought[ \\t]+up|show(?:ed|s)?|found|confirm(?:ed|s)?|establish(?:ed|es)?)\\b"
+  + "[^.!?;\\n]*[;.!?]*[ \\t]*",
+  "gi"
+);
+
+/**
+ * The fourth shape: an announcement of the answer's own running order, made
+ * before the answer starts. Live example, from the same delivered answer as
+ * SEARCH_RESULT_NARRATION -- "reporting those first, then the read".
+ * FORMAT_RULES asks for the answer to start directly with the first bold label,
+ * so a sentence whose only content is the order of what follows is narration.
+ *
+ * Two shapes, both anchored so the presentation verb starts its own clause. A
+ * running-order fragment needs both "first" and a following "then", which is
+ * what separates it from football prose using the same verbs: "Arteta will
+ * start with Saka first, then bring on Havertz" keeps its verb mid-clause and
+ * so never begins a match. The "here's the read" shape stops at a colon, so a
+ * preamble is removed without taking the read it introduces with it.
+ */
+const ANSWER_STRUCTURE_NARRATION = new RegExp(
+  "(^|\\n|(?<=[.!?;])[ \\t]|[,;][ \\t]*(?:so|then|and)?[ \\t]*)"
+  + "(?:"
+  + "(?:here'?s|here is)[ \\t]+(?:the|my)[ \\t]+"
+  + "(?:read|answer|analysis|breakdown|rundown|take|verdict)\\b[^.!?:\\n]*[:.!?]*[ \\t]*"
+  + "|(?:report|cover|start|begin|lay|list|tak|walk|run|go)(?:ing|s|e|ning)?"
+  + "[ \\t]*(?:out|through|with)?\\b[^.!?;\\n]*?\\bfirst\\b[^.!?;\\n]*?\\bthen\\b"
+  + "[^.!?;\\n]*[;.!?]*[ \\t]*"
+  + ")",
+  "gi"
+);
+
 export function stripProcessNarration(answer: string): string {
   return answer
     .replace(SEARCH_STATUS_NARRATION, (match: string, lead: string) =>
       NARRATION_EXEMPT.test(match) ? match : lead)
+    // Both of the retrieval/running-order shapes take the same negation
+    // exemption as the patterns above: "searches did not turn up a return date"
+    // is a limitation the answer owes the user, not narration.
+    .replace(SEARCH_RESULT_NARRATION, (match: string, lead: string) =>
+      NARRATION_EXEMPT.test(match) ? match : /^[,;]/.test(lead) ? ". " : lead)
+    .replace(ANSWER_STRUCTURE_NARRATION, (match: string, lead: string) =>
+      NARRATION_EXEMPT.test(match) ? match : /^[,;]/.test(lead) ? ". " : lead)
     .replace(PROCESS_NARRATION, (match: string, lead: string) => {
       const verb = NARRATION_VERB.exec(match);
       if (NARRATION_EXEMPT.test(verb ? match.slice(0, verb.index) : match)) return match;
