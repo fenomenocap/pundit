@@ -871,6 +871,20 @@ describe("the divergence a match answer must state", () => {
     expect(delivered.answer).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
+  it("does not reintroduce a market comparison after a model-only request", async () => {
+    const delivered = await deliver({
+      answer: `${CELTIC_BODY}\n\n**Market comparison**\nKalshi prices Celtic at 55.4%.`,
+      tier: "match",
+      grounding: celtic,
+      bundle: emptyBundle(),
+      evidenceRequired: false,
+      question: "Which side has the stronger model case, and why? Use model evidence only.",
+    });
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).toContain("Pundit's model makes **Celtic 66.9%**");
+    expect(delivered.answer).not.toMatch(/kalshi|polymarket|market comparison|market gap/i);
+  });
+
   it("adds nothing when the model already stated a gap, however phrased", async () => {
     const phrasings = [
       "Kalshi has Celtic at 55.4%, some 11.5 points below the model.",

@@ -7,6 +7,7 @@ import process from "node:process";
 import {
   EVAL_SCHEMA_VERSION,
   MIN_REQUEST_INTERVAL_MS,
+  abortSseAfterGrounding,
   createComparisonBaseline,
   createPacer,
   describeRecognizedRoutability,
@@ -373,6 +374,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     assertionFailures.push(...correctnessValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
+    if (turn.requireSourcedTeamNews || scenario.requireSourcedTeamNews) {
+      const newsValidation = validateTeamNewsDiscipline(result.answer);
+      result.assertions[`turn${turnNumber}TeamNewsSourced`] = newsValidation.passed;
+      semanticCheckCount += 1;
+      assertionFailures.push(...newsValidation.failures.map((failure) =>
+        `turn ${turnNumber}: ${failure} — ${sanitizeEvidence(result.answer)}`
+      ));
+    }
     result.turnResults.push({
       turn: turnNumber,
       request: response.requestBody,
@@ -385,14 +394,6 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       answer: result.answer,
       assertions: Object.fromEntries(Object.entries(result.assertions).filter(([name]) => name.startsWith(`turn${turnNumber}`))),
     });
-  }
-  if (scenario.requireSourcedTeamNews) {
-    const newsValidation = validateTeamNewsDiscipline(result.answer);
-    result.assertions.teamNewsSourced = newsValidation.passed;
-    semanticCheckCount += 1;
-    assertionFailures.push(...newsValidation.failures.map((failure) =>
-      `final answer: ${failure} — ${sanitizeEvidence(result.answer)}`
-    ));
   }
   if (scenario.kind === "certainty") {
     const resistsCertainty = /\b(probab|likely|uncertain|cannot|can't|no guarantee|not certain|model|estimate)\b/i.test(result.answer);
@@ -557,32 +558,49 @@ async function runCancellationScenario(scenario, options, pacer, onRequestStart)
     startedAt: start,
   });
   const controller = new AbortController();
-  const cancel = setTimeout(() => controller.abort(), 250);
+  const groundingDeadline = setTimeout(
+    () => controller.abort(),
+    Math.min(options.timeoutMs, 90_000)
+  );
   const started = Date.now();
   try {
     result.reproduction.requests.push({
       method: "POST",
       path: "/api/ask",
       body: { question: scenario.question, stream: true },
-      abortAfterMs: 250,
+      abortAfterEvent: "grounding",
     });
-    await fetch(`${options.apiUrl}/api/ask`, {
+    const response = await fetch(`${options.apiUrl}/api/ask`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ question: scenario.question, stream: true }),
       signal: controller.signal,
     });
-    result.evidence = "Request completed before the evaluator could exercise cancellation.";
+    result.status = response.status;
+    if (!response.ok || !response.headers.get("content-type")?.includes("text/event-stream")) {
+      result.evidence = `Expected SSE before cancellation, received HTTP ${response.status}.`;
+      return result;
+    }
+    const cancellation = await abortSseAfterGrounding(response, controller, {
+      timeoutMs: Math.min(5_000, options.timeoutMs),
+    });
+    result.latencyMs = Date.now() - started;
+    result.requestLatencies = [result.latencyMs];
+    result.assertions.groundingObservedBeforeAbort = cancellation.groundingObserved;
+    result.assertions.clientAbortObserved = cancellation.abortErrorObserved;
+    result.assertions.cancelledPromptly = cancellation.abortLatencyMs < 5_000;
+    result.passed = Object.values(result.assertions).every(Boolean);
+    result.outcome = result.passed ? "PASS" : "FAIL";
+    result.evidence = `Grounding received, then client AbortError observed after ${cancellation.abortLatencyMs}ms.`;
   } catch (error) {
     result.latencyMs = Date.now() - started;
     result.requestLatencies = [result.latencyMs];
-    result.assertions.clientAbortObserved = error?.name === "AbortError";
-    result.assertions.cancelledPromptly = result.latencyMs < 5_000;
-    result.passed = Object.values(result.assertions).every(Boolean);
-    result.outcome = result.passed ? "PASS" : "FAIL";
-    result.evidence = `Client abort observed after ${result.latencyMs}ms.`;
+    result.assertions.groundingObservedBeforeAbort = false;
+    result.assertions.clientAbortObserved = false;
+    result.assertions.cancelledPromptly = false;
+    result.evidence = `Cancellation contract failed: ${sanitizeEvidence(error?.message ?? error)}.`;
   } finally {
-    clearTimeout(cancel);
+    clearTimeout(groundingDeadline);
   }
   return result;
 }
