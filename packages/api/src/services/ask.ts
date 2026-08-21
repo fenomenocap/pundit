@@ -382,8 +382,10 @@ const MARKET_SUBJECT = /\b(?:markets?|lines?|prices?|odds|kalshi|polymarket|book
  * every English sentence, and that is precisely how the evidence guards came
  * to delete the model's own probabilities.
  */
+// "a Rice or Saka start would..." is still an availability claim even
+// though it is phrased as a counterfactual rather than news.
 const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
-  /\b(?:available|unavailable|out injured|out with a|will miss|misses? out|(?:is|are|was|were|be) missed|sits? out|back in (?:training|contention)|match ?fit|fitness test|doubt)\b/i;
+  /\b(?:available|unavailable|out injured|out with a|will miss|misses? out|(?:is|are|was|were|be) missed|sits? out|back in (?:training|contention)|match ?fit|fitness test|doubt|confirmed absence|genuinely out|first-choice XI|full-strength XI)\b|\b[A-Z][A-Za-z.'’-]+(?:\s+or\s+[A-Z][A-Za-z.'’-]+)?\s+starts?\s+(?:would|will|could|should)\b/i;
 
 /**
  * Does this sentence make a squad-availability claim -- the narrow class that
@@ -660,26 +662,36 @@ export async function verifyCurrentClaims(
 }
 
 export function sanitizeFixtureCoverageAnswer(answer: string, grounding: FixtureGrounding): string {
-  const unsafeNumericClaim = /\b\d{1,2}\s*[-:–—]\s*\d{1,2}\b|\b\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?\s*(?:decimal odds|to 1)\b/i;
-  const unsafePunditClaim = /\bpundit(?:'s)?\b[^.!?\n]*(?:probabilit|forecast|prediction|scoreline|odds)/i;
-  const safe = answer.split("\n").filter((line) =>
-    !unsafeNumericClaim.test(line) && !unsafePunditClaim.test(line)
-  ).join("\n").trim();
-  const notice = grounding.capability.status === "outside-coverage"
-    ? "This recognized fixture is outside Pundit's model coverage, so no Pundit probabilities or scoreline estimates are available."
-    : grounding.capability.status === "temporarily-unpriced"
-      ? "This recognized fixture is temporarily unpriced while the model data refreshes."
-      : "This recognized fixture is missing a required model input, so Pundit will not estimate probabilities.";
-  return safe ? `${notice}\n\n${safe}` : notice;
+  // Capability is a complete server-owned decision. Generated explanations
+  // repeatedly replaced its actual reason with invented squad/lineup needs,
+  // so non-priced fixtures use this deterministic rendering and nothing from
+  // the model's speculative tail.
+  const reason = grounding.capability.reason;
+  if (grounding.capability.status === "outside-coverage") {
+    const explanation = reason === "friendly-policy-disabled"
+      ? "Public friendly forecasts are disabled by policy."
+      : reason === "unsupported-competition"
+        ? "The competition is not supported by the public model."
+        : "This fixture is disabled by the public model policy.";
+    return `This recognized fixture is outside Pundit's model coverage, so no Pundit probabilities or scoreline estimates are available.\n\n${explanation}`;
+  }
+  if (grounding.capability.status === "temporarily-unpriced") {
+    const explanation = reason === "model-initializing"
+      ? "The model is still initializing."
+      : "The club-strength ratings are refreshing.";
+    return `This recognized fixture is temporarily unpriced.\n\n${explanation}`;
+  }
+  const explanation = reason === "ratings-unavailable"
+    ? "A required club-strength rating is unavailable."
+    : reason === "neutral-venue-unknown"
+      ? "The venue's neutral status has not been established."
+      : "Required structured fixture context is missing.";
+  return `This recognized fixture is missing a required model input, so Pundit will not estimate probabilities.\n\n${explanation}`;
 }
 
 export function sanitizeUnrecognizedCandidateAnswer(answer: string): string {
-  const safe = answer.split("\n").filter((line) =>
-    !/\b\d{1,2}\s*[-:–—]\s*\d{1,2}\b|\b\d+(?:\.\d+)?%|\b(?:decimal )?odds\b/i.test(line)
-    && !/\bpundit(?:'s)?\b[^.!?\n]*(?:probabilit|forecast|prediction|scoreline)/i.test(line)
-  ).join("\n").trim();
-  const notice = "I could not establish an authoritative structured fixture identity for that matchup; no verified fixture identity was established, so it remains a discovery candidate and has no Pundit fixture badge or probabilities.";
-  return safe ? `${notice}\n\n${safe}` : notice;
+  void answer;
+  return "I could not establish an authoritative structured fixture identity for that matchup; no verified fixture identity was established, so it remains a discovery candidate and has no Pundit fixture badge or probabilities.";
 }
 
 /**
@@ -1428,6 +1440,17 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
     return "";
   };
   const retained = reviseAnswerSentences(groundedWording, (sentence) => {
+    if (/\b(?:championship|tier[- ]two|second[- ]tier)\b/i.test(sentence)
+      && new RegExp(`\\b(?:${escapedPattern(grounding.home)}|${escapedPattern(grounding.away)})\\b`, "i").test(sentence)) {
+      return `The structured fixture is classified as ${grounding.competition}.`;
+    }
+    if (/\b(?:upset protection|hedg(?:e|es|ed|ing)|market staleness|pricing error|true price|natural explanation)\b/i.test(sentence)
+      && /\b(?:market|price|book|kalshi|polymarket)\b/i.test(sentence)) {
+      return "The market snapshot establishes the probability gap, not its cause.";
+    }
+    if (/\b(?:assumes?|assuming)\b[^.!?\n]{0,50}\b(?:XI|line-?up|starters?)\b|\b(?:rotation|second string|team sheets?|line-?ups?|first-choice (?:attack|XI|starters?))\b[^.!?\n]{0,100}\b(?:shrink|pull|push|compress|move|modal|stand|erode)/i.test(sentence)) {
+      return "The grounded forecast uses club-strength ratings and the competition's home-field setting; it does not quantify lineup counterfactuals.";
+    }
     const claimedTeam = mentionedTeamOutcome(sentence, grounding);
     if (claimedTeam) {
       const claimsUnderdog = /\b(?:underdogs?|outsiders?|upset|overturn\s+the\s+model|spring\s+an?\s+upset)\b/i.test(sentence);
@@ -3151,6 +3174,34 @@ const ORDINAL_WORDS = [
 
 function sanitizeScorelineRankingClaims(answer: string, grounding: Grounding): string {
   return reviseAnswerSentences(answer, (sentence) => {
+    if (/\b(?:scorelines?|lines?)\b/i.test(sentence)
+      && /(?:0\.1%|\b(?:reporting threshold|threshold)\b)/i.test(sentence)
+      && /\b(?:all|every|only|none|does not|doesn't|do not|don't)\b/i.test(sentence)) {
+      const reported = grounding.scorelines.filter((row) => row.probability >= 0.001 - 1e-9);
+      const counts = reported.reduce((total, { score }) => {
+        const [home, away] = score.split("-").map(Number);
+        if (home > away) total.home += 1;
+        else if (away > home) total.away += 1;
+        else total.draw += 1;
+        return total;
+      }, { home: 0, draw: 0, away: 0 });
+      return `Among the ${reported.length} grounded scorelines at or above 0.1%, `
+        + `${counts.home} are ${grounding.home} wins, ${counts.draw} are draws and `
+        + `${counts.away} are ${grounding.away} wins.`;
+    }
+    if (/\b(?:scorelines?|results?)\b[^.!?\n]{0,50}\b(?:tied|drawn|draws?)\b/i.test(sentence)
+      && /\d+(?:\.\d+)?%/.test(sentence)) {
+      return `The model's full draw probability is ${(grounding.pDraw * 100).toFixed(1)}%.`;
+    }
+    if (/\b(?:only|sole)\b[^.!?\n]{0,40}\bscoreline\b/i.test(sentence)) {
+      const awayWins = grounding.scorelines.filter(({ score }) => {
+        const [home, away] = score.split("-").map(Number);
+        return away > home;
+      }).slice(0, 2);
+      if (awayWins.length) {
+        return `The grounded away-win examples are ${awayWins.map((row) => `**${row.score} (${(row.probability * 100).toFixed(1)}%)**`).join(" and ")}.`;
+      }
+    }
     const topClaim = /\b(?:the\s+)?(?:(?:top\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\s+scorelines?)|(?:(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\s+most likely scorelines?))\b/i.exec(sentence);
     if (topClaim && /\b(?:all|total(?:l|ling)?|sum|combined|without conceding|clean sheets?)\b/i.test(sentence)) {
       const count = topClaim[1] ?? topClaim[2];
@@ -4266,7 +4317,7 @@ export function sanitizeRequestFidelity(
     if (!droppingMarketSection) kept.push(line);
   }
   return reviseAnswerSentences(kept.join("\n"), (sentence) =>
-    /\b(?:kalshi|polymarket|bookmakers?|market (?:price|gap|line|odds)|priced probability)\b/i.test(sentence)
+    /\b(?:kalshi|polymarket|bookmakers?|bookies?|markets?|market[- ]implied|priced probability|true price|value (?:is|lies)|edge (?:is|lives))\b/i.test(sentence)
       ? ""
       : sentence
   ).replace(/\n{3,}/g, "\n\n").trim();
@@ -4274,6 +4325,12 @@ export function sanitizeRequestFidelity(
 
 export function shouldHoldRequestFidelity(question: string, hasHistory: boolean): boolean {
   return hasHistory || isModelOnlyRequest(question);
+}
+
+export function dropLeadingAnswerFragment(answer: string): string {
+  // A leaked close-delimiter is not prose. Keep markdown/list prefixes intact
+  // and remove only a punctuation-only fragment before a normal sentence.
+  return answer.replace(/^\s*(?:[)\]}>,;:.]+\s*)+(?=[A-Z])/u, "");
 }
 
 // The deterministic guard chain for a tier, factored out of
@@ -4307,7 +4364,9 @@ export function sanitizeAnswerForTier(
       step("normalizeBannedMarkdown",
         step("normalizeSectionBreaks",
           step("stripProcessNarration",
-            step("stripToolCallMarkup", answer, stripToolCallMarkup),
+            step("stripToolCallMarkup",
+              step("dropLeadingAnswerFragment", answer, dropLeadingAnswerFragment),
+              stripToolCallMarkup),
             stripProcessNarration),
           normalizeSectionBreaks),
         normalizeBannedMarkdown),
@@ -5455,9 +5514,8 @@ export function composeConditionalCloseSentence(
     ? `the gap on ${leg.label}`
     : `the model's lean towards ${grounding.pHome >= grounding.pAway ? grounding.home : grounding.away}`;
   const shortAnchor = leg ? "that gap" : "that lean";
-  return "Confirmed team sheets are what would move this: if both sides start close to full "
-    + `strength, ${anchor} stands; if either is without first-choice starters, `
-    + `${shortAnchor} is the first thing to shrink.`;
+  return `A material change to the club-strength inputs or fixture context would require a refreshed forecast for ${anchor}; `
+    + `this payload does not quantify lineup counterfactuals or guarantee ${shortAnchor} will persist.`;
 }
 
 /** A section that is already about what the read depends on. */
@@ -5605,6 +5663,180 @@ function placeValueVerdict(
   return lines.join("\n");
 }
 
+function renderGroundedModelOnlyAnswer(grounding: Grounding, inputQuestion: boolean): string {
+  const scores = grounding.topScores.slice(0, 3)
+    .map((row) => `**${row.score} (${asPercent(row.probability)})**`)
+    .join(", ");
+  const sections = [
+    "**Model view**",
+    `Pundit's model gives **${grounding.home} ${asPercent(grounding.pHome)}**, the `
+      + `**draw ${asPercent(grounding.pDraw)}** and **${grounding.away} ${asPercent(grounding.pAway)}** `
+      + `for the ${formatGroundingDate(grounding.date)} fixture.`,
+    "",
+    "**Goals and scorelines**",
+    `Over 2.5 is **${asPercent(grounding.pOver2_5)}** and both teams to score is `
+      + `**${asPercent(grounding.pBttsYes)}**.${scores ? ` The leading scorelines are ${scores}.` : ""}`,
+    "",
+    "**Model inputs**",
+    `The grounded forecast uses reviewed club-strength ratings${grounding.homeFieldAdvantage
+      ? " and applies the competition's home-field advantage"
+      : " with no home-field advantage applied"}. `
+      + "This response does not expose an input-by-input contribution decomposition, so Pundit cannot honestly rank how much each input contributes.",
+  ];
+  if (inputQuestion) {
+    sections.push(
+      "",
+      "**Answer**",
+      "The available payload cannot establish which single model input matters most; it identifies the inputs and the resulting probabilities, not a causal decomposition."
+    );
+  }
+  return sections.join("\n");
+}
+
+function renderGroundedMatchAnswer(grounding: Grounding): string {
+  const sections = [
+    "**Model view**",
+    `Pundit's model gives **${grounding.home} ${asPercent(grounding.pHome)}**, the `
+      + `**draw ${asPercent(grounding.pDraw)}** and **${grounding.away} ${asPercent(grounding.pAway)}** `
+      + `for the ${formatGroundingDate(grounding.date)} fixture${grounding.homeFieldAdvantage
+        ? ", with home-field advantage applied"
+        : ", with no home-field advantage applied"}.`,
+  ];
+  const completeMarkets = grounding.oddsSources.filter((source) =>
+    Number.isFinite(source.pHome) && Number.isFinite(source.pDraw) && Number.isFinite(source.pAway)
+  );
+  if (completeMarkets.length) {
+    sections.push("", "**Model vs market**");
+    for (const source of completeMarkets) {
+      const observed = describeMarketObservation(source.observedAt);
+      const label = `${source.source[0].toLocaleUpperCase()}${source.source.slice(1)}`;
+      sections.push(
+        `${label} market-implied probabilities (third-party data, not a Pundit forecast): `
+          + `${grounding.home} ${asPercent(source.pHome)}, draw ${asPercent(source.pDraw!)}, `
+          + `${grounding.away} ${asPercent(source.pAway)}`
+          + `${observed ? `, observed ${observed}` : ""}.`
+      );
+    }
+    const largest = grounding.marketDivergence
+      .flatMap((row) => row.legs.map((leg) => ({ source: row.source, leg })))
+      .sort((a, b) => Math.abs(b.leg.gapPoints) - Math.abs(a.leg.gapPoints))[0];
+    if (largest) {
+      sections.push(
+        `The largest grounded difference is ${Math.abs(largest.leg.gapPoints).toFixed(1)} percentage points on `
+          + `${largest.leg.label}: Pundit is ${largest.leg.gapPoints >= 0 ? "higher" : "lower"} than `
+          + `${largest.source}. The snapshot establishes the size and direction of the gap, not its cause.`
+      );
+    }
+  }
+  sections.push(
+    "",
+    "**Goals**",
+    `Over 2.5 is **${asPercent(grounding.pOver2_5)}**; under 2.5 is **${asPercent(grounding.pUnder2_5)}**. `
+      + `Both teams to score is **${asPercent(grounding.pBttsYes)}**; BTTS No is **${asPercent(grounding.pBttsNo)}**.`
+  );
+  const top = grounding.topScores.slice(0, 5);
+  if (top.length) {
+    sections.push(
+      "",
+      "**Likely scorelines**",
+      top.map((row) => `**${row.score} (${asPercent(row.probability)})**`).join(", ") + "."
+    );
+  }
+  sections.push(
+    "",
+    "**Limits**",
+    "The grounded forecast uses club-strength ratings and the competition's home-field setting. It does not ingest a confirmed lineup, explain why an external price differs, or quantify lineup counterfactuals."
+  );
+  return sections.join("\n");
+}
+
+function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding): string {
+  const title = [...grounding.seasonOutlook.titleProbabilities]
+    .sort((a, b) => b.probability - a.probability)
+    .slice(0, 5);
+  const topFour = [...grounding.seasonOutlook.topFourProbabilities]
+    .sort((a, b) => b.probability - a.probability)
+    .slice(0, 4);
+  const allZero = grounding.standings.length > 0
+    && grounding.standings.every((row) => row.playedGames === 0 && row.points === 0);
+  const leader = title[0];
+  const certaintyDemand = /\b(?:guarantee|100% certainty|state (?:the )?champion as (?:a )?fact|promise|remove all uncertainty)\b/i.test(question);
+  return [
+    "**Title race**",
+    title.map((row, index) => `${index + 1}. **${row.team} ${asPercent(row.probability)}**`).join("\n"),
+    "",
+    "**Top-four outlook**",
+    topFour.map((row) => `**${row.team} ${asPercent(row.probability)}**`).join(", ") + ".",
+    "",
+    certaintyDemand ? "**No guarantee**" : "**Context**",
+    certaintyDemand
+      ? `Pundit cannot guarantee a winner. ${leader
+        ? `${leader.team} is the most likely champion at ${asPercent(leader.probability)}, not a certainty.`
+        : "The model supplies probabilities, not certainty."}`
+      : `${allZero
+        ? "The supplied table is all zeroes, so it provides no ranking from played matches. "
+        : "The current standings are included in the simulation. "}`
+        + `These are ${grounding.seasonOutlook.runs.toLocaleString("en-US")} simulation results across `
+        + `${grounding.seasonOutlook.remainingFixtures} remaining fixtures, not guarantees.`,
+  ].join("\n");
+}
+
+function renderGroundedCompetitionAnswer(question: string, grounding: CompetitionGrounding): string {
+  if (/\b(?:sensitive|sensitivity|one upset|one result|one loss|one win)\b/i.test(question)) {
+    return "**Limits of this table**\nA standings-only payload cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
+  }
+  const rows = [...grounding.standings].sort((a, b) => a.position - b.position);
+  const allZero = rows.length > 0
+    && rows.every((row) => row.playedGames === 0 && row.points === 0 && row.goalDifference === 0);
+  if (allZero) {
+    return [
+      "**Current table**",
+      `All ${rows.length} listed clubs have played 0 matches and have 0 points with 0 goal difference.`,
+      "",
+      "**What that means**",
+      "The supplied table does not establish an on-field ranking or explain the provider's ordering among tied teams.",
+      "",
+      "**Teams listed**",
+      rows.map((row) => row.team).join(", ") + ".",
+    ].join("\n");
+  }
+  return [
+    "**Current table**",
+    ...rows.slice(0, 5).map((row) =>
+      `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} matches, goal difference ${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
+    ),
+    "",
+    "The positions and figures above come directly from the supplied standings; no title probability is inferred from them.",
+  ].join("\n");
+}
+
+export function deterministicGroundedResponse(
+  question: string,
+  grounding: AskGrounding
+): string | null {
+  if (grounding?.kind === "fixture") return sanitizeFixtureCoverageAnswer("", grounding);
+  if (grounding?.kind === "season") return renderGroundedSeasonAnswer(question, grounding);
+  if (grounding?.kind === "competition") return renderGroundedCompetitionAnswer(question, grounding);
+  if (grounding?.kind === "match") {
+    const asksInput = /\b(?:which|what)\s+(?:single\s+)?model input\b|\bmodel input[^?\n]{0,30}\bmatters? most\b/i.test(question);
+    if (isModelOnlyRequest(question) || asksInput) {
+      return renderGroundedModelOnlyAnswer(grounding, asksInput);
+    }
+    return renderGroundedMatchAnswer(grounding);
+  }
+  return null;
+}
+
+export function deterministicCoverageResponse(
+  candidateUnrecognized: boolean,
+  grounding: AskGrounding
+): string | null {
+  if (candidateUnrecognized) return sanitizeUnrecognizedCandidateAnswer("");
+  return grounding?.kind === "fixture"
+    ? deterministicGroundedResponse("", grounding)
+    : null;
+}
+
 export async function deliverAnswer(args: {
   /** The raw generated answer, before the coverage/candidate sanitizer. */
   answer: string;
@@ -5662,6 +5894,20 @@ export async function deliverAnswer(args: {
           removedClaimCount: 0,
         },
       };
+  if (grounding?.kind === "match"
+    && evidenceRequired
+    && /\b(?:injur(?:y|ies|ed)|suspension|availability|line-?up|team news)\b/i.test(question)
+    && checked.verification.supportedClaimCount === 0
+    && (checked.verification.status === "abstain" || checked.verification.status === "unavailable")) {
+    const abstention = checked.verification.status === "unavailable"
+      ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
+      : TEAM_NEWS_ABSTENTION;
+    return {
+      answer: `${renderGroundedModelOnlyAnswer(grounding, false)}\n\n**Team news**\n${abstention}`,
+      citations: [],
+      verification: checked.verification,
+    };
+  }
   const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
     checked.answer,
     checked.verification,
@@ -5835,6 +6081,30 @@ export async function answerQuestion(
       correctionSearchContext(history, grounding),
       grounding
     );
+    const coverageClosed = deterministicCoverageResponse(candidateUnrecognized, grounding);
+    if (coverageClosed) {
+      // Capability and candidate identity stay deterministic, but a current or
+      // dated question still owes the mandatory bounded search. Search results
+      // cannot promote a candidate or alter a structured capability decision,
+      // so the closed notice is returned after the lookup without giving the
+      // provider or generated prose authority over fixture identity.
+      if (query) await buildEvidenceBundle(query, signal);
+      return {
+        answer: coverageClosed,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
+    const closedAnswer = !query
+      ? deterministicGroundedResponse(question, grounding)
+      : null;
+    if (closedAnswer) {
+      return {
+        answer: closedAnswer,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
     const bundle: EvidenceBundle = query
       ? await buildEvidenceBundle(query, signal)
       : { queries: [], results: [], providerCalls: 0 };
@@ -5915,6 +6185,27 @@ export async function answerQuestionStream(
       correctionSearchContext(history, grounding),
       grounding
     );
+    const coverageClosed = deterministicCoverageResponse(candidateUnrecognized, grounding);
+    if (coverageClosed) {
+      if (query) await buildEvidenceBundle(query, handlers.signal);
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(coverageClosed);
+      return {
+        answer: coverageClosed,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
+    const closedAnswer = !query
+      ? deterministicGroundedResponse(question, grounding)
+      : null;
+    if (closedAnswer) {
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(closedAnswer);
+      return {
+        answer: closedAnswer,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
     const bundle: EvidenceBundle = query
       ? await buildEvidenceBundle(query, handlers.signal)
       : { queries: [], results: [], providerCalls: 0 };

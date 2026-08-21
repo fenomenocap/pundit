@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
 import { FootballMatch, FootballStanding } from "./football-data";
 import { lookupClubRating, ClubRatingsCache } from "./club-ratings";
@@ -32,6 +33,60 @@ export interface SeasonOutlook {
 function rounded(value: number, digits = 4): number {
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
+}
+
+function deterministicRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function seasonReplaySeed(
+  competitionId: string,
+  standings: FootballStanding[],
+  fixtures: FootballMatch[],
+  ratings: ClubRatingsCache["byProfile"],
+  ratingProfile: keyof ClubRatingsCache["byProfile"],
+  runs: number,
+  contributor: ForecastContributor
+): number {
+  const relevantTeams = [...new Set(fixtures.flatMap(({ homeTeam, awayTeam }) => [homeTeam, awayTeam]))]
+    .sort((a, b) => a.localeCompare(b));
+  const replayInput = {
+    schema: "season-replay-v1",
+    competitionId,
+    runs,
+    contributor: {
+      id: contributor.id,
+      version: contributor.version,
+      methodId: contributor.methodId,
+      status: contributor.status,
+    },
+    standings: standings.map((row) => ({
+      team: row.team,
+      points: row.points,
+      goalDifference: row.goalDifference,
+      goalsFor: row.goalsFor,
+      playedGames: row.playedGames,
+    })).sort((a, b) => a.team.localeCompare(b.team)),
+    fixtures: fixtures.map((fixture) => ({
+      id: fixture.id,
+      homeTeam: fixture.homeTeam,
+      awayTeam: fixture.awayTeam,
+      utcDate: fixture.utcDate,
+      status: fixture.status,
+    })).sort((a, b) =>
+      a.utcDate.localeCompare(b.utcDate)
+      || String(a.id).localeCompare(String(b.id))
+    ),
+    ratings: relevantTeams.map((team) => [team, ratings[ratingProfile].get(team)]),
+  };
+  return createHash("sha256")
+    .update(JSON.stringify(replayInput))
+    .digest()
+    .readUInt32BE(0);
 }
 
 function standingState(standings: FootballStanding[]): Map<string, TeamStandingState> {
@@ -96,7 +151,10 @@ export function remainingScheduledFixtures(
       match.competitionId === competitionId
       && (match.status === "SCHEDULED" || match.status === "POSTPONED")
     )
-    .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
+    .sort((a, b) =>
+      a.utcDate.localeCompare(b.utcDate)
+      || String(a.id).localeCompare(String(b.id))
+    );
 }
 
 export function hasCompleteLeagueSchedule(
@@ -136,7 +194,7 @@ export function simulateSeasonOutlook(
   scheduledFixtures: FootballMatch[],
   ratings: ClubRatingsCache["byProfile"],
   runs = SEASON_SIM_RUNS,
-  random: () => number = Math.random,
+  random?: () => number,
   contributor: ForecastContributor = ELO_CHAMPION
 ): SeasonOutlook | null {
   const competition = getCompetitionById(competitionId);
@@ -147,9 +205,12 @@ export function simulateSeasonOutlook(
   );
   if (baseState.size === 0) return null;
 
-  const fixtures = scheduledFixtures.filter((fixture) =>
-    baseState.has(fixture.homeTeam) && baseState.has(fixture.awayTeam)
-  );
+  const fixtures = scheduledFixtures
+    .filter((fixture) => baseState.has(fixture.homeTeam) && baseState.has(fixture.awayTeam))
+    .sort((a, b) =>
+      a.utcDate.localeCompare(b.utcDate)
+      || String(a.id).localeCompare(String(b.id))
+    );
   const competitionStandings = standings.filter((row) => row.competitionId === competitionId);
   if (fixtures.length === 0 || !hasCompleteLeagueSchedule(competitionStandings, fixtures)) {
     return null;
@@ -162,6 +223,15 @@ export function simulateSeasonOutlook(
   if (ratedFixtures.some(({ homeElo, awayElo }) => homeElo === undefined || awayElo === undefined)) {
     return null;
   }
+  const replayRandom = random ?? deterministicRandom(seasonReplaySeed(
+    competitionId,
+    competitionStandings,
+    fixtures,
+    ratings,
+    competition.ratingProfile,
+    runs,
+    contributor
+  ));
 
   const titleCounts = new Map<string, number>();
   const topFourCounts = new Map<string, number>();
@@ -174,7 +244,7 @@ export function simulateSeasonOutlook(
         homeStrength: homeElo!,
         awayStrength: awayElo!,
         homeAdvantageElo: homeAdvantage,
-      }, random);
+      }, replayRandom);
       applyResult(state, fixture.homeTeam, fixture.awayTeam, homeGoals, awayGoals);
     }
     const ranked = rankTeams(state);

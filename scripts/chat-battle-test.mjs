@@ -523,10 +523,22 @@ async function runSseScenario(scenario, options, pacer, onRequestStart) {
       ...draftValidation.failures,
     ];
   }
+  const correctnessValidation = validateResponseCorrectness(
+    result.answer,
+    result.citations,
+    result.grounding,
+    scenario
+  );
+  Object.assign(result.assertions, correctnessValidation.assertions);
+  if (!correctnessValidation.passed) {
+    result.passed = false;
+    result.failures = [...(result.failures ?? []), ...correctnessValidation.failures];
+  }
   result.evidence = result.passed
     ? `SSE order: ${events.map(({ event }) => event).join(" → ")}.`
     : [...(result.failures ?? []), `SSE order: ${events.map(({ event }) => event).join(" → ")}.`].join("; ");
-  result.correctnessCertified = false;
+  result.correctnessCertified = result.passed
+    && Object.keys(correctnessValidation.assertions).length > 0;
   result.turnResults.push({
     turn: 1,
     request: { question: scenario.question, stream: true },
@@ -1042,7 +1054,10 @@ async function main() {
     },
     pacing: {
       minimumIntervalMs: options.intervalMs,
-      requestStarts: pacer.starts
+      safetyMarginMs: pacer.safetyMarginMs,
+      requestStarts: pacer.starts,
+      observedStartOffsetsMs: pacer.observedStartOffsetsMs,
+      observedGapsMs: pacer.observedGapsMs,
     },
     progress: {
       status: "running",

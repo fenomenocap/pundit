@@ -18,6 +18,8 @@ import {
   stripToolCallMarkup,
   extractLeakedSearchQueries,
   sanitizeRequestFidelity,
+  answerQuestion,
+  answerQuestionStream,
 } from "./ask";
 import {
   clientWith,
@@ -25,6 +27,10 @@ import {
   streamOf,
   toolUseMessage,
 } from "./__fixtures__/anthropic-stubs";
+import {
+  recognizeEspnFixture,
+  replaceFixtureRegistryForTests,
+} from "./fixture-registry";
 
 // The exact string a user was shown in production: MiniMax's tool-call channel
 // leaking into the text channel, doubled and unterminated.
@@ -69,6 +75,96 @@ beforeEach(() => {
   ]);
 });
 
+describe("deterministic coverage search discipline", () => {
+  it("runs mandatory current search for a candidate, but never promotes or generates from it", async () => {
+    const originalKey = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    try {
+      const result = await answerQuestion(
+        "What is the latest injury news for Northbridge Athletic vs Southbank Rovers tomorrow?"
+      );
+      expect(searchWeb).toHaveBeenCalledTimes(1);
+      expect(result.answer).toMatch(/could not establish an authoritative structured fixture identity/i);
+      expect(result.answer).not.toMatch(/S1|S2|Arsenal team news|probabilit(?:y|ies):?\s*\d/i);
+
+      searchWeb.mockClear();
+      const closed = await answerQuestion("Northbridge Athletic vs Southbank Rovers");
+      expect(searchWeb).not.toHaveBeenCalled();
+      expect(closed.answer).toMatch(/discovery candidate/i);
+    } finally {
+      if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = originalKey;
+    }
+  });
+
+  it("runs mandatory search before a non-priced fixture notice in JSON and SSE", async () => {
+    const originalKey = process.env.MINIMAX_API_KEY;
+    const originalRegistryFlag = process.env.FIXTURE_REGISTRY_ENABLED;
+    process.env.MINIMAX_API_KEY = "test-only";
+    process.env.FIXTURE_REGISTRY_ENABLED = "true";
+    const recognized = recognizeEspnFixture({
+      id: 901,
+      competitionId: "club.friendly",
+      competition: "Club Friendly",
+      homeTeam: "Northbridge Athletic",
+      awayTeam: "Southbank Rovers",
+      utcDate: "2026-08-22T12:00:00.000Z",
+      status: "SCHEDULED",
+      stage: null,
+      matchday: null,
+      group: null,
+      score: null,
+    });
+    recognized.competition.category = "club-friendly";
+    recognized.neutralVenue = true;
+    replaceFixtureRegistryForTests([recognized]);
+    const fixtureContext = { fixtureId: recognized.fixtureId };
+    try {
+      const json = await answerQuestion(
+        "What is the latest injury news for this recognized friendly?",
+        [],
+        undefined,
+        undefined,
+        fixtureContext
+      );
+      expect(searchWeb).toHaveBeenCalledTimes(1);
+      expect(json.grounding).toMatchObject({ kind: "fixture" });
+      expect(json.answer).toMatch(/outside Pundit's model coverage/i);
+      expect(json.answer).not.toMatch(/Arsenal team news|\[S1\]/i);
+
+      searchWeb.mockClear();
+      const deltas: string[] = [];
+      const sse = await answerQuestionStream(
+        "What is the latest lineup for this recognized friendly?",
+        [],
+        undefined,
+        { onGrounding: () => undefined, onDelta: (text) => deltas.push(text) },
+        fixtureContext
+      );
+      expect(searchWeb).toHaveBeenCalledTimes(1);
+      expect(sse.answer).toBe(json.answer);
+      expect(deltas).toEqual([sse.answer]);
+
+      searchWeb.mockClear();
+      const closed = await answerQuestion(
+        "Why is this recognized friendly not priced?",
+        [],
+        undefined,
+        undefined,
+        fixtureContext
+      );
+      expect(searchWeb).not.toHaveBeenCalled();
+      expect(closed.answer).toContain("Public friendly forecasts are disabled by policy");
+    } finally {
+      replaceFixtureRegistryForTests([]);
+      if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = originalKey;
+      if (originalRegistryFlag === undefined) delete process.env.FIXTURE_REGISTRY_ENABLED;
+      else process.env.FIXTURE_REGISTRY_ENABLED = originalRegistryFlag;
+    }
+  });
+});
+
 describe("generateAnalysis", () => {
   it("drops a structurally incomplete end_turn tail after coherent prose", async () => {
     const client = clientWith(message(
@@ -107,6 +203,7 @@ describe("generateAnalysis", () => {
     const grounding = {
       kind: "match",
       competitionId: "eng.1",
+      competition: "Premier League",
       home: "Arsenal",
       away: "Man City",
       scorelines: [],
@@ -543,6 +640,7 @@ describe("sanitizeMatchAnswer", () => {
     const grounding = {
       kind: "match",
       competitionId: "eng.1",
+      competition: "Premier League",
       home: "Arsenal",
       away: "Coventry",
       pHome: 0.9728,
@@ -579,6 +677,21 @@ describe("sanitizeMatchAnswer", () => {
     expect(topVariant).toBe(
       "The 7 most likely scorelines total 62.8%; 6 are Arsenal clean-sheet wins."
     );
+
+    const setClaims = sanitizeMatchAnswer([
+      "Coventry does not register above the 0.1% threshold on any scoreline.",
+      "Every line at or above 0.1% is an Arsenal win.",
+      "The mark 1.3% of scorelines are tied.",
+      "Coventry are a Championship tier-two side in this Premier League fixture.",
+      "The gap is large enough that market staleness, not pricing error, is the natural explanation.",
+      "A heavy rotation would make 2-0 or 3-1 the modal outcome.",
+    ].join("\n"), grounding);
+    expect(setClaims).toContain("grounded scorelines at or above 0.1%");
+    expect(setClaims).toContain("The model's full draw probability is 2.3%");
+    expect(setClaims).toContain("structured fixture is classified as Premier League");
+    expect(setClaims).toContain("snapshot establishes the probability gap, not its cause");
+    expect(setClaims).toContain("does not quantify lineup counterfactuals");
+    expect(setClaims).not.toMatch(/does not register|Every line|1\.3%|Championship|market staleness|modal outcome/i);
   });
 
   it("removes sign-wrong gap direction and one-snapshot lockstep claims", () => {
