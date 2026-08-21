@@ -93,3 +93,53 @@ describe("a turn that is only narration plus a leaked tool call", () => {
     expect(answer).toContain("Man United are heavy favourites");
   });
 });
+
+/**
+ * Production kept degrading on turns where MiniMax reached for a search and
+ * the tool channel misbehaved. The shapes differed every time -- narration
+ * with no markup at all, a `<tool ... />` element, a bare JSON payload -- so
+ * recovery keys off whether the turn is deliverable, not off the dialect.
+ */
+describe("a match turn that reached for a tool and produced nothing shippable", () => {
+  const recovered = "**Model vs market**\nThe model is 20.6 points above the market.";
+
+  async function turnsFor(first: string) {
+    const create = vi.fn()
+      .mockResolvedValueOnce(message(first, "end_turn"))
+      .mockResolvedValueOnce(message(recovered, "end_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const answer = await generateAnalysis(client, "system", [], "match");
+    return { calls: create.mock.calls.length, answer };
+  }
+
+  it("recovers a turn that is only narration, with no markup to detect", async () => {
+    const { calls, answer } = await turnsFor(
+      "I'll search for current team news on both sides before answering."
+    );
+    expect(calls).toBe(2);
+    expect(answer).toContain("20.6 points above the market");
+  });
+
+  it("recovers the self-closing <tool /> dialect", async () => {
+    const { calls, answer } = await turnsFor(
+      'I\'ll check the team news first.\n\n]<]minimax[>[<tool_call>'
+      + ' <tool name="web_search" query="Hull City team news August 2026" /> </tool_call>'
+    );
+    expect(calls).toBe(2);
+    expect(answer).toContain("20.6 points above the market");
+  });
+
+  it("recovers a fragment that survives stripping but carries no answer shape", async () => {
+    const { calls } = await turnsFor(
+      'Let me search for that.\n\n{ "search_queries": ["Hull defence injuries"] }\n\nChecking now.'
+    );
+    expect(calls).toBe(2);
+  });
+
+  it("leaves a clean short answer alone", async () => {
+    const create = vi.fn().mockResolvedValue(message("**Verdict**\nMan United by 20.6 points.", "end_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    await generateAnalysis(client, "system", [], "match");
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});
