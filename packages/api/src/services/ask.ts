@@ -329,8 +329,8 @@ export const MAX_CONTINUATIONS = 2;
 const OVERALL_DEADLINE_MS = 150_000;
 // Most of one match answer's retrieval: the planned queries below, plus the
 // synthesis turn and a retry.
-const MAX_EVIDENCE_QUERIES = 4;
-const MAX_EVIDENCE_RESULTS = 24;
+const MAX_EVIDENCE_QUERIES = 6;
+const MAX_EVIDENCE_RESULTS = 30;
 
 const CURRENT_NEWS_QUESTION = /\b(latest|current|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
 const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it))\b/i;
@@ -530,15 +530,28 @@ function evidenceMessage(bundle: EvidenceBundle): string {
     + `${JSON.stringify(bundle.results)}\n`
     + "Use it. This evidence is what separates a read from a recital of the model payload. "
     + "Draw on it for team news (injuries, suspensions, expected XI), current prices and line "
-    + "moves, player markets, and recent form, and weigh it against the model's numbers.\n"
+    + "moves, player markets, and recent form, and weigh it against the model's numbers. Where "
+    + "the evidence carries a sportsbook price, an opening price, a line move or a player market "
+    + "the payload does not, quote it and name the book -- that is the part of the read Pundit "
+    + "cannot compute.\n"
+    + "Prices belong in European decimal, which is how football is priced. Pundit's own market "
+    + "probabilities convert as decimal = 1 / probability, so 70.6% is 1.42 and 18.6% is 5.38 -- "
+    + "give the decimal alongside the percentage when the answer is about what to back. If a "
+    + "source quotes American odds, convert before quoting: a negative price is 1 + 100/|price| "
+    + "(-470 becomes 1.21), a positive one is 1 + price/100 (+340 becomes 4.40). Never print the "
+    + "American form.\n"
+    + "Do not quote a sportsbook's exact price from a search snippet as if it were live -- prices "
+    + "move by the minute and a stale one is worse than none. Use the evidence for the direction "
+    + "a line has moved, where it opened, and which way the money has gone, cited; quote firm "
+    + "numbers only from Pundit's own market data.\n"
     + "Cite every claim you take from it by putting the source id in the same sentence, like "
     + "[[S3]]. Use only the ids supplied -- an uncited claim will be removed before the reader "
     + "sees it, so cite as you write rather than afterwards.\n"
-    + "Each source carries a date field, and only a source whose date is not null can support a "
-    + "team-news claim -- injury, suspension, availability, expected XI. Cite a dated source for "
-    + "those. If the only source for such a point is undated, say the report is undated and "
-    + "unconfirmed rather than stating it as current: an undated citation is dropped and the "
-    + "sentence it supported is replaced by an abstention before the reader sees it.\n"
+    + "Each source carries a date. Prefer a dated one for a team-news claim -- injury, "
+    + "suspension, availability, expected XI -- and say how recent it is. Where only an undated "
+    + "source covers the point, you may still report it, but say plainly that the report is "
+    + "undated and unconfirmed; its citation reaches the reader marked undated. A squad claim "
+    + "with no citation at all is removed before the reader sees it, so never write one.\n"
     + "Prefer dated, named sources, and say how current a claim is when that matters. Where the "
     + "evidence is thin or the sources disagree, say so and caveat the claim rather than "
     + "dropping it silently.\n"
@@ -576,11 +589,14 @@ export function planEvidenceQueries(
   if (baseQuery) planned.push(baseQuery);
   if (grounding?.kind === "match") {
     const fixture = `${grounding.home} vs ${grounding.away}`;
+    const props = `${fixture} anytime goalscorer odds player props`;
+    // A player question gets its market first; every other match question still
+    // gets it, because a betting read is usually built on more than the 1X2.
+    if (PLAYER_MARKET_QUESTION.test(question)) planned.push(props);
     planned.push(`${fixture} team news injuries suspensions predicted lineup`);
-    planned.push(`${fixture} betting odds moneyline over 2.5 goals both teams to score`);
-    if (PLAYER_MARKET_QUESTION.test(question)) {
-      planned.push(`${fixture} anytime goalscorer odds player props`);
-    }
+    planned.push(`${fixture} betting odds decimal over 2.5 goals both teams to score`);
+    planned.push(`${fixture} odds movement line move opening price public betting percentages`);
+    if (!PLAYER_MARKET_QUESTION.test(question)) planned.push(props);
     planned.push(`${grounding.home} ${grounding.away} recent form last 5 matches results`);
     if (!baseQuery) planned.push(`${question.slice(0, 180)} ${fixture}`);
   }
@@ -653,14 +669,31 @@ const OFFICIAL_EVIDENCE_DOMAINS = [
   "whufc.com",
   "wolves.co.uk",
 ];
+// Verification can only run against pages it is allowed to fetch, and this
+// list was seven wire services and broadcasters. Football team news is broken
+// by beat reporters and the specialist press, so a search that returned
+// exactly the right report -- six Hull players ruled out, dated -- retrieved
+// zero pages, verified zero claims, and answered "no verified team-news update
+// was established". These are publishers with mastheads and corrections
+// policies, not an open door: an unknown host is still `other` and still
+// unfetched.
 const REPUTABLE_EVIDENCE_DOMAINS = [
-  "espn.com",
-  "bbc.com",
-  "bbc.co.uk",
-  "reuters.com",
-  "apnews.com",
-  "theathletic.com",
-  "skysports.com",
+  // Wires and broadcasters.
+  "espn.com", "espn.co.uk", "bbc.com", "bbc.co.uk", "reuters.com", "apnews.com",
+  "theathletic.com", "skysports.com", "talksport.com", "cbssports.com", "nbcsports.com",
+  // National press that breaks and follows team news.
+  "theguardian.com", "telegraph.co.uk", "independent.co.uk", "standard.co.uk",
+  "thetimes.co.uk", "mirror.co.uk", "nytimes.com",
+  // Football specialists.
+  "goal.com", "90min.com", "football365.com", "sportsmole.co.uk", "fourfourtwo.com",
+  "premierinjuries.com", "physioroom.com",
+  // Local beats, which carry a club's lineup news first.
+  "football.london", "manchestereveningnews.co.uk", "liverpoolecho.co.uk",
+  "birminghammail.co.uk", "chroniclelive.co.uk", "hulldailymail.co.uk",
+  // Structured data: squads, availability, form and prices.
+  "transfermarkt.com", "transfermarkt.co.uk", "transfermarkt.us",
+  "fotmob.com", "whoscored.com", "sofascore.com", "flashscore.com",
+  "oddschecker.com", "oddsportal.com",
 ];
 
 export function evidenceAuthority(rawUrl: string): EvidenceAuthority {
@@ -1881,8 +1914,14 @@ export function renderEvidenceCitations(
     // `POSITIVE_CURRENT_NEWS`, which matched `is|are|has|have` and therefore
     // condemned essentially every sentence Pundit's model produced.
     const teamNews = evidenceRequired && assertsTeamNews(sentence) && !ABSTENTION.test(sentence);
-    const dated = sources.some((source) => Boolean(source?.date));
-    if (invented || (teamNews && (!dated || ids.length === 0))) {
+    // A squad claim needs a real source, not a dated one. Requiring a date
+    // dropped genuine, sourced team news whenever the page carried no machine
+    // -readable date -- which is most of them -- and spliced the abstention
+    // into the middle of a paragraph, stranding the sentences that referred
+    // back to it ("If he starts..." with no "he"). The source is now shown and
+    // labelled undated instead, which the reader can weigh. An uncited or
+    // invented claim is still removed.
+    if (invented || (teamNews && ids.length === 0)) {
       // A dropped squad claim leaves the abstention in its place, once, so the
       // section says why it is empty instead of vanishing silently.
       return teamNews ? abstain() : "";
@@ -1894,12 +1933,16 @@ export function renderEvidenceCitations(
     const renderedIds = new Set<string>();
     return sentence.replace(EVIDENCE_MARKER, (_marker, digits: string) => {
       const source = byId.get(`S${Number(digits)}`);
-      if (!source?.date) return "";
+      if (!source) return "";
       cited.set(source.id, source);
       if (renderedIds.has(source.id)) return "";
       renderedIds.add(source.id);
       const safeTitle = source.title.replace(/[\[\]]/g, "");
-      return `([${safeTitle}](${source.url}), ${source.date})`;
+      // An undated source still gets shown, labelled undated. Dropping the
+      // citation left a sourced claim looking exactly like an invented one --
+      // the reader could not tell them apart. It still cannot carry a squad
+      // claim; that rule is enforced above, before this renders anything.
+      return `([${safeTitle}](${source.url}), ${source.date || "undated"})`;
     });
   });
 
@@ -4942,7 +4985,13 @@ const TOOL_MARKUP_PLACEHOLDER = "I need current information before I can answer.
 const TOOL_MARKUP_RECOVERY_NOTE =
   "Your previous reply was tool-call syntax written as answer text, which the user cannot read. "
   + "Never write tool tags, <invoke> blocks, or JSON tool payloads as text. Write the final answer "
-  + "now, as plain prose, starting directly with the first bold label.";
+  + "now, as plain prose, starting directly with the first bold label.\n"
+  // Without this the retry wrote a markedly thinner answer than the turn it
+  // replaced: told only to stop leaking and produce prose, it fell back on the
+  // payload and ignored evidence that was still sitting in the conversation.
+  + "The search evidence supplied earlier in this conversation still stands -- use it, and the "
+  + "instructions that came with it, exactly as you would have on the first attempt. This is the "
+  + "same answer, written properly: the full read, citing its sources, not a shorter one.";
 
 /**
  * The leaked text of a turn that asked for a tool in prose, or null when the
@@ -5048,7 +5097,9 @@ async function recoverUndeliverableTurn(
   const sources = queries.length ? await runLeakedSearchQueries(queries, bundle, signal) : [];
   const evidence = sources.length
     ? `Web search results for ${JSON.stringify(queries)}:\n${JSON.stringify(sources)}`
-    : "No search results were returned; use the grounding data or abstain.";
+    : "No further search results were returned. The evidence supplied earlier in this "
+      + "conversation still stands -- answer from that and the grounding, and abstain only on "
+      + "the specific points neither supports.";
   console.log(JSON.stringify({
     event: "undeliverable_turn_recovered",
     queries: queries.length,

@@ -401,10 +401,21 @@ describe("renderEvidenceCitations abstention scope", () => {
     expect(rendered).not.toContain("No verified, dated team-news update was established");
   });
 
-  it("still abstains when no squad claim is supported at all", () => {
-    const answer = "**Team news**\nZambrano is a doubt [[S2]].";
+  // An undated source is still shown, labelled. Dropping the citation left a
+  // sourced market claim looking identical to an invented one.
+  it("renders an undated source as a visible, labelled citation", () => {
+    const answer = "**Goals**\nFanDuel price the over at 1.71 [[S2]].";
+    const { answer: rendered, citations } = renderEvidenceCitations(answer, bundle, true);
+    expect(rendered).toContain("undated");
+    expect(rendered).toContain("https://example.com/b");
+    expect(citations.map((c) => c.url)).toContain("https://example.com/b");
+  });
+
+  it("still abstains on a squad claim carrying no source at all", () => {
+    const answer = "**Team news**\nZambrano is a doubt.";
     const { answer: rendered } = renderEvidenceCitations(answer, bundle, true);
     expect(rendered).toContain("No verified, dated team-news update was established");
+    expect(rendered).not.toContain("Zambrano");
   });
 });
 
