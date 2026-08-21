@@ -1,6 +1,8 @@
-# Fixture recognition release handoff
+# Fixture recognition release handoff (historical gate record)
 
 Date: 2026-08-13
+
+This document preserves the evidence and disposition of the August 13 fixture-recognition release. Test counts and deployment identities below belong to the recorded branch and run; they are not a claim about current `main`. Current Schema-12 release certification must record its own exact source/API/web identities and immutable evaluator artifact; its stronger semantic matrix is intentionally non-comparable with the historical Schema-10 run.
 
 ## Scope and lineage
 
@@ -141,7 +143,7 @@ fixture-context failure, found no console errors or horizontal overflow, and
 confirmed New Chat reset. Screenshot capture itself timed out twice, so the
 browser evidence correctly remains failed rather than claiming an image.
 
-## Remaining release risks and authorization boundary
+## Recorded release risks and later disposition
 
 One real friendly is now bundled as an approved, source-bound registry record:
 Arsenal–Real Betis, ESPN event `401867142`, corroborated by Real Betis' official
@@ -158,25 +160,27 @@ and official corroboration.
   present flag only gates the policy library.
 - Source update latency and cross-source conflict rates need a longitudinal
   shadow observation window; the read-only study cannot honestly certify them.
-- The production evaluation has already consumed its one authorized run and
-  cannot honestly be upgraded to PASS after code changes. The follow-up hotfix
-  passed CI and deterministic production verification, but another paced
-  evaluator run requires fresh authority.
+- The recorded evaluation consumed its authorization and remains immutable; it
+  cannot be upgraded to PASS after code changes. A later exact-identity run must
+  create a new artifact. Fresh release and one bounded production-evaluation
+  run were subsequently authorized by the owner.
 - The first evaluator's season probes returned 503 because the simulator had no
   usable preseason outlook. That was a structural availability defect, not
   evidence that SSE transport itself failed. Schema 10 decouples its required
   SSE transport scenario from season simulation and keeps season behavior as a
   separate gate; the season runtime remediation and a new production run must
   supply the final production classification.
-- The currently deployed release still uses the earlier ClubElo last-good
-  runtime cache. The locally verified artifact cutover and three exact aliases
-  resolve that dependency and six-fixture gap, but require merge/deployment
-  before the production risk can be closed.
+- This release still used the earlier ClubElo last-good runtime cache. The later
+  reviewed artifact cutover removed runtime ClubElo networking: current
+  releases load a content-addressed local `clubelo@1` snapshot with hash,
+  coverage and freshness gates. Future rating-source replacement remains a
+  separate evidence-led model decision, not an availability hotfix.
 - The MiniMax credential was inadvertently visible in protected release-tool
   output but was never copied into the repository or report. The owner has
   explicitly accepted the current key; rotation is therefore not a release
   blocker.
 
 Release and one bounded production-evaluation authority was granted on
-2026-08-13. This handoff records the exact evidence and the non-PASS production
-classification without substituting fixtures or rerunning failed scenarios.
+2026-08-13. This handoff records that exact evidence and the non-PASS production
+classification without substituting fixtures or rerunning failed scenarios; it
+must not be used as current certification evidence.

@@ -2,7 +2,7 @@
 
 ### `POST /api/ask`
 
-MiniMax M3-powered conversational football analysis. **Rate limit:** 10 requests/minute per client.
+MiniMax M3-powered conversational football analysis. **Rate limit:** 10 requests/minute across the declared deployment, divided between `API_REPLICAS` process-wide buckets. Production currently declares one replica.
 
 ```json
 {
@@ -75,8 +75,8 @@ does not invent or partially simulate season probabilities.
 
 * **90 seconds** shared request deadline across MiniMax inference, search, streaming, and disconnect cancellation
 * At most 2 generations, 2 deduplicated search queries, and 3 provider calls for the bounded fallback path
-* Search calls are capped at 10 seconds; MiniMax output is capped at 1,536 tokens
+* Search calls are capped at 10 seconds; MiniMax's output budget is capped at 4,096 tokens, including provider reasoning tokens
 * Requires `MINIMAX_API_KEY` on the API server
 * No server-side conversation session — the client supplies history
 
-The API rejects empty or truncated MiniMax output. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.
+The API rejects empty output and provider-reported `max_tokens` truncation. Because MiniMax can also label a visibly incomplete response `end_turn`, the settled delivery path removes hard structural tail fragments before applying its grounding fallback or failing closed. The production evaluator independently checks delivered endings, scoped combined-scoreline sums and team/score orientation, and high-line geometry. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.

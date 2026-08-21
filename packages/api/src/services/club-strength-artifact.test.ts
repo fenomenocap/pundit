@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildClubStrengthArtifact,
   buildClubStrengthArtifactSelector,
+  CLUB_STRENGTH_MAX_AGE_MS,
   CLUB_STRENGTH_MAX_AGE_DAYS,
   validateClubStrengthArtifact,
   readSelectedClubStrengthArtifact,
@@ -40,12 +41,17 @@ describe("club strength artifact", () => {
     )).toThrow("hash does not match");
   });
 
-  it("fails closed past the 30-day freshness gate", () => {
-    const now = new Date("2026-08-13T00:00:00.000Z");
-    const snapshot = new Date(now);
-    snapshot.setUTCDate(snapshot.getUTCDate() - (CLUB_STRENGTH_MAX_AGE_DAYS + 1));
-    expect(() => validateClubStrengthArtifact(validArtifact(snapshot.toISOString()), now))
-      .toThrow("31d old");
+  it("uses exact elapsed time at the 30-day freshness boundary", () => {
+    const snapshot = new Date("2026-08-12T00:00:00.000Z");
+    const artifact = validArtifact(snapshot.toISOString());
+    const boundary = snapshot.getTime() + CLUB_STRENGTH_MAX_AGE_MS;
+
+    expect(validateClubStrengthArtifact(artifact, new Date(boundary - 1)).ageDays)
+      .toBe(CLUB_STRENGTH_MAX_AGE_DAYS - 1);
+    expect(validateClubStrengthArtifact(artifact, new Date(boundary)).ageDays)
+      .toBe(CLUB_STRENGTH_MAX_AGE_DAYS);
+    expect(() => validateClubStrengthArtifact(artifact, new Date(boundary + 1)))
+      .toThrow("exceeds the exact 30-day freshness limit");
   });
 
   it("rejects implausibly incomplete coverage", () => {

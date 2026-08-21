@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   backfillMissingClubRatings,
+  clubRatingsAgeDays,
   clubRatingsAreCurrent,
   clubRatingsRefreshDelay,
   CLUB_RATINGS_COLD_RETRY_MS,
@@ -12,6 +13,7 @@ import {
   lookupClubRating,
   refreshClubRatings,
 } from "./club-ratings";
+import { CLUB_STRENGTH_MAX_AGE_MS } from "./club-strength-artifact";
 
 const originalDataDir = process.env.PUNDIT_DATA_DIR;
 let scratchDataDir: string;
@@ -79,10 +81,17 @@ describe("club ratings artifact adapter", () => {
       .toBe(CLUB_RATINGS_REFRESH_INTERVAL_MS);
   });
 
-  it("marks a once-valid artifact unavailable after the freshness gate", async () => {
+  it("uses exact elapsed age for eligibility while retaining whole-day telemetry", async () => {
     await refreshClubRatings(new Date("2026-08-13T00:00:00Z"));
     const ratings = getCachedClubRatings();
-    expect(clubRatingsAreCurrent(ratings, new Date("2026-08-13T00:00:00Z"))).toBe(true);
-    expect(clubRatingsAreCurrent(ratings, new Date("2026-09-13T00:00:00Z"))).toBe(false);
+    const snapshotAt = ratings.fetchedAt!;
+    const boundary = snapshotAt.getTime() + CLUB_STRENGTH_MAX_AGE_MS;
+
+    expect(clubRatingsAreCurrent(ratings, new Date(boundary - 1))).toBe(true);
+    expect(clubRatingsAgeDays(snapshotAt, new Date(boundary - 1))).toBe(29);
+    expect(clubRatingsAreCurrent(ratings, new Date(boundary))).toBe(true);
+    expect(clubRatingsAgeDays(snapshotAt, new Date(boundary))).toBe(30);
+    expect(clubRatingsAreCurrent(ratings, new Date(boundary + 1))).toBe(false);
+    expect(clubRatingsAgeDays(snapshotAt, new Date(boundary + 1))).toBe(30);
   });
 });

@@ -150,7 +150,9 @@ Railway's current single replica).
 
 The same response reports `seasonSchedule` with the current season, 380-row
 completeness, age, refresh error, and `servingLastGood`. `ready` is true only
-for a current-season, complete, error-free snapshot younger than six hours.
+for a current-season, complete, error-free snapshot younger than six hours. The
+schedule is checked on the 30-minute refresh cadence and refreshed ahead of
+that deadline so normal polling drift does not create a false readiness gap.
 
 **If you change Railway's replica count, change `API_REPLICAS` to match.** If the
 declared count is lower than the actual replica count, the effective deployment ceiling
