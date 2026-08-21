@@ -17,6 +17,7 @@ import {
   normalizeBannedMarkdown,
   stripToolCallMarkup,
   extractLeakedSearchQueries,
+  sanitizeRequestFidelity,
 } from "./ask";
 import {
   clientWith,
@@ -52,6 +53,9 @@ const BRACKETED_JSON_LEAK = '[[{"id":"google_search","params":{"query":"Arsenal 
 const BRACKETED_DIRECTIVE_LEAK =
   "[web_search:Celtic LASK Champions League playoff 2026 team news injuries]\n"
   + "[web_search:Celtic lineup news August 2026]";
+
+const PRODUCTION_SEARCH_QUERY_LEAK =
+  "I can't answer that question.\n\n[[search_query:Premier League 2026-27 season start date fixtures]]";
 
 // The tool loop executes searches for real; stub the backend so these tests
 // stay offline and deterministic.
@@ -500,6 +504,17 @@ describe("sanitizeCompetitionAnswer fabricated model odds", () => {
     expect(sanitizeCompetitionAnswer(answer)).toBe(answer);
   });
 
+  it("removes standings-only upset extrapolations that require a season simulation", () => {
+    const unsafe = [
+      "**Pre-season title prices (live, from Pundit)**",
+      "A loss shaves one match's worth of expected points off the total. On a 38-game horizon that is about a 2.6% swing in points share, enough to nudge Liverpool and Arsenal closer together at the top.",
+    ].join("\n\n");
+    const safe = sanitizeCompetitionAnswer(unsafe);
+    expect(safe).toContain("**Limits of this table**");
+    expect(safe).toContain("cannot quantify how one upset changes the title race");
+    expect(safe).not.toMatch(/2\.6%|nudge Liverpool|title prices/);
+  });
+
   it("does not strip the season tier's legitimate simulated probabilities", () => {
     const answer = "Pundit's model gives Arsenal a 45.4% title chance.";
     expect(sanitizeSeasonAnswer(answer)).toBe(answer);
@@ -524,6 +539,79 @@ describe("ensureGeneralDisclaimer", () => {
 });
 
 describe("sanitizeMatchAnswer", () => {
+  it("repairs grounded pitch orientation, ranking fidelity and unsupported HFA causes", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Coventry",
+      pHome: 0.9728,
+      pDraw: 0.0229,
+      pAway: 0.0043,
+      scorelines: [
+        { score: "4-0", probability: 0.1254 },
+        { score: "5-0", probability: 0.1216 },
+        { score: "3-0", probability: 0.1034 },
+        { score: "6-0", probability: 0.0983 },
+        { score: "7-0", probability: 0.0681 },
+        { score: "2-0", probability: 0.064 },
+        { score: "4-1", probability: 0.0471 },
+        { score: "5-1", probability: 0.0457 },
+      ],
+      oddsSources: [],
+    } as unknown as Grounding;
+    const safe = sanitizeMatchAnswer([
+      "Lots of goals, all of them at Arsenal's end.",
+      "Pundit's model gives Arsenal 97.3%, with the Emirates crowd contributing to the home boost.",
+      "The seven most likely scorelines are all Arsenal wins without conceding, totalling roughly 67%.",
+      "A Coventry goal only reaches second tier: 4-1 and 5-1 sit eighth and ninth.",
+    ].join("\n"), grounding);
+    expect(safe).toContain("Arsenal scoring most of the goals");
+    expect(safe).toContain("with home-field advantage applied");
+    expect(safe).toContain("7 most likely scorelines total 62.8%; 6 are Arsenal clean-sheet wins");
+    expect(safe).toContain("**4-1** is seventh and **5-1** is eighth");
+    expect(safe).not.toMatch(/Arsenal's end|Emirates crowd|roughly 67%|eighth and ninth/);
+
+    const topVariant = sanitizeMatchAnswer(
+      "The top seven scorelines are all Arsenal clean-sheet wins, totalling 67%.",
+      grounding
+    );
+    expect(topVariant).toBe(
+      "The 7 most likely scorelines total 62.8%; 6 are Arsenal clean-sheet wins."
+    );
+  });
+
+  it("removes sign-wrong gap direction and one-snapshot lockstep claims", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Coventry",
+      pHome: 0.6,
+      pDraw: 0.25,
+      pAway: 0.15,
+      scorelines: [],
+      oddsSources: [{ source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.5, pDraw: 0.3, pAway: 0.2 }],
+    } as unknown as Grounding;
+    const safe = sanitizeMatchAnswer([
+      "Pundit's model is lower than the market on Arsenal.",
+      "The model is 10 points higher on Arsenal, with both sources moving in lockstep, so this is not a market quirk.",
+    ].join("\n"), grounding);
+    expect(safe).not.toContain("lower than the market");
+    expect(safe).not.toContain("lockstep");
+    expect(safe).toContain("10 points higher on Arsenal");
+  });
+
+  it("honours model-only and follow-up-history request fidelity", () => {
+    const raw = [
+      "Good follow-up, but I don't have the original answer in front of me.",
+      "**Model case**\nArsenal lead on the model.",
+      "**Market disagreement**\nKalshi is 14 points lower than the model.",
+    ].join("\n\n");
+    const safe = sanitizeRequestFidelity(raw, "Which side has the stronger model case, and why?", true);
+    expect(safe).toContain("Arsenal lead on the model");
+    expect(safe).not.toMatch(/original answer|Market disagreement|Kalshi/);
+  });
   it("corrects combined grounded scoreline probabilities to their sum", () => {
     const grounding = {
       kind: "match",
@@ -1315,6 +1403,13 @@ describe("extractLeakedSearchQueries", () => {
 });
 
 describe("the bracketed directive leak", () => {
+  it("strips the production search_query spelling without leaving brackets", () => {
+    expect(stripToolCallMarkup(PRODUCTION_SEARCH_QUERY_LEAK))
+      .toBe("I can't answer that question.");
+    expect(extractLeakedSearchQueries(PRODUCTION_SEARCH_QUERY_LEAK))
+      .toEqual(["Premier League 2026-27 season start date fixtures"]);
+  });
+
   it("is stripped out of an answer it rides along with", () => {
     expect(stripToolCallMarkup(
       `${BRACKETED_DIRECTIVE_LEAK}\n\n**Verdict**\nCeltic win **51.2%** on the model.`

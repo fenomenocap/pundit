@@ -137,6 +137,21 @@ export function evidenceSchemaFailures(report, browserEvidence, criticReview) {
       failures.push(`critic scenario verdict missing or invalid: ${scenario.id}`);
     }
   }
+  const turnVerdicts = Array.isArray(criticReview?.turnVerdicts) ? criticReview.turnVerdicts : [];
+  const byTurn = new Map(turnVerdicts.map((item) => [`${item?.scenarioId}:${item?.turn}`, item]));
+  if (byTurn.size !== turnVerdicts.length) failures.push("critic evidence contains duplicate turn verdicts");
+  for (const scenario of report.scenarios ?? []) {
+    for (const turn of scenario.turnResults ?? []) {
+      if (turn.status !== 200 || typeof turn.answer !== "string" || !turn.answer.trim()) continue;
+      const verdict = byTurn.get(`${scenario.id}:${turn.turn}`);
+      if (!verdict || !["PASS", "ISSUES FOUND"].includes(verdict.verdict)
+        || !Number.isFinite(verdict.correctness) || verdict.correctness < 1 || verdict.correctness > 4
+        || (verdict.verdict === "PASS" && verdict.correctness < 3)
+        || typeof verdict.reason !== "string" || !verdict.reason.trim()) {
+        failures.push(`critic turn verdict missing or invalid: ${scenario.id}#${turn.turn}`);
+      }
+    }
+  }
   return failures;
 }
 
@@ -158,15 +173,31 @@ async function main() {
   report.browserEvidence = browserEvidence;
   report.criticReview = criticReview;
   const criticById = new Map(criticReview.scenarioVerdicts.map((item) => [item.scenarioId, item]));
+  const criticByTurn = new Map((criticReview.turnVerdicts ?? []).map((item) => [
+    `${item.scenarioId}:${item.turn}`,
+    item,
+  ]));
   for (const scenario of report.scenarios) {
     const verdict = criticById.get(scenario.id);
-    if (!verdict) continue;
-    scenario.correctnessCertified = verdict.verdict === "PASS" && verdict.correctness >= 3;
-    scenario.qualitativeScores = { ...(scenario.qualitativeScores ?? {}), correctness: verdict.correctness };
-    if (verdict.verdict !== "PASS") {
+    const successfulTurns = (scenario.turnResults ?? []).filter((turn) =>
+      turn.status === 200 && typeof turn.answer === "string" && turn.answer.trim()
+    );
+    const turnReviews = successfulTurns.map((turn) => criticByTurn.get(`${scenario.id}:${turn.turn}`));
+    const failedTurn = turnReviews.find((item) => item?.verdict !== "PASS" || item?.correctness < 3);
+    if (verdict) {
+      scenario.qualitativeScores = { ...(scenario.qualitativeScores ?? {}), correctness: verdict.correctness };
+    }
+    if (verdict || successfulTurns.length > 0) {
+      scenario.correctnessCertified = Boolean(verdict)
+        && verdict.verdict === "PASS"
+        && verdict.correctness >= 3
+        && turnReviews.length === successfulTurns.length
+        && !failedTurn;
+    }
+    if ((verdict && verdict.verdict !== "PASS") || failedTurn) {
       scenario.passed = false;
       scenario.outcome = "FAIL";
-      scenario.evidence = `${scenario.evidence}; critic: ${verdict.reason ?? "correctness issue"}`;
+      scenario.evidence = `${scenario.evidence}; critic: ${failedTurn?.reason ?? verdict?.reason ?? "correctness issue"}`;
     }
   }
   finalizeClassifications(report, report.comparisonBaseline ?? null);

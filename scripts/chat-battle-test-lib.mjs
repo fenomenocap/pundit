@@ -114,7 +114,7 @@ export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta
   }
 }
 
-export const EVAL_SCHEMA_VERSION = 12;
+export const EVAL_SCHEMA_VERSION = 13;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 
 export function executeRuntimeHelperScenario(scenario, repoRoot = path.resolve(import.meta.dirname, "..")) {
@@ -352,8 +352,67 @@ export function parseSse(text) {
   return events;
 }
 
+/**
+ * Read a streaming response until its grounding event is complete, then abort
+ * the client and prove that the next body read observes AbortError. Merely
+ * aborting fetch before response headers arrive does not exercise disconnect
+ * handling on an SSE route; nor does resolving fetch at the headers prove the
+ * body stopped. This helper measures the actual post-grounding body read.
+ */
+export async function abortSseAfterGrounding(
+  response,
+  controller,
+  { timeoutMs = 5_000, now = Date.now } = {}
+) {
+  if (!response?.body?.getReader) throw new Error("SSE response has no readable body");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  const startedAt = now();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) throw new Error("SSE completed before grounding could be cancelled");
+    buffered += decoder.decode(value, { stream: true });
+    const normalized = buffered.replace(/\r\n/g, "\n");
+    const completedBoundary = normalized.lastIndexOf("\n\n");
+    if (completedBoundary < 0) continue;
+    const completedEvents = normalized.slice(0, completedBoundary + 2);
+    if (!parseSse(completedEvents).some(({ event }) => event === "grounding")) continue;
+    controller.abort();
+    const abortStartedAt = now();
+    let timeout;
+    try {
+      await Promise.race([
+        reader.read(),
+        new Promise((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error(`abort was not observed within ${timeoutMs}ms`)),
+            timeoutMs
+          );
+        }),
+      ]);
+      throw new Error("SSE body read completed after client abort");
+    } catch (error) {
+      if (error?.name !== "AbortError") throw error;
+      return {
+        groundingObserved: true,
+        abortErrorObserved: true,
+        abortLatencyMs: now() - abortStartedAt,
+        totalLatencyMs: now() - startedAt,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 function finiteProbability(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function statedPercentageTolerance(percentageText) {
+  const decimals = String(percentageText).split(".")[1]?.length ?? 0;
+  return 0.5 / 10 ** decimals + Number.EPSILON;
 }
 
 const MODEL_PROBABILITY_FIELDS = [
@@ -546,6 +605,26 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     assertions.scorelineTotalCorrect = !/\b1\s*[-:–—]\s*1\b[^.!?\n]*\bover\s*2\.5\b/i.test(text)
       && !/\bover\s*2\.5\b[^.!?\n]*\b1\s*[-:–—]\s*1\b/i.test(text);
   }
+  if (expectation.expectModelEvidenceOnly) {
+    assertions.modelEvidenceOnly = !/\b(?:kalshi|polymarket|stake|bookmakers?|bookies?|market(?:s|[- ]implied|[- ]priced|\s+(?:price|prices|odds|comparison|gap|disagreement))?|model[- ]versus[- ]market)\b/i.test(text);
+  }
+  if (expectation.expectNamedModelInput) {
+    assertions.namedModelInput = /\b(?:team|club)[- ]+(?:ratings?|strength)|\bstrength ratings?\b|\brating differential\b|\bhome[- ]field advantage\b|\bhome advantage\b|\bneutral venue\b|\bvenue input\b/i.test(text);
+  }
+  if (expectation.expectSeasonRanking) {
+    const leaders = grounding?.kind === "season"
+      ? (grounding.seasonOutlook?.titleProbabilities ?? []).slice(0, 2)
+      : [];
+    assertions.seasonRankingAnswered = leaders.length >= 2 && leaders.every(({ team, probability }) => {
+      const escaped = team.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const expected = probability * 100;
+      return [...text.matchAll(new RegExp(`\\b${escaped}\\b[^.!?\\n]{0,80}?(\\d+(?:\\.\\d+)?)\\s*%`, "gi"))]
+        .some((match) => Math.abs(Number(match[1]) - expected) <= statedPercentageTolerance(match[1]));
+    });
+  }
+  if (expectation.expectNoUngroundedProbability) {
+    assertions.noUngroundedProbability = !/\d+(?:\.\d+)?\s*%/.test(text);
+  }
   // A generated answer may quote two grounded scorelines correctly and still
   // invent their combined probability. Check only explicit aggregate claims:
   // ordinary lists of individual scorelines are deliberately out of scope.
@@ -606,6 +685,37 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     assertions.combinedScorelineArithmetic = aggregateClaims.every((claim) => claim.arithmetic)
       && (!expectation.expectCombinedScorelineArithmetic || aggregateClaims.length > 0);
     assertions.combinedScorelineOrientation = aggregateClaims.every((claim) => claim.orientation);
+
+    // Validate narrow but consequential rank/count/mass claims over the ordered
+    // grounding. A production answer said the seven leading scorelines were all
+    // clean sheets totalling 67%; the seventh was 4-1 and the mass was wrong.
+    const numberWords = new Map([
+      ["one", 1], ["two", 2], ["three", 3], ["four", 4], ["five", 5],
+      ["six", 6], ["seven", 7], ["eight", 8], ["nine", 9], ["ten", 10],
+    ]);
+    const rankedClaims = text.replaceAll("**", "").split(/(?<=[.!?])\s+|\n+/).flatMap((sentence) => {
+      const countMatch = /\b(?:top\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)|(?:the\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+most likely)\s+scorelines?\b/i.exec(sentence);
+      if (!countMatch || !/\ball\b/i.test(sentence)
+        || !/(?:to[- ]nil|clean sheets?|without conceding)/i.test(sentence)) return [];
+      const token = (countMatch[1] ?? countMatch[2]).toLowerCase();
+      const count = numberWords.get(token) ?? Number(token);
+      const teamSide = ["home", "away"].find((side) => {
+        const team = side === "home" ? grounding?.home : grounding?.away;
+        return typeof team === "string" && sentence.toLowerCase().includes(team.toLowerCase());
+      });
+      const rows = Array.isArray(grounding?.scorelines) ? grounding.scorelines.slice(0, count) : [];
+      const rankCorrect = Boolean(teamSide) && rows.length === count && rows.every(({ score }) => {
+        const [home, away] = score.split("-").map(Number);
+        return teamSide === "home" ? home > away && away === 0 : away > home && home === 0;
+      });
+      const mass = /\btotal(?:s|led|ling)?\s+(?:to\s+)?(?:about|around|roughly|approximately)?\s*(\d+(?:\.\d+)?)\s*%/i.exec(sentence);
+      const expectedMass = rows.reduce((sum, row) => sum + (finiteProbability(row?.probability) ? row.probability : 0), 0) * 100;
+      const massCorrect = !mass || (rows.length === count
+        && Math.abs(Number(mass[1]) - expectedMass) <= statedPercentageTolerance(mass[1]));
+      return [{ rankCorrect, massCorrect }];
+    });
+    assertions.scorelineRankClaimsGrounded = rankedClaims.every(({ rankCorrect }) => rankCorrect);
+    assertions.scorelineMassClaimsGrounded = rankedClaims.every(({ massCorrect }) => massCorrect);
   }
   if (expectation.expectCorrectHighLineGeometry) {
     const backwardsHighLine = [
@@ -617,6 +727,11 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:leave|create|open|increase|expose)\w*\b[^.!?\n]{0,60}\b(?:space|room)\b[^.!?\n]{0,40}\bbehind\b/i,
       /\b(?:more|greater|larger|open)\s+(?:space|room)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,120}\bhigh\s+(?:defensive\s+)?line\b/i,
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:space|room)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,60}\b(?:open|expos|availab|greater|larger|more)\w*\b/i,
+      // Equivalent tactical language from the production answer: an exposed
+      // channel need not literally be called "more space" to be correct.
+      /\b(?:passes?|balls?|runs?|runners?|play)\b[^.!?\n]{0,45}\bin behind\b/i,
+      /\bclean run (?:through|on goal)\b/i,
+      /\bsweeper[- ]keeper\b[^.!?\n]{0,80}\b(?:sweep|cover)\w*\b[^.!?\n]{0,45}\bbehind\b/i,
     ].some((pattern) => pattern.test(text));
   }
   if (expectation.expectCorrectionAcknowledgement) {
@@ -929,6 +1044,9 @@ const STRUCTURAL_TOOL_LEAK = [
   /<\s*(?:antml:)?query\s*>[\s\S]*<\s*\/\s*(?:antml:)?(?:query|invoke|tool_call)/i,
   // Chat-template control tokens: MiniMax's own framing bytes and <|...|>.
   /\]<\]\s*minimax\s*\[>\[|<\|[^|\n>]{0,60}\|>/i,
+  // Bare bracket directives emitted as final prose in production. These are
+  // neither JSON nor XML, so the older structural patterns missed them.
+  /\[\[?\s*(?:search_query|search_queries|web_search)\s*:[^\]\n]*(?:\]\]?|$)/i,
 ];
 
 /**
@@ -957,7 +1075,7 @@ export function validateNoDraftLeak(answer) {
  * general mention of the word "news".
  */
 const TEAM_NEWS_CLAIM =
-  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
+  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock|miss(?:es|ed|ing)?|absent)\b/i;
 
 /**
  * Dating a team-news claim. Absolute forms — "(BBC Sport, 12 Apr)", "on 12
@@ -997,19 +1115,22 @@ export function validateTeamNewsDiscipline(answer) {
   if (typeof answer !== "string" || !answer.trim()) {
     return { passed: false, failures: ["answer is empty"], assertions: { teamNewsSourced: false } };
   }
-  const claims = TEAM_NEWS_CLAIM.test(answer);
-  const abstains = NO_VERIFIED_NEWS.test(answer);
-  // An abstention settles the contract on its own: there is no claim left to
-  // source. Checking it first keeps "no verified injury update" from being read
-  // as an unsourced injury claim.
-  const passed = abstains || !claims || SOURCE_AND_DATE.test(answer);
+  // Evaluate every factual region. An abstention only protects its own
+  // sentence; it cannot license a later unsupported player claim (the live
+  // failure said no update was verified, then hypothesised named absences).
+  const regions = answer.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
+  const unsafeClaims = regions.filter((region) =>
+    TEAM_NEWS_CLAIM.test(region)
+    && !NO_VERIFIED_NEWS.test(region)
+    && !SOURCE_AND_DATE.test(region)
+  );
+  const passed = unsafeClaims.length === 0;
   return {
     passed,
     assertions: { teamNewsSourced: passed },
     failures: passed
       ? []
-      : ["answer asserts team news without naming a source and date, and without"
-        + " stating that no verified update was established"],
+      : [`answer asserts team news without a source and date after applying any abstention only to its own sentence: ${unsafeClaims[0].trim()}`],
   };
 }
 
@@ -1032,7 +1153,7 @@ export function qualitativeScores(result) {
     clarity: answer.length <= 4_000 ? 4 : 3,
     calibration: hasCalibration ? 4 : 2,
     groundingFidelity: result.passed && result.grounding !== undefined ? 4 : null,
-    method: "deterministic schema-12 certification checks; agent critic supplies final review"
+    method: "deterministic schema-13 certification checks; per-turn agent critic supplies final review"
   };
 }
 
@@ -1196,12 +1317,14 @@ export function generateAdversarialScenarios(seed, featured) {
         {
           question: "Rank the leading contenders in the Premier League title race using the current table.",
           expectGrounding: "season",
-          expectCompetitionId: "eng.1"
+          expectCompetitionId: "eng.1",
+          expectSeasonRanking: true
         },
         {
           question: `Given that ranking, ${followUp}`,
           expectGrounding: "competition",
-          expectCompetitionId: "eng.1"
+          expectCompetitionId: "eng.1",
+          expectNoUngroundedProbability: true
         }
       ]
     },
@@ -1219,14 +1342,16 @@ export function generateAdversarialScenarios(seed, featured) {
           expectGrounding: "match",
           expectTeams: [featured.home, featured.away],
           expectFixtureId: featured.recognizedFixtureId,
-          expectCompetitionId: featured.competitionId
+          expectCompetitionId: featured.competitionId,
+          expectModelEvidenceOnly: true
         },
         {
           question: "Which model input matters most to that edge?",
           expectGrounding: "match",
           expectTeams: [featured.home, featured.away],
           expectFixtureId: featured.recognizedFixtureId,
-          expectCompetitionId: featured.competitionId
+          expectCompetitionId: featured.competitionId,
+          expectNamedModelInput: true
         }
       ] : []
     },
@@ -1404,33 +1529,71 @@ export function finalizeClassifications(report, previous) {
     !["PASS", "INCONCLUSIVE"].includes(scenario.classification)
   );
   const requiredInconclusive = report.scenarios.filter((scenario) =>
-    scenario.outcome === "INCONCLUSIVE" && scenario.requiredForCertification === true
+    scenario.outcome === "INCONCLUSIVE" && scenario.requiredForCertification !== false
+  );
+  const requiredFailures = report.scenarios.filter((scenario) =>
+    scenario.requiredForCertification !== false && scenario.outcome !== "PASS"
   );
   const unsupportedCorrectness = report.scenarios.filter((scenario) =>
     scenario.outcome === "PASS"
     && scenario.answer
     && !Number.isFinite(scenario.qualitativeScores?.correctness)
   );
-  const latencies = report.scenarios.flatMap((scenario) =>
+  const observedLatencies = report.scenarios.flatMap((scenario) =>
     Array.isArray(scenario.requestLatencies) ? scenario.requestLatencies : [scenario.latencyMs]
   )
     .filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  const latencies = report.scenarios
+    .filter((scenario) => scenario.requiredForCertification !== false)
+    .flatMap((scenario) =>
+      Array.isArray(scenario.requestLatencies) ? scenario.requestLatencies : [scenario.latencyMs]
+    )
+    .filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
   const p90 = latencies.length ? latencies[Math.ceil(latencies.length * 0.9) - 1] : null;
+  const observedP90 = observedLatencies.length
+    ? observedLatencies[Math.ceil(observedLatencies.length * 0.9) - 1]
+    : null;
   report.latencyGate = {
     samples: latencies.length,
     p90Ms: p90,
     everyRequestUnder90s: latencies.every((value) => value < 90_000),
     p90Under20s: latencies.length < 10 ? null : p90 <= 20_000,
+    observedSamples: observedLatencies.length,
+    observedP90Ms: observedP90,
   };
   const latencyFailed = !report.latencyGate.everyRequestUnder90s || report.latencyGate.p90Under20s === false;
+  const deploymentId = report.deployment?.id;
+  const deploymentIdValid = typeof deploymentId === "string"
+    && deploymentId.trim() !== ""
+    && !/^(?:unknown|unavailable|null|none)$/i.test(deploymentId.trim());
+  const browserPassed = report.browserEvidence === null || report.browserEvidence === undefined
+    ? null
+    : report.browserEvidence.passed === true
+      && Array.isArray(report.browserEvidence?.console?.errors)
+      && report.browserEvidence.console.errors.length === 0
+      && Array.isArray(report.browserEvidence.checks)
+      && report.browserEvidence.checks.every((check) => check.passed === true);
+  const criticPassed = report.criticReview === null || report.criticReview === undefined
+    ? null
+    : report.criticReview.materialIssue === false
+      && report.criticReview.overallVerdict === "PASS";
   report.certificationGate = {
+    requiredFailures: requiredFailures.map(({ id }) => id),
     requiredInconclusive: requiredInconclusive.map(({ id }) => id),
     unsupportedCorrectness: unsupportedCorrectness.map(({ id }) => id),
     shaConverged: report.deployment?.shaConverged ?? null,
     shaGrading: report.deployment?.shaGrading ?? null,
-    passed: requiredInconclusive.length === 0
+    latencyPassed: !latencyFailed,
+    deploymentIdValid,
+    browserPassed,
+    criticPassed,
+    passed: requiredFailures.length === 0
       && unsupportedCorrectness.length === 0
-      && report.deployment?.shaConverged !== false,
+      && report.deployment?.shaConverged === true
+      && !latencyFailed
+      && deploymentIdValid
+      && browserPassed === true
+      && criticPassed === true,
   };
   report.overall = failures.length > 0 || latencyFailed || !report.certificationGate.passed
     ? "ISSUES FOUND"

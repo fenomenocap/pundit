@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   EVAL_SCHEMA_VERSION,
+  abortSseAfterGrounding,
   classifyResult,
   compareReports,
   createComparisonBaseline,
@@ -180,6 +181,40 @@ test("SSE parser and validator enforce grounding, delta, done order", () => {
   const expectation = { expectGrounding: "competition", expectCompetitionId: "eng.1" };
   assert.equal(validateSse(events, expectation).passed, true);
   assert.equal(validateSse(events.slice().reverse(), expectation).passed, false);
+});
+
+test("cancellation consumes delayed SSE grounding before aborting the body read", async () => {
+  const controller = new AbortController();
+  const encoder = new TextEncoder();
+  let reads = 0;
+  const response = {
+    body: {
+      getReader: () => ({
+        read: async () => {
+          reads += 1;
+          if (reads === 1) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            return {
+              done: false,
+              value: encoder.encode('event: grounding\ndata: {"kind":"competition"}'),
+            };
+          }
+          if (reads === 2) return { done: false, value: encoder.encode("\n\n") };
+          if (controller.signal.aborted) throw new DOMException("aborted", "AbortError");
+          return new Promise((_, reject) => controller.signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("aborted", "AbortError")),
+            { once: true }
+          ));
+        },
+      }),
+    },
+  };
+  const result = await abortSseAfterGrounding(response, controller, { timeoutMs: 250 });
+  assert.equal(result.groundingObserved, true);
+  assert.equal(result.abortErrorObserved, true);
+  assert.ok(result.abortLatencyMs < 250);
+  assert.equal(reads, 3);
 });
 
 test("grounding validation checks tier-specific payload fidelity", () => {
@@ -701,6 +736,7 @@ test("finalizer requires and applies explicit critic correctness for every passe
     scenarios: [...browserContractScenarios(), {
       id: "answer-scenario", passed: true, outcome: "PASS", answer: "Grounded answer.",
       qualitativeScores: { correctness: null }, requiredForCertification: true,
+      turnResults: [{ turn: 1, status: 200, answer: "Grounded answer." }],
     }],
     progress: { status: "complete" }, browserEvidence: null, recommendations: [],
   }, null);
@@ -716,6 +752,7 @@ test("finalizer requires and applies explicit critic correctness for every passe
   await writeFile(criticPath, JSON.stringify({
     ...identity, materialIssue: false, overallVerdict: "PASS", recommendations: [],
     scenarioVerdicts: [{ scenarioId: "answer-scenario", verdict: "PASS", correctness: 4, reason: "Verified." }],
+    turnVerdicts: [{ scenarioId: "answer-scenario", turn: 1, verdict: "PASS", correctness: 4, reason: "Verified." }],
   }));
   const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
     "--browser-json", browserPath, "--critic-json", criticPath]);
@@ -726,6 +763,57 @@ test("finalizer requires and applies explicit critic correctness for every passe
     finalized.scenarios.find(({ id }) => id === "answer-scenario").qualitativeScores.correctness,
     4
   );
+});
+
+test("finalizer requires critic coverage for every successful HTTP-200 turn", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-turn-critic-"));
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "turn-critic-run",
+    startedAt: "2026-08-13T10:00:00.000Z",
+    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+    webUrl: "https://thepundit.vercel.app",
+    scenarios: [...browserContractScenarios(), {
+      id: "two-turn-answer", passed: true, outcome: "PASS", answer: "Second answer.",
+      qualitativeScores: { correctness: null }, requiredForCertification: true,
+      turnResults: [
+        { turn: 1, status: 200, answer: "First answer." },
+        { turn: 2, status: 200, answer: "Second answer." },
+      ],
+    }],
+    progress: { status: "complete" }, browserEvidence: null, criticReview: null,
+    recommendations: [],
+  }, null);
+  await writeReport(report, directory);
+  const identity = { runId: "turn-critic-run", schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: "abc1234", deploymentId: "deploy-a", capturedAt: "2026-08-13T10:01:00.000Z" };
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
+  const critic = {
+    ...identity, materialIssue: false, overallVerdict: "PASS", recommendations: [],
+    scenarioVerdicts: [{ scenarioId: "two-turn-answer", verdict: "PASS", correctness: 4, reason: "Final answer verified." }],
+    turnVerdicts: [{ scenarioId: "two-turn-answer", turn: 1, verdict: "PASS", correctness: 4, reason: "First answer verified." }],
+  };
+  await writeFile(criticPath, JSON.stringify(critic));
+  const missing = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
+    "--browser-json", browserPath, "--critic-json", criticPath]);
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /two-turn-answer#2/);
+
+  critic.turnVerdicts.push({
+    scenarioId: "two-turn-answer", turn: 2, verdict: "ISSUES FOUND", correctness: 2,
+    reason: "Second turn contains a material error.",
+  });
+  critic.materialIssue = true;
+  critic.overallVerdict = "ISSUES FOUND";
+  await writeFile(criticPath, JSON.stringify(critic));
+  const finalizedResult = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
+    "--browser-json", browserPath, "--critic-json", criticPath]);
+  assert.equal(finalizedResult.code, 0, finalizedResult.stderr);
+  const finalized = JSON.parse(await readFile(path.join(directory, "latest.json"), "utf8"));
+  assert.equal(finalized.scenarios.find(({ id }) => id === "two-turn-answer").outcome, "FAIL");
+  assert.equal(finalized.overall, "ISSUES FOUND");
 });
 
 test("finalizer preserves same-schema comparator when critic turns a prior pass into a failure", async () => {
@@ -1024,6 +1112,9 @@ test("team-news guard rejects an unsourced availability claim", () => {
   assert.equal(validateTeamNewsDiscipline(
     "Expect a much-changed starting XI after midweek."
   ).passed, false);
+  assert.equal(validateTeamNewsDiscipline(
+    "No verified, dated team-news update was established. If Saliba and Timber are missed and Saka joins them, the clean-sheet chance falls."
+  ).passed, false);
   assert.equal(validateTeamNewsDiscipline("").passed, false);
 });
 
@@ -1100,6 +1191,8 @@ test("draft-leak gate catches structural tool-call markup, not just narration", 
     // The second live shape: a bare, unclosed JSON tool payload.
     '{  "search_queries": ["Arsenal team news injuries Premier League August 2026"]',
     '{"name": "web_search", "arguments": {"query": "arsenal injuries"}}',
+    '[[search_query:Premier League title race August 2026 Arsenal favourites]]',
+    '[web_search:Celtic LASK Champions League playoff team news]',
   ];
   for (const leak of leaks) {
     const result = validateNoDraftLeak(leak);
@@ -1135,10 +1228,65 @@ test("latency gate uses individual requests and enforces p90 after ten samples",
     p90Ms: 1_000,
     everyRequestUnder90s: true,
     p90Under20s: true,
+    observedSamples: 10,
+    observedP90Ms: 1_000,
   });
 });
 
-test("schema-12 fixture grounding distinguishes capability without leaking model probabilities", () => {
+test("certification gate uses required traffic and requires every release identity and evidence gate", () => {
+  const required = Array.from({ length: 10 }, (_, index) => ({
+    id: `required-${index}`,
+    requiredForCertification: true,
+    passed: true,
+    outcome: "PASS",
+    requestLatencies: [index === 9 ? 19_999 : 1_000],
+  }));
+  const base = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    deployment: { id: "railway-deploy-123", shaConverged: true },
+    browserEvidence: {
+      passed: true,
+      console: { errors: [], warnings: [] },
+      checks: [{ passed: true }],
+    },
+    criticReview: { materialIssue: false, overallVerdict: "PASS" },
+    scenarios: [...required, {
+      id: "optional-slow-observation",
+      requiredForCertification: false,
+      passed: true,
+      outcome: "PASS",
+      requestLatencies: [27_473],
+    }],
+  };
+  finalizeClassifications(base, null);
+  assert.equal(base.certificationGate.passed, true);
+  assert.equal(base.latencyGate.samples, 10);
+  assert.equal(base.latencyGate.observedSamples, 11);
+  assert.equal(base.latencyGate.p90Under20s, true);
+  assert.equal(base.latencyGate.observedP90Ms, 19_999);
+
+  const unknownDeployment = structuredClone(base);
+  unknownDeployment.deployment.id = "unknown";
+  finalizeClassifications(unknownDeployment, null);
+  assert.equal(unknownDeployment.certificationGate.deploymentIdValid, false);
+  assert.equal(unknownDeployment.certificationGate.passed, false);
+
+  const requiredFailure = structuredClone(base);
+  requiredFailure.scenarios[0].passed = false;
+  requiredFailure.scenarios[0].outcome = "FAIL";
+  finalizeClassifications(requiredFailure, null);
+  assert.deepEqual(requiredFailure.certificationGate.requiredFailures, ["required-0"]);
+  assert.equal(requiredFailure.certificationGate.passed, false);
+
+  const slowRequired = structuredClone(base);
+  slowRequired.scenarios[8].requestLatencies = [20_001];
+  slowRequired.scenarios[9].requestLatencies = [20_001];
+  finalizeClassifications(slowRequired, null);
+  assert.equal(slowRequired.certificationGate.latencyPassed, false);
+  assert.equal(slowRequired.certificationGate.passed, false);
+});
+
+test("schema-13 fixture grounding distinguishes capability without leaking model probabilities", () => {
   const fixture = {
     fixtureId: "espn:club.friendly:800",
     primarySource: "espn",
@@ -1179,7 +1327,7 @@ test("schema-12 fixture grounding distinguishes capability without leaking model
   }).passed, false);
 });
 
-test("schema-12 verification contract enforces shape, counts, and abstention semantics", () => {
+test("schema-13 verification contract enforces shape, counts, and abstention semantics", () => {
   assert.equal(validateVerification({
     status: "verified", supportedClaimCount: 1, removedClaimCount: 0,
   }, { expectVerification: ["verified"] }).passed, true);
@@ -1192,7 +1340,7 @@ test("schema-12 verification contract enforces shape, counts, and abstention sem
   assert.equal(validateVerification(null).passed, false);
 });
 
-test("schema-12 complete market validator enforces source, time, legs and arithmetic", () => {
+test("schema-13 complete market validator enforces source, time, legs and arithmetic", () => {
   const legs = [
     { outcome: "home", decimalOdds: 2, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
     { outcome: "draw", decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
@@ -1293,7 +1441,7 @@ test("runtime-helper scenarios execute the current API correctness module, not c
   }
 });
 
-test("schema-12 correctness guard catches the four screenshot-class failures", () => {
+test("schema-13 correctness guard catches the four screenshot-class failures", () => {
   assert.equal(validateResponseCorrectness(
     "Pundit's forecast is 52% home, 25% draw and 23% away.",
     [],
@@ -1376,6 +1524,70 @@ test("response correctness validates explicit combined scoreline sums at the sta
   assert.equal(wrongOrientation.passed, false);
 });
 
+test("response correctness rejects grounded rank, mass and request-fidelity defects", () => {
+  const grounding = {
+    kind: "match",
+    home: "Arsenal",
+    away: "Coventry",
+    scorelines: [
+      { score: "4-0", probability: 0.1254 },
+      { score: "5-0", probability: 0.1216 },
+      { score: "3-0", probability: 0.1034 },
+      { score: "6-0", probability: 0.0983 },
+      { score: "7-0", probability: 0.0681 },
+      { score: "2-0", probability: 0.064 },
+      { score: "4-1", probability: 0.0471 },
+    ],
+  };
+  assert.equal(validateResponseCorrectness(
+    "The top five scorelines are all Arsenal clean sheets.", [], grounding
+  ).passed, true);
+  const falseRank = validateResponseCorrectness(
+    "The seven most likely scorelines are all Arsenal wins without conceding, totalling roughly 67%.",
+    [], grounding
+  );
+  assert.equal(falseRank.assertions.scorelineRankClaimsGrounded, false);
+  assert.equal(falseRank.assertions.scorelineMassClaimsGrounded, false);
+  assert.equal(falseRank.passed, false);
+
+  assert.equal(validateResponseCorrectness(
+    "Pundit's team-strength rating gap is the main input behind the edge.",
+    [], grounding, { expectModelEvidenceOnly: true, expectNamedModelInput: true }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "Kalshi and Polymarket are 14 points below Pundit's model.",
+    [], grounding, { expectModelEvidenceOnly: true }
+  ).passed, false);
+  assert.equal(validateResponseCorrectness(
+    "The outputs all point the same way, so the edge is large.",
+    [], grounding, { expectNamedModelInput: true }
+  ).passed, false);
+});
+
+test("season request fidelity requires the grounded leaders and forbids invented percentages", () => {
+  const grounding = {
+    kind: "season",
+    seasonOutlook: {
+      titleProbabilities: [
+        { team: "Arsenal", probability: 0.9275 },
+        { team: "Man City", probability: 0.0594 },
+      ],
+    },
+  };
+  assert.equal(validateResponseCorrectness(
+    "Arsenal lead at 92.75%, followed by Man City at 5.94%.",
+    [], grounding, { expectSeasonRanking: true }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "No verified, dated team-news update was established.",
+    [], grounding, { expectSeasonRanking: true }
+  ).passed, false);
+  assert.equal(validateResponseCorrectness(
+    "One upset changes the season by 2.6%.",
+    [], { kind: "competition" }, { expectNoUngroundedProbability: true }
+  ).passed, false);
+});
+
 test("combined-scoreline manifest scenario exercises the built settled sanitizer", async () => {
   const config = JSON.parse(await readFile(
     path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
@@ -1403,14 +1615,19 @@ test("high-line geometry rejects both backwards formulations and requires the re
     "A high line compresses space between the units ahead of the defence, but creates more space behind it for direct passes.",
     "A high defensive line compresses space in front of the defence but leaves more space behind it for the goalkeeper to cover.",
     "A high defensive line leaves space behind the back line exposed, increasing the risk from runs in behind.",
+    "A high defensive line shrinks the defence-to-midfield gap; one vertical pass in behind can become a clean run on goal, so a sweeper-keeper must cover behind.",
   ]) {
     assert.equal(validateResponseCorrectness(
       answer, [], null, { expectCorrectHighLineGeometry: true }
     ).passed, true, answer);
   }
+  assert.equal(validateResponseCorrectness(
+    "A high line reduces the space behind the defence, although a runner can still make a clean run on goal.",
+    [], null, { expectCorrectHighLineGeometry: true }
+  ).passed, false);
 });
 
-test("schema-12 certification cannot pass required inconclusive or unsupported correctness", () => {
+test("schema-13 certification cannot pass required inconclusive or unsupported correctness", () => {
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     scenarios: [
@@ -1424,7 +1641,7 @@ test("schema-12 certification cannot pass required inconclusive or unsupported c
   assert.deepEqual(report.certificationGate.unsupportedCorrectness, ["answer"]);
 });
 
-test("schema-12 permanent certification matrix names every authorized regression family", async () => {
+test("schema-13 permanent certification matrix names every authorized regression family", async () => {
   const config = JSON.parse(await readFile(
     path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
     "utf8"
