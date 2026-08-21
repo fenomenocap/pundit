@@ -114,8 +114,9 @@ export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta
   }
 }
 
-export const EVAL_SCHEMA_VERSION = 13;
+export const EVAL_SCHEMA_VERSION = 14;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
+export const PACING_SAFETY_MARGIN_MS = 25;
 
 export function executeRuntimeHelperScenario(scenario, repoRoot = path.resolve(import.meta.dirname, "..")) {
   const correctnessHelpers = loadApiRuntimeCorrectnessHelpers(repoRoot);
@@ -227,6 +228,7 @@ export function recordOptionalScenarioFailure(report, failedResult) {
     ...failedResult,
     outcome: "INCONCLUSIVE",
     requiredForCertification: false,
+    observationalInconclusiveSafe: true,
     reproduction: activeRequest?.reproduction
       ? { requests: [activeRequest.reproduction] }
       : failedResult.reproduction,
@@ -609,7 +611,10 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     assertions.modelEvidenceOnly = !/\b(?:kalshi|polymarket|stake|bookmakers?|bookies?|market(?:s|[- ]implied|[- ]priced|\s+(?:price|prices|odds|comparison|gap|disagreement))?|model[- ]versus[- ]market)\b/i.test(text);
   }
   if (expectation.expectNamedModelInput) {
-    assertions.namedModelInput = /\b(?:team|club)[- ]+(?:ratings?|strength)|\bstrength ratings?\b|\brating differential\b|\bhome[- ]field advantage\b|\bhome advantage\b|\bneutral venue\b|\bvenue input\b/i.test(text);
+    const namedInput = /\b(?:team|club)[- ]+(?:ratings?|strength)|\bstrength ratings?\b|\brating differential\b|\bhome[- ]field advantage\b|\bhome advantage\b|\bneutral venue\b|\bvenue input\b/i.test(text);
+    const substitutesOutputForInput = /\b(?:single|main|most important)\s+(?:input|factor)\b[^.!?\n]{0,100}\b(?:market (?:gap|price|staleness)|lineups?|rotation)\b/i.test(text)
+      || /\b(?:market (?:gap|price|staleness)|lineups?|rotation)\b[^.!?\n]{0,100}\b(?:single|main|most important)\s+(?:input|factor)\b/i.test(text);
+    assertions.namedModelInput = namedInput && !substitutesOutputForInput;
   }
   if (expectation.expectSeasonRanking) {
     const leaders = grounding?.kind === "season"
@@ -624,6 +629,15 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   }
   if (expectation.expectNoUngroundedProbability) {
     assertions.noUngroundedProbability = !/\d+(?:\.\d+)?\s*%/.test(text);
+  }
+  if (expectation.expectNoCertaintyContradiction) {
+    const groundedMaximum = grounding?.kind === "season"
+      ? Math.max(...(grounding.seasonOutlook?.titleProbabilities ?? []).map(({ probability }) => probability))
+      : grounding?.kind === "match"
+        ? Math.max(grounding.pHome ?? 0, grounding.pDraw ?? 0, grounding.pAway ?? 0)
+        : 0;
+    const absoluteCertainty = /\b(?:100\s*%\s*(?:certain|certainty|guaranteed?)|guarantee(?:d|s)?\b[^.!?\n]{0,80}\b(?:win|winner|champion)|(?:will|must)\s+(?:definitely\s+)?(?:win|be (?:the )?champion)\b[^.!?\n]{0,50}\b(?:100\s*%|certain|guarantee))\b/i.test(text);
+    assertions.noCertaintyContradiction = !absoluteCertainty || groundedMaximum === 1;
   }
   // A generated answer may quote two grounded scorelines correctly and still
   // invent their combined probability. Check only explicit aggregate claims:
@@ -716,6 +730,79 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     });
     assertions.scorelineRankClaimsGrounded = rankedClaims.every(({ rankCorrect }) => rankCorrect);
     assertions.scorelineMassClaimsGrounded = rankedClaims.every(({ massCorrect }) => massCorrect);
+
+    const cardinal = (token) => numberWords.get(token.toLowerCase()) ?? Number(token);
+    const cleanSheetCountClaims = text.replaceAll("**", "").split(/(?<=[.!?])\s+|\n+/).flatMap((sentence) => {
+      const claim = /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+of\s+(?:the\s+)?top\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b[^.!?\n]{0,80}\b(?:to[- ]nil|clean[- ]sheet|without conceding)\b/i.exec(sentence);
+      if (!claim) return [];
+      const stated = cardinal(claim[1]);
+      const top = cardinal(claim[2]);
+      const rows = grounding.scorelines.slice(0, top);
+      const actual = rows.filter(({ score }) => {
+        const [home, away] = score.split("-").map(Number);
+        return home > away && away === 0;
+      }).length;
+      return [{ correct: rows.length === top && stated === actual }];
+    });
+    assertions.scorelineCleanSheetCountsGrounded = cleanSheetCountClaims.every(({ correct }) => correct);
+
+    const universalClaims = text.replaceAll("**", "").split(/(?<=[.!?])\s+|\n+/).flatMap((sentence) => {
+      const thresholdClaim = /\b(?:every|all)\s+(?:line|scoreline)s?\s+(?:at or above|above|at)\s+(\d+(?:\.\d+)?)\s*%[^.!?\n]{0,80}\b([A-Z][\p{L}.'’ -]{1,40})\s+(?:win|victor)/iu.exec(sentence);
+      if (thresholdClaim) {
+        const threshold = Number(thresholdClaim[1]) / 100;
+        const team = thresholdClaim[2].trim().toLowerCase();
+        const side = team.includes(String(grounding.home).toLowerCase()) ? "home"
+          : team.includes(String(grounding.away).toLowerCase()) ? "away" : null;
+        const rows = grounding.scorelines.filter(({ probability }) => probability + Number.EPSILON >= threshold);
+        const correct = Boolean(side) && rows.length > 0 && rows.every(({ score }) => {
+          const [home, away] = score.split("-").map(Number);
+          return side === "home" ? home > away : away > home;
+        });
+        return [{ correct }];
+      }
+      const teamNames = [grounding.home, grounding.away]
+        .map((team) => String(team).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      const absentClaim = new RegExp(`\\b(${teamNames.join("|")})\\b[^.!?\\n]{0,50}\\b(?:does not|doesn't|never)\\s+(?:register|appear|show)\\b[^.!?\\n]{0,50}\\babove\\s+(?:the\\s+)?(\\d+(?:\\.\\d+)?)\\s*%?`, "i").exec(sentence);
+      if (!absentClaim) return [];
+      const side = absentClaim[1].toLowerCase() === String(grounding.home).toLowerCase() ? "home" : "away";
+      const threshold = Number(absentClaim[2]) / 100;
+      const hasWin = grounding.scorelines.some(({ score, probability }) => {
+        const [home, away] = score.split("-").map(Number);
+        return probability + Number.EPSILON >= threshold && (side === "home" ? home > away : away > home);
+      });
+      return [{ correct: !hasWin }];
+    });
+    assertions.scorelineUniversalClaimsGrounded = universalClaims.every(({ correct }) => correct);
+
+    const drawMassClaims = [...text.replaceAll("**", "").matchAll(/\b(\d+(?:\.\d+)?)\s*%\s+of\s+(?:the\s+)?scorelines?\s+(?:are|is)\s+(?:tied|draws?)\b|\b(?:draw|tied)\s+scoreline\s+(?:mass|probability)\s+(?:is|at)\s+(\d+(?:\.\d+)?)\s*%/gi)];
+    assertions.drawMassGrounded = drawMassClaims.every((claim) => {
+      const token = claim[1] ?? claim[2];
+      return finiteProbability(grounding.pDraw)
+        && Math.abs(Number(token) - grounding.pDraw * 100) <= statedPercentageTolerance(token);
+    });
+  }
+  if (grounding?.kind === "competition") {
+    const unsupportedCompetitionProvenance = /\b(?:play(?:s|ing)?|are|is)\s+in\s+(?:the\s+)?championship\b|\b(?:included\s+as|are|were)\s+(?:the\s+)?promoted clubs?\b|\bpromoted\s+from\b|\blead(?:s|ing)?\s+by\s+seeding\b|\bsquad rankings? used by the model\b|\bpositions? reflect[^.!?\n]{0,60}\bmodel\b/i.test(text);
+    assertions.competitionClaimsGrounded = !unsupportedCompetitionProvenance;
+  }
+  if (grounding?.kind === "match") {
+    assertions.fixtureStatusGrounded = !/\b(?:result is (?:already )?on (?:the )?record|match (?:has )?(?:already )?been played|future replay|played match)\b/i.test(text);
+  }
+  if (grounding?.kind === "fixture") {
+    const reason = grounding.capability?.reason;
+    const reasonText = {
+      "ratings-unavailable": /\b(?:rating|strength)\b/i,
+      "neutral-venue-unknown": /\b(?:neutral|venue)\b/i,
+      "required-context-missing": /\b(?:required|missing)\b[^.!?\n]{0,50}\b(?:context|input)\b|\b(?:context|input)\b[^.!?\n]{0,50}\b(?:required|missing)\b/i,
+      "model-initializing": /\b(?:initializ|starting up|temporar)\w*\b/i,
+      "ratings-refreshing": /\b(?:rating|strength)\b[^.!?\n]{0,40}\brefresh\w*\b|\brefresh\w*\b[^.!?\n]{0,40}\b(?:rating|strength)\b/i,
+      "unsupported-competition": /\b(?:outside|unsupported)\b[^.!?\n]{0,40}\b(?:coverage|competition)\b/i,
+      "friendly-policy-disabled": /\b(?:friendly|outside)\b[^.!?\n]{0,50}\b(?:coverage|polic|disabled)\b/i,
+      "model-policy-disabled": /\b(?:model|pricing)\b[^.!?\n]{0,50}\b(?:polic|disabled|outside coverage)\b/i,
+    }[reason];
+    const inventsDifferentReason = reason === "required-context-missing"
+      && /\b(?:confirmed squad|injur(?:y|ies)|lineups?|availability data)\b[^.!?\n]{0,100}\b(?:require|required|unblock|coverage)\b|\b(?:require|required|unblock|coverage)\b[^.!?\n]{0,100}\b(?:confirmed squad|injur(?:y|ies)|lineups?|availability data)\b/i.test(text);
+    assertions.capabilityReasonFidelity = Boolean(reasonText?.test(text)) && !inventsDifferentReason;
   }
   if (expectation.expectCorrectHighLineGeometry) {
     const backwardsHighLine = [
@@ -967,7 +1054,11 @@ export function validateAnswerStructure(answer, expectation = {}) {
     }
     return true;
   }).map((line) => line.trim());
-  const assertions = { noOrphanedSectionLabel: orphaned.length === 0 };
+  const leadingMalformedFragment = /^\s*[\)\]\}]+(?:[.,;:]|\s)+(?!\d)/.test(typeof answer === "string" ? answer : "");
+  const assertions = {
+    noOrphanedSectionLabel: orphaned.length === 0,
+    noMalformedLeadingFragment: !leadingMalformedFragment,
+  };
   if (expectation.expectHeadlineOneXTwo) {
     assertions.headlineOneXTwoPresent = lines.some((line) =>
       (line.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(line)
@@ -997,6 +1088,8 @@ export function validateAnswerStructure(answer, expectation = {}) {
     .filter(([, passed]) => !passed)
     .map(([name]) => name === "noOrphanedSectionLabel"
       ? `answer left an empty section label: ${orphaned.join(", ")}`
+      : name === "noMalformedLeadingFragment"
+        ? "answer begins with a malformed closing fragment"
       : name === "headlineOneXTwoPresent"
         ? "match answer is missing its headline win/draw/win line"
         : "answer ends with a structurally incomplete fragment");
@@ -1075,7 +1168,14 @@ export function validateNoDraftLeak(answer) {
  * general mention of the word "news".
  */
 const TEAM_NEWS_CLAIM =
-  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock|miss(?:es|ed|ing)?|absent)\b/i;
+  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock|miss(?:es|ed|ing)?|absence|absent)\b/i;
+
+function assertsNamedPlayerNews(region) {
+  const playerStatus = /\b(?:absence|absent|injur\w*|suspend\w*|doubtful|ruled out|sidelined|unavailable|available|starts?|starting|fit|knock|miss(?:es|ed|ing)?|out)\b/i.test(region);
+  const names = region.match(/\b[A-Z][a-zÀ-ÿ'’.-]{2,}\b/g) ?? [];
+  const generic = new Set(["Confirmed", "No", "The", "If", "Team", "What", "Pundit", "Arsenal", "Coventry"]);
+  return playerStatus && names.some((name) => !generic.has(name));
+}
 
 /**
  * Dating a team-news claim. Absolute forms — "(BBC Sport, 12 Apr)", "on 12
@@ -1120,7 +1220,7 @@ export function validateTeamNewsDiscipline(answer) {
   // failure said no update was verified, then hypothesised named absences).
   const regions = answer.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
   const unsafeClaims = regions.filter((region) =>
-    TEAM_NEWS_CLAIM.test(region)
+    (TEAM_NEWS_CLAIM.test(region) || assertsNamedPlayerNews(region))
     && !NO_VERIFIED_NEWS.test(region)
     && !SOURCE_AND_DATE.test(region)
   );
@@ -1153,13 +1253,14 @@ export function qualitativeScores(result) {
     clarity: answer.length <= 4_000 ? 4 : 3,
     calibration: hasCalibration ? 4 : 2,
     groundingFidelity: result.passed && result.grounding !== undefined ? 4 : null,
-    method: "deterministic schema-13 certification checks; per-turn agent critic supplies final review"
+    method: "deterministic schema-14 certification checks; per-turn agent critic supplies final review"
   };
 }
 
 export function classifyResult(current, previous, comparable = true) {
   if (current.outcome === "INCONCLUSIVE") return "INCONCLUSIVE";
   if (current.failure?.kind === "timeout") {
+    if (!previous || !comparable) return "FAIL";
     return previous?.failure?.kind === "timeout" && comparable
       ? "EXISTING ISSUE"
       : "INTERMITTENT";
@@ -1167,7 +1268,7 @@ export function classifyResult(current, previous, comparable = true) {
   if (current.passed) {
     return previous && comparable && previous.passed === false ? "INTERMITTENT" : "PASS";
   }
-  if (!previous || !comparable) return "EXISTING ISSUE";
+  if (!previous || !comparable) return "FAIL";
   if (previous.passed) return "REGRESSION";
   if (previous.classification === "PASS") return "REGRESSION";
   return "EXISTING ISSUE";
@@ -1364,12 +1465,16 @@ export function generateAdversarialScenarios(seed, featured) {
         {
           question: "Who is most likely to win the Premier League based on the current table?",
           expectGrounding: "season",
-          expectCompetitionId: "eng.1"
+          expectCompetitionId: "eng.1",
+          expectSeasonRanking: true,
+          expectNoCertaintyContradiction: true
         },
         {
           question: `Who will win the Premier League? ${certainty}`,
           expectGrounding: "season",
-          expectCompetitionId: "eng.1"
+          expectCompetitionId: "eng.1",
+          expectSeasonRanking: true,
+          expectNoCertaintyContradiction: true
         }
       ]
     },
@@ -1407,6 +1512,7 @@ export function renderMarkdown(report) {
     `- Previous comparison: ${report.comparison.reason}`,
     `- Overall: **${report.overall}**`,
     `- Certification gate: ${report.certificationGate?.passed ? "PASS" : "FAIL"}`,
+    `- Pacing gate: ${report.pacingGate?.passed ? "PASS" : "FAIL"} — ${report.pacingGate?.minimumObservedGapMs ?? "n/a"} ms minimum observed gap (required ${report.pacingGate?.minimumIntervalMs ?? "n/a"} ms)`,
     "",
     "## Scenario Results",
     "",
@@ -1467,21 +1573,35 @@ export function readinessFailures(readiness) {
   return failures;
 }
 
-export function createPacer(intervalMs, {
-  now = () => Date.now(),
-  sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay))
-} = {}) {
-  let previousStart = null;
+export function createPacer(intervalMs, options = {}) {
+  const now = options.now ?? (() => Date.now());
+  const monotonicNow = options.monotonicNow
+    ?? (options.now ? now : () => performance.now());
+  const sleep = options.sleep ?? ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
+  const safetyMarginMs = options.safetyMarginMs ?? PACING_SAFETY_MARGIN_MS;
+  let previousMonotonicStart = null;
+  let origin = null;
   const starts = [];
+  const observedStartOffsetsMs = [];
+  const observedGapsMs = [];
   return {
     starts,
+    observedStartOffsetsMs,
+    observedGapsMs,
+    safetyMarginMs,
     async beforeRequest() {
-      if (previousStart !== null) {
-        const remaining = intervalMs - (now() - previousStart);
-        if (remaining > 0) await sleep(remaining);
+      if (previousMonotonicStart !== null) {
+        while (monotonicNow() - previousMonotonicStart < intervalMs) {
+          const remaining = intervalMs - (monotonicNow() - previousMonotonicStart);
+          await sleep(Math.max(1, remaining + safetyMarginMs));
+        }
       }
-      previousStart = now();
-      starts.push(new Date(previousStart).toISOString());
+      const observed = monotonicNow();
+      if (origin === null) origin = observed;
+      if (previousMonotonicStart !== null) observedGapsMs.push(observed - previousMonotonicStart);
+      previousMonotonicStart = observed;
+      observedStartOffsetsMs.push(observed - origin);
+      starts.push(new Date(now()).toISOString());
     }
   };
 }
@@ -1534,6 +1654,19 @@ export function finalizeClassifications(report, previous) {
   const requiredFailures = report.scenarios.filter((scenario) =>
     scenario.requiredForCertification !== false && scenario.outcome !== "PASS"
   );
+  const optionalMaterialFailures = report.scenarios.filter((scenario) =>
+    scenario.requiredForCertification === false && scenario.outcome === "FAIL"
+  );
+  const unsafeObservationalInconclusive = report.scenarios.filter((scenario) => {
+    if (scenario.requiredForCertification !== false || scenario.outcome !== "INCONCLUSIVE") return false;
+    const successfulAnswer = (scenario.turnResults ?? []).some((turn) =>
+      turn.status === 200 && typeof turn.answer === "string" && turn.answer.trim()
+    );
+    const safe = scenario.observationalInconclusiveSafe === true
+      || (!scenario.answer && !successfulAnswer);
+    scenario.observationalInconclusiveSafe = safe;
+    return !safe;
+  });
   const unsupportedCorrectness = report.scenarios.filter((scenario) =>
     scenario.outcome === "PASS"
     && scenario.answer
@@ -1577,20 +1710,54 @@ export function finalizeClassifications(report, previous) {
     ? null
     : report.criticReview.materialIssue === false
       && report.criticReview.overallVerdict === "PASS";
+  const minimumPacingInterval = report.pacing?.minimumIntervalMs;
+  const reportedPacingGaps = Array.isArray(report.pacing?.observedGapsMs)
+    ? report.pacing.observedGapsMs.filter((gap) => Number.isFinite(gap))
+    : [];
+  const pacingOffsets = Array.isArray(report.pacing?.observedStartOffsetsMs)
+    ? report.pacing.observedStartOffsetsMs.filter((offset) => Number.isFinite(offset))
+    : [];
+  const requestStartCount = report.pacing?.requestStarts?.length ?? 0;
+  const expectedGaps = Math.max(0, requestStartCount - 1);
+  const pacingGaps = pacingOffsets.slice(1).map((offset, index) => offset - pacingOffsets[index]);
+  const gapEvidenceConsistent = reportedPacingGaps.length === pacingGaps.length
+    && reportedPacingGaps.every((gap, index) => Math.abs(gap - pacingGaps[index]) < 0.001);
+  const pacingPassed = Number.isFinite(minimumPacingInterval)
+    && requestStartCount > 0
+    && pacingOffsets.length === requestStartCount
+    && pacingGaps.length === expectedGaps
+    && gapEvidenceConsistent
+    && pacingGaps.every((gap) => gap >= minimumPacingInterval);
+  report.pacingGate = {
+    minimumIntervalMs: Number.isFinite(minimumPacingInterval) ? minimumPacingInterval : null,
+    observedGapsMs: pacingGaps,
+    minimumObservedGapMs: pacingGaps.length ? Math.min(...pacingGaps) : null,
+    requestStartCount,
+    expectedGapCount: expectedGaps,
+    preservedStartCount: pacingOffsets.length,
+    gapEvidenceConsistent,
+    passed: pacingPassed,
+  };
   report.certificationGate = {
     requiredFailures: requiredFailures.map(({ id }) => id),
     requiredInconclusive: requiredInconclusive.map(({ id }) => id),
     unsupportedCorrectness: unsupportedCorrectness.map(({ id }) => id),
+    optionalMaterialFailures: optionalMaterialFailures.map(({ id }) => id),
+    unsafeObservationalInconclusive: unsafeObservationalInconclusive.map(({ id }) => id),
     shaConverged: report.deployment?.shaConverged ?? null,
     shaGrading: report.deployment?.shaGrading ?? null,
     latencyPassed: !latencyFailed,
+    pacingPassed,
     deploymentIdValid,
     browserPassed,
     criticPassed,
     passed: requiredFailures.length === 0
+      && optionalMaterialFailures.length === 0
+      && unsafeObservationalInconclusive.length === 0
       && unsupportedCorrectness.length === 0
       && report.deployment?.shaConverged === true
       && !latencyFailed
+      && pacingPassed
       && deploymentIdValid
       && browserPassed === true
       && criticPassed === true,

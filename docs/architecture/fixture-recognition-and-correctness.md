@@ -48,7 +48,10 @@ match/1X2 intent cannot be overridden by a competition token.
 Priced fixtures retain `grounding.kind = "match"`. Recognized non-priced
 fixtures return `kind = "fixture"` plus their capability. Candidate-only text
 gets no fixture badge. Deterministic post-processing strips probabilities and
-scorelines from non-priced fixture answers.
+scorelines from non-priced fixture answers. Closed capability questions are
+answered by a deterministic grounded layer which preserves the exact status and
+reason above; MiniMax cannot replace a typed reason with a guessed squad,
+lineup, venue, rating, or policy explanation.
 
 ## Current-fact verification
 
@@ -64,6 +67,15 @@ Deterministic answer-path guards and supporting utilities enforce decimal-odds a
 same-source/time 1X2 markets, no-vig totals, external-data labels, scoreline
 totals, manager-era attribution, correction cues, and contradictory-rationale
 removal.
+
+The same deterministic grounded layer owns every no-search response with
+complete match, non-priced fixture, competition, or season grounding. The
+non-priced capability and identity-not-established candidate notices are
+always deterministic. A mandatory current cue still performs the bounded
+search, but its results cannot alter capability or promote identity. MiniMax is
+limited to supported evidence-required prose plus
+general/ungrounded open-ended analysis behind the existing search, verifier,
+SSE, and 90-second deadline contracts.
 
 ## Private friendly shadow policy
 

@@ -252,7 +252,10 @@ test("grounding validation checks tier-specific payload fidelity", () => {
 
 test("classification distinguishes baseline, regression, pass, and inconclusive", () => {
   assert.equal(classifyResult({ passed: true, outcome: "PASS" }, null), "PASS");
-  assert.equal(classifyResult({ passed: false, outcome: "FAIL" }, null), "EXISTING ISSUE");
+  assert.equal(classifyResult({ passed: false, outcome: "FAIL" }, null), "FAIL");
+  assert.equal(classifyResult(
+    { passed: false, outcome: "FAIL", failure: { kind: "timeout" } }, null
+  ), "FAIL");
   assert.equal(classifyResult(
     { passed: false, outcome: "FAIL" },
     { passed: true, classification: "PASS" }
@@ -344,7 +347,7 @@ test("readiness gating names each failed component", () => {
   }), []);
 });
 
-test("pacer waits for the remaining request interval", async () => {
+test("pacer uses monotonic observed gaps, a safety margin and a post-sleep recheck", async () => {
   let clock = 1_000;
   const waits = [];
   const pacer = createPacer(13_000, {
@@ -357,8 +360,27 @@ test("pacer waits for the remaining request interval", async () => {
   await pacer.beforeRequest();
   clock += 2_000;
   await pacer.beforeRequest();
-  assert.deepEqual(waits, [11_000]);
-  assert.equal(Date.parse(pacer.starts[1]) - Date.parse(pacer.starts[0]), 13_000);
+  assert.deepEqual(waits, [11_025]);
+  assert.equal(Date.parse(pacer.starts[1]) - Date.parse(pacer.starts[0]), 13_025);
+  assert.deepEqual(pacer.observedStartOffsetsMs, [0, 13_025]);
+  assert.deepEqual(pacer.observedGapsMs, [13_025]);
+});
+
+test("pacer rechecks a timer that wakes early before preserving the next start", async () => {
+  let clock = 5_000;
+  const waits = [];
+  const pacer = createPacer(13_000, {
+    now: () => clock,
+    safetyMarginMs: 25,
+    sleep: async (delay) => {
+      waits.push(delay);
+      clock += waits.length === 1 ? delay - 100 : delay;
+    },
+  });
+  await pacer.beforeRequest();
+  await pacer.beforeRequest();
+  assert.equal(waits.length, 2);
+  assert.ok(pacer.observedGapsMs[0] >= 13_000);
 });
 
 test("report comparison stays comparable across deployments when the schema matches", () => {
@@ -477,6 +499,8 @@ test("adversarial generation covers exactly five required categories", () => {
   assert.equal(scenarios[2].kind, "inconclusive");
   assert.equal(JSON.stringify(scenarios).includes("World Cup"), false);
   assert.equal(scenarios[1].turns[0].expectGrounding, "season");
+  assert.equal(scenarios[3].turns[0].expectSeasonRanking, true);
+  assert.equal(scenarios[3].turns[1].expectNoCertaintyContradiction, true);
 });
 
 test("atomic report writing preserves the previous report and updates latest", async () => {
@@ -738,6 +762,7 @@ test("finalizer requires and applies explicit critic correctness for every passe
       qualitativeScores: { correctness: null }, requiredForCertification: true,
       turnResults: [{ turn: 1, status: 200, answer: "Grounded answer." }],
     }],
+    pacing: { minimumIntervalMs: 13_000, requestStarts: ["2026-08-13T10:00:00.000Z"], observedStartOffsetsMs: [0], observedGapsMs: [] },
     progress: { status: "complete" }, browserEvidence: null, recommendations: [],
   }, null);
   assert.equal(report.overall, "ISSUES FOUND");
@@ -1243,6 +1268,12 @@ test("certification gate uses required traffic and requires every release identi
   }));
   const base = {
     schemaVersion: EVAL_SCHEMA_VERSION,
+    pacing: {
+      minimumIntervalMs: 13_000,
+      requestStarts: ["2026-08-13T10:00:00.000Z", "2026-08-13T10:00:13.025Z"],
+      observedStartOffsetsMs: [0, 13_025],
+      observedGapsMs: [13_025],
+    },
     deployment: { id: "railway-deploy-123", shaConverged: true },
     browserEvidence: {
       passed: true,
@@ -1284,9 +1315,45 @@ test("certification gate uses required traffic and requires every release identi
   finalizeClassifications(slowRequired, null);
   assert.equal(slowRequired.certificationGate.latencyPassed, false);
   assert.equal(slowRequired.certificationGate.passed, false);
+
+  const underpaced = structuredClone(base);
+  underpaced.pacing.observedStartOffsetsMs = [0, 12_999];
+  underpaced.pacing.observedGapsMs = [12_999];
+  finalizeClassifications(underpaced, null);
+  assert.equal(underpaced.pacingGate.passed, false);
+  assert.equal(underpaced.certificationGate.passed, false);
+
+  const optionalMaterialFailure = structuredClone(base);
+  optionalMaterialFailure.scenarios.at(-1).passed = false;
+  optionalMaterialFailure.scenarios.at(-1).outcome = "FAIL";
+  finalizeClassifications(optionalMaterialFailure, null);
+  assert.deepEqual(optionalMaterialFailure.certificationGate.optionalMaterialFailures,
+    ["optional-slow-observation"]);
+  assert.equal(optionalMaterialFailure.certificationGate.passed, false);
+
+  const safeObservation = structuredClone(base);
+  safeObservation.scenarios.at(-1).passed = false;
+  safeObservation.scenarios.at(-1).outcome = "INCONCLUSIVE";
+  safeObservation.scenarios.at(-1).answer = null;
+  safeObservation.scenarios.at(-1).turnResults = [];
+  finalizeClassifications(safeObservation, null);
+  assert.equal(safeObservation.scenarios.at(-1).observationalInconclusiveSafe, true);
+  assert.equal(safeObservation.certificationGate.passed, true);
+
+  const unsafeObservation = structuredClone(base);
+  unsafeObservation.scenarios.at(-1).passed = false;
+  unsafeObservation.scenarios.at(-1).outcome = "INCONCLUSIVE";
+  unsafeObservation.scenarios.at(-1).answer = "A materially defective answer.";
+  unsafeObservation.scenarios.at(-1).turnResults = [
+    { turn: 1, status: 200, answer: "A materially defective answer." },
+  ];
+  finalizeClassifications(unsafeObservation, null);
+  assert.deepEqual(unsafeObservation.certificationGate.unsafeObservationalInconclusive,
+    ["optional-slow-observation"]);
+  assert.equal(unsafeObservation.certificationGate.passed, false);
 });
 
-test("schema-13 fixture grounding distinguishes capability without leaking model probabilities", () => {
+test("schema-14 fixture grounding distinguishes capability without leaking model probabilities", () => {
   const fixture = {
     fixtureId: "espn:club.friendly:800",
     primarySource: "espn",
@@ -1327,7 +1394,7 @@ test("schema-13 fixture grounding distinguishes capability without leaking model
   }).passed, false);
 });
 
-test("schema-13 verification contract enforces shape, counts, and abstention semantics", () => {
+test("schema-14 verification contract enforces shape, counts, and abstention semantics", () => {
   assert.equal(validateVerification({
     status: "verified", supportedClaimCount: 1, removedClaimCount: 0,
   }, { expectVerification: ["verified"] }).passed, true);
@@ -1340,7 +1407,7 @@ test("schema-13 verification contract enforces shape, counts, and abstention sem
   assert.equal(validateVerification(null).passed, false);
 });
 
-test("schema-13 complete market validator enforces source, time, legs and arithmetic", () => {
+test("schema-14 complete market validator enforces source, time, legs and arithmetic", () => {
   const legs = [
     { outcome: "home", decimalOdds: 2, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
     { outcome: "draw", decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
@@ -1441,7 +1508,7 @@ test("runtime-helper scenarios execute the current API correctness module, not c
   }
 });
 
-test("schema-13 correctness guard catches the four screenshot-class failures", () => {
+test("schema-14 correctness guard catches the four screenshot-class failures", () => {
   assert.equal(validateResponseCorrectness(
     "Pundit's forecast is 52% home, 25% draw and 23% away.",
     [],
@@ -1564,6 +1631,110 @@ test("response correctness rejects grounded rank, mass and request-fidelity defe
   ).passed, false);
 });
 
+test("schema-14 rejects certainty, scoreline universals, counts and draw-mass contradictions", () => {
+  const grounding = {
+    kind: "match",
+    home: "Arsenal",
+    away: "Coventry",
+    pHome: 0.9728,
+    pDraw: 0.0229,
+    pAway: 0.0043,
+    scorelines: [
+      { score: "4-0", probability: 0.1254 },
+      { score: "5-0", probability: 0.1216 },
+      { score: "3-0", probability: 0.1034 },
+      { score: "6-0", probability: 0.0983 },
+      { score: "7-0", probability: 0.0681 },
+      { score: "2-0", probability: 0.064 },
+      { score: "4-1", probability: 0.0471 },
+      { score: "1-1", probability: 0.0109 },
+      { score: "1-2", probability: 0.0019 },
+    ],
+  };
+  assert.equal(validateResponseCorrectness(
+    "Six of the top seven are Arsenal clean-sheet wins. Draw scoreline probability is 2.3%.",
+    [], grounding
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "Seven of the top eight are Arsenal-to-nil scorelines.", [], grounding
+  ).assertions.scorelineCleanSheetCountsGrounded, false);
+  assert.equal(validateResponseCorrectness(
+    "Every scoreline at or above 0.1% is an Arsenal win.", [], grounding
+  ).assertions.scorelineUniversalClaimsGrounded, false);
+  assert.equal(validateResponseCorrectness(
+    "Coventry does not register above the 0.1% threshold on any winning scoreline.", [], grounding
+  ).assertions.scorelineUniversalClaimsGrounded, false);
+  assert.equal(validateResponseCorrectness(
+    "The mark 1.3% of scorelines are tied.", [], grounding
+  ).assertions.drawMassGrounded, false);
+
+  const season = {
+    kind: "season",
+    seasonOutlook: { titleProbabilities: [{ team: "Arsenal", probability: 0.9347 }] },
+  };
+  assert.equal(validateResponseCorrectness(
+    "Arsenal are favourites at 93.47%; this is not a guarantee.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "Arsenal will win with 100% certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+});
+
+test("schema-14 rejects unsupported competition, fixture-status and capability-reason claims", () => {
+  assert.equal(validateResponseCorrectness(
+    "All teams have zero games, so the supplied ordering is not an on-field ranking.", [],
+    { kind: "competition", standings: [] }
+  ).passed, true);
+  for (const unsafe of [
+    "Coventry play in the Championship.",
+    "Bournemouth lead by seeding.",
+    "The positions reflect squad rankings used by the model.",
+    "Coventry, Hull, Leeds and Sunderland are the promoted clubs.",
+  ]) assert.equal(validateResponseCorrectness(
+    unsafe, [], { kind: "competition", standings: [] }
+  ).assertions.competitionClaimsGrounded, false, unsafe);
+
+  assert.equal(validateResponseCorrectness(
+    "The result is already on the record.", [],
+    { kind: "match", home: "Arsenal", away: "Coventry", scorelines: [] }
+  ).assertions.fixtureStatusGrounded, false);
+
+  const missingContext = {
+    kind: "fixture",
+    capability: { status: "insufficient-model-input", reason: "required-context-missing" },
+  };
+  assert.equal(validateResponseCorrectness(
+    "A required model input is missing, so no probabilities are available.", [], missingContext
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "Confirmed squad, injury and availability data are required to unblock coverage.", [], missingContext
+  ).assertions.capabilityReasonFidelity, false);
+  assert.equal(validateResponseCorrectness(
+    "The most important input is market staleness; team-strength ratings also exist.", [], null,
+    { expectNamedModelInput: true }
+  ).assertions.namedModelInput, false);
+});
+
+test("schema-14 catches leading malformed fragments and named-player claims after abstention", () => {
+  assert.equal(validateAnswerStructure(
+    "). Could you share the specific match?"
+  ).assertions.noMalformedLeadingFragment, false);
+  assert.equal(validateAnswerStructure(
+    "Could you share the specific match?"
+  ).passed, true);
+  assert.equal(validateTeamNewsDiscipline(
+    "No verified, dated team-news update was established. Confirmed absence of Saliba and Timber would matter."
+  ).passed, false);
+  assert.equal(validateTeamNewsDiscipline(
+    "No verified, dated team-news update was established. A generic lineup change would matter."
+  ).passed, false);
+  assert.equal(validateTeamNewsDiscipline(
+    "No verified, dated team-news update was established. The model probabilities remain available."
+  ).passed, true);
+});
+
 test("season request fidelity requires the grounded leaders and forbids invented percentages", () => {
   const grounding = {
     kind: "season",
@@ -1627,7 +1798,7 @@ test("high-line geometry rejects both backwards formulations and requires the re
   ).passed, false);
 });
 
-test("schema-13 certification cannot pass required inconclusive or unsupported correctness", () => {
+test("schema-14 certification cannot pass required inconclusive or unsupported correctness", () => {
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     scenarios: [
@@ -1641,7 +1812,7 @@ test("schema-13 certification cannot pass required inconclusive or unsupported c
   assert.deepEqual(report.certificationGate.unsupportedCorrectness, ["answer"]);
 });
 
-test("schema-13 permanent certification matrix names every authorized regression family", async () => {
+test("schema-14 permanent certification matrix names every authorized regression family", async () => {
   const config = JSON.parse(await readFile(
     path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
     "utf8"

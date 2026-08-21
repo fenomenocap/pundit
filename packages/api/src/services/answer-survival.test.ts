@@ -1196,13 +1196,11 @@ describe("the verdict and the close a match answer must carry", () => {
     expectDeliverable(delivered.answer, true);
     expect(delivered.answer).toContain("**What would change this**");
     expect(delivered.answer).toContain(
-      "Confirmed team sheets are what would move this: if both sides start close to full"
-      + " strength, the gap on Celtic stands; if either is without first-choice starters,"
-      + " that gap is the first thing to shrink."
+      "A material change to the club-strength inputs or fixture context would require a refreshed forecast"
     );
-    // It invents nothing. No player, no absence, no injury -- only the unknown
-    // that is unresolved on every pre-match fixture, and which way it moves the
-    // read. The model's dead-end team-news line is left exactly as written.
+    expect(delivered.answer).toContain("does not quantify lineup counterfactuals");
+    // It invents nothing. No player, absence, injury or uncomputed direction.
+    // The model's dead-end team-news line is left exactly as written.
     expect(delivered.answer).toContain("No verified team-news update was established");
     expect(delivered.answer).not.toMatch(/\b(?:injur|suspend|doubtful|ruled out|sidelined)/i);
     expect(statesConditionalClose(delivered.answer)).toBe(true);

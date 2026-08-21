@@ -22,11 +22,13 @@ For Premier League title-race and top-four questions, Pundit runs a **Monte Carl
 * Samples match outcomes from the same Dixon-Coles engine used for individual fixtures
 * Reports title probability and top-four probability per team
 
+The default simulation seed is derived from the complete standings, remaining fixtures, ratings, run count, and active contributor identity. Identical grounded inputs therefore replay to identical probabilities across follow-up turns; changing a grounded input changes the replay. Tests may still inject an explicit random source.
+
 This is separate from the per-fixture active cache — it answers "who wins the league?" rather than "who wins this match?"
 
 ### How the chat uses it
 
-For a recognized, priced fixture in the 14-day window, Pundit treats the fixture's precomputed probabilities as ground truth. It then:
+For a recognized, priced fixture in the 14-day window, Pundit treats the fixture's precomputed probabilities as ground truth. Every complete no-search match response is rendered deterministically from that grounding payload. MiniMax is reserved for evidence-required current turns and general/ungrounded open-ended analysis. Pundit then:
 
 1. Compares the model's win/draw/win read with complete active Stake, Kalshi, and Polymarket 1X2 prices when available
 2. Runs a live web search whenever the question touches injuries, suspensions, lineups, form, transfers, or a recent result — for a specific fixture that information changes the read, so Pundit searches rather than answering from memory. Every item it reports names its source and date, and it says plainly where a search turned up nothing
@@ -34,7 +36,7 @@ For a recognized, priced fixture in the 14-day window, Pundit treats the fixture
 
 Competition questions use ESPN standings only. Season questions add the Monte Carlo outlook on top of standings.
 
-Recognized non-priced fixtures use a separate fixture grounding contract with a typed capability reason and no Pundit probabilities or scorelines. Discovery-only candidates are not grounding and never reach the model.
+Recognized non-priced fixtures use a separate fixture grounding contract with a typed capability reason and no Pundit probabilities or scorelines. Their notice preserves the exact status and reason supplied by the capability decision; it does not ask MiniMax to infer why an input is missing. Discovery-only candidates are not grounding and never reach the model.
 
 ### Evaluation and calibration
 

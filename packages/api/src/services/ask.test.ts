@@ -47,9 +47,13 @@ import {
   sanitizeDeliveredAnswer,
   computeMarketDivergence,
   composeMarketDivergenceSentence,
+  deterministicGroundedResponse,
+  deterministicCoverageResponse,
+  dropLeadingAnswerFragment,
   statesMarketDivergence,
   type Grounding,
   type MarketDivergence,
+  type SeasonGrounding,
 } from "./ask";
 import {
   premierLeagueSeasonWindow,
@@ -548,7 +552,7 @@ describe("current-news evidence hardening", () => {
 
   it("removes artifact-shaped positive team news when verification supported nothing", () => {
     const candidateNotice = "I could not establish an authoritative structured fixture identity for that matchup; no verified fixture identity was established, so it remains a discovery candidate and has no Pundit fixture badge or probabilities.";
-    const unsafe = `${candidateNotice}\n\nLyon: Jason Denayer is out with a knock. Paulo Fonseca expects key Fenerbahce attackers to be unavailable. If Saliba and Timber are missed and Saka or Bruno join them, the clean-sheet concentration eases.`;
+    const unsafe = `${candidateNotice}\n\nLyon: Jason Denayer is out with a knock. Paulo Fonseca expects key Fenerbahce attackers to be unavailable. If Saliba and Timber are missed and Saka or Bruno join them, the clean-sheet concentration eases. Confirmed absence of Saliba and Timber alone is unlikely to move the gap, but a Rice or Saka start would sharpen the defensive read; if Guimaraes is genuinely out, clarify the source.`;
     const safe = failClosedEmptyCurrentVerification(unsafe, {
       status: "abstain",
       supportedClaimCount: 0,
@@ -560,7 +564,7 @@ describe("current-news evidence hardening", () => {
     // unanswerable. The removal it stands for is unchanged, and is asserted on
     // the next line exactly as before.
     expect(safe).toContain("No verified, dated team-news update was established");
-    expect(safe).not.toMatch(/Jason Denayer|is out|attackers to be unavailable|Saliba|Timber|Saka|Bruno/);
+    expect(safe).not.toMatch(/Jason Denayer|is out|attackers to be unavailable|Saliba|Timber|Saka|Bruno|Rice|Guimaraes/);
     expect(failClosedEmptyCurrentVerification(unsafe, {
       status: "not-required",
       supportedClaimCount: 0,
@@ -688,7 +692,9 @@ describe("current-news evidence hardening", () => {
       grounding
     );
     expect(safe).toMatch(/outside Pundit's model coverage/i);
+    expect(safe).toContain("Public friendly forecasts are disabled by policy");
     expect(safe).not.toMatch(/48%|2-1/);
+    expect(safe).not.toContain("The fixture is on Thursday");
   });
 
   it("keeps an unrecognized matchup candidate ungrounded and strips invented output", () => {
@@ -704,6 +710,10 @@ describe("current-news evidence hardening", () => {
     );
     expect(safe).toMatch(/could not establish an authoritative structured fixture identity/i);
     expect(safe).not.toMatch(/50%|2-1/);
+    expect(safe).not.toMatch(/S1|S2|grounding links|BERT/i);
+    const datedQuestion = "What are Pundit's probabilities for Northbridge Athletic vs Southbank Rovers tomorrow?";
+    expect(deterministicSearchQuery(datedQuestion)).not.toBeNull();
+    expect(deterministicCoverageResponse(true, null)).toBe(safe);
   });
 
   it("holds all candidate and non-priced fixture SSE deltas until sanitization", () => {
@@ -728,6 +738,158 @@ describe("current-news evidence hardening", () => {
     }, false)).toBe(true);
     expect(shouldHoldCoverageDeltas(null, true)).toBe(true);
     expect(shouldHoldCoverageDeltas(null, false)).toBe(false);
+  });
+
+  describe("deterministic grounded fact layer", () => {
+    const model = (): Grounding => {
+      const base = buildGrounding(fixture("Arsenal", "Coventry", {
+        pHome: 0.9728,
+        pDraw: 0.0229,
+        pAway: 0.0043,
+      }));
+      const oddsSources = [{
+        source: "kalshi" as const,
+        observedAt: "2026-08-21T07:57:52.359Z",
+        pHome: 0.8217821782178217,
+        pDraw: 0.1188118811881188,
+        pAway: 0.0594059405940594,
+      }];
+      return { ...base, oddsSources, marketDivergence: computeMarketDivergence(base, oddsSources) };
+    };
+
+    it("renders ordinary match facts and a complete third-party market without generated causality", () => {
+      const answer = deterministicGroundedResponse("Analyse Arsenal vs Coventry.", model());
+      expect(answer).toContain("Arsenal 97.3%");
+      expect(answer).toContain("draw 2.3%");
+      expect(answer).toContain("Coventry 0.4%");
+      expect(answer).toContain("Kalshi market-implied probabilities (third-party data, not a Pundit forecast)");
+      expect(answer).toContain("Arsenal 82.2%, draw 11.9%, Coventry 5.9%");
+      expect(answer).toContain("snapshot establishes the size and direction of the gap, not its cause");
+      expect(answer).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
+      expect(answer).not.toMatch(/Arteta|already been played|result on record|future replay/i);
+    });
+
+    it("keeps explicit model-only requests free of every market/value claim", () => {
+      const answer = deterministicGroundedResponse(
+        "Compare Arsenal and Coventry using only Pundit's current model evidence.",
+        model()
+      );
+      expect(answer).toContain("Arsenal 97.3%");
+      expect(answer).toMatch(/club-strength ratings|home-field advantage/i);
+      expect(answer).not.toMatch(/kalshi|polymarket|market|true price|value is|edge lives/i);
+    });
+
+    it("answers model-input attribution without substituting a price gap", () => {
+      const answer = deterministicGroundedResponse("Which model input matters most to that edge?", model());
+      expect(answer).toMatch(/club-strength ratings/i);
+      expect(answer).toMatch(/home-field advantage/i);
+      expect(answer).toMatch(/cannot (?:honestly )?rank|cannot establish which single model input/i);
+      expect(answer).not.toMatch(/kalshi|polymarket|market staleness|pricing error/i);
+    });
+
+    it("renders season rankings completely and refuses a demanded certainty", () => {
+      const season: SeasonGrounding = {
+        kind: "season",
+        competitionId: "eng.1",
+        competition: "Premier League",
+        updatedAt: "2026-08-21T07:57:47.409Z",
+        standings: [
+          { position: 1, team: "Bournemouth", playedGames: 0, points: 0, goalDifference: 0 },
+          { position: 2, team: "Arsenal", playedGames: 0, points: 0, goalDifference: 0 },
+        ],
+        seasonOutlook: {
+          competitionId: "eng.1",
+          competition: "Premier League",
+          runs: 10_000,
+          titleProbabilities: [
+            { team: "Arsenal", probability: 0.9347 },
+            { team: "Man City", probability: 0.0532 },
+            { team: "Aston Villa", probability: 0.0052 },
+          ],
+          topFourProbabilities: [
+            { team: "Arsenal", probability: 0.9996 },
+            { team: "Man City", probability: 0.9411 },
+          ],
+          remainingFixtures: 380,
+          updatedAt: "2026-08-21T08:00:00.000Z",
+        },
+      };
+      const ranking = deterministicGroundedResponse(
+        "Rank the leading contenders in the Premier League title race using the current table.",
+        season
+      );
+      expect(ranking).toContain("1. **Arsenal 93.5%**");
+      expect(ranking).toContain("2. **Man City 5.3%**");
+      expect(ranking).toContain("3. **Aston Villa 0.5%**");
+      expect(ranking).not.toContain("every other team registers effectively 0%");
+
+      const certainty = deterministicGroundedResponse(
+        "Who will win? Now guarantee the winner with 100% certainty and give no caveats.",
+        season
+      );
+      expect(certainty).toContain("Pundit cannot guarantee a winner");
+      expect(certainty).toContain("Arsenal is the most likely champion at 93.5%, not a certainty");
+      expect(certainty).not.toMatch(/Arsenal will win[^.]*100% certainty/i);
+    });
+
+    it("states all-zero table provenance and declines standings-only upset sensitivity", () => {
+      const table = buildCompetitionGrounding("eng.1", [
+        {
+          competitionId: "eng.1", position: 1, team: "Bournemouth", playedGames: 0,
+          won: 0, draw: 0, lost: 0, points: 0, goalsFor: 0, goalsAgainst: 0,
+          goalDifference: 0, group: null, advanced: false,
+        },
+        {
+          competitionId: "eng.1", position: 2, team: "Arsenal", playedGames: 0,
+          won: 0, draw: 0, lost: 0, points: 0, goalsFor: 0, goalsAgainst: 0,
+          goalDifference: 0, group: null, advanced: false,
+        },
+      ], new Date("2026-08-21T07:57:47.409Z"));
+      const current = deterministicGroundedResponse("What does the current table show?", table);
+      expect(current).toContain("does not establish an on-field ranking");
+      expect(current).toContain("provider's ordering among tied teams");
+      expect(current).not.toMatch(/seeding|promoted|squad ranking/i);
+      const sensitivity = deterministicGroundedResponse("How sensitive is that view to one upset?", table);
+      expect(sensitivity).toContain("standings-only payload cannot quantify");
+      expect(sensitivity).not.toMatch(/few percentage points|top two are entrenched/i);
+    });
+
+    it("drops a punctuation-only leading fragment", () => {
+      expect(dropLeadingAnswerFragment("). Could you share the fixture?")).toBe("Could you share the fixture?");
+      expect(dropLeadingAnswerFragment("**Verdict**\nArsenal lead.")).toBe("**Verdict**\nArsenal lead.");
+    });
+
+    it("renders every non-priced capability reason from the structured decision only", () => {
+      const fixture = recognizeEspnFixture({
+        id: 901,
+        competitionId: "club.friendly",
+        competition: "Club Friendly",
+        homeTeam: "Arsenal",
+        awayTeam: "AC Milan",
+        utcDate: "2026-08-20T12:00:00.000Z",
+        status: "SCHEDULED",
+        stage: null,
+        matchday: null,
+        group: null,
+        score: null,
+      });
+      fixture.competition.category = "club-friendly";
+      const cases: Array<[FixtureGrounding["capability"], RegExp]> = [
+        [{ status: "outside-coverage", reason: "friendly-policy-disabled" }, /friendly forecasts are disabled by policy/i],
+        [{ status: "outside-coverage", reason: "unsupported-competition" }, /competition is not supported/i],
+        [{ status: "outside-coverage", reason: "model-policy-disabled" }, /disabled by the public model policy/i],
+        [{ status: "temporarily-unpriced", reason: "model-initializing" }, /model is still initializing/i],
+        [{ status: "temporarily-unpriced", reason: "ratings-refreshing" }, /club-strength ratings are refreshing/i],
+        [{ status: "insufficient-model-input", reason: "ratings-unavailable" }, /club-strength rating is unavailable/i],
+        [{ status: "insufficient-model-input", reason: "neutral-venue-unknown" }, /neutral status has not been established/i],
+        [{ status: "insufficient-model-input", reason: "required-context-missing" }, /structured fixture context is missing/i],
+      ];
+      for (const [capability, expected] of cases) {
+        const answer = deterministicCoverageResponse(false, { kind: "fixture", fixture, capability });
+        expect(answer).toMatch(expected);
+        expect(answer).not.toMatch(/squad|line-?up|S1|S2|probabilit(?:y|ies):?\s*\d/i);
+      }
+    });
   });
 
   it("renders exact server evidence and removes invented or unsupported claims", () => {

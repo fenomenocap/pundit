@@ -120,6 +120,14 @@ describe("season simulator", () => {
     expect(fixtures.map((fixture) => fixture.id)).toEqual([301]);
   });
 
+  it("orders simultaneous remaining fixtures by stable source ID", () => {
+    const fixtures = remainingScheduledFixtures([
+      { ...scheduled[0], id: 302 },
+      { ...scheduled[0], id: 301 },
+    ], "eng.1");
+    expect(fixtures.map((fixture) => fixture.id)).toEqual([301, 302]);
+  });
+
   it("fails closed when the remaining league schedule is incomplete", () => {
     const preSeason = standings.map((row) => ({ ...row, playedGames: 0, points: 0 }));
     expect(hasCompleteLeagueSchedule(preSeason, scheduled)).toBe(false);
@@ -180,6 +188,46 @@ describe("season simulator", () => {
     expect(titleSum).toBeGreaterThan(0.95);
     expect(titleSum).toBeLessThanOrEqual(1.01);
     expect(outlook!.titleProbabilities[0].team).toMatch(/Arsenal|Liverpool/);
+  });
+
+  it("replays identical grounded season inputs deterministically by default", () => {
+    const ratings = {
+      world: new Map<string, number>(),
+      "eng-clubs": new Map([
+        ["Arsenal", 1850],
+        ["Liverpool", 1840],
+      ]),
+      "uefa-clubs": new Map<string, number>(),
+    };
+    const first = simulateSeasonOutlook("eng.1", standings, scheduled, ratings, 500);
+    const second = simulateSeasonOutlook("eng.1", standings, scheduled, ratings, 500);
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(second!.titleProbabilities).toEqual(first!.titleProbabilities);
+    expect(second!.topFourProbabilities).toEqual(first!.topFourProbabilities);
+    expect(second!.remainingFixtures).toBe(first!.remainingFixtures);
+  });
+
+  it("keeps an explicitly injected RNG authoritative", () => {
+    const ratings = {
+      world: new Map<string, number>(),
+      "eng-clubs": new Map([
+        ["Arsenal", 1850],
+        ["Liverpool", 1840],
+      ]),
+      "uefa-clubs": new Map<string, number>(),
+    };
+    let calls = 0;
+    const injected = () => {
+      calls += 1;
+      return 0.5;
+    };
+
+    const outlook = simulateSeasonOutlook("eng.1", standings, scheduled, ratings, 20, injected);
+
+    expect(outlook).not.toBeNull();
+    expect(calls).toBeGreaterThan(0);
   });
 
   it("preserves seeded season output and RNG consumption through the contributor boundary", () => {

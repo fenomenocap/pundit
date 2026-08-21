@@ -30,7 +30,8 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 | **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Active match grounding | Direct best-effort fetches normalize complete active 1X2 markets to no-vig probabilities every 30 minutes. Source failures remain isolated. |
 | **Frozen WC evaluation** (`wc-evaluation.ts`) | `/api/evaluation/wc-2026`, `/evaluation/wc-2026` | Read-only historical backtest. It is not a live competition pipeline and has no cron. |
 | **Web search** (`web-search.ts`) | `POST /api/ask` | Pundit-executed search tool, since MiniMax has no hosted equivalent. Runs on MiniMax's own search endpoint, using the same key and coding-plan quota as inference, so no second vendor or bill. The endpoint is undocumented, so the wire format is confined to this file. Failures degrade the answer to grounding-only rather than erroring; health is reported on `/ready` under `webSearch`. |
-| **MiniMax API** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | `MiniMax-M3` over MiniMax's Anthropic-compatible endpoint. Four tiers: active-match model grounding, ESPN competition-standings grounding, Premier League season outlook (Monte Carlo), and clearly labelled general football analysis. Supports SSE streaming, web search, and client-sourced conversation history. |
+| **Grounded response layer** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | Deterministically renders every no-search response with complete match, non-priced fixture, competition, or season grounding. Non-priced capability and identity-not-established candidate notices remain deterministic even when a current cue requires a bounded search first; search cannot alter capability or promote identity. Eligible turns bypass MiniMax. It never invents a missing fixture input or changes model probabilities. Complete identical season inputs use a stable replay seed rather than request-local randomness. |
+| **MiniMax API** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | `MiniMax-M3` over MiniMax's Anthropic-compatible endpoint. It is limited to supported evidence-required prose plus general/ungrounded open-ended analysis; it does not override the deterministic grounded facts above. Supports the existing shared 90-second deadline, grounding-first SSE, web search/verification, and client-sourced conversation history. |
 
 ---
 
@@ -92,6 +93,8 @@ API_REPLICAS=1
 - Mobile-first responsive.
 - `/model` is a native read-only reference over Pundit's active club-fixture `/api/model/*` cache. Keep it aligned with the existing API contract rather than introducing a second model path.
 - `/evaluation/wc-2026` is a frozen historical artifact. Do not reconnect it to live chat/model caches or cron.
+- Keep server-owned facts deterministic when the grounding contract is complete. MiniMax may handle evidence-required current turns and general/ungrounded open-ended analysis, but it must not restate a recognized fixture's capability reason as a guessed lineup, squad, venue, rating, or policy explanation.
+- Preserve exact typed capability reasons in public copy: `friendly-policy-disabled`, `unsupported-competition`, `model-policy-disabled`, `model-initializing`, `ratings-refreshing`, `ratings-unavailable`, `neutral-venue-unknown`, or `required-context-missing`.
 
 ---
 
