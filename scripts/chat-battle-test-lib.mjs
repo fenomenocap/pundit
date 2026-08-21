@@ -114,7 +114,7 @@ export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta
   }
 }
 
-export const EVAL_SCHEMA_VERSION = 15;
+export const EVAL_SCHEMA_VERSION = 16;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 export const PACING_SAFETY_MARGIN_MS = 25;
 
@@ -673,13 +673,19 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     assertions.noUngroundedProbability = !/\d+(?:\.\d+)?\s*%/.test(text);
   }
   if (expectation.expectNoCertaintyContradiction) {
-    const groundedMaximum = grounding?.kind === "season"
-      ? Math.max(...(grounding.seasonOutlook?.titleProbabilities ?? []).map(({ probability }) => probability))
-      : grounding?.kind === "match"
-        ? Math.max(grounding.pHome ?? 0, grounding.pDraw ?? 0, grounding.pAway ?? 0)
-        : 0;
-    const absoluteCertainty = /\b(?:100\s*%\s*(?:certain|certainty|guaranteed?)|guarantee(?:d|s)?\b[^.!?\n]{0,80}\b(?:win|winner|champion)|(?:will|must)\s+(?:definitely\s+)?(?:win|be (?:the )?champion)\b[^.!?\n]{0,50}\b(?:100\s*%|certain|guarantee))\b/i.test(text);
-    assertions.noCertaintyContradiction = !absoluteCertainty || groundedMaximum === 1;
+    const certaintyClaim = /\b(?:100\s*%\s*(?:certain|certainty|guaranteed?)|guarantee(?:d|s)?\b[^.!?\n]{0,80}\b(?:win|winner|champion)|(?:will|must)\s+(?:(?:definitely|certainly|surely|undoubtedly)\s+)?(?:win|be (?:the )?champion)\b|(?:certainly|surely|undoubtedly)\s+(?:will|must)\s+(?:win|be (?:the )?champion)\b|(?:are|is)\s+(?:certain|sure|guaranteed)\s+to\s+(?:win|be (?:the )?champion)\b|(?:are|is)\s+(?:definitely\s+)?(?:the\s+)?(?:certain\s+)?champions?\b|(?:win|wins|won)\b[^.!?\n]{0,30}\bguaranteed\b|no doubt\b[^.!?\n]{0,60}\b(?:win|winner|champion))\b/i;
+    const certaintyNegation = /\b(?:cannot|can not|can't|will not|won't|must not)\b[^.!?\n]{0,80}\b(?:guarantee|certain|certainty)|\b(?:cannot|can not|can't)\s+(?:say|state|claim|promise)\b[^.!?\n]{0,80}\b(?:will|must|guarantee|certain)|\bit\s+(?:is|'s)\s+impossible\s+to\s+guarantee\b|\bit\s+would\s+be\s+wrong\s+to\s+guarantee\b|\b(?:nobody|no one)\s+can\s+guarantee\b|\bno (?:guarantee|certainty)\b|\bnot (?:a )?certainty\b|\bnot\s+(?:100\s*%\s*)?(?:guaranteed?|certain|sure)\b|\bnot\s+(?:definitely\s+)?(?:the\s+)?(?:certain\s+)?champions?\b/i;
+    // A refusal and a later guarantee must not cancel each other out. Split
+    // sentences, Markdown lines and explicit contrast clauses, then apply the
+    // negation only to the clause that contains it.
+    const certaintyRegions = text.replaceAll("**", "")
+      .split(/(?<=[.!?])\s+|\n+|[;:–—]\s*|(?:,\s*|\s+)(?:but|however|yet|although|though|nevertheless|nonetheless)(?:,\s*|\s+)|(?:,\s*|\s+)even\s+so(?:,\s*|\s+)|(?:\s+and\s+|,\s+)(?=[^.!?\n]{0,60}(?:100\s*%|guarantee\w*[^.!?\n]{0,40}\b(?:win|winner|champion)|\b(?:will|must)\b|certain\s+champion|definitely\s+(?:the\s+)?champion|no doubt))/i)
+      .map((region) => region.trim())
+      .filter(Boolean);
+    const absoluteCertainty = certaintyRegions.some((region) =>
+      certaintyClaim.test(region) && !certaintyNegation.test(region)
+    );
+    assertions.noCertaintyContradiction = !absoluteCertainty;
   }
   // A generated answer may quote two grounded scorelines correctly and still
   // invent their combined probability. Check only explicit aggregate claims:
@@ -847,20 +853,44 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     assertions.capabilityReasonFidelity = Boolean(reasonText?.test(text)) && !inventsDifferentReason;
   }
   if (expectation.expectCorrectHighLineGeometry) {
+    // A denial of the backwards claim is correct football geometry. Remove
+    // only an immediately negated backwards verb before looking for an
+    // affirmative shrink/reduce assertion; any separate affirmative remains.
+    const affirmativeGeometryText = text.replace(
+      /\b(?:(?:does|do|did|can|could|will|would)\s+not|doesn't|don't|didn't|can't|couldn't|won't|wouldn't|cannot|never)\s+(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b/gi,
+      ""
+    );
     const backwardsHighLine = [
-      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:shrink|reduce|compress|close|limit|minimi[sz])\w*\b[^.!?\n]{0,30}\b(?:space|gap)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|(?:defensive\s+)?line)\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b/i,
-      /\b(?:space|gap)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|(?:defensive\s+)?line)\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b[^.!?\n]{0,80}\b(?:shrink|reduce|compress|close|limit|minimi[sz])\w*\b[^.!?\n]{0,40}\bhigh\s+(?:defensive\s+)?line\b/i,
-    ].some((pattern) => pattern.test(text));
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b[^.!?\n]{0,30}\b(?:space|gap|room)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|(?:defensive\s+)?line)\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b/i.test(affirmativeGeometryText),
+      /\b(?:space|gap|room)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|(?:defensive\s+)?line)\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b[^.!?\n]{0,80}\b(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b[^.!?\n]{0,40}\bhigh\s+(?:defensive\s+)?line\b/i.test(affirmativeGeometryText),
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:leav|mak|creat|produc)\w*\b[^.!?\n]{0,30}\b(?:no|less|smaller)\b[^.!?\n]{0,20}\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:does not|doesn't|do not|don't|never)\s+(?:(?:necessarily|actually|directly|automatically|always)\s+)?(?:leav|creat|open|increas|widen|expos|produc|result)\w*\b[^.!?\n]{0,30}(?:(?:more|larger|greater|wider|bigger|extra|additional)\b[^.!?\n]{0,20})?\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
+      /\b(?:high\s+(?:defensive\s+)?line|back\s+(?:four|line)\b[^.!?\n]{0,50}\b(?:push|step|move)\w*\s+up)\b[\s\S]{0,140}\b(?:there\s+is\s+)?(?:no\s+|not\s+(?:a\s+)?)(?:(?:more|larger|greater|wider|bigger|extra|additional)\b[^.!?\n]{0,20})?\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
+      /\b(?:high\s+(?:defensive\s+)?line|back\s+(?:four|line)\b[^.!?\n]{0,50}\b(?:push|step|move)\w*\s+up)\b[^.!?\n]{0,100}\b(?:(?:does not|doesn't|do not|don't)\s+(?:(?:necessarily|actually|directly|automatically|always)\s+)?|without\s+)(?:increas|leav|creat|open|widen)\w*\b[^.!?\n]{0,40}\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
+      // Keep a denial tied to the immediately preceding high-line premise. The
+      // lookahead caps the whole bridge, while the optional sentence boundary
+      // prevents unrelated later prose from being swept into the assertion.
+      /\b(?:high\s+(?:defensive\s+)?line|back\s+(?:four|line)\b[^.!?\n]{0,50}\b(?:push|step|move)\w*\s+up)\b(?=[\s\S]{0,140}\b(?:does not|doesn't|do not|don't)\b)(?:[^.!?\n]{0,100}[.!?]\s*)?[^.!?\n]{0,100}\b(?:does not|doesn't|do not|don't)\s+(?:(?:necessarily|actually|directly|automatically|always)\s+)?(?:leav|creat|open|increas|widen|produc|result)\w*\b[^.!?\n]{0,30}(?:(?:more|larger|greater|wider|bigger|extra|additional)\b[^.!?\n]{0,20})?\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
+      /\b(?:high\s+(?:defensive\s+)?line|back\s+(?:four|line)\b[^.!?\n]{0,50}\b(?:push|step|move)\w*\s+up)\b[^.!?\n]{0,100}\b(?:leav|mak|creat)\w*\b[^.!?\n]{0,30}\bzero\b[^.!?\n]{0,20}\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
+      /\b(?:high\s+(?:defensive\s+)?line|back\s+(?:four|line)\b[^.!?\n]{0,50}\b(?:push|step|move)\w*\s+up)\b[^.!?\n]{0,100}\bfail(?:s|ed)?\s+to\s+(?:leav|creat|open|increas|widen|produc)\w*\b[^.!?\n]{0,30}(?:(?:more|larger|greater|wider|bigger|extra|additional)\b[^.!?\n]{0,20})?\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
+      /\b(?:high\s+(?:defensive\s+)?line|back\s+(?:four|line)\b[^.!?\n]{0,50}\b(?:push|step|move)\w*\s+up)\b[\s\S]{0,140}\b(?:creat|leav|mak|produc)\w*\b[^.!?\n]{0,30}\b(?:less|smaller)\b[^.!?\n]{0,20}\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:mak|leav|creat|produc)\w*\b[^.!?\n]{0,30}\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b[^.!?\n]{0,20}\b(?:tighter|smaller|narrower|shorter)\b/i,
+    ].some((pattern) => typeof pattern === "boolean" ? pattern : pattern.test(text));
     assertions.highLineGeometryCorrect = !backwardsHighLine;
     assertions.highLineSpaceBehindAcknowledged = [
-      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:leave|create|open|increase|expose)\w*\b[^.!?\n]{0,60}\b(?:space|room)\b[^.!?\n]{0,40}\bbehind\b/i,
-      /\b(?:more|greater|larger|open)\s+(?:space|room)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,120}\bhigh\s+(?:defensive\s+)?line\b/i,
-      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:space|room)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,60}\b(?:open|expos|availab|greater|larger|more)\w*\b/i,
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:leave|create|open|increase|expose)\w*\b[^.!?\n]{0,60}\b(?:space|room|gap)\b[^.!?\n]{0,40}\bbehind\b/i,
+      /\b(?:more|greater|larger|open)\s+(?:space|room|gap)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,120}\bhigh\s+(?:defensive\s+)?line\b/i,
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:space|room|gap)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,60}\b(?:open|expos|availab|greater|larger|more)\w*\b/i,
       // Equivalent tactical language from the production answer: an exposed
       // channel need not literally be called "more space" to be correct.
-      /\b(?:passes?|balls?|runs?|runners?|play)\b[^.!?\n]{0,45}\bin behind\b/i,
-      /\bclean run (?:through|on goal)\b/i,
-      /\bsweeper[- ]keeper\b[^.!?\n]{0,80}\b(?:sweep|cover)\w*\b[^.!?\n]{0,45}\bbehind\b/i,
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,180}\b(?:passes?|balls?|runs?|runners?|play)\b[^.!?\n]{0,45}\bin behind\b/i,
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,180}\bclean run (?:through|on goal)\b/i,
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,180}\bsweeper[- ]keeper\b[^.!?\n]{0,80}\b(?:sweep|cover)\w*\b[^.!?\n]{0,45}\bbehind\b/i,
+      // Production phrasing often establishes the high line in one Markdown
+      // sentence and states the geometry in the next bullet sentence.
+      /\b(?:back\s+(?:four|line)|defen[cs](?:e|ive\s+line))\b[\s\S]{0,90}\b(?:push|step|move)\w*\s+up\b[\s\S]{0,140}\b(?:larger|greater|more|wider|bigger)\b[^.!?\n]{0,30}\b(?:gap|space|room)\b[^.!?\n]{0,40}\bbehind\b/i,
+      /\bhigh\s+(?:defensive\s+)?line\b[\s\S]{0,90}\b(?:push|step|move)\w*\b[^.!?\n]{0,30}\b(?:back\s+(?:four|line)|defen[cs]e)\b[^.!?\n]{0,20}\bup\b[\s\S]{0,140}\b(?:larger|greater|more|wider|bigger)\b[^.!?\n]{0,30}\b(?:gap|space|room)\b[^.!?\n]{0,40}\bbehind\b/i,
+      /\b(?:back\s+(?:four|line)|defen[cs]e)\b[^.!?\n]{0,80}\b(?:advance|push|step|move)\w*\b[\s\S]{0,100}\b(?:open|create|leave)\w*\b[^.!?\n]{0,30}\b(?:larger|greater|more|wider|bigger)\b[^.!?\n]{0,20}\bchannel\b[^.!?\n]{0,30}\bbehind\b/i,
     ].some((pattern) => pattern.test(text));
   }
   if (expectation.expectCorrectionAcknowledgement) {
@@ -1315,7 +1345,7 @@ export function qualitativeScores(result) {
     clarity: answer.length <= 4_000 ? 4 : 3,
     calibration: hasCalibration ? 4 : 2,
     groundingFidelity: result.passed && result.grounding !== undefined ? 4 : null,
-    method: "deterministic schema-15 certification checks; per-turn agent critic supplies final review"
+    method: "deterministic schema-16 certification checks; per-turn agent critic supplies final review"
   };
 }
 
