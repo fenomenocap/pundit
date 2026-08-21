@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 14,
+  "schemaVersion": 15,
   "fixed": [
     {
       "id": "active-match-grounding",
@@ -541,7 +541,7 @@
     },
     {
       "id": "market-comparison-coverage",
-      "description": "A market-comparison question keeps its grounded scoreline payload; the odds-source count is reported so a missing market line is visible rather than silent.",
+      "description": "A market-comparison question keeps its grounded scoreline payload; the odds-source count is reported so a missing market line is visible rather than silent, and an abstained verification cannot license invented lineup or tactical probability counterfactuals.",
       "kind": "featured-question",
       "questionTemplate": "How do the market prices for {home} vs {away} compare with the model?"
     },
@@ -576,13 +576,15 @@
     },
     {
       "id": "general-analysis-label",
-      "description": "A general football question remains explicitly ungrounded and explains the high-line trade-off without reversing the space behind the defence.",
+      "description": "A general football question remains explicitly ungrounded, explains the high-line trade-off without reversing the space behind the defence, accurately describes Pundit's live club and frozen WC surfaces, and does not claim that no credible source exists.",
       "kind": "json",
       "turns": [
         {
           "question": "How does a high defensive line change a team's pressing risks?",
           "expectGrounding": null,
-          "expectCorrectHighLineGeometry": true
+          "expectCorrectHighLineGeometry": true,
+          "expectAccurateProductScope": true,
+          "expectNoCategoricalSourceNonexistence": true
         }
       ]
     },

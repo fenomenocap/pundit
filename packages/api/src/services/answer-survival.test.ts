@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildGrounding,
+  computeMarketDivergence,
   deliverAnswer,
   generateAnalysis,
   hasGroundedAnswerShape,
@@ -99,6 +100,21 @@ beforeEach(() => {
 
 /** A complete, priced match grounding, built by the production converter. */
 const matchGrounding: Grounding = buildGrounding(fixture("Arsenal", "Coventry City"));
+
+const marketGrounding: Grounding = (() => {
+  const oddsSources: Grounding["oddsSources"] = [{
+    source: "kalshi",
+    observedAt: "2026-08-21T08:40:43.502Z",
+    pHome: 0.5,
+    pDraw: 0.25,
+    pAway: 0.25,
+  }];
+  return {
+    ...matchGrounding,
+    oddsSources,
+    marketDivergence: computeMarketDivergence(matchGrounding, oddsSources),
+  };
+})();
 
 /**
  * Every figure the grounding above supplies, as the answer writes them. A guard
@@ -509,6 +525,32 @@ describe("realistic match answers are not eaten by the narrative guard", () => {
 describe("the final safety gate", () => {
   /** An answer the chain empties: a label with no body is swept, leaving "". */
   const EMPTIED = "**Verdict**";
+
+  it("uses the deterministic grounded market answer after an abstaining mandatory search", async () => {
+    const artifactAnswer = [
+      "**Model vs market**",
+      "Pundit's model makes Arsenal 40.0%, the draw 30.0% and Coventry City 30.0%.",
+      "Kalshi has Arsenal 50.0%, draw 25.0%, Coventry City 25.0%.",
+      "",
+      "**What would change this**",
+      "If any first-choice attacker is rotated or Coventry City parks a low block, the draw moves toward the priced 25%.",
+    ].join("\n");
+    const delivered = await deliverAnswer({
+      answer: artifactAnswer,
+      tier: "match",
+      grounding: marketGrounding,
+      bundle: { queries: ["Arsenal Coventry market odds"], results: [], providerCalls: 1 },
+      client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+      question: "How do the market prices for Arsenal vs Coventry City compare with the model?",
+      evidenceRequired: true,
+      candidateUnrecognized: false,
+    });
+    expect(delivered.verification.status).toBe("abstain");
+    expect(delivered.answer).toContain("Kalshi market-implied probabilities (third-party data, not a Pundit forecast)");
+    expect(delivered.answer).toContain("Arsenal 50.0%, draw 25.0%, Coventry City 25.0%");
+    expect(delivered.answer).toContain("snapshot establishes the size and direction of the gap, not its cause");
+    expect(delivered.answer).not.toMatch(/first-choice attacker|parks a low block|moves toward/i);
+  });
 
   it("writes a match answer from the grounding when the chain left no prose", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

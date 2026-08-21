@@ -473,8 +473,13 @@ export function deterministicSearchQuery(
     && /\b(?:pundit(?:'s)?|model|1x2|win (?:chance|probability)|draw (?:chance|probability)|scorelines?|btts|over 2\.5|under 2\.5)\b/i.test(question);
   const asksOwnedTableFact = grounding?.kind === "competition"
     && /\b(?:current )?(?:table|standings|points|position|played|goal difference)\b/i.test(question);
+  // Routing already owns the complete season-outlook vocabulary. Reusing it
+  // here prevents a wording such as "most likely to win ... based on the
+  // current table" from being sent to search merely because it also contains
+  // the otherwise-current word "current".
   const asksOwnedSeasonFact = grounding?.kind === "season"
-    && /\b(?:pundit(?:'s)?|model|title|top[- ]four|relegation|season outlook)\b/i.test(question);
+    && (isSeasonOutlookQuestion(question)
+      || /\b(?:pundit(?:'s)?|model|title|top[- ]four|relegation|season outlook)\b/i.test(question));
   if (!mandatoryExternal && (asksOwnedMatchFact || asksOwnedTableFact || asksOwnedSeasonFact)) {
     return null;
   }
@@ -685,7 +690,7 @@ export function sanitizeFixtureCoverageAnswer(answer: string, grounding: Fixture
     ? "A required club-strength rating is unavailable."
     : reason === "neutral-venue-unknown"
       ? "The venue's neutral status has not been established."
-      : "Required structured fixture context is missing.";
+      : "Required model context or input is missing.";
   return `This recognized fixture is missing a required model input, so Pundit will not estimate probabilities.\n\n${explanation}`;
 }
 
@@ -1560,7 +1565,7 @@ export function sanitizeFootballGeometry(answer: string): string {
   const correction = "A high defensive line compresses space in front of the defence "
     + "but leaves more space behind it for the goalkeeper to cover.";
   const backwardsVerb = "(?:shrinks?|shrunk|shrinking|reduces?|reduced|reducing|lessens?|lessened|lessening|decreases?|decreased|decreasing|compress(?:es|ed|ing)?|closes?|closed|closing|limits?|limited|limiting|minimi[sz](?:e|es|ed|ing))";
-  const behindTarget = "(?:(?:space|gap) behind (?:the )?(?:defenders|defence|defense|back line)|(?:space|gap) between (?:the )?(?:defence|defense|back line) and (?:the )?(?:goalkeeper|keeper|goal))";
+  const behindTarget = "(?:(?:space|gap) behind (?:(?:the )?(?:defenders|defence|defense|back line)|it|them)|(?:space|gap) between (?:the )?(?:defence|defense|back line) and (?:the )?(?:goalkeeper|keeper|goal))";
   const backwardsGeometry = new RegExp(`\\b${backwardsVerb}\\b[^.!?\\n]{0,28}\\b${behindTarget}\\b`, "i");
   let correctionAdded = false;
   let midfieldPreserved = false;
@@ -3575,7 +3580,19 @@ export function sanitizeCompetitionAnswer(answer: string): string {
 }
 
 export function sanitizeGeneralAnswer(answer: string): string {
-  return stripModelAttributedProbabilities(answer, GENERAL_ODDS_CORRECTION);
+  const productScopeSafe = reviseAnswerSentences(answer, (sentence) => {
+    // These are claims about Pundit's current product scope, not football
+    // analysis. The WC evaluation is a frozen backtest while the live product
+    // also has active club-fixture and season surfaces, so "WC only" is stale.
+    if (/\bpundit(?:'s)?\b[^.!?\n]{0,100}\b(?:evaluation|data|coverage|model)\b[^.!?\n]{0,100}\bworld cup 2026\b[^.!?\n]{0,30}\bonly\b|\bpundit(?:'s)?\b[^.!?\n]{0,100}\bonly\b[^.!?\n]{0,60}\bworld cup 2026\b/i.test(sentence)) {
+      return "";
+    }
+    // A no-search tactical answer cannot establish the non-existence of all
+    // sources. The canonical general-analysis disclaimer is the honest scope.
+    if (/\bno verified source exists\b/i.test(sentence)) return "";
+    return sentence;
+  }).replace(/\n{3,}/g, "\n\n").trim();
+  return stripModelAttributedProbabilities(productScopeSafe, GENERAL_ODDS_CORRECTION);
 }
 
 export function sanitizeSeasonAnswer(answer: string): string {
@@ -4298,7 +4315,7 @@ export function sanitizeRequestFidelity(
   let sanitized = answer;
   if (hasHistory) {
     sanitized = reviseAnswerSentences(sanitized, (sentence) =>
-      /\b(?:do not|don't|cannot|can't) have (?:the )?(?:original|previous|prior) answer (?:in front of me|available|here)\b/i.test(sentence)
+      /\b(?:do not|don't|cannot|can't) have (?:the )?(?:original|previous|prior) answer (?:in front of me|available|here|to (?:reference|refer to))\b/i.test(sentence)
         ? ""
         : sentence
     );
@@ -5759,6 +5776,16 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
     .slice(0, 4);
   const allZero = grounding.standings.length > 0
     && grounding.standings.every((row) => row.playedGames === 0 && row.points === 0);
+  const tableSourceExclusive = /\b(?:based on|using|from)\s+(?:only\s+)?(?:the\s+)?current (?:table|standings)\b|\bcurrent (?:table|standings)\s+(?:alone|only)\b/i.test(question);
+  if (allZero && tableSourceExclusive) {
+    return [
+      "**Current table**",
+      `All ${grounding.standings.length} listed clubs have played 0 matches and have 0 points.`,
+      "",
+      "**Answer**",
+      "The current table alone does not establish an on-field ranking or identify a most likely champion. A season forecast would also use club-strength ratings and the remaining fixture schedule, which goes beyond the requested table-only evidence.",
+    ].join("\n");
+  }
   const leader = title[0];
   const certaintyDemand = /\b(?:guarantee|100% certainty|state (?:the )?champion as (?:a )?fact|promise|remove all uncertainty)\b/i.test(question);
   return [
@@ -5904,6 +5931,21 @@ export async function deliverAnswer(args: {
       : TEAM_NEWS_ABSTENTION;
     return {
       answer: `${renderGroundedModelOnlyAnswer(grounding, false)}\n\n**Team news**\n${abstention}`,
+      citations: [],
+      verification: checked.verification,
+    };
+  }
+  if (grounding?.kind === "match"
+    && evidenceRequired
+    && /\b(?:odds|price|prices|market|markets)\b/i.test(question)
+    && checked.verification.supportedClaimCount === 0
+    && (checked.verification.status === "abstain" || checked.verification.status === "unavailable")) {
+    // The mandatory odds search has run, but it established no supported
+    // external claim. The structured grounding still carries validated,
+    // same-source 1X2 snapshots, so deliver those deterministically rather
+    // than allowing an unsupported generated counterfactual to survive.
+    return {
+      answer: renderGroundedMatchAnswer(grounding),
       citations: [],
       verification: checked.verification,
     };

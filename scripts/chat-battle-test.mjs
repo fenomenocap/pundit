@@ -28,12 +28,14 @@ import {
   selectTwoLeggedTie,
   snapshotAskRequest,
   snapshotSseReproduction,
+  summarizeWebSearchTelemetry,
   readinessFailures,
   routableRecognizedEntries,
   validateGrounding,
   validateSse,
   validateAnswerCopy,
   validateAnswerStructure,
+  validateAbstainedCounterfactualDiscipline,
   validateCitationContract,
   validateErrorCopy,
   validateFixtureGrounding,
@@ -137,6 +139,23 @@ async function preflight(options) {
     throw new Error(`web version unavailable: HTTP ${webVersion.status}`);
   }
   return { health, ready, apiVersion, webVersion };
+}
+
+async function capturePostRunReadiness(report, options, preflightReadiness) {
+  try {
+    const ready = await fetchJson(`${options.apiUrl}/ready`, {}, options.timeoutMs);
+    report.postRun = {
+      capturedAt: new Date().toISOString(),
+      readiness: { status: ready.status, body: ready.body },
+      webSearch: summarizeWebSearchTelemetry(preflightReadiness, ready.body),
+    };
+  } catch (error) {
+    report.postRun = {
+      capturedAt: new Date().toISOString(),
+      readiness: { status: null, body: null, error: sanitizeEvidence(error?.message ?? error) },
+      webSearch: summarizeWebSearchTelemetry(preflightReadiness, null),
+    };
+  }
 }
 
 async function discoverFeatured(options) {
@@ -373,6 +392,17 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     }
     assertionFailures.push(...correctnessValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
+    ));
+    const abstentionValidation = validateAbstainedCounterfactualDiscipline(
+      result.answer,
+      result.verification?.status
+    );
+    semanticCheckCount += Object.keys(abstentionValidation.assertions).length;
+    for (const [name, passed] of Object.entries(abstentionValidation.assertions)) {
+      result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+    }
+    assertionFailures.push(...abstentionValidation.failures.map((failure) =>
+      `turn ${turnNumber}: ${failure}`
     ));
     if (turn.requireSourcedTeamNews || scenario.requireSourcedTeamNews) {
       const newsValidation = validateTeamNewsDiscipline(result.answer);
@@ -1052,6 +1082,7 @@ async function main() {
         } : null
       }
     },
+    postRun: null,
     pacing: {
       minimumIntervalMs: options.intervalMs,
       safetyMarginMs: pacer.safetyMarginMs,
@@ -1119,6 +1150,8 @@ async function main() {
         continue;
       }
       recordScenarioFailure(report, scenarios, scenarioIndex, failed);
+      await capturePostRunReadiness(report, options, preflightResult.ready.body);
+      report.completedAt = new Date().toISOString();
       finalizeClassifications(report, previous);
       const checkpointPath = await writeCheckpoint(report, options.outputDir);
       const paths = await writeFailureReport(report, options.outputDir);
@@ -1139,6 +1172,8 @@ async function main() {
   report.progress.status = "complete";
   report.progress.activeScenario = null;
   report.progress.activeRequest = null;
+  report.completedAt = new Date().toISOString();
+  await capturePostRunReadiness(report, options, preflightResult.ready.body);
   report.completedAt = new Date().toISOString();
   finalizeClassifications(report, previous);
   await writeCheckpoint(report, options.outputDir);

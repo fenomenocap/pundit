@@ -56,7 +56,9 @@ lineup, venue, rating, or policy explanation.
 ## Current-fact verification
 
 Dated-fixture, manager, injury, lineup, transfer, recent-result, odds, and
-correction cue classes trigger deterministic pre-search. At most three official/reputable pages are
+correction cue classes trigger deterministic pre-search. The word `current`
+alone is exempt when the question asks for a complete server-owned table,
+model, or season-outlook fact. At most three official/reputable pages are
 retrieved with protocol, DNS/address, redirect, content-type, size, timeout, and
 shared-request-abort guards. One MiniMax M3 verification call selects supported
 server-owned evidence IDs. Unsupported claims are removed, conflicts are
@@ -66,7 +68,11 @@ reported, and missing/retrieval/verifier failures abstain. The JSON and SSE
 Deterministic answer-path guards and supporting utilities enforce decimal-odds arithmetic, complete
 same-source/time 1X2 markets, no-vig totals, external-data labels, scoreline
 totals, manager-era attribution, correction cues, and contradictory-rationale
-removal.
+removal. If a mandatory market search yields zero supported claims and
+verification abstains or is unavailable, generated prose is discarded. The
+response deterministically uses only complete market rows already present in
+match grounding, retains the verification status, emits no citations, and
+omits the market section when no complete row exists.
 
 The same deterministic grounded layer owns every no-search response with
 complete match, non-priced fixture, competition, or season grounding. The
@@ -76,6 +82,11 @@ search, but its results cannot alter capability or promote identity. MiniMax is
 limited to supported evidence-required prose plus
 general/ungrounded open-ended analysis behind the existing search, verifier,
 SSE, and 90-second deadline contracts.
+
+Season source fidelity is separate from routing: an all-zero standings table
+explicitly requested as the sole source establishes neither an on-field ranking
+nor a champion. That response emits no season probabilities because those also
+depend on club-strength ratings and the remaining schedule.
 
 ## Private friendly shadow policy
 

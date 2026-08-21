@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
@@ -50,6 +50,8 @@ import {
   deterministicGroundedResponse,
   deterministicCoverageResponse,
   dropLeadingAnswerFragment,
+  answerQuestion,
+  answerQuestionStream,
   statesMarketDivergence,
   type Grounding,
   type MarketDivergence,
@@ -62,6 +64,9 @@ import {
   type FootballMatch,
 } from "./football-data";
 import { refreshClubRatings } from "./club-ratings";
+
+const searchWeb = vi.hoisted(() => vi.fn());
+vi.mock("./web-search", () => ({ searchWeb }));
 
 /**
  * Fills in the precomputed model-versus-market field from the payload's own
@@ -162,6 +167,26 @@ describe("season grounding degradation", () => {
       expect(fresh.tier).toBe("season");
       expect(fresh.grounding).toMatchObject({ kind: "season", competitionId: "eng.1" });
       expect(fresh.grounding).toHaveProperty("seasonOutlook.titleProbabilities");
+
+      const exactQuestion = "Who is most likely to win the Premier League based on the current table?";
+      searchWeb.mockReset();
+      searchWeb.mockResolvedValue([]);
+      const json = await answerQuestion(exactQuestion);
+      expect(searchWeb).not.toHaveBeenCalled();
+      expect(json.grounding).toMatchObject({ kind: "season", competitionId: "eng.1" });
+      expect(json.answer).toContain("current table alone does not establish an on-field ranking");
+      expect(json.answer).not.toMatch(/\*\*Arsenal \d|most likely champion at/i);
+
+      const deltas: string[] = [];
+      const groundingKinds: string[] = [];
+      const sse = await answerQuestionStream(exactQuestion, [], undefined, {
+        onGrounding: (grounding) => groundingKinds.push(grounding?.kind ?? "null"),
+        onDelta: (text) => deltas.push(text),
+      });
+      expect(searchWeb).not.toHaveBeenCalled();
+      expect(groundingKinds).toEqual(["season"]);
+      expect(deltas).toEqual([sse.answer]);
+      expect(sse.answer).toBe(json.answer);
     } finally {
       if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
       else process.env.MINIMAX_API_KEY = originalKey;
@@ -637,6 +662,7 @@ describe("current-news evidence hardening", () => {
       "A high line compresses midfield space and leaves room behind the defence."
     )).toBe("A high line compresses midfield space and leaves room behind the defence.");
     for (const backwards of [
+      "A high defensive line shrinks the space behind it, which is the main benefit.",
       "A high line compresses space behind the defence.",
       "A high defensive line closes the space between the back line and the keeper.",
       "A higher line limits space between the defense and goalkeeper.",
@@ -658,6 +684,16 @@ describe("current-news evidence hardening", () => {
       "A high defensive line shrinks the space between defence and midfield, then opponents play passes in behind."
     );
     expect(implicitTradeoff).toContain("leaves more space behind it");
+
+    const artifactAnswer = sanitizeDeliveredAnswer([
+      "**Why a high line invites risk**",
+      "A high defensive line shrinks the space behind it, which is the main benefit, but mistakes are costly.",
+      "This is general tactical reasoning, not Pundit's model output, since Pundit's evaluation data covers World Cup 2026 results only and not in-game pressing behaviour.",
+      "No verified source exists for a tactical-concepts question, so the general analysis stands.",
+    ].join("\n\n"), "general");
+    expect(artifactAnswer).toContain("leaves more space behind it for the goalkeeper to cover");
+    expect(artifactAnswer).toContain("This is general football analysis, not based on Pundit's model data");
+    expect(artifactAnswer).not.toMatch(/shrinks the space behind it|World Cup 2026 results only|No verified source exists/i);
   });
 
   it("reconciles plain scoreline arithmetic even without a probability suffix", () => {
@@ -815,7 +851,7 @@ describe("current-news evidence hardening", () => {
         },
       };
       const ranking = deterministicGroundedResponse(
-        "Rank the leading contenders in the Premier League title race using the current table.",
+        "Rank the leading contenders using Pundit's Premier League season outlook.",
         season
       );
       expect(ranking).toContain("1. **Arsenal 93.5%**");
@@ -830,6 +866,24 @@ describe("current-news evidence hardening", () => {
       expect(certainty).toContain("Pundit cannot guarantee a winner");
       expect(certainty).toContain("Arsenal is the most likely champion at 93.5%, not a certainty");
       expect(certainty).not.toMatch(/Arsenal will win[^.]*100% certainty/i);
+
+      const tableOnly = deterministicGroundedResponse(
+        "Who is most likely to win the Premier League based on the current table?",
+        season
+      );
+      expect(tableOnly).toContain("current table alone does not establish an on-field ranking");
+      expect(tableOnly).toContain("goes beyond the requested table-only evidence");
+      expect(tableOnly).not.toMatch(/Arsenal 93\.5%|Man City 5\.3%|most likely champion at/i);
+      expect(deterministicSearchQuery(
+        "Who is most likely to win the Premier League based on the current table?",
+        "",
+        season
+      )).toBeNull();
+      expect(deterministicSearchQuery(
+        "What is the current Pundit model season outlook?",
+        "",
+        season
+      )).toBeNull();
     });
 
     it("states all-zero table provenance and declines standings-only upset sensitivity", () => {
@@ -882,7 +936,7 @@ describe("current-news evidence hardening", () => {
         [{ status: "temporarily-unpriced", reason: "ratings-refreshing" }, /club-strength ratings are refreshing/i],
         [{ status: "insufficient-model-input", reason: "ratings-unavailable" }, /club-strength rating is unavailable/i],
         [{ status: "insufficient-model-input", reason: "neutral-venue-unknown" }, /neutral status has not been established/i],
-        [{ status: "insufficient-model-input", reason: "required-context-missing" }, /structured fixture context is missing/i],
+        [{ status: "insufficient-model-input", reason: "required-context-missing" }, /required model context or input is missing/i],
       ];
       for (const [capability, expected] of cases) {
         const answer = deterministicCoverageResponse(false, { kind: "fixture", fixture, capability });
