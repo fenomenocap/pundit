@@ -1101,7 +1101,13 @@ describe("current-news evidence hardening", () => {
     expect(rendered.answer).not.toContain("Another player");
   });
 
-  it("does not render undated evidence for positive current-news claims", () => {
+  // Was: an undated source could not carry a current-news claim, so the claim
+  // was replaced by the abstention. That hid genuinely sourced team news --
+  // most pages carry no machine-readable date -- and spliced the notice into
+  // the middle of paragraphs, stranding the sentences that referred back to
+  // it. The claim now reaches the reader with its source shown and marked
+  // undated, which is a caveat they can weigh rather than a silent deletion.
+  it("renders undated evidence for a current-news claim, marked undated", () => {
     const rendered = renderEvidenceCitations(
       "The player is available [[S1]].",
       { queries: ["query"], results: [{
@@ -1113,8 +1119,11 @@ describe("current-news evidence hardening", () => {
       }] },
       true
     );
-    expect(rendered.answer).toMatch(/No verified, dated team-news update was established/i);
-    expect(rendered.citations).toEqual([]);
+    expect(rendered.answer).toContain("The player is available");
+    expect(rendered.answer).toContain("undated");
+    expect(rendered.answer).not.toMatch(/No verified, dated team-news update was established/i);
+    expect(rendered.citations.map((citation) => citation.url))
+      .toEqual(["https://example.com/undated"]);
   });
 });
 
