@@ -34,7 +34,10 @@ For a recognized, priced fixture in the 14-day window, Pundit treats the fixture
 2. Runs a live web search whenever the question touches injuries, suspensions, lineups, form, transfers, or a recent result — for a specific fixture that information changes the read, so Pundit searches rather than answering from memory. Every item it reports names its source and date, and it says plainly where a search turned up nothing
 3. Responds in plain language: headline odds, 1–2 likely scorelines, and what the underdog would need
 
+Odds and market questions also retain mandatory search. If verification supports no external claim, Pundit discards the generated prose and deterministically renders only complete same-source market rows already present in match grounding. The verification remains `abstain` or `unavailable`, citations are empty, and an incomplete or absent grounded market is omitted rather than guessed.
+
 Competition questions use ESPN standings only. Season questions add the Monte Carlo outlook on top of standings.
+The word “current” alone does not send an owned table or season-outlook fact to external search. When every current-table row is tied at zero and the user explicitly asks for a ranking based only on that table, Pundit states that the table cannot identify a leader and omits the season probabilities because they also use ratings and the remaining schedule.
 
 Recognized non-priced fixtures use a separate fixture grounding contract with a typed capability reason and no Pundit probabilities or scorelines. Their notice preserves the exact status and reason supplied by the capability decision; it does not ask MiniMax to infer why an input is missing. Discovery-only candidates are not grounding and never reach the model.
 
