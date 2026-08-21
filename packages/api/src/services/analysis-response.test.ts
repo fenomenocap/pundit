@@ -374,6 +374,29 @@ describe("generateAnalysis", () => {
 });
 
 describe("stripProcessNarration", () => {
+  // Production, 2026-08-21: the answer opened "Searching for current team news
+  // on Hull vs Man United, 22 August 2026." then "I'll note the scoreline
+  // translation:" before its first label. Neither shape matched the sweeps
+  // written for the shapes before them.
+  it("removes narration lines the model opens with, whatever verb they use", () => {
+    expect(stripProcessNarration(
+      "Searching for current team news on Hull vs Man United, 22 August 2026.\n\n"
+      + "I'll note the scoreline translation: 2-1 to Man United means Hull 1.\n\n"
+      + "**Model vs market**\nThe model is 20.4 points above Kalshi."
+    )).toBe("**Model vs market**\nThe model is 20.4 points above Kalshi.");
+  });
+
+  it("keeps a leading sentence that reports what the searches could not find", () => {
+    const limitation = "Searching did not turn up a dated team-news report for either side.";
+    expect(stripProcessNarration(`${limitation}\n\n**Goals**\nOver 2.5 at 77.6%.`))
+      .toBe(`${limitation}\n\n**Goals**\nOver 2.5 at 77.6%.`);
+  });
+
+  it("leaves the same words alone once the answer is under way", () => {
+    const body = "**Goals**\nChecking the scoreline list, four of the top five are clean sheets.";
+    expect(stripProcessNarration(body)).toBe(body);
+  });
+
   it("removes tool-use narration run together with the first section label", () => {
     expect(stripProcessNarration(
       "I'll search for the latest on Arsenal's top scorer.**Top scorer**\nGyokeres leads."

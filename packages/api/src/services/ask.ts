@@ -4278,8 +4278,30 @@ const ANSWER_STRUCTURE_NARRATION = new RegExp(
   "gi"
 );
 
+/**
+ * A turn that opens by announcing what it is about to do: "Searching for
+ * current team news...", "I'll note the scoreline translation:". The sweeps
+ * below catch the shapes seen before, but MiniMax keeps inventing new ones and
+ * they always land in the same place -- the opening lines, ahead of the first
+ * section label -- so this removes them by position rather than by phrasing.
+ * Anchored to the start, so the same words inside the answer are left alone,
+ * and it takes the same negation exemption as every other narration sweep.
+ */
+const LEADING_PROCESS_LINE = new RegExp(
+  "^(?:[ \\t]*(?:"
+  + "(?:searching|checking|looking|pulling|fetching|retrieving|verifying|confirming"
+  + "|noting|translating|starting|beginning)\\b[^\\n]*?"
+  + "|(?:i|we)(?:'ll|[ \\t]+will|[ \\t]+am[ \\t]+going[ \\t]+to)[ \\t]+"
+  + "(?:note|translate|check|search|look|confirm|verify|start|begin)\\b[^\\n]*?"
+  + ")(?:\\n+|(?=\\*\\*)))+",
+  "i"
+);
+
 export function stripProcessNarration(answer: string): string {
   return answer
+    .trimStart()
+    .replace(LEADING_PROCESS_LINE, (match: string) =>
+      NARRATION_EXEMPT.test(match) ? match : "")
     .replace(SEARCH_STATUS_NARRATION, (match: string, lead: string) =>
       NARRATION_EXEMPT.test(match) ? match : lead)
     // Both of the retrieval/running-order shapes take the same negation
