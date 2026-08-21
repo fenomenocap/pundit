@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
 import {
   generateAnalysis,
+  renderEvidenceCitations,
+  MAX_CONTINUATIONS,
+  PROVIDER_CALL_BUDGET,
   generateAnalysisStream,
   Grounding,
   sanitizeCompetitionAnswer,
@@ -250,17 +253,20 @@ describe("generateAnalysis", () => {
     }
   });
 
-  it("caps combined inference, retry, and search provider calls at three", async () => {
+  // Pinned to the shared budget rather than a number: the guarantee is that
+  // inference, retries and searches all draw on one ceiling, whatever it is set
+  // to. Starting three short of it leaves exactly a turn, a retry and a search.
+  it("caps combined inference, retry, and search provider calls at the shared budget", async () => {
     const create = vi.fn()
       .mockRejectedValueOnce(new Anthropic.APIConnectionError({ message: "boom" }))
       .mockResolvedValueOnce(toolUseMessage(""));
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
-    const bundle = { queries: [], results: [], providerCalls: 0 };
+    const bundle = { queries: [], results: [], providerCalls: PROVIDER_CALL_BUDGET - 3 };
     await expect(generateAnalysis(client, "system", [], "general", undefined, bundle))
       .rejects.toMatchObject({ statusCode: 504 });
     expect(create).toHaveBeenCalledTimes(2);
     expect(searchWeb).toHaveBeenCalledTimes(1);
-    expect(bundle.providerCalls).toBe(3);
+    expect(bundle.providerCalls).toBe(PROVIDER_CALL_BUDGET);
   });
 
   it("returns trimmed text and accepts web-search content blocks", async () => {
@@ -369,7 +375,36 @@ describe("generateAnalysis", () => {
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
     await expect(generateAnalysis(client, "system", [], "match"))
       .rejects.toMatchObject({ statusCode: 504 });
-    expect(create).toHaveBeenCalledTimes(2); // initial call + one bounded continuation
+    expect(create).toHaveBeenCalledTimes(MAX_CONTINUATIONS + 1); // initial call + bounded continuations
+  });
+});
+
+describe("renderEvidenceCitations abstention scope", () => {
+  const bundle = {
+    queries: ["hull man united team news"],
+    providerCalls: 1,
+    results: [
+      { id: "S1", title: "Hull v Man Utd preview", url: "https://example.com/a", date: "2026-08-20", snippet: "" },
+      { id: "S2", title: "Undated listing", url: "https://example.com/b", date: "", snippet: "" },
+    ],
+  };
+
+  // Production: a dated, cited squad report rendered correctly while a second,
+  // undated one was replaced by the abstention -- so the answer both reported
+  // team news and said none was established, with the notice stranded above
+  // the first section label.
+  it("drops an unsupported squad claim silently when a dated one survives", () => {
+    const answer = "**Team news**\nGyabi is ruled out [[S1]].\nZambrano is a doubt [[S2]].";
+    const { answer: rendered } = renderEvidenceCitations(answer, bundle, true);
+    expect(rendered).toContain("Gyabi is ruled out");
+    expect(rendered).toContain("2026-08-20");
+    expect(rendered).not.toContain("No verified, dated team-news update was established");
+  });
+
+  it("still abstains when no squad claim is supported at all", () => {
+    const answer = "**Team news**\nZambrano is a doubt [[S2]].";
+    const { answer: rendered } = renderEvidenceCitations(answer, bundle, true);
+    expect(rendered).toContain("No verified, dated team-news update was established");
   });
 });
 

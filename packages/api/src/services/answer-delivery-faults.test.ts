@@ -1,6 +1,11 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
-import { extractLeakedSearchQueries, generateAnalysis, sanitizeAnswerForTier } from "./ask";
+import {
+  extractLeakedSearchQueries,
+  generateAnalysis,
+  PROVIDER_CALL_BUDGET,
+  sanitizeAnswerForTier,
+} from "./ask";
 import { clientWith, message } from "./__fixtures__/anthropic-stubs";
 
 vi.mock("./web-search", () => ({ searchWeb: vi.fn().mockResolvedValue([]) }));
@@ -157,10 +162,10 @@ describe("recovery never spends a budget it cannot finish on", () => {
     const create = vi.fn().mockResolvedValue(message(narrated, "end_turn"));
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
     // One call left: it funds the turn itself, leaving nothing for a retry.
-    const bundle = { queries: [] as string[], results: [], providerCalls: 2 };
+    const bundle = { queries: [] as string[], results: [], providerCalls: PROVIDER_CALL_BUDGET - 1 };
     await generateAnalysis(client, "system", [], "match", undefined, bundle);
     expect(create).toHaveBeenCalledTimes(1);
-    expect(bundle.providerCalls).toBe(3);
+    expect(bundle.providerCalls).toBe(PROVIDER_CALL_BUDGET);
   });
 
   it("recovers without a search when only the retry turn can be funded", async () => {
@@ -168,10 +173,10 @@ describe("recovery never spends a budget it cannot finish on", () => {
       .mockResolvedValueOnce(message(narrated, "end_turn"))
       .mockResolvedValueOnce(message("**Model vs market**\nThe gap is 20.4 points.", "end_turn"));
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
-    const bundle = { queries: [] as string[], results: [], providerCalls: 1 };
+    const bundle = { queries: [] as string[], results: [], providerCalls: PROVIDER_CALL_BUDGET - 2 };
     const answer = await generateAnalysis(client, "system", [], "match", undefined, bundle);
     expect(answer).toContain("20.4 points");
     expect(create).toHaveBeenCalledTimes(2);
-    expect(bundle.providerCalls).toBe(3);
+    expect(bundle.providerCalls).toBe(PROVIDER_CALL_BUDGET);
   });
 });
