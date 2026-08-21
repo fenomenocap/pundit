@@ -2,7 +2,7 @@
 
 Date: 2026-08-13
 
-This document preserves the evidence and disposition of the August 13 fixture-recognition release. Test counts and deployment identities below belong to the recorded branch and run; they are not a claim about current `main`. Current Schema-12 release certification must record its own exact source/API/web identities and immutable evaluator artifact; its stronger semantic matrix is intentionally non-comparable with the historical Schema-10 run.
+This document preserves the evidence and disposition of the August 13 fixture-recognition release. Test counts and deployment identities below belong to the recorded branch and run; they are not a claim about current `main`. Current Schema-13 release certification must record its own exact source/API/web identities and immutable evaluator artifact; its per-turn critic evidence and stronger semantic matrix are intentionally non-comparable with the historical Schema-10 and Schema-12 runs.
 
 ## Scope and lineage
 

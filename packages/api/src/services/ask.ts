@@ -383,7 +383,7 @@ const MARKET_SUBJECT = /\b(?:markets?|lines?|prices?|odds|kalshi|polymarket|book
  * to delete the model's own probabilities.
  */
 const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
-  /\b(?:available|unavailable|out injured|out with a|will miss|misses? out|back in (?:training|contention)|match ?fit|fitness test|doubt)\b/i;
+  /\b(?:available|unavailable|out injured|out with a|will miss|misses? out|(?:is|are|was|were|be) missed|sits? out|back in (?:training|contention)|match ?fit|fitness test|doubt)\b/i;
 
 /**
  * Does this sentence make a squad-availability claim -- the narrow class that
@@ -457,10 +457,25 @@ function abstainEvidenceClaims(answer: string, notice: string): string {
   return revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function deterministicSearchQuery(question: string, correctionContext = ""): string | null {
+export function deterministicSearchQuery(
+  question: string,
+  correctionContext = "",
+  grounding?: AskGrounding
+): string | null {
   if (!CURRENT_NEWS_QUESTION.test(question)
     && !AMBIGUOUS_CURRENT_QUESTION.test(question)
     && !containsCorrectionCue(question)) return null;
+  const mandatoryExternal = /\b(?:latest|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i.test(question)
+    || containsCorrectionCue(question);
+  const asksOwnedMatchFact = grounding?.kind === "match"
+    && /\b(?:pundit(?:'s)?|model|1x2|win (?:chance|probability)|draw (?:chance|probability)|scorelines?|btts|over 2\.5|under 2\.5)\b/i.test(question);
+  const asksOwnedTableFact = grounding?.kind === "competition"
+    && /\b(?:current )?(?:table|standings|points|position|played|goal difference)\b/i.test(question);
+  const asksOwnedSeasonFact = grounding?.kind === "season"
+    && /\b(?:pundit(?:'s)?|model|title|top[- ]four|relegation|season outlook)\b/i.test(question);
+  if (!mandatoryExternal && (asksOwnedMatchFact || asksOwnedTableFact || asksOwnedSeasonFact)) {
+    return null;
+  }
   const challengedContext = containsCorrectionCue(question) && correctionContext.trim()
     ? ` ${correctionContext.replace(/\s+/g, " ").slice(0, 220)}`
     : "";
@@ -1377,6 +1392,20 @@ function mentionedTeamOutcome(sentence: string, grounding: Grounding): "home" | 
  * is omitted rather than rewritten into a new football claim.
  */
 export function sanitizeGroundedMatchNarrative(answer: string, grounding: Grounding): string {
+  const homeEnd = new RegExp(
+    `\\b(?:lots? of|most|all)(?: the)? goals?[^.!?\\n]{0,35}\\bat ${escapedPattern(grounding.home)}['’]s end\\b`,
+    "i"
+  );
+  const unsupportedHfaCause = new RegExp(
+    `\\bwith (?:the )?[^,.!?\\n]{0,50}(?:crowd|stadium|venue)[^,.!?\\n]{0,45}`
+      + `(?:contribut(?:e|es|ing)|caus(?:e|es|ing)|driv(?:e|es|ing)|provid(?:e|es|ing))`
+      + `[^,.!?\\n]{0,35}(?:home (?:boost|edge)|home[- ]field advantage)`,
+    "i"
+  );
+  const groundedWording = answer
+    .replace(homeEnd, `${grounding.home} scoring most of the goals`)
+    .replace(unsupportedHfaCause, "with home-field advantage applied")
+    .replace(/,?\s*with (?:both|the) sources? (?:moving|move|tracking) in lockstep(?:,?\s*so[^.!?\n]*)?/gi, "");
   const modelFavorite = strongestOutcome({
     home: grounding.pHome,
     draw: grounding.pDraw,
@@ -1398,7 +1427,7 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
     removedClaim = true;
     return "";
   };
-  const retained = reviseAnswerSentences(answer, (sentence) => {
+  const retained = reviseAnswerSentences(groundedWording, (sentence) => {
     const claimedTeam = mentionedTeamOutcome(sentence, grounding);
     if (claimedTeam) {
       const claimsUnderdog = /\b(?:underdogs?|outsiders?|upset|overturn\s+the\s+model|spring\s+an?\s+upset)\b/i.test(sentence);
@@ -1430,6 +1459,22 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
       "i"
     );
     if (drawFoldedIntoHome.test(sentence)) return drop();
+
+    const mentionedOutcomes = (["home", "draw", "away"] as const).filter((outcome) => {
+      const label = outcome === "home" ? grounding.home : outcome === "away" ? grounding.away : "draw";
+      return new RegExp(`\\b(?:${escapedPattern(label)}|${outcome}(?:[- ]win)?)\\b`, "i").test(sentence);
+    });
+    if (mentionedOutcomes.length) {
+      const gaps = completeMarkets.flatMap((source) => mentionedOutcomes.map((outcome) => {
+        const model = outcome === "home" ? grounding.pHome : outcome === "draw" ? grounding.pDraw : grounding.pAway;
+        const market = outcome === "home" ? source.pHome : outcome === "draw" ? source.pDraw! : source.pAway;
+        return model - market;
+      }));
+      const saysModelHigher = /\b(?:model|pundit)[^.!?\n]{0,90}\b(?:higher|above)\b[^.!?\n]{0,60}\b(?:market|price)|\b(?:market|price)[^.!?\n]{0,90}\b(?:lower|below)\b[^.!?\n]{0,60}\b(?:model|pundit)/i.test(sentence);
+      const saysModelLower = /\b(?:model|pundit)[^.!?\n]{0,90}\b(?:lower|below)\b[^.!?\n]{0,60}\b(?:market|price)|\b(?:market|price)[^.!?\n]{0,90}\b(?:higher|above)\b[^.!?\n]{0,60}\b(?:model|pundit)/i.test(sentence);
+      if (gaps.length && ((saysModelHigher && gaps.every((gap) => gap <= 0))
+        || (saysModelLower && gaps.every((gap) => gap >= 0)))) return drop();
+    }
 
     if (claimedTeam
       // "stake" is an ordinary English noun, so the "at stake" idiom is
@@ -1496,7 +1541,7 @@ export function sanitizeFootballGeometry(answer: string): string {
   const backwardsGeometry = new RegExp(`\\b${backwardsVerb}\\b[^.!?\\n]{0,28}\\b${behindTarget}\\b`, "i");
   let correctionAdded = false;
   let midfieldPreserved = false;
-  return answer.replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) => {
+  const sanitized = answer.replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) => {
     const backwards = /\b(?:higher|high)(?: defensive)? line\b/i.test(sentence)
       && backwardsGeometry.test(sentence);
     if (!backwards) return sentence;
@@ -1511,6 +1556,12 @@ export function sanitizeFootballGeometry(answer: string): string {
     midfieldPreserved ||= hasMidfieldCompression;
     return replacement;
   }).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  const explainsBehindRisk = /\bhigh(?: defensive)? line\b/i.test(sanitized)
+    && /\b(?:passes?|runs?|balls?|sweeper(?:-keeper)?|breakaways?)[^.!?\n]{0,45}\bbehind\b|\bbehind\b[^.!?\n]{0,45}\b(?:passes?|runs?|balls?|sweeper(?:-keeper)?|breakaways?)\b/i.test(sanitized);
+  const statesSpaceTradeoff = /\b(?:space|room)\b[^.!?\n]{0,35}\bbehind\b|\bbehind\b[^.!?\n]{0,35}\b(?:space|room)\b/i.test(sanitized);
+  return explainsBehindRisk && !statesSpaceTradeoff
+    ? `${sanitized}\n\n${correction}`
+    : sanitized;
 }
 
 /**
@@ -3089,6 +3140,57 @@ function replaceInvalidScorelineLines(answer: string, grounding: Grounding): str
   }).join("\n");
 }
 
+const CARDINAL_NUMBER: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5,
+  six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+
+const ORDINAL_WORDS = [
+  "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
+];
+
+function sanitizeScorelineRankingClaims(answer: string, grounding: Grounding): string {
+  return reviseAnswerSentences(answer, (sentence) => {
+    const topClaim = /\b(?:the\s+)?(?:(?:top\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\s+scorelines?)|(?:(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\s+most likely scorelines?))\b/i.exec(sentence);
+    if (topClaim && /\b(?:all|total(?:l|ling)?|sum|combined|without conceding|clean sheets?)\b/i.test(sentence)) {
+      const count = topClaim[1] ?? topClaim[2];
+      const requested = CARDINAL_NUMBER[count.toLocaleLowerCase()] ?? Number(count);
+      const rows = grounding.scorelines.slice(0, requested);
+      if (!rows.length) return sentence;
+      const sum = rows.reduce((total, row) => total + row.probability, 0);
+      const homeCleanSheets = rows.filter(({ score }) => {
+        const [home, away] = score.split("-").map(Number);
+        return home > away && away === 0;
+      }).length;
+      return `The ${requested} most likely scorelines total ${(sum * 100).toFixed(1)}%; `
+        + `${homeCleanSheets} are ${grounding.home} clean-sheet wins.`;
+    }
+
+    const mentioned = [...sentence.matchAll(SCORELINE_TOKEN)]
+      .map((match) => `${match[1]}-${match[2]}`)
+      .filter((score, index, all) => all.indexOf(score) === index);
+    const pairedRanks = /\b(?:sit|rank(?:ed)?)\s+(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+and\s+(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/i.exec(sentence);
+    const statedOrdinals = pairedRanks
+      ? [pairedRanks[1], pairedRanks[2]].map((word) => ({
+        word,
+        rank: ORDINAL_WORDS.indexOf(word.toLocaleLowerCase()) + 1,
+      }))
+      : [];
+    if (mentioned.length === 2 && statedOrdinals.length === 2) {
+      const actualRanks = mentioned.map((score) =>
+        grounding.scorelines.findIndex((row) => row.score === score) + 1
+      );
+      if (actualRanks.every((rank) => rank > 0)
+        && actualRanks.some((rank, index) => rank !== statedOrdinals[index].rank)) {
+        return `In the grounded scoreline ranking, **${mentioned[0]}** is `
+          + `${ORDINAL_WORDS[actualRanks[0] - 1] ?? `number ${actualRanks[0]}`} and **${mentioned[1]}** is `
+          + `${ORDINAL_WORDS[actualRanks[1] - 1] ?? `number ${actualRanks[1]}`}.`;
+      }
+    }
+    return sentence;
+  });
+}
+
 // Which side of the 2.5 line a sentence is illustrating. "2.5-over" and
 // "over 2.5" are both used by the model, so the number may sit on either side.
 const OVER_CONTEXT = /(?:over|above)\s*2\.5|2\.5[-\s]*over/i;
@@ -3293,6 +3395,7 @@ export function sanitizeMatchAnswer(answer: string, grounding?: Grounding): stri
     "($1% no)"
   );
   if (grounding) {
+    sanitized = sanitizeScorelineRankingClaims(sanitized, grounding);
     sanitized = replaceInvalidScorelineLines(sanitized, grounding);
     sanitized = sanitized
       .split("\n")
@@ -3401,8 +3504,21 @@ function stripModelAttributedProbabilities(answer: string, correction: string): 
 }
 
 export function sanitizeCompetitionAnswer(answer: string): string {
+  const correction = "A standings-only payload cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
+  let emitted = false;
+  const extrapolationSafe = answer.split("\n").map((line) => {
+    if (/^\s*\*\*[^*]*(?:title prices?|title odds)[^*]*pundit[^*]*\*\*\s*$/i.test(line)) {
+      return "**Limits of this table**";
+    }
+    if (/\b(?:one match['’]s worth of expected points|\d+(?:\.\d+)?% swing in points share|nudge[^.!?\n]{0,80}(?:closer|top three))\b/i.test(line)) {
+      if (emitted) return "";
+      emitted = true;
+      return correction;
+    }
+    return line;
+  }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
   return stripModelAttributedProbabilities(
-    sanitizeStandingsLanguage(answer),
+    sanitizeStandingsLanguage(extrapolationSafe),
     FABRICATED_ODDS_CORRECTION
   );
 }
@@ -3491,7 +3607,7 @@ const CONTROL_TOKEN_FRAGMENT = /\]<\]\s*minimax\s*\[>\[|\]<\]|\[>\[|<\|[^|\n>]{0
  * the hosted names it invents for searches it cannot run.
  */
 const SEARCH_TOOL_NAME =
-  "web_search|websearch|search_web|web-search|google_search|bing_search|search";
+  "web_search|websearch|search_web|web-search|google_search|bing_search|search_queries|search_query|search";
 
 /**
  * A bracketed directive naming a search tool, e.g.
@@ -3510,7 +3626,7 @@ const SEARCH_TOOL_NAME =
  * run instead of discarded.
  */
 const BRACKETED_TOOL_DIRECTIVE = new RegExp(
-  `\\[[ \\t]*(?:${SEARCH_TOOL_NAME})[ \\t]*[:=][ \\t]*([^\\]\\n]{0,256})\\]?`,
+  `\\[{1,2}[ \\t]*(?:${SEARCH_TOOL_NAME})[ \\t]*[:=][ \\t]*([^\\]\\n]{0,256})\\]{0,2}`,
   "gi"
 );
 
@@ -4115,6 +4231,49 @@ export function ensureGeneralDisclaimer(answer: string): string {
   return HAS_GENERAL_DISCLAIMER.test(answer)
     ? answer
     : `${answer.trimEnd()}\n\n${GENERAL_DISCLAIMER}`;
+}
+
+function isModelOnlyRequest(question: string): boolean {
+  return /\bmodel case\b/i.test(question)
+    || /\b(?:only|just)\b[^?\n]{0,50}\b(?:model|pundit(?:'s)?)\b/i.test(question)
+    || /\b(?:model|pundit(?:'s)?)\b[^?\n]{0,50}\b(?:only|without (?:the )?market)\b/i.test(question);
+}
+
+export function sanitizeRequestFidelity(
+  answer: string,
+  question: string,
+  hasHistory = false
+): string {
+  let sanitized = answer;
+  if (hasHistory) {
+    sanitized = reviseAnswerSentences(sanitized, (sentence) =>
+      /\b(?:do not|don't|cannot|can't) have (?:the )?(?:original|previous|prior) answer (?:in front of me|available|here)\b/i.test(sentence)
+        ? ""
+        : sentence
+    );
+  }
+  const modelOnly = isModelOnlyRequest(question);
+  if (!modelOnly) return sanitized.replace(/\n{3,}/g, "\n\n").trim();
+
+  const lines = sanitized.split("\n");
+  const kept: string[] = [];
+  let droppingMarketSection = false;
+  for (const line of lines) {
+    if (SECTION_LABEL_LINE.test(line)) {
+      droppingMarketSection = /\bmarket\b/i.test(line);
+      if (droppingMarketSection) continue;
+    }
+    if (!droppingMarketSection) kept.push(line);
+  }
+  return reviseAnswerSentences(kept.join("\n"), (sentence) =>
+    /\b(?:kalshi|polymarket|bookmakers?|market (?:price|gap|line|odds)|priced probability)\b/i.test(sentence)
+      ? ""
+      : sentence
+  ).replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function shouldHoldRequestFidelity(question: string, hasHistory: boolean): boolean {
+  return hasHistory || isModelOnlyRequest(question);
 }
 
 // The deterministic guard chain for a tier, factored out of
@@ -5457,6 +5616,7 @@ export async function deliverAnswer(args: {
   /** Whether a search ran, so verification is owed rather than not-required. */
   evidenceRequired: boolean;
   candidateUnrecognized: boolean;
+  hasHistory?: boolean;
   signal?: AbortSignal;
 }): Promise<{ answer: string; citations: AskCitation[]; verification: AskVerification }> {
   const {
@@ -5468,13 +5628,15 @@ export async function deliverAnswer(args: {
     question,
     evidenceRequired,
     candidateUnrecognized,
+    hasHistory = false,
     signal,
   } = args;
+  const requestSafeAnswer = sanitizeRequestFidelity(rawAnswer, question, hasHistory);
   const answer = grounding?.kind === "fixture"
-    ? sanitizeFixtureCoverageAnswer(rawAnswer, grounding)
+    ? sanitizeFixtureCoverageAnswer(requestSafeAnswer, grounding)
     : candidateUnrecognized
-      ? sanitizeUnrecognizedCandidateAnswer(rawAnswer)
-      : rawAnswer;
+      ? sanitizeUnrecognizedCandidateAnswer(requestSafeAnswer)
+      : requestSafeAnswer;
   const checked = candidateUnrecognized
     ? {
         answer,
@@ -5528,11 +5690,13 @@ export async function deliverAnswer(args: {
   // server-owned payload to fall back to there anyway.
   const shaped = grounding?.kind !== "match" || hasGroundedAnswerShape(settledAnswer);
   if (readable && shaped) {
+    const completeAnswer = guaranteeMatchReadCompleteness(settledAnswer, tier, grounding);
     return {
-      // Last, after every guard: the sentence is composed from the same
-      // validated record those guards check against, so running it back
-      // through them could only ever return it unchanged.
-      answer: guaranteeMatchReadCompleteness(settledAnswer, tier, grounding),
+      // Completeness may deterministically add a market comparison from the
+      // grounding. Request fidelity therefore gets the actual last word: an
+      // explicit model-only request must not receive a market section merely
+      // because the server can derive one.
+      answer: sanitizeRequestFidelity(completeAnswer, question, hasHistory),
       citations: rendered.citations,
       verification: checked.verification,
     };
@@ -5552,14 +5716,15 @@ export async function deliverAnswer(args: {
       // unrecognisable one is the model never having written an answer at all.
       reason: readable ? "answer_not_shaped_like_an_answer" : "guard_chain_left_no_prose",
     }));
+    const completeFallback = guaranteeMatchReadCompleteness(
+      renderGroundedMatchFallback(grounding),
+      tier,
+      grounding
+    );
     return {
       // The fallback answers from the grounding, so it owes the reader the
       // divergence for exactly the reason a generated answer does.
-      answer: guaranteeMatchReadCompleteness(
-        renderGroundedMatchFallback(grounding),
-        tier,
-        grounding
-      ),
+      answer: sanitizeRequestFidelity(completeFallback, question, hasHistory),
       citations: [],
       verification: checked.verification,
     };
@@ -5665,7 +5830,11 @@ export async function answerQuestion(
     fixtureContext
   );
   try {
-    const query = deterministicSearchQuery(question, correctionSearchContext(history, grounding));
+    const query = deterministicSearchQuery(
+      question,
+      correctionSearchContext(history, grounding),
+      grounding
+    );
     const bundle: EvidenceBundle = query
       ? await buildEvidenceBundle(query, signal)
       : { queries: [], results: [], providerCalls: 0 };
@@ -5693,6 +5862,7 @@ export async function answerQuestion(
       question,
       evidenceRequired: Boolean(query || bundle.queries.length),
       candidateUnrecognized,
+      hasHistory: history.length > 0,
       signal,
     });
     return {
@@ -5740,7 +5910,11 @@ export async function answerQuestionStream(
   );
   handlers.onGrounding(grounding);
   try {
-    const query = deterministicSearchQuery(question, correctionSearchContext(history, grounding));
+    const query = deterministicSearchQuery(
+      question,
+      correctionSearchContext(history, grounding),
+      grounding
+    );
     const bundle: EvidenceBundle = query
       ? await buildEvidenceBundle(query, handlers.signal)
       : { queries: [], results: [], providerCalls: 0 };
@@ -5756,7 +5930,8 @@ export async function answerQuestionStream(
     // sanitizer is what guarantees no invented probability/scoreline can ever
     // reach the browser, including transient SSE deltas.
     const holdForCoverageGuard = shouldHoldCoverageDeltas(grounding, candidateUnrecognized);
-    const rawAnswer = query || ambiguousFallback || holdForCoverageGuard
+    const holdForRequestFidelity = shouldHoldRequestFidelity(question, history.length > 0);
+    const rawAnswer = query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity
       ? await generateAnalysis(
         client,
         systemPrompt,
@@ -5788,11 +5963,12 @@ export async function answerQuestionStream(
       question,
       evidenceRequired: Boolean(query || bundle.queries.length),
       candidateUnrecognized,
+      hasHistory: history.length > 0,
       signal: handlers.signal,
     });
     // The held delta and the done payload carry the same settled text.
     const settledAnswer = delivered.answer;
-    if ((query || ambiguousFallback || holdForCoverageGuard)
+    if ((query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity)
       && settledAnswer
       && (handlers.shouldContinue ?? (() => true))()) {
       handlers.onDelta(settledAnswer);

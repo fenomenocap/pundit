@@ -39,6 +39,7 @@ import {
   verifyCurrentClaims,
   type FixtureGrounding,
   shouldHoldCoverageDeltas,
+  shouldHoldRequestFidelity,
   stripUnvalidatedExternalMarketClaims,
   dropOrphanedSectionLabels,
   MATCH_ANALYSIS_PRIORITIES,
@@ -245,6 +246,31 @@ describe("current-news evidence hardening", () => {
     expect(deterministicSearchQuery("Explain the offside rule")).toBeNull();
     expect(deterministicSearchQuery("Actually that manager is wrong", "Arsenal Pat Doe"))
       .toContain("Arsenal Pat Doe");
+  });
+
+  it("does not search for current facts already owned by structured grounding", () => {
+    const match = {
+      kind: "match", home: "Arsenal", away: "Coventry",
+    } as unknown as Grounding;
+    const competition = {
+      kind: "competition", competitionId: "eng.1", competition: "Premier League",
+      updatedAt: new Date().toISOString(), standings: [],
+    } as unknown as Parameters<typeof deterministicSearchQuery>[2];
+    expect(deterministicSearchQuery("What are Pundit's current 1X2 probabilities?", "", match))
+      .toBeNull();
+    expect(deterministicSearchQuery("What does the current table show?", "", competition))
+      .toBeNull();
+    expect(deterministicSearchQuery("What are the current odds?", "", match))
+      .toContain("football latest");
+    expect(deterministicSearchQuery("Is the current manager injured?", "", match))
+      .toContain("football latest");
+  });
+
+  it("holds model-only and history-bearing SSE turns until request-fidelity guards settle", () => {
+    expect(shouldHoldRequestFidelity("Which side has the stronger model case, and why?", false))
+      .toBe(true);
+    expect(shouldHoldRequestFidelity("What evidence would change that answer?", true)).toBe(true);
+    expect(shouldHoldRequestFidelity("Explain the offside rule", false)).toBe(false);
   });
 
   it("does not promote unknown search domains to reputable evidence", () => {
@@ -522,7 +548,7 @@ describe("current-news evidence hardening", () => {
 
   it("removes artifact-shaped positive team news when verification supported nothing", () => {
     const candidateNotice = "I could not establish an authoritative structured fixture identity for that matchup; no verified fixture identity was established, so it remains a discovery candidate and has no Pundit fixture badge or probabilities.";
-    const unsafe = `${candidateNotice}\n\nLyon: Jason Denayer is out with a knock. Paulo Fonseca expects key Fenerbahce attackers to be unavailable.`;
+    const unsafe = `${candidateNotice}\n\nLyon: Jason Denayer is out with a knock. Paulo Fonseca expects key Fenerbahce attackers to be unavailable. If Saliba and Timber are missed and Saka or Bruno join them, the clean-sheet concentration eases.`;
     const safe = failClosedEmptyCurrentVerification(unsafe, {
       status: "abstain",
       supportedClaimCount: 0,
@@ -534,7 +560,7 @@ describe("current-news evidence hardening", () => {
     // unanswerable. The removal it stands for is unchanged, and is asserted on
     // the next line exactly as before.
     expect(safe).toContain("No verified, dated team-news update was established");
-    expect(safe).not.toMatch(/Jason Denayer|is out|attackers to be unavailable/);
+    expect(safe).not.toMatch(/Jason Denayer|is out|attackers to be unavailable|Saliba|Timber|Saka|Bruno/);
     expect(failClosedEmptyCurrentVerification(unsafe, {
       status: "not-required",
       supportedClaimCount: 0,
@@ -624,6 +650,10 @@ describe("current-news evidence hardening", () => {
       "A high line shrinks space behind defenders. A higher line reduces space between defence and goalkeeper."
     );
     expect(repeated.match(/A high defensive line/g)).toHaveLength(1);
+    const implicitTradeoff = sanitizeFootballGeometry(
+      "A high defensive line shrinks the space between defence and midfield, then opponents play passes in behind."
+    );
+    expect(implicitTradeoff).toContain("leaves more space behind it");
   });
 
   it("reconciles plain scoreline arithmetic even without a probability suffix", () => {
