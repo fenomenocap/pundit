@@ -45,6 +45,12 @@ table detour does not delete the retained fixture, while a new explicit matchup
 replaces it. Token boundaries prevent `epl` from matching `replacing`, and
 match/1X2 intent cannot be overridden by a competition token.
 
+`current table` and `current standings` are explicit referential table cues.
+They retain the most recent competition explicitly named in prior user turns;
+without one, they resolve to the Premier League as the only supported
+league-style table. This is deliberately narrower than arbitrary pronoun-based
+competition retention.
+
 Priced fixtures retain `grounding.kind = "match"`. Recognized non-priced
 fixtures return `kind = "fixture"` plus their capability. Candidate-only text
 gets no fixture badge. Deterministic post-processing strips probabilities and

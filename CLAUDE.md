@@ -96,6 +96,7 @@ API_REPLICAS=1
 - Keep server-owned facts deterministic when the grounding contract is complete. MiniMax may handle evidence-required current turns and general/ungrounded open-ended analysis, but it must not restate a recognized fixture's capability reason as a guessed lineup, squad, venue, rating, or policy explanation.
 - Do not treat the word `current` by itself as requiring external search when the question asks for a complete server-owned table, model, or season-outlook fact. Manager, injury, lineup, transfer, odds and other external-current cues retain mandatory search.
 - Preserve source fidelity: an all-zero table explicitly requested as the only evidence establishes no on-field ranking. Do not answer that request with season probabilities derived from ratings and the remaining schedule.
+- Treat `current table` and `current standings` as explicit table references. Retain the most recent competition explicitly named in prior user turns; with no competition in view, use the Premier League as the only supported league-style table. Do not extend this retention to arbitrary pronouns.
 - Preserve exact typed capability reasons in public copy: `friendly-policy-disabled`, `unsupported-competition`, `model-policy-disabled`, `model-initializing`, `ratings-refreshing`, `ratings-unavailable`, `neutral-venue-unknown`, or `required-context-missing`.
 
 ---

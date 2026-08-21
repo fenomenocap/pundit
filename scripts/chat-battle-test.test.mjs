@@ -349,7 +349,7 @@ test("readiness gating names each failed component", () => {
   }), []);
 });
 
-test("schema-15 preserves bounded post-run web-search telemetry without inventing attribution", () => {
+test("schema-16 preserves bounded post-run web-search telemetry without inventing attribution", () => {
   assert.deepEqual(summarizeWebSearchTelemetry(
     { webSearch: { totalSearches: 7, consecutiveFailures: 1 } },
     { webSearch: { totalSearches: 11, consecutiveFailures: 0 } }
@@ -1379,7 +1379,7 @@ test("certification gate uses required traffic and requires every release identi
   assert.equal(unsafeObservation.certificationGate.passed, false);
 });
 
-test("schema-15 fixture grounding distinguishes capability without leaking model probabilities", () => {
+test("schema-16 fixture grounding distinguishes capability without leaking model probabilities", () => {
   const fixture = {
     fixtureId: "espn:club.friendly:800",
     primarySource: "espn",
@@ -1420,7 +1420,7 @@ test("schema-15 fixture grounding distinguishes capability without leaking model
   }).passed, false);
 });
 
-test("schema-15 verification contract enforces shape, counts, and abstention semantics", () => {
+test("schema-16 verification contract enforces shape, counts, and abstention semantics", () => {
   assert.equal(validateVerification({
     status: "verified", supportedClaimCount: 1, removedClaimCount: 0,
   }, { expectVerification: ["verified"] }).passed, true);
@@ -1433,7 +1433,7 @@ test("schema-15 verification contract enforces shape, counts, and abstention sem
   assert.equal(validateVerification(null).passed, false);
 });
 
-test("schema-15 complete market validator enforces source, time, legs and arithmetic", () => {
+test("schema-16 complete market validator enforces source, time, legs and arithmetic", () => {
   const legs = [
     { outcome: "home", decimalOdds: 2, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
     { outcome: "draw", decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
@@ -1534,7 +1534,7 @@ test("runtime-helper scenarios execute the current API correctness module, not c
   }
 });
 
-test("schema-15 correctness guard catches the four screenshot-class failures", () => {
+test("schema-16 correctness guard catches the four screenshot-class failures", () => {
   assert.equal(validateResponseCorrectness(
     "Pundit's forecast is 52% home, 25% draw and 23% away.",
     [],
@@ -1657,7 +1657,7 @@ test("response correctness rejects grounded rank, mass and request-fidelity defe
   ).passed, false);
 });
 
-test("schema-15 rejects certainty, scoreline universals, counts and draw-mass contradictions", () => {
+test("schema-16 rejects certainty, scoreline universals, counts and draw-mass contradictions", () => {
   const grounding = {
     kind: "match",
     home: "Arsenal",
@@ -1706,9 +1706,102 @@ test("schema-15 rejects certainty, scoreline universals, counts and draw-mass co
     "Arsenal will win with 100% certainty.", [], season,
     { expectNoCertaintyContradiction: true }
   ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner. Arsenal is most likely at 93.47%, not a certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, true);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner. Arsenal will win with 100% certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner. Arsenal will win.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner, but Arsenal will win with 100% certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner but Arsenal will win with 100% certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner however Arsenal will win with 100% certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner yet Arsenal will win with 100% certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner and Arsenal will win with 100% certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
+    "Arsenal are favourites, but not a certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, true);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner but can identify Arsenal as most likely at 93.47%.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, true);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner and can identify Arsenal as most likely at 93.47%.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, true);
+  assert.equal(validateResponseCorrectness(
+    "No guarantee: Arsenal will win.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
+    "Pundit cannot guarantee a winner, Arsenal will win.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  for (const certainty of [
+    "Arsenal are certain champions.",
+    "Arsenal are definitely the champions.",
+    "Arsenal win the league, guaranteed.",
+    "There is no doubt Arsenal are champions.",
+  ]) assert.equal(validateResponseCorrectness(
+    certainty, [], season, { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false, certainty);
+  assert.equal(validateResponseCorrectness(
+    "Arsenal are not definitely the champions; they are merely favourites.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, true);
+  assert.equal(validateResponseCorrectness(
+    "Arsenal will win with 100% certainty.", [],
+    { kind: "season", seasonOutlook: { titleProbabilities: [{ team: "Arsenal", probability: 1 }] } },
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  for (const refusal of [
+    "It is not 100% certain Arsenal will win.",
+    "There is no certainty Arsenal will win.",
+    "It is not guaranteed Arsenal will win.",
+    "I cannot say Arsenal will win.",
+    "It is impossible to guarantee Arsenal will win.",
+    "It would be wrong to guarantee Arsenal will win.",
+    "Nobody can guarantee Arsenal will win.",
+  ]) assert.equal(validateResponseCorrectness(
+    refusal, [], season, { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, true, refusal);
+  for (const contradiction of [
+    "It is impossible to guarantee Arsenal will win, but Arsenal will win with 100% certainty.",
+    "Nobody can guarantee Arsenal will win yet Arsenal will definitely be champion.",
+    "Pundit cannot guarantee a winner although Arsenal will win.",
+    "Pundit cannot guarantee a winner nevertheless Arsenal will win.",
+    "Pundit cannot guarantee a winner even so Arsenal will win.",
+    "Arsenal will certainly win the league.",
+    "Arsenal are certain to win the league.",
+    "Arsenal are sure to win the league.",
+    "Arsenal will undoubtedly win the league.",
+  ]) assert.equal(validateResponseCorrectness(
+    contradiction, [], season, { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false, contradiction);
 });
 
-test("schema-15 rejects unsupported competition, fixture-status and capability-reason claims", () => {
+test("schema-16 rejects unsupported competition, fixture-status and capability-reason claims", () => {
   assert.equal(validateResponseCorrectness(
     "All teams have zero games, so the supplied ordering is not an on-field ranking.", [],
     { kind: "competition", standings: [] }
@@ -1743,7 +1836,7 @@ test("schema-15 rejects unsupported competition, fixture-status and capability-r
   ).assertions.namedModelInput, false);
 });
 
-test("schema-15 catches leading malformed fragments and named-player claims after abstention", () => {
+test("schema-16 catches leading malformed fragments and named-player claims after abstention", () => {
   assert.equal(validateAnswerStructure(
     "). Could you share the specific match?"
   ).assertions.noMalformedLeadingFragment, false);
@@ -1785,7 +1878,7 @@ test("season request fidelity requires the grounded leaders and forbids invented
   ).passed, false);
 });
 
-test("schema-15 table-source fidelity refuses tied-table rankings without leaking season probabilities", () => {
+test("schema-16 table-source fidelity refuses tied-table rankings without leaking season probabilities", () => {
   const grounding = {
     kind: "season",
     standings: [
@@ -1818,7 +1911,7 @@ test("schema-15 table-source fidelity refuses tied-table rankings without leakin
   ).assertions.tableSourceFidelity, false);
 });
 
-test("schema-15 rejects abstained probability counterfactuals, false product scope and history denial", () => {
+test("schema-16 rejects abstained probability counterfactuals, false product scope and history denial", () => {
   assert.equal(validateAbstainedCounterfactualDiscipline(
     "No verified team news was established. If an attacker is rotated, the model's home-win edge shrinks and the draw moves toward 12%.",
     "abstain"
@@ -1882,6 +1975,12 @@ test("high-line geometry rejects both backwards formulations and requires the re
     "A high defensive line compresses space in front of the defence but leaves more space behind it for the goalkeeper to cover.",
     "A high defensive line leaves space behind the back line exposed, increasing the risk from runs in behind.",
     "A high defensive line shrinks the defence-to-midfield gap; one vertical pass in behind can become a clean run on goal, so a sweeper-keeper must cover behind.",
+    "**Space in behind.** The further the back four push up, the larger the gap behind them.",
+    "A high defensive line pushes the back four up. **Space in behind.** This leaves a larger gap behind them.",
+    "The back four advance and open a larger channel behind them.",
+    "A high line does not reduce space behind the defence; it leaves more space behind for the keeper to cover.",
+    "A high defensive line creates a larger gap behind the defence.",
+    "A high defensive line leaves a larger gap behind the defence.",
   ]) {
     assert.equal(validateResponseCorrectness(
       answer, [], null, { expectCorrectHighLineGeometry: true }
@@ -1891,9 +1990,41 @@ test("high-line geometry rejects both backwards formulations and requires the re
     "A high line reduces the space behind the defence, although a runner can still make a clean run on goal.",
     [], null, { expectCorrectHighLineGeometry: true }
   ).passed, false);
+  assert.equal(validateResponseCorrectness(
+    "A high defensive line shrinks the space behind the defence. The back four push up, creating a larger gap behind them.",
+    [], null, { expectCorrectHighLineGeometry: true }
+  ).passed, false);
+  for (const answer of [
+    "A high line leaves less room behind the defence, but invites runs in behind.",
+    "A high line narrows the space behind the defence, although balls in behind remain dangerous.",
+    "A high line does not leave more space behind, although runs in behind remain dangerous.",
+    "A high line creates no larger gap behind the defence, although balls in behind remain dangerous.",
+    "The back four push up, but there is not a larger gap behind them even when runners play in behind.",
+    "A high line doesn't increase the space behind, although runners attack in behind.",
+    "The back four push up without leaving more space behind, although balls are played in behind.",
+    "A high line does not widen the extra room behind, although runners attack in behind.",
+    "The back four push up, but there is no extra space behind them even when balls are played in behind.",
+    "A high line leaves no room behind the defence, although runners attack in behind.",
+    "A high line pushes the back four up. It does not leave more space behind them.",
+    "A high line pushes the back four up. It doesn't leave more room behind them.",
+    "A high line pushes the back four up. It does not produce more space behind them, but invites runs in behind.",
+    "A high line pushes the back four up. It does not result in more room behind them, but balls in behind remain dangerous.",
+    "A high line creates zero extra space behind them, but runners attack in behind.",
+    "A high line fails to create more room behind them, but invites runs in behind.",
+    "A high defensive line removes space behind the defence but still invites runs in behind.",
+    "A high defensive line eliminates the space behind the defence while runners attack in behind.",
+    "A high defensive line decreases space behind the defence, though balls in behind remain dangerous.",
+    "A high defensive line makes the gap behind the defence shorter, but invites runs in behind.",
+    "A high defensive line makes the space behind tighter, inviting runs in behind.",
+    "A high defensive line produces a smaller gap behind the defence, inviting runs in behind.",
+    "The back four push up. That creates less room behind them. Runners attack in behind.",
+    "A high line compacts midfield. The winger makes runs in behind against a low block.",
+  ]) assert.equal(validateResponseCorrectness(
+    answer, [], null, { expectCorrectHighLineGeometry: true }
+  ).passed, false, answer);
 });
 
-test("schema-15 certification cannot pass required inconclusive or unsupported correctness", () => {
+test("schema-16 certification cannot pass required inconclusive or unsupported correctness", () => {
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     scenarios: [
@@ -1907,7 +2038,7 @@ test("schema-15 certification cannot pass required inconclusive or unsupported c
   assert.deepEqual(report.certificationGate.unsupportedCorrectness, ["answer"]);
 });
 
-test("schema-15 permanent certification matrix names every authorized regression family", async () => {
+test("schema-16 permanent certification matrix names every authorized regression family", async () => {
   const config = JSON.parse(await readFile(
     path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
     "utf8"

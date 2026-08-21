@@ -19,6 +19,12 @@ Conversational football analysis over server-owned grounding with a bounded Mini
 
 `question` is required and limited to 500 characters. `history` is optional, must contain complete user/assistant exchanges, and is limited to 12 turns and 12,000 characters total. `fixtureContext` retains the server-owned recognized identity across follow-ups and wins when the temporary compatibility field `teamContext` is also present.
 
+`current table` and `current standings` are explicit competition follow-up cues.
+They retain the most recent competition explicitly named in prior user turns.
+With no competition in view, they resolve to the Premier League because it is
+the only enabled league-style table; arbitrary pronouns do not inherit a
+competition.
+
 Set `"stream": true` to receive **Server-Sent Events** instead of a single JSON body:
 
 | Event | Payload | When |
@@ -85,4 +91,4 @@ table-only request.
 * Requires `MINIMAX_API_KEY` on the API server
 * No server-side conversation session — the client supplies history
 
-The API rejects empty output and provider-reported `max_tokens` truncation. Because MiniMax can also label a visibly incomplete response `end_turn`, the settled delivery path removes hard structural tail fragments before applying its grounding fallback or failing closed. The Schema-15 production evaluator independently checks delivered endings, raw search directives, scoped scoreline arithmetic/rank claims, request and table-source fidelity, abstained probability counterfactuals, supplied-history acknowledgement, product scope, team-news sourcing across the full answer, and high-line geometry. It preserves post-run readiness plus a run-level pre/post web-search counter delta for diagnostics, without treating the deployment-wide delta as per-turn attribution. Its cancellation probe reads through the SSE grounding event before aborting and requires the next body read to fail promptly with `AbortError`. Production certification additionally gates the observed monotonic spacing between request starts at 13,000 ms or more; configured pacing alone is not evidence. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.
+The API rejects empty output and provider-reported `max_tokens` truncation. Because MiniMax can also label a visibly incomplete response `end_turn`, the settled delivery path removes hard structural tail fragments before applying its grounding fallback or failing closed. The Schema-16 production evaluator independently checks delivered endings, raw search directives, scoped scoreline arithmetic/rank claims, request and table-source fidelity, abstained probability counterfactuals, supplied-history acknowledgement, product scope, team-news sourcing across the full answer, high-line geometry across bounded Markdown boundaries, and clause-scoped certainty without mistaking an explicit refusal for a guarantee. It preserves post-run readiness plus a run-level pre/post web-search counter delta for diagnostics, without treating the deployment-wide delta as per-turn attribution. Its cancellation probe reads through the SSE grounding event before aborting and requires the next body read to fail promptly with `AbortError`. Production certification additionally gates the observed monotonic spacing between request starts at 13,000 ms or more; configured pacing alone is not evidence. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.

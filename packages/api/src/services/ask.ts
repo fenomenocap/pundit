@@ -1564,23 +1564,65 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
 export function sanitizeFootballGeometry(answer: string): string {
   const correction = "A high defensive line compresses space in front of the defence "
     + "but leaves more space behind it for the goalkeeper to cover.";
-  const backwardsVerb = "(?:shrinks?|shrunk|shrinking|reduces?|reduced|reducing|lessens?|lessened|lessening|decreases?|decreased|decreasing|compress(?:es|ed|ing)?|closes?|closed|closing|limits?|limited|limiting|minimi[sz](?:e|es|ed|ing))";
-  const behindTarget = "(?:(?:space|gap) behind (?:(?:the )?(?:defenders|defence|defense|back line)|it|them)|(?:space|gap) between (?:the )?(?:defence|defense|back line) and (?:the )?(?:goalkeeper|keeper|goal))";
-  const backwardsGeometry = new RegExp(`\\b${backwardsVerb}\\b[^.!?\\n]{0,28}\\b${behindTarget}\\b`, "i");
+  const backwardsVerb = "(?:shrinks?|shrunk|shrinking|reduces?|reduced|reducing|lessens?|lessened|lessening|decreases?|decreased|decreasing|compress(?:es|ed|ing)?|closes?|closed|closing|limits?|limited|limiting|narrows?|narrowed|narrowing|minimi[sz](?:e|es|ed|ing))";
+  const behindTarget = "(?:(?:space|gap|room) behind (?:(?:the )?(?:defenders|defence|defense|back line)|it|them)|(?:space|gap|room) between (?:the )?(?:defence|defense|back line) and (?:the )?(?:goalkeeper|keeper|goal))";
+  const backwardsGeometrySource = `\\b${backwardsVerb}\\b(?:(?!\\bmidfield\\b)[^.!?\\n]){0,28}\\b${behindTarget}\\b`;
+  const backwardsBehindPredicate = /\b(?:makes?|made|making|keeps?|kept|keeping)\b[^.!?\n]{0,20}\b(?:space|gap|room)\s+behind(?:\s+(?:(?:the\s+)?(?:defenders|defence|defense|back line)|it|them))?\s+(?:feel\w*\s+)?(?:tighter|narrower|smaller)\b/i;
+  const deniedBehindReference = "behind(?:\\s+(?:(?:the\\s+)?(?:defenders|defence|defense|back line)|it|them))?";
+  const deniedBehindTradeoff = new RegExp(
+    "(?:"
+      + "\\b(?:does|do|did|will|would|can|could)(?:n['’]t|\\s+not)\\s+"
+        + "(?:(?:necessarily|actually|directly|automatically|always)\\s+)?"
+        + "(?:(?:leav|creat|open|increas|widen|expos|produc)\\w*|result\\w*\\s+in)\\s+"
+        + "(?:(?:a|the|any)\\s+)?(?:(?:larger|greater|more|wider|bigger|increased|extra|additional)\\s+)?"
+        + `(?:space|gap|room)\\s+${deniedBehindReference}`
+      + "|\\bwithout\\s+(?:(?:leav|creat|open|increas|widen|expos|produc)\\w*|result\\w*\\s+in)\\s+"
+        + "(?:(?:a|the|any)\\s+)?(?:(?:larger|greater|more|wider|bigger|increased|extra|additional)\\s+)?"
+        + `(?:space|gap|room)\\s+${deniedBehindReference}`
+      + "|\\b(?:but\\s+)?(?:not|no)\\s+(?:a\\s+)?"
+        + "(?:larger|greater|more|wider|bigger|increased|extra|additional)?\\s*"
+        + `(?:space|gap|room)\\s+${deniedBehindReference}`
+      + "|\\b(?:leave|leaves|left|create|creates|created|open|opens|opened|increase|increases|increased|widen|widens|widened|produce|produces|produced)\\s+"
+        + `(?:no|less|smaller|(?<!non-)zero)\\s+(?:(?:larger|greater|more|wider|bigger|extra|additional)\\s+)?(?:space|gap|room)\\s+${deniedBehindReference}`
+      + "|\\bthere\\s+(?:is|was|will be|would be)\\s+(?:no|not)\\s+(?:a\\s+)?(?:(?:larger|greater|more|wider|bigger|extra|additional)\\s+)?"
+        + `(?:space|gap|room)\\s+${deniedBehindReference}`
+      + "|\\bfails?\\s+to\\s+(?:(?:leav|creat|open|increas|widen|produc)\\w*|result\\w*\\s+in)\\s+(?:a\\s+)?"
+        + "(?:larger|greater|more|wider|bigger|increased|extra|additional)\\s+"
+        + `(?:space|gap|room)\\s+${deniedBehindReference}`
+    + ")",
+    "i"
+  );
   let correctionAdded = false;
   let midfieldPreserved = false;
+  let previousHighLineContext = false;
+  let positiveTradeoffSeen = false;
   const sanitized = answer.replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) => {
-    const backwards = /\b(?:higher|high)(?: defensive)? line\b/i.test(sentence)
-      && backwardsGeometry.test(sentence);
-    if (!backwards) return sentence;
+    const hasHighLineContext = /\b(?:higher|high)(?: defensive)? line\b/i.test(sentence)
+      || /\bback (?:four|line)\b[^.!?\n]{0,28}\b(?:push|step|move)\w*\s+up\b/i.test(sentence);
+    const positiveTradeoff = /\b(?:leave|leaves|left|create|creates|created|open|opens|opened)\b[^.!?\n]{0,24}\b(?:more|larger|greater|wider|bigger|extra|additional)\s+(?:space|gap|room)\b[^.!?\n]{0,24}\bbehind\b/i.test(sentence);
+    const backwards = hasHighLineContext
+      && (backwardsBehindPredicate.test(sentence)
+        || [...sentence.matchAll(new RegExp(backwardsGeometrySource, "gi"))].some((match) => {
+          const prefix = sentence.slice(Math.max(0, (match.index ?? 0) - 24), match.index ?? 0);
+          return !/(?:\b(?:does|do|did|will|would|can|could)(?:n['’]t|\s+not)|\b(?:cannot|never)|\bfails?\s+to)\s*$/i.test(prefix);
+        }));
+    const negatesSmallerBehindSpace = /\b(?:does|do|did|will|would|can|could)(?:n['’]t|\s+not)\s+(?:leave|create|open|increase|widen|produce)\w*\s+(?:less|smaller)\s+(?:space|gap|room)\s+behind\b/i.test(sentence);
+    const deniedTradeoff = (hasHighLineContext || previousHighLineContext)
+      && deniedBehindTradeoff.test(sentence)
+      && !negatesSmallerBehindSpace;
+    previousHighLineContext = hasHighLineContext;
+    if (!backwards && !deniedTradeoff) {
+      positiveTradeoffSeen ||= positiveTradeoff;
+      return sentence;
+    }
     // Midfield compression is the correct half of this otherwise backwards
     // claim. Preserve it explicitly instead of deleting the whole sentence.
     const hasMidfieldCompression = /\bcompress(?:es|ed|ing)?\b[^.!?\n]{0,24}\bmidfield(?: space)?\b|\bcompress(?:es|ed|ing)?\s+midfield space\b/i.test(sentence);
     const replacement = [
-      correctionAdded ? "" : correction,
+      correctionAdded || positiveTradeoffSeen ? "" : correction,
       hasMidfieldCompression && !midfieldPreserved ? "It can also compress midfield space." : "",
     ].filter(Boolean).join(" ");
-    correctionAdded = true;
+    correctionAdded ||= !positiveTradeoffSeen;
     midfieldPreserved ||= hasMidfieldCompression;
     return replacement;
   }).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
@@ -2142,6 +2184,8 @@ export function isCompetitionQuestion(question: string): boolean {
 // now?" were held by match retention and answered from a payload with no
 // standings in it at all.
 const LEAGUE_TABLE_CUES = [
+  "current table",
+  "current standings",
   "the table",
   "the standings",
   "the ranking",

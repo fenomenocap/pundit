@@ -187,6 +187,37 @@ describe("season grounding degradation", () => {
       expect(groundingKinds).toEqual(["season"]);
       expect(deltas).toEqual([sse.answer]);
       expect(sse.answer).toBe(json.answer);
+
+      const firstTurn = "Rank the leading contenders in the Premier League title race using the current table.";
+      const firstTurnJson = await answerQuestion(firstTurn);
+      expect(searchWeb).not.toHaveBeenCalled();
+      expect(firstTurnJson.grounding).toMatchObject({ kind: "season", competitionId: "eng.1" });
+      expect(firstTurnJson.answer).toContain("current table alone does not establish an on-field ranking");
+      const history = [
+        {
+          role: "user" as const,
+          content: firstTurn,
+        },
+        { role: "assistant" as const, content: firstTurnJson.answer },
+      ];
+      const followUp = "Given that the current table cannot rank them, How sensitive is that view to one upset?";
+      const followUpJson = await answerQuestion(followUp, history);
+      expect(searchWeb).not.toHaveBeenCalled();
+      expect(followUpJson.grounding).toMatchObject({ kind: "competition", competitionId: "eng.1" });
+      expect(followUpJson.answer).toContain("standings-only payload cannot quantify");
+      expect(followUpJson.answer).toContain("rerun the season outlook after the result");
+
+      const followUpDeltas: string[] = [];
+      const followUpGroundingKinds: string[] = [];
+      const followUpSse = await answerQuestionStream(followUp, history, undefined, {
+        onGrounding: (grounding) => followUpGroundingKinds.push(grounding?.kind ?? "null"),
+        onDelta: (text) => followUpDeltas.push(text),
+      });
+      expect(searchWeb).not.toHaveBeenCalled();
+      expect(followUpGroundingKinds).toEqual(["competition"]);
+      expect(followUpDeltas).toEqual([followUpSse.answer]);
+      expect(followUpSse.answer).toBe(followUpJson.answer);
+      expect(followUpSse.grounding).toEqual(followUpJson.grounding);
     } finally {
       if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
       else process.env.MINIMAX_API_KEY = originalKey;
@@ -676,6 +707,45 @@ describe("current-news evidence hardening", () => {
       "A high line limits midfield space while leaving space behind.",
       "A high defensive line compresses midfield space but leaves more space behind the defence.",
     ]) expect(sanitizeFootballGeometry(correct)).toBe(correct);
+    for (const deniedTradeoff of [
+      "A high defensive line means the back four push up, but not a larger gap behind them.",
+      "A high line pushes the back four up. It does not leave more space behind them.",
+      "A high line pushes the back four up. It doesn't leave more room behind them.",
+      "A high line pushes the back four up. There is no larger gap behind them.",
+      "A high line leaves less space behind it.",
+      "A high line reduces the room behind them.",
+      "A high line pushes up. It does not produce more space behind, although runs in behind remain risky.",
+      "A high line pushes up. It does not result in more room behind, although balls in behind remain risky.",
+      "A high line creates zero extra space behind, although runs in behind remain risky.",
+      "A high line pushes up. It fails to create more room behind, although balls in behind remain risky.",
+      "A high line narrows the space behind the defence, although balls in behind remain risky.",
+      "A high line pushes up. It does not necessarily leave more space behind, although runs in behind remain risky.",
+      "A high line doesn't increase the space behind, although runners attack in behind.",
+      "The back four push up without leaving more space behind, although balls are played in behind.",
+      "The back four push up, but there is not a larger gap behind them.",
+      "A high line creates no larger gap behind the defence.",
+      "A high defensive line makes the space behind tighter, although runners still attack in behind.",
+      "A high line keeps the gap behind the defence narrower.",
+    ]) {
+      const corrected = sanitizeFootballGeometry(deniedTradeoff);
+      expect(corrected).toContain("leaves more space behind it");
+      expect(corrected).not.toMatch(/not a larger gap|does not (?:leave|produce|result in) more|no larger gap|leaves less space|reduces the room|zero extra space|fails to create more/i);
+    }
+    expect(sanitizeFootballGeometry(
+      "A high line leaves more space behind it. It does not leave more space behind them."
+    )).toBe("A high line leaves more space behind it.");
+    expect(sanitizeFootballGeometry(
+      "The full-backs do not leave more space behind them when they overlap."
+    )).toBe("The full-backs do not leave more space behind them when they overlap.");
+    for (const correctNegation of [
+      "A high line does not reduce space behind the defence.",
+      "A high line never shrinks the gap behind the back line.",
+      "A high line cannot compress space behind it.",
+      "A high line does not produce less space behind the defence.",
+      "A high line fails to reduce space behind the defence.",
+      "A high line creates non-zero extra space behind the defence.",
+      "A high line makes the midfield block tighter while leaving more space behind the defence.",
+    ]) expect(sanitizeFootballGeometry(correctNegation)).toBe(correctNegation);
     const repeated = sanitizeFootballGeometry(
       "A high line shrinks space behind defenders. A higher line reduces space between defence and goalkeeper."
     );
@@ -1249,6 +1319,26 @@ describe("shouldUseCompetitionGrounding", () => {
       "What about that table ranking?",
       competitionHistory
     )).toBe(true);
+  });
+
+  it("retains current-table and current-standings follow-ups in the named competition", () => {
+    const history = [
+      {
+        role: "user" as const,
+        content: "Rank the leading contenders in the Premier League title race using the current table.",
+      },
+      {
+        role: "assistant" as const,
+        content: "The current table alone cannot rank the contenders.",
+      },
+    ];
+
+    expect(resolveCompetitionContext(
+      "Given that the current table cannot rank them, how sensitive is that view to one upset?",
+      history
+    )).toBe("eng.1");
+    expect(resolveCompetitionContext("What do the current standings show?", []))
+      .toBe("eng.1");
   });
 
   it("does not carry competition grounding into an unrelated new topic", () => {
