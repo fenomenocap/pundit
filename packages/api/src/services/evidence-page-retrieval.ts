@@ -4,7 +4,12 @@ import http from "node:http";
 import https from "node:https";
 import { Readable } from "node:stream";
 
-const MAX_PAGES = 3;
+// Three pages against a bundle of thirty sources meant verification usually
+// ran on one fetched page: claims citing anything else could not be supported,
+// and the same question answered with cited team news or an abstention
+// depending on which page won the slice. Fetches run in parallel under a 6s
+// timeout, so widening this costs little wall clock.
+const MAX_PAGES = 8;
 const MAX_REDIRECTS = 3;
 const DEFAULT_TIMEOUT_MS = 6_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 512 * 1024;

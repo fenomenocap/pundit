@@ -757,14 +757,68 @@ export async function verifyCurrentClaims(
       verification: { status: "abstain", supportedClaimCount: 0, removedClaimCount: 0 },
     };
   }
-  const pages = await (dependencies.retrieve ?? retrieveEvidencePages)(bundle.results.map((source) => ({
+  const candidates = bundle.results.map((source) => ({
     id: source.id,
     url: source.url,
     title: source.title,
     date: source.date,
     authority: evidenceAuthority(source.url),
-  })), signal);
+  }));
+  const fetchable = candidates.filter((candidate) => candidate.authority !== "other").length;
+  // Fetch what the claims actually cite, first. Selection ranked by authority
+  // alone, so a claim citing a specialist report went unsupported while a
+  // page nothing had cited was fetched in its place -- the verifier checking
+  // sources the answer never used. The sort inside the retriever is stable, so
+  // ordering cited sources first here survives it.
+  const citedIds = new Set(claims.flatMap((claim) => evidenceMarkerIds(claim.text)));
+  const ordered = [
+    ...candidates.filter((candidate) => citedIds.has(candidate.id)),
+    ...candidates.filter((candidate) => !citedIds.has(candidate.id)),
+  ];
+  const fetched = await (dependencies.retrieve ?? retrieveEvidencePages)(ordered, signal);
+  // Most publishers block a server-side fetch, so verification ran against one
+  // retrieved page out of thirty sources and abstained on nearly everything --
+  // the same question answering with cited team news or with the notice
+  // depending on which fetch happened to succeed. A cited source that could
+  // not be fetched falls back to the snippet the search provider returned for
+  // it, so the claim is checked against *something* attributable rather than
+  // dropped unchecked.
+  //
+  // This is weaker than a fetched page and deliberately so: the model saw the
+  // snippet when it wrote the claim, so snippet-backed verification confirms
+  // the claim matches its source rather than independently corroborating it.
+  // It still catches the failure that matters most -- a claim no source
+  // supports at all -- and the reader gets the citation either way.
+  const fetchedIds = new Set(fetched.map((page) => page.id));
+  const snippetBacked = bundle.results
+    .filter((source) => citedIds.has(source.id)
+      && !fetchedIds.has(source.id)
+      && source.snippet.trim().length > 0)
+    .map((source) => ({
+      id: source.id,
+      url: source.url,
+      title: source.title,
+      date: source.date,
+      authority: evidenceAuthority(source.url),
+      finalUrl: source.url,
+      text: `${source.title}\n${source.snippet}`,
+      retrievedAt: new Date().toISOString(),
+    }));
+  const pages = [...fetched, ...snippetBacked];
   if (!pages.length || !reserveProviderCall(bundle)) {
+    // The stage had no observability at all, which is why the same fixture
+    // could answer with cited team news or with the abstention and nothing
+    // said why. `fetchable` separates "the allowlist let nothing through"
+    // from "the fetches failed" from "the budget ran out".
+    console.warn(JSON.stringify({
+      event: "claims_unverified",
+      claims: claims.length,
+      sources: candidates.length,
+      fetchable,
+      pages: pages.length,
+      fetched: fetched.length,
+      reason: pages.length ? "provider_budget" : fetchable ? "fetch_failed" : "no_eligible_source",
+    }));
     return {
       answer: abstainEvidenceClaims(
         answer,
@@ -786,6 +840,18 @@ export async function verifyCurrentClaims(
   // The notices no longer need re-adding by hand -- they are simply never
   // touched.
   const applied = reviseAnswerWithClaimDecisions(answer, claims, result.decisions);
+  console.log(JSON.stringify({
+    event: "claims_verified",
+    status: result.status,
+    claims: claims.length,
+    sources: candidates.length,
+    fetchable,
+    pages: pages.length,
+    fetched: fetched.length,
+    snippetBacked: snippetBacked.length,
+    supported: applied.supported.length,
+    removed: applied.removedClaimIds.length,
+  }));
   return {
     answer: applied.answer.trim(),
     verification: {
@@ -1883,15 +1949,18 @@ export function renderEvidenceCitations(
     const ids = evidenceMarkerIds(sentence);
     if (!ids.length) return false;
     const sources = ids.map((id) => byId.get(id));
+    // Matches the drop rule below exactly. It required a date after that rule
+    // stopped requiring one, so an answer whose squad claims were all cited
+    // but undated kept its claims *and* printed the abstention beside them --
+    // the contradiction this helper exists to prevent.
     return evidenceRequired
       && assertsTeamNews(sentence)
       && !ABSTENTION.test(sentence)
-      && sources.every(Boolean)
-      && sources.some((source) => Boolean(source?.date));
+      && sources.every(Boolean);
   };
-  // Whether any squad claim in this answer stands on a dated source. If one
+  // Whether any squad claim in this answer stands on a real source. If one
   // does, a second claim that cannot be supported is simply dropped: saying
-  // "no verified team news was established" alongside a cited, dated report of
+  // "no verified team news was established" alongside a cited report of
   // exactly that is a contradiction, and it surfaced as a stray abstention
   // floating above the first section.
   let supportedTeamNews = false;

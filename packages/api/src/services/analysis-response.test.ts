@@ -411,6 +411,18 @@ describe("renderEvidenceCitations abstention scope", () => {
     expect(citations.map((c) => c.url)).toContain("https://example.com/b");
   });
 
+  // The suppression check and the drop rule have to agree. While the check
+  // still demanded a date and the rule did not, an answer whose squad claims
+  // were all cited but undated kept them and printed the abstention beside
+  // them.
+  it("does not abstain when the surviving squad claim is undated", () => {
+    const answer = "**Team news**\nGyabi is ruled out [[S2]].\nZambrano is a doubt.";
+    const { answer: rendered } = renderEvidenceCitations(answer, bundle, true);
+    expect(rendered).toContain("Gyabi is ruled out");
+    expect(rendered).toContain("undated");
+    expect(rendered).not.toContain("No verified, dated team-news update was established");
+  });
+
   it("still abstains on a squad claim carrying no source at all", () => {
     const answer = "**Team news**\nZambrano is a doubt.";
     const { answer: rendered } = renderEvidenceCitations(answer, bundle, true);
