@@ -47,6 +47,7 @@ import {
   sanitizeDeliveredAnswer,
   computeMarketDivergence,
   composeMarketDivergenceSentence,
+  closedGroundedAnswer,
   deterministicGroundedResponse,
   deterministicCoverageResponse,
   dropLeadingAnswerFragment,
@@ -891,6 +892,40 @@ describe("current-news evidence hardening", () => {
       expect(answer).toMatch(/home-field advantage/i);
       expect(answer).toMatch(/cannot (?:honestly )?rank|cannot establish which single model input/i);
       expect(answer).not.toMatch(/kalshi|polymarket|market staleness|pricing error/i);
+    });
+
+    // Production regression: every match turn settled on the deterministic
+    // payload before the model was ever called, so "who will score?" and "who
+    // wins?" came back byte-identical in ~2ms. The renderer is right for a
+    // question *about the payload*; a question about the match has to be
+    // generated.
+    it("sends an ordinary match question to generation instead of settling it", () => {
+      expect(closedGroundedAnswer("who will potentially score in this match?", model())).toBeNull();
+      expect(closedGroundedAnswer("Analyse Arsenal vs Coventry.", model())).toBeNull();
+      expect(closedGroundedAnswer("Why is the model so far from the market?", model())).toBeNull();
+    });
+
+    it("still settles the match questions the payload fully answers", () => {
+      const modelOnly = closedGroundedAnswer(
+        "Compare Arsenal and Coventry using only Pundit's current model evidence.",
+        model()
+      );
+      expect(modelOnly).toContain("Arsenal 97.3%");
+      expect(closedGroundedAnswer("Which model input matters most to that edge?", model()))
+        .toMatch(/club-strength ratings/i);
+    });
+
+    it("leaves the non-match tiers settling exactly as before", () => {
+      const table = buildCompetitionGrounding("eng.1", [
+        {
+          competitionId: "eng.1", position: 1, team: "Arsenal", playedGames: 1,
+          won: 1, draw: 0, lost: 0, points: 3, goalsFor: 3, goalsAgainst: 0,
+          goalDifference: 3, group: null, advanced: false,
+        },
+      ], new Date("2026-08-21T07:57:47.409Z"));
+      const question = "What does the current table show?";
+      expect(closedGroundedAnswer(question, table))
+        .toBe(deterministicGroundedResponse(question, table));
     });
 
     it("renders season rankings completely and refuses a demanded certainty", () => {
