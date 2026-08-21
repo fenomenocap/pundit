@@ -4791,16 +4791,34 @@ const TOOL_MARKUP_RECOVERY_NOTE =
  * and then answered properly) are left to the sanitizer: they need stripping,
  * not another round trip against the 90s deadline.
  */
-function leakedToolCallText(response: Anthropic.Message): string | null {
+/**
+ * Whether this turn produced something the delivery chain can actually ship,
+ * returning the raw text to recover from when it did not.
+ *
+ * Tied to the delivery gate on purpose. Production degraded on turns that were
+ * narration with no markup at all, narration plus a leak in three different
+ * dialects, and bare fragments that survived stripping but carried no label,
+ * percentage or citation. Detecting only the shapes seen so far loses to the
+ * next dialect MiniMax invents; asking "will this be deliverable?" does not,
+ * because it is the same question `deliverAnswer` asks before it degrades.
+ */
+function undeliverableTurnText(
+  response: Anthropic.Message,
+  tier: AnalysisTier
+): string | null {
   const text = joinTextBlocks(response.content);
   const stripped = stripToolCallMarkupDetailed(text);
-  // Process narration ("I'll check the team news first") is not an answer.
-  // Counting it as prose left a narrated leak unrecovered, and the narration
-  // sweep downstream then deleted the only text there was -- so the turn
-  // arrived empty and degraded to the grounded fallback.
-  return stripped.removed && !hasMeaningfulProse(stripProcessNarration(stripped.text))
-    ? text
-    : null;
+  const settled = stripProcessNarration(stripped.text);
+  // Only a turn the model spent on reaching for a tool is recovered: it either
+  // leaked markup, or narrated the search it wanted. Without that signal a
+  // short answer is just a short answer, and re-asking would spend a provider
+  // call on a turn that was fine.
+  const reachedForTool = stripped.removed || settled.trim() !== stripped.text.trim();
+  if (!reachedForTool) return null;
+  // Narration is not an answer -- the sweep downstream deletes it -- and on a
+  // match turn neither is text the delivery gate will refuse to ship.
+  if (!hasMeaningfulProse(settled)) return text;
+  return tier === "match" && !hasGroundedAnswerShape(settled) ? text : null;
 }
 
 function nextSourceOrdinal(bundle?: EvidenceBundle): number {
@@ -4847,13 +4865,14 @@ async function runLeakedSearchQueries(
  *
  * Returns the conversation to retry with, or null when the turn is fine.
  */
-async function recoverLeakedToolCall(
+async function recoverUndeliverableTurn(
   response: Anthropic.Message,
   convo: Anthropic.MessageParam[],
+  tier: AnalysisTier,
   bundle?: EvidenceBundle,
   signal?: AbortSignal
 ): Promise<Anthropic.MessageParam[] | null> {
-  const leaked = leakedToolCallText(response);
+  const leaked = undeliverableTurnText(response, tier);
   if (leaked === null) return null;
   // One search only. The three-call provider budget already spent a call on
   // the turn that leaked and must still fund the retry turn, so a second
@@ -4864,7 +4883,7 @@ async function recoverLeakedToolCall(
     ? `Web search results for ${JSON.stringify(queries)}:\n${JSON.stringify(sources)}`
     : "No search results were returned; use the grounding data or abstain.";
   console.log(JSON.stringify({
-    event: "tool_call_text_leak_recovered",
+    event: "undeliverable_turn_recovered",
     queries: queries.length,
     sources: sources.length,
   }));
@@ -4917,7 +4936,7 @@ export async function generateAnalysis(
     if (response.stop_reason !== "tool_use") {
       const recovery = recoveredLeak
         ? null
-        : await recoverLeakedToolCall(response, convo, bundle, signal);
+        : await recoverUndeliverableTurn(response, convo, tier, bundle, signal);
       if (!recovery) break;
       recoveredLeak = true;
       toolsAllowed = false;
@@ -5043,7 +5062,7 @@ export async function generateAnalysisStream(
     if (response.stop_reason !== "tool_use") {
       const recovery = recoveredLeak
         ? null
-        : await recoverLeakedToolCall(response, convo, bundle, signal);
+        : await recoverUndeliverableTurn(response, convo, tier, bundle, signal);
       if (!recovery) break;
       flusher.discardDraft();
       recoveredLeak = true;
