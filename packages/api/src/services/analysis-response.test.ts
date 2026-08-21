@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
 import {
+  attachEvidence,
   generateAnalysis,
   renderEvidenceCitations,
   MAX_CONTINUATIONS,
@@ -376,6 +377,32 @@ describe("generateAnalysis", () => {
     await expect(generateAnalysis(client, "system", [], "match"))
       .rejects.toMatchObject({ statusCode: 504 });
     expect(create).toHaveBeenCalledTimes(MAX_CONTINUATIONS + 1); // initial call + bounded continuations
+  });
+});
+
+describe("attachEvidence", () => {
+  const bundle = {
+    queries: ["q"],
+    providerCalls: 1,
+    results: [{ id: "S1", title: "Preview", url: "https://example.com/a", date: "2026-08-20", snippet: "out" }],
+  };
+
+  // Production served the streaming path only, and that path still gated the
+  // attachment on whether the question carried a retrieval cue. Thirty sources
+  // were retrieved and never shown to the model: it cited nothing, so
+  // verification had no claims, so the answer abstained. Both paths now share
+  // this one rule.
+  it("attaches retrieved evidence to the last turn regardless of the question's wording", () => {
+    const [turn] = attachEvidence([{ role: "user", content: "what is your take?" }], bundle);
+    expect(turn.content).toContain("what is your take?");
+    expect(turn.content).toContain("https://example.com/a");
+    expect(turn.content).toContain("[[S3]]");
+  });
+
+  it("leaves the turn alone when nothing was retrieved", () => {
+    const messages = [{ role: "user" as const, content: "what is your take?" }];
+    expect(attachEvidence(messages, { queries: [], providerCalls: 0, results: [] }))
+      .toEqual(messages);
   });
 });
 
