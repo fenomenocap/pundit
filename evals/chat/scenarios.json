@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 11,
+  "schemaVersion": 12,
   "fixed": [
     {
       "id": "active-match-grounding",
-      "description": "A model-backed active club fixture receives match grounding and delivers its headline win/draw/win line under a section label that is not left empty.",
+      "description": "A model-backed active club fixture receives match grounding and delivers a complete headline win/draw/win line under a section label that is not left empty. A provider-labelled normal end_turn still fails if the answer ends in a numeric or Markdown fragment.",
       "kind": "featured",
       "expectHeadlineOneXTwo": true
     },
@@ -267,6 +267,30 @@
       ]],
       "expect": { "valid": true },
       "expectText": ["noVigProbabilities", "overround"]
+    },
+    {
+      "id": "combined-scoreline-arithmetic",
+      "description": "The built settled match sanitizer corrects an explicit aggregate of two grounded scorelines to their summed probability at the precision stated.",
+      "kind": "runtime-helper",
+      "helper": "sanitizeFinalMatchAnswer",
+      "args": [
+        "The 2-1 and 2-0 outcomes combine to 21%.",
+        {
+          "fixtureId": "espn:eng.1:1",
+          "competitionId": "eng.1",
+          "competition": "Premier League",
+          "home": "Arsenal",
+          "away": "Chelsea",
+          "scorelines": [
+            { "score": "2-1", "probability": 0.0795 },
+            { "score": "2-0", "probability": 0.0568 }
+          ],
+          "oddsSources": []
+        }
+      ],
+      "expect": {},
+      "expectText": ["13.6%"],
+      "forbidText": ["21%"]
     },
     {
       "id": "incomplete-market-fails-closed",
@@ -552,12 +576,13 @@
     },
     {
       "id": "general-analysis-label",
-      "description": "A general football question remains explicitly ungrounded at the API boundary.",
+      "description": "A general football question remains explicitly ungrounded and explains the high-line trade-off without reversing the space behind the defence.",
       "kind": "json",
       "turns": [
         {
           "question": "How does a high defensive line change a team's pressing risks?",
-          "expectGrounding": null
+          "expectGrounding": null,
+          "expectCorrectHighLineGeometry": true
         }
       ]
     },

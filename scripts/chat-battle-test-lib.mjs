@@ -114,7 +114,7 @@ export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta
   }
 }
 
-export const EVAL_SCHEMA_VERSION = 11;
+export const EVAL_SCHEMA_VERSION = 12;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 
 export function executeRuntimeHelperScenario(scenario, repoRoot = path.resolve(import.meta.dirname, "..")) {
@@ -546,6 +546,79 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     assertions.scorelineTotalCorrect = !/\b1\s*[-:–—]\s*1\b[^.!?\n]*\bover\s*2\.5\b/i.test(text)
       && !/\bover\s*2\.5\b[^.!?\n]*\b1\s*[-:–—]\s*1\b/i.test(text);
   }
+  // A generated answer may quote two grounded scorelines correctly and still
+  // invent their combined probability. Check only explicit aggregate claims:
+  // ordinary lists of individual scorelines are deliberately out of scope.
+  if (grounding?.kind === "match" || expectation.expectCombinedScorelineArithmetic) {
+    const scorelineProbabilities = new Map(
+      (Array.isArray(grounding?.scorelines) ? grounding.scorelines : [])
+        .filter((row) => typeof row?.score === "string" && finiteProbability(row?.probability))
+        .map((row) => [row.score.replace(/\s*[:–—]\s*/g, "-"), row.probability])
+    );
+    const cueBefore = /(?:\b(?:combine(?:s|d)?\s+(?:to|at|for|are|is)|account(?:s|ed)?\s+for|(?:make|makes|made)\s+up|come(?:s)?\s+to|(?:add|sum)(?:s|med)?\s+up(?:\s+to)?|together(?:\s+(?:account for|make up|come to|total|are|is|at))?|collectively(?:\s+(?:account for|make up|come to|total|are|is|at))?|in total(?:\s+(?:they|these|the scorelines))?(?:\s+(?:account for|make up|come to|are|is|at))?|combined\s+(?:are|is|at))|\b(?:combined|total)\s+(?:chance|probability|likelihood|share)\b[^.!?\n;]{0,100}\b(?:is|are|at|of))\s*(?:about|around|roughly|approximately|nearly|just over|just under)?\s*$/i;
+    const cueAfter = /^\s*\*{0,2}\s*(?:combined|together|collectively|in total|jointly|(?:chance\s+)?between\s+them)\b/i;
+    const aggregateClaims = [...text.matchAll(/(\d{1,3}(?:\.\d+)?)\s*%/g)]
+      .map((percentage) => {
+        const at = percentage.index ?? 0;
+        const beforeTarget = text.slice(0, at);
+        const priorBoundaries = [...beforeTarget.matchAll(/[.!?](?=\s+(?:[*_#>-]*\s*)?[A-Z])|[\n;]|,\s+(?:while|whereas|but)\s+/gi)];
+        const sentenceStart = priorBoundaries.at(-1)?.index === undefined
+          ? 0
+          : priorBoundaries.at(-1).index + 1;
+        const afterTarget = text.slice(at + percentage[0].length);
+        const nextBoundary = /[.!?](?=\s|$)|[\n;]|,\s+(?:while|whereas|but)\s+/i.exec(afterTarget);
+        const sentenceEnd = nextBoundary?.index === undefined
+          ? text.length
+          : at + percentage[0].length + nextBoundary.index;
+        const before = text.slice(Math.max(sentenceStart, at - 160), at);
+        const after = text.slice(at + percentage[0].length, Math.min(sentenceEnd, at + percentage[0].length + 60));
+        if (!cueBefore.test(before) && !cueAfter.test(after)) return null;
+        const claimPrefix = text.slice(sentenceStart, at);
+        const mentioned = [...claimPrefix.matchAll(/(?<![\d-])(\d{1,2})\s*[-:–—]\s*(\d{1,2})(?![\d-])/g)]
+          .map((match) => `${Number(match[1])}-${Number(match[2])}`)
+          .filter((score, index, all) => all.indexOf(score) === index);
+        if (mentioned.length < 2) return { arithmetic: false, orientation: false };
+        const grounded = mentioned.map((score) => scorelineProbabilities.get(score));
+        const expectedPercent = grounded.every(finiteProbability)
+          ? grounded.reduce((sum, value) => sum + value, 0) * 100
+          : null;
+        const claimedToken = percentage[1];
+        const statedDecimals = claimedToken.split(".")[1]?.length ?? 0;
+        const roundingTolerance = 0.5 * (10 ** -statedDecimals);
+        const arithmetic = expectedPercent !== null
+          && Math.abs(Number(claimedToken) - expectedPercent) <= roundingTolerance + Number.EPSILON;
+
+        const claimText = text.slice(sentenceStart, sentenceEnd);
+        const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const ownershipCue = "(?:win(?:s|ning)?|path|route|prevail(?:s|ing)?|upset)";
+        const owns = (team) => typeof team === "string" && team.length > 0
+          && new RegExp(`(?:\\b${escape(team)}(?:'s)?\\b[^.!?\\n;]{0,50}\\b${ownershipCue}\\b|\\b${ownershipCue}\\b[^.!?\\n;]{0,50}\\b${escape(team)}\\b)`, "i").test(claimText);
+        const homeOwned = owns(grounding?.home);
+        const awayOwned = owns(grounding?.away);
+        const scoreOrientations = mentioned.map((score) => score.split("-").map(Number));
+        const orientation = homeOwned === awayOwned
+          || (homeOwned
+            ? scoreOrientations.every(([home, away]) => home > away)
+            : scoreOrientations.every(([home, away]) => away > home));
+        return { arithmetic, orientation };
+      })
+      .filter((claim) => claim !== null);
+    assertions.combinedScorelineArithmetic = aggregateClaims.every((claim) => claim.arithmetic)
+      && (!expectation.expectCombinedScorelineArithmetic || aggregateClaims.length > 0);
+    assertions.combinedScorelineOrientation = aggregateClaims.every((claim) => claim.orientation);
+  }
+  if (expectation.expectCorrectHighLineGeometry) {
+    const backwardsHighLine = [
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:shrink|reduce|compress|close|limit|minimi[sz])\w*\b[^.!?\n]{0,30}\b(?:space|gap)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|(?:defensive\s+)?line)\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b/i,
+      /\b(?:space|gap)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|(?:defensive\s+)?line)\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b[^.!?\n]{0,80}\b(?:shrink|reduce|compress|close|limit|minimi[sz])\w*\b[^.!?\n]{0,40}\bhigh\s+(?:defensive\s+)?line\b/i,
+    ].some((pattern) => pattern.test(text));
+    assertions.highLineGeometryCorrect = !backwardsHighLine;
+    assertions.highLineSpaceBehindAcknowledged = [
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:leave|create|open|increase|expose)\w*\b[^.!?\n]{0,60}\b(?:space|room)\b[^.!?\n]{0,40}\bbehind\b/i,
+      /\b(?:more|greater|larger|open)\s+(?:space|room)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,120}\bhigh\s+(?:defensive\s+)?line\b/i,
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:space|room)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,60}\b(?:open|expos|availab|greater|larger|more)\w*\b/i,
+    ].some((pattern) => pattern.test(text));
+  }
   if (expectation.expectCorrectionAcknowledgement) {
     assertions.correctionAcknowledged = /\b(?:you(?:'re| are) right|correction|correct(?:ed|ion)?|sorry|apolog)/i.test(text);
     assertions.correctionCited = citationList.length > 0
@@ -785,11 +858,33 @@ export function validateAnswerStructure(answer, expectation = {}) {
       (line.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(line)
     );
   }
+  const trimmed = typeof answer === "string" ? answer.trim() : "";
+  // MiniMax has returned stop_reason=end_turn while cutting a requested 1X2
+  // line at "City at 5.". This check applies to every delivered answer, not
+  // only scenarios that demand a headline 1X2. It remains intentionally narrow:
+  // ordinary unpunctuated bullets and Markdown endings are valid.
+  const probabilityTail = /\b(?:(?:[Hh]ome|[Aa]way|[Dd]raw)\s+(?:(?:is|are|at)\s+)?|[A-Z][A-Za-z.'’-]{1,30}(?:\s+[A-Z][A-Za-z.'’-]{1,30}){0,3}\s+(?:is|are|at)\s+)\*{0,2}\d{1,3}(?:\.\d*)?\*{0,2}\.?\s*$/.exec(trimmed);
+  const probabilityClause = probabilityTail?.index === undefined
+    ? ""
+    : trimmed.slice(Math.max(
+      trimmed.lastIndexOf(".", probabilityTail.index - 1),
+      trimmed.lastIndexOf("!", probabilityTail.index - 1),
+      trimmed.lastIndexOf("?", probabilityTail.index - 1),
+      trimmed.lastIndexOf("\n", probabilityTail.index - 1)
+    ) + 1);
+  const externalPriceTail = /\b(?:bet365|bookmakers?|bookies?|kalshi|polymarket|stake)\b[^.!?\n]{0,80}\b(?:has|have|price[sd]?|offers?|quotes?)\b/i.test(probabilityClause);
+  const danglingNumericProbability = probabilityTail?.index !== undefined
+    && trimmed.slice(Math.max(0, probabilityTail.index - 160), probabilityTail.index).includes("%")
+    && !externalPriceTail;
+  const unbalancedBoldMarker = (trimmed.match(/\*\*/g) ?? []).length % 2 !== 0;
+  assertions.structurallyCompleteEnding = !danglingNumericProbability && !unbalancedBoldMarker;
   const failures = Object.entries(assertions)
     .filter(([, passed]) => !passed)
     .map(([name]) => name === "noOrphanedSectionLabel"
       ? `answer left an empty section label: ${orphaned.join(", ")}`
-      : "match answer is missing its headline win/draw/win line");
+      : name === "headlineOneXTwoPresent"
+        ? "match answer is missing its headline win/draw/win line"
+        : "answer ends with a structurally incomplete fragment");
   return { passed: failures.length === 0, assertions, failures };
 }
 
@@ -937,7 +1032,7 @@ export function qualitativeScores(result) {
     clarity: answer.length <= 4_000 ? 4 : 3,
     calibration: hasCalibration ? 4 : 2,
     groundingFidelity: result.passed && result.grounding !== undefined ? 4 : null,
-    method: "deterministic schema-10 certification checks; agent critic supplies final review"
+    method: "deterministic schema-12 certification checks; agent critic supplies final review"
   };
 }
 
