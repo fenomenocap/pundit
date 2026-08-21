@@ -143,3 +143,35 @@ describe("a match turn that reached for a tool and produced nothing shippable", 
     expect(create).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * Recovery costs provider calls, and the budget is shared with the mandatory
+ * search. Production returned a 504 with an empty bubble on a market question
+ * once recovery started competing for the last call -- a degraded answer the
+ * grounding can still carry is strictly better than no answer at all.
+ */
+describe("recovery never spends a budget it cannot finish on", () => {
+  const narrated = "I'll search for the current market before answering.";
+
+  it("declines to recover when the retry turn could not be funded", async () => {
+    const create = vi.fn().mockResolvedValue(message(narrated, "end_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    // One call left: it funds the turn itself, leaving nothing for a retry.
+    const bundle = { queries: [] as string[], results: [], providerCalls: 2 };
+    await generateAnalysis(client, "system", [], "match", undefined, bundle);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(bundle.providerCalls).toBe(3);
+  });
+
+  it("recovers without a search when only the retry turn can be funded", async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(message(narrated, "end_turn"))
+      .mockResolvedValueOnce(message("**Model vs market**\nThe gap is 20.4 points.", "end_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const bundle = { queries: [] as string[], results: [], providerCalls: 1 };
+    const answer = await generateAnalysis(client, "system", [], "match", undefined, bundle);
+    expect(answer).toContain("20.4 points");
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(bundle.providerCalls).toBe(3);
+  });
+});

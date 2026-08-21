@@ -210,10 +210,20 @@ export interface AskVerification {
   removedClaimCount: number;
 }
 
+// Inference turns, their retries, and searches all draw on one budget, so a
+// request cannot spiral in cost or latency however badly the provider behaves.
+const PROVIDER_CALL_BUDGET = 3;
+
+function providerCallsLeft(bundle?: EvidenceBundle): number {
+  return bundle
+    ? Math.max(0, PROVIDER_CALL_BUDGET - (bundle.providerCalls ?? 0))
+    : Number.MAX_SAFE_INTEGER;
+}
+
 function reserveProviderCall(bundle?: EvidenceBundle): boolean {
   if (!bundle) return true;
   const used = bundle.providerCalls ?? 0;
-  if (used >= 3) return false;
+  if (used >= PROVIDER_CALL_BUDGET) return false;
   bundle.providerCalls = used + 1;
   return true;
 }
@@ -4903,10 +4913,17 @@ async function recoverUndeliverableTurn(
 ): Promise<Anthropic.MessageParam[] | null> {
   const leaked = undeliverableTurnText(response, tier);
   if (leaked === null) return null;
+  // Recovery costs a retry turn, and a search on top when the model named one.
+  // Beginning one without the budget to finish it trades a degraded answer --
+  // which the delivery chain can still write from the grounding -- for a 504
+  // and an empty bubble, which is strictly worse for the reader.
+  if (providerCallsLeft(bundle) < 1) return null;
   // One search only. The three-call provider budget already spent a call on
   // the turn that leaked and must still fund the retry turn, so a second
   // search here would starve the answer itself.
-  const queries = extractLeakedSearchQueries(leaked).slice(0, 1);
+  const queries = providerCallsLeft(bundle) >= 2
+    ? extractLeakedSearchQueries(leaked).slice(0, 1)
+    : [];
   const sources = queries.length ? await runLeakedSearchQueries(queries, bundle, signal) : [];
   const evidence = sources.length
     ? `Web search results for ${JSON.stringify(queries)}:\n${JSON.stringify(sources)}`
