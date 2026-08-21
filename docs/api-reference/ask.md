@@ -2,7 +2,7 @@
 
 ### `POST /api/ask`
 
-Conversational football analysis over server-owned grounding with a bounded MiniMax M3 language layer. Every no-search response with complete match, non-priced fixture, competition, or season grounding bypasses MiniMax. Non-priced capability and identity-not-established candidate notices are always deterministic; if their wording contains a mandatory current cue, the bounded search still runs first, but discovered facts are intentionally not delivered and cannot alter capability or promote a discovery into fixture identity. MiniMax is limited to supported evidence-required prose plus general/ungrounded open-ended analysis. **Rate limit:** 10 requests/minute across the declared deployment, divided between `API_REPLICAS` process-wide buckets. Production currently declares one replica.
+Conversational football analysis over server-owned grounding with a bounded MiniMax M3 language layer. Every no-search response with complete match, non-priced fixture, competition, or season grounding bypasses MiniMax. The word “current” alone is exempt from external search when it modifies an owned table, model, or season-outlook fact; manager, injury, lineup, transfer, odds and similar cues still require bounded search. Non-priced capability and identity-not-established candidate notices are always deterministic; search cannot alter capability or promote a discovery into fixture identity. If a grounded market search verifies no external claim, the generated answer is discarded and the API returns only complete structured market rows already present in match grounding, with no citations and the original `abstain` or `unavailable` verification status. MiniMax is limited to supported evidence-required prose plus general/ungrounded open-ended analysis. **Rate limit:** 10 requests/minute across the declared deployment, divided between `API_REPLICAS` process-wide buckets. Production currently declares one replica.
 
 ```json
 {
@@ -71,6 +71,12 @@ If those complete inputs are unavailable, a season-shaped question degrades to
 `kind: "competition"` with current standings instead of returning HTTP 503. It
 does not invent or partially simulate season probabilities.
 
+When the standings are all tied at zero and the question explicitly limits its
+evidence to the current table, the answer states that the table establishes no
+ranking or champion and omits the season probabilities. Those probabilities also
+use club-strength ratings and the remaining fixture schedule, which are outside a
+table-only request.
+
 ### Timeouts and limits
 
 * **90 seconds** shared request deadline across MiniMax inference, search, streaming, and disconnect cancellation
@@ -79,4 +85,4 @@ does not invent or partially simulate season probabilities.
 * Requires `MINIMAX_API_KEY` on the API server
 * No server-side conversation session — the client supplies history
 
-The API rejects empty output and provider-reported `max_tokens` truncation. Because MiniMax can also label a visibly incomplete response `end_turn`, the settled delivery path removes hard structural tail fragments before applying its grounding fallback or failing closed. The Schema-14 production evaluator independently checks delivered endings, raw search directives, scoped scoreline arithmetic/rank claims, request fidelity, team-news sourcing across the full answer, and high-line geometry. Its cancellation probe reads through the SSE grounding event before aborting and requires the next body read to fail promptly with `AbortError`. Production certification additionally gates the observed monotonic spacing between request starts at 13,000 ms or more; configured pacing alone is not evidence. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.
+The API rejects empty output and provider-reported `max_tokens` truncation. Because MiniMax can also label a visibly incomplete response `end_turn`, the settled delivery path removes hard structural tail fragments before applying its grounding fallback or failing closed. The Schema-15 production evaluator independently checks delivered endings, raw search directives, scoped scoreline arithmetic/rank claims, request and table-source fidelity, abstained probability counterfactuals, supplied-history acknowledgement, product scope, team-news sourcing across the full answer, and high-line geometry. It preserves post-run readiness plus a run-level pre/post web-search counter delta for diagnostics, without treating the deployment-wide delta as per-turn attribution. Its cancellation probe reads through the SSE grounding event before aborting and requires the next body read to fail promptly with `AbortError`. Production certification additionally gates the observed monotonic spacing between request starts at 13,000 ms or more; configured pacing alone is not evidence. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.

@@ -114,7 +114,7 @@ export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta
   }
 }
 
-export const EVAL_SCHEMA_VERSION = 14;
+export const EVAL_SCHEMA_VERSION = 15;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 export const PACING_SAFETY_MARGIN_MS = 25;
 
@@ -480,6 +480,20 @@ export function enabledCompetitionIds(readiness) {
   return Object.keys(readiness?.activeFixtures?.byCompetition ?? {});
 }
 
+export function summarizeWebSearchTelemetry(preflightReadiness, postRunReadiness) {
+  const before = preflightReadiness?.webSearch ?? {};
+  const after = postRunReadiness?.webSearch ?? {};
+  const beforeTotal = Number.isInteger(before.totalSearches) ? before.totalSearches : null;
+  const afterTotal = Number.isInteger(after.totalSearches) ? after.totalSearches : null;
+  return {
+    preflightTotalSearches: beforeTotal,
+    postRunTotalSearches: afterTotal,
+    totalSearchesDelta: beforeTotal !== null && afterTotal !== null ? afterTotal - beforeTotal : null,
+    preflightConsecutiveFailures: Number.isInteger(before.consecutiveFailures) ? before.consecutiveFailures : null,
+    postRunConsecutiveFailures: Number.isInteger(after.consecutiveFailures) ? after.consecutiveFailures : null,
+  };
+}
+
 export function describeRecognizedRoutability({ registryEnabled, enabledCompetitionIds: ids = [], observed = 0, routable = 0 }) {
   return registryEnabled
     ? `registry routing enabled; ${routable} of ${observed} observed identities routable`
@@ -626,6 +640,34 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       return [...text.matchAll(new RegExp(`\\b${escaped}\\b[^.!?\\n]{0,80}?(\\d+(?:\\.\\d+)?)\\s*%`, "gi"))]
         .some((match) => Math.abs(Number(match[1]) - expected) <= statedPercentageTolerance(match[1]));
     });
+  }
+  if (expectation.expectTableSourceFidelity) {
+    const standings = Array.isArray(grounding?.standings) ? grounding.standings : [];
+    const allRowsTied = standings.length > 1 && standings.every((row) =>
+      row.playedGames === standings[0].playedGames
+      && row.points === standings[0].points
+      && row.goalDifference === standings[0].goalDifference
+    );
+    const rankingRefused = /\b(?:cannot|can't|does not|doesn't|no)\b[^.!?\n]{0,80}\b(?:rank|ranking|leader|leading|separate|distinguish)\b|\b(?:all|every)\b[^.!?\n]{0,60}\b(?:tied|level|zero (?:points|matches))\b/i.test(text);
+    const seasonRows = grounding?.kind === "season"
+      ? grounding.seasonOutlook?.titleProbabilities ?? []
+      : [];
+    const emitsSeasonProbability = /\d+(?:\.\d+)?\s*%/.test(text);
+    assertions.tableSourceFidelity = allRowsTied
+      && seasonRows.length > 1
+      && rankingRefused
+      && !emitsSeasonProbability;
+  }
+  if (expectation.expectNoHistoryDenial) {
+    const deniesAvailableHistory = /\b(?:i\s+(?:do not|don't)\s+have|there\s+(?:is|was)\s+no)\b[^.!?\n]{0,70}\b(?:previous|prior|earlier)\s+(?:answer|response|message)\b[^.!?\n]{0,40}\b(?:to\s+(?:refer|reference)|available)\b/i.test(text);
+    assertions.noHistoryDenial = !deniesAvailableHistory;
+  }
+  if (expectation.expectAccurateProductScope) {
+    const wcOnly = /\bpundit(?:'s)?\b[^.!?\n]{0,100}\b(?:evaluation|data|model|coverage)\b[^.!?\n]{0,100}\b(?:world cup|wc)\b[^.!?\n]{0,40}\bonly\b|\bpundit(?:'s)?\b[^.!?\n]{0,80}\bonly\b[^.!?\n]{0,80}\b(?:world cup|wc)\b/i.test(text);
+    assertions.productScopeAccurate = !wcOnly;
+  }
+  if (expectation.expectNoCategoricalSourceNonexistence) {
+    assertions.noCategoricalSourceNonexistence = !/\b(?:no\s+(?:verified|reliable|authoritative|credible)\s+sources?\s+exists?|there\s+(?:is|are)\s+no\s+(?:verified|reliable|authoritative|credible)\s+sources?)\b/i.test(text);
   }
   if (expectation.expectNoUngroundedProbability) {
     assertions.noUngroundedProbability = !/\d+(?:\.\d+)?\s*%/.test(text);
@@ -1234,6 +1276,26 @@ export function validateTeamNewsDiscipline(answer) {
   };
 }
 
+export function validateAbstainedCounterfactualDiscipline(answer, verificationStatus) {
+  if (verificationStatus !== "abstain") {
+    return { passed: true, assertions: {}, failures: [] };
+  }
+  const text = typeof answer === "string" ? answer : "";
+  const regions = text.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
+  const inputCue = /\b(?:if\b[^.!?\n]{0,100}\b(?:lineup|rotation|rotated|rests?|missing|absent|low block|press(?:es|ing)?|formation|tactic)|lineup changes?|rotation|rotated|low block|parks?\s+(?:a\s+)?low block|tactical (?:change|switch))\b/i;
+  const probabilityCue = /\b(?:model(?:'s)?\s+(?:edge|probabilit|forecast)|probabilit(?:y|ies)|home[- ]win|away[- ]win|draw|edge|forecast|chance)\b/i;
+  const movementCue = /\b(?:move|moves|moved|shift|shifts|rise|rises|increase|increases|fall|falls|drop|drops|shrink|shrinks|widen|widens|narrow|narrows|reduce|reduces|cut|cuts|boost|boosts|change|changes|toward|closer|higher|lower|more likely|less likely|likelier)\b/i;
+  const unsafe = regions.filter((region) =>
+    inputCue.test(region) && probabilityCue.test(region) && movementCue.test(region)
+  );
+  const passed = unsafe.length === 0;
+  return {
+    passed,
+    assertions: { noUnsupportedCounterfactualAfterAbstention: passed },
+    failures: passed ? [] : [`answer invents a lineup or tactical probability counterfactual after verification abstained: ${unsafe[0].trim()}`],
+  };
+}
+
 export function validateErrorCopy(body) {
   const text = typeof body === "string" ? body : JSON.stringify(body ?? {});
   const normalized = text.toLowerCase();
@@ -1253,7 +1315,7 @@ export function qualitativeScores(result) {
     clarity: answer.length <= 4_000 ? 4 : 3,
     calibration: hasCalibration ? 4 : 2,
     groundingFidelity: result.passed && result.grounding !== undefined ? 4 : null,
-    method: "deterministic schema-14 certification checks; per-turn agent critic supplies final review"
+    method: "deterministic schema-15 certification checks; per-turn agent critic supplies final review"
   };
 }
 
@@ -1406,7 +1468,7 @@ export function generateAdversarialScenarios(seed, featured) {
       kind: "json",
       turns: [
         { question: ambiguity, expectGrounding: null },
-        { question: "What evidence would change that answer?", expectGrounding: null }
+        { question: "What evidence would change that answer?", expectGrounding: null, expectNoHistoryDenial: true }
       ]
     },
     {
@@ -1419,10 +1481,10 @@ export function generateAdversarialScenarios(seed, featured) {
           question: "Rank the leading contenders in the Premier League title race using the current table.",
           expectGrounding: "season",
           expectCompetitionId: "eng.1",
-          expectSeasonRanking: true
+          expectTableSourceFidelity: true
         },
         {
-          question: `Given that ranking, ${followUp}`,
+          question: `Given that the current table cannot rank them, ${followUp}`,
           expectGrounding: "competition",
           expectCompetitionId: "eng.1",
           expectNoUngroundedProbability: true
@@ -1463,7 +1525,7 @@ export function generateAdversarialScenarios(seed, featured) {
       kind: "certainty",
       turns: [
         {
-          question: "Who is most likely to win the Premier League based on the current table?",
+          question: "Who is most likely to win the Premier League in Pundit's season outlook?",
           expectGrounding: "season",
           expectCompetitionId: "eng.1",
           expectSeasonRanking: true,
@@ -1513,6 +1575,7 @@ export function renderMarkdown(report) {
     `- Overall: **${report.overall}**`,
     `- Certification gate: ${report.certificationGate?.passed ? "PASS" : "FAIL"}`,
     `- Pacing gate: ${report.pacingGate?.passed ? "PASS" : "FAIL"} — ${report.pacingGate?.minimumObservedGapMs ?? "n/a"} ms minimum observed gap (required ${report.pacingGate?.minimumIntervalMs ?? "n/a"} ms)`,
+    `- Web search telemetry: preflight ${report.postRun?.webSearch?.preflightTotalSearches ?? "n/a"}, post-run ${report.postRun?.webSearch?.postRunTotalSearches ?? "n/a"}, delta ${report.postRun?.webSearch?.totalSearchesDelta ?? "n/a"}, consecutive failures ${report.postRun?.webSearch?.postRunConsecutiveFailures ?? "n/a"}`,
     "",
     "## Scenario Results",
     "",

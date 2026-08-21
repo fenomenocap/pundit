@@ -560,6 +560,18 @@ describe("sanitizeGeneralAnswer", () => {
     const answer = "Inverted full-backs create a numerical overload in midfield.";
     expect(sanitizeGeneralAnswer(answer)).toBe(answer);
   });
+
+  it("removes stale WC-only product scope and categorical source-nonexistence claims", () => {
+    const artifactAnswer = [
+      "A high defensive line leaves space behind it for runners.",
+      "This is general tactical reasoning, not Pundit's model output, since Pundit's evaluation data covers World Cup 2026 results only and not in-game pressing behaviour.",
+      "No verified source exists for a tactical-concepts question, so the general analysis stands.",
+    ].join("\n\n");
+    const safe = ensureGeneralDisclaimer(sanitizeGeneralAnswer(artifactAnswer));
+    expect(safe).toContain("leaves space behind it");
+    expect(safe).toContain("This is general football analysis, not based on Pundit's model data");
+    expect(safe).not.toMatch(/World Cup 2026 results only|No verified source exists/i);
+  });
 });
 
 describe("normalizeSectionBreaks", () => {
@@ -724,6 +736,11 @@ describe("sanitizeMatchAnswer", () => {
     const safe = sanitizeRequestFidelity(raw, "Which side has the stronger model case, and why?", true);
     expect(safe).toContain("Arsenal lead on the model");
     expect(safe).not.toMatch(/original answer|Market disagreement|Kalshi/);
+    expect(sanitizeRequestFidelity(
+      "I don't have the previous answer to reference. The comparison still needs two named sides.",
+      "What evidence would change that answer?",
+      true
+    )).toBe("The comparison still needs two named sides.");
   });
   it("corrects combined grounded scoreline probabilities to their sum", () => {
     const grounding = {

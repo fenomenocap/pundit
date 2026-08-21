@@ -38,6 +38,7 @@ import {
   validateSse,
   validateAnswerCopy,
   validateAnswerStructure,
+  validateAbstainedCounterfactualDiscipline,
   validateCitationContract,
   validateErrorCopy,
   validateFixtureGrounding,
@@ -45,6 +46,7 @@ import {
   validateOneXTwoMarket,
   validateResponseCorrectness,
   validateTeamNewsDiscipline,
+  summarizeWebSearchTelemetry,
   validateVerification,
   writeCheckpoint,
   writeFailureReport,
@@ -347,6 +349,26 @@ test("readiness gating names each failed component", () => {
   }), []);
 });
 
+test("schema-15 preserves bounded post-run web-search telemetry without inventing attribution", () => {
+  assert.deepEqual(summarizeWebSearchTelemetry(
+    { webSearch: { totalSearches: 7, consecutiveFailures: 1 } },
+    { webSearch: { totalSearches: 11, consecutiveFailures: 0 } }
+  ), {
+    preflightTotalSearches: 7,
+    postRunTotalSearches: 11,
+    totalSearchesDelta: 4,
+    preflightConsecutiveFailures: 1,
+    postRunConsecutiveFailures: 0,
+  });
+  assert.deepEqual(summarizeWebSearchTelemetry({}, null), {
+    preflightTotalSearches: null,
+    postRunTotalSearches: null,
+    totalSearchesDelta: null,
+    preflightConsecutiveFailures: null,
+    postRunConsecutiveFailures: null,
+  });
+});
+
 test("pacer uses monotonic observed gaps, a safety margin and a post-sleep recheck", async () => {
   let clock = 1_000;
   const waits = [];
@@ -499,7 +521,11 @@ test("adversarial generation covers exactly five required categories", () => {
   assert.equal(scenarios[2].kind, "inconclusive");
   assert.equal(JSON.stringify(scenarios).includes("World Cup"), false);
   assert.equal(scenarios[1].turns[0].expectGrounding, "season");
+  assert.equal(scenarios[1].turns[0].expectTableSourceFidelity, true);
+  assert.equal(scenarios[1].turns[0].expectSeasonRanking, undefined);
+  assert.equal(scenarios[1].turns[1].question.includes("current table cannot rank"), true);
   assert.equal(scenarios[3].turns[0].expectSeasonRanking, true);
+  assert.equal(scenarios[3].turns[0].question.includes("season outlook"), true);
   assert.equal(scenarios[3].turns[1].expectNoCertaintyContradiction, true);
 });
 
@@ -1353,7 +1379,7 @@ test("certification gate uses required traffic and requires every release identi
   assert.equal(unsafeObservation.certificationGate.passed, false);
 });
 
-test("schema-14 fixture grounding distinguishes capability without leaking model probabilities", () => {
+test("schema-15 fixture grounding distinguishes capability without leaking model probabilities", () => {
   const fixture = {
     fixtureId: "espn:club.friendly:800",
     primarySource: "espn",
@@ -1394,7 +1420,7 @@ test("schema-14 fixture grounding distinguishes capability without leaking model
   }).passed, false);
 });
 
-test("schema-14 verification contract enforces shape, counts, and abstention semantics", () => {
+test("schema-15 verification contract enforces shape, counts, and abstention semantics", () => {
   assert.equal(validateVerification({
     status: "verified", supportedClaimCount: 1, removedClaimCount: 0,
   }, { expectVerification: ["verified"] }).passed, true);
@@ -1407,7 +1433,7 @@ test("schema-14 verification contract enforces shape, counts, and abstention sem
   assert.equal(validateVerification(null).passed, false);
 });
 
-test("schema-14 complete market validator enforces source, time, legs and arithmetic", () => {
+test("schema-15 complete market validator enforces source, time, legs and arithmetic", () => {
   const legs = [
     { outcome: "home", decimalOdds: 2, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
     { outcome: "draw", decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
@@ -1508,7 +1534,7 @@ test("runtime-helper scenarios execute the current API correctness module, not c
   }
 });
 
-test("schema-14 correctness guard catches the four screenshot-class failures", () => {
+test("schema-15 correctness guard catches the four screenshot-class failures", () => {
   assert.equal(validateResponseCorrectness(
     "Pundit's forecast is 52% home, 25% draw and 23% away.",
     [],
@@ -1631,7 +1657,7 @@ test("response correctness rejects grounded rank, mass and request-fidelity defe
   ).passed, false);
 });
 
-test("schema-14 rejects certainty, scoreline universals, counts and draw-mass contradictions", () => {
+test("schema-15 rejects certainty, scoreline universals, counts and draw-mass contradictions", () => {
   const grounding = {
     kind: "match",
     home: "Arsenal",
@@ -1682,7 +1708,7 @@ test("schema-14 rejects certainty, scoreline universals, counts and draw-mass co
   ).assertions.noCertaintyContradiction, false);
 });
 
-test("schema-14 rejects unsupported competition, fixture-status and capability-reason claims", () => {
+test("schema-15 rejects unsupported competition, fixture-status and capability-reason claims", () => {
   assert.equal(validateResponseCorrectness(
     "All teams have zero games, so the supplied ordering is not an on-field ranking.", [],
     { kind: "competition", standings: [] }
@@ -1717,7 +1743,7 @@ test("schema-14 rejects unsupported competition, fixture-status and capability-r
   ).assertions.namedModelInput, false);
 });
 
-test("schema-14 catches leading malformed fragments and named-player claims after abstention", () => {
+test("schema-15 catches leading malformed fragments and named-player claims after abstention", () => {
   assert.equal(validateAnswerStructure(
     "). Could you share the specific match?"
   ).assertions.noMalformedLeadingFragment, false);
@@ -1759,6 +1785,75 @@ test("season request fidelity requires the grounded leaders and forbids invented
   ).passed, false);
 });
 
+test("schema-15 table-source fidelity refuses tied-table rankings without leaking season probabilities", () => {
+  const grounding = {
+    kind: "season",
+    standings: [
+      { team: "Arsenal", playedGames: 0, points: 0, goalDifference: 0 },
+      { team: "Man City", playedGames: 0, points: 0, goalDifference: 0 },
+    ],
+    seasonOutlook: {
+      titleProbabilities: [
+        { team: "Arsenal", probability: 0.9275 },
+        { team: "Man City", probability: 0.0594 },
+      ],
+    },
+  };
+  assert.equal(validateResponseCorrectness(
+    "The current table cannot rank the teams: every club has zero matches, points and goal difference.",
+    [], grounding, { expectTableSourceFidelity: true }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "The table is tied, but Arsenal lead at 92.75% and Man City follow at 5.94%.",
+    [], grounding, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, false);
+  assert.equal(validateResponseCorrectness(
+    "Arsenal and Man City are the leading contenders.",
+    [], grounding, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, false);
+  assert.equal(validateResponseCorrectness(
+    "The table cannot rank them.",
+    [], { ...grounding, standings: [{ team: "Arsenal", playedGames: 0, points: 0, goalDifference: 0 }] },
+    { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, false);
+});
+
+test("schema-15 rejects abstained probability counterfactuals, false product scope and history denial", () => {
+  assert.equal(validateAbstainedCounterfactualDiscipline(
+    "No verified team news was established. If an attacker is rotated, the model's home-win edge shrinks and the draw moves toward 12%.",
+    "abstain"
+  ).passed, false);
+  assert.equal(validateAbstainedCounterfactualDiscipline(
+    "No verified team news was established. The model probabilities remain unchanged in this answer.",
+    "abstain"
+  ).passed, true);
+  assert.equal(validateAbstainedCounterfactualDiscipline(
+    "If an attacker is rotated, the model probability falls.",
+    "verified"
+  ).passed, true);
+
+  assert.equal(validateResponseCorrectness(
+    "This is general reasoning, not Pundit's model output.", [], null,
+    { expectAccurateProductScope: true, expectNoCategoricalSourceNonexistence: true }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "Pundit's evaluation data covers World Cup 2026 results only.", [], null,
+    { expectAccurateProductScope: true }
+  ).assertions.productScopeAccurate, false);
+  assert.equal(validateResponseCorrectness(
+    "No verified source exists for a tactical-concepts question.", [], null,
+    { expectNoCategoricalSourceNonexistence: true }
+  ).assertions.noCategoricalSourceNonexistence, false);
+  assert.equal(validateResponseCorrectness(
+    "Your earlier answer did not identify a matchup.", [], null,
+    { expectNoHistoryDenial: true }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "I don't have the previous answer to reference.", [], null,
+    { expectNoHistoryDenial: true }
+  ).assertions.noHistoryDenial, false);
+});
+
 test("combined-scoreline manifest scenario exercises the built settled sanitizer", async () => {
   const config = JSON.parse(await readFile(
     path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
@@ -1798,7 +1893,7 @@ test("high-line geometry rejects both backwards formulations and requires the re
   ).passed, false);
 });
 
-test("schema-14 certification cannot pass required inconclusive or unsupported correctness", () => {
+test("schema-15 certification cannot pass required inconclusive or unsupported correctness", () => {
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     scenarios: [
@@ -1812,7 +1907,7 @@ test("schema-14 certification cannot pass required inconclusive or unsupported c
   assert.deepEqual(report.certificationGate.unsupportedCorrectness, ["answer"]);
 });
 
-test("schema-14 permanent certification matrix names every authorized regression family", async () => {
+test("schema-15 permanent certification matrix names every authorized regression family", async () => {
   const config = JSON.parse(await readFile(
     path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
     "utf8"
