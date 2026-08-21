@@ -520,6 +520,26 @@ function allowAmbiguousFallback(question: string): boolean {
   return !deterministicSearchQuery(question) && AMBIGUOUS_CURRENT_QUESTION.test(question);
 }
 
+/**
+ * Attaches the retrieved evidence to the turn the model is about to answer.
+ *
+ * Extracted because the two paths drifted: the streaming one -- the only one
+ * production uses -- kept gating on whether the question carried a retrieval
+ * *cue*, long after retrieval had stopped depending on that. Thirty sources
+ * were fetched and never shown to the model, which cited nothing, which left
+ * verification with no claims to check, which printed the abstention. The
+ * condition that matters is simply whether there is evidence to attach.
+ */
+export function attachEvidence(
+  messages: ConversationTurn[],
+  bundle: EvidenceBundle
+): ConversationTurn[] {
+  if (!bundle.results.length) return messages;
+  return messages.map((message, index) => index === messages.length - 1
+    ? { ...message, content: `${message.content}\n\n${evidenceMessage(bundle)}` }
+    : message);
+}
+
 function evidenceMessage(bundle: EvidenceBundle): string {
   // The framing matters as much as the payload. Presented only as a hazard to
   // abstain from, the model cited nothing, every claim came back unsupported,
@@ -6553,11 +6573,7 @@ export async function answerQuestion(
     const bundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal)
       : { queries: [], results: [], providerCalls: 0 };
-    const preparedMessages = bundle.results.length
-      ? messages.map((message, index) => index === messages.length - 1
-        ? { ...message, content: `${message.content}\n\n${evidenceMessage(bundle)}` }
-        : message)
-      : messages;
+    const preparedMessages = attachEvidence(messages, bundle);
     const rawAnswer = await generateAnalysis(
       client,
       systemPrompt,
@@ -6655,11 +6671,7 @@ export async function answerQuestionStream(
     const bundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, handlers.signal)
       : { queries: [], results: [], providerCalls: 0 };
-    const preparedMessages = query
-      ? messages.map((message, index) => index === messages.length - 1
-        ? { ...message, content: `${message.content}\n\n${evidenceMessage(bundle)}` }
-        : message)
-      : messages;
+    const preparedMessages = attachEvidence(messages, bundle);
     // Search-backed turns are held until their citation markers have been
     // validated and rendered. Ordinary no-search answers remain progressive.
     const ambiguousFallback = allowAmbiguousFallback(question);
