@@ -1,6 +1,6 @@
 # Pundit — Football Prediction Analysis
 
-A chat-first analysis tool for the club season: Premier League and UEFA Champions League qualifiers. Ask about an upcoming match, the title race, or a general football topic and get a clearly labelled model-grounded or general read. No blockchain, no trading, nothing to buy — this is an analysis layer over public data.
+A chat-first analysis tool for the club season: Premier League and UEFA Champions League qualifiers. Ask about an upcoming match, the title race, or a general football topic and get a clearly labelled grounded or general read. Complete no-search grounded answers come directly from server-owned fixture, table, season, and capability data; MiniMax is reserved for verified-current evidence turns and general/ungrounded open-ended analysis. No blockchain, no trading, nothing to buy — this is an analysis layer over public data.
 
 World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluation/wc-2026`.
 
@@ -23,7 +23,7 @@ World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluati
                  └───────────┘  └────────────┘  └──────────────┘
 ```
 
-Public football and market sources are keyless and cached server-side on a cadence (ESPN and active market odds every 30 minutes; the complete Premier League schedule is checked on that cadence and refreshed ahead of its six-hour freshness deadline). The active model recomputes hourly from a reviewed, content-addressed club-strength artifact and never contacts ClubElo at runtime. MiniMax powers the live chat through a Railway-managed secret. There is no database: runtime caches are in memory, while restart-critical artifact recovery copies, the season schedule, calibration, recognized-fixture mappings, and optional private-shadow artifacts use atomic JSON files under `PUNDIT_DATA_DIR`.
+Public football and market sources are keyless and cached server-side on a cadence (ESPN and active market odds every 30 minutes; the complete Premier League schedule is checked on that cadence and refreshed ahead of its six-hour freshness deadline). The active model recomputes hourly from a reviewed, content-addressed club-strength artifact and never contacts ClubElo at runtime. Every complete server-grounded no-search response bypasses MiniMax and renders deterministically; MiniMax handles evidence-required current turns and general/ungrounded open-ended analysis through a Railway-managed secret. There is no database: runtime caches are in memory, while restart-critical artifact recovery copies, the season schedule, calibration, recognized-fixture mappings, and optional private-shadow artifacts use atomic JSON files under `PUNDIT_DATA_DIR`.
 
 ---
 

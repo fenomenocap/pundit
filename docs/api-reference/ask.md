@@ -2,7 +2,7 @@
 
 ### `POST /api/ask`
 
-MiniMax M3-powered conversational football analysis. **Rate limit:** 10 requests/minute across the declared deployment, divided between `API_REPLICAS` process-wide buckets. Production currently declares one replica.
+Conversational football analysis over server-owned grounding with a bounded MiniMax M3 language layer. Every no-search response with complete match, non-priced fixture, competition, or season grounding bypasses MiniMax. Non-priced capability and identity-not-established candidate notices are always deterministic; if their wording contains a mandatory current cue, the bounded search still runs first, but discovered facts are intentionally not delivered and cannot alter capability or promote a discovery into fixture identity. MiniMax is limited to supported evidence-required prose plus general/ungrounded open-ended analysis. **Rate limit:** 10 requests/minute across the declared deployment, divided between `API_REPLICAS` process-wide buckets. Production currently declares one replica.
 
 ```json
 {
@@ -30,7 +30,7 @@ Set `"stream": true` to receive **Server-Sent Events** instead of a single JSON 
 
 SSE includes `: ping` comment heartbeats every 15 seconds during long web-search turns.
 
-All answers are held until whole-answer deterministic guards complete, then released as one safe `delta` followed by authoritative `done`. This prevents a later sentence from invalidating an earlier streamed rationale or market claim. Grounding is still sent first, and heartbeats keep long search/generation turns alive. Search-backed answers never stream tool drafts: the server binds evidence markers to exact links and dates before releasing text. Clients should render the `delta` and always treat `done.answer` as authoritative.
+All generated answers are held until whole-answer deterministic guards complete, then released as one safe `delta` followed by authoritative `done`. This prevents a later sentence from invalidating an earlier streamed rationale or market claim. A deterministic closed answer skips generation and emits the same server-owned text as its `delta` and `done.answer`. Grounding is still sent first, and heartbeats keep long search/generation turns alive. Search-backed answers never stream tool drafts: the server binds evidence markers to exact links and dates before releasing text. Clients should render the `delta` and always treat `done.answer` as authoritative.
 
 ### Response shape (non-streaming)
 
@@ -64,7 +64,7 @@ withheld by the server.
 
 Match grounding includes `pHome`, `pDraw`, `pAway`, `pOver2_5`, `pUnder2_5`, `pBttsYes`, `pBttsNo`, `topScores`, `homeFieldAdvantage`, nullable Stake columns, and sparse Kalshi/Polymarket `oddsSources`.
 
-Fixture grounding includes the stable recognized identity and one typed capability: `temporarily-unpriced`, `outside-coverage`, or `insufficient-model-input`. Discovery-only fixture candidates return no fixture grounding or badge. A new explicit recognized matchup replaces retained context; a competition/table detour does not delete it. Match/1X2 intent keeps fixture routing priority, and competition aliases use token boundaries.
+Fixture grounding includes the stable recognized identity and one typed capability. The response preserves both its exact status and reason: `temporarily-unpriced` (`model-initializing` or `ratings-refreshing`), `outside-coverage` (`friendly-policy-disabled`, `unsupported-competition`, or `model-policy-disabled`), or `insufficient-model-input` (`ratings-unavailable`, `neutral-venue-unknown`, or `required-context-missing`). The deterministic capability notice does not replace that reason with generated squad, lineup, venue, rating, or policy speculation. Discovery-only fixture candidates return no fixture grounding or badge. A new explicit recognized matchup replaces retained context; a competition/table detour does not delete it. Match/1X2 intent keeps fixture routing priority, and competition aliases use token boundaries.
 
 Season grounding adds `seasonOutlook` with per-team `titleProb` and `topFourProb`.
 If those complete inputs are unavailable, a season-shaped question degrades to
@@ -79,4 +79,4 @@ does not invent or partially simulate season probabilities.
 * Requires `MINIMAX_API_KEY` on the API server
 * No server-side conversation session — the client supplies history
 
-The API rejects empty output and provider-reported `max_tokens` truncation. Because MiniMax can also label a visibly incomplete response `end_turn`, the settled delivery path removes hard structural tail fragments before applying its grounding fallback or failing closed. The Schema-13 production evaluator independently checks delivered endings, raw search directives, scoped scoreline arithmetic/rank claims, request fidelity, team-news sourcing across the full answer, and high-line geometry. Its cancellation probe reads through the SSE grounding event before aborting and requires the next body read to fail promptly with `AbortError`. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.
+The API rejects empty output and provider-reported `max_tokens` truncation. Because MiniMax can also label a visibly incomplete response `end_turn`, the settled delivery path removes hard structural tail fragments before applying its grounding fallback or failing closed. The Schema-14 production evaluator independently checks delivered endings, raw search directives, scoped scoreline arithmetic/rank claims, request fidelity, team-news sourcing across the full answer, and high-line geometry. Its cancellation probe reads through the SSE grounding event before aborting and requires the next body read to fail promptly with `AbortError`. Production certification additionally gates the observed monotonic spacing between request starts at 13,000 ms or more; configured pacing alone is not evidence. Validation errors before streaming starts return normal JSON error bodies with appropriate HTTP status codes.
