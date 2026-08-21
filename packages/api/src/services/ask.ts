@@ -4460,6 +4460,9 @@ const LEADING_PROCESS_LINE = new RegExp(
   + "|let(?:'s|[ \\t]+us|[ \\t]+me)[ \\t]+[a-z]+\\b[^\\n]*?"
   + "|actually,?[ \\t]+(?:i|we)[ \\t]+[a-z]+\\b[^\\n]*?"
   + "|(?:i|we)[ \\t]+need[ \\t]+to[ \\t]+[a-z]+\\b[^\\n]*?"
+  // A bare bracketed label the model prints where its tool output would go
+  // ("[search results]"), which reached a reader at the top of a live answer.
+  + "|\\[[a-z][a-z ._-]{2,30}\\]"
   + "|(?:i|we)(?:'ll|[ \\t]+will|[ \\t]+am[ \\t]+going[ \\t]+to)[ \\t]+"
   + "(?:note|translate|check|search|look|confirm|verify|start|begin)\\b[^\\n]*?"
   + ")(?:\\n+|(?=\\*\\*)))+",

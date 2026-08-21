@@ -432,6 +432,13 @@ describe("stripProcessNarration", () => {
     )).toBe("**Model vs market**\nThe model is 20.4 points above Kalshi.");
   });
 
+  // Live: an answer opened with the bare label "[search results]" where the
+  // model's tool output would have gone.
+  it("removes a bare bracketed label the model opens with", () => {
+    expect(stripProcessNarration("[search results]\n\n**Team news**\nUgarte is out."))
+      .toBe("**Team news**\nUgarte is out.");
+  });
+
   it("keeps a leading sentence that reports what the searches could not find", () => {
     const limitation = "Searching did not turn up a dated team-news report for either side.";
     expect(stripProcessNarration(`${limitation}\n\n**Goals**\nOver 2.5 at 77.6%.`))
