@@ -1894,6 +1894,12 @@ asked. Anything that bears on this matchup counts as a question about it, howeve
 -- "Why?", "Tell me more", "Is that a good bet?", "the underdog", a question about either club, or
 anything that follows on from your previous answer. Read those as questions about this fixture and
 answer them in full from the grounding; never tell the user you have no model data for this matchup.
+Pundit's model is team-level: it prices results, totals and scorelines and carries no player-level
+projection, so who scores, assists or is booked has no model number behind it. Say that plainly in a
+clause, then answer what you can actually support -- what the scoreline and both-teams-to-score
+distribution imply about how the goals are likely to fall, plus any dated, sourced player news in
+the evidence. Never invent a goalscorer probability, and never reply with a bare one-line refusal:
+a player question gets a labelled answer in the usual format like any other.
 Only when a question is plainly about something else -- a different match, era or competition, a
 rule or concept of the game in general, a non-football topic -- answer that question on its own
 terms, leave the fixture data out instead of steering back to the matchup, and say briefly that the
@@ -4111,6 +4117,9 @@ const LEAKED_QUERY_PATTERNS = [
 ];
 
 const LEAKED_QUERY_ARRAY = /"(?:search_queries|queries)"\s*:\s*\[([\s\S]*?)(?:\]|$)/i;
+// The same array arrives as an XML-ish parameter body too:
+// `<parameter name="search_queries">["a", "b"]</parameter>`.
+const LEAKED_QUERY_PARAMETER = /<parameter\s+name="(?:search_queries|queries|query)"\s*>\s*\[([\s\S]*?)(?:\]|$)/i;
 
 /**
  * Pulls the searches MiniMax asked for out of a leaked text tool call, so a
@@ -4123,9 +4132,11 @@ export function extractLeakedSearchQueries(text: string): string[] {
     pattern.lastIndex = 0;
     for (let m = pattern.exec(text); m; m = pattern.exec(text)) found.push(m[1]);
   }
-  const array = LEAKED_QUERY_ARRAY.exec(text);
-  if (array) {
-    for (const m of array[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)) found.push(m[1]);
+  for (const pattern of [LEAKED_QUERY_ARRAY, LEAKED_QUERY_PARAMETER]) {
+    const array = pattern.exec(text);
+    if (array) {
+      for (const m of array[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)) found.push(m[1]);
+    }
   }
   const unique = new Map<string, string>();
   for (const raw of found) {
@@ -4349,6 +4360,15 @@ function isModelOnlyRequest(question: string): boolean {
   return /\bmodel case\b/i.test(question)
     || /\b(?:only|just)\b[^?\n]{0,50}\b(?:model|pundit(?:'s)?)\b/i.test(question)
     || /\b(?:model|pundit(?:'s)?)\b[^?\n]{0,50}\b(?:only|without (?:the )?market)\b/i.test(question);
+}
+
+/**
+ * "Which model input matters most?" and its variants ask about the payload
+ * itself, so the grounded renderer is the whole answer rather than a stand-in
+ * for one.
+ */
+function asksModelInputQuestion(question: string): boolean {
+  return /\b(?:which|what)\s+(?:single\s+)?model input\b|\bmodel input[^?\n]{0,30}\bmatters? most\b/i.test(question);
 }
 
 export function sanitizeRequestFidelity(
@@ -4774,7 +4794,13 @@ const TOOL_MARKUP_RECOVERY_NOTE =
 function leakedToolCallText(response: Anthropic.Message): string | null {
   const text = joinTextBlocks(response.content);
   const stripped = stripToolCallMarkupDetailed(text);
-  return stripped.removed && !hasMeaningfulProse(stripped.text) ? text : null;
+  // Process narration ("I'll check the team news first") is not an answer.
+  // Counting it as prose left a narrated leak unrecovered, and the narration
+  // sweep downstream then deleted the only text there was -- so the turn
+  // arrived empty and degraded to the grounded fallback.
+  return stripped.removed && !hasMeaningfulProse(stripProcessNarration(stripped.text))
+    ? text
+    : null;
 }
 
 function nextSourceOrdinal(bundle?: EvidenceBundle): number {
@@ -5889,13 +5915,33 @@ export function deterministicGroundedResponse(
   if (grounding?.kind === "season") return renderGroundedSeasonAnswer(question, grounding);
   if (grounding?.kind === "competition") return renderGroundedCompetitionAnswer(question, grounding);
   if (grounding?.kind === "match") {
-    const asksInput = /\b(?:which|what)\s+(?:single\s+)?model input\b|\bmodel input[^?\n]{0,30}\bmatters? most\b/i.test(question);
+    const asksInput = asksModelInputQuestion(question);
     if (isModelOnlyRequest(question) || asksInput) {
       return renderGroundedModelOnlyAnswer(grounding, asksInput);
     }
     return renderGroundedMatchAnswer(grounding);
   }
   return null;
+}
+
+/**
+ * The pre-generation short-circuit: an answer the server can settle without
+ * calling the model at all.
+ *
+ * A match question is the exception. `deterministicGroundedResponse` always
+ * renders something for match grounding, so routing every match turn here
+ * returned the same payload recital no matter what was asked -- "who will
+ * score?" and "who wins?" came back byte-identical, and the model was never
+ * reached. Only a request whose answer *is* the payload (model-only, or a
+ * question about the inputs) settles here; every other match question is a
+ * question about the match and has to be generated, where the guard chain and
+ * the grounded fallback already own correctness.
+ */
+export function closedGroundedAnswer(question: string, grounding: AskGrounding): string | null {
+  if (grounding?.kind === "match"
+    && !isModelOnlyRequest(question)
+    && !asksModelInputQuestion(question)) return null;
+  return deterministicGroundedResponse(question, grounding);
 }
 
 export function deterministicCoverageResponse(
@@ -6182,7 +6228,7 @@ export async function answerQuestion(
       };
     }
     const closedAnswer = !query
-      ? deterministicGroundedResponse(question, grounding)
+      ? closedGroundedAnswer(question, grounding)
       : null;
     if (closedAnswer) {
       return {
@@ -6282,7 +6328,7 @@ export async function answerQuestionStream(
       };
     }
     const closedAnswer = !query
-      ? deterministicGroundedResponse(question, grounding)
+      ? closedGroundedAnswer(question, grounding)
       : null;
     if (closedAnswer) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(closedAnswer);

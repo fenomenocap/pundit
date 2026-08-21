@@ -1,5 +1,6 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
-import { generateAnalysis, sanitizeAnswerForTier } from "./ask";
+import { extractLeakedSearchQueries, generateAnalysis, sanitizeAnswerForTier } from "./ask";
 import { clientWith, message } from "./__fixtures__/anthropic-stubs";
 
 vi.mock("./web-search", () => ({ searchWeb: vi.fn().mockResolvedValue([]) }));
@@ -59,5 +60,36 @@ describe("the general disclaimer never lands under a stranded label", () => {
   it("still appends the disclaimer to an answer with no labels at all", () => {
     const plain = "They do not meet in any current fixture.";
     expect(sanitizeAnswerForTier(plain, "general", undefined, true)).toContain(DISCLAIMER);
+  });
+});
+
+/**
+ * The 2026-08-21 fault: a match turn came back as one narrated sentence plus a
+ * leaked tool call, and the user got the grounded fallback instead of an
+ * answer. Two causes, both here -- the leak went unrecovered because the
+ * narration counted as prose, and the dialect it leaked in carried its queries
+ * where the extractor did not look.
+ */
+describe("a turn that is only narration plus a leaked tool call", () => {
+  const NARRATED_LEAK = "I'll check for current team news and player availability"
+    + ' before answering.\n\n]<]minimax[>[<tool_call> <invoke name="web_search">'
+    + ' <parameter name="search_queries">["Hull City vs Manchester United August 2026'
+    + ' team news", "Manchester United injury news"]</parameter> </invoke> </tool_call>';
+
+  it("extracts the searches from the parameter dialect", () => {
+    expect(extractLeakedSearchQueries(NARRATED_LEAK)).toEqual([
+      "Hull City vs Manchester United August 2026 team news",
+      "Manchester United injury news",
+    ]);
+  });
+
+  it("recovers the turn instead of delivering an empty answer", async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(message(NARRATED_LEAK, "end_turn"))
+      .mockResolvedValueOnce(message("**Verdict**\nMan United are heavy favourites.", "end_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const answer = await generateAnalysis(client, "system", [], "match");
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(answer).toContain("Man United are heavy favourites");
   });
 });
