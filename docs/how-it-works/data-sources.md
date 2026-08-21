@@ -11,7 +11,7 @@ server-side API key.
 | **Recognized-fixture registry** | Approved structured identities, observed source history, and model-capability decisions; persisted atomically with last-good recovery. Reviewed friendly records require an ESPN stable event ID plus official corroboration and remain outside pricing. | Every ESPN refresh and release-approved manifest load |
 | **Pinned ClubElo artifact** | Reviewed club ratings by competition profile, used by the Dixon-Coles model | Content-addressed release artifact; active model recomputes hourly with no runtime ClubElo call |
 | **Stake, Kalshi, and Polymarket public endpoints** | Best-effort active 1X2 prices normalized to no-vig probabilities for the active fixture set | Every 30 minutes |
-| **Pundit's local model** | Dixon-Coles fixture matrices for the active club-fixture window; Monte Carlo season outlook from a complete, season-aware Premier League schedule | Model hourly; complete schedule at most every six hours |
+| **Pundit's local model** | Dixon-Coles fixture matrices for the active club-fixture window; Monte Carlo season outlook from a complete, season-aware Premier League schedule | Model hourly; complete schedule checked every 30 minutes and refreshed ahead of its six-hour freshness deadline |
 | **MiniMax M3** | Powers the chat's natural-language answers, grounded in the data above; Pundit pre-searches clearly current injury/squad questions and can make one bounded search fallback for ambiguous requests | Per request |
 
 If ESPN or a refreshable model input is temporarily unavailable, Pundit keeps

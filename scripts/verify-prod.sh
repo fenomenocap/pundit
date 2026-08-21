@@ -187,15 +187,36 @@ if (rate.get("scope") != "deployment" or rate.get("replicas") != 1
 ratings = ready.get("model") or {}
 artifact_id = ratings.get("ratingArtifactId")
 artifact_sha = ratings.get("ratingArtifactSha256")
+ratings_as_of = ratings.get("ratingsAsOf")
+try:
+    parsed_ratings_as_of = datetime.fromisoformat(
+        ratings_as_of.replace("Z", "+00:00")
+    ) if isinstance(ratings_as_of, str) else None
+except ValueError:
+    parsed_ratings_as_of = None
+now = datetime.now(timezone.utc)
+ratings_age_seconds = (
+    (now - parsed_ratings_as_of).total_seconds()
+    if parsed_ratings_as_of is not None and parsed_ratings_as_of.tzinfo is not None
+    else None
+)
+reported_age_days = ratings.get("ratingsAgeDays")
+expected_age_days = (
+    max(0, int(ratings_age_seconds // 86400))
+    if ratings_age_seconds is not None
+    else None
+)
 if (not isinstance(artifact_id, str) or not artifact_id.startswith("clubelo@1:")
         or not isinstance(artifact_sha, str) or len(artifact_sha) != 64
         or not artifact_id.endswith(artifact_sha)
-        or not isinstance(ratings.get("ratingsAgeDays"), int)
-        or ratings.get("ratingsAgeDays") > 30
+        or not isinstance(reported_age_days, int)
+        or reported_age_days != expected_age_days
+        or ratings_age_seconds is None
+        or ratings_age_seconds < -86400
+        or ratings_age_seconds > 30 * 86400
         or ratings.get("ratingsServedFromCache") is not False):
     raise SystemExit("club-strength artifact identity, hash, or freshness is invalid")
 season = ready.get("seasonSchedule") or {}
-now = datetime.now(timezone.utc)
 start_year = now.year if now.month >= 7 else now.year - 1
 expected_season = f"{start_year}-{str(start_year + 1)[-2:]}"
 if (season.get("ready") is not True or season.get("fixtureCount") != 380

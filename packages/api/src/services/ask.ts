@@ -16,7 +16,12 @@ import {
   getModelRefreshState,
   ModelFixture,
 } from "./model-data";
-import { getCachedMatches, getCachedSeasonSchedule, FootballStanding } from "./football-data";
+import {
+  getCachedMatches,
+  getCachedSeasonSchedule,
+  seasonScheduleStatus,
+  FootballStanding,
+} from "./football-data";
 import { getActiveFixtures } from "./active-fixtures";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
 import { clubRatingsAreCurrent, getCachedClubRatings } from "./club-ratings";
@@ -1484,13 +1489,28 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
 }
 
 export function sanitizeFootballGeometry(answer: string): string {
-  return answer.replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) =>
-    /\b(?:higher|high)(?: defensive)? line\b/i.test(sentence)
-      && /\b(?:shrink|reduce|lessen|decrease)s?\b/i.test(sentence)
-      && /\bspace behind (?:the )?(?:defenders|defence|defense|back line)\b/i.test(sentence)
-      ? ""
-      : sentence
-  ).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  const correction = "A high defensive line compresses space in front of the defence "
+    + "but leaves more space behind it for the goalkeeper to cover.";
+  const backwardsVerb = "(?:shrinks?|shrunk|shrinking|reduces?|reduced|reducing|lessens?|lessened|lessening|decreases?|decreased|decreasing|compress(?:es|ed|ing)?|closes?|closed|closing|limits?|limited|limiting|minimi[sz](?:e|es|ed|ing))";
+  const behindTarget = "(?:(?:space|gap) behind (?:the )?(?:defenders|defence|defense|back line)|(?:space|gap) between (?:the )?(?:defence|defense|back line) and (?:the )?(?:goalkeeper|keeper|goal))";
+  const backwardsGeometry = new RegExp(`\\b${backwardsVerb}\\b[^.!?\\n]{0,28}\\b${behindTarget}\\b`, "i");
+  let correctionAdded = false;
+  let midfieldPreserved = false;
+  return answer.replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) => {
+    const backwards = /\b(?:higher|high)(?: defensive)? line\b/i.test(sentence)
+      && backwardsGeometry.test(sentence);
+    if (!backwards) return sentence;
+    // Midfield compression is the correct half of this otherwise backwards
+    // claim. Preserve it explicitly instead of deleting the whole sentence.
+    const hasMidfieldCompression = /\bcompress(?:es|ed|ing)?\b[^.!?\n]{0,24}\bmidfield(?: space)?\b|\bcompress(?:es|ed|ing)?\s+midfield space\b/i.test(sentence);
+    const replacement = [
+      correctionAdded ? "" : correction,
+      hasMidfieldCompression && !midfieldPreserved ? "It can also compress midfield space." : "",
+    ].filter(Boolean).join(" ");
+    correctionAdded = true;
+    midfieldPreserved ||= hasMidfieldCompression;
+    return replacement;
+  }).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**
@@ -2507,6 +2527,11 @@ export function buildSeasonGrounding(
   if (!competition || competitionId !== "eng.1") return null;
 
   const seasonSchedule = getCachedSeasonSchedule(competitionId);
+  // The cache retains a last-good schedule for recovery and diagnostics, but
+  // simulation is a current-data product. Keep its serving gate identical to
+  // /ready: stale/error/previous-season data can support a table answer, never
+  // newly emitted season probabilities.
+  if (!seasonScheduleStatus(seasonSchedule).ready) return null;
   const scheduled = remainingScheduledFixtures(
     seasonSchedule.fixtures,
     competitionId
@@ -2790,6 +2815,28 @@ function scorelinePercentageMatches(
   return percentageMatches(percentageText, row.probability);
 }
 
+function hasAggregateProbabilityCue(line: string, figureStart: number, figureEnd: number): boolean {
+  const prefix = line.slice(0, figureStart);
+  const before = line.slice(Math.max(0, figureStart - 90), figureStart);
+  const after = line.slice(figureEnd, figureEnd + 40);
+  const cueAfter = /^\*{0,2}\s*(?:combined|together|collectively|in total|chance\s+between\s+them)\b/i.test(after);
+  const cueBefore = /(?:=|\bequals?|\bcombined\s+(?:chance|probability|likelihood|share)(?:\s+(?:is|of|at))?|\bchance\s+between\s+them(?:\s+(?:is|of|at))?|\b(?:together|collectively)(?:\s+(?:account for|make up|come to|total|are|is|at))?|\b(?:combine(?:s|d)?\s+(?:to|at|for|are|is)|account for|make up|come to)|\b(?:add|sum)\s+up\s+to|\b(?:combined|total)\s+probability(?:\s+(?:is|of|at))?|\bin total(?:,?\s+(?:they|these|the scorelines))?(?:\s+(?:account for|make up|come to|are|is|at))?)\s*(?:about|around|roughly|approximately|nearly|just over|just under)?\s*$/i.test(before);
+  const lastPercentage = !/%/.test(line.slice(figureEnd));
+  const broadCue = lastPercentage && (
+    /\bcombined\s+(?:chance|probability|likelihood|share)\b/i.test(prefix)
+    || /\b\d{1,2}\s*[-:–—]\s*\d{1,2}\b[^%\n]{0,100}\bcombined\b/i.test(prefix)
+    || /\btogether\b[^%\n]{0,100}\b\d{1,2}\s*[-:–—]\s*\d{1,2}\b/i.test(prefix)
+  );
+  return cueAfter || cueBefore || broadCue;
+}
+
+function hasAggregateProbabilityClaim(line: string): boolean {
+  return [...line.matchAll(/\d+(?:\.\d+)?%/g)].some((match) => {
+    const start = match.index ?? 0;
+    return hasAggregateProbabilityCue(line, start, start + match[0].length);
+  });
+}
+
 // Corrects a misquoted percentage in place, leaving the rest of the sentence
 // intact. Returns null when the line cites a scoreline absent from the
 // grounding entirely -- a fabrication the caller must replace rather than
@@ -2808,6 +2855,9 @@ function correctScorelinePercentages(line: string, grounding: Grounding): string
     ) => {
       if (gap.includes(",")) return whole;
       if (NON_PROBABILITY_METRIC.test(full.slice(offset + whole.length))) return whole;
+      if (hasAggregateProbabilityCue(full, offset + score.length + gap.length, offset + whole.length)) {
+        return whole;
+      }
       if (scorelinePercentageMatches(score, percentageText, grounding)) return whole;
       const row = groundedScoreline(score, grounding);
       if (!row) {
@@ -2818,6 +2868,51 @@ function correctScorelinePercentages(line: string, grounding: Grounding): string
     }
   );
   return citesUnknownScoreline ? null : corrected;
+}
+
+const SCORELINE_TOKEN = /(?<![\d-])(\d{1,2})\s*[-:–—]\s*(\d{1,2})(?![\d-])/g;
+
+/**
+ * Corrects a probability stated for the union of two or more grounded
+ * scorelines. Individual-score guards cannot validate this shape: in
+ * "2-1 and 2-0 are 21% combined" the 21% is not attached to either scoreline,
+ * but to their sum. The target percentage must carry explicit aggregate
+ * grammar, so nearby possession, xG and accuracy figures are left alone.
+ */
+function correctCombinedScorelineProbabilityClaims(
+  line: string,
+  grounding: Grounding
+): string | null {
+  let unsupportedAggregate = false;
+  const corrected = line.replace(/(\d+(?:\.\d+)?)%/g, (whole, percentageText: string, offset: number) => {
+    const before = line.slice(Math.max(0, offset - 90), offset);
+    const after = line.slice(offset + whole.length, offset + whole.length + 40);
+    const metricFigure = /\b(?:possession|xg|accuracy|conversion|duels?|aerials?|shots?|passes?)\s*(?:of|at|is|was|were|:)?\s*$/i.test(before)
+      || /^\s*(?:possession|xg|accuracy|conversion|of (?:the )?(?:shots|passes|duels))\b/i.test(after);
+    if (metricFigure) return whole;
+    if (!hasAggregateProbabilityCue(line, offset, offset + whole.length)) return whole;
+    // Only scorelines before this aggregate figure belong to its claim. A
+    // later comparison (for example, "..., while 1-1 is 10%") must not be
+    // silently pulled into the sum.
+    const sentenceBoundaries = [
+      ...line.slice(0, offset).matchAll(/[.!?](?=\s+[A-Z])|[;\n]|,\s*(?=(?:while|whereas|but)\b)/gi),
+    ];
+    const clauseStart = (sentenceBoundaries.at(-1)?.index ?? -1) + 1;
+    const scores = [...line.slice(clauseStart, offset).matchAll(SCORELINE_TOKEN)]
+      .map((match) => `${match[1]}-${match[2]}`)
+      .filter((score, index, all) => all.indexOf(score) === index);
+    if (scores.length < 2) return whole;
+    const rows = scores.map((score) => groundedScoreline(score, grounding));
+    if (rows.some((row) => !row)) {
+      unsupportedAggregate = true;
+      return whole;
+    }
+    const total = rows.reduce((sum, row) => sum + (row?.probability ?? 0), 0);
+    if (percentageMatches(percentageText, total)) return whole;
+    const decimals = Math.max(1, percentageText.split(".")[1]?.length ?? 0);
+    return `${(total * 100).toFixed(decimals)}%`;
+  });
+  return unsupportedAggregate ? null : corrected;
 }
 
 const GOAL_MARKET_LINE = /both teams to score|\bbtts\b|\b(?:over|under)\s*2\.5/i;
@@ -2938,27 +3033,59 @@ export function mentionsAggregateOutcome(line: string): boolean {
 }
 
 function awayWinSummary(grounding: Grounding): string {
-  const awayWins = grounding.scorelines.filter(({ score }) => {
+  return winScorelineSummary(grounding, "away");
+}
+
+function winScorelineSummary(grounding: Grounding, side: "home" | "away"): string {
+  const team = side === "home" ? grounding.home : grounding.away;
+  const wins = grounding.scorelines.filter(({ score }) => {
     const [homeGoals, awayGoals] = score.split("-").map(Number);
-    return awayGoals > homeGoals;
+    return side === "home" ? homeGoals > awayGoals : awayGoals > homeGoals;
   }).slice(0, 2);
-  if (awayWins.length === 0) {
-    return `Pundit's payload does not include a reportable away-win scoreline for ${grounding.away}.`;
+  if (wins.length === 0) {
+    return `Pundit's payload does not include a reportable ${side}-win scoreline for ${team}.`;
   }
-  const examples = awayWins.map(({ score, probability }) =>
+  const examples = wins.map(({ score, probability }) =>
     `**${score} (${(probability * 100).toFixed(1)}%)**`
   );
-  return `For ${grounding.away} to win, the model's most likely away-win scorelines are ${examples.join(" and ")}.`;
+  return `For ${team} to win, the model's most likely ${side}-win scorelines are ${examples.join(" and ")}.`;
+}
+
+function scorelineWinOrientationMismatch(line: string, grounding: Grounding): "home" | "away" | null {
+  if (!/\b(?:wins?|routes?|paths?|prevail(?:s|ed)?|upsets?)\b/i.test(line)) return null;
+  const scores = [...line.matchAll(SCORELINE_TOKEN)]
+    .map((match) => [Number(match[1]), Number(match[2])] as const);
+  if (scores.length === 0) return null;
+  const claimsSide = (["home", "away"] as const).find((side) => {
+    const team = side === "home" ? grounding.home : grounding.away;
+    const teamPattern = escapedPattern(team);
+    return new RegExp(
+      `(?:\\b${teamPattern}['’]s|\\bfor\\s+${teamPattern}\\b[^.!?\\n]{0,40}\\b(?:wins?|routes?|paths?|prevail|upset)|\\b${teamPattern}\\b[^.!?\\n]{0,40}\\b(?:wins?|routes?|paths?|prevail|upset))`,
+      "i"
+    ).test(line);
+  });
+  if (!claimsSide) return null;
+  const contradicts = scores.some(([homeGoals, awayGoals]) =>
+    claimsSide === "home" ? homeGoals <= awayGoals : awayGoals <= homeGoals
+  );
+  return contradicts ? claimsSide : null;
 }
 
 function replaceInvalidScorelineLines(answer: string, grounding: Grounding): string {
   return answer.split("\n").map((line) => {
     if (SOURCED_NEWS_LINE.test(line)) return line;
+    const orientationMismatch = scorelineWinOrientationMismatch(line, grounding);
+    if (orientationMismatch) return winScorelineSummary(grounding, orientationMismatch);
     const isUnderdogInterpretation = line.toLowerCase().includes(grounding.away.toLowerCase())
       && /\b(?:path|route|prevail|overturn|away-win|beat|win|winning|spring|upset|come out on top)\b/i.test(line)
       && /\b\d+-\d+\b/.test(line);
-    if (isUnderdogInterpretation) return awayWinSummary(grounding);
-    return correctScorelinePercentages(line, grounding) ?? awayWinSummary(grounding);
+    if (isUnderdogInterpretation && !hasAggregateProbabilityClaim(line)) {
+      return awayWinSummary(grounding);
+    }
+    const individuallyCorrected = correctScorelinePercentages(line, grounding);
+    if (individuallyCorrected === null) return awayWinSummary(grounding);
+    return correctCombinedScorelineProbabilityClaims(individuallyCorrected, grounding)
+      ?? "The unsupported scoreline probability claim was omitted.";
   }).join("\n");
 }
 
@@ -4128,6 +4255,84 @@ function joinTextBlocks(blocks: Anthropic.ContentBlock[]): string {
   }, "").trim();
 }
 
+/**
+ * MiniMax can occasionally return `end_turn` for text that is visibly cut off,
+ * so stop_reason alone is not a completeness guarantee. This deliberately
+ * recognises only hard structural evidence: an unmatched bold marker, or a
+ * bare numeric value after a connector that requires a unit/value to follow
+ * (the live shape was "City at **5."). A complete prior paragraph or sentence
+ * survives; an answer made only of the fragment becomes empty and is handled
+ * by the existing grounded fallback/fail-closed delivery path.
+ */
+export function dropStructurallyIncompleteTail(answer: string): string {
+  const trimmed = answer.trim();
+  if (!trimmed) return trimmed;
+  const dropCurrentFragment = (text: string): string => {
+    const currentLineStart = text.lastIndexOf("\n") + 1;
+    const beforeLine = text.slice(0, currentLineStart).trimEnd();
+    if (beforeLine) return beforeLine;
+    // The fragment can share a line with coherent prose. Retain through the
+    // final clear sentence boundary, but never mistake a decimal point for one.
+    const boundaries = [...text.matchAll(/[.!?](?=\s+(?:[*_#>-]*\s*)?[A-Z])/g)];
+    const boundary = boundaries.at(-1);
+    return boundary?.index === undefined ? "" : text.slice(0, boundary.index + 1).trimEnd();
+  };
+  const boldMarkers = trimmed.match(/\*\*/g)?.length ?? 0;
+  const unmatchedBold = boldMarkers % 2 === 1;
+  const bareNumericEnding = /\b(?:at|of|to|with)\s+\*{1,2}\d+(?:\.\d*)?\*?\.?$/i.test(trimmed);
+  const namedTeamTail = /\b[A-Z][A-Za-z.'’-]{1,30}(?:\s+[A-Z][A-Za-z.'’-]{1,30}){0,3}\s*(?:is|are|at|:)\s*\*{0,2}\d+(?:\.\d*)?\*?\.?$/.exec(trimmed);
+  const outcomeTail = /\b(?:[Hh]ome|[Aa]way|[Dd]raw)\s+(?:(?:is|are|at)\s+)?\*{0,2}\d+(?:\.\d*)?\*?\.?$/.exec(trimmed);
+  const probabilityTail = namedTeamTail ?? outcomeTail;
+  const sameClausePrefix = probabilityTail?.index === undefined
+    ? ""
+    : trimmed.slice(
+      Math.max(
+        trimmed.lastIndexOf(".", probabilityTail.index - 1),
+        trimmed.lastIndexOf("!", probabilityTail.index - 1),
+        trimmed.lastIndexOf("?", probabilityTail.index - 1),
+        trimmed.lastIndexOf(";", probabilityTail.index - 1),
+        trimmed.lastIndexOf("\n", probabilityTail.index - 1)
+      ) + 1,
+      probabilityTail.index
+    );
+  const probabilityShapedEnding = probabilityTail?.index !== undefined
+    && sameClausePrefix.includes("%");
+  if (!unmatchedBold && !bareNumericEnding && !probabilityShapedEnding) return trimmed;
+
+  if (probabilityShapedEnding && probabilityTail?.index !== undefined) {
+    const prefix = trimmed.slice(0, probabilityTail.index)
+      .replace(/\b(?:and|or|while|with|but)\s*$/i, "")
+      .replace(/[,;:/—-]\s*$/, "")
+      .trimEnd();
+    return prefix ? dropStructurallyIncompleteTail(prefix) : "";
+  }
+
+  if (unmatchedBold) {
+    // Section emphasis is line-local in Pundit's answer format. Find the first
+    // line whose marker count is odd: everything from its unmatched marker on
+    // is structurally ambiguous, including later lines that may themselves be
+    // balanced. Cutting only the final line left an earlier broken label in
+    // place ("**Verdict\n...\n**Goals**\n...").
+    let lineOffset = 0;
+    for (const line of trimmed.split("\n")) {
+      const markers = line.match(/\*\*/g)?.length ?? 0;
+      if (markers % 2 === 1) {
+        const marker = line.lastIndexOf("**");
+        const prefix = trimmed.slice(0, lineOffset + marker).trimEnd();
+        if (/\b(?:at|of|to|with|is|are)\s*$/i.test(prefix)) return dropCurrentFragment(prefix);
+        return prefix ? dropStructurallyIncompleteTail(prefix) : "";
+      }
+      lineOffset += line.length + 1;
+    }
+    // Defensive fallback for a future format that balances emphasis across
+    // lines: the last marker is the only safe cut point we can establish.
+    const prefix = trimmed.slice(0, trimmed.lastIndexOf("**")).trimEnd();
+    return prefix ? dropStructurallyIncompleteTail(prefix) : "";
+  }
+
+  return dropCurrentFragment(trimmed);
+}
+
 function validateAnalysisResponse(
   responses: Anthropic.Message[],
   tier: AnalysisTier,
@@ -4168,8 +4373,16 @@ function validateAnalysisResponse(
   if (withoutToolMarkup.removed && !hasMeaningfulProse(withoutToolMarkup.text)) {
     throw new AppError(502, "Analysis service returned an empty response.");
   }
+  const structurallyComplete = stopReason === "end_turn"
+    ? dropStructurallyIncompleteTail(answer)
+    : answer;
+  if (!structurallyComplete
+    && grounding?.kind !== "match"
+    && grounding?.kind !== "fixture") {
+    throw new AppError(502, "Analysis response was structurally incomplete. Please try again.");
+  }
   const removals: GuardRemoval[] = [];
-  const sanitized = sanitizeAnswerForTier(answer, tier, grounding, true, removals);
+  const sanitized = sanitizeAnswerForTier(structurallyComplete, tier, grounding, true, removals);
   // Emitted next to `analysis_generated` so one request produces one before/after
   // record of the guard chain. Every historical answer-deletion bug was a single
   // guard removing most of the answer on its first production request; that is

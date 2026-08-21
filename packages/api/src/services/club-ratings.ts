@@ -4,6 +4,7 @@ import { canonicalClubName } from "../lib/team-names";
 import { RatingProfile } from "../config/competitions";
 import {
   CLUB_STRENGTH_MAX_AGE_DAYS,
+  clubStrengthSnapshotIsCurrent,
   ClubStrengthArtifact,
   readClubStrengthArtifact,
   readSelectedClubStrengthArtifact,
@@ -80,9 +81,8 @@ export function clubRatingsAreCurrent(
   now = new Date()
 ): boolean {
   const sha = state.artifactSha256;
-  const ageDays = clubRatingsAgeDays(state.fetchedAt, now);
-  return ageDays !== null
-    && ageDays <= CLUB_RATINGS_MAX_PERSISTED_AGE_DAYS
+  return state.fetchedAt !== null
+    && clubStrengthSnapshotIsCurrent(state.fetchedAt, now)
     && typeof sha === "string"
     && /^[a-f0-9]{64}$/.test(sha)
     && state.artifactId === `clubelo@1:${sha}`;

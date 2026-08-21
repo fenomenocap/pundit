@@ -23,7 +23,7 @@ World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluati
                  └───────────┘  └────────────┘  └──────────────┘
 ```
 
-Public football and market sources are keyless and cached server-side on a cadence (ESPN and active market odds every 30 minutes; the complete Premier League schedule at most every six hours). The active model recomputes hourly from a reviewed, content-addressed club-strength artifact and never contacts ClubElo at runtime. MiniMax powers the live chat through a Railway-managed secret. There is no database: runtime caches are in memory, while restart-critical artifact recovery copies, the season schedule, calibration, recognized-fixture mappings, and optional private-shadow artifacts use atomic JSON files under `PUNDIT_DATA_DIR`.
+Public football and market sources are keyless and cached server-side on a cadence (ESPN and active market odds every 30 minutes; the complete Premier League schedule is checked on that cadence and refreshed ahead of its six-hour freshness deadline). The active model recomputes hourly from a reviewed, content-addressed club-strength artifact and never contacts ClubElo at runtime. MiniMax powers the live chat through a Railway-managed secret. There is no database: runtime caches are in memory, while restart-critical artifact recovery copies, the season schedule, calibration, recognized-fixture mappings, and optional private-shadow artifacts use atomic JSON files under `PUNDIT_DATA_DIR`.
 
 ---
 

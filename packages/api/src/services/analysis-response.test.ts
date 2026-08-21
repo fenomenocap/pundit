@@ -66,6 +66,89 @@ beforeEach(() => {
 });
 
 describe("generateAnalysis", () => {
+  it("drops a structurally incomplete end_turn tail after coherent prose", async () => {
+    const client = clientWith(message(
+      "**Title race**\n\nNo matches have been played.\n\nArsenal are at **92.7%**, City at **5.",
+      "end_turn"
+    ));
+    await expect(generateAnalysis(client, "system", [], "season"))
+      .resolves.toBe(
+        "**Title race**\n\nNo matches have been played.\n\nArsenal are at **92.7%**"
+      );
+  });
+
+  it("cuts from an earlier unmatched bold marker rather than leaving malformed markdown", async () => {
+    const client = clientWith(message(
+      "Opening context is complete.\n\n**Verdict\nArsenal lead.\n\n**Goals**\nOver 2.5 leans yes.",
+      "end_turn"
+    ));
+    await expect(generateAnalysis(client, "system", [], "season"))
+      .resolves.toBe("Opening context is complete.");
+
+    const noPrefix = clientWith(message(
+      "**Verdict\nArsenal lead.\n\n**Goals**\nOver 2.5 leans yes.",
+      "end_turn"
+    ));
+    await expect(generateAnalysis(noPrefix, "system", [], "season"))
+      .rejects.toMatchObject({ statusCode: 502 });
+  });
+
+  it("fails closed when a non-rebuildable answer is only an incomplete end_turn fragment", async () => {
+    const client = clientWith(message("City is **5.", "end_turn"));
+    await expect(generateAnalysis(client, "system", [], "season"))
+      .rejects.toMatchObject({ statusCode: 502 });
+  });
+
+  it("leaves an empty result for the match delivery fallback to rebuild", async () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Man City",
+      scorelines: [],
+      oddsSources: [],
+    } as unknown as Grounding;
+    const client = clientWith(message("City is **5.", "end_turn"));
+    await expect(generateAnalysis(client, "system", [], "match", grounding)).resolves.toBe("");
+  });
+
+  it("preserves complete numeric and balanced-markdown endings", async () => {
+    const client = clientWith(message("**Title race**\nArsenal are at **5.0%**.", "end_turn"));
+    await expect(generateAnalysis(client, "system", [], "season"))
+      .resolves.toBe("**Title race**\nArsenal are at **5.0%**.");
+    const numeric = clientWith(message("Arsenal are at 92.7%. The score is 5.", "end_turn"));
+    await expect(generateAnalysis(numeric, "system", [], "season"))
+      .resolves.toBe("Arsenal are at 92.7%. The score is 5.");
+  });
+
+  it("drops probability-shaped team and outcome tails only after a prior percentage", async () => {
+    const cases = [
+      ["Arsenal are at 92.7%, City is 5.", "Arsenal are at 92.7%"],
+      ["Arsenal are at 92.7%, City: 5.", "Arsenal are at 92.7%"],
+      ["Home is 61.0%, away 5.", "Home is 61.0%"],
+      ["The home win is 61.0%, draw 5.", "The home win is 61.0%"],
+      ["Home is 61.0%, while away 5.", "Home is 61.0%"],
+    ];
+    for (const [raw, expected] of cases) {
+      const client = clientWith(message(raw, "end_turn"));
+      await expect(generateAnalysis(client, "system", [], "season")).resolves.toBe(expected);
+    }
+  });
+
+  it("preserves numeric club names, complete scales and decimal-odds prose", async () => {
+    for (const answer of [
+      "Arsenal had 60% possession. They faced Schalke 04.",
+      "Arsenal had 60% possession. They faced 1860 Munich.",
+      "Arsenal had 60% possession. Bet365 has City at 5.",
+      "Arsenal are 92.7%; Bet365 has City at 5.",
+      "The score is 5.",
+      "The scale runs 1 to 5.",
+    ]) {
+      const client = clientWith(message(answer, "end_turn"));
+      await expect(generateAnalysis(client, "system", [], "season")).resolves.toBe(answer);
+    }
+  });
+
   it("caps combined inference, retry, and search provider calls at three", async () => {
     const create = vi.fn()
       .mockRejectedValueOnce(new Anthropic.APIConnectionError({ message: "boom" }))
@@ -441,6 +524,103 @@ describe("ensureGeneralDisclaimer", () => {
 });
 
 describe("sanitizeMatchAnswer", () => {
+  it("corrects combined grounded scoreline probabilities to their sum", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "uefa.champions_qual",
+      home: "Dinamo Zagreb",
+      away: "Viking",
+      scorelines: [
+        { score: "2-1", probability: 0.0795 },
+        { score: "2-0", probability: 0.0568 },
+        { score: "1-2", probability: 0.041 },
+        { score: "0-2", probability: 0.029 },
+        { score: "1-1", probability: 0.1 },
+      ],
+      oddsSources: [],
+    } as unknown as Grounding;
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 wins are about 21% combined.", grounding
+    )).toBe("The 2-1 and 2-0 wins are about 13.6% combined.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 scorelines together are 21.00% likely.", grounding
+    )).toBe("The 2-1 and 2-0 scorelines together are 13.63% likely.");
+    // 13.63% rounds to 14% at the precision used, so it is already correct.
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 wins are 14% combined.", grounding
+    )).toBe("The 2-1 and 2-0 wins are 14% combined.");
+    expect(sanitizeMatchAnswer(
+      "Viking's 2-1 and 2-0 wins account for 21% together.", grounding
+    )).toBe("For Viking to win, the model's most likely away-win scorelines are **1-2 (4.1%)** and **0-2 (2.9%)**.");
+    expect(sanitizeMatchAnswer(
+      "Dinamo Zagreb's 2-1 and 2-0 wins account for 21% together.", grounding
+    )).toBe("Dinamo Zagreb's 2-1 and 2-0 wins account for 13.6% together.");
+    expect(sanitizeMatchAnswer(
+      "Dinamo Zagreb's 1-2 and 0-2 wins account for 21% together.", grounding
+    )).toBe("For Dinamo Zagreb to win, the model's most likely home-win scorelines are **2-1 (8.0%)** and **2-0 (5.7%)**.");
+    expect(sanitizeMatchAnswer(
+      "A 2-1 win at 7.95% and a 2-0 win at 5.68% add up to 21%.", grounding
+    )).toBe("A 2-1 win at 7.95% and a 2-0 win at 5.68% add up to 13.6%.");
+    expect(sanitizeMatchAnswer(
+      "The combined likelihood of 2-1 and 2-0 is 21%.", grounding
+    )).toBe("The combined likelihood of 2-1 and 2-0 is 13.6%.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 cases combine to about 21%.", grounding
+    )).toBe("The 2-1 and 2-0 cases combine to about 13.6%.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 cases combine to about 14%.", grounding
+    )).toBe("The 2-1 and 2-0 cases combine to about 14%.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 cases together account for 21%.", grounding
+    )).toBe("The 2-1 and 2-0 cases together account for 13.6%.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 cases combined are 21%.", grounding
+    )).toBe("The 2-1 and 2-0 cases combined are 13.6%.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 scorelines have a chance between them of 21%.", grounding
+    )).toBe("The 2-1 and 2-0 scorelines have a chance between them of 13.6%.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 results have a 21% chance between them.", grounding
+    )).toBe("The 2-1 and 2-0 results have a 13.6% chance between them.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 (8%) + 2-0 (6%) = 21%.", grounding
+    )).toBe("The 2-1 (8%) + 2-0 (6%) = 13.6%.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 2-0 routes combine to 21%; 1-1 is 10%.", grounding
+    )).toBe("The 2-1 and 2-0 routes combine to 13.6%; 1-1 is 10%.");
+    expect(sanitizeMatchAnswer(
+      "1-1 is 10%; 2-1 and 2-0 combine to 21%.", grounding
+    )).toBe("1-1 is 10%; 2-1 and 2-0 combine to 13.6%.");
+    expect(sanitizeMatchAnswer(
+      "1-1 is 10%, while 2-1 and 2-0 combine to 21%.", grounding
+    )).toBe("1-1 is 10%, while 2-1 and 2-0 combine to 13.6%.");
+    expect(sanitizeMatchAnswer(
+      "2-1 and 2-0 combine to 21%; 1-2 and 0-2 combine to 12%.", grounding
+    )).toBe("2-1 and 2-0 combine to 13.6%; 1-2 and 0-2 combine to 7.0%.");
+    expect(sanitizeMatchAnswer(
+      "The 2-1 and 4-0 routes combine to 21%.", grounding
+    )).toBe("The unsupported scoreline probability claim was omitted.");
+    expect(sanitizeMatchAnswer(
+      "For Viking, the 2-1 and 2-0 routes combine to 13.6%.", grounding
+    )).toBe("For Viking to win, the model's most likely away-win scorelines are **1-2 (4.1%)** and **0-2 (2.9%)**.");
+  });
+
+  it("does not treat a nearby possession figure as a combined scoreline probability", () => {
+    const grounding = {
+      kind: "match",
+      competitionId: "eng.1",
+      home: "Arsenal",
+      away: "Liverpool",
+      scorelines: [
+        { score: "2-1", probability: 0.0795 },
+        { score: "2-0", probability: 0.0568 },
+      ],
+      oddsSources: [],
+    } as unknown as Grounding;
+    const answer = "They won 2-1 and 2-0, together with 65% possession in those matches.";
+    expect(sanitizeMatchAnswer(answer, grounding)).toBe(answer);
+  });
+
   it("corrects an artifact-shaped 1-0 probability to the exact grounding value", () => {
     const grounding = {
       kind: "match",
@@ -796,6 +976,32 @@ describe("grounded answer sanitizers", () => {
 });
 
 describe("generateAnalysisStream", () => {
+  it("never streams a structurally incomplete normal-completion tail", async () => {
+    const unsafe = "**Title race**\n\nNo matches have been played.\n\nArsenal are at **92.7%**, City at **5.";
+    const stream = vi.fn().mockReturnValue(streamOf(message(unsafe, "end_turn"), [unsafe]));
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    const answer = await generateAnalysisStream(
+      client, "system", [], "season", (text) => deltas.push(text)
+    );
+    expect(answer).toBe(
+      "**Title race**\n\nNo matches have been played.\n\nArsenal are at **92.7%**"
+    );
+    expect(deltas).toEqual([answer]);
+    expect(deltas.join("")).not.toContain("City at");
+  });
+
+  it("fails closed without a delta when a streamed non-rebuildable answer is only a fragment", async () => {
+    const unsafe = "City is **5.";
+    const stream = vi.fn().mockReturnValue(streamOf(message(unsafe, "end_turn"), [unsafe]));
+    const client = { messages: { stream } } as unknown as Pick<Anthropic, "messages">;
+    const deltas: string[] = [];
+    await expect(generateAnalysisStream(
+      client, "system", [], "season", (text) => deltas.push(text)
+    )).rejects.toMatchObject({ statusCode: 502 });
+    expect(deltas).toEqual([]);
+  });
+
   it("releases the post-search turn only after whole-answer guards", async () => {
     // FORMAT_RULES tells the model to search before writing prose. When it
     // complies there is no draft to contradict, so streaming must survive the

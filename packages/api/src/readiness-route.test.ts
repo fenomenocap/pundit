@@ -1,11 +1,12 @@
 import { IncomingMessage, ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import { Duplex } from "node:stream";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "./index";
 import {
   premierLeagueSeasonWindow,
   replaceSeasonScheduleForTests,
+  SEASON_SCHEDULE_MAX_AGE_MS,
   type FootballMatch,
 } from "./services/football-data";
 
@@ -56,14 +57,17 @@ async function getJson(path: string): Promise<{ status: number; body: Record<str
   };
 }
 
-afterEach(() => replaceSeasonScheduleForTests({
-  competitionId: "eng.1",
-  seasonId: "unknown",
-  fixtures: [],
-  lastUpdated: null,
-  error: null,
-  servingLastGood: false,
-}));
+afterEach(() => {
+  vi.useRealTimers();
+  replaceSeasonScheduleForTests({
+    competitionId: "eng.1",
+    seasonId: "unknown",
+    fixtures: [],
+    lastUpdated: null,
+    error: null,
+    servingLastGood: false,
+  });
+});
 
 describe("GET /ready season schedule", () => {
   it("reports the integrated current complete schedule status and deployment limiter scope", async () => {
@@ -100,6 +104,33 @@ describe("GET /ready season schedule", () => {
       error: "timeout",
       servingLastGood: true,
       ageMinutes: expect.any(Number),
+    });
+  });
+
+  it("uses the same strict six-hour boundary as production verification", async () => {
+    const updatedAt = new Date("2026-08-13T00:24:00.000Z");
+    replaceSeasonScheduleForTests({
+      competitionId: "eng.1",
+      seasonId: "2026-27",
+      fixtures: completeLeagueSchedule(),
+      lastUpdated: updatedAt,
+      error: null,
+      servingLastGood: false,
+    });
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(updatedAt.getTime() + SEASON_SCHEDULE_MAX_AGE_MS - 1));
+    const beforeDeadline = await getJson("/ready");
+    expect(beforeDeadline.body.seasonSchedule).toMatchObject({
+      ready: true,
+      ageMinutes: 359,
+    });
+
+    vi.setSystemTime(new Date(updatedAt.getTime() + SEASON_SCHEDULE_MAX_AGE_MS));
+    const atDeadline = await getJson("/ready");
+    expect(atDeadline.body.seasonSchedule).toMatchObject({
+      ready: false,
+      ageMinutes: 360,
     });
   });
 });

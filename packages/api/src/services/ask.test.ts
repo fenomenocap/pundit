@@ -51,9 +51,12 @@ import {
   type MarketDivergence,
 } from "./ask";
 import {
+  premierLeagueSeasonWindow,
   replaceFootballDataForTests,
   replaceSeasonScheduleForTests,
+  type FootballMatch,
 } from "./football-data";
+import { refreshClubRatings } from "./club-ratings";
 
 /**
  * Fills in the precomputed model-versus-market field from the payload's own
@@ -113,6 +116,57 @@ describe("season grounding degradation", () => {
       });
     }
   });
+
+  it("never emits season probabilities from a complete stale or erroring last-good schedule", async () => {
+    const originalKey = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const now = new Date();
+    const standings = PREMIER_LEAGUE_TEST_TEAMS.map((team, index) => ({
+      ...standing("eng.1", team),
+      position: index + 1,
+    }));
+    const schedule = completePremierLeagueSchedule();
+    replaceFootballDataForTests({ standings, upcoming: [], recent: [], lastUpdated: now, error: null });
+    await refreshClubRatings(now);
+    try {
+      for (const unavailable of [
+        { seasonId: premierLeagueSeasonWindow(now).seasonId, lastUpdated: now, error: "upstream timeout", servingLastGood: true },
+        { seasonId: premierLeagueSeasonWindow(now).seasonId, lastUpdated: new Date(now.getTime() - 7 * 60 * 60 * 1000), error: null, servingLastGood: true },
+        { seasonId: "2025-26", lastUpdated: now, error: null, servingLastGood: true },
+      ]) {
+        replaceSeasonScheduleForTests({
+          competitionId: "eng.1",
+          fixtures: schedule,
+          ...unavailable,
+        });
+        const prepared = prepareAsk("Who wins the Premier League?", []);
+        expect(prepared.tier).toBe("competition");
+        expect(prepared.grounding).toMatchObject({ kind: "competition", competitionId: "eng.1" });
+        expect(prepared.grounding).not.toHaveProperty("seasonOutlook");
+      }
+
+      replaceSeasonScheduleForTests({
+        competitionId: "eng.1",
+        seasonId: premierLeagueSeasonWindow(now).seasonId,
+        fixtures: schedule,
+        lastUpdated: now,
+        error: null,
+        servingLastGood: false,
+      });
+      const fresh = prepareAsk("Who wins the Premier League?", []);
+      expect(fresh.tier).toBe("season");
+      expect(fresh.grounding).toMatchObject({ kind: "season", competitionId: "eng.1" });
+      expect(fresh.grounding).toHaveProperty("seasonOutlook.titleProbabilities");
+    } finally {
+      if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = originalKey;
+      replaceFootballDataForTests({ standings: [], upcoming: [], recent: [], lastUpdated: null, error: null });
+      replaceSeasonScheduleForTests({
+        competitionId: "eng.1", seasonId: "unknown", fixtures: [], lastUpdated: null,
+        error: null, servingLastGood: false,
+      });
+    }
+  }, 20_000);
 });
 
 describe("expired rating artifact routing", () => {
@@ -527,16 +581,49 @@ describe("current-news evidence hardening", () => {
     ))).not.toContain("Read on the underdog");
   });
 
-  it("removes only the backwards high-line geometry claim", () => {
-    expect(sanitizeFootballGeometry(
+  it("corrects backwards high-line geometry without deleting correct tactical prose", () => {
+    const withMidfield = sanitizeFootballGeometry(
       "A higher defensive line shrinks the space behind the defenders. It can compress midfield space."
-    )).toBe("It can compress midfield space.");
+    );
+    expect(withMidfield).toContain("leaves more space behind it");
+    expect(withMidfield).toContain("It can compress midfield space.");
     expect(sanitizeFootballGeometry(
       "A higher line shrinks space behind defenders. Keep the rest."
-    )).toBe("Keep the rest.");
+    )).toContain("Keep the rest.");
     expect(sanitizeFootballGeometry(
       "A higher defensive line can leave more space behind the defenders."
     )).toBe("A higher defensive line can leave more space behind the defenders.");
+    expect(sanitizeFootballGeometry(
+      "A high line shrinks the space between defence and goalkeeper, so runners have less room."
+    )).toBe(
+      "A high defensive line compresses space in front of the defence but leaves more space behind it for the goalkeeper to cover."
+    );
+    expect(sanitizeFootballGeometry(
+      "A high line reduces space between the back line and the keeper while compressing midfield space."
+    )).toBe(
+      "A high defensive line compresses space in front of the defence but leaves more space behind it for the goalkeeper to cover. It can also compress midfield space."
+    );
+    expect(sanitizeFootballGeometry(
+      "A high line compresses midfield space and leaves room behind the defence."
+    )).toBe("A high line compresses midfield space and leaves room behind the defence.");
+    for (const backwards of [
+      "A high line compresses space behind the defence.",
+      "A high defensive line closes the space between the back line and the keeper.",
+      "A higher line limits space between the defense and goalkeeper.",
+      "A high line minimizes space behind defenders.",
+      "A high line reduced the gap between defence and goalkeeper.",
+      "A higher defensive line is reducing the gap behind the back line.",
+    ]) expect(sanitizeFootballGeometry(backwards)).toContain("leaves more space behind it");
+    for (const correct of [
+      "A high line compresses space in front of the defence.",
+      "A high line compresses the space between defence and midfield.",
+      "A high line limits midfield space while leaving space behind.",
+      "A high defensive line compresses midfield space but leaves more space behind the defence.",
+    ]) expect(sanitizeFootballGeometry(correct)).toBe(correct);
+    const repeated = sanitizeFootballGeometry(
+      "A high line shrinks space behind defenders. A higher line reduces space between defence and goalkeeper."
+    );
+    expect(repeated.match(/A high defensive line/g)).toHaveLength(1);
   });
 
   it("reconciles plain scoreline arithmetic even without a probability suffix", () => {
@@ -725,6 +812,34 @@ function standing(competitionId = "eng.1", team = "Arsenal") {
     group: null,
     advanced: false,
   };
+}
+
+const PREMIER_LEAGUE_TEST_TEAMS = [
+  "Arsenal", "Manchester City", "Aston Villa", "Manchester United", "Liverpool",
+  "Bournemouth", "Brighton & Hove Albion", "Newcastle United", "Brentford", "Chelsea",
+  "Nottingham Forest", "Fulham", "Crystal Palace", "Everton", "Leeds United",
+  "Tottenham Hotspur", "West Ham United", "Sunderland", "Wolverhampton Wanderers", "Burnley",
+];
+
+function completePremierLeagueSchedule(): FootballMatch[] {
+  let id = 50_000;
+  return PREMIER_LEAGUE_TEST_TEAMS.flatMap((homeTeam) =>
+    PREMIER_LEAGUE_TEST_TEAMS
+      .filter((awayTeam) => awayTeam !== homeTeam)
+      .map((awayTeam) => ({
+        id: id++,
+        competitionId: "eng.1",
+        competition: "Premier League",
+        homeTeam,
+        awayTeam,
+        utcDate: "2027-05-01T14:00:00.000Z",
+        status: "SCHEDULED",
+        stage: null,
+        matchday: null,
+        group: null,
+        score: null,
+      }))
+  );
 }
 
 describe("resolveTeams", () => {

@@ -88,8 +88,19 @@ interface PersistedSeasonSchedule {
 
 const SEASON_SCHEDULE_FILE = "cache/eng-1-season-schedule.json";
 const SEASON_SCHEDULE_RECOVERY_FILE = "cache/eng-1-season-schedule.last-good.json";
-export const SEASON_SCHEDULE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export const FOOTBALL_DATA_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+export const SEASON_SCHEDULE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 export const ESPN_FETCH_TIMEOUT_MS = 15_000;
+// The scheduler only wakes every 30 minutes and a bounded ESPN request can use
+// the full timeout. Keep a small event-loop/network-completion margin as well,
+// so the latest possible scheduler tick still finishes before the strict
+// six-hour readiness deadline rather than racing it.
+export const SEASON_SCHEDULE_REFRESH_SAFETY_MARGIN_MS = 60_000;
+export const SEASON_SCHEDULE_REFRESH_LEAD_MS = FOOTBALL_DATA_REFRESH_INTERVAL_MS
+  + ESPN_FETCH_TIMEOUT_MS
+  + SEASON_SCHEDULE_REFRESH_SAFETY_MARGIN_MS;
+export const SEASON_SCHEDULE_REFRESH_DUE_AFTER_MS = SEASON_SCHEDULE_MAX_AGE_MS
+  - SEASON_SCHEDULE_REFRESH_LEAD_MS;
 
 // ─── Cache ──────────────────────────────────────────────────────────────────
 
@@ -157,9 +168,10 @@ export function seasonScheduleStatus(state: SeasonScheduleCache, now = new Date(
   ageMinutes: number | null;
   servingLastGood: boolean;
 } {
-  const ageMinutes = state.lastUpdated === null
+  const ageMs = state.lastUpdated === null
     ? null
-    : Math.max(0, Math.floor((now.getTime() - state.lastUpdated.getTime()) / 60_000));
+    : Math.max(0, now.getTime() - state.lastUpdated.getTime());
+  const ageMinutes = ageMs === null ? null : Math.floor(ageMs / 60_000);
   let complete = false;
   try {
     validateCompletePremierLeagueSchedule(state.fixtures);
@@ -168,8 +180,7 @@ export function seasonScheduleStatus(state: SeasonScheduleCache, now = new Date(
     complete = false;
   }
   const currentSeason = state.seasonId === premierLeagueSeasonWindow(now).seasonId;
-  const fresh = ageMinutes !== null
-    && ageMinutes * 60_000 < SEASON_SCHEDULE_REFRESH_INTERVAL_MS;
+  const fresh = ageMs !== null && ageMs < SEASON_SCHEDULE_MAX_AGE_MS;
   return {
     ready: complete && currentSeason && fresh && state.error === null,
     ageMinutes,
@@ -183,7 +194,7 @@ export function seasonScheduleRefreshDue(
 ): boolean {
   return state.seasonId !== premierLeagueSeasonWindow(now).seasonId
     || state.lastUpdated === null
-    || now.getTime() - state.lastUpdated.getTime() >= SEASON_SCHEDULE_REFRESH_INTERVAL_MS;
+    || now.getTime() - state.lastUpdated.getTime() >= SEASON_SCHEDULE_REFRESH_DUE_AFTER_MS;
 }
 
 export function serialiseSeasonSchedule(
@@ -674,13 +685,12 @@ export async function refreshFootballData(dependencies: {
 
 // ─── Cron Scheduler ─────────────────────────────────────────────────────────
 
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 let cronTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function startFootballCron(): Promise<void> {
   loadPersistedSeasonSchedule();
   await refreshFootballData();
-  cronTimer = setInterval(refreshFootballData, REFRESH_INTERVAL_MS);
+  cronTimer = setInterval(refreshFootballData, FOOTBALL_DATA_REFRESH_INTERVAL_MS);
   console.log("[FootballData] Cron started — refreshing every 30 minutes");
 }
 

@@ -14,8 +14,13 @@ import {
   replaceSeasonScheduleForTests,
   serialiseSeasonSchedule,
   seasonScheduleStatus,
+  ESPN_FETCH_TIMEOUT_MS,
   espnFetch,
+  FOOTBALL_DATA_REFRESH_INTERVAL_MS,
   refreshFootballData,
+  SEASON_SCHEDULE_MAX_AGE_MS,
+  SEASON_SCHEDULE_REFRESH_DUE_AFTER_MS,
+  SEASON_SCHEDULE_REFRESH_SAFETY_MARGIN_MS,
   seasonScheduleRefreshDue,
   validateCompletePremierLeagueSchedule,
   type FootballMatch,
@@ -197,16 +202,16 @@ describe("ESPN model inputs", () => {
     });
   });
 
-  it("refreshes the large season payload only when its six-hour cache is due", () => {
+  it("refreshes the large season payload ahead of its six-hour readiness deadline", () => {
     const now = new Date("2026-08-13T12:00:00Z");
     expect(seasonScheduleRefreshDue({ seasonId: "2026-27", lastUpdated: null }, now)).toBe(true);
     expect(seasonScheduleRefreshDue({
       seasonId: "2026-27",
-      lastUpdated: new Date("2026-08-13T07:00:01Z"),
+      lastUpdated: new Date(now.getTime() - SEASON_SCHEDULE_REFRESH_DUE_AFTER_MS + 1),
     }, now)).toBe(false);
     expect(seasonScheduleRefreshDue({
       seasonId: "2026-27",
-      lastUpdated: new Date("2026-08-13T06:00:00Z"),
+      lastUpdated: new Date(now.getTime() - SEASON_SCHEDULE_REFRESH_DUE_AFTER_MS),
     }, now)).toBe(true);
     expect(seasonScheduleRefreshDue({
       seasonId: "2025-26",
@@ -214,7 +219,7 @@ describe("ESPN model inputs", () => {
     }, now)).toBe(true);
   });
 
-  it("integrates the six-hour skip and due decisions into the refresh", async () => {
+  it("integrates the refresh-ahead skip and due decisions into the refresh", async () => {
     stubRollingEspn();
     const seasonFetch = vi.fn(async () => ({
       seasonId: premierLeagueSeasonWindow().seasonId,
@@ -233,7 +238,7 @@ describe("ESPN model inputs", () => {
 
     replaceSeasonScheduleForTests({
       ...getCachedSeasonSchedule(),
-      lastUpdated: new Date(Date.now() - 7 * 60 * 60 * 1000),
+      lastUpdated: new Date(Date.now() - SEASON_SCHEDULE_REFRESH_DUE_AFTER_MS),
     });
     await refreshFootballData({ fetchSeason: seasonFetch });
     expect(seasonFetch).toHaveBeenCalledTimes(1);
@@ -364,6 +369,36 @@ describe("ESPN model inputs", () => {
     expect(seasonScheduleStatus({
       ...healthy, lastUpdated: new Date("2026-08-13T05:00:00Z"),
     }, now).ready).toBe(false);
+  });
+
+  it("keeps refresh and readiness boundaries aligned across the final cache cycle", () => {
+    const updatedAt = new Date("2026-08-13T00:24:00.000Z");
+    const healthy: SeasonScheduleCache = {
+      competitionId: "eng.1",
+      seasonId: "2026-27",
+      fixtures: completeLeagueSchedule(),
+      lastUpdated: updatedAt,
+      error: null,
+      servingLastGood: false,
+    };
+    const refreshBoundary = new Date(updatedAt.getTime() + SEASON_SCHEDULE_REFRESH_DUE_AFTER_MS);
+    const freshnessBoundary = new Date(updatedAt.getTime() + SEASON_SCHEDULE_MAX_AGE_MS);
+
+    expect(SEASON_SCHEDULE_REFRESH_DUE_AFTER_MS + FOOTBALL_DATA_REFRESH_INTERVAL_MS
+      + ESPN_FETCH_TIMEOUT_MS + SEASON_SCHEDULE_REFRESH_SAFETY_MARGIN_MS)
+      .toBe(SEASON_SCHEDULE_MAX_AGE_MS);
+
+    expect(seasonScheduleRefreshDue(healthy, new Date(refreshBoundary.getTime() - 1))).toBe(false);
+    expect(seasonScheduleRefreshDue(healthy, refreshBoundary)).toBe(true);
+    expect(seasonScheduleStatus(healthy, refreshBoundary).ready).toBe(true);
+
+    // Reproduces the production 06:24 tick: it is now unambiguously due while
+    // the last-good value is still healthy, rather than skipped until 06:54.
+    expect(seasonScheduleRefreshDue(healthy, new Date("2026-08-13T06:23:59.999Z"))).toBe(true);
+    expect(seasonScheduleStatus(healthy, new Date(freshnessBoundary.getTime() - 1)))
+      .toMatchObject({ ready: true, ageMinutes: 359 });
+    expect(seasonScheduleStatus(healthy, freshnessBoundary))
+      .toMatchObject({ ready: false, ageMinutes: 360 });
   });
 
   it("preserves the previous generation when installing the new primary fails", () => {

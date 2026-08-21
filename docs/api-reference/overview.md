@@ -7,7 +7,7 @@ Pundit's backend is a small read-mostly REST API. All documented endpoints below
 **Rate limits:**
 
 * 100 requests/minute per client on the API as a whole
-* 10 requests/minute per client specifically on `POST /api/ask` (it calls out to an LLM, so it's limited more tightly)
+* 10 requests/minute across the declared deployment specifically on `POST /api/ask`. Each API process uses one shared bucket sized as `ASK_RATE_LIMIT_PER_MINUTE / API_REPLICAS`; production currently declares one replica.
 
 Exceeding a limit returns an HTTP error with a JSON body like `{ "error": "Too many requests, please try again later" }`.
 

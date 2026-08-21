@@ -7,6 +7,8 @@ export const CLUB_STRENGTH_ARTIFACT_SCHEMA_VERSION = 1;
 export const CLUB_STRENGTH_CONTRIBUTOR_ID = "clubelo";
 export const CLUB_STRENGTH_CONTRIBUTOR_VERSION = "1";
 export const CLUB_STRENGTH_MAX_AGE_DAYS = 30;
+export const CLUB_STRENGTH_MAX_AGE_MS = CLUB_STRENGTH_MAX_AGE_DAYS * 86_400_000;
+export const CLUB_STRENGTH_MAX_FUTURE_SKEW_MS = 86_400_000;
 export const CLUB_STRENGTH_MIN_PLAUSIBLE_RATING = 500;
 export const CLUB_STRENGTH_MAX_PLAUSIBLE_RATING = 3000;
 export const CLUB_STRENGTH_SELECTED_ARTIFACT = "model-artifacts/clubelo/production.json";
@@ -59,6 +61,13 @@ export interface ValidatedClubStrengthArtifact {
 }
 
 export class ClubStrengthArtifactError extends Error {}
+
+export function clubStrengthSnapshotIsCurrent(snapshotAt: Date, now = new Date()): boolean {
+  const ageMs = now.getTime() - snapshotAt.getTime();
+  return Number.isFinite(ageMs)
+    && ageMs >= -CLUB_STRENGTH_MAX_FUTURE_SKEW_MS
+    && ageMs <= CLUB_STRENGTH_MAX_AGE_MS;
+}
 
 export function clubStrengthPayloadSha256(payload: ClubStrengthArtifactPayload): string {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
@@ -142,13 +151,13 @@ export function validateClubStrengthArtifact(
     throw new ClubStrengthArtifactError("Club strength artifact snapshot timestamp is invalid.");
   }
   const ageMs = now.getTime() - parsedSnapshot;
-  if (ageMs < -86_400_000) {
+  if (ageMs < -CLUB_STRENGTH_MAX_FUTURE_SKEW_MS) {
     throw new ClubStrengthArtifactError("Club strength artifact snapshot is implausibly future-dated.");
   }
   const ageDays = Math.max(0, Math.floor(ageMs / 86_400_000));
-  if (ageDays > CLUB_STRENGTH_MAX_AGE_DAYS) {
+  if (!clubStrengthSnapshotIsCurrent(new Date(parsedSnapshot), now)) {
     throw new ClubStrengthArtifactError(
-      `Club strength artifact is ${ageDays}d old; limit ${CLUB_STRENGTH_MAX_AGE_DAYS}d.`
+      `Club strength artifact exceeds the exact ${CLUB_STRENGTH_MAX_AGE_DAYS}-day freshness limit.`
     );
   }
   const byProfile = {

@@ -875,6 +875,45 @@ test("answer structure guard catches an emptied section and a missing headline 1
     ).assertions.headlineOneXTwoPresent,
     false
   );
+  // The provider can label this normally completed (`end_turn`) even though
+  // the final probability and its bold marker were cut mid-token.
+  for (const truncated of [
+    "**Verdict**\nArsenal are at 92.7%, the draw at 2.3%, and City at 5.",
+    "**Verdict**\nArsenal are at 92.7%, the draw at 2.3%, and City at **5.",
+  ]) {
+    const validation = validateAnswerStructure(truncated, { expectHeadlineOneXTwo: true });
+    assert.equal(validation.assertions.structurallyCompleteEnding, false, truncated);
+    assert.equal(validation.passed, false, truncated);
+  }
+  assert.equal(
+    validateAnswerStructure("Arsenal are at 92.7%, the draw at 2.3%, and City at 5.").passed,
+    false,
+    "ending integrity must not depend on a headline-1X2 scenario flag"
+  );
+  for (const truncated of [
+    "Arsenal 92.7%, draw 2.3%, City is 5.",
+    "Home is 61.0%, away 5.",
+  ]) {
+    assert.equal(validateAnswerStructure(truncated).passed, false, truncated);
+  }
+  for (const complete of [
+    "Arsenal are at 92.7%. The score is 5.",
+    "Arsenal had 60% possession. They faced Schalke 04.",
+    "Arsenal are 92.7%; Bet365 has City at 5.",
+  ]) {
+    assert.equal(validateAnswerStructure(complete).passed, true, complete);
+  }
+  for (const complete of [
+    "**Verdict**\nArsenal are at **92.7%**, the draw at **2.3%**, and City at **5.0%**.",
+    "**Verdict**\nArsenal 92.7%, draw 2.3%, City 5.0%. The main caveat is rotation.",
+    "**Verdict**\nArsenal 92.7%, draw 2.3%, City 5.0%\n\n- Rotation",
+  ]) {
+    assert.equal(
+      validateAnswerStructure(complete, { expectHeadlineOneXTwo: true }).passed,
+      true,
+      complete
+    );
+  }
 });
 
 test("the built match guard chain keeps model numbers and still drops external prices", async () => {
@@ -1099,7 +1138,7 @@ test("latency gate uses individual requests and enforces p90 after ten samples",
   });
 });
 
-test("schema-10 fixture grounding distinguishes capability without leaking model probabilities", () => {
+test("schema-12 fixture grounding distinguishes capability without leaking model probabilities", () => {
   const fixture = {
     fixtureId: "espn:club.friendly:800",
     primarySource: "espn",
@@ -1140,7 +1179,7 @@ test("schema-10 fixture grounding distinguishes capability without leaking model
   }).passed, false);
 });
 
-test("schema-10 verification contract enforces shape, counts, and abstention semantics", () => {
+test("schema-12 verification contract enforces shape, counts, and abstention semantics", () => {
   assert.equal(validateVerification({
     status: "verified", supportedClaimCount: 1, removedClaimCount: 0,
   }, { expectVerification: ["verified"] }).passed, true);
@@ -1153,7 +1192,7 @@ test("schema-10 verification contract enforces shape, counts, and abstention sem
   assert.equal(validateVerification(null).passed, false);
 });
 
-test("schema-10 complete market validator enforces source, time, legs and arithmetic", () => {
+test("schema-12 complete market validator enforces source, time, legs and arithmetic", () => {
   const legs = [
     { outcome: "home", decimalOdds: 2, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
     { outcome: "draw", decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
@@ -1178,6 +1217,7 @@ test("runtime-helper scenarios execute the current API correctness module, not c
     .map((scenario) => [scenario.id, scenario]));
   for (const id of [
     "complete-market-arithmetic",
+    "combined-scoreline-arithmetic",
     "incomplete-market-fails-closed",
     "third-party-probability-labelling",
     "recognized-friendly-outside-coverage",
@@ -1201,6 +1241,10 @@ test("runtime-helper scenarios execute the current API correctness module, not c
     helpers.validateCompleteOneXTwoMarket(runtime.get("incomplete-market-fails-closed").args[0]),
     { valid: false, reason: "missing-leg" }
   );
+  const combined = runtime.get("combined-scoreline-arithmetic");
+  const combinedActual = executeRuntimeHelperScenario(combined, path.resolve(import.meta.dirname, ".."));
+  assert.equal(combinedActual.includes("13.6%"), true);
+  assert.equal(combinedActual.includes("21%"), false);
   const attribution = runtime.get("third-party-probability-labelling").args[0];
   const label = helpers.probabilityAttributionLabel(attribution);
   assert.equal(helpers.hasValidProbabilityAttribution(label, attribution), true);
@@ -1249,7 +1293,7 @@ test("runtime-helper scenarios execute the current API correctness module, not c
   }
 });
 
-test("schema-10 correctness guard catches the four screenshot-class failures", () => {
+test("schema-12 correctness guard catches the four screenshot-class failures", () => {
   assert.equal(validateResponseCorrectness(
     "Pundit's forecast is 52% home, 25% draw and 23% away.",
     [],
@@ -1282,7 +1326,91 @@ test("schema-10 correctness guard catches the four screenshot-class failures", (
   ).passed, true);
 });
 
-test("schema-10 certification cannot pass required inconclusive or unsupported correctness", () => {
+test("response correctness validates explicit combined scoreline sums at the stated precision", () => {
+  const grounding = {
+    kind: "match",
+    home: "Dinamo Zagreb",
+    away: "Viking",
+    scorelines: [
+      { score: "2-1", probability: 0.0795 },
+      { score: "2-0", probability: 0.0568 },
+      { score: "1-1", probability: 0.102 },
+    ],
+  };
+  for (const answer of [
+    "The 2-1 and 2-0 outcomes combine to 13.6%.",
+    "The 2-1 (7.95%) and 2-0 (5.68%) scorelines are 13.63% together.",
+    "The 2-1 and 2-0 scorelines collectively account for 13.6%.",
+    "The 2-1 and 2-0 cases combine to about 14%.",
+    "The leading scorelines are 2-1 (7.95%) and 2-0 (5.68%).",
+    "The 2-1 and 2-0 outcomes combine to 13.6%, while 1-1 is 10.2%.",
+    "The 1-1 outcome is 10.2%, while 2-1 and 2-0 combine to 13.6%.",
+    "Dinamo Zagreb's 2-1 and 2-0 wins combine to 13.6%.",
+  ]) {
+    assert.equal(validateResponseCorrectness(answer, [], grounding).passed, true, answer);
+  }
+  for (const answer of [
+    "The 2-1 and 2-0 cases combine to about 21%.",
+    "The 2-1 and 2-0 outcomes are 13.4% together.",
+    "The 2-1 and 4-0 outcomes combine to 13.6%.",
+  ]) {
+    const validation = validateResponseCorrectness(answer, [], grounding);
+    assert.equal(validation.assertions.combinedScorelineArithmetic, false, answer);
+    assert.equal(validation.passed, false, answer);
+  }
+  const missingRequiredAggregate = validateResponseCorrectness(
+    "The leading scorelines are 2-1 (7.95%) and 2-0 (5.68%).",
+    [],
+    grounding,
+    { expectCombinedScorelineArithmetic: true }
+  );
+  assert.equal(missingRequiredAggregate.assertions.combinedScorelineArithmetic, false);
+  assert.equal(missingRequiredAggregate.passed, false);
+  const wrongOrientation = validateResponseCorrectness(
+    "Viking's 2-1 and 2-0 wins combine to 13.6%.",
+    [],
+    grounding
+  );
+  assert.equal(wrongOrientation.assertions.combinedScorelineArithmetic, true);
+  assert.equal(wrongOrientation.assertions.combinedScorelineOrientation, false);
+  assert.equal(wrongOrientation.passed, false);
+});
+
+test("combined-scoreline manifest scenario exercises the built settled sanitizer", async () => {
+  const config = JSON.parse(await readFile(
+    path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
+    "utf8"
+  ));
+  const scenario = config.fixed.find(({ id }) => id === "combined-scoreline-arithmetic");
+  assert.equal(scenario?.kind, "runtime-helper");
+  assert.equal(scenario?.helper, "sanitizeFinalMatchAnswer");
+  const actual = executeRuntimeHelperScenario(scenario, path.resolve(import.meta.dirname, ".."));
+  assert.equal(actual.includes("13.6%"), true);
+  assert.equal(actual.includes("21%"), false);
+});
+
+test("high-line geometry rejects both backwards formulations and requires the real trade-off", () => {
+  for (const answer of [
+    "A high line shrinks the space behind the defence.",
+    "A high line shrinks the space between defence and goalkeeper.",
+    "The gap between the defensive line and the keeper is reduced by a high defensive line.",
+  ]) {
+    assert.equal(validateResponseCorrectness(
+      answer, [], null, { expectCorrectHighLineGeometry: true }
+    ).passed, false, answer);
+  }
+  for (const answer of [
+    "A high line compresses space between the units ahead of the defence, but creates more space behind it for direct passes.",
+    "A high defensive line compresses space in front of the defence but leaves more space behind it for the goalkeeper to cover.",
+    "A high defensive line leaves space behind the back line exposed, increasing the risk from runs in behind.",
+  ]) {
+    assert.equal(validateResponseCorrectness(
+      answer, [], null, { expectCorrectHighLineGeometry: true }
+    ).passed, true, answer);
+  }
+});
+
+test("schema-12 certification cannot pass required inconclusive or unsupported correctness", () => {
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     scenarios: [
@@ -1296,7 +1424,7 @@ test("schema-10 certification cannot pass required inconclusive or unsupported c
   assert.deepEqual(report.certificationGate.unsupportedCorrectness, ["answer"]);
 });
 
-test("schema-10 permanent certification matrix names every authorized regression family", async () => {
+test("schema-12 permanent certification matrix names every authorized regression family", async () => {
   const config = JSON.parse(await readFile(
     path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
     "utf8"
@@ -1321,6 +1449,7 @@ test("schema-10 permanent certification matrix names every authorized regression
     "stale-manager-official-conflict",
     "correction-after-wrong-history",
     "one-one-is-not-over-two-five",
+    "combined-scoreline-arithmetic",
     "unrelated-citation-rejected",
     "degraded-search-retrieval-verifier",
     "two-legged-tie-resolves-to-a-real-leg",
