@@ -4627,6 +4627,12 @@ export function nameMarkerLinks(answer: string, bundle?: EvidenceBundle): string
 
 export function dropEmptyEmphasis(answer: string): string {
   return answer
+    // The parenthesis a removed citation or aside was sitting in: live output
+    // read "Hull are without Jack Butland ()".
+    .replace(/[ \t]*\([ \t]*\)/g, "")
+    // The same source rendered twice back to back, when two markers in one
+    // sentence resolved to it.
+    .replace(/(\((\[[^\]]+\]\([^)]+\))[^)]*\))[ \t]*\1/g, "$1")
     .replace(/(?:,|;)?[ \t]*\band[ \t]*\*\*[ \t]*\*\*/g, "")
     .replace(/\*\*[ \t]*\*\*/g, "")
     .replace(/[ \t]{2,}/g, " ")

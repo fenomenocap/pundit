@@ -405,6 +405,20 @@ describe("emphasis and link hygiene", () => {
       .toBe("**0-3 (12.8%)**, **0-4 (11.5%)**.");
   });
 
+  // Live: "Hull are without Jack Butland ()" -- the parenthesis a removed
+  // aside was sitting in.
+  it("drops a parenthesis left standing empty", () => {
+    expect(dropEmptyEmphasis("Hull are without Jack Butland (), so the backup starts."))
+      .toBe("Hull are without Jack Butland, so the backup starts.");
+  });
+
+  // Live: the same source rendered twice back to back.
+  it("collapses a citation rendered twice in a row", () => {
+    const cite = "([Man Utd XI vs Hull](https://example.com/x), 2026-08-21)";
+    expect(dropEmptyEmphasis(`de Ligt is out ${cite} ${cite}.`))
+      .toBe(`de Ligt is out ${cite}.`);
+  });
+
   it("leaves emphasis that still has something in it", () => {
     const kept = "**0-3 (12.8%)** leads.";
     expect(dropEmptyEmphasis(kept)).toBe(kept);
