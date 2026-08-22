@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
 import {
+  asksForMatchRead,
   attachEvidence,
   generateAnalysis,
   renderEvidenceCitations,
@@ -377,6 +378,28 @@ describe("generateAnalysis", () => {
     await expect(generateAnalysis(client, "system", [], "match"))
       .rejects.toMatchObject({ statusCode: 504 });
     expect(create).toHaveBeenCalledTimes(MAX_CONTINUATIONS + 1); // initial call + bounded continuations
+  });
+});
+
+describe("asksForMatchRead", () => {
+  // Live: "who would most likely score for arsenal?" came back opening with
+  // the same market-divergence paragraph as the preview before it, because the
+  // completeness guarantee ran on every match answer regardless of what was
+  // asked. A follow-up on a narrow topic is not a request for the whole card.
+  it("does not treat a narrow follow-up as a request for the fixture read", () => {
+    expect(asksForMatchRead("who would most likely score for arsenal?", true)).toBe(false);
+    expect(asksForMatchRead("and what about their defence?", true)).toBe(false);
+    expect(asksForMatchRead("chance of exactly 2-1?", true)).toBe(false);
+  });
+
+  it("still treats an outcome or value question as one, follow-up or not", () => {
+    expect(asksForMatchRead("what is your take on this game?", true)).toBe(true);
+    expect(asksForMatchRead("why is the model so far from the market?", true)).toBe(true);
+    expect(asksForMatchRead("where is the value?", true)).toBe(true);
+  });
+
+  it("treats an opening question about the fixture as a read by default", () => {
+    expect(asksForMatchRead("Arsenal vs Coventry", false)).toBe(true);
   });
 });
 
