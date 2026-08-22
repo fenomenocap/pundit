@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
 import {
   asksForMatchRead,
+  nameMarkerLinks,
+  dropEmptyEmphasis,
   attachEvidence,
   generateAnalysis,
   renderEvidenceCitations,
@@ -378,6 +380,44 @@ describe("generateAnalysis", () => {
     await expect(generateAnalysis(client, "system", [], "match"))
       .rejects.toMatchObject({ statusCode: 504 });
     expect(create).toHaveBeenCalledTimes(MAX_CONTINUATIONS + 1); // initial call + bounded continuations
+  });
+});
+
+describe("emphasis and link hygiene", () => {
+  // Live: "**0-3 (12.8%)**, **0-4 (11.5%)** and **** lead the distribution."
+  // A guard removed the figure and left the asterisks it was wrapped in.
+  it("drops emphasis a guard emptied, and the connective holding it up", () => {
+    expect(dropEmptyEmphasis("**0-3 (12.8%)**, **0-4 (11.5%)** and **** lead the distribution."))
+      .toBe("**0-3 (12.8%)**, **0-4 (11.5%)** lead the distribution.");
+  });
+
+  // `\s` spans newlines, so a first attempt at this swept the closing `**` of
+  // one section into the opening `**` of the next and deleted the boundary.
+  it("never joins one section's emphasis to the next one's", () => {
+    const twoSections = "**Goals**\nOver 2.5 at 77.6%.\n\n**Likely scorelines**\n0-3 leads.";
+    expect(dropEmptyEmphasis(twoSections)).toBe(twoSections);
+  });
+
+  it("leaves emphasis that still has something in it", () => {
+    const kept = "**0-3 (12.8%)** leads.";
+    expect(dropEmptyEmphasis(kept)).toBe(kept);
+  });
+
+  // Live: the model wrote its own link using the marker id as the visible
+  // text, so the reader saw "S2" where a headline belongs.
+  it("gives a marker-id link the source's title", () => {
+    const bundle = {
+      queries: ["q"],
+      providerCalls: 1,
+      results: [{ id: "S2", title: "Predicted XIs", url: "https://example.com/xi", date: "2026-08-21", snippet: "" }],
+    };
+    expect(nameMarkerLinks("Tzolakis starts ([S2](https://example.com/xi), 2026-08-21).", bundle))
+      .toContain("[Predicted XIs](https://example.com/xi)");
+  });
+
+  it("leaves a link alone when the id names no source", () => {
+    const link = "see ([S9](https://example.com/x))";
+    expect(nameMarkerLinks(link, { queries: [], providerCalls: 0, results: [] })).toBe(link);
   });
 });
 

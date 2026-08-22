@@ -2159,10 +2159,12 @@ anything that follows on from your previous answer. Read those as questions abou
 answer them in full from the grounding; never tell the user you have no model data for this matchup.
 Pundit's model is team-level: it prices results, totals and scorelines and carries no player-level
 projection, so who scores, assists or is booked has no model number behind it. Say that plainly in a
-clause, then answer what you can actually support -- what the scoreline and both-teams-to-score
-distribution imply about how the goals are likely to fall, plus any dated, sourced player news in
-the evidence. Never invent a goalscorer probability, and never reply with a bare one-line refusal:
-a player question gets a labelled answer in the usual format like any other.
+clause, and then actually answer the question from the evidence: name the players, with their
+anytime-scorer or player-market price where a source carries one, who is expected to start, and
+who is in form or returning. "The model has no player data" is the beginning of that answer, never
+the whole of it -- a reader who asks who will score and is told only what the scoreline
+distribution implies has not been answered. Never invent a goalscorer probability or attach one to
+Pundit's name, and never reply with a bare one-line refusal.
 Only when a question is plainly about something else -- a different match, era or competition, a
 rule or concept of the game in general, a non-football topic -- answer that question on its own
 terms, leave the fixture data out instead of steering back to the matchup, and say briefly that the
@@ -4598,6 +4600,34 @@ export function stripProcessNarration(answer: string): string {
 // emphasis on a figure, like "Arsenal **15.4%**", is left where it is.
 const INLINE_SECTION_LABEL = /([^\n\s])[ \t]*(\*\*[A-Za-z][A-Za-z \-/&']{2,30}\*\*)(?=\n|$)/g;
 
+/**
+ * Emphasis left standing over nothing. A guard that removes a figure removes
+ * the text between the asterisks and not the asterisks themselves, so a live
+ * answer read "**0-3 (12.8%)**, **0-4 (11.5%)** and **** lead the
+ * distribution." Empty emphasis is never meaningful, so it is always safe to
+ * drop, along with the dangling connective it was hanging from.
+ */
+/**
+ * `[S2](https://...)` -- the model writing its own link with the server's
+ * marker id as the visible text. The reader gets "S2" where a headline
+ * belongs, so the id is swapped for the source's title when it names one.
+ */
+export function nameMarkerLinks(answer: string, bundle?: EvidenceBundle): string {
+  const byId = new Map((bundle?.results ?? []).map((source) => [source.id, source]));
+  return answer.replace(/\[(S\d+)\]\((https?:\/\/[^\s)]+)\)/gi, (match, id: string, url: string) => {
+    const source = byId.get(id.toLocaleUpperCase());
+    return source?.title ? `[${source.title.replace(/[\[\]]/g, "")}](${url})` : match;
+  });
+}
+
+export function dropEmptyEmphasis(answer: string): string {
+  return answer
+    .replace(/(?:,|;)?[ \t]*\band[ \t]*\*\*[ \t]*\*\*/g, "")
+    .replace(/\*\*[ \t]*\*\*/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([,.;])/g, "$1");
+}
+
 export function normalizeSectionBreaks(answer: string): string {
   return answer.replace(INLINE_SECTION_LABEL, "$1\n\n$2");
 }
@@ -6413,8 +6443,11 @@ export async function deliverAnswer(args: {
     evidenceRequired
   );
   // Evidence, correction and market guards run again after the tier chain,
-  // so the settled answer is re-checked for labels they emptied.
-  const settledAnswer = dropOrphanedSectionLabels(rendered.answer);
+  // so the settled answer is re-checked for labels they emptied -- and for the
+  // emphasis they emptied, which the label sweep does not look at.
+  const settledAnswer = dropEmptyEmphasis(
+    dropOrphanedSectionLabels(nameMarkerLinks(rendered.answer, bundle))
+  );
   const readable = hasMeaningfulProse(settledAnswer);
   // The structural gate is scoped to the match tier on purpose. It asks for a
   // label or a percentage, and only match grounding actually supplies the
