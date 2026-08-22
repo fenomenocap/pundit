@@ -398,6 +398,13 @@ describe("emphasis and link hygiene", () => {
     expect(dropEmptyEmphasis(twoSections)).toBe(twoSections);
   });
 
+  // Live: removing the third item left its comma in front of the full stop --
+  // "**0-4 (11.5%)**,." reached a reader.
+  it("takes the separator the removed item was hanging from", () => {
+    expect(dropEmptyEmphasis("**0-3 (12.8%)**, **0-4 (11.5%)**, ****."))
+      .toBe("**0-3 (12.8%)**, **0-4 (11.5%)**.");
+  });
+
   it("leaves emphasis that still has something in it", () => {
     const kept = "**0-3 (12.8%)** leads.";
     expect(dropEmptyEmphasis(kept)).toBe(kept);
@@ -510,6 +517,16 @@ describe("renderEvidenceCitations abstention scope", () => {
     const { answer: rendered } = renderEvidenceCitations(answer, bundle, true);
     expect(rendered).toContain("Gyabi is ruled out");
     expect(rendered).toContain("undated");
+    expect(rendered).not.toContain("No verified, dated team-news update was established");
+  });
+
+  // Live: an answer cited a dated predicted-XI report and then declared that
+  // no team news was established, two sections later.
+  it("holds the notice when the answer has cited something of its own", () => {
+    const answer = "**Strikers**\nMbeumo leads the line [[S1]].\n\n**Close**\nZambrano is ruled out.";
+    const { answer: rendered } = renderEvidenceCitations(answer, bundle, true);
+    expect(rendered).toContain("Mbeumo leads the line");
+    expect(rendered).not.toContain("Zambrano is ruled out");
     expect(rendered).not.toContain("No verified, dated team-news update was established");
   });
 

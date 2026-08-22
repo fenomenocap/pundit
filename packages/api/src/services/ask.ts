@@ -1994,7 +1994,12 @@ export function renderEvidenceCitations(
   });
   let abstained = false;
   const abstain = () => {
-    if (abstained || supportedTeamNews) return "";
+    // `cited` fills as the sentences are revised, so by the time an
+    // unsupported one is reached the answer's own sources are known. An answer
+    // that has just cited a dated lineup report and then declares no team news
+    // was established contradicts itself in front of the reader; the
+    // unsupported sentence is still removed, but silently.
+    if (abstained || supportedTeamNews || cited.size > 0) return "";
     abstained = true;
     return notice;
   };
@@ -4625,7 +4630,11 @@ export function dropEmptyEmphasis(answer: string): string {
     .replace(/(?:,|;)?[ \t]*\band[ \t]*\*\*[ \t]*\*\*/g, "")
     .replace(/\*\*[ \t]*\*\*/g, "")
     .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+([,.;])/g, "$1");
+    .replace(/[ \t]+([,.;])/g, "$1")
+    // The separator the removed item was hanging from, left in front of the
+    // full stop: "**0-4 (11.5%)**,." reached a reader.
+    .replace(/,[ \t]*([.;])/g, "$1")
+    .replace(/,[ \t]*$/gm, ".");
 }
 
 export function normalizeSectionBreaks(answer: string): string {
