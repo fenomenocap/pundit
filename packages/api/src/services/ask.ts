@@ -560,13 +560,17 @@ function evidenceMessage(bundle: EvidenceBundle): string {
     + "source quotes American odds, convert before quoting: a negative price is 1 + 100/|price| "
     + "(-470 becomes 1.21), a positive one is 1 + price/100 (+340 becomes 4.40). Never print the "
     + "American form.\n"
-    + "Do not quote a sportsbook's exact price from a search snippet as if it were live -- prices "
-    + "move by the minute and a stale one is worse than none. Use the evidence for the direction "
-    + "a line has moved, where it opened, and which way the money has gone, cited; quote firm "
-    + "numbers only from Pundit's own market data.\n"
+    + "A sportsbook or player-market price from the evidence is quotable -- it is often the only "
+    + "number there is for a scorer, a card or a prop -- but prices move, so quote it with its "
+    + "book, its citation and when it was seen (\"as quoted on 21 Aug\", or \"undated\"), and say "
+    + "it needs checking against the live board before it is backed. Never present it as a Pundit "
+    + "probability. Never open a section you cannot fill: if the evidence carries no price for the "
+    + "market asked about, say that plainly instead of writing a heading over nothing.\n"
     + "Cite every claim you take from it by putting the source id in the same sentence, like "
     + "[[S3]]. Use only the ids supplied -- an uncited claim will be removed before the reader "
-    + "sees it, so cite as you write rather than afterwards.\n"
+    + "sees it, so cite as you write rather than afterwards. Never write a URL yourself: the "
+    + "marker is rendered into a titled link for the reader, and a raw address written beside it "
+    + "reaches them as unreadable clutter.\n"
     + "Each source carries a date. Prefer a dated one for a team-news claim -- injury, "
     + "suspension, availability, expected XI -- and say how recent it is. Where only an undated "
     + "source covers the point, you may still report it, but say plainly that the report is "
@@ -2094,11 +2098,15 @@ that repeat a caveat already given, and summary sections that add nothing to wha
 If a point needs a citation to be trustworthy, keep the citation and cut prose elsewhere.`;
 
 const FORMAT_RULES = `Format the answer as markdown sections, each starting with a bold label
-on its own line. For a match, lead with **Model vs market**, give **Team news** whenever the
-evidence carries a dated squad, injury, suspension or lineup report -- that is the signal the model
-cannot see, so it earns its place rather than being an exception -- then **Goals**, **Likely
-scorelines**, and close with **What would change this**. Otherwise pick the labels that fit the
-question. Bold the headline numbers.
+on its own line. Answer the question that was asked, and pick the labels that answer it.
+When the question is a broad read on the fixture -- a preview, "what's your take", who wins, where
+the value is -- work through **Model vs market**, **Team news** whenever the evidence carries a
+dated squad or lineup report, **Goals**, **Likely scorelines**, and **What would change this**.
+When the question is narrower than that -- one player, one market, one scoreline, one side's
+defence, or a follow-up carrying on from your last answer -- answer *that*, in the two or three
+sections it takes. Running the full card at a narrow question buries the answer in material the
+reader did not ask for and did not need, and repeating the previous answer's opening paragraph
+back at them is not a reply. Bold the headline numbers.
 Length follows substance. Give the reader everything that would change a decision and nothing that
 would not: every sentence should carry a number, a sourced fact, or a judgement that follows from
 one. If a sentence would survive being deleted, delete it. Never pad a section to fill it, never
@@ -5991,12 +5999,30 @@ function isFullMatchRead(answer: string): boolean {
  * to state and no value to rule on, and inventing a market is worse than
  * omitting one. The close still lands, anchored on the model's own lean.
  */
+/**
+ * Whether this question is asking for a read on the fixture's outcome.
+ *
+ * The completeness guarantee below belongs to that question and no other. Run
+ * unconditionally it put the market gap, the value verdict and the conditional
+ * close into every match answer, so "who would most likely score?" came back
+ * opening with the same divergence paragraph as the preview before it -- the
+ * shape of a conversation where nothing the user says changes the reply.
+ */
+export function asksForMatchRead(question: string, hasHistory: boolean): boolean {
+  if (/\b(?:value|edge|market|odds|price|priced|bet|back|wins?|winner|take|preview|analys|thoughts?|read)\b/i
+    .test(question)) return true;
+  // An opening question about the fixture is a read by default; a follow-up is
+  // whatever it says it is.
+  return !hasHistory;
+}
+
 function guaranteeMatchReadCompleteness(
   answer: string,
   tier: AnalysisTier,
-  grounding: AskGrounding
+  grounding: AskGrounding,
+  asksRead = true
 ): string {
-  if (tier !== "match" || grounding?.kind !== "match") return answer;
+  if (tier !== "match" || grounding?.kind !== "match" || !asksRead) return answer;
   const divergences = deliverableMarketDivergence(grounding);
   const headline = headlineDivergence(divergences);
   const stated = statesMarketDivergence(answer, divergences);
@@ -6397,7 +6423,13 @@ export async function deliverAnswer(args: {
   // server-owned payload to fall back to there anyway.
   const shaped = grounding?.kind !== "match" || hasGroundedAnswerShape(settledAnswer);
   if (readable && shaped) {
-    const completeAnswer = guaranteeMatchReadCompleteness(settledAnswer, tier, grounding);
+    const asksRead = asksForMatchRead(question, hasHistory);
+    const completeAnswer = guaranteeMatchReadCompleteness(
+      settledAnswer,
+      tier,
+      grounding,
+      asksRead
+    );
     return {
       // Completeness may deterministically add a market comparison from the
       // grounding. Request fidelity therefore gets the actual last word: an
@@ -6426,7 +6458,8 @@ export async function deliverAnswer(args: {
     const completeFallback = guaranteeMatchReadCompleteness(
       renderGroundedMatchFallback(grounding),
       tier,
-      grounding
+      grounding,
+      asksForMatchRead(question, hasHistory)
     );
     return {
       // The fallback answers from the grounding, so it owes the reader the
