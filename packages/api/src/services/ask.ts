@@ -4624,6 +4624,32 @@ export function nameMarkerLinks(answer: string, bundle?: EvidenceBundle): string
   });
 }
 
+/**
+ * Rewrites an American price into European decimal, which is how football is
+ * priced and what the reader asked to see.
+ *
+ * The prompt asks for the conversion and the model does it inconsistently --
+ * a live answer quoted Cole Palmer at "+160". A formatting rule that has to
+ * hold every time does not belong in a prompt, so the conversion is done here.
+ * Scoped to sentences that are actually about a price: a bare "+160" in prose
+ * about goal difference or minutes is not an odd, and is left alone.
+ */
+const PRICE_CONTEXT =
+  /\b(?:odds?|price[sd]?|anytime|scorer|market|book|bookmaker|backed?|to score|line)\b/i;
+const AMERICAN_PRICE = /(?<![\w.])([+-])(\d{3,4})(?!\d)(?!\.\d)(?!%)/g;
+
+export function decimalisePrices(answer: string): string {
+  return answer.split("\n").map((line) => {
+    if (!PRICE_CONTEXT.test(line)) return line;
+    return line.replace(AMERICAN_PRICE, (match, sign: string, digits: string) => {
+      const price = Number(digits);
+      if (!Number.isFinite(price) || price < 100) return match;
+      const decimal = sign === "-" ? 1 + 100 / price : 1 + price / 100;
+      return decimal.toFixed(2);
+    });
+  }).join("\n");
+}
+
 export function dropEmptyEmphasis(answer: string): string {
   return answer
     // The parenthesis a removed citation or aside was sitting in: live output
@@ -6460,7 +6486,7 @@ export async function deliverAnswer(args: {
   // so the settled answer is re-checked for labels they emptied -- and for the
   // emphasis they emptied, which the label sweep does not look at.
   const settledAnswer = dropEmptyEmphasis(
-    dropOrphanedSectionLabels(nameMarkerLinks(rendered.answer, bundle))
+    dropOrphanedSectionLabels(decimalisePrices(nameMarkerLinks(rendered.answer, bundle)))
   );
   const readable = hasMeaningfulProse(settledAnswer);
   // The structural gate is scoped to the match tier on purpose. It asks for a

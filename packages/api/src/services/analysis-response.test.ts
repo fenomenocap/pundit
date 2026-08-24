@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../middleware";
 import {
   asksForMatchRead,
+  decimalisePrices,
   nameMarkerLinks,
   dropEmptyEmphasis,
   attachEvidence,
@@ -383,6 +384,31 @@ describe("generateAnalysis", () => {
     await expect(generateAnalysis(client, "system", [], "match"))
       .rejects.toMatchObject({ statusCode: 504 });
     expect(create).toHaveBeenCalledTimes(MAX_CONTINUATIONS + 1); // initial call + bounded continuations
+  });
+});
+
+describe("decimalisePrices", () => {
+  // Live: "Cole Palmer as the anytime goalscorer tip at +160". The prompt asks
+  // for decimal and the model complies inconsistently, so the conversion is
+  // done deterministically rather than requested.
+  it("converts a positive American price to decimal", () => {
+    expect(decimalisePrices("Palmer is the anytime scorer tip at +160."))
+      .toBe("Palmer is the anytime scorer tip at 2.60.");
+  });
+
+  it("converts a negative American price to decimal", () => {
+    expect(decimalisePrices("The over is priced at -470 with the book."))
+      .toBe("The over is priced at 1.21 with the book.");
+  });
+
+  it("leaves numbers alone in a line that is not about a price", () => {
+    const line = "United have a +160 goal difference over the last three seasons.";
+    expect(decimalisePrices(line)).toBe(line);
+  });
+
+  it("does not touch percentages or decimals already given", () => {
+    const line = "Anytime scorer odds imply 38.5% at 2.60.";
+    expect(decimalisePrices(line)).toBe(line);
   });
 });
 
