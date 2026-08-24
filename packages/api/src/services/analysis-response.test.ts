@@ -4,6 +4,7 @@ import { AppError } from "../middleware";
 import {
   asksForMatchRead,
   decimalisePrices,
+  dropDanglingSectionOpeners,
   nameMarkerLinks,
   dropEmptyEmphasis,
   attachEvidence,
@@ -378,12 +379,56 @@ describe("generateAnalysis", () => {
     expect(toolResultTurn.content[0].content).toMatch(/no search results/i);
   });
 
+  // Production returned 504 with an empty bubble on questions the server had
+  // already retrieved evidence for: the loop ended holding a tool request it
+  // could not run and failed, instead of asking for prose with tools off.
+  it("settles the turn as prose when the tool loop is spent", async () => {
+    const create = vi.fn()
+      .mockResolvedValue(toolUseMessage("still searching"))
+      .mockResolvedValueOnce(toolUseMessage("still searching"))
+      .mockResolvedValueOnce(toolUseMessage("still searching"))
+      .mockResolvedValueOnce(toolUseMessage("still searching"))
+      .mockResolvedValueOnce(message("**Verdict**\nMan United are heavy favourites.", "end_turn"));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    await expect(generateAnalysis(client, "system", [], "match"))
+      .resolves.toContain("Man United are heavy favourites");
+  });
+
   it("gives up with a 504 when the model never stops searching", async () => {
     const create = vi.fn().mockResolvedValue(toolUseMessage("still searching"));
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
     await expect(generateAnalysis(client, "system", [], "match"))
       .rejects.toMatchObject({ statusCode: 504 });
-    expect(create).toHaveBeenCalledTimes(MAX_CONTINUATIONS + 1); // initial call + bounded continuations
+    // + one final tools-off attempt, which this model also answers with a tool
+    // request, so the turn still fails closed.
+    expect(create).toHaveBeenCalledTimes(MAX_CONTINUATIONS + 2);
+  });
+});
+
+describe("dropDanglingSectionOpeners", () => {
+  // Live: "**Market-favoured Chelsea scorers**\n Those are the clearest priced
+  // names in the evidence" -- the names excised as conflicting one step
+  // earlier, leaving a pronoun with no referent.
+  it("drops a section opener that points at excised content", () => {
+    const answer = "**Scorers**\nThose are the clearest priced names.\n\n**Goals**\nOver 2.5 at 77.6%.";
+    const swept = dropDanglingSectionOpeners(answer);
+    expect(swept).not.toContain("Those are the clearest priced names");
+    expect(swept).toContain("Over 2.5 at 77.6%");
+  });
+
+  it("keeps the rest of the sentence run when only the opener dangles", () => {
+    const answer = "**Scorers**\nThose are the priced names. Palmer leads the line.";
+    expect(dropDanglingSectionOpeners(answer)).toContain("Palmer leads the line");
+  });
+
+  it("leaves a back-reference alone once the section has said something", () => {
+    const answer = "**Scorers**\nPalmer and Pedro are priced. Those are the two to watch.";
+    expect(dropDanglingSectionOpeners(answer)).toContain("Those are the two to watch");
+  });
+
+  it("leaves a section that opens with real content", () => {
+    const answer = "**Goals**\nThis game projects over 2.5 at 77.6%.";
+    expect(dropDanglingSectionOpeners(answer)).toContain("This game projects over 2.5");
   });
 });
 
