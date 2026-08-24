@@ -18,7 +18,13 @@
 // Well inside ask.ts's 90s REQUEST_TIMEOUT_MS: a turn may run several searches
 // plus the model round trips, so no single search may monopolise the budget.
 const TIMEOUT_MS = 10_000;
-const CACHE_TTL_MS = 5 * 60_000;
+// Team news, form and predicted XIs move on the scale of a news cycle; prices
+// move constantly. One five-minute TTL for both meant every question re-ran
+// every search, which on a subscription key sized for one user is the whole
+// rate-limit problem in one line.
+const CACHE_TTL_MS = 30 * 60_000;
+const VOLATILE_CACHE_TTL_MS = 5 * 60_000;
+const VOLATILE_QUERY = /\b(?:odds|price|prices|line|lines|movement|moved|prop|props|market)\b/i;
 const BREAKER_FAILURES = 3;
 const BREAKER_OPEN_MS = 5 * 60_000;
 const MAX_QUERY_LENGTH = 256;
@@ -162,6 +168,12 @@ const minimaxProvider: SearchProvider = {
       body: JSON.stringify({ q: query }),
       signal,
     });
+    if (response.status === 429) {
+      // Recorded separately so "we are rate-limited" can never again reach the
+      // reader disguised as "the agent got worse".
+      status.lastThrottledAt = new Date().toISOString();
+      throw new Error("status 429 (rate limited)");
+    }
     if (!response.ok) throw new Error(`status ${response.status}`);
     const rawBody = typeof (response as { text?: unknown }).text === "function"
       ? await response.text()
@@ -194,15 +206,24 @@ export interface WebSearchStatus {
   totalSearches: number;
   /** Per-provider failure counts, so a silent format change is visible. */
   providerFailures: Record<string, number>;
+  /**
+   * When the provider last answered 429, and whether the breaker is open right
+   * now. Degradation is silent by design -- a failed search returns no evidence
+   * and the answer falls back to the grounding payload -- so without these two
+   * a rate limit reaches the reader looking like a drop in answer quality.
+   */
+  lastThrottledAt: string | null;
+  circuitOpen: boolean;
   enabledProviders: string[];
 }
 
-const status: WebSearchStatus = {
+const status: Omit<WebSearchStatus, "circuitOpen"> = {
   lastGoodProvider: null,
   lastGoodAt: null,
   consecutiveFailures: 0,
   totalSearches: 0,
   providerFailures: {},
+  lastThrottledAt: null,
   enabledProviders: [],
 };
 
@@ -215,6 +236,7 @@ let halfOpenProbe = false;
 export function getWebSearchStatus(): WebSearchStatus {
   return {
     ...status,
+    circuitOpen: breakerOpenedAt > 0 && Date.now() - breakerOpenedAt < BREAKER_OPEN_MS,
     providerFailures: { ...status.providerFailures },
     enabledProviders: PROVIDERS.filter((p) => p.enabled()).map((p) => p.name),
   };
@@ -228,6 +250,7 @@ export function resetWebSearchStatus(): void {
   status.consecutiveFailures = 0;
   status.totalSearches = 0;
   status.providerFailures = {};
+  status.lastThrottledAt = null;
   cache.clear();
   inFlight.clear();
   breakerOpenedAt = 0;
@@ -240,6 +263,55 @@ export function resetWebSearchStatus(): void {
  * degrade the answer rather than fail the request -- the same posture
  * fixture-market-sources.ts takes toward odds providers.
  */
+/**
+ * How many of a question's searches are in the air at once. One question now
+ * plans several, and firing them together is the burst shape a key sized for
+ * one person at a keyboard is least able to absorb.
+ */
+const SEARCH_CONCURRENCY = 2;
+
+/**
+ * Runs one question's planned searches.
+ *
+ * The breaker counts *batches*, not searches. It opens after three consecutive
+ * failures, which was written when a question meant one search; once a question
+ * planned six, a single throttled question could open it by itself and leave
+ * every answer for the next five minutes with no evidence at all -- indistinguishable,
+ * to the reader, from the model getting worse. A batch counts once, and only
+ * when every search in it came back empty.
+ */
+export async function searchWebBatch(
+  queries: readonly string[],
+  signal?: AbortSignal
+): Promise<WebSearchResult[][]> {
+  const failuresBefore = status.consecutiveFailures;
+  const breakerBefore = breakerOpenedAt;
+  const results: WebSearchResult[][] = new Array(queries.length).fill(null).map(() => []);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (let index = next++; index < queries.length; index = next++) {
+      results[index] = await searchWeb(queries[index], signal).catch(() => []);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(SEARCH_CONCURRENCY, queries.length) }, worker)
+  );
+  if (queries.length === 0) return results;
+  // Each search counted itself on the way past. Collapse the batch to a single
+  // verdict: every search failing is one failed question, and any search
+  // succeeding means there is no outage to trip over.
+  if (results.some((found) => found.length > 0)) {
+    status.consecutiveFailures = 0;
+    breakerOpenedAt = 0;
+    return results;
+  }
+  status.consecutiveFailures = failuresBefore + 1;
+  breakerOpenedAt = status.consecutiveFailures >= BREAKER_FAILURES
+    ? (breakerBefore || Date.now())
+    : 0;
+  return results;
+}
+
 export async function searchWeb(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
   const trimmed = query.trim().slice(0, MAX_QUERY_LENGTH);
   if (!trimmed) return [];
@@ -285,7 +357,8 @@ async function searchUncached(trimmed: string, signal?: AbortSignal): Promise<We
       status.consecutiveFailures = 0;
       breakerOpenedAt = 0;
       cache.set(trimmed.toLocaleLowerCase(), {
-        expiresAt: Date.now() + CACHE_TTL_MS,
+        expiresAt: Date.now()
+          + (VOLATILE_QUERY.test(trimmed) ? VOLATILE_CACHE_TTL_MS : CACHE_TTL_MS),
         results,
       });
       console.log(JSON.stringify({

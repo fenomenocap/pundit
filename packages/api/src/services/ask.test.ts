@@ -67,7 +67,10 @@ import {
 import { refreshClubRatings } from "./club-ratings";
 
 const searchWeb = vi.hoisted(() => vi.fn());
-vi.mock("./web-search", () => ({ searchWeb }));
+vi.mock("./web-search", () => ({
+  searchWeb,
+  searchWebBatch: (queries: string[]) => Promise.all(queries.map((q) => searchWeb(q))),
+}));
 
 /**
  * Fills in the precomputed model-versus-market field from the payload's own
