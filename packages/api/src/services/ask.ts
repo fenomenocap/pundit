@@ -1499,6 +1499,56 @@ export function stripUnvalidatedExternalMarketClaims(
  * label legitimately has no body yet, and dropping it then re-adding it on the
  * next, longer prefix reads as divergence to the flusher.
  */
+/**
+ * A sentence that opens a section by pointing back at something no longer
+ * there.
+ *
+ * The guards excise claims *inside* a section rather than emptying it, so the
+ * label survives and the orphan sweep below never sees a problem. A live
+ * answer opened "Market-favoured Chelsea scorers" with "Those are the clearest
+ * priced names in the evidence" -- the names having been excised as conflicting
+ * one step earlier. The reader is left with a pronoun and no referent.
+ *
+ * Scoped to the first sentence of a section, where there is provably nothing
+ * for a back-reference to attach to. The same words later in a section refer to
+ * what came before them and are left alone.
+ */
+const DANGLING_OPENER = new RegExp(
+  "^\\s*(?:those|these|that|this|they|both|either|neither)"
+  + "[ \\t]+(?:is|are|was|were|would|will|remains?|stays?|leaves?|gives?|makes?"
+  + "|puts?|sits?|comes?|points?|suggests?|means?)\\b",
+  "i"
+);
+
+export function dropDanglingSectionOpeners(answer: string): string {
+  const lines = answer.split("\n");
+  const out: string[] = [];
+  let awaitingBody = false;
+  for (const line of lines) {
+    if (SECTION_LABEL_LINE.test(line)) {
+      awaitingBody = true;
+      out.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      out.push(line);
+      continue;
+    }
+    if (awaitingBody) {
+      awaitingBody = false;
+      const [first, ...rest] = splitAnswerSentences(line);
+      if (first && DANGLING_OPENER.test(first)) {
+        const remainder = rest.join(" ").trim();
+        if (!remainder) continue;
+        out.push(remainder);
+        continue;
+      }
+    }
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function dropOrphanedSectionLabels(answer: string): string {
   const lines = answer.split("\n");
   const retained = lines.filter((line, index) => {
@@ -5282,6 +5332,44 @@ async function recoverUndeliverableTurn(
   ];
 }
 
+/**
+ * The turn taken when the model never stopped asking for tools.
+ *
+ * The loop ended holding a tool request it could not run -- the search cap
+ * reached, the continuations spent -- and threw a 504, so a question the
+ * server had already retrieved evidence for came back as an error and an empty
+ * bubble. One more turn with tools off, on the evidence already gathered, is
+ * almost always an answer. Returns null when the budget cannot fund it, and
+ * the caller falls back to failing as before.
+ */
+async function finalProseTurn(
+  client: Pick<Anthropic, "messages">,
+  systemPrompt: string,
+  convo: Anthropic.MessageParam[],
+  startedAt: number,
+  bundle?: EvidenceBundle,
+  signal?: AbortSignal
+): Promise<Anthropic.Message | null> {
+  if (providerCallsLeft(bundle) < 1 || !reserveProviderCall(bundle)) return null;
+  console.warn(JSON.stringify({ event: "tool_loop_exhausted_prose_retry" }));
+  try {
+    return await client.messages.create(
+      analysisRequestParams(systemPrompt, [
+        ...convo,
+        {
+          role: "user",
+          content: "No further searches are available. Answer now from the evidence already "
+            + "supplied and the grounding, in prose, starting with the first bold label. Do not "
+            + "request another tool.",
+        },
+      ], false),
+      { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
+    );
+  } catch {
+    return null;
+  }
+}
+
 export async function generateAnalysis(
   client: Pick<Anthropic, "messages">,
   systemPrompt: string,
@@ -5336,7 +5424,11 @@ export async function generateAnalysis(
     convo = [...appendAssistantTurn(convo, response), toolResults];
   }
   if (collected.at(-1)?.stop_reason === "tool_use") {
-    throw new AppError(504, "Analysis service timed out. Please try again.");
+    const settled = await finalProseTurn(client, systemPrompt, convo, startedAt, bundle, signal);
+    if (!settled || settled.stop_reason === "tool_use") {
+      throw new AppError(504, "Analysis service timed out. Please try again.");
+    }
+    collected.push(settled);
   }
   return validateAnalysisResponse(collected, tier, startedAt, grounding);
 }
@@ -5464,7 +5556,13 @@ export async function generateAnalysisStream(
     convo = [...appendAssistantTurn(convo, response), toolResults];
   }
   if (collected.at(-1)?.stop_reason === "tool_use") {
-    throw new AppError(504, "Analysis service timed out. Please try again.");
+    const settled = await finalProseTurn(
+      client, systemPrompt, convo, startedAt, bundle, requestSignal
+    );
+    if (!settled || settled.stop_reason === "tool_use") {
+      throw new AppError(504, "Analysis service timed out. Please try again.");
+    }
+    collected.push(settled);
   }
   const answer = validateAnalysisResponse(collected, tier, startedAt, grounding);
   flusher.finish(answer);
@@ -6486,7 +6584,9 @@ export async function deliverAnswer(args: {
   // so the settled answer is re-checked for labels they emptied -- and for the
   // emphasis they emptied, which the label sweep does not look at.
   const settledAnswer = dropEmptyEmphasis(
-    dropOrphanedSectionLabels(decimalisePrices(nameMarkerLinks(rendered.answer, bundle)))
+    dropOrphanedSectionLabels(
+      dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, bundle)))
+    )
   );
   const readable = hasMeaningfulProse(settledAnswer);
   // The structural gate is scoped to the match tier on purpose. It asks for a
