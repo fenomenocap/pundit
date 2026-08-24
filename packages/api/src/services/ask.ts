@@ -6551,6 +6551,12 @@ export async function deliverAnswer(args: {
   if (grounding?.kind === "match"
     && evidenceRequired
     && /\b(?:odds|price|prices|market|markets)\b/i.test(question)
+    // A player-market question is not this branch's business. It guards the
+    // 1X2 snapshots the server fetches itself; Pundit holds no player prices,
+    // so there is no validated figure here to fall back to -- and asking "who
+    // scores, and at what price?" was answered with the whole match recital
+    // because it contained the word "price".
+    && !PLAYER_MARKET_QUESTION.test(question)
     && checked.verification.supportedClaimCount === 0
     && (checked.verification.status === "abstain" || checked.verification.status === "unavailable")) {
     // The mandatory odds search has run, but it established no supported
