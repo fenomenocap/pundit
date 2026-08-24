@@ -73,7 +73,10 @@ const PRODUCTION_SEARCH_QUERY_LEAK =
 // The tool loop executes searches for real; stub the backend so these tests
 // stay offline and deterministic.
 const searchWeb = vi.hoisted(() => vi.fn());
-vi.mock("./web-search", () => ({ searchWeb }));
+vi.mock("./web-search", () => ({
+  searchWeb,
+  searchWebBatch: (queries: string[]) => Promise.all(queries.map((q) => searchWeb(q))),
+}));
 
 beforeEach(() => {
   searchWeb.mockReset();

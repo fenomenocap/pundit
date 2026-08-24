@@ -25,7 +25,7 @@ import {
 import { getActiveFixtures } from "./active-fixtures";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
 import { clubRatingsAreCurrent, getCachedClubRatings } from "./club-ratings";
-import { searchWeb } from "./web-search";
+import { searchWeb, searchWebBatch} from "./web-search";
 import { verifyClaimsOnce } from "./claim-verifier";
 import {
   retrieveEvidencePages,
@@ -640,8 +640,7 @@ async function buildEvidenceBundle(
   // Run together: they are independent lookups, and a researched answer should
   // not cost the reader one round trip per question it needs answered. A
   // failing search degrades that angle, never the whole bundle.
-  const found = await Promise.all(planned.map((query) =>
-    searchWeb(query, signal).catch(() => [])));
+  const found = await searchWebBatch(planned, signal);
   const results: EvidenceSource[] = [];
   const seen = new Set<string>();
   found.flat().forEach((result) => {

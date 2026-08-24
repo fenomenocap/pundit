@@ -53,7 +53,10 @@ import {
 // The tool loop executes searches for real; stub the backend so these tests
 // stay offline and deterministic.
 const searchWeb = vi.hoisted(() => vi.fn());
-vi.mock("./web-search", () => ({ searchWeb }));
+vi.mock("./web-search", () => ({
+  searchWeb,
+  searchWebBatch: (queries: string[]) => Promise.all(queries.map((q) => searchWeb(q))),
+}));
 
 // The delivery tail fetches and verifies evidence pages. Both are stubbed so
 // the guards -- not the network -- decide what the delivered answer looks like.

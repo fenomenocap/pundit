@@ -4,6 +4,7 @@ import {
   normalizeSearchDate,
   resetWebSearchStatus,
   searchWeb,
+  searchWebBatch,
 } from "./web-search";
 
 const NOW = new Date("2026-08-11T12:00:00Z");
@@ -212,5 +213,92 @@ describe("searchWeb provider chain", () => {
     fetchMock.mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
     expect(await searchWeb("after recovery")).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * One question now plans several searches. The breaker threshold was written
+ * when a question meant one search, so without batching a single throttled
+ * question could open it and leave every answer for the next five minutes with
+ * no evidence at all -- which reaches the reader as a drop in answer quality,
+ * not as a rate limit.
+ */
+describe("searchWebBatch", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockReset();
+    resetWebSearchStatus();
+    process.env.MINIMAX_API_KEY = "test-key";
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("counts a wholly failed question once, not once per search", async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => "" });
+    await searchWebBatch(["one", "two", "three", "four", "five", "six"]);
+    expect(getWebSearchStatus().consecutiveFailures).toBe(1);
+    expect(getWebSearchStatus().circuitOpen).toBe(false);
+  });
+
+  it("opens the circuit only after three failed questions", async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => "" });
+    await searchWebBatch(["a", "b"]);
+    await searchWebBatch(["c", "d"]);
+    expect(getWebSearchStatus().circuitOpen).toBe(false);
+    await searchWebBatch(["e", "f"]);
+    expect(getWebSearchStatus().circuitOpen).toBe(true);
+  });
+
+  it("treats a question where any search worked as no outage", async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => "" })
+      .mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+    const found = await searchWebBatch(["fails", "works"]);
+    expect(found[1]).toHaveLength(1);
+    expect(getWebSearchStatus().consecutiveFailures).toBe(0);
+  });
+
+  // Team news and form move on a news cycle; prices move constantly. One
+  // five-minute TTL for both meant every question re-ran every search.
+  it("keeps a team-news search past the window a price search expires in", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
+
+    await searchWeb("hull man united team news injuries");
+    await searchWeb("hull man united betting odds over 2.5");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    vi.setSystemTime(new Date(NOW.getTime() + 10 * 60_000));
+    await searchWeb("hull man united team news injuries");
+    expect(fetchMock).toHaveBeenCalledTimes(2); // still cached
+
+    await searchWeb("hull man united betting odds over 2.5");
+    expect(fetchMock).toHaveBeenCalledTimes(3); // price search refetched
+  });
+
+  it("records a rate limit as its own condition", async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 429, text: async () => "" });
+    await searchWebBatch(["throttled"]);
+    expect(getWebSearchStatus().lastThrottledAt).not.toBeNull();
+  });
+
+  it("keeps one question's searches from all being in the air at once", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    fetchMock.mockImplementation(async () => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return minimaxBody([MINIMAX_RESULT]);
+    });
+    await searchWebBatch(["a", "b", "c", "d", "e", "f"]);
+    expect(peak).toBeLessThanOrEqual(2);
   });
 });

@@ -8,7 +8,11 @@ import {
 } from "./ask";
 import { clientWith, message } from "./__fixtures__/anthropic-stubs";
 
-vi.mock("./web-search", () => ({ searchWeb: vi.fn().mockResolvedValue([]) }));
+const searchWeb = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+vi.mock("./web-search", () => ({
+  searchWeb,
+  searchWebBatch: (queries: string[]) => Promise.all(queries.map((q) => searchWeb(q))),
+}));
 
 /**
  * Two faults the 2026-08-20 production battle test surfaced, both fixed at the
