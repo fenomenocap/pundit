@@ -653,10 +653,25 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       ? grounding.seasonOutlook?.titleProbabilities ?? []
       : [];
     const emitsSeasonProbability = /\d+(?:\.\d+)?\s*%/.test(text);
-    assertions.tableSourceFidelity = allRowsTied
+    // Two regimes, and the assertion used to recognise only the first.
+    // `allRowsTied` was a precondition of passing, so the moment matchday one
+    // was played the check could not be satisfied by any answer at all and
+    // reported a product failure every run. What is actually being asserted is
+    // source fidelity: the answer came from the table it was told to use, and
+    // did not substitute ratings-and-schedule season probabilities for it.
+    //
+    // A tied table establishes no ranking, so the answer must refuse to rank.
+    // A table that does separate teams must be ranked *from the table*, which
+    // means naming its leader. Neither regime may emit season probabilities.
+    const tableLeader = standings.length
+      ? [...standings].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.team ?? null
+      : null;
+    const rankedFromTable = Boolean(tableLeader)
+      && new RegExp(`\\b${String(tableLeader).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text);
+    assertions.tableSourceFidelity = standings.length > 1
       && seasonRows.length > 1
-      && rankingRefused
-      && !emitsSeasonProbability;
+      && !emitsSeasonProbability
+      && (allRowsTied ? rankingRefused : rankedFromTable);
   }
   if (expectation.expectNoHistoryDenial) {
     const deniesAvailableHistory = /\b(?:i\s+(?:do not|don't)\s+have|there\s+(?:is|was)\s+no)\b[^.!?\n]{0,70}\b(?:previous|prior|earlier)\s+(?:answer|response|message)\b[^.!?\n]{0,40}\b(?:to\s+(?:refer|reference)|available)\b/i.test(text);

@@ -1815,6 +1815,41 @@ function mentionedTeamOutcome(sentence: string, grounding: Grounding): "home" | 
  * the structured grounding. Numeric payloads remain untouched; ambiguous prose
  * is omitted rather than rewritten into a new football claim.
  */
+/**
+ * The agreement band the answer prompt itself states: inside about two points
+ * an outcome is priced about right, outside it there is a gap to report. The
+ * guard and the instruction have to use one number, or the guard deletes prose
+ * that followed its brief.
+ */
+const MARKET_AGREEMENT_BAND_POINTS = 2;
+
+/**
+ * Model and market agree on this outcome. Deliberately narrower than "no
+ * value": a negative gap genuinely offers nothing to take, and saying so is
+ * the instructed reading rather than a contradiction.
+ */
+const ASSERTS_MARKET_AGREEMENT =
+  /\b(?:priced\s+(?:about\s+right|right|fairly|correctly|accurately|efficiently)|fairly\s+priced|efficiently\s+priced|accurately\s+priced|(?:in|on)\s+line\s+with\s+(?:the\s+)?(?:model|pundit)|(?:model|pundit)[^.!?\n]{0,40}\b(?:agrees?\s+with|matches|tracks)\b[^.!?\n]{0,30}\b(?:market|price)|no\s+(?:meaningful|material|real|significant)\s+(?:disagreement|divergence|gap|difference))\b/i;
+
+/**
+ * Every differenced gap the payload holds for the named outcomes, across all
+ * market sources. Read from `marketDivergence` rather than re-differenced here,
+ * so the guard measures the same rounded figures the answer was told to quote.
+ */
+function outcomeGapPoints(
+  grounding: Grounding,
+  outcomes: readonly OneXTwoOutcome[]
+): number[] {
+  if (!outcomes.length) return [];
+  const wanted = new Set(outcomes);
+  return (grounding.marketDivergence ?? []).flatMap((divergence) =>
+    divergence.legs
+      .filter((leg) => wanted.has(leg.outcome))
+      .map((leg) => leg.gapPoints)
+      .filter((gap) => Number.isFinite(gap))
+  );
+}
+
 export function sanitizeGroundedMatchNarrative(answer: string, grounding: Grounding): string {
   const homeEnd = new RegExp(
     `\\b(?:lots? of|most|all)(?: the)? goals?[^.!?\\n]{0,35}\\bat ${escapedPattern(grounding.home)}['’]s end\\b`,
@@ -1909,6 +1944,19 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
       const saysModelLower = /\b(?:model|pundit)[^.!?\n]{0,90}\b(?:lower|below)\b[^.!?\n]{0,60}\b(?:market|price)|\b(?:market|price)[^.!?\n]{0,90}\b(?:higher|above)\b[^.!?\n]{0,60}\b(?:model|pundit)/i.test(sentence);
       if (gaps.length && ((saysModelHigher && gaps.every((gap) => gap <= 0))
         || (saysModelLower && gaps.every((gap) => gap >= 0)))) return drop();
+
+      // A fair-pricing verdict is a claim about a number the payload already
+      // holds. The prompt sets the agreement band at about two points, so
+      // calling an outcome "priced about right" when the payload differences
+      // it at twenty contradicts the same answer's own gap sentence -- which
+      // is exactly what a reader was served: a stated 20-point Chelsea gap,
+      // then "Chelsea is priced about right" two lines later. Only agreement
+      // claims are caught; "no edge" on a negative gap is the correct reading
+      // of a market priced above the model, and stays.
+      if (ASSERTS_MARKET_AGREEMENT.test(sentence)) {
+        const divergences = outcomeGapPoints(grounding, mentionedOutcomes);
+        if (divergences.some((gap) => Math.abs(gap) > MARKET_AGREEMENT_BAND_POINTS)) return drop();
+      }
     }
 
     if (claimedTeam
@@ -6553,13 +6601,41 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
   const allZero = grounding.standings.length > 0
     && grounding.standings.every((row) => row.playedGames === 0 && row.points === 0);
   const tableSourceExclusive = /\b(?:based on|using|from)\s+(?:only\s+)?(?:the\s+)?current (?:table|standings)\b|\bcurrent (?:table|standings)\s+(?:alone|only)\b/i.test(question);
-  if (allZero && tableSourceExclusive) {
+  // Source fidelity does not begin on matchday one. A reader who restricts the
+  // evidence to the current table gets the table, whatever it currently says:
+  // the title probabilities come from club-strength ratings and the remaining
+  // schedule, and handing those back instead is a different question answered
+  // with different evidence. Scoping this to an all-zero table meant the
+  // substitution resumed silently the moment one match was played -- a reader
+  // asking for a table-sourced ranking after matchday one was served a 10,000-run
+  // Monte Carlo with no indication the table had not produced it.
+  if (tableSourceExclusive) {
+    if (allZero) {
+      return [
+        "**Current table**",
+        `All ${grounding.standings.length} listed clubs have played 0 matches and have 0 points.`,
+        "",
+        "**Answer**",
+        "The current table alone does not establish an on-field ranking or identify a most likely champion. A season forecast would also use club-strength ratings and the remaining fixture schedule, which goes beyond the requested table-only evidence.",
+      ].join("\n");
+    }
+    const ordered = [...grounding.standings].sort((a, b) => a.position - b.position);
+    const played = Math.max(...ordered.map((row) => row.playedGames));
     return [
       "**Current table**",
-      `All ${grounding.standings.length} listed clubs have played 0 matches and have 0 points.`,
+      ordered.slice(0, 5).map((row) =>
+        `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} `
+        + `${row.playedGames === 1 ? "match" : "matches"}, goal difference `
+        + `${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
+      ).join("\n"),
       "",
-      "**Answer**",
-      "The current table alone does not establish an on-field ranking or identify a most likely champion. A season forecast would also use club-strength ratings and the remaining fixture schedule, which goes beyond the requested table-only evidence.",
+      "**What the table establishes**",
+      `This ordering is the standings as supplied, after ${played} `
+        + `${played === 1 ? "match" : "matches"}. `
+        + `${played < 6
+          ? "That is far too small a sample to rank title contenders: at this stage the table mostly reflects fixture order, and one result moves a club many places. "
+          : ""}`
+        + "Title probabilities are not inferred from it — those would use club-strength ratings and the remaining fixture schedule, which is evidence beyond the table you asked me to use.",
     ].join("\n");
   }
   const leader = title[0];
