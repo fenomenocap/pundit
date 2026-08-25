@@ -686,6 +686,89 @@ describe("current-news evidence hardening", () => {
     ))).not.toContain("Read on the underdog");
   });
 
+  describe("model-versus-market agreement claims", () => {
+    // The Fulham vs Chelsea payload a production reader was actually served:
+    // the model has Chelsea 20.3 points below the market, and the answer went
+    // on to call Chelsea priced about right.
+    const grounding = {
+      kind: "match",
+      home: "Fulham",
+      away: "Chelsea",
+      pHome: 0.4025,
+      pDraw: 0.2809,
+      pAway: 0.3167,
+      oddsSources: [
+        { source: "kalshi", observedAt: "2026-08-24T08:56:19Z", pHome: 0.2353, pDraw: 0.2451, pAway: 0.5196 },
+      ],
+      marketDivergence: [{
+        source: "kalshi",
+        observedAt: "2026-08-24T08:56:19Z",
+        legs: [
+          { outcome: "home", label: "Fulham", modelPercent: 40.3, marketPercent: 23.5, gapPoints: 16.8 },
+          { outcome: "draw", label: "the draw", modelPercent: 28.1, marketPercent: 24.5, gapPoints: 3.6 },
+          { outcome: "away", label: "Chelsea", modelPercent: 31.7, marketPercent: 52, gapPoints: -20.3 },
+        ],
+        largest: { outcome: "away", label: "Chelsea", modelPercent: 31.7, marketPercent: 52, gapPoints: -20.3 },
+      }],
+    } as unknown as Grounding;
+
+    it("drops a fair-pricing verdict the payload differences at twenty points", () => {
+      const sanitized = sanitizeGroundedMatchNarrative(
+        "Chelsea is priced about right on the model's read.",
+        grounding
+      );
+      expect(sanitized).not.toContain("priced about right");
+    });
+
+    it("drops the same verdict in its other wordings", () => {
+      for (const claim of [
+        "Chelsea is fairly priced against the model.",
+        "The Chelsea line is efficiently priced.",
+        "Chelsea sits in line with the model.",
+        "There is no meaningful disagreement on Chelsea.",
+      ]) {
+        expect(sanitizeGroundedMatchNarrative(claim, grounding)).not.toContain("Chelsea");
+      }
+    });
+
+    it("keeps a no-value reading of a market priced above the model", () => {
+      // A negative gap genuinely offers nothing to take. The prompt instructs
+      // exactly this sentence, so deleting it would punish an answer for
+      // following its brief.
+      const sanitized = sanitizeGroundedMatchNarrative(
+        "The Chelsea price has no edge on the model's 31.7%.",
+        grounding
+      );
+      expect(sanitized).toContain("no edge");
+    });
+
+    it("keeps a fair-pricing verdict on an outcome that is inside the band", () => {
+      // The band is the prompt's own: inside about two points, "priced about
+      // right" is the instructed verdict and must survive.
+      const agreed = {
+        ...grounding,
+        marketDivergence: [{
+          source: "kalshi",
+          observedAt: "2026-08-24T08:56:19Z",
+          legs: [
+            { outcome: "home", label: "Fulham", modelPercent: 40.3, marketPercent: 39.6, gapPoints: 0.7 },
+            { outcome: "draw", label: "the draw", modelPercent: 28.1, marketPercent: 26.9, gapPoints: 1.2 },
+            { outcome: "away", label: "Chelsea", modelPercent: 31.7, marketPercent: 33.5, gapPoints: -1.8 },
+          ],
+          largest: { outcome: "away", label: "Chelsea", modelPercent: 31.7, marketPercent: 33.5, gapPoints: -1.8 },
+        }],
+      } as unknown as Grounding;
+      expect(sanitizeGroundedMatchNarrative("Chelsea is priced about right.", agreed))
+        .toContain("priced about right");
+    });
+
+    it("leaves the answer alone when the payload carries no differenced market", () => {
+      const noMarket = { ...grounding, marketDivergence: [], oddsSources: [] } as unknown as Grounding;
+      expect(sanitizeGroundedMatchNarrative("Chelsea is priced about right.", noMarket))
+        .toContain("priced about right");
+    });
+  });
+
   it("corrects backwards high-line geometry without deleting correct tactical prose", () => {
     const withMidfield = sanitizeFootballGeometry(
       "A higher defensive line shrinks the space behind the defenders. It can compress midfield space."
@@ -1007,6 +1090,74 @@ describe("current-news evidence hardening", () => {
         "",
         season
       )).toBeNull();
+    });
+
+    const seasonGroundingWith = (
+      standings: Array<{ position: number; team: string; playedGames: number; points: number; goalDifference: number }>,
+      titleProbabilities: Array<{ team: string; probability: number }>
+    ): SeasonGrounding => ({
+      kind: "season",
+      competitionId: "eng.1",
+      competition: "Premier League",
+      updatedAt: "2026-08-24T07:57:47.409Z",
+      standings,
+      seasonOutlook: {
+        competitionId: "eng.1",
+        competition: "Premier League",
+        runs: 10_000,
+        titleProbabilities,
+        topFourProbabilities: titleProbabilities,
+        remainingFixtures: 371,
+        updatedAt: "2026-08-24T08:00:00.000Z",
+      },
+    });
+
+    it("answers a table-sourced ranking from the table once matches have been played", () => {
+      // Source fidelity used to start and end with an all-zero table, so the
+      // moment matchday one was played a reader who restricted the evidence to
+      // the current table was handed a 10,000-run Monte Carlo instead, with
+      // nothing saying the table had not produced it.
+      const season = seasonGroundingWith(
+        [
+          { position: 1, team: "Brighton", playedGames: 1, points: 3, goalDifference: 4 },
+          { position: 2, team: "Arsenal", playedGames: 1, points: 3, goalDifference: 3 },
+          { position: 3, team: "Everton", playedGames: 1, points: 3, goalDifference: 2 },
+        ],
+        [
+          { team: "Arsenal", probability: 0.922 },
+          { team: "Man City", probability: 0.072 },
+        ]
+      );
+      const answer = deterministicGroundedResponse(
+        "Rank the leading contenders in the Premier League title race using the current table.",
+        season
+      ) as string;
+      expect(answer).toContain("**Brighton**");
+      // The substitution being prevented: the season simulation's numbers.
+      expect(answer).not.toMatch(/92\.2%|7\.2%/);
+      expect(answer).toContain("Title probabilities are not inferred from it");
+      // A one-match table is stated as the weak evidence it is.
+      expect(answer).toContain("far too small a sample");
+    });
+
+    it("ranks a settled table without the small-sample caveat", () => {
+      const season = seasonGroundingWith(
+        [
+          { position: 1, team: "Arsenal", playedGames: 30, points: 70, goalDifference: 40 },
+          { position: 2, team: "Man City", playedGames: 30, points: 66, goalDifference: 35 },
+        ],
+        [
+          { team: "Arsenal", probability: 0.81 },
+          { team: "Man City", probability: 0.18 },
+        ]
+      );
+      const answer = deterministicGroundedResponse(
+        "Rank the title contenders using the current table only.",
+        season
+      ) as string;
+      expect(answer).toContain("**Arsenal**");
+      expect(answer).not.toContain("far too small a sample");
+      expect(answer).not.toMatch(/81\.0%|18\.0%/);
     });
 
     it("states all-zero table provenance and declines standings-only upset sensitivity", () => {

@@ -1909,6 +1909,40 @@ test("schema-16 table-source fidelity refuses tied-table rankings without leakin
     [], { ...grounding, standings: [{ team: "Arsenal", playedGames: 0, points: 0, goalDifference: 0 }] },
     { expectTableSourceFidelity: true }
   ).assertions.tableSourceFidelity, false);
+
+  // A played table separates the teams, so refusing to rank is no longer the
+  // right answer -- but the ranking still has to come from the table. Before
+  // this, `allRowsTied` was a precondition of passing, so every run after
+  // matchday one reported a product failure no answer could have avoided.
+  const played = {
+    kind: "season",
+    standings: [
+      { position: 1, team: "Brighton", playedGames: 1, points: 3, goalDifference: 4 },
+      { position: 2, team: "Arsenal", playedGames: 1, points: 3, goalDifference: 3 },
+      { position: 3, team: "Everton", playedGames: 1, points: 3, goalDifference: 2 },
+    ],
+    seasonOutlook: {
+      titleProbabilities: [
+        { team: "Arsenal", probability: 0.9275 },
+        { team: "Man City", probability: 0.0594 },
+      ],
+    },
+  };
+  assert.equal(validateResponseCorrectness(
+    "Brighton lead the supplied table on goal difference after one match; no title probability is inferred from it.",
+    [], played, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, true);
+  // The substitution the assertion exists to catch: the table is set aside and
+  // ratings-and-schedule season probabilities are handed back instead.
+  assert.equal(validateResponseCorrectness(
+    "Arsenal lead the title race at 92.75%, with Man City on 5.94%.",
+    [], played, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, false);
+  // Ranking someone the table does not have at the top is not table-sourced.
+  assert.equal(validateResponseCorrectness(
+    "Man City are the leading contenders.",
+    [], played, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, false);
 });
 
 test("schema-16 rejects abstained probability counterfactuals, false product scope and history denial", () => {
