@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import Anthropic from "@anthropic-ai/sdk";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
@@ -35,6 +36,9 @@ import {
   sanitizeUnrecognizedCandidateAnswer,
   seasonOrCompetitionGrounding,
   prepareAsk,
+  getInferenceStatus,
+  resetInferenceStatus,
+  trackedInference,
   verifiableCurrentClaims,
   verifyCurrentClaims,
   type FixtureGrounding,
@@ -67,9 +71,20 @@ import {
 import { refreshClubRatings } from "./club-ratings";
 
 const searchWeb = vi.hoisted(() => vi.fn());
+const toOutcome = vi.hoisted(() => (results: unknown[]) => ({
+  status: results.length ? "ok" : "empty",
+  results,
+  provider: results.length ? "minimax" : null,
+  reason: null,
+  usedFallback: false,
+  attempts: [],
+}));
 vi.mock("./web-search", () => ({
-  searchWeb,
-  searchWebBatch: (queries: string[]) => Promise.all(queries.map((q) => searchWeb(q))),
+  searchWeb: (query: string, signal?: AbortSignal) =>
+    Promise.resolve(searchWeb(query, signal)).then(toOutcome),
+  searchWebBatch: (queries: string[], signal?: AbortSignal) =>
+    Promise.all(queries.map((q) => Promise.resolve(searchWeb(q, signal)).then(toOutcome))),
+  withSearchQuestion: (fn: () => unknown) => fn(),
 }));
 
 /**
@@ -3127,5 +3142,160 @@ describe("model-versus-market divergence", () => {
       "The model is 11.5 percentage points higher than the market.",
       []
     )).toBe(false);
+  });
+});
+
+/**
+ * Answering one question costs ~1-3 inference calls and ~6 searches. Running
+ * both on one MiniMax coding-plan subscription meant retrieval spent the quota
+ * the answer needed -- and a developer running Claude Code on the same
+ * subscription spent it too. Inference now resolves its own credential.
+ */
+describe("inference credential configuration", () => {
+  const envKeys = [
+    "MINIMAX_API_KEY",
+    "MINIMAX_INFERENCE_API_KEY",
+    "MINIMAX_BASE_URL",
+    "MINIMAX_INFERENCE_BASE_URL",
+  ] as const;
+
+  function withEnv(values: Partial<Record<(typeof envKeys)[number], string>>, run: () => void) {
+    const saved = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+    for (const key of envKeys) delete process.env[key];
+    Object.assign(process.env, values);
+    try {
+      run();
+    } finally {
+      for (const key of envKeys) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key] as string;
+      }
+      resetInferenceStatus();
+    }
+  }
+
+  it("runs inference on a pay-as-you-go key with no subscription key present", () => {
+    withEnv({ MINIMAX_INFERENCE_API_KEY: "payg-open-platform-key" }, () => {
+      const prepared = prepareAsk("Who wins the Premier League?", []);
+      const client = prepared.client as unknown as { apiKey: string; baseURL: string };
+      expect(client.apiKey).toBe("payg-open-platform-key");
+      // The Anthropic-compatible interface and default host are unchanged: this
+      // is a credential swap, not a client rewrite.
+      expect(client.baseURL).toBe("https://api.minimax.io/anthropic");
+      expect(getInferenceStatus()).toMatchObject({
+        configured: true,
+        dedicatedKey: true,
+        keySource: "MINIMAX_INFERENCE_API_KEY",
+      });
+    });
+  });
+
+  it("prefers the inference key over the shared one when both are set", () => {
+    withEnv(
+      { MINIMAX_API_KEY: "shared-subscription-key", MINIMAX_INFERENCE_API_KEY: "payg-key" },
+      () => {
+        const client = prepareAsk("Who wins the Premier League?", []).client as unknown as
+          { apiKey: string };
+        expect(client.apiKey).toBe("payg-key");
+      }
+    );
+  });
+
+  it("keeps every existing deployment working on MINIMAX_API_KEY alone", () => {
+    withEnv({ MINIMAX_API_KEY: "shared-subscription-key" }, () => {
+      const client = prepareAsk("Who wins the Premier League?", []).client as unknown as
+        { apiKey: string };
+      expect(client.apiKey).toBe("shared-subscription-key");
+      expect(getInferenceStatus()).toMatchObject({
+        configured: true,
+        // Visible on /ready precisely so this configuration is not silent.
+        dedicatedKey: false,
+        keySource: "MINIMAX_API_KEY",
+      });
+    });
+  });
+
+  it("honours a region-scoped inference host without moving search", () => {
+    withEnv(
+      {
+        MINIMAX_INFERENCE_API_KEY: "payg-key",
+        MINIMAX_INFERENCE_BASE_URL: "https://api.minimaxi.com/anthropic",
+      },
+      () => {
+        const client = prepareAsk("Who wins the Premier League?", []).client as unknown as
+          { baseURL: string };
+        expect(client.baseURL).toBe("https://api.minimaxi.com/anthropic");
+        expect(getInferenceStatus().endpointHost).toBe("api.minimaxi.com");
+      }
+    );
+  });
+
+  it("fails closed when no inference credential is configured at all", () => {
+    withEnv({}, () => {
+      expect(() => prepareAsk("Who wins the Premier League?", []))
+        .toThrow(AppError);
+      expect(getInferenceStatus()).toMatchObject({ configured: false, keySource: "unset" });
+    });
+  });
+
+  it("never reports the key itself in inference status", () => {
+    withEnv({ MINIMAX_INFERENCE_API_KEY: "payg-open-platform-key" }, () => {
+      expect(JSON.stringify(getInferenceStatus())).not.toContain("payg-open-platform-key");
+    });
+  });
+
+  it("counts a genuine vendor throttle as an inference failure", async () => {
+    resetInferenceStatus();
+    const throttle = Object.assign(new Error("rate limited"), { status: 429 });
+    Object.setPrototypeOf(throttle, Anthropic.APIError.prototype);
+    await expect(trackedInference(() => Promise.reject(throttle))).rejects.toBe(throttle);
+    expect(getInferenceStatus()).toMatchObject({
+      failures: 1,
+      consecutiveFailures: 1,
+      lastFailureStatus: 429,
+    });
+    expect(getInferenceStatus().lastThrottledAt).not.toBeNull();
+    resetInferenceStatus();
+  });
+
+  it("does not blame inference for a reader who cancelled the request", async () => {
+    // /ready's inference block is how an operator answers "is the inference
+    // quota healthy?". Readers close tabs constantly, so counting an abort as
+    // a failure left that block permanently accusing a vendor that was fine.
+    resetInferenceStatus();
+    const aborted = new AbortController();
+    aborted.abort();
+    const cancellation = Object.assign(new Error("Request was aborted."), { name: "AbortError" });
+    await expect(
+      trackedInference(() => Promise.reject(cancellation), aborted.signal)
+    ).rejects.toBe(cancellation);
+    expect(getInferenceStatus()).toMatchObject({
+      failures: 0,
+      consecutiveFailures: 0,
+      lastFailureAt: null,
+      lastFailureStatus: null,
+    });
+    resetInferenceStatus();
+  });
+
+  it("recognises a cancellation from the error alone when no signal is passed", async () => {
+    resetInferenceStatus();
+    const cancellation = Object.assign(new Error("Request was aborted."), { name: "AbortError" });
+    await expect(trackedInference(() => Promise.reject(cancellation))).rejects.toBe(cancellation);
+    expect(getInferenceStatus()).toMatchObject({ failures: 0, consecutiveFailures: 0 });
+    resetInferenceStatus();
+  });
+
+  it("does not record a cancelled attempt as a success either", async () => {
+    // Nothing was learned about the vendor, so the attempt belongs in neither
+    // column: an abort counted as a success would mask a real outage.
+    resetInferenceStatus();
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(
+      trackedInference(() => Promise.reject(new Error("aborted")), aborted.signal)
+    ).rejects.toThrow();
+    expect(getInferenceStatus()).toMatchObject({ totalCalls: 0, failures: 0 });
+    resetInferenceStatus();
   });
 });
