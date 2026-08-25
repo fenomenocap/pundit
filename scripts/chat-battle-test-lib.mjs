@@ -602,6 +602,33 @@ export function validateOneXTwoMarket(legs) {
   };
 }
 
+/**
+ * The high line's consequence stated in a later sentence than its premise. The
+ * consequence sentence has to name the line being played through -- otherwise
+ * an unrelated "runs in behind against a low block" two sentences later counts
+ * as the trade-off having been acknowledged.
+ */
+function acknowledgesSpaceBehindAcrossSentences(text) {
+  const sentences = String(text).split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
+  const premise = /\bhigh\s+(?:defensive\s+)?line\b|\b(?:back\s+(?:four|line)|defen[cs]e)\b[^.!?\n]{0,40}\b(?:push|step|move)\w*\s+up\b/i;
+  const consequence = /\bin behind\b|\bclean run (?:through|on goal)\b|\bone[- ]on[- ]one\b[^.!?\n]{0,45}\b(?:keeper|goalkeeper)\b|\b(?:more|greater|larger|wider|bigger)\b[^.!?\n]{0,25}\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i;
+  // The consequence has to be about this defence, not a different structure.
+  const sameStructure = /\b(?:back\s+(?:four|line)|defen[cs]e|defensive\s+line|first\s+line|last\s+line|centre-?backs?|center-?backs?|high\s+line)\b/i;
+  const otherStructure = /\b(?:low|deep|mid)[- ]block\b/i;
+  for (let index = 0; index < sentences.length; index += 1) {
+    if (!premise.test(sentences[index])) continue;
+    // The premise sentence plus the two that follow it: a trade-off stated
+    // further away than that is not this sentence's trade-off.
+    for (let ahead = index; ahead <= Math.min(index + 2, sentences.length - 1); ahead += 1) {
+      const region = sentences[ahead];
+      if (!consequence.test(region)) continue;
+      if (otherStructure.test(region)) continue;
+      if (ahead === index || sameStructure.test(region)) return true;
+    }
+  }
+  return false;
+}
+
 export function validateResponseCorrectness(answer, citations, grounding, expectation = {}) {
   const text = typeof answer === "string" ? answer : "";
   const citationList = Array.isArray(citations) ? citations : [];
@@ -900,13 +927,27 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       // channel need not literally be called "more space" to be correct.
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,180}\b(?:passes?|balls?|runs?|runners?|play)\b[^.!?\n]{0,45}\bin behind\b/i,
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,180}\bclean run (?:through|on goal)\b/i,
+      // The commonest shape in production prose, and the one this list could
+      // not see: the high line is established in one sentence and its
+      // consequence stated in the next ("...compresses the pitch. The trade-off
+      // is space: if the first line is beaten, the back four are already close
+      // to halfway, so a single pass in behind turns into a one-on-one with the
+      // keeper"). Every single-sentence pattern here stops at `[^.!?\n]`, so a
+      // correct answer failed for putting a full stop in it.
+      //
+      // Crossing the boundary on the consequence alone is too weak -- "A high
+      // line compacts midfield. The winger makes runs in behind against a low
+      // block" is about a different structure entirely. So the consequence
+      // sentence must itself name the line being played through, and must not
+      // be about a deep block.
+      acknowledgesSpaceBehindAcrossSentences(text),
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,180}\bsweeper[- ]keeper\b[^.!?\n]{0,80}\b(?:sweep|cover)\w*\b[^.!?\n]{0,45}\bbehind\b/i,
       // Production phrasing often establishes the high line in one Markdown
       // sentence and states the geometry in the next bullet sentence.
       /\b(?:back\s+(?:four|line)|defen[cs](?:e|ive\s+line))\b[\s\S]{0,90}\b(?:push|step|move)\w*\s+up\b[\s\S]{0,140}\b(?:larger|greater|more|wider|bigger)\b[^.!?\n]{0,30}\b(?:gap|space|room)\b[^.!?\n]{0,40}\bbehind\b/i,
       /\bhigh\s+(?:defensive\s+)?line\b[\s\S]{0,90}\b(?:push|step|move)\w*\b[^.!?\n]{0,30}\b(?:back\s+(?:four|line)|defen[cs]e)\b[^.!?\n]{0,20}\bup\b[\s\S]{0,140}\b(?:larger|greater|more|wider|bigger)\b[^.!?\n]{0,30}\b(?:gap|space|room)\b[^.!?\n]{0,40}\bbehind\b/i,
       /\b(?:back\s+(?:four|line)|defen[cs]e)\b[^.!?\n]{0,80}\b(?:advance|push|step|move)\w*\b[\s\S]{0,100}\b(?:open|create|leave)\w*\b[^.!?\n]{0,30}\b(?:larger|greater|more|wider|bigger)\b[^.!?\n]{0,20}\bchannel\b[^.!?\n]{0,30}\bbehind\b/i,
-    ].some((pattern) => pattern.test(text));
+    ].some((pattern) => (typeof pattern === "boolean" ? pattern : pattern.test(text)));
   }
   if (expectation.expectCorrectionAcknowledgement) {
     assertions.correctionAcknowledged = /\b(?:you(?:'re| are) right|correction|correct(?:ed|ion)?|sorry|apolog)/i.test(text);
