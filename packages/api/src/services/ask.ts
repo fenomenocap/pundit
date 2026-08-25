@@ -6714,11 +6714,50 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
       rows.map((row) => row.team).join(", ") + ".",
     ].join("\n");
   }
+  const played = Math.max(...rows.map((row) => row.playedGames), 0);
+  const tableRows = rows.slice(0, 5).map((row) =>
+    `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} `
+    + `${row.playedGames === 1 ? "match" : "matches"}, goal difference `
+    + `${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
+  );
+
+  // "What is the strongest caveat to that ranking?" is a question about the
+  // table, not a request for the table. Reprinting the standings answered a
+  // question nobody asked and left the actual one unanswered -- and the caveat
+  // is a property of the payload, so the server can state it exactly.
+  if (/\bcaveat|limitation|how (?:reliable|meaningful|strong)|weak(?:ness|est)?\b|why (?:might|would).{0,30}\bwrong\b/i.test(question)) {
+    const leaders = rows.slice(0, 2);
+    const tiedOnPoints = leaders.length === 2 && leaders[0].points === leaders[1].points;
+    const matchWord = played === 1 ? "match" : "matches";
+    const caveat = played === 0
+      ? "No matches have been played, so the ordering reflects the provider's "
+        + "tie-breaking rather than anything that happened on the pitch."
+      : "Sample size. Every club has played "
+        + `${played} ${matchWord}, so the table measures `
+        + (played < 4 ? "almost nothing about relative strength" : "a small fraction of the season")
+        + ". "
+        + (tiedOnPoints
+          ? "The top clubs are level on points and separated only by goal difference, so "
+          : "So ")
+        + "one result moves a club several places, and this ordering will bear "
+        + "little resemblance to the final table.";
+    return [
+      "**Strongest caveat**",
+      caveat,
+      "",
+      "**What it does establish**",
+      "The points, matches played and goal differences above are exact as supplied. "
+        + "What they do not support is a title-race ranking"
+        + (played < 6 ? " at this stage of the season" : "") + ".",
+      "",
+      "**Current table**",
+      ...tableRows,
+    ].join("\n");
+  }
+
   return [
     "**Current table**",
-    ...rows.slice(0, 5).map((row) =>
-      `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} matches, goal difference ${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
-    ),
+    ...tableRows,
     "",
     "The positions and figures above come directly from the supplied standings; no title probability is inferred from them.",
   ].join("\n");
