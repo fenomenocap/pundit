@@ -1092,6 +1092,46 @@ describe("current-news evidence hardening", () => {
       )).toBeNull();
     });
 
+    it("answers a caveat question with the caveat, not the table again", () => {
+      // "What is the strongest caveat to that ranking?" is a question about the
+      // table. Reprinting the standings answered a question nobody asked and
+      // left the actual one unanswered.
+      const table = buildCompetitionGrounding("eng.1", [
+        {
+          competitionId: "eng.1", position: 1, team: "Brighton", playedGames: 1,
+          won: 1, draw: 0, lost: 0, points: 3, goalsFor: 4, goalsAgainst: 0,
+          goalDifference: 4, group: null, advanced: false,
+        },
+        {
+          competitionId: "eng.1", position: 2, team: "Arsenal", playedGames: 1,
+          won: 1, draw: 0, lost: 0, points: 3, goalsFor: 3, goalsAgainst: 0,
+          goalDifference: 3, group: null, advanced: false,
+        },
+      ], new Date("2026-08-24T07:00:00.000Z"));
+      const answer = deterministicGroundedResponse(
+        "What is the strongest caveat to that table-based ranking?",
+        table
+      ) as string;
+      expect(answer).toContain("**Strongest caveat**");
+      expect(answer).toContain("Sample size");
+      // The specific weakness of this table, not a generic hedge.
+      expect(answer).toContain("level on points and separated only by goal difference");
+      expect(answer).toContain("do not support");
+    });
+
+    it("counts a single match in the singular", () => {
+      const table = buildCompetitionGrounding("eng.1", [
+        {
+          competitionId: "eng.1", position: 1, team: "Brighton", playedGames: 1,
+          won: 1, draw: 0, lost: 0, points: 3, goalsFor: 4, goalsAgainst: 0,
+          goalDifference: 4, group: null, advanced: false,
+        },
+      ], new Date("2026-08-24T07:00:00.000Z"));
+      const answer = deterministicGroundedResponse("What does the current table show?", table) as string;
+      expect(answer).toContain("from 1 match,");
+      expect(answer).not.toContain("1 matches");
+    });
+
     const seasonGroundingWith = (
       standings: Array<{ position: number; team: string; playedGames: number; points: number; goalDifference: number }>,
       titleProbabilities: Array<{ team: string; probability: number }>
