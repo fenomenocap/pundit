@@ -25,7 +25,13 @@ import {
 import { getActiveFixtures } from "./active-fixtures";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
 import { clubRatingsAreCurrent, getCachedClubRatings } from "./club-ratings";
-import { searchWeb, searchWebBatch} from "./web-search";
+import {
+  searchWeb,
+  searchWebBatch,
+  withSearchQuestion,
+  type WebSearchFailureReason,
+  type WebSearchOutcome,
+} from "./web-search";
 import { verifyClaimsOnce } from "./claim-verifier";
 import {
   retrieveEvidencePages,
@@ -37,6 +43,7 @@ import {
   splitPriceSafeSentences,
   segmentAnswer,
   TEAM_NEWS_CLAIM,
+  assertsSquadAvailability,
 } from "./answer-provenance";
 import {
   reviseAnswerWithClaimDecisions,
@@ -202,6 +209,26 @@ export interface EvidenceBundle {
   results: EvidenceSource[];
   queries: string[];
   providerCalls?: number;
+  /**
+   * Why retrieval came back thin, when it did. An empty `results` used to be
+   * indistinguishable from a search that found nothing; carrying the reason
+   * lets the request log say "throttled" rather than leaving an operator to
+   * conclude the model regressed.
+   */
+  searchDegradedReason?: WebSearchFailureReason | null;
+  /** Searches this bundle ran that returned no evidence for infrastructure reasons. */
+  degradedSearches?: number;
+}
+
+/**
+ * Folds one search outcome into the bundle's degradation record. Genuine
+ * emptiness is deliberately not recorded: the web having no answer is a fact
+ * about the world, not a fault.
+ */
+function noteSearchOutcome(bundle: EvidenceBundle | undefined, outcome: WebSearchOutcome): void {
+  if (!bundle || outcome.status !== "degraded") return;
+  bundle.degradedSearches = (bundle.degradedSearches ?? 0) + 1;
+  bundle.searchDegradedReason = outcome.reason;
 }
 
 export interface AskVerification {
@@ -308,11 +335,117 @@ const WEB_SEARCH_TOOL = {
 };
 
 const MINIMAX_MODEL = process.env.MINIMAX_MODEL ?? "MiniMax-M3";
+
+/**
+ * Inference credentials, resolved separately from search.
+ *
+ * Answering one question costs ~1-3 inference calls *and* ~6 searches. When
+ * both ran on one coding-plan subscription key, the searches spent the quota
+ * the answer needed -- and a developer running Claude Code on the same
+ * subscription spent it too. MINIMAX_INFERENCE_API_KEY points inference at an
+ * Open Platform pay-as-you-go key, whose quota nothing else touches.
+ *
+ * The fallback to MINIMAX_API_KEY is what keeps this a configuration change:
+ * every existing deployment keeps working untouched, and the wire client,
+ * model, and Anthropic-compatible request shape are all unchanged.
+ */
+function inferenceApiKey(): string | undefined {
+  return process.env.MINIMAX_INFERENCE_API_KEY || process.env.MINIMAX_API_KEY;
+}
+
 // The international host. Keys are region-scoped: a key issued for mainland
 // China authenticates only against https://api.minimaxi.com/anthropic, so that
-// deployment overrides this rather than editing the default.
-const MINIMAX_BASE_URL =
-  process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/anthropic";
+// deployment overrides this rather than editing the default. Pay-as-you-go and
+// coding-plan keys can also live on different hosts, hence the inference-only
+// override ahead of the shared one.
+function inferenceBaseUrl(): string {
+  return process.env.MINIMAX_INFERENCE_BASE_URL
+    ?? process.env.MINIMAX_BASE_URL
+    ?? "https://api.minimax.io/anthropic";
+}
+
+export interface InferenceStatus {
+  /** Which environment variable supplied the key -- never the key itself. */
+  keySource: "MINIMAX_INFERENCE_API_KEY" | "MINIMAX_API_KEY" | "unset";
+  /** True when inference is on its own quota rather than sharing search's. */
+  dedicatedKey: boolean;
+  configured: boolean;
+  model: string;
+  /** Host only. A base URL may carry a path but never a credential. */
+  endpointHost: string | null;
+  lastGoodAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureStatus: number | null;
+  lastThrottledAt: string | null;
+  consecutiveFailures: number;
+  totalCalls: number;
+  failures: number;
+}
+
+const inferenceHealth = {
+  lastGoodAt: null as string | null,
+  lastFailureAt: null as string | null,
+  lastFailureStatus: null as number | null,
+  lastThrottledAt: null as string | null,
+  consecutiveFailures: 0,
+  totalCalls: 0,
+  failures: 0,
+};
+
+export function recordInferenceSuccess(): void {
+  inferenceHealth.totalCalls += 1;
+  inferenceHealth.lastGoodAt = new Date().toISOString();
+  inferenceHealth.consecutiveFailures = 0;
+}
+
+export function recordInferenceFailure(httpStatus: number | null): void {
+  inferenceHealth.totalCalls += 1;
+  inferenceHealth.failures += 1;
+  inferenceHealth.consecutiveFailures += 1;
+  inferenceHealth.lastFailureAt = new Date().toISOString();
+  inferenceHealth.lastFailureStatus = httpStatus;
+  if (httpStatus === 429) {
+    inferenceHealth.lastThrottledAt = inferenceHealth.lastFailureAt;
+    // Separated from search throttling on purpose: the two share a vendor and
+    // used to share a key, so "which quota ran out" was unanswerable from logs.
+    console.warn(JSON.stringify({
+      event: "inference_rate_limited",
+      provider: "minimax",
+      dedicatedKey: Boolean(process.env.MINIMAX_INFERENCE_API_KEY),
+      consecutiveFailures: inferenceHealth.consecutiveFailures,
+    }));
+  }
+}
+
+export function resetInferenceStatus(): void {
+  inferenceHealth.lastGoodAt = null;
+  inferenceHealth.lastFailureAt = null;
+  inferenceHealth.lastFailureStatus = null;
+  inferenceHealth.lastThrottledAt = null;
+  inferenceHealth.consecutiveFailures = 0;
+  inferenceHealth.totalCalls = 0;
+  inferenceHealth.failures = 0;
+}
+
+export function getInferenceStatus(): InferenceStatus {
+  const dedicated = Boolean(process.env.MINIMAX_INFERENCE_API_KEY);
+  let endpointHost: string | null = null;
+  try {
+    endpointHost = new URL(inferenceBaseUrl()).host;
+  } catch {
+    endpointHost = null;
+  }
+  return {
+    keySource: dedicated
+      ? "MINIMAX_INFERENCE_API_KEY"
+      : process.env.MINIMAX_API_KEY ? "MINIMAX_API_KEY" : "unset",
+    dedicatedKey: dedicated,
+    configured: Boolean(inferenceApiKey()),
+    model: MINIMAX_MODEL,
+    endpointHost,
+    ...inferenceHealth,
+  };
+}
 // MiniMax counts its internal reasoning against max_tokens, and that budget is
 // shared with the visible answer. At 1,536 a competition answer of ~100 output
 // tokens could still stop on `max_tokens`, or come back with the whole budget
@@ -409,10 +542,44 @@ const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
  * genuinely needs an outside source? Market prose is excluded outright: it
  * shares vocabulary with team news and has its own dedicated guard.
  */
+/**
+ * A selection claim about a *named individual* -- "Bernd Leno is the expected
+ * starter in goal", "Chelsea are expected to start with a back four shaped
+ * around Cucurella, Tosin and Disasi". Neither carries an availability verb, so
+ * both walked past the availability patterns above and reached readers with no
+ * source at all, in answers whose other squad claims were properly cited.
+ *
+ * The status wording is kept tight on purpose. The evaluator's equivalent
+ * accepts bare `out` and `fit`, which in Pundit's own prose appear constantly
+ * in sentences about scorelines and form; matching those here would put model
+ * output back in front of a guard that deletes it. Selection verbs and squad
+ * shape are the class that actually needs a source.
+ */
+const NAMED_SELECTION_STATUS =
+  /\b(?:expected\s+(?:starter|to\s+start|XI|line-?up)|likely\s+(?:starter|to\s+start)|predicted\s+(?:XI|line-?up|starters?)|starts?\s+(?:in\s+goal|at\s+(?:left|right|centre|center)-back|up\s+front)|(?:back|front)\s+(?:three|four|five)|slot(?:s|ting)?\s+in\s+at|first-choice)\b/i;
+
+/**
+ * A capitalised token that is plausibly a person rather than a club, a
+ * competition or a sentence opener. Clubs are excluded by name where the
+ * grounding knows them; the rest is a deliberately conservative stop list.
+ */
+const NOT_A_PLAYER = new Set([
+  "The", "A", "An", "If", "No", "Both", "Either", "Neither", "This", "That", "These", "Those",
+  "Pundit", "Premier", "League", "Champions", "Kalshi", "Polymarket", "Stake", "Model",
+  "Team", "Confirmed", "What", "When", "Where", "Why", "How", "It", "They", "He", "She",
+  "Home", "Away", "Draw", "Over", "Under", "Both", "Yes", "No",
+]);
+
+function namesAnIndividual(sentence: string): boolean {
+  const capitalised = sentence.match(/\b[A-Z][a-zÀ-ÿ'’.-]{2,}\b/g) ?? [];
+  return capitalised.some((token) => !NOT_A_PLAYER.has(token));
+}
+
 function assertsTeamNews(sentence: string): boolean {
-  if (TEAM_NEWS_CLAIM.test(sentence)) return true;
+  if (assertsSquadAvailability(sentence)) return true;
   if (MARKET_SUBJECT.test(sentence)) return false;
-  return SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence);
+  if (SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence)) return true;
+  return NAMED_SELECTION_STATUS.test(sentence) && namesAnIndividual(sentence);
 }
 
 /**
@@ -641,9 +808,11 @@ async function buildEvidenceBundle(
   // not cost the reader one round trip per question it needs answered. A
   // failing search degrades that angle, never the whole bundle.
   const found = await searchWebBatch(planned, signal);
-  const results: EvidenceSource[] = [];
+  const bundle: EvidenceBundle = { queries: planned, providerCalls: planned.length, results: [] };
+  for (const outcome of found) noteSearchOutcome(bundle, outcome);
+  const results = bundle.results;
   const seen = new Set<string>();
-  found.flat().forEach((result) => {
+  found.flatMap((outcome) => outcome.results).forEach((result) => {
     const key = (result.link || result.title || "").toLocaleLowerCase();
     if (!key || seen.has(key) || results.length >= MAX_EVIDENCE_RESULTS) return;
     seen.add(key);
@@ -659,8 +828,12 @@ async function buildEvidenceBundle(
     event: "evidence_bundle_built",
     queries: planned.length,
     results: results.length,
+    // Present only when retrieval itself failed. A thin answer with a reason
+    // here is a retrieval outage; a thin answer without one is the web.
+    degradedSearches: bundle.degradedSearches ?? 0,
+    searchDegradedReason: bundle.searchDegradedReason ?? null,
   }));
-  return { queries: planned, providerCalls: planned.length, results };
+  return bundle;
 }
 
 const OFFICIAL_EVIDENCE_DOMAINS = [
@@ -1677,6 +1850,41 @@ function mentionedTeamOutcome(sentence: string, grounding: Grounding): "home" | 
  * the structured grounding. Numeric payloads remain untouched; ambiguous prose
  * is omitted rather than rewritten into a new football claim.
  */
+/**
+ * The agreement band the answer prompt itself states: inside about two points
+ * an outcome is priced about right, outside it there is a gap to report. The
+ * guard and the instruction have to use one number, or the guard deletes prose
+ * that followed its brief.
+ */
+const MARKET_AGREEMENT_BAND_POINTS = 2;
+
+/**
+ * Model and market agree on this outcome. Deliberately narrower than "no
+ * value": a negative gap genuinely offers nothing to take, and saying so is
+ * the instructed reading rather than a contradiction.
+ */
+const ASSERTS_MARKET_AGREEMENT =
+  /\b(?:priced\s+(?:about\s+right|right|fairly|correctly|accurately|efficiently)|fairly\s+priced|efficiently\s+priced|accurately\s+priced|(?:in|on)\s+line\s+with\s+(?:the\s+)?(?:model|pundit)|(?:model|pundit)[^.!?\n]{0,40}\b(?:agrees?\s+with|matches|tracks)\b[^.!?\n]{0,30}\b(?:market|price)|no\s+(?:meaningful|material|real|significant)\s+(?:disagreement|divergence|gap|difference))\b/i;
+
+/**
+ * Every differenced gap the payload holds for the named outcomes, across all
+ * market sources. Read from `marketDivergence` rather than re-differenced here,
+ * so the guard measures the same rounded figures the answer was told to quote.
+ */
+function outcomeGapPoints(
+  grounding: Grounding,
+  outcomes: readonly OneXTwoOutcome[]
+): number[] {
+  if (!outcomes.length) return [];
+  const wanted = new Set(outcomes);
+  return (grounding.marketDivergence ?? []).flatMap((divergence) =>
+    divergence.legs
+      .filter((leg) => wanted.has(leg.outcome))
+      .map((leg) => leg.gapPoints)
+      .filter((gap) => Number.isFinite(gap))
+  );
+}
+
 export function sanitizeGroundedMatchNarrative(answer: string, grounding: Grounding): string {
   const homeEnd = new RegExp(
     `\\b(?:lots? of|most|all)(?: the)? goals?[^.!?\\n]{0,35}\\bat ${escapedPattern(grounding.home)}['’]s end\\b`,
@@ -1771,6 +1979,19 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
       const saysModelLower = /\b(?:model|pundit)[^.!?\n]{0,90}\b(?:lower|below)\b[^.!?\n]{0,60}\b(?:market|price)|\b(?:market|price)[^.!?\n]{0,90}\b(?:higher|above)\b[^.!?\n]{0,60}\b(?:model|pundit)/i.test(sentence);
       if (gaps.length && ((saysModelHigher && gaps.every((gap) => gap <= 0))
         || (saysModelLower && gaps.every((gap) => gap >= 0)))) return drop();
+
+      // A fair-pricing verdict is a claim about a number the payload already
+      // holds. The prompt sets the agreement band at about two points, so
+      // calling an outcome "priced about right" when the payload differences
+      // it at twenty contradicts the same answer's own gap sentence -- which
+      // is exactly what a reader was served: a stated 20-point Chelsea gap,
+      // then "Chelsea is priced about right" two lines later. Only agreement
+      // claims are caught; "no edge" on a negative gap is the correct reading
+      // of a market priced above the model, and stays.
+      if (ASSERTS_MARKET_AGREEMENT.test(sentence)) {
+        const divergences = outcomeGapPoints(grounding, mentionedOutcomes);
+        if (divergences.some((gap) => Math.abs(gap) > MARKET_AGREEMENT_BAND_POINTS)) return drop();
+      }
     }
 
     if (claimedTeam
@@ -5163,7 +5384,11 @@ async function runToolUses(
       && typeof (toolUse.input as { query?: unknown })?.query === "string"
         ? (toolUse.input as { query: string }).query
         : "";
-    const found = query && reserveProviderCall(bundle) ? await searchWeb(query, signal) : [];
+    const outcome = query && reserveProviderCall(bundle)
+      ? await searchWeb(query, signal)
+      : null;
+    if (outcome) noteSearchOutcome(bundle, outcome);
+    const found = outcome?.results ?? [];
     const sources = found.map((result, resultIndex) => ({
       id: `S${sourceOffset + toolIndex * 6 + resultIndex + 1}`,
       title: result.title,
@@ -5180,7 +5405,13 @@ async function runToolUses(
       tool_use_id: toolUse.id,
       content: found.length
         ? JSON.stringify(sources)
-        : "No search results were returned for this query.",
+        // The model is told which of the two it is. "Search is unavailable"
+        // must make it abstain or lean on grounding; "the web had nothing"
+        // is a finding it may report.
+        : outcome?.status === "degraded"
+          ? "Web search is temporarily unavailable for this request. Do not claim anything "
+            + "current; answer from the grounding data or say the information could not be verified."
+          : "No search results were returned for this query.",
     };
   }));
 
@@ -5268,8 +5499,9 @@ async function runLeakedSearchQueries(
     if (!reserveProviderCall(bundle)) break;
     // A search failure degrades the recovery to grounding-only, exactly as it
     // does on the structured tool path; it must not fail the request.
-    const found = await searchWeb(query, signal).catch(() => []);
-    const sources = found.map((result) => ({
+    const outcome = await searchWeb(query, signal).catch(() => null);
+    if (outcome) noteSearchOutcome(bundle, outcome);
+    const sources = (outcome?.results ?? []).map((result) => ({
       id: `S${(ordinal += 1)}`,
       title: result.title,
       url: result.link,
@@ -5353,7 +5585,7 @@ async function finalProseTurn(
   if (providerCallsLeft(bundle) < 1 || !reserveProviderCall(bundle)) return null;
   console.warn(JSON.stringify({ event: "tool_loop_exhausted_prose_retry" }));
   try {
-    return await client.messages.create(
+    return await trackedInference(() => client.messages.create(
       analysisRequestParams(systemPrompt, [
         ...convo,
         {
@@ -5364,7 +5596,7 @@ async function finalProseTurn(
         },
       ], false),
       { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
-    );
+    ), signal);
   } catch {
     return null;
   }
@@ -5396,10 +5628,10 @@ export async function generateAnalysis(
         if (!reserveProviderCall(bundle)) {
           throw new AppError(504, "Analysis request exhausted its provider-call budget.");
         }
-        response = await client.messages.create(
+        response = await trackedInference(() => client.messages.create(
           analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
           { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
-        );
+        ), signal);
       } catch (error) {
         if (signal?.aborted || retried || !isRetryableStreamError(error)
           || Date.now() - startedAt >= OVERALL_DEADLINE_MS) {
@@ -5529,7 +5761,7 @@ export async function generateAnalysisStream(
           // here can be replayed by a second attempt and duplicated.
           flusher.push(text);
         });
-        response = await stream.finalMessage();
+        response = await trackedInference(() => stream.finalMessage(), signal);
       } catch (error) {
         if (!shouldContinue()) throw new AppError(499, "Client disconnected.");
         if (deltaSeen || anyDeltaSeen || retried || !isRetryableStreamError(error)) {
@@ -5677,7 +5909,7 @@ export function prepareAsk(
     currentMessage = `User question: ${question}`;
   }
 
-  const apiKey = process.env.MINIMAX_API_KEY;
+  const apiKey = inferenceApiKey();
   if (!apiKey) throw new AppError(502, "Analysis service is temporarily unavailable.");
 
   return {
@@ -5685,9 +5917,43 @@ export function prepareAsk(
     systemPrompt,
     messages: [...history, { role: "user", content: currentMessage }],
     tier: grounding?.kind === "fixture" ? "general" : grounding?.kind ?? "general",
-    client: new Anthropic({ apiKey, baseURL: MINIMAX_BASE_URL, maxRetries: 0 }),
+    client: new Anthropic({ apiKey, baseURL: inferenceBaseUrl(), maxRetries: 0 }),
     candidateUnrecognized: context.tier === "candidate",
   };
+}
+
+/**
+ * Records one inference attempt against the health counters /ready reports.
+ * Every call to MiniMax goes through here so an operator can tell an inference
+ * quota problem from a search quota problem without reading answer text.
+ */
+export async function trackedInference<T>(
+  attempt: () => Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  try {
+    const result = await attempt();
+    recordInferenceSuccess();
+    return result;
+  } catch (error) {
+    // A reader closing the tab is not an inference fault, and counting it as
+    // one is worse than not counting it at all: `consecutiveFailures` and
+    // `lastFailureAt` on /ready are how an operator answers "is the inference
+    // quota healthy?", and cancellations are common enough to keep that block
+    // permanently pointing at a vendor that is fine. Abandoned attempts are
+    // recorded nowhere rather than as a success, since nothing was learned
+    // about the vendor either way.
+    if (isCancellation(error, signal)) throw error;
+    recordInferenceFailure(error instanceof Anthropic.APIError ? error.status ?? null : null);
+    throw error;
+  }
+}
+
+/** A request Pundit itself abandoned, as opposed to one MiniMax refused. */
+function isCancellation(error: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true;
+  if (error instanceof Anthropic.APIUserAbortError) return true;
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function mapAnalysisError(err: unknown): never {
@@ -6370,13 +6636,41 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
   const allZero = grounding.standings.length > 0
     && grounding.standings.every((row) => row.playedGames === 0 && row.points === 0);
   const tableSourceExclusive = /\b(?:based on|using|from)\s+(?:only\s+)?(?:the\s+)?current (?:table|standings)\b|\bcurrent (?:table|standings)\s+(?:alone|only)\b/i.test(question);
-  if (allZero && tableSourceExclusive) {
+  // Source fidelity does not begin on matchday one. A reader who restricts the
+  // evidence to the current table gets the table, whatever it currently says:
+  // the title probabilities come from club-strength ratings and the remaining
+  // schedule, and handing those back instead is a different question answered
+  // with different evidence. Scoping this to an all-zero table meant the
+  // substitution resumed silently the moment one match was played -- a reader
+  // asking for a table-sourced ranking after matchday one was served a 10,000-run
+  // Monte Carlo with no indication the table had not produced it.
+  if (tableSourceExclusive) {
+    if (allZero) {
+      return [
+        "**Current table**",
+        `All ${grounding.standings.length} listed clubs have played 0 matches and have 0 points.`,
+        "",
+        "**Answer**",
+        "The current table alone does not establish an on-field ranking or identify a most likely champion. A season forecast would also use club-strength ratings and the remaining fixture schedule, which goes beyond the requested table-only evidence.",
+      ].join("\n");
+    }
+    const ordered = [...grounding.standings].sort((a, b) => a.position - b.position);
+    const played = Math.max(...ordered.map((row) => row.playedGames));
     return [
       "**Current table**",
-      `All ${grounding.standings.length} listed clubs have played 0 matches and have 0 points.`,
+      ordered.slice(0, 5).map((row) =>
+        `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} `
+        + `${row.playedGames === 1 ? "match" : "matches"}, goal difference `
+        + `${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
+      ).join("\n"),
       "",
-      "**Answer**",
-      "The current table alone does not establish an on-field ranking or identify a most likely champion. A season forecast would also use club-strength ratings and the remaining fixture schedule, which goes beyond the requested table-only evidence.",
+      "**What the table establishes**",
+      `This ordering is the standings as supplied, after ${played} `
+        + `${played === 1 ? "match" : "matches"}. `
+        + `${played < 6
+          ? "That is far too small a sample to rank title contenders: at this stage the table mostly reflects fixture order, and one result moves a club many places. "
+          : ""}`
+        + "Title probabilities are not inferred from it — those would use club-strength ratings and the remaining fixture schedule, which is evidence beyond the table you asked me to use.",
     ].join("\n");
   }
   const leader = title[0];
@@ -6420,11 +6714,50 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
       rows.map((row) => row.team).join(", ") + ".",
     ].join("\n");
   }
+  const played = Math.max(...rows.map((row) => row.playedGames), 0);
+  const tableRows = rows.slice(0, 5).map((row) =>
+    `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} `
+    + `${row.playedGames === 1 ? "match" : "matches"}, goal difference `
+    + `${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
+  );
+
+  // "What is the strongest caveat to that ranking?" is a question about the
+  // table, not a request for the table. Reprinting the standings answered a
+  // question nobody asked and left the actual one unanswered -- and the caveat
+  // is a property of the payload, so the server can state it exactly.
+  if (/\bcaveat|limitation|how (?:reliable|meaningful|strong)|weak(?:ness|est)?\b|why (?:might|would).{0,30}\bwrong\b/i.test(question)) {
+    const leaders = rows.slice(0, 2);
+    const tiedOnPoints = leaders.length === 2 && leaders[0].points === leaders[1].points;
+    const matchWord = played === 1 ? "match" : "matches";
+    const caveat = played === 0
+      ? "No matches have been played, so the ordering reflects the provider's "
+        + "tie-breaking rather than anything that happened on the pitch."
+      : "Sample size. Every club has played "
+        + `${played} ${matchWord}, so the table measures `
+        + (played < 4 ? "almost nothing about relative strength" : "a small fraction of the season")
+        + ". "
+        + (tiedOnPoints
+          ? "The top clubs are level on points and separated only by goal difference, so "
+          : "So ")
+        + "one result moves a club several places, and this ordering will bear "
+        + "little resemblance to the final table.";
+    return [
+      "**Strongest caveat**",
+      caveat,
+      "",
+      "**What it does establish**",
+      "The points, matches played and goal differences above are exact as supplied. "
+        + "What they do not support is a title-race ranking"
+        + (played < 6 ? " at this stage of the season" : "") + ".",
+      "",
+      "**Current table**",
+      ...tableRows,
+    ].join("\n");
+  }
+
   return [
     "**Current table**",
-    ...rows.slice(0, 5).map((row) =>
-      `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} matches, goal difference ${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
-    ),
+    ...tableRows,
     "",
     "The positions and figures above come directly from the supplied standings; no title probability is inferred from them.",
   ].join("\n");
@@ -6730,7 +7063,30 @@ export function sanitizeDeliveredAnswer(
   ));
 }
 
+/**
+ * Every search a single user question performs -- the planned batch, the
+ * model's own tool calls, and any leaked-query recovery -- runs inside one
+ * question scope. Provider breakers then count *questions*, so a question that
+ * fans out into six searches can no longer open a breaker by itself and blank
+ * the next reader's evidence for five minutes.
+ */
 export async function answerQuestion(
+  question: string,
+  history: ConversationTurn[] = [],
+  teamContext?: TeamContext,
+  signal?: AbortSignal,
+  fixtureContext?: FixtureContext
+): Promise<{
+  answer: string;
+  grounding: AskGrounding;
+  citations?: AskCitation[];
+  verification: AskVerification;
+}> {
+  return withSearchQuestion(() =>
+    answerQuestionScoped(question, history, teamContext, signal, fixtureContext));
+}
+
+async function answerQuestionScoped(
   question: string,
   history: ConversationTurn[] = [],
   teamContext?: TeamContext,
@@ -6833,7 +7189,30 @@ export function shouldHoldCoverageDeltas(
   return candidateUnrecognized || grounding?.kind === "fixture";
 }
 
+/**
+ * Every search a single user question performs -- the planned batch, the
+ * model's own tool calls, and any leaked-query recovery -- runs inside one
+ * question scope. Provider breakers then count *questions*, so a question that
+ * fans out into six searches can no longer open a breaker by itself and blank
+ * the next reader's evidence for five minutes.
+ */
 export async function answerQuestionStream(
+  question: string,
+  history: ConversationTurn[] = [],
+  teamContext: TeamContext | undefined,
+  handlers: AskStreamHandlers,
+  fixtureContext?: FixtureContext
+): Promise<{
+  answer: string;
+  grounding: AskGrounding;
+  citations?: AskCitation[];
+  verification: AskVerification;
+}> {
+  return withSearchQuestion(() =>
+    answerQuestionStreamScoped(question, history, teamContext, handlers, fixtureContext));
+}
+
+async function answerQuestionStreamScoped(
   question: string,
   history: ConversationTurn[] = [],
   teamContext: TeamContext | undefined,

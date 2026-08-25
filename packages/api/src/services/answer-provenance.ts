@@ -82,7 +82,29 @@ export function splitAnswerSentences(line: string): string[] {
  * in step.
  */
 export const TEAM_NEWS_CLAIM =
-  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
+  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock|miss(?:es|ed|ing)?|absence|absent)\b/i;
+
+/**
+ * "Missing" and "absent" are the two words in `TEAM_NEWS_CLAIM` that are not
+ * inherently about people. Pundit's own deterministic copy says a fixture is
+ * "missing a required model input" and that "required model context or input is
+ * missing" -- capability notices, not squad claims -- and a guard that deletes
+ * unsourced team news deletes those too unless the object is checked. Every
+ * other alternative in the pattern already names a footballing condition.
+ */
+export const NON_SQUAD_ABSENCE =
+  /\b(?:miss(?:es|ed|ing)?|absent|absence)\b[^.!?\n]{0,40}\b(?:model|input|context|data|coverage|market|source|price|line|probabilit\w*|fixture|rating|evidence|citation)s?\b|\b(?:model|input|context|data|coverage|market|source|price|probabilit\w*|fixture|rating|evidence|citation)s?\b[^.!?\n]{0,40}\b(?:is|are|was|were)\s+(?:miss(?:ing)?|absent)\b/i;
+
+/**
+ * The squad-availability half of `TEAM_NEWS_CLAIM`: everything except a bare
+ * "missing"/"absent" whose object is one of Pundit's own inputs.
+ */
+export function assertsSquadAvailability(sentence: string): boolean {
+  if (!TEAM_NEWS_CLAIM.test(sentence)) return false;
+  const absenceOnly = /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
+  if (absenceOnly.test(sentence)) return true;
+  return !NON_SQUAD_ABSENCE.test(sentence);
+}
 
 /** A standalone bold section label, e.g. `**Verdict**` or `**Verdict:**`. */
 export const SECTION_LABEL_LINE = /^\s*\*\*[^*\n]+\*\*:?\s*$/;
@@ -146,7 +168,11 @@ export function segmentAnswer(answer: string): AnswerSegment[] {
         const substantive = HAS_SUBSTANCE.test(sentence);
         const evidence = substantive
           && (CITATION_MARKER.test(sentence)
-            || TEAM_NEWS_CLAIM.test(sentence)
+            // Squad availability, not a bare "missing". Pundit's own capability
+            // copy says a fixture is "missing a required model input"; if that
+            // is filed as evidence, the abstention sweep replaces the server's
+            // deterministic notice with "no verified team news was established".
+            || assertsSquadAvailability(sentence)
             || inTeamNewsSection);
         push(sentence, evidence ? "evidence" : "model");
       }

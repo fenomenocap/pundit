@@ -9,9 +9,20 @@ import {
 import { clientWith, message } from "./__fixtures__/anthropic-stubs";
 
 const searchWeb = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+const toOutcome = vi.hoisted(() => (results: unknown[]) => ({
+  status: results.length ? "ok" : "empty",
+  results,
+  provider: results.length ? "minimax" : null,
+  reason: null,
+  usedFallback: false,
+  attempts: [],
+}));
 vi.mock("./web-search", () => ({
-  searchWeb,
-  searchWebBatch: (queries: string[]) => Promise.all(queries.map((q) => searchWeb(q))),
+  searchWeb: (query: string, signal?: AbortSignal) =>
+    Promise.resolve(searchWeb(query, signal)).then(toOutcome),
+  searchWebBatch: (queries: string[], signal?: AbortSignal) =>
+    Promise.all(queries.map((q) => Promise.resolve(searchWeb(q, signal)).then(toOutcome))),
+  withSearchQuestion: (fn: () => unknown) => fn(),
 }));
 
 /**
