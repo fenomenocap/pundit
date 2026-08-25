@@ -25,7 +25,13 @@ import {
 import { getActiveFixtures } from "./active-fixtures";
 import { getCachedFixtureMarketOdds } from "./model-market-odds";
 import { clubRatingsAreCurrent, getCachedClubRatings } from "./club-ratings";
-import { searchWeb, searchWebBatch} from "./web-search";
+import {
+  searchWeb,
+  searchWebBatch,
+  withSearchQuestion,
+  type WebSearchFailureReason,
+  type WebSearchOutcome,
+} from "./web-search";
 import { verifyClaimsOnce } from "./claim-verifier";
 import {
   retrieveEvidencePages,
@@ -202,6 +208,26 @@ export interface EvidenceBundle {
   results: EvidenceSource[];
   queries: string[];
   providerCalls?: number;
+  /**
+   * Why retrieval came back thin, when it did. An empty `results` used to be
+   * indistinguishable from a search that found nothing; carrying the reason
+   * lets the request log say "throttled" rather than leaving an operator to
+   * conclude the model regressed.
+   */
+  searchDegradedReason?: WebSearchFailureReason | null;
+  /** Searches this bundle ran that returned no evidence for infrastructure reasons. */
+  degradedSearches?: number;
+}
+
+/**
+ * Folds one search outcome into the bundle's degradation record. Genuine
+ * emptiness is deliberately not recorded: the web having no answer is a fact
+ * about the world, not a fault.
+ */
+function noteSearchOutcome(bundle: EvidenceBundle | undefined, outcome: WebSearchOutcome): void {
+  if (!bundle || outcome.status !== "degraded") return;
+  bundle.degradedSearches = (bundle.degradedSearches ?? 0) + 1;
+  bundle.searchDegradedReason = outcome.reason;
 }
 
 export interface AskVerification {
@@ -308,11 +334,117 @@ const WEB_SEARCH_TOOL = {
 };
 
 const MINIMAX_MODEL = process.env.MINIMAX_MODEL ?? "MiniMax-M3";
+
+/**
+ * Inference credentials, resolved separately from search.
+ *
+ * Answering one question costs ~1-3 inference calls *and* ~6 searches. When
+ * both ran on one coding-plan subscription key, the searches spent the quota
+ * the answer needed -- and a developer running Claude Code on the same
+ * subscription spent it too. MINIMAX_INFERENCE_API_KEY points inference at an
+ * Open Platform pay-as-you-go key, whose quota nothing else touches.
+ *
+ * The fallback to MINIMAX_API_KEY is what keeps this a configuration change:
+ * every existing deployment keeps working untouched, and the wire client,
+ * model, and Anthropic-compatible request shape are all unchanged.
+ */
+function inferenceApiKey(): string | undefined {
+  return process.env.MINIMAX_INFERENCE_API_KEY || process.env.MINIMAX_API_KEY;
+}
+
 // The international host. Keys are region-scoped: a key issued for mainland
 // China authenticates only against https://api.minimaxi.com/anthropic, so that
-// deployment overrides this rather than editing the default.
-const MINIMAX_BASE_URL =
-  process.env.MINIMAX_BASE_URL ?? "https://api.minimax.io/anthropic";
+// deployment overrides this rather than editing the default. Pay-as-you-go and
+// coding-plan keys can also live on different hosts, hence the inference-only
+// override ahead of the shared one.
+function inferenceBaseUrl(): string {
+  return process.env.MINIMAX_INFERENCE_BASE_URL
+    ?? process.env.MINIMAX_BASE_URL
+    ?? "https://api.minimax.io/anthropic";
+}
+
+export interface InferenceStatus {
+  /** Which environment variable supplied the key -- never the key itself. */
+  keySource: "MINIMAX_INFERENCE_API_KEY" | "MINIMAX_API_KEY" | "unset";
+  /** True when inference is on its own quota rather than sharing search's. */
+  dedicatedKey: boolean;
+  configured: boolean;
+  model: string;
+  /** Host only. A base URL may carry a path but never a credential. */
+  endpointHost: string | null;
+  lastGoodAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureStatus: number | null;
+  lastThrottledAt: string | null;
+  consecutiveFailures: number;
+  totalCalls: number;
+  failures: number;
+}
+
+const inferenceHealth = {
+  lastGoodAt: null as string | null,
+  lastFailureAt: null as string | null,
+  lastFailureStatus: null as number | null,
+  lastThrottledAt: null as string | null,
+  consecutiveFailures: 0,
+  totalCalls: 0,
+  failures: 0,
+};
+
+export function recordInferenceSuccess(): void {
+  inferenceHealth.totalCalls += 1;
+  inferenceHealth.lastGoodAt = new Date().toISOString();
+  inferenceHealth.consecutiveFailures = 0;
+}
+
+export function recordInferenceFailure(httpStatus: number | null): void {
+  inferenceHealth.totalCalls += 1;
+  inferenceHealth.failures += 1;
+  inferenceHealth.consecutiveFailures += 1;
+  inferenceHealth.lastFailureAt = new Date().toISOString();
+  inferenceHealth.lastFailureStatus = httpStatus;
+  if (httpStatus === 429) {
+    inferenceHealth.lastThrottledAt = inferenceHealth.lastFailureAt;
+    // Separated from search throttling on purpose: the two share a vendor and
+    // used to share a key, so "which quota ran out" was unanswerable from logs.
+    console.warn(JSON.stringify({
+      event: "inference_rate_limited",
+      provider: "minimax",
+      dedicatedKey: Boolean(process.env.MINIMAX_INFERENCE_API_KEY),
+      consecutiveFailures: inferenceHealth.consecutiveFailures,
+    }));
+  }
+}
+
+export function resetInferenceStatus(): void {
+  inferenceHealth.lastGoodAt = null;
+  inferenceHealth.lastFailureAt = null;
+  inferenceHealth.lastFailureStatus = null;
+  inferenceHealth.lastThrottledAt = null;
+  inferenceHealth.consecutiveFailures = 0;
+  inferenceHealth.totalCalls = 0;
+  inferenceHealth.failures = 0;
+}
+
+export function getInferenceStatus(): InferenceStatus {
+  const dedicated = Boolean(process.env.MINIMAX_INFERENCE_API_KEY);
+  let endpointHost: string | null = null;
+  try {
+    endpointHost = new URL(inferenceBaseUrl()).host;
+  } catch {
+    endpointHost = null;
+  }
+  return {
+    keySource: dedicated
+      ? "MINIMAX_INFERENCE_API_KEY"
+      : process.env.MINIMAX_API_KEY ? "MINIMAX_API_KEY" : "unset",
+    dedicatedKey: dedicated,
+    configured: Boolean(inferenceApiKey()),
+    model: MINIMAX_MODEL,
+    endpointHost,
+    ...inferenceHealth,
+  };
+}
 // MiniMax counts its internal reasoning against max_tokens, and that budget is
 // shared with the visible answer. At 1,536 a competition answer of ~100 output
 // tokens could still stop on `max_tokens`, or come back with the whole budget
@@ -641,9 +773,11 @@ async function buildEvidenceBundle(
   // not cost the reader one round trip per question it needs answered. A
   // failing search degrades that angle, never the whole bundle.
   const found = await searchWebBatch(planned, signal);
-  const results: EvidenceSource[] = [];
+  const bundle: EvidenceBundle = { queries: planned, providerCalls: planned.length, results: [] };
+  for (const outcome of found) noteSearchOutcome(bundle, outcome);
+  const results = bundle.results;
   const seen = new Set<string>();
-  found.flat().forEach((result) => {
+  found.flatMap((outcome) => outcome.results).forEach((result) => {
     const key = (result.link || result.title || "").toLocaleLowerCase();
     if (!key || seen.has(key) || results.length >= MAX_EVIDENCE_RESULTS) return;
     seen.add(key);
@@ -659,8 +793,12 @@ async function buildEvidenceBundle(
     event: "evidence_bundle_built",
     queries: planned.length,
     results: results.length,
+    // Present only when retrieval itself failed. A thin answer with a reason
+    // here is a retrieval outage; a thin answer without one is the web.
+    degradedSearches: bundle.degradedSearches ?? 0,
+    searchDegradedReason: bundle.searchDegradedReason ?? null,
   }));
-  return { queries: planned, providerCalls: planned.length, results };
+  return bundle;
 }
 
 const OFFICIAL_EVIDENCE_DOMAINS = [
@@ -5163,7 +5301,11 @@ async function runToolUses(
       && typeof (toolUse.input as { query?: unknown })?.query === "string"
         ? (toolUse.input as { query: string }).query
         : "";
-    const found = query && reserveProviderCall(bundle) ? await searchWeb(query, signal) : [];
+    const outcome = query && reserveProviderCall(bundle)
+      ? await searchWeb(query, signal)
+      : null;
+    if (outcome) noteSearchOutcome(bundle, outcome);
+    const found = outcome?.results ?? [];
     const sources = found.map((result, resultIndex) => ({
       id: `S${sourceOffset + toolIndex * 6 + resultIndex + 1}`,
       title: result.title,
@@ -5180,7 +5322,13 @@ async function runToolUses(
       tool_use_id: toolUse.id,
       content: found.length
         ? JSON.stringify(sources)
-        : "No search results were returned for this query.",
+        // The model is told which of the two it is. "Search is unavailable"
+        // must make it abstain or lean on grounding; "the web had nothing"
+        // is a finding it may report.
+        : outcome?.status === "degraded"
+          ? "Web search is temporarily unavailable for this request. Do not claim anything "
+            + "current; answer from the grounding data or say the information could not be verified."
+          : "No search results were returned for this query.",
     };
   }));
 
@@ -5268,8 +5416,9 @@ async function runLeakedSearchQueries(
     if (!reserveProviderCall(bundle)) break;
     // A search failure degrades the recovery to grounding-only, exactly as it
     // does on the structured tool path; it must not fail the request.
-    const found = await searchWeb(query, signal).catch(() => []);
-    const sources = found.map((result) => ({
+    const outcome = await searchWeb(query, signal).catch(() => null);
+    if (outcome) noteSearchOutcome(bundle, outcome);
+    const sources = (outcome?.results ?? []).map((result) => ({
       id: `S${(ordinal += 1)}`,
       title: result.title,
       url: result.link,
@@ -5353,7 +5502,7 @@ async function finalProseTurn(
   if (providerCallsLeft(bundle) < 1 || !reserveProviderCall(bundle)) return null;
   console.warn(JSON.stringify({ event: "tool_loop_exhausted_prose_retry" }));
   try {
-    return await client.messages.create(
+    return await trackedInference(() => client.messages.create(
       analysisRequestParams(systemPrompt, [
         ...convo,
         {
@@ -5364,7 +5513,7 @@ async function finalProseTurn(
         },
       ], false),
       { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
-    );
+    ), signal);
   } catch {
     return null;
   }
@@ -5396,10 +5545,10 @@ export async function generateAnalysis(
         if (!reserveProviderCall(bundle)) {
           throw new AppError(504, "Analysis request exhausted its provider-call budget.");
         }
-        response = await client.messages.create(
+        response = await trackedInference(() => client.messages.create(
           analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
           { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
-        );
+        ), signal);
       } catch (error) {
         if (signal?.aborted || retried || !isRetryableStreamError(error)
           || Date.now() - startedAt >= OVERALL_DEADLINE_MS) {
@@ -5529,7 +5678,7 @@ export async function generateAnalysisStream(
           // here can be replayed by a second attempt and duplicated.
           flusher.push(text);
         });
-        response = await stream.finalMessage();
+        response = await trackedInference(() => stream.finalMessage(), signal);
       } catch (error) {
         if (!shouldContinue()) throw new AppError(499, "Client disconnected.");
         if (deltaSeen || anyDeltaSeen || retried || !isRetryableStreamError(error)) {
@@ -5677,7 +5826,7 @@ export function prepareAsk(
     currentMessage = `User question: ${question}`;
   }
 
-  const apiKey = process.env.MINIMAX_API_KEY;
+  const apiKey = inferenceApiKey();
   if (!apiKey) throw new AppError(502, "Analysis service is temporarily unavailable.");
 
   return {
@@ -5685,9 +5834,43 @@ export function prepareAsk(
     systemPrompt,
     messages: [...history, { role: "user", content: currentMessage }],
     tier: grounding?.kind === "fixture" ? "general" : grounding?.kind ?? "general",
-    client: new Anthropic({ apiKey, baseURL: MINIMAX_BASE_URL, maxRetries: 0 }),
+    client: new Anthropic({ apiKey, baseURL: inferenceBaseUrl(), maxRetries: 0 }),
     candidateUnrecognized: context.tier === "candidate",
   };
+}
+
+/**
+ * Records one inference attempt against the health counters /ready reports.
+ * Every call to MiniMax goes through here so an operator can tell an inference
+ * quota problem from a search quota problem without reading answer text.
+ */
+export async function trackedInference<T>(
+  attempt: () => Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  try {
+    const result = await attempt();
+    recordInferenceSuccess();
+    return result;
+  } catch (error) {
+    // A reader closing the tab is not an inference fault, and counting it as
+    // one is worse than not counting it at all: `consecutiveFailures` and
+    // `lastFailureAt` on /ready are how an operator answers "is the inference
+    // quota healthy?", and cancellations are common enough to keep that block
+    // permanently pointing at a vendor that is fine. Abandoned attempts are
+    // recorded nowhere rather than as a success, since nothing was learned
+    // about the vendor either way.
+    if (isCancellation(error, signal)) throw error;
+    recordInferenceFailure(error instanceof Anthropic.APIError ? error.status ?? null : null);
+    throw error;
+  }
+}
+
+/** A request Pundit itself abandoned, as opposed to one MiniMax refused. */
+function isCancellation(error: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true;
+  if (error instanceof Anthropic.APIUserAbortError) return true;
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function mapAnalysisError(err: unknown): never {
@@ -6730,7 +6913,30 @@ export function sanitizeDeliveredAnswer(
   ));
 }
 
+/**
+ * Every search a single user question performs -- the planned batch, the
+ * model's own tool calls, and any leaked-query recovery -- runs inside one
+ * question scope. Provider breakers then count *questions*, so a question that
+ * fans out into six searches can no longer open a breaker by itself and blank
+ * the next reader's evidence for five minutes.
+ */
 export async function answerQuestion(
+  question: string,
+  history: ConversationTurn[] = [],
+  teamContext?: TeamContext,
+  signal?: AbortSignal,
+  fixtureContext?: FixtureContext
+): Promise<{
+  answer: string;
+  grounding: AskGrounding;
+  citations?: AskCitation[];
+  verification: AskVerification;
+}> {
+  return withSearchQuestion(() =>
+    answerQuestionScoped(question, history, teamContext, signal, fixtureContext));
+}
+
+async function answerQuestionScoped(
   question: string,
   history: ConversationTurn[] = [],
   teamContext?: TeamContext,
@@ -6833,7 +7039,30 @@ export function shouldHoldCoverageDeltas(
   return candidateUnrecognized || grounding?.kind === "fixture";
 }
 
+/**
+ * Every search a single user question performs -- the planned batch, the
+ * model's own tool calls, and any leaked-query recovery -- runs inside one
+ * question scope. Provider breakers then count *questions*, so a question that
+ * fans out into six searches can no longer open a breaker by itself and blank
+ * the next reader's evidence for five minutes.
+ */
 export async function answerQuestionStream(
+  question: string,
+  history: ConversationTurn[] = [],
+  teamContext: TeamContext | undefined,
+  handlers: AskStreamHandlers,
+  fixtureContext?: FixtureContext
+): Promise<{
+  answer: string;
+  grounding: AskGrounding;
+  citations?: AskCitation[];
+  verification: AskVerification;
+}> {
+  return withSearchQuestion(() =>
+    answerQuestionStreamScoped(question, history, teamContext, handlers, fixtureContext));
+}
+
+async function answerQuestionStreamScoped(
   question: string,
   history: ConversationTurn[] = [],
   teamContext: TeamContext | undefined,
