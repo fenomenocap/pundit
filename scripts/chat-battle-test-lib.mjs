@@ -989,6 +989,20 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
  */
 export const ABSTAINED_VERIFICATION = new Set(["abstain", "unavailable"]);
 
+/**
+ * Did this turn establish anything? That is the question the citation
+ * requirement actually turns on, and it is answered by the count, not by the
+ * status name. Enumerating names kept being wrong by one: first `unavailable`
+ * was missing beside `abstain`, then a `conflict` that supported zero claims --
+ * sources retrieved, all of them contradictory, nothing left standing -- was
+ * failed for not citing sources it had just refused to stand on. An answer that
+ * establishes nothing has nothing to cite, whichever way it got there.
+ */
+export function establishedNothing(verification) {
+  return verification?.supportedClaimCount === 0
+    && (ABSTAINED_VERIFICATION.has(verification?.status) || verification?.status === "conflict");
+}
+
 export function validateVerification(verification, expectation = {}) {
   const statuses = new Set(["not-required", "verified", "conflict", "abstain", "unavailable"]);
   const shape = statuses.has(verification?.status)
@@ -1005,7 +1019,9 @@ export function validateVerification(verification, expectation = {}) {
   );
   const allowed = expectation.expectVerification
     ?? (expectation.requireCitation || expectation.requireVerification
-      ? (expectation.allowAbstention ? ["verified", ...ABSTAINED_VERIFICATION] : ["verified"])
+      ? (expectation.allowAbstention
+        ? ["verified", ...ABSTAINED_VERIFICATION, ...(establishedNothing(verification) ? [verification.status] : [])]
+        : ["verified"])
       : statuses);
   const expectedStatus = shape && (allowed instanceof Set ? allowed : new Set(allowed)).has(verification.status);
   const assertions = { verificationShape: shape, verificationSemantics: semantics, verificationStatus: expectedStatus };
