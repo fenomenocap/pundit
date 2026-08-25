@@ -5010,6 +5010,18 @@ function asksModelInputQuestion(question: string): boolean {
   return /\b(?:which|what)\s+(?:single\s+)?model input\b|\bmodel input[^?\n]{0,30}\bmatters? most\b/i.test(question);
 }
 
+/**
+ * The model telling a reader it has no earlier turn to refer to, in a request
+ * that supplied one. Written to the same shape the evaluator uses, because the
+ * narrow original form was defeated by an article: it required "the prior
+ * answer" and a live answer said "a prior answer or match context to
+ * reference", so the denial reached the reader with the guard sitting right
+ * next to it. Bridges are bounded to a single clause, so an ordinary sentence
+ * about missing match context is not swept up.
+ */
+const DENIES_SUPPLIED_HISTORY =
+  /\b(?:(?:i\s+)?(?:do not|don't|cannot|can't)\s+have|there\s+(?:is|was)\s+no)\b[^.!?\n]{0,70}\b(?:original|previous|prior|earlier)\s+(?:answer|response|message|context)\b[^.!?\n]{0,40}\b(?:to\s+(?:refer|reference)|in front of me|available|here)\b/i;
+
 export function sanitizeRequestFidelity(
   answer: string,
   question: string,
@@ -5018,9 +5030,7 @@ export function sanitizeRequestFidelity(
   let sanitized = answer;
   if (hasHistory) {
     sanitized = reviseAnswerSentences(sanitized, (sentence) =>
-      /\b(?:do not|don't|cannot|can't) have (?:the )?(?:original|previous|prior) answer (?:in front of me|available|here|to (?:reference|refer to))\b/i.test(sentence)
-        ? ""
-        : sentence
+      DENIES_SUPPLIED_HISTORY.test(sentence) ? "" : sentence
     );
   }
   const modelOnly = isModelOnlyRequest(question);

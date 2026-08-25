@@ -26,6 +26,7 @@ import {
   failClosedEmptyCurrentVerification,
   dropMisbucketedTotalsScorelines,
   renderEvidenceCitations,
+  sanitizeRequestFidelity,
   sanitizeFixtureCoverageAnswer,
   sanitizeFootballGeometry,
   sanitizeGroundedMatchNarrative,
@@ -1288,6 +1289,35 @@ describe("current-news evidence hardening", () => {
       true
     );
     expect(rendered.answer).toMatch(/No verified, dated team-news update was established/i);
+  });
+
+  it("removes a denial of history the request actually supplied", () => {
+    // The live answer that defeated the narrow original guard. It required
+    // "the prior answer"; the model wrote "a prior answer or match context to
+    // reference", so the denial reached the reader with the guard beside it.
+    const live = "I don't have a prior answer or match context to reference. "
+      + "To tell you what would change it, I need the fixture.";
+    expect(sanitizeRequestFidelity(live, "What evidence would change that answer?", true))
+      .toBe("To tell you what would change it, I need the fixture.");
+
+    for (const denial of [
+      "I do not have the previous answer in front of me.",
+      "There is no earlier response available.",
+      "I can't have a prior message to refer to.",
+    ]) {
+      expect(sanitizeRequestFidelity(denial, "follow up", true)).toBe("");
+    }
+  });
+
+  it("keeps the same sentence when no history was supplied", () => {
+    // With no prior turn, saying so is true and useful rather than a denial.
+    const answer = "I don't have a prior answer to reference.";
+    expect(sanitizeRequestFidelity(answer, "opening question", false)).toBe(answer);
+  });
+
+  it("does not mistake ordinary missing-context prose for a history denial", () => {
+    const answer = "The model does not have injury context available for this match.";
+    expect(sanitizeRequestFidelity(answer, "follow up", true)).toBe(answer);
   });
 
   it("removes an unsourced selection claim about a named player", () => {
