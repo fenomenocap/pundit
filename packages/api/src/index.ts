@@ -29,6 +29,7 @@ import {
 } from "./services/model-market-odds";
 import { evaluateReadiness } from "./services/readiness";
 import { getWebSearchStatus } from "./services/web-search";
+import { getInferenceStatus } from "./services/ask";
 import { getRuntimeVersion } from "./services/runtime-version";
 import {
   getFixtureRegistryStatus,
@@ -189,11 +190,21 @@ app.get("/ready", (_req, res) => {
     // Deliberately outside the ready/not-ready decision: chat answers still
     // carry model grounding without search, so a search outage degrades an
     // answer rather than taking the service down. It must not be invisible
-    // either -- the primary provider is an undocumented endpoint, and a silent
+    // either -- the default primary is an undocumented endpoint, and a silent
     // format change there would otherwise look like the model simply choosing
-    // not to search. Alert on consecutiveFailures climbing, or on
-    // lastGoodProvider moving off "minimax".
+    // not to search.
+    //
+    // Alert on: `circuitOpen` (every provider out), `usingFallback` staying
+    // true (the primary is failing and the bill is moving), any provider's
+    // `lastThrottledAt` advancing, or `lastDegradedReason` being set. Reported
+    // separately from `inference` because the two used to share a key: "which
+    // quota ran out" must be answerable from this payload alone.
     webSearch: getWebSearchStatus(),
+    // Inference health, independent of search. `dedicatedKey: false` means
+    // answers are still being generated on the same credential as search --
+    // the shared-quota configuration this endpoint exists to make visible.
+    // Contains no key material: only which variable supplied it and the host.
+    inference: getInferenceStatus(),
     // Surfaced because the effective limit is a function of replica count, and
     // a mismatch between API_REPLICAS and Railway's actual setting is
     // otherwise invisible until someone bursts the endpoint.

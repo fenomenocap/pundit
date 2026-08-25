@@ -1909,6 +1909,40 @@ test("schema-16 table-source fidelity refuses tied-table rankings without leakin
     [], { ...grounding, standings: [{ team: "Arsenal", playedGames: 0, points: 0, goalDifference: 0 }] },
     { expectTableSourceFidelity: true }
   ).assertions.tableSourceFidelity, false);
+
+  // A played table separates the teams, so refusing to rank is no longer the
+  // right answer -- but the ranking still has to come from the table. Before
+  // this, `allRowsTied` was a precondition of passing, so every run after
+  // matchday one reported a product failure no answer could have avoided.
+  const played = {
+    kind: "season",
+    standings: [
+      { position: 1, team: "Brighton", playedGames: 1, points: 3, goalDifference: 4 },
+      { position: 2, team: "Arsenal", playedGames: 1, points: 3, goalDifference: 3 },
+      { position: 3, team: "Everton", playedGames: 1, points: 3, goalDifference: 2 },
+    ],
+    seasonOutlook: {
+      titleProbabilities: [
+        { team: "Arsenal", probability: 0.9275 },
+        { team: "Man City", probability: 0.0594 },
+      ],
+    },
+  };
+  assert.equal(validateResponseCorrectness(
+    "Brighton lead the supplied table on goal difference after one match; no title probability is inferred from it.",
+    [], played, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, true);
+  // The substitution the assertion exists to catch: the table is set aside and
+  // ratings-and-schedule season probabilities are handed back instead.
+  assert.equal(validateResponseCorrectness(
+    "Arsenal lead the title race at 92.75%, with Man City on 5.94%.",
+    [], played, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, false);
+  // Ranking someone the table does not have at the top is not table-sourced.
+  assert.equal(validateResponseCorrectness(
+    "Man City are the leading contenders.",
+    [], played, { expectTableSourceFidelity: true }
+  ).assertions.tableSourceFidelity, false);
 });
 
 test("schema-16 rejects abstained probability counterfactuals, false product scope and history denial", () => {
@@ -2022,6 +2056,24 @@ test("high-line geometry rejects both backwards formulations and requires the re
   ]) assert.equal(validateResponseCorrectness(
     answer, [], null, { expectCorrectHighLineGeometry: true }
   ).passed, false, answer);
+
+  // Correct geometry stated across a sentence boundary. Every single-sentence
+  // pattern stops at `[^.!?\n]`, so a live answer that established the high
+  // line in one sentence and its trade-off in the next was failed for putting
+  // a full stop in it.
+  for (const answer of [
+    "A high defensive line compresses the pitch. The trade-off is space: if the first line is beaten, the back four are already close to halfway, so a single pass in behind turns into a one-on-one with the keeper and a clean run on goal.",
+    "The back four step up to squeeze the pitch. That leaves more room behind the defence for a runner to attack.",
+  ]) assert.equal(validateResponseCorrectness(
+    answer, [], null, { expectCorrectHighLineGeometry: true }
+  ).assertions.highLineSpaceBehindAcknowledged, true, answer);
+
+  // The consequence must belong to this defence. A later clause about a low
+  // block is a different structure and does not acknowledge anything.
+  assert.equal(validateResponseCorrectness(
+    "A high line compacts midfield. Two sentences later, unrelated. The winger makes runs in behind against a low block.",
+    [], null, { expectCorrectHighLineGeometry: true }
+  ).assertions.highLineSpaceBehindAcknowledged, false);
 });
 
 test("schema-16 certification cannot pass required inconclusive or unsupported correctness", () => {
