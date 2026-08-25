@@ -49,6 +49,7 @@ import {
   summarizeWebSearchTelemetry,
   validateVerification,
   ABSTAINED_VERIFICATION,
+  establishedNothing,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -2095,12 +2096,32 @@ test("schema-16 treats unavailable verification as an abstention, like abstain",
       { requireCitation: true }
     ).assertions.verificationStatus, false, status);
   }
-  // A conflict is still not an abstention.
+  // A conflict that still supported a claim is not an abstention.
   assert.equal(validateVerification(
-    { status: "conflict", supportedClaimCount: 0, removedClaimCount: 1 },
+    { status: "conflict", supportedClaimCount: 1, removedClaimCount: 1 },
     { requireCitation: true, allowAbstention: true }
   ).assertions.verificationStatus, false);
   assert.deepEqual([...ABSTAINED_VERIFICATION].sort(), ["abstain", "unavailable"]);
+
+  // A conflict that supported nothing established nothing: sources were
+  // retrieved, all of them contradicted each other, and no claim was left
+  // standing. There is nothing to cite, so requiring a citation fails an answer
+  // for not standing on sources it had just refused to stand on.
+  assert.equal(establishedNothing({ status: "conflict", supportedClaimCount: 0, removedClaimCount: 1 }), true);
+  assert.equal(validateVerification(
+    { status: "conflict", supportedClaimCount: 0, removedClaimCount: 1 },
+    { requireCitation: true, allowAbstention: true }
+  ).assertions.verificationStatus, true);
+  // A conflict that DID support a claim is not an abstention and still owes
+  // its citation.
+  assert.equal(establishedNothing({ status: "conflict", supportedClaimCount: 2, removedClaimCount: 1 }), false);
+  assert.equal(validateVerification(
+    { status: "conflict", supportedClaimCount: 2, removedClaimCount: 1 },
+    { requireCitation: true, allowAbstention: true }
+  ).assertions.verificationStatus, false);
+  // "verified" with zero supported claims is incoherent and must not be
+  // laundered into an abstention.
+  assert.equal(establishedNothing({ status: "verified", supportedClaimCount: 0, removedClaimCount: 0 }), false);
 });
 
 test("schema-16 certification cannot pass required inconclusive or unsupported correctness", () => {

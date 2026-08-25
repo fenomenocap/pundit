@@ -37,7 +37,7 @@ import {
   validateAnswerStructure,
   validateAbstainedCounterfactualDiscipline,
   validateCitationContract,
-  ABSTAINED_VERIFICATION,
+  establishedNothing,
   validateErrorCopy,
   validateFixtureGrounding,
   validateNoDraftLeak,
@@ -353,7 +353,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     // stand on. Which of the two it is depends only on whether any page
     // happened to be fetchable, which is not something an answer controls.
     const citationRequired = Boolean(turn.requireCitation || scenario.requireCitation)
-      && !ABSTAINED_VERIFICATION.has(result.verification?.status);
+      && !establishedNothing(result.verification);
     const citationValidation = validateCitationContract(
       result.answer,
       result.citations,

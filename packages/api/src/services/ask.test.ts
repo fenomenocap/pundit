@@ -1364,6 +1364,29 @@ describe("current-news evidence hardening", () => {
     }
   });
 
+  it("does not let the bare word \"unknown\" launder an uncited squad claim", () => {
+    // A live answer wrote "Beer-Sheva's wider injury list is the more material
+    // unknown going into kickoff" -- an uncited team-news comparison -- and the
+    // noun "unknown" alone marked the whole sentence as an abstention. Any
+    // sentence could take that exit.
+    const smuggled = "Sabah's missing pieces are narrower, so Beer-Sheva's wider "
+      + "injury list is the more material unknown going into kickoff.";
+    expect(renderEvidenceCitations(smuggled, { queries: ["q"], results: [] }, true).answer)
+      .not.toContain("injury list");
+  });
+
+  it("still recognises an abstention that is doing an abstention's work", () => {
+    for (const abstention of [
+      "No verified, dated team-news update was established.",
+      "The starting eleven remains unknown at this stage.",
+      "The lineup is still unconfirmed.",
+      "The venue for this fixture is unknown, so Pundit will not estimate probabilities.",
+    ]) {
+      expect(renderEvidenceCitations(abstention, { queries: ["q"], results: [] }, true).answer)
+        .toBe(abstention);
+    }
+  });
+
   it("keeps a selection claim that carries its source", () => {
     const bundle = {
       queries: ["chelsea predicted xi"],
