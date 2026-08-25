@@ -559,6 +559,17 @@ const NAMED_SELECTION_STATUS =
   /\b(?:expected\s+(?:starter|to\s+start|XI|line-?up)|likely\s+(?:starter|to\s+start)|predicted\s+(?:XI|line-?up|starters?)|starts?\s+(?:in\s+goal|at\s+(?:left|right|centre|center)-back|up\s+front)|(?:back|front)\s+(?:three|four|five)|slot(?:s|ting)?\s+in\s+at|first-choice)\b/i;
 
 /**
+ * The same claim wearing a conditional: "if he starts, the shape is unchanged;
+ * if he doesn't, Almeida steps in". Phrasing it as a hypothesis does not make
+ * it hypothetical -- it asserts that this player's selection is live and in
+ * doubt, which is a current fact about the world and needs a source exactly as
+ * "he is expected to start" would. A live answer used this form to carry a
+ * whole swing-factor argument with nothing behind it.
+ */
+const CONDITIONAL_SELECTION_CLAIM =
+  /\bif\s+(?:he|she|they|[A-Z][A-Za-z.'’-]+)\s+(?:does\s?n['’]?t\s+|do\s?es\s+not\s+|is\s+not\s+)?(?:starts?|plays?|features?)\b|\bif\s+(?:he|she|they|[A-Z][A-Za-z.'’-]+)\s+(?:is|are)\s+(?:fit|unfit|available|unavailable|missing|out|rested|benched)\b|\b(?:steps?|comes?)\s+in\s+(?:for|instead)\b/i;
+
+/**
  * A capitalised token that is plausibly a person rather than a club, a
  * competition or a sentence opener. Clubs are excluded by name where the
  * grounding knows them; the rest is a deliberately conservative stop list.
@@ -579,7 +590,8 @@ function assertsTeamNews(sentence: string): boolean {
   if (assertsSquadAvailability(sentence)) return true;
   if (MARKET_SUBJECT.test(sentence)) return false;
   if (SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence)) return true;
-  return NAMED_SELECTION_STATUS.test(sentence) && namesAnIndividual(sentence);
+  if (NAMED_SELECTION_STATUS.test(sentence) && namesAnIndividual(sentence)) return true;
+  return CONDITIONAL_SELECTION_CLAIM.test(sentence) && namesAnIndividual(sentence);
 }
 
 /**
