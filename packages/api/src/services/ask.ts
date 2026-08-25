@@ -467,7 +467,16 @@ const MAX_EVIDENCE_RESULTS = 30;
 
 const CURRENT_NEWS_QUESTION = /\b(latest|current|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
 const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it))\b/i;
-const ABSTENTION = /\b(no verified|could not verify|not established|no usable|no current|unconfirmed|unknown)\b/i;
+// `unknown` and `unconfirmed` used to match as bare words, which handed any
+// sentence a way out of the squad-claim guard: an answer wrote "Beer-Sheva's
+// wider injury list is the more material unknown going into kickoff" -- an
+// uncited team-news comparison -- and the noun "unknown" alone marked it as an
+// abstention. Both now have to be doing the work of an abstention, applied to
+// something as a predicate, rather than merely appearing in the sentence.
+// Pundit's own notices say "no verified" and "not established", so none of them
+// depend on the loose form.
+const ABSTENTION =
+  /\b(?:no verified|could not verify|not established|no usable|no current)\b|\b(?:is|are|was|were|remains?|stay(?:s)?)\s+(?:still\s+|currently\s+|as\s+yet\s+|so\s+far\s+)?(?:unknown|unconfirmed)\b/i;
 
 /**
  * What the pipeline says when it removes a claim that needed an outside source
