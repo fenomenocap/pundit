@@ -2056,6 +2056,24 @@ test("high-line geometry rejects both backwards formulations and requires the re
   ]) assert.equal(validateResponseCorrectness(
     answer, [], null, { expectCorrectHighLineGeometry: true }
   ).passed, false, answer);
+
+  // Correct geometry stated across a sentence boundary. Every single-sentence
+  // pattern stops at `[^.!?\n]`, so a live answer that established the high
+  // line in one sentence and its trade-off in the next was failed for putting
+  // a full stop in it.
+  for (const answer of [
+    "A high defensive line compresses the pitch. The trade-off is space: if the first line is beaten, the back four are already close to halfway, so a single pass in behind turns into a one-on-one with the keeper and a clean run on goal.",
+    "The back four step up to squeeze the pitch. That leaves more room behind the defence for a runner to attack.",
+  ]) assert.equal(validateResponseCorrectness(
+    answer, [], null, { expectCorrectHighLineGeometry: true }
+  ).assertions.highLineSpaceBehindAcknowledged, true, answer);
+
+  // The consequence must belong to this defence. A later clause about a low
+  // block is a different structure and does not acknowledge anything.
+  assert.equal(validateResponseCorrectness(
+    "A high line compacts midfield. Two sentences later, unrelated. The winger makes runs in behind against a low block.",
+    [], null, { expectCorrectHighLineGeometry: true }
+  ).assertions.highLineSpaceBehindAcknowledged, false);
 });
 
 test("schema-16 certification cannot pass required inconclusive or unsupported correctness", () => {
