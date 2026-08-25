@@ -1336,6 +1336,34 @@ describe("current-news evidence hardening", () => {
     }
   });
 
+  it("removes a selection counterfactual wearing a conditional", () => {
+    // Phrasing a selection claim as a hypothesis does not make it
+    // hypothetical: it asserts that this player's availability is live and in
+    // doubt, which is a current fact about the world. A live answer carried a
+    // whole swing-factor argument this way with nothing behind it.
+    for (const [claim, token] of [
+      ["The one swing factor is Solvet: if he starts, the attacking shape is unchanged.", "Solvet"],
+      ["If either is missing, the Fulham win probability rises toward 40.25%.", "40.25"],
+      ["If Cucurella is fit, the back four holds.", "Cucurella"],
+      ["Almeida steps in for the injured man and the threat eases.", "Almeida"],
+    ] as const) {
+      expect(renderEvidenceCitations(claim, { queries: ["q"], results: [] }, true).answer)
+        .not.toContain(token);
+    }
+  });
+
+  it("keeps a conditional the model owns rather than the world", () => {
+    // Nothing here is a claim about anyone's availability, so it needs no
+    // source -- these are statements about the payload's own arithmetic.
+    for (const owned of [
+      "If the match ends 1-1, the model's most likely scoreline was correct.",
+      "Pundit's model has Sabah at 57.2% and Beer-Sheva at 24.6%.",
+    ]) {
+      expect(renderEvidenceCitations(owned, { queries: ["q"], results: [] }, true).answer)
+        .toBe(owned);
+    }
+  });
+
   it("keeps a selection claim that carries its source", () => {
     const bundle = {
       queries: ["chelsea predicted xi"],
