@@ -37,6 +37,7 @@ import {
   validateAnswerStructure,
   validateAbstainedCounterfactualDiscipline,
   validateCitationContract,
+  ABSTAINED_VERIFICATION,
   validateErrorCopy,
   validateFixtureGrounding,
   validateNoDraftLeak,
@@ -344,8 +345,15 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
         && Boolean(turn.expectHeadlineOneXTwo ?? scenario.expectHeadlineOneXTwo),
     });
     Object.assign(result.assertions, structureValidation.assertions);
+    // `unavailable` is the same outcome as `abstain` -- both mean zero
+    // supported claims and nothing established -- and the product pairs them
+    // everywhere it branches on verification. The exemption was written for
+    // one and omitted the other, so an answer that correctly established
+    // nothing was failed for not citing the sources it had just refused to
+    // stand on. Which of the two it is depends only on whether any page
+    // happened to be fetchable, which is not something an answer controls.
     const citationRequired = Boolean(turn.requireCitation || scenario.requireCitation)
-      && result.verification?.status !== "abstain";
+      && !ABSTAINED_VERIFICATION.has(result.verification?.status);
     const citationValidation = validateCitationContract(
       result.answer,
       result.citations,
