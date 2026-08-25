@@ -1257,6 +1257,24 @@ export function validateNoDraftLeak(answer) {
 const TEAM_NEWS_CLAIM =
   /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock|miss(?:es|ed|ing)?|absence|absent)\b/i;
 
+/**
+ * "Missing" and "absent" are the only two alternatives above that are not
+ * inherently about people, and Pundit's own capability copy uses both -- a
+ * fixture "missing a required model input". Mirrors `NON_SQUAD_ABSENCE` in
+ * `answer-provenance.ts`; keep the two in step.
+ */
+const NON_SQUAD_ABSENCE =
+  /\b(?:miss(?:es|ed|ing)?|absent|absence)\b[^.!?\n]{0,40}\b(?:model|input|context|data|coverage|market|source|price|line|probabilit\w*|fixture|rating|evidence|citation)s?\b|\b(?:model|input|context|data|coverage|market|source|price|probabilit\w*|fixture|rating|evidence|citation)s?\b[^.!?\n]{0,40}\b(?:is|are|was|were)\s+(?:miss(?:ing)?|absent)\b/i;
+
+const SQUAD_AVAILABILITY_CLAIM =
+  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
+
+function assertsSquadAvailability(region) {
+  if (!TEAM_NEWS_CLAIM.test(region)) return false;
+  if (SQUAD_AVAILABILITY_CLAIM.test(region)) return true;
+  return !NON_SQUAD_ABSENCE.test(region);
+}
+
 function assertsNamedPlayerNews(region) {
   const playerStatus = /\b(?:absence|absent|injur\w*|suspend\w*|doubtful|ruled out|sidelined|unavailable|available|starts?|starting|fit|knock|miss(?:es|ed|ing)?|out)\b/i.test(region);
   const names = region.match(/\b[A-Z][a-zÀ-ÿ'’.-]{2,}\b/g) ?? [];
@@ -1307,7 +1325,7 @@ export function validateTeamNewsDiscipline(answer) {
   // failure said no update was verified, then hypothesised named absences).
   const regions = answer.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
   const unsafeClaims = regions.filter((region) =>
-    (TEAM_NEWS_CLAIM.test(region) || assertsNamedPlayerNews(region))
+    (assertsSquadAvailability(region) || assertsNamedPlayerNews(region))
     && !NO_VERIFIED_NEWS.test(region)
     && !SOURCE_AND_DATE.test(region)
   );

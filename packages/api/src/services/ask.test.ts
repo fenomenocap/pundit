@@ -1250,6 +1250,57 @@ describe("current-news evidence hardening", () => {
     expect(rendered.answer).toMatch(/No verified, dated team-news update was established/i);
   });
 
+  it("removes an unsourced selection claim about a named player", () => {
+    // Neither sentence carries an availability verb, so both walked past the
+    // squad-availability patterns and reached readers with no source at all --
+    // in an answer whose other team-news claims were properly cited.
+    for (const claim of [
+      "Bernd Leno is the expected starter in goal.",
+      "Chelsea are expected to start with a back four shaped around Cucurella, Tosin and Disasi.",
+      "Reece James is likely to start at right-back.",
+    ]) {
+      const rendered = renderEvidenceCitations(claim, { queries: ["q"], results: [] }, true);
+      expect(rendered.answer).not.toContain("Leno");
+      expect(rendered.answer).not.toContain("Cucurella");
+      expect(rendered.answer).not.toContain("Reece James");
+    }
+  });
+
+  it("keeps a selection claim that carries its source", () => {
+    const bundle = {
+      queries: ["chelsea predicted xi"],
+      results: [{
+        id: "S1",
+        title: "Predicted XIs",
+        url: "https://example.com/xi",
+        date: "2026-08-23",
+        snippet: "Leno starts in goal.",
+      }],
+    };
+    const rendered = renderEvidenceCitations(
+      "Bernd Leno is the expected starter in goal. [[S1]]",
+      bundle,
+      true
+    );
+    expect(rendered.answer).toContain("Leno");
+    expect(rendered.answer).toContain("[Predicted XIs](https://example.com/xi)");
+  });
+
+  it("never mistakes Pundit's own capability copy for unsourced team news", () => {
+    // "missing" and "absent" are the two words in the team-news pattern that
+    // are not inherently about people, and the server's deterministic notices
+    // use both. Filing those as evidence let the abstention sweep replace a
+    // capability answer with "no verified team news was established".
+    for (const notice of [
+      "This recognized fixture is missing a required model input, so Pundit will not estimate probabilities.",
+      "Required model context or input is missing.",
+      "A complete market is missing for this fixture.",
+    ]) {
+      const rendered = renderEvidenceCitations(notice, { queries: ["q"], results: [] }, true);
+      expect(rendered.answer).toBe(notice);
+    }
+  });
+
   it("requires a dated marker in each sentence, not merely elsewhere on the line", () => {
     const bundle = {
       queries: ["query"],

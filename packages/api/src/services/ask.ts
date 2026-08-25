@@ -43,6 +43,7 @@ import {
   splitPriceSafeSentences,
   segmentAnswer,
   TEAM_NEWS_CLAIM,
+  assertsSquadAvailability,
 } from "./answer-provenance";
 import {
   reviseAnswerWithClaimDecisions,
@@ -541,10 +542,44 @@ const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
  * genuinely needs an outside source? Market prose is excluded outright: it
  * shares vocabulary with team news and has its own dedicated guard.
  */
+/**
+ * A selection claim about a *named individual* -- "Bernd Leno is the expected
+ * starter in goal", "Chelsea are expected to start with a back four shaped
+ * around Cucurella, Tosin and Disasi". Neither carries an availability verb, so
+ * both walked past the availability patterns above and reached readers with no
+ * source at all, in answers whose other squad claims were properly cited.
+ *
+ * The status wording is kept tight on purpose. The evaluator's equivalent
+ * accepts bare `out` and `fit`, which in Pundit's own prose appear constantly
+ * in sentences about scorelines and form; matching those here would put model
+ * output back in front of a guard that deletes it. Selection verbs and squad
+ * shape are the class that actually needs a source.
+ */
+const NAMED_SELECTION_STATUS =
+  /\b(?:expected\s+(?:starter|to\s+start|XI|line-?up)|likely\s+(?:starter|to\s+start)|predicted\s+(?:XI|line-?up|starters?)|starts?\s+(?:in\s+goal|at\s+(?:left|right|centre|center)-back|up\s+front)|(?:back|front)\s+(?:three|four|five)|slot(?:s|ting)?\s+in\s+at|first-choice)\b/i;
+
+/**
+ * A capitalised token that is plausibly a person rather than a club, a
+ * competition or a sentence opener. Clubs are excluded by name where the
+ * grounding knows them; the rest is a deliberately conservative stop list.
+ */
+const NOT_A_PLAYER = new Set([
+  "The", "A", "An", "If", "No", "Both", "Either", "Neither", "This", "That", "These", "Those",
+  "Pundit", "Premier", "League", "Champions", "Kalshi", "Polymarket", "Stake", "Model",
+  "Team", "Confirmed", "What", "When", "Where", "Why", "How", "It", "They", "He", "She",
+  "Home", "Away", "Draw", "Over", "Under", "Both", "Yes", "No",
+]);
+
+function namesAnIndividual(sentence: string): boolean {
+  const capitalised = sentence.match(/\b[A-Z][a-zÀ-ÿ'’.-]{2,}\b/g) ?? [];
+  return capitalised.some((token) => !NOT_A_PLAYER.has(token));
+}
+
 function assertsTeamNews(sentence: string): boolean {
-  if (TEAM_NEWS_CLAIM.test(sentence)) return true;
+  if (assertsSquadAvailability(sentence)) return true;
   if (MARKET_SUBJECT.test(sentence)) return false;
-  return SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence);
+  if (SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence)) return true;
+  return NAMED_SELECTION_STATUS.test(sentence) && namesAnIndividual(sentence);
 }
 
 /**
