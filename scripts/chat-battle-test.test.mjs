@@ -48,6 +48,7 @@ import {
   validateTeamNewsDiscipline,
   summarizeWebSearchTelemetry,
   validateVerification,
+  ABSTAINED_VERIFICATION,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -2074,6 +2075,32 @@ test("high-line geometry rejects both backwards formulations and requires the re
     "A high line compacts midfield. Two sentences later, unrelated. The winger makes runs in behind against a low block.",
     [], null, { expectCorrectHighLineGeometry: true }
   ).assertions.highLineSpaceBehindAcknowledged, false);
+});
+
+test("schema-16 treats unavailable verification as an abstention, like abstain", () => {
+  // Which of the two a turn lands on depends only on whether any cited page
+  // happened to be fetchable. An answer controls neither, and the product
+  // branches on them together, so the evaluator must not accept one and fail
+  // the other. It previously accepted `abstain` and failed `unavailable`.
+  for (const status of ["abstain", "unavailable"]) {
+    assert.equal(validateVerification(
+      { status, supportedClaimCount: 0, removedClaimCount: 2 },
+      { requireCitation: true, allowAbstention: true }
+    ).assertions.verificationStatus, true, status);
+  }
+  // Without allowAbstention, neither is accepted.
+  for (const status of ["abstain", "unavailable"]) {
+    assert.equal(validateVerification(
+      { status, supportedClaimCount: 0, removedClaimCount: 2 },
+      { requireCitation: true }
+    ).assertions.verificationStatus, false, status);
+  }
+  // A conflict is still not an abstention.
+  assert.equal(validateVerification(
+    { status: "conflict", supportedClaimCount: 0, removedClaimCount: 1 },
+    { requireCitation: true, allowAbstention: true }
+  ).assertions.verificationStatus, false);
+  assert.deepEqual([...ABSTAINED_VERIFICATION].sort(), ["abstain", "unavailable"]);
 });
 
 test("schema-16 certification cannot pass required inconclusive or unsupported correctness", () => {

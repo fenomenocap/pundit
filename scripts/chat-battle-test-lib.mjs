@@ -979,6 +979,16 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   return { passed: failures.length === 0, assertions, failures };
 }
 
+/**
+ * The two verification statuses that mean "nothing was established": zero
+ * supported claims, no citation owed, and the answer says so. Which of the two
+ * a turn lands on depends only on whether any cited page happened to be
+ * fetchable — `unavailable` when some were, `abstain` when none were — and an
+ * answer controls neither. They are one class to the product, which branches on
+ * them together everywhere, and they must be one class here.
+ */
+export const ABSTAINED_VERIFICATION = new Set(["abstain", "unavailable"]);
+
 export function validateVerification(verification, expectation = {}) {
   const statuses = new Set(["not-required", "verified", "conflict", "abstain", "unavailable"]);
   const shape = statuses.has(verification?.status)
@@ -995,7 +1005,7 @@ export function validateVerification(verification, expectation = {}) {
   );
   const allowed = expectation.expectVerification
     ?? (expectation.requireCitation || expectation.requireVerification
-      ? (expectation.allowAbstention ? ["verified", "abstain"] : ["verified"])
+      ? (expectation.allowAbstention ? ["verified", ...ABSTAINED_VERIFICATION] : ["verified"])
       : statuses);
   const expectedStatus = shape && (allowed instanceof Set ? allowed : new Set(allowed)).has(verification.status);
   const assertions = { verificationShape: shape, verificationSemantics: semantics, verificationStatus: expectedStatus };
