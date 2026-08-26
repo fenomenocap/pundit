@@ -96,10 +96,27 @@ export const NON_SQUAD_ABSENCE =
   /\b(?:miss(?:es|ed|ing)?|absent|absence)\b[^.!?\n]{0,40}\b(?:model|input|context|data|coverage|market|source|price|line|probabilit\w*|fixture|rating|evidence|citation)s?\b|\b(?:model|input|context|data|coverage|market|source|price|probabilit\w*|fixture|rating|evidence|citation)s?\b[^.!?\n]{0,40}\b(?:is|are|was|were)\s+(?:miss(?:ing)?|absent)\b/i;
 
 /**
+ * Pundit saying what it does *not* do. "This payload does not quantify lineup
+ * counterfactuals", "it does not ingest a confirmed lineup" -- server-authored
+ * copy whose whole point is to disclaim a squad claim, which the guards then
+ * read as one because it contains the word "lineup" and carries no citation.
+ * The replacement written in place of an unsupported counterfactual is exactly
+ * this shape, so the explanation for a removal was itself being removed.
+ *
+ * A denial of capability cannot be an assertion about a squad. Deliberately
+ * narrow -- only these verbs, and only under a negation -- so "Cairney will not
+ * start", a real claim, is untouched.
+ */
+export const DENIES_OWN_CAPABILITY =
+  /\b(?:does not|doesn['’]t|do not|don['’]t|cannot|can['’]t|will not|won['’]t|is not able to|are not able to)\s+(?:\w+\s+){0,3}(?:quantify|ingest|expose|determine|establish|decompose|explain|infer|predict|model)\b/i;
+
+/**
  * The squad-availability half of `TEAM_NEWS_CLAIM`: everything except a bare
- * "missing"/"absent" whose object is one of Pundit's own inputs.
+ * "missing"/"absent" whose object is one of Pundit's own inputs, and never a
+ * sentence that is disclaiming the capability rather than asserting it.
  */
 export function assertsSquadAvailability(sentence: string): boolean {
+  if (DENIES_OWN_CAPABILITY.test(sentence)) return false;
   if (!TEAM_NEWS_CLAIM.test(sentence)) return false;
   const absenceOnly = /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
   if (absenceOnly.test(sentence)) return true;

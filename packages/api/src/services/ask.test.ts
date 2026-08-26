@@ -1396,6 +1396,45 @@ describe("current-news evidence hardening", () => {
     });
   });
 
+  describe("Pundit's own copy is never mistaken for an evidence claim", () => {
+    const empty = { queries: ["q"], results: [] } as unknown as EvidenceBundle;
+    const delivered = (text: string) =>
+      renderEvidenceCitations(text, empty, true).answer;
+
+    it("keeps a sentence that disclaims the capability rather than asserting it", () => {
+      // The replacement written in place of an unsupported counterfactual is
+      // itself full of the word "lineup", so the explanation for a removal was
+      // being removed by the very next guard.
+      for (const notice of [
+        "The grounded forecast uses club-strength ratings and the competition's "
+          + "home-field setting; it does not quantify lineup counterfactuals.",
+        "It does not ingest a confirmed lineup, explain why an external price "
+          + "differs, or quantify lineup counterfactuals.",
+        "This response does not expose an input-by-input contribution decomposition.",
+      ]) {
+        expect(delivered(notice)).toContain(notice.slice(0, 24));
+      }
+    });
+
+    it("still removes a real claim that happens to contain a negation", () => {
+      // "will not start" is a negation, but it is asserting a squad fact rather
+      // than disclaiming a capability.
+      expect(delivered("Tom Cairney will not start; he is out with a knee injury."))
+        .not.toContain("Cairney");
+    });
+
+    it("does not let market prose be read as a lineup after the guard reorder", () => {
+      // The named-selection checks now run ahead of the market exclusion, which
+      // risks the reverse error: an odds movement read as a team sheet.
+      for (const market of [
+        "Arsenal come back in as favourites on both books.",
+        "Kalshi has Chelsea back in as the shorter price.",
+      ]) {
+        expect(delivered(market)).toContain(market.slice(0, 20));
+      }
+    });
+  });
+
   it("removes an unsourced selection claim about a named player", () => {
     // Neither sentence carries an availability verb, so both walked past the
     // squad-availability patterns and reached readers with no source at all --

@@ -378,6 +378,14 @@ async function retrieveBody(
  *
  * Never rejects and never throws into the caller: a prefetch that fails just
  * leaves retrieval to fetch normally, exactly as it does today.
+ *
+ * It is speculative, and the cost of that was measured rather than assumed.
+ * When an answer cites nothing, `verifyCurrentClaims` returns before it asks
+ * for a page, so these fetches are spent for nothing. Across the 2026-08-25
+ * evaluation that was 1 of 10 researched turns; the other 9 would have made
+ * the identical requests a few seconds later. Bounded to `MAX_PAGES` hosts
+ * already on the evidence allowlist, that is a trade worth taking for removing
+ * the fetch from the critical path -- but it is a trade, not a free win.
  */
 export function prefetchEvidencePages(
   candidates: readonly EvidencePageCandidate[],
