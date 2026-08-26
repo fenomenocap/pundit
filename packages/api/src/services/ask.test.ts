@@ -26,6 +26,9 @@ import {
   failClosedEmptyCurrentVerification,
   dropMisbucketedTotalsScorelines,
   renderEvidenceCitations,
+  repairTruncatedLists,
+  stripProcessNarration,
+  type EvidenceBundle,
   sanitizeRequestFidelity,
   sanitizeFixtureCoverageAnswer,
   sanitizeFootballGeometry,
@@ -33,6 +36,7 @@ import {
   sanitizeContradictoryRationales,
   sanitizeManagerEraClaims,
   sanitizeMatchAnswer,
+  composeValueVerdictSentence,
   sanitizeRuntimeResponseCorrectness,
   sanitizeUnrecognizedCandidateAnswer,
   seasonOrCompetitionGrounding,
@@ -1318,6 +1322,191 @@ describe("current-news evidence hardening", () => {
   it("does not mistake ordinary missing-context prose for a history denial", () => {
     const answer = "The model does not have injury context available for this match.";
     expect(sanitizeRequestFidelity(answer, "follow up", true)).toBe(answer);
+  });
+
+  describe("defects the 2026-08-25 critic pass found in delivered answers", () => {
+    const empty = { queries: ["q"], results: [] } as unknown as EvidenceBundle;
+
+    it("strips a bracketed instruction the model wrote to itself", () => {
+      // Shipped at the top of a live answer, 96 characters long. The existing
+      // bare-label form caps at 30 characters of letters, so it could not reach.
+      const leaked = "[search web for recent Sabah vs Beer-Sheva team news and first leg "
+        + "result before writing the answer]\n\n**Model vs market**\nBeer-Sheva 57.2%.";
+      const cleaned = stripProcessNarration(leaked);
+      expect(cleaned).not.toContain("search web for");
+      expect(cleaned.startsWith("**Model vs market**")).toBe(true);
+    });
+
+    it("leaves ordinary brackets and citation markers alone", () => {
+      for (const kept of [
+        "[[S1]] is a marker, not an instruction.",
+        "See [the preview](https://example.com/x) for more.",
+        "[Note] the model is unchanged.",
+      ]) {
+        expect(stripProcessNarration(kept)).toContain(kept.slice(0, 12));
+      }
+    });
+
+    it("removes a marker with commentary welded onto it", () => {
+      // "[[S1-derived odds in payload]]" matches no resolver, so it survived
+      // the marker sweep and reached the reader verbatim.
+      const rendered = renderEvidenceCitations(
+        "Kalshi at home 50.0% [[S1-derived odds in payload]], Polymarket at 50.8%.",
+        empty, false
+      ).answer;
+      expect(rendered).not.toContain("[[");
+      expect(rendered).not.toContain("derived odds");
+      // And without the space the excised marker left in front of the comma.
+      expect(rendered).toBe("Kalshi at home 50.0%, Polymarket at 50.8%.");
+    });
+
+    it("removes a selection counterfactual phrased as a reshuffle", () => {
+      // Survived the first pass: no availability verb, and none of "expected
+      // to start" / "predicted XI" / "back four" appears in it.
+      const rendered = renderEvidenceCitations(
+        "A lined-up Amador replacement at the back, plus Aliyev back in as a wide "
+          + "attacker, would be the most plausible reason the market is right.",
+        empty, true
+      ).answer;
+      expect(rendered).not.toContain("Amador");
+      expect(rendered).not.toContain("Aliyev");
+    });
+
+    it("closes a list that trails off into a missing item", () => {
+      const repaired = repairTruncatedLists(
+        "I'd need:\n- The name of the club or national team, and\n\nOnce those are clear."
+      );
+      expect(repaired).toContain("- The name of the club or national team.");
+      expect(repaired).not.toMatch(/, and\n/);
+    });
+
+    it("keeps a conjunction that is doing its job mid-list", () => {
+      const untouched = "- First thing, and\n- Second thing.";
+      expect(repairTruncatedLists(untouched)).toBe(untouched);
+    });
+
+    it("corrects a high line described as shrinking the space behind it", () => {
+      // The guard matched "between the defence and the goalkeeper" but not
+      // "between the defenders and the goalkeeper", so the identical backwards
+      // claim shipped on one wording and was corrected on the other.
+      const corrected = sanitizeFootballGeometry(
+        "A high defensive line shrinks the space between the defenders and the goalkeeper."
+      );
+      expect(corrected).toContain("leaves more space behind it");
+      expect(corrected).not.toContain("shrinks the space between the defenders");
+    });
+  });
+
+  describe("defects the 2026-08-26 production run surfaced", () => {
+    const scorelines = [["2-0", 0.1247], ["3-0", 0.1125], ["1-0", 0.086],
+      ["2-1", 0.0841], ["4-0", 0.076], ["3-1", 0.0758], ["1-1", 0.0684]]
+      .map(([score, probability]) => ({ score, probability }));
+    const grounding = {
+      kind: "match", home: "AEK", away: "Levski",
+      pHome: 0.795, pDraw: 0.144, pAway: 0.062,
+      competitionId: "uefa.champions_qual",
+      oddsSources: [], marketDivergence: [],
+      scorelines, topScores: scorelines.slice(0, 5),
+    } as unknown as Grounding;
+
+    it("corrects a scoreline shielded by a correct pairing earlier in the sentence", () => {
+      // The regex gap could span another scoreline, so "the 2-0 and 3-0 align
+      // ... AEK 4-0 (11.3%)" paired 3-0 with 11.3% -- 3-0's real figure -- and
+      // the pairing verified, leaving 4-0 quoting a probability that is not
+      // its own. 4-0 is 7.6%.
+      const corrected = sanitizeMatchAnswer(
+        "**AEK 2-0 (12.5%)**, **3-0 (11.3%)** and **1-0 (8.6%)** lead — the 2-0 and 3-0 "
+          + "align with the BTTS-No lean. AEK 4-0 (11.3%), 3-1 (7.6%) and 2-1 (8.4%) "
+          + "round out the realistic band.",
+        grounding
+      );
+      expect(corrected).toContain("4-0 (7.6%)");
+      expect(corrected).not.toContain("4-0 (11.3%)");
+      // Every correct figure beside it survives untouched.
+      expect(corrected).toContain("2-0 (12.5%)");
+      expect(corrected).toContain("3-0 (11.3%)");
+      expect(corrected).toContain("2-1 (8.4%)");
+    });
+
+    it("refuses the claim that availability is already inside the model", () => {
+      // The model reads club-strength ratings and home-field advantage. A live
+      // answer said an absentee list "already prices into the model" and then
+      // closed by saying the payload does not quantify lineup counterfactuals.
+      for (const claim of [
+        "Levski's four-name absentee list already prices into the model.",
+        "The model already factors in the injuries.",
+        "Team news is baked into the forecast.",
+      ]) {
+        const fixed = sanitizeGroundedMatchNarrative(claim, grounding);
+        expect(fixed).toContain("squad availability is not one of its inputs");
+      }
+    });
+
+    it("leaves the model's own numbers and its honest caveat alone", () => {
+      for (const kept of [
+        "Pundit's model gives AEK 79.5%, the draw 14.4% and Levski 6.2%.",
+        "This payload does not quantify lineup counterfactuals.",
+      ]) {
+        expect(sanitizeGroundedMatchNarrative(kept, grounding)).toContain(kept.slice(0, 24));
+      }
+    });
+
+    it("states a market gap as a divergence rather than a bet", () => {
+      const verdict = composeValueVerdictSentence({
+        source: "kalshi",
+        observedAt: "2026-08-26T08:53:00Z",
+        legs: [
+          { outcome: "home", label: "AEK", modelPercent: 79.5, marketPercent: 64.7, gapPoints: 14.8 },
+          { outcome: "draw", label: "the draw", modelPercent: 14.4, marketPercent: 22.5, gapPoints: -8.1 },
+          { outcome: "away", label: "Levski", modelPercent: 6.2, marketPercent: 12.7, gapPoints: -6.5 },
+        ],
+        largest: { outcome: "home", label: "AEK", modelPercent: 79.5, marketPercent: 64.7, gapPoints: 14.8 },
+      } as never);
+      expect(verdict).toContain("The model rates AEK higher than the market does");
+      expect(verdict).toContain("not a recommendation to back anything");
+      // Pundit prices no stake and sees no execution price, so it is in no
+      // position to name a side worth backing.
+      expect(verdict).not.toMatch(/\bvalue is on\b|\bworth backing\b|\bnothing to take\b|\bedge to take\b/i);
+    });
+  });
+
+  describe("Pundit's own copy is never mistaken for an evidence claim", () => {
+    const empty = { queries: ["q"], results: [] } as unknown as EvidenceBundle;
+    const delivered = (text: string) =>
+      renderEvidenceCitations(text, empty, true).answer;
+
+    it("keeps a sentence that disclaims the capability rather than asserting it", () => {
+      // The replacement written in place of an unsupported counterfactual is
+      // itself full of the word "lineup", so the explanation for a removal was
+      // being removed by the very next guard.
+      for (const notice of [
+        "The grounded forecast uses club-strength ratings and the competition's "
+          + "home-field setting; it does not quantify lineup counterfactuals.",
+        "It does not ingest a confirmed lineup, explain why an external price "
+          + "differs, or quantify lineup counterfactuals.",
+        "This response does not expose an input-by-input contribution decomposition.",
+      ]) {
+        expect(delivered(notice)).toContain(notice.slice(0, 24));
+      }
+    });
+
+    it("still removes a real claim that happens to contain a negation", () => {
+      // "will not start" is a negation, but it is asserting a squad fact rather
+      // than disclaiming a capability.
+      expect(delivered("Tom Cairney will not start; he is out with a knee injury."))
+        .not.toContain("Cairney");
+    });
+
+    it("does not let market prose be read as a lineup after the guard reorder", () => {
+      // The named-selection checks now run ahead of the market exclusion, which
+      // risks the reverse error: an odds movement read as a team sheet.
+      for (const market of [
+        "Arsenal come back in as favourites on both books.",
+        "Kalshi has Chelsea back in as the shorter price.",
+      ]) {
+        expect(delivered(market)).toContain(market.slice(0, 20));
+      }
+    });
   });
 
   it("removes an unsourced selection claim about a named player", () => {
@@ -3174,9 +3363,13 @@ describe("match-tier analytical priorities", () => {
     // no-edge verdict is stated as a result worth giving rather than a
     // fallback -- "the moneyline is efficiently priced" is the answer more
     // often than an edge is.
-    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Say where the value is and where it is not");
-    expect(MATCH_ANALYSIS_PRIORITIES).toContain("inside about two points either");
-    expect(MATCH_ANALYSIS_PRIORITIES).toContain("efficiently priced -- skip it");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Report the disagreement; do not recommend a bet");
+    // Pundit prices no stake and sees no execution price, so it is not in a
+    // position to tell anyone what to do with a probability difference.
+    expect(MATCH_ANALYSIS_PRIORITIES)
+      .toContain("Never phrase a gap as value, an edge, a play, or a side worth backing");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("inside the agreement band");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("the model and the market agree here");
     // The close half, stated as a completeness rule rather than a preference.
     expect(MATCH_ANALYSIS_PRIORITIES)
       .toContain("Close on what would change the read, and make it conditional");

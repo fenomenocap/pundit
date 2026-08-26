@@ -35,6 +35,32 @@ type AddressRecord = { address: string; family: number };
 type ResolveHost = (hostname: string, signal?: AbortSignal) => Promise<AddressRecord[]>;
 type FetchPage = (input: string | URL, init?: RequestInit, address?: AddressRecord) => Promise<Response>;
 
+/**
+ * Just the fetched body, with no candidate identity attached.
+ *
+ * The cache is deliberately keyed on the URL and stores only what came back
+ * over the wire. Caching a whole `RetrievedEvidencePage` would carry the id,
+ * title and authority of whichever candidate happened to warm the entry, and a
+ * later consumer would silently inherit them -- which is how a citation ends up
+ * naming one source and quoting another.
+ */
+interface FetchedPageBody {
+  finalUrl: string;
+  text: string;
+  retrievedAt: string;
+}
+
+/**
+ * Page bodies for one request, shared between a prefetch started early and the
+ * retrieval that later needs them. Scoped to a request rather than the process
+ * so nothing is served across users or outlives its evidence.
+ */
+export type EvidencePageCache = Map<string, Promise<FetchedPageBody | null>>;
+
+export function createEvidencePageCache(): EvidencePageCache {
+  return new Map();
+}
+
 export interface RetrievalOptions {
   fetch?: FetchPage;
   resolveHost?: ResolveHost;
@@ -42,6 +68,7 @@ export interface RetrievalOptions {
   maxResponseBytes?: number;
   maxTextChars?: number;
   now?: () => Date;
+  cache?: EvidencePageCache;
 }
 
 function parseIpv4(address: string): number[] | null {
@@ -256,13 +283,16 @@ async function retrieveOne(
  * reputable sources. Individual failures are omitted; an aborted shared request
  * is propagated so retrieval cannot outlive the API's global deadline.
  */
-export async function retrieveEvidencePages(
-  candidates: readonly EvidencePageCandidate[],
-  signal?: AbortSignal,
-  options: RetrievalOptions = {}
-): Promise<RetrievedEvidencePage[]> {
+/**
+ * Which candidates are worth a fetch, in the order they will be attempted.
+ * Shared by retrieval and the prefetch so the two cannot select different
+ * pages -- a prefetch that warmed the wrong URLs would be pure cost.
+ */
+function selectRetrievable(
+  candidates: readonly EvidencePageCandidate[]
+): EvidencePageCandidate[] {
   const rank: Record<EvidenceAuthority, number> = { official: 0, reputable: 1, other: 2 };
-  const selected = [...candidates]
+  return [...candidates]
     .filter((candidate) =>
       candidate.id.trim()
       && candidate.url.trim()
@@ -271,6 +301,14 @@ export async function retrieveEvidencePages(
     .sort((a, b) => rank[a.authority] - rank[b.authority])
     .filter((candidate, index, all) => all.findIndex((entry) => entry.url === candidate.url) === index)
     .slice(0, MAX_PAGES);
+}
+
+export async function retrieveEvidencePages(
+  candidates: readonly EvidencePageCandidate[],
+  signal?: AbortSignal,
+  options: RetrievalOptions = {}
+): Promise<RetrievedEvidencePage[]> {
+  const selected = selectRetrievable(candidates);
   const resolved = {
     fetch: options.fetch ?? fetchPinned,
     resolveHost: options.resolveHost ?? defaultResolveHost,
@@ -281,11 +319,91 @@ export async function retrieveEvidencePages(
   };
   const settled = await Promise.all(selected.map(async (candidate) => {
     try {
-      return await retrieveOne(candidate, signal, resolved);
+      const body = await bodyFor(candidate, signal, resolved, options.cache);
+      return body ? { ...candidate, ...body } : null;
     } catch (error) {
       if (signal?.aborted) throw error;
       return null;
     }
   }));
   return settled.filter((page): page is RetrievedEvidencePage => page !== null);
+}
+
+/**
+ * One fetch per URL per request. A cache hit is the whole point of the
+ * prefetch: an entry warmed while the model was still writing is already
+ * settled by the time verification asks for it.
+ */
+function bodyFor(
+  candidate: EvidencePageCandidate,
+  signal: AbortSignal | undefined,
+  resolved: Required<Pick<RetrievalOptions, "timeoutMs" | "maxResponseBytes" | "maxTextChars" | "now">>
+    & { fetch: FetchPage; resolveHost: ResolveHost },
+  cache: EvidencePageCache | undefined
+): Promise<FetchedPageBody | null> {
+  if (!cache) return retrieveBody(candidate, signal, resolved);
+  const key = candidate.url;
+  const existing = cache.get(key);
+  if (existing) return existing;
+  // Stored as a promise, not a value, so two callers racing for the same URL
+  // share one fetch instead of both going out.
+  const pending = retrieveBody(candidate, signal, resolved).catch((error) => {
+    if (signal?.aborted) throw error;
+    return null;
+  });
+  cache.set(key, pending);
+  return pending;
+}
+
+async function retrieveBody(
+  candidate: EvidencePageCandidate,
+  signal: AbortSignal | undefined,
+  resolved: Required<Pick<RetrievalOptions, "timeoutMs" | "maxResponseBytes" | "maxTextChars" | "now">>
+    & { fetch: FetchPage; resolveHost: ResolveHost }
+): Promise<FetchedPageBody> {
+  const page = await retrieveOne(candidate, signal, resolved);
+  return { finalUrl: page.finalUrl, text: page.text, retrievedAt: page.retrievedAt };
+}
+
+/**
+ * Warms the cache for the pages verification is going to want, without waiting
+ * for them.
+ *
+ * Retrieval sits behind answer generation on the critical path, and every page
+ * it needs is already known from the evidence bundle -- only the *order* of the
+ * candidates depends on what the model ends up citing, and ordering cannot
+ * change what a URL returns. So the fetches can run while the model writes, and
+ * verification finds them settled. The selection here deliberately mirrors
+ * `retrieveEvidencePages` so the same pages are warmed that would be requested.
+ *
+ * Never rejects and never throws into the caller: a prefetch that fails just
+ * leaves retrieval to fetch normally, exactly as it does today.
+ *
+ * It is speculative, and the cost of that was measured rather than assumed.
+ * When an answer cites nothing, `verifyCurrentClaims` returns before it asks
+ * for a page, so these fetches are spent for nothing. Across the 2026-08-25
+ * evaluation that was 1 of 10 researched turns; the other 9 would have made
+ * the identical requests a few seconds later. Bounded to `MAX_PAGES` hosts
+ * already on the evidence allowlist, that is a trade worth taking for removing
+ * the fetch from the critical path -- but it is a trade, not a free win.
+ */
+export function prefetchEvidencePages(
+  candidates: readonly EvidencePageCandidate[],
+  signal: AbortSignal | undefined,
+  cache: EvidencePageCache,
+  options: RetrievalOptions = {}
+): void {
+  const resolved = {
+    fetch: options.fetch ?? fetchPinned,
+    resolveHost: options.resolveHost ?? defaultResolveHost,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    maxResponseBytes: options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES,
+    maxTextChars: options.maxTextChars ?? DEFAULT_MAX_TEXT_CHARS,
+    now: options.now ?? (() => new Date()),
+  };
+  for (const candidate of selectRetrievable(candidates)) {
+    // Kicked off, deliberately not awaited. The catch keeps a failed prefetch
+    // from surfacing as an unhandled rejection on a path nobody is awaiting.
+    void bodyFor(candidate, signal, resolved, cache)?.catch(() => undefined);
+  }
 }

@@ -903,8 +903,8 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       ""
     );
     const backwardsHighLine = [
-      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b[^.!?\n]{0,30}\b(?:space|gap|room)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|(?:defensive\s+)?line)\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b/i.test(affirmativeGeometryText),
-      /\b(?:space|gap|room)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|(?:defensive\s+)?line)\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b[^.!?\n]{0,80}\b(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b[^.!?\n]{0,40}\bhigh\s+(?:defensive\s+)?line\b/i.test(affirmativeGeometryText),
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b[^.!?\n]{0,30}\b(?:space|gap|room)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|defenders|(?:defensive\s+)?line|back\s*(?:line|four|three))\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b/i.test(affirmativeGeometryText),
+      /\b(?:space|gap|room)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|defenders|(?:defensive\s+)?line|back\s*(?:line|four|three))\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b[^.!?\n]{0,80}\b(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b[^.!?\n]{0,40}\bhigh\s+(?:defensive\s+)?line\b/i.test(affirmativeGeometryText),
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:leav|mak|creat|produc)\w*\b[^.!?\n]{0,30}\b(?:no|less|smaller)\b[^.!?\n]{0,20}\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:does not|doesn't|do not|don't|never)\s+(?:(?:necessarily|actually|directly|automatically|always)\s+)?(?:leav|creat|open|increas|widen|expos|produc|result)\w*\b[^.!?\n]{0,30}(?:(?:more|larger|greater|wider|bigger|extra|additional)\b[^.!?\n]{0,20})?\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
       /\b(?:high\s+(?:defensive\s+)?line|back\s+(?:four|line)\b[^.!?\n]{0,50}\b(?:push|step|move)\w*\s+up)\b[\s\S]{0,140}\b(?:there\s+is\s+)?(?:no\s+|not\s+(?:a\s+)?)(?:(?:more|larger|greater|wider|bigger|extra|additional)\b[^.!?\n]{0,20})?\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
@@ -1336,13 +1336,26 @@ const NON_SQUAD_ABSENCE =
 const SQUAD_AVAILABILITY_CLAIM =
   /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
 
+/**
+ * Pundit saying what it does *not* do. Its own closing sentence -- "this
+ * payload does not quantify lineup counterfactuals" -- contains the word
+ * "lineup" and carries no citation, so this check read the server's own
+ * disclaimer as an unsourced squad claim and failed a required scenario on it.
+ * A denial of capability cannot be an assertion about a squad. Mirrors
+ * `DENIES_OWN_CAPABILITY` in `answer-provenance.ts`; keep the two in step.
+ */
+const DENIES_OWN_CAPABILITY =
+  /\b(?:does not|doesn['’]t|do not|don['’]t|cannot|can['’]t|will not|won['’]t|is not able to|are not able to)\s+(?:\w+\s+){0,3}(?:quantify|ingest|expose|determine|establish|decompose|explain|infer|predict|model)\b/i;
+
 function assertsSquadAvailability(region) {
+  if (DENIES_OWN_CAPABILITY.test(region)) return false;
   if (!TEAM_NEWS_CLAIM.test(region)) return false;
   if (SQUAD_AVAILABILITY_CLAIM.test(region)) return true;
   return !NON_SQUAD_ABSENCE.test(region);
 }
 
 function assertsNamedPlayerNews(region) {
+  if (DENIES_OWN_CAPABILITY.test(region)) return false;
   const playerStatus = /\b(?:absence|absent|injur\w*|suspend\w*|doubtful|ruled out|sidelined|unavailable|available|starts?|starting|fit|knock|miss(?:es|ed|ing)?|out)\b/i.test(region);
   const names = region.match(/\b[A-Z][a-zÀ-ÿ'’.-]{2,}\b/g) ?? [];
   const generic = new Set(["Confirmed", "No", "The", "If", "Team", "What", "Pundit", "Arsenal", "Coventry"]);
