@@ -35,7 +35,10 @@ import {
 import { verifyClaimsOnce } from "./claim-verifier";
 import {
   retrieveEvidencePages,
+  prefetchEvidencePages,
+  createEvidencePageCache,
   type EvidenceAuthority,
+  type EvidencePageCache,
 } from "./evidence-page-retrieval";
 import {
   SECTION_LABEL_LINE,
@@ -44,6 +47,7 @@ import {
   segmentAnswer,
   TEAM_NEWS_CLAIM,
   assertsSquadAvailability,
+  DENIES_OWN_CAPABILITY,
 } from "./answer-provenance";
 import {
   reviseAnswerWithClaimDecisions,
@@ -218,6 +222,12 @@ export interface EvidenceBundle {
   searchDegradedReason?: WebSearchFailureReason | null;
   /** Searches this bundle ran that returned no evidence for infrastructure reasons. */
   degradedSearches?: number;
+  /**
+   * Page bodies fetched ahead of verification, shared for this request only.
+   * Present so retrieval can consume a fetch that started while the model was
+   * still writing instead of beginning one after it finished.
+   */
+  pageCache?: EvidencePageCache;
 }
 
 /**
@@ -565,7 +575,7 @@ const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
  * shape are the class that actually needs a source.
  */
 const NAMED_SELECTION_STATUS =
-  /\b(?:expected\s+(?:starter|to\s+start|XI|line-?up)|likely\s+(?:starter|to\s+start)|predicted\s+(?:XI|line-?up|starters?)|starts?\s+(?:in\s+goal|at\s+(?:left|right|centre|center)-back|up\s+front)|(?:back|front)\s+(?:three|four|five)|slot(?:s|ting)?\s+in\s+at|first-choice)\b/i;
+  /\b(?:expected\s+(?:starter|to\s+start|XI|line-?up)|likely\s+(?:starter|to\s+start)|predicted\s+(?:XI|line-?up|starters?)|starts?\s+(?:in\s+goal|at\s+(?:left|right|centre|center)-back|up\s+front)|(?:back|front)\s+(?:three|four|five)|slot(?:s|ting)?\s+in\s+at|first-choice|lined[- ]up|replacement\s+at\s+(?:the|left|right|centre|center)\b|back\s+in\s+as\s+(?:an?|the)?\s*(?:wide|central|centre|center|left|right|holding|attacking|defensive|deep|second)?\s*(?:attacker|midfielder|defender|forward|striker|winger|keeper|goalkeeper|full-?back|centre-?back|center-?back|starter)\b|(?:named|naming)\s+(?:a|the|an)\s+(?:near-?)?(?:first-choice|full-strength|changed|unchanged)\b)\b/i;
 
 /**
  * The same claim wearing a conditional: "if he starts, the shape is unchanged;
@@ -596,11 +606,19 @@ function namesAnIndividual(sentence: string): boolean {
 }
 
 function assertsTeamNews(sentence: string): boolean {
+  if (DENIES_OWN_CAPABILITY.test(sentence)) return false;
   if (assertsSquadAvailability(sentence)) return true;
-  if (MARKET_SUBJECT.test(sentence)) return false;
-  if (SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence)) return true;
+  // The two named-player checks run *ahead* of the market exclusion, not
+  // behind it. Market prose is excluded because it shares vocabulary with team
+  // news -- but naming a player and putting him in a shirt is a squad claim
+  // whatever else the sentence talks about, and a live answer escaped on
+  // exactly that technicality: "a lined-up Amador replacement at the back, plus
+  // Aliyev back in as a wide attacker, would be the most plausible reason the
+  // market is right". The word "market" made an unsourced lineup its own alibi.
   if (NAMED_SELECTION_STATUS.test(sentence) && namesAnIndividual(sentence)) return true;
-  return CONDITIONAL_SELECTION_CLAIM.test(sentence) && namesAnIndividual(sentence);
+  if (CONDITIONAL_SELECTION_CLAIM.test(sentence) && namesAnIndividual(sentence)) return true;
+  if (MARKET_SUBJECT.test(sentence)) return false;
+  return SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence);
 }
 
 /**
@@ -854,6 +872,25 @@ async function buildEvidenceBundle(
     degradedSearches: bundle.degradedSearches ?? 0,
     searchDegradedReason: bundle.searchDegradedReason ?? null,
   }));
+
+  // Start fetching the pages verification will want, now, while the model has
+  // not begun writing. Retrieval used to sit entirely behind generation even
+  // though every page it needs is already known here -- only the candidate
+  // *order* depends on what the model cites, and order cannot change what a URL
+  // returns. Nothing is awaited: by the time verification asks, these are
+  // settled, and any that are not are fetched exactly as before.
+  bundle.pageCache = createEvidencePageCache();
+  prefetchEvidencePages(
+    bundle.results.map((source) => ({
+      id: source.id,
+      url: source.url,
+      title: source.title,
+      date: source.date,
+      authority: evidenceAuthority(source.url),
+    })),
+    signal,
+    bundle.pageCache
+  );
   return bundle;
 }
 
@@ -992,7 +1029,11 @@ export async function verifyCurrentClaims(
     ...candidates.filter((candidate) => citedIds.has(candidate.id)),
     ...candidates.filter((candidate) => !citedIds.has(candidate.id)),
   ];
-  const fetched = await (dependencies.retrieve ?? retrieveEvidencePages)(ordered, signal);
+  const fetched = await (dependencies.retrieve ?? retrieveEvidencePages)(
+    ordered,
+    signal,
+    { cache: bundle.pageCache }
+  );
   // Most publishers block a server-side fetch, so verification ran against one
   // retrieved page out of thirty sources and abstained on nearly everything --
   // the same question answering with cited team news or with the notice
@@ -1743,6 +1784,43 @@ export function dropDanglingSectionOpeners(answer: string): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/**
+ * A list whose last item still reaches for an item that is not there.
+ *
+ * A live answer asked the reader for two things and printed one:
+ *
+ *     - The name of the club or national team, and
+ *
+ * The second bullet went -- excised by a guard, or simply never written -- and
+ * the conjunction binding it to the list stayed, so the answer trailed off
+ * mid-request. Only the dangling connector is removed, on the final item of a
+ * run and nowhere else: nothing is invented to fill the gap, because the guards
+ * cannot know what the missing item was.
+ */
+const LIST_ITEM_LINE = /^\s*(?:[-*•]|\d+[.)])\s+\S/;
+
+export function repairTruncatedLists(answer: string): string {
+  const lines = answer.split("\n");
+  let changed = false;
+  const repaired = lines.map((line, index) => {
+    if (!LIST_ITEM_LINE.test(line)) return line;
+    // Only the last item of a run: a mid-list "and" is doing its job.
+    let lastOfRun = true;
+    for (let next = index + 1; next < lines.length; next += 1) {
+      if (!lines[next].trim()) continue;
+      lastOfRun = !LIST_ITEM_LINE.test(lines[next]);
+      break;
+    }
+    if (!lastOfRun) return line;
+    const trimmed = line.replace(/[\s,;]*\b(?:and|or)\s*$/i, "");
+    if (trimmed === line) return line;
+    changed = true;
+    // Give the item the terminator its sentence never got.
+    return /[.!?:]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  });
+  return changed ? repaired.join("\n") : answer;
+}
+
 export function dropOrphanedSectionLabels(answer: string): string {
   const lines = answer.split("\n");
   const retained = lines.filter((line, index) => {
@@ -1906,6 +1984,46 @@ function outcomeGapPoints(
   );
 }
 
+/**
+ * Removes the recommendation from a sentence that is otherwise reporting a
+ * comparison, and returns null when nothing usable is left -- at which point
+ * the caller drops it and the server's calibrated verdict takes its place.
+ */
+function stripBettingClause(sentence: string): string | null {
+  const trimmed = sentence
+    .replace(/[,;]?\s*(?:and\s+)?so\s+there\s+is\s+nothing\s+to\s+take\s+(?:there|here)/gi, "")
+    .replace(/[,;]?\s*(?:so\s+|and\s+)?there\s+is\s+nothing\s+to\s+take\s+(?:there|here)/gi, "")
+    .replace(/[,;]?\s*(?:and\s+)?(?:they\s+|these\s+|both\s+)?offers?\s+nothing\b/gi, "")
+    .replace(/[,;]?\s*(?:and\s+)?(?:are|is)\s+not\s+worth\s+(?:a\s+bet|backing|taking)/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([.,;])/g, "$1")
+    .trim();
+  if (RECOMMENDS_A_BET.test(trimmed)) return null;
+  // What survives has to still be a comparison, not a stub. Requiring a digit
+  // was too strict: "LASK are priced above where the model has them" is a
+  // perfectly good divergence statement and carries no figure at all.
+  if (trimmed.replace(/[^\p{L}]/gu, "").length < 12) return null;
+  if (!/\b(?:model|market|priced?|prices|rates?|above|below|higher|lower|gap)\b/i.test(trimmed)) return null;
+  return /[.!?]$/.test(trimmed) ? `${trimmed} ` : `${trimmed}. `;
+}
+
+/**
+ * Prose that tells the reader what to do with a probability gap, rather than
+ * what the gap is. Pundit prices no stake, sees no execution price and carries
+ * no bankroll, so every one of these is a recommendation it is not positioned
+ * to make.
+ */
+const RECOMMENDS_A_BET =
+  /\b(?:the\s+)?(?:value|edge|play|bet|money)\s+(?:is|sits|lies)\s+on\b|\bworth\s+(?:backing|taking|a\s+bet|playing)\b|\bnothing\s+to\s+take\b|\bthe\s+play\s+(?:is|here)\b|\bactionable\s+(?:side|edge|value)\b|\bonly\s+direction\s+with\s+daylight\b|\b(?:offers?|offering)\s+nothing\b|\bnot\s+worth\s+(?:a\s+bet|backing|taking)\b/i;
+
+/**
+ * "Already priced into the model", said of team news. The model has no such
+ * input, so the claim is false however confidently it is phrased -- and it is
+ * the one falsehood that makes every downstream caveat read as boilerplate.
+ */
+const MODEL_ABSORBS_AVAILABILITY =
+  /\b(?:absentee|absences?|absent|injur\w*|suspensions?|availability|unavailab\w*|team news|line-?ups?|starting (?:XI|eleven)|squad)\b[^.!?\n]{0,70}\b(?:already\s+)?(?:prices?|priced|pricing|baked|factored|factors?|incorporat\w*|reflected|reflects?|accounted|accounts?|absorb\w*|captured|captures?)\b[^.!?\n]{0,25}\b(?:in|into|by|within)\b[^.!?\n]{0,25}\b(?:the\s+)?(?:model|forecast|payload|ratings?|probabilit\w*)\b|\b(?:the\s+)?(?:model|forecast|payload|ratings?)\b[^.!?\n]{0,45}\b(?:already\s+)?(?:prices?\s+in|factors?\s+in|incorporat\w*|absorb\w*|accounts?\s+for|reflects?|captures?)\b[^.!?\n]{0,45}\b(?:absentee|absences?|absent|injur\w*|suspensions?|availability|team news|line-?ups?|starting (?:XI|eleven)|squad)\b/i;
+
 export function sanitizeGroundedMatchNarrative(answer: string, grounding: Grounding): string {
   const homeEnd = new RegExp(
     `\\b(?:lots? of|most|all)(?: the)? goals?[^.!?\\n]{0,35}\\bat ${escapedPattern(grounding.home)}['’]s end\\b`,
@@ -1953,6 +2071,35 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
     }
     if (/\b(?:assumes?|assuming)\b[^.!?\n]{0,50}\b(?:XI|line-?up|starters?)\b|\b(?:rotation|second string|team sheets?|line-?ups?|first-choice (?:attack|XI|starters?))\b[^.!?\n]{0,100}\b(?:shrink|pull|push|compress|move|modal|stand|erode)/i.test(sentence)) {
       return "The grounded forecast uses club-strength ratings and the competition's home-field setting; it does not quantify lineup counterfactuals.";
+    }
+    // A claim that availability is *already inside* the model. It is not: the
+    // model reads club-strength ratings and the competition's home-field
+    // setting, and nothing else. A live answer told a reader "Levski's
+    // four-name absentee list already prices into the model" and then closed by
+    // saying the payload does not quantify lineup counterfactuals -- two
+    // sentences apart and flatly contradicting each other, with the false one
+    // first. Distinct from the rule above, which catches a lineup *assumption*
+    // moving the numbers; this catches the assertion that it already has.
+    // A tip, wherever it came from. Changing the prompt stops the model writing
+    // these in future turns, but a rule that has to hold every time does not
+    // belong in a prompt -- the same lesson the decimal-pricing fix already
+    // learned. Dropping the sentence is deliberate over rewriting it: the gap
+    // and its direction are stated in the divergence sentence, and
+    // `guaranteeMatchReadCompleteness` puts the server's own calibrated verdict
+    // in its place once no verdict is left standing.
+    //
+    // Guarded on carrying no figure of its own, so a sentence that states a
+    // number *and* tips is never deleted with the number inside it.
+    if (RECOMMENDS_A_BET.test(sentence)) {
+      // A sentence that carries a figure *and* a tip keeps the figure: the
+      // recommendation is a trailing clause on a factual comparison, and
+      // deleting the whole sentence would take the comparison with it.
+      const withoutTip = stripBettingClause(sentence);
+      if (withoutTip !== null) return withoutTip;
+      return drop();
+    }
+    if (MODEL_ABSORBS_AVAILABILITY.test(sentence)) {
+      return "Pundit's model reads club-strength ratings and the competition's home-field setting; squad availability is not one of its inputs.";
     }
     const claimedTeam = mentionedTeamOutcome(sentence, grounding);
     if (claimedTeam) {
@@ -2076,7 +2223,14 @@ export function sanitizeFootballGeometry(answer: string): string {
   const correction = "A high defensive line compresses space in front of the defence "
     + "but leaves more space behind it for the goalkeeper to cover.";
   const backwardsVerb = "(?:shrinks?|shrunk|shrinking|reduces?|reduced|reducing|lessens?|lessened|lessening|decreases?|decreased|decreasing|compress(?:es|ed|ing)?|closes?|closed|closing|limits?|limited|limiting|narrows?|narrowed|narrowing|minimi[sz](?:e|es|ed|ing))";
-  const behindTarget = "(?:(?:space|gap|room) behind (?:(?:the )?(?:defenders|defence|defense|back line)|it|them)|(?:space|gap|room) between (?:the )?(?:defence|defense|back line) and (?:the )?(?:goalkeeper|keeper|goal))";
+  // One name for the back unit, used by both branches below. They used to
+  // carry separate lists, and the "between X and the keeper" branch was missing
+  // `defenders` -- so "a high defensive line shrinks the space between the
+  // defenders and the goalkeeper" walked straight through a guard that catches
+  // the identical claim written "between the defence and the goalkeeper".
+  const backUnit = "(?:defenders|defence|defense|defensive line|back ?line|back four|back three)";
+  const behindTarget = `(?:(?:space|gap|room) behind (?:(?:the )?${backUnit}|it|them)`
+    + `|(?:space|gap|room) between (?:the )?${backUnit} and (?:the )?(?:goalkeeper|keeper|goal))`;
   const backwardsGeometrySource = `\\b${backwardsVerb}\\b(?:(?!\\bmidfield\\b)[^.!?\\n]){0,28}\\b${behindTarget}\\b`;
   const backwardsBehindPredicate = /\b(?:makes?|made|making|keeps?|kept|keeping)\b[^.!?\n]{0,20}\b(?:space|gap|room)\s+behind(?:\s+(?:(?:the\s+)?(?:defenders|defence|defense|back line)|it|them))?\s+(?:feel\w*\s+)?(?:tighter|narrower|smaller)\b/i;
   const deniedBehindReference = "behind(?:\\s+(?:(?:the\\s+)?(?:defenders|defence|defense|back line)|it|them))?";
@@ -2340,6 +2494,16 @@ export function renderEvidenceCitations(
   // opened a double bracket.
   rendered = rendered
     .replace(/\[\[\s*[A-Za-z]{0,2}\d{1,3}\s*\]\]/g, "")
+    // The same marker with commentary welded onto it. A live answer shipped
+    // "[[S1-derived odds in payload]]", which is not a marker any resolver can
+    // match and so survived the sweep above and reached the reader verbatim.
+    // Still anchored on the ID shape rather than widening to a general
+    // `\[\[[^\]]*\]\]`, which would eat prose that merely opened a bracket.
+    .replace(/\[\[\s*[A-Za-z]{0,2}\d{1,3}\b[^\]\n]{0,80}\]\]/g, "")
+    // An excised marker leaves its spacing behind ("50.0% , Polymarket"). A
+    // space before punctuation is never correct, and it is the visible residue
+    // that makes a sanitised answer look broken rather than clean.
+    .replace(/[ \t]+([,.;:!?])/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
@@ -2496,12 +2660,15 @@ Agreement is a conclusion, not a hole to fill. When every gapPoints sits within 
 every outcome, say plainly that there is no meaningful disagreement here and the fixture looks
 efficiently priced. That is a real, useful finding. Never manufacture an edge to have something to
 report, and never dress a gap smaller than the model's own noise as a signal.
-Say where the value is and where it is not, in those words. Every outcome gets a verdict: the one
-with the largest positive gapPoints is where the value is, anything inside about two points either
-way is priced about right, and a negative gap means the market is above the model there and there is
-nothing to take. Two points is the whole agreement band, so do not call a 1.5-point gap an edge.
-Saying "the moneyline is efficiently priced -- skip it" is as useful as finding an edge, and far more
-often true.
+Report the disagreement; do not recommend a bet. Every outcome gets a verdict, and the verdict is a
+direction: the model rates the largest positive gapPoints higher than the market does, a negative gap
+means the market rates it higher than the model does, and anything inside about two points sits
+inside the agreement band. Two points is the whole band, so do not call a 1.5-point gap a
+disagreement. Saying "the model and the market agree here" is as useful as finding a gap, and far
+more often true.
+Never phrase a gap as value, an edge, a play, or a side worth backing. Pundit prices no stake, sees
+no execution price and carries no bankroll, so it is not in a position to tell anyone what to do with
+a probability difference -- only what the difference is and which way it runs.
 Close on what would change the read, and make it conditional. Most often the unknown is unverified
 team news. Say what you would need to confirm and what it would change -- "if the first-choice back
 line starts, the low-scoring lines hold up; if two of them are missing, the model's edge on the
@@ -3457,7 +3624,17 @@ function mapTimeoutError(error: unknown): never {
   throw error;
 }
 
-const SCORELINE_PERCENTAGE_PATTERN = /\b(\d+-\d+)\b([^%\n]{0,45}?)(\d+(?:\.\d+)?)%/g;
+/**
+ * A scoreline and the percentage that belongs to it.
+ *
+ * The gap is *tempered* so it can never span another scoreline. Without that,
+ * an earlier bare mention absorbed a later figure belonging to a different
+ * score: in "the 2-0 and 3-0 align with the BTTS-No lean. AEK 4-0 (11.3%)" the
+ * regex paired `3-0` with `11.3%`, which is 3-0's real probability, so the
+ * pairing verified and the reader kept "4-0 (11.3%)" -- 4-0 is 7.6%. A wrong
+ * number shielded from correction by a correct one earlier in the sentence.
+ */
+const SCORELINE_PERCENTAGE_PATTERN = /\b(\d+-\d+)\b((?:(?!\d+-\d+)[^%\n]){0,45}?)(\d+(?:\.\d+)?)%/g;
 
 // ATTRIBUTION_RULES requires every team-news claim to name its source and date,
 // so a line carrying one is reported fact, not a model reading. The guards below
@@ -4858,6 +5035,15 @@ const LEADING_PROCESS_LINE = new RegExp(
   // A bare bracketed label the model prints where its tool output would go
   // ("[search results]"), which reached a reader at the top of a live answer.
   + "|\\[[a-z][a-z ._-]{2,30}\\]"
+  // The same leak written as a full instruction to itself, which the label
+  // form above cannot reach: it caps at 30 characters of letters, and a live
+  // answer opened with "[search web for recent Sabah vs Beer-Sheva team news
+  // and first leg result before writing the answer]" -- 96 characters carrying
+  // digits and punctuation. Anchored on an instruction verb as the first token
+  // inside the bracket, so `[[S1]]`, `[Title](url)` and ordinary bracketed
+  // prose are all untouched, and it cannot span a line.
+  + "|\\[[ \\t]*(?:search|look[ \\t]+up|lookup|find|check|verify|fetch|retrieve"
+    + "|confirm|browse|query|note[ \\t]+to[ \\t]+self)\\b[^\\n\\]]{0,300}\\]?"
   + "|(?:i|we)(?:'ll|[ \\t]+will|[ \\t]+am[ \\t]+going[ \\t]+to)[ \\t]+"
   + "(?:note|translate|check|search|look|confirm|verify|start|begin)\\b[^\\n]*?"
   + ")(?:\\n+|(?=\\*\\*)))+",
@@ -6273,19 +6459,27 @@ function joinLabels(labels: readonly string[]): string {
 export function composeValueVerdictSentence(divergence: MarketDivergence): string {
   const { edge, against, fair } = valueBuckets(divergence);
   if (!edge.length) {
-    return "No outcome here is more than two percentage points from the model, so the "
-      + "fixture looks efficiently priced and there is no edge to take.";
+    return "No outcome here is more than two percentage points from the market, so the "
+      + "model and the market agree across the board.";
   }
-  const parts = [`the value is on ${joinLabels(edge.map((leg) => leg.label))}`];
+  const parts = [`the model rates ${joinLabels(edge.map((leg) => leg.label))} `
+    + "higher than the market does"];
   if (against.length) {
-    parts.push(`the market has ${joinLabels(against.map((leg) => leg.label))} above `
-      + "where the model does, so there is nothing to take there");
+    parts.push(`the market rates ${joinLabels(against.map((leg) => leg.label))} `
+      + "higher than the model does");
   }
   if (fair.length) {
     parts.push(`${joinLabels(fair.map((leg) => leg.label))} `
-      + `${fair.length > 1 ? "are" : "is"} priced about right`);
+      + `${fair.length > 1 ? "sit" : "sits"} inside the agreement band`);
   }
-  return `${capitalizeFirst(parts.join("; "))}.`;
+  // The calibration the verdict was missing. Every evaluation of this answer
+  // shape has flagged the same thing: a gap between two probability estimates
+  // was being handed over as a thing to back. Pundit prices no stake, sees no
+  // execution price and carries no bankroll, so a divergence is a disagreement
+  // to explain -- not a recommendation, and saying so is what makes the number
+  // usable rather than authoritative.
+  return `${capitalizeFirst(parts.join("; "))}. That is a difference between two `
+    + "probability estimates, not a recommendation to back anything.";
 }
 
 /**
@@ -6293,7 +6487,7 @@ export function composeValueVerdictSentence(divergence: MarketDivergence): strin
  * price, or says outright that there is no side worth taking.
  */
 const VALUE_VERDICT_EXPLICIT =
-  /\b(?:over[- ]?priced|under[- ]?priced|mis[- ]?priced|fairly priced|efficiently priced|priced (?:about |roughly )?right|priced fairly|priced above|priced below|no (?:real |live )?edge|nothing to (?:take|act on|play|do)|not worth (?:taking|backing|playing)|skip (?:it|this|the)|leave (?:it|that|them) alone|worth backing|worth taking|value is on|value sits on|value here is)\b/i;
+  /\b(?:over[- ]?priced|under[- ]?priced|mis[- ]?priced|fairly priced|efficiently priced|priced (?:about |roughly )?right|priced fairly|priced above|priced below|no (?:real |live )?edge|nothing to (?:take|act on|play|do)|not worth (?:taking|backing|playing)|skip (?:it|this|the)|leave (?:it|that|them) alone|worth backing|worth taking|value is on|value sits on|value here is|rates? [^.!?\n]{0,40}higher than the (?:market|model)|inside the agreement band|model and the market agree)\b/i;
 
 /**
  * Verdict language that only becomes a verdict beside a price. "The model gives
@@ -7088,10 +7282,10 @@ export function sanitizeDeliveredAnswer(
   tier: AnalysisTier,
   grounding?: AskGrounding
 ): string {
-  return dropOrphanedSectionLabels(sanitizeRuntimeResponseCorrectness(
+  return repairTruncatedLists(dropOrphanedSectionLabels(sanitizeRuntimeResponseCorrectness(
     sanitizeAnswerForTier(answer, tier, grounding, true),
     grounding?.kind === "match" ? grounding : undefined
-  ));
+  )));
 }
 
 /**

@@ -91,8 +91,8 @@ BRAVE_SEARCH_URL=
 # Unknown names are ignored; unnamed providers trail the chain.
 WEB_SEARCH_PROVIDER_ORDER=    # default: minimax,brave
 # Searches in flight process-wide. A load control, independent of provider
-# health. Default 2, max 8.
-WEB_SEARCH_CONCURRENCY=2
+# health. Default 4, max 8.
+WEB_SEARCH_CONCURRENCY=4
 
 # ── Rate limiting for POST /api/ask ──────────────────────────────────────────
 # The intended limit across the whole deployment. Every instance uses one

@@ -1180,18 +1180,21 @@ describe("the verdict and the close a match answer must carry", () => {
     const delivered = await deliverCeltic(DIVERGENCE_ONLY);
     expectDeliverable(delivered.answer, true);
     expect(delivered.answer).toContain(
-      "The value is on Celtic; the market has the draw and LASK above where the model"
-      + " does, so there is nothing to take there."
+      "The model rates Celtic higher than the market does; the market rates the draw and LASK"
+      + " higher than the model does."
     );
     // A verdict is a direction, not a second recital: the sizes were stated one
     // sentence earlier, and every figure it repeated would be one the market
     // guard has to attribute to a source.
     const verdict = delivered.answer.split("\n")
       .flatMap((line) => line.split(". "))
-      .find((sentence) => sentence.includes("The value is on"))!;
+      .find((sentence) => sentence.includes("The model rates Celtic higher"))!;
     expect(verdict).not.toMatch(/\d/);
     // It lands beside the gap it judges, not as a trailing aside.
-    expect(delivered.answer.split("\n")[1]).toContain("The value is on Celtic");
+    expect(delivered.answer.split("\n")[1]).toContain("The model rates Celtic higher");
+    // The calibration the verdict was missing: a gap is a disagreement to
+    // explain, not a side to back.
+    expect(delivered.answer).toContain("not a recommendation to back anything");
     // The model's own divergence sentence is untouched and still stated once.
     expect(delivered.answer.match(/11\.5 percentage points/g)).toHaveLength(1);
   });
@@ -1203,16 +1206,43 @@ describe("the verdict and the close a match answer must carry", () => {
     // likely to talk itself out of. Every leg here is inside the band, so the
     // floor must produce the abstention rather than dress 0.8 points as value.
     expect(delivered.answer).toContain(
-      "No outcome here is more than two percentage points from the model, so the fixture"
-      + " looks efficiently priced and there is no edge to take."
+      "No outcome here is more than two percentage points from the market, so the"
+      + " model and the market agree across the board."
     );
     expect(delivered.answer).not.toContain("The value is on");
+    expect(delivered.answer).not.toMatch(/\bworth backing\b|\bedge to take\b/i);
+  });
+
+  it("replaces a tip with the calibrated verdict instead of keeping it", async () => {
+    // Pundit prices no stake and sees no execution price. A recommendation is
+    // dropped and the server's own direction-only verdict is inserted in its
+    // place, so the answer still carries a verdict -- just not a bet.
+    const delivered = await deliverCeltic(
+      DIVERGENCE_ONLY.replace("**Goals**", "The value is on Celtic and the draw looks overpriced.\n\n**Goals**")
+    );
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).not.toContain("The value is on Celtic");
+    expect(delivered.answer).toContain("The model rates Celtic higher");
+    expect(delivered.answer).toContain("not a recommendation to back anything");
+  });
+
+  it("keeps the comparison when only a trailing clause was the tip", async () => {
+    // "LASK are priced above where the model has them" is a divergence
+    // statement; only what follows it is a recommendation.
+    const delivered = await deliverCeltic(
+      DIVERGENCE_ONLY.replace("**Goals**",
+        "LASK are priced above where the model has them, so there is nothing to take there.\n\n**Goals**")
+    );
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).toContain("LASK are priced above where the model has them");
+    expect(delivered.answer).not.toContain("nothing to take");
   });
 
   it("adds no second verdict when the model already gave one, however phrased", async () => {
+    // Phrasings that report a comparison rather than recommend a bet. A tip is
+    // no longer one of these: it is removed, and the server's own calibrated
+    // verdict takes its place, which the test below covers.
     const phrasings = [
-      "The value is on Celtic and the draw looks overpriced.",
-      "LASK are priced above where the model has them, so there is nothing to take there.",
       "The moneyline is efficiently priced -- skip it.",
       "Kalshi's price on the draw is generous relative to the model.",
       "There is no real edge on the away win at this price.",
@@ -1224,7 +1254,7 @@ describe("the verdict and the close a match answer must carry", () => {
         DIVERGENCE_ONLY.replace("**Goals**", `${line}\n\n**Goals**`)
       );
       expectDeliverable(delivered.answer, true);
-      expect(delivered.answer).not.toContain("The value is on Celtic;");
+      expect(delivered.answer).not.toContain("The model rates Celtic higher than the market does;");
       expect(delivered.answer).not.toContain("looks efficiently priced and there is no edge");
     }
   });
@@ -1343,7 +1373,7 @@ describe("the verdict and the close a match answer must carry", () => {
     });
     expectDeliverable(delivered.answer, true);
     expect(delivered.answer).toContain("11.5 percentage points higher");
-    expect(delivered.answer).toContain("The value is on Celtic");
+    expect(delivered.answer).toContain("The model rates Celtic higher");
     expect(statesConditionalClose(delivered.answer)).toBe(true);
     expect(sanitizeDeliveredAnswer(delivered.answer, "match", priced))
       .toBe(delivered.answer);
