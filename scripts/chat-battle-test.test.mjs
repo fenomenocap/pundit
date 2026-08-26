@@ -2430,3 +2430,25 @@ test("routability evidence names the mode and the windows it routes", () => {
     /routing enabled/
   );
 });
+
+test("schema-16 separates search narration from a conditional offer to search", () => {
+  // "Send those and I'll search for current team news" is not narration of a
+  // search in progress -- it is what happens after the reader supplies a
+  // fixture, and it is the most useful sentence a clarification reply can end
+  // on. A live answer to an ambiguous question failed for offering to help.
+  for (const offer of [
+    "Send those and I\u2019ll search for current team news with sources.",
+    "Once you give me the fixture, I\u2019ll check the latest team news.",
+    "If you share the match, I will look at the market too.",
+  ]) assert.equal(validateNoDraftLeak(offer).passed, true, offer);
+
+  // Real narration still fails, including when an offer sits elsewhere in the
+  // same answer.
+  for (const narration of [
+    "Let me check the latest news before answering.",
+    "I will search for the team news now.",
+    "Now I have enough to answer.",
+    "Search results show three absences.",
+    "Send me the fixture. Now I have enough to answer.",
+  ]) assert.equal(validateNoDraftLeak(narration).passed, false, narration);
+});

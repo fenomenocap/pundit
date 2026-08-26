@@ -36,6 +36,7 @@ import {
   sanitizeContradictoryRationales,
   sanitizeManagerEraClaims,
   sanitizeMatchAnswer,
+  dropDanglingSectionOpeners,
   composeValueVerdictSentence,
   sanitizeRuntimeResponseCorrectness,
   sanitizeUnrecognizedCandidateAnswer,
@@ -1394,6 +1395,64 @@ describe("current-news evidence hardening", () => {
       );
       expect(corrected).toContain("leaves more space behind it");
       expect(corrected).not.toContain("shrinks the space between the defenders");
+    });
+  });
+
+  describe("defects the post-deploy production run surfaced", () => {
+    const rows = [["2-0", 0.1247], ["3-0", 0.1125], ["1-0", 0.086],
+      ["2-1", 0.0841], ["4-0", 0.076], ["3-1", 0.0758]]
+      .map(([score, probability]) => ({ score, probability }));
+    const aek = {
+      kind: "match", home: "AEK", away: "Levski",
+      pHome: 0.795, pDraw: 0.144, pAway: 0.062,
+      competitionId: "uefa.champions_qual",
+      oddsSources: [], marketDivergence: [],
+      scorelines: rows, topScores: rows.slice(0, 5),
+    } as unknown as Grounding;
+
+    it("corrects a false count of the top scorelines", () => {
+      // Top six are 2-0, 3-0, 1-0, 2-1, 4-0, 3-1. Wins by two or more: 2-0,
+      // 3-0, 4-0, 3-1 -- four, not five. Every other figure in the sentence
+      // was right, which is what made it quietly wrong.
+      expect(sanitizeMatchAnswer(
+        "The scoreline mix confirms it — five of the top six lines are AEK wins by two or more.",
+        aek
+      )).toContain("four of the top six");
+    });
+
+    it("leaves a count that is already right, and one it cannot evaluate", () => {
+      expect(sanitizeMatchAnswer("Four of the top six lines are AEK wins by two or more.", aek))
+        .toContain("Four of the top six");
+      // No computable predicate: left alone rather than guessed at.
+      expect(sanitizeMatchAnswer("Three of the top five lines feel comfortable.", aek))
+        .toContain("Three of the top five");
+    });
+
+    it("removes a bet framed as what the reader is betting into", () => {
+      expect(sanitizeGroundedMatchNarrative(
+        "Confirmed lineups an hour before kickoff settle which of those reads you are betting into.",
+        aek
+      )).not.toContain("betting into");
+    });
+
+    it("drops a section opener whose pronoun has no antecedent", () => {
+      // A conjunction in front of the pronoun does not supply one.
+      expect(dropDanglingSectionOpeners(
+        "**What would change this**\n If they are first-team regulars, the edge widens."
+      )).not.toContain("first-team regulars");
+      // Nor does an additive opener that adds to nothing.
+      expect(dropDanglingSectionOpeners(
+        "**Team news**\n Scores24 adds that AEK have no significant injuries."
+      )).not.toContain("Scores24");
+    });
+
+    it("keeps a section opener that names its own subject", () => {
+      for (const kept of [
+        "**Verdict**\nAEK are the model's favourite.",
+        "**Goals**\nOver 2.5 at 65.6% and both teams to score at 46.4%.",
+      ]) {
+        expect(dropDanglingSectionOpeners(kept)).toBe(kept);
+      }
     });
   });
 
