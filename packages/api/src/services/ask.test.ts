@@ -26,6 +26,9 @@ import {
   failClosedEmptyCurrentVerification,
   dropMisbucketedTotalsScorelines,
   renderEvidenceCitations,
+  repairTruncatedLists,
+  stripProcessNarration,
+  type EvidenceBundle,
   sanitizeRequestFidelity,
   sanitizeFixtureCoverageAnswer,
   sanitizeFootballGeometry,
@@ -1318,6 +1321,79 @@ describe("current-news evidence hardening", () => {
   it("does not mistake ordinary missing-context prose for a history denial", () => {
     const answer = "The model does not have injury context available for this match.";
     expect(sanitizeRequestFidelity(answer, "follow up", true)).toBe(answer);
+  });
+
+  describe("defects the 2026-08-25 critic pass found in delivered answers", () => {
+    const empty = { queries: ["q"], results: [] } as unknown as EvidenceBundle;
+
+    it("strips a bracketed instruction the model wrote to itself", () => {
+      // Shipped at the top of a live answer, 96 characters long. The existing
+      // bare-label form caps at 30 characters of letters, so it could not reach.
+      const leaked = "[search web for recent Sabah vs Beer-Sheva team news and first leg "
+        + "result before writing the answer]\n\n**Model vs market**\nBeer-Sheva 57.2%.";
+      const cleaned = stripProcessNarration(leaked);
+      expect(cleaned).not.toContain("search web for");
+      expect(cleaned.startsWith("**Model vs market**")).toBe(true);
+    });
+
+    it("leaves ordinary brackets and citation markers alone", () => {
+      for (const kept of [
+        "[[S1]] is a marker, not an instruction.",
+        "See [the preview](https://example.com/x) for more.",
+        "[Note] the model is unchanged.",
+      ]) {
+        expect(stripProcessNarration(kept)).toContain(kept.slice(0, 12));
+      }
+    });
+
+    it("removes a marker with commentary welded onto it", () => {
+      // "[[S1-derived odds in payload]]" matches no resolver, so it survived
+      // the marker sweep and reached the reader verbatim.
+      const rendered = renderEvidenceCitations(
+        "Kalshi at home 50.0% [[S1-derived odds in payload]], Polymarket at 50.8%.",
+        empty, false
+      ).answer;
+      expect(rendered).not.toContain("[[");
+      expect(rendered).not.toContain("derived odds");
+      // And without the space the excised marker left in front of the comma.
+      expect(rendered).toBe("Kalshi at home 50.0%, Polymarket at 50.8%.");
+    });
+
+    it("removes a selection counterfactual phrased as a reshuffle", () => {
+      // Survived the first pass: no availability verb, and none of "expected
+      // to start" / "predicted XI" / "back four" appears in it.
+      const rendered = renderEvidenceCitations(
+        "A lined-up Amador replacement at the back, plus Aliyev back in as a wide "
+          + "attacker, would be the most plausible reason the market is right.",
+        empty, true
+      ).answer;
+      expect(rendered).not.toContain("Amador");
+      expect(rendered).not.toContain("Aliyev");
+    });
+
+    it("closes a list that trails off into a missing item", () => {
+      const repaired = repairTruncatedLists(
+        "I'd need:\n- The name of the club or national team, and\n\nOnce those are clear."
+      );
+      expect(repaired).toContain("- The name of the club or national team.");
+      expect(repaired).not.toMatch(/, and\n/);
+    });
+
+    it("keeps a conjunction that is doing its job mid-list", () => {
+      const untouched = "- First thing, and\n- Second thing.";
+      expect(repairTruncatedLists(untouched)).toBe(untouched);
+    });
+
+    it("corrects a high line described as shrinking the space behind it", () => {
+      // The guard matched "between the defence and the goalkeeper" but not
+      // "between the defenders and the goalkeeper", so the identical backwards
+      // claim shipped on one wording and was corrected on the other.
+      const corrected = sanitizeFootballGeometry(
+        "A high defensive line shrinks the space between the defenders and the goalkeeper."
+      );
+      expect(corrected).toContain("leaves more space behind it");
+      expect(corrected).not.toContain("shrinks the space between the defenders");
+    });
   });
 
   it("removes an unsourced selection claim about a named player", () => {
