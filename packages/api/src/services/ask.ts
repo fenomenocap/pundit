@@ -574,7 +574,7 @@ const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
  * shape are the class that actually needs a source.
  */
 const NAMED_SELECTION_STATUS =
-  /\b(?:expected\s+(?:starter|to\s+start|XI|line-?up)|likely\s+(?:starter|to\s+start)|predicted\s+(?:XI|line-?up|starters?)|starts?\s+(?:in\s+goal|at\s+(?:left|right|centre|center)-back|up\s+front)|(?:back|front)\s+(?:three|four|five)|slot(?:s|ting)?\s+in\s+at|first-choice)\b/i;
+  /\b(?:expected\s+(?:starter|to\s+start|XI|line-?up)|likely\s+(?:starter|to\s+start)|predicted\s+(?:XI|line-?up|starters?)|starts?\s+(?:in\s+goal|at\s+(?:left|right|centre|center)-back|up\s+front)|(?:back|front)\s+(?:three|four|five)|slot(?:s|ting)?\s+in\s+at|first-choice|lined[- ]up|(?:a|the)\s+\w+\s+replacement\b|replacement\s+at\s+the\b|back\s+in\s+as\b|(?:comes?|coming|drops?|dropping)\s+(?:back\s+)?in\s+(?:as|at|for)\b|(?:named|naming)\s+(?:a|the|an)\s+(?:near-?)?(?:first-choice|full-strength|changed|unchanged)\b)\b/i;
 
 /**
  * The same claim wearing a conditional: "if he starts, the shape is unchanged;
@@ -606,10 +606,17 @@ function namesAnIndividual(sentence: string): boolean {
 
 function assertsTeamNews(sentence: string): boolean {
   if (assertsSquadAvailability(sentence)) return true;
-  if (MARKET_SUBJECT.test(sentence)) return false;
-  if (SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence)) return true;
+  // The two named-player checks run *ahead* of the market exclusion, not
+  // behind it. Market prose is excluded because it shares vocabulary with team
+  // news -- but naming a player and putting him in a shirt is a squad claim
+  // whatever else the sentence talks about, and a live answer escaped on
+  // exactly that technicality: "a lined-up Amador replacement at the back, plus
+  // Aliyev back in as a wide attacker, would be the most plausible reason the
+  // market is right". The word "market" made an unsourced lineup its own alibi.
   if (NAMED_SELECTION_STATUS.test(sentence) && namesAnIndividual(sentence)) return true;
-  return CONDITIONAL_SELECTION_CLAIM.test(sentence) && namesAnIndividual(sentence);
+  if (CONDITIONAL_SELECTION_CLAIM.test(sentence) && namesAnIndividual(sentence)) return true;
+  if (MARKET_SUBJECT.test(sentence)) return false;
+  return SUPPLEMENTARY_TEAM_NEWS_CLAIM.test(sentence);
 }
 
 /**
@@ -1775,6 +1782,43 @@ export function dropDanglingSectionOpeners(answer: string): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/**
+ * A list whose last item still reaches for an item that is not there.
+ *
+ * A live answer asked the reader for two things and printed one:
+ *
+ *     - The name of the club or national team, and
+ *
+ * The second bullet went -- excised by a guard, or simply never written -- and
+ * the conjunction binding it to the list stayed, so the answer trailed off
+ * mid-request. Only the dangling connector is removed, on the final item of a
+ * run and nowhere else: nothing is invented to fill the gap, because the guards
+ * cannot know what the missing item was.
+ */
+const LIST_ITEM_LINE = /^\s*(?:[-*•]|\d+[.)])\s+\S/;
+
+export function repairTruncatedLists(answer: string): string {
+  const lines = answer.split("\n");
+  let changed = false;
+  const repaired = lines.map((line, index) => {
+    if (!LIST_ITEM_LINE.test(line)) return line;
+    // Only the last item of a run: a mid-list "and" is doing its job.
+    let lastOfRun = true;
+    for (let next = index + 1; next < lines.length; next += 1) {
+      if (!lines[next].trim()) continue;
+      lastOfRun = !LIST_ITEM_LINE.test(lines[next]);
+      break;
+    }
+    if (!lastOfRun) return line;
+    const trimmed = line.replace(/[\s,;]*\b(?:and|or)\s*$/i, "");
+    if (trimmed === line) return line;
+    changed = true;
+    // Give the item the terminator its sentence never got.
+    return /[.!?:]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  });
+  return changed ? repaired.join("\n") : answer;
+}
+
 export function dropOrphanedSectionLabels(answer: string): string {
   const lines = answer.split("\n");
   const retained = lines.filter((line, index) => {
@@ -2108,7 +2152,14 @@ export function sanitizeFootballGeometry(answer: string): string {
   const correction = "A high defensive line compresses space in front of the defence "
     + "but leaves more space behind it for the goalkeeper to cover.";
   const backwardsVerb = "(?:shrinks?|shrunk|shrinking|reduces?|reduced|reducing|lessens?|lessened|lessening|decreases?|decreased|decreasing|compress(?:es|ed|ing)?|closes?|closed|closing|limits?|limited|limiting|narrows?|narrowed|narrowing|minimi[sz](?:e|es|ed|ing))";
-  const behindTarget = "(?:(?:space|gap|room) behind (?:(?:the )?(?:defenders|defence|defense|back line)|it|them)|(?:space|gap|room) between (?:the )?(?:defence|defense|back line) and (?:the )?(?:goalkeeper|keeper|goal))";
+  // One name for the back unit, used by both branches below. They used to
+  // carry separate lists, and the "between X and the keeper" branch was missing
+  // `defenders` -- so "a high defensive line shrinks the space between the
+  // defenders and the goalkeeper" walked straight through a guard that catches
+  // the identical claim written "between the defence and the goalkeeper".
+  const backUnit = "(?:defenders|defence|defense|defensive line|back ?line|back four|back three)";
+  const behindTarget = `(?:(?:space|gap|room) behind (?:(?:the )?${backUnit}|it|them)`
+    + `|(?:space|gap|room) between (?:the )?${backUnit} and (?:the )?(?:goalkeeper|keeper|goal))`;
   const backwardsGeometrySource = `\\b${backwardsVerb}\\b(?:(?!\\bmidfield\\b)[^.!?\\n]){0,28}\\b${behindTarget}\\b`;
   const backwardsBehindPredicate = /\b(?:makes?|made|making|keeps?|kept|keeping)\b[^.!?\n]{0,20}\b(?:space|gap|room)\s+behind(?:\s+(?:(?:the\s+)?(?:defenders|defence|defense|back line)|it|them))?\s+(?:feel\w*\s+)?(?:tighter|narrower|smaller)\b/i;
   const deniedBehindReference = "behind(?:\\s+(?:(?:the\\s+)?(?:defenders|defence|defense|back line)|it|them))?";
@@ -2372,6 +2423,16 @@ export function renderEvidenceCitations(
   // opened a double bracket.
   rendered = rendered
     .replace(/\[\[\s*[A-Za-z]{0,2}\d{1,3}\s*\]\]/g, "")
+    // The same marker with commentary welded onto it. A live answer shipped
+    // "[[S1-derived odds in payload]]", which is not a marker any resolver can
+    // match and so survived the sweep above and reached the reader verbatim.
+    // Still anchored on the ID shape rather than widening to a general
+    // `\[\[[^\]]*\]\]`, which would eat prose that merely opened a bracket.
+    .replace(/\[\[\s*[A-Za-z]{0,2}\d{1,3}\b[^\]\n]{0,80}\]\]/g, "")
+    // An excised marker leaves its spacing behind ("50.0% , Polymarket"). A
+    // space before punctuation is never correct, and it is the visible residue
+    // that makes a sanitised answer look broken rather than clean.
+    .replace(/[ \t]+([,.;:!?])/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
@@ -4890,6 +4951,15 @@ const LEADING_PROCESS_LINE = new RegExp(
   // A bare bracketed label the model prints where its tool output would go
   // ("[search results]"), which reached a reader at the top of a live answer.
   + "|\\[[a-z][a-z ._-]{2,30}\\]"
+  // The same leak written as a full instruction to itself, which the label
+  // form above cannot reach: it caps at 30 characters of letters, and a live
+  // answer opened with "[search web for recent Sabah vs Beer-Sheva team news
+  // and first leg result before writing the answer]" -- 96 characters carrying
+  // digits and punctuation. Anchored on an instruction verb as the first token
+  // inside the bracket, so `[[S1]]`, `[Title](url)` and ordinary bracketed
+  // prose are all untouched, and it cannot span a line.
+  + "|\\[[ \\t]*(?:search|look[ \\t]+up|lookup|find|check|verify|fetch|retrieve"
+    + "|confirm|browse|query|note[ \\t]+to[ \\t]+self)\\b[^\\n\\]]{0,300}\\]?"
   + "|(?:i|we)(?:'ll|[ \\t]+will|[ \\t]+am[ \\t]+going[ \\t]+to)[ \\t]+"
   + "(?:note|translate|check|search|look|confirm|verify|start|begin)\\b[^\\n]*?"
   + ")(?:\\n+|(?=\\*\\*)))+",
@@ -7120,10 +7190,10 @@ export function sanitizeDeliveredAnswer(
   tier: AnalysisTier,
   grounding?: AskGrounding
 ): string {
-  return dropOrphanedSectionLabels(sanitizeRuntimeResponseCorrectness(
+  return repairTruncatedLists(dropOrphanedSectionLabels(sanitizeRuntimeResponseCorrectness(
     sanitizeAnswerForTier(answer, tier, grounding, true),
     grounding?.kind === "match" ? grounding : undefined
-  ));
+  )));
 }
 
 /**
