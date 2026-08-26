@@ -1336,13 +1336,26 @@ const NON_SQUAD_ABSENCE =
 const SQUAD_AVAILABILITY_CLAIM =
   /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
 
+/**
+ * Pundit saying what it does *not* do. Its own closing sentence -- "this
+ * payload does not quantify lineup counterfactuals" -- contains the word
+ * "lineup" and carries no citation, so this check read the server's own
+ * disclaimer as an unsourced squad claim and failed a required scenario on it.
+ * A denial of capability cannot be an assertion about a squad. Mirrors
+ * `DENIES_OWN_CAPABILITY` in `answer-provenance.ts`; keep the two in step.
+ */
+const DENIES_OWN_CAPABILITY =
+  /\b(?:does not|doesn['’]t|do not|don['’]t|cannot|can['’]t|will not|won['’]t|is not able to|are not able to)\s+(?:\w+\s+){0,3}(?:quantify|ingest|expose|determine|establish|decompose|explain|infer|predict|model)\b/i;
+
 function assertsSquadAvailability(region) {
+  if (DENIES_OWN_CAPABILITY.test(region)) return false;
   if (!TEAM_NEWS_CLAIM.test(region)) return false;
   if (SQUAD_AVAILABILITY_CLAIM.test(region)) return true;
   return !NON_SQUAD_ABSENCE.test(region);
 }
 
 function assertsNamedPlayerNews(region) {
+  if (DENIES_OWN_CAPABILITY.test(region)) return false;
   const playerStatus = /\b(?:absence|absent|injur\w*|suspend\w*|doubtful|ruled out|sidelined|unavailable|available|starts?|starting|fit|knock|miss(?:es|ed|ing)?|out)\b/i.test(region);
   const names = region.match(/\b[A-Z][a-zÀ-ÿ'’.-]{2,}\b/g) ?? [];
   const generic = new Set(["Confirmed", "No", "The", "If", "Team", "What", "Pundit", "Arsenal", "Coventry"]);

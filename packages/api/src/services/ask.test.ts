@@ -36,6 +36,7 @@ import {
   sanitizeContradictoryRationales,
   sanitizeManagerEraClaims,
   sanitizeMatchAnswer,
+  composeValueVerdictSentence,
   sanitizeRuntimeResponseCorrectness,
   sanitizeUnrecognizedCandidateAnswer,
   seasonOrCompetitionGrounding,
@@ -1393,6 +1394,79 @@ describe("current-news evidence hardening", () => {
       );
       expect(corrected).toContain("leaves more space behind it");
       expect(corrected).not.toContain("shrinks the space between the defenders");
+    });
+  });
+
+  describe("defects the 2026-08-26 production run surfaced", () => {
+    const scorelines = [["2-0", 0.1247], ["3-0", 0.1125], ["1-0", 0.086],
+      ["2-1", 0.0841], ["4-0", 0.076], ["3-1", 0.0758], ["1-1", 0.0684]]
+      .map(([score, probability]) => ({ score, probability }));
+    const grounding = {
+      kind: "match", home: "AEK", away: "Levski",
+      pHome: 0.795, pDraw: 0.144, pAway: 0.062,
+      competitionId: "uefa.champions_qual",
+      oddsSources: [], marketDivergence: [],
+      scorelines, topScores: scorelines.slice(0, 5),
+    } as unknown as Grounding;
+
+    it("corrects a scoreline shielded by a correct pairing earlier in the sentence", () => {
+      // The regex gap could span another scoreline, so "the 2-0 and 3-0 align
+      // ... AEK 4-0 (11.3%)" paired 3-0 with 11.3% -- 3-0's real figure -- and
+      // the pairing verified, leaving 4-0 quoting a probability that is not
+      // its own. 4-0 is 7.6%.
+      const corrected = sanitizeMatchAnswer(
+        "**AEK 2-0 (12.5%)**, **3-0 (11.3%)** and **1-0 (8.6%)** lead — the 2-0 and 3-0 "
+          + "align with the BTTS-No lean. AEK 4-0 (11.3%), 3-1 (7.6%) and 2-1 (8.4%) "
+          + "round out the realistic band.",
+        grounding
+      );
+      expect(corrected).toContain("4-0 (7.6%)");
+      expect(corrected).not.toContain("4-0 (11.3%)");
+      // Every correct figure beside it survives untouched.
+      expect(corrected).toContain("2-0 (12.5%)");
+      expect(corrected).toContain("3-0 (11.3%)");
+      expect(corrected).toContain("2-1 (8.4%)");
+    });
+
+    it("refuses the claim that availability is already inside the model", () => {
+      // The model reads club-strength ratings and home-field advantage. A live
+      // answer said an absentee list "already prices into the model" and then
+      // closed by saying the payload does not quantify lineup counterfactuals.
+      for (const claim of [
+        "Levski's four-name absentee list already prices into the model.",
+        "The model already factors in the injuries.",
+        "Team news is baked into the forecast.",
+      ]) {
+        const fixed = sanitizeGroundedMatchNarrative(claim, grounding);
+        expect(fixed).toContain("squad availability is not one of its inputs");
+      }
+    });
+
+    it("leaves the model's own numbers and its honest caveat alone", () => {
+      for (const kept of [
+        "Pundit's model gives AEK 79.5%, the draw 14.4% and Levski 6.2%.",
+        "This payload does not quantify lineup counterfactuals.",
+      ]) {
+        expect(sanitizeGroundedMatchNarrative(kept, grounding)).toContain(kept.slice(0, 24));
+      }
+    });
+
+    it("states a market gap as a divergence rather than a bet", () => {
+      const verdict = composeValueVerdictSentence({
+        source: "kalshi",
+        observedAt: "2026-08-26T08:53:00Z",
+        legs: [
+          { outcome: "home", label: "AEK", modelPercent: 79.5, marketPercent: 64.7, gapPoints: 14.8 },
+          { outcome: "draw", label: "the draw", modelPercent: 14.4, marketPercent: 22.5, gapPoints: -8.1 },
+          { outcome: "away", label: "Levski", modelPercent: 6.2, marketPercent: 12.7, gapPoints: -6.5 },
+        ],
+        largest: { outcome: "home", label: "AEK", modelPercent: 79.5, marketPercent: 64.7, gapPoints: 14.8 },
+      } as never);
+      expect(verdict).toContain("The model rates AEK higher than the market does");
+      expect(verdict).toContain("not a recommendation to back anything");
+      // Pundit prices no stake and sees no execution price, so it is in no
+      // position to name a side worth backing.
+      expect(verdict).not.toMatch(/\bvalue is on\b|\bworth backing\b|\bnothing to take\b|\bedge to take\b/i);
     });
   });
 
@@ -3289,9 +3363,13 @@ describe("match-tier analytical priorities", () => {
     // no-edge verdict is stated as a result worth giving rather than a
     // fallback -- "the moneyline is efficiently priced" is the answer more
     // often than an edge is.
-    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Say where the value is and where it is not");
-    expect(MATCH_ANALYSIS_PRIORITIES).toContain("inside about two points either");
-    expect(MATCH_ANALYSIS_PRIORITIES).toContain("efficiently priced -- skip it");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Report the disagreement; do not recommend a bet");
+    // Pundit prices no stake and sees no execution price, so it is not in a
+    // position to tell anyone what to do with a probability difference.
+    expect(MATCH_ANALYSIS_PRIORITIES)
+      .toContain("Never phrase a gap as value, an edge, a play, or a side worth backing");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("inside the agreement band");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("the model and the market agree here");
     // The close half, stated as a completeness rule rather than a preference.
     expect(MATCH_ANALYSIS_PRIORITIES)
       .toContain("Close on what would change the read, and make it conditional");

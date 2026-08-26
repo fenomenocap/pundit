@@ -1984,6 +1984,14 @@ function outcomeGapPoints(
   );
 }
 
+/**
+ * "Already priced into the model", said of team news. The model has no such
+ * input, so the claim is false however confidently it is phrased -- and it is
+ * the one falsehood that makes every downstream caveat read as boilerplate.
+ */
+const MODEL_ABSORBS_AVAILABILITY =
+  /\b(?:absentee|absences?|absent|injur\w*|suspensions?|availability|unavailab\w*|team news|line-?ups?|starting (?:XI|eleven)|squad)\b[^.!?\n]{0,70}\b(?:already\s+)?(?:prices?|priced|pricing|baked|factored|factors?|incorporat\w*|reflected|reflects?|accounted|accounts?|absorb\w*|captured|captures?)\b[^.!?\n]{0,25}\b(?:in|into|by|within)\b[^.!?\n]{0,25}\b(?:the\s+)?(?:model|forecast|payload|ratings?|probabilit\w*)\b|\b(?:the\s+)?(?:model|forecast|payload|ratings?)\b[^.!?\n]{0,45}\b(?:already\s+)?(?:prices?\s+in|factors?\s+in|incorporat\w*|absorb\w*|accounts?\s+for|reflects?|captures?)\b[^.!?\n]{0,45}\b(?:absentee|absences?|absent|injur\w*|suspensions?|availability|team news|line-?ups?|starting (?:XI|eleven)|squad)\b/i;
+
 export function sanitizeGroundedMatchNarrative(answer: string, grounding: Grounding): string {
   const homeEnd = new RegExp(
     `\\b(?:lots? of|most|all)(?: the)? goals?[^.!?\\n]{0,35}\\bat ${escapedPattern(grounding.home)}['’]s end\\b`,
@@ -2031,6 +2039,17 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
     }
     if (/\b(?:assumes?|assuming)\b[^.!?\n]{0,50}\b(?:XI|line-?up|starters?)\b|\b(?:rotation|second string|team sheets?|line-?ups?|first-choice (?:attack|XI|starters?))\b[^.!?\n]{0,100}\b(?:shrink|pull|push|compress|move|modal|stand|erode)/i.test(sentence)) {
       return "The grounded forecast uses club-strength ratings and the competition's home-field setting; it does not quantify lineup counterfactuals.";
+    }
+    // A claim that availability is *already inside* the model. It is not: the
+    // model reads club-strength ratings and the competition's home-field
+    // setting, and nothing else. A live answer told a reader "Levski's
+    // four-name absentee list already prices into the model" and then closed by
+    // saying the payload does not quantify lineup counterfactuals -- two
+    // sentences apart and flatly contradicting each other, with the false one
+    // first. Distinct from the rule above, which catches a lineup *assumption*
+    // moving the numbers; this catches the assertion that it already has.
+    if (MODEL_ABSORBS_AVAILABILITY.test(sentence)) {
+      return "Pundit's model reads club-strength ratings and the competition's home-field setting; squad availability is not one of its inputs.";
     }
     const claimedTeam = mentionedTeamOutcome(sentence, grounding);
     if (claimedTeam) {
@@ -2591,12 +2610,15 @@ Agreement is a conclusion, not a hole to fill. When every gapPoints sits within 
 every outcome, say plainly that there is no meaningful disagreement here and the fixture looks
 efficiently priced. That is a real, useful finding. Never manufacture an edge to have something to
 report, and never dress a gap smaller than the model's own noise as a signal.
-Say where the value is and where it is not, in those words. Every outcome gets a verdict: the one
-with the largest positive gapPoints is where the value is, anything inside about two points either
-way is priced about right, and a negative gap means the market is above the model there and there is
-nothing to take. Two points is the whole agreement band, so do not call a 1.5-point gap an edge.
-Saying "the moneyline is efficiently priced -- skip it" is as useful as finding an edge, and far more
-often true.
+Report the disagreement; do not recommend a bet. Every outcome gets a verdict, and the verdict is a
+direction: the model rates the largest positive gapPoints higher than the market does, a negative gap
+means the market rates it higher than the model does, and anything inside about two points sits
+inside the agreement band. Two points is the whole band, so do not call a 1.5-point gap a
+disagreement. Saying "the model and the market agree here" is as useful as finding a gap, and far
+more often true.
+Never phrase a gap as value, an edge, a play, or a side worth backing. Pundit prices no stake, sees
+no execution price and carries no bankroll, so it is not in a position to tell anyone what to do with
+a probability difference -- only what the difference is and which way it runs.
 Close on what would change the read, and make it conditional. Most often the unknown is unverified
 team news. Say what you would need to confirm and what it would change -- "if the first-choice back
 line starts, the low-scoring lines hold up; if two of them are missing, the model's edge on the
@@ -3552,7 +3574,17 @@ function mapTimeoutError(error: unknown): never {
   throw error;
 }
 
-const SCORELINE_PERCENTAGE_PATTERN = /\b(\d+-\d+)\b([^%\n]{0,45}?)(\d+(?:\.\d+)?)%/g;
+/**
+ * A scoreline and the percentage that belongs to it.
+ *
+ * The gap is *tempered* so it can never span another scoreline. Without that,
+ * an earlier bare mention absorbed a later figure belonging to a different
+ * score: in "the 2-0 and 3-0 align with the BTTS-No lean. AEK 4-0 (11.3%)" the
+ * regex paired `3-0` with `11.3%`, which is 3-0's real probability, so the
+ * pairing verified and the reader kept "4-0 (11.3%)" -- 4-0 is 7.6%. A wrong
+ * number shielded from correction by a correct one earlier in the sentence.
+ */
+const SCORELINE_PERCENTAGE_PATTERN = /\b(\d+-\d+)\b((?:(?!\d+-\d+)[^%\n]){0,45}?)(\d+(?:\.\d+)?)%/g;
 
 // ATTRIBUTION_RULES requires every team-news claim to name its source and date,
 // so a line carrying one is reported fact, not a model reading. The guards below
@@ -6377,19 +6409,27 @@ function joinLabels(labels: readonly string[]): string {
 export function composeValueVerdictSentence(divergence: MarketDivergence): string {
   const { edge, against, fair } = valueBuckets(divergence);
   if (!edge.length) {
-    return "No outcome here is more than two percentage points from the model, so the "
-      + "fixture looks efficiently priced and there is no edge to take.";
+    return "No outcome here is more than two percentage points from the market, so the "
+      + "model and the market agree across the board.";
   }
-  const parts = [`the value is on ${joinLabels(edge.map((leg) => leg.label))}`];
+  const parts = [`the model rates ${joinLabels(edge.map((leg) => leg.label))} `
+    + "higher than the market does"];
   if (against.length) {
-    parts.push(`the market has ${joinLabels(against.map((leg) => leg.label))} above `
-      + "where the model does, so there is nothing to take there");
+    parts.push(`the market rates ${joinLabels(against.map((leg) => leg.label))} `
+      + "higher than the model does");
   }
   if (fair.length) {
     parts.push(`${joinLabels(fair.map((leg) => leg.label))} `
-      + `${fair.length > 1 ? "are" : "is"} priced about right`);
+      + `${fair.length > 1 ? "sit" : "sits"} inside the agreement band`);
   }
-  return `${capitalizeFirst(parts.join("; "))}.`;
+  // The calibration the verdict was missing. Every evaluation of this answer
+  // shape has flagged the same thing: a gap between two probability estimates
+  // was being handed over as a thing to back. Pundit prices no stake, sees no
+  // execution price and carries no bankroll, so a divergence is a disagreement
+  // to explain -- not a recommendation, and saying so is what makes the number
+  // usable rather than authoritative.
+  return `${capitalizeFirst(parts.join("; "))}. That is a difference between two `
+    + "probability estimates, not a recommendation to back anything.";
 }
 
 /**
@@ -6397,7 +6437,7 @@ export function composeValueVerdictSentence(divergence: MarketDivergence): strin
  * price, or says outright that there is no side worth taking.
  */
 const VALUE_VERDICT_EXPLICIT =
-  /\b(?:over[- ]?priced|under[- ]?priced|mis[- ]?priced|fairly priced|efficiently priced|priced (?:about |roughly )?right|priced fairly|priced above|priced below|no (?:real |live )?edge|nothing to (?:take|act on|play|do)|not worth (?:taking|backing|playing)|skip (?:it|this|the)|leave (?:it|that|them) alone|worth backing|worth taking|value is on|value sits on|value here is)\b/i;
+  /\b(?:over[- ]?priced|under[- ]?priced|mis[- ]?priced|fairly priced|efficiently priced|priced (?:about |roughly )?right|priced fairly|priced above|priced below|no (?:real |live )?edge|nothing to (?:take|act on|play|do)|not worth (?:taking|backing|playing)|skip (?:it|this|the)|leave (?:it|that|them) alone|worth backing|worth taking|value is on|value sits on|value here is|rates? [^.!?\n]{0,40}higher than the (?:market|model)|inside the agreement band|model and the market agree)\b/i;
 
 /**
  * Verdict language that only becomes a verdict beside a price. "The model gives
