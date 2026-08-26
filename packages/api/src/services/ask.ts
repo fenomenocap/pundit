@@ -47,6 +47,7 @@ import {
   segmentAnswer,
   TEAM_NEWS_CLAIM,
   assertsSquadAvailability,
+  DENIES_OWN_CAPABILITY,
 } from "./answer-provenance";
 import {
   reviseAnswerWithClaimDecisions,
@@ -574,7 +575,7 @@ const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
  * shape are the class that actually needs a source.
  */
 const NAMED_SELECTION_STATUS =
-  /\b(?:expected\s+(?:starter|to\s+start|XI|line-?up)|likely\s+(?:starter|to\s+start)|predicted\s+(?:XI|line-?up|starters?)|starts?\s+(?:in\s+goal|at\s+(?:left|right|centre|center)-back|up\s+front)|(?:back|front)\s+(?:three|four|five)|slot(?:s|ting)?\s+in\s+at|first-choice|lined[- ]up|(?:a|the)\s+\w+\s+replacement\b|replacement\s+at\s+the\b|back\s+in\s+as\b|(?:comes?|coming|drops?|dropping)\s+(?:back\s+)?in\s+(?:as|at|for)\b|(?:named|naming)\s+(?:a|the|an)\s+(?:near-?)?(?:first-choice|full-strength|changed|unchanged)\b)\b/i;
+  /\b(?:expected\s+(?:starter|to\s+start|XI|line-?up)|likely\s+(?:starter|to\s+start)|predicted\s+(?:XI|line-?up|starters?)|starts?\s+(?:in\s+goal|at\s+(?:left|right|centre|center)-back|up\s+front)|(?:back|front)\s+(?:three|four|five)|slot(?:s|ting)?\s+in\s+at|first-choice|lined[- ]up|replacement\s+at\s+(?:the|left|right|centre|center)\b|back\s+in\s+as\s+(?:an?|the)?\s*(?:wide|central|centre|center|left|right|holding|attacking|defensive|deep|second)?\s*(?:attacker|midfielder|defender|forward|striker|winger|keeper|goalkeeper|full-?back|centre-?back|center-?back|starter)\b|(?:named|naming)\s+(?:a|the|an)\s+(?:near-?)?(?:first-choice|full-strength|changed|unchanged)\b)\b/i;
 
 /**
  * The same claim wearing a conditional: "if he starts, the shape is unchanged;
@@ -605,6 +606,7 @@ function namesAnIndividual(sentence: string): boolean {
 }
 
 function assertsTeamNews(sentence: string): boolean {
+  if (DENIES_OWN_CAPABILITY.test(sentence)) return false;
   if (assertsSquadAvailability(sentence)) return true;
   // The two named-player checks run *ahead* of the market exclusion, not
   // behind it. Market prose is excluded because it shares vocabulary with team
