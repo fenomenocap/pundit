@@ -1761,7 +1761,12 @@ const DANGLING_OPENER = new RegExp(
   // An additive opener points at prior content just as surely as a pronoun
   // does: "Scores24 adds that ..." opening a section is adding to nothing.
   + "|^\\s*[^.!?\\n]{0,60}?\\b(?:adds?|also (?:says?|notes?|reports?)|further (?:notes?|adds?)"
-  + "|likewise|in addition|on top of that)\\b",
+  + "|likewise|in addition|on top of that)\\b"
+  // A bare reporting verb with no subject in front of it: "notes Juan Perea
+  // is the only absentee", "lists Levski's predicted XI". Whoever was doing
+  // the noting was excised upstream and the predicate shipped alone.
+  + "|^\\s*(?:notes?|lists?|reports?|says?|states?|confirms?|flags?|shows?|adds?)[ \\t]+"
+    + "(?![a-z]*\\b(?:on|of|for|from|about|to|in|at)\\b)",
   "i"
 );
 
@@ -2510,6 +2515,13 @@ export function renderEvidenceCitations(
     // Still anchored on the ID shape rather than widening to a general
     // `\[\[[^\]]*\]\]`, which would eat prose that merely opened a bracket.
     .replace(/\[\[\s*[A-Za-z]{0,2}\d{1,3}\b[^\]\n]{0,80}\]\]/g, "")
+    // A source marker carrying no digits at all -- "[[S_payload]]" shipped
+    // twice in one answer. Anchored on the leading S the marker convention
+    // uses, so ordinary prose that opens a double bracket is untouched.
+    .replace(/\[\[\s*[Ss][\w.:-]{0,30}\s*\]\]/g, "")
+    // A retrieval artifact, not prose: the column the evidence was read from
+    // ran out mid-list and the note came with it.
+    .replace(/\s*\((?:column|row|text|content)\s+truncated\)\.?/gi, "")
     // An excised marker leaves its spacing behind ("50.0% , Polymarket"). A
     // space before punctuation is never correct, and it is the visible residue
     // that makes a sanitised answer look broken rather than clean.
