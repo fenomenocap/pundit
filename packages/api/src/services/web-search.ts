@@ -61,8 +61,24 @@ const MAX_RESULTS = 6;
  */
 function searchConcurrency(): number {
   const raw = Number(process.env.WEB_SEARCH_CONCURRENCY);
-  return Number.isFinite(raw) && raw >= 1 ? Math.min(Math.floor(raw), 8) : 2;
+  return Number.isFinite(raw) && raw >= 1 ? Math.min(Math.floor(raw), 8) : DEFAULT_CONCURRENCY;
 }
+
+/**
+ * Four, not two.
+ *
+ * Two was set to protect a subscription key from a burst, before anyone had
+ * checked whether the burst was a problem. It has since been measured: across
+ * every search production has run, `providerFailures` is empty and
+ * `lastThrottledAt` is null -- MiniMax has never once throttled us. Meanwhile
+ * the six searches behind a researched answer were being run three waves deep,
+ * on the critical path, in front of a reader waiting for the answer.
+ *
+ * Four halves the waves and still keeps a burst ceiling, and the breaker,
+ * failover and typed outcomes all sit underneath it if that ever changes. Raise
+ * it with WEB_SEARCH_CONCURRENCY (max 8) rather than editing this.
+ */
+const DEFAULT_CONCURRENCY = 4;
 
 export interface WebSearchResult {
   title: string;

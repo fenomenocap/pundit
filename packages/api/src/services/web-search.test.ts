@@ -609,8 +609,11 @@ describe("question-scoped breaker accounting", () => {
     // Only searches that start before the provider is known-bad earn their
     // transient-blip retry -- at most `concurrency` of them, since that is how
     // many can be in the air before the first failure registers. The rest go
-    // straight to failover. Six searches against a provider that is plainly
-    // down therefore cost 8 calls, not the 12 an unconditional retry would.
+    // straight to failover. Pinned rather than left to the default, so the
+    // arithmetic below is about the mechanism instead of whatever the default
+    // happens to be: 6 searches + 2 retries = 8, not the 12 an unconditional
+    // retry would cost.
+    process.env.WEB_SEARCH_CONCURRENCY = "2";
     fetchMock.mockResolvedValue(httpError(503));
     await searchWebBatch(["q1", "q2", "q3", "q4", "q5", "q6"]);
     expect(fetchMock).toHaveBeenCalledTimes(8);
@@ -665,6 +668,9 @@ describe("question-scoped breaker accounting", () => {
   });
 
   it("bounds concurrency independently of provider health", async () => {
+    // Pinned, so this asserts that the gate holds whatever it is set to rather
+    // than re-encoding the current default.
+    process.env.WEB_SEARCH_CONCURRENCY = "2";
     let inFlight = 0;
     let peak = 0;
     fetchMock.mockImplementation(async () => {
@@ -685,6 +691,7 @@ describe("question-scoped breaker accounting", () => {
     // catch and again in the finally -- so every abandoned request widened the
     // gate permanently. Readers cancel constantly, so the burst control was
     // gone long before load arrived.
+    process.env.WEB_SEARCH_CONCURRENCY = "2";
     const cancelled = new AbortController();
     fetchMock.mockImplementation(async () => {
       cancelled.abort();

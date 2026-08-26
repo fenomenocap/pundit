@@ -35,7 +35,10 @@ import {
 import { verifyClaimsOnce } from "./claim-verifier";
 import {
   retrieveEvidencePages,
+  prefetchEvidencePages,
+  createEvidencePageCache,
   type EvidenceAuthority,
+  type EvidencePageCache,
 } from "./evidence-page-retrieval";
 import {
   SECTION_LABEL_LINE,
@@ -218,6 +221,12 @@ export interface EvidenceBundle {
   searchDegradedReason?: WebSearchFailureReason | null;
   /** Searches this bundle ran that returned no evidence for infrastructure reasons. */
   degradedSearches?: number;
+  /**
+   * Page bodies fetched ahead of verification, shared for this request only.
+   * Present so retrieval can consume a fetch that started while the model was
+   * still writing instead of beginning one after it finished.
+   */
+  pageCache?: EvidencePageCache;
 }
 
 /**
@@ -854,6 +863,25 @@ async function buildEvidenceBundle(
     degradedSearches: bundle.degradedSearches ?? 0,
     searchDegradedReason: bundle.searchDegradedReason ?? null,
   }));
+
+  // Start fetching the pages verification will want, now, while the model has
+  // not begun writing. Retrieval used to sit entirely behind generation even
+  // though every page it needs is already known here -- only the candidate
+  // *order* depends on what the model cites, and order cannot change what a URL
+  // returns. Nothing is awaited: by the time verification asks, these are
+  // settled, and any that are not are fetched exactly as before.
+  bundle.pageCache = createEvidencePageCache();
+  prefetchEvidencePages(
+    bundle.results.map((source) => ({
+      id: source.id,
+      url: source.url,
+      title: source.title,
+      date: source.date,
+      authority: evidenceAuthority(source.url),
+    })),
+    signal,
+    bundle.pageCache
+  );
   return bundle;
 }
 
@@ -992,7 +1020,11 @@ export async function verifyCurrentClaims(
     ...candidates.filter((candidate) => citedIds.has(candidate.id)),
     ...candidates.filter((candidate) => !citedIds.has(candidate.id)),
   ];
-  const fetched = await (dependencies.retrieve ?? retrieveEvidencePages)(ordered, signal);
+  const fetched = await (dependencies.retrieve ?? retrieveEvidencePages)(
+    ordered,
+    signal,
+    { cache: bundle.pageCache }
+  );
   // Most publishers block a server-side fetch, so verification ran against one
   // retrieved page out of thirty sources and abstained on nearly everything --
   // the same question answering with cited team news or with the notice
