@@ -1749,9 +1749,19 @@ export function stripUnvalidatedExternalMarketClaims(
  * what came before them and are left alone.
  */
 const DANGLING_OPENER = new RegExp(
-  "^\\s*(?:those|these|that|this|they|both|either|neither)"
+  // A subordinating conjunction in front of the pronoun does not give it an
+  // antecedent. A live answer opened a section with "If they are first-team
+  // regulars, the model's edge widens" -- the players "they" referred to had
+  // been excised one guard earlier, and the sentence shipped pointing at
+  // nothing.
+  "^\\s*(?:(?:if|when|once|while|should|unless|because|since|although|though)[ \\t]+)?"
+  + "(?:those|these|that|this|they|both|either|neither)"
   + "[ \\t]+(?:is|are|was|were|would|will|remains?|stays?|leaves?|gives?|makes?"
-  + "|puts?|sits?|comes?|points?|suggests?|means?)\\b",
+  + "|puts?|sits?|comes?|points?|suggests?|means?)\\b"
+  // An additive opener points at prior content just as surely as a pronoun
+  // does: "Scores24 adds that ..." opening a section is adding to nothing.
+  + "|^\\s*[^.!?\\n]{0,60}?\\b(?:adds?|also (?:says?|notes?|reports?)|further (?:notes?|adds?)"
+  + "|likewise|in addition|on top of that)\\b",
   "i"
 );
 
@@ -2014,7 +2024,7 @@ function stripBettingClause(sentence: string): string | null {
  * to make.
  */
 const RECOMMENDS_A_BET =
-  /\b(?:the\s+)?(?:value|edge|play|bet|money)\s+(?:is|sits|lies)\s+on\b|\bworth\s+(?:backing|taking|a\s+bet|playing)\b|\bnothing\s+to\s+take\b|\bthe\s+play\s+(?:is|here)\b|\bactionable\s+(?:side|edge|value)\b|\bonly\s+direction\s+with\s+daylight\b|\b(?:offers?|offering)\s+nothing\b|\bnot\s+worth\s+(?:a\s+bet|backing|taking)\b/i;
+  /\b(?:the\s+)?(?:value|edge|play|bet|money)\s+(?:is|sits|lies)\s+on\b|\bworth\s+(?:backing|taking|a\s+bet|playing)\b|\bnothing\s+to\s+take\b|\bthe\s+play\s+(?:is|here)\b|\bactionable\s+(?:side|edge|value)\b|\bonly\s+direction\s+with\s+daylight\b|\b(?:offers?|offering)\s+nothing\b|\bnot\s+worth\s+(?:a\s+bet|backing|taking)\b|\bbet(?:ting)?\s+into\b|\bwhich\s+side\s+to\s+back\b|\bside\s+to\s+back\b|\byou\s+(?:are|'re)\s+(?:betting|backing)\b/i;
 
 /**
  * "Already priced into the model", said of team news. The model has no such
@@ -3972,8 +3982,80 @@ const ORDINAL_WORDS = [
   "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
 ];
 
+/** "five of the top six", "three of the top five". */
+const TOP_N_COUNT_CLAIM =
+  /\b(?:(one|two|three|four|five|six|seven|eight|nine|ten)|(\d{1,2}))\s+of\s+the\s+top\s+(?:(two|three|four|five|six|seven|eight|nine|ten)|(\d{1,2}))\b[^.!?\n]{0,60}?\b(?:scorelines?|lines?|results?|scores?)\b/i;
+
+/** Digit back to the word form, so a correction matches the prose it lands in. */
+const NUMBER_WORDS: Record<number, string> = {
+  0: "none", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
+  6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten",
+};
+
+const WORD_NUMBERS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5,
+  six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+
+function countWord(word: string | undefined, digits: string | undefined): number | null {
+  if (digits) return Number(digits);
+  if (word) return WORD_NUMBERS[word.toLocaleLowerCase()] ?? null;
+  return null;
+}
+
+/**
+ * How many of the top `n` grounded scorelines satisfy the predicate the
+ * sentence names -- or null when the predicate is not one this can evaluate,
+ * in which case the claim is left alone rather than guessed at.
+ */
+function countMatchingTopScorelines(
+  sentence: string,
+  grounding: Grounding,
+  n: number
+): number | null {
+  const top = grounding.scorelines.slice(0, n);
+  if (top.length < n) return null;
+  const margin = /\bby\s+(one|two|three|four|\d)\s+or\s+more\b/i.exec(sentence);
+  const minMargin = margin ? countWord(margin[1], /\d/.test(margin[1]) ? margin[1] : undefined) ?? 1 : 1;
+  const homeNamed = new RegExp(`\\b${escapedPattern(grounding.home)}\\b|\\bhome\\b`, "i").test(sentence);
+  const awayNamed = new RegExp(`\\b${escapedPattern(grounding.away)}\\b|\\baway\\b`, "i").test(sentence);
+  if (homeNamed === awayNamed) return null;
+  if (!/\bwins?\b|\bvictor\w*\b/i.test(sentence)) return null;
+  return top.filter(({ score }) => {
+    const [home, away] = score.split("-").map(Number);
+    if (!Number.isFinite(home) || !Number.isFinite(away)) return false;
+    return homeNamed ? home - away >= minMargin : away - home >= minMargin;
+  }).length;
+}
+
 function sanitizeScorelineRankingClaims(answer: string, grounding: Grounding): string {
   return reviseAnswerSentences(answer, (sentence) => {
+    // "five of the top six lines are AEK wins by two or more" -- it was four.
+    // The count is a fact about the payload, so it is checkable rather than a
+    // matter of reading, and a wrong one is the most quietly wrong thing an
+    // answer can do: every figure around it is right.
+    const countClaim = TOP_N_COUNT_CLAIM.exec(sentence);
+    if (countClaim) {
+      const claimed = countWord(countClaim[1], countClaim[2]);
+      const outOf = countWord(countClaim[3], countClaim[4]);
+      if (claimed !== null && outOf !== null) {
+        const actual = countMatchingTopScorelines(sentence, grounding, outOf);
+        if (actual !== null && actual !== claimed) {
+          // Written back in the form it was written in: "five" becomes "four",
+          // not "4", so the correction reads like prose rather than a patch.
+          const asWritten = countClaim[1]
+            ? (NUMBER_WORDS[actual] ?? String(actual))
+            : String(actual);
+          return sentence.replace(
+            countClaim[0],
+            countClaim[0].replace(
+              new RegExp(`^${escapedPattern(countClaim[1] ?? countClaim[2] ?? "")}`, "i"),
+              asWritten
+            )
+          );
+        }
+      }
+    }
     if (/\b(?:scorelines?|lines?)\b/i.test(sentence)
       && /(?:0\.1%|\b(?:reporting threshold|threshold)\b)/i.test(sentence)
       && /\b(?:all|every|only|none|does not|doesn't|do not|don't)\b/i.test(sentence)) {
