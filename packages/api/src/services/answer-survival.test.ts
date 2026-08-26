@@ -1213,10 +1213,36 @@ describe("the verdict and the close a match answer must carry", () => {
     expect(delivered.answer).not.toMatch(/\bworth backing\b|\bedge to take\b/i);
   });
 
+  it("replaces a tip with the calibrated verdict instead of keeping it", async () => {
+    // Pundit prices no stake and sees no execution price. A recommendation is
+    // dropped and the server's own direction-only verdict is inserted in its
+    // place, so the answer still carries a verdict -- just not a bet.
+    const delivered = await deliverCeltic(
+      DIVERGENCE_ONLY.replace("**Goals**", "The value is on Celtic and the draw looks overpriced.\n\n**Goals**")
+    );
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).not.toContain("The value is on Celtic");
+    expect(delivered.answer).toContain("The model rates Celtic higher");
+    expect(delivered.answer).toContain("not a recommendation to back anything");
+  });
+
+  it("keeps the comparison when only a trailing clause was the tip", async () => {
+    // "LASK are priced above where the model has them" is a divergence
+    // statement; only what follows it is a recommendation.
+    const delivered = await deliverCeltic(
+      DIVERGENCE_ONLY.replace("**Goals**",
+        "LASK are priced above where the model has them, so there is nothing to take there.\n\n**Goals**")
+    );
+    expectDeliverable(delivered.answer, true);
+    expect(delivered.answer).toContain("LASK are priced above where the model has them");
+    expect(delivered.answer).not.toContain("nothing to take");
+  });
+
   it("adds no second verdict when the model already gave one, however phrased", async () => {
+    // Phrasings that report a comparison rather than recommend a bet. A tip is
+    // no longer one of these: it is removed, and the server's own calibrated
+    // verdict takes its place, which the test below covers.
     const phrasings = [
-      "The value is on Celtic and the draw looks overpriced.",
-      "LASK are priced above where the model has them, so there is nothing to take there.",
       "The moneyline is efficiently priced -- skip it.",
       "Kalshi's price on the draw is generous relative to the model.",
       "There is no real edge on the away win at this price.",

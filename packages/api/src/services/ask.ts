@@ -1985,6 +1985,38 @@ function outcomeGapPoints(
 }
 
 /**
+ * Removes the recommendation from a sentence that is otherwise reporting a
+ * comparison, and returns null when nothing usable is left -- at which point
+ * the caller drops it and the server's calibrated verdict takes its place.
+ */
+function stripBettingClause(sentence: string): string | null {
+  const trimmed = sentence
+    .replace(/[,;]?\s*(?:and\s+)?so\s+there\s+is\s+nothing\s+to\s+take\s+(?:there|here)/gi, "")
+    .replace(/[,;]?\s*(?:so\s+|and\s+)?there\s+is\s+nothing\s+to\s+take\s+(?:there|here)/gi, "")
+    .replace(/[,;]?\s*(?:and\s+)?(?:they\s+|these\s+|both\s+)?offers?\s+nothing\b/gi, "")
+    .replace(/[,;]?\s*(?:and\s+)?(?:are|is)\s+not\s+worth\s+(?:a\s+bet|backing|taking)/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([.,;])/g, "$1")
+    .trim();
+  if (RECOMMENDS_A_BET.test(trimmed)) return null;
+  // What survives has to still be a comparison, not a stub. Requiring a digit
+  // was too strict: "LASK are priced above where the model has them" is a
+  // perfectly good divergence statement and carries no figure at all.
+  if (trimmed.replace(/[^\p{L}]/gu, "").length < 12) return null;
+  if (!/\b(?:model|market|priced?|prices|rates?|above|below|higher|lower|gap)\b/i.test(trimmed)) return null;
+  return /[.!?]$/.test(trimmed) ? `${trimmed} ` : `${trimmed}. `;
+}
+
+/**
+ * Prose that tells the reader what to do with a probability gap, rather than
+ * what the gap is. Pundit prices no stake, sees no execution price and carries
+ * no bankroll, so every one of these is a recommendation it is not positioned
+ * to make.
+ */
+const RECOMMENDS_A_BET =
+  /\b(?:the\s+)?(?:value|edge|play|bet|money)\s+(?:is|sits|lies)\s+on\b|\bworth\s+(?:backing|taking|a\s+bet|playing)\b|\bnothing\s+to\s+take\b|\bthe\s+play\s+(?:is|here)\b|\bactionable\s+(?:side|edge|value)\b|\bonly\s+direction\s+with\s+daylight\b|\b(?:offers?|offering)\s+nothing\b|\bnot\s+worth\s+(?:a\s+bet|backing|taking)\b/i;
+
+/**
  * "Already priced into the model", said of team news. The model has no such
  * input, so the claim is false however confidently it is phrased -- and it is
  * the one falsehood that makes every downstream caveat read as boilerplate.
@@ -2048,6 +2080,24 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
     // sentences apart and flatly contradicting each other, with the false one
     // first. Distinct from the rule above, which catches a lineup *assumption*
     // moving the numbers; this catches the assertion that it already has.
+    // A tip, wherever it came from. Changing the prompt stops the model writing
+    // these in future turns, but a rule that has to hold every time does not
+    // belong in a prompt -- the same lesson the decimal-pricing fix already
+    // learned. Dropping the sentence is deliberate over rewriting it: the gap
+    // and its direction are stated in the divergence sentence, and
+    // `guaranteeMatchReadCompleteness` puts the server's own calibrated verdict
+    // in its place once no verdict is left standing.
+    //
+    // Guarded on carrying no figure of its own, so a sentence that states a
+    // number *and* tips is never deleted with the number inside it.
+    if (RECOMMENDS_A_BET.test(sentence)) {
+      // A sentence that carries a figure *and* a tip keeps the figure: the
+      // recommendation is a trailing clause on a factual comparison, and
+      // deleting the whole sentence would take the comparison with it.
+      const withoutTip = stripBettingClause(sentence);
+      if (withoutTip !== null) return withoutTip;
+      return drop();
+    }
     if (MODEL_ABSORBS_AVAILABILITY.test(sentence)) {
       return "Pundit's model reads club-strength ratings and the competition's home-field setting; squad availability is not one of its inputs.";
     }
