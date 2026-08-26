@@ -1272,7 +1272,35 @@ export function validateCitationContract(answer, citations, required = false) {
 
 /** Prose narration of the search process: "Let me check the latest news...". */
 const PROSE_DRAFT_LEAK =
-  /\b(?:let me (?:search|check|look)|i(?:'ll| will) (?:search|check|look)|now i have enough|search results show)\b/i;
+  /\b(?:let me (?:search|check|look)|i(?:['’]ll| will) (?:search|check|look)|now i have enough|search results show)\b/i;
+
+/**
+ * A forward-looking offer conditioned on the reader supplying something --
+ * "send me the fixture and I'll search for current team news". That is not
+ * narration of a search in progress; it is an accurate description of what
+ * happens next, and it is the most useful sentence a clarification reply can
+ * end on. The pattern above cannot tell the two apart, so a correct answer to
+ * an ambiguous question was failing for offering to help.
+ */
+const CONDITIONAL_OFFER =
+  /\b(?:once|if|when|after|send|share|provide|give me|tell me|drop|paste)\b/i;
+
+/**
+ * Narration of Pundit's own process, sentence by sentence. Scoped to the
+ * sentence carrying the phrase so a conditional offer elsewhere in the answer
+ * cannot excuse real narration, and real narration elsewhere cannot condemn an
+ * offer.
+ */
+function narratesSearchProcess(text) {
+  return String(text)
+    .split(/(?<=[.!?])\s+|\n+/)
+    .filter(Boolean)
+    .some((sentence) => {
+      if (!PROSE_DRAFT_LEAK.test(sentence)) return false;
+      const lead = sentence.slice(0, sentence.search(PROSE_DRAFT_LEAK));
+      return !CONDITIONAL_OFFER.test(lead);
+    });
+}
 
 /**
  * Structural tool-call markup. This is the half the battle test was missing:
@@ -1308,7 +1336,7 @@ const JSON_TOOL_PAYLOAD_LEAK =
 export function validateNoDraftLeak(answer) {
   const text = answer ?? "";
   const failures = [];
-  if (PROSE_DRAFT_LEAK.test(text)) failures.push("answer leaked a search/tool draft");
+  if (narratesSearchProcess(text)) failures.push("answer leaked a search/tool draft");
   if (STRUCTURAL_TOOL_LEAK.some((pattern) => pattern.test(text))) {
     failures.push("answer leaked raw tool-call markup");
   }
