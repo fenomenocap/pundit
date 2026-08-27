@@ -174,6 +174,9 @@ const MOCK_MODEL_FIXTURES: ModelFixtureResponse[] = [
     stakePHome: null,
     stakePDraw: null,
     stakePAway: null,
+    oddsSources: [
+      { source: "polymarket", observedAt: futureISO(0), pHome: 0.68, pDraw: 0.20, pAway: 0.12 },
+    ],
     result: null,
   },
   {

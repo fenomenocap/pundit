@@ -40,6 +40,31 @@ function kickoffDay(utcDate: string): string {
   });
 }
 
+function marketComparisonRows(fixture: ModelFixtureResponse) {
+  const rows: Array<{ label: string; pHome: number; pDraw: number | null; pAway: number }> = [];
+  if (
+    fixture.stakePHome !== null
+    && fixture.stakePDraw !== null
+    && fixture.stakePAway !== null
+  ) {
+    rows.push({
+      label: "Stake",
+      pHome: fixture.stakePHome,
+      pDraw: fixture.stakePDraw,
+      pAway: fixture.stakePAway,
+    });
+  }
+  for (const source of fixture.oddsSources ?? []) {
+    rows.push({
+      label: source.source === "kalshi" ? "Kalshi" : "Polymarket",
+      pHome: source.pHome,
+      pDraw: source.pDraw,
+      pAway: source.pAway,
+    });
+  }
+  return rows;
+}
+
 export default function ModelPage() {
   const [fixtures, setFixtures] = useState<ModelFixtureResponse[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState<string>("all");
@@ -178,6 +203,7 @@ export default function ModelPage() {
                     const key = fixtureRowKey(fixture);
                     const isExpanded = expanded.has(key);
                     const topScores = fixture.topScores.slice(0, 3);
+                    const markets = marketComparisonRows(fixture);
                     return (
                       <Fragment key={key}>
                         <tr
@@ -252,7 +278,7 @@ export default function ModelPage() {
                         {isExpanded && (
                           <tr className="border-t border-border/40 bg-secondary/20">
                             <td colSpan={7} className="px-4 py-3">
-                              <div className="grid gap-4 sm:grid-cols-2 sm:divide-x sm:divide-border/60">
+                              <div className={`grid gap-4 sm:grid-cols-2 ${markets.length > 0 ? "lg:grid-cols-3" : ""} sm:divide-x sm:divide-border/60`}>
                                 <div className="space-y-1">
                                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                     Goals
@@ -290,6 +316,31 @@ export default function ModelPage() {
                                     ))}
                                   </ul>
                                 </div>
+                                {markets.length > 0 && (
+                                  <div className="space-y-1 sm:pl-4">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                      Markets
+                                    </p>
+                                    <div className="grid grid-cols-[auto_1fr_1fr_1fr] gap-x-3 gap-y-0.5 font-mono text-sm tabular-nums">
+                                      <span />
+                                      <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground">Home</span>
+                                      <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground">Draw</span>
+                                      <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground">Away</span>
+                                      <span className="text-muted-foreground">Model</span>
+                                      <span className="text-right text-foreground">{percent(fixture.pHome)}</span>
+                                      <span className="text-right text-foreground">{percent(fixture.pDraw)}</span>
+                                      <span className="text-right text-foreground">{percent(fixture.pAway)}</span>
+                                      {markets.map((row) => (
+                                        <Fragment key={row.label}>
+                                          <span className="text-muted-foreground">{row.label}</span>
+                                          <span className="text-right text-foreground">{percent(row.pHome)}</span>
+                                          <span className="text-right text-foreground">{percent(row.pDraw)}</span>
+                                          <span className="text-right text-foreground">{percent(row.pAway)}</span>
+                                        </Fragment>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </td>
                           </tr>

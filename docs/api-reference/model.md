@@ -28,9 +28,18 @@ Active fixtures with model probabilities. Optional filter: `?competition=eng.1`.
       "pBttsYes": 0.48,
       "pBttsNo": 0.52,
       "topScores": [{ "score": "2-0", "probability": 0.14 }],
-      "stakePHome": 0.68,
-      "stakePDraw": 0.20,
-      "stakePAway": 0.12,
+      "stakePHome": null,
+      "stakePDraw": null,
+      "stakePAway": null,
+      "oddsSources": [
+        {
+          "source": "polymarket",
+          "observedAt": "2026-08-27T11:15:32.945Z",
+          "pHome": 0.68,
+          "pDraw": 0.20,
+          "pAway": 0.12
+        }
+      ],
       "result": null
     }
   ],
@@ -38,6 +47,8 @@ Active fixtures with model probabilities. Optional filter: `?competition=eng.1`.
   "error": null
 }
 ```
+
+`stakeP*` is Stake when that source returned a complete 1X2; it is `null` when Stake is disabled or missed. `oddsSources` is joined at read time from the 30-minute Kalshi/Polymarket cache. Incomplete legs are omitted. Full scoreline matrices are stripped from the HTTP response.
 
 ### `GET /api/model/fixtures`
 

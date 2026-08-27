@@ -23,6 +23,17 @@ test.describe("smoke", () => {
     await expect(table.or(emptyState)).toBeVisible({ timeout: 15_000 });
   });
 
+  test("model expanded row shows cached market comparison", async ({ page }) => {
+    await page.goto("/model");
+    const arsenal = page.locator("tr").filter({ hasText: "Arsenal · Coventry City" });
+    await expect(arsenal).toBeVisible();
+    await arsenal.getByRole("button", { name: "Expand details" }).click();
+    await expect(page.getByText("Markets", { exact: true })).toBeVisible();
+    await expect(page.getByText("Polymarket", { exact: true })).toBeVisible();
+    await expect(page.getByText("68.0%")).toBeVisible();
+    await expect(page.getByText("Stake", { exact: true })).toHaveCount(0);
+  });
+
   test("fixture and model Ask links retain their rendered fixture identity", async ({ page }) => {
     await page.goto("/fixtures");
     const fixtureCard = page.getByText("Riga FC", { exact: true }).first()

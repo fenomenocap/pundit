@@ -1,13 +1,9 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { getCachedModelData } from "../services/model-data";
 import { clubRatingsAreCurrent } from "../services/club-ratings";
+import { publicModelFixtures } from "../services/model-market-odds";
 
 const router: Router = Router();
-
-function stripScorelines<T extends { scorelines?: unknown }>(fixture: T) {
-  const { scorelines: _scorelines, ...rest } = fixture;
-  return rest;
-}
 
 // ─── GET /api/model/wc — retired (WC live model) ─────────────────────────────
 
@@ -35,7 +31,7 @@ router.get("/active", (req: Request, res: Response, next: NextFunction) => {
       ? cached.fixtures.filter((fixture) => fixture.competitionId === competition)
       : cached.fixtures;
     res.json({
-      fixtures: fixtures.map(stripScorelines),
+      fixtures: publicModelFixtures(fixtures),
       lastUpdated: cached.lastUpdated?.toISOString() ?? null,
       error: cached.error,
     });
@@ -62,7 +58,7 @@ router.get("/fixtures", (req: Request, res: Response, next: NextFunction) => {
       ? cached.fixtures.filter((fixture) => fixture.competitionId === competition)
       : cached.fixtures;
     res.json({
-      fixtures: fixtures.map(stripScorelines),
+      fixtures: publicModelFixtures(fixtures),
       lastUpdated: cached.lastUpdated?.toISOString() ?? null,
       error: cached.error,
     });
