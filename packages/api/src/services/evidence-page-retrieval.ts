@@ -78,30 +78,62 @@ function parseIpv4(address: string): number[] | null {
   return octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) ? octets : null;
 }
 
+function isPrivateOrReservedIpv4([a, b]: readonly number[]): boolean {
+  return a === 0
+    || a === 10
+    || a === 127
+    || (a === 100 && b >= 64 && b <= 127)
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 0)
+    || (a === 192 && b === 168)
+    || (a === 198 && (b === 18 || b === 19))
+    || a >= 224;
+}
+
+function canonicalIpv6(address: string): string | null {
+  try {
+    // WHATWG URL canonicalizes compressed and expanded IPv6 spellings. The
+    // brackets are URL syntax, not part of the address returned by DNS.
+    return new URL(`http://[${address}]`).hostname.replace(/^\[|\]$/g, "").toLocaleLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 export function isPrivateOrReservedAddress(address: string): boolean {
-  const normalized = address.trim().toLocaleLowerCase().split("%")[0];
+  const trimmed = address.trim().toLocaleLowerCase();
+  const withoutBrackets = trimmed.startsWith("[") && trimmed.endsWith("]")
+    ? trimmed.slice(1, -1)
+    : trimmed;
+  const normalized = withoutBrackets.split("%")[0];
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized);
   const ipv4 = parseIpv4(mapped?.[1] ?? normalized);
-  if (ipv4) {
-    const [a, b] = ipv4;
-    return a === 0
-      || a === 10
-      || a === 127
-      || (a === 100 && b >= 64 && b <= 127)
-      || (a === 169 && b === 254)
-      || (a === 172 && b >= 16 && b <= 31)
-      || (a === 192 && b === 0)
-      || (a === 192 && b === 168)
-      || (a === 198 && (b === 18 || b === 19))
-      || a >= 224;
-  }
+  if (ipv4) return isPrivateOrReservedIpv4(ipv4);
   if (isIP(normalized) === 6) {
-    return normalized === "::"
-      || normalized === "::1"
-      || normalized.startsWith("fc")
-      || normalized.startsWith("fd")
-      || /^fe[89ab]/.test(normalized)
-      || normalized.startsWith("ff");
+    const canonical = canonicalIpv6(normalized);
+    if (!canonical) return true;
+
+    // URL canonicalization turns both dotted and expanded mapped addresses
+    // into ::ffff:hhhh:hhhh. Decode the final 32 bits before applying the
+    // IPv4 private/reserved ranges above.
+    const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(canonical);
+    if (mappedHex) {
+      const high = Number.parseInt(mappedHex[1], 16);
+      const low = Number.parseInt(mappedHex[2], 16);
+      return isPrivateOrReservedIpv4([
+        high >> 8,
+        high & 0xff,
+        low >> 8,
+        low & 0xff,
+      ]);
+    }
+    return canonical === "::"
+      || canonical === "::1"
+      || canonical.startsWith("fc")
+      || canonical.startsWith("fd")
+      || /^fe[89ab]/.test(canonical)
+      || canonical.startsWith("ff");
   }
   return true;
 }
@@ -131,7 +163,7 @@ async function assertPublicHttpUrl(
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("unsupported URL scheme");
   if (url.username || url.password || url.port) throw new Error("URL credentials and custom ports are not allowed");
-  const hostname = url.hostname.toLocaleLowerCase().replace(/\.$/, "");
+  const hostname = url.hostname.toLocaleLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")) {
     throw new Error("local evidence URL blocked");
   }

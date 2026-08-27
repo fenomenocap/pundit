@@ -22,8 +22,17 @@ describe("evidence page retrieval", () => {
     expect(isPrivateOrReservedAddress("10.2.3.4")).toBe(true);
     expect(isPrivateOrReservedAddress("169.254.169.254")).toBe(true);
     expect(isPrivateOrReservedAddress("::1")).toBe(true);
+    expect(isPrivateOrReservedAddress("0:0:0:0:0:0:0:1")).toBe(true);
+    expect(isPrivateOrReservedAddress("::")).toBe(true);
+    expect(isPrivateOrReservedAddress("0:0:0:0:0:0:0:0")).toBe(true);
+    expect(isPrivateOrReservedAddress("::ffff:7f00:1")).toBe(true);
+    expect(isPrivateOrReservedAddress("0:0:0:0:0:ffff:7f00:1")).toBe(true);
+    expect(isPrivateOrReservedAddress("::ffff:a9fe:a9fe")).toBe(true);
     expect(isPrivateOrReservedAddress("fc00::1")).toBe(true);
     expect(isPrivateOrReservedAddress("93.184.216.34")).toBe(false);
+    expect(isPrivateOrReservedAddress("2001:4860:4860::8888")).toBe(false);
+    expect(isPrivateOrReservedAddress("::ffff:808:808")).toBe(false);
+    expect(isPrivateOrReservedAddress("0:0:0:0:0:ffff:808:808")).toBe(false);
   });
 
   it("retrieves at most three pages with official-domain priority", async () => {
@@ -86,6 +95,48 @@ describe("evidence page retrieval", () => {
       fetch, resolveHost: publicResolver,
     })).toEqual([]);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["::ffff:7f00:1", "0:0:0:0:0:ffff:7f00:1", "::ffff:a9fe:a9fe"])(
+    "blocks mapped private DNS address %s before fetching",
+    async (address) => {
+      const fetch = vi.fn();
+      const resolveHost = vi.fn(async () => [{ address, family: 6 }]);
+      expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+        fetch, resolveHost,
+      })).toEqual([]);
+      expect(resolveHost).toHaveBeenCalledTimes(1);
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["::1", "0:0:0:0:0:0:0:1", "::ffff:7f00:1"])(
+    "rejects private IPv6 URL literal %s without DNS or fetch",
+    async (address) => {
+      const fetch = vi.fn();
+      const resolveHost = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
+      expect(await retrieveEvidencePages([{
+        ...candidates[1], url: `http://[${address}]/evidence`,
+      }], undefined, { fetch, resolveHost })).toEqual([]);
+      expect(resolveHost).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it("pins public IPv6 URL literals without a DNS lookup", async () => {
+    const address = "2001:4860:4860::8888";
+    const fetch = vi.fn(async () => new Response("Public evidence", {
+      status: 200, headers: { "content-type": "text/plain" },
+    }));
+    const resolveHost = vi.fn();
+    const pages = await retrieveEvidencePages([{
+      ...candidates[1], url: `http://[${address}]/evidence`,
+    }], undefined, { fetch, resolveHost });
+    expect(pages).toHaveLength(1);
+    expect(resolveHost).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.any(URL), expect.any(Object), { address, family: 6 }
+    );
   });
 
   it("rejects oversized and non-text responses", async () => {
