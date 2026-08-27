@@ -187,7 +187,8 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       requestAbort.abort(new Error("client disconnected"));
       stopHeartbeat();
     };
-    req.on("close", onClose);
+    // IncomingMessage closes when the request body is fully consumed, which
+    // does not mean the client has disconnected from this response stream.
     res.on("close", onClose);
     try {
       const { answer, grounding, citations, verification } = await answerQuestionStream(
@@ -246,7 +247,6 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       });
       res.end();
     } finally {
-      req.off("close", onClose);
       res.off("close", onClose);
       req.off("aborted", abortOnDisconnect);
       res.off("close", abortOnDisconnect);

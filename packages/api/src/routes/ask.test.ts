@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import express from "express";
+import { once } from "node:events";
+import { IncomingMessage, ServerResponse } from "node:http";
+import type { Socket } from "node:net";
+import { Duplex } from "node:stream";
 import type { NextFunction, Request, Response } from "express";
-import {
+import * as askService from "../services/ask";
+import askRouter, {
   askRateLimitConfig,
   askRateLimitKey,
   createAskRateLimiter,
@@ -10,6 +16,92 @@ import {
   parseTeamContext,
   resolveAskRateLimitConfig,
 } from "./ask";
+
+describe("streaming request lifecycle", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  async function startStream() {
+    let release!: () => void;
+    const generation = new Promise<void>((resolve) => { release = resolve; });
+    let started!: (handlers: askService.AskStreamHandlers) => void;
+    const pendingHandlers = new Promise<askService.AskStreamHandlers>((resolve) => { started = resolve; });
+    vi.spyOn(askService, "answerQuestionStream").mockImplementation(async (_question, _history, _teams, handlers) => {
+      handlers.onGrounding(null);
+      started(handlers);
+      await generation;
+      handlers.onDelta("Completed answer.");
+      return {
+        answer: "Completed answer.",
+        grounding: null,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    });
+    const chunks: Buffer[] = [];
+    const socket = new Duplex({
+      read() {},
+      write(chunk, _encoding, callback) {
+        chunks.push(Buffer.from(chunk));
+        callback();
+      },
+    });
+    const request = new IncomingMessage(socket as unknown as Socket);
+    request.method = "POST";
+    request.url = "/";
+    request.headers = { host: "localhost" };
+    (request as Request).body = { question: "Explain a high press.", stream: true };
+    const response = new ServerResponse(request);
+    response.assignSocket(socket as unknown as Socket);
+    const app = express();
+    app.use(askRouter);
+    app(request, response);
+    const handlers = await pendingHandlers;
+    return {
+      request,
+      response,
+      handlers,
+      output: () => Buffer.concat(chunks).toString("utf8"),
+      async finish() {
+        release();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        if (!response.writableEnded) response.end();
+        socket.destroy();
+      },
+    };
+  }
+
+  it("keeps generating after the complete request body closes", async () => {
+    const stream = await startStream();
+    try {
+      // IncomingMessage closes after its body is consumed, while the response
+      // and client connection can still be open.
+      const requestClosed = once(stream.request, "close");
+      stream.request.complete = true;
+      stream.request.resume();
+      stream.request.push(null);
+      await requestClosed;
+      expect(stream.handlers.signal?.aborted).toBe(false);
+      expect(stream.handlers.shouldContinue?.()).toBe(true);
+      await stream.finish();
+      expect(stream.output()).toContain('event: done\ndata: {"answer":"Completed answer."');
+    } finally {
+      await stream.finish();
+    }
+  });
+
+  it("aborts generation when the response connection closes early", async () => {
+    const stream = await startStream();
+    try {
+      stream.response.emit("close");
+      expect(stream.handlers.signal?.aborted).toBe(true);
+      expect(stream.handlers.shouldContinue?.()).toBe(false);
+      await stream.finish();
+      expect(stream.output()).not.toContain("event: delta");
+      expect(stream.output()).not.toContain("event: done");
+    } finally {
+      await stream.finish();
+    }
+  });
+});
 
 describe("askRateLimitConfig", () => {
   it("divides the intended global budget across replicas", () => {
