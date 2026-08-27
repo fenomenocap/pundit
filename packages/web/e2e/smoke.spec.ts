@@ -23,6 +23,29 @@ test.describe("smoke", () => {
     await expect(table.or(emptyState)).toBeVisible({ timeout: 15_000 });
   });
 
+  test("fixture and model Ask links retain their rendered fixture identity", async ({ page }) => {
+    await page.goto("/fixtures");
+    const fixtureCard = page.getByText("Riga FC", { exact: true }).first()
+      .locator("xpath=ancestor::div[contains(@class, 'relative')][1]");
+    const fixturesAsk = fixtureCard.getByRole("link", { name: "Ask about this match" });
+    await expect(fixturesAsk).toBeVisible();
+    const fixturesHref = await fixturesAsk.getAttribute("href");
+    expect(new URL(fixturesHref!, "http://127.0.0.1:3000").searchParams.get("q"))
+      .toBe("Riga FC vs Ararat-Armenia");
+    expect(new URL(fixturesHref!, "http://127.0.0.1:3000").searchParams.get("fixture"))
+      .toBe("espn:uefa.champions_qual:2");
+
+    await page.goto("/model");
+    const secondLeg = page.locator("tr").filter({ hasText: "Viking · Dinamo Zagreb" });
+    const modelAsk = secondLeg.getByRole("link", { name: "Ask" });
+    await expect(modelAsk).toBeVisible();
+    const modelHref = await modelAsk.getAttribute("href");
+    expect(new URL(modelHref!, "http://127.0.0.1:3000").searchParams.get("q"))
+      .toBe("Viking vs Dinamo Zagreb");
+    expect(new URL(modelHref!, "http://127.0.0.1:3000").searchParams.get("fixture"))
+      .toBe("espn:uefa.champions_qual:4");
+  });
+
   test("club-season evaluation", async ({ page }) => {
     await page.goto("/evaluation/club-season");
     await expect(page.getByRole("heading", { name: "Club season calibration" })).toBeVisible();
@@ -99,6 +122,14 @@ test.describe("smoke", () => {
   });
 
   test("recognized outside-coverage fixture keeps typed context across a table detour", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "share", {
+        configurable: true,
+        value: async (data: { url?: string }) => {
+          (window as Window & { __sharedUrl?: string }).__sharedUrl = data.url;
+        },
+      });
+    });
     const fixture = {
       fixtureId: "espn:club.friendly:991",
       primarySource: "espn",
@@ -156,6 +187,18 @@ test.describe("smoke", () => {
     await expect.poll(() => received.length).toBe(3);
     expect(received[1].fixtureContext).toEqual({ fixtureId: fixture.fixtureId });
     expect(received[2].fixtureContext).toEqual({ fixtureId: fixture.fixtureId });
+
+    await expect(page.getByRole("button", { name: "Share" })).toHaveCount(3);
+    await page.getByRole("button", { name: "Share" }).last().click();
+    await expect.poll(() => page.evaluate(
+      () => (window as Window & { __sharedUrl?: string }).__sharedUrl
+    )).toBeTruthy();
+    const sharedUrl = await page.evaluate(
+      () => (window as Window & { __sharedUrl?: string }).__sharedUrl
+    );
+    const sharedUrlParams = new URL(sharedUrl!).searchParams;
+    expect(sharedUrlParams.get("q")).toBe("What about that match?");
+    expect(sharedUrlParams.get("fixture")).toBe(fixture.fixtureId);
   });
 
   // A suggestion chip is the product's default entry point, and its label
@@ -185,6 +228,32 @@ test.describe("smoke", () => {
     await expect.poll(() => received.length).toBe(1);
     expect(received[0].fixtureContext).toEqual({ fixtureId: "espn:uefa.champions_qual:3" });
     expect(received[0].question).toContain("Dinamo Zagreb vs Viking");
+  });
+
+  test("shared question URL sends its opaque fixture identity and keeps q-only links compatible", async ({ page }) => {
+    const received: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      received.push(route.request().postDataJSON());
+      const answer = "Here is the read.";
+      const sse = [
+        `event: grounding\ndata: ${JSON.stringify({ grounding: null })}`,
+        `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+        `event: done\ndata: ${JSON.stringify({ answer, grounding: null })}`,
+        "",
+      ].join("\n\n");
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+    });
+
+    await page.goto("/?q=Viking%20vs%20Dinamo%20Zagreb&fixture=espn%3Auefa.champions_qual%3A4");
+    await expect.poll(() => received.length).toBe(1);
+    expect(received[0].fixtureContext).toEqual({
+      fixtureId: "espn:uefa.champions_qual:4",
+    });
+    expect(received[0].question).toBe("Viking vs Dinamo Zagreb");
+
+    await page.goto("/?q=What%20does%20the%20table%20show%3F");
+    await expect.poll(() => received.length).toBe(2);
+    expect(received[1]).not.toHaveProperty("fixtureContext");
   });
 
   test("primary nav", async ({ page }) => {
