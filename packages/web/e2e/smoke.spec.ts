@@ -1,4 +1,161 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+type ControlledAskRequest = {
+  body: Record<string, unknown>;
+  signalAborted: boolean;
+  readerCanceled: boolean;
+};
+
+type ControlledAskControl = {
+  requests: ControlledAskRequest[];
+  complete: (index: number, answer: string, grounding: unknown) => void;
+};
+
+type StopChatWindow = Window & { __stopChatControl?: ControlledAskControl };
+
+async function installControlledAskFetch(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const win = window as StopChatWindow;
+    if (win.__stopChatControl) return;
+
+    const nativeFetch = window.fetch.bind(window);
+    const encoder = new TextEncoder();
+    const requests: ControlledAskRequest[] = [];
+    type InternalRequest = ControlledAskRequest & {
+      controller: ReadableStreamDefaultController<Uint8Array> | null;
+      open: boolean;
+      onAbort?: () => void;
+      signal?: AbortSignal;
+    };
+    const internalRequests: InternalRequest[] = [];
+
+    function writeBlock(index: number, block: string): boolean {
+      const request = internalRequests[index];
+      if (!request?.open || !request.controller) return false;
+      try {
+        request.controller.enqueue(encoder.encode(block));
+        return true;
+      } catch {
+        request.open = false;
+        return false;
+      }
+    }
+
+    function sseBlock(event: string, data: unknown): string {
+      return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    }
+
+    const control: ControlledAskControl = {
+      requests,
+      complete(index, answer, grounding) {
+        if (!internalRequests[index]) return;
+        const blocks = [
+          sseBlock("grounding", { grounding }),
+          sseBlock("delta", { text: answer }),
+          sseBlock("done", { answer, grounding }),
+        ];
+        // Leave the transport open. The authoritative done event releases the reader.
+        writeBlock(index, blocks.join(""));
+      },
+    };
+    win.__stopChatControl = control;
+
+    window.fetch = async (input, init) => {
+      const requestUrl = input instanceof Request ? input.url : String(input);
+      let pathname: string;
+      try {
+        pathname = new URL(requestUrl, window.location.href).pathname;
+      } catch {
+        return nativeFetch(input, init);
+      }
+      if (pathname !== "/api/ask") return nativeFetch(input, init);
+
+      let parsedBody: unknown = {};
+      try {
+        parsedBody = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+      } catch {
+        parsedBody = {};
+      }
+      const request: InternalRequest = {
+        body: parsedBody && typeof parsedBody === "object" && !Array.isArray(parsedBody)
+          ? parsedBody as Record<string, unknown>
+          : {},
+        signalAborted: false,
+        readerCanceled: false,
+        controller: null,
+        open: true,
+        signal: init?.signal ?? undefined,
+      };
+      requests.push(request);
+      internalRequests.push(request);
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          request.controller = controller;
+          request.onAbort = () => {
+            request.signalAborted = true;
+            // Give the app's abort listener a chance to cancel the reader first.
+            queueMicrotask(() => {
+              if (!request.readerCanceled && request.open) {
+                try {
+                  controller.error(new DOMException("The operation was aborted.", "AbortError"));
+                } catch {
+                  // The reader may have been canceled concurrently.
+                }
+                request.open = false;
+              }
+            });
+          };
+          if (request.signal?.aborted) request.onAbort();
+          else request.signal?.addEventListener("abort", request.onAbort, { once: true });
+        },
+        cancel() {
+          request.readerCanceled = true;
+          request.open = false;
+          if (request.onAbort && request.signal) {
+            request.signal.removeEventListener("abort", request.onAbort);
+          }
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    };
+  });
+}
+
+async function controlledAskRequests(page: Page): Promise<ControlledAskRequest[]> {
+  return page.evaluate(() => {
+    const control = (window as StopChatWindow).__stopChatControl;
+    return control?.requests.map((request) => ({
+      body: request.body,
+      signalAborted: request.signalAborted,
+      readerCanceled: request.readerCanceled,
+    })) ?? [];
+  });
+}
+
+async function completeControlledAsk(
+  page: Page,
+  index: number,
+  answer: string,
+  grounding: unknown = null,
+): Promise<void> {
+  await page.evaluate(({ index: requestIndex, answer: answerText, grounding: answerGrounding }) => {
+    (window as StopChatWindow).__stopChatControl?.complete(requestIndex, answerText, answerGrounding);
+  }, { index, answer, grounding });
+}
+
+async function waitForStoppedRequest(page: Page, index: number): Promise<void> {
+  await expect.poll(async () => {
+    const request = (await controlledAskRequests(page))[index];
+    return {
+      signalAborted: request?.signalAborted,
+      readerCanceled: request?.readerCanceled,
+    };
+  }).toEqual({ signalAborted: true, readerCanceled: true });
+}
 
 test.describe("smoke", () => {
   test("homepage", async ({ page }) => {
@@ -265,6 +422,93 @@ test.describe("smoke", () => {
     await page.goto("/?q=What%20does%20the%20table%20show%3F");
     await expect.poll(() => received.length).toBe(2);
     expect(received[1]).not.toHaveProperty("fixtureContext");
+  });
+
+  test("stopped shared fixture resends the unchanged prompt with its opaque identity", async ({ page }) => {
+    await installControlledAskFetch(page);
+    const question = "Arsenal vs Liverpool friendly";
+    const fixtureId = "espn:club.friendly:991";
+    await page.goto(`/?q=${encodeURIComponent(question)}&fixture=${encodeURIComponent(fixtureId)}`);
+
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await expect.poll(async () => (await controlledAskRequests(page)).length).toBe(1);
+    await expect(page.getByRole("button", { name: "Stop generating" })).toBeVisible();
+    await page.getByRole("button", { name: "Stop generating" }).click();
+    await waitForStoppedRequest(page, 0);
+    await expect(input).toHaveValue(question);
+    await expect(input).toBeEnabled();
+
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect.poll(async () => (await controlledAskRequests(page)).length).toBe(2);
+    const resentRequest = (await controlledAskRequests(page))[1];
+    expect(resentRequest.body).toMatchObject({
+      question,
+      fixtureContext: { fixtureId },
+    });
+
+    await completeControlledAsk(page, 1, "Resent response");
+    await expect.poll(async () => (await controlledAskRequests(page))[1]?.readerCanceled).toBe(true);
+    await expect(page.getByText("Resent response", { exact: true })).toBeVisible();
+  });
+
+  test("editing a stopped shared fixture prompt clears its old opaque identity", async ({ page }) => {
+    await installControlledAskFetch(page);
+    const question = "Viking vs Dinamo Zagreb";
+    const fixtureId = "espn:uefa.champions_qual:4";
+    await page.goto(`/?q=${encodeURIComponent(question)}&fixture=${encodeURIComponent(fixtureId)}`);
+
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await expect.poll(async () => (await controlledAskRequests(page)).length).toBe(1);
+    await page.getByRole("button", { name: "Stop generating" }).click();
+    await waitForStoppedRequest(page, 0);
+    await expect(input).toHaveValue(question);
+    await expect(input).toBeEnabled();
+
+    const editedQuestion = "What should I know about this match?";
+    await input.fill(editedQuestion);
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect.poll(async () => (await controlledAskRequests(page)).length).toBe(2);
+    const editedRequest = (await controlledAskRequests(page))[1];
+    expect(editedRequest.body).toMatchObject({ question: editedQuestion });
+    expect(editedRequest.body).not.toHaveProperty("fixtureContext");
+
+    await completeControlledAsk(page, 1, "Edited response");
+    await expect.poll(async () => (await controlledAskRequests(page))[1]?.readerCanceled).toBe(true);
+    await expect(page.getByText("Edited response", { exact: true })).toBeVisible();
+  });
+
+  test("stopped suggestion chip resends with the same fixture identity", async ({ page }) => {
+    await installControlledAskFetch(page);
+    await page.goto("/");
+
+    const chip = page.getByRole("button", { name: /Dinamo Zagreb vs Viking/ });
+    await expect(chip).toBeVisible();
+    await chip.click();
+    await expect.poll(async () => (await controlledAskRequests(page)).length).toBe(1);
+    const initialRequest = (await controlledAskRequests(page))[0];
+    const question = String(initialRequest.body.question);
+    const fixtureId = "espn:uefa.champions_qual:3";
+    expect(initialRequest.body).toMatchObject({
+      fixtureContext: { fixtureId },
+    });
+
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await page.getByRole("button", { name: "Stop generating" }).click();
+    await waitForStoppedRequest(page, 0);
+    await expect(input).toHaveValue(question);
+    await expect(input).toBeEnabled();
+
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect.poll(async () => (await controlledAskRequests(page)).length).toBe(2);
+    const resentRequest = (await controlledAskRequests(page))[1];
+    expect(resentRequest.body).toMatchObject({
+      question,
+      fixtureContext: { fixtureId },
+    });
+
+    await completeControlledAsk(page, 1, "Chip response");
+    await expect.poll(async () => (await controlledAskRequests(page))[1]?.readerCanceled).toBe(true);
+    await expect(page.getByText("Chip response", { exact: true })).toBeVisible();
   });
 
   test("Stop restores the prompt and does not show a server error", async ({ page }) => {
