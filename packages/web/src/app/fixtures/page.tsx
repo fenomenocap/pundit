@@ -29,38 +29,66 @@ function useFixturesData(selectedCompetition: string) {
   const [loading, setLoading] = useState(true);
   const [sinceLast, setSinceLast] = useState<number>(0);
   const sinceLastTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeLoadRef = useRef<symbol | null>(null);
+  const requestSequenceRef = useRef(0);
 
   const competitionFilter = selectedCompetition === ALL_TAB ? undefined : selectedCompetition;
+  const loadScope = useMemo(
+    () => Symbol(`fixtures-load:${competitionFilter ?? ALL_TAB}`),
+    [competitionFilter],
+  );
 
   const load = useCallback(async (silent = false) => {
+    if (activeLoadRef.current !== loadScope) return;
+    const requestSequence = ++requestSequenceRef.current;
+    const isCurrentRequest = () =>
+      activeLoadRef.current === loadScope
+      && requestSequence === requestSequenceRef.current;
+
     if (!silent) setLoading(true);
-    const [upcoming, recent, standingsData] = await Promise.all([
-      fetchUpcomingMatches(competitionFilter),
-      fetchRecentMatches(competitionFilter),
-      fetchStandings(competitionFilter),
-    ]);
-    const merged = [...recent.matches, ...upcoming.matches].sort(
-      (a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime()
-    );
-    setMatches(merged);
-    setStandings(standingsData.standings);
-    setLastUpdated(
-      upcoming.lastUpdated
-      ?? recent.lastUpdated
-      ?? standingsData.lastUpdated
-    );
-    setError(upcoming.error || recent.error || standingsData.error);
-    setLoading(false);
-    setSinceLast(0);
-  }, [competitionFilter]);
+    try {
+      const [upcoming, recent, standingsData] = await Promise.all([
+        fetchUpcomingMatches(competitionFilter),
+        fetchRecentMatches(competitionFilter),
+        fetchStandings(competitionFilter),
+      ]);
+      if (!isCurrentRequest()) return;
+
+      const merged = [...recent.matches, ...upcoming.matches].sort(
+        (a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime()
+      );
+      setMatches(merged);
+      setStandings(standingsData.standings);
+      setLastUpdated(
+        upcoming.lastUpdated
+        ?? recent.lastUpdated
+        ?? standingsData.lastUpdated
+      );
+      setError(upcoming.error || recent.error || standingsData.error);
+      setLoading(false);
+      setSinceLast(0);
+    } catch (reason) {
+      if (!isCurrentRequest()) return;
+      setError(reason instanceof Error ? reason.message : "Could not load fixtures.");
+      setLoading(false);
+      setSinceLast(0);
+    }
+  }, [competitionFilter, loadScope]);
 
   useEffect(() => {
-    let cancelled = false;
-    void load().then(() => {
-      if (cancelled) return;
-    });
-    return () => { cancelled = true; };
-  }, [load]);
+    setMatches([]);
+    setStandings([]);
+    setLastUpdated(null);
+    setError(null);
+    setLoading(true);
+    setSinceLast(0);
+    activeLoadRef.current = loadScope;
+    void load();
+    return () => {
+      if (activeLoadRef.current === loadScope) activeLoadRef.current = null;
+      requestSequenceRef.current += 1;
+    };
+  }, [load, loadScope]);
 
   useEffect(() => {
     if (sinceLastTimerRef.current) clearInterval(sinceLastTimerRef.current);
@@ -115,6 +143,13 @@ function Monogram({ name }: { name: string }) {
     </span>
   );
 }
+
+const MATCH_STATUS_LABELS = new Map([
+  ["SCHEDULED", "Scheduled"],
+  ["FINISHED", "Full Time"],
+  ["POSTPONED", "Postponed"],
+  ["CANCELLED", "Canceled"],
+]);
 
 function MatchRow({ match }: { match: MatchResponse }) {
   const finished = match.status === "FINISHED";
@@ -194,10 +229,12 @@ function MatchRow({ match }: { match: MatchResponse }) {
             <span
               className={cn(
                 "rounded-full px-2 py-0.5 text-xs font-bold uppercase",
-                finished ? "bg-secondary text-muted-foreground" : "bg-primary/10 text-primary"
+                match.status === "SCHEDULED"
+                  ? "bg-primary/10 text-primary"
+                  : "bg-secondary text-muted-foreground"
               )}
             >
-              {finished ? "Full Time" : "Scheduled"}
+              {MATCH_STATUS_LABELS.get(match.status) ?? "Status unavailable"}
             </span>
           )}
         </div>

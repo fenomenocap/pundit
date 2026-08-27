@@ -1,6 +1,224 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+type FixtureBatchTestControl = {
+  fixtureBatchCount: number;
+  releaseBatches: Record<number, () => void>;
+};
+
+type FixtureBatchTestWindow = Window & {
+  __fixtureBatchTestControl?: FixtureBatchTestControl;
+};
+
+async function installFixtureBatchControl(
+  page: Page,
+  options: {
+    holdBatches?: number[];
+    errorBatches?: number[];
+    nullTimestampBatches?: number[];
+    markFirstBatchLive?: boolean;
+    firstBatchStatuses?: Record<string, string>;
+    triggerLivePollOnce?: boolean;
+  },
+) {
+  await page.addInitScript(
+    ({
+      holdBatches = [],
+      errorBatches = [],
+      nullTimestampBatches = [],
+      markFirstBatchLive = false,
+      firstBatchStatuses = {},
+      triggerLivePollOnce = false,
+    }) => {
+      const originalPromiseAll = Promise.all.bind(Promise) as (
+        values: Iterable<unknown>
+      ) => Promise<unknown[]>;
+      const control: FixtureBatchTestControl = {
+        fixtureBatchCount: 0,
+        releaseBatches: {},
+      };
+      (window as FixtureBatchTestWindow).__fixtureBatchTestControl = control;
+
+      const promiseConstructor = Promise as unknown as {
+        all: (values: Iterable<unknown>) => Promise<unknown[]>;
+      };
+      promiseConstructor.all = (values) => originalPromiseAll(values).then((items) => {
+        if (!Array.isArray(items) || items.length !== 3) return items;
+        const [upcoming, recent, standings] = items as Array<{
+          matches?: unknown[];
+          standings?: unknown[];
+        }>;
+        if (
+          !Array.isArray(upcoming?.matches)
+          || !Array.isArray(recent?.matches)
+          || !Array.isArray(standings?.standings)
+        ) {
+          return items;
+        }
+
+        control.fixtureBatchCount += 1;
+        const batchNumber = control.fixtureBatchCount;
+        if (errorBatches.includes(batchNumber)) {
+          items[0] = {
+            ...(items[0] as Record<string, unknown>),
+            error: "Retry fixture load",
+          };
+        }
+        if (nullTimestampBatches.includes(batchNumber)) {
+          items[0] = { ...(items[0] as Record<string, unknown>), lastUpdated: null };
+          items[1] = { ...(items[1] as Record<string, unknown>), lastUpdated: null };
+          items[2] = { ...(items[2] as Record<string, unknown>), lastUpdated: null };
+        }
+        if (markFirstBatchLive && batchNumber === 1) {
+          items[0] = {
+            ...(items[0] as Record<string, unknown>),
+            matches: upcoming.matches.map((match) => ({
+              ...(match as Record<string, unknown>),
+              status: "IN_PLAY",
+            })),
+          };
+        }
+        if (batchNumber === 1 && Object.keys(firstBatchStatuses).length > 0) {
+          items[0] = {
+            ...(items[0] as Record<string, unknown>),
+            matches: upcoming.matches.map((match) => {
+              const fixture = match as Record<string, unknown>;
+              return {
+                ...fixture,
+                status: firstBatchStatuses[String(fixture.id)] ?? fixture.status,
+              };
+            }),
+          };
+        }
+        if (holdBatches.includes(batchNumber)) {
+          return new Promise<unknown[]>((resolve) => {
+            control.releaseBatches[batchNumber] = () => resolve(items);
+          });
+        }
+        return items;
+      });
+
+      if (triggerLivePollOnce) {
+        const originalSetInterval = window.setInterval.bind(window);
+        window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+          if (timeout === 60_000) return window.setTimeout(handler, 5, ...args);
+          return originalSetInterval(handler, timeout, ...args);
+        }) as typeof window.setInterval;
+      }
+    },
+    options,
+  );
+}
+
+async function fixtureBatchCount(page: Page): Promise<number> {
+  return page.evaluate(
+    () => (window as FixtureBatchTestWindow).__fixtureBatchTestControl?.fixtureBatchCount ?? 0
+  );
+}
+
+async function releaseFixtureBatch(page: Page, batchNumber: number): Promise<void> {
+  await page.evaluate(async (requestedBatch) => {
+    const control = (window as FixtureBatchTestWindow).__fixtureBatchTestControl;
+    const release = control?.releaseBatches[requestedBatch];
+    if (!release) throw new Error(`Fixture batch ${requestedBatch} is not waiting.`);
+    release();
+    // Let the released continuation and React's render settle before checking
+    // that stale data stayed absent.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }, batchNumber);
+}
 
 test.describe("smoke", () => {
+  test("postponed and canceled fixtures show their status without an Ask link", async ({ page }) => {
+    await installFixtureBatchControl(page, {
+      firstBatchStatuses: { "1": "POSTPONED", "2": "CANCELLED" },
+    });
+    await page.goto("/fixtures");
+    const postponed = page.getByTitle("Arsenal", { exact: true })
+      .locator("xpath=ancestor::div[contains(@class, 'relative')][1]");
+    const canceled = page.getByTitle("Riga FC", { exact: true })
+      .locator("xpath=ancestor::div[contains(@class, 'relative')][1]");
+    await expect(postponed.getByText("Postponed", { exact: true })).toBeVisible();
+    await expect(canceled.getByText("Canceled", { exact: true })).toBeVisible();
+    for (const fixture of [postponed, canceled]) {
+      await expect(fixture.getByText("Scheduled", { exact: true })).toHaveCount(0);
+      await expect(fixture.getByRole("link", { name: "Ask about this match" })).toHaveCount(0);
+    }
+    await expect(page.getByText("Full Time", { exact: true })).toBeVisible();
+  });
+
+  test("unknown fixture status stays unavailable without an Ask link", async ({ page }) => {
+    await installFixtureBatchControl(page, { firstBatchStatuses: { "1": "constructor" } });
+    await page.goto("/fixtures");
+    const fixture = page.getByTitle("Arsenal", { exact: true })
+      .locator("xpath=ancestor::div[contains(@class, 'relative')][1]");
+    await expect(fixture.getByText("Status unavailable", { exact: true })).toBeVisible();
+    await expect(fixture.getByRole("link", { name: "Ask about this match" })).toHaveCount(0);
+    await expect(page.getByText("Scheduled", { exact: true })).toBeVisible();
+  });
+
+  test("selection clears prior fixture data while the new request is pending", async ({ page }) => {
+    await installFixtureBatchControl(page, { holdBatches: [2] });
+    await page.goto("/fixtures");
+    await expect(page.getByText("Riga FC", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Standings", exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Premier League", exact: true }).click();
+    await expect.poll(() => fixtureBatchCount(page)).toBe(2);
+    await expect(page.getByText("Riga FC", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Standings", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Loading…", { exact: true })).toBeVisible();
+
+    await releaseFixtureBatch(page, 2);
+    await expect(page.getByText("Arsenal", { exact: true }).first()).toBeVisible();
+  });
+
+  test("fixture selection and retry ignore stale responses", async ({ page }) => {
+    await installFixtureBatchControl(page, {
+      holdBatches: [1, 3],
+      errorBatches: [2, 3],
+      nullTimestampBatches: [1],
+    });
+    await page.goto("/fixtures");
+    await expect(page.getByRole("button", { name: "Premier League", exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Premier League", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Retry fixture load" })).toBeVisible();
+
+    await releaseFixtureBatch(page, 1);
+    await expect(page.getByRole("alert").filter({ hasText: "Retry fixture load" })).toBeVisible();
+    await expect(page.getByText(/^Updated /)).toBeVisible();
+    await expect(page.getByText("Riga FC", { exact: true })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect.poll(() => fixtureBatchCount(page)).toBe(3);
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect.poll(() => fixtureBatchCount(page)).toBe(4);
+    await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
+
+    await releaseFixtureBatch(page, 3);
+    await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
+    await expect(page.getByText("Riga FC", { exact: true })).toHaveCount(0);
+  });
+
+  test("stale live poll response cannot replace a newer selection", async ({ page }) => {
+    await installFixtureBatchControl(page, {
+      holdBatches: [2],
+      markFirstBatchLive: true,
+      triggerLivePollOnce: true,
+    });
+    await page.goto("/fixtures");
+    await expect(page.getByText("Riga FC", { exact: true }).first()).toBeVisible();
+    await expect.poll(() => fixtureBatchCount(page)).toBe(2);
+
+    await page.getByRole("button", { name: "Premier League", exact: true }).click();
+    await expect(page.getByText("Riga FC", { exact: true })).toHaveCount(0);
+
+    await releaseFixtureBatch(page, 2);
+    await expect(page.getByText("Riga FC", { exact: true })).toHaveCount(0);
+  });
+
   test("homepage", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Pundit" })).toBeVisible();
