@@ -1,4 +1,126 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+type ModelRequestTestControl = {
+  batchCount: number;
+  releaseBatches: Record<number, () => void>;
+};
+
+type ModelRequestTestWindow = Window & {
+  __modelRequestTestControl?: ModelRequestTestControl;
+};
+
+type ModelRequestTestOptions = {
+  holdBatches?: number[];
+  failBatches?: number[];
+  errorBatches?: number[];
+  pHomeByBatch?: Record<number, number>;
+  nullLastUpdatedBatches?: number[];
+};
+
+async function installModelRequestControl(
+  page: Page,
+  options: ModelRequestTestOptions = {},
+): Promise<void> {
+  await page.addInitScript(
+    ({
+      holdBatches = [],
+      failBatches = [],
+      errorBatches = [],
+      pHomeByBatch = {},
+      nullLastUpdatedBatches = [],
+    }) => {
+      const originalPromiseAll = Promise.all.bind(Promise) as (
+        values: Iterable<unknown>
+      ) => Promise<unknown[]>;
+      const promiseConstructor = Promise as unknown as {
+        all: (values: Iterable<unknown>) => Promise<unknown[]>;
+      };
+      const control: ModelRequestTestControl = {
+        batchCount: 0,
+        releaseBatches: {},
+      };
+      (window as ModelRequestTestWindow).__modelRequestTestControl = control;
+
+      const isRecord = (value: unknown): value is Record<string, unknown> => (
+        typeof value === "object" && value !== null && !Array.isArray(value)
+      );
+
+      promiseConstructor.all = (values) => originalPromiseAll(values).then((items) => {
+        if (!Array.isArray(items) || items.length !== 3) return items;
+        const [model, competitions, readiness] = items;
+        if (
+          !isRecord(model)
+          || !Array.isArray(model.fixtures)
+          || !isRecord(competitions)
+          || !Array.isArray(competitions.competitions)
+          || !(
+            readiness === null
+            || (isRecord(readiness) && isRecord(readiness.model))
+          )
+        ) {
+          return items;
+        }
+
+        const batch = ++control.batchCount;
+        const responseError = errorBatches.includes(batch)
+          ? `Synthetic model response failure for batch ${batch}`
+          : undefined;
+        const pHome = pHomeByBatch[batch];
+        const fixtures = typeof pHome === "number"
+          ? model.fixtures.map((fixture, index) => (
+              index === 0 && isRecord(fixture)
+                ? { ...fixture, pHome, pDraw: 0.2, pAway: 0.8 - pHome }
+                : fixture
+            ))
+          : model.fixtures;
+        const response = {
+          ...model,
+          fixtures,
+          ...(responseError === undefined ? {} : { error: responseError }),
+          ...(nullLastUpdatedBatches.includes(batch) ? { lastUpdated: null } : {}),
+        };
+        items[0] = response;
+
+        const reject = () => Promise.reject(new Error(
+          `Synthetic model request failure for batch ${batch}`
+        ));
+        if (holdBatches.includes(batch)) {
+          return new Promise<unknown[]>((resolve, rejectBatch) => {
+            control.releaseBatches[batch] = () => {
+              if (failBatches.includes(batch)) {
+                rejectBatch(new Error(`Synthetic model request failure for batch ${batch}`));
+              } else {
+                resolve(items);
+              }
+            };
+          });
+        }
+        return failBatches.includes(batch) ? reject() : items;
+      });
+    },
+    options,
+  );
+}
+
+async function modelRequestBatchCount(page: Page): Promise<number> {
+  return page.evaluate(
+    () => (window as ModelRequestTestWindow).__modelRequestTestControl?.batchCount ?? 0
+  );
+}
+
+async function releaseModelRequestBatch(page: Page, batch: number): Promise<void> {
+  await page.evaluate(async (batchNumber) => {
+    const release = (window as ModelRequestTestWindow)
+      .__modelRequestTestControl?.releaseBatches[batchNumber];
+    if (!release) throw new Error(`Model request batch ${batchNumber} is not held`);
+    release();
+    // Let the released promise and React's resulting render settle before a
+    // negative assertion can accidentally pass against the previous frame.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }, batch);
+}
 
 test.describe("smoke", () => {
   test("homepage", async ({ page }) => {
@@ -32,6 +154,92 @@ test.describe("smoke", () => {
     await expect(page.getByText("Polymarket", { exact: true })).toBeVisible();
     await expect(page.getByText("68.0%")).toBeVisible();
     await expect(page.getByText("Stake", { exact: true })).toHaveCount(0);
+  });
+
+  test("model Retry ignores an older successful response", async ({ page }) => {
+    await installModelRequestControl(page, {
+      holdBatches: [2],
+      errorBatches: [1],
+      pHomeByBatch: { 2: 0.11, 3: 0.63 },
+      nullLastUpdatedBatches: [1],
+    });
+
+    await page.goto("/model");
+    const initialError = page.getByRole("alert").filter({ hasText: "Synthetic model response failure for batch 1" });
+    await expect(initialError).toBeVisible();
+    await expect.poll(() => modelRequestBatchCount(page)).toBe(1);
+
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect.poll(() => modelRequestBatchCount(page)).toBe(2);
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect.poll(() => modelRequestBatchCount(page)).toBe(3);
+
+    const latestProbability = page.getByRole("img", {
+      name: "Arsenal 63.0%, Draw 20.0%, Coventry City 17.0%.",
+    });
+    await expect(latestProbability).toBeVisible();
+    await releaseModelRequestBatch(page, 2);
+    await expect(latestProbability).toBeVisible();
+    await expect(page.getByRole("img", {
+      name: "Arsenal 11.0%, Draw 20.0%, Coventry City 69.0%.",
+    })).toHaveCount(0);
+  });
+
+  test("model Retry ignores an older failed response", async ({ page }) => {
+    await installModelRequestControl(page, {
+      holdBatches: [2],
+      failBatches: [2],
+      errorBatches: [1],
+      pHomeByBatch: { 3: 0.63 },
+      nullLastUpdatedBatches: [1],
+    });
+
+    await page.goto("/model");
+    const initialError = page.getByRole("alert").filter({ hasText: "Synthetic model response failure for batch 1" });
+    await expect(initialError).toBeVisible();
+    await expect.poll(() => modelRequestBatchCount(page)).toBe(1);
+
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect.poll(() => modelRequestBatchCount(page)).toBe(2);
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect.poll(() => modelRequestBatchCount(page)).toBe(3);
+
+    const latestProbability = page.getByRole("img", {
+      name: "Arsenal 63.0%, Draw 20.0%, Coventry City 17.0%.",
+    });
+    await expect(latestProbability).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Synthetic model" })).toHaveCount(0);
+    await releaseModelRequestBatch(page, 2);
+    await expect(latestProbability).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Synthetic model" })).toHaveCount(0);
+  });
+
+  test("model Retry keeps loading while an older request finishes", async ({ page }) => {
+    await installModelRequestControl(page, {
+      holdBatches: [2, 3],
+      errorBatches: [1],
+      pHomeByBatch: { 3: 0.63 },
+      nullLastUpdatedBatches: [1],
+    });
+
+    await page.goto("/model");
+    const initialError = page.getByRole("alert").filter({ hasText: "Synthetic model response failure for batch 1" });
+    await expect(initialError).toBeVisible();
+    await expect.poll(() => modelRequestBatchCount(page)).toBe(1);
+
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect.poll(() => modelRequestBatchCount(page)).toBe(2);
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect.poll(() => modelRequestBatchCount(page)).toBe(3);
+    await expect(page.getByText("Loading…", { exact: true })).toBeVisible();
+
+    await releaseModelRequestBatch(page, 2);
+    await expect(page.getByText("Loading…", { exact: true })).toBeVisible();
+
+    await releaseModelRequestBatch(page, 3);
+    await expect(page.getByRole("img", {
+      name: "Arsenal 63.0%, Draw 20.0%, Coventry City 17.0%.",
+    })).toBeVisible();
   });
 
   test("fixture and model Ask links retain their rendered fixture identity", async ({ page }) => {

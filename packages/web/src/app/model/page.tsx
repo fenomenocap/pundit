@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { fetchActiveModelFixtures, fetchCompetitions } from "@/lib/mock-data";
@@ -74,11 +74,14 @@ export default function ModelPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const requestGeneration = useRef(0);
 
   const load = () => {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     Promise.all([fetchActiveModelFixtures(), fetchCompetitions(), getReadiness().catch(() => null)])
       .then(([fixtureData, competitionData, readiness]) => {
+        if (generation !== requestGeneration.current) return;
         setFixtures(fixtureData.fixtures);
         setLastUpdated(fixtureData.lastUpdated);
         setError(fixtureData.error);
@@ -90,13 +93,19 @@ export default function ModelPage() {
         );
       })
       .catch((reason: unknown) => {
+        if (generation !== requestGeneration.current) return;
         setError(reason instanceof Error ? reason.message : "Could not load model data.");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (generation === requestGeneration.current) setLoading(false);
+      });
   };
 
   useEffect(() => {
     load();
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, []);
 
   const filteredFixtures = useMemo(() => (
