@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import { shouldBuildWeb } from "./deploy-build-paths.mjs";
+import { runHistoryFetch } from "./fetch-history.mjs";
 
 const helper = path.resolve("scripts/resolve-deployed-sha.sh");
+const curlBoundsHelper = path.resolve("scripts/curl-bounds.sh");
+const historyFetcher = path.resolve("scripts/fetch-history.mjs");
+const verifyLocalScript = path.resolve("scripts/verify-local.sh");
 
 function git(cwd, ...args) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -17,6 +21,42 @@ function write(cwd, relative, content) {
   const target = path.join(cwd, relative);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, content);
+}
+
+function withTempDirectory(prefix, run) {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  try {
+    return run(cwd);
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
+function fakeCommand(cwd, name, source) {
+  const bin = path.join(cwd, "fake-bin");
+  fs.mkdirSync(bin, { recursive: true });
+  const script = path.join(cwd, `fake-${name}.mjs`);
+  fs.writeFileSync(script, source);
+  const variable = `PUNDIT_FAKE_${name.toUpperCase()}_SCRIPT`;
+  const launcher = path.join(bin, name);
+  fs.writeFileSync(
+    launcher,
+    `#!/usr/bin/env bash\nexec node "$${variable}" "$@"\n`,
+  );
+  fs.chmodSync(launcher, 0o755);
+  return { bin, variable, script };
+}
+
+function withFakePath(env, bin) {
+  return {
+    ...env,
+    PATH: [bin, env.PATH].filter(Boolean).join(path.delimiter),
+    // Git Bash's Windows launcher prepends its bundled tools to PATH. Reapply
+    // the fake directory inside the shell so its curl cannot shadow our stub.
+    PUNDIT_FAKE_COMMAND_BIN: process.platform === "win32"
+      ? `/${bin[0].toLowerCase()}${bin.slice(2).replaceAll("\\", "/")}`
+      : bin,
+  };
 }
 
 function initRepo(cwd) {
@@ -242,5 +282,161 @@ test("the resolver agrees with the Vercel ignore-build rule commit for commit", 
       }
     }
     assert.equal(resolve(cwd, "web"), expected);
+  });
+});
+
+test("local verification applies bounded curl flags to every request", () => {
+  withTempDirectory("pundit-verify-local-", (cwd) => {
+    const log = path.join(cwd, "curl-calls.json");
+    const command = fakeCommand(cwd, "curl", `
+      import fs from "node:fs";
+
+      const args = process.argv.slice(2);
+      const log = process.env.PUNDIT_FAKE_CURL_LOG;
+      const calls = fs.existsSync(log) ? JSON.parse(fs.readFileSync(log, "utf8")) : [];
+      calls.push(args);
+      fs.writeFileSync(log, JSON.stringify(calls));
+
+      const url = args.at(-1) || "";
+      if (args.includes("-w")) process.stdout.write("200");
+      else if (url.endsWith("/health")) process.stdout.write('{"status":"ok"}');
+      else if (url.endsWith("/api/matches/competitions")) process.stdout.write('{"competitions":["eng.1"]}');
+      else if (url.endsWith("/api/matches/active")) process.stdout.write('{"fixtures":[]}');
+      else if (url.endsWith("/api/model/active")) process.stdout.write('{"fixtures":[]}');
+      else if (url.endsWith("/api/evaluation/wc-2026")) process.stdout.write('{"competition":"fifa.world"}');
+    `);
+    const result = spawnSync("bash", [
+      "-c", 'export PATH="$PUNDIT_FAKE_COMMAND_BIN:$PATH"; source "$1"',
+      "bash", verifyLocalScript,
+    ], {
+      cwd,
+      encoding: "utf8",
+      env: withFakePath({
+        ...process.env,
+        API_URL: "http://localhost:3001",
+        VERIFY_CURL_CONNECT_TIMEOUT_SECONDS: "2",
+        VERIFY_CURL_TOTAL_TIMEOUT_SECONDS: "5",
+        PUNDIT_FAKE_CURL_LOG: log,
+        [command.variable]: command.script,
+      }, command.bin),
+    });
+
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const calls = JSON.parse(fs.readFileSync(log, "utf8"));
+    assert.equal(calls.length, 6);
+    for (const args of calls) {
+      assert.deepEqual(
+        args.slice(0, 4),
+        ["--connect-timeout", "2", "--max-time", "5"],
+      );
+    }
+  });
+});
+
+test("curl bounds reject invalid, inverted, and oversized values before a request", () => {
+  withTempDirectory("pundit-curl-bounds-", (cwd) => {
+    const log = path.join(cwd, "curl-calls.log");
+    const command = fakeCommand(cwd, "curl", `
+      import fs from "node:fs";
+      fs.writeFileSync(process.env.PUNDIT_FAKE_CURL_LOG, "called");
+    `);
+    const cases = [
+      { connect: "0", total: "5" },
+      { connect: "9", total: "8" },
+      { connect: "31", total: "31" },
+      { connect: "999999999999999999999999", total: "20" },
+    ];
+
+    for (const values of cases) {
+      const result = spawnSync(
+        "bash",
+        [
+          "-c",
+          'set -euo pipefail; export PATH="$PUNDIT_FAKE_COMMAND_BIN:$PATH"; source "$1"; curl_bounded "$2"',
+          "bash",
+          curlBoundsHelper,
+          "http://localhost:3001/health",
+        ],
+        {
+          cwd,
+          encoding: "utf8",
+          env: withFakePath({
+            ...process.env,
+            VERIFY_CURL_CONNECT_TIMEOUT_SECONDS: values.connect,
+            VERIFY_CURL_TOTAL_TIMEOUT_SECONDS: values.total,
+            PUNDIT_FAKE_CURL_LOG: log,
+            [command.variable]: command.script,
+          }, command.bin),
+        },
+      );
+      assert.notEqual(result.status, 0, `${values.connect}/${values.total} unexpectedly passed`);
+      assert.equal(fs.existsSync(log), false);
+    }
+  });
+});
+
+test("history refresh suppresses prompts and returns when the child exceeds its bound", () => {
+  withTempDirectory("pundit-history-fetch-", (cwd) => {
+    const log = path.join(cwd, "git-invocation.json");
+    const fixture = path.join(cwd, "history-fetch-fixture.mjs");
+    fs.writeFileSync(fixture, `
+      import fs from "node:fs";
+
+      if (process.env.PUNDIT_FAKE_GIT_MODE === "hang") {
+        setTimeout(() => {}, 5000);
+      } else {
+        fs.writeFileSync(process.env.PUNDIT_FAKE_GIT_LOG, JSON.stringify({
+          args: process.argv.slice(2),
+          terminalPrompt: process.env.GIT_TERMINAL_PROMPT,
+          credentialInteractive: process.argv.includes("credential.interactive=false"),
+        }));
+      }
+    `);
+    const baseEnv = {
+      ...process.env,
+      PUNDIT_FAKE_GIT_LOG: log,
+      PUNDIT_FAKE_GIT_MODE: "success",
+    };
+    const invalid = spawnSync(
+      process.execPath,
+      [historyFetcher, "--timeout-seconds", "61"],
+      { cwd, encoding: "utf8", env: baseEnv },
+    );
+    assert.equal(invalid.error, undefined, invalid.error?.message);
+    assert.equal(invalid.status, 2);
+
+    const success = runHistoryFetch({
+      cwd,
+      timeoutSeconds: "1",
+      env: baseEnv,
+      command: process.execPath,
+      commandPrefixArgs: [fixture],
+    });
+    assert.equal(success.ok, true);
+    const invocation = JSON.parse(fs.readFileSync(log, "utf8"));
+    assert.deepEqual(invocation.args, [
+      "-c",
+      "credential.interactive=false",
+      "fetch",
+      "--quiet",
+      "origin",
+      "main",
+    ]);
+    assert.equal(invocation.terminalPrompt, "0");
+    assert.equal(invocation.credentialInteractive, true);
+
+    const started = Date.now();
+    const timedOut = runHistoryFetch({
+      cwd,
+      timeoutSeconds: "1",
+      env: { ...baseEnv, PUNDIT_FAKE_GIT_MODE: "hang" },
+      command: process.execPath,
+      commandPrefixArgs: [fixture],
+    });
+    const elapsed = Date.now() - started;
+    assert.equal(timedOut.ok, false);
+    assert.equal(timedOut.timedOut, true);
+    assert.ok(elapsed < 4000, `history refresh took ${elapsed}ms`);
   });
 });

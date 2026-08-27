@@ -2,10 +2,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/curl-bounds.sh"
 
 API_URL="https://thepundit.up.railway.app"
 WEB_URL="https://thepundit.vercel.app"
 EXPECTED_API_HOST="thepundit.up.railway.app"
+VERIFY_HISTORY_FETCH_TIMEOUT_SECONDS="${VERIFY_HISTORY_FETCH_TIMEOUT_SECONDS:-10}"
+if ! verify_timeout_seconds \
+  "VERIFY_HISTORY_FETCH_TIMEOUT_SECONDS" \
+  "$VERIFY_HISTORY_FETCH_TIMEOUT_SECONDS" \
+  60; then
+  exit 2
+fi
 
 if [[ -n "${1:-}" ]]; then
   EXPECTED_API_SHA="$1"
@@ -47,7 +55,9 @@ sha_matches() {
   # check was polling. Refresh history once before treating it as a fault.
   if [[ "$state" == "unknown" && "$HISTORY_REFRESHED" == "0" ]]; then
     HISTORY_REFRESHED=1
-    git fetch --quiet origin main >/dev/null 2>&1 || true
+    node "$SCRIPT_DIR/fetch-history.mjs" \
+      --timeout-seconds "$VERIFY_HISTORY_FETCH_TIMEOUT_SECONDS" \
+      >/dev/null 2>&1 || true
     state=$(sha_state "$1" "${2:-$EXPECTED_API_SHA}")
   fi
   [[ "$state" == "match" || "$state" == "ahead" ]]
@@ -62,8 +72,8 @@ echo "registry:   $EXPECTED_REGISTRY_MODE"
 echo "=== 2. Poll API startup/version ==="
 API_SHA=""
 for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
-  STARTUP_HTTP=$(curl -sS -o /dev/null -w "%{http_code}" "$API_URL/startup" || true)
-  API_VERSION=$(curl -fsS "$API_URL/version" 2>/dev/null || true)
+  STARTUP_HTTP=$(curl_bounded -sS -o /dev/null -w "%{http_code}" "$API_URL/startup" || true)
+  API_VERSION=$(curl_bounded -fsS "$API_URL/version" 2>/dev/null || true)
   API_SHA=$(printf '%s' "$API_VERSION" | json_sha 2>/dev/null || true)
   if [[ "$STARTUP_HTTP" == "200" ]] && sha_matches "$API_SHA" "$EXPECTED_API_SHA"; then
     echo "OK (SHA $API_SHA)"
@@ -80,7 +90,7 @@ done
 echo "=== 3. Poll frontend version ==="
 WEB_SHA=""
 for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
-  WEB_VERSION=$(curl -fsS "$WEB_URL/api/version" 2>/dev/null || true)
+  WEB_VERSION=$(curl_bounded -fsS "$WEB_URL/api/version" 2>/dev/null || true)
   WEB_SHA=$(printf '%s' "$WEB_VERSION" | json_sha 2>/dev/null || true)
   if sha_matches "$WEB_SHA" "$EXPECTED_WEB_SHA"; then
     echo "OK (SHA $WEB_SHA)"
@@ -96,7 +106,7 @@ for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
 done
 
 echo "=== 4. API health ==="
-HEALTH=$(curl -fsS "$API_URL/health")
+HEALTH=$(curl_bounded -fsS "$API_URL/health")
 if ! echo "$HEALTH" | grep -q '"status":"ok"'; then
   echo "FAIL: /health did not contain \"status\":\"ok\""
   echo "$HEALTH"
@@ -106,7 +116,7 @@ echo "OK"
 
 echo "=== 5. API ready ==="
 READY_TMP=$(mktemp)
-READY_HTTP=$(curl -sS -w "%{http_code}" -o "$READY_TMP" "$API_URL/ready" || true)
+READY_HTTP=$(curl_bounded -sS -w "%{http_code}" -o "$READY_TMP" "$API_URL/ready" || true)
 if [[ "$READY_HTTP" != "200" ]]; then
   echo "FAIL: /ready returned HTTP $READY_HTTP (expected 200)"
   rm -f "$READY_TMP"
@@ -152,9 +162,9 @@ else
 fi
 echo "=== 6. Registry, search, and runtime controls ==="
 REGISTRY_TMP=$(mktemp)
-REGISTRY_HTTP=$(curl -sS -w "%{http_code}" -o "$REGISTRY_TMP" "$API_URL/api/fixtures/recognized" || true)
+REGISTRY_HTTP=$(curl_bounded -sS -w "%{http_code}" -o "$REGISTRY_TMP" "$API_URL/api/fixtures/recognized" || true)
 MODEL_TMP=$(mktemp)
-MODEL_HTTP=$(curl -sS -w "%{http_code}" -o "$MODEL_TMP" "$API_URL/api/model/active" || true)
+MODEL_HTTP=$(curl_bounded -sS -w "%{http_code}" -o "$MODEL_TMP" "$API_URL/api/model/active" || true)
 if [[ "$REGISTRY_HTTP" != "200" || "$MODEL_HTTP" != "200" ]]; then
   echo "FAIL: registry/model certification surfaces returned HTTP $REGISTRY_HTTP/$MODEL_HTTP"
   rm -f "$REGISTRY_TMP" "$MODEL_TMP" "$READY_TMP"
@@ -280,7 +290,7 @@ PY
 rm -f "$REGISTRY_TMP" "$MODEL_TMP" "$READY_TMP"
 
 echo "=== 7. CORS good origin ==="
-CORS_GOOD_HEADERS=$(curl -fsS -D - -o /dev/null -H "Origin: $WEB_URL" "$API_URL/api/matches/standings")
+CORS_GOOD_HEADERS=$(curl_bounded -fsS -D - -o /dev/null -H "Origin: $WEB_URL" "$API_URL/api/matches/standings")
 if ! echo "$CORS_GOOD_HEADERS" | grep -i "access-control-allow-origin:" | grep -Fq "$WEB_URL"; then
   echo "FAIL: missing access-control-allow-origin: $WEB_URL"
   echo "$CORS_GOOD_HEADERS" | grep -i access-control || true
@@ -289,7 +299,7 @@ fi
 echo "OK"
 
 echo "=== 8. CORS bad origin ==="
-CORS_BAD_HEADERS=$(curl -fsS -D - -o /dev/null -H "Origin: https://evil.example" "$API_URL/api/matches/standings")
+CORS_BAD_HEADERS=$(curl_bounded -fsS -D - -o /dev/null -H "Origin: https://evil.example" "$API_URL/api/matches/standings")
 if echo "$CORS_BAD_HEADERS" | grep -i "access-control-allow-origin:" | grep -Fq "https://evil.example"; then
   echo "FAIL: evil origin was reflected in access-control-allow-origin"
   exit 1
@@ -297,7 +307,7 @@ fi
 echo "OK"
 
 echo "=== 9. Vercel bundle ==="
-HTML=$(curl -fsS "$WEB_URL/")
+HTML=$(curl_bounded -fsS "$WEB_URL/")
 # Collect every JS chunk the homepage loads (page chunk + layout chunk +
 # shared/vendor chunks). API host constants live in lib/api.ts and may
 # be tree-shaken into any of them depending on the build.
@@ -312,7 +322,7 @@ INSPECTED=""
 CHUNK_COUNT=0
 while IFS= read -r CHUNK; do
   [[ -z "$CHUNK" ]] && continue
-  CHUNK_BODY=$(curl -fsS "$WEB_URL$CHUNK")
+  CHUNK_BODY=$(curl_bounded -fsS "$WEB_URL$CHUNK")
   CHUNK_COUNT=$((CHUNK_COUNT + 1))
   INSPECTED="$INSPECTED $CHUNK"
   if echo "$CHUNK_BODY" | grep -Fq "$EXPECTED_API_HOST"; then
