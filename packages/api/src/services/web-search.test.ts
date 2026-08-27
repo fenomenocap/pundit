@@ -201,6 +201,137 @@ describe("searchWeb result handling", () => {
   });
 });
 
+describe("search cancellation isolation", () => {
+  const fetchMock = vi.fn();
+  let restoreEnv: () => void;
+
+  beforeEach(() => {
+    restoreEnv = withCleanEnv();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockReset();
+    resetWebSearchStatus();
+    process.env.MINIMAX_API_KEY = "test-key";
+    delete process.env.BRAVE_SEARCH_API_KEY;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    restoreEnv();
+  });
+
+  it("isolates aborts between different signal-bearing callers", async () => {
+    const pending: Array<{ resolve: (response: ReturnType<typeof httpOk>) => void }> = [];
+    fetchMock.mockImplementation((_url: string, init?: { signal?: AbortSignal }) => {
+      return new Promise<ReturnType<typeof httpOk>>((resolve, reject) => {
+        const signal = init?.signal;
+        const onAbort = (): void => {
+          signal?.removeEventListener("abort", onAbort);
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+        };
+        pending.push({
+          resolve: (response) => {
+            signal?.removeEventListener("abort", onAbort);
+            resolve(response);
+          },
+        });
+        signal?.addEventListener("abort", onAbort, { once: true });
+        if (signal?.aborted) onAbort();
+      });
+    });
+
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const first = withSearchQuestion(() => searchWeb("same query", firstController.signal));
+    const second = withSearchQuestion(() => searchWeb("SAME QUERY", secondController.signal));
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    firstController.abort();
+    await expect(first).rejects.toThrow();
+    expect(getWebSearchStatus().providers.minimax.failures).toBe(0);
+    expect(getWebSearchStatus().consecutiveFailures).toBe(0);
+
+    pending[1].resolve(minimaxBody([MINIMAX_RESULT]));
+    await expect(second).resolves.toMatchObject({ status: "ok", provider: "minimax" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getWebSearchStatus().providers.minimax.failures).toBe(0);
+  });
+
+  it("coalesces same-signal callers inside the same logical question", async () => {
+    fetchMock.mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+    const controller = new AbortController();
+    const [first, second] = await withSearchQuestion(() => Promise.all([
+      searchWeb("same query", controller.signal),
+      searchWeb("SAME QUERY", controller.signal),
+    ]));
+
+    expect(first.results).toEqual(second.results);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not share one signal across independent question scopes", async () => {
+    fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
+    const controller = new AbortController();
+    const first = withSearchQuestion(() => searchWeb("same query", controller.signal));
+    const second = withSearchQuestion(() => searchWeb("same query", controller.signal));
+
+    await Promise.all([first, second]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache a late provider result after caller cancellation", async () => {
+    let resolveLate: ((response: ReturnType<typeof httpOk>) => void) | undefined;
+    fetchMock.mockImplementationOnce(() => new Promise<ReturnType<typeof httpOk>>((resolve) => {
+      resolveLate = resolve;
+    }));
+
+    const controller = new AbortController();
+    const cancelled = searchWeb("late result query", controller.signal);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(resolveLate).toBeTypeOf("function");
+    controller.abort();
+    resolveLate!(minimaxBody([MINIMAX_RESULT]));
+    await expect(cancelled).rejects.toThrow();
+
+    fetchMock.mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+    await expect(searchWeb("late result query")).resolves.toMatchObject({ status: "ok" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels a queued waiter promptly and removes its in-flight entry", async () => {
+    process.env.WEB_SEARCH_CONCURRENCY = "1";
+    const pending: Array<(response: ReturnType<typeof minimaxBody>) => void> = [];
+    fetchMock.mockImplementation(() =>
+      new Promise<ReturnType<typeof minimaxBody>>((resolve) => pending.push(resolve))
+    );
+
+    const holding = searchWeb("holding query");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const controller = new AbortController();
+    const queued = searchWeb("queued query", controller.signal);
+    let queuedState = "pending";
+    const queuedSettled = queued.then(
+      () => { queuedState = "resolved"; },
+      () => { queuedState = "rejected"; },
+    );
+    controller.abort();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(queuedState).toBe("rejected");
+    await queuedSettled;
+
+    // The canceled entry is gone even while the first provider call still
+    // owns the only slot, so a fresh caller can register its own work.
+    const retry = searchWeb("queued query");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    pending[0](minimaxBody([MINIMAX_RESULT]));
+    await expect(holding).resolves.toMatchObject({ status: "ok" });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    pending[1](minimaxBody([MINIMAX_RESULT]));
+    await expect(retry).resolves.toMatchObject({ status: "ok" });
+  });
+});
+
 /**
  * The distinction the whole redesign exists for. `[]` used to mean four
  * different things; a reader could not tell a quiet news day from an outage,
@@ -603,6 +734,39 @@ describe("question-scoped breaker accounting", () => {
     expect((await searchWeb("probe")).status).toBe("ok");
     expect((await searchWeb("after recovery")).status).toBe("ok");
     expect(getWebSearchStatus().providers.minimax.circuitOpen).toBe(false);
+  });
+
+  it("releases a half-open probe when its active caller is cancelled", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    fetchMock.mockResolvedValue(httpError(404));
+    for (const question of ["a", "b", "c"]) {
+      await withSearchQuestion(() => searchWeb(question));
+    }
+
+    vi.setSystemTime(new Date(NOW.getTime() + 5 * 60_000 + 1));
+    let rejectProbe: ((error: unknown) => void) | undefined;
+    fetchMock.mockImplementation((_url: string, init?: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        rejectProbe = reject;
+        init?.signal?.addEventListener("abort", () => {
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+        }, { once: true });
+      })
+    );
+
+    const controller = new AbortController();
+    const cancelledProbe = searchWeb("cancelled half-open probe", controller.signal);
+    for (let attempt = 0; attempt < 5 && !rejectProbe; attempt += 1) await Promise.resolve();
+    expect(rejectProbe).toBeTypeOf("function");
+    controller.abort();
+    await expect(cancelledProbe).rejects.toThrow();
+    expect(getWebSearchStatus().providers.minimax.failures).toBe(3);
+
+    fetchMock.mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+    const recovered = await searchWeb("after cancelled half-open probe");
+    expect(recovered.status).toBe("ok");
+    expect(recovered.provider).toBe("minimax");
   });
 
   it("does not amplify a known outage into a retry storm", async () => {

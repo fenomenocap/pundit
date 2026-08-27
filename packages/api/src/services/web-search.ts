@@ -736,23 +736,86 @@ function recordProviderFailure(name: string, reason: WebSearchFailureReason): vo
 // ─── Concurrency gate ───────────────────────────────────────────────────────
 
 let active = 0;
-const waiters: Array<() => void> = [];
 
-async function acquireSlot(): Promise<void> {
-  while (active >= searchConcurrency()) {
-    await new Promise<void>((resolve) => waiters.push(resolve));
+interface SlotWaiter {
+  signal?: AbortSignal;
+  resolve: () => void;
+  reject: (reason?: unknown) => void;
+  onAbort?: () => void;
+  settled: boolean;
+}
+
+const waiters: SlotWaiter[] = [];
+
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
+}
+
+async function acquireSlot(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw abortReason(signal);
+  if (active < searchConcurrency()) {
+    active += 1;
+    return;
   }
-  active += 1;
+
+  await new Promise<void>((resolve, reject) => {
+    const waiter: SlotWaiter = {
+      signal,
+      resolve,
+      reject,
+      settled: false,
+    };
+    const remove = (): void => {
+      const index = waiters.indexOf(waiter);
+      if (index >= 0) waiters.splice(index, 1);
+    };
+    const onAbort = (): void => {
+      if (waiter.settled) return;
+      waiter.settled = true;
+      remove();
+      signal?.removeEventListener("abort", onAbort);
+      reject(abortReason(signal as AbortSignal));
+    };
+    waiter.onAbort = onAbort;
+    waiters.push(waiter);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
 }
 
 function releaseSlot(): void {
   active -= 1;
-  waiters.shift()?.();
+  while (active < searchConcurrency() && waiters.length > 0) {
+    const waiter = waiters.shift() as SlotWaiter;
+    if (waiter.settled || waiter.signal?.aborted) {
+      if (!waiter.settled) {
+        waiter.settled = true;
+        waiter.signal?.removeEventListener("abort", waiter.onAbort as EventListener);
+        waiter.reject(abortReason(waiter.signal as AbortSignal));
+      }
+      continue;
+    }
+    waiter.settled = true;
+    waiter.signal?.removeEventListener("abort", waiter.onAbort as EventListener);
+    // Reserve the slot before resolving so another caller cannot overtake the
+    // waiter in the same turn. The waiter resumes without incrementing active.
+    active += 1;
+    waiter.resolve();
+    break;
+  }
 }
 
 type CacheEntry = { expiresAt: number; results: WebSearchResult[] };
 const cache = new Map<string, CacheEntry>();
-const inFlight = new Map<string, Promise<WebSearchOutcome>>();
+
+interface InFlightEntry {
+  signal?: AbortSignal;
+  /** Signal-bearing work is scoped to the logical question that owns it. */
+  scope?: QuestionScope;
+  promise: Promise<WebSearchOutcome>;
+}
+
+const inFlight = new Map<string, InFlightEntry[]>();
 
 function cloneOutcome(outcome: WebSearchOutcome): WebSearchOutcome {
   return { ...outcome, results: outcome.results.map((result) => ({ ...result })) };
@@ -767,12 +830,19 @@ function degraded(
 
 async function delay(ms: number, signal?: AbortSignal): Promise<void> {
   if (ms <= 0) return;
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => {
-      clearTimeout(timer);
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = (): void => signal?.removeEventListener("abort", onAbort);
+    const timer = setTimeout(() => {
+      cleanup();
       resolve();
-    }, { once: true });
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      cleanup();
+      reject(abortReason(signal as AbortSignal));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
   });
 }
 
@@ -836,6 +906,7 @@ export async function searchWeb(
   if (!trimmed) {
     return { status: "empty", results: [], provider: null, reason: null, usedFallback: false, attempts: [] };
   }
+  if (signal?.aborted) throw abortReason(signal);
 
   const cacheKey = trimmed.toLocaleLowerCase();
   const cached = cache.get(cacheKey);
@@ -850,12 +921,30 @@ export async function searchWeb(
     };
   }
 
-  const existing = inFlight.get(cacheKey);
-  if (existing) return existing.then(cloneOutcome);
+  const scope = signal ? questionScope.getStore() : undefined;
+  const entries = inFlight.get(cacheKey);
+  const existing = entries?.find((entry) =>
+    entry.signal === signal && (!signal || entry.scope === scope)
+  );
+  if (existing) return existing.promise.then(cloneOutcome);
 
-  const request = searchUncached(trimmed, signal).finally(() => inFlight.delete(cacheKey));
-  inFlight.set(cacheKey, request);
-  return request.then(cloneOutcome);
+  // Unsignalled calls retain the original process-wide coalescing behavior.
+  // A signal-bearing call only coalesces with the same signal in the same
+  // logical question. Sharing across either boundary would let one request's
+  // abort or AsyncLocalStorage scope control another caller's work.
+  const request = searchUncached(trimmed, signal);
+  const entry: InFlightEntry = { signal, scope, promise: request };
+  entry.promise = request.finally(() => {
+    const current = inFlight.get(cacheKey);
+    if (!current) return;
+    const index = current.indexOf(entry);
+    if (index < 0) return;
+    current.splice(index, 1);
+    if (current.length === 0) inFlight.delete(cacheKey);
+  });
+  if (entries) entries.push(entry);
+  else inFlight.set(cacheKey, [entry]);
+  return entry.promise.then(cloneOutcome);
 }
 
 /**
@@ -869,6 +958,19 @@ async function searchUncached(trimmed: string, signal?: AbortSignal): Promise<We
   status.totalSearches += 1;
   const scope = questionScope.getStore();
   if (scope) scope.searches += 1;
+
+  // A canceled request must not leave a half-open probe claimed forever. The
+  // count also must not turn a request cancellation into a failed question.
+  let countedForQuestion = Boolean(scope);
+  const ownedProbes = new Set<HealthState>();
+  const cleanupCancellation = (): void => {
+    if (!signal?.aborted) return;
+    for (const probe of ownedProbes) probe.halfOpenProbe = false;
+    if (countedForQuestion && scope) {
+      scope.searches -= 1;
+      countedForQuestion = false;
+    }
+  };
 
   const chain = enabledChain();
   const attempts: ProviderAttempt[] = [];
@@ -904,6 +1006,7 @@ async function searchUncached(trimmed: string, signal?: AbortSignal): Promise<We
         continue;
       }
       state.halfOpenProbe = true;
+      ownedProbes.add(state);
     }
 
     // Whether this provider has already lost a search earlier in this same
@@ -922,11 +1025,20 @@ async function searchUncached(trimmed: string, signal?: AbortSignal): Promise<We
     let answeredEmpty = false;
     while (tries < MAX_ATTEMPTS_PER_PROVIDER) {
       tries += 1;
-      await acquireSlot();
+      try {
+        await acquireSlot(signal);
+      } catch (error) {
+        cleanupCancellation();
+        throw error;
+      }
       let results: WebSearchResult[] | null = null;
       let failure: ProviderError | null = null;
       try {
+        if (signal?.aborted) throw abortReason(signal);
         results = await provider.run(trimmed, signal);
+        // Some provider/test seams may resolve after their signal was aborted.
+        // Do not let late results update health or the shared cache.
+        if (signal?.aborted) throw abortReason(signal);
       } catch (error) {
         // The slot is released by `finally` on every path, including this one.
         // Releasing it here as well double-decremented `active`, so each
@@ -934,7 +1046,10 @@ async function searchUncached(trimmed: string, signal?: AbortSignal): Promise<We
         // requests `active` goes negative, `acquireSlot` stops blocking, and
         // the burst control that exists to keep a subscription key under its
         // rate limit is silently gone.
-        if (signal?.aborted) throw error;
+        if (signal?.aborted) {
+          cleanupCancellation();
+          throw error;
+        }
         failure = classifyThrown(error);
       } finally {
         releaseSlot();
@@ -991,7 +1106,12 @@ async function searchUncached(trimmed: string, signal?: AbortSignal): Promise<We
         message: error.message.slice(0, 200),
       }));
       if (wait < 0) break;
-      await delay(wait, signal);
+      try {
+        await delay(wait, signal);
+      } catch (error) {
+        cleanupCancellation();
+        throw error;
+      }
     }
     if (answeredEmpty) continue;
     attempts.push({ provider: provider.name, outcome: "failed", reason: lastReason, attempts: tries });
