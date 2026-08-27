@@ -161,6 +161,13 @@ function browserContractScenarios() {
   ].map((id) => ({ id, passed: true, outcome: "PASS", evidence: "Browser contract prerequisite." }));
 }
 
+function snapshotOutputDirectory(directory) {
+  return Object.fromEntries(fs.readdirSync(directory).sort().map((name) => [
+    name,
+    fs.readFileSync(path.join(directory, name), "utf8"),
+  ]));
+}
+
 test("selectFeaturedMatch uses a model-backed active club fixture with known teams", () => {
   const match = selectFeaturedMatch([
     { competitionId: "eng.1", home: "TBD", away: "Arsenal" },
@@ -854,6 +861,124 @@ test("finalizer requires and applies explicit critic correctness for every passe
     finalized.scenarios.find(({ id }) => id === "answer-scenario").qualitativeScores.correctness,
     4
   );
+});
+
+test("finalizer rejects duplicate critic scenario verdicts without rewriting output", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-duplicate-critic-"));
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "duplicate-critic-run",
+    startedAt: "2026-08-13T10:00:00.000Z",
+    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+    webUrl: "https://thepundit.vercel.app",
+    scenarios: [...browserContractScenarios(), {
+      id: "answer-scenario", passed: true, outcome: "PASS", answer: "Grounded answer.",
+      qualitativeScores: { correctness: null }, requiredForCertification: true,
+      turnResults: [{ turn: 1, status: 200, answer: "Grounded answer." }],
+    }],
+    pacing: { minimumIntervalMs: 13_000, requestStarts: ["2026-08-13T10:00:00.000Z"], observedStartOffsetsMs: [0], observedGapsMs: [] },
+    progress: { status: "complete" }, browserEvidence: null, recommendations: [],
+  }, null);
+  await writeReport(report, directory);
+  const identity = {
+    runId: "duplicate-critic-run", schemaVersion: EVAL_SCHEMA_VERSION, sourceSha: "abc1234",
+    deploymentId: "deploy-a", capturedAt: "2026-08-13T10:01:00.000Z",
+  };
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
+  await writeFile(criticPath, JSON.stringify({
+    ...identity,
+    materialIssue: false,
+    overallVerdict: "PASS",
+    recommendations: [],
+    scenarioVerdicts: [
+      { scenarioId: "answer-scenario", verdict: "ISSUES FOUND", correctness: 1, reason: "Contradictory failure." },
+      { scenarioId: "answer-scenario", verdict: "PASS", correctness: 4, reason: "Contradictory pass." },
+    ],
+    turnVerdicts: [{ scenarioId: "answer-scenario", turn: 1, verdict: "PASS", correctness: 4, reason: "Verified." }],
+  }));
+  const before = snapshotOutputDirectory(directory);
+
+  const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
+    "--browser-json", browserPath, "--critic-json", criticPath]);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /duplicate scenario verdicts: answer-scenario/);
+  assert.doesNotMatch(result.stderr, /Cannot read properties/);
+  assert.deepEqual(snapshotOutputDirectory(directory), before);
+});
+
+test("finalizer rejects malformed critic evidence without rewriting failed-run output", async () => {
+  const cases = [
+    {
+      label: "scenario verdict collection",
+      critic: { scenarioVerdicts: {} },
+      failure: /critic evidence requires scenarioVerdicts array/,
+    },
+    {
+      label: "turn verdict collection",
+      critic: { turnVerdicts: {} },
+      failure: /critic evidence requires turnVerdicts array when present/,
+    },
+    {
+      label: "recommendation collection",
+      critic: { recommendations: {} },
+      failure: /critic evidence requires recommendations array when present/,
+    },
+    {
+      label: "scenario verdict entry",
+      critic: { scenarioVerdicts: [null] },
+      failure: /critic scenario verdict malformed at index 0/,
+    },
+    {
+      label: "turn verdict entry",
+      critic: { turnVerdicts: [null] },
+      failure: /critic turn verdict malformed at index 0/,
+    },
+    {
+      label: "recommendation entry",
+      critic: { recommendations: [null] },
+      failure: /critic evidence recommendations must be non-empty strings/,
+    },
+  ];
+
+  for (const [index, testCase] of cases.entries()) {
+    const directory = await mkdtemp(path.join(os.tmpdir(), `pundit-chat-finalize-malformed-critic-${index}-`));
+    const report = finalizeClassifications({
+      schemaVersion: EVAL_SCHEMA_VERSION,
+      runId: `malformed-critic-${index}`,
+      startedAt: "2026-08-13T10:00:00.000Z",
+      deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+      webUrl: "https://thepundit.vercel.app",
+      scenarios: [{
+        id: "failed-scenario", passed: false, outcome: "FAIL", evidence: "request failed",
+      }],
+      progress: { status: "failed" }, browserEvidence: null, recommendations: [],
+    }, null);
+    await writeFailureReport(report, directory);
+    const identity = {
+      runId: `malformed-critic-${index}`, schemaVersion: EVAL_SCHEMA_VERSION, sourceSha: "abc1234",
+      deploymentId: "deploy-a", capturedAt: "2026-08-13T10:01:00.000Z",
+    };
+    const browserPath = path.join(directory, "browser.json");
+    const criticPath = path.join(directory, "critic.json");
+    await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
+    await writeFile(criticPath, JSON.stringify({
+      ...identity,
+      materialIssue: false,
+      overallVerdict: "PASS",
+      scenarioVerdicts: [],
+      ...testCase.critic,
+    }));
+    const before = snapshotOutputDirectory(directory);
+
+    const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
+      "--browser-json", browserPath, "--critic-json", criticPath]);
+    assert.equal(result.code, 1, testCase.label);
+    assert.match(result.stderr, testCase.failure, testCase.label);
+    assert.doesNotMatch(result.stderr, /Cannot read properties/, testCase.label);
+    assert.deepEqual(snapshotOutputDirectory(directory), before, testCase.label);
+  }
 });
 
 test("finalizer requires critic coverage for every successful HTTP-200 turn", async () => {

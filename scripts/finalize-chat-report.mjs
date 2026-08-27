@@ -68,6 +68,22 @@ export function evidenceCompatibilityFailures(report, evidence, label) {
   return failures;
 }
 
+function isValidCriticVerdict(item, requireTurn = false) {
+  return item !== null
+    && typeof item === "object"
+    && !Array.isArray(item)
+    && typeof item.scenarioId === "string"
+    && item.scenarioId.trim().length > 0
+    && ["PASS", "ISSUES FOUND"].includes(item.verdict)
+    && Number.isFinite(item.correctness)
+    && item.correctness >= 1
+    && item.correctness <= 4
+    && (item.verdict !== "PASS" || item.correctness >= 3)
+    && typeof item.reason === "string"
+    && item.reason.trim().length > 0
+    && (!requireTurn || (Number.isInteger(item.turn) && item.turn > 0));
+}
+
 export function evidenceSchemaFailures(report, browserEvidence, criticReview) {
   const failures = [];
   const browserChecks = browserEvidence?.checks;
@@ -125,8 +141,18 @@ export function evidenceSchemaFailures(report, browserEvidence, criticReview) {
   if (typeof criticReview?.materialIssue !== "boolean" || !["PASS", "ISSUES FOUND"].includes(criticReview?.overallVerdict)) {
     failures.push("critic evidence requires materialIssue:boolean and overallVerdict");
   }
-  const verdicts = Array.isArray(criticReview?.scenarioVerdicts) ? criticReview.scenarioVerdicts : [];
-  const byId = new Map(verdicts.map((item) => [item?.scenarioId, item]));
+  const scenarioVerdictValue = criticReview?.scenarioVerdicts;
+  if (!Array.isArray(scenarioVerdictValue)) failures.push("critic evidence requires scenarioVerdicts array");
+  const verdicts = Array.isArray(scenarioVerdictValue) ? scenarioVerdictValue : [];
+  const byId = new Map();
+  for (const [index, item] of verdicts.entries()) {
+    if (!isValidCriticVerdict(item)) {
+      failures.push(`critic scenario verdict malformed at index ${index}`);
+      continue;
+    }
+    if (byId.has(item.scenarioId)) failures.push(`critic evidence contains duplicate scenario verdicts: ${item.scenarioId}`);
+    byId.set(item.scenarioId, item);
+  }
   for (const scenario of report.scenarios ?? []) {
     if (!scenario.answer || scenario.outcome !== "PASS") continue;
     const verdict = byId.get(scenario.id);
@@ -137,9 +163,21 @@ export function evidenceSchemaFailures(report, browserEvidence, criticReview) {
       failures.push(`critic scenario verdict missing or invalid: ${scenario.id}`);
     }
   }
-  const turnVerdicts = Array.isArray(criticReview?.turnVerdicts) ? criticReview.turnVerdicts : [];
-  const byTurn = new Map(turnVerdicts.map((item) => [`${item?.scenarioId}:${item?.turn}`, item]));
-  if (byTurn.size !== turnVerdicts.length) failures.push("critic evidence contains duplicate turn verdicts");
+  const turnVerdictValue = criticReview?.turnVerdicts;
+  if (turnVerdictValue !== undefined && !Array.isArray(turnVerdictValue)) {
+    failures.push("critic evidence requires turnVerdicts array when present");
+  }
+  const turnVerdicts = Array.isArray(turnVerdictValue) ? turnVerdictValue : [];
+  const byTurn = new Map();
+  for (const [index, item] of turnVerdicts.entries()) {
+    if (!isValidCriticVerdict(item, true)) {
+      failures.push(`critic turn verdict malformed at index ${index}`);
+      continue;
+    }
+    const key = `${item.scenarioId}:${item.turn}`;
+    if (byTurn.has(key)) failures.push(`critic evidence contains duplicate turn verdicts: ${key}`);
+    byTurn.set(key, item);
+  }
   for (const scenario of report.scenarios ?? []) {
     for (const turn of scenario.turnResults ?? []) {
       if (turn.status !== 200 || typeof turn.answer !== "string" || !turn.answer.trim()) continue;
@@ -151,6 +189,13 @@ export function evidenceSchemaFailures(report, browserEvidence, criticReview) {
         failures.push(`critic turn verdict missing or invalid: ${scenario.id}#${turn.turn}`);
       }
     }
+  }
+  const recommendationValue = criticReview?.recommendations;
+  if (recommendationValue !== undefined && !Array.isArray(recommendationValue)) {
+    failures.push("critic evidence requires recommendations array when present");
+  } else if (Array.isArray(recommendationValue)
+    && recommendationValue.some((item) => typeof item !== "string" || !item.trim())) {
+    failures.push("critic evidence recommendations must be non-empty strings");
   }
   return failures;
 }
