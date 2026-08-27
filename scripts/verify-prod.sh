@@ -33,6 +33,16 @@ EXPECTED_REGISTRY_MODE="${3:-${EXPECTED_REGISTRY_MODE:-shadow}}"
 POLL_ATTEMPTS="${VERIFY_PROD_POLL_ATTEMPTS:-40}"
 POLL_INTERVAL_SECONDS="${VERIFY_PROD_POLL_INTERVAL_SECONDS:-5}"
 
+# A zero or negative attempt count skips both mandatory version checks. Accept
+# only bounded decimal counts before Bash evaluates them as arithmetic.
+if [[ ! "$POLL_ATTEMPTS" =~ ^[1-9][0-9]{0,2}$ ]] || (( POLL_ATTEMPTS > 120 )); then
+  echo "FAIL: VERIFY_PROD_POLL_ATTEMPTS must be an integer from 1 to 120 without leading zeros" >&2
+  exit 2
+fi
+if ! verify_timeout_seconds "VERIFY_PROD_POLL_INTERVAL_SECONDS" "$POLL_INTERVAL_SECONDS" 60; then
+  exit 2
+fi
+
 json_sha() {
   python3 -c 'import json,sys; print((json.load(sys.stdin).get("sha") or ""))'
 }

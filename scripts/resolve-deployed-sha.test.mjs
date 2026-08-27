@@ -12,6 +12,7 @@ const helper = path.resolve("scripts/resolve-deployed-sha.sh");
 const curlBoundsHelper = path.resolve("scripts/curl-bounds.sh");
 const historyFetcher = path.resolve("scripts/fetch-history.mjs");
 const verifyLocalScript = path.resolve("scripts/verify-local.sh");
+const verifyProdScript = path.resolve("scripts/verify-prod.sh");
 
 function git(cwd, ...args) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -372,6 +373,94 @@ test("curl bounds reject invalid, inverted, and oversized values before a reques
       );
       assert.notEqual(result.status, 0, `${values.connect}/${values.total} unexpectedly passed`);
       assert.equal(fs.existsSync(log), false);
+    }
+  });
+});
+
+test("production polling rejects settings that skip version checks before any request", () => {
+  withTempDirectory("pundit-poll-bounds-", (cwd) => {
+    const log = path.join(cwd, "curl-calls.log");
+    const command = fakeCommand(cwd, "curl", `
+      import fs from "node:fs";
+      fs.appendFileSync(process.env.PUNDIT_FAKE_CURL_LOG, "called\\n");
+      process.exitCode = 90;
+    `);
+    const cases = [
+      ...["0", "-1", "1.5", "abc", "121", "999999999999999999999999", "08"]
+        .map((value) => ({ name: "VERIFY_PROD_POLL_ATTEMPTS", value })),
+      ...["0", "-1", "0.5", "abc", "61", "999999999999999999999999"]
+        .map((value) => ({ name: "VERIFY_PROD_POLL_INTERVAL_SECONDS", value })),
+    ];
+    for (const { name, value } of cases) {
+      const result = spawnSync("bash", [
+        "-c", 'export PATH="$PUNDIT_FAKE_COMMAND_BIN:$PATH"; exec bash "$1" "$2" "$2" shadow',
+        "bash", verifyProdScript, "a".repeat(40),
+      ], {
+        cwd,
+        encoding: "utf8",
+        timeout: 5000,
+        env: withFakePath({
+          ...process.env,
+          VERIFY_PROD_POLL_ATTEMPTS: "1",
+          VERIFY_PROD_POLL_INTERVAL_SECONDS: "1",
+          [name]: value,
+          PUNDIT_FAKE_CURL_LOG: log,
+          [command.variable]: command.script,
+        }, command.bin),
+      });
+      assert.equal(result.error, undefined, result.error?.message);
+      assert.equal(result.status, 2, `${name}=${value}: ${result.stderr || result.stdout}`);
+      assert.match(result.stderr, new RegExp(name));
+      assert.equal(fs.existsSync(log), false, `${name}=${value} reached curl`);
+      assert.doesNotMatch(result.stdout, /PASS: production verification OK/);
+    }
+  });
+});
+
+test("valid production polling settings still enter mandatory version checks", () => {
+  withTempDirectory("pundit-poll-valid-", (cwd) => {
+    const log = path.join(cwd, "curl-calls.json");
+    const command = fakeCommand(cwd, "curl", `
+      import fs from "node:fs";
+      const log = process.env.PUNDIT_FAKE_CURL_LOG;
+      const calls = fs.existsSync(log) ? JSON.parse(fs.readFileSync(log, "utf8")) : [];
+      calls.push(process.argv.slice(2).at(-1));
+      fs.writeFileSync(log, JSON.stringify(calls));
+      process.exitCode = 90;
+    `);
+    // End after the first failed attempt without a real delay or a live request.
+    const sleep = fakeCommand(cwd, "sleep", "process.exitCode = 91;\n");
+    for (const overrides of [
+      {},
+      { VERIFY_PROD_POLL_ATTEMPTS: "1", VERIFY_PROD_POLL_INTERVAL_SECONDS: "1" },
+      { VERIFY_PROD_POLL_ATTEMPTS: "120", VERIFY_PROD_POLL_INTERVAL_SECONDS: "60" },
+    ]) {
+      fs.writeFileSync(log, "[]");
+      const env = { ...process.env };
+      delete env.VERIFY_PROD_POLL_ATTEMPTS;
+      delete env.VERIFY_PROD_POLL_INTERVAL_SECONDS;
+      const result = spawnSync("bash", [
+        "-c", 'export PATH="$PUNDIT_FAKE_COMMAND_BIN:$PATH"; exec bash "$1" "$2" "$2" shadow',
+        "bash", verifyProdScript, "a".repeat(40),
+      ], {
+        cwd,
+        encoding: "utf8",
+        timeout: 5000,
+        env: withFakePath({
+          ...env, ...overrides,
+          PUNDIT_FAKE_CURL_LOG: log,
+          [command.variable]: command.script,
+          [sleep.variable]: sleep.script,
+        }, command.bin),
+      });
+      assert.equal(result.error, undefined, result.error?.message);
+      assert.equal(result.status, overrides.VERIFY_PROD_POLL_ATTEMPTS === "1" ? 1 : 91);
+      assert.match(result.stdout, /Poll API startup\/version/);
+      assert.deepEqual(JSON.parse(fs.readFileSync(log, "utf8")), [
+        "https://thepundit.up.railway.app/startup",
+        "https://thepundit.up.railway.app/version",
+      ]);
+      assert.doesNotMatch(result.stdout, /PASS: production verification OK/);
     }
   });
 });
