@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { getCachedModelData } from "../services/model-data";
+import { getCachedModelData, modelFixturesForActiveFixtures } from "../services/model-data";
+import { getActiveFixtures } from "../services/active-fixtures";
 import { clubRatingsAreCurrent } from "../services/club-ratings";
 import { publicModelFixtures } from "../services/model-market-odds";
 
@@ -24,12 +25,13 @@ router.get("/active", (req: Request, res: Response, next: NextFunction) => {
       });
     }
     const cached = getCachedModelData();
+    const currentFixtures = modelFixturesForActiveFixtures(cached.fixtures, getActiveFixtures());
     const competition = typeof req.query.competition === "string"
       ? req.query.competition.trim()
       : undefined;
     const fixtures = competition
-      ? cached.fixtures.filter((fixture) => fixture.competitionId === competition)
-      : cached.fixtures;
+      ? currentFixtures.filter((fixture) => fixture.competitionId === competition)
+      : currentFixtures;
     res.json({
       fixtures: publicModelFixtures(fixtures),
       lastUpdated: cached.lastUpdated?.toISOString() ?? null,
@@ -51,12 +53,13 @@ router.get("/fixtures", (req: Request, res: Response, next: NextFunction) => {
       });
     }
     const cached = getCachedModelData();
+    const currentFixtures = modelFixturesForActiveFixtures(cached.fixtures, getActiveFixtures());
     const competition = typeof req.query.competition === "string"
       ? req.query.competition.trim()
       : undefined;
     const fixtures = competition
-      ? cached.fixtures.filter((fixture) => fixture.competitionId === competition)
-      : cached.fixtures;
+      ? currentFixtures.filter((fixture) => fixture.competitionId === competition)
+      : currentFixtures;
     res.json({
       fixtures: publicModelFixtures(fixtures),
       lastUpdated: cached.lastUpdated?.toISOString() ?? null,

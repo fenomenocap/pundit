@@ -11,6 +11,7 @@ import {
   getCachedModelData,
   getModelRefreshState,
   modelDataCoversActiveFixtures,
+  modelFixturesForActiveFixtures,
   modelRefreshDelay,
   refreshModelData,
 } from "./model-data";
@@ -307,5 +308,21 @@ describe("active club model", () => {
     expect(modelRefreshDelay(current, [activeFixture()])).toBe(MODEL_REFRESH_INTERVAL_MS);
     expect(modelDataCoversActiveFixtures(current, [activeFixture({ id: 2 })])).toBe(false);
     expect(modelRefreshDelay(current, [activeFixture({ id: 2 })])).toBe(MODEL_COLD_RETRY_MS);
+  });
+
+  it("keeps initialized partial rows while dropping stale and foreign identities", () => {
+    const current = buildModelFixtureFromActive(activeFixture(), ratings)!;
+    const stale = { ...current, fixtureId: 3 };
+    const foreign = { ...current, competitionId: "uefa.champions_qual" };
+
+    expect(modelFixturesForActiveFixtures(
+      [current, stale, foreign],
+      [activeFixture({ id: 1 }), activeFixture({ id: 2 })]
+    )).toEqual([current]);
+  });
+
+  it("fails closed when the active identity set is empty", () => {
+    const current = buildModelFixtureFromActive(activeFixture(), ratings)!;
+    expect(modelFixturesForActiveFixtures([current], [])).toEqual([]);
   });
 });

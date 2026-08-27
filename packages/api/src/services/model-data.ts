@@ -264,6 +264,15 @@ function cachedFixtureIdentity(
   return `${fixture.competitionId}:${fixture.fixtureId}`;
 }
 
+/** Keep only model rows whose source identities are in the current active window. */
+export function modelFixturesForActiveFixtures(
+  fixtures: ModelFixture[],
+  activeFixtures: ActiveFixture[]
+): ModelFixture[] {
+  const activeKeys = new Set(activeFixtures.map(activeFixtureIdentity));
+  return fixtures.filter((fixture) => activeKeys.has(cachedFixtureIdentity(fixture)));
+}
+
 export function modelDataCoversActiveFixtures(
   model: Pick<ModelDataCache, "fixtures" | "lastUpdated">,
   activeFixtures: ActiveFixture[]
