@@ -132,6 +132,163 @@ test.describe("smoke", () => {
     await expect(page.getByText("[[S1]]")).not.toBeVisible();
   });
 
+  test("match card actions copy the final answer and share its original question and opaque fixture identity", async ({ page }) => {
+    const question = "How does this matchup compare with the market?";
+    const answer = "Final match answer.";
+    const fixtureId = "opaque:match:leg/9";
+    const grounding = {
+      kind: "match" as const,
+      fixtureId,
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeFieldAdvantage: true,
+      date: "2026-08-27",
+      stage: "match",
+      home: "Arsenal",
+      away: "Liverpool",
+      pHome: 0.62,
+      pDraw: 0.20,
+      pAway: 0.18,
+      pOver2_5: 0.55,
+      pUnder2_5: 0.45,
+      pBttsYes: 0.50,
+      pBttsNo: 0.50,
+      topScores: [{ score: "1-0", probability: 0.10 }],
+      scorelines: [{ score: "1-0", probability: 0.10 }],
+      stakePHome: null,
+      stakePDraw: null,
+      stakePAway: null,
+      oddsSources: [],
+    };
+    const streamedGrounding = { ...grounding, fixtureId: "opaque:provisional/1" };
+
+    const provisionalSse = [
+      `event: grounding\ndata: ${JSON.stringify({ grounding: streamedGrounding })}`,
+      `event: delta\ndata: ${JSON.stringify({ text: "Provisional streamed answer." })}`,
+      "",
+    ].join("\n\n");
+    const doneSse = [
+      `event: done\ndata: ${JSON.stringify({ answer, grounding })}`,
+      "",
+    ].join("\n\n");
+    await page.addInitScript(
+      ({ initialBlock, finalBlock }) => {
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: {
+            writeText: async (value: string) => {
+              (window as Window & { __copiedText?: string }).__copiedText = value;
+            },
+          },
+        });
+        Object.defineProperty(navigator, "share", {
+          configurable: true,
+          value: async (data: { text?: string; url?: string }) => {
+            (window as Window & {
+              __sharedData?: { text?: string; url?: string };
+            }).__sharedData = data;
+          },
+        });
+
+        const nativeFetch = window.fetch.bind(window);
+        const encoder = new TextEncoder();
+        window.fetch = async (input, init) => {
+          const requestUrl = input instanceof Request ? input.url : String(input);
+          let pathname: string;
+          try {
+            pathname = new URL(requestUrl, window.location.href).pathname;
+          } catch {
+            return nativeFetch(input, init);
+          }
+          if (pathname !== "/api/ask") return nativeFetch(input, init);
+
+          let closed = false;
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(initialBlock));
+              (window as Window & {
+                __matchActionsTestControl?: { releaseDone: () => void };
+              }).__matchActionsTestControl = {
+                releaseDone: () => {
+                  if (closed) return;
+                  closed = true;
+                  controller.enqueue(encoder.encode(finalBlock));
+                  controller.close();
+                },
+              };
+            },
+            cancel() {
+              closed = true;
+            },
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        };
+      },
+      { initialBlock: provisionalSse, finalBlock: doneSse },
+    );
+
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "Ask a question" }).fill(question);
+    await page.getByRole("button", { name: "Send" }).click();
+
+    const provisional = page.getByText("Provisional streamed answer.", { exact: true });
+    await expect(provisional).toBeVisible();
+    const provisionalCard = provisional
+      .locator("xpath=ancestor::div[contains(@class, 'shadow-card')][1]");
+    await expect(provisionalCard.getByRole("button", { name: "Copy" })).toHaveCount(0);
+    await expect(provisionalCard.getByRole("button", { name: "Share" })).toHaveCount(0);
+    await page.evaluate(() => {
+      const control = (window as Window & {
+        __matchActionsTestControl?: { releaseDone: () => void };
+      }).__matchActionsTestControl;
+      if (!control) throw new Error("Match action stream is not waiting for done.");
+      control.releaseDone();
+    });
+
+    await expect(page.getByText(answer, { exact: true })).toBeVisible();
+    await expect(provisional).toHaveCount(0);
+    const card = page.getByText(answer, { exact: true })
+      .locator("xpath=ancestor::div[contains(@class, 'shadow-card')][1]");
+    await expect(card.getByRole("button", { name: "Copy" })).toBeVisible();
+    await card.getByRole("button", { name: "Copy" }).click();
+    await expect.poll(() => page.evaluate(
+      () => (window as Window & { __copiedText?: string }).__copiedText
+    )).toBe(answer);
+
+    await card.getByRole("button", { name: "Share" }).click();
+    await expect.poll(() => page.evaluate(
+      () => (window as Window & { __sharedData?: { text?: string; url?: string } }).__sharedData
+    )).toMatchObject({ text: question });
+    const sharedData = await page.evaluate(
+      () => (window as Window & { __sharedData?: { text?: string; url?: string } }).__sharedData
+    );
+    expect(sharedData?.text).toBe(question);
+    const sharedParams = new URL(sharedData?.url ?? "http://127.0.0.1:3000/").searchParams;
+    expect(sharedParams.get("q")).toBe(question);
+    expect(sharedParams.get("fixture")).toBe(fixtureId);
+
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "share", {
+        configurable: true,
+        value: undefined,
+      });
+      delete (window as Window & { __copiedText?: string }).__copiedText;
+    });
+    await card.getByRole("button", { name: "Share" }).click();
+    await expect.poll(() => page.evaluate(
+      () => (window as Window & { __copiedText?: string }).__copiedText
+    )).toBeTruthy();
+    const fallbackUrl = await page.evaluate(
+      () => (window as Window & { __copiedText?: string }).__copiedText
+    );
+    const fallbackParams = new URL(fallbackUrl!, "http://127.0.0.1:3000/").searchParams;
+    expect(fallbackParams.get("q")).toBe(question);
+    expect(fallbackParams.get("fixture")).toBe(fixtureId);
+  });
+
   test("recognized outside-coverage fixture keeps typed context across a table detour", async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "share", {

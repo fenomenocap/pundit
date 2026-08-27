@@ -417,10 +417,12 @@ function MatchFixtureCard({
   content,
   grounding,
   streaming,
+  question,
 }: {
   content: string;
   grounding: MatchGrounding;
   streaming: boolean;
+  question: string | null;
 }) {
   const rows = oddsRows(grounding);
   const hasMarkets = rows.length > 1;
@@ -503,6 +505,15 @@ function MatchFixtureCard({
           )}
         </div>
       </div>
+      {!streaming && (
+        <div className="px-3 pb-2.5">
+          <MessageActions
+            content={content}
+            question={question}
+            fixtureId={grounding.fixtureId}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -897,9 +908,13 @@ export function HomeChat() {
             aria-relevant="additions text"
             className="flex flex-col gap-3 py-4"
           >
-            {messages.map((m) => {
+            {messages.map((m, messageIndex) => {
               const isMatchCard = m.role === "assistant" && m.grounding?.kind === "match";
               const streaming = streamStarted && m.id === streamingIdRef.current;
+              const precedingUser = messages
+                .slice(0, messageIndex)
+                .reverse()
+                .find((msg) => msg.role === "user");
               if (isMatchCard && m.grounding?.kind === "match") {
                 return (
                   <MatchFixtureCard
@@ -907,6 +922,7 @@ export function HomeChat() {
                     content={m.content}
                     grounding={m.grounding}
                     streaming={streaming}
+                    question={precedingUser?.content ?? null}
                   />
                 );
               }
@@ -916,10 +932,6 @@ export function HomeChat() {
                 ? oddsRows(m.grounding)
                 : [];
               const hasMarkets = rows.length > 1;
-              const precedingUser = [...messages]
-                .slice(0, messages.indexOf(m))
-                .reverse()
-                .find((msg) => msg.role === "user");
               return (
                 <div
                   key={m.id}
