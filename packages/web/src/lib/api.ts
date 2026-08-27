@@ -420,6 +420,19 @@ export interface ConversationTurn {
 export type TeamContext = [string, string];
 export interface FixtureContext { fixtureId: string }
 
+/**
+ * Build a chat deep link while keeping the optional fixture address opaque.
+ * The API resolves and validates the identity against its server-owned
+ * fixture data; the browser must not infer or trust team details from it.
+ * Keep the q-only form byte-compatible with existing shared links.
+ */
+export function buildAskUrl(question: string, fixtureId?: string): string {
+  const query = `q=${encodeURIComponent(question)}`;
+  return fixtureId
+    ? `/?${query}&fixture=${encodeURIComponent(fixtureId)}`
+    : `/?${query}`;
+}
+
 export async function askQuestion(
   question: string,
   history: ConversationTurn[] = [],
