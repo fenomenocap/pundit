@@ -520,12 +520,39 @@ export function HomeChat() {
   const [fixtureContextTeams, setFixtureContextTeams] = useState<TeamContext>();
   const [suggestions, setSuggestions] = useState(NO_FIXTURE_SUGGESTIONS);
   const [fixtureState, setFixtureState] = useState<FixtureState>("ready");
+  const [stopNotice, setStopNotice] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoAskedRef = useRef<string | null>(null);
-  const askRef = useRef<(question: string, fixtureContext?: FixtureContext) => Promise<void>>(
-    async () => undefined
-  );
+  const askRef = useRef<(
+    question: string,
+    fixtureContext?: FixtureContext
+  ) => Promise<void>>(async () => undefined);
   const streamingIdRef = useRef<number | null>(null);
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
+  const activeRequestRef = useRef<{
+    requestId: number;
+    controller: AbortController;
+    userId: number;
+    assistantId: number;
+    prompt: string;
+    teamContext?: TeamContext;
+    fixtureContext?: FixtureContext;
+    stopped: boolean;
+  } | null>(null);
+  const stoppedDraftRef = useRef<{
+    prompt: string;
+    teamContext?: TeamContext;
+    fixtureContext?: FixtureContext;
+  } | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      activeRequestRef.current?.controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -576,31 +603,57 @@ export function HomeChat() {
   // `chipFixtureContext` is the identity of a clicked suggestion. It overrides
   // the followed fixture for that turn so a chip opens the fixture it shows
   // rather than continuing whatever was in context.
-  async function ask(question: string, chipFixtureContext?: FixtureContext) {
+  async function ask(
+    question: string,
+    chipFixtureContext?: FixtureContext
+  ) {
     const trimmed = question.trim();
     if (!trimmed || loading) return;
 
     const history = completedHistory(messages);
     const userId = nextId++;
     const assistantId = nextId++;
+    const reuseStoppedDraft = stoppedDraftRef.current?.prompt === trimmed;
+    const requestTeamContext = chipFixtureContext
+      ? undefined
+      : (reuseStoppedDraft ? stoppedDraftRef.current?.teamContext : teamContext);
+    const requestFixtureContext = chipFixtureContext
+      ?? (reuseStoppedDraft ? stoppedDraftRef.current?.fixtureContext : fixtureContext);
+    const activeRequest = {
+      requestId: requestIdRef.current++,
+      controller: new AbortController(),
+      userId,
+      assistantId,
+      prompt: trimmed,
+      teamContext: requestTeamContext,
+      fixtureContext: requestFixtureContext,
+      stopped: false,
+    };
+    activeRequestRef.current = activeRequest;
+    stoppedDraftRef.current = null;
 
     setMessages((prev) => [...prev, { id: userId, role: "user", content: trimmed }]);
     setInput("");
+    setStopNotice("");
     setLoading(true);
     setStreamStarted(false);
     setLoadingTier(null);
 
     let started = false;
     let streamedGrounding: AskGrounding = null;
+    const ownsRequest = () =>
+      mountedRef.current && activeRequestRef.current?.requestId === activeRequest.requestId;
+    const requestIsLive = () => ownsRequest() && !activeRequest.stopped;
 
     try {
       const { answer, grounding } = await askQuestionStream(
         trimmed,
         history,
-        chipFixtureContext ? undefined : teamContext,
-        chipFixtureContext ?? fixtureContext,
+        requestTeamContext,
+        requestFixtureContext,
         {
         onGrounding: (initialGrounding) => {
+          if (!requestIsLive()) return;
           streamedGrounding = initialGrounding;
           setLoadingTier(
             initialGrounding?.kind === "match"
@@ -615,6 +668,7 @@ export function HomeChat() {
           );
         },
         onDelta: (text) => {
+          if (!requestIsLive()) return;
           if (!started) {
             started = true;
             setStreamStarted(true);
@@ -629,8 +683,10 @@ export function HomeChat() {
             ));
           }
         },
-        }
+        },
+        activeRequest.controller.signal
       );
+      if (!requestIsLive()) return;
       // A competition or general answer does not establish a new match, but it
       // does not end the one under discussion either. Keeping the context lets
       // a later follow-up resolve back to that match instead of dropping to the
@@ -654,11 +710,19 @@ export function HomeChat() {
           : [...prev, finalMessage];
       });
     } catch (err) {
+      if (!ownsRequest()) return;
+      if (activeRequest.stopped || activeRequest.controller.signal.aborted) {
+        setMessages((prev) => prev.filter((m) => m.id !== userId && m.id !== assistantId));
+        return;
+      }
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== assistantId),
         { id: nextId++, role: "error", content: sanitizeAskError(err) },
       ]);
     } finally {
+      if (activeRequestRef.current?.requestId !== activeRequest.requestId) return;
+      activeRequestRef.current = null;
+      if (!mountedRef.current) return;
       streamingIdRef.current = null;
       setLoading(false);
       setStreamStarted(false);
@@ -668,15 +732,38 @@ export function HomeChat() {
 
   askRef.current = ask;
 
+  function stopGenerating() {
+    const activeRequest = activeRequestRef.current;
+    if (!activeRequest || !mountedRef.current) return;
+
+    activeRequest.stopped = true;
+    stoppedDraftRef.current = {
+      prompt: activeRequest.prompt,
+      teamContext: activeRequest.teamContext,
+      fixtureContext: activeRequest.fixtureContext,
+    };
+    activeRequest.controller.abort();
+    setMessages((prev) => prev.filter((m) =>
+      m.id !== activeRequest.userId && m.id !== activeRequest.assistantId
+    ));
+    setInput(activeRequest.prompt);
+    setStopNotice("Response stopped.");
+  }
+
   useEffect(() => {
+    let cancelled = false;
     const query = searchParams.get("q")?.trim();
     const fixtureId = searchParams.get("fixture");
     const autoAskKey = `${query ?? ""}\u0000${fixtureId ?? ""}`;
     if (!query || query.length > 500 || autoAskedRef.current === autoAskKey) return;
-    autoAskedRef.current = autoAskKey;
     // The URL value is only an opaque address. The API resolves it against
     // server-owned fixture data; do not infer trusted teams in the browser.
-    void askRef.current(query, fixtureId ? { fixtureId } : undefined);
+    queueMicrotask(() => {
+      if (cancelled || !mountedRef.current || autoAskedRef.current === autoAskKey) return;
+      autoAskedRef.current = autoAskKey;
+      void askRef.current(query, fixtureId ? { fixtureId } : undefined);
+    });
+    return () => { cancelled = true; };
   }, [searchParams]);
 
   function handleSubmit(e: FormEvent) {
@@ -687,6 +774,8 @@ export function HomeChat() {
   function startNewChat() {
     setMessages([]);
     setInput("");
+    setStopNotice("");
+    stoppedDraftRef.current = null;
     setTeamContext(undefined);
     setFixtureContext(undefined);
     setFixtureContextTeams(undefined);
@@ -975,22 +1064,43 @@ export function HomeChat() {
         <div className="flex items-center gap-2">
           <Input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              stoppedDraftRef.current = null;
+              setInput(e.target.value);
+            }}
             placeholder="Ask about a match or the Premier League table"
             disabled={loading}
             maxLength={500}
             aria-label="Ask a question"
             status={inputStatus}
           />
-          <Button
-            type="submit"
-            variant="mono"
-            size="icon"
-            disabled={loading || !input.trim()}
-            aria-label="Send"
-          >
-            <ArrowUp aria-hidden />
-          </Button>
+          {loading ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={(event) => {
+                event.preventDefault();
+                stopGenerating();
+              }}
+              aria-label="Stop generating"
+            >
+              Stop
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              variant="mono"
+              size="icon"
+              disabled={!input.trim()}
+              aria-label="Send"
+            >
+              <ArrowUp aria-hidden />
+            </Button>
+          )}
+        </div>
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {stopNotice}
         </div>
         <Disclaimer className="text-center text-xs text-muted-foreground" />
         {messages.length === 0 ? (

@@ -485,48 +485,60 @@ export async function askQuestionStream(
   history: ConversationTurn[] = [],
   teamContext: TeamContext | undefined,
   fixtureContext: FixtureContext | undefined,
-  handlers: AskStreamHandlers
+  handlers: AskStreamHandlers,
+  signal?: AbortSignal
 ): Promise<AskResult> {
+  signal?.throwIfAborted();
   const res = await fetch(`${API_URL}/api/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, history, teamContext, fixtureContext, stream: true }),
+    signal,
   });
 
   const contentType = res.headers.get("content-type") ?? "";
   if (!res.ok || !contentType.includes("text/event-stream") || !res.body) {
     const body = await res.json().catch(() => ({ error: res.statusText, code: undefined }));
+    signal?.throwIfAborted();
     throw new ApiError(body.error || `API error ${res.status}`, res.status, body.code);
   }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let result: AskResult | null = null;
+  const onAbort = () => { void reader.cancel(signal?.reason).catch(() => undefined); };
+  signal?.addEventListener("abort", onAbort, { once: true });
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const { events, rest } = parseSseChunk(buffer);
-    buffer = rest;
-    for (const { event, data } of events) {
-      const payload = JSON.parse(data);
-      if (event === "grounding") handlers.onGrounding?.(payload.grounding);
-      else if (event === "delta") handlers.onDelta(payload.text);
-      else if (event === "done") result = payload;
-      else if (event === "error") {
-        throw new ApiError(
-          payload.error,
-          typeof payload.status === "number" ? payload.status : 502,
-          typeof payload.code === "string" ? payload.code : undefined
-        );
+  try {
+    for (;;) {
+      signal?.throwIfAborted();
+      const { done, value } = await reader.read();
+      signal?.throwIfAborted();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const { events, rest } = parseSseChunk(buffer);
+      buffer = rest;
+      for (const { event, data } of events) {
+        signal?.throwIfAborted();
+        const payload = JSON.parse(data);
+        if (event === "grounding") handlers.onGrounding?.(payload.grounding);
+        else if (event === "delta") handlers.onDelta(payload.text);
+        else if (event === "done") return payload;
+        else if (event === "error") {
+          throw new ApiError(
+            payload.error,
+            typeof payload.status === "number" ? payload.status : 502,
+            typeof payload.code === "string" ? payload.code : undefined
+          );
+        }
       }
     }
+    throw new ApiError("Analysis stream ended unexpectedly.", 502);
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
-
-  if (!result) throw new ApiError("Analysis stream ended unexpectedly.", 502);
-  return result;
 }
 
 // ─── Health ─────────────────────────────────────────────────────────────────
