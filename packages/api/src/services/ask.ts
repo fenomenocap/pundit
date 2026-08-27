@@ -26,6 +26,7 @@ import { getActiveFixtures } from "./active-fixtures";
 import {
   getCachedFixtureMarketOdds,
   MARKET_OBSERVATION_MAX_AGE_MS,
+  publicModelFixture,
 } from "./model-market-odds";
 import { clubRatingsAreCurrent, getCachedClubRatings } from "./club-ratings";
 import {
@@ -146,6 +147,8 @@ export interface Grounding {
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
+  /** Observation time for the valid cached Stake values above. */
+  stakeObservedAt?: string;
   oddsSources: OddsSource[];
   /**
    * `oddsSources` differenced against the model, one entry per complete source.
@@ -2341,11 +2344,9 @@ function groundingOneXTwoMarketLegs(
   now = Date.now()
 ): OneXTwoMarketLeg[][] {
   return (grounding?.oddsSources ?? []).flatMap((source) => {
-    const observed = Date.parse(source.observedAt);
-    if (!Number.isFinite(observed)) return [];
     // Stale in either direction: a clock-skewed future timestamp is no more
     // quotable than a day-old one.
-    if (Math.abs(now - observed) > MARKET_OBSERVATION_MAX_AGE_MS) return [];
+    if (!isFreshMarketObservation(source.observedAt, now)) return [];
     const probabilities: Record<MatchOutcome, number | null> = {
       home: source.pHome,
       draw: source.pDraw,
@@ -3313,20 +3314,42 @@ export function computeMarketDivergence(
   });
 }
 
-export function buildGrounding(fixture: ModelFixture): Grounding {
-  const oddsSources: OddsSource[] = [];
-  const markets = getCachedFixtureMarketOdds(fixture);
-  if (markets?.kalshi) oddsSources.push({
-    source: "kalshi",
-    observedAt: markets.observedAt,
-    ...markets.kalshi,
-  });
-  if (markets?.polymarket) oddsSources.push({
-    source: "polymarket",
-    observedAt: markets.observedAt,
-    ...markets.polymarket,
-  });
-  const stake = markets?.stake;
+function isFreshMarketObservation(observedAt: string, now: number): boolean {
+  const observed = Date.parse(observedAt);
+  return Number.isFinite(now)
+    && Number.isFinite(observed)
+    && Math.abs(now - observed) <= MARKET_OBSERVATION_MAX_AGE_MS;
+}
+
+function refreshGroundingMarkets(grounding: Grounding, now = Date.now()): void {
+  grounding.oddsSources = grounding.oddsSources.filter((source) =>
+    isFreshMarketObservation(source.observedAt, now)
+  );
+  const stakeObservedAt = grounding.stakeObservedAt;
+  const stakeIsCurrent = grounding.stakePHome !== null
+    && grounding.stakePDraw !== null
+    && grounding.stakePAway !== null
+    && stakeObservedAt !== undefined
+    && isFreshMarketObservation(stakeObservedAt, now);
+  if (!stakeIsCurrent) {
+    grounding.stakePHome = null;
+    grounding.stakePDraw = null;
+    grounding.stakePAway = null;
+    grounding.stakeObservedAt = undefined;
+  }
+  grounding.marketDivergence = computeMarketDivergence(grounding, grounding.oddsSources);
+}
+
+export function buildGrounding(fixture: ModelFixture, now = Date.now()): Grounding {
+  const cachedMarkets = getCachedFixtureMarketOdds(fixture);
+  const markets = publicModelFixture(fixture, cachedMarkets, now);
+  const oddsSources = markets.oddsSources;
+  const stakeObservedAt = cachedMarkets
+    && markets.stakePHome !== null
+    && markets.stakePDraw !== null
+    && markets.stakePAway !== null
+    ? cachedMarkets.observedAt
+    : undefined;
   const competition = getCompetitionById(fixture.competitionId);
 
   return {
@@ -3348,9 +3371,10 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     pBttsNo: fixture.pBttsNo,
     topScores: fixture.topScores,
     scorelines: fixture.scorelines,
-    stakePHome: stake?.pHome ?? fixture.stakePHome,
-    stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
-    stakePAway: stake?.pAway ?? fixture.stakePAway,
+    stakePHome: markets.stakePHome,
+    stakePDraw: markets.stakePDraw,
+    stakePAway: markets.stakePAway,
+    ...(stakeObservedAt === undefined ? {} : { stakeObservedAt }),
     oddsSources,
     marketDivergence: computeMarketDivergence(fixture, oddsSources),
   };
@@ -7181,6 +7205,7 @@ export async function deliverAnswer(args: {
           removedClaimCount: 0,
         },
       };
+  if (grounding?.kind === "match") refreshGroundingMarkets(grounding);
   if (grounding?.kind === "match"
     && evidenceRequired
     && /\b(?:injur(?:y|ies|ed)|suspension|availability|line-?up|team news)\b/i.test(question)

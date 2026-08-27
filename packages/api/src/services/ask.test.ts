@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
+import * as fixtureMarkets from "./model-market-odds";
 import {
   espnFixtureIdentity,
   recognizeEspnFixture,
@@ -1902,6 +1903,8 @@ describe("findFixture", () => {
 });
 
 describe("buildGrounding", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it("includes competition metadata and totals", () => {
     expect(buildGrounding(fixtures[0])).toMatchObject({
       kind: "match",
@@ -1913,6 +1916,62 @@ describe("buildGrounding", () => {
       pBttsYes: 0.52,
       pBttsNo: 0.48,
       topScores: [{ score: "1-1", probability: 0.12 }],
+    });
+  });
+
+  const now = Date.parse("2026-08-27T12:00:00Z");
+  const pricedFixture = fixture("Arsenal", "Coventry City", {
+    stakePHome: 0.6, stakePDraw: 0.2, stakePAway: 0.2,
+  });
+  const cachedMarkets = (observedAt: string) => ({
+    observedAt,
+    stake: { pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+    kalshi: { pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+    polymarket: { pHome: 0.48, pDraw: 0.26, pAway: 0.26 },
+  });
+
+  it("retains fresh market comparisons and the complete model scoreline distribution", () => {
+    const markets = cachedMarkets(new Date(now).toISOString());
+    vi.spyOn(fixtureMarkets, "getCachedFixtureMarketOdds").mockReturnValue(markets);
+
+    const grounding = buildGrounding(pricedFixture, now);
+
+    expect(grounding).toMatchObject({
+      pHome: pricedFixture.pHome, pDraw: pricedFixture.pDraw, pAway: pricedFixture.pAway,
+      topScores: pricedFixture.topScores, scorelines: pricedFixture.scorelines,
+      stakePHome: 0.5, stakePDraw: 0.25, stakePAway: 0.25,
+      stakeObservedAt: markets.observedAt,
+    });
+    expect(grounding.oddsSources).toEqual([
+      { source: "kalshi", observedAt: markets.observedAt, ...markets.kalshi },
+      { source: "polymarket", observedAt: markets.observedAt, ...markets.polymarket },
+    ]);
+    expect(grounding.marketDivergence.map(({ source }) => source)).toEqual(["kalshi", "polymarket"]);
+  });
+
+  it.each([
+    ["expired", new Date(now - fixtureMarkets.MARKET_OBSERVATION_MAX_AGE_MS - 1).toISOString()],
+    ["invalid", "not-a-date"],
+    ["far-future", new Date(now + fixtureMarkets.MARKET_OBSERVATION_MAX_AGE_MS + 1).toISOString()],
+  ])("omits %s observations before deterministic answer rendering", (_label, observedAt) => {
+    vi.spyOn(fixtureMarkets, "getCachedFixtureMarketOdds").mockReturnValue(cachedMarkets(observedAt));
+
+    const grounding = buildGrounding(pricedFixture, now);
+
+    expect(grounding).toMatchObject({
+      stakePHome: null, stakePDraw: null, stakePAway: null,
+      oddsSources: [], marketDivergence: [], scorelines: pricedFixture.scorelines,
+    });
+    const answer = deterministicGroundedResponse("Analyse Arsenal vs Coventry City.", grounding);
+    expect(answer).toContain("40.0%");
+    expect(answer).not.toMatch(/Kalshi|Polymarket|market-implied|largest grounded difference/i);
+  });
+
+  it("does not restore undated legacy Stake fields when the market cache is absent", () => {
+    vi.spyOn(fixtureMarkets, "getCachedFixtureMarketOdds").mockReturnValue(null);
+    expect(buildGrounding(pricedFixture, now)).toMatchObject({
+      stakePHome: null, stakePDraw: null, stakePAway: null,
+      oddsSources: [], marketDivergence: [],
     });
   });
 });

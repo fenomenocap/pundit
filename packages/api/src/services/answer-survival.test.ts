@@ -18,6 +18,7 @@ import {
 } from "./ask";
 import { segmentAnswer, SECTION_LABEL_LINE } from "./answer-provenance";
 import { fixture } from "./__fixtures__/model-fixture";
+import * as fixtureMarkets from "./model-market-odds";
 import { clientWith, message } from "./__fixtures__/anthropic-stubs";
 import {
   validateAnswerCopy,
@@ -118,7 +119,7 @@ const matchGrounding: Grounding = buildGrounding(fixture("Arsenal", "Coventry Ci
 const marketGrounding: Grounding = (() => {
   const oddsSources: Grounding["oddsSources"] = [{
     source: "kalshi",
-    observedAt: "2026-08-21T08:40:43.502Z",
+    observedAt: new Date().toISOString(),
     pHome: 0.5,
     pDraw: 0.25,
     pAway: 0.25,
@@ -539,6 +540,136 @@ describe("realistic match answers are not eaten by the narrative guard", () => {
 describe("the final safety gate", () => {
   /** An answer the chain empties: a label with no body is swept, leaving "". */
   const EMPTIED = "**Verdict**";
+
+  it("does not revive expired cached prices after an abstaining mandatory market search", async () => {
+    const now = Date.parse("2026-08-27T12:00:00Z");
+    const marketCache = vi.spyOn(fixtureMarkets, "getCachedFixtureMarketOdds").mockReturnValue({
+      observedAt: new Date(now - fixtureMarkets.MARKET_OBSERVATION_MAX_AGE_MS - 1).toISOString(),
+      stake: { pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+      kalshi: { pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+      polymarket: null,
+    });
+    try {
+      const grounding = buildGrounding(fixture("Arsenal", "Coventry City"), now);
+      const delivered = await deliverAnswer({
+        answer: "Kalshi has Arsenal 50.0%, draw 25.0%, Coventry City 25.0%.",
+        tier: "match",
+        grounding,
+        bundle: { queries: ["Arsenal Coventry market odds"], results: [], providerCalls: 1 },
+        client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+        question: "How do the market prices for Arsenal vs Coventry City compare with the model?",
+        evidenceRequired: true,
+        candidateUnrecognized: false,
+      });
+      expect(delivered.verification.status).toBe("abstain");
+      expect(delivered.answer).not.toMatch(/Kalshi|Polymarket|50\.0%|25\.0%|largest grounded difference/i);
+      expect(grounding.scorelines).toEqual(matchGrounding.scorelines);
+    } finally {
+      marketCache.mockRestore();
+    }
+  });
+
+  it("expires a market that crosses the age bound during verification and filters the returned grounding", async () => {
+    const buildNow = Date.parse("2026-08-27T12:00:00Z");
+    const deliveryNow = buildNow + fixtureMarkets.MARKET_OBSERVATION_MAX_AGE_MS + 1;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(buildNow);
+    const markets = {
+      observedAt: new Date(buildNow).toISOString(),
+      stake: { pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+      kalshi: { pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+      polymarket: null,
+    };
+    const marketCache = vi.spyOn(fixtureMarkets, "getCachedFixtureMarketOdds")
+      .mockReturnValue(markets);
+    verifyClaimsOnce.mockImplementationOnce(async (
+      _client: unknown,
+      claims: Array<{ id: string }>
+    ) => {
+      await Promise.resolve();
+      clock.mockReturnValue(deliveryNow);
+      return {
+        status: "abstain" as const,
+        decisions: claims.map((claim) => ({
+          claimId: claim.id,
+          outcome: "unsupported" as const,
+          evidenceIds: [],
+        })),
+        summary: "No supported claim.",
+      };
+    });
+    try {
+      const grounding = buildGrounding(fixture("Arsenal", "Coventry City"), buildNow);
+      expect(grounding.oddsSources).toHaveLength(1);
+      expect(grounding.stakePHome).toBe(0.5);
+      const delivered = await deliverAnswer({
+        answer: CITED_ANSWER,
+        tier: "match",
+        grounding,
+        bundle: searchBundle(),
+        client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+        question: "How do the market prices for Arsenal vs Coventry City compare with the model?",
+        evidenceRequired: true,
+        candidateUnrecognized: false,
+      });
+      expect(verifyClaimsOnce).toHaveBeenCalledTimes(1);
+      expect(delivered.verification.status).toBe("abstain");
+      expect(grounding.oddsSources).toEqual([]);
+      expect(grounding.marketDivergence).toEqual([]);
+      expect(grounding.stakePHome).toBeNull();
+      expect(grounding.stakePDraw).toBeNull();
+      expect(grounding.stakePAway).toBeNull();
+      expect(grounding.stakeObservedAt).toBeUndefined();
+      expect(delivered.answer).not.toMatch(/Kalshi|Polymarket|market-implied|largest grounded difference/i);
+    } finally {
+      marketCache.mockRestore();
+      clock.mockRestore();
+    }
+  });
+
+  it("keeps fresh market and Stake observations available at delivery", async () => {
+    const now = Date.parse("2026-08-27T12:00:00Z");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    const markets = {
+      observedAt: new Date(now).toISOString(),
+      stake: { pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+      kalshi: { pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+      polymarket: null,
+    };
+    const marketCache = vi.spyOn(fixtureMarkets, "getCachedFixtureMarketOdds")
+      .mockReturnValue(markets);
+    try {
+      const grounding = buildGrounding(fixture("Arsenal", "Coventry City"), now);
+      const delivered = await deliverAnswer({
+        answer: "The market comparison needs current support.",
+        tier: "match",
+        grounding,
+        bundle: { queries: ["Arsenal Coventry market odds"], results: [], providerCalls: 1 },
+        client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+        question: "How do the market prices for Arsenal vs Coventry City compare with the model?",
+        evidenceRequired: true,
+        candidateUnrecognized: false,
+      });
+      expect(delivered.verification.status).toBe("abstain");
+      expect(grounding.stakePHome).toBe(0.5);
+      expect(grounding.stakePDraw).toBe(0.25);
+      expect(grounding.stakePAway).toBe(0.25);
+      expect(grounding.stakeObservedAt).toBe(markets.observedAt);
+      expect(grounding.oddsSources).toEqual([{
+        source: "kalshi",
+        observedAt: markets.observedAt,
+        pHome: 0.5,
+        pDraw: 0.25,
+        pAway: 0.25,
+      }]);
+      expect(delivered.answer).toContain(
+        "Kalshi market-implied probabilities (third-party data, not a Pundit forecast)"
+      );
+      expect(delivered.answer).toContain("Arsenal 50.0%, draw 25.0%, Coventry City 25.0%");
+    } finally {
+      marketCache.mockRestore();
+      clock.mockRestore();
+    }
+  });
 
   it("uses the deterministic grounded market answer after an abstaining mandatory search", async () => {
     const artifactAnswer = [
