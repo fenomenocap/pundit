@@ -52,28 +52,22 @@ export function ProbabilityBar({
       )}
     >
       <span
-        className="flex items-center justify-end bg-primary/80 px-1 text-[9px] font-bold text-primary-foreground"
+        className="shrink-0 bg-primary/80"
         style={{ width: `${homePct}%` }}
         aria-hidden
-      >
-        {homePct >= 12 ? homeText : ""}
-      </span>
+      />
       {drawRaw !== null && (
         <span
-          className="flex items-center justify-center bg-slate-500/70 px-1 text-[9px] font-bold text-white"
+          className="shrink-0 bg-slate-500/70"
           style={{ width: `${drawPct}%` }}
           aria-hidden
-        >
-          {drawPct >= 10 ? drawText : ""}
-        </span>
+        />
       )}
       <span
-        className="flex items-center justify-start bg-pink-500/70 px-1 text-[9px] font-bold text-white"
+        className="shrink-0 bg-pink-500/70"
         style={{ width: `${awayPct}%` }}
         aria-hidden
-      >
-        {awayPct >= 12 ? awayText : ""}
-      </span>
+      />
     </div>
   );
 }

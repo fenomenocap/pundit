@@ -116,7 +116,7 @@ export default function ModelPage() {
 
       {error && <ErrorBanner message={error} onRetry={load} />}
 
-      {!error && (
+      {(!error || fixtures.length > 0) && (
         <section className="overflow-hidden rounded-xl border border-card-rim bg-card shadow-card">
           <div className="border-b border-border px-4 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

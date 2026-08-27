@@ -115,6 +115,120 @@ async function releaseFixtureBatch(page: Page, batchNumber: number): Promise<voi
   }, batchNumber);
 }
 
+async function installPartialModelResponse(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const originalPromiseAll = Promise.all.bind(Promise) as (
+      values: Iterable<unknown>
+    ) => Promise<unknown[]>;
+    const promiseConstructor = Promise as unknown as {
+      all: (values: Iterable<unknown>) => Promise<unknown[]>;
+    };
+    promiseConstructor.all = (values) => originalPromiseAll(values).then((items) => {
+      if (!Array.isArray(items) || items.length !== 3) return items;
+      const [model, competitions] = items as Array<{
+        fixtures?: unknown[];
+        competitions?: unknown[];
+      }>;
+      if (!Array.isArray(model?.fixtures) || !Array.isArray(competitions?.competitions)) {
+        return items;
+      }
+      items[0] = {
+        ...(model as Record<string, unknown>),
+        error: "Some active fixtures could not be priced.",
+      };
+      return items;
+    });
+  });
+}
+
+type HomeDiscoveryTestControl = {
+  statuses: string[];
+};
+
+type HomeDiscoveryTestWindow = Window & {
+  __homeDiscoveryTestControl?: HomeDiscoveryTestControl;
+};
+
+async function installHomeDiscoveryObserver(
+  page: Page,
+  options: { failModel?: boolean } = {},
+): Promise<void> {
+  await page.addInitScript(
+    ({ failModel = false }) => {
+      const statusTexts = [
+        "Loading fixture coverage…",
+        "Model grounded · active fixtures live",
+        "Model not ready — table and general questions still work",
+      ];
+      const statuses: string[] = [];
+      const record = (value: string | null | undefined) => {
+        for (const status of statusTexts) {
+          if (value?.trim() === status && statuses[statuses.length - 1] !== status) {
+            statuses.push(status);
+          }
+        }
+      };
+      const inspect = (node: Node) => {
+        if (node instanceof Element && node.matches("script, style")) return;
+        if (node.nodeType === Node.TEXT_NODE) {
+          record(node.nodeValue);
+          return;
+        }
+        for (const child of Array.from(node.childNodes)) inspect(child);
+      };
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.target.parentElement?.closest("script, style")) continue;
+          if (mutation.type === "characterData") {
+            record(mutation.oldValue);
+            record(mutation.target.nodeValue);
+          } else {
+            mutation.addedNodes.forEach(inspect);
+            mutation.removedNodes.forEach(inspect);
+          }
+        }
+      });
+      observer.observe(document, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        characterDataOldValue: true,
+      });
+      inspect(document);
+      (window as HomeDiscoveryTestWindow).__homeDiscoveryTestControl = { statuses };
+
+      if (failModel) {
+        const originalSlice = Array.prototype.slice;
+        let failed = false;
+        Array.prototype.slice = function<T>(this: T[], start?: number, end?: number) {
+          const first = this[0] as {
+            competitionId?: unknown;
+            home?: unknown;
+            pHome?: unknown;
+          } | undefined;
+          if (
+            !failed
+            && typeof first?.competitionId === "string"
+            && typeof first.home === "string"
+            && typeof first.pHome === "number"
+          ) {
+            failed = true;
+            throw new Error("Synthetic fixture discovery failure");
+          }
+          return originalSlice.call(this, start, end);
+        };
+      }
+    },
+    options,
+  );
+}
+
+async function homeDiscoveryStatuses(page: Page): Promise<string[]> {
+  return page.evaluate(() => (
+    (window as HomeDiscoveryTestWindow).__homeDiscoveryTestControl?.statuses ?? []
+  ));
+}
+
 type ControlledAskRequest = {
   body: Record<string, unknown>;
   signalAborted: boolean;
@@ -326,6 +440,37 @@ test.describe("smoke", () => {
     await expect(page.getByText("Analysis only — not betting advice")).toBeVisible();
   });
 
+  test("homepage reports fixture discovery pending before becoming ready", async ({ page }) => {
+    await installHomeDiscoveryObserver(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Model grounded · active fixtures live", { exact: true })).toBeVisible();
+    await expect.poll(() => homeDiscoveryStatuses(page)).toEqual(
+      expect.arrayContaining([
+        "Loading fixture coverage…",
+        "Model grounded · active fixtures live",
+      ]),
+    );
+    const statuses = await homeDiscoveryStatuses(page);
+    expect(statuses.indexOf("Loading fixture coverage…"))
+      .toBeLessThan(statuses.indexOf("Model grounded · active fixtures live"));
+  });
+
+  test("homepage reports unavailable fixture discovery after a failed model load", async ({ page }) => {
+    await installHomeDiscoveryObserver(page, { failModel: true });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Model not ready — table and general questions still work", { exact: true }))
+      .toBeVisible();
+    await expect.poll(() => homeDiscoveryStatuses(page)).toEqual(
+      expect.arrayContaining([
+        "Loading fixture coverage…",
+        "Model not ready — table and general questions still work",
+      ]),
+    );
+    const statuses = await homeDiscoveryStatuses(page);
+    expect(statuses.indexOf("Loading fixture coverage…"))
+      .toBeLessThan(statuses.indexOf("Model not ready — table and general questions still work"));
+  });
+
   test("fixtures", async ({ page }) => {
     await page.goto("/fixtures");
     await expect(page.getByRole("heading", { name: "Fixtures" })).toBeVisible();
@@ -400,6 +545,30 @@ test.describe("smoke", () => {
     const table = page.locator("table");
     const emptyState = page.getByText("No upcoming fixtures in the next 14 days");
     await expect(table.or(emptyState)).toBeVisible({ timeout: 15_000 });
+    const bar = page.getByRole("img", { name: "Arsenal 72.0%, Draw 18.0%, Coventry City 10.0%." });
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveText("");
+    const proportions = await bar.evaluate((element) => {
+      const width = element.getBoundingClientRect().width;
+      return Array.from(element.children).map((segment) => segment.getBoundingClientRect().width / width);
+    });
+    for (const [index, probability] of [0.72, 0.18, 0.1].entries()) {
+      expect(proportions[index]).toBeCloseTo(probability, 2);
+    }
+    await expect(bar.locator("..").getByText("72.0%", { exact: true })).toBeVisible();
+    await expect(bar.locator("..").getByText("18.0%", { exact: true })).toBeVisible();
+    await expect(bar.locator("..").getByText("10.0%", { exact: true })).toBeVisible();
+  });
+
+  test("model keeps priced fixtures visible with a partial coverage warning", async ({ page }) => {
+    await installPartialModelResponse(page);
+    await page.goto("/model");
+
+    await expect(page.getByRole("alert").filter({ hasText: "Some active fixtures could not be priced." }))
+      .toBeVisible();
+    await expect(
+      page.locator("tbody tr").filter({ hasText: "Arsenal · Coventry City" }).first()
+    ).toBeVisible();
   });
 
   test("fixture and model Ask links retain their rendered fixture identity", async ({ page }) => {
@@ -784,7 +953,9 @@ test.describe("smoke", () => {
     const nav = page.getByRole("navigation", { name: "Main navigation" });
     await expect(nav.getByRole("link", { name: "Chat" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Fixtures" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Predictions" })).toBeVisible();
+    const predictions = nav.getByRole("link", { name: /^(Predictions|Model)$/ });
+    await expect(predictions).toBeVisible();
+    await expect(predictions).toHaveAttribute("href", "/model");
     await expect(nav.getByText("WC Backtest")).not.toBeVisible();
   });
 });
