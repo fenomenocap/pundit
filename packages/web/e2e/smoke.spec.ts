@@ -1,6 +1,104 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+async function installFailedAsk(page: Page, failure: "http" | "timeout" | "stream") {
+  const received: Array<Record<string, unknown>> = [];
+  await page.route("**/api/ask", async (route) => {
+    received.push(route.request().postDataJSON());
+    if (received.length === 1 && failure !== "stream") {
+      await route.fulfill({
+        status: failure === "timeout" ? 504 : 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Temporary analysis failure" }),
+      });
+      return;
+    }
+    const events = received.length === 1
+      ? [
+          ["grounding", { grounding: null }],
+          ["delta", { text: "Incomplete answer that must be discarded." }],
+          ["error", { error: "Temporary stream failure", status: 502 }],
+        ]
+      : [
+          ["grounding", { grounding: null }],
+          ["delta", { text: "Retry completed." }],
+          ["done", { answer: "Retry completed.", grounding: null }],
+        ];
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(""),
+    });
+  });
+  return received;
+}
 
 test.describe("smoke", () => {
+  test("failed shared question restores its prompt and exact fixture for retry", async ({ page }) => {
+    const received = await installFailedAsk(page, "http");
+    const question = "What should I watch in this second leg?";
+    const fixtureId = "espn:uefa.champions_qual:retry-leg-2";
+    await page.goto(`/?q=${encodeURIComponent(question)}&fixture=${encodeURIComponent(fixtureId)}`);
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await expect(page.getByRole("alert").filter({ hasText: "Analysis is temporarily unavailable" })).toBeVisible();
+    await expect(input).toHaveValue(question);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("Retry completed.", { exact: true })).toBeVisible();
+    expect(received).toHaveLength(2);
+    expect(received[1]).toMatchObject({ question, fixtureContext: { fixtureId }, history: [] });
+  });
+
+  test("editing a failed shared question clears its retry fixture context", async ({ page }) => {
+    const received = await installFailedAsk(page, "timeout");
+    const question = "What should I watch in this second leg?";
+    await page.goto(`/?q=${encodeURIComponent(question)}&fixture=espn%3Auefa.champions_qual%3Aretry-leg-2`);
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await expect(page.getByRole("alert").filter({ hasText: "That took too long" })).toBeVisible();
+    await expect(input).toHaveValue(question);
+    await input.fill("How does pressing work?");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("Retry completed.", { exact: true })).toBeVisible();
+    expect(received).toHaveLength(2);
+    expect(received[1].question).toBe("How does pressing work?");
+    expect(received[1].fixtureContext).toBeUndefined();
+    expect(received[1].teamContext).toBeUndefined();
+    expect(received[1].history).toEqual([]);
+  });
+
+  test("failed chip stream restores its identity without retaining partial history", async ({ page }) => {
+    const received = await installFailedAsk(page, "stream");
+    await page.goto("/");
+    await page.getByRole("button", { name: /Dinamo Zagreb vs Viking/ }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Analysis is temporarily unavailable" })).toBeVisible();
+    await expect(page.getByText("Incomplete answer that must be discarded.")).toHaveCount(0);
+    const question = received[0].question as string;
+    await expect(page.getByRole("textbox", { name: "Ask a question" })).toHaveValue(question);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("Retry completed.", { exact: true })).toBeVisible();
+    expect(received).toHaveLength(2);
+    expect(received[1]).toMatchObject({
+      question, fixtureContext: { fixtureId: "espn:uefa.champions_qual:3" }, history: [],
+    });
+  });
+
+  test("New Chat clears the fixture identity of a failed retry draft", async ({ page }) => {
+    const received = await installFailedAsk(page, "http");
+    const question = "What should I watch in this second leg?";
+    await page.goto(`/?q=${encodeURIComponent(question)}&fixture=espn%3Auefa.champions_qual%3Aretry-leg-2`);
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await expect(input).toHaveValue(question);
+    await expect(input).toBeEnabled();
+    await page.getByRole("button", { name: "New Chat", exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(input).toHaveValue("");
+    await input.fill(question);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("Retry completed.", { exact: true })).toBeVisible();
+    expect(received).toHaveLength(2);
+    expect(received[1].fixtureContext).toBeUndefined();
+    expect(received[1].teamContext).toBeUndefined();
+    expect(received[1].history).toEqual([]);
+  });
+
   test("homepage", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Pundit" })).toBeVisible();

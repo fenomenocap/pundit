@@ -540,7 +540,7 @@ export function HomeChat() {
     fixtureContext?: FixtureContext;
     stopped: boolean;
   } | null>(null);
-  const stoppedDraftRef = useRef<{
+  const retryDraftRef = useRef<{
     prompt: string;
     teamContext?: TeamContext;
     fixtureContext?: FixtureContext;
@@ -613,12 +613,12 @@ export function HomeChat() {
     const history = completedHistory(messages);
     const userId = nextId++;
     const assistantId = nextId++;
-    const reuseStoppedDraft = stoppedDraftRef.current?.prompt === trimmed;
+    const reuseRetryDraft = retryDraftRef.current?.prompt === trimmed;
     const requestTeamContext = chipFixtureContext
       ? undefined
-      : (reuseStoppedDraft ? stoppedDraftRef.current?.teamContext : teamContext);
+      : (reuseRetryDraft ? retryDraftRef.current?.teamContext : teamContext);
     const requestFixtureContext = chipFixtureContext
-      ?? (reuseStoppedDraft ? stoppedDraftRef.current?.fixtureContext : fixtureContext);
+      ?? (reuseRetryDraft ? retryDraftRef.current?.fixtureContext : fixtureContext);
     const activeRequest = {
       requestId: requestIdRef.current++,
       controller: new AbortController(),
@@ -630,7 +630,7 @@ export function HomeChat() {
       stopped: false,
     };
     activeRequestRef.current = activeRequest;
-    stoppedDraftRef.current = null;
+    retryDraftRef.current = null;
 
     setMessages((prev) => [...prev, { id: userId, role: "user", content: trimmed }]);
     setInput("");
@@ -715,6 +715,12 @@ export function HomeChat() {
         setMessages((prev) => prev.filter((m) => m.id !== userId && m.id !== assistantId));
         return;
       }
+      retryDraftRef.current = {
+        prompt: activeRequest.prompt,
+        teamContext: activeRequest.teamContext,
+        fixtureContext: activeRequest.fixtureContext,
+      };
+      setInput(activeRequest.prompt);
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== assistantId),
         { id: nextId++, role: "error", content: sanitizeAskError(err) },
@@ -737,7 +743,7 @@ export function HomeChat() {
     if (!activeRequest || !mountedRef.current) return;
 
     activeRequest.stopped = true;
-    stoppedDraftRef.current = {
+    retryDraftRef.current = {
       prompt: activeRequest.prompt,
       teamContext: activeRequest.teamContext,
       fixtureContext: activeRequest.fixtureContext,
@@ -775,7 +781,7 @@ export function HomeChat() {
     setMessages([]);
     setInput("");
     setStopNotice("");
-    stoppedDraftRef.current = null;
+    retryDraftRef.current = null;
     setTeamContext(undefined);
     setFixtureContext(undefined);
     setFixtureContextTeams(undefined);
@@ -1065,7 +1071,7 @@ export function HomeChat() {
           <Input
             value={input}
             onChange={(e) => {
-              stoppedDraftRef.current = null;
+              retryDraftRef.current = null;
               setInput(e.target.value);
             }}
             placeholder="Ask about a match or the Premier League table"
