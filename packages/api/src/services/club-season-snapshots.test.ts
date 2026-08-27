@@ -10,6 +10,7 @@ import {
   loadClubSeasonEvaluationArtifact,
   mergeSnapshots,
   migrateClubSeasonEvaluationArtifact,
+  persistClubSeasonEvaluationArtifact,
   resetClubSeasonSnapshotState,
   seedClubSeasonSnapshotState,
   updateClubSeasonSnapshots,
@@ -334,6 +335,7 @@ describe("club-season snapshots", () => {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     const legacy = "{\"fixtures\":[]}\n";
     fs.writeFileSync(target, legacy, "utf8");
+    expect(loadClubSeasonEvaluationArtifact().fixtures).toEqual([]);
     const backup = backupLegacyClubSeasonArtifact(new Date("2026-08-12T01:02:03.004Z"));
     expect(backup).toBe(path.join(
       tempDataDir!,
@@ -342,6 +344,88 @@ describe("club-season snapshots", () => {
     ));
     expect(fs.readFileSync(backup!, "utf8")).toBe(legacy);
     expect(fs.readFileSync(target, "utf8")).toBe(legacy);
+  });
+
+  it("uses the repository seed only when the configured ledger is absent", () => {
+    useTempDataDir();
+    const target = path.join(tempDataDir!, "evaluation", "club-season.json");
+
+    const artifact = loadClubSeasonEvaluationArtifact();
+
+    expect(artifact.fixtures).toEqual([]);
+    expect(fs.existsSync(target)).toBe(false);
+  });
+
+  it("fails closed on corrupt configured bytes without seeding or creating a backup", () => {
+    useTempDataDir();
+    const target = path.join(tempDataDir!, "evaluation", "club-season.json");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const corrupt = "{broken\n";
+    fs.writeFileSync(target, corrupt, "utf8");
+
+    expect(() => loadClubSeasonEvaluationArtifact()).toThrow(/Invalid configured ledger JSON/);
+    expect(() => persistClubSeasonEvaluationArtifact(migrateClubSeasonEvaluationArtifact(null)))
+      .toThrow(/Invalid configured ledger JSON/);
+
+    expect(fs.readFileSync(target, "utf8")).toBe(corrupt);
+    expect(fs.readdirSync(path.dirname(target))
+      .filter((entry) => entry.startsWith("club-season.json.backup-"))).toEqual([]);
+  });
+
+  it("fails closed on an unreadable configured ledger path without writing", () => {
+    useTempDataDir();
+    const target = path.join(tempDataDir!, "evaluation", "club-season.json");
+    fs.mkdirSync(target, { recursive: true });
+
+    expect(() => loadClubSeasonEvaluationArtifact()).toThrow(/Cannot read configured ledger/);
+    expect(() => persistClubSeasonEvaluationArtifact(migrateClubSeasonEvaluationArtifact(null)))
+      .toThrow(/Cannot read configured ledger/);
+    expect(fs.readdirSync(path.dirname(target))
+      .filter((entry) => entry.startsWith("club-season.json.backup-"))).toEqual([]);
+    expect(fs.statSync(target).isDirectory()).toBe(true);
+  });
+
+  it("fails closed on a schema-invalid configured ledger", () => {
+    useTempDataDir();
+    const target = path.join(tempDataDir!, "evaluation", "club-season.json");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    const invalid = JSON.stringify({ fixtures: { not: "an array" } });
+    fs.writeFileSync(target, invalid, "utf8");
+
+    expect(() => loadClubSeasonEvaluationArtifact()).toThrow(/Invalid configured ledger schema/);
+    expect(() => persistClubSeasonEvaluationArtifact(migrateClubSeasonEvaluationArtifact(null)))
+      .toThrow(/Invalid configured ledger schema/);
+    expect(fs.readFileSync(target, "utf8")).toBe(invalid);
+    expect(fs.readdirSync(path.dirname(target))
+      .filter((entry) => entry.startsWith("club-season.json.backup-"))).toEqual([]);
+  });
+
+  it("does not consume transition state before a failed durable read", () => {
+    useTempDataDir();
+    const scheduled = sampleMatch();
+    const model = sampleModelFixture();
+    seedClubSeasonSnapshotState([scheduled], [model], "2026-08-15T13:31:00.000Z");
+
+    const target = path.join(tempDataDir!, "evaluation", "club-season.json");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, "{broken\n", "utf8");
+    const inPlay = sampleMatch({ status: "IN_PLAY", score: { home: 0, away: 0 } });
+
+    expect(() => updateClubSeasonSnapshots(
+      [inPlay],
+      [],
+      new Date("2026-08-15T14:01:00.000Z")
+    )).toThrow(/Invalid configured ledger JSON/);
+
+    fs.writeFileSync(target, JSON.stringify({ fixtures: [] }), "utf8");
+    const recovered = updateClubSeasonSnapshots(
+      [inPlay],
+      [],
+      new Date("2026-08-15T14:01:00.000Z")
+    );
+
+    expect(recovered.fixtures).toHaveLength(1);
+    expect(recovered.fixtures[0].checkpointReason).toBe("pre_kickoff_cached_fallback");
   });
 
   it("excludes a post-kickoff forecast from official metrics", () => {

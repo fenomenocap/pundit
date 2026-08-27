@@ -152,6 +152,115 @@ type LegacyArtifact = Partial<Omit<ClubSeasonEvaluationArtifact, "fixtures">> & 
   }>;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function hasLegacyFixtureFields(value: Record<string, unknown>): boolean {
+  return typeof value.competitionId === "string"
+    && hasFiniteNumber(value.fixtureId)
+    && typeof value.utcDate === "string"
+    && typeof value.date === "string"
+    && typeof value.stage === "string"
+    && typeof value.home === "string"
+    && typeof value.away === "string"
+    && hasFiniteNumber(value.homeElo)
+    && hasFiniteNumber(value.awayElo)
+    && hasFiniteNumber(value.pHome)
+    && hasFiniteNumber(value.pDraw)
+    && hasFiniteNumber(value.pAway)
+    && hasFiniteNumber(value.pOver2_5)
+    && hasFiniteNumber(value.pUnder2_5)
+    && hasFiniteNumber(value.pBttsYes)
+    && hasFiniteNumber(value.pBttsNo)
+    && typeof value.snapshottedAt === "string";
+}
+
+function isValidResult(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!isRecord(value)) return false;
+  return hasFiniteNumber(value.homeScore)
+    && hasFiniteNumber(value.awayScore)
+    && (value.winner === "home" || value.winner === "away" || value.winner === "draw");
+}
+
+function isValidLedgerFixture(value: unknown): boolean {
+  if (!isRecord(value) || !hasLegacyFixtureFields(value) || !isValidResult(value.result)) {
+    return false;
+  }
+  if (value.marketComparisons !== undefined && !Array.isArray(value.marketComparisons)) {
+    return false;
+  }
+  if (value.schemaVersion === 2) {
+    return typeof value.forecastId === "string"
+      && value.forecastId.length > 0
+      && typeof value.forecastAt === "string"
+      && typeof value.checkpointPolicyId === "string"
+      && typeof value.checkpointReason === "string"
+      && typeof value.modelId === "string"
+      && typeof value.modelVersion === "string"
+      && typeof value.contributorId === "string"
+      && typeof value.contributorVersion === "string"
+      && typeof value.methodId === "string"
+      && (value.provenanceCompleteness === "complete"
+        || value.provenanceCompleteness === "source_partial"
+        || value.provenanceCompleteness === "legacy_partial")
+      && isRecord(value.inputs);
+  }
+  return value.schemaVersion === undefined || value.schemaVersion === 1;
+}
+
+function isValidLedgerArtifact(value: unknown): value is LegacyArtifact {
+  if (!isRecord(value)) return false;
+  if (value.schemaVersion !== undefined && value.schemaVersion !== 1 && value.schemaVersion !== 2) {
+    return false;
+  }
+  if (!Array.isArray(value.fixtures) || !value.fixtures.every(isValidLedgerFixture)) {
+    return false;
+  }
+  if (value.competitions !== undefined
+    && (!Array.isArray(value.competitions) || value.competitions.some((item) => typeof item !== "string"))) {
+    return false;
+  }
+  if (value.missedCheckpoints !== undefined && !Array.isArray(value.missedCheckpoints)) {
+    return false;
+  }
+  if (value.builtAt !== undefined && typeof value.builtAt !== "string") return false;
+  if (value.updatedAt !== undefined && typeof value.updatedAt !== "string") return false;
+  if (value.method !== undefined && typeof value.method !== "string") return false;
+  return true;
+}
+
+// The generic store reader intentionally treats missing and unreadable JSON as
+// the same null result. Mounted evaluation history cannot: only ENOENT permits
+// the checked-in seed fallback.
+function readConfiguredLedger(filePath: string): LegacyArtifact | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`[ClubSeason] Cannot read configured ledger at ${filePath}: ${message}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`[ClubSeason] Invalid configured ledger JSON at ${filePath}: ${message}`);
+  }
+  if (!isValidLedgerArtifact(parsed)) {
+    throw new Error(`[ClubSeason] Invalid configured ledger schema at ${filePath}`);
+  }
+  return parsed;
+}
+
 // This history accumulates irreplaceable pre-kickoff evidence on the mounted
 // volume. Deploys replace the container image, never this path.
 const ARTIFACT_RELATIVE_PATH = "evaluation/club-season.json";
@@ -394,7 +503,7 @@ export function getClubSeasonEvaluationArtifactPath(): string {
 }
 
 export function loadClubSeasonEvaluationArtifact(): ClubSeasonEvaluationArtifact {
-  const parsed = readJsonFile<LegacyArtifact>(getClubSeasonEvaluationArtifactPath())
+  const parsed = readConfiguredLedger(getClubSeasonEvaluationArtifactPath())
     ?? readJsonFile<LegacyArtifact>(resolveRepoDataPath(ARTIFACT_RELATIVE_PATH));
   return migrateClubSeasonEvaluationArtifact(parsed);
 }
@@ -597,8 +706,8 @@ export function persistClubSeasonEvaluationArtifact(artifact: ClubSeasonEvaluati
  */
 export function backupLegacyClubSeasonArtifact(now = new Date()): string | null {
   const target = getClubSeasonEvaluationArtifactPath();
-  if (!fs.existsSync(target)) return null;
-  const parsed = readJsonFile<{ schemaVersion?: number }>(target);
+  const parsed = readConfiguredLedger(target);
+  if (!parsed) return null;
   if (parsed?.schemaVersion === CLUB_SEASON_LEDGER_SCHEMA_VERSION) return null;
   const stamp = now.toISOString().replaceAll(":", "-");
   const backup = path.join(path.dirname(target), `club-season.json.backup-${stamp}`);
@@ -619,6 +728,10 @@ export function updateClubSeasonSnapshots(
   modelFixtures: ModelFixture[],
   now = new Date()
 ): ClubSeasonEvaluationArtifact {
+  // Read durable history before advancing in-memory transition state. A
+  // damaged mounted ledger must not consume the scheduled status that a later
+  // retry needs to seal the forecast or record a miss.
+  let artifact = loadClubSeasonEvaluationArtifact();
   const snapshottedAt = now.toISOString();
   const priorStatuses = previousStatusByKey;
   const { keysToSnapshot, statusUpdates, snapshotModels, checkpointReasons } = collectSnapshotTransitions({
@@ -640,7 +753,6 @@ export function updateClubSeasonSnapshots(
     if (modelFixture) lastScheduledModelByKey.set(key, modelFixture);
   }
 
-  let artifact = loadClubSeasonEvaluationArtifact();
   let shouldPersist = false;
   const beforeCount = artifact.fixtures.length;
   if (keysToSnapshot.size > 0) {
