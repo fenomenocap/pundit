@@ -267,6 +267,22 @@ test.describe("smoke", () => {
     expect(received[1]).not.toHaveProperty("fixtureContext");
   });
 
+  test("Stop restores the prompt and does not show a server error", async ({ page }) => {
+    await page.route("**/api/ask", async () => {
+      await new Promise(() => undefined);
+    });
+
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await input.fill("What does the current Premier League table show?");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByRole("button", { name: "Stop generating" })).toBeVisible();
+    await page.getByRole("button", { name: "Stop generating" }).click();
+    await expect(input).toHaveValue("What does the current Premier League table show?");
+    await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+    await expect(page.locator('[aria-relevant="additions text"]').getByRole("alert")).toHaveCount(0);
+  });
+
   test("primary nav", async ({ page }) => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Main navigation" });
