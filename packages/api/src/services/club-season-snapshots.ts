@@ -232,6 +232,17 @@ function isValidLedgerArtifact(value: unknown): value is LegacyArtifact {
   if (value.builtAt !== undefined && typeof value.builtAt !== "string") return false;
   if (value.updatedAt !== undefined && typeof value.updatedAt !== "string") return false;
   if (value.method !== undefined && typeof value.method !== "string") return false;
+  if (value.schemaVersion === 2 && (
+    !Array.isArray(value.competitions)
+    || value.competitions.some((item) => typeof item !== "string")
+    || value.method !== "snapshot"
+    || typeof value.builtAt !== "string"
+    || typeof value.updatedAt !== "string"
+    || typeof value.disclaimer !== "string"
+    || !Array.isArray(value.missedCheckpoints)
+  )) {
+    return false;
+  }
   return true;
 }
 
@@ -734,14 +745,14 @@ export function updateClubSeasonSnapshots(
   let artifact = loadClubSeasonEvaluationArtifact();
   const snapshottedAt = now.toISOString();
   const priorStatuses = previousStatusByKey;
+  const nextLastScheduledModelByKey = new Map(lastScheduledModelByKey);
   const { keysToSnapshot, statusUpdates, snapshotModels, checkpointReasons } = collectSnapshotTransitions({
     previousStatusByKey,
-    lastScheduledModelByKey,
+    lastScheduledModelByKey: nextLastScheduledModelByKey,
     currentMatches,
     modelFixtures,
     now,
   });
-  previousStatusByKey = statusUpdates;
 
   const modelByKey = new Map(
     modelFixtures.map((fixture) => [fixtureKey(fixture.competitionId, fixture.fixtureId), fixture])
@@ -750,7 +761,7 @@ export function updateClubSeasonSnapshots(
     if (match.status !== "SCHEDULED") continue;
     const key = fixtureKey(match.competitionId, match.id);
     const modelFixture = modelByKey.get(key);
-    if (modelFixture) lastScheduledModelByKey.set(key, modelFixture);
+    if (modelFixture) nextLastScheduledModelByKey.set(key, modelFixture);
   }
 
   let shouldPersist = false;
@@ -816,9 +827,9 @@ export function updateClubSeasonSnapshots(
           away: match.awayTeam,
           checkpointPolicyId: PRE_KICKOFF_CHECKPOINT_POLICY_ID,
           recordedAt: snapshottedAt,
-          reason: transitionedPastKickoff && !lastScheduledModelByKey.has(key)
+          reason: transitionedPastKickoff && !nextLastScheduledModelByKey.has(key)
             ? "fixture_unpriced"
-            : lastScheduledModelByKey.has(key)
+            : nextLastScheduledModelByKey.has(key)
             ? "no_eligible_pre_kickoff_forecast"
             : "no_eligible_pre_kickoff_forecast",
         });
@@ -844,6 +855,8 @@ export function updateClubSeasonSnapshots(
       console.log(`[ClubSeason] Sealed ${captured} forecast(s). Total: ${artifact.fixtures.length}.`);
     }
   }
+  previousStatusByKey = statusUpdates;
+  lastScheduledModelByKey = nextLastScheduledModelByKey;
   return artifact;
 }
 

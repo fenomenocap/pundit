@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -400,6 +400,47 @@ describe("club-season snapshots", () => {
       .filter((entry) => entry.startsWith("club-season.json.backup-"))).toEqual([]);
   });
 
+  it("rejects a truncated schema-v2 envelope without replacing its bytes", () => {
+    useTempDataDir();
+    const target = path.join(tempDataDir!, "evaluation", "club-season.json");
+    const valid = seedClubSeasonSnapshotState(
+      [],
+      [sampleModelFixture()],
+      "2026-08-15T13:31:00.000Z"
+    );
+    persistClubSeasonEvaluationArtifact(valid);
+    const truncated = JSON.stringify({ schemaVersion: 2, fixtures: [] });
+    fs.writeFileSync(target, truncated, "utf8");
+
+    expect(() => loadClubSeasonEvaluationArtifact()).toThrow(/Invalid configured ledger schema/);
+    expect(() => persistClubSeasonEvaluationArtifact(migrateClubSeasonEvaluationArtifact(null)))
+      .toThrow(/Invalid configured ledger schema/);
+    expect(fs.readFileSync(target, "utf8")).toBe(truncated);
+    expect(fs.readdirSync(path.dirname(target))
+      .filter((entry) => entry.startsWith("club-season.json.backup-"))).toEqual([]);
+  });
+
+  it("migrates a fixtures-only configured ledger with source-partial v2 rows", () => {
+    useTempDataDir();
+    const target = path.join(tempDataDir!, "evaluation", "club-season.json");
+    const row = buildSnapshotFromModel(sampleModelFixture({
+      forecastProvenance: {
+        ...sampleModelFixture().forecastProvenance!,
+        ratingSnapshotAt: null,
+        ratingAgeMinutes: null,
+        ratingSourceState: "unknown",
+      },
+    }), "2026-08-15T13:31:00.000Z");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, JSON.stringify({ fixtures: [row] }), "utf8");
+
+    const artifact = loadClubSeasonEvaluationArtifact();
+
+    expect(artifact.fixtures).toHaveLength(1);
+    expect(artifact.fixtures[0].provenanceCompleteness).toBe("source_partial");
+    expect(artifact.metrics.fixtureCount).toBe(0);
+  });
+
   it("does not consume transition state before a failed durable read", () => {
     useTempDataDir();
     const scheduled = sampleMatch();
@@ -426,6 +467,38 @@ describe("club-season snapshots", () => {
 
     expect(recovered.fixtures).toHaveLength(1);
     expect(recovered.fixtures[0].checkpointReason).toBe("pre_kickoff_cached_fallback");
+  });
+
+  it("keeps transition state available when a durable write fails once", () => {
+    useTempDataDir();
+    const scheduled = sampleMatch();
+    const model = sampleModelFixture();
+    seedClubSeasonSnapshotState([scheduled], [model], "2026-08-15T13:31:00.000Z");
+    const inPlay = sampleMatch({ status: "IN_PLAY", score: { home: 0, away: 0 } });
+    const renameSpy = vi.spyOn(fs, "renameSync").mockImplementationOnce(() => {
+      throw new Error("simulated durable write failure");
+    });
+
+    try {
+      expect(() => updateClubSeasonSnapshots(
+        [inPlay],
+        [],
+        new Date("2026-08-15T14:01:00.000Z")
+      )).toThrow(/simulated durable write failure/);
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    const recovered = updateClubSeasonSnapshots(
+      [inPlay],
+      [],
+      new Date("2026-08-15T14:01:00.000Z")
+    );
+
+    expect(recovered.fixtures).toHaveLength(1);
+    expect(recovered.fixtures[0].checkpointReason).toBe("pre_kickoff_cached_fallback");
+    expect(loadClubSeasonEvaluationArtifact().fixtures[0].checkpointReason)
+      .toBe("pre_kickoff_cached_fallback");
   });
 
   it("excludes a post-kickoff forecast from official metrics", () => {
