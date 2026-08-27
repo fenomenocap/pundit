@@ -11,7 +11,7 @@ Chat-first club-season analysis for the Premier League and UEFA Champions League
 | Layer | Technology |
 |---|---|
 | Monorepo | pnpm workspaces (Node 22, pnpm 9.15.4), 2 packages: `api`, `web` |
-| Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui primitives (`components/ui/`) |
+| Frontend | Next.js 15 App Router, React 19, TypeScript, TailwindCSS, shadcn/ui primitives (`components/ui/`) |
 | Backend | Express + TypeScript, `@anthropic-ai/sdk` (used as the wire client for MiniMax's Anthropic-compatible endpoint) |
 | Data | ESPN, Stake, Kalshi, and Polymarket public endpoints; pinned ClubElo-derived strength artifact; model computed locally |
 

@@ -19,7 +19,7 @@ describe("persistent store", () => {
 
   it("resolves paths under the configured volume", () => {
     process.env.PUNDIT_DATA_DIR = "/data";
-    expect(resolveDataPath("evaluation/club-season.json")).toBe("/data/evaluation/club-season.json");
+    expect(resolveDataPath("evaluation/club-season.json")).toBe(path.join("/data", "evaluation", "club-season.json"));
   });
 
   it("round-trips JSON through nested directories that do not exist yet", () => {

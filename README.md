@@ -10,7 +10,7 @@ World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluati
 
 ```
 ┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
-│   Next.js 14     │────────▶│   Express API    │────────▶│   MiniMax API    │
+│   Next.js 15     │────────▶│   Express API    │────────▶│   MiniMax API    │
 │   (chat UI)      │         │                  │         │   (chat answers) │
 └──────────────────┘         └────────┬─────────┘         └──────────────────┘
                                        │
@@ -32,7 +32,7 @@ Public football and market sources are keyless and cached server-side on a caden
 | Layer | Technology |
 |---|---|
 | Monorepo | pnpm workspaces (Node 22, pnpm 9.15.4) |
-| Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui |
+| Frontend | Next.js 15 App Router, React 19, TypeScript, TailwindCSS, shadcn/ui |
 | Backend | Express + TypeScript, `@anthropic-ai/sdk` (wire client for MiniMax's Anthropic-compatible endpoint) |
 
 ---
@@ -41,7 +41,7 @@ Public football and market sources are keyless and cached server-side on a caden
 
 ```
 packages/
-  web/   — Next.js 14 frontend: chat homepage, /fixtures, /model, /evaluation/wc-2026
+  web/   — Next.js 15 frontend: chat homepage, /fixtures, /model, /evaluation/wc-2026
   api/   — Express REST API: /api/ask, /api/matches, /api/model, /api/evaluation
 ```
 
