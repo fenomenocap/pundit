@@ -215,30 +215,54 @@ async function fetchPinned(
   });
 }
 
+async function discardResponseBody(response: Response): Promise<void> {
+  if (!response.body) return;
+  try {
+    await response.body.cancel();
+  } catch {
+    // A body that is already disturbed or locked cannot be canceled here. The
+    // bounded reader owns cleanup in that case, and the original fetch error
+    // must remain the result of this retrieval.
+  }
+}
+
 async function readBoundedBody(response: Response, maxBytes: number): Promise<string> {
   const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("evidence page exceeded size limit");
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await discardResponseBody(response);
+    throw new Error("evidence page exceeded size limit");
+  }
   if (!response.body) return "";
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    received += value.byteLength;
-    if (received > maxBytes) {
-      await reader.cancel();
-      throw new Error("evidence page exceeded size limit");
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) {
+        throw new Error("evidence page exceeded size limit");
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+    const body = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder().decode(body);
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      // Preserve the original read or size-limit error if cancellation fails.
+    }
+    throw error;
+  } finally {
+    reader.releaseLock();
   }
-  const body = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(body);
 }
 
 function plainTextFromPage(raw: string, contentType: string, maxChars: number): string {
@@ -281,8 +305,9 @@ async function retrieveOne(
       signal,
     }, resolved.addresses[0]);
     if (![301, 302, 303, 307, 308].includes(response.status)) break;
-    if (redirects === MAX_REDIRECTS) throw new Error("too many evidence redirects");
     const location = response.headers.get("location");
+    await discardResponseBody(response);
+    if (redirects === MAX_REDIRECTS) throw new Error("too many evidence redirects");
     if (!location) throw new Error("evidence redirect missing location");
     const redirected = await assertPublicHttpUrl(
       new URL(location, url).toString(),
@@ -299,9 +324,13 @@ async function retrieveOne(
     resolved = redirected;
     url = redirected.url;
   }
-  if (!response?.ok) throw new Error(`evidence page returned status ${response?.status ?? 0}`);
+  if (!response?.ok) {
+    if (response) await discardResponseBody(response);
+    throw new Error(`evidence page returned status ${response?.status ?? 0}`);
+  }
   const contentType = response.headers.get("content-type")?.toLocaleLowerCase() ?? "";
   if (!contentType.includes("text/html") && !contentType.includes("text/plain")) {
+    await discardResponseBody(response);
     throw new Error("unsupported evidence content type");
   }
   const raw = await readBoundedBody(response, options.maxResponseBytes);
@@ -362,9 +391,10 @@ export async function retrieveEvidencePages(
 }
 
 /**
- * One fetch per URL per request. A cache hit is the whole point of the
- * prefetch: an entry warmed while the model was still writing is already
- * settled by the time verification asks for it.
+ * Pending and successful URL reads are deduplicated for one request. A cache
+ * hit is the whole point of the prefetch: an entry warmed while the model was
+ * still writing is already settled by the time verification asks for it.
+ * Failed reads are evicted so a later verification attempt can retry.
  */
 function bodyFor(
   candidate: EvidencePageCandidate,
@@ -379,10 +409,18 @@ function bodyFor(
   if (existing) return existing;
   // Stored as a promise, not a value, so two callers racing for the same URL
   // share one fetch instead of both going out.
-  const pending = retrieveBody(candidate, signal, resolved).catch((error) => {
-    if (signal?.aborted) throw error;
-    return null;
-  });
+  let pending: Promise<FetchedPageBody | null>;
+  pending = retrieveBody(candidate, signal, resolved).then(
+    (body) => body,
+    (error) => {
+      // A failed speculative fetch must not become a permanent negative cache
+      // entry. Compare the promise before deleting so an overlapping retry
+      // cannot be removed by a stale failure handler.
+      if (cache.get(key) === pending) cache.delete(key);
+      if (signal?.aborted) throw error;
+      return null;
+    }
+  );
   cache.set(key, pending);
   return pending;
 }

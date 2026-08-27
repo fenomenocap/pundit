@@ -16,6 +16,40 @@ const candidates: EvidencePageCandidate[] = [
 
 const publicResolver = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
 
+function trackedResponse(
+  body: string,
+  init: ResponseInit = {},
+  close = true,
+): { response: Response; cancel: ReturnType<typeof vi.fn> } {
+  const cancel = vi.fn();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (body) controller.enqueue(new TextEncoder().encode(body));
+      if (close) controller.close();
+    },
+    cancel,
+  });
+  return {
+    response: new Response(stream, {
+      ...init,
+      headers: { "content-type": "text/plain", ...init.headers },
+    }),
+    cancel,
+  };
+}
+
+function failedResponse(error: Error): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(error);
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "content-type": "text/plain" },
+  });
+}
+
 describe("evidence page retrieval", () => {
   it("recognizes private, loopback, link-local and reserved addresses", () => {
     expect(isPrivateOrReservedAddress("127.0.0.1")).toBe(true);
@@ -78,23 +112,29 @@ describe("evidence page retrieval", () => {
     const privateResolver = vi.fn(async (hostname: string) => [{
       address: hostname === "private.example" ? "10.0.0.2" : "93.184.216.34", family: 4,
     }]);
-    const fetch = vi.fn(async () => new Response(null, {
+    const redirect = trackedResponse("private redirect body", {
       status: 302, headers: { location: "http://private.example/admin" },
-    }));
+    });
+    const fetch = vi.fn().mockResolvedValue(redirect.response);
     expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
       fetch, resolveHost: privateResolver,
     })).toEqual([]);
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(redirect.cancel).toHaveBeenCalledTimes(1);
+    expect(redirect.response.body?.locked).toBe(false);
   });
 
   it("blocks cross-host redirects so retrieved content keeps the cited source identity", async () => {
-    const fetch = vi.fn(async () => new Response(null, {
+    const redirect = trackedResponse("cross-host redirect body", {
       status: 302, headers: { location: "https://different.example/story" },
-    }));
+    });
+    const fetch = vi.fn().mockResolvedValue(redirect.response);
     expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
       fetch, resolveHost: publicResolver,
     })).toEqual([]);
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(redirect.cancel).toHaveBeenCalledTimes(1);
+    expect(redirect.response.body?.locked).toBe(false);
   });
 
   it.each(["::ffff:7f00:1", "0:0:0:0:0:ffff:7f00:1", "::ffff:a9fe:a9fe"])(
@@ -146,12 +186,85 @@ describe("evidence page retrieval", () => {
     expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
       fetch: tooLarge, resolveHost: publicResolver, maxResponseBytes: 10,
     })).toEqual([]);
-    const json = vi.fn(async () => new Response("{}", {
+    const json = trackedResponse("{}", {
       status: 200, headers: { "content-type": "application/json" },
-    }));
+    });
     expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
-      fetch: json, resolveHost: publicResolver,
+      fetch: vi.fn().mockResolvedValue(json.response), resolveHost: publicResolver,
     })).toEqual([]);
+    expect(json.cancel).toHaveBeenCalledTimes(1);
+    expect(json.response.body?.locked).toBe(false);
+  });
+
+  it("cancels unused redirect and error response bodies", async () => {
+    const redirect = trackedResponse("redirect body", {
+      status: 302,
+      headers: { location: "https://club.example/final" },
+    });
+    const final = trackedResponse("final body", { status: 200 });
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(redirect.response)
+      .mockResolvedValueOnce(final.response);
+
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch, resolveHost: publicResolver,
+    })).toHaveLength(1);
+    expect(redirect.cancel).toHaveBeenCalledTimes(1);
+    expect(redirect.response.body?.locked).toBe(false);
+    expect(final.response.body?.locked).toBe(false);
+
+    const error = trackedResponse("error body", { status: 503 });
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch: vi.fn().mockResolvedValue(error.response),
+      resolveHost: publicResolver,
+    })).toEqual([]);
+    expect(error.cancel).toHaveBeenCalledTimes(1);
+    expect(error.response.body?.locked).toBe(false);
+
+    const missingLocation = trackedResponse("missing location body", { status: 302 });
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch: vi.fn().mockResolvedValue(missingLocation.response),
+      resolveHost: publicResolver,
+    })).toEqual([]);
+    expect(missingLocation.cancel).toHaveBeenCalledTimes(1);
+    expect(missingLocation.response.body?.locked).toBe(false);
+  });
+
+  it("releases bounded readers after success, read failure, and overlimit", async () => {
+    const success = trackedResponse("readable body");
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch: vi.fn().mockResolvedValue(success.response),
+      resolveHost: publicResolver,
+    })).toHaveLength(1);
+    expect(success.response.body?.locked).toBe(false);
+
+    const failure = failedResponse(new Error("stream failed"));
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch: vi.fn().mockResolvedValue(failure),
+      resolveHost: publicResolver,
+    })).toEqual([]);
+    expect(failure.body?.locked).toBe(false);
+
+    const overlimit = trackedResponse("0123456789", {}, false);
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch: vi.fn().mockResolvedValue(overlimit.response),
+      resolveHost: publicResolver,
+      maxResponseBytes: 5,
+    })).toEqual([]);
+    expect(overlimit.cancel).toHaveBeenCalledTimes(1);
+    expect(overlimit.response.body?.locked).toBe(false);
+
+    const declaredOverlimit = trackedResponse("declared body", {
+      status: 200,
+      headers: { "content-length": "100" },
+    });
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch: vi.fn().mockResolvedValue(declaredOverlimit.response),
+      resolveHost: publicResolver,
+      maxResponseBytes: 5,
+    })).toEqual([]);
+    expect(declaredOverlimit.cancel).toHaveBeenCalledTimes(1);
+    expect(declaredOverlimit.response.body?.locked).toBe(false);
   });
 
   it("propagates the request abort instead of degrading it", async () => {
@@ -245,7 +358,7 @@ describe("prefetching pages ahead of verification", () => {
     expect(pages[0].date).toBe("2026-08-13");
   });
 
-  it("falls back to a normal fetch when the prefetch failed", async () => {
+  it("evicts a failed prefetch so verification can retry the URL", async () => {
     let attempt = 0;
     const fetch = vi.fn(async (input: string | URL) => {
       attempt += 1;
@@ -256,12 +369,36 @@ describe("prefetching pages ahead of verification", () => {
     const options = { fetch, resolveHost: publicResolver, now: () => new Date("2026-08-13T12:00:00Z") };
 
     prefetchEvidencePages(candidates, undefined, cache, options);
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(cache.size).toBe(0));
 
-    // A cached failure is a cached fact: retrieval degrades exactly as it would
-    // have without the prefetch, and does not throw.
     const pages = await retrieveEvidencePages(candidates, undefined, { ...options, cache });
-    expect(pages).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(6);
+    expect(pages.map((page) => page.id)).toEqual(["S1", "S2", "S4"]);
+  });
+
+  it("evicts an aborted prefetch so a live retrieval can retry", async () => {
+    const controller = new AbortController();
+    let attempt = 0;
+    const fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      attempt += 1;
+      if (attempt === 1) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+        });
+      }
+      return html(input);
+    });
+    const cache = createEvidencePageCache();
+    const options = { fetch, resolveHost: publicResolver, now: () => new Date("2026-08-13T12:00:00Z") };
+
+    prefetchEvidencePages([candidates[1]], controller.signal, cache, options);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    controller.abort(new Error("prefetch canceled"));
+    await vi.waitFor(() => expect(cache.size).toBe(0));
+
+    const pages = await retrieveEvidencePages([candidates[1]], undefined, { ...options, cache });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(pages.map((page) => page.id)).toEqual(["S1"]);
   });
 
   it("does not reject when every prefetch fails", async () => {
