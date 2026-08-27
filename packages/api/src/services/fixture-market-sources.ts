@@ -221,20 +221,26 @@ const MONTH_WORDS = new Map<string, number>([
  * ("2026-08-11"), a Kalshi ticker stem ("26AUG11"), or a Kalshi sub-title
  * ("ALM vs LEV (Aug 11)").
  */
-export function extractEventDates(text: string): Array<{ month: number; day: number }> {
-  const found: Array<{ month: number; day: number }> = [];
-  for (const [, month, day] of text.matchAll(/\d{4}-(\d{2})-(\d{2})/g)) {
-    found.push({ month: Number(month), day: Number(day) });
+type EventDate = { year?: number; month: number; day: number };
+
+function extractEventDateTokens(text: string): EventDate[] {
+  const found: EventDate[] = [];
+  for (const [, year, month, day] of text.matchAll(/(\d{4})-(\d{2})-(\d{2})/g)) {
+    found.push({ year: Number(year), month: Number(month), day: Number(day) });
   }
-  for (const [, name, day] of text.matchAll(/\d{2}([a-z]{3})(\d{2})/g)) {
+  for (const [, year, name, day] of text.matchAll(/(\d{2})([a-z]{3})(\d{2})/g)) {
     const month = MONTHS.indexOf(name) + 1;
-    if (month > 0) found.push({ month, day: Number(day) });
+    if (month > 0) found.push({ year: 2000 + Number(year), month, day: Number(day) });
   }
   for (const [, name, day] of text.matchAll(/\b([a-z]{3,9})\.?\s+(\d{1,2})\b/g)) {
     const month = MONTH_WORDS.get(name);
     if (month !== undefined) found.push({ month, day: Number(day) });
   }
   return found;
+}
+
+export function extractEventDates(text: string): Array<{ month: number; day: number }> {
+  return extractEventDateTokens(text).map(({ month, day }) => ({ month, day }));
 }
 
 /**
@@ -250,15 +256,20 @@ export function extractEventDates(text: string): Array<{ month: number; day: num
  * venue that omits one.
  */
 function eventDateMatches(text: string, fixture: ModelFixture): boolean {
-  const dates = extractEventDates(text);
+  const dates = extractEventDateTokens(text);
   if (dates.length === 0) return true;
+  // A shorter title/subtitle must not override the date in a provider's slug
+  // or ticker. Use yearless labels only when no explicit year is available.
+  const dated = dates.filter((date) => date.year !== undefined);
+  const candidates = dated.length ? dated : dates;
   const kickoff = new Date(`${fixture.date}T00:00:00Z`);
   if (Number.isNaN(kickoff.getTime())) return true;
-  return dates.some(({ month, day }) => {
+  return candidates.some(({ year, month, day }) => {
     for (const offset of [-1, 0, 1]) {
       const candidate = new Date(kickoff);
       candidate.setUTCDate(candidate.getUTCDate() + offset);
-      if (candidate.getUTCMonth() + 1 === month && candidate.getUTCDate() === day) return true;
+      if (candidate.getUTCMonth() + 1 !== month || candidate.getUTCDate() !== day) continue;
+      if (year === undefined || candidate.getUTCFullYear() === year) return true;
     }
     return false;
   });

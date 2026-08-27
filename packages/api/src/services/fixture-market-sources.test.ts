@@ -221,6 +221,63 @@ describe("local fixture market normalization", () => {
     }, uclFixture)).not.toBeNull();
   });
 
+  it("rejects an explicit different year while allowing a New Year date tolerance", () => {
+    const markets = [
+      ["England", "0.5"], ["Draw", "0.25"], ["Argentina", "0.25"],
+    ].map(([groupItemTitle, yes]) => ({
+      active: true, closed: false, groupItemTitle, sportsMarketType: "moneyline",
+      outcomes: '["Yes","No"]', outcomePrices: JSON.stringify([yes, String(1 - Number(yes))]),
+    }));
+
+    expect(parsePolymarketEvent({
+      title: "England vs Argentina", slug: "eng-arg-2027-07-15", markets,
+    }, fixture)).toBeNull();
+    expect(parsePolymarketEvent({
+      title: "England vs Argentina (Jul 15)", slug: "eng-arg-2027-07-15", markets,
+    }, fixture)).toBeNull();
+    expect(parsePolymarketEvent({
+      title: "England vs Argentina (Jul 15)", slug: "eng-arg-2026-07-15", markets,
+    }, fixture)).not.toBeNull();
+
+    const newYearFixture: ModelFixture = {
+      ...fixture,
+      utcDate: "2026-12-31T23:30:00Z",
+      date: "2026-12-31",
+    };
+    expect(parsePolymarketEvent({
+      title: "England vs Argentina", slug: "eng-arg-2027-01-01", markets,
+    }, newYearFixture)).not.toBeNull();
+    expect(parsePolymarketEvent({
+      title: "England vs Argentina", slug: "eng-arg-2027-01-02", markets,
+    }, newYearFixture)).toBeNull();
+    expect(parsePolymarketEvent({
+      title: "England vs Argentina", slug: "eng-arg-2026-12-31", markets,
+    }, { ...newYearFixture, date: "2027-01-01", utcDate: "2027-01-01T00:30:00Z" }))
+      .not.toBeNull();
+  });
+
+  it("honors Kalshi ticker years ahead of yearless subtitles, including New Year", () => {
+    const markets = [
+      ["England", "0.5"], ["Draw", "0.25"], ["Argentina", "0.25"],
+    ].map(([yes_sub_title, yes_ask_dollars]) => ({
+      status: "open", title: "Regulation Time Moneyline", yes_sub_title, yes_ask_dollars,
+    }));
+    const event = {
+      title: "England vs Argentina", sub_title: "ENG vs ARG (Jul 15)", markets,
+    };
+    expect(parseKalshiEvent({ ...event, event_ticker: "KXGAME-27JUL15ENGARG" }, fixture)).toBeNull();
+    expect(parseKalshiEvent({ ...event, event_ticker: "KXGAME-26JUL15ENGARG" }, fixture)).not.toBeNull();
+
+    const newYearFixture = { ...fixture, date: "2026-12-31", utcDate: "2026-12-31T23:30:00Z" };
+    const newYearEvent = { ...event, sub_title: "ENG vs ARG (Jan 1)" };
+    expect(parseKalshiEvent({
+      ...newYearEvent, event_ticker: "KXGAME-27JAN01ENGARG",
+    }, newYearFixture)).not.toBeNull();
+    expect(parseKalshiEvent({
+      ...newYearEvent, event_ticker: "KXGAME-26JAN01ENGARG",
+    }, newYearFixture)).toBeNull();
+  });
+
   it("does not read a club whose name starts with a month as a date", () => {
     // Every one of these is a real club followed by a scoreline, and each
     // phantom date could only disagree with the true kick-off -- costing the
