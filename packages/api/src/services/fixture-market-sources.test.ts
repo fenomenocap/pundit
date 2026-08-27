@@ -330,6 +330,96 @@ describe("market source fetchers", () => {
       .toEqual({ pHome: 0.5, pDraw: 0.25, pAway: 0.25 });
   });
 
+  it.each([
+    ["omitted", {}],
+    ["null", { events: null }],
+  ])("accepts a Polymarket %s events field as clean empty coverage", async (_label, body) => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => jsonResponse(body)));
+
+    const result = await fetchPolymarketOdds([fixture]);
+
+    expect(result.size).toBe(0);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+  ])("keeps the Polymarket slug fallback when search markets are %s", async (_label, searchMarkets) => {
+    const pricedMarkets = [
+      ["England", "0.5"], ["Draw", "0.25"], ["Argentina", "0.25"],
+    ].map(([groupItemTitle, yes]) => ({
+      active: true, closed: false, groupItemTitle, sportsMarketType: "moneyline",
+      outcomes: '["Yes","No"]', outcomePrices: JSON.stringify([yes, String(1 - Number(yes))]),
+    }));
+    const searchEvent = {
+      title: "England vs. Argentina",
+      slug: "fifwc-eng-arg-2026-07-15",
+      ...(searchMarkets === undefined ? {} : { markets: searchMarkets }),
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ events: [searchEvent] }))
+      .mockResolvedValueOnce(jsonResponse([{
+        title: "England vs. Argentina", slug: "fifwc-eng-arg-2026-07-15",
+        markets: pricedMarkets,
+      }]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchPolymarketOdds([fixture]);
+
+    expect(String(fetchMock.mock.calls[1][0])).toContain("slug=fifwc-eng-arg-2026-07-15");
+    expect(result.get(getModelFixtureKey(fixture)))
+      .toEqual({ pHome: 0.5, pDraw: 0.25, pAway: 0.25 });
+  });
+
+  it.each([
+    ["a primitive top level", "unexpected"],
+    ["a null top level", null],
+    ["an array top level", []],
+    ["a non-array events field", { events: {} }],
+  ])("reports %s Polymarket data as a source error", async (_label, body) => {
+    const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+      const href = String(url);
+      if (href.includes("polymarket")) return Promise.resolve(jsonResponse(body));
+      return Promise.resolve(jsonResponse({ events: [] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { odds, errors } = await fetchAllMarketOdds([fixture]);
+
+    expect(odds.polymarket.size).toBe(0);
+    expect(errors.polymarket).toContain("Polymarket search response malformed");
+    expect(odds.kalshi.size).toBe(0);
+    expect(errors.kalshi).toBeNull();
+    expect(odds.stake.size).toBe(0);
+    expect(errors.stake).toBeNull();
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("stake.bet"))).toBe(true);
+  });
+
+  it.each([
+    ["a missing events field", {}],
+    ["a null events field", { events: null }],
+    ["a non-array events field", { events: {} }],
+    ["an array top level", []],
+    ["a primitive top level", "unexpected"],
+  ])("reports %s Kalshi data as a source error", async (_label, body) => {
+    const fetchMock = vi.fn().mockImplementation((url: unknown) => {
+      const href = String(url);
+      if (href.includes("kalshi")) return Promise.resolve(jsonResponse(body));
+      return Promise.resolve(jsonResponse({ events: [] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { odds, errors } = await fetchAllMarketOdds([fixture]);
+
+    expect(odds.kalshi.size).toBe(0);
+    expect(errors.kalshi).toContain("Kalshi response malformed");
+    expect(odds.polymarket.size).toBe(0);
+    expect(errors.polymarket).toBeNull();
+    expect(odds.stake.size).toBe(0);
+    expect(errors.stake).toBeNull();
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("stake.bet"))).toBe(true);
+  });
+
   // A source rejected outright must not be reported as "no matching fixtures",
   // which reads as a naming problem: the cause has to survive to the caller.
   // Exercised through Kalshi because Stake is no longer queried at all.
@@ -351,12 +441,14 @@ describe("market source fetchers", () => {
   });
 
   it("does not query a disabled source at all", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ events: [] }));
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse({ events: [] }));
     vi.stubGlobal("fetch", fetchMock);
 
     const { odds, errors } = await fetchAllMarketOdds([fixture]);
     expect(disabledSourceReason("stake")).toContain("Cloudflare");
     expect(odds.stake.size).toBe(0);
+    expect(errors.polymarket).toBeNull();
+    expect(errors.kalshi).toBeNull();
     // Never asked, so there is no failure to report and no request spent.
     expect(errors.stake).toBeNull();
     expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("stake.bet"))).toBe(true);

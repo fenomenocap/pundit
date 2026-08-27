@@ -377,6 +377,37 @@ async function jsonFetch(url: string, init?: RequestInit): Promise<unknown> {
   return response.json();
 }
 
+function responseObject(payload: unknown, source: string): UnknownRecord {
+  const root = record(payload);
+  if (!root) throw new Error(`${source} response malformed: expected object`);
+  return root;
+}
+
+function optionalArrayField(
+  root: UnknownRecord,
+  source: string,
+  field: string
+): unknown[] {
+  const value = root[field];
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`${source} response malformed: expected ${field} array when present`);
+  }
+  return value;
+}
+
+function requiredArrayField(
+  root: UnknownRecord,
+  source: string,
+  field: string
+): unknown[] {
+  const value = root[field];
+  if (!Array.isArray(value)) {
+    throw new Error(`${source} response malformed: expected ${field} array`);
+  }
+  return value;
+}
+
 function fixturesByMarketProfile(fixtures: ModelFixture[]): Map<MarketProfile, ModelFixture[]> {
   const grouped = new Map<MarketProfile, ModelFixture[]>();
   for (const fixture of fixtures) {
@@ -480,11 +511,11 @@ export async function fetchPolymarketOdds(fixtures: ModelFixture[]): Promise<Map
   for (const fixture of fixtures) {
     try {
       for (const search of polymarketSearchQueries(fixture)) {
-        const payload = record(await jsonFetch(
+        const payload = responseObject(await jsonFetch(
           `${POLYMARKET_SEARCH_URL}?q=${encodeURIComponent(search)}`,
           { headers: { Accept: "application/json" } }
-        ));
-        for (const raw of array(payload?.events)) {
+        ), "Polymarket search");
+        for (const raw of optionalArrayField(payload, "Polymarket search", "events")) {
           const event = record(raw);
           if (!event || !eventMatchesFixture(event, fixture)) continue;
           let odds = parsePolymarketEvent(event, fixture);
@@ -526,10 +557,10 @@ export async function fetchKalshiOdds(
       limit: "200",
     });
     if (cursor) params.set("cursor", cursor);
-    const payload = record(await jsonFetch(`${KALSHI_URL}?${params}`, {
+    const payload = responseObject(await jsonFetch(`${KALSHI_URL}?${params}`, {
       headers: { Accept: "application/json" },
-    }));
-    for (const event of array(payload?.events)) {
+    }), "Kalshi");
+    for (const event of requiredArrayField(payload, "Kalshi", "events")) {
       for (const fixture of fixtures) {
         const odds = parseKalshiEvent(event, fixture);
         if (odds) result.set(getModelFixtureKey(fixture), odds);
