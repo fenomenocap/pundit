@@ -213,6 +213,21 @@ test("a later skipped commit served by the frontend is ahead, not stale", () => 
     assert.equal(compare(cwd, floor, apiCommits.at(-1)), "ahead");
     assert.equal(compare(cwd, floor, floor), "match");
     assert.equal(compare(cwd, floor, floor.slice(0, 7)), "match");
+    assert.equal(compare(cwd, floor, floor.slice(0, 1)), "unknown");
+    assert.equal(compare(cwd, floor, floor.toUpperCase()), "match");
+    assert.equal(compare(cwd, floor, floor.slice(0, 7).toUpperCase()), "match");
+    assert.equal(compare(cwd, floor.toUpperCase(), floor), "match");
+    assert.equal(compare(cwd, floor, "HEAD"), "unknown");
+    assert.equal(compare(cwd, floor, "main"), "unknown");
+    assert.equal(compare(cwd, floor, `${floor}0`), "unknown");
+    assert.equal(compare(cwd, `${floor}0`, floor), "unknown");
+
+    // A hexadecimal ref name must not masquerade as the commit prefix it
+    // shadows. The tag points at the floor, while its name is the stale
+    // seed's seven-character prefix.
+    const stalePrefix = seed.slice(0, 7);
+    git(cwd, "tag", stalePrefix, floor);
+    assert.equal(compare(cwd, floor, stalePrefix), "stale");
 
     // The failures the check exists for.
     assert.equal(compare(cwd, floor, seed), "stale");

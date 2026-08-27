@@ -49,6 +49,28 @@ function gitOk(args, cwd) {
   }
 }
 
+const COMMIT_ID_PATTERN = /^[0-9a-f]{7,40}$/i;
+const FULL_COMMIT_ID_PATTERN = /^[0-9a-f]{40}$/i;
+
+// Resolve only object IDs, not revision names. --disambiguate enumerates the
+// object database, so a hexadecimal ref cannot redirect a candidate.
+function resolveCommitId(value, cwd) {
+  if (!COMMIT_ID_PATTERN.test(value)) return null;
+  const prefix = value.toLowerCase();
+  try {
+    const candidates = git(["rev-parse", `--disambiguate=${prefix}`], cwd)
+      .split("\n")
+      .map((candidate) => candidate.trim().toLowerCase())
+      .filter(Boolean);
+    if (candidates.length !== 1) return null;
+    const [resolved] = candidates;
+    if (!FULL_COMMIT_ID_PATTERN.test(resolved) || !resolved.startsWith(prefix)) return null;
+    return git(["cat-file", "-t", resolved], cwd) === "commit" ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The branch the platforms deploy from. DEPLOY_REF overrides for one-off
  * checks; otherwise prefer main, then origin/main, then whatever is checked out.
@@ -111,15 +133,11 @@ export function classifyServedSha(floor, served, options = {}) {
   const floorSha = (floor ?? "").trim();
   if (!servedSha || servedSha === "unknown") return "missing";
   if (!floorSha) return "unknown";
-  if (servedSha === floorSha
-      || floorSha.startsWith(servedSha)
-      || servedSha.startsWith(floorSha)) {
-    return "match";
-  }
-  if (!gitOk(["rev-parse", "--verify", "--quiet", `${servedSha}^{commit}`], cwd)) {
-    return "unknown";
-  }
-  return gitOk(["merge-base", "--is-ancestor", floorSha, servedSha], cwd) ? "ahead" : "stale";
+  const floorId = resolveCommitId(floorSha, cwd);
+  const servedId = resolveCommitId(servedSha, cwd);
+  if (!floorId || !servedId) return "unknown";
+  if (servedId === floorId) return "match";
+  return gitOk(["merge-base", "--is-ancestor", floorId, servedId], cwd) ? "ahead" : "stale";
 }
 
 export function isAcceptableServedSha(state) {
