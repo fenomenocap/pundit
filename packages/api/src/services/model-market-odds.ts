@@ -62,6 +62,66 @@ export function getCachedFixtureMarketOdds(fixture: ModelFixture): TimestampedFi
   return cache.byFixture.get(getModelFixtureKey(fixture)) ?? null;
 }
 
+export interface PublicModelOddsSource {
+  source: "kalshi" | "polymarket";
+  observedAt: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+}
+
+export type PublicModelFixture = Omit<ModelFixture, "scorelines"> & {
+  oddsSources: PublicModelOddsSource[];
+};
+
+function completeThreeWay(odds: ThreeWayOdds | null): ThreeWayOdds | null {
+  if (
+    !odds
+    || !Number.isFinite(odds.pHome)
+    || !Number.isFinite(odds.pDraw)
+    || !Number.isFinite(odds.pAway)
+  ) {
+    return null;
+  }
+  return odds;
+}
+
+/**
+ * Join the 30-minute market cache onto a model row at read time.
+ * The hourly model cache stays model-only; Stake stays on the existing
+ * stakeP* fields; Kalshi/Polymarket ride `oddsSources`, matching chat.
+ * Incomplete legs are dropped rather than shown as a partial 1X2.
+ */
+export function publicModelFixture(
+  fixture: ModelFixture,
+  markets: TimestampedFixtureMarketOdds | null
+): PublicModelFixture {
+  const { scorelines: _scorelines, ...rest } = fixture;
+  const stake = completeThreeWay(markets?.stake ?? null);
+  const oddsSources: PublicModelOddsSource[] = [];
+  const kalshi = completeThreeWay(markets?.kalshi ?? null);
+  const polymarket = completeThreeWay(markets?.polymarket ?? null);
+  if (kalshi && markets) {
+    oddsSources.push({ source: "kalshi", observedAt: markets.observedAt, ...kalshi });
+  }
+  if (polymarket && markets) {
+    oddsSources.push({ source: "polymarket", observedAt: markets.observedAt, ...polymarket });
+  }
+  return {
+    ...rest,
+    stakePHome: stake?.pHome ?? fixture.stakePHome,
+    stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
+    stakePAway: stake?.pAway ?? fixture.stakePAway,
+    oddsSources,
+  };
+}
+
+export function publicModelFixtures(fixtures: ModelFixture[]): PublicModelFixture[] {
+  return fixtures.map((fixture) =>
+    publicModelFixture(fixture, getCachedFixtureMarketOdds(fixture))
+  );
+}
+
 export function getModelMarketOddsStatus() {
   return {
     ready: cache.lastUpdated !== null,
