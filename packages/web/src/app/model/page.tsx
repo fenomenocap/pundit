@@ -115,7 +115,7 @@ export default function ModelPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-6">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
       <PageHeader
         title="Club season model"
         eyebrow="Predictions · Active fixtures"
@@ -168,7 +168,16 @@ export default function ModelPage() {
               </div>
             </div>
           </div>
-          <div className="max-h-[70vh] overflow-auto">
+          <p id="model-scroll-hint" className="px-4 py-2 text-xs text-muted-foreground sm:hidden">
+            Scroll the table sideways for more columns and match actions.
+          </p>
+          <div
+            role="region"
+            aria-label="Active fixtures results"
+            aria-describedby="model-scroll-hint"
+            tabIndex={0}
+            className="max-h-[70vh] overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          >
             {loading ? (
               <div className="space-y-0">
                 {Array.from({ length: 8 }).map((_, index) => (

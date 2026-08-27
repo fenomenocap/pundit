@@ -1,6 +1,55 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("smoke", () => {
+  for (const width of [320, 390, 768, 1440]) {
+    test(`model table keeps keyboard access and bounded scrolling at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/model");
+      const region = page.getByRole("region", { name: "Active fixtures results" });
+      const row = region.getByRole("row").filter({ hasText: "Arsenal · Coventry City" });
+      await expect(row).toBeVisible();
+      await expect(region.getByRole("table")).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+      for (let step = 0; step < 20; step += 1) {
+        await page.keyboard.press("Tab");
+        if (await region.evaluate((element) => element === document.activeElement)) break;
+      }
+      await expect(region).toBeFocused();
+      expect(await region.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe("none");
+      const canScroll = await region.evaluate((element) => element.scrollWidth > element.clientWidth);
+      if (width < 640) {
+        await expect(page.getByText("Scroll the table sideways for more columns and match actions.")).toBeVisible();
+        expect(canScroll).toBe(true);
+      } else {
+        await expect(region.getByRole("columnheader", { name: "Stage", exact: true })).toBeVisible();
+      }
+      if (canScroll) {
+        await page.keyboard.press("ArrowRight");
+        await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+      }
+
+      await page.keyboard.press("Tab");
+      const expand = row.getByRole("button", { name: "Expand details" });
+      await expect(expand).toBeFocused();
+      await page.keyboard.press("Enter");
+      const collapse = row.getByRole("button", { name: "Collapse details" });
+      await expect(collapse).toBeFocused();
+      await expect(collapse).toHaveAttribute("aria-expanded", "true");
+      await expect(region.getByText("Over 2.5", { exact: true })).toBeVisible();
+      await page.keyboard.press("Space");
+      await expect(expand).toHaveAttribute("aria-expanded", "false");
+      await page.keyboard.press("Tab");
+      const ask = row.getByRole("link", { name: "Ask", exact: true });
+      await expect(ask).toBeFocused();
+      await expect(ask).toBeInViewport();
+      const target = new URL((await ask.getAttribute("href"))!, "http://127.0.0.1:3000");
+      expect(target.searchParams.get("q")).toBe("Arsenal vs Coventry City");
+      expect(target.searchParams.get("fixture")).toBe("espn:eng.1:1");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    });
+  }
+
   test("homepage", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Pundit" })).toBeVisible();
