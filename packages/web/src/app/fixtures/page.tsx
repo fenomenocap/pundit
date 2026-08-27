@@ -10,6 +10,7 @@ import {
   fetchUpcomingMatches,
 } from "@/lib/mock-data";
 import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
+import { buildAskUrl, modelFixtureIdentity } from "@/lib/api";
 import type { CompetitionResponse, MatchResponse, StandingResponse } from "@/lib/api";
 import { Disclaimer } from "@/components/disclaimer";
 import { PageHeader } from "@/components/page-header";
@@ -121,7 +122,10 @@ function MatchRow({ match }: { match: MatchResponse }) {
   const showScore = finished || live;
   const accent = getTeamColor(match.homeTeam);
   const askHref = isAskable(match)
-    ? `/?q=${encodeURIComponent(`${match.homeTeam} vs ${match.awayTeam}`)}`
+    ? buildAskUrl(
+      `${match.homeTeam} vs ${match.awayTeam}`,
+      modelFixtureIdentity({ competitionId: match.competitionId, fixtureId: match.id })
+    )
     : null;
 
   return (

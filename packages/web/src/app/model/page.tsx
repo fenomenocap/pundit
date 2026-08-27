@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, Fragment } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { fetchActiveModelFixtures, fetchCompetitions } from "@/lib/mock-data";
-import { getReadiness } from "@/lib/api";
+import { buildAskUrl, getReadiness, modelFixtureIdentity } from "@/lib/api";
 import type { ModelFixtureResponse } from "@/lib/api";
 import { Disclaimer } from "@/components/disclaimer";
 import { PageHeader } from "@/components/page-header";
@@ -238,7 +238,10 @@ export default function ModelPage() {
                           </td>
                           <td className="pr-3">
                             <Link
-                              href={`/?q=${encodeURIComponent(`${fixture.home} vs ${fixture.away}`)}`}
+                              href={buildAskUrl(
+                                `${fixture.home} vs ${fixture.away}`,
+                                modelFixtureIdentity(fixture)
+                              )}
                               className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary/80"
                               onClick={(event) => event.stopPropagation()}
                             >

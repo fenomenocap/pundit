@@ -8,6 +8,7 @@ import { ArrowUp } from "lucide-react";
 import {
   ApiError,
   askQuestionStream,
+  buildAskUrl,
   type AskGrounding,
   type ConversationTurn,
   type FixtureContext,
@@ -351,9 +352,11 @@ function AssistantMarkdown({ content }: { content: string }) {
 function MessageActions({
   content,
   question,
+  fixtureId,
 }: {
   content: string;
   question: string | null;
+  fixtureId?: string;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -369,7 +372,7 @@ function MessageActions({
 
   async function shareQuestion() {
     if (!question) return;
-    const url = `${window.location.origin}/?q=${encodeURIComponent(question)}`;
+    const url = `${window.location.origin}${buildAskUrl(question, fixtureId)}`;
     if (navigator.share) {
       try {
         await navigator.share({ title: "Pundit", text: question, url });
@@ -519,7 +522,9 @@ export function HomeChat() {
   const [fixtureState, setFixtureState] = useState<FixtureState>("ready");
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoAskedRef = useRef<string | null>(null);
-  const askRef = useRef<(question: string) => Promise<void>>(async () => undefined);
+  const askRef = useRef<(question: string, fixtureContext?: FixtureContext) => Promise<void>>(
+    async () => undefined
+  );
   const streamingIdRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -665,9 +670,13 @@ export function HomeChat() {
 
   useEffect(() => {
     const query = searchParams.get("q")?.trim();
-    if (!query || query.length > 500 || autoAskedRef.current === query) return;
-    autoAskedRef.current = query;
-    void askRef.current(query);
+    const fixtureId = searchParams.get("fixture");
+    const autoAskKey = `${query ?? ""}\u0000${fixtureId ?? ""}`;
+    if (!query || query.length > 500 || autoAskedRef.current === autoAskKey) return;
+    autoAskedRef.current = autoAskKey;
+    // The URL value is only an opaque address. The API resolves it against
+    // server-owned fixture data; do not infer trusted teams in the browser.
+    void askRef.current(query, fixtureId ? { fixtureId } : undefined);
   }, [searchParams]);
 
   function handleSubmit(e: FormEvent) {
@@ -682,7 +691,7 @@ export function HomeChat() {
     setFixtureContext(undefined);
     setFixtureContextTeams(undefined);
     autoAskedRef.current = null;
-    if (searchParams.get("q")) {
+    if (searchParams.get("q") || searchParams.get("fixture")) {
       router.replace("/", { scroll: false });
     }
   }
@@ -897,6 +906,11 @@ export function HomeChat() {
                     <MessageActions
                       content={m.content}
                       question={precedingUser?.content ?? null}
+                      fixtureId={
+                        m.grounding?.kind === "fixture"
+                          ? m.grounding.fixture.fixtureId
+                          : undefined
+                      }
                     />
                   )}
                 </div>
