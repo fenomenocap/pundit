@@ -2452,3 +2452,24 @@ test("schema-16 separates search narration from a conditional offer to search", 
     "Send me the fixture. Now I have enough to answer.",
   ]) assert.equal(validateNoDraftLeak(narration).passed, false, narration);
 });
+
+test("schema-16 accepts an unqualified space-behind acknowledgement", () => {
+  // "The cost is space behind the defence: a single pass over the top turns
+  // the press into a foot race" is as clear as this check gets, and the
+  // qualifier list ("more space behind") scored it nothing. Safe to accept
+  // unqualified, because reversed geometry is rejected independently.
+  for (const answer of [
+    "A high line lets the forwards press. The cost is space behind the defence: a single pass over the top turns the press into a foot race.",
+    "A high defensive line shortens the press. The trade-off is the gap behind the back four.",
+  ]) assert.equal(validateResponseCorrectness(
+    answer, [], null, { expectCorrectHighLineGeometry: true }
+  ).assertions.highLineSpaceBehindAcknowledged, true, answer);
+
+  // Reversed geometry still fails outright, acknowledgement or not.
+  for (const answer of [
+    "A high defensive line shrinks the space behind the defence.",
+    "A high line removes the space behind the back four entirely.",
+  ]) assert.equal(validateResponseCorrectness(
+    answer, [], null, { expectCorrectHighLineGeometry: true }
+  ).passed, false, answer);
+});

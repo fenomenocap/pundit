@@ -1398,6 +1398,45 @@ describe("current-news evidence hardening", () => {
     });
   });
 
+  describe("render defects the certified-run critic pass found", () => {
+    const empty = { queries: ["q"], results: [] } as unknown as EvidenceBundle;
+    const delivered = (t: string) => renderEvidenceCitations(t, empty, false).answer;
+
+    it("removes a source marker that carries no digits", () => {
+      // "[[S_payload]]" shipped twice in one answer. The sweep was anchored on
+      // an id shape with digits in it, and this has none.
+      expect(delivered("Kalshi: home 98.0% [[S_payload]]. Polymarket: 97.0% [[S_payload]]."))
+        .toBe("Kalshi: home 98.0%. Polymarket: 97.0%.");
+    });
+
+    it("keeps a real marker and ordinary double brackets", () => {
+      const bundle = { queries: ["q"], results: [{
+        id: "S1", title: "Club", url: "https://example.com/a", date: "2026-08-26", snippet: "",
+      }] } as unknown as EvidenceBundle;
+      expect(renderEvidenceCitations("Timber returns [[S1]].", bundle, false).answer)
+        .toContain("[Club](https://example.com/a)");
+      expect(delivered("The set [[a, b]] is unrelated.")).toContain("[[a, b]]");
+    });
+
+    it("removes a retrieval truncation note", () => {
+      expect(delivered("Vutsov; Santos, Train, Makoun (column truncated).")).not.toContain("truncated");
+    });
+
+    it("drops a section body opening on a verb with no subject", () => {
+      // Whoever was doing the noting was excised upstream; the predicate
+      // shipped alone as the section's first words.
+      expect(dropDanglingSectionOpeners("**Team news**\nnotes Juan Perea is the only absentee."))
+        .not.toContain("Juan Perea");
+      expect(dropDanglingSectionOpeners("**Expected lineups**\nlists Levski's predicted XI."))
+        .not.toContain("predicted XI");
+    });
+
+    it("keeps a body whose first word is a noun, not a verb", () => {
+      const kept = "**Notes**\nNotes on the fixture follow below.";
+      expect(dropDanglingSectionOpeners(kept)).toBe(kept);
+    });
+  });
+
   describe("defects the post-deploy production run surfaced", () => {
     const rows = [["2-0", 0.1247], ["3-0", 0.1125], ["1-0", 0.086],
       ["2-1", 0.0841], ["4-0", 0.076], ["3-1", 0.0758]]
