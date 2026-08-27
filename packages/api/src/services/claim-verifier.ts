@@ -58,7 +58,7 @@ function fallbackDecisions(claims: readonly VerifiableClaim[]): ClaimDecision[] 
 function normalizeDecisions(
   raw: unknown,
   claims: readonly VerifiableClaim[],
-  pages: readonly RetrievedEvidencePage[]
+  pages: readonly Pick<RetrievedEvidencePage, "id" | "date" | "retrievedAt">[]
 ): ClaimDecision[] {
   const knownClaims = new Set(claims.map((claim) => claim.id));
   const knownEvidence = new Set(pages.filter((page) => {
@@ -121,7 +121,7 @@ function boundedInput(claims: readonly VerifiableClaim[], pages: readonly Retrie
       authority: page.authority,
       text,
     };
-  }).filter((page) => page.text.length > 0);
+  }).filter((page) => page.id.trim() && page.text.trim());
   return { claims: safeClaims, pages: safePages };
 }
 
@@ -177,7 +177,17 @@ export async function verifyClaimsOnce(
       summary: "Claim verification returned an invalid result; no claim was accepted.",
     };
   }
-  const decisions = normalizeDecisions(parsed.decisions, input.claims, pages);
+  // Validate only the exact evidence and freshness metadata supplied to the
+  // verifier, including when an omitted page repeats a supplied evidence ID.
+  const decisions = normalizeDecisions(
+    parsed.decisions,
+    input.claims,
+    input.pages.map((page) => ({
+      id: page.id,
+      date: page.publishedDate,
+      retrievedAt: page.retrievedAt,
+    }))
+  );
   const conflicts = decisions.some((decision) => decision.outcome === "conflict");
   const supported = decisions.some((decision) => decision.outcome === "supported");
   const summary = typeof parsed.summary === "string"
