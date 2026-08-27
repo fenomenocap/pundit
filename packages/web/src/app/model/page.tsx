@@ -72,6 +72,7 @@ export default function ModelPage() {
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [modelReady, setModelReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [competitionError, setCompetitionError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const requestGeneration = useRef(0);
@@ -79,18 +80,30 @@ export default function ModelPage() {
   const load = () => {
     const generation = ++requestGeneration.current;
     setLoading(true);
-    Promise.all([fetchActiveModelFixtures(), fetchCompetitions(), getReadiness().catch(() => null)])
+    const competitionRequest = fetchCompetitions().catch(() => null);
+    Promise.all([fetchActiveModelFixtures(), competitionRequest, getReadiness().catch(() => null)])
       .then(([fixtureData, competitionData, readiness]) => {
         if (generation !== requestGeneration.current) return;
         setFixtures(fixtureData.fixtures);
         setLastUpdated(fixtureData.lastUpdated);
         setError(fixtureData.error);
         setModelReady(readiness?.model.ready ?? null);
-        setCompetitions(
-          competitionData.competitions
+        if (competitionData === null) {
+          // Competition labels are optional metadata. Keep the last known
+          // filters and leave the All view usable when this request fails.
+          setCompetitionError(true);
+        } else {
+          const nextCompetitions = competitionData.competitions
             .filter((competition) => competition.enabled)
-            .map((competition) => ({ id: competition.id, name: competition.name }))
-        );
+            .map((competition) => ({ id: competition.id, name: competition.name }));
+          setCompetitionError(false);
+          setCompetitions(nextCompetitions);
+          setSelectedCompetition((selected) => (
+            selected === "all" || nextCompetitions.some((competition) => competition.id === selected)
+              ? selected
+              : "all"
+          ));
+        }
       })
       .catch((reason: unknown) => {
         if (generation !== requestGeneration.current) return;
@@ -149,8 +162,16 @@ export default function ModelPage() {
       </p>
 
       {error && <ErrorBanner message={error} onRetry={load} />}
+      {competitionError && (
+        <ErrorBanner
+          message={competitions.length > 0
+            ? "Competition filters could not refresh. Showing the last known filters."
+            : "Competition filters unavailable. Showing all model fixtures."}
+          onRetry={load}
+        />
+      )}
 
-      {!error && (
+      {(!error || fixtures.length > 0) && (
         <section className="overflow-hidden rounded-xl border border-card-rim bg-card shadow-card">
           <div className="border-b border-border px-4 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -15,6 +15,8 @@ type ModelRequestTestOptions = {
   errorBatches?: number[];
   pHomeByBatch?: Record<number, number>;
   nullLastUpdatedBatches?: number[];
+  failCompetitionMetadataCalls?: number[];
+  competitionIdsByCall?: Array<string[] | null>;
 };
 
 async function installModelRequestControl(
@@ -28,6 +30,8 @@ async function installModelRequestControl(
       errorBatches = [],
       pHomeByBatch = {},
       nullLastUpdatedBatches = [],
+      failCompetitionMetadataCalls = [],
+      competitionIdsByCall = [],
     }) => {
       const originalPromiseAll = Promise.all.bind(Promise) as (
         values: Iterable<unknown>
@@ -45,14 +49,67 @@ async function installModelRequestControl(
         typeof value === "object" && value !== null && !Array.isArray(value)
       );
 
+      let competitionMetadataCallCount = 0;
+      const competitionResponseVariants = new WeakMap<object, unknown>();
+      const promisePrototype = Promise.prototype as unknown as {
+        then: (
+          onFulfilled?: (value: unknown) => unknown,
+          onRejected?: (reason: unknown) => unknown,
+        ) => Promise<unknown>;
+      };
+      const originalThen = promisePrototype.then;
+      promisePrototype.then = function (
+        this: Promise<unknown>,
+        onFulfilled,
+        onRejected,
+      ) {
+        return originalThen.call(
+          this,
+          (value: unknown) => {
+            if (isRecord(value) && Array.isArray(value.competitions)) {
+              if (competitionResponseVariants.has(value)) {
+                const deliveredValue = competitionResponseVariants.get(value);
+                return onFulfilled ? onFulfilled(deliveredValue) : deliveredValue;
+              }
+              const call = ++competitionMetadataCallCount;
+              if (failCompetitionMetadataCalls.includes(call)) {
+                competitionResponseVariants.set(value, null);
+                const reason = new Error(`Synthetic competition metadata failure for call ${call}`);
+                return onRejected ? onRejected(reason) : Promise.reject(reason);
+              }
+              const configuredIds = competitionIdsByCall[call - 1];
+              const deliveredValue = Array.isArray(configuredIds)
+                ? {
+                    ...value,
+                    competitions: value.competitions.filter((competition) => (
+                      isRecord(competition)
+                      && typeof competition.id === "string"
+                      && configuredIds.includes(competition.id)
+                    )),
+                  }
+                : value;
+              competitionResponseVariants.set(value, deliveredValue);
+              if (isRecord(deliveredValue)) {
+                competitionResponseVariants.set(deliveredValue, deliveredValue);
+              }
+              return onFulfilled ? onFulfilled(deliveredValue) : deliveredValue;
+            }
+            return onFulfilled ? onFulfilled(value) : value;
+          },
+          onRejected,
+        );
+      };
+
       promiseConstructor.all = (values) => originalPromiseAll(values).then((items) => {
         if (!Array.isArray(items) || items.length !== 3) return items;
-        const [model, competitions, readiness] = items;
+        const [model, competitionResult, readiness] = items;
+        const hasCompetitionData = competitionResult === null || (
+          isRecord(competitionResult) && Array.isArray(competitionResult.competitions)
+        );
         if (
           !isRecord(model)
           || !Array.isArray(model.fixtures)
-          || !isRecord(competitions)
-          || !Array.isArray(competitions.competitions)
+          || !hasCompetitionData
           || !(
             readiness === null
             || (isRecord(readiness) && isRecord(readiness.model))
@@ -143,6 +200,69 @@ test.describe("smoke", () => {
     const table = page.locator("table");
     const emptyState = page.getByText("No upcoming fixtures in the next 14 days");
     await expect(table.or(emptyState)).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("model keeps fixtures visible when competition metadata fails", async ({ page }) => {
+    await installModelRequestControl(page, { failCompetitionMetadataCalls: [1] });
+    await page.goto("/model");
+
+    await expect(page.getByRole("alert").filter({
+      hasText: "Competition filters unavailable. Showing all model fixtures.",
+    })).toBeVisible();
+    const all = page.getByRole("button", { name: "All", exact: true });
+    await expect(all).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Premier League", exact: true })).toHaveCount(0);
+    await expect(page.locator("tr").filter({ hasText: "Arsenal · Coventry City" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Premier League", exact: true })).toBeVisible();
+    await expect(page.getByText("Competition filters unavailable. Showing all model fixtures.", { exact: true }))
+      .toHaveCount(0);
+    await expect(page.locator("tr").filter({ hasText: "Arsenal · Coventry City" })).toBeVisible();
+  });
+
+  test("model retains a selected filter through metadata failure and resets it when removed", async ({ page }) => {
+    await installModelRequestControl(page, {
+      errorBatches: [1],
+      failCompetitionMetadataCalls: [2],
+      competitionIdsByCall: [null, null, []],
+    });
+    await page.goto("/model");
+
+    await expect(page.getByRole("alert").filter({
+      hasText: "Synthetic model response failure for batch 1",
+    })).toBeVisible();
+    const all = page.getByRole("button", { name: "All", exact: true });
+    const qualifiers = page.getByRole("button", {
+      name: "UEFA Champions League Qualifiers",
+      exact: true,
+    });
+    await expect(qualifiers).toBeVisible();
+    await qualifiers.click();
+    await expect(qualifiers).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("tr").filter({ hasText: "Viking · Dinamo Zagreb" })).toBeVisible();
+    await expect(page.locator("tr").filter({ hasText: "Arsenal · Coventry City" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("alert").filter({
+      hasText: "Competition filters could not refresh. Showing the last known filters.",
+    })).toBeVisible();
+    await expect(qualifiers).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("tr").filter({ hasText: "Viking · Dinamo Zagreb" })).toBeVisible();
+    await expect(page.locator("tr").filter({ hasText: "Arsenal · Coventry City" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("button", {
+      name: "UEFA Champions League Qualifiers",
+      exact: true,
+    })).toHaveCount(0);
+    await expect(all).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("tr").filter({ hasText: "Viking · Dinamo Zagreb" })).toBeVisible();
+    await expect(page.locator("tr").filter({ hasText: "Arsenal · Coventry City" })).toBeVisible();
+    await expect(page.getByText("Competition filters could not refresh. Showing the last known filters.", {
+      exact: true,
+    })).toHaveCount(0);
   });
 
   test("model expanded row shows cached market comparison", async ({ page }) => {
