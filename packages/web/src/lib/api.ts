@@ -71,6 +71,13 @@ export interface ModelFixtureResponse {
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
+  oddsSources?: Array<{
+    source: "kalshi" | "polymarket";
+    observedAt?: string;
+    pHome: number;
+    pDraw: number | null;
+    pAway: number;
+  }>;
   result: {
     homeScore: number;
     awayScore: number;

@@ -8,6 +8,7 @@ import {
   getModelMarketOddsStatus,
   marketOddsRefreshDelay,
   marketOddsFixtureKey,
+  publicModelFixture,
   refreshModelMarketOdds,
 } from "./model-market-odds";
 import { fetchAllMarketOdds, isSourceConfiguredForProfile } from "./fixture-market-sources";
@@ -96,6 +97,46 @@ describe("marketOddsFixtureKey", () => {
       pDraw: 0.31,
       pAway: 0.27,
     }]);
+  });
+});
+
+describe("publicModelFixture", () => {
+  const observedAt = "2026-08-27T11:15:32.945Z";
+
+  it("leaves stake fields null and oddsSources empty when the cache has nothing", () => {
+    const published = publicModelFixture(model, null);
+    expect(published.stakePHome).toBeNull();
+    expect(published.oddsSources).toEqual([]);
+    expect(published).not.toHaveProperty("scorelines");
+  });
+
+  it("fills stakeP* from Stake and lists Kalshi then Polymarket", () => {
+    const published = publicModelFixture(model, {
+      observedAt,
+      stake: { pHome: 0.61, pDraw: 0.22, pAway: 0.17 },
+      kalshi: { pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
+      polymarket: { pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
+    });
+    expect(published.stakePHome).toBe(0.61);
+    expect(published.stakePDraw).toBe(0.22);
+    expect(published.stakePAway).toBe(0.17);
+    expect(published.oddsSources).toEqual([
+      { source: "kalshi", observedAt, pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
+      { source: "polymarket", observedAt, pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
+    ]);
+  });
+
+  it("drops an incomplete 1X2 rather than publishing a partial market", () => {
+    const published = publicModelFixture(model, {
+      observedAt,
+      stake: { pHome: 0.61, pDraw: Number.NaN, pAway: 0.17 },
+      kalshi: null,
+      polymarket: { pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
+    });
+    expect(published.stakePHome).toBeNull();
+    expect(published.oddsSources).toEqual([
+      { source: "polymarket", observedAt, pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
+    ]);
   });
 });
 
