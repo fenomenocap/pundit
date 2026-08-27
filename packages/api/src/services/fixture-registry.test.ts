@@ -236,6 +236,24 @@ describe("fixture registry", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("loads last-good when the primary timestamp is invalid", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-date-"));
+    process.env.PUNDIT_DATA_DIR = dir;
+    refreshFixtureRegistryFromEspn([footballFixture()], new Date("2026-08-13T01:00:00.000Z"));
+    const primary = path.join(dir, "fixture-registry", "recognized-fixtures-v1.json");
+    const invalid = JSON.parse(fs.readFileSync(primary, "utf8"));
+    invalid.updatedAt = "not-a-date";
+    fs.writeFileSync(primary, JSON.stringify(invalid), "utf8");
+
+    replaceFixtureRegistryForTests([]);
+    loadFixtureRegistry();
+
+    expect(getRecognizedFixtures()).toHaveLength(1);
+    expect(getFixtureRegistryStatus()).toMatchObject({ loadedFrom: "last-good" });
+    expect(() => getFixtureRegistryStatus().updatedAt).not.toThrow();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("rejects structurally invalid recognized identities and falls back to last-good", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-invalid-"));
     process.env.PUNDIT_DATA_DIR = dir;
@@ -270,6 +288,30 @@ describe("fixture registry", () => {
     expect(getFixtureRegistryStatus()).toMatchObject({ storageBlocked: true });
     expect(fs.readFileSync(primary, "utf8")).toBe("{ broken primary");
     expect(fs.readFileSync(lastGood, "utf8")).toBe("{ broken fallback");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("fails closed when both registry timestamps are invalid", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-date-unrecoverable-"));
+    const registryDir = path.join(dir, "fixture-registry");
+    fs.mkdirSync(registryDir, { recursive: true });
+    const primary = path.join(registryDir, "recognized-fixtures-v1.json");
+    const lastGood = path.join(registryDir, "recognized-fixtures-v1.last-good.json");
+    const invalidArtifact = {
+      schemaVersion: 1,
+      updatedAt: "not-a-date",
+      fixtures: [],
+    };
+    const primaryBytes = `${JSON.stringify(invalidArtifact)}\n`;
+    const lastGoodBytes = `${JSON.stringify({ ...invalidArtifact, updatedAt: "also-not-a-date" })}\n`;
+    fs.writeFileSync(primary, primaryBytes, "utf8");
+    fs.writeFileSync(lastGood, lastGoodBytes, "utf8");
+    process.env.PUNDIT_DATA_DIR = dir;
+
+    expect(() => loadFixtureRegistry()).toThrow(/persistence is blocked/i);
+    expect(getFixtureRegistryStatus()).toMatchObject({ storageBlocked: true });
+    expect(fs.readFileSync(primary, "utf8")).toBe(primaryBytes);
+    expect(fs.readFileSync(lastGood, "utf8")).toBe(lastGoodBytes);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

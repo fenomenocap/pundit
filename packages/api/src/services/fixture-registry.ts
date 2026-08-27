@@ -319,6 +319,7 @@ function validArtifact(value: unknown): value is FixtureRegistryArtifact {
   const artifact = value as Partial<FixtureRegistryArtifact>;
   return artifact.schemaVersion === 1
     && typeof artifact.updatedAt === "string"
+    && Number.isFinite(Date.parse(artifact.updatedAt))
     && Array.isArray(artifact.fixtures)
     && artifact.fixtures.every(isRecognizedFixture);
 }
