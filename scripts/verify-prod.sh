@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+require_runtime() {
+  local runtime="$1"
+  if ! command -v "$runtime" >/dev/null 2>&1; then
+    echo "FAIL: required command '$runtime' is unavailable; production verification cannot run" >&2
+    exit 2
+  fi
+}
+
+for runtime in node git curl python3; do
+  require_runtime "$runtime"
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/curl-bounds.sh"
 

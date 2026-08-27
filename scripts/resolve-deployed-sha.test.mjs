@@ -60,6 +60,14 @@ function withFakePath(env, bin) {
   };
 }
 
+function writeShellCommand(bin, name, body = "exit 0") {
+  fs.mkdirSync(bin, { recursive: true });
+  const launcher = path.join(bin, name);
+  fs.writeFileSync(launcher, `#!/usr/bin/env bash\n${body}\n`);
+  fs.chmodSync(launcher, 0o755);
+  return launcher;
+}
+
 function initRepo(cwd) {
   git(cwd, "init", "-q", "-b", "main");
   git(cwd, "config", "user.email", "test@example.com");
@@ -385,6 +393,7 @@ test("production polling rejects settings that skip version checks before any re
       fs.appendFileSync(process.env.PUNDIT_FAKE_CURL_LOG, "called\\n");
       process.exitCode = 90;
     `);
+    writeShellCommand(command.bin, "python3");
     const cases = [
       ...["0", "-1", "1.5", "abc", "121", "999999999999999999999999", "08"]
         .map((value) => ({ name: "VERIFY_PROD_POLL_ATTEMPTS", value })),
@@ -417,6 +426,51 @@ test("production polling rejects settings that skip version checks before any re
   });
 });
 
+test("production verification rejects a missing runtime before any request", () => {
+  withTempDirectory("pundit-verify-prerequisites-", (cwd) => {
+    const runtimes = ["node", "git", "curl", "python3"];
+    for (const missing of runtimes) {
+      const bin = path.join(cwd, `runtime-bin-${missing}`);
+      const marker = path.join(cwd, `curl-${missing}-called`);
+      for (const runtime of runtimes) {
+        if (runtime !== missing) writeShellCommand(bin, runtime);
+      }
+      if (missing !== "curl") {
+        writeShellCommand(bin, "curl", 'printf "called" > "$PUNDIT_RUNTIME_MARKER"; exit 90');
+      }
+
+      const result = spawnSync(
+        "bash",
+        [
+          "-c",
+          'export PATH="$PUNDIT_FAKE_COMMAND_BIN"; source "$1" "$2" "$3" "$4"',
+          "bash",
+          verifyProdScript,
+          "a".repeat(40),
+          "a".repeat(40),
+          "shadow",
+        ],
+        {
+          cwd,
+          encoding: "utf8",
+          timeout: 5000,
+          env: withFakePath({
+            ...process.env,
+            PUNDIT_RUNTIME_MARKER: marker,
+            VERIFY_PROD_POLL_ATTEMPTS: "1",
+            VERIFY_PROD_POLL_INTERVAL_SECONDS: "1",
+          }, bin),
+        },
+      );
+
+      assert.equal(result.error, undefined, result.error?.message);
+      assert.equal(result.status, 2, `${missing}: ${result.stderr || result.stdout}`);
+      assert.match(result.stderr, new RegExp(`required command '${missing}' is unavailable`));
+      assert.equal(fs.existsSync(marker), false, `${missing} reached curl`);
+    }
+  });
+});
+
 test("valid production polling settings still enter mandatory version checks", () => {
   withTempDirectory("pundit-poll-valid-", (cwd) => {
     const log = path.join(cwd, "curl-calls.json");
@@ -428,6 +482,7 @@ test("valid production polling settings still enter mandatory version checks", (
       fs.writeFileSync(log, JSON.stringify(calls));
       process.exitCode = 90;
     `);
+    writeShellCommand(command.bin, "python3");
     // End after the first failed attempt without a real delay or a live request.
     const sleep = fakeCommand(cwd, "sleep", "process.exitCode = 91;\n");
     for (const overrides of [
