@@ -41,7 +41,13 @@ function kickoffDay(utcDate: string): string {
 }
 
 function marketComparisonRows(fixture: ModelFixtureResponse) {
-  const rows: Array<{ label: string; pHome: number; pDraw: number | null; pAway: number }> = [];
+  const rows: Array<{
+    label: string;
+    pHome: number;
+    pDraw: number | null;
+    pAway: number;
+    observedAt: string | null;
+  }> = [];
   if (
     fixture.stakePHome !== null
     && fixture.stakePDraw !== null
@@ -52,6 +58,7 @@ function marketComparisonRows(fixture: ModelFixtureResponse) {
       pHome: fixture.stakePHome,
       pDraw: fixture.stakePDraw,
       pAway: fixture.stakePAway,
+      observedAt: null,
     });
   }
   for (const source of fixture.oddsSources ?? []) {
@@ -60,9 +67,17 @@ function marketComparisonRows(fixture: ModelFixtureResponse) {
       pHome: source.pHome,
       pDraw: source.pDraw,
       pAway: source.pAway,
+      observedAt: source.observedAt ?? null,
     });
   }
   return rows;
+}
+
+function marketObservedLabel(observedAt: string | null): string {
+  if (!observedAt) return "Observed time unavailable";
+  const observedDate = new Date(observedAt);
+  if (!Number.isFinite(observedDate.getTime())) return "Observed time unavailable";
+  return `Observed ${observedDate.toLocaleString()}`;
 }
 
 export default function ModelPage() {
@@ -119,7 +134,7 @@ export default function ModelPage() {
       <PageHeader
         title="Club season model"
         eyebrow="Predictions · Active fixtures"
-        subtitle="Live 1X2 probabilities for active Premier League and UCL qualifier fixtures, with home-field advantage where applicable."
+        subtitle="Live 1X2 probabilities for active Premier League and UCL qualifier fixtures, with home-field advantage where applicable. The page update time is the model cache; each market row shows its own observation time."
         lastUpdated={lastUpdated}
         loading={loading}
         sticky
@@ -141,7 +156,7 @@ export default function ModelPage() {
 
       {error && <ErrorBanner message={error} onRetry={load} />}
 
-      {!error && (
+      {(!error || fixtures.length > 0) && (
         <section className="overflow-hidden rounded-xl border border-card-rim bg-card shadow-card">
           <div className="border-b border-border px-4 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -336,6 +351,7 @@ export default function ModelPage() {
                                           <span className="text-right text-foreground">{percent(row.pHome)}</span>
                                           <span className="text-right text-foreground">{percent(row.pDraw)}</span>
                                           <span className="text-right text-foreground">{percent(row.pAway)}</span>
+                                          <span className="col-span-4 text-[10px] text-muted-foreground">{row.label} · {marketObservedLabel(row.observedAt)}</span>
                                         </Fragment>
                                       ))}
                                     </div>

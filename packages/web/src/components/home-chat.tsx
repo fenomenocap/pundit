@@ -64,6 +64,7 @@ const NO_FIXTURE_SUGGESTIONS: Suggestion[] = [
  * Chat can lack match grounding for four different reasons and they are not
  * interchangeable to a user:
  *
+ * - `loading`    fixture coverage is still being discovered
  * - `ready`       every active fixture is priced
  * - `partial`     some are priced, some are not — the model reports which on
  *                 /api/model/active's error field, and a question about an
@@ -78,7 +79,7 @@ const NO_FIXTURE_SUGGESTIONS: Suggestion[] = [
  * club whose rating window has lapsed at the provider stays unpriced until the
  * provider publishes a new one.
  */
-type FixtureState = "ready" | "partial" | "unpriced" | "no-fixtures" | "unavailable";
+type FixtureState = "loading" | "ready" | "partial" | "unpriced" | "no-fixtures" | "unavailable";
 
 function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
@@ -519,7 +520,7 @@ export function HomeChat() {
   const [fixtureContext, setFixtureContext] = useState<FixtureContext>();
   const [fixtureContextTeams, setFixtureContextTeams] = useState<TeamContext>();
   const [suggestions, setSuggestions] = useState(NO_FIXTURE_SUGGESTIONS);
-  const [fixtureState, setFixtureState] = useState<FixtureState>("ready");
+  const [fixtureState, setFixtureState] = useState<FixtureState>("loading");
   const [stopNotice, setStopNotice] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoAskedRef = useRef<string | null>(null);
@@ -797,7 +798,9 @@ export function HomeChat() {
   const statusLabel = ((): string => {
     switch (modelState) {
       case "loading":
-        return `Loading match model — ${loadingMessage(loadingTier)}`;
+        return loadingTier === "match"
+          ? `Loading match model — ${loadingMessage(loadingTier)}`
+          : "Loading fixture coverage…";
       case "ready":
         return "Model grounded · active fixtures live";
       case "partial":
@@ -862,7 +865,9 @@ export function HomeChat() {
             <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
               {fixtureState === "ready" || fixtureState === "partial"
                 ? "Ask about upcoming Premier League or UCL qualifier matches for a read grounded in Pundit's statistical model."
-                : "Ask about the Premier League table, the title race, or football in general."}
+                : fixtureState === "loading"
+                  ? "Loading current fixture coverage before suggesting a match read."
+                  : "Ask about the Premier League table, the title race, or football in general."}
             </p>
           </div>
           {fixtureState === "partial" && (
