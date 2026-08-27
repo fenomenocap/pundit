@@ -5,6 +5,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { runJsonScenario } from "./chat-battle-test.mjs";
 import {
   EVAL_SCHEMA_VERSION,
   abortSseAfterGrounding,
@@ -54,6 +55,43 @@ import {
   writeFailureReport,
   writeReport
 } from "./chat-battle-test-lib.mjs";
+
+test("a clean follow-up cannot erase an earlier answer validation failure", async (t) => {
+  const clean = "A compact midfield can limit passing options.";
+  for (const [answer, assertion] of [
+    ["Dixon-Coles gives an estimate.", "PlainLanguageCopy"],
+    ["**Empty section**", "NoOrphanedSectionLabel"],
+    ['<tool_call>{"query":"football"}</tool_call>', "NoDraftLeak"],
+    [clean, "PlainLanguageCopy"],
+  ]) {
+    const answers = [answer, clean];
+    const fetchMock = t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({
+      answer: answers.shift(),
+      grounding: null,
+      verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    try {
+      const result = await runJsonScenario(
+        { id: "two-turn-regression", turns: [
+          { question: "Explain a press.", expectGrounding: null },
+          { question: "And midfield?", expectGrounding: null },
+        ] },
+        { apiUrl: "http://127.0.0.1", timeoutMs: 1_000 },
+        { starts: ["2026-08-27T00:00:00.000Z"], beforeRequest: async () => {} },
+        async () => {},
+      );
+      const shouldPass = answer === clean;
+      assert.equal(result.outcome, shouldPass ? "PASS" : "FAIL", answer);
+      assert.equal(result.passed, shouldPass, answer);
+      assert.equal(result.assertions[`turn1${assertion}`], shouldPass);
+      assert.equal(result.assertions[`turn2${assertion}`], true);
+      assert.equal(result.turnResults[0].assertions[`turn1${assertion}`], shouldPass);
+      if (!shouldPass) assert.match(result.evidence, /turn 1:/);
+    } finally {
+      fetchMock.mock.restore();
+    }
+  }
+});
 
 function runNode(args) {
   return new Promise((resolve, reject) => {

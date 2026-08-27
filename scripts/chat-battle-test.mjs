@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import {
   EVAL_SCHEMA_VERSION,
   MIN_REQUEST_INTERVAL_MS,
@@ -270,7 +271,7 @@ async function jsonTurn(
   return { ...response, start, requestBody };
 }
 
-async function runJsonScenario(scenario, options, pacer, onRequestStart) {
+export async function runJsonScenario(scenario, options, pacer, onRequestStart) {
   const result = baseResult(scenario);
   const history = [];
   const assertionFailures = [];
@@ -336,7 +337,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       return result;
     }
     const copyValidation = validateAnswerCopy(result.answer);
-    result.assertions.plainLanguageCopy = copyValidation.passed;
+    result.assertions[`turn${turnNumber}PlainLanguageCopy`] = copyValidation.passed;
     // A guard that empties a section leaves a label with nothing under it, and
     // a match answer can lose its headline 1X2 line while every content check
     // still passes.
@@ -344,7 +345,9 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       expectHeadlineOneXTwo: grounding?.kind === "match"
         && Boolean(turn.expectHeadlineOneXTwo ?? scenario.expectHeadlineOneXTwo),
     });
-    Object.assign(result.assertions, structureValidation.assertions);
+    for (const [name, passed] of Object.entries(structureValidation.assertions)) {
+      result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+    }
     // `unavailable` is the same outcome as `abstain` -- both mean zero
     // supported claims and nothing established -- and the product pairs them
     // everywhere it branches on verification. The exemption was written for
@@ -372,7 +375,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
     }
     const draftValidation = validateNoDraftLeak(result.answer);
-    result.assertions.noDraftLeak = draftValidation.passed;
+    result.assertions[`turn${turnNumber}NoDraftLeak`] = draftValidation.passed;
     assertionFailures.push(...structureValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
@@ -1195,7 +1198,9 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(`chat battle test failed: ${error.message}`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(`chat battle test failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
