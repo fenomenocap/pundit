@@ -56,10 +56,12 @@ export function validateCompleteOneXTwoMarket(legs: readonly OneXTwoMarketLeg[])
   if (byOutcome.size !== OUTCOMES.length) return { valid: false, reason: "duplicate-leg" };
   if (OUTCOMES.some((outcome) => !byOutcome.has(outcome))) return { valid: false, reason: "missing-leg" };
 
-  const sources = new Set(legs.map((leg) => leg.source.trim()).filter(Boolean));
-  if (sources.size !== 1) return { valid: false, reason: "mixed-source" };
-  const observedTimes = new Set(legs.map((leg) => leg.observedAt.trim()).filter(Boolean));
-  if (observedTimes.size !== 1) return { valid: false, reason: "mixed-observation-time" };
+  const sources = new Set(legs.map((leg) => typeof leg.source === "string" ? leg.source.trim() : ""));
+  if (sources.size !== 1 || sources.has("")) return { valid: false, reason: "mixed-source" };
+  const observedTimes = new Set(legs.map((leg) => typeof leg.observedAt === "string" ? leg.observedAt.trim() : ""));
+  if (observedTimes.size !== 1 || [...observedTimes].some((value) => !Number.isFinite(Date.parse(value)))) {
+    return { valid: false, reason: "mixed-observation-time" };
+  }
 
   const implied = {} as Record<OneXTwoOutcome, number>;
   const odds = {} as Record<OneXTwoOutcome, number>;

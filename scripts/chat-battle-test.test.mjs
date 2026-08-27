@@ -1450,6 +1450,35 @@ test("schema-16 complete market validator enforces source, time, legs and arithm
   assert.equal(validateOneXTwoMarket([{ ...legs[0], observedAt: "2026-08-13T10:01:00Z" }, legs[1], legs[2]]).reason, "mixed-observation-time");
 });
 
+test("market certification requires usable provenance on every leg", () => {
+  const legs = ["home", "draw", "away"].map((outcome) => ({
+    outcome, decimalOdds: 3, source: "Book", observedAt: "2026-08-13T10:00:00Z",
+  }));
+  for (const [field, value, reason] of [
+    ["source", "", "mixed-source"],
+    ["source", "   ", "mixed-source"],
+    ["source", null, "mixed-source"],
+    ["observedAt", "", "mixed-observation-time"],
+    ["observedAt", "   ", "mixed-observation-time"],
+    ["observedAt", "not-a-date", "mixed-observation-time"],
+    ["observedAt", null, "mixed-observation-time"],
+  ]) {
+    assert.deepEqual(validateOneXTwoMarket([
+      { ...legs[0], [field]: value }, legs[1], legs[2],
+    ]), { passed: false, reason }, `${field} = ${JSON.stringify(value)}`);
+  }
+  assert.deepEqual(validateOneXTwoMarket(legs.map((leg) => ({
+    ...leg, observedAt: "not-a-date",
+  }))), { passed: false, reason: "mixed-observation-time" });
+  const valid = validateOneXTwoMarket([
+    { ...legs[0], source: " Book ", observedAt: ` ${legs[0].observedAt} ` },
+    legs[1], legs[2],
+  ]);
+  assert.equal(valid.passed, true);
+  assert.equal(valid.market.source, "Book");
+  assert.equal(valid.market.observedAt, legs[0].observedAt);
+});
+
 test("runtime-helper scenarios execute the current API correctness module, not canned prose", async () => {
   const helpers = loadApiRuntimeCorrectnessHelpers(path.resolve(import.meta.dirname, ".."));
   const config = JSON.parse(await readFile(

@@ -573,10 +573,12 @@ export function validateOneXTwoMarket(legs) {
   if (byOutcome.size !== outcomes.length || outcomes.some((outcome) => !byOutcome.has(outcome))) {
     return { passed: false, reason: "missing-or-duplicate-leg" };
   }
-  const sources = new Set(legs.map((leg) => leg?.source).filter(Boolean));
-  if (sources.size !== 1) return { passed: false, reason: "mixed-source" };
-  const observedTimes = new Set(legs.map((leg) => leg?.observedAt).filter(validIsoDate));
-  if (observedTimes.size !== 1) return { passed: false, reason: "mixed-observation-time" };
+  const sources = new Set(legs.map((leg) => typeof leg?.source === "string" ? leg.source.trim() : ""));
+  if (sources.size !== 1 || sources.has("")) return { passed: false, reason: "mixed-source" };
+  const observedTimes = new Set(legs.map((leg) => typeof leg?.observedAt === "string" ? leg.observedAt.trim() : ""));
+  if (observedTimes.size !== 1 || [...observedTimes].some((value) => !validIsoDate(value))) {
+    return { passed: false, reason: "mixed-observation-time" };
+  }
   const implied = Object.fromEntries(outcomes.map((outcome) => {
     const odds = byOutcome.get(outcome)?.decimalOdds;
     return [outcome, Number.isFinite(odds) && odds > 1 ? 1 / odds : null];

@@ -39,6 +39,36 @@ describe("odds correctness", () => {
     expect(validateCompleteOneXTwoMarket([{ ...legs[0], observedAt: "later" }, legs[1], legs[2]])).toEqual({ valid: false, reason: "mixed-observation-time" });
   });
 
+  it.each([
+    ["source", "", "mixed-source"],
+    ["source", "   ", "mixed-source"],
+    ["observedAt", "", "mixed-observation-time"],
+    ["observedAt", "   ", "mixed-observation-time"],
+    ["observedAt", "not-a-date", "mixed-observation-time"],
+  ])("rejects incomplete per-leg provenance: %s = %j", (field, value, reason) => {
+    expect(validateCompleteOneXTwoMarket([
+      { ...legs[0], [field]: value }, legs[1], legs[2],
+    ])).toEqual({ valid: false, reason });
+  });
+
+  it("rejects a shared invalid timestamp instead of treating it as one observation", () => {
+    expect(validateCompleteOneXTwoMarket(legs.map((leg) => ({
+      ...leg, observedAt: "not-a-date",
+    })))).toEqual({ valid: false, reason: "mixed-observation-time" });
+  });
+
+  it("normalizes surrounding whitespace without dropping any leg's provenance", () => {
+    const result = validateCompleteOneXTwoMarket([
+      { ...legs[0], source: " Book ", observedAt: ` ${legs[0].observedAt} ` },
+      legs[1], legs[2],
+    ]);
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      expect(result.market.source).toBe("Book");
+      expect(result.market.observedAt).toBe(legs[0].observedAt);
+    }
+  });
+
   it("enforces the +/-0.2 percentage-point total tolerance", () => {
     expect(probabilityTotalWithinTolerance([0.334, 0.333, 0.333])).toBe(true);
     expect(probabilityTotalWithinTolerance([0.335, 0.334, 0.334])).toBe(false);
