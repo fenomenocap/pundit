@@ -23,7 +23,10 @@ import {
   FootballStanding,
 } from "./football-data";
 import { getActiveFixtures } from "./active-fixtures";
-import { getCachedFixtureMarketOdds } from "./model-market-odds";
+import {
+  getCachedFixtureMarketOdds,
+  MARKET_OBSERVATION_MAX_AGE_MS,
+} from "./model-market-odds";
 import { clubRatingsAreCurrent, getCachedClubRatings } from "./club-ratings";
 import {
   searchWeb,
@@ -2313,14 +2316,6 @@ export function sanitizeFootballGeometry(answer: string): string {
     ? `${sanitized}\n\n${correction}`
     : sanitized;
 }
-
-/**
- * How stale a market observation may be and still be quotable. The collectors
- * refresh on a 30-minute cadence, so six hours is many missed cycles -- long
- * enough to survive a transient source outage, short enough that a price the
- * user is shown is still recognisably the current one.
- */
-const MARKET_OBSERVATION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 /**
  * The server-owned 1X2 markets in `grounding`, as leg sets for

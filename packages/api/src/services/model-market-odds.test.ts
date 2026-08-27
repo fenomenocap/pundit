@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ModelFixture, getModelFixtureKey } from "./model-data";
 import {
   MARKET_ODDS_COLD_RETRY_MS,
+  MARKET_OBSERVATION_MAX_AGE_MS,
   MARKET_ODDS_REFRESH_INTERVAL_MS,
   buildLedgerMarketComparisons,
   changedMarketSourceWarnings,
@@ -102,9 +103,16 @@ describe("marketOddsFixtureKey", () => {
 
 describe("publicModelFixture", () => {
   const observedAt = "2026-08-27T11:15:32.945Z";
+  const now = Date.parse("2026-08-27T12:00:00.000Z");
+  const legacyModel: ModelFixture = {
+    ...model,
+    stakePHome: 0.61,
+    stakePDraw: 0.22,
+    stakePAway: 0.17,
+  };
 
   it("leaves stake fields null and oddsSources empty when the cache has nothing", () => {
-    const published = publicModelFixture(model, null);
+    const published = publicModelFixture(model, null, now);
     expect(published.stakePHome).toBeNull();
     expect(published.oddsSources).toEqual([]);
     expect(published).not.toHaveProperty("scorelines");
@@ -116,7 +124,7 @@ describe("publicModelFixture", () => {
       stake: { pHome: 0.61, pDraw: 0.22, pAway: 0.17 },
       kalshi: { pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
       polymarket: { pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
-    });
+    }, now);
     expect(published.stakePHome).toBe(0.61);
     expect(published.stakePDraw).toBe(0.22);
     expect(published.stakePAway).toBe(0.17);
@@ -132,10 +140,54 @@ describe("publicModelFixture", () => {
       stake: { pHome: 0.61, pDraw: Number.NaN, pAway: 0.17 },
       kalshi: null,
       polymarket: { pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
-    });
+    }, now);
     expect(published.stakePHome).toBeNull();
     expect(published.oddsSources).toEqual([
       { source: "polymarket", observedAt, pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
+    ]);
+  });
+
+  it("does not resurrect legacy stake fields when the cache has no current Stake row", () => {
+    const published = publicModelFixture(legacyModel, null, now);
+    expect(published.stakePHome).toBeNull();
+    expect(published.stakePDraw).toBeNull();
+    expect(published.stakePAway).toBeNull();
+    expect(published.oddsSources).toEqual([]);
+  });
+
+  it.each([
+    ["an invalid timestamp", "not-a-timestamp"],
+    [
+      "an observation older than six hours",
+      new Date(now - MARKET_OBSERVATION_MAX_AGE_MS - 1).toISOString(),
+    ],
+    [
+      "an observation more than six hours in the future",
+      new Date(now + MARKET_OBSERVATION_MAX_AGE_MS + 1).toISOString(),
+    ],
+  ])("omits %s and does not resurrect legacy Stake fields", (_label, expiredObservedAt) => {
+    const published = publicModelFixture(legacyModel, {
+      observedAt: expiredObservedAt,
+      stake: { pHome: 0.61, pDraw: 0.22, pAway: 0.17 },
+      kalshi: { pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
+      polymarket: { pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
+    }, now);
+    expect(published.stakePHome).toBeNull();
+    expect(published.stakePDraw).toBeNull();
+    expect(published.stakePAway).toBeNull();
+    expect(published.oddsSources).toEqual([]);
+  });
+
+  it("accepts an observation exactly at the six-hour boundary", () => {
+    const observedAt = new Date(now - MARKET_OBSERVATION_MAX_AGE_MS).toISOString();
+    const published = publicModelFixture(model, {
+      observedAt,
+      stake: null,
+      kalshi: { pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
+      polymarket: null,
+    }, now);
+    expect(published.oddsSources).toEqual([
+      { source: "kalshi", observedAt, pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
     ]);
   });
 });

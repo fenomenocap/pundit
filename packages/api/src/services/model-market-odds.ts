@@ -17,6 +17,13 @@ import {
 export const MARKET_ODDS_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 export const MARKET_ODDS_COLD_RETRY_MS = 2 * 60 * 1000;
 
+/**
+ * How stale a market observation may be and still be shown in a public
+ * projection or quoted in chat. The collectors refresh every 30 minutes, so
+ * six hours allows transient source outages without presenting an old price.
+ */
+export const MARKET_OBSERVATION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
 export interface ThreeWayOdds {
   pHome: number;
   pDraw: number;
@@ -86,39 +93,53 @@ function completeThreeWay(odds: ThreeWayOdds | null): ThreeWayOdds | null {
   return odds;
 }
 
+function isFreshObservation(observedAt: string, now: number): boolean {
+  const observed = Date.parse(observedAt);
+  return Number.isFinite(now)
+    && Number.isFinite(observed)
+    && Math.abs(now - observed) <= MARKET_OBSERVATION_MAX_AGE_MS;
+}
+
 /**
  * Join the 30-minute market cache onto a model row at read time.
- * The hourly model cache stays model-only; Stake stays on the existing
- * stakeP* fields; Kalshi/Polymarket ride `oddsSources`, matching chat.
- * Incomplete legs are dropped rather than shown as a partial 1X2.
+ * The hourly model cache stays model-only; a current complete Stake row fills
+ * the existing stakeP* fields; Kalshi/Polymarket ride `oddsSources`, matching
+ * chat. Invalid, incomplete, and expired rows are omitted.
  */
 export function publicModelFixture(
   fixture: ModelFixture,
-  markets: TimestampedFixtureMarketOdds | null
+  markets: TimestampedFixtureMarketOdds | null,
+  now = Date.now()
 ): PublicModelFixture {
   const { scorelines: _scorelines, ...rest } = fixture;
-  const stake = completeThreeWay(markets?.stake ?? null);
+  const currentMarkets = markets && isFreshObservation(markets.observedAt, now)
+    ? markets
+    : null;
+  const stake = completeThreeWay(currentMarkets?.stake ?? null);
   const oddsSources: PublicModelOddsSource[] = [];
-  const kalshi = completeThreeWay(markets?.kalshi ?? null);
-  const polymarket = completeThreeWay(markets?.polymarket ?? null);
-  if (kalshi && markets) {
-    oddsSources.push({ source: "kalshi", observedAt: markets.observedAt, ...kalshi });
+  const kalshi = completeThreeWay(currentMarkets?.kalshi ?? null);
+  const polymarket = completeThreeWay(currentMarkets?.polymarket ?? null);
+  if (kalshi && currentMarkets) {
+    oddsSources.push({ source: "kalshi", observedAt: currentMarkets.observedAt, ...kalshi });
   }
-  if (polymarket && markets) {
-    oddsSources.push({ source: "polymarket", observedAt: markets.observedAt, ...polymarket });
+  if (polymarket && currentMarkets) {
+    oddsSources.push({ source: "polymarket", observedAt: currentMarkets.observedAt, ...polymarket });
   }
   return {
     ...rest,
-    stakePHome: stake?.pHome ?? fixture.stakePHome,
-    stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
-    stakePAway: stake?.pAway ?? fixture.stakePAway,
+    stakePHome: stake?.pHome ?? null,
+    stakePDraw: stake?.pDraw ?? null,
+    stakePAway: stake?.pAway ?? null,
     oddsSources,
   };
 }
 
-export function publicModelFixtures(fixtures: ModelFixture[]): PublicModelFixture[] {
+export function publicModelFixtures(
+  fixtures: ModelFixture[],
+  now = Date.now()
+): PublicModelFixture[] {
   return fixtures.map((fixture) =>
-    publicModelFixture(fixture, getCachedFixtureMarketOdds(fixture))
+    publicModelFixture(fixture, getCachedFixtureMarketOdds(fixture), now)
   );
 }
 
