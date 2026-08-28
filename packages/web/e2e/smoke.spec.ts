@@ -1,4 +1,102 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+type FixtureCompetitionMetadataTestControl = {
+  release: (call: number, outcome: "resolve" | "reject") => void;
+};
+
+type FixtureCompetitionMetadataTestWindow = Window & {
+  __fixtureCompetitionMetadataTestControl?: FixtureCompetitionMetadataTestControl;
+};
+
+async function installFixtureCompetitionMetadataControl(
+  page: Page,
+  options: {
+    rejectCalls?: number[];
+    holdCalls?: number[];
+  } = {},
+): Promise<void> {
+  await page.addInitScript(
+    ({ rejectCalls = [], holdCalls = [] }) => {
+      const isCompetitionPayload = (value: unknown): value is { competitions: unknown[] } => (
+        typeof value === "object"
+        && value !== null
+        && !Array.isArray(value)
+        && Array.isArray((value as { competitions?: unknown }).competitions)
+      );
+      const pending = new Map<number, (outcome: "resolve" | "reject") => void>();
+      let callCount = 0;
+      const control: FixtureCompetitionMetadataTestControl = {
+        release(call, outcome) {
+          const release = pending.get(call);
+          if (!release) throw new Error("Fixture competition metadata call " + call + " is not held.");
+          pending.delete(call);
+          release(outcome);
+        },
+      };
+      (window as FixtureCompetitionMetadataTestWindow)
+        .__fixtureCompetitionMetadataTestControl = control;
+
+      const promisePrototype = Promise.prototype as unknown as {
+        then: (
+          onFulfilled?: (value: unknown) => unknown,
+          onRejected?: (reason: unknown) => unknown,
+        ) => Promise<unknown>;
+      };
+      const originalThen = promisePrototype.then;
+      promisePrototype.then = function (
+        this: Promise<unknown>,
+        onFulfilled,
+        onRejected,
+      ) {
+        return originalThen.call(
+          this,
+          (value: unknown) => {
+            if (!isCompetitionPayload(value)) {
+              return onFulfilled ? onFulfilled(value) : value;
+            }
+            const call = ++callCount;
+            const finish = (outcome: "resolve" | "reject") => {
+              if (outcome === "reject") {
+                const reason = new Error(
+                  "Synthetic fixture competition metadata failure for call " + call,
+                );
+                return onRejected ? onRejected(reason) : Promise.reject(reason);
+              }
+              return onFulfilled ? onFulfilled(value) : value;
+            };
+            if (holdCalls.includes(call)) {
+              return new Promise<unknown>((resolve, reject) => {
+                pending.set(call, (outcome) => {
+                  try {
+                    resolve(finish(outcome));
+                  } catch (reason) {
+                    reject(reason);
+                  }
+                });
+              });
+            }
+            return finish(rejectCalls.includes(call) ? "reject" : "resolve");
+          },
+          onRejected,
+        );
+      };
+    },
+    options,
+  );
+}
+
+async function releaseFixtureCompetitionMetadata(
+  page: Page,
+  call: number,
+  outcome: "resolve" | "reject",
+): Promise<void> {
+  await page.evaluate(({ callNumber, result }) => {
+    const control = (window as FixtureCompetitionMetadataTestWindow)
+      .__fixtureCompetitionMetadataTestControl;
+    if (!control) throw new Error("Fixture competition metadata test control is unavailable.");
+    control.release(callNumber, result);
+  }, { callNumber: call, result: outcome });
+}
 
 test.describe("smoke", () => {
   test("homepage", async ({ page }) => {
@@ -14,6 +112,41 @@ test.describe("smoke", () => {
     await expect(page.getByRole("button", { name: "All" })).toBeVisible();
     await expect(page.locator("span.truncate", { hasText: "Arsenal" }).first()).toBeVisible();
   });
+
+  test("fixtures competition metadata failure keeps rows usable and Retry recovers", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await installFixtureCompetitionMetadataControl(page, { rejectCalls: [1] });
+    await page.goto("/fixtures");
+
+    const warning = page.getByRole("alert").filter({
+      hasText: "Competition filters unavailable. Showing all fixtures.",
+    });
+    await expect(warning).toBeVisible();
+    await expect(page.getByText("Riga FC", { exact: true }).first()).toBeVisible();
+    await expect(warning.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+
+    await warning.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Premier League", exact: true })).toBeVisible();
+    await expect(warning).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
+  });
+
+  for (const outcome of ["resolve", "reject"] as const) {
+    test("fixtures competition metadata " + outcome + " after unmount is handled", async ({ page }) => {
+      const pageErrors: string[] = [];
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      await installFixtureCompetitionMetadataControl(page, { holdCalls: [1] });
+      await page.goto("/fixtures");
+      await expect(page.getByText("Riga FC", { exact: true }).first()).toBeVisible();
+
+      await page.locator('a[href="/model"]').first().click();
+      await expect(page.getByRole("heading", { name: "Club season model" })).toBeVisible();
+      await releaseFixtureCompetitionMetadata(page, 1, outcome);
+      await page.waitForTimeout(0);
+      expect(pageErrors).toEqual([]);
+    });
+  }
 
   test("model", async ({ page }) => {
     await page.goto("/model");

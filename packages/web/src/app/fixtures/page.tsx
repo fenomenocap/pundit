@@ -331,14 +331,32 @@ function GroupStandingsTable({
 
 export default function FixturesPage() {
   const [competitions, setCompetitions] = useState<CompetitionResponse[]>([]);
+  const [competitionError, setCompetitionError] = useState(false);
+  const [competitionRetry, setCompetitionRetry] = useState(0);
   const [selectedCompetition, setSelectedCompetition] = useState(ALL_TAB);
   const { matches, standings, lastUpdated, error, loading, sinceLast, reload } =
     useFixturesData(selectedCompetition);
 
   useEffect(() => {
-    void fetchCompetitions().then((payload) => {
-      setCompetitions(payload.competitions.filter((competition) => competition.enabled));
-    });
+    let active = true;
+    void fetchCompetitions()
+      .then((payload) => {
+        if (!active) return;
+        setCompetitions(payload.competitions.filter((competition) => competition.enabled));
+        setCompetitionError(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setCompetitionError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [competitionRetry]);
+
+  const retryCompetitions = useCallback(() => {
+    setCompetitionError(false);
+    setCompetitionRetry((retry) => retry + 1);
   }, []);
 
   const enabledTabs = useMemo(
@@ -394,6 +412,12 @@ export default function FixturesPage() {
         ))}
       </div>
 
+      {competitionError && (
+        <ErrorBanner
+          message="Competition filters unavailable. Showing all fixtures."
+          onRetry={retryCompetitions}
+        />
+      )}
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
       {loading ? (
