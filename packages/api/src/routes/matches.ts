@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { COMPETITIONS, getEnabledCompetitions } from "../config/competitions";
+import { parseOptionalCompetition } from "../lib/competition-query";
 import { getActiveFixtures } from "../services/active-fixtures";
 import { getCachedMatches, getCachedMatchesForCompetition } from "../services/football-data";
 
@@ -21,12 +22,6 @@ function serializeMatch(match: ReturnType<typeof getCachedMatches>["upcoming"][n
   };
 }
 
-function resolveCompetitionId(req: Request): string | null {
-  const raw = req.query.competition;
-  if (typeof raw !== "string" || raw.trim() === "") return null;
-  return raw.trim();
-}
-
 function matchesForRequest(req: Request): {
   upcoming: ReturnType<typeof serializeMatch>[];
   recent: ReturnType<typeof serializeMatch>[];
@@ -34,8 +29,8 @@ function matchesForRequest(req: Request): {
   lastUpdated: string | null;
   error: string | null;
 } {
+  const competitionId = parseOptionalCompetition(req.query.competition);
   const cached = getCachedMatches();
-  const competitionId = resolveCompetitionId(req);
   if (!competitionId) {
     return {
       upcoming: cached.upcoming.map(serializeMatch),

@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { parseOptionalCompetition } from "../lib/competition-query";
 import { getCachedModelData } from "../services/model-data";
 import { clubRatingsAreCurrent } from "../services/club-ratings";
 import { publicModelFixtures } from "../services/model-market-odds";
@@ -17,6 +18,7 @@ router.get("/wc", (_req: Request, res: Response) => {
 
 router.get("/active", (req: Request, res: Response, next: NextFunction) => {
   try {
+    const competition = parseOptionalCompetition(req.query.competition);
     if (!clubRatingsAreCurrent()) {
       return res.status(503).json({
         error: "Pundit's match model is temporarily unavailable.",
@@ -24,9 +26,6 @@ router.get("/active", (req: Request, res: Response, next: NextFunction) => {
       });
     }
     const cached = getCachedModelData();
-    const competition = typeof req.query.competition === "string"
-      ? req.query.competition.trim()
-      : undefined;
     const fixtures = competition
       ? cached.fixtures.filter((fixture) => fixture.competitionId === competition)
       : cached.fixtures;
@@ -44,6 +43,7 @@ router.get("/active", (req: Request, res: Response, next: NextFunction) => {
 
 router.get("/fixtures", (req: Request, res: Response, next: NextFunction) => {
   try {
+    const competition = parseOptionalCompetition(req.query.competition);
     if (!clubRatingsAreCurrent()) {
       return res.status(503).json({
         error: "Pundit's match model is temporarily unavailable.",
@@ -51,9 +51,6 @@ router.get("/fixtures", (req: Request, res: Response, next: NextFunction) => {
       });
     }
     const cached = getCachedModelData();
-    const competition = typeof req.query.competition === "string"
-      ? req.query.competition.trim()
-      : undefined;
     const fixtures = competition
       ? cached.fixtures.filter((fixture) => fixture.competitionId === competition)
       : cached.fixtures;
