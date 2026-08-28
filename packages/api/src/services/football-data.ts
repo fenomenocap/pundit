@@ -380,9 +380,10 @@ function statusFromState(state: string, statusName = ""): string {
 }
 
 function parseScore(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && value.trim() === "") return null;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 interface ParseEventContext {
@@ -431,7 +432,7 @@ export function parseEvent(e: any, context: ParseEventContext): FootballMatch {
         ? false
         : null,
     score: completed || state === "in" || hasScore
-      ? { home: homeScore ?? 0, away: awayScore ?? 0 }
+      ? { home: homeScore, away: awayScore }
       : null,
     winner: completed
       ? home?.winner

@@ -15,6 +15,7 @@ import {
   updateClubSeasonSnapshots,
 } from "./club-season-snapshots";
 import type { ModelFixture } from "./model-data";
+import { parseEvent } from "./football-data";
 import { ELO_CHAMPION_CONFIG } from "./model-contributors";
 
 const originalDataDir = process.env.PUNDIT_DATA_DIR;
@@ -445,6 +446,22 @@ describe("club-season snapshots", () => {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, `${JSON.stringify(ledger)}\n`, "utf8");
     resetClubSeasonSnapshotState();
+    const incomplete = parseEvent({
+      id: "101",
+      date: "2026-08-15T14:00:00.000Z",
+      competitions: [{
+        status: { type: { state: "post", completed: true } },
+        competitors: [
+          { homeAway: "home", team: { displayName: "Arsenal" }, score: "2" },
+          { homeAway: "away", team: { displayName: "Liverpool" } },
+        ],
+      }],
+    }, { competitionId: "eng.1", competitionName: "Premier League" });
+    const before = fs.readFileSync(target, "utf8");
+    const pending = updateClubSeasonSnapshots([incomplete], [], new Date("2026-08-15T15:59:00.000Z"));
+    expect(pending.fixtures.every((fixture) => !fixture.result)).toBe(true);
+    expect(pending.metrics.fixtureCount).toBe(0);
+    expect(fs.readFileSync(target, "utf8")).toBe(before);
     updateClubSeasonSnapshots([
       sampleMatch({ status: "FINISHED", score: { home: 2, away: 1 } }),
     ], [], new Date("2026-08-15T16:00:00.000Z"));
@@ -452,6 +469,40 @@ describe("club-season snapshots", () => {
     expect(completed.fixtures).toHaveLength(2);
     expect(completed.fixtures.every((fixture) => fixture.result?.winner === "home")).toBe(true);
     expect(new Set(completed.fixtures.map((fixture) => fixture.pHome))).toEqual(new Set([0.42, 0.5]));
+  });
+
+  it.each([
+    { name: "absent", score: null },
+    { name: "missing home", score: { home: null, away: 0 } },
+    { name: "missing away", score: { home: 2, away: null } },
+    { name: "negative", score: { home: -1, away: 0 } },
+    { name: "fractional", score: { home: 1.5, away: 0 } },
+    { name: "NaN", score: { home: NaN, away: 0 } },
+    { name: "infinite", score: { home: 0, away: Infinity } },
+    { name: "unsafe integer", score: { home: 0, away: Number.MAX_SAFE_INTEGER + 1 } },
+  ])("waits for valid result evidence after an $name score without changing the forecast", ({ score }) => {
+    useTempDataDir();
+    const sealed = seedClubSeasonSnapshotState([], [sampleModelFixture()], "2026-08-15T13:31:00.000Z");
+    const target = path.join(tempDataDir!, "evaluation", "club-season.json");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, `${JSON.stringify(sealed)}\n`, "utf8");
+    resetClubSeasonSnapshotState();
+    const before = fs.readFileSync(target, "utf8");
+    const pending = updateClubSeasonSnapshots([
+      sampleMatch({ status: "FINISHED", score }),
+    ], [], new Date("2026-08-15T16:00:00.000Z"));
+    expect(pending.fixtures[0].result).toBeNull();
+    expect(pending.metrics.fixtureCount).toBe(0);
+    expect(fs.readFileSync(target, "utf8")).toBe(before);
+
+    updateClubSeasonSnapshots([
+      sampleMatch({ status: "FINISHED", score: { home: 0, away: 2 } }),
+    ], [], new Date("2026-08-15T16:01:00.000Z"));
+    const completed = loadClubSeasonEvaluationArtifact();
+    expect(completed.fixtures[0]).toEqual({
+      ...pending.fixtures[0], result: { homeScore: 0, awayScore: 2, winner: "away" },
+    });
+    expect(completed.metrics.fixtureCount).toBe(1);
   });
 });
 

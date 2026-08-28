@@ -116,6 +116,64 @@ describe("ESPN model inputs", () => {
     });
   });
 
+  it.each(["in", "post"])("does not invent scores for an ESPN event in state %s", (state) => {
+    const match = parseEvent({
+      id: "6",
+      date: "2026-08-15T14:00:00.000Z",
+      competitions: [{
+        status: { type: { state, completed: state === "post" } },
+        competitors: [
+          { homeAway: "home", team: { displayName: "Arsenal" } },
+          { homeAway: "away", team: { displayName: "Liverpool" } },
+        ],
+      }],
+    }, { competitionId: "eng.1", competitionName: "Premier League" });
+    expect(match.score).toEqual({ home: null, away: null });
+  });
+
+  it.each([
+    { name: "missing", raw: undefined },
+    { name: "null", raw: null },
+    { name: "empty", raw: "" },
+    { name: "whitespace", raw: "   " },
+    { name: "text", raw: "unknown" },
+    { name: "boolean", raw: true },
+    { name: "array", raw: [] },
+    { name: "object", raw: {} },
+    { name: "negative", raw: -1 },
+    { name: "fractional", raw: 1.5 },
+    { name: "infinite", raw: Infinity },
+    { name: "unsafe integer", raw: Number.MAX_SAFE_INTEGER + 1 },
+  ])("preserves an unavailable $name score without losing the known opponent score", ({ raw }) => {
+    const match = parseEvent({
+      id: "6",
+      date: "2026-08-15T14:00:00.000Z",
+      competitions: [{
+        status: { type: { state: "post", completed: true } },
+        competitors: [
+          { homeAway: "home", team: { displayName: "Arsenal" }, score: raw },
+          { homeAway: "away", team: { displayName: "Liverpool" }, score: "2" },
+        ],
+      }],
+    }, { competitionId: "eng.1", competitionName: "Premier League" });
+    expect(match.score).toEqual({ home: null, away: 2 });
+  });
+
+  it.each([0, "0", 2, " 2 "])("preserves valid numeric and string scores including %s", (raw) => {
+    const match = parseEvent({
+      id: "6",
+      date: "2026-08-15T14:00:00.000Z",
+      competitions: [{
+        status: { type: { state: "post", completed: true } },
+        competitors: [
+          { homeAway: "home", team: { displayName: "Arsenal" }, score: raw },
+          { homeAway: "away", team: { displayName: "Liverpool" }, score: 0 },
+        ],
+      }],
+    }, { competitionId: "eng.1", competitionName: "Premier League" });
+    expect(match.score).toEqual({ home: Number(raw), away: 0 });
+  });
+
   it.each([
     ["STATUS_CANCELED", "CANCELLED"],
     ["STATUS_POSTPONED", "POSTPONED"],

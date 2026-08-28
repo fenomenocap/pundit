@@ -165,6 +165,10 @@ function actualOutcome(homeScore: number, awayScore: number): "home" | "away" | 
   return "draw";
 }
 
+function isResultScore(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
 function predictedOutcome(pHome: number, pDraw: number, pAway: number): "home" | "away" | "draw" {
   if (pHome >= pDraw && pHome >= pAway) return "home";
   if (pDraw >= pHome && pDraw >= pAway) return "draw";
@@ -661,9 +665,11 @@ export function updateClubSeasonSnapshots(
     const matching = fixturesWithEvidence.filter(
       (fixture) => fixtureKey(fixture.competitionId, fixture.fixtureId) === key
     );
+    const homeScore = match.score?.home;
+    const awayScore = match.score?.away;
     if (match.status === "FINISHED"
-      && match.score?.home !== null
-      && match.score?.away !== null
+      && isResultScore(homeScore)
+      && isResultScore(awayScore)
       && matching.some((fixture) => !fixture.result)) {
       fixturesWithEvidence = fixturesWithEvidence.map((fixture) =>
         fixtureKey(fixture.competitionId, fixture.fixtureId) !== key || fixture.result
@@ -671,9 +677,9 @@ export function updateClubSeasonSnapshots(
           : {
               ...fixture,
               result: {
-                homeScore: match.score!.home!,
-                awayScore: match.score!.away!,
-                winner: actualOutcome(match.score!.home!, match.score!.away!),
+                homeScore,
+                awayScore,
+                winner: actualOutcome(homeScore, awayScore),
               },
             }
       );
