@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import express from "express";
+import { IncomingMessage, ServerResponse } from "node:http";
+import type { Socket } from "node:net";
+import { Duplex } from "node:stream";
 import type { NextFunction, Request, Response } from "express";
-import {
+import * as askService from "../services/ask";
+import { AppError, errorHandler } from "../middleware";
+import askRouter, {
   askRateLimitConfig,
   askRateLimitKey,
   createAskRateLimiter,
@@ -10,6 +16,264 @@ import {
   parseTeamContext,
   resolveAskRateLimitConfig,
 } from "./ask";
+
+const successfulAnswer = {
+  answer: "A completed answer.",
+  grounding: null,
+  verification: { status: "not-required" as const, supportedClaimCount: 0, removedClaimCount: 0 },
+};
+
+interface JsonAskInvocation {
+  request: IncomingMessage;
+  response: ServerResponse;
+  socket: Duplex;
+  finished: Promise<void>;
+  output: () => string;
+}
+
+async function startJsonAsk(body: Record<string, unknown>): Promise<JsonAskInvocation> {
+  const chunks: Buffer[] = [];
+  const socket = new Duplex({
+    read() {},
+    write(chunk, _encoding, callback) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      callback();
+    },
+  });
+  Object.defineProperty(socket, "remoteAddress", { value: "127.0.0.1" });
+  const request = new IncomingMessage(socket as unknown as Socket);
+  request.method = "POST";
+  request.url = "/";
+  request.headers = { host: "localhost" };
+  (request as Request).body = body;
+  const response = new ServerResponse(request);
+  response.assignSocket(socket as unknown as Socket);
+  const finished = new Promise<void>((resolve, reject) => {
+    response.once("finish", resolve);
+    response.once("error", reject);
+  });
+  const app = express();
+  app.use(askRouter);
+  app.use(errorHandler);
+  app(request, response);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  return {
+    request,
+    response,
+    socket,
+    finished,
+    output: () => Buffer.concat(chunks).toString("utf8"),
+  };
+}
+
+function responseBody(invocation: JsonAskInvocation): Record<string, unknown> {
+  const raw = invocation.output();
+  return JSON.parse(raw.slice(raw.indexOf("\r\n\r\n") + 4)) as Record<string, unknown>;
+}
+function expectJsonAskCleanup(invocation: JsonAskInvocation): void {
+  expect(invocation.request.listenerCount("aborted")).toBe(0);
+  expect(invocation.response.listenerCount("close")).toBe(0);
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("JSON ask request deadline", () => {
+  it("returns the timeout envelope when the route deadline aborts generation", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let signal!: AbortSignal;
+    vi.spyOn(askService, "answerQuestion").mockImplementation(async (
+      _question, _history, _teams, requestSignal
+    ) => {
+      signal = requestSignal!;
+      return new Promise<never>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new AppError(502, "Analysis generation failed. Please try again.")), { once: true });
+      });
+    });
+
+    const invocation = await startJsonAsk({ question: "Will this time out?", stream: false });
+    try {
+      await vi.advanceTimersByTimeAsync(90_000);
+      await invocation.finished;
+      expect(signal.aborted).toBe(true);
+      expect(invocation.response.statusCode).toBe(504);
+      expect(responseBody(invocation)).toEqual({
+        error: "Analysis service timed out. Please try again.",
+      });
+      expectJsonAskCleanup(invocation);
+    } finally {
+      if (!invocation.response.writableEnded) invocation.response.end();
+      invocation.socket.destroy();
+    }
+  });
+
+  it("rejects a successful provider result that arrives after the deadline", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let signal!: AbortSignal;
+    let resolveProvider!: (value: typeof successfulAnswer) => void;
+    vi.spyOn(askService, "answerQuestion").mockImplementation(async (
+      _question, _history, _teams, requestSignal
+    ) => {
+      signal = requestSignal!;
+      return new Promise<typeof successfulAnswer>((resolve) => { resolveProvider = resolve; });
+    });
+
+    const invocation = await startJsonAsk({ question: "Return late.", stream: false });
+    try {
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(signal.aborted).toBe(true);
+      resolveProvider(successfulAnswer);
+      await invocation.finished;
+      expect(invocation.response.statusCode).toBe(504);
+      expect(responseBody(invocation)).toEqual({
+        error: "Analysis service timed out. Please try again.",
+      });
+      expectJsonAskCleanup(invocation);
+    } finally {
+      if (!invocation.response.writableEnded) invocation.response.end();
+      invocation.socket.destroy();
+    }
+  });
+
+  it("lets a client disconnect win over a later deadline", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let signal!: AbortSignal;
+    let resolveProvider!: (value: typeof successfulAnswer) => void;
+    vi.spyOn(askService, "answerQuestion").mockImplementation(async (
+      _question, _history, _teams, requestSignal
+    ) => {
+      signal = requestSignal!;
+      return new Promise<typeof successfulAnswer>((resolve) => { resolveProvider = resolve; });
+    });
+
+    const invocation = await startJsonAsk({ question: "Disconnect first.", stream: false });
+    try {
+      await Promise.resolve();
+      invocation.response.emit("close");
+      expect(signal.aborted).toBe(true);
+      await vi.advanceTimersByTimeAsync(90_000);
+      resolveProvider(successfulAnswer);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(invocation.output()).toBe("");
+      expect(invocation.response.writableEnded).toBe(false);
+    } finally {
+      invocation.socket.destroy();
+    }
+  });
+
+  it("suppresses a late provider rejection after client disconnect", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let signal!: AbortSignal;
+    let rejectProvider!: (reason?: unknown) => void;
+    vi.spyOn(askService, "answerQuestion").mockImplementation(async (
+      _question, _history, _teams, requestSignal
+    ) => {
+      signal = requestSignal!;
+      return new Promise<typeof successfulAnswer>((_resolve, reject) => { rejectProvider = reject; });
+    });
+
+    const invocation = await startJsonAsk({ question: "Reject after disconnect.", stream: false });
+    try {
+      invocation.response.emit("close");
+      expect(signal.aborted).toBe(true);
+      await vi.advanceTimersByTimeAsync(90_000);
+      rejectProvider(new AppError(502, "Analysis generation failed. Please try again."));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(invocation.output()).toBe("");
+      expect(invocation.response.writableEnded).toBe(false);
+      expectJsonAskCleanup(invocation);
+    } finally {
+      invocation.socket.destroy();
+    }
+  });
+
+  it("suppresses a late rejection when the deadline precedes disconnect", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let signal!: AbortSignal;
+    let rejectProvider!: (reason?: unknown) => void;
+    vi.spyOn(askService, "answerQuestion").mockImplementation(async (
+      _question, _history, _teams, requestSignal
+    ) => {
+      signal = requestSignal!;
+      return new Promise<typeof successfulAnswer>((_resolve, reject) => { rejectProvider = reject; });
+    });
+
+    const invocation = await startJsonAsk({ question: "Close after deadline.", stream: false });
+    try {
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(signal.aborted).toBe(true);
+      invocation.response.emit("close");
+      rejectProvider(new AppError(502, "Analysis generation failed. Please try again."));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(invocation.output()).toBe("");
+      expect(invocation.response.writableEnded).toBe(false);
+      expectJsonAskCleanup(invocation);
+    } finally {
+      invocation.socket.destroy();
+    }
+  });
+
+  it("cleans up the JSON request deadline after success", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let signal!: AbortSignal;
+    vi.spyOn(askService, "answerQuestion").mockImplementation(async (
+      _question, _history, _teams, requestSignal
+    ) => {
+      signal = requestSignal!;
+      return successfulAnswer;
+    });
+
+    const invocation = await startJsonAsk({ question: "Complete normally.", stream: false });
+    try {
+      await invocation.finished;
+      expect(invocation.response.statusCode).toBe(200);
+      expect(responseBody(invocation)).toEqual(successfulAnswer);
+      expectJsonAskCleanup(invocation);
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(signal.aborted).toBe(false);
+    } finally {
+      if (!invocation.response.writableEnded) invocation.response.end();
+      invocation.socket.destroy();
+    }
+  });
+
+  it("preserves an ordinary provider failure", async () => {
+    vi.spyOn(askService, "answerQuestion").mockRejectedValue(new AppError(502, "Analysis generation failed. Please try again."));
+    const invocation = await startJsonAsk({ question: "Keep ordinary failure.", stream: false });
+    try {
+      await invocation.finished;
+      expect(invocation.response.statusCode).toBe(502);
+      expect(responseBody(invocation)).toEqual({ error: "Analysis generation failed. Please try again." });
+      expectJsonAskCleanup(invocation);
+    } finally {
+      if (!invocation.response.writableEnded) invocation.response.end();
+      invocation.socket.destroy();
+    }
+  });
+
+  it("preserves a preexisting AppError envelope", async () => {
+    const providerError = new AppError(429, "Provider is busy.", "provider_busy");
+    vi.spyOn(askService, "answerQuestion").mockRejectedValue(providerError);
+    const invocation = await startJsonAsk({ question: "Keep this error.", stream: false });
+    try {
+      await invocation.finished;
+      expect(invocation.response.statusCode).toBe(429);
+      expect(responseBody(invocation)).toEqual({
+        error: "Provider is busy.",
+        code: "provider_busy",
+      });
+      expectJsonAskCleanup(invocation);
+    } finally {
+      if (!invocation.response.writableEnded) invocation.response.end();
+      invocation.socket.destroy();
+    }
+  });
+});
 
 describe("askRateLimitConfig", () => {
   it("divides the intended global budget across replicas", () => {

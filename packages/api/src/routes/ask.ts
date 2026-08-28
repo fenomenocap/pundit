@@ -145,9 +145,14 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     const teamContext = parseTeamContext(req.body?.teamContext);
     const fixtureContext = parseFixtureContext(req.body?.fixtureContext);
     const requestAbort = new AbortController();
-    const deadline = setTimeout(() => requestAbort.abort(new Error("request deadline exceeded")), 90_000);
+    const deadlineReason = new Error("request deadline exceeded");
+    const deadline = setTimeout(() => requestAbort.abort(deadlineReason), 90_000);
+    let clientDisconnected = false;
     const abortOnDisconnect = () => {
-      if (!res.writableEnded) requestAbort.abort(new Error("client disconnected"));
+      if (!res.writableEnded) {
+        clientDisconnected = true;
+        requestAbort.abort(new Error("client disconnected"));
+      }
     };
     req.once("aborted", abortOnDisconnect);
     res.once("close", abortOnDisconnect);
@@ -161,7 +166,17 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           requestAbort.signal,
           fixtureContext
         );
+        if (clientDisconnected || res.writableEnded) return;
+        if (requestAbort.signal.reason === deadlineReason) {
+          throw new AppError(504, "Analysis service timed out. Please try again.");
+        }
         res.json(result);
+      } catch (err) {
+        if (clientDisconnected || res.writableEnded) return;
+        if (requestAbort.signal.reason === deadlineReason) {
+          throw new AppError(504, "Analysis service timed out. Please try again.");
+        }
+        throw err;
       } finally {
         clearTimeout(deadline);
         req.off("aborted", abortOnDisconnect);
