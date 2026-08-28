@@ -279,6 +279,7 @@ type TeamFixture = Pick<ModelFixture, "home" | "away">;
 export interface FixtureRoutingState {
   recognizedFixtures?: RecognizedFixture[];
   fixtureContext?: FixtureContext;
+  currentSourceFixtureIds?: readonly string[];
   modelInitialized?: boolean;
   modelRefreshing?: boolean;
   ratingsAvailable?: boolean;
@@ -3470,6 +3471,14 @@ export function resolveAskContext(
   activeFixtures: TeamFixture[] = [],
   routing: FixtureRoutingState = {}
 ): ResolvedAskContext {
+  // Raw model fallback needs a current source identity. Keep the full cache
+  // for name discovery, approved registry routing, and exact fixture links.
+  const currentSourceIds = routing.currentSourceFixtureIds === undefined
+    ? undefined
+    : new Set(routing.currentSourceFixtureIds);
+  const currentFixtures = currentSourceIds
+    ? fixtures.filter((fixture) => currentSourceIds.has(espnFixtureIdentity(fixture)))
+    : fixtures;
   const recognizedFixtures = routing.recognizedFixtures ?? [];
   const recognizedTeamFixtures = recognizedFixtures.map((fixture) => ({
     home: fixture.homeTeam.name,
@@ -3477,7 +3486,7 @@ export function resolveAskContext(
   }));
   const searchableFixtures = [...fixtures, ...activeFixtures, ...recognizedTeamFixtures];
   const teams = resolveQuestionTeams(question, searchableFixtures);
-  const explicitFixture = teams ? findFixture(teams[0], teams[1], fixtures) : undefined;
+  const explicitFixture = teams ? findFixture(teams[0], teams[1], currentFixtures) : undefined;
   const recognizedMatches = teams
     ? recognizedFixtureMatchesByTeams(teams[0], teams[1], recognizedFixtures)
     : [];
@@ -3564,7 +3573,8 @@ export function resolveAskContext(
 
   // fixtureContext is server-owned identity returned by a previous grounding.
   // It wins over the temporary legacy teamContext when both are supplied.
-  if (!teams && routing.fixtureContext && (!competitionId || hasMatchOutcomeIntent(question))) {
+  if (!teams && routing.fixtureContext && !hasUnresolvedFixtureShape(question)
+    && (!competitionId || hasMatchOutcomeIntent(question))) {
     if (contextualTeams
       && (shouldUseMatchGrounding(question)
         || !leavesMatchContext(question, contextualTeams, searchableFixtures))) {
@@ -3577,11 +3587,12 @@ export function resolveAskContext(
     !teams
     && !competitionId
     && !routing.fixtureContext
+    && !hasUnresolvedFixtureShape(question)
     && teamContext
     && (shouldUseMatchGrounding(question)
       || !leavesMatchContext(question, teamContext, [...fixtures, ...activeFixtures]))
   ) {
-    const contextualFixture = findFixture(teamContext[0], teamContext[1], fixtures);
+    const contextualFixture = findFixture(teamContext[0], teamContext[1], currentFixtures);
     if (contextualFixture) return { tier: "match", fixture: contextualFixture };
     const activeFixture = findFixture(teamContext[0], teamContext[1], activeFixtures);
     if (activeFixture) {
@@ -6152,6 +6163,7 @@ export function prepareAsk(
     {
       recognizedFixtures,
       fixtureContext,
+      currentSourceFixtureIds: authoritativeEspnFixtures.map((fixture) => fixture.fixtureId),
       modelInitialized: modelData.lastUpdated !== null,
       modelRefreshing: modelRefresh.refreshing,
       ratingsAvailable,

@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
+import * as modelData from "./model-data";
+import * as clubRatings from "./club-ratings";
+import * as fixtureRegistry from "./fixture-registry";
 import { fixture } from "./__fixtures__/model-fixture";
 import {
   espnFixtureIdentity,
@@ -70,6 +73,7 @@ import {
 } from "./ask";
 import {
   premierLeagueSeasonWindow,
+  getCachedMatches,
   replaceFootballDataForTests,
   replaceSeasonScheduleForTests,
   type FootballMatch,
@@ -2269,6 +2273,130 @@ describe("resolveAskContext", () => {
         fixtureContext: { fixtureId: recognized[1].fixtureId },
       }
     )).toEqual({ tier: "match", fixture: arsenalFixture });
+  });
+
+  describe("current source model fallbacks", () => {
+    const cached = fixture("Arsenal", "Coventry City");
+    const identity = espnFixtureIdentity(cached);
+    const sourceMatch = (status = "SCHEDULED"): FootballMatch => ({
+      id: cached.fixtureId,
+      competitionId: cached.competitionId,
+      competition: cached.competition,
+      homeTeam: cached.home,
+      awayTeam: cached.away,
+      utcDate: cached.utcDate,
+      status,
+      stage: cached.stage,
+      matchday: null,
+      group: null,
+      score: null,
+      neutralVenue: false,
+    });
+
+    it("does not price an ordinary matchup from a model row missing in the current source", () => {
+      expect(resolveAskContext(
+        "Arsenal vs Coventry City", [], undefined, [cached], [], [],
+        { currentSourceFixtureIds: [] }
+      ).tier).not.toBe("match");
+    });
+
+    it("does not price legacy team context from a missing source identity", () => {
+      expect(resolveAskContext(
+        "Why?", [], [cached.home, cached.away], [cached], [], [],
+        { currentSourceFixtureIds: [] }
+      ).tier).not.toBe("match");
+    });
+
+    it("keeps current source rows available and matches competition as part of the identity", () => {
+      expect(resolveAskContext(
+        "Arsenal vs Coventry City", [], undefined, [cached], [], [],
+        { currentSourceFixtureIds: [identity] }
+      )).toEqual({ tier: "match", fixture: cached });
+      expect(resolveAskContext(
+        "Arsenal vs Coventry City", [], undefined, [cached], [], [],
+        { currentSourceFixtureIds: [`espn:uefa.champions_qual:${cached.fixtureId}`] }
+      ).tier).not.toBe("match");
+    });
+
+    it("preserves an exact cold-registry fixture link without a current source row", () => {
+      for (const question of ["Arsenal vs Coventry City", "Why?", "What about BTTS?"]) {
+        expect(resolveAskContext(
+          question, [], undefined, [cached], [], [],
+          { currentSourceFixtureIds: [], fixtureContext: { fixtureId: identity } }
+        )).toEqual({ tier: "match", fixture: cached });
+      }
+    });
+
+    it("does not let an exact link authorize a different stale cached matchup", () => {
+      const other = fixture("Chelsea", "Manchester City", { fixtureId: 42 });
+      expect(resolveAskContext(
+        "Chelsea vs Manchester City", [], undefined, [cached, other], [], [],
+        { currentSourceFixtureIds: [identity], fixtureContext: { fixtureId: identity } }
+      ).tier).not.toBe("match");
+    });
+
+    it.each(["Chelsea vs Manchester City", "Chelsea against Manchester City"])(
+      "does not retain unrelated context for the unresolved matchup %s",
+      (question) => {
+        const routing = { currentSourceFixtureIds: [identity] };
+        expect(resolveAskContext(
+          question, [], undefined, [cached], [], [],
+          { ...routing, fixtureContext: { fixtureId: identity } }
+        )).toEqual({ tier: "candidate" });
+        expect(resolveAskContext(
+          question, [], [cached.home, cached.away], [cached], [], [], routing
+        )).toEqual({ tier: "candidate" });
+      }
+    );
+
+    it.each(["POSTPONED", "CANCELLED"])("preserves authoritative %s capability", (status) => {
+      expect(resolveAskContext(
+        "Arsenal vs Coventry City", [], undefined, [cached], [], [],
+        {
+          currentSourceFixtureIds: [identity],
+          recognizedFixtures: [recognizeEspnFixture(sourceMatch(status))],
+        }
+      ).tier).toBe("fixture");
+    });
+
+    it("preserves approved registry authority independently of the rolling ESPN window", () => {
+      expect(resolveAskContext(
+        "Arsenal vs Coventry City", [], undefined, [cached], [], [],
+        {
+          currentSourceFixtureIds: [],
+          recognizedFixtures: [recognizeEspnFixture(sourceMatch())],
+        }
+      )).toEqual({ tier: "match", fixture: cached });
+    });
+
+    it.each([false, true])("applies current ESPN identities in prepareAsk with registry mode %s", (enabled) => {
+      const originalFootball = getCachedMatches();
+      const modelSpy = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({
+        fixtures: [cached], lastUpdated: new Date(cached.utcDate), error: null,
+      });
+      const ratingsSpy = vi.spyOn(clubRatings, "clubRatingsAreCurrent").mockReturnValue(true);
+      const enabledSpy = vi.spyOn(fixtureRegistry, "fixtureRegistryExpansionEnabled").mockReturnValue(enabled);
+      const registrySpy = vi.spyOn(fixtureRegistry, "getRecognizedFixtures").mockReturnValue([]);
+      vi.stubEnv("MINIMAX_API_KEY", "test-only");
+      try {
+        replaceFootballDataForTests({
+          upcoming: [], recent: [sourceMatch("FINISHED")], standings: [], error: null,
+        });
+        expect(prepareAsk("Arsenal vs Coventry City", []).tier).toBe("match");
+
+        replaceFootballDataForTests({ upcoming: [], recent: [] });
+        expect(prepareAsk("Arsenal vs Coventry City", []).tier).not.toBe("match");
+        expect(prepareAsk("Why?", [], [cached.home, cached.away]).tier).not.toBe("match");
+        expect(prepareAsk("Why?", [], undefined, { fixtureId: identity }).tier).toBe("match");
+      } finally {
+        replaceFootballDataForTests(originalFootball);
+        modelSpy.mockRestore();
+        ratingsSpy.mockRestore();
+        enabledSpy.mockRestore();
+        registrySpy.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    });
   });
 
   // BUG: every two-legged tie was unreachable. Both legs carry the same two
