@@ -13,6 +13,8 @@ test.describe("smoke", () => {
     await expect(page.getByRole("heading", { name: "Fixtures" })).toBeVisible();
     await expect(page.getByRole("button", { name: "All" })).toBeVisible();
     await expect(page.locator("span.truncate", { hasText: "Arsenal" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Ask about this match" }).first())
+      .toHaveAttribute("href", /q=Arsenal%20vs%20Coventry%20City/);
   });
 
   test("model", async ({ page }) => {

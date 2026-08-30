@@ -346,10 +346,6 @@ export default function FixturesPage() {
     [competitions]
   );
 
-  const chronological = [...matches].sort(
-    (a, b) => new Date(b.utcDate).getTime() - new Date(a.utcDate).getTime()
-  );
-
   const groupedStandings = Array.from(
     new Set(standings.map((row) => row.group).filter(Boolean))
   ) as string[];
@@ -406,7 +402,7 @@ export default function FixturesPage() {
         <EmptyState message="No fixture data available for this competition right now." />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-          {chronological.map((match) => (
+          {matches.map((match) => (
             <MatchRow key={match.id} match={match} />
           ))}
         </div>
