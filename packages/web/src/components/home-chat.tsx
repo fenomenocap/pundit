@@ -93,7 +93,15 @@ function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
       index += 1;
     }
   }
-  return turns.slice(-12);
+  // Match POST /api/ask's per-turn and total client-history limits.
+  const history = turns.slice(-12).map((turn) => ({
+    ...turn,
+    content: turn.content.slice(0, 4_000),
+  }));
+  while (history.reduce((total, turn) => total + turn.content.length, 0) > 12_000) {
+    history.splice(0, 2);
+  }
+  return history;
 }
 
 function sanitizeAskError(err: unknown): string {

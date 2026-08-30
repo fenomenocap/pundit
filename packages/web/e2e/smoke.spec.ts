@@ -267,6 +267,39 @@ test.describe("smoke", () => {
     expect(received[1]).not.toHaveProperty("fixtureContext");
   });
 
+  test("chat history stays within the API character budget", async ({ page }) => {
+    const received: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      received.push(route.request().postDataJSON());
+      const answerLength = received.length === 6 ? 4_100 : 1_700;
+      const answer = `Answer ${received.length} `.padEnd(answerLength, "x");
+      const sse = [
+        `event: grounding\ndata: ${JSON.stringify({ grounding: null })}`,
+        `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+        `event: done\ndata: ${JSON.stringify({ answer, grounding: null })}`,
+        "",
+      ].join("\n\n");
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+    });
+
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    for (let turn = 1; turn <= 7; turn += 1) {
+      await input.fill(`Question ${turn}`);
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect.poll(() => received.length).toBe(turn);
+      await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+    }
+
+    const history = received[6].history as Array<{ role: string; content: string }>;
+    expect(history).toHaveLength(10);
+    expect(history[0]).toMatchObject({ role: "user", content: "Question 2" });
+    expect(history.at(-1)).toMatchObject({ role: "assistant" });
+    expect(history.at(-1)?.content).toHaveLength(4_000);
+    expect(history.reduce((total, turn) => total + turn.content.length, 0))
+      .toBeLessThanOrEqual(12_000);
+  });
+
   test("Stop restores the prompt and does not show a server error", async ({ page }) => {
     await page.route("**/api/ask", async () => {
       await new Promise(() => undefined);
