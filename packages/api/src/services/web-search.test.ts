@@ -300,12 +300,18 @@ describe("genuine emptiness versus infrastructure failure", () => {
     expect(cancelled).toBe(true);
   });
 
-  it("treats a structurally valid but wrongly shaped payload as empty, not evidence", async () => {
-    // `organic: "nope"` parses; it just carries nothing usable.
+  it("reports a non-array MiniMax result field as malformed, not empty", async () => {
     fetchMock.mockResolvedValueOnce(httpOk({ organic: "nope" }));
     const outcome = await searchWeb("shape drift");
     expect(outcome.results).toEqual([]);
-    expect(outcome.status).toBe("empty");
+    expect(outcome.status).toBe("degraded");
+    expect(outcome.reason).toBe("malformed_response");
+    expect(outcome.attempts).toEqual([{
+      provider: "minimax",
+      outcome: "failed",
+      reason: "malformed_response",
+      attempts: 1,
+    }]);
   });
 
   it("reports circuit_open once every enabled provider's breaker is open", async () => {
@@ -390,7 +396,7 @@ describe("provider failover", () => {
 
   it.each([
     ["a 5xx outage", () => httpError(500)],
-    ["a malformed payload", () => httpOk({ not: "a search response" })],
+    ["a malformed payload", () => httpOk({ organic: "not a result array" })],
     ["a rejected credential", () => httpError(401)],
     ["a network error", () => Promise.reject(new Error("ECONNRESET"))],
   ])("fails over to Brave on %s", async (_label, minimax) => {
@@ -402,6 +408,39 @@ describe("provider failover", () => {
     expect(outcome.status).toBe("ok");
     expect(outcome.provider).toBe("brave");
   });
+
+  it.each([{ results: "not a result array" }, false])(
+    "fails over when Brave returns a non-array result field %#",
+    async (web) => {
+      process.env.WEB_SEARCH_PROVIDER_ORDER = "brave,minimax";
+      fetchMock.mockImplementation(routed({
+        minimax: () => Promise.resolve(minimaxBody([MINIMAX_RESULT])),
+        brave: () => Promise.resolve(httpOk({ web })),
+      }));
+      const outcome = await searchWeb("arsenal team news");
+      expect(outcome.status).toBe("ok");
+      expect(outcome.provider).toBe("minimax");
+      expect(outcome.usedFallback).toBe(true);
+      expect(outcome.attempts[0]).toEqual({
+        provider: "brave",
+        outcome: "failed",
+        reason: "malformed_response",
+        attempts: 1,
+      });
+    }
+  );
+
+  it.each([{}, { web: null }])(
+    "treats an omitted or null Brave web section as empty",
+    async (body) => {
+      process.env.WEB_SEARCH_PROVIDER_ORDER = "brave";
+      delete process.env.MINIMAX_API_KEY;
+      fetchMock.mockResolvedValue(httpOk(body));
+      const outcome = await searchWeb("no matching results");
+      expect(outcome.status).toBe("empty");
+      expect(outcome.reason).toBeNull();
+    }
+  );
 
   it("falls through to Brave when MiniMax is merely empty, without blaming MiniMax", async () => {
     fetchMock.mockImplementation(routed({

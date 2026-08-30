@@ -217,10 +217,9 @@ export function normalizeSearchDate(raw: string, now: Date = new Date()): string
 }
 
 function normalizeResults(
-  entries: unknown,
+  entries: unknown[],
   read: (entry: Record<string, unknown>) => Omit<WebSearchResult, "date"> & { date: string }
 ): WebSearchResult[] {
-  if (!Array.isArray(entries)) return [];
   return entries
     .slice(0, MAX_RESULTS)
     .map((entry) => {
@@ -402,7 +401,11 @@ const minimaxProvider: SearchProvider = {
     );
     if (!response.ok) throw classifyHttpStatus(response.status, retryAfterMs(response));
     const body = await readBoundedJson(response);
-    return normalizeResults(body.organic, (entry) => ({
+    const organic = body?.organic;
+    if (!Array.isArray(organic)) {
+      throw new ProviderError("malformed_response", "MiniMax organic results were not an array");
+    }
+    return normalizeResults(organic, (entry) => ({
       title: asString(entry.title),
       link: asString(entry.link),
       snippet: asString(entry.snippet),
@@ -440,8 +443,12 @@ const braveProvider: SearchProvider = {
     });
     if (!response.ok) throw classifyHttpStatus(response.status, retryAfterMs(response));
     const body = await readBoundedJson(response);
-    const web = (body.web ?? {}) as { results?: unknown };
-    return normalizeResults(web.results, (entry) => ({
+    const web = body?.web as { results?: unknown } | null | undefined;
+    const results = web == null ? [] : web.results;
+    if (!Array.isArray(results)) {
+      throw new ProviderError("malformed_response", "Brave web results were not an array");
+    }
+    return normalizeResults(results, (entry) => ({
       title: asString(entry.title),
       link: asString(entry.url),
       snippet: asString(entry.description),
