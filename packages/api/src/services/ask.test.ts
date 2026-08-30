@@ -2988,6 +2988,29 @@ describe("evidence guards leave model-derived answers intact", () => {
       .toBe("The market backs Arsenal here.");
   });
 
+  it.each(["gap", "edge", "value"])(
+    "keeps the grounded figure while removing a %s play-to-watch recommendation",
+    (noun) => {
+      const sanitized = sanitizeGroundedMatchNarrative(
+        `The model has Arsenal at 56.3%, and the ${noun} on the home win is the play to watch.`,
+        groundedMatch()
+      );
+      expect(sanitized).toContain("Arsenal at 56.3%.");
+      expect(sanitized).not.toContain("play to watch");
+    }
+  );
+
+  it.each([
+    "The gap on Arsenal's defensive line is the play to watch.",
+    "The gap on Arsenal's right under sustained pressure is the play to watch.",
+    "The gap on the flank used to draw Arsenal out is the play to watch.",
+  ])("keeps tactical play-to-watch language: %s", (sentence) => {
+    expect(sanitizeGroundedMatchNarrative(
+      sentence,
+      groundedMatch()
+    )).toContain(sentence);
+  });
+
   it("still removes a claim that contradicts the model's own favourite", () => {
     const contradiction = sanitizeGroundedMatchNarrative(
       "Arsenal are the underdogs here.\nOver 2.5 lands at **54.0%**.",

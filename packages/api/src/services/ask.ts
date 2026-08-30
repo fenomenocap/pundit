@@ -2006,6 +2006,7 @@ function outcomeGapPoints(
  */
 function stripBettingClause(sentence: string): string | null {
   const trimmed = sentence
+    .replace(/[,;]?\s*(?:and\s+)?(?:the\s+)?(?:gap|edge|value)\s+on\s+(?:(?:the\s+)?(?:(?:home|away)\s+win|draw|market|price|odds|betting\s+line)|(?:over|under)\s+\d+(?:\.\d+)?|both\s+teams\s+to\s+score|btts)[^.!?\n]{0,30}\bis\s+the\s+play\s+to\s+watch\b/gi, "")
     .replace(/[,;]?\s*(?:and\s+)?so\s+there\s+is\s+nothing\s+to\s+take\s+(?:there|here)/gi, "")
     .replace(/[,;]?\s*(?:so\s+|and\s+)?there\s+is\s+nothing\s+to\s+take\s+(?:there|here)/gi, "")
     .replace(/[,;]?\s*(?:and\s+)?(?:they\s+|these\s+|both\s+)?offers?\s+nothing\b/gi, "")
@@ -2029,7 +2030,7 @@ function stripBettingClause(sentence: string): string | null {
  * to make.
  */
 const RECOMMENDS_A_BET =
-  /\b(?:the\s+)?(?:value|edge|play|bet|money)\s+(?:is|sits|lies)\s+on\b|\bworth\s+(?:backing|taking|a\s+bet|playing)\b|\bnothing\s+to\s+take\b|\bthe\s+play\s+(?:is|here)\b|\bactionable\s+(?:side|edge|value)\b|\bonly\s+direction\s+with\s+daylight\b|\b(?:offers?|offering)\s+nothing\b|\bnot\s+worth\s+(?:a\s+bet|backing|taking)\b|\bbet(?:ting)?\s+into\b|\bwhich\s+side\s+to\s+back\b|\bside\s+to\s+back\b|\byou\s+(?:are|'re)\s+(?:betting|backing)\b/i;
+  /\b(?:the\s+)?(?:value|edge|play|bet|money)\s+(?:is|sits|lies)\s+on\b|\bworth\s+(?:backing|taking|a\s+bet|playing)\b|\bnothing\s+to\s+take\b|\bthe\s+play\s+(?:is|here)\b|\b(?:gap|edge|value)\s+on\s+(?:(?:the\s+)?(?:(?:home|away)\s+win|draw|market|price|odds|betting\s+line)|(?:over|under)\s+\d+(?:\.\d+)?|both\s+teams\s+to\s+score|btts)[^.!?\n]{0,30}\bis\s+the\s+play\s+to\s+watch\b|\bactionable\s+(?:side|edge|value)\b|\bonly\s+direction\s+with\s+daylight\b|\b(?:offers?|offering)\s+nothing\b|\bnot\s+worth\s+(?:a\s+bet|backing|taking)\b|\bbet(?:ting)?\s+into\b|\bwhich\s+side\s+to\s+back\b|\bside\s+to\s+back\b|\byou\s+(?:are|'re)\s+(?:betting|backing)\b/i;
 
 /**
  * "Already priced into the model", said of team news. The model has no such
