@@ -40,6 +40,10 @@ export interface CalibrationBucket {
 
 export interface EvaluationMetrics {
   fixtureCount: number;
+  /** Number of binary outcome forecasts used by the reliability curve. */
+  calibrationForecastCount: number;
+  forecastsPerFixture: 3;
+  calibrationMethod: "one-vs-rest-1x2";
   brierScore: number | null;
   logLoss: number | null;
   winnerAccuracy: number | null;
@@ -56,6 +60,14 @@ export interface Wc2026EvaluationArtifact {
   metrics: EvaluationMetrics;
 }
 
+function calibrationMetadata(fixtureCount: number) {
+  return {
+    calibrationForecastCount: fixtureCount * 3,
+    forecastsPerFixture: 3 as const,
+    calibrationMethod: "one-vs-rest-1x2" as const,
+  };
+}
+
 const ARTIFACT_PATH = path.join(__dirname, "../../data/evaluation/wc-2026.json");
 
 let cachedArtifact: Wc2026EvaluationArtifact | null = null;
@@ -67,7 +79,39 @@ export function getWc2026EvaluationArtifactPath(): string {
 export function loadWc2026EvaluationArtifact(): Wc2026EvaluationArtifact {
   if (cachedArtifact) return cachedArtifact;
   const raw = fs.readFileSync(ARTIFACT_PATH, "utf8");
-  cachedArtifact = JSON.parse(raw) as Wc2026EvaluationArtifact;
+  const parsed = JSON.parse(raw) as Wc2026EvaluationArtifact;
+  const builtAt = Date.parse(parsed.builtAt);
+  if (!Number.isFinite(builtAt)) throw new Error("WC evaluation builtAt must be an ISO timestamp");
+  if (parsed.fixtures.some((fixture) => !Number.isFinite(Date.parse(fixture.utcDate)))) {
+    throw new Error("WC evaluation fixture utcDate must be an ISO timestamp");
+  }
+  if (parsed.fixtures.some((fixture) => Date.parse(fixture.utcDate) > builtAt)) {
+    throw new Error("WC evaluation cannot be built before a fixture it contains");
+  }
+  const expectedForecastCount = parsed.fixtures.length * 3;
+  const observedForecastCount = parsed.metrics.calibration.reduce(
+    (sum, bucket) => sum + bucket.count,
+    0
+  );
+  if (parsed.metrics.fixtureCount !== parsed.fixtures.length
+    || parsed.metrics.calibrationForecastCount !== expectedForecastCount
+    || observedForecastCount !== expectedForecastCount
+    || parsed.metrics.forecastsPerFixture !== 3
+    || parsed.metrics.calibrationMethod !== "one-vs-rest-1x2") {
+    throw new Error("WC evaluation calibration metadata does not match its fixtures");
+  }
+  const recomputedMetrics = computeEvaluationMetrics(parsed.fixtures);
+  if (JSON.stringify(parsed.metrics) !== JSON.stringify(recomputedMetrics)) {
+    throw new Error("WC evaluation stored metrics do not match deterministic fixture recomputation");
+  }
+  // The frozen source includes valid short-form UTC strings. Expose one
+  // canonical wire format without changing any instant or match meaning.
+  parsed.builtAt = new Date(builtAt).toISOString();
+  parsed.fixtures = parsed.fixtures.map((fixture) => ({
+    ...fixture,
+    utcDate: new Date(fixture.utcDate).toISOString(),
+  }));
+  cachedArtifact = parsed;
   return cachedArtifact;
 }
 
@@ -109,6 +153,7 @@ export function computeEvaluationMetrics(fixtures: EvaluationFixture[]): Evaluat
   if (fixtures.length === 0) {
     return {
       fixtureCount: 0,
+      ...calibrationMetadata(0),
       brierScore: null,
       logLoss: null,
       winnerAccuracy: null,
@@ -192,6 +237,7 @@ export function computeEvaluationMetrics(fixtures: EvaluationFixture[]): Evaluat
 
   return {
     fixtureCount: fixtures.length,
+    ...calibrationMetadata(fixtures.length),
     brierScore: rounded(brierTotal / fixtures.length),
     logLoss: rounded(logLossTotal / fixtures.length),
     winnerAccuracy: rounded(winnerHits / fixtures.length),

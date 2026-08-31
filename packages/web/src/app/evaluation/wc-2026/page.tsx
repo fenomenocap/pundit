@@ -73,6 +73,8 @@ export default function Wc2026EvaluationPage() {
       <PageHeader
         title="World Cup 2026 backtest"
         eyebrow="Frozen evaluation · reconstructed pre-kickoff"
+        lastUpdated={data?.builtAt}
+        loading={loading}
         badge={(
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="rounded border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
@@ -114,7 +116,7 @@ export default function Wc2026EvaluationPage() {
           <section className="rounded-lg border border-border bg-card p-4">
             <p className="text-xs leading-relaxed text-muted-foreground">{data.disclaimer}</p>
             <p className="mt-2 font-mono text-xs text-muted-foreground">
-              Built {new Date(data.builtAt).toLocaleString()} · {data.metrics.fixtureCount} finished fixtures
+              {data.metrics.fixtureCount} finished fixtures · {data.metrics.calibrationForecastCount} calibration forecasts
             </p>
           </section>
 
@@ -130,7 +132,7 @@ export default function Wc2026EvaluationPage() {
               <div className="border-b border-border px-4 py-3">
                 <h2 className="text-sm font-semibold text-white">Calibration buckets</h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Average predicted probability for the outcome that happened vs observed frequency.
+                  All three 1X2 outcomes are scored per fixture: {metrics.calibrationForecastCount} forecasts across {metrics.fixtureCount} finished fixtures.
                 </p>
               </div>
               <div className="overflow-auto">
@@ -138,7 +140,7 @@ export default function Wc2026EvaluationPage() {
                   <thead className="text-xs uppercase tracking-wide text-muted-foreground">
                     <tr>
                       <th className="px-4 py-2">Bucket</th>
-                      <th>Fixtures</th>
+                      <th>Forecasts</th>
                       <th>Avg predicted</th>
                       <th className="pr-4">Actual rate</th>
                     </tr>

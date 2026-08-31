@@ -5,18 +5,36 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   fetchCompetitions,
+  fetchActiveModelFixtures,
   fetchRecentMatches,
+  fetchRecognizedFixtures,
   fetchStandings,
   fetchUpcomingMatches,
 } from "@/lib/mock-data";
 import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
 import { buildAskUrl, modelFixtureIdentity } from "@/lib/api";
-import type { CompetitionResponse, MatchResponse, StandingResponse } from "@/lib/api";
+import type {
+  CompetitionResponse,
+  FixtureCapability,
+  MatchResponse,
+  ModelFixtureResponse,
+  RecognizedFixtureSnapshotRow,
+  StandingResponse,
+} from "@/lib/api";
 import { Disclaimer } from "@/components/disclaimer";
 import { PageHeader } from "@/components/page-header";
 import { ErrorBanner } from "@/components/error-banner";
 import { EmptyState } from "@/components/empty-state";
 import { FilterPill } from "@/components/filter-pill";
+import {
+  capabilityLabel,
+  capabilityTone,
+  formatObservedAt,
+  formatPercent,
+  marketRowsFromModel,
+  recognizedFixtureMap,
+  sortFixturesChronologically,
+} from "@/lib/fixture-presentation";
 
 const LIVE_POLL_MS = 60_000;
 const ALL_TAB = "all";
@@ -24,42 +42,51 @@ const ALL_TAB = "all";
 function useFixturesData(selectedCompetition: string) {
   const [matches, setMatches] = useState<MatchResponse[]>([]);
   const [standings, setStandings] = useState<StandingResponse[]>([]);
+  const [recognized, setRecognized] = useState<RecognizedFixtureSnapshotRow[]>([]);
+  const [modelFixtures, setModelFixtures] = useState<ModelFixtureResponse[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [coverageWarning, setCoverageWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sinceLast, setSinceLast] = useState<number>(0);
   const sinceLastTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loadGenerationRef = useRef(0);
 
   const competitionFilter = selectedCompetition === ALL_TAB ? undefined : selectedCompetition;
 
   const load = useCallback(async (silent = false) => {
+    const generation = ++loadGenerationRef.current;
     if (!silent) setLoading(true);
-    const [upcoming, recent, standingsData] = await Promise.all([
+    const [upcoming, recent, standingsData, recognizedData, modelData] = await Promise.all([
       fetchUpcomingMatches(competitionFilter),
       fetchRecentMatches(competitionFilter),
       fetchStandings(competitionFilter),
+      fetchRecognizedFixtures(),
+      fetchActiveModelFixtures(),
     ]);
-    const merged = [...recent.matches, ...upcoming.matches].sort(
-      (a, b) => new Date(a.utcDate).getTime() - new Date(b.utcDate).getTime()
-    );
+    if (generation !== loadGenerationRef.current) return;
+    const merged = sortFixturesChronologically([...recent.matches, ...upcoming.matches]);
     setMatches(merged);
     setStandings(standingsData.standings);
+    setRecognized(recognizedData.fixtures);
+    setModelFixtures(modelData.fixtures);
     setLastUpdated(
       upcoming.lastUpdated
       ?? recent.lastUpdated
       ?? standingsData.lastUpdated
     );
     setError(upcoming.error || recent.error || standingsData.error);
+    setCoverageWarning(recognizedData.error || modelData.error);
     setLoading(false);
     setSinceLast(0);
   }, [competitionFilter]);
 
   useEffect(() => {
-    let cancelled = false;
-    void load().then(() => {
-      if (cancelled) return;
-    });
-    return () => { cancelled = true; };
+    void load();
+    return () => {
+      // Invalidate any request owned by the previous competition selection.
+      loadGenerationRef.current += 1;
+    };
   }, [load]);
 
   useEffect(() => {
@@ -81,7 +108,18 @@ function useFixturesData(selectedCompetition: string) {
     return () => clearInterval(timer);
   }, [matches, load]);
 
-  return { matches, standings, lastUpdated, error, loading, sinceLast, reload: () => load() };
+  return {
+    matches,
+    standings,
+    recognized,
+    modelFixtures,
+    lastUpdated,
+    error,
+    coverageWarning,
+    loading,
+    sinceLast,
+    reload: () => load(),
+  };
 }
 
 function formatKickoffTime(utcDate: string): string {
@@ -116,7 +154,15 @@ function Monogram({ name }: { name: string }) {
   );
 }
 
-function MatchRow({ match }: { match: MatchResponse }) {
+function MatchRow({
+  match,
+  recognized,
+  modelFixture,
+}: {
+  match: MatchResponse;
+  recognized?: RecognizedFixtureSnapshotRow;
+  modelFixture?: ModelFixtureResponse;
+}) {
   const finished = match.status === "FINISHED";
   const live = match.status === "IN_PLAY";
   const showScore = finished || live;
@@ -127,9 +173,14 @@ function MatchRow({ match }: { match: MatchResponse }) {
       modelFixtureIdentity({ competitionId: match.competitionId, fixtureId: match.id })
     )
     : null;
+  const marketRows = modelFixture ? marketRowsFromModel(modelFixture) : [];
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-card-rim bg-card shadow-card">
+    <div
+      data-testid="fixture-row"
+      data-fixture-id={`${match.competitionId}-${match.id}`}
+      className="relative overflow-hidden rounded-xl border border-card-rim bg-card shadow-card"
+    >
       <div
         aria-hidden
         className="absolute inset-x-0 top-0 h-0.5"
@@ -174,14 +225,60 @@ function MatchRow({ match }: { match: MatchResponse }) {
             {match.awayTeam}
           </span>
         </div>
+        {modelFixture && (
+          <div data-testid="fixture-forecast" className="rounded-md border border-border/60 px-2 py-1.5">
+            <table className="w-full table-fixed font-mono text-[10px] tabular-nums" aria-label={`${match.homeTeam} versus ${match.awayTeam} forecast and market probabilities`}>
+              <thead className="text-muted-foreground">
+                <tr>
+                  <th scope="col" className="w-[52%] pb-1 text-left font-medium">Source</th>
+                  <th scope="col" className="pb-1 text-right font-medium">Home</th>
+                  <th scope="col" className="pb-1 text-right font-medium">Draw</th>
+                  <th scope="col" className="pb-1 text-right font-medium">Away</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row" className="pr-2 text-left font-normal text-muted-foreground">My forecast</th>
+                  <td className="text-right text-primary">{formatPercent(modelFixture.pHome)}</td>
+                  <td className="text-right text-muted-foreground">{formatPercent(modelFixture.pDraw)}</td>
+                  <td className="text-right text-accent">{formatPercent(modelFixture.pAway)}</td>
+                </tr>
+                {marketRows.map((row) => (
+                  <tr key={row.id}>
+                    <th scope="row" className="break-words pr-2 pt-1 text-left align-top font-normal text-muted-foreground">
+                      <span className="block">{row.label}</span>
+                      {row.observedAt && (
+                        <time dateTime={row.observedAt} className="block text-[9px] leading-tight">
+                          {formatObservedAt(row.observedAt)}
+                        </time>
+                      )}
+                    </th>
+                    <td className="pt-1 text-right align-top text-foreground/80">{formatPercent(row.pHome)}</td>
+                    <td className="pt-1 text-right align-top text-foreground/80">{formatPercent(row.pDraw)}</td>
+                    <td className="pt-1 text-right align-top text-foreground/80">{formatPercent(row.pAway)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2">
           {askHref ? (
-            <Link
-              href={askHref}
-              className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary/80"
-            >
-              Ask about this match
-            </Link>
+            <div className="min-w-0">
+              <Link
+                href={askHref}
+                className="text-xs font-semibold uppercase tracking-wide text-primary transition-colors hover:text-primary/80"
+              >
+                Ask about this match
+              </Link>
+              {recognized ? (
+                <CapabilityText capability={recognized.capability} />
+              ) : (
+                <p className="mt-0.5 text-[10px] text-amber-300/80">
+                  Forecast status temporarily unavailable · you can still ask
+                </p>
+              )}
+            </div>
           ) : (
             <span className="text-xs text-muted-foreground">{match.competition}</span>
           )}
@@ -203,6 +300,20 @@ function MatchRow({ match }: { match: MatchResponse }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function CapabilityText({ capability }: { capability: FixtureCapability }) {
+  const tone = capabilityTone(capability);
+  return (
+    <p className={cn(
+      "mt-0.5 truncate text-[10px]",
+      tone === "ready" && "text-primary/80",
+      tone === "waiting" && "text-amber-300/80",
+      tone === "outside" && "text-muted-foreground",
+    )}>
+      {capabilityLabel(capability)}
+    </p>
   );
 }
 
@@ -332,7 +443,18 @@ function GroupStandingsTable({
 export default function FixturesPage() {
   const [competitions, setCompetitions] = useState<CompetitionResponse[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState(ALL_TAB);
-  const { matches, standings, lastUpdated, error, loading, sinceLast, reload } =
+  const {
+    matches,
+    standings,
+    recognized,
+    modelFixtures,
+    lastUpdated,
+    error,
+    coverageWarning,
+    loading,
+    sinceLast,
+    reload,
+  } =
     useFixturesData(selectedCompetition);
 
   useEffect(() => {
@@ -346,9 +468,9 @@ export default function FixturesPage() {
     [competitions]
   );
 
-  const chronological = [...matches].sort(
-    (a, b) => new Date(b.utcDate).getTime() - new Date(a.utcDate).getTime()
-  );
+  const chronological = sortFixturesChronologically(matches);
+  const recognizedById = recognizedFixtureMap(recognized);
+  const modelById = new Map(modelFixtures.map((fixture) => [modelFixtureIdentity(fixture), fixture]));
 
   const groupedStandings = Array.from(
     new Set(standings.map((row) => row.group).filter(Boolean))
@@ -394,6 +516,12 @@ export default function FixturesPage() {
         ))}
       </div>
 
+      {coverageWarning && (
+        <p className="-mt-4 mb-4 text-xs text-amber-300/80">
+          Some forecast or capability details are temporarily unavailable; the schedule remains current.
+        </p>
+      )}
+
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
       {loading ? (
@@ -407,7 +535,18 @@ export default function FixturesPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
           {chronological.map((match) => (
-            <MatchRow key={match.id} match={match} />
+            <MatchRow
+              key={`${match.competitionId}-${match.id}`}
+              match={match}
+              recognized={recognizedById.get(modelFixtureIdentity({
+                competitionId: match.competitionId,
+                fixtureId: match.id,
+              }))}
+              modelFixture={modelById.get(modelFixtureIdentity({
+                competitionId: match.competitionId,
+                fixtureId: match.id,
+              }))}
+            />
           ))}
         </div>
       )}

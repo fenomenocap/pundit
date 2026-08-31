@@ -102,6 +102,9 @@ WEB_SEARCH_CONCURRENCY=4
 # reports the resolved values under askRateLimit.
 ASK_RATE_LIMIT_PER_MINUTE=10
 API_REPLICAS=1
+# Conversational response-facts architecture. On by default; set exactly false
+# only for an emergency rollback. /ready reports its version and guard counters.
+ANALYST_RESPONSE_V2=true
 ```
 
 ---
@@ -119,6 +122,7 @@ API_REPLICAS=1
 - `/model` is a native read-only reference over Pundit's active club-fixture `/api/model/*` cache. Keep it aligned with the existing API contract rather than introducing a second model path.
 - `/evaluation/wc-2026` is a frozen historical artifact. Do not reconnect it to live chat/model caches or cron.
 - Keep server-owned facts deterministic when the grounding contract is complete. MiniMax may handle evidence-required current turns and general/ungrounded open-ended analysis, but it must not restate a recognized fixture's capability reason as a guessed lineup, squad, venue, rating, or policy explanation.
+- In V2 match answers, numeric facts are rendered by the server from typed fact slots. Generated prose may select and connect approved facts, but it cannot supply probabilities, fair odds, market gaps, source IDs, betting recommendations, or lineup effects itself. Narrow fact and capability questions settle without retrieval; current team news still requires verified evidence.
 - Search is an adapter seam, not a vendor integration. Add a provider by implementing `SearchProvider` in `web-search.ts` and registering it in `KNOWN_PROVIDERS`; never couple product behaviour to one provider's wire format.
 - Never let a search failure reach a caller as an empty result set. `searchWeb` returns a typed outcome, and `empty` means the web had nothing — every other case carries a reason.
 - Circuit-breaker accounting is per provider and per question. One question fans out into ~6 searches, so per-search accounting let a single throttled question blank the next reader's evidence for five minutes.

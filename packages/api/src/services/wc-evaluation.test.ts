@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEvaluationFixture,
+  clearWc2026EvaluationCache,
   computeEvaluationMetrics,
+  loadWc2026EvaluationArtifact,
 } from "./wc-evaluation";
 import {
   buildReconstructedFixtures,
@@ -10,9 +12,29 @@ import {
 import { FootballMatch } from "./football-data";
 
 describe("wc evaluation metrics", () => {
+  it("loads a timestamp-consistent frozen artifact with three forecasts per fixture", () => {
+    clearWc2026EvaluationCache();
+    const artifact = loadWc2026EvaluationArtifact();
+    const forecastCount = artifact.metrics.calibration.reduce((sum, bucket) => sum + bucket.count, 0);
+    expect(artifact.metrics.calibrationMethod).toBe("one-vs-rest-1x2");
+    expect(artifact.metrics.forecastsPerFixture).toBe(3);
+    expect(artifact.metrics.calibrationForecastCount).toBe(artifact.fixtures.length * 3);
+    expect(forecastCount).toBe(artifact.metrics.calibrationForecastCount);
+    expect(Math.max(...artifact.fixtures.map((fixture) => Date.parse(fixture.utcDate))))
+      .toBeLessThanOrEqual(Date.parse(artifact.builtAt));
+    expect(artifact.builtAt).toBe(new Date(artifact.builtAt).toISOString());
+    expect(artifact.fixtures.every((fixture) =>
+      fixture.utcDate === new Date(fixture.utcDate).toISOString())).toBe(true);
+    expect(artifact.metrics).toEqual(computeEvaluationMetrics(artifact.fixtures));
+    expect(artifact.metrics.calibration.every((bucket) => bucket.actualRate === 1)).toBe(false);
+  });
+
   it("reports unavailable scores rather than perfect zero loss for no samples", () => {
     expect(computeEvaluationMetrics([])).toEqual({
       fixtureCount: 0,
+      calibrationForecastCount: 0,
+      forecastsPerFixture: 3,
+      calibrationMethod: "one-vs-rest-1x2",
       brierScore: null,
       logLoss: null,
       winnerAccuracy: null,
@@ -55,6 +77,9 @@ describe("wc evaluation metrics", () => {
     expect(metrics.logLoss).toBeGreaterThan(0);
     expect(metrics.winnerAccuracy).toBeGreaterThanOrEqual(0);
     expect(metrics.calibration.length).toBeGreaterThan(0);
+    expect(metrics.calibrationForecastCount).toBe(6);
+    expect(metrics.forecastsPerFixture).toBe(3);
+    expect(metrics.calibrationMethod).toBe("one-vs-rest-1x2");
   });
 
   it("scores every forecast in the reliability curve, not only the realised one", () => {
@@ -78,6 +103,7 @@ describe("wc evaluation metrics", () => {
     // one of them happened.
     const totalForecasts = metrics.calibration.reduce((sum, b) => sum + b.count, 0);
     expect(totalForecasts).toBe(3);
+    expect(metrics.calibrationForecastCount).toBe(totalForecasts);
     const occurred = metrics.calibration.reduce((sum, b) => sum + b.actualRate * b.count, 0);
     expect(Math.round(occurred)).toBe(1);
 

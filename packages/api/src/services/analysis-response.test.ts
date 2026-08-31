@@ -152,7 +152,7 @@ describe("deterministic coverage search discipline", () => {
       );
       expect(searchWeb).toHaveBeenCalledTimes(1);
       expect(json.grounding).toMatchObject({ kind: "fixture" });
-      expect(json.answer).toMatch(/outside Pundit's model coverage/i);
+      expect(json.answer).toMatch(/outside my forecasting coverage/i);
       expect(json.answer).not.toMatch(/Arsenal team news|\[S1\]/i);
 
       searchWeb.mockClear();
@@ -863,7 +863,7 @@ describe("sanitizeGeneralAnswer", () => {
     ].join("\n\n");
     const safe = ensureGeneralDisclaimer(sanitizeGeneralAnswer(artifactAnswer));
     expect(safe).toContain("leaves space behind it");
-    expect(safe).toContain("This is general football analysis, not based on Pundit's model data");
+    expect(safe).toContain("This is general football analysis, not based on my match forecasts");
     expect(safe).not.toMatch(/World Cup 2026 results only|No verified source exists/i);
   });
 });
@@ -929,7 +929,7 @@ describe("ensureGeneralDisclaimer", () => {
     expect(ensureGeneralDisclaimer("The inverted full-back creates central overloads."))
       .toBe(
         "The inverted full-back creates central overloads.\n\n"
-        + "This is general football analysis, not based on Pundit's model data."
+        + "This is general football analysis, not based on my match forecasts."
       );
   });
 
@@ -1573,7 +1573,7 @@ describe("generateAnalysisStream", () => {
     // The general tier appends its disclaimer to the whole answer only, so the
     // streamed text is the body and the final event carries the rest.
     expect(answer.startsWith(chunks.join("").trim())).toBe(true);
-    expect(answer).toContain("not based on Pundit's model data");
+    expect(answer).toContain("not based on my match forecasts");
   });
 
   it("adds the general disclaimer once to the guarded whole-answer delta", async () => {
@@ -1587,7 +1587,7 @@ describe("generateAnalysisStream", () => {
       client, "system", [], "general", (text) => deltas.push(text)
     );
     expect(deltas).toHaveLength(1);
-    expect(answer.match(/not based on Pundit's model data/g)).toHaveLength(1);
+    expect(answer.match(/not based on my match forecasts/g)).toHaveLength(1);
   });
 
   it("runs the match guards over every line before it is released", async () => {

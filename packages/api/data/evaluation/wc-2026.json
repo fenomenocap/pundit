@@ -2503,6 +2503,9 @@
   ],
   "metrics": {
     "fixtureCount": 104,
+    "calibrationForecastCount": 312,
+    "forecastsPerFixture": 3,
+    "calibrationMethod": "one-vs-rest-1x2",
     "brierScore": 0.4383,
     "logLoss": 0.7853,
     "winnerAccuracy": 0.6827,
@@ -2510,33 +2513,33 @@
     "calibration": [
       {
         "label": "0–20%",
-        "count": 13,
-        "avgPredicted": 0.103,
-        "actualRate": 1
+        "count": 140,
+        "avgPredicted": 0.0821,
+        "actualRate": 0.0929
       },
       {
         "label": "20–40%",
-        "count": 20,
-        "avgPredicted": 0.257,
-        "actualRate": 1
+        "count": 70,
+        "avgPredicted": 0.2585,
+        "actualRate": 0.2857
       },
       {
         "label": "40–60%",
-        "count": 13,
-        "avgPredicted": 0.5104,
-        "actualRate": 1
+        "count": 29,
+        "avgPredicted": 0.498,
+        "actualRate": 0.4483
       },
       {
         "label": "60–80%",
-        "count": 27,
-        "avgPredicted": 0.7149,
-        "actualRate": 1
+        "count": 36,
+        "avgPredicted": 0.7116,
+        "actualRate": 0.75
       },
       {
         "label": "80–100%",
-        "count": 31,
-        "avgPredicted": 0.9267,
-        "actualRate": 1
+        "count": 37,
+        "avgPredicted": 0.9282,
+        "actualRate": 0.8378
       }
     ]
   }
