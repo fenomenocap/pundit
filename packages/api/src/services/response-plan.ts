@@ -51,7 +51,8 @@ export function planResponse(
   let mode: ResponseMode;
 
   if (context.groundingKind === "fixture") mode = "coverage";
-  else if (/\b(?:if|suppose|assuming|without|with)\b.{0,80}\b(?:line-?up|starts?|benched|absent|missing|misses? out|ruled out|available)\b|\b(?:line-?up|starting xi)\b.{0,80}\b(?:change|shift|swing|reprice|probabilit)/i.test(q)) {
+  else if (match && /\b(?:full (?:read|preview|analysis)|preview of|analyse|analyze|break down)\b/i.test(q)) mode = "match-preview";
+  else if (/\b(?:if|suppose|assuming|without)\b.{0,80}\b(?:line-?up|starts?|benched|absent|missing|misses? out|ruled out|available)\b|\bwith\s+(?:a |the )?(?:changed|different|weakened|rotated|confirmed)\s+line-?up\b|\b(?:line-?up|starting xi)\b.{0,80}\b(?:change|shift|swing|reprice|probabilit)/i.test(q)) {
     mode = "lineup-counterfactual";
   } else if (/\b(?:goalscorer|goal scorer|anytime scorer|first scorer|who scores|who (?:will|might|could|is (?:most )?likely to) score|player prop|assists?|cards?)\b/i.test(q)) {
     mode = "player-or-scorer";
@@ -59,6 +60,7 @@ export function planResponse(
     mode = "team-news";
   } else if (/\b(?:table|standings?)\b/i.test(q)) mode = "table";
   else if (/\b(?:title race|top[- ]four|season outlook|champion)\b/i.test(q)) mode = "season";
+  else if (match && /\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(q)) mode = "match-follow-up";
   else if (match && SCORELINE.test(q) && /\b(?:fair|price|odds?|decimal|implied)\b/i.test(q)) mode = "fair-price";
   else if (match && SCORELINE.test(q)) mode = "exact-score";
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
