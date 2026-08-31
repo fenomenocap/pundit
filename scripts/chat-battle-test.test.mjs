@@ -1077,6 +1077,8 @@ test("answer copy guard rejects internal methodology jargon", () => {
   assert.equal(validateAnswerCopy("I favour the home side.").passed, true);
   assert.equal(validateAnswerCopy("Pundit's model favours the home side.").passed, false);
   assert.equal(validateAnswerCopy("The payload says the draw is live.").passed, false);
+  assert.equal(validateAnswerCopy("A standings-only payload cannot answer that.").passed, false);
+  assert.equal(validateAnswerCopy("The grounded forecast uses these model inputs.").passed, false);
   assert.equal(validateAnswerCopy("Using Dixon-Coles probabilities here.").passed, false);
   assert.equal(validateAnswerCopy("ClubElo ratings drive the edge.").passed, false);
   assert.equal(validateAnswerCopy("This is model-grounded analysis.").passed, false);
@@ -1088,6 +1090,14 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     { expectAnalystVoice: true, expectDirectAnswer: true, expectNarrowFollowup: true, expectCannotReprice: true }
   );
   assert.equal(good.passed, true);
+  for (const refusal of ["I can’t price that scorer from this match forecast alone.", "I can’t quantify that lineup effect without a revised forecast."]) {
+    assert.equal(validateAnalystExpression(refusal, {
+      expectAnalystVoice: true, expectDirectAnswer: true, expectCannotReprice: true,
+    }).passed, true);
+  }
+  assert.equal(validateAnalystExpression("**Current table**\n1. **Arsenal** — 6 points.", { expectDirectAnswer: true }).passed, true);
+  assert.equal(validateAnalystExpression("**Current table**\nI will explain the standings.", { expectDirectAnswer: true }).passed, false);
+  assert.equal(validateAnalystExpression("I can’t verify the lineup. The market knows the striker is injured.", { expectNoUnsupportedMarketCausality: true }).passed, false);
   assert.equal(validateAnalystExpression(
     "The market is lower because it knows the striker is injured, so back the draw for value.",
     { expectNoUnsupportedMarketCausality: true }
@@ -2142,6 +2152,8 @@ test("high-line geometry rejects both backwards formulations and requires the re
     "A high line shrinks the space behind the defence.",
     "A high line shrinks the space between defence and goalkeeper.",
     "The gap between the defensive line and the keeper is reduced by a high defensive line.",
+    "A high line leaves space behind. Once an attacker gets in behind, the distance to the goal is short.",
+    "A high line leaves space behind. The offside trap only works if the keeper cleans up through-balls.",
   ]) {
     assert.equal(validateResponseCorrectness(
       answer, [], null, { expectCorrectHighLineGeometry: true }

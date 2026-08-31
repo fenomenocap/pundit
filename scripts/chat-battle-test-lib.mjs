@@ -960,7 +960,9 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       /\b(?:(?:does|do|did|can|could|will|would)\s+not|doesn't|don't|didn't|can't|couldn't|won't|wouldn't|cannot|never)\s+(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b/gi,
       ""
     );
-    const backwardsHighLine = [
+    const conceptualHighLineError = /\b(?:once|when)\b[^.!?\n]{0,80}\b(?:attacker|runner)\b[^.!?\n]{0,50}\b(?:gets?|is)\s+in behind\b[^.!?\n]{0,60}\bdistance to (?:the )?goal is short\b/i.test(text)
+      || /\boffside trap\b[^.!?\n]{0,80}\bonly works?\b[^.!?\n]{0,80}\b(?:goalkeeper|keeper)\b/i.test(text);
+    const backwardsHighLine = conceptualHighLineError || [
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b[^.!?\n]{0,30}\b(?:space|gap|room)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|defenders|(?:defensive\s+)?line|back\s*(?:line|four|three))\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b/i.test(affirmativeGeometryText),
       /\b(?:space|gap|room)\s+(?:available\s+|directly\s+)?(?:behind(?:\s+(?:the\s+)?(?:defen[cs]e|back\s*line))?|between\s+(?:the\s+)?(?:defen[cs]e|defenders|(?:defensive\s+)?line|back\s*(?:line|four|three))\s+and\s+(?:the\s+)?(?:goalkeeper|keeper))\b[^.!?\n]{0,80}\b(?:shrink|reduce|compress|close|limit|narrow|minimi[sz]|remove|eliminat|decreas|shorten)\w*\b[^.!?\n]{0,40}\bhigh\s+(?:defensive\s+)?line\b/i.test(affirmativeGeometryText),
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,100}\b(?:leav|mak|creat|produc)\w*\b[^.!?\n]{0,30}\b(?:no|less|smaller)\b[^.!?\n]{0,20}\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b/i,
@@ -1232,8 +1234,9 @@ export const FORBIDDEN_ANSWER_TERMS = [
   "pundit’s model",
   "pundit model",
   "the model says",
-  "the payload",
-  "this payload",
+  "payload",
+  "model inputs",
+  "grounded forecast",
   "retrieved sources",
   "server grounding",
 ];
@@ -1257,14 +1260,17 @@ export function validateAnswerCopy(answer) {
 
 /** Conversation-level expression rules layered on top of factual validators. */
 export function validateAnalystExpression(answer, expectation = {}) {
-  const text = typeof answer === "string" ? answer.trim() : "";
+  // Typography cannot change the meaning of an abstention. Normalize only
+  // apostrophes; do not loosen the underlying causal or numeric checks.
+  const text = typeof answer === "string" ? answer.trim().replace(/[’‘]/g, "'") : "";
   const assertions = {};
   if (expectation.expectAnalystVoice) {
     assertions.firstPersonAnalystVoice = /\b(?:I|I'm|I've|I'd|my)\b/.test(text);
   }
   if (expectation.expectDirectAnswer) {
     const firstSubstantive = text.split("\n")
-      .map((line) => line.replace(/^\s*(?:[-*#]+|\*\*[^*]+\*\*:?\s*)/, "").trim())
+      .filter((line) => !/^\s*\*\*[^*]+\*\*:?\s*$/.test(line))
+      .map((line) => line.replace(/^\s*[-*#]+\s*/, "").trim())
       .find(Boolean) ?? "";
     const lead = firstSubstantive.slice(0, 280);
     const processPreamble = /^I\s+(?:will|'ll|can)\s+(?:explain|outline|walk|break|look|start|begin|analyse|analyze|consider)\b/i.test(lead);

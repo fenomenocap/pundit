@@ -36,11 +36,11 @@ export function composeMatchResponse(
   const score = scoreRequest?.score ?? null;
 
   if (plan.mode === "player-or-scorer") {
-    return "I can discuss the matchup, but I can’t price a scorer or player prop from this match forecast. "
+    return "I can’t price a scorer or player prop from this match forecast. "
       + "Without a verified player market, I won’t turn a team-level view into a made-up player probability.";
   }
   if (plan.mode === "lineup-counterfactual") {
-    return "A confirmed lineup change could alter my read, but I can’t quantify the swing without verified team news and a revised forecast. I won’t invent a percentage adjustment.";
+    return "I can’t quantify that lineup effect without verified team news and a revised forecast. A confirmed change could alter my read, but I won’t invent a percentage adjustment.";
   }
   if (plan.mode === "team-news") {
     return "I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim.";
@@ -68,6 +68,15 @@ export function composeMatchResponse(
       { label: "the draw", p: grounding.pDraw },
       { label: grounding.away, p: grounding.pAway },
     ].sort((a, b) => b.p - a.p)[0];
+    if (/\b1x2\b/i.test(question)) {
+      return `My 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`;
+    }
+    if (/\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(question)) {
+      return "I can’t isolate one input as the cause of that edge. My read uses reviewed team strength and the competition’s home-field setting, but these facts do not provide a causal contribution for either input.";
+    }
+    if (/\b(?:which side|who)\b.{0,50}\b(?:stronger|strongest|better case|edge)\b|\bstronger\b.{0,20}\b(?:case|side)\b/i.test(question)) {
+      return `I have ${favourite.label} as the stronger case at ${pct(favourite.p)}. That is the direct matchup read; I can’t honestly decompose the edge into an exact contribution from each input.`;
+    }
     return `My short answer is ${favourite.label} at ${pct(favourite.p)}. The main constraint is that this is a team-strength view; it does not include a confirmed lineup.`;
   }
 
