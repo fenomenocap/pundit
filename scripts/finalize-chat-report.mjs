@@ -19,7 +19,17 @@ export const REQUIRED_BROWSER_CHECKS = Object.freeze({
   ],
   "new-chat-clears-context": [],
   "candidate-no-fixture-badge": ["candidate-never-becomes-fixture"],
+  "analyst-multi-turn-flow": ["analyst-conversation-golden-path"],
+  "cross-surface-fixture-parity": ["analyst-conversation-golden-path", "market-comparison-coverage"],
+  "evaluation-calibration-presentation": [],
 });
+
+function browserViewportClass(candidate) {
+  if (!Number.isInteger(candidate?.width) || !Number.isInteger(candidate?.height)) return null;
+  if (candidate.width < 768 && candidate.width >= 320 && candidate.height >= 568) return "mobile";
+  if (candidate.width >= 1024 && candidate.height >= 568) return "desktop";
+  return null;
+}
 
 function parseArgs(argv) {
   const options = {
@@ -85,6 +95,16 @@ export function evidenceSchemaFailures(report, browserEvidence, criticReview) {
     || !Number.isInteger(viewport?.height) || viewport.height < 568) {
     failures.push("browser evidence requires a valid viewport of at least 320x568");
   }
+  const viewports = Array.isArray(browserEvidence?.viewports) ? browserEvidence.viewports : [];
+  const validViewports = viewports.every((candidate) =>
+    Number.isInteger(candidate?.width) && candidate.width >= 320
+    && Number.isInteger(candidate?.height) && candidate.height >= 568
+  );
+  const hasMobile = viewports.some((candidate) => candidate.width < 768);
+  const hasDesktop = viewports.some((candidate) => candidate.width >= 1024);
+  if (!validViewports || !hasMobile || !hasDesktop) {
+    failures.push("browser evidence requires mobile and desktop viewports");
+  }
   const consoleEvidence = browserEvidence?.console;
   if (!Array.isArray(consoleEvidence?.errors) || !Array.isArray(consoleEvidence?.warnings)) {
     failures.push("browser evidence requires captured console errors and warnings arrays");
@@ -109,6 +129,22 @@ export function evidenceSchemaFailures(report, browserEvidence, criticReview) {
       if (!check) {
         failures.push(`browser evidence missing required check: ${checkId}`);
         continue;
+      }
+      const checkViewportClasses = new Set(
+        (Array.isArray(check.viewports) ? check.viewports : []).map(browserViewportClass).filter(Boolean)
+      );
+      if (!checkViewportClasses.has("mobile") || !checkViewportClasses.has("desktop")) {
+        failures.push(`browser check ${checkId} requires mobile and desktop evidence`);
+      }
+      if (checkId === "analyst-multi-turn-flow"
+        && (!Number.isInteger(check.turnCount) || check.turnCount < 6)) {
+        failures.push("browser analyst-multi-turn-flow requires at least six observed turns");
+      }
+      if (checkId === "cross-surface-fixture-parity") {
+        const surfaces = new Set(Array.isArray(check.surfaces) ? check.surfaces : []);
+        for (const surface of ["chat", "fixtures", "predictions"]) {
+          if (!surfaces.has(surface)) failures.push(`browser cross-surface-fixture-parity missing surface: ${surface}`);
+        }
       }
       for (const scenarioId of requiredScenarioIds) {
         if (!check.scenarioIds.includes(scenarioId)) {

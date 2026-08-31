@@ -190,7 +190,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     req.on("close", onClose);
     res.on("close", onClose);
     try {
-      const { answer, grounding, citations, verification } = await answerQuestionStream(
+      const { answer, grounding, citations, verification, presentation } = await answerQuestionStream(
         trimmedQuestion,
         history,
         teamContext,
@@ -228,6 +228,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           answer,
           grounding,
           verification,
+          presentation,
           ...(citations ? { citations } : {}),
         });
         res.end();

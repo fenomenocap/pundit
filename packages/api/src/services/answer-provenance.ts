@@ -52,6 +52,22 @@ const MARKER_ONLY_FRAGMENT = /^(?:\[\[S\d+\]\]\s*)+$/;
 export const CITATION_MARKER = /\[\[S\d+\]\]/;
 
 /**
+ * Last-mile fail-closed sweep for any unresolved internal marker. Valid source
+ * markers have already been converted to links before this runs; whatever is
+ * left is implementation detail and must never reach the reader.
+ */
+export function stripUnresolvedResponseMarkers(answer: string): string {
+  return answer
+    .replace(/\[\[[^\]\n]*(?:\][^\]\n]+)*\]\]/g, "")
+    .replace(/<\/?(?:function_calls?|tool_calls?|invoke|parameter|search)[^>]*>/gi, "")
+    .replace(/^\s*\[(?:search|tool|function)[^\]\n]*\]\s*$/gim, "")
+    .replace(/[ \t]+([,.;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * The answer split into trimmed sentences, with orphaned citation markers
  * rejoined onto the sentence they belong to. Line breaks end a sentence: the
  * repo's answer format uses them as separators between labelled sections, and

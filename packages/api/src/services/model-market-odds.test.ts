@@ -120,6 +120,7 @@ describe("publicModelFixture", () => {
     expect(published.stakePHome).toBe(0.61);
     expect(published.stakePDraw).toBe(0.22);
     expect(published.stakePAway).toBe(0.17);
+    expect(published.stakeObservedAt).toBe(observedAt);
     expect(published.oddsSources).toEqual([
       { source: "kalshi", observedAt, pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
       { source: "polymarket", observedAt, pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
@@ -134,6 +135,7 @@ describe("publicModelFixture", () => {
       polymarket: { pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
     });
     expect(published.stakePHome).toBeNull();
+    expect(published).not.toHaveProperty("stakeObservedAt");
     expect(published.oddsSources).toEqual([
       { source: "polymarket", observedAt, pHome: 0.55, pDraw: 0.25, pAway: 0.20 },
     ]);

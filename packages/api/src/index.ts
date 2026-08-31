@@ -29,7 +29,7 @@ import {
 } from "./services/model-market-odds";
 import { evaluateReadiness } from "./services/readiness";
 import { getWebSearchStatus } from "./services/web-search";
-import { getInferenceStatus } from "./services/ask";
+import { getAnalystResponseStatus, getInferenceStatus } from "./services/ask";
 import { getRuntimeVersion } from "./services/runtime-version";
 import {
   getFixtureRegistryStatus,
@@ -205,6 +205,10 @@ app.get("/ready", (_req, res) => {
     // the shared-quota configuration this endpoint exists to make visible.
     // Contains no key material: only which variable supplied it and the host.
     inference: getInferenceStatus(),
+    // V2 is on unless ANALYST_RESPONSE_V2 is exactly "false". The counters
+    // make schema acceptance, fail-closed fallback and numeric intervention
+    // visible without exposing prompts or user text.
+    analystResponse: getAnalystResponseStatus(),
     // Surfaced because the effective limit is a function of replica count, and
     // a mismatch between API_REPLICAS and Railway's actual setting is
     // otherwise invisible until someone bursts the endpoint.

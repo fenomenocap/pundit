@@ -68,6 +68,8 @@ export default function ClubSeasonEvaluationPage() {
       <PageHeader
         title="Club season calibration"
         eyebrow="Rolling snapshots · Premier League & UCL qualifiers"
+        lastUpdated={data?.updatedAt}
+        loading={loading}
         badge={(
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="rounded border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-xs font-medium text-cyan-400">
@@ -109,7 +111,7 @@ export default function ClubSeasonEvaluationPage() {
           <section className="rounded-lg border border-border bg-card p-4">
             <p className="text-xs leading-relaxed text-muted-foreground">{data.disclaimer}</p>
             <p className="mt-2 font-mono text-xs text-muted-foreground">
-              Updated {new Date(data.updatedAt).toLocaleString()} · {data.metrics.fixtureCount} finished snapshots
+              {data.metrics.fixtureCount} finished snapshots · {data.metrics.calibrationForecastCount} calibration forecasts
             </p>
           </section>
 
@@ -126,13 +128,16 @@ export default function ClubSeasonEvaluationPage() {
                 <section className="overflow-hidden rounded-lg border border-border bg-card">
                   <div className="border-b border-border px-4 py-3">
                     <h2 className="text-sm font-semibold text-white">Calibration buckets</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      All three 1X2 outcomes are scored per fixture: {metrics.calibrationForecastCount} forecasts across {metrics.fixtureCount} finished snapshots.
+                    </p>
                   </div>
                   <div className="overflow-auto">
                     <table className="w-full text-left text-xs">
                       <thead className="text-xs uppercase tracking-wide text-muted-foreground">
                         <tr>
                           <th className="px-4 py-2">Bucket</th>
-                          <th>Fixtures</th>
+                          <th>Forecasts</th>
                           <th>Avg predicted</th>
                           <th className="pr-4">Actual rate</th>
                         </tr>

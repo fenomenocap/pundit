@@ -7,6 +7,7 @@ import {
   generateAnalysis,
   hasGroundedAnswerShape,
   hasMeaningfulProse,
+  normalizeAnalystIdentity,
   sanitizeDeliveredAnswer,
   statesConditionalClose,
   statesValueVerdict,
@@ -326,8 +327,9 @@ describe("a correct match answer survives the real delivery path", () => {
       evidenceRequired: false,
     });
     expectMatchContentIntact(delivered.answer);
-    expect(delivered.answer.startsWith(ABSTAINING_ANSWER)).toBe(true);
-    const appended = delivered.answer.slice(ABSTAINING_ANSWER.length);
+    const voicedAnswer = normalizeAnalystIdentity(ABSTAINING_ANSWER);
+    expect(delivered.answer.startsWith(voicedAnswer)).toBe(true);
+    const appended = delivered.answer.slice(voicedAnswer.length);
     expect(appended).toContain("**What would change this**");
     expect(statesConditionalClose(appended)).toBe(true);
     expect(delivered.verification.status).toBe("not-required");
@@ -527,7 +529,7 @@ describe("realistic match answers are not eaten by the narrative guard", () => {
       // these contradicts anything, so the reasoning must arrive intact.
       const normalized = normalizeWhitespace(delivered.answer);
       for (const phrase of variant.intact) {
-        expect(normalized).toContain(normalizeWhitespace(phrase));
+        expect(normalized).toContain(normalizeWhitespace(normalizeAnalystIdentity(phrase)));
       }
       for (const label of ["**Verdict**", "**Goals**", "**Likely scorelines**"]) {
         expect(delivered.answer).toContain(label);
@@ -697,7 +699,7 @@ describe("the final safety gate", () => {
           candidateUnrecognized: false,
         });
         expect(normalizeWhitespace(delivered.answer))
-          .toContain(normalizeWhitespace(answer));
+          .toContain(normalizeWhitespace(normalizeAnalystIdentity(answer)));
       });
     }
   });
@@ -916,7 +918,7 @@ describe("the divergence a match answer must state", () => {
     // Server-composed from the validated record, so every figure in it is one
     // the market guard would vouch for.
     expect(delivered.answer).toContain(
-      "Against Kalshi, which prices Celtic at 55.4%, Pundit's model at 66.9% is"
+      "Against Kalshi, which prices Celtic at 55.4%, my 66.9% estimate is"
       + " 11.5 percentage points higher"
     );
     // It lands beside the numbers rather than as a trailing recital, and the
@@ -937,7 +939,7 @@ describe("the divergence a match answer must state", () => {
       question: "Which side has the stronger model case, and why? Use model evidence only.",
     });
     expectDeliverable(delivered.answer, true);
-    expect(delivered.answer).toContain("Pundit's model makes **Celtic 66.9%**");
+    expect(delivered.answer).toContain("I make **Celtic 66.9%**");
     expect(delivered.answer).not.toMatch(/kalshi|polymarket|market comparison|market gap/i);
   });
 
@@ -960,7 +962,9 @@ describe("the divergence a match answer must state", () => {
       expectDeliverable(delivered.answer, true);
       expect(delivered.answer).not.toContain("the widest gap between the two");
       // Exactly one statement of the gap, which is the model's own.
-      expect(delivered.answer).toContain(line.split(",")[0].split(" than")[0].slice(0, 20));
+      expect(delivered.answer).toContain(
+        normalizeAnalystIdentity(line).split(",")[0].split(" than")[0].slice(0, 20)
+      );
     }
   });
 
@@ -980,11 +984,12 @@ describe("the divergence a match answer must state", () => {
      * than on an edge Pundit is in no position to claim.
      */
     const expectNoMarketInvented = (answer: string) => {
-      expect(answer.startsWith(CELTIC_BODY)).toBe(true);
-      const appended = answer.slice(CELTIC_BODY.length);
+      const voicedBody = normalizeAnalystIdentity(CELTIC_BODY);
+      expect(answer.startsWith(voicedBody)).toBe(true);
+      const appended = answer.slice(voicedBody.length);
       expect(appended).not.toMatch(/kalshi|polymarket|market/i);
       expect(appended).not.toMatch(/percentage points|the value is on|priced/i);
-      expect(appended).toContain("the model's lean towards Celtic");
+      expect(appended).toContain("my lean towards Celtic");
       expect(statesConditionalClose(appended)).toBe(true);
     };
 
@@ -1068,7 +1073,7 @@ describe("the divergence a match answer must state", () => {
       `${stated}\n\n**Goals**`
     ));
     expectDeliverable(delivered.answer, true);
-    expect(delivered.answer).toContain(stated);
+    expect(delivered.answer).toContain(normalizeAnalystIdentity(stated));
     // `statesMarketDivergence` recognises it, so no second copy is appended.
     expect(delivered.answer).not.toContain("the widest gap between the two");
     expect(delivered.answer.match(/11\.5 percentage points/g)).toHaveLength(1);
@@ -1180,18 +1185,18 @@ describe("the verdict and the close a match answer must carry", () => {
     const delivered = await deliverCeltic(DIVERGENCE_ONLY);
     expectDeliverable(delivered.answer, true);
     expect(delivered.answer).toContain(
-      "The model rates Celtic higher than the market does; the market rates the draw and LASK"
-      + " higher than the model does."
+      "I rate Celtic higher than the market does; the market rates the draw and LASK"
+      + " higher than I do."
     );
     // A verdict is a direction, not a second recital: the sizes were stated one
     // sentence earlier, and every figure it repeated would be one the market
     // guard has to attribute to a source.
     const verdict = delivered.answer.split("\n")
       .flatMap((line) => line.split(". "))
-      .find((sentence) => sentence.includes("The model rates Celtic higher"))!;
+      .find((sentence) => sentence.includes("I rate Celtic higher"))!;
     expect(verdict).not.toMatch(/\d/);
     // It lands beside the gap it judges, not as a trailing aside.
-    expect(delivered.answer.split("\n")[1]).toContain("The model rates Celtic higher");
+    expect(delivered.answer.split("\n")[1]).toContain("I rate Celtic higher");
     // The calibration the verdict was missing: a gap is a disagreement to
     // explain, not a side to back.
     expect(delivered.answer).toContain("not a recommendation to back anything");
@@ -1206,8 +1211,8 @@ describe("the verdict and the close a match answer must carry", () => {
     // likely to talk itself out of. Every leg here is inside the band, so the
     // floor must produce the abstention rather than dress 0.8 points as value.
     expect(delivered.answer).toContain(
-      "No outcome here is more than two percentage points from the market, so the"
-      + " model and the market agree across the board."
+      "No outcome here is more than two percentage points from the market, so my"
+      + " view and the market agree across the board."
     );
     expect(delivered.answer).not.toContain("The value is on");
     expect(delivered.answer).not.toMatch(/\bworth backing\b|\bedge to take\b/i);
@@ -1222,7 +1227,7 @@ describe("the verdict and the close a match answer must carry", () => {
     );
     expectDeliverable(delivered.answer, true);
     expect(delivered.answer).not.toContain("The value is on Celtic");
-    expect(delivered.answer).toContain("The model rates Celtic higher");
+    expect(delivered.answer).toContain("I rate Celtic higher");
     expect(delivered.answer).toContain("not a recommendation to back anything");
   });
 
@@ -1234,7 +1239,7 @@ describe("the verdict and the close a match answer must carry", () => {
         "LASK are priced above where the model has them, so there is nothing to take there.\n\n**Goals**")
     );
     expectDeliverable(delivered.answer, true);
-    expect(delivered.answer).toContain("LASK are priced above where the model has them");
+    expect(delivered.answer).toContain("LASK are priced above where I have them");
     expect(delivered.answer).not.toContain("nothing to take");
   });
 
@@ -1373,7 +1378,7 @@ describe("the verdict and the close a match answer must carry", () => {
     });
     expectDeliverable(delivered.answer, true);
     expect(delivered.answer).toContain("11.5 percentage points higher");
-    expect(delivered.answer).toContain("The model rates Celtic higher");
+    expect(delivered.answer).toContain("I rate Celtic higher");
     expect(statesConditionalClose(delivered.answer)).toBe(true);
     expect(sanitizeDeliveredAnswer(delivered.answer, "match", priced))
       .toBe(delivered.answer);

@@ -48,6 +48,7 @@ import {
   TEAM_NEWS_CLAIM,
   assertsSquadAvailability,
   DENIES_OWN_CAPABILITY,
+  stripUnresolvedResponseMarkers,
 } from "./answer-provenance";
 import {
   reviseAnswerWithClaimDecisions,
@@ -57,6 +58,7 @@ import {
   reconcileContradictoryRationales,
   settleScorelineTotal,
   validateCompleteOneXTwoMarket,
+  stripUntraceableMatchPercentages,
   type DirectionalRationale,
   type ManagerTenure,
   type OneXTwoMarketLeg,
@@ -64,6 +66,14 @@ import {
   type ValidatedOneXTwoMarket,
   type VerifiableClaim,
 } from "./response-correctness";
+import { composeMatchResponse } from "./response-composer";
+import { validateAnalystDraft } from "./analyst-draft";
+import { buildResponseFacts } from "./response-facts";
+import {
+  planResponse,
+  responsePresentation,
+  type ResponsePresentation,
+} from "./response-plan";
 import {
   evaluateFixtureCapability,
   fixtureRegistryExpansionEnabled,
@@ -143,6 +153,7 @@ export interface Grounding {
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
+  stakeObservedAt?: string;
   oddsSources: OddsSource[];
   /**
    * `oddsSources` differenced against the model, one entry per complete source.
@@ -197,6 +208,24 @@ export interface ConversationTurn {
 export type TeamContext = [string, string];
 export interface FixtureContext { fixtureId: string }
 export type AnalysisTier = "match" | "competition" | "season" | "general";
+
+/** Emergency rollback only. V2 is the exercised default in code and tests. */
+// V2 is the production default. Set exactly "false" only for emergency
+// rollback to the legacy prose path; readiness exposes the effective state.
+export const ANALYST_RESPONSE_V2 = process.env.ANALYST_RESPONSE_V2 !== "false";
+const analystResponseMetrics = {
+  acceptedDrafts: 0,
+  rejectedDrafts: 0,
+  numericGuardInterventions: 0,
+};
+
+export function getAnalystResponseStatus() {
+  return {
+    version: ANALYST_RESPONSE_V2 ? "v2" as const : "legacy" as const,
+    enabled: ANALYST_RESPONSE_V2,
+    ...analystResponseMetrics,
+  };
+}
 
 export interface AskCitation {
   id: string;
@@ -1381,7 +1410,7 @@ interface ValidatedMarketRecord {
  * mention of the model itself.
  */
 const MARKET_CLAUSE_BOUNDARY =
-  /\b(?:so|while|whilst|whereas|but|though|although|however|meanwhile|versus|vs|against|compared|than|model|pundit|edge|forecast|forecasts|projection|projections|implies|implying)\b|[;]/gi;
+  /\b(?:so|while|whilst|whereas|but|though|although|however|meanwhile|versus|vs|against|compared|than|model|pundit|edge|forecast|forecasts|projection|projections|implies|implying)\b|\bmy\b(?=\s+(?:\*{0,2}\d|view|forecast|estimate))|[;]/gi;
 
 /**
  * The span of `sentence` that is quoting `source`, bounded on both sides by the
@@ -2006,6 +2035,7 @@ function outcomeGapPoints(
  */
 function stripBettingClause(sentence: string): string | null {
   const trimmed = sentence
+    .replace(/[,;]\s*so\s+the\s+value(?:\s+\w+){0,5}\s+sits\s+on\b[^.!?]*/gi, "")
     .replace(/[,;]?\s*(?:and\s+)?so\s+there\s+is\s+nothing\s+to\s+take\s+(?:there|here)/gi, "")
     .replace(/[,;]?\s*(?:so\s+|and\s+)?there\s+is\s+nothing\s+to\s+take\s+(?:there|here)/gi, "")
     .replace(/[,;]?\s*(?:and\s+)?(?:they\s+|these\s+|both\s+)?offers?\s+nothing\b/gi, "")
@@ -2029,7 +2059,7 @@ function stripBettingClause(sentence: string): string | null {
  * to make.
  */
 const RECOMMENDS_A_BET =
-  /\b(?:the\s+)?(?:value|edge|play|bet|money)\s+(?:is|sits|lies)\s+on\b|\bworth\s+(?:backing|taking|a\s+bet|playing)\b|\bnothing\s+to\s+take\b|\bthe\s+play\s+(?:is|here)\b|\bactionable\s+(?:side|edge|value)\b|\bonly\s+direction\s+with\s+daylight\b|\b(?:offers?|offering)\s+nothing\b|\bnot\s+worth\s+(?:a\s+bet|backing|taking)\b|\bbet(?:ting)?\s+into\b|\bwhich\s+side\s+to\s+back\b|\bside\s+to\s+back\b|\byou\s+(?:are|'re)\s+(?:betting|backing)\b/i;
+  /\b(?:the\s+)?(?:value(?:\s+such\s+as\s+it\s+is)?|edge|play|bet|money)\s+(?:is|sits|lies)\s+on\b|\bworth\s+(?:backing|taking|a\s+bet|playing)\b|\bnothing\s+to\s+take\b|\bthe\s+play\s+(?:is|here)\b|\bactionable\s+(?:side|edge|value)\b|\bonly\s+direction\s+with\s+daylight\b|\b(?:offers?|offering)\s+nothing\b|\bnot\s+worth\s+(?:a\s+bet|backing|taking)\b|\bbet(?:ting)?\s+into\b|\bwhich\s+side\s+to\s+back\b|\bside\s+to\s+back\b|\byou\s+(?:are|'re)\s+(?:betting|backing)\b/i;
 
 /**
  * "Already priced into the model", said of team news. The model has no such
@@ -2086,6 +2116,9 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
     }
     if (/\b(?:assumes?|assuming)\b[^.!?\n]{0,50}\b(?:XI|line-?up|starters?)\b|\b(?:rotation|second string|team sheets?|line-?ups?|first-choice (?:attack|XI|starters?))\b[^.!?\n]{0,100}\b(?:shrink|pull|push|compress|move|modal|stand|erode)/i.test(sentence)) {
       return "The grounded forecast uses club-strength ratings and the competition's home-field setting; it does not quantify lineup counterfactuals.";
+    }
+    if (/\bif\b[^.!?\n]{0,90}\b(?:first-choice|back line|starters?|starts?|missing|absent)\b[^.!?\n]{0,120}\b(?:gap|draw|price|probabilit\w*|read)\b[^.!?\n]{0,80}\b(?:shrink|move|stand|hold|become|rise|fall|increase|decrease|widen|narrow)/i.test(sentence)) {
+      return "A confirmed lineup change would require a refreshed forecast; these facts do not support a directional probability adjustment.";
     }
     // A claim that availability is *already inside* the model. It is not: the
     // model reads club-strength ratings and the competition's home-field
@@ -2389,6 +2422,24 @@ export function sanitizeRuntimeResponseCorrectness(
     rationaleSafe,
     context.externalOneXTwoMarkets ?? groundingOneXTwoMarketLegs(grounding)
   );
+}
+
+function enforceMatchNumericTraceability(answer: string, grounding: Grounding): string {
+  const modelProbabilities = [
+    grounding.pHome, grounding.pDraw, grounding.pAway,
+    grounding.pOver2_5, grounding.pUnder2_5, grounding.pBttsYes, grounding.pBttsNo,
+    ...(grounding.scorelines ?? []).map((row) => row.probability),
+  ];
+  return stripUntraceableMatchPercentages(answer, {
+    probabilities: [
+      ...modelProbabilities,
+      ...(grounding.oddsSources ?? []).flatMap((source) =>
+        [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
+    ],
+    percentagePointGaps: (grounding.marketDivergence ?? []).flatMap((market) =>
+      market.legs.map((leg) => leg.gapPoints)),
+    fairDecimalOdds: modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
+  });
 }
 
 export function failClosedEmptyCurrentVerification(
@@ -2737,31 +2788,15 @@ points.`;
 // beyond style: the divergence leads, the goal-market figures and the scoreline
 // list sit in separate sections, and the closing section is conditional rather
 // than a restatement.
-const MATCH_EXAMPLE = `A well-judged answer for a match question looks like this, in length and
-density as much as shape:
+const MATCH_EXAMPLE = `For a full preview, write in first person and lead directly: "I make Riverton
+48.2%, the draw 24.7% and Ashcombe 27.1%." Add goals, one or two scorelines and a compact market
+comparison only when they help. For a narrow follow-up, answer only that question: "I make 2-1
+11.4%, about 8.77 in fair decimal odds; I have no comparable live exact-score quote here." Never
+turn a scorer question, lineup hypothetical or one-line follow-up into another full preview.`;
 
-**Model vs market**
-Pundit's model makes **Riverton 48.2%**, the **draw 24.7%** and **Ashcombe 27.1%** for the 14 March
-fixture. Kalshi: home 41.0%, draw 32.4%, away 26.6%. The widest gap is on the home win, where the
-model is **7.2 percentage points** higher — that is where the edge is, and it is worth taking only if
-the home side lines up as expected. The away side sits half a point apart, so there is nothing to act
-on there.
-
-**Goals**
-**Over 2.5 at 56.3%** and **both teams to score at 58.9%** point to an open game, which fits a
-disagreement about who wins rather than how many goals the game holds.
-
-**Likely scorelines**
-**2-1 (11.4%)** and **1-1 (10.2%)** lead, with **1-2 (7.8%)** the best of the away wins.
-
-**What would change this**
-No dated team-news source was found for either side, and the home edge assumes a normal XI. If the
-first-choice back line starts, the gap on the home win stands; if two of them are missing, that gap
-is the first thing to shrink and the draw becomes the better-priced outcome. A lineup report an hour
-before kickoff settles which of those you are betting into.`;
-
-const MATCH_SYSTEM_PROMPT = `You are a club-football match-analysis assistant for Pundit. You are given
-precomputed probabilities from Pundit's match model for a specific matchup. Treat these numbers as ground truth for the statistical
+const MATCH_SYSTEM_PROMPT = `You are Pundit: one coherent, first-person expert football analyst. Never
+refer to "Pundit's model", "the model", "the payload" or "the retrieved sources" in reader-facing
+prose. You are given precomputed probabilities for a specific matchup. Treat these numbers as ground truth for the statistical
 analysis. Do not invent or contradict them. When homeFieldAdvantage is true, the model applies a
 home-field boost to the home side before computing probabilities -- mention that when relevant.
 The data may include oddsSources -- no-vig implied 1X2 probabilities from live
@@ -2771,9 +2806,8 @@ gives label, modelPercent, marketPercent and gapPoints (modelPercent minus
 marketPercent, so a positive gap means the model rates that outcome more highly
 than the market does), and largest is the leg with the widest absolute gap.
 Report those supplied numbers; do not recompute them from oddsSources, and never
-state a gap marketDivergence does not contain. Lead the answer with the largest
-gap: its size in percentage points, its direction, and what a bettor should make
-of it. It may also include stakePHome/stakePDraw/stakePAway from Stake, though
+state a gap marketDivergence does not contain. If the user asks about the market,
+state the model value, market value, gap size and direction compactly. It may also include stakePHome/stakePDraw/stakePAway from Stake, though
 those are often absent (null) -- when a source is absent, never guess its price;
 if marketDivergence is empty and no market source is present at all, say plainly
 that no market line is available.
@@ -2806,15 +2840,16 @@ ${MATCH_CAPABILITY_BOUNDS}
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}
 ${LENGTH_BUDGET}
-A match answer may run to about 220 words and 5 sections, but only when the extra
+Return only one JSON object with this exact shape, with no Markdown fence or prose outside it:
+{"directAnswer":{"text":"I prefer {{match.home}}.","factIds":["match.home"]},"reasoning":[{"text":"The goals lean is {{total.over-2.5}}.","factIds":["total.over-2.5"]}],"uncertainty":{"text":"I cannot quantify a lineup change.","factIds":["limit.lineup-counterfactual"]},"citedClaims":[{"text":"A dated team-news claim","factIds":[],"sourceIds":["S1"]}]}
+Write no match number, percentage, gap or fair price directly in text. Insert a fact slot such as {{match.home}}, {{score.2-1}} or {{market.kalshi.home}} instead; the server renders its canonical subject and values. Every numeric factId must actually appear as its matching slot in the same text part. Every current external claim belongs in citedClaims and must reference source IDs from the evidence bundle. Use an empty reasoning or citedClaims array when none is needed. Do not invent an ID or a slot.
+A full-preview answer may run to about 220 words and 4 sections, but only when the extra
 words carry the divergence, the conditional read, or a cited team-news fact. The
 moment you are restating numbers the reader can already see, you are over budget
 whatever the word count says.
-Whenever the answer covers this fixture, state the headline win/draw/win and
-O/U 2.5 numbers, mention 1-2 most likely scorelines, give the size and direction
-of marketDivergence's largest gap whenever marketDivergence is non-empty, say which
-outcome the value is on and which are priced about right, and name the biggest
-unresolved unknown together with what it would change.
+Match the scope of the latest question. A narrow follow-up must answer directly in one short section
+and must not repeat the full 1X2, goals and scoreline report. Only a full preview should cover all of
+those. Never recommend a wager or invent a causal explanation for a market gap.
 The model data names one specific fixture and its date. Two clubs can meet twice
 in a two-legged tie, so name that date when you give the numbers -- the user has
 to be able to tell which leg they are reading.
@@ -3356,6 +3391,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     stakePHome: stake?.pHome ?? fixture.stakePHome,
     stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
     stakePAway: stake?.pAway ?? fixture.stakePAway,
+    ...(stake && markets ? { stakeObservedAt: markets.observedAt } : {}),
     oddsSources,
     marketDivergence: computeMarketDivergence(fixture, oddsSources),
   };
@@ -4479,6 +4515,15 @@ export function sanitizeGeneralAnswer(answer: string): string {
     // A no-search tactical answer cannot establish the non-existence of all
     // sources. The canonical general-analysis disclaimer is the honest scope.
     if (/\bno verified source exists\b/i.test(sentence)) return "";
+    if (/\bhigh(?:er)? (?:defensive )?line\b/i.test(sentence)
+      && /\bguarantee\w*\b[^.!?\n]{0,50}\b(?:goal|chance|win|result|outcome)\b|\b(?:goal|chance|win|result|outcome)\b[^.!?\n]{0,50}\bguarantee\w*\b/i.test(sentence)) {
+      return "A high defensive line leaves more space between the defenders and their own goal; that creates a vulnerability, not a guaranteed chance, goal or result.";
+    }
+    // A universal trigger for a market move requires a defined market, time
+    // window and evidence. General tactical analysis supplies none of those.
+    if (!/\[\[\s*S?\d{1,3}\s*\]\]/i.test(sentence)
+      && /\b(?:any|every|always|universally|rule of thumb)\b[^.!?\n]{0,80}\b(?:line|odds?|price)\b[^.!?\n]{0,50}\b(?:move|shift|change)\b|\b(?:line|odds?|price)\b[^.!?\n]{0,50}\b(?:move|shift|change)\b[^.!?\n]{0,50}\b(?:always|guarantees?|means?)\b/i.test(sentence)
+      && /\d+(?:\.\d+)?%|\bthreshold\b/i.test(sentence)) return "";
     return sentence;
   }).replace(/\n{3,}/g, "\n\n").trim();
   return stripModelAttributedProbabilities(productScopeSafe, GENERAL_ODDS_CORRECTION);
@@ -5284,7 +5329,7 @@ export function normalizeBannedMarkdown(answer: string): string {
 // question and left an adjacent tactical question unlabelled -- so the
 // guarantee is enforced here rather than left to prompt compliance.
 const GENERAL_DISCLAIMER =
-  "This is general football analysis, not based on Pundit's model data.";
+  "This is general football analysis, not based on my match forecasts.";
 
 const HAS_GENERAL_DISCLAIMER =
   /general (?:football )?analysis|(?:not|n't|outside|beyond)[^.\n]{0,80}(?:pundit'?s model|model data|model output|model's data)/i;
@@ -5586,7 +5631,8 @@ function validateAnalysisResponse(
   responses: Anthropic.Message[],
   tier: AnalysisTier,
   startedAt: number,
-  grounding?: AskGrounding
+  grounding?: AskGrounding,
+  structuredOutput = false
 ): string {
   const blocks = responses.flatMap((response) => response.content);
   // Only the settled turn's text is the answer. MiniMax drafts a provisional
@@ -5627,6 +5673,10 @@ function validateAnalysisResponse(
   if (withoutToolMarkup.removed && !hasMeaningfulProse(withoutToolMarkup.text)) {
     throw new AppError(502, "Analysis service returned an empty response.");
   }
+  // Match V2 is parsed and validated as AnalystDraft in deliverAnswer. Running
+  // prose/Markdown guards over JSON first would destroy the contract before it
+  // reaches that validator.
+  if (structuredOutput && tier === "match") return answer.trim();
   const structurallyComplete = stopReason === "end_turn"
     ? dropStructurallyIncompleteTail(answer)
     : answer;
@@ -5921,7 +5971,8 @@ export async function generateAnalysis(
   grounding?: AskGrounding,
   bundle?: EvidenceBundle,
   signal?: AbortSignal,
-  allowTools = true
+  allowTools = true,
+  structuredOutput = false
 ): Promise<string> {
   const startedAt = Date.now();
   const collected: Anthropic.Message[] = [];
@@ -5973,7 +6024,7 @@ export async function generateAnalysis(
     }
     collected.push(settled);
   }
-  return validateAnalysisResponse(collected, tier, startedAt, grounding);
+  return validateAnalysisResponse(collected, tier, startedAt, grounding, structuredOutput);
 }
 
 const RETRYABLE_STATUS = new Set([429]);
@@ -6207,7 +6258,9 @@ export function prepareAsk(
   } else if (context.tier === "match") {
     grounding = buildGrounding(context.fixture);
     systemPrompt = MATCH_SYSTEM_PROMPT;
-    currentMessage = `Model data: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+    currentMessage = `Authoritative match facts: ${JSON.stringify(grounding)}\n`
+      + `Response-facts contract: ${JSON.stringify(buildResponseFacts(grounding).facts)}\n`
+      + `User question: ${question}`;
   } else if (context.tier === "candidate") {
     grounding = null;
     systemPrompt = GENERAL_SYSTEM_PROMPT;
@@ -6451,12 +6504,12 @@ export function composeMarketDivergenceSentence(
   const model = asPercentText(leg.modelPercent);
   if (leg.gapPoints === 0) {
     return `Against ${source}, which prices ${leg.label} at ${market}, `
-      + `Pundit's model lands on the same number, so there is no edge to take there.`;
+      + `I land on the same number, so there is no edge to take there.`;
   }
   const direction = leg.gapPoints > 0 ? "higher" : "lower";
   const size = Math.abs(leg.gapPoints).toFixed(1);
   return `Against ${source}, which prices ${leg.label} at ${market}, `
-    + `Pundit's model at ${model} is ${size} percentage points ${direction} — `
+    + `my ${model} estimate is ${size} percentage points ${direction} — `
     + `the widest gap between the two on this fixture.`;
 }
 
@@ -6642,7 +6695,7 @@ const READ_MOVEMENT =
 
 /** What is being moved: the read itself, not some incidental thing. */
 const READ_SUBJECT =
-  /\b(?:gap|gaps|edge|value|read|call|model|market|price|priced|pricing|probabilit\w*|number|numbers|line|lines|gulf|margin)\b/i;
+  /\b(?:gap|gaps|edge|value|read|call|model|market|price|priced|pricing|probabilit\w*|number|numbers|line|lines|gulf|margin|lean|forecast)\b/i;
 
 /**
  * Whether the answer says what would change the read.
@@ -6689,10 +6742,10 @@ export function composeConditionalCloseSentence(
 ): string {
   const anchor = leg
     ? `the gap on ${leg.label}`
-    : `the model's lean towards ${grounding.pHome >= grounding.pAway ? grounding.home : grounding.away}`;
+    : `my lean towards ${grounding.pHome >= grounding.pAway ? grounding.home : grounding.away}`;
   const shortAnchor = leg ? "that gap" : "that lean";
   return `A material change to the club-strength inputs or fixture context would require a refreshed forecast for ${anchor}; `
-    + `this payload does not quantify lineup counterfactuals or guarantee ${shortAnchor} will persist.`;
+    + `this evidence does not quantify lineup counterfactuals or guarantee ${shortAnchor} will persist.`;
 }
 
 /** A section that is already about what the read depends on. */
@@ -6863,8 +6916,8 @@ function renderGroundedModelOnlyAnswer(grounding: Grounding, inputQuestion: bool
     .map((row) => `**${row.score} (${asPercent(row.probability)})**`)
     .join(", ");
   const sections = [
-    "**Model view**",
-    `Pundit's model gives **${grounding.home} ${asPercent(grounding.pHome)}**, the `
+    "**My view**",
+    `I make **${grounding.home} ${asPercent(grounding.pHome)}**, the `
       + `**draw ${asPercent(grounding.pDraw)}** and **${grounding.away} ${asPercent(grounding.pAway)}** `
       + `for the ${formatGroundingDate(grounding.date)} fixture.`,
     "",
@@ -6876,7 +6929,7 @@ function renderGroundedModelOnlyAnswer(grounding: Grounding, inputQuestion: bool
     `The grounded forecast uses reviewed club-strength ratings${grounding.homeFieldAdvantage
       ? " and applies the competition's home-field advantage"
       : " with no home-field advantage applied"}. `
-      + "This response does not expose an input-by-input contribution decomposition, so Pundit cannot honestly rank how much each input contributes.",
+      + "Those facts do not provide an input-by-input causal decomposition, so I cannot honestly rank how much each input contributes.",
   ];
   if (inputQuestion) {
     sections.push(
@@ -7034,6 +7087,7 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
     ].join("\n");
   }
   const played = Math.max(...rows.map((row) => row.playedGames), 0);
+  const playedCounts = [...new Set(rows.map((row) => row.playedGames))].sort((a, b) => a - b);
   const tableRows = rows.slice(0, 5).map((row) =>
     `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} `
     + `${row.playedGames === 1 ? "match" : "matches"}, goal difference `
@@ -7051,8 +7105,10 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
     const caveat = played === 0
       ? "No matches have been played, so the ordering reflects the provider's "
         + "tie-breaking rather than anything that happened on the pitch."
-      : "Sample size. Every club has played "
-        + `${played} ${matchWord}, so the table measures `
+      : "Sample size. "
+        + (playedCounts.length === 1
+          ? `Every club has played ${played} ${matchWord}, so the table measures `
+          : `Clubs have played between ${playedCounts[0]} and ${playedCounts.at(-1)} matches, so the uneven table measures `)
         + (played < 4 ? "almost nothing about relative strength" : "a small fraction of the season")
         + ". "
         + (tiedOnPoints
@@ -7094,7 +7150,9 @@ export function deterministicGroundedResponse(
     if (isModelOnlyRequest(question) || asksInput) {
       return renderGroundedModelOnlyAnswer(grounding, asksInput);
     }
-    return renderGroundedMatchAnswer(grounding);
+    return ANALYST_RESPONSE_V2
+      ? composeMatchResponse(question, grounding, planResponse(question, { groundingKind: "match" }))
+      : renderGroundedMatchAnswer(grounding);
   }
   return null;
 }
@@ -7115,7 +7173,22 @@ export function deterministicGroundedResponse(
 export function closedGroundedAnswer(question: string, grounding: AskGrounding): string | null {
   if (grounding?.kind === "match"
     && !isModelOnlyRequest(question)
-    && !asksModelInputQuestion(question)) return null;
+    && !asksModelInputQuestion(question)) {
+    if (!ANALYST_RESPONSE_V2) return null;
+    const plan = planResponse(question, { groundingKind: "match", hasHistory: true });
+    // These modes are fully settled by typed server facts or a typed
+    // limitation. They must not spend a search/model call or broaden into a
+    // report. Team news and qualitative reads still reach evidence/expression.
+    return !plan.evidenceRequired && [
+      "exact-score",
+      "fair-price",
+      "market-comparison",
+      "player-or-scorer",
+      "lineup-counterfactual",
+    ].includes(plan.mode)
+      ? composeMatchResponse(question, grounding, plan)
+      : null;
+  }
   return deterministicGroundedResponse(question, grounding);
 }
 
@@ -7141,6 +7214,8 @@ export async function deliverAnswer(args: {
   evidenceRequired: boolean;
   candidateUnrecognized: boolean;
   hasHistory?: boolean;
+  /** True only for output produced under MATCH_SYSTEM_PROMPT's JSON contract. */
+  structuredDraftExpected?: boolean;
   signal?: AbortSignal;
 }): Promise<{ answer: string; citations: AskCitation[]; verification: AskVerification }> {
   const {
@@ -7153,9 +7228,43 @@ export async function deliverAnswer(args: {
     evidenceRequired,
     candidateUnrecognized,
     hasHistory = false,
+    structuredDraftExpected = false,
     signal,
   } = args;
-  const requestSafeAnswer = sanitizeRequestFidelity(rawAnswer, question, hasHistory);
+  const useV2 = ANALYST_RESPONSE_V2 && structuredDraftExpected;
+  let expressionAnswer = rawAnswer;
+  if (useV2 && grounding?.kind === "match") {
+    const validatedDraft = validateAnalystDraft(rawAnswer, grounding, {
+      sourceIds: bundle.results.map((source) => source.id),
+    });
+    if (validatedDraft.valid) {
+      analystResponseMetrics.acceptedDrafts += 1;
+      console.log(JSON.stringify({
+        event: "analyst_draft_accepted",
+        responseMode: planResponse(question, { groundingKind: "match", hasHistory }).mode,
+        factReferences: [
+          validatedDraft.draft.directAnswer,
+          ...validatedDraft.draft.reasoning,
+          ...validatedDraft.draft.citedClaims,
+          ...(validatedDraft.draft.uncertainty ? [validatedDraft.draft.uncertainty] : []),
+        ].reduce((count, part) => count + part.factIds.length, 0),
+      }));
+      expressionAnswer = validatedDraft.answer;
+    } else {
+      analystResponseMetrics.rejectedDrafts += 1;
+      console.warn(JSON.stringify({
+        event: "analyst_draft_rejected",
+        reason: validatedDraft.reason,
+        responseMode: planResponse(question, { groundingKind: "match", hasHistory }).mode,
+      }));
+      expressionAnswer = composeMatchResponse(
+        question,
+        grounding,
+        planResponse(question, { groundingKind: "match", hasHistory })
+      );
+    }
+  }
+  const requestSafeAnswer = sanitizeRequestFidelity(expressionAnswer, question, hasHistory);
   const answer = grounding?.kind === "fixture"
     ? sanitizeFixtureCoverageAnswer(requestSafeAnswer, grounding)
     : candidateUnrecognized
@@ -7195,7 +7304,16 @@ export async function deliverAnswer(args: {
       ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
       : TEAM_NEWS_ABSTENTION;
     return {
-      answer: `${renderGroundedModelOnlyAnswer(grounding, false)}\n\n**Team news**\n${abstention}`,
+      answer: useV2
+        ? finalizeDeliveredText(
+          checked.verification.status === "unavailable"
+            ? "I couldn’t verify a dated team-news update because verification was unavailable, so I won’t make an availability claim."
+            : composeMatchResponse(question, grounding,
+              planResponse(question, { groundingKind: "match", hasHistory })),
+          grounding,
+          useV2
+        )
+        : `${renderGroundedModelOnlyAnswer(grounding, false)}\n\n**Team news**\n${abstention}`,
       citations: [],
       verification: checked.verification,
     };
@@ -7216,7 +7334,13 @@ export async function deliverAnswer(args: {
     // same-source 1X2 snapshots, so deliver those deterministically rather
     // than allowing an unsupported generated counterfactual to survive.
     return {
-      answer: renderGroundedMatchAnswer(grounding),
+      answer: useV2
+        ? finalizeDeliveredText(composeMatchResponse(
+          question,
+          grounding,
+          planResponse(question, { groundingKind: "match", hasHistory })
+        ), grounding, useV2)
+        : renderGroundedMatchAnswer(grounding),
       citations: [],
       verification: checked.verification,
     };
@@ -7255,18 +7379,19 @@ export async function deliverAnswer(args: {
   const shaped = grounding?.kind !== "match" || hasGroundedAnswerShape(settledAnswer);
   if (readable && shaped) {
     const asksRead = asksForMatchRead(question, hasHistory);
-    const completeAnswer = guaranteeMatchReadCompleteness(
-      settledAnswer,
-      tier,
-      grounding,
-      asksRead
-    );
+    const completeAnswer = useV2
+      ? settledAnswer
+      : guaranteeMatchReadCompleteness(settledAnswer, tier, grounding, asksRead);
     return {
       // Completeness may deterministically add a market comparison from the
       // grounding. Request fidelity therefore gets the actual last word: an
       // explicit model-only request must not receive a market section merely
       // because the server can derive one.
-      answer: sanitizeRequestFidelity(completeAnswer, question, hasHistory),
+      answer: finalizeDeliveredText(
+        sanitizeRequestFidelity(completeAnswer, question, hasHistory),
+        grounding,
+        useV2
+      ),
       citations: rendered.citations,
       verification: checked.verification,
     };
@@ -7286,16 +7411,29 @@ export async function deliverAnswer(args: {
       // unrecognisable one is the model never having written an answer at all.
       reason: readable ? "answer_not_shaped_like_an_answer" : "guard_chain_left_no_prose",
     }));
-    const completeFallback = guaranteeMatchReadCompleteness(
-      renderGroundedMatchFallback(grounding),
-      tier,
-      grounding,
-      asksForMatchRead(question, hasHistory)
-    );
+    const modeFallback = useV2
+      ? composeMatchResponse(
+        question,
+        grounding,
+        planResponse(question, { groundingKind: "match", hasHistory })
+      )
+      : renderGroundedMatchFallback(grounding);
+    const completeFallback = useV2
+      ? modeFallback
+      : guaranteeMatchReadCompleteness(
+        modeFallback,
+        tier,
+        grounding,
+        asksForMatchRead(question, hasHistory)
+      );
     return {
       // The fallback answers from the grounding, so it owes the reader the
       // divergence for exactly the reason a generated answer does.
-      answer: sanitizeRequestFidelity(completeFallback, question, hasHistory),
+      answer: finalizeDeliveredText(
+        sanitizeRequestFidelity(completeFallback, question, hasHistory),
+        grounding,
+        useV2
+      ),
       citations: [],
       verification: checked.verification,
     };
@@ -7376,10 +7514,65 @@ export function sanitizeDeliveredAnswer(
   tier: AnalysisTier,
   grounding?: AskGrounding
 ): string {
-  return repairTruncatedLists(dropOrphanedSectionLabels(sanitizeRuntimeResponseCorrectness(
+  const sanitized = repairTruncatedLists(dropOrphanedSectionLabels(sanitizeRuntimeResponseCorrectness(
     sanitizeAnswerForTier(answer, tier, grounding, true),
     grounding?.kind === "match" ? grounding : undefined
   )));
+  // Citation markers may still be unresolved when evaluator/runtime helpers
+  // call this pure guard. The universal marker sweep belongs after
+  // renderEvidenceCitations, in finalizeDeliveredText.
+  return normalizeAnalystIdentity(sanitized);
+}
+
+export function normalizeAnalystIdentity(answer: string): string {
+  return answer
+    .replace(/outside Pundit['’]s model coverage/gi, "outside my forecasting coverage")
+    .replace(/Pundit probabilities/gi, "my probabilities")
+    .replace(/Pundit['’]s model at\s+(.{1,40}?)\s+is\b/gi, "my $1 estimate is")
+    .replace(/Pundit['’]s model makes/gi, "I make")
+    .replace(/Pundit['’]s model gives/gi, "I make")
+    .replace(/Pundit['’]s model favou?rs/gi, "I favour")
+    .replace(/Pundit['’]s model prefers/gi, "I prefer")
+    .replace(/Pundit['’]s model sees/gi, "I see")
+    .replace(/Pundit['’]s model lands/gi, "I land")
+    .replace(/Pundit['’]s model reads/gi, "I use")
+    .replace(/Pundit['’]s model at/gi, "I am at")
+    .replace(/Pundit['’]s model/gi, "I")
+    .replace(/\bthe model rates\b/gi, "I rate")
+    .replace(/\bthe model is\b/gi, "I am")
+    .replace(/\bthe model has\b/gi, "I have")
+    .replace(/\bthe model sees\b/gi, "I see")
+    .replace(/\bthe model prefers\b/gi, "I prefer")
+    .replace(/\bthe model still gives\b/gi, "I still give")
+    .replace(/\bthe model makes\b/gi, "I make")
+    .replace(/\bthe model gives\b/gi, "I make")
+    .replace(/\bthe model agrees\b/gi, "I agree")
+    .replace(/\bhigher than the model does\b/gi, "higher than I do")
+    .replace(/\blower than the model does\b/gi, "lower than I do")
+    .replace(/\bthe model and the market\b/gi, "my view and the market")
+    .replace(/\bthe model['’]s\b/gi, "my")
+    .replace(/\bthe model\b/gi, "I")
+    .replace(/\bthis payload\b/gi, "this evidence")
+    .replace(/\bthe payload\b/gi, "the supplied evidence");
+}
+
+function finalizeDeliveredText(
+  answer: string,
+  grounding?: AskGrounding,
+  enforceNumericTrace = false
+): string {
+  const voiced = normalizeAnalystIdentity(answer);
+  const correctnessSafe = enforceNumericTrace && grounding?.kind === "match"
+    ? sanitizeRuntimeResponseCorrectness(voiced, grounding)
+    : voiced;
+  const traced = enforceNumericTrace && grounding?.kind === "match"
+    ? enforceMatchNumericTraceability(correctnessSafe, grounding)
+    : voiced;
+  if (traced !== correctnessSafe) {
+    analystResponseMetrics.numericGuardInterventions += 1;
+    console.warn(JSON.stringify({ event: "analyst_numeric_guard_intervened" }));
+  }
+  return stripUnresolvedResponseMarkers(traced);
 }
 
 /**
@@ -7389,20 +7582,40 @@ export function sanitizeDeliveredAnswer(
  * fans out into six searches can no longer open a breaker by itself and blank
  * the next reader's evidence for five minutes.
  */
+export interface AskResult {
+  answer: string;
+  grounding: AskGrounding;
+  citations?: AskCitation[];
+  verification: AskVerification;
+  presentation: ResponsePresentation;
+}
+
+function withPresentation(
+  question: string,
+  hasHistory: boolean,
+  result: Omit<AskResult, "presentation">
+): AskResult {
+  const plan = planResponse(question, {
+    hasHistory,
+    groundingKind: result.grounding?.kind ?? null,
+  });
+  return {
+    ...result,
+    answer: finalizeDeliveredText(result.answer, result.grounding, ANALYST_RESPONSE_V2),
+    presentation: responsePresentation(plan),
+  };
+}
+
 export async function answerQuestion(
   question: string,
   history: ConversationTurn[] = [],
   teamContext?: TeamContext,
   signal?: AbortSignal,
   fixtureContext?: FixtureContext
-): Promise<{
-  answer: string;
-  grounding: AskGrounding;
-  citations?: AskCitation[];
-  verification: AskVerification;
-}> {
-  return withSearchQuestion(() =>
+): Promise<AskResult> {
+  const result = await withSearchQuestion(() =>
     answerQuestionScoped(question, history, teamContext, signal, fixtureContext));
+  return withPresentation(question, history.length > 0, result);
 }
 
 async function answerQuestionScoped(
@@ -7443,9 +7656,7 @@ async function answerQuestionScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
-    const closedAnswer = !query
-      ? closedGroundedAnswer(question, grounding)
-      : null;
+    const closedAnswer = closedGroundedAnswer(question, grounding);
     if (closedAnswer) {
       return {
         answer: closedAnswer,
@@ -7469,7 +7680,8 @@ async function answerQuestionScoped(
       grounding,
       bundle,
       signal,
-      allowAmbiguousFallback(question)
+      allowAmbiguousFallback(question),
+      ANALYST_RESPONSE_V2 && grounding?.kind === "match"
     );
     const delivered = await deliverAnswer({
       answer: rawAnswer,
@@ -7481,6 +7693,7 @@ async function answerQuestionScoped(
       evidenceRequired: Boolean(query || bundle.queries.length),
       candidateUnrecognized,
       hasHistory: history.length > 0,
+      structuredDraftExpected: ANALYST_RESPONSE_V2 && grounding?.kind === "match",
       signal,
     });
     return {
@@ -7521,14 +7734,10 @@ export async function answerQuestionStream(
   teamContext: TeamContext | undefined,
   handlers: AskStreamHandlers,
   fixtureContext?: FixtureContext
-): Promise<{
-  answer: string;
-  grounding: AskGrounding;
-  citations?: AskCitation[];
-  verification: AskVerification;
-}> {
-  return withSearchQuestion(() =>
+): Promise<AskResult> {
+  const result = await withSearchQuestion(() =>
     answerQuestionStreamScoped(question, history, teamContext, handlers, fixtureContext));
+  return withPresentation(question, history.length > 0, result);
 }
 
 async function answerQuestionStreamScoped(
@@ -7559,16 +7768,17 @@ async function answerQuestionStreamScoped(
     const coverageClosed = deterministicCoverageResponse(candidateUnrecognized, grounding);
     if (coverageClosed) {
       if (query) await buildEvidenceBundle(query, handlers.signal);
-      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(coverageClosed);
+      const settledCoverage = ANALYST_RESPONSE_V2
+        ? normalizeAnalystIdentity(coverageClosed)
+        : coverageClosed;
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(settledCoverage);
       return {
-        answer: coverageClosed,
+        answer: settledCoverage,
         grounding,
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
-    const closedAnswer = !query
-      ? closedGroundedAnswer(question, grounding)
-      : null;
+    const closedAnswer = closedGroundedAnswer(question, grounding);
     if (closedAnswer) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(closedAnswer);
       return {
@@ -7590,7 +7800,7 @@ async function answerQuestionStreamScoped(
     // reach the browser, including transient SSE deltas.
     const holdForCoverageGuard = shouldHoldCoverageDeltas(grounding, candidateUnrecognized);
     const holdForRequestFidelity = shouldHoldRequestFidelity(question, history.length > 0);
-    const rawAnswer = query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity
+    const rawAnswer = ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity
       ? await generateAnalysis(
         client,
         systemPrompt,
@@ -7599,7 +7809,8 @@ async function answerQuestionStreamScoped(
         grounding,
         bundle,
         handlers.signal,
-        ambiguousFallback
+        ambiguousFallback,
+        ANALYST_RESPONSE_V2 && grounding?.kind === "match"
       )
       : await generateAnalysisStream(
         client,
@@ -7623,11 +7834,12 @@ async function answerQuestionStreamScoped(
       evidenceRequired: Boolean(query || bundle.queries.length),
       candidateUnrecognized,
       hasHistory: history.length > 0,
+      structuredDraftExpected: ANALYST_RESPONSE_V2 && grounding?.kind === "match",
       signal: handlers.signal,
     });
     // The held delta and the done payload carry the same settled text.
     const settledAnswer = delivered.answer;
-    if ((query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity)
+    if ((ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity)
       && settledAnswer
       && (handlers.shouldContinue ?? (() => true))()) {
       handlers.onDelta(settledAnswer);

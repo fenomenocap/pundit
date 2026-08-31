@@ -37,6 +37,7 @@ import {
   validateGrounding,
   validateSse,
   validateAnswerCopy,
+  validateAnalystExpression,
   validateAnswerStructure,
   validateAbstainedCounterfactualDiscipline,
   validateCitationContract,
@@ -73,10 +74,12 @@ function runNode(args) {
 }
 
 function completeBrowserEvidence(identity, overrides = {}) {
+  const checkViewports = [{ width: 390, height: 844 }, { width: 1440, height: 900 }];
   return {
     ...identity,
     url: "https://thepundit.vercel.app/",
     viewport: { width: 390, height: 844 },
+    viewports: [{ width: 390, height: 844 }, { width: 1440, height: 900 }],
     console: { errors: [], warnings: [] },
     passed: true,
     summary: "Required production browser contracts passed.",
@@ -87,6 +90,7 @@ function completeBrowserEvidence(identity, overrides = {}) {
         evidence: "Observed the recognized-fixture capability label.",
         reproduction: ["Open the recognized fixture", "Submit the fixture question"],
         scenarioIds: ["recognized-friendly-outside-coverage"],
+        viewports: checkViewports,
       },
       {
         id: "fixture-context-retention",
@@ -94,6 +98,7 @@ function completeBrowserEvidence(identity, overrides = {}) {
         evidence: "Observed the same fixture after a table detour and follow-up.",
         reproduction: ["Ask about the fixture", "Ask for the table", "Return to the fixture"],
         scenarioIds: ["table-route-preserves-match", "unsupported-followup-and-matchup-replacement"],
+        viewports: checkViewports,
       },
       {
         id: "new-chat-clears-context",
@@ -101,6 +106,7 @@ function completeBrowserEvidence(identity, overrides = {}) {
         evidence: "New Chat removed the retained fixture and visible transcript.",
         reproduction: ["Establish fixture context", "Choose New Chat", "Inspect cleared state"],
         scenarioIds: [],
+        viewports: checkViewports,
       },
       {
         id: "candidate-no-fixture-badge",
@@ -108,6 +114,33 @@ function completeBrowserEvidence(identity, overrides = {}) {
         evidence: "An unrecognized candidate displayed no fixture badge.",
         reproduction: ["Submit the candidate matchup", "Inspect the assistant badge area"],
         scenarioIds: ["candidate-never-becomes-fixture"],
+        viewports: checkViewports,
+      },
+      {
+        id: "analyst-multi-turn-flow",
+        passed: true,
+        evidence: "The six-turn analyst conversation stayed scoped and retained its fixture.",
+        reproduction: ["Run the golden conversation", "Inspect every follow-up"],
+        scenarioIds: ["analyst-conversation-golden-path"],
+        viewports: checkViewports,
+        turnCount: 6,
+      },
+      {
+        id: "cross-surface-fixture-parity",
+        passed: true,
+        evidence: "Chat, Predictions and Fixtures showed the same fixture capability and market rows.",
+        reproduction: ["Open the fixture in Chat", "Compare Predictions and Fixtures"],
+        scenarioIds: ["analyst-conversation-golden-path", "market-comparison-coverage"],
+        viewports: checkViewports,
+        surfaces: ["chat", "fixtures", "predictions"],
+      },
+      {
+        id: "evaluation-calibration-presentation",
+        passed: true,
+        evidence: "WC and club-season pages identify forecasts and show one consistent timestamp.",
+        reproduction: ["Open both evaluation pages", "Inspect headers and calibration tables"],
+        scenarioIds: [],
+        viewports: checkViewports,
       },
     ],
     ...overrides,
@@ -120,6 +153,8 @@ function browserContractScenarios() {
     "table-route-preserves-match",
     "unsupported-followup-and-matchup-replacement",
     "candidate-never-becomes-fixture",
+    "analyst-conversation-golden-path",
+    "market-comparison-coverage",
   ].map((id) => ({ id, passed: true, outcome: "PASS", evidence: "Browser contract prerequisite." }));
 }
 
@@ -351,7 +386,7 @@ test("readiness gating names each failed component", () => {
   }), []);
 });
 
-test("schema-16 preserves bounded post-run web-search telemetry without inventing attribution", () => {
+test("schema-17 preserves bounded post-run web-search telemetry without inventing attribution", () => {
   assert.deepEqual(summarizeWebSearchTelemetry(
     { webSearch: { totalSearches: 7, consecutiveFailures: 1 } },
     { webSearch: { totalSearches: 11, consecutiveFailures: 0 } }
@@ -777,6 +812,51 @@ test("finalizer rejects a generic browser pass without named UI contract coverag
   assert.match(result.stderr, /missing required check: fixture-capability-label/);
 });
 
+test("finalizer binds every mandatory browser check to mobile and desktop evidence", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-check-viewports-"));
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "check-viewport-run",
+    startedAt: "2026-08-13T10:00:00.000Z",
+    webUrl: "https://thepundit.vercel.app",
+    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+    scenarios: browserContractScenarios(),
+    progress: { status: "complete" },
+    browserEvidence: null,
+    recommendations: [],
+  }, null);
+  await writeReport(report, directory);
+  const identity = {
+    runId: "check-viewport-run",
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: "abc1234",
+    deploymentId: "deploy-a",
+    capturedAt: "2026-08-13T10:01:00.000Z",
+  };
+  const browserEvidence = completeBrowserEvidence(identity);
+  browserEvidence.checks.find(({ id }) => id === "analyst-multi-turn-flow").viewports = [
+    { width: 390, height: 844 },
+  ];
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  await writeFile(browserPath, JSON.stringify(browserEvidence));
+  await writeFile(criticPath, JSON.stringify({
+    ...identity,
+    materialIssue: false,
+    overallVerdict: "PASS",
+    scenarioVerdicts: [],
+  }));
+
+  const result = await runNode([
+    "scripts/finalize-chat-report.mjs",
+    "--output-dir", directory,
+    "--browser-json", browserPath,
+    "--critic-json", criticPath,
+  ]);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /browser check analyst-multi-turn-flow requires mobile and desktop evidence/);
+});
+
 test("finalizer requires and applies explicit critic correctness for every passed answer", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-correctness-"));
   const report = finalizeClassifications({
@@ -994,10 +1074,71 @@ test("observational request failure is preserved as inconclusive and does not st
 });
 
 test("answer copy guard rejects internal methodology jargon", () => {
-  assert.equal(validateAnswerCopy("Pundit's model favours the home side.").passed, true);
+  assert.equal(validateAnswerCopy("I favour the home side.").passed, true);
+  assert.equal(validateAnswerCopy("Pundit's model favours the home side.").passed, false);
+  assert.equal(validateAnswerCopy("The payload says the draw is live.").passed, false);
   assert.equal(validateAnswerCopy("Using Dixon-Coles probabilities here.").passed, false);
   assert.equal(validateAnswerCopy("ClubElo ratings drive the edge.").passed, false);
   assert.equal(validateAnswerCopy("This is model-grounded analysis.").passed, false);
+});
+
+test("analyst expression guard enforces direct, scoped and honest follow-ups", () => {
+  const good = validateAnalystExpression(
+    "I can't price that scorer from this match forecast alone.",
+    { expectAnalystVoice: true, expectDirectAnswer: true, expectNarrowFollowup: true, expectCannotReprice: true }
+  );
+  assert.equal(good.passed, true);
+  assert.equal(validateAnalystExpression(
+    "The market is lower because it knows the striker is injured, so back the draw for value.",
+    { expectNoUnsupportedMarketCausality: true }
+  ).passed, false);
+  assert.equal(validateAnalystExpression(
+    "The markets agree, which proves my view is right.",
+    { expectNoUnsupportedMarketCausality: true }
+  ).passed, false);
+  assert.equal(validateAnalystExpression(
+    "The prices are close, but I wouldn't call that a value bet.",
+    { expectNoUnsupportedMarketCausality: true }
+  ).passed, true);
+  assert.equal(validateAnswerStructure("I make it close [[S?]].").assertions.noUnresolvedMarker, false);
+});
+
+test("golden conversation guards trace exact-score prices and table-wide counts", () => {
+  const match = {
+    kind: "match",
+    home: "Alpha",
+    away: "Beta",
+    pHome: 0.5,
+    pDraw: 0.3,
+    pAway: 0.2,
+    scorelines: [{ score: "2-1", probability: 0.125 }],
+  };
+  assert.equal(validateResponseCorrectness(
+    "I make Alpha 2-1 Beta a 12.5% chance, so my fair decimal price is 8.00.",
+    [],
+    match,
+    { expectExactScoreFairPrice: "2-1" }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "I make Alpha 2-1 Beta a 12.5% chance, so my fair decimal price is 6.00.",
+    [],
+    match,
+    { expectExactScoreFairPrice: "2-1" }
+  ).passed, false);
+
+  const competition = {
+    kind: "competition",
+    standings: [
+      { team: "Alpha", playedGames: 2 },
+      { team: "Beta", playedGames: 1 },
+    ],
+  };
+  assert.equal(validateResponseCorrectness(
+    "Alpha lead. Every club has played two matches.",
+    [],
+    competition,
+    { expectTableMatchCountsGrounded: true }
+  ).passed, false);
 });
 
 test("answer structure guard catches an emptied section and a missing headline 1X2", () => {
@@ -1381,7 +1522,7 @@ test("certification gate uses required traffic and requires every release identi
   assert.equal(unsafeObservation.certificationGate.passed, false);
 });
 
-test("schema-16 fixture grounding distinguishes capability without leaking model probabilities", () => {
+test("schema-17 fixture grounding distinguishes capability without leaking model probabilities", () => {
   const fixture = {
     fixtureId: "espn:club.friendly:800",
     primarySource: "espn",
@@ -1422,7 +1563,7 @@ test("schema-16 fixture grounding distinguishes capability without leaking model
   }).passed, false);
 });
 
-test("schema-16 verification contract enforces shape, counts, and abstention semantics", () => {
+test("schema-17 verification contract enforces shape, counts, and abstention semantics", () => {
   assert.equal(validateVerification({
     status: "verified", supportedClaimCount: 1, removedClaimCount: 0,
   }, { expectVerification: ["verified"] }).passed, true);
@@ -1435,7 +1576,7 @@ test("schema-16 verification contract enforces shape, counts, and abstention sem
   assert.equal(validateVerification(null).passed, false);
 });
 
-test("schema-16 complete market validator enforces source, time, legs and arithmetic", () => {
+test("schema-17 complete market validator enforces source, time, legs and arithmetic", () => {
   const legs = [
     { outcome: "home", decimalOdds: 2, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
     { outcome: "draw", decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
@@ -1536,7 +1677,7 @@ test("runtime-helper scenarios execute the current API correctness module, not c
   }
 });
 
-test("schema-16 correctness guard catches the four screenshot-class failures", () => {
+test("schema-17 correctness guard catches the four screenshot-class failures", () => {
   assert.equal(validateResponseCorrectness(
     "Pundit's forecast is 52% home, 25% draw and 23% away.",
     [],
@@ -1659,7 +1800,7 @@ test("response correctness rejects grounded rank, mass and request-fidelity defe
   ).passed, false);
 });
 
-test("schema-16 rejects certainty, scoreline universals, counts and draw-mass contradictions", () => {
+test("schema-17 rejects certainty, scoreline universals, counts and draw-mass contradictions", () => {
   const grounding = {
     kind: "match",
     home: "Arsenal",
@@ -1803,7 +1944,7 @@ test("schema-16 rejects certainty, scoreline universals, counts and draw-mass co
   ).assertions.noCertaintyContradiction, false, contradiction);
 });
 
-test("schema-16 rejects unsupported competition, fixture-status and capability-reason claims", () => {
+test("schema-17 rejects unsupported competition, fixture-status and capability-reason claims", () => {
   assert.equal(validateResponseCorrectness(
     "All teams have zero games, so the supplied ordering is not an on-field ranking.", [],
     { kind: "competition", standings: [] }
@@ -1838,7 +1979,7 @@ test("schema-16 rejects unsupported competition, fixture-status and capability-r
   ).assertions.namedModelInput, false);
 });
 
-test("schema-16 catches leading malformed fragments and named-player claims after abstention", () => {
+test("schema-17 catches leading malformed fragments and named-player claims after abstention", () => {
   assert.equal(validateAnswerStructure(
     "). Could you share the specific match?"
   ).assertions.noMalformedLeadingFragment, false);
@@ -1880,7 +2021,7 @@ test("season request fidelity requires the grounded leaders and forbids invented
   ).passed, false);
 });
 
-test("schema-16 table-source fidelity refuses tied-table rankings without leaking season probabilities", () => {
+test("schema-17 table-source fidelity refuses tied-table rankings without leaking season probabilities", () => {
   const grounding = {
     kind: "season",
     standings: [
@@ -1947,7 +2088,7 @@ test("schema-16 table-source fidelity refuses tied-table rankings without leakin
   ).assertions.tableSourceFidelity, false);
 });
 
-test("schema-16 rejects abstained probability counterfactuals, false product scope and history denial", () => {
+test("schema-17 rejects abstained probability counterfactuals, false product scope and history denial", () => {
   assert.equal(validateAbstainedCounterfactualDiscipline(
     "No verified team news was established. If an attacker is rotated, the model's home-win edge shrinks and the draw moves toward 12%.",
     "abstain"
@@ -2078,7 +2219,7 @@ test("high-line geometry rejects both backwards formulations and requires the re
   ).assertions.highLineSpaceBehindAcknowledged, false);
 });
 
-test("schema-16 treats unavailable verification as an abstention, like abstain", () => {
+test("schema-17 treats unavailable verification as an abstention, like abstain", () => {
   // Which of the two a turn lands on depends only on whether any cited page
   // happened to be fetchable. An answer controls neither, and the product
   // branches on them together, so the evaluator must not accept one and fail
@@ -2124,7 +2265,7 @@ test("schema-16 treats unavailable verification as an abstention, like abstain",
   assert.equal(establishedNothing({ status: "verified", supportedClaimCount: 0, removedClaimCount: 0 }), false);
 });
 
-test("schema-16 certification cannot pass required inconclusive or unsupported correctness", () => {
+test("schema-17 certification cannot pass required inconclusive or unsupported correctness", () => {
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     scenarios: [
@@ -2138,7 +2279,7 @@ test("schema-16 certification cannot pass required inconclusive or unsupported c
   assert.deepEqual(report.certificationGate.unsupportedCorrectness, ["answer"]);
 });
 
-test("schema-16 permanent certification matrix names every authorized regression family", async () => {
+test("schema-17 permanent certification matrix names every authorized regression family", async () => {
   const config = JSON.parse(await readFile(
     path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"),
     "utf8"
@@ -2431,7 +2572,7 @@ test("routability evidence names the mode and the windows it routes", () => {
   );
 });
 
-test("schema-16 separates search narration from a conditional offer to search", () => {
+test("schema-17 separates search narration from a conditional offer to search", () => {
   // "Send those and I'll search for current team news" is not narration of a
   // search in progress -- it is what happens after the reader supplies a
   // fixture, and it is the most useful sentence a clarification reply can end
@@ -2453,7 +2594,7 @@ test("schema-16 separates search narration from a conditional offer to search", 
   ]) assert.equal(validateNoDraftLeak(narration).passed, false, narration);
 });
 
-test("schema-16 accepts an unqualified space-behind acknowledgement", () => {
+test("schema-17 accepts an unqualified space-behind acknowledgement", () => {
   // "The cost is space behind the defence: a single pass over the top turns
   // the press into a foot race" is as clear as this check gets, and the
   // qualifier list ("more space behind") scored it nothing. Safe to accept
