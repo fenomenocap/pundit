@@ -996,7 +996,7 @@ describe("sanitizeMatchAnswer", () => {
     expect(setClaims).toContain("The model's full draw probability is 2.3%");
     expect(setClaims).toContain("structured fixture is classified as Premier League");
     expect(setClaims).toContain("snapshot establishes the probability gap, not its cause");
-    expect(setClaims).toContain("does not quantify lineup counterfactuals");
+    expect(setClaims).toContain("can’t quantify lineup counterfactuals");
     expect(setClaims).not.toMatch(/does not register|Every line|1\.3%|Championship|market staleness|modal outcome/i);
   });
 

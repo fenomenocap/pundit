@@ -2115,7 +2115,7 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
       return "The market snapshot establishes the probability gap, not its cause.";
     }
     if (/\b(?:assumes?|assuming)\b[^.!?\n]{0,50}\b(?:XI|line-?up|starters?)\b|\b(?:rotation|second string|team sheets?|line-?ups?|first-choice (?:attack|XI|starters?))\b[^.!?\n]{0,100}\b(?:shrink|pull|push|compress|move|modal|stand|erode)/i.test(sentence)) {
-      return "The grounded forecast uses club-strength ratings and the competition's home-field setting; it does not quantify lineup counterfactuals.";
+      return "My read uses team-strength ratings and the competition's home-field setting; I can’t quantify lineup counterfactuals from those inputs.";
     }
     if (/\bif\b[^.!?\n]{0,90}\b(?:first-choice|back line|starters?|starts?|missing|absent)\b[^.!?\n]{0,120}\b(?:gap|draw|price|probabilit\w*|read)\b[^.!?\n]{0,80}\b(?:shrink|move|stand|hold|become|rise|fall|increase|decrease|widen|narrow)/i.test(sentence)) {
       return "A confirmed lineup change would require a refreshed forecast; these facts do not support a directional probability adjustment.";
@@ -2147,7 +2147,7 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
       return drop();
     }
     if (MODEL_ABSORBS_AVAILABILITY.test(sentence)) {
-      return "Pundit's model reads club-strength ratings and the competition's home-field setting; squad availability is not one of its inputs.";
+      return "My read uses team-strength ratings and the competition's home-field setting; squad availability is not one of those inputs.";
     }
     const claimedTeam = mentionedTeamOutcome(sentence, grounding);
     if (claimedTeam) {
@@ -2270,6 +2270,15 @@ export function sanitizeGroundedMatchNarrative(answer: string, grounding: Ground
 export function sanitizeFootballGeometry(answer: string): string {
   const correction = "A high defensive line compresses space in front of the defence "
     + "but leaves more space behind it for the goalkeeper to cover.";
+  const conceptSafe = answer
+    .replace(
+      /[^.!?\n]*\boffside trap\b[^.!?\n]*\bonly works?\b[^.!?\n]*\b(?:goalkeeper|keeper)\b[^.!?\n]*(?:[.!?]+|$)/gi,
+      "The offside trap depends on coordinated timing across the defensive line; a sweeping goalkeeper mitigates through-balls when that line is beaten."
+    )
+    .replace(
+      /[^.!?\n]*\b(?:once|when)\b[^.!?\n]*\b(?:attacker|runner)\b[^.!?\n]*\b(?:gets?|is)\s+in behind\b[^.!?\n]*\bdistance to (?:the )?goal is short\b[^.!?\n]*(?:[.!?]+|$)/gi,
+      "Once the line is broken, the attacker has a large runway behind the defence and the centre-backs must recover toward their own goal."
+    );
   const backwardsVerb = "(?:shrinks?|shrunk|shrinking|reduces?|reduced|reducing|lessens?|lessened|lessening|decreases?|decreased|decreasing|compress(?:es|ed|ing)?|closes?|closed|closing|limits?|limited|limiting|narrows?|narrowed|narrowing|minimi[sz](?:e|es|ed|ing))";
   // One name for the back unit, used by both branches below. They used to
   // carry separate lists, and the "between X and the keeper" branch was missing
@@ -2309,7 +2318,7 @@ export function sanitizeFootballGeometry(answer: string): string {
   let midfieldPreserved = false;
   let previousHighLineContext = false;
   let positiveTradeoffSeen = false;
-  const sanitized = answer.replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) => {
+  const sanitized = conceptSafe.replace(/[^.!?\n]+(?:[.!?]+|$)/g, (sentence) => {
     const hasHighLineContext = /\b(?:higher|high)(?: defensive)? line\b/i.test(sentence)
       || /\bback (?:four|line)\b[^.!?\n]{0,28}\b(?:push|step|move)\w*\s+up\b/i.test(sentence);
     const positiveTradeoff = /\b(?:leave|leaves|left|create|creates|created|open|opens|opened)\b[^.!?\n]{0,24}\b(?:more|larger|greater|wider|bigger|extra|additional)\s+(?:space|gap|room)\b[^.!?\n]{0,24}\bbehind\b/i.test(sentence);
@@ -2794,6 +2803,10 @@ comparison only when they help. For a narrow follow-up, answer only that questio
 11.4%, about 8.77 in fair decimal odds; I have no comparable live exact-score quote here." Never
 turn a scorer question, lineup hypothetical or one-line follow-up into another full preview.`;
 
+const MATCH_STRUCTURED_OUTPUT = `Return only one JSON object with this exact shape, with no Markdown fence or prose outside it:
+{"directAnswer":{"text":"I prefer {{match.home}}.","factIds":["match.home"]},"reasoning":[{"text":"The goals lean is {{total.over-2.5}}.","factIds":["total.over-2.5"]}],"uncertainty":{"text":"I cannot quantify a lineup change.","factIds":["limit.lineup-counterfactual"]},"citedClaims":[{"text":"A dated team-news claim","factIds":[],"sourceIds":["S1"]}]}
+Write no match number, percentage, gap or fair price directly in text. Insert a fact slot such as {{match.home}}, {{score.2-1}} or {{market.kalshi.home}} instead; the server renders its canonical subject and values. Every numeric factId must actually appear as its matching slot in the same text part. Every current external claim belongs in citedClaims and must reference source IDs from the evidence bundle. Use an empty reasoning or citedClaims array when none is needed. Do not invent an ID or a slot.`;
+
 const MATCH_SYSTEM_PROMPT = `You are Pundit: one coherent, first-person expert football analyst. Never
 refer to "Pundit's model", "the model", "the payload" or "the retrieved sources" in reader-facing
 prose. You are given precomputed probabilities for a specific matchup. Treat these numbers as ground truth for the statistical
@@ -2840,9 +2853,6 @@ ${MATCH_CAPABILITY_BOUNDS}
 ${ATTRIBUTION_RULES}
 ${FORMAT_RULES}
 ${LENGTH_BUDGET}
-Return only one JSON object with this exact shape, with no Markdown fence or prose outside it:
-{"directAnswer":{"text":"I prefer {{match.home}}.","factIds":["match.home"]},"reasoning":[{"text":"The goals lean is {{total.over-2.5}}.","factIds":["total.over-2.5"]}],"uncertainty":{"text":"I cannot quantify a lineup change.","factIds":["limit.lineup-counterfactual"]},"citedClaims":[{"text":"A dated team-news claim","factIds":[],"sourceIds":["S1"]}]}
-Write no match number, percentage, gap or fair price directly in text. Insert a fact slot such as {{match.home}}, {{score.2-1}} or {{market.kalshi.home}} instead; the server renders its canonical subject and values. Every numeric factId must actually appear as its matching slot in the same text part. Every current external claim belongs in citedClaims and must reference source IDs from the evidence bundle. Use an empty reasoning or citedClaims array when none is needed. Do not invent an ID or a slot.
 A full-preview answer may run to about 220 words and 4 sections, but only when the extra
 words carry the divergence, the conditional read, or a cited team-news fact. The
 moment you are restating numbers the reader can already see, you are over budget
@@ -2853,7 +2863,9 @@ those. Never recommend a wager or invent a causal explanation for a market gap.
 The model data names one specific fixture and its date. Two clubs can meet twice
 in a two-legged tie, so name that date when you give the numbers -- the user has
 to be able to tell which leg they are reading.
-${MATCH_EXAMPLE}`;
+${MATCH_EXAMPLE}
+The JSON contract below is the final output instruction and overrides prose formatting examples above.
+${MATCH_STRUCTURED_OUTPUT}`;
 
 
 const COMPETITION_SYSTEM_PROMPT = `You are a club-football competition-analysis assistant for Pundit.
@@ -4485,7 +4497,7 @@ function stripModelAttributedProbabilities(answer: string, correction: string): 
 }
 
 export function sanitizeCompetitionAnswer(answer: string): string {
-  const correction = "A standings-only payload cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
+  const correction = "The standings alone cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
   let emitted = false;
   const extrapolationSafe = answer.split("\n").map((line) => {
     if (/^\s*\*\*[^*]*(?:title prices?|title odds)[^*]*pundit[^*]*\*\*\s*$/i.test(line)) {
@@ -5941,7 +5953,8 @@ async function finalProseTurn(
   convo: Anthropic.MessageParam[],
   startedAt: number,
   bundle?: EvidenceBundle,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  structuredOutput = false
 ): Promise<Anthropic.Message | null> {
   if (providerCallsLeft(bundle) < 1 || !reserveProviderCall(bundle)) return null;
   console.warn(JSON.stringify({ event: "tool_loop_exhausted_prose_retry" }));
@@ -5951,9 +5964,11 @@ async function finalProseTurn(
         ...convo,
         {
           role: "user",
-          content: "No further searches are available. Answer now from the evidence already "
-            + "supplied and the grounding, in prose, starting with the first bold label. Do not "
-            + "request another tool.",
+          content: structuredOutput
+            ? "No further searches are available. Return the required JSON response object now from the evidence and grounding already supplied. Do not request another tool and do not add prose outside the JSON object."
+            : "No further searches are available. Answer now from the evidence already "
+              + "supplied and the grounding, in prose, starting with the first bold label. Do not "
+              + "request another tool.",
         },
       ], false),
       { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
@@ -6018,7 +6033,7 @@ export async function generateAnalysis(
     convo = [...appendAssistantTurn(convo, response), toolResults];
   }
   if (collected.at(-1)?.stop_reason === "tool_use") {
-    const settled = await finalProseTurn(client, systemPrompt, convo, startedAt, bundle, signal);
+    const settled = await finalProseTurn(client, systemPrompt, convo, startedAt, bundle, signal, structuredOutput);
     if (!settled || settled.stop_reason === "tool_use") {
       throw new AppError(504, "Analysis service timed out. Please try again.");
     }
@@ -6523,7 +6538,7 @@ function placeDivergenceSentence(answer: string, sentence: string): string {
   const lines = answer.split("\n");
   const index = lines.findIndex((line) =>
     line.trim() && !SECTION_LABEL_LINE.test(line) && /\d+(?:\.\d+)?\s*%/.test(line));
-  if (index < 0) return `${answer.trimEnd()}\n\n**Model vs market**\n${sentence}`;
+  if (index < 0) return `${answer.trimEnd()}\n\n**My view vs market**\n${sentence}`;
   lines[index] = `${lines[index].trimEnd()} ${sentence}`;
   return lines.join("\n");
 }
@@ -6912,6 +6927,10 @@ function placeValueVerdict(
 }
 
 function renderGroundedModelOnlyAnswer(grounding: Grounding, inputQuestion: boolean): string {
+  if (inputQuestion) {
+    return "I can’t isolate one input as the cause of that edge. My read uses reviewed team strength "
+      + "and the competition’s home-field setting, but these facts do not provide a causal contribution for either input.";
+  }
   const scores = grounding.topScores.slice(0, 3)
     .map((row) => `**${row.score} (${asPercent(row.probability)})**`)
     .join(", ");
@@ -6925,26 +6944,19 @@ function renderGroundedModelOnlyAnswer(grounding: Grounding, inputQuestion: bool
     `Over 2.5 is **${asPercent(grounding.pOver2_5)}** and both teams to score is `
       + `**${asPercent(grounding.pBttsYes)}**.${scores ? ` The leading scorelines are ${scores}.` : ""}`,
     "",
-    "**Model inputs**",
-    `The grounded forecast uses reviewed club-strength ratings${grounding.homeFieldAdvantage
+    "**What shapes my read**",
+    `My read uses reviewed team-strength ratings${grounding.homeFieldAdvantage
       ? " and applies the competition's home-field advantage"
       : " with no home-field advantage applied"}. `
       + "Those facts do not provide an input-by-input causal decomposition, so I cannot honestly rank how much each input contributes.",
   ];
-  if (inputQuestion) {
-    sections.push(
-      "",
-      "**Answer**",
-      "The available payload cannot establish which single model input matters most; it identifies the inputs and the resulting probabilities, not a causal decomposition."
-    );
-  }
   return sections.join("\n");
 }
 
 function renderGroundedMatchAnswer(grounding: Grounding): string {
   const sections = [
-    "**Model view**",
-    `Pundit's model gives **${grounding.home} ${asPercent(grounding.pHome)}**, the `
+    "**My view**",
+    `I make **${grounding.home} ${asPercent(grounding.pHome)}**, the `
       + `**draw ${asPercent(grounding.pDraw)}** and **${grounding.away} ${asPercent(grounding.pAway)}** `
       + `for the ${formatGroundingDate(grounding.date)} fixture${grounding.homeFieldAdvantage
         ? ", with home-field advantage applied"
@@ -6954,7 +6966,7 @@ function renderGroundedMatchAnswer(grounding: Grounding): string {
     Number.isFinite(source.pHome) && Number.isFinite(source.pDraw) && Number.isFinite(source.pAway)
   );
   if (completeMarkets.length) {
-    sections.push("", "**Model vs market**");
+    sections.push("", "**My view vs market**");
     for (const source of completeMarkets) {
       const observed = describeMarketObservation(source.observedAt);
       const label = `${source.source[0].toLocaleUpperCase()}${source.source.slice(1)}`;
@@ -6971,7 +6983,7 @@ function renderGroundedMatchAnswer(grounding: Grounding): string {
     if (largest) {
       sections.push(
         `The largest grounded difference is ${Math.abs(largest.leg.gapPoints).toFixed(1)} percentage points on `
-          + `${largest.leg.label}: Pundit is ${largest.leg.gapPoints >= 0 ? "higher" : "lower"} than `
+          + `${largest.leg.label}: I am ${largest.leg.gapPoints >= 0 ? "higher" : "lower"} than `
           + `${largest.source}. The snapshot establishes the size and direction of the gap, not its cause.`
       );
     }
@@ -6993,7 +7005,7 @@ function renderGroundedMatchAnswer(grounding: Grounding): string {
   sections.push(
     "",
     "**Limits**",
-    "The grounded forecast uses club-strength ratings and the competition's home-field setting. It does not ingest a confirmed lineup, explain why an external price differs, or quantify lineup counterfactuals."
+    "My read uses team-strength ratings and the competition's home-field setting. It does not include a confirmed lineup, explain why an external price differs, or quantify lineup counterfactuals."
   );
   return sections.join("\n");
 }
@@ -7069,7 +7081,7 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
 
 function renderGroundedCompetitionAnswer(question: string, grounding: CompetitionGrounding): string {
   if (/\b(?:sensitive|sensitivity|one upset|one result|one loss|one win)\b/i.test(question)) {
-    return "**Limits of this table**\nA standings-only payload cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
+    return "The standings alone cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
   }
   const rows = [...grounding.standings].sort((a, b) => a.position - b.position);
   const allZero = rows.length > 0
@@ -7130,11 +7142,13 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
     ].join("\n");
   }
 
+  const leader = rows[0];
   return [
-    "**Current table**",
+    `${leader.team} lead with ${leader.points} points from ${leader.playedGames} `
+      + `${leader.playedGames === 1 ? "match" : "matches"}. The current top five are:`,
     ...tableRows,
     "",
-    "The positions and figures above come directly from the supplied standings; no title probability is inferred from them.",
+    "That is the table as it stands; it does not imply a title probability.",
   ].join("\n");
 }
 
@@ -7350,11 +7364,18 @@ export async function deliverAnswer(args: {
     checked.verification,
     evidenceRequired
   );
-  const marketSafeAnswer = sanitizeRuntimeResponseCorrectness(
-    evidenceSafeAnswer,
-    grounding?.kind === "match" ? grounding : undefined
-  );
-  const checkedAnswer = containsCorrectionCue(question)
+  // V2 match numbers come from validated server-rendered slots or the
+  // deterministic composer. The legacy market parser cannot infer that trust
+  // boundary: it mistakes fair odds for bookmaker quotes and complete mixed
+  // tuples for unattributed prose. Keep the universal geometry correction;
+  // slot validation and final numeric traceability own V2 market truth.
+  const marketSafeAnswer = useV2 && grounding?.kind === "match"
+    ? sanitizeFootballGeometry(evidenceSafeAnswer)
+    : sanitizeRuntimeResponseCorrectness(
+      evidenceSafeAnswer,
+      grounding?.kind === "match" ? grounding : undefined
+    );
+  const checkedAnswer = hasHistory && containsCorrectionCue(question)
     ? acknowledgeCorrection(marketSafeAnswer, checked.verification)
     : marketSafeAnswer;
   const rendered = renderEvidenceCitations(
@@ -7562,9 +7583,10 @@ function finalizeDeliveredText(
   enforceNumericTrace = false
 ): string {
   const voiced = normalizeAnalystIdentity(answer);
-  const correctnessSafe = enforceNumericTrace && grounding?.kind === "match"
-    ? sanitizeRuntimeResponseCorrectness(voiced, grounding)
-    : voiced;
+  // The appropriate prose guard has already run in deliverAnswer. This final
+  // boundary owns only deterministic numeric traceability and marker removal;
+  // re-running the legacy market parser here deleted trusted server facts.
+  const correctnessSafe = voiced;
   const traced = enforceNumericTrace && grounding?.kind === "match"
     ? enforceMatchNumericTraceability(correctnessSafe, grounding)
     : voiced;
