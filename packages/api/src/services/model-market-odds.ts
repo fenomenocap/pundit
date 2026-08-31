@@ -71,6 +71,7 @@ export interface PublicModelOddsSource {
 }
 
 export type PublicModelFixture = Omit<ModelFixture, "scorelines"> & {
+  stakeObservedAt?: string;
   oddsSources: PublicModelOddsSource[];
 };
 
@@ -112,6 +113,7 @@ export function publicModelFixture(
     stakePHome: stake?.pHome ?? fixture.stakePHome,
     stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
     stakePAway: stake?.pAway ?? fixture.stakePAway,
+    ...(stake && markets ? { stakeObservedAt: markets.observedAt } : {}),
     oddsSources,
   };
 }

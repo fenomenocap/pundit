@@ -10,6 +10,7 @@ import {
   askQuestionStream,
   buildAskUrl,
   type AskGrounding,
+  type AskPresentation,
   type ConversationTurn,
   type FixtureContext,
   type MatchGrounding,
@@ -26,12 +27,19 @@ import { Disclaimer } from "@/components/disclaimer";
 import { ProbabilityBar } from "@/components/probability-bar";
 import { getDocsUrl } from "@/lib/site-links";
 import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
+import {
+  capabilityLabel,
+  formatObservedAt,
+  formatPercent,
+  marketRowsFromGrounding,
+} from "@/lib/fixture-presentation";
 
 interface ChatMessage {
   id: number;
   role: "user" | "assistant" | "error";
   content: string;
   grounding?: AskGrounding;
+  presentation?: AskPresentation;
 }
 
 type LoadingTier = "match" | "fixture" | "competition" | "season" | "general" | null;
@@ -99,7 +107,7 @@ function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
 function sanitizeAskError(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.code === "MODEL_UNAVAILABLE") {
-      return "Pundit's match model is temporarily unavailable — competition and general questions still work.";
+      return "My match forecasts are temporarily unavailable — competition and general questions still work.";
     }
     // Naming more than one matchup is the one 400 with a useful next step in
     // it: the server lists the real fixtures it recognised. Collapsing it into
@@ -189,65 +197,20 @@ function teamAbbr(name: string): string {
   return known[name] ?? name.slice(0, 3).toUpperCase();
 }
 
-function oddsRows(grounding: MatchGrounding) {
-  const rows: Array<{
-    label: string;
-    pHome: number;
-    pDraw: number | null;
-    pAway: number;
-  }> = [];
-
-  rows.push({
-    label: "Model",
-    pHome: grounding.pHome,
-    pDraw: grounding.pDraw,
-    pAway: grounding.pAway,
-  });
-
-  if (grounding.stakePHome !== null
-    && grounding.stakePDraw !== null
-    && grounding.stakePAway !== null) {
-    rows.push({
-      label: "Stake",
-      pHome: grounding.stakePHome,
-      pDraw: grounding.stakePDraw,
-      pAway: grounding.stakePAway,
-    });
-  }
-
-  rows.push(...grounding.oddsSources.map((source) => ({
-    label: source.source === "kalshi" ? "Kalshi" : "Polymarket",
-    pHome: source.pHome,
-    pDraw: source.pDraw,
-    pAway: source.pAway,
-  })));
-  return rows;
-}
-
-function formatPercent(value: number | null): string {
-  return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
-}
-
 function groundingLabel(grounding: AskGrounding): string {
   if (grounding?.kind === "match") {
-    return `${grounding.competition} · ${grounding.date} · Pundit model`;
+    return `Match forecast · ${grounding.competition} · ${grounding.date}`;
   }
   if (grounding?.kind === "season") {
-    return `${grounding.competition} · season outlook · Pundit model`;
+    return `Season outlook · ${grounding.competition}`;
   }
   if (grounding?.kind === "competition") {
     return `${grounding.competition} · ESPN table`;
   }
   if (grounding?.kind === "fixture") {
-    const capability = grounding.capability;
-    const label = capability.status === "outside-coverage"
-      ? "Outside Pundit model coverage"
-      : capability.status === "temporarily-unpriced"
-        ? "Model temporarily unavailable"
-        : "Model input unavailable";
-    return `${grounding.fixture.competition.name} · ${label}`;
+    return `${grounding.fixture.competition.name} · ${capabilityLabel(grounding.capability)}`;
   }
-  return "General · no live model data";
+  return "General football analysis";
 }
 
 // Three-segment stacked bar is imported from @/components/probability-bar.
@@ -422,12 +385,14 @@ function MatchFixtureCard({
   grounding: MatchGrounding;
   streaming: boolean;
 }) {
-  const rows = oddsRows(grounding);
+  const rows = marketRowsFromGrounding(grounding);
   const hasMarkets = rows.length > 1;
   const homeHeader = teamAbbr(grounding.home);
   const awayHeader = teamAbbr(grounding.away);
   return (
     <div
+      data-testid="match-fixture-card"
+      data-fixture-id={grounding.fixtureId}
       className="mr-auto w-full max-w-[85%] overflow-hidden rounded-lg border border-card-rim bg-card text-foreground shadow-card"
     >
       <div className="flex items-start gap-2 border-b border-card-rim px-3 py-2.5">
@@ -470,10 +435,17 @@ function MatchFixtureCard({
         </div>
         {rows.map((row) => (
           <div
-            key={row.label}
+            key={row.id}
             className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 py-0.5 font-mono sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]"
           >
-            <span className="text-foreground/80">{row.label}</span>
+            <span className="min-w-0 text-foreground/80">
+              <span className="block truncate">{row.label}</span>
+              {row.observedAt && (
+                <span className="block truncate text-[9px] text-muted-foreground" title={row.observedAt}>
+                  {formatObservedAt(row.observedAt)}
+                </span>
+              )}
+            </span>
             <span className="text-right">{formatPercent(row.pHome)}</span>
             <span className="text-right">{formatPercent(row.pDraw)}</span>
             <span className="text-right">{formatPercent(row.pAway)}</span>
@@ -504,6 +476,39 @@ function MatchFixtureCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function CompactMatchContext({ grounding }: { grounding: MatchGrounding }) {
+  const rows = marketRowsFromGrounding(grounding);
+  return (
+    <details
+      data-testid="compact-match-context"
+      data-fixture-id={grounding.fixtureId}
+      className="group mb-2 rounded-md border border-border/70 bg-secondary/20 px-2.5 py-1.5"
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground marker:hidden">
+        <span aria-hidden="true" className="inline-block text-[10px] transition-transform group-open:rotate-90">▶</span>
+        <span className="font-medium text-foreground">{grounding.home} vs {grounding.away}</span>
+        <span>· Match context</span>
+        <span className="sr-only"> (expand forecast and market details)</span>
+      </summary>
+      <div className="mt-2 border-t border-border/60 pt-2">
+        <ProbabilityBar pHome={grounding.pHome} pDraw={grounding.pDraw} pAway={grounding.pAway} size="sm" />
+        <div className="mt-1 grid grid-cols-3 font-mono text-[10px] text-muted-foreground">
+          <span className="text-primary"><span className="sr-only">{grounding.home} win </span>{formatPercent(grounding.pHome)}</span>
+          <span className="text-center"><span className="sr-only">Draw </span>{formatPercent(grounding.pDraw)}</span>
+          <span className="text-right text-accent"><span className="sr-only">{grounding.away} win </span>{formatPercent(grounding.pAway)}</span>
+        </div>
+        {rows.length > 1 && (
+          <p className="mt-1.5 text-[10px] text-muted-foreground">
+            {rows.slice(1).map((row) => (
+              `${row.label}${row.observedAt ? ` · ${formatObservedAt(row.observedAt)}` : ""}`
+            )).join(" · ")}
+          </p>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -646,7 +651,7 @@ export function HomeChat() {
     const requestIsLive = () => ownsRequest() && !activeRequest.stopped;
 
     try {
-      const { answer, grounding } = await askQuestionStream(
+      const { answer, grounding, presentation } = await askQuestionStream(
         trimmed,
         history,
         requestTeamContext,
@@ -704,7 +709,13 @@ export function HomeChat() {
         ]);
       }
       setMessages((prev) => {
-        const finalMessage: ChatMessage = { id: assistantId, role: "assistant", content: answer, grounding };
+        const finalMessage: ChatMessage = {
+          id: assistantId,
+          role: "assistant",
+          content: answer,
+          grounding,
+          presentation,
+        };
         return started
           ? prev.map((m) => (m.id === assistantId ? finalMessage : m))
           : [...prev, finalMessage];
@@ -799,11 +810,11 @@ export function HomeChat() {
       case "loading":
         return `Loading match model — ${loadingMessage(loadingTier)}`;
       case "ready":
-        return "Model grounded · active fixtures live";
+        return "Match forecasts ready · active fixtures live";
       case "partial":
         // Claiming a clean "Model grounded" here is what made an unpriced
         // fixture answer 503 with no warning.
-        return "Model grounded for some fixtures — a few aren't priced yet";
+        return "Match forecasts ready for some fixtures — a few aren't priced yet";
       case "unpriced":
         return "Match model is catching up — table, title race, and general questions still work";
       case "no-fixtures":
@@ -818,6 +829,31 @@ export function HomeChat() {
     : modelState === "ready"
       ? "ready"
       : "cold";
+
+  // Older API releases do not send presentation hints. In that case, render
+  // one full card for the first answer about each fixture and keep later turns
+  // compact. A V2 response can explicitly request expanded/compact/none.
+  const expandedMatchMessageIds = new Set<number>();
+  const fixturesWithFullCard = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "assistant" || message.grounding?.kind !== "match") continue;
+    // The presentation directive arrives in the authoritative done event.
+    // While the first turn is streaming, keep its context compact rather than
+    // flashing a full card that a later `none` directive immediately removes.
+    if (
+      streamStarted
+      && message.id === streamingIdRef.current
+      && !message.presentation
+    ) continue;
+    const directive = message.presentation?.fixtureCard;
+    if (directive === "expanded" && !fixturesWithFullCard.has(message.grounding.fixtureId)) {
+      expandedMatchMessageIds.add(message.id);
+      fixturesWithFullCard.add(message.grounding.fixtureId);
+    } else if (!directive && !fixturesWithFullCard.has(message.grounding.fixtureId)) {
+      expandedMatchMessageIds.add(message.id);
+      fixturesWithFullCard.add(message.grounding.fixtureId);
+    }
+  }
 
   return (
     <div className="mx-auto flex h-[calc(100vh-2.75rem)] max-w-2xl flex-col px-4">
@@ -861,8 +897,8 @@ export function HomeChat() {
             </h2>
             <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
               {fixtureState === "ready" || fixtureState === "partial"
-                ? "Ask about upcoming Premier League or UCL qualifier matches for a read grounded in Pundit's statistical model."
-                : "Ask about the Premier League table, the title race, or football in general."}
+                ? "Ask me about an upcoming Premier League or UCL qualifier match for a grounded forecast."
+                : "Ask me about the Premier League table, the title race, or football in general."}
             </p>
           </div>
           {fixtureState === "partial" && (
@@ -898,7 +934,9 @@ export function HomeChat() {
             className="flex flex-col gap-3 py-4"
           >
             {messages.map((m) => {
-              const isMatchCard = m.role === "assistant" && m.grounding?.kind === "match";
+              const isMatchCard = m.role === "assistant"
+                && m.grounding?.kind === "match"
+                && expandedMatchMessageIds.has(m.id);
               const streaming = streamStarted && m.id === streamingIdRef.current;
               if (isMatchCard && m.grounding?.kind === "match") {
                 return (
@@ -910,12 +948,6 @@ export function HomeChat() {
                   />
                 );
               }
-              const homeHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.home) : "Home";
-              const awayHeader = m.grounding?.kind === "match" ? teamAbbr(m.grounding.away) : "Away";
-              const rows = m.grounding?.kind === "match"
-                ? oddsRows(m.grounding)
-                : [];
-              const hasMarkets = rows.length > 1;
               const precedingUser = [...messages]
                 .slice(0, messages.indexOf(m))
                 .reverse()
@@ -939,15 +971,11 @@ export function HomeChat() {
                       <GroundingBadge grounding={m.grounding ?? null} />
                     </div>
                   )}
-                  {m.role === "assistant" && m.grounding?.kind === "fixture" && (
-                    <p className="mb-2 text-xs text-muted-foreground">
-                      {m.grounding.capability.status === "outside-coverage"
-                        ? "Fixture details and current news may be sourced, but no Pundit probabilities are available."
-                        : m.grounding.capability.status === "temporarily-unpriced"
-                          ? "This recognized fixture is waiting for the match model to finish loading."
-                          : "This recognized fixture is missing a required model input, so Pundit will not estimate probabilities."}
-                    </p>
-                  )}
+                  {m.role === "assistant"
+                    && m.grounding?.kind === "match"
+                    && m.presentation?.fixtureCard !== "none" && (
+                      <CompactMatchContext grounding={m.grounding} />
+                    )}
                   {m.role === "assistant"
                     ? (
                       streaming ? (
@@ -965,32 +993,6 @@ export function HomeChat() {
                       {loadingMessage(loadingTier)}
                     </div>
                   )}
-                  {rows.length > 0 && (
-                    <div className="mt-2 border-t border-border/70 pt-2 text-xs leading-tight text-muted-foreground">
-                      <div className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 pb-1 font-medium uppercase tracking-wide sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]">
-                        <span>Market</span>
-                        <span className="text-right">{homeHeader}</span>
-                        <span className="text-right">Draw</span>
-                        <span className="text-right">{awayHeader}</span>
-                      </div>
-                      {rows.map((row) => (
-                        <div
-                          key={row.label}
-                          className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 py-0.5 sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]"
-                        >
-                          <span className="text-foreground/80">{row.label}</span>
-                          <span className="text-right">{formatPercent(row.pHome)}</span>
-                          <span className="text-right">{formatPercent(row.pDraw)}</span>
-                          <span className="text-right">{formatPercent(row.pAway)}</span>
-                        </div>
-                      ))}
-                      {!hasMarkets && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          No live market line available
-                        </p>
-                      )}
-                    </div>
-                  )}
                   {m.role === "assistant" && (
                     <MessageActions
                       content={m.content}
@@ -998,6 +1000,8 @@ export function HomeChat() {
                       fixtureId={
                         m.grounding?.kind === "fixture"
                           ? m.grounding.fixture.fixtureId
+                          : m.grounding?.kind === "match"
+                            ? m.grounding.fixtureId
                           : undefined
                       }
                     />

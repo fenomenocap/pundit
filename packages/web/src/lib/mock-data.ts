@@ -1,7 +1,16 @@
-import { MatchResponse, ModelFixtureResponse, StandingResponse } from "./api";
+import {
+  MatchResponse,
+  ModelFixtureResponse,
+  RecognizedFixtureSnapshotRow,
+  StandingResponse,
+} from "./api";
 
 const now = Date.now();
 const DAY = 86_400_000;
+
+function modelIdentity(competitionId: string, fixtureId: number): string {
+  return `espn:${competitionId}:${fixtureId}`;
+}
 
 function futureISO(days: number): string {
   return new Date(now + days * DAY).toISOString();
@@ -100,6 +109,56 @@ export async function fetchActiveFixtures(): Promise<MatchesPayload> {
     }
   }
   return { matches: MOCK_UPCOMING_MATCHES, lastUpdated: new Date(now).toISOString(), error: null };
+}
+
+export async function fetchRecognizedFixtures(): Promise<{
+  fixtures: RecognizedFixtureSnapshotRow[];
+  error: string | null;
+}> {
+  if (!USE_MOCK) {
+    try {
+      const { getRecognizedFixtures } = await import("./api");
+      const res = await getRecognizedFixtures();
+      return { fixtures: res.fixtures ?? [], error: res.registry.error ?? null };
+    } catch (reason) {
+      return {
+        fixtures: [],
+        error: reason instanceof Error ? reason.message : "Could not load fixture capabilities.",
+      };
+    }
+  }
+
+  const priced = new Set(MOCK_MODEL_FIXTURES.map((fixture) => (
+    modelIdentity(fixture.competitionId, fixture.fixtureId)
+  )));
+  return {
+    fixtures: MOCK_UPCOMING_MATCHES.map((match) => {
+      const fixtureId = modelIdentity(match.competitionId, match.id);
+      return {
+        fixture: {
+          fixtureId,
+          primarySource: "espn" as const,
+          primarySourceFixtureId: String(match.id),
+          homeTeam: { id: match.homeTeam.toLowerCase().replaceAll(" ", "-"), name: match.homeTeam },
+          awayTeam: { id: match.awayTeam.toLowerCase().replaceAll(" ", "-"), name: match.awayTeam },
+          kickoff: match.utcDate,
+          venue: null,
+          neutralVenue: false,
+          competition: {
+            id: match.competitionId,
+            name: match.competition,
+            category: match.competitionId === "eng.1" ? "domestic-league" as const : "club-continental" as const,
+          },
+          status: "scheduled" as const,
+          recognition: "authoritative" as const,
+        },
+        capability: priced.has(fixtureId)
+          ? { status: "priced" as const, modelFixtureId: fixtureId }
+          : { status: "insufficient-model-input" as const, reason: "required-context-missing" as const },
+      };
+    }),
+    error: null,
+  };
 }
 
 export async function fetchUpcomingMatches(competition?: string): Promise<MatchesPayload> {
@@ -323,6 +382,9 @@ const MOCK_CLUB_SEASON_EVALUATION = {
   missedCheckpoints: [],
   metrics: {
     fixtureCount: 0,
+    calibrationForecastCount: 0,
+    forecastsPerFixture: 3 as const,
+    calibrationMethod: "one-vs-rest-1x2" as const,
     brierScore: null,
     logLoss: null,
     winnerAccuracy: null,
@@ -352,6 +414,9 @@ const MOCK_WC2026_EVALUATION = {
   fixtures: [],
   metrics: {
     fixtureCount: 0,
+    calibrationForecastCount: 0,
+    forecastsPerFixture: 3 as const,
+    calibrationMethod: "one-vs-rest-1x2" as const,
     brierScore: null,
     logLoss: null,
     winnerAccuracy: null,

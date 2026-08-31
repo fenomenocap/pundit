@@ -71,6 +71,7 @@ export interface ModelFixtureResponse {
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
+  stakeObservedAt?: string;
   oddsSources?: Array<{
     source: "kalshi" | "polymarket";
     observedAt?: string;
@@ -113,6 +114,9 @@ export interface Wc2026EvaluationResponse {
   fixtures: Wc2026EvaluationFixture[];
   metrics: {
     fixtureCount: number;
+    calibrationForecastCount: number;
+    forecastsPerFixture: 3;
+    calibrationMethod: "one-vs-rest-1x2";
     brierScore: number | null;
     logLoss: number | null;
     winnerAccuracy: number | null;
@@ -308,6 +312,7 @@ export async function getClubSeasonEvaluation() {
 
 export interface OddsSource {
   source: "kalshi" | "polymarket";
+  observedAt?: string;
   pHome: number;
   pDraw: number | null;
   pAway: number;
@@ -335,6 +340,7 @@ export interface MatchGrounding {
   stakePHome: number | null;
   stakePDraw: number | null;
   stakePAway: number | null;
+  stakeObservedAt?: string;
   oddsSources: OddsSource[];
 }
 
@@ -366,6 +372,28 @@ export interface FixtureGrounding {
   kind: "fixture";
   fixture: RecognizedFixture;
   capability: Exclude<FixtureCapability, { status: "priced" }>;
+}
+
+export interface RecognizedFixtureSnapshotRow {
+  fixture: RecognizedFixture;
+  capability: FixtureCapability;
+}
+
+export interface RecognizedFixturesResponse {
+  registry: {
+    enabled: boolean;
+    mode: "enabled" | "shadow";
+    fixtureCount: number;
+    updatedAt: string | null;
+    loadedFrom: "empty" | "primary" | "last-good";
+    error: string | null;
+    storageBlocked: boolean;
+  };
+  fixtures: RecognizedFixtureSnapshotRow[];
+}
+
+export async function getRecognizedFixtures() {
+  return apiFetch<RecognizedFixturesResponse>("/api/fixtures/recognized");
 }
 
 export interface CompetitionGrounding {
@@ -408,9 +436,29 @@ export interface AskCitation {
   date: string;
 }
 
+export type ResponseMode =
+  | "match-preview"
+  | "match-follow-up"
+  | "exact-score"
+  | "fair-price"
+  | "market-comparison"
+  | "player-or-scorer"
+  | "team-news"
+  | "lineup-counterfactual"
+  | "table"
+  | "season"
+  | "coverage"
+  | "general";
+
+export interface AskPresentation {
+  responseMode: ResponseMode;
+  fixtureCard: "expanded" | "compact" | "none";
+}
+
 export interface AskResult {
   answer: string;
   grounding: AskGrounding;
+  presentation?: AskPresentation;
   citations?: AskCitation[];
   verification: {
     status: "not-required" | "verified" | "conflict" | "abstain" | "unavailable";

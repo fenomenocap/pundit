@@ -870,7 +870,7 @@ describe("current-news evidence hardening", () => {
       "No verified source exists for a tactical-concepts question, so the general analysis stands.",
     ].join("\n\n"), "general");
     expect(artifactAnswer).toContain("leaves more space behind it for the goalkeeper to cover");
-    expect(artifactAnswer).toContain("This is general football analysis, not based on Pundit's model data");
+    expect(artifactAnswer).toContain("This is general football analysis, not based on my match forecasts");
     expect(artifactAnswer).not.toMatch(/shrinks the space behind it|World Cup 2026 results only|No verified source exists/i);
   });
 
@@ -976,9 +976,9 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("Arsenal 97.3%");
       expect(answer).toContain("draw 2.3%");
       expect(answer).toContain("Coventry 0.4%");
-      expect(answer).toContain("Kalshi market-implied probabilities (third-party data, not a Pundit forecast)");
+      expect(answer).toContain("Kalshi market-implied probabilities:");
       expect(answer).toContain("Arsenal 82.2%, draw 11.9%, Coventry 5.9%");
-      expect(answer).toContain("snapshot establishes the size and direction of the gap, not its cause");
+      expect(answer).toContain("establishes the disagreement, not its cause or a bet to place");
       expect(answer).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
       expect(answer).not.toMatch(/Arteta|already been played|result on record|future replay/i);
     });
@@ -1006,10 +1006,12 @@ describe("current-news evidence hardening", () => {
     // wins?" came back byte-identical in ~2ms. The renderer is right for a
     // question *about the payload*; a question about the match has to be
     // generated.
-    it("sends an ordinary match question to generation instead of settling it", () => {
-      expect(closedGroundedAnswer("who will potentially score in this match?", model())).toBeNull();
+    it("settles narrow typed-fact or typed-limitation turns without generation", () => {
+      expect(closedGroundedAnswer("Who is most likely to score?", model()))
+        .toMatch(/can’t price a scorer/i);
       expect(closedGroundedAnswer("Analyse Arsenal vs Coventry.", model())).toBeNull();
-      expect(closedGroundedAnswer("Why is the model so far from the market?", model())).toBeNull();
+      expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
+        .toMatch(/I am at .*Kalshi is at .*percentage points/i);
     });
 
     it("still settles the match questions the payload fully answers", () => {
@@ -3528,9 +3530,9 @@ describe("match-tier analytical priorities", () => {
     const delivered = sanitizeDeliveredAnswer(answer, "match", grounding);
     // The interpretation is the whole point of the rewrite, so it is the thing
     // asserted to survive -- alongside every number the old recital got right.
-    expect(delivered).toContain("the model is about **11 percentage points** higher");
-    expect(delivered).toContain("so the value such as it is sits on Celtic and nowhere else");
-    expect(delivered).toContain("that gap is the first thing to shrink");
+    expect(delivered).toContain("I am about **11 percentage points** higher");
+    expect(delivered).not.toContain("the value such as it is sits on Celtic");
+    expect(delivered).not.toContain("that gap is the first thing to shrink");
     for (const figure of ["66.9%", "20.8%", "12.4%", "57.9%", "51.3%", "11.6%", "9.9%", "9.8%"]) {
       expect(delivered).toContain(figure);
     }
@@ -3594,7 +3596,7 @@ describe("match-tier analytical priorities", () => {
       celticLask()
     );
     expect(favours).not.toContain("gives LASK more of an edge");
-    expect(favours).toContain("The market prices LASK about 8 points higher than the model does.");
+    expect(favours).toContain("The market prices LASK about 8 points higher than I do.");
   });
 });
 
@@ -3691,11 +3693,11 @@ describe("model-versus-market divergence", () => {
    * also run over the word "points".
    */
   it("composes a sentence the guard chain returns unchanged", () => {
-    const answer = "**Model vs market**\nPundit's model makes **Celtic 66.9%**, the"
+    const answer = "**Model vs market**\nI make **Celtic 66.9%**, the"
       + " **draw 20.8%** and **LASK 12.4%**. "
       + composeMarketDivergenceSentence(kalshi, kalshi.largest);
     expect(answer).toContain(
-      "Against Kalshi, which prices Celtic at 55.4%, Pundit's model at 66.9% is"
+      "Against Kalshi, which prices Celtic at 55.4%, my 66.9% estimate is"
       + " 11.5 percentage points higher"
     );
     expect(sanitizeDeliveredAnswer(answer, "match", celtic)).toBe(answer);
@@ -3714,7 +3716,7 @@ describe("model-versus-market divergence", () => {
       { source: "kalshi", observedAt: new Date().toISOString(), pHome: 0.669, pDraw: 0.208, pAway: 0.123 },
     ])[0];
     const sentence = composeMarketDivergenceSentence(level, level.legs[0]);
-    expect(sentence).toContain("lands on the same number");
+    expect(sentence).toContain("land on the same number");
     expect(sentence).not.toContain("percentage points");
   });
 

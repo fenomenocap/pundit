@@ -34,6 +34,7 @@ import {
   validateGrounding,
   validateSse,
   validateAnswerCopy,
+  validateAnalystExpression,
   validateAnswerStructure,
   validateAbstainedCounterfactualDiscipline,
   validateCitationContract,
@@ -379,6 +380,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     assertionFailures.push(...copyValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
+    const expressionValidation = validateAnalystExpression(result.answer, { ...scenario, ...turn });
+    semanticCheckCount += Object.keys(expressionValidation.assertions).length;
+    for (const [name, passed] of Object.entries(expressionValidation.assertions)) {
+      result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+    }
+    assertionFailures.push(...expressionValidation.failures.map((failure) =>
+      `turn ${turnNumber}: ${failure}`
+    ));
     assertionFailures.push(...citationValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
@@ -392,7 +401,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       result.answer,
       result.citations,
       grounding,
-      turn
+      { ...scenario, ...turn }
     );
     semanticCheckCount += Object.keys(correctnessValidation.assertions).length;
     for (const [name, passed] of Object.entries(correctnessValidation.assertions)) {
