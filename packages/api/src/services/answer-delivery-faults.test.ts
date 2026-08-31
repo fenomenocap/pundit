@@ -58,7 +58,7 @@ describe("the general disclaimer never lands under a stranded label", () => {
   // the orphan a body and hid it from the sweep.
   const ORPHANED = "I can't answer that.\n\n**Why**\n\nThey do not meet in any"
     + " current fixture.\n\n**What would change this**";
-  const DISCLAIMER = "This is general football analysis, not based on Pundit's model data.";
+  const DISCLAIMER = "This is general football analysis, not based on my match forecasts.";
 
   it("drops a label whose only body would have been the disclaimer", () => {
     const delivered = sanitizeAnswerForTier(ORPHANED, "general", undefined, true);

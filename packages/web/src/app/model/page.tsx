@@ -12,10 +12,11 @@ import { ErrorBanner } from "@/components/error-banner";
 import { EmptyState } from "@/components/empty-state";
 import { FilterPill } from "@/components/filter-pill";
 import { ProbabilityBar } from "@/components/probability-bar";
-
-function percent(value: number | null): string {
-  return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
-}
+import {
+  formatObservedAt,
+  formatPercent as percent,
+  marketRowsFromModel,
+} from "@/lib/fixture-presentation";
 
 function stageLabel(stage: string): string {
   return stage.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -38,31 +39,6 @@ function kickoffDay(utcDate: string): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function marketComparisonRows(fixture: ModelFixtureResponse) {
-  const rows: Array<{ label: string; pHome: number; pDraw: number | null; pAway: number }> = [];
-  if (
-    fixture.stakePHome !== null
-    && fixture.stakePDraw !== null
-    && fixture.stakePAway !== null
-  ) {
-    rows.push({
-      label: "Stake",
-      pHome: fixture.stakePHome,
-      pDraw: fixture.stakePDraw,
-      pAway: fixture.stakePAway,
-    });
-  }
-  for (const source of fixture.oddsSources ?? []) {
-    rows.push({
-      label: source.source === "kalshi" ? "Kalshi" : "Polymarket",
-      pHome: source.pHome,
-      pDraw: source.pDraw,
-      pAway: source.pAway,
-    });
-  }
-  return rows;
 }
 
 export default function ModelPage() {
@@ -203,7 +179,7 @@ export default function ModelPage() {
                     const key = fixtureRowKey(fixture);
                     const isExpanded = expanded.has(key);
                     const topScores = fixture.topScores.slice(0, 3);
-                    const markets = marketComparisonRows(fixture);
+                    const markets = marketRowsFromModel(fixture);
                     return (
                       <Fragment key={key}>
                         <tr
@@ -234,6 +210,7 @@ export default function ModelPage() {
                             <div className="mt-0.5 text-xs text-muted-foreground">
                               {fixture.competition}
                             </div>
+                            <div className="mt-0.5 text-[10px] text-primary/80">Forecast ready</div>
                           </td>
                           <td className="hidden px-1 py-2 font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:table-cell">
                             {fixture.stage !== "match" ? stageLabel(fixture.stage) : "—"}
@@ -326,13 +303,20 @@ export default function ModelPage() {
                                       <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground">Home</span>
                                       <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground">Draw</span>
                                       <span className="text-right text-[10px] uppercase tracking-wide text-muted-foreground">Away</span>
-                                      <span className="text-muted-foreground">Model</span>
+                                      <span className="text-muted-foreground">My forecast</span>
                                       <span className="text-right text-foreground">{percent(fixture.pHome)}</span>
                                       <span className="text-right text-foreground">{percent(fixture.pDraw)}</span>
                                       <span className="text-right text-foreground">{percent(fixture.pAway)}</span>
                                       {markets.map((row) => (
-                                        <Fragment key={row.label}>
-                                          <span className="text-muted-foreground">{row.label}</span>
+                                        <Fragment key={row.id}>
+                                          <span className="text-muted-foreground">
+                                            <span className="block">{row.label}</span>
+                                            {row.observedAt && (
+                                              <span className="block text-[9px]" title={row.observedAt}>
+                                                {formatObservedAt(row.observedAt)}
+                                              </span>
+                                            )}
+                                          </span>
                                           <span className="text-right text-foreground">{percent(row.pHome)}</span>
                                           <span className="text-right text-foreground">{percent(row.pDraw)}</span>
                                           <span className="text-right text-foreground">{percent(row.pAway)}</span>

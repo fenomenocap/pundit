@@ -91,6 +91,47 @@ export function validateCompleteOneXTwoMarket(legs: readonly OneXTwoMarketLeg[])
   };
 }
 
+export interface TraceableMatchNumbers {
+  probabilities: readonly number[];
+  percentagePointGaps?: readonly number[];
+  fairDecimalOdds?: readonly number[];
+}
+
+/**
+ * Removes generated percentage claims that cannot be traced to a typed match
+ * fact. Evidence-marked sentences are deferred to citation verification; all
+ * other numeric match prose must resolve to the server contract at the same
+ * one-decimal display precision.
+ */
+export function stripUntraceableMatchPercentages(
+  answer: string,
+  trace: TraceableMatchNumbers
+): string {
+  const allowedProbabilities = new Set(trace.probabilities
+    .filter(Number.isFinite).flatMap((value) => [(value * 100).toFixed(1), (value * 100).toFixed(0) + ".0"]));
+  const allowedGaps = new Set((trace.percentagePointGaps ?? [])
+    .filter(Number.isFinite).flatMap((value) => [Math.abs(value).toFixed(1), Math.abs(value).toFixed(0) + ".0"]));
+  const allowedFairOdds = new Set((trace.fairDecimalOdds ?? [])
+    .filter(Number.isFinite).map((value) => value.toFixed(2)));
+  return answer.split("\n").map((line) => {
+    if (/\[\[\s*S?\d{1,3}\s*\]\]/i.test(line) || /\]\(https?:\/\//i.test(line)) return line;
+    const numbers = [...line.matchAll(/(?<![\d.])(\d{1,3}(?:\.\d+)?)\s*(%|percentage points?)/gi)];
+    const fairOdds = [
+      ...line.matchAll(/(?<![\d.])(\d+(?:\.\d+)?)\s+(?:in\s+)?fair decimal odds\b/gi),
+      ...line.matchAll(/\bfair decimal odds(?:\s+of|\s+are|\s+is|:)?\s+(\d+(?:\.\d+)?)/gi),
+    ];
+    if (!numbers.length && !fairOdds.length) return line;
+    const supported = numbers.every((match) => {
+      const normalized = Number(match[1]).toFixed(1);
+      return /^%$/.test(match[2])
+        ? allowedProbabilities.has(normalized)
+        : allowedGaps.has(normalized);
+    });
+    const fairSupported = fairOdds.every((match) => allowedFairOdds.has(Number(match[1]).toFixed(2)));
+    return supported && fairSupported ? line : "";
+  }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export type ProbabilityOrigin =
   | { kind: "pundit-model" }
   | { kind: "external-market"; source: string; observedAt: string };

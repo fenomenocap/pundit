@@ -114,7 +114,9 @@ export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta
   }
 }
 
-export const EVAL_SCHEMA_VERSION = 16;
+// Schema 17 adds required cross-surface, responsive and multi-turn browser
+// evidence. Pacing and exact-SHA gates are unchanged from Schema 17.
+export const EVAL_SCHEMA_VERSION = 17;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 export const PACING_SAFETY_MARGIN_MS = 25;
 
@@ -714,6 +716,40 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   if (expectation.expectNoUngroundedProbability) {
     assertions.noUngroundedProbability = !/\d+(?:\.\d+)?\s*%/.test(text);
   }
+  if (expectation.expectExactScoreFairPrice && grounding?.kind === "match") {
+    const targetScore = String(expectation.expectExactScoreFairPrice).replace(/\s*[:–—]\s*/g, "-");
+    const row = (grounding.scorelines ?? []).find((candidate) =>
+      String(candidate?.score).replace(/\s*[:–—]\s*/g, "-") === targetScore
+    );
+    const decimalClaim = /\b(?:fair (?:decimal )?(?:price|odds)|decimal odds?)\b[^.!?\n]{0,80}?(\d+(?:\.\d+)?)/i.exec(text)
+      ?? /(\d+(?:\.\d+)?)\s*(?:in )?decimal odds?/i.exec(text);
+    const expected = finiteProbability(row?.probability) && row.probability > 0
+      ? 1 / row.probability
+      : null;
+    const escapedHome = String(grounding.home ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedAway = String(grounding.away ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const scorePattern = targetScore.replace("-", "\\s*[-:–—]\\s*");
+    const namedOrientation = escapedHome && escapedAway
+      ? new RegExp(`\\b${escapedHome}\\b[^.!?\\n]{0,35}\\b${scorePattern}\\b[^.!?\\n]{0,35}\\b${escapedAway}\\b`, "i").test(text)
+      : false;
+    assertions.exactScoreFairPriceGrounded = expected !== null
+      && decimalClaim !== null
+      && Math.abs(Number(decimalClaim[1]) - expected) <= 0.02;
+    assertions.exactScoreNamedTeamOrientation = namedOrientation;
+  }
+  if (expectation.expectComparableMarketAttribution && grounding?.kind === "match") {
+    const completeMarkets = (Array.isArray(grounding.oddsSources) ? grounding.oddsSources : [])
+      .filter((source) => typeof source?.source === "string"
+        && validIsoDate(source?.observedAt)
+        && [source?.pHome, source?.pDraw, source?.pAway].every(finiteProbability));
+    const comparisonClaim = /\b(?:market|kalshi|polymarket|stake|bookmakers?|bookies?|price|odds|gap|disagree|higher|lower)\b/i.test(text);
+    const namesComparableSource = completeMarkets.some((source) =>
+      new RegExp(`\\b${String(source.source).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
+    const honestNoComparison = /\b(?:no|do not|don't|cannot|can't|without)\b[^.!?\n]{0,100}\b(?:comparable|complete|same[- ]source|market|price|odds|line)\b/i.test(text);
+    assertions.comparableMarketAttribution = comparisonClaim
+      ? (namesComparableSource || (completeMarkets.length === 0 && honestNoComparison))
+      : completeMarkets.length === 0 || honestNoComparison;
+  }
   if (expectation.expectNoCertaintyContradiction) {
     const certaintyClaim = /\b(?:100\s*%\s*(?:certain|certainty|guaranteed?)|guarantee(?:d|s)?\b[^.!?\n]{0,80}\b(?:win|winner|champion)|(?:will|must)\s+(?:(?:definitely|certainly|surely|undoubtedly)\s+)?(?:win|be (?:the )?champion)\b|(?:certainly|surely|undoubtedly)\s+(?:will|must)\s+(?:win|be (?:the )?champion)\b|(?:are|is)\s+(?:certain|sure|guaranteed)\s+to\s+(?:win|be (?:the )?champion)\b|(?:are|is)\s+(?:definitely\s+)?(?:the\s+)?(?:certain\s+)?champions?\b|(?:win|wins|won)\b[^.!?\n]{0,30}\bguaranteed\b|no doubt\b[^.!?\n]{0,60}\b(?:win|winner|champion))\b/i;
     const certaintyNegation = /\b(?:cannot|can not|can't|will not|won't|must not)\b[^.!?\n]{0,80}\b(?:guarantee|certain|certainty)|\b(?:cannot|can not|can't)\s+(?:say|state|claim|promise)\b[^.!?\n]{0,80}\b(?:will|must|guarantee|certain)|\bit\s+(?:is|'s)\s+impossible\s+to\s+guarantee\b|\bit\s+would\s+be\s+wrong\s+to\s+guarantee\b|\b(?:nobody|no one)\s+can\s+guarantee\b|\bno (?:guarantee|certainty)\b|\bnot (?:a )?certainty\b|\bnot\s+(?:100\s*%\s*)?(?:guaranteed?|certain|sure)\b|\bnot\s+(?:definitely\s+)?(?:the\s+)?(?:certain\s+)?champions?\b/i;
@@ -874,6 +910,28 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   if (grounding?.kind === "competition") {
     const unsupportedCompetitionProvenance = /\b(?:play(?:s|ing)?|are|is)\s+in\s+(?:the\s+)?championship\b|\b(?:included\s+as|are|were)\s+(?:the\s+)?promoted clubs?\b|\bpromoted\s+from\b|\blead(?:s|ing)?\s+by\s+seeding\b|\bsquad rankings? used by the model\b|\bpositions? reflect[^.!?\n]{0,60}\bmodel\b/i.test(text);
     assertions.competitionClaimsGrounded = !unsupportedCompetitionProvenance;
+    if (expectation.expectTableMatchCountsGrounded) {
+      const numberWords = new Map([
+        ["zero", 0], ["one", 1], ["two", 2], ["three", 3], ["four", 4], ["five", 5],
+        ["six", 6], ["seven", 7], ["eight", 8], ["nine", 9], ["ten", 10],
+      ]);
+      const universalCountClaims = [...text.matchAll(/\b(?:all|every)\s+(?:team|club|side)s?\b[^.!?\n]{0,60}\b(?:played|have played|has played|on)\s+(zero|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:matches|games)\b/gi)];
+      assertions.tableMatchCountsGrounded = universalCountClaims.every((claim) =>
+        Array.isArray(grounding.standings)
+        && grounding.standings.length > 0
+        && grounding.standings.every((row) => row.playedGames === (numberWords.get(claim[1].toLowerCase()) ?? Number(claim[1])))
+      );
+      const individualClaims = (Array.isArray(grounding.standings) ? grounding.standings : [])
+        .flatMap((row) => {
+          const team = String(row?.team ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          if (!team) return [];
+          const pattern = new RegExp(`\\b${team}\\b[^.!?\\n]{0,70}\\b(?:played|have played|has played|on)\\s+(zero|one|two|three|four|five|six|seven|eight|nine|ten|\\d+)\\s+(?:matches|games)\\b`, "gi");
+          return [...text.matchAll(pattern)].map((claim) => ({ row, token: claim[1] }));
+        });
+      assertions.tableIndividualMatchCountsGrounded = individualClaims.every(({ row, token }) =>
+        row.playedGames === (numberWords.get(token.toLowerCase()) ?? Number(token))
+      );
+    }
   }
   if (grounding?.kind === "match") {
     assertions.fixtureStatusGrounded = !/\b(?:result is (?:already )?on (?:the )?record|match (?:has )?(?:already )?been played|future replay|played match)\b/i.test(text);
@@ -1169,6 +1227,15 @@ export const FORBIDDEN_ANSWER_TERMS = [
   "clubelo",
   "model-grounded",
   "not model-grounded",
+  "the model",
+  "pundit's model",
+  "pundit’s model",
+  "pundit model",
+  "the model says",
+  "the payload",
+  "this payload",
+  "retrieved sources",
+  "server grounding",
 ];
 
 /** Schema field names that must not leak in 400 error bodies. */
@@ -1186,6 +1253,78 @@ export function validateAnswerCopy(answer) {
     .filter((term) => normalized.includes(term))
     .map((term) => `answer contains forbidden term: ${term}`);
   return { passed: failures.length === 0, failures };
+}
+
+/** Conversation-level expression rules layered on top of factual validators. */
+export function validateAnalystExpression(answer, expectation = {}) {
+  const text = typeof answer === "string" ? answer.trim() : "";
+  const assertions = {};
+  if (expectation.expectAnalystVoice) {
+    assertions.firstPersonAnalystVoice = /\b(?:I|I'm|I've|I'd|my)\b/.test(text);
+  }
+  if (expectation.expectDirectAnswer) {
+    const firstSubstantive = text.split("\n")
+      .map((line) => line.replace(/^\s*(?:[-*#]+|\*\*[^*]+\*\*:?\s*)/, "").trim())
+      .find(Boolean) ?? "";
+    const lead = firstSubstantive.slice(0, 280);
+    const processPreamble = /^I\s+(?:will|'ll|can)\s+(?:explain|outline|walk|break|look|start|begin|analyse|analyze|consider)\b/i.test(lead);
+    assertions.directAnswerFirst = !processPreamble && (
+      /\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s+(?:decimal|odds)|^\s*\d+\s*[.)]/i.test(lead)
+      || /^\s*(?:I|I'm|I've|I'd)\s+(?:make|have|rate|see|favour|favor|lean|land|cannot|can't|do not|don't|would not|wouldn't|am unable|could not|couldn't)\b/i.test(lead)
+      || /^\s*(?:no comparable|not enough|unable|cannot|can't|the table|standings|[\p{L}][\p{L} .'-]{1,60}\s+(?:lead(?:s|ing)?|is first|are first))\b/iu.test(lead)
+    );
+  }
+  if (expectation.expectNarrowFollowup) {
+    const sectionLabels = text.split("\n").filter((line) => SECTION_LABEL_LINE.test(line));
+    assertions.narrowFollowup = text.length <= 900 && sectionLabels.length <= 1;
+  }
+  if (expectation.expectCannotReprice) {
+    assertions.honestRepricingBoundary = /\b(?:I\s+(?:cannot|can't|do not|don't)|I(?:'m| am) unable|not enough|no (?:comparable|verified|sourced))\b[^.!?\n]{0,140}\b(?:price|probabilit|percentage|odds|reprice|quantif|scorer|lineup|absence|swing)\w*/i.test(text)
+      || /\b(?:cannot|can't|unable)\b[^.!?\n]{0,100}\b(?:price|quantif|reprice)\w*/i.test(text);
+  }
+  if (expectation.expectNoUnsupportedScorerInference) {
+    const affirmativeScorer = text.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
+      /\b(?:best|top|most likely|first|anytime)\b[^.!?\n]{0,60}\b(?:scorer|to score)\b|\b(?:scorer|to score)\b[^.!?\n]{0,60}\b(?:best|top|most likely|first|anytime)\b/i.test(sentence)
+      && !/\b(?:cannot|can't|do not|don't|won't|wouldn't|no verified|not enough)\b/i.test(sentence)
+    );
+    const teamToPlayerCause = text.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
+      /\b(?:scorer|to score|player prop)\b/i.test(sentence)
+      && /\b(?:because|since|given|therefore|so)\b/i.test(sentence)
+      && /\b(?:win chance|favourite|favorite|1x2|over 2\.5|team[- ]level|match forecast)\b/i.test(sentence)
+      && !/\b(?:cannot|can't|do not|don't|won't|wouldn't)\b/i.test(sentence)
+    );
+    assertions.noUnsupportedScorerInference = !affirmativeScorer && !teamToPlayerCause;
+  }
+  if (expectation.expectNoUnsupportedMarketCausality) {
+    const marketCausality = text.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
+      /\b(?:market|kalshi|polymarket|stake|bookmakers?|bookies?|price|odds|gap|disagreement)\b/i.test(sentence)
+      && /\b(?:because|due to|reflects?|shows?|signals?|implies?|knows?|accounts? for|anticipat\w*|prices? in|bakes? in)\b/i.test(sentence)
+      && /\b(?:lineup|team news|injur|suspend|absence|rotation|manager|availability)\w*/i.test(sentence)
+    );
+    const agreementCausality = text.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
+      /\b(?:markets?|kalshi|polymarket|stake|bookmakers?|venues?)\b/i.test(sentence)
+      && /\b(?:agree|agreement|align|aligned|close|consensus)\w*/i.test(sentence)
+      && /\b(?:proves?|means?|makes?|shows?|confirms?|therefore)\b[^.!?\n]{0,80}\b(?:right|wrong|accurate|inaccurate|value|edge|mispriced)\b/i.test(sentence)
+    );
+    const unsupportedRecommendation = text.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
+      (/\b(?:I(?:'d| would)\s+|you should\s+|the play is\s+)(?:bet|back|lay|take|buy|sell|play)\b|^\s*(?:bet|back|lay|take|buy|sell)\b|\b(?:bet|back|lay|take|buy|sell|play)\b[^.!?\n]{0,80}\b(?:value|edge|mispriced|wager|odds|price)\b|\b(?:value|edge|mispriced)\b[^.!?\n]{0,80}\b(?:bet|back|lay|take|buy|sell|play)\b/i.test(sentence))
+      && !/\b(?:do not|don't|would not|wouldn't|cannot|can't|no)\b/i.test(sentence)
+    );
+    assertions.noUnsupportedMarketCausality = !marketCausality && !agreementCausality;
+    assertions.noUnsupportedBetRecommendation = !unsupportedRecommendation;
+  }
+  if (expectation.expectNoUnsupportedLineupEffect) {
+    const inventedLineupEffect = text.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
+      /\b(?:lineup|line-up|striker|defender|midfielder|goalkeeper|player|injur|absence|absent|ruled out|unavailable)\w*/i.test(sentence)
+      && /\d+(?:\.\d+)?\s*(?:%|percentage points?)/i.test(sentence)
+      && !/\b(?:cannot|can't|won't|wouldn't|do not|don't|not able|unable|not enough|no reliable|would be wrong)\b/i.test(sentence)
+    );
+    assertions.noUnsupportedLineupEffect = !inventedLineupEffect;
+  }
+  const failures = Object.entries(assertions)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => `analyst expression failed ${name}`);
+  return { passed: failures.length === 0, assertions, failures };
 }
 
 /** A standalone bold section label, e.g. `**Verdict**`. */
@@ -1212,6 +1351,7 @@ export function validateAnswerStructure(answer, expectation = {}) {
   const assertions = {
     noOrphanedSectionLabel: orphaned.length === 0,
     noMalformedLeadingFragment: !leadingMalformedFragment,
+    noUnresolvedMarker: !/\[\[|\]\]/.test(typeof answer === "string" ? answer : ""),
   };
   if (expectation.expectHeadlineOneXTwo) {
     assertions.headlineOneXTwoPresent = lines.some((line) =>
@@ -1448,7 +1588,7 @@ export function validateTeamNewsDiscipline(answer) {
 }
 
 export function validateAbstainedCounterfactualDiscipline(answer, verificationStatus) {
-  if (verificationStatus !== "abstain") {
+  if (verificationStatus !== "abstain" && verificationStatus !== "unavailable") {
     return { passed: true, assertions: {}, failures: [] };
   }
   const text = typeof answer === "string" ? answer : "";
@@ -1486,7 +1626,7 @@ export function qualitativeScores(result) {
     clarity: answer.length <= 4_000 ? 4 : 3,
     calibration: hasCalibration ? 4 : 2,
     groundingFidelity: result.passed && result.grounding !== undefined ? 4 : null,
-    method: "deterministic schema-16 certification checks; per-turn agent critic supplies final review"
+    method: "deterministic schema-17 certification checks; per-turn agent critic supplies final review"
   };
 }
 

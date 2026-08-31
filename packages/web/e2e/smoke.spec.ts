@@ -15,6 +15,25 @@ test.describe("smoke", () => {
     await expect(page.locator("span.truncate", { hasText: "Arsenal" }).first()).toBeVisible();
   });
 
+  test("fixtures stay chronological and expose canonical capability", async ({ page }) => {
+    await page.goto("/fixtures");
+    const rows = page.getByTestId("fixture-row");
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0)).toHaveAttribute("data-fixture-id", "eng.1-3");
+    await expect(rows.nth(1)).toHaveAttribute("data-fixture-id", "eng.1-1");
+    await expect(rows.nth(2)).toHaveAttribute("data-fixture-id", "uefa.champions_qual-2");
+    await expect(rows.nth(1).getByText("Forecast ready", { exact: true })).toBeVisible();
+    await expect(rows.nth(1).getByText("My forecast", { exact: true })).toBeVisible();
+    await expect(rows.nth(1).getByText("Polymarket", { exact: false })).toBeVisible();
+    await expect(rows.nth(1).getByText("68.0%", { exact: true })).toBeVisible();
+    const forecastTable = rows.nth(1).getByRole("table", { name: /forecast and market probabilities/i });
+    await expect(forecastTable.getByRole("columnheader", { name: "Home" })).toBeVisible();
+    await expect(forecastTable.getByRole("columnheader", { name: "Draw" })).toBeVisible();
+    await expect(forecastTable.getByRole("columnheader", { name: "Away" })).toBeVisible();
+    await expect(forecastTable.locator("time")).toBeVisible();
+    await expect(rows.nth(2).getByText("Required forecast input missing", { exact: true })).toBeVisible();
+  });
+
   test("model", async ({ page }) => {
     await page.goto("/model");
     await expect(page.getByRole("heading", { name: "Club season model" })).toBeVisible();
@@ -30,9 +49,123 @@ test.describe("smoke", () => {
     await arsenal.getByRole("button", { name: "Expand details" }).click();
     await expect(page.getByText("Markets", { exact: true })).toBeVisible();
     await expect(page.getByText("Polymarket", { exact: true })).toBeVisible();
+    await expect(page.locator('[title*="T"]').filter({ hasText: /./ }).first()).toBeVisible();
     await expect(page.getByText("68.0%")).toBeVisible();
     await expect(page.getByText("Stake", { exact: true })).toHaveCount(0);
   });
+
+  for (const viewport of [
+    { name: "desktop", width: 1280, height: 900 },
+    { name: "mobile", width: 390, height: 844 },
+  ]) {
+    test(`multi-turn fixture presentation stays compact on ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      const grounding = {
+        kind: "match",
+        fixtureId: "espn:eng.1:1",
+        competitionId: "eng.1",
+        competition: "Premier League",
+        homeFieldAdvantage: true,
+        date: "2026-09-01",
+        stage: "match",
+        home: "Arsenal",
+        away: "Coventry City",
+        pHome: 0.72,
+        pDraw: 0.18,
+        pAway: 0.10,
+        pOver2_5: 0.55,
+        pUnder2_5: 0.45,
+        pBttsYes: 0.48,
+        pBttsNo: 0.52,
+        topScores: [{ score: "2-0", probability: 0.14 }],
+        scorelines: [{ score: "2-0", probability: 0.14 }],
+        stakePHome: null,
+        stakePDraw: null,
+        stakePAway: null,
+        oddsSources: [{
+          source: "polymarket",
+          observedAt: "2026-08-30T06:00:00.000Z",
+          pHome: 0.68,
+          pDraw: 0.20,
+          pAway: 0.12,
+        }],
+      };
+      const turns = [
+        { answer: "I make Arsenal the clear favourite.", responseMode: "match-preview", fixtureCard: "expanded", grounding },
+        { answer: "My fair 2-0 probability is 14.0%.", responseMode: "fair-price", fixtureCard: "compact", grounding },
+        { answer: "I cannot price a scorer from this forecast.", responseMode: "player-or-scorer", fixtureCard: "compact", grounding },
+        { answer: "I cannot quantify that lineup change yet.", responseMode: "lineup-counterfactual", fixtureCard: "compact", grounding },
+        {
+          answer: "Arsenal are first on the supplied table.",
+          responseMode: "table",
+          fixtureCard: "none",
+          grounding: {
+            kind: "competition",
+            competitionId: "eng.1",
+            competition: "Premier League",
+            updatedAt: "2026-08-30T06:00:00.000Z",
+            standings: [{
+              position: 1, team: "Arsenal", playedGames: 3, won: 3, draw: 0,
+              lost: 0, points: 9, goalsFor: 8, goalsAgainst: 1, goalDifference: 7,
+            }],
+          },
+        },
+        // Even a repeated expanded directive must not duplicate the full card
+        // for a fixture already established in this conversation.
+        { answer: "I am four points above Polymarket; the reason is not established.", responseMode: "market-comparison", fixtureCard: "expanded", grounding },
+      ];
+      let turn = 0;
+      const requests: Array<Record<string, unknown>> = [];
+      await page.route("**/api/ask", async (route) => {
+        requests.push(route.request().postDataJSON());
+        const response = turns[turn++];
+        const sse = [
+          `event: grounding\ndata: ${JSON.stringify({ grounding: response.grounding })}`,
+          `event: delta\ndata: ${JSON.stringify({ text: response.answer })}`,
+          `event: done\ndata: ${JSON.stringify({
+            answer: response.answer,
+            grounding: response.grounding,
+            presentation: {
+              responseMode: response.responseMode,
+              fixtureCard: response.fixtureCard,
+            },
+          })}`,
+          "",
+        ].join("\n\n");
+        await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+      });
+
+      await page.goto("/");
+      const input = page.getByRole("textbox", { name: "Ask a question" });
+      const questions = [
+        "Preview Arsenal vs Coventry City",
+        "What is fair for 2-0?",
+        "What about a scorer?",
+        "What if the striker is out?",
+        "Where are Arsenal in the table?",
+        "Why do you disagree with the market?",
+      ];
+      for (const [index, question] of questions.entries()) {
+        await input.fill(question);
+        await page.getByRole("button", { name: "Send" }).click();
+        await expect.poll(() => turn).toBe(index + 1);
+        await expect(page.getByText(turns[index].answer, { exact: true })).toBeVisible();
+      }
+
+      await expect(page.getByTestId("match-fixture-card")).toHaveCount(1);
+      await expect(page.getByTestId("compact-match-context")).toHaveCount(4);
+      await expect(page.getByText("My forecast", { exact: true })).toHaveCount(1);
+      await expect(page.getByText(/Pundit model|the model|payload|retrieved sources/i)).toHaveCount(0);
+      expect(requests[4].fixtureContext).toEqual({ fixtureId: grounding.fixtureId });
+      expect(requests[5].fixtureContext).toEqual({ fixtureId: grounding.fixtureId });
+      const compact = page.getByTestId("compact-match-context").first();
+      const disclosure = compact.locator("summary");
+      await disclosure.focus();
+      await page.keyboard.press("Enter");
+      await expect(compact).toHaveAttribute("open", "");
+      await expect(disclosure.getByText(/expand forecast and market details/i)).toBeAttached();
+    });
+  }
 
   test("fixture and model Ask links retain their rendered fixture identity", async ({ page }) => {
     await page.goto("/fixtures");
@@ -186,7 +319,7 @@ test.describe("smoke", () => {
     const input = page.getByRole("textbox", { name: "Ask a question" });
     await input.fill("Arsenal vs Liverpool friendly");
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByText(/Club Friendly · Outside Pundit model coverage/i)).toBeVisible();
+    await expect(page.getByText(/Club Friendly · Outside forecast coverage · friendly policy/i)).toBeVisible();
     await expect(page.getByText("Following: Arsenal vs Liverpool").first()).toBeVisible();
 
     await input.fill("How does the Premier League table look?");
