@@ -229,7 +229,7 @@ describe("season grounding degradation", () => {
       const followUpJson = await answerQuestion(followUp, history);
       expect(searchWeb).not.toHaveBeenCalled();
       expect(followUpJson.grounding).toMatchObject({ kind: "competition", competitionId: "eng.1" });
-      expect(followUpJson.answer).toContain("standings-only payload cannot quantify");
+      expect(followUpJson.answer).toContain("standings alone cannot quantify");
       expect(followUpJson.answer).toContain("rerun the season outlook after the result");
 
       const followUpDeltas: string[] = [];
@@ -874,6 +874,17 @@ describe("current-news evidence hardening", () => {
     expect(artifactAnswer).not.toMatch(/shrinks the space behind it|World Cup 2026 results only|No verified source exists/i);
   });
 
+  it("corrects high-line runway and offside-trap conceptual errors", () => {
+    const answer = sanitizeFootballGeometry(
+      "A high defensive line leaves more space behind it. Once an attacker gets in behind, the distance to the goal is short. "
+      + "The offside trap only works if the keeper is positioned to clean up through-balls."
+    );
+    expect(answer).toContain("large runway behind the defence");
+    expect(answer).toContain("offside trap depends on coordinated timing");
+    expect(answer).toContain("goalkeeper mitigates through-balls");
+    expect(answer).not.toMatch(/distance to the goal is short|only works if the keeper/i);
+  });
+
   it("reconciles plain scoreline arithmetic even without a probability suffix", () => {
     expect(dropMisbucketedTotalsScorelines("A 1-1 result lands over 2.5 goals."))
       .toBe("A 1-1 scoreline has 2 total goals, so it is under 2.5.");
@@ -995,9 +1006,9 @@ describe("current-news evidence hardening", () => {
 
     it("answers model-input attribution without substituting a price gap", () => {
       const answer = deterministicGroundedResponse("Which model input matters most to that edge?", model());
-      expect(answer).toMatch(/club-strength ratings/i);
-      expect(answer).toMatch(/home-field advantage/i);
-      expect(answer).toMatch(/cannot (?:honestly )?rank|cannot establish which single model input/i);
+      expect(answer).toMatch(/reviewed team strength/i);
+      expect(answer).toMatch(/home-field setting/i);
+      expect(answer).toMatch(/can’t isolate|cannot establish which single model input/i);
       expect(answer).not.toMatch(/kalshi|polymarket|market staleness|pricing error/i);
     });
 
@@ -1021,7 +1032,7 @@ describe("current-news evidence hardening", () => {
       );
       expect(modelOnly).toContain("Arsenal 97.3%");
       expect(closedGroundedAnswer("Which model input matters most to that edge?", model()))
-        .toMatch(/club-strength ratings/i);
+        .toMatch(/reviewed team strength/i);
     });
 
     it("leaves the non-match tiers settling exactly as before", () => {
@@ -1136,8 +1147,11 @@ describe("current-news evidence hardening", () => {
         },
       ], new Date("2026-08-24T07:00:00.000Z"));
       const answer = deterministicGroundedResponse("What does the current table show?", table) as string;
+      expect(answer).toMatch(/^Brighton lead with 3 points from 1 match\./);
       expect(answer).toContain("from 1 match,");
       expect(answer).not.toContain("1 matches");
+      expect(answer).not.toContain("**Current table**");
+      expect(answer).not.toContain("supplied standings");
     });
 
     const seasonGroundingWith = (
@@ -1226,7 +1240,7 @@ describe("current-news evidence hardening", () => {
       expect(current).toContain("provider's ordering among tied teams");
       expect(current).not.toMatch(/seeding|promoted|squad ranking/i);
       const sensitivity = deterministicGroundedResponse("How sensitive is that view to one upset?", table);
-      expect(sensitivity).toContain("standings-only payload cannot quantify");
+      expect(sensitivity).toContain("standings alone cannot quantify");
       expect(sensitivity).not.toMatch(/few percentage points|top two are entrenched/i);
     });
 
@@ -1538,7 +1552,7 @@ describe("current-news evidence hardening", () => {
         "Team news is baked into the forecast.",
       ]) {
         const fixed = sanitizeGroundedMatchNarrative(claim, grounding);
-        expect(fixed).toContain("squad availability is not one of its inputs");
+        expect(fixed).toContain("squad availability is not one of those inputs");
       }
     });
 

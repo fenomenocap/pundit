@@ -291,6 +291,54 @@ function expectDeliverable(answer: string, expectHeadlineOneXTwo = false) {
   expectAbstentionStaysScoped(answer);
 }
 
+describe("V2 deterministic fact delivery", () => {
+  const deliverFallback = (question: string, grounding: Grounding = marketGrounding) =>
+    deliverAnswer({
+      // Invalid JSON deliberately exercises the same deterministic fallback
+      // production used after rejecting a draft, followed by the full V2 tail.
+      answer: "not a structured draft",
+      tier: "match",
+      grounding,
+      bundle: emptyBundle(),
+      client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+      question,
+      evidenceRequired: false,
+      candidateUnrecognized: false,
+      hasHistory: true,
+      structuredDraftExpected: true,
+    });
+
+  it("preserves a server-composed exact-score probability and fair price", async () => {
+    const delivered = await deliverFallback("What is your fair decimal price for an exact 3-2 score?");
+    expect(delivered.answer).toMatch(/Arsenal 3-2 Coventry City.*1\.1%.*90\.91/i);
+    expect(delivered.answer).toContain("fair decimal odds");
+    expect(delivered.answer).not.toContain("omitted those numbers");
+  });
+
+  it("preserves a complete server-composed model-market comparison", async () => {
+    const delivered = await deliverFallback("Where do you disagree most with the available 1X2 market?");
+    expect(delivered.answer).toMatch(/Arsenal.*40\.0%.*Kalshi.*50\.0%.*10\.0 percentage points/i);
+    expect(delivered.answer).toMatch(/not its cause|does not establish.*cause/i);
+    expect(delivered.answer).not.toContain("omitted those numbers");
+  });
+
+  it("does not invent an earlier claim when correction language has no history", async () => {
+    const delivered = await deliverAnswer({
+      answer: "I need to know which side and fixture you mean.",
+      tier: "general",
+      grounding: null,
+      bundle: emptyBundle(),
+      client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
+      question: "Is that side actually stronger?",
+      evidenceRequired: false,
+      candidateUnrecognized: false,
+      hasHistory: false,
+    });
+    expect(delivered.answer).toBe("I need to know which side and fixture you mean.");
+    expect(delivered.answer).not.toMatch(/earlier claim|earlier sentence/i);
+  });
+});
+
 /** The match-specific contract: the model's own numbers and its sections. */
 function expectMatchContentIntact(answer: string) {
   expectDeliverable(answer, true);

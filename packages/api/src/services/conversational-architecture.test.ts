@@ -64,6 +64,9 @@ describe("V2 conversational architecture", () => {
       expect(plan.maxSections).toBe(1);
     }
     expect(planResponse("Who scores?", { groundingKind: "match" }).evidenceRequired).toBe(false);
+    expect(planResponse("Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.", { groundingKind: "match" }).mode).toBe("match-preview");
+    expect(planResponse("Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?", { groundingKind: "match", hasHistory: true }).mode).toBe("market-comparison");
+    expect(planResponse("If the home striker is ruled out, exactly how many percentage points would you take off the home win?", { groundingKind: "match", hasHistory: true }).mode).toBe("lineup-counterfactual");
     expect(planResponse("What is the latest team news?", { groundingKind: "match" }).evidenceRequired).toBe(true);
   });
 
@@ -176,6 +179,12 @@ describe("V2 conversational architecture", () => {
     const ambiguous = composeMatchResponse("Fair odds for 2-1?", match,
       planResponse("Fair odds for 2-1?", { groundingKind: "match", hasHistory: true }));
     expect(ambiguous).toMatch(/^Reading 2-1 in home-away order/);
+    const oneXTwo = composeMatchResponse("Back to that match: what will the 1X2 be?", match,
+      planResponse("Back to that match: what will the 1X2 be?", { groundingKind: "match", hasHistory: true }));
+    expect(oneXTwo).toMatch(/Arsenal 56\.3%.*draw 23\.4%.*Chelsea 20\.3%/i);
+    const input = composeMatchResponse("Which model input matters most to that edge?", match,
+      planResponse("Which model input matters most to that edge?", { groundingKind: "match", hasHistory: true }));
+    expect(input).toMatch(/^I can’t isolate one input/i);
   });
 
   it("fails closed on untraceable percentages and strips unresolved final markers", () => {
