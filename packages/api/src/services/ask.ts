@@ -2272,6 +2272,14 @@ export function sanitizeFootballGeometry(answer: string): string {
     + "but leaves more space behind it for the goalkeeper to cover.";
   const conceptSafe = answer
     .replace(
+      /[^.!?\n]*(?:\b(?:deeper|closer)\b[^.!?\n]{0,40}\bmidfield\b[^.!?\n]{0,60}\b(?:in relation to|relative to|towards?|closer to)\b[^.!?\n]{0,24}\b(?:the )?(?:back|defensive) line\b|\bmidfield\b[^.!?\n]{0,30}\b(?:drops?|sits?|moves?)\b[^.!?\n]{0,24}\bcloser\b[^.!?\n]{0,20}\b(?:to|towards?)\b[^.!?\n]{0,20}\b(?:the )?(?:back|defensive) line\b)[^.!?\n]{0,80}(?:\b(?:more|increasingly|greater)\b[^.!?\n]{0,24}\bisolat(?:ed|ion)\b[^.!?\n]{0,24}\b(?:defenders?|defen[cs]e|back line)\b|\b(?:defenders?|defen[cs]e|back line)\b[^.!?\n]{0,24}\b(?:more|increasingly|greater)\b[^.!?\n]{0,24}\bisolat(?:ed|ion)\b)[^.!?\n]*(?:[.!?]+|$)/gi,
+      "The larger the gap between midfield and the back line, the more isolated the defenders are after a turnover."
+    )
+    .replace(
+      /[^.!?\n]*\b(?:defenders?|defen[cs]e|back line)\b[^.!?\n]{0,30}\b(?:more|increasingly|greater)\b[^.!?\n]{0,24}\bisolat(?:ed|ion)\b[^.!?\n]{0,40}\bcloser\b[^.!?\n]{0,24}\bmidfield\b[^.!?\n]{0,30}\b(?:drops?|sits?|moves?)\b[^.!?\n]{0,20}\b(?:to|towards?)\b[^.!?\n]{0,20}\b(?:the )?(?:back|defensive) line\b[^.!?\n]*(?:[.!?]+|$)/gi,
+      "The larger the gap between midfield and the back line, the more isolated the defenders are after a turnover."
+    )
+    .replace(
       /[^.!?\n]*\boffside trap\b[^.!?\n]*\bonly works?\b[^.!?\n]*\b(?:goalkeeper|keeper)\b[^.!?\n]*(?:[.!?]+|$)/gi,
       "The offside trap depends on coordinated timing across the defensive line; a sweeping goalkeeper mitigates through-balls when that line is beaten."
     )
@@ -7551,6 +7559,7 @@ export function sanitizeDeliveredAnswer(
 
 export function normalizeAnalystIdentity(answer: string): string {
   return answer
+    .replace(/\bI reads\b/g, "I read")
     .replace(/outside Pundit['’]s model coverage/gi, "outside my forecasting coverage")
     .replace(/Pundit probabilities/gi, "my probabilities")
     .replace(/Pundit['’]s model at\s+(.{1,40}?)\s+is\b/gi, "my $1 estimate is")

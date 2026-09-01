@@ -2281,11 +2281,23 @@ test("high-line geometry rejects both backwards formulations and requires the re
     "The gap between the defensive line and the keeper is reduced by a high defensive line.",
     "A high line leaves space behind. Once an attacker gets in behind, the distance to the goal is short.",
     "A high line leaves space behind. The offside trap only works if the keeper cleans up through-balls.",
+    "A high line compresses the pitch. The deeper the midfield sits in relation to the back line, the more isolated the defenders are after a turnover.",
+    "A high line compresses the pitch. The closer the midfield drops towards the defensive line, the greater the isolation of the defenders after a turnover.",
+    "A high line compresses the pitch. The midfield drops closer to the back line, leaving the defenders increasingly isolated.",
+    "A high line compresses the pitch. The defenders become more isolated the closer midfield drops toward the back line.",
   ]) {
     assert.equal(validateResponseCorrectness(
       answer, [], null, { expectCorrectHighLineGeometry: true }
     ).passed, false, answer);
   }
+  assert.equal(validateResponseCorrectness(
+    "A high line leaves more space behind. The deeper the midfield sits in relation to the back line, the more isolated the forwards are.",
+    [], null, { expectCorrectHighLineGeometry: true }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "A high line leaves more space behind. The closer midfield is to the back line, the less isolated the defenders are.",
+    [], null, { expectCorrectHighLineGeometry: true }
+  ).passed, true);
   for (const answer of [
     "A high line compresses space between the units ahead of the defence, but creates more space behind it for direct passes.",
     "A high defensive line compresses space in front of the defence but leaves more space behind it for the goalkeeper to cover.",
