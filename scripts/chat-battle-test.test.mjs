@@ -2290,6 +2290,7 @@ test("high-line geometry rejects both backwards formulations and requires the re
     "A high line compresses the pitch. The closer the midfield drops towards the defensive line, the greater the isolation of the defenders after a turnover.",
     "A high line compresses the pitch. The midfield drops closer to the back line, leaving the defenders increasingly isolated.",
     "A high line compresses the pitch. The defenders become more isolated the closer midfield drops toward the back line.",
+    "A high line commits bodies forward. Midfield turnovers land closer to your own goal because the press has committed bodies forward.",
   ]) {
     assert.equal(validateResponseCorrectness(
       answer, [], null, { expectCorrectHighLineGeometry: true }

@@ -866,6 +866,21 @@ describe("sanitizeGeneralAnswer", () => {
     expect(safe).toContain("This is general football analysis, not based on my match forecasts");
     expect(safe).not.toMatch(/World Cup 2026 results only|No verified source exists/i);
   });
+
+  it("removes an unsupported coaching-search summary and its empty heading", () => {
+    const answer = [
+      "**Manager situation**",
+      "No verified, dated team-news update was established.",
+      "",
+      "**Other candidates mentioned**",
+      "The evidence flags several other coaching searches running around the same window, none presented as a confirmed replacement:",
+      "",
+      "If you can name the manager you mean, I can narrow this down.",
+    ].join("\n");
+    const safe = sanitizeGeneralAnswer(answer);
+    expect(safe).toContain("If you can name the manager");
+    expect(safe).not.toMatch(/Other candidates mentioned|coaching searches/i);
+  });
 });
 
 describe("normalizeSectionBreaks", () => {

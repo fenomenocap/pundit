@@ -924,6 +924,18 @@ describe("current-news evidence hardening", () => {
       .toBe("I read this as a structural risk.");
     expect(normalizeAnalystIdentity("He reads this as a structural risk."))
       .toBe("He reads this as a structural risk.");
+    expect(normalizeAnalystIdentity(
+      "My pre-training knowledge of fixtures is out of date. Once you do. I can pull grounding data and model probabilities."
+    )).toBe("No fixture was named. I can pull fixture details and my probabilities.");
+  });
+
+  it("corrects inverted high-press turnover location", () => {
+    const answer = sanitizeFootballGeometry(
+      "A high line commits bodies forward. Midfield turnovers land closer to your own goal, because the press has committed bodies forward; a counter starts higher up the pitch than it would against a low block."
+    );
+    expect(answer).toContain("turnover occurs farther from the pressing team's own goal");
+    expect(answer).toContain("expose the high line to a faster transition");
+    expect(answer).not.toMatch(/turnovers land closer to your own goal/i);
   });
 
   it("removes invented tactical inputs from general product-scope claims", () => {
