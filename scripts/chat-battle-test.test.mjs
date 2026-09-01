@@ -1656,11 +1656,11 @@ test("runtime-helper scenarios execute the current API correctness module, not c
   assert.equal(helpers.settleScorelineTotal(...runtime.get("one-one-is-not-over-two-five").args), "lose");
   assert.match(
     helpers.applyClaimDecisions(...runtime.get("unrelated-citation-rejected").args).answer,
-    /could not establish/i
+    /could not verify/i
   );
   assert.match(
     helpers.applyClaimDecisions(...runtime.get("degraded-search-retrieval-verifier").args).answer,
-    /sources conflict/i
+    /current reports conflict/i
   );
   const fixtureHelpers = loadApiRuntimeFixtureHelpers(path.resolve(import.meta.dirname, ".."));
   assert.deepEqual(

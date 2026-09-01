@@ -255,6 +255,9 @@ export interface ClaimDecision {
   explanation?: string;
 }
 
+const CONFLICT_ABSTENTION =
+  "Current reports conflict on one or more requested facts, so I’ve left those claims out.";
+
 export function applyClaimDecisions(
   claims: readonly VerifiableClaim[],
   decisions: readonly ClaimDecision[]
@@ -286,11 +289,11 @@ export function applyClaimDecisions(
   const supportedIds = new Set(supported.map((claim) => claim.id));
   const removedClaimIds = claims.filter((claim) => !supportedIds.has(claim.id)).map((claim) => claim.id);
   const conflictNotice = conflictClaimIds.length
-    ? "The retrieved sources conflict on one or more requested facts, so those claims were omitted."
+    ? CONFLICT_ABSTENTION
     : "";
   const answer = supported.length
     ? [...supported.map((claim) => claim.text.trim()).filter(Boolean), conflictNotice].filter(Boolean).join(" ")
-    : conflictNotice || "I could not establish a supported answer from the retrieved evidence.";
+    : conflictNotice || "I could not verify a reliable answer to that question.";
   return { answer, supported, removedClaimIds, conflictClaimIds };
 }
 
@@ -338,10 +341,8 @@ export function reviseAnswerWithClaimDecisions(
   }
   revised += answer.slice(cursor);
 
-  // Duplicated from `applyClaimDecisions` rather than shared, so that function
-  // stays byte-for-byte what its own tests and the battle harness assert.
   const conflictNotice = applied.conflictClaimIds.length
-    ? "The retrieved sources conflict on one or more requested facts, so those claims were omitted."
+    ? CONFLICT_ABSTENTION
     : "";
   const withNotice = conflictNotice
     ? (revised.trim() ? `${revised.trimEnd()} ${conflictNotice}` : conflictNotice)
