@@ -201,6 +201,132 @@ export function executeRuntimeHelperScenario(scenario, repoRoot = path.resolve(i
   throw new Error(`Unknown runtime correctness helper: ${scenario.helper}`);
 }
 
+function jsonEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function withoutExpectText(scenario) {
+  const copy = structuredClone(scenario);
+  delete copy.expectText;
+  return copy;
+}
+
+/**
+ * Re-evaluate assertion text for already-recorded runtime helper output without
+ * replaying any production request or helper code. This assertion-only step is
+ * intentionally narrower than a
+ * general report regrader: only `expectText` may differ, every non-target
+ * scenario contract must remain byte-for-byte equivalent, and the recorded
+ * report must identify the same source and deployed API SHA.
+ */
+export function regradeRecordedRuntimeHelpers(
+  report,
+  originalScenarios,
+  currentScenarios,
+  targetIds,
+  metadata = {}
+) {
+  if (report?.schemaVersion !== EVAL_SCHEMA_VERSION || report?.progress?.status !== "complete") {
+    throw new Error(`runtime regrade requires a complete Schema-${EVAL_SCHEMA_VERSION} report`);
+  }
+  const sourceSha = report?.deployment?.sourceSha;
+  if (!/^[0-9a-f]{40}$/i.test(sourceSha ?? "") || report?.deployment?.apiSha !== sourceSha) {
+    throw new Error("runtime regrade requires an exact source/API SHA match");
+  }
+  const targets = new Set(targetIds);
+  if (targets.size === 0 || targets.size !== targetIds.length) {
+    throw new Error("runtime regrade requires unique target scenario IDs");
+  }
+  const originalById = new Map(originalScenarios.map((scenario) => [scenario.id, scenario]));
+  const currentById = new Map(currentScenarios.map((scenario) => [scenario.id, scenario]));
+  if (originalById.size !== originalScenarios.length || currentById.size !== currentScenarios.length
+    || originalScenarios.length !== currentScenarios.length) {
+    throw new Error("scenario manifests must contain the same unique scenario IDs");
+  }
+  for (const original of originalScenarios) {
+    const current = currentById.get(original.id);
+    if (!current) throw new Error(`scenario manifest removed ${original.id}`);
+    if (!targets.has(original.id)) {
+      if (!jsonEqual(original, current)) throw new Error(`non-target scenario changed: ${original.id}`);
+      continue;
+    }
+    if (original.kind !== "runtime-helper" || current.kind !== "runtime-helper") {
+      throw new Error(`runtime regrade target is not a runtime helper: ${original.id}`);
+    }
+    if (!jsonEqual(withoutExpectText(original), withoutExpectText(current))) {
+      throw new Error(`runtime regrade target changed outside expectText: ${original.id}`);
+    }
+    if (jsonEqual(original.expectText, current.expectText)) {
+      throw new Error(`runtime regrade target has no expectText change: ${original.id}`);
+    }
+  }
+
+  const next = structuredClone(report);
+  const reportById = new Map(next.scenarios.map((scenario) => [scenario.id, scenario]));
+  for (const id of targets) {
+    const scenario = currentById.get(id);
+    const result = reportById.get(id);
+    if (!scenario || !result || result.runtimeHelper?.name !== scenario.helper
+      || !("actual" in result.runtimeHelper)) {
+      throw new Error(`recorded runtime output is missing or mismatched: ${id}`);
+    }
+    if (result.outcome !== "FAIL" || result.assertions?.exactRuntimeResult !== true
+      || result.assertions?.requiredText !== false || result.assertions?.forbiddenText !== true) {
+      throw new Error(`runtime regrade target did not fail solely on requiredText: ${id}`);
+    }
+    const actual = result.runtimeHelper.actual;
+    const serialized = JSON.stringify(actual);
+    const assertions = {
+      exactRuntimeResult: Array.isArray(scenario.expect)
+        ? serialized === JSON.stringify(scenario.expect)
+        : Object.entries(scenario.expect ?? {}).every(([key, value]) =>
+          JSON.stringify(actual?.[key]) === JSON.stringify(value)
+        ),
+      requiredText: !scenario.expectText || scenario.expectText.every((text) => serialized.includes(text)),
+      forbiddenText: !scenario.forbidText || scenario.forbidText.every((text) => !serialized.includes(text)),
+    };
+    if (!Object.values(assertions).every(Boolean)) {
+      throw new Error(`corrected runtime assertions still fail: ${id}`);
+    }
+    result.assertions = assertions;
+    result.passed = true;
+    result.correctnessCertified = true;
+    result.outcome = "PASS";
+    result.evidence = `Recorded API runtime helper ${scenario.helper} satisfies the corrected text contract.`;
+  }
+  const { hashRecordedActual, ...provenance } = metadata;
+  if (typeof hashRecordedActual !== "function") {
+    throw new Error("runtime regrade requires a recorded-actual hash function");
+  }
+  next.runtimeRegrade = {
+    ...provenance,
+    mode: "assertion-only-recorded-runtime-output",
+    purpose: "comparison-baseline-only",
+    targetScenarioIds: [...targets],
+    sourceSha,
+    recordedActualSha256: Object.fromEntries([...targets].map((id) => [
+      id,
+      hashRecordedActual(reportById.get(id).runtimeHelper.actual),
+    ])),
+  };
+  const finalized = finalizeClassifications(next, next.comparisonBaseline ?? null);
+  const originalReportById = new Map(report.scenarios.map((scenario) => [scenario.id, scenario]));
+  for (const scenario of finalized.scenarios) {
+    if (!targets.has(scenario.id) && !jsonEqual(scenario, originalReportById.get(scenario.id))) {
+      throw new Error(`runtime regrade changed non-target report evidence: ${scenario.id}`);
+    }
+  }
+  for (const key of [
+    "preflight", "deployment", "pacing", "postRun", "progress",
+    "browserEvidence", "criticReview", "startedAt", "completedAt",
+  ]) {
+    if (!jsonEqual(finalized[key], report[key])) {
+      throw new Error(`runtime regrade changed immutable report field: ${key}`);
+    }
+  }
+  return finalized;
+}
+
 /** Capture request evidence by value so later conversation turns cannot mutate it. */
 export function snapshotAskRequest({ question, history, teamContext, fixtureContext }) {
   return {

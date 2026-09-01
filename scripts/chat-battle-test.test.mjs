@@ -25,6 +25,7 @@ import {
   parseSse,
   recordScenarioFailure,
   recordOptionalScenarioFailure,
+  regradeRecordedRuntimeHelpers,
   readinessFailures,
   routableRecognizedEntries,
   enabledCompetitionIds,
@@ -755,6 +756,27 @@ test("finalizer rejects browser or critic evidence from another run", async () =
   ]);
   assert.equal(result.code, 1);
   assert.match(result.stderr, /runId mismatch/);
+});
+
+test("finalizer refuses an assertion-only runtime baseline", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-runtime-baseline-"));
+  await writeFile(path.join(directory, "latest-run.json"), JSON.stringify({
+    runId: "runtime-baseline",
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runtimeRegrade: { purpose: "comparison-baseline-only" },
+  }));
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  await writeFile(browserPath, "{}");
+  await writeFile(criticPath, "{}");
+  const result = await runNode([
+    "scripts/finalize-chat-report.mjs",
+    "--output-dir", directory,
+    "--browser-json", browserPath,
+    "--critic-json", criticPath,
+  ]);
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /comparison baselines and cannot be finalized/i);
 });
 
 test("finalizer rejects a generic browser pass without named UI contract coverage", async () => {
@@ -1691,6 +1713,105 @@ test("runtime-helper scenarios execute the current API correctness module, not c
       `built routing result mismatch for ${id}`
     );
   }
+});
+
+test("runtime-only regrade permits only expectText changes and preserves live evidence", () => {
+  const sha = "a".repeat(40);
+  const originalScenarios = [
+    {
+      id: "runtime-copy",
+      kind: "runtime-helper",
+      helper: "applyClaimDecisions",
+      args: [[], []],
+      expect: { supported: [] },
+      expectText: ["old copy"],
+    },
+    { id: "live-answer", kind: "question", question: "hello" },
+  ];
+  const currentScenarios = structuredClone(originalScenarios);
+  currentScenarios[0].expectText = ["new copy"];
+  const liveResult = {
+    id: "live-answer",
+    requiredForCertification: true,
+    passed: true,
+    outcome: "PASS",
+    classification: "PASS",
+    verdict: "PASS",
+    answer: "A preserved live answer.",
+    qualitativeScores: { correctness: 4 },
+    requestLatencies: [100],
+    turnResults: [{ turn: 1, status: 200, answer: "A preserved live answer." }],
+  };
+  const report = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    progress: { status: "complete" },
+    deployment: { sourceSha: sha, apiSha: sha, shaConverged: true, id: "deployment-id" },
+    pacing: {
+      minimumIntervalMs: 13_000,
+      requestStarts: ["2026-09-01T00:00:00Z"],
+      observedStartOffsetsMs: [0],
+      observedGapsMs: [],
+    },
+    browserEvidence: null,
+    criticReview: null,
+    comparisonBaseline: {
+      schemaVersion: EVAL_SCHEMA_VERSION,
+      scenarios: [{ id: "runtime-copy", passed: true, outcome: "PASS", classification: "PASS" }],
+    },
+    scenarios: [
+      {
+        id: "runtime-copy",
+        requiredForCertification: true,
+        passed: false,
+        outcome: "FAIL",
+        runtimeHelper: { name: "applyClaimDecisions", actual: { supported: [], answer: "new copy" } },
+        assertions: { exactRuntimeResult: true, requiredText: false, forbiddenText: true },
+      },
+      liveResult,
+    ],
+  };
+  const liveBefore = JSON.stringify(liveResult);
+  const regraded = regradeRecordedRuntimeHelpers(
+    report,
+    originalScenarios,
+    currentScenarios,
+    ["runtime-copy"],
+    {
+      evaluatorSha: "b".repeat(40),
+      mode: "unsafe override",
+      sourceSha: "c".repeat(40),
+      hashRecordedActual: (actual) => `hash:${JSON.stringify(actual)}`,
+    }
+  );
+  const runtime = regraded.scenarios.find(({ id }) => id === "runtime-copy");
+  assert.equal(runtime.outcome, "PASS");
+  assert.equal(runtime.classification, "PASS");
+  assert.equal(regraded.runtimeRegrade.mode, "assertion-only-recorded-runtime-output");
+  assert.equal(regraded.runtimeRegrade.sourceSha, sha);
+  assert.equal(JSON.stringify(regraded.scenarios.find(({ id }) => id === "live-answer")), liveBefore);
+  assert.equal(report.scenarios[0].outcome, "FAIL");
+
+  const changedLive = structuredClone(currentScenarios);
+  changedLive[1].question = "changed";
+  assert.throws(
+    () => regradeRecordedRuntimeHelpers(report, originalScenarios, changedLive, ["runtime-copy"]),
+    /non-target scenario changed/
+  );
+  const changedHelper = structuredClone(currentScenarios);
+  changedHelper[0].helper = "containsCorrectionCue";
+  assert.throws(
+    () => regradeRecordedRuntimeHelpers(report, originalScenarios, changedHelper, ["runtime-copy"]),
+    /changed outside expectText/
+  );
+  assert.throws(
+    () => regradeRecordedRuntimeHelpers(
+      { ...report, deployment: { ...report.deployment, apiSha: "c".repeat(40) } },
+      originalScenarios,
+      currentScenarios,
+      ["runtime-copy"]
+    ),
+    /exact source\/API SHA match/
+  );
 });
 
 test("schema-17 correctness guard catches the four screenshot-class failures", () => {

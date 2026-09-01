@@ -198,6 +198,9 @@ async function main() {
     readJson(options.browserPath),
     readJson(options.criticPath)
   ]);
+  if (report.runtimeRegrade) {
+    throw new Error("assertion-only runtime regrades are comparison baselines and cannot be finalized");
+  }
   const compatibilityFailures = [
     ...evidenceCompatibilityFailures(report, browserEvidence, "browser"),
     ...evidenceCompatibilityFailures(report, criticReview, "critic"),
