@@ -60,6 +60,7 @@ import {
   composeMarketDivergenceSentence,
   closedGroundedAnswer,
   deterministicGroundedResponse,
+  deterministicUngroundedClarification,
   deterministicCoverageResponse,
   dropLeadingAnswerFragment,
   answerQuestion,
@@ -2253,6 +2254,14 @@ describe("resolveAskContext", () => {
 
   it("does not match the epl token inside replacing", () => {
     expect(isCompetitionQuestion("Who is replacing the injured manager?")).toBe(false);
+    expect(deterministicUngroundedClarification(
+      "Who is replacing the injured manager?", null
+    )).toBe(
+      "I need the manager and club before I can identify a replacement. Tell me both, and I’ll check the current evidence."
+    );
+    expect(deterministicUngroundedClarification(
+      "Who is replacing Pep Guardiola at Man City?", null
+    )).toBeNull();
   });
 
   it("does not route a stale priced row after authoritative cancellation", () => {
