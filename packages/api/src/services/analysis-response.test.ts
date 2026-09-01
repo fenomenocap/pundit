@@ -881,6 +881,14 @@ describe("sanitizeGeneralAnswer", () => {
     expect(safe).toContain("If you can name the manager");
     expect(safe).not.toMatch(/Other candidates mentioned|coaching searches/i);
   });
+
+  it("removes invented tactical feature claims written as a generic model", () => {
+    const safe = sanitizeGeneralAnswer(
+      "The model I work with captures this by treating a high line as a multiplier on pressing intensity and on the variance of conceded shots. The space behind remains the real tactical risk."
+    );
+    expect(safe).toContain("The space behind remains the real tactical risk.");
+    expect(safe).not.toMatch(/pressing intensity|variance of conceded shots|model I work with/i);
+  });
 });
 
 describe("normalizeSectionBreaks", () => {

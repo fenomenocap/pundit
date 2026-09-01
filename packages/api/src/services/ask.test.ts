@@ -927,6 +927,13 @@ describe("current-news evidence hardening", () => {
     expect(normalizeAnalystIdentity(
       "My pre-training knowledge of fixtures is out of date. Once you do. I can pull grounding data and model probabilities."
     )).toBe("No fixture was named. I can pull fixture details and my probabilities.");
+    expect(normalizeAnalystIdentity(
+      "If you can tell me which manager and which team you mean.\n\nIf you can share the fixture (teams and date)."
+    )).toBe(
+      "Please tell me which manager and which team you mean.\n\nPlease share the fixture (teams and date)."
+    );
+    expect(normalizeAnalystIdentity("The model I work with sees this."))
+      .not.toMatch(/I I work with/);
   });
 
   it("corrects inverted high-press turnover location", () => {
