@@ -794,6 +794,11 @@ describe("current-news evidence hardening", () => {
       "A high defensive line compresses space in front of the defence but leaves more space behind it for the goalkeeper to cover."
     );
     expect(sanitizeFootballGeometry(
+      "When the back four push up, the space behind them for a runner shrinks, so through-balls have less grass to land in."
+    )).toBe(
+      "A high defensive line compresses space in front of the defence but leaves more space behind it for the goalkeeper to cover."
+    );
+    expect(sanitizeFootballGeometry(
       "A high line reduces space between the back line and the keeper while compressing midfield space."
     )).toBe(
       "A high defensive line compresses space in front of the defence but leaves more space behind it for the goalkeeper to cover. It can also compress midfield space."
