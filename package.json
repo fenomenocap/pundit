@@ -9,6 +9,7 @@
     "chat-eval:dry-run": "node scripts/chat-battle-test.mjs --dry-run",
     "chat-eval:test": "node --test scripts/chat-battle-test.test.mjs",
     "chat-eval:production": "node scripts/chat-battle-test.mjs",
+    "chat-eval:regrade-runtime": "node scripts/regrade-chat-runtime.mjs",
     "chat-eval:finalize": "node scripts/finalize-chat-report.mjs",
     "test:vercel-ignore": "node --test scripts/vercel-ignore-build.test.mjs",
     "test:deployed-sha": "node --test scripts/resolve-deployed-sha.test.mjs",
