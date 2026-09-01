@@ -834,7 +834,7 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   }
   if (expectation.expectAccurateProductScope) {
     const wcOnly = /\bpundit(?:'s)?\b[^.!?\n]{0,100}\b(?:evaluation|data|model|coverage)\b[^.!?\n]{0,100}\b(?:world cup|wc)\b[^.!?\n]{0,40}\bonly\b|\bpundit(?:'s)?\b[^.!?\n]{0,80}\bonly\b[^.!?\n]{0,80}\b(?:world cup|wc)\b/i.test(text);
-    const inventedTacticalInputs = /\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,100}\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,50}\b(?:already\s+)?(?:captur|track|includ|us|show)\w*\b|\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,100}\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,40}\b(?:captur|track|includ|us|show)\w*\b/i.test(text);
+    const inventedTacticalInputs = /\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,100}\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,50}\b(?:already\s+)?(?:captur|track|includ|us|show)\w*\b|\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,100}\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,40}\b(?:captur|track|includ|us|show)\w*\b|\b(?:the )?model\b[^.!?\n]{0,100}\b(?:captur|treat|model|track|includ)\w*\b[^.!?\n]{0,100}\b(?:pressing intensity|conceded[- ]shot variance|variance of conceded shots)\b/i.test(text);
     assertions.productScopeAccurate = !wcOnly && !inventedTacticalInputs;
   }
   if (expectation.expectNoCategoricalSourceNonexistence) {
@@ -1374,6 +1374,7 @@ export const FORBIDDEN_ANSWER_TERMS = [
   "server grounding",
   "pre-training",
   "grounding data",
+  "i i work with",
 ];
 
 /** Schema field names that must not leak in 400 error bodies. */
@@ -1489,9 +1490,11 @@ export function validateAnswerStructure(answer, expectation = {}) {
     return true;
   }).map((line) => line.trim());
   const leadingMalformedFragment = /^\s*[\)\]\}]+(?:[.,;:]|\s)+(?!\d)/.test(typeof answer === "string" ? answer : "");
+  const danglingConditionalRequest = /(?:^|\n)\s*If you can\s+[^,.;:!?]+[.!?](?=\s*(?:\n|$))/im.test(typeof answer === "string" ? answer : "");
   const assertions = {
     noOrphanedSectionLabel: orphaned.length === 0,
     noMalformedLeadingFragment: !leadingMalformedFragment,
+    noDanglingConditionalRequest: !danglingConditionalRequest,
     noUnresolvedMarker: !/\[\[|\]\]/.test(typeof answer === "string" ? answer : ""),
   };
   if (expectation.expectHeadlineOneXTwo) {
