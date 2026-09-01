@@ -2298,6 +2298,10 @@ export function sanitizeFootballGeometry(answer: string): string {
     + `|(?:space|gap|room) between (?:the )?${backUnit} and (?:the )?(?:goalkeeper|keeper|goal))`;
   const backwardsGeometrySource = `\\b${backwardsVerb}\\b(?:(?!\\bmidfield\\b)[^.!?\\n]){0,28}\\b${behindTarget}\\b`;
   const backwardsBehindPredicate = /\b(?:makes?|made|making|keeps?|kept|keeping)\b[^.!?\n]{0,20}\b(?:space|gap|room)\s+behind(?:\s+(?:(?:the\s+)?(?:defenders|defence|defense|back line)|it|them))?\s+(?:feel\w*\s+)?(?:tighter|narrower|smaller)\b/i;
+  const backwardsBehindSubject = new RegExp(
+    `\\b${behindTarget}\\b(?:(?!\\bmidfield\\b)[^.!?\\n]){0,28}\\b${backwardsVerb}\\b`,
+    "i"
+  );
   const deniedBehindReference = "behind(?:\\s+(?:(?:the\\s+)?(?:defenders|defence|defense|back line)|it|them))?";
   const deniedBehindTradeoff = new RegExp(
     "(?:"
@@ -2332,6 +2336,7 @@ export function sanitizeFootballGeometry(answer: string): string {
     const positiveTradeoff = /\b(?:leave|leaves|left|create|creates|created|open|opens|opened)\b[^.!?\n]{0,24}\b(?:more|larger|greater|wider|bigger|extra|additional)\s+(?:space|gap|room)\b[^.!?\n]{0,24}\bbehind\b/i.test(sentence);
     const backwards = hasHighLineContext
       && (backwardsBehindPredicate.test(sentence)
+        || backwardsBehindSubject.test(sentence)
         || [...sentence.matchAll(new RegExp(backwardsGeometrySource, "gi"))].some((match) => {
           const prefix = sentence.slice(Math.max(0, (match.index ?? 0) - 24), match.index ?? 0);
           return !/(?:\b(?:does|do|did|will|would|can|could)(?:n['’]t|\s+not)|\b(?:cannot|never)|\bfails?\s+to)\s*$/i.test(prefix);
