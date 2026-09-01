@@ -55,6 +55,7 @@ import {
   MATCH_ANALYSIS_PRIORITIES,
   MATCH_CAPABILITY_BOUNDS,
   sanitizeDeliveredAnswer,
+  normalizeAnalystIdentity,
   computeMarketDivergence,
   composeMarketDivergenceSentence,
   closedGroundedAnswer,
@@ -883,6 +884,41 @@ describe("current-news evidence hardening", () => {
     expect(answer).toContain("offside trap depends on coordinated timing");
     expect(answer).toContain("goalkeeper mitigates through-balls");
     expect(answer).not.toMatch(/distance to the goal is short|only works if the keeper/i);
+  });
+
+  it("corrects inverted midfield-to-back-line spacing without changing other isolation claims", () => {
+    const answer = sanitizeFootballGeometry(
+      "The deeper the midfield sits in relation to the back line, the more isolated the defenders are after a turnover."
+    );
+    expect(answer).toContain(
+      "The larger the gap between midfield and the back line, the more isolated the defenders are after a turnover."
+    );
+    expect(answer).not.toMatch(/deeper the midfield/);
+    expect(sanitizeFootballGeometry(
+      "The closer the midfield drops towards the defensive line, the greater the isolation of the defenders after a turnover."
+    )).toContain("The larger the gap between midfield and the back line");
+    expect(sanitizeFootballGeometry(
+      "The midfield drops closer to the back line, leaving the defenders increasingly isolated."
+    )).toContain("The larger the gap between midfield and the back line");
+    expect(sanitizeFootballGeometry(
+      "The defenders become more isolated the closer midfield drops toward the back line."
+    )).toContain("The larger the gap between midfield and the back line");
+    expect(sanitizeFootballGeometry(
+      "The deeper the midfield sits, the better it can screen the back line."
+    )).toBe("The deeper the midfield sits, the better it can screen the back line.");
+    expect(sanitizeFootballGeometry(
+      "The deeper the midfield sits in relation to the back line, the more isolated the forwards are."
+    )).toBe("The deeper the midfield sits in relation to the back line, the more isolated the forwards are.");
+    expect(sanitizeFootballGeometry(
+      "The closer midfield is to the back line, the less isolated the defenders are."
+    )).toBe("The closer midfield is to the back line, the less isolated the defenders are.");
+  });
+
+  it("repairs first-person agreement in the analyst identity normalizer", () => {
+    expect(normalizeAnalystIdentity("I reads this as a structural risk."))
+      .toBe("I read this as a structural risk.");
+    expect(normalizeAnalystIdentity("He reads this as a structural risk."))
+      .toBe("He reads this as a structural risk.");
   });
 
   it("reconciles plain scoreline arithmetic even without a probability suffix", () => {
