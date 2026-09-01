@@ -921,6 +921,15 @@ describe("current-news evidence hardening", () => {
       .toBe("He reads this as a structural risk.");
   });
 
+  it("removes invented tactical inputs from general product-scope claims", () => {
+    const answer = sanitizeDeliveredAnswer(
+      "Pressing intensity in Pundit's match forecasts already captures some of this — teams that press high but concede transitions show up as higher xG against on counter-attacks.\n\nThe space behind the line remains the main risk.",
+      "general"
+    );
+    expect(answer).toContain("The space behind the line remains the main risk.");
+    expect(answer).not.toMatch(/pressing intensity|counter-attacks/i);
+  });
+
   it("reconciles plain scoreline arithmetic even without a probability suffix", () => {
     expect(dropMisbucketedTotalsScorelines("A 1-1 result lands over 2.5 goals."))
       .toBe("A 1-1 scoreline has 2 total goals, so it is under 2.5.");

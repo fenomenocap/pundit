@@ -2248,6 +2248,10 @@ test("schema-17 rejects abstained probability counterfactuals, false product sco
     { expectAccurateProductScope: true }
   ).assertions.productScopeAccurate, false);
   assert.equal(validateResponseCorrectness(
+    "Pressing intensity in Pundit's match forecasts already captures some of this, and transition failures show up as higher xG against on counter-attacks.",
+    [], null, { expectAccurateProductScope: true }
+  ).assertions.productScopeAccurate, false);
+  assert.equal(validateResponseCorrectness(
     "No verified source exists for a tactical-concepts question.", [], null,
     { expectNoCategoricalSourceNonexistence: true }
   ).assertions.noCategoricalSourceNonexistence, false);

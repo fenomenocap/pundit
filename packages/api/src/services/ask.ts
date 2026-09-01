@@ -4532,6 +4532,12 @@ export function sanitizeGeneralAnswer(answer: string): string {
     if (/\bpundit(?:'s)?\b[^.!?\n]{0,100}\b(?:evaluation|data|coverage|model)\b[^.!?\n]{0,100}\bworld cup 2026\b[^.!?\n]{0,30}\bonly\b|\bpundit(?:'s)?\b[^.!?\n]{0,100}\bonly\b[^.!?\n]{0,60}\bworld cup 2026\b/i.test(sentence)) {
       return "";
     }
+    // The live forecast owns team-level score and result distributions. It
+    // does not ingest pressing intensity or transition-specific xG, so a
+    // generated tactical answer must not imply those are model features.
+    if (/\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,100}\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,50}\b(?:already\s+)?(?:captur|track|includ|us|show)\w*\b|\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,100}\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,40}\b(?:captur|track|includ|us|show)\w*\b/i.test(sentence)) {
+      return "";
+    }
     // A no-search tactical answer cannot establish the non-existence of all
     // sources. The canonical general-analysis disclaimer is the honest scope.
     if (/\bno verified source exists\b/i.test(sentence)) return "";
