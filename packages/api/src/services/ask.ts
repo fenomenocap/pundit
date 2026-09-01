@@ -7240,6 +7240,17 @@ export function closedGroundedAnswer(question: string, grounding: AskGrounding):
   return deterministicGroundedResponse(question, grounding);
 }
 
+export function deterministicUngroundedClarification(
+  question: string,
+  grounding: AskGrounding
+): string | null {
+  if (grounding !== null) return null;
+  const identityFreeManagerReplacement = /\bwho\s+(?:is|will be|could be)\s+replac\w*\b[^?\n]{0,80}\b(?:the|that|this|an?)\s+(?:injured|departing|sacked|suspended|absent)\s+manager\b/i;
+  return identityFreeManagerReplacement.test(question)
+    ? "I need the manager and club before I can identify a replacement. Tell me both, and I’ll check the current evidence."
+    : null;
+}
+
 export function deterministicCoverageResponse(
   candidateUnrecognized: boolean,
   grounding: AskGrounding
@@ -7702,6 +7713,14 @@ async function answerQuestionScoped(
     fixtureContext
   );
   try {
+    const clarification = deterministicUngroundedClarification(question, grounding);
+    if (clarification) {
+      return {
+        answer: clarification,
+        grounding,
+        verification: { status: "abstain", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
     const query = deterministicSearchQuery(
       question,
       correctionSearchContext(history, grounding),
@@ -7825,6 +7844,15 @@ async function answerQuestionStreamScoped(
   );
   handlers.onGrounding(grounding);
   try {
+    const clarification = deterministicUngroundedClarification(question, grounding);
+    if (clarification) {
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(clarification);
+      return {
+        answer: clarification,
+        grounding,
+        verification: { status: "abstain", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
     const query = deterministicSearchQuery(
       question,
       correctionSearchContext(history, grounding),
