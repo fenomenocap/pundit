@@ -1188,6 +1188,12 @@ test("answer structure guard catches an emptied section and a missing headline 1
   assert.equal(validateAnswerStructure(intact, { expectHeadlineOneXTwo: true }).passed, true);
   // A label whose body legitimately follows a blank line is not orphaned.
   assert.equal(validateAnswerStructure("**Verdict**\n\nArsenal win **61.0%**.").passed, true);
+  assert.equal(validateAnswerStructure(
+    "I can't answer this.\n\nIf you can tell me which manager and team you mean."
+  ).assertions.noDanglingConditionalRequest, false);
+  assert.equal(validateAnswerStructure(
+    "If you can name the fixture, I can analyse it."
+  ).assertions.noDanglingConditionalRequest, true);
   assert.equal(
     validateAnswerStructure(
       "**Verdict**\nI could not establish a complete same-source, same-time bookmaker 1X2 market.",
@@ -2249,6 +2255,10 @@ test("schema-17 rejects abstained probability counterfactuals, false product sco
   ).assertions.productScopeAccurate, false);
   assert.equal(validateResponseCorrectness(
     "Pressing intensity in Pundit's match forecasts already captures some of this, and transition failures show up as higher xG against on counter-attacks.",
+    [], null, { expectAccurateProductScope: true }
+  ).assertions.productScopeAccurate, false);
+  assert.equal(validateResponseCorrectness(
+    "The model I work with captures this by treating a high line as a multiplier on pressing intensity and the variance of conceded shots.",
     [], null, { expectAccurateProductScope: true }
   ).assertions.productScopeAccurate, false);
   assert.equal(validateResponseCorrectness(
