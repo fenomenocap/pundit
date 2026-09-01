@@ -722,7 +722,7 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       String(candidate?.score).replace(/\s*[:–—]\s*/g, "-") === targetScore
     );
     const decimalClaim = /\b(?:fair (?:decimal )?(?:price|odds)|decimal odds?)\b[^.!?\n]{0,80}?(\d+(?:\.\d+)?)/i.exec(text)
-      ?? /(\d+(?:\.\d+)?)\s*(?:in )?decimal odds?/i.exec(text);
+      ?? /(\d+(?:\.\d+)?)\s*(?:in )?(?:fair )?decimal odds?/i.exec(text);
     const expected = finiteProbability(row?.probability) && row.probability > 0
       ? 1 / row.probability
       : null;

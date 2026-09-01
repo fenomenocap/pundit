@@ -1130,6 +1130,12 @@ test("golden conversation guards trace exact-score prices and table-wide counts"
     { expectExactScoreFairPrice: "2-1" }
   ).passed, true);
   assert.equal(validateResponseCorrectness(
+    "For Alpha 2-1 Beta, I make it 12.5%, or about 8.00 in fair decimal odds.",
+    [],
+    match,
+    { expectExactScoreFairPrice: "2-1" }
+  ).passed, true);
+  assert.equal(validateResponseCorrectness(
     "I make Alpha 2-1 Beta a 12.5% chance, so my fair decimal price is 6.00.",
     [],
     match,
