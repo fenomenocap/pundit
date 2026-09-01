@@ -579,7 +579,7 @@
         [{ "claimId": "C1", "outcome": "unsupported", "evidenceIds": [] }]
       ],
       "expect": { "supported": [], "removedClaimIds": ["C1"], "conflictClaimIds": [] },
-      "expectText": ["could not establish"]
+      "expectText": ["could not verify"]
     },
     {
       "id": "degraded-search-retrieval-verifier",
@@ -591,7 +591,7 @@
         [{ "claimId": "C1", "outcome": "conflict", "evidenceIds": ["S1", "S2"] }]
       ],
       "expect": { "supported": [], "removedClaimIds": ["C1"], "conflictClaimIds": ["C1"] },
-      "expectText": ["sources conflict"]
+      "expectText": ["current reports conflict"]
     },
     {
       "id": "team-news-sourcing",
