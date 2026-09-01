@@ -933,11 +933,17 @@ describe("ensureGeneralDisclaimer", () => {
       );
   });
 
-  it("leaves an answer that already carries a disclaimer untouched", () => {
+  it("leaves a natural disclaimer untouched and rewrites internal identity language", () => {
     const withPhrase = "This response is general football analysis.\n\nThe rest follows.";
     expect(ensureGeneralDisclaimer(withPhrase)).toBe(withPhrase);
     const withNegation = "I'm not pulling this from Pundit's model data — there is no feed.";
-    expect(ensureGeneralDisclaimer(withNegation)).toBe(withNegation);
+    expect(ensureGeneralDisclaimer(withNegation))
+      .toBe("This is general football analysis, not based on my match forecasts.");
+    expect(ensureGeneralDisclaimer(
+      "I don't have a Pundit model or live data call for this one, so this is general tactical analysis, not a model-driven read.\n\nTactical detail."
+    )).toBe(
+      "This is general football analysis, not based on my match forecasts.\n\nTactical detail."
+    );
   });
 });
 
