@@ -740,6 +740,7 @@ function acknowledgesSpaceBehindAcrossSentences(text) {
   const sentences = String(text).split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
   const premise = /\bhigh\s+(?:defensive\s+)?line\b|\b(?:back\s+(?:four|line)|defen[cs]e)\b[^.!?\n]{0,40}\b(?:push|step|move)\w*\s+up\b/i;
   const consequence = /\bin behind\b|\bclean run (?:through|on goal)\b|\bone[- ]on[- ]one\b[^.!?\n]{0,45}\b(?:keeper|goalkeeper)\b|\b(?:more|greater|larger|wider|bigger)\b[^.!?\n]{0,25}\b(?:space|gap|room)\b[^.!?\n]{0,30}\bbehind\b|\b(?:space|gap|room)\s+behind\b[^.!?\n]{0,60}\b(?:invitation|exposed|exploit\w*|vulnerab\w*|danger\w*|risk|punish\w*)\b|\b(?:expose|exploit|punish)\w*\b[^.!?\n]{0,40}\b(?:space|gap|room)\s+behind\b|\b(?:space|gap|room)\s+behind\s+(?:the\s+)?(?:defen[cs]e|defensive\s+line|back\s*(?:line|four|three))\b|\b(?:ball|pass)\s+(?:played\s+)?over\s+the\s+top\b/i;
+  const immediatePronounTradeoff = /\b(?:trade-?off|cost|risk)\b[^.!?\n]{0,30}\b(?:space|gap|room)\s+behind\s+it\b/i;
   // The consequence has to be about this defence, not a different structure.
   const sameStructure = /\b(?:back\s+(?:four|line)|defen[cs]e|defensive\s+line|first\s+line|last\s+line|centre-?backs?|center-?backs?|high\s+line)\b/i;
   const otherStructure = /\b(?:low|deep|mid)[- ]block\b/i;
@@ -751,7 +752,8 @@ function acknowledgesSpaceBehindAcrossSentences(text) {
       const region = sentences[ahead];
       if (!consequence.test(region)) continue;
       if (otherStructure.test(region)) continue;
-      if (ahead === index || sameStructure.test(region)) return true;
+      if (ahead === index || sameStructure.test(region)
+        || (ahead === index + 1 && immediatePronounTradeoff.test(region))) return true;
     }
   }
   return false;
