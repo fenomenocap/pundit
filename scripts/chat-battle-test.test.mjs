@@ -2285,6 +2285,7 @@ test("high-line geometry rejects both backwards formulations and requires the re
     "The gap between the defensive line and the keeper is reduced by a high defensive line.",
     "A high line leaves space behind. Once an attacker gets in behind, the distance to the goal is short.",
     "A high line leaves space behind. The offside trap only works if the keeper cleans up through-balls.",
+    "When the back four push up, the space behind them for a runner shrinks, so through-balls have less grass to land in.",
     "A high line compresses the pitch. The deeper the midfield sits in relation to the back line, the more isolated the defenders are after a turnover.",
     "A high line compresses the pitch. The closer the midfield drops towards the defensive line, the greater the isolation of the defenders after a turnover.",
     "A high line compresses the pitch. The midfield drops closer to the back line, leaving the defenders increasingly isolated.",
