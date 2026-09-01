@@ -834,7 +834,8 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   }
   if (expectation.expectAccurateProductScope) {
     const wcOnly = /\bpundit(?:'s)?\b[^.!?\n]{0,100}\b(?:evaluation|data|model|coverage)\b[^.!?\n]{0,100}\b(?:world cup|wc)\b[^.!?\n]{0,40}\bonly\b|\bpundit(?:'s)?\b[^.!?\n]{0,80}\bonly\b[^.!?\n]{0,80}\b(?:world cup|wc)\b/i.test(text);
-    assertions.productScopeAccurate = !wcOnly;
+    const inventedTacticalInputs = /\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,100}\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,50}\b(?:already\s+)?(?:captur|track|includ|us|show)\w*\b|\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,100}\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,40}\b(?:captur|track|includ|us|show)\w*\b/i.test(text);
+    assertions.productScopeAccurate = !wcOnly && !inventedTacticalInputs;
   }
   if (expectation.expectNoCategoricalSourceNonexistence) {
     assertions.noCategoricalSourceNonexistence = !/\b(?:no\s+(?:verified|reliable|authoritative|credible)\s+sources?\s+exists?|there\s+(?:is|are)\s+no\s+(?:verified|reliable|authoritative|credible)\s+sources?)\b/i.test(text);
