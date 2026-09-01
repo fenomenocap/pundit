@@ -2272,6 +2272,10 @@ export function sanitizeFootballGeometry(answer: string): string {
     + "but leaves more space behind it for the goalkeeper to cover.";
   const conceptSafe = answer
     .replace(
+      /[^.!?\n]*\bmidfield turnovers?\b[^.!?\n]{0,80}\bcloser\b[^.!?\n]{0,30}\b(?:your|their|the team['’]s|its) own goal\b[^.!?\n]*(?:[.!?]+|$)/gi,
+      "With bodies committed forward, losing the ball can expose the high line to a faster transition even though the turnover occurs farther from the pressing team's own goal than it would in a low block."
+    )
+    .replace(
       /[^.!?\n]*(?:\b(?:deeper|closer)\b[^.!?\n]{0,40}\bmidfield\b[^.!?\n]{0,60}\b(?:in relation to|relative to|towards?|closer to)\b[^.!?\n]{0,24}\b(?:the )?(?:back|defensive) line\b|\bmidfield\b[^.!?\n]{0,30}\b(?:drops?|sits?|moves?)\b[^.!?\n]{0,24}\bcloser\b[^.!?\n]{0,20}\b(?:to|towards?)\b[^.!?\n]{0,20}\b(?:the )?(?:back|defensive) line\b)[^.!?\n]{0,80}(?:\b(?:more|increasingly|greater)\b[^.!?\n]{0,24}\bisolat(?:ed|ion)\b[^.!?\n]{0,24}\b(?:defenders?|defen[cs]e|back line)\b|\b(?:defenders?|defen[cs]e|back line)\b[^.!?\n]{0,24}\b(?:more|increasingly|greater)\b[^.!?\n]{0,24}\bisolat(?:ed|ion)\b)[^.!?\n]*(?:[.!?]+|$)/gi,
       "The larger the gap between midfield and the back line, the more isolated the defenders are after a turnover."
     )
@@ -4530,7 +4534,11 @@ export function sanitizeCompetitionAnswer(answer: string): string {
 }
 
 export function sanitizeGeneralAnswer(answer: string): string {
-  const productScopeSafe = reviseAnswerSentences(answer, (sentence) => {
+  const unsupportedSearchSummarySafe = answer.replace(
+    /(?:^|\n)\s*\*\*Other candidates mentioned\*\*\s*\n+\s*The evidence flags several other coaching searches[^.!?\n]*(?:[.!?]+|$)\s*/gim,
+    "\n"
+  );
+  const productScopeSafe = reviseAnswerSentences(unsupportedSearchSummarySafe, (sentence) => {
     // These are claims about Pundit's current product scope, not football
     // analysis. The WC evaluation is a frozen backtest while the live product
     // also has active club-fixture and season surfaces, so "WC only" is stale.
@@ -7570,6 +7578,10 @@ export function sanitizeDeliveredAnswer(
 
 export function normalizeAnalystIdentity(answer: string): string {
   return answer
+    .replace(/\bmy pre-training knowledge of fixtures is out of date\b/gi, "No fixture was named")
+    .replace(/\bgrounding data\b/gi, "fixture details")
+    .replace(/\bmodel probabilities\b/gi, "my probabilities")
+    .replace(/\s+Once you do\.(?=\s|$)/g, "")
     .replace(/\bI reads\b/g, "I read")
     .replace(/outside Pundit['’]s model coverage/gi, "outside my forecasting coverage")
     .replace(/Pundit probabilities/gi, "my probabilities")
