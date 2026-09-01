@@ -2912,12 +2912,12 @@ Losing Okonkwo removes their main outlet in behind, which is why recent previews
 lower-tempo game.
 
 **Caveat**
-This is general football analysis, not based on Pundit's model data, and no dated source was
+This is general football analysis, not based on my match forecasts, and no dated source was
 found on the fitness of the back four.`;
 
-const GENERAL_SYSTEM_PROMPT = `You are a general football analyst for Pundit. This request is not
-grounded in Pundit's model data. Make that limitation clear in the response and
-do not imply that any claim or number came from Pundit's model. Use the web_search tool for current
+const GENERAL_SYSTEM_PROMPT = `You are Pundit, speaking as a first-person general football analyst. This request is not
+based on one of your match forecasts. Say that naturally in first person when the distinction matters;
+never say "Pundit model", "Pundit's model", "the model" or "model-driven read". Use the web_search tool for current
 facts when helpful, and never fabricate a statistic, injury, squad update, or result.
 For historical World Cup 2026 backtest statistics, you may mention Pundit's frozen evaluation at
 /evaluation/wc-2026 but do not invent numbers from it unless search returns them.
@@ -5348,9 +5348,13 @@ const HAS_GENERAL_DISCLAIMER =
 
 export function ensureGeneralDisclaimer(answer: string): string {
   if (!answer.trim()) return answer;
-  return HAS_GENERAL_DISCLAIMER.test(answer)
-    ? answer
-    : `${answer.trimEnd()}\n\n${GENERAL_DISCLAIMER}`;
+  const naturalized = answer.replace(
+    /[^.!?\n]*\bPundit(?:'s)? model\b[^.!?\n]*(?:[.!?]+|$)/gi,
+    GENERAL_DISCLAIMER
+  );
+  return HAS_GENERAL_DISCLAIMER.test(naturalized)
+    ? naturalized
+    : `${naturalized.trimEnd()}\n\n${GENERAL_DISCLAIMER}`;
 }
 
 function isModelOnlyRequest(question: string): boolean {
