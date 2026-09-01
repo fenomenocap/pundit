@@ -95,10 +95,13 @@ describe("football claim correctness", () => {
     ]);
     expect(applied).toMatchObject({ conflictClaimIds: ["C2"] });
     expect(applied.supported).toEqual([{ id: "C1", text: "Claim one [[S1]]." }]);
+    expect(applied.answer).toBe(
+      "Claim one [[S1]]. Current reports conflict on one or more requested facts, so I’ve left those claims out."
+    );
     expect(applyClaimDecisions(claims, [
       { claimId: "C1", outcome: "unsupported", evidenceIds: [] },
       { claimId: "C2", outcome: "unsupported", evidenceIds: [] },
-    ]).answer).toContain("could not establish");
+    ]).answer).toBe("I could not verify a reliable answer to that question.");
   });
 });
 
@@ -133,6 +136,9 @@ describe("reviseAnswerWithClaimDecisions", () => {
     expect(revised.supported).toEqual(applied.supported);
     expect(revised.removedClaimIds).toEqual(applied.removedClaimIds);
     expect(revised.conflictClaimIds).toEqual(applied.conflictClaimIds);
+    expect(revised.answer).toContain(
+      "Current reports conflict on one or more requested facts, so I’ve left those claims out."
+    );
   });
 
   it("appends the conflict notice without rebuilding the answer", () => {
@@ -141,7 +147,7 @@ describe("reviseAnswerWithClaimDecisions", () => {
       { claimId: "C2", outcome: "conflict", evidenceIds: ["S2", "S3"] },
     ]);
     expect(revised.answer).toContain("Pundit's model gives Arsenal 56.3%.");
-    expect(revised.answer.endsWith("so those claims were omitted.")).toBe(true);
+    expect(revised.answer.endsWith("so I’ve left those claims out.")).toBe(true);
   });
 
   it("returns the answer unchanged when there are no claims at all", () => {
