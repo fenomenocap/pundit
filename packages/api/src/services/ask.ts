@@ -4551,6 +4551,9 @@ export function sanitizeGeneralAnswer(answer: string): string {
     if (/\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,100}\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,50}\b(?:already\s+)?(?:captur|track|includ|us|show)\w*\b|\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,100}\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,40}\b(?:captur|track|includ|us|show)\w*\b/i.test(sentence)) {
       return "";
     }
+    if (/\b(?:the )?model\b[^.!?\n]{0,100}\b(?:captur|treat|model|track|includ)\w*\b[^.!?\n]{0,100}\b(?:pressing intensity|conceded[- ]shot variance|variance of conceded shots)\b|\b(?:pressing intensity|conceded[- ]shot variance|variance of conceded shots)\b[^.!?\n]{0,100}\b(?:the )?model\b/i.test(sentence)) {
+      return "";
+    }
     // A no-search tactical answer cannot establish the non-existence of all
     // sources. The canonical general-analysis disclaimer is the honest scope.
     if (/\bno verified source exists\b/i.test(sentence)) return "";
@@ -7582,6 +7585,9 @@ export function normalizeAnalystIdentity(answer: string): string {
     .replace(/\bgrounding data\b/gi, "fixture details")
     .replace(/\bmodel probabilities\b/gi, "my probabilities")
     .replace(/\s+Once you do\.(?=\s|$)/g, "")
+    .replace(/(^|\n)(\s*)If you can\s+([^,.;:!?]+)[.!?](?=\s*(?:\n|$))/gim,
+      (_match, boundary: string, indentation: string, request: string) =>
+        `${boundary}${indentation}Please ${request.trim()}.`)
     .replace(/\bI reads\b/g, "I read")
     .replace(/outside Pundit['’]s model coverage/gi, "outside my forecasting coverage")
     .replace(/Pundit probabilities/gi, "my probabilities")
@@ -7609,6 +7615,7 @@ export function normalizeAnalystIdentity(answer: string): string {
     .replace(/\bthe model and the market\b/gi, "my view and the market")
     .replace(/\bthe model['’]s\b/gi, "my")
     .replace(/\bthe model\b/gi, "I")
+    .replace(/\bI I work with\b/g, "I")
     .replace(/\bthis payload\b/gi, "this evidence")
     .replace(/\bthe payload\b/gi, "the supplied evidence");
 }
