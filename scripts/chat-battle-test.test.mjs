@@ -2375,6 +2375,8 @@ test("high-line geometry rejects both backwards formulations and requires the re
     "A high defensive line compresses the pitch. The trade-off is space: if the first line is beaten, the back four are already close to halfway, so a single pass in behind turns into a one-on-one with the keeper and a clean run on goal.",
     "The back four step up to squeeze the pitch. That leaves more room behind the defence for a runner to attack.",
     "A high defensive line compresses the pitch and shortens passing lanes. The trade-off is the space behind it. A back four playing high means any ball in behind becomes a footrace.",
+    "A high defensive line is a trade: it compresses the pitch versus the lane it opens behind it.",
+    "A high defensive line compresses the pitch. The space behind the high line is exactly what opponents attack.",
   ]) assert.equal(validateResponseCorrectness(
     answer, [], null, { expectCorrectHighLineGeometry: true }
   ).assertions.highLineSpaceBehindAcknowledged, true, answer);
