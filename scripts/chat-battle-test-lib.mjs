@@ -1379,6 +1379,7 @@ export const FORBIDDEN_ANSWER_TERMS = [
   "pre-training",
   "grounding data",
   "i i work with",
+  "where the money sits",
 ];
 
 /** Schema field names that must not leak in 400 error bodies. */
@@ -1494,7 +1495,7 @@ export function validateAnswerStructure(answer, expectation = {}) {
     return true;
   }).map((line) => line.trim());
   const leadingMalformedFragment = /^\s*[\)\]\}]+(?:[.,;:]|\s)+(?!\d)/.test(typeof answer === "string" ? answer : "");
-  const danglingConditionalRequest = /(?:^|\n)\s*If you can\s+[^,.;:!?]+[.!?](?=\s*(?:\n|$))/im.test(typeof answer === "string" ? answer : "");
+  const danglingConditionalRequest = /(?:^|\n)\s*(?:If you can|Once you)\s+[^,.;:!?]+[.!?](?=\s*(?:\n|$))/im.test(typeof answer === "string" ? answer : "");
   const assertions = {
     noOrphanedSectionLabel: orphaned.length === 0,
     noMalformedLeadingFragment: !leadingMalformedFragment,
@@ -1946,7 +1947,9 @@ export function generateAdversarialScenarios(seed, featured) {
           question: `Given that the current table cannot rank them, ${followUp}`,
           expectGrounding: "competition",
           expectCompetitionId: "eng.1",
-          expectNoUngroundedProbability: true
+          expectNoUngroundedProbability: true,
+          expectDirectAnswer: true,
+          expectNarrowFollowup: true
         }
       ]
     },
