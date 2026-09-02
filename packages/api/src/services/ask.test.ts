@@ -60,6 +60,7 @@ import {
   composeMarketDivergenceSentence,
   closedGroundedAnswer,
   deterministicGroundedResponse,
+  deterministicUngroundedAnalysis,
   deterministicUngroundedClarification,
   deterministicCoverageResponse,
   dropLeadingAnswerFragment,
@@ -2261,6 +2262,18 @@ describe("resolveAskContext", () => {
     );
     expect(deterministicUngroundedClarification(
       "Who is replacing Pep Guardiola at Man City?", null
+    )).toBeNull();
+  });
+
+  it("settles the foundational high-line pressing trade-off without generated prose", () => {
+    const answer = deterministicUngroundedAnalysis(
+      "How does a high defensive line change a team's pressing risks?", null
+    );
+    expect(answer).toContain("leaves more space behind it");
+    expect(answer).toContain("one pass in behind");
+    expect(answer).toContain("does not guarantee");
+    expect(deterministicUngroundedAnalysis(
+      "How should Arsenal press this weekend?", null
     )).toBeNull();
   });
 
