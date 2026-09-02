@@ -62,6 +62,7 @@ import {
   deterministicGroundedResponse,
   deterministicUngroundedAnalysis,
   deterministicUngroundedClarification,
+  deterministicUngroundedEvidenceFollowUp,
   deterministicCoverageResponse,
   dropLeadingAnswerFragment,
   answerQuestion,
@@ -1209,6 +1210,28 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("do not support");
     });
 
+    it("abstains directly when the table cannot establish the clearest title path", () => {
+      const table = buildCompetitionGrounding("eng.1", [
+        {
+          competitionId: "eng.1", position: 1, team: "Brighton", playedGames: 1,
+          won: 1, draw: 0, lost: 0, points: 3, goalsFor: 4, goalsAgainst: 0,
+          goalDifference: 4, group: null, advanced: false,
+        },
+        {
+          competitionId: "eng.1", position: 2, team: "Arsenal", playedGames: 1,
+          won: 1, draw: 0, lost: 0, points: 3, goalsFor: 3, goalsAgainst: 0,
+          goalDifference: 3, group: null, advanced: false,
+        },
+      ], new Date("2026-08-24T07:00:00.000Z"));
+      const answer = deterministicGroundedResponse(
+        "Given that the current table cannot rank them, which contender has the clearest path, and why?",
+        table
+      ) as string;
+      expect(answer).toContain("can’t identify which contender has the clearest title path");
+      expect(answer).toContain("current table alone");
+      expect(answer).not.toContain("**Current table**");
+    });
+
     it("counts a single match in the singular", () => {
       const table = buildCompetitionGrounding("eng.1", [
         {
@@ -2274,6 +2297,20 @@ describe("resolveAskContext", () => {
     expect(answer).toContain("does not guarantee");
     expect(deterministicUngroundedAnalysis(
       "How should Arsenal press this weekend?", null
+    )).toBeNull();
+  });
+
+  it("settles evidence follow-ups after an unidentified match without market-flow claims", () => {
+    const answer = deterministicUngroundedEvidenceFollowUp(
+      "What evidence would change that answer?",
+      [{ role: "user", content: "Who has the edge in that match?" }],
+      null
+    );
+    expect(answer).toContain("Name the fixture first");
+    expect(answer).toContain("same-source, same-time 1X2 market");
+    expect(answer).toContain("not where money sits or why it moved");
+    expect(deterministicUngroundedEvidenceFollowUp(
+      "What evidence would change that answer?", [], null
     )).toBeNull();
   });
 

@@ -7117,6 +7117,9 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
   if (/\b(?:sensitive|sensitivity|one upset|one result|one loss|one win)\b/i.test(question)) {
     return "The standings alone cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
   }
+  if (/\bclearest path\b/i.test(question)) {
+    return "I can’t identify which contender has the clearest title path from the current table alone. That requires club strengths and the remaining fixture schedule; this table establishes only the current points, matches played and goal difference.";
+  }
   const rows = [...grounding.standings].sort((a, b) => a.position - b.position);
   const allZero = rows.length > 0
     && rows.every((row) => row.playedGames === 0 && row.points === 0 && row.goalDifference === 0);
@@ -7265,6 +7268,18 @@ export function deterministicUngroundedAnalysis(
     "That compactness helps the first press because the forwards, midfield and back line are closer together. If the press is beaten, though, one pass in behind can turn into a footrace or a one-on-one with the goalkeeper.",
     "The approach therefore depends on coordinated pressing triggers, quick centre-backs and an aggressive sweeper-keeper. It raises the cost of a broken press; it does not guarantee either better defending or more goals conceded.",
   ].join("\n\n");
+}
+
+export function deterministicUngroundedEvidenceFollowUp(
+  question: string,
+  history: ConversationTurn[],
+  grounding: AskGrounding
+): string | null {
+  if (grounding !== null || !/\bwhat evidence would change that answer\b/i.test(question)) return null;
+  const priorMatchAmbiguity = history.some((turn) => turn.role === "user"
+    && /\b(?:that match|which side|that side)\b/i.test(turn.content));
+  if (!priorMatchAmbiguity) return null;
+  return "Name the fixture first. Then verified, dated team news can change my qualitative read, while a complete same-source, same-time 1X2 market lets me compare prices. A market price shows the available quote, not where money sits or why it moved.";
 }
 
 export function deterministicCoverageResponse(
@@ -7612,6 +7627,7 @@ export function normalizeAnalystIdentity(answer: string): string {
     .replace(/\bgrounding data\b/gi, "fixture details")
     .replace(/\bmodel probabilities\b/gi, "my probabilities")
     .replace(/\s+Once you do\.(?=\s|$)/g, "")
+    .replace(/(^|\n)\s*Once you\s+[^,.;:!?]+[.!?](?=\s*(?:\n|$))/gim, "$1")
     .replace(/(^|\n)(\s*)If you can\s+([^,.;:!?]+)[.!?](?=\s*(?:\n|$))/gim,
       (_match, boundary: string, indentation: string, request: string) =>
         `${boundary}${indentation}Please ${request.trim()}.`)
@@ -7730,6 +7746,14 @@ async function answerQuestionScoped(
     fixtureContext
   );
   try {
+    const evidenceFollowUp = deterministicUngroundedEvidenceFollowUp(question, history, grounding);
+    if (evidenceFollowUp) {
+      return {
+        answer: evidenceFollowUp,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
     const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding);
     if (deterministicAnalysis) {
       return {
@@ -7869,6 +7893,15 @@ async function answerQuestionStreamScoped(
   );
   handlers.onGrounding(grounding);
   try {
+    const evidenceFollowUp = deterministicUngroundedEvidenceFollowUp(question, history, grounding);
+    if (evidenceFollowUp) {
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(evidenceFollowUp);
+      return {
+        answer: evidenceFollowUp,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
     const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding);
     if (deterministicAnalysis) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(deterministicAnalysis);
