@@ -55,6 +55,7 @@ describe("V2 conversational architecture", () => {
     for (const [question, mode] of [
       ["What is fair value for 2-1?", "fair-price"],
       ["Who is most likely to score?", "player-or-scorer"],
+      ["Who will most likely score for Liverpool?", "player-or-scorer"],
       ["What if Saka misses out?", "lineup-counterfactual"],
       ["Why?", "match-follow-up"],
     ] as const) {
@@ -163,7 +164,10 @@ describe("V2 conversational architecture", () => {
     expect(fair).toMatch(/11\.4%.*8\.77/);
     expect(fair).not.toContain("full 1X2");
     expect(composeMatchResponse("Who scores?", match,
-      planResponse("Who scores?", { groundingKind: "match", hasHistory: true }))).toMatch(/can’t price a scorer/i);
+      planResponse("Who scores?", { groundingKind: "match", hasHistory: true }))).toMatch(/don’t have player-level projections/i);
+    expect(composeMatchResponse("Who will most likely score for Chelsea?", match,
+      planResponse("Who will most likely score for Chelsea?", { groundingKind: "match", hasHistory: true })))
+      .toMatch(/can’t name a most likely scorer without inventing one/i);
     expect(composeMatchResponse("What if Saka is absent?", match,
       planResponse("What if Saka is absent?", { groundingKind: "match", hasHistory: true }))).toMatch(/won’t invent a percentage/i);
     const market = composeMatchResponse("Where do you disagree with Kalshi?", match,
