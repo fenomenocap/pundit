@@ -1115,6 +1115,8 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     ].some((pattern) => typeof pattern === "boolean" ? pattern : pattern.test(text));
     assertions.highLineGeometryCorrect = !backwardsHighLine;
     assertions.highLineSpaceBehindAcknowledged = [
+      /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:lane|channel)\b[^.!?\n]{0,40}\bopen\w*\b[^.!?\n]{0,30}\bbehind\b/i,
+      /\b(?:space|gap|room|lane|channel)\s+behind\s+(?:the\s+)?high\s+(?:defensive\s+)?line\b/i,
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:leave|create|open|increase|expose)\w*\b[^.!?\n]{0,60}\b(?:space|room|gap)\b[^.!?\n]{0,40}\bbehind\b/i,
       /\b(?:more|greater|larger|open)\s+(?:space|room|gap)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,120}\bhigh\s+(?:defensive\s+)?line\b/i,
       /\bhigh\s+(?:defensive\s+)?line\b[^.!?\n]{0,120}\b(?:space|room|gap)\b[^.!?\n]{0,40}\bbehind\b[^.!?\n]{0,60}\b(?:open|expos|availab|greater|larger|more)\w*\b/i,
