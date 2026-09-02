@@ -1091,7 +1091,13 @@ describe("current-news evidence hardening", () => {
     // generated.
     it("settles narrow typed-fact or typed-limitation turns without generation", () => {
       expect(closedGroundedAnswer("Who is most likely to score?", model()))
-        .toMatch(/can’t price a scorer/i);
+        .toMatch(/don’t have player-level projections/i);
+      const naturalScorerFollowUp = closedGroundedAnswer(
+        "Who will most likely score for Liverpool?",
+        model()
+      );
+      expect(naturalScorerFollowUp).toMatch(/can’t name a most likely scorer without inventing one/i);
+      expect(naturalScorerFollowUp).not.toMatch(/Liverpool at 77\.6%|My short answer is/i);
       expect(closedGroundedAnswer("Analyse Arsenal vs Coventry.", model())).toBeNull();
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
         .toMatch(/I am at .*Kalshi is at .*percentage points/i);
