@@ -1194,6 +1194,9 @@ test("answer structure guard catches an emptied section and a missing headline 1
   assert.equal(validateAnswerStructure(
     "If you can name the fixture, I can analyse it."
   ).assertions.noDanglingConditionalRequest, true);
+  assert.equal(validateAnswerStructure(
+    "Once you name the match."
+  ).assertions.noDanglingConditionalRequest, false);
   assert.equal(
     validateAnswerStructure(
       "**Verdict**\nI could not establish a complete same-source, same-time bookmaker 1X2 market.",
