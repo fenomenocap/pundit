@@ -36,8 +36,8 @@ export function composeMatchResponse(
   const score = scoreRequest?.score ?? null;
 
   if (plan.mode === "player-or-scorer") {
-    return "I can’t price a scorer or player prop from this match forecast. "
-      + "Without a verified player market, I won’t turn a team-level view into a made-up player probability.";
+    return "I don’t have player-level projections or a verified scorer market for this fixture, "
+      + "so I can’t name a most likely scorer without inventing one.";
   }
   if (plan.mode === "lineup-counterfactual") {
     return "I can’t quantify that lineup effect without verified team news and a revised forecast. A confirmed change could alter my read, but I won’t invent a percentage adjustment.";
