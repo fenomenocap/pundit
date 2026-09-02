@@ -65,7 +65,7 @@
           "expectExactScoreFairPrice": "2-1"
         },
         {
-          "question": "Who is the best anytime scorer bet, and what is your fair price?",
+          "question": "Who will most likely score for Liverpool?",
           "expectGrounding": "match",
           "allowAbstention": true,
           "expectAnalystVoice": true,
