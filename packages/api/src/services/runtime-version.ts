@@ -1,5 +1,7 @@
 export interface RuntimeVersion {
   sha: string;
+  /** Railway deployment UUID when the process is running on Railway. */
+  deploymentId: string | null;
 }
 
 const SHA_ENV_KEYS = [
@@ -11,12 +13,18 @@ const SHA_ENV_KEYS = [
   "BUILD_SHA",
 ] as const;
 
+function railwayDeploymentId(env: NodeJS.ProcessEnv): string | null {
+  const value = env.RAILWAY_DEPLOYMENT_ID?.trim();
+  return value || null;
+}
+
 export function getRuntimeVersion(
   env: NodeJS.ProcessEnv = process.env
 ): RuntimeVersion {
+  const deploymentId = railwayDeploymentId(env);
   for (const key of SHA_ENV_KEYS) {
     const value = env[key]?.trim();
-    if (value) return { sha: value };
+    if (value) return { sha: value, deploymentId };
   }
-  return { sha: "unknown" };
+  return { sha: "unknown", deploymentId };
 }
