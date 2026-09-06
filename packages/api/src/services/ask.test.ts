@@ -608,7 +608,7 @@ describe("current-news evidence hardening", () => {
       }],
     };
     const checked = await verifyCurrentClaims(
-      "This recognized fixture is outside Pundit's model coverage, so no Pundit probabilities or scoreline estimates are available.\n\n"
+      "This recognized fixture is outside Pundit's model coverage, so I can't publish probabilities or scoreline estimates.\n\n"
         + "The fixture is Thursday [[S1]]. An unsupported lineup is confirmed [[S1]].",
       bundle,
       {} as Parameters<typeof verifyCurrentClaims>[2],
@@ -963,6 +963,16 @@ describe("current-news evidence hardening", () => {
     );
     expect(normalizeAnalystIdentity("The model I work with sees this."))
       .not.toMatch(/I I work with/);
+    const rewrittenCoverage = normalizeAnalystIdentity(
+      "This recognized fixture is outside Pundit's model coverage, so I can't publish probabilities or scoreline estimates."
+    );
+    expect(rewrittenCoverage).toBe(
+      "This recognized fixture is outside my forecasting coverage, so I can't publish probabilities or scoreline estimates."
+    );
+    expect(rewrittenCoverage).not.toMatch(/no my probabilities/i);
+    expect(normalizeAnalystIdentity(
+      "This recognized fixture is missing a required model input, so I can't estimate probabilities."
+    )).not.toMatch(/no my |Pundit will not/i);
   });
 
   it("corrects inverted high-press turnover location", () => {
@@ -1263,6 +1273,8 @@ describe("current-news evidence hardening", () => {
       // The specific weakness of this table, not a generic hedge.
       expect(answer).toContain("level on points and separated only by goal difference");
       expect(answer).toContain("do not support");
+      expect(answer).toMatch(/may look very different/i);
+      expect(answer).not.toMatch(/will bear little resemblance/i);
     });
 
     it("abstains directly when the table cannot establish the clearest title path", () => {
@@ -1865,7 +1877,7 @@ describe("current-news evidence hardening", () => {
     // use both. Filing those as evidence let the abstention sweep replace a
     // capability answer with "no verified team news was established".
     for (const notice of [
-      "This recognized fixture is missing a required model input, so Pundit will not estimate probabilities.",
+      "This recognized fixture is missing a required model input, so I can't estimate probabilities.",
       "Required model context or input is missing.",
       "A complete market is missing for this fixture.",
     ]) {

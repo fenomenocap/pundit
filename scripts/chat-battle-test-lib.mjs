@@ -1383,6 +1383,7 @@ export const FORBIDDEN_ANSWER_TERMS = [
   "pre-training",
   "grounding data",
   "i i work with",
+  "no my probabilities",
   "where the money sits",
 ];
 

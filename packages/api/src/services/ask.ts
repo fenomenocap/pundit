@@ -1167,7 +1167,7 @@ export function sanitizeFixtureCoverageAnswer(answer: string, grounding: Fixture
       : reason === "unsupported-competition"
         ? "The competition is not supported by the public model."
         : "This fixture is disabled by the public model policy.";
-    return `This recognized fixture is outside Pundit's model coverage, so no Pundit probabilities or scoreline estimates are available.\n\n${explanation}`;
+    return `This recognized fixture is outside Pundit's model coverage, so I can't publish probabilities or scoreline estimates.\n\n${explanation}`;
   }
   if (grounding.capability.status === "temporarily-unpriced") {
     const explanation = reason === "model-initializing"
@@ -1180,7 +1180,7 @@ export function sanitizeFixtureCoverageAnswer(answer: string, grounding: Fixture
     : reason === "neutral-venue-unknown"
       ? "The venue's neutral status has not been established."
       : "Required model context or input is missing.";
-  return `This recognized fixture is missing a required model input, so Pundit will not estimate probabilities.\n\n${explanation}`;
+  return `This recognized fixture is missing a required model input, so I can't estimate probabilities.\n\n${explanation}`;
 }
 
 export function sanitizeUnrecognizedCandidateAnswer(answer: string): string {
@@ -7225,8 +7225,8 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
         + (tiedOnPoints
           ? "The top clubs are level on points and separated only by goal difference, so "
           : "So ")
-        + "one result moves a club several places, and this ordering will bear "
-        + "little resemblance to the final table.";
+        + "one result moves a club several places, and this ordering may look "
+        + "very different by the end of the season.";
     return [
       "**Strongest caveat**",
       caveat,
