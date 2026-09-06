@@ -27,4 +27,4 @@ jobs:
           sha=$(bash scripts/resolve-deployed-sha.sh api)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - run: bash scripts/verify-prod.sh "${{ steps.api-sha.outputs.sha }}" "${{ steps.web-sha.outputs.sha }}" shadow
+      - run: bash scripts/verify-prod.sh "${{ steps.api-sha.outputs.sha }}" "${{ steps.web-sha.outputs.sha }}" enabled

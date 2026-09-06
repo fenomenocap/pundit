@@ -390,8 +390,10 @@ export function refreshFixtureRegistryFromEspn(
   }
   const oldest = now.getTime() - ROUTING_PAST_HORIZON_MS;
   const newest = now.getTime() + ROUTING_FUTURE_HORIZON_MS;
+  const bundledIds = new Set(loadBundledApprovedFixtures().map((fixture) => fixture.fixtureId));
   for (const [fixtureId, fixture] of registry) {
     const kickoff = new Date(fixture.kickoff).getTime();
+    if (bundledIds.has(fixtureId)) continue;
     if (!observedIds.has(fixtureId)
       && (!Number.isFinite(kickoff) || kickoff < oldest || kickoff > newest)) {
       registry.delete(fixtureId);
