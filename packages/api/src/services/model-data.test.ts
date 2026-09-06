@@ -102,7 +102,7 @@ describe("active club model", () => {
       scorelines: model.scorelines,
     };
     expect(createHash("sha256").update(JSON.stringify(protectedPayload)).digest("hex"))
-      .toBe("bbed9ea46635bf3f15bf3475f376e182b9d5ccf80d403ca543ff2403b2ee6959");
+      .toBe("d2dc2168b25f823cd681db912dc044914bde10b80e523f03f03d6720197590bb");
   });
 
   it("does not fabricate a default rating when a team is missing from ClubElo", () => {

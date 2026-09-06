@@ -59,10 +59,14 @@ import {
   settleScorelineTotal,
   validateCompleteOneXTwoMarket,
   stripUntraceableMatchPercentages,
+  buildMatchPricing,
+  attachUserLine,
   type DirectionalRationale,
   type ManagerTenure,
   type OneXTwoMarketLeg,
   type OneXTwoOutcome,
+  type PricingObject,
+  type UserLineInput,
   type ValidatedOneXTwoMarket,
   type VerifiableClaim,
 } from "./response-correctness";
@@ -155,6 +159,7 @@ export interface Grounding {
   stakePAway: number | null;
   stakeObservedAt?: string;
   oddsSources: OddsSource[];
+  pricing: PricingObject;
   /**
    * `oddsSources` differenced against the model, one entry per complete source.
    *
@@ -207,6 +212,7 @@ export interface ConversationTurn {
 
 export type TeamContext = [string, string];
 export interface FixtureContext { fixtureId: string }
+export type UserLine = UserLineInput;
 export type AnalysisTier = "match" | "competition" | "season" | "general";
 
 /** Emergency rollback only. V2 is the exercised default in code and tests. */
@@ -2456,15 +2462,20 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
     grounding.pOver2_5, grounding.pUnder2_5, grounding.pBttsYes, grounding.pBttsNo,
     ...(grounding.scorelines ?? []).map((row) => row.probability),
   ];
+  const userLine = grounding.pricing?.userLine;
   return stripUntraceableMatchPercentages(answer, {
     probabilities: [
       ...modelProbabilities,
       ...(grounding.oddsSources ?? []).flatMap((source) =>
         [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
+      ...(userLine ? [Math.abs(userLine.evPct), 1 / userLine.decimalOdds] : []),
     ],
     percentagePointGaps: (grounding.marketDivergence ?? []).flatMap((market) =>
       market.legs.map((leg) => leg.gapPoints)),
-    fairDecimalOdds: modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
+    fairDecimalOdds: [
+      ...modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
+      ...(userLine ? [userLine.decimalOdds, userLine.passPrice, userLine.playPrice] : []),
+    ],
   });
 }
 
@@ -3397,10 +3408,19 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
   });
   const stake = markets?.stake;
   const competition = getCompetitionById(fixture.competitionId);
+  const fixtureId = `espn:${fixture.competitionId}:${fixture.fixtureId}`;
+  const stakePHome = stake?.pHome ?? fixture.stakePHome;
+  const stakePDraw = stake?.pDraw ?? fixture.stakePDraw;
+  const stakePAway = stake?.pAway ?? fixture.stakePAway;
+  const stakeObservedAt = stake && markets ? markets.observedAt : undefined;
+  const pricedAt = markets?.observedAt
+    ?? fixture.forecastProvenance?.forecastAt
+    ?? fixture.utcDate
+    ?? fixture.date;
 
   return {
     kind: "match",
-    fixtureId: `espn:${fixture.competitionId}:${fixture.fixtureId}`,
+    fixtureId,
     competitionId: fixture.competitionId,
     competition: fixture.competition,
     homeFieldAdvantage: competition?.homeFieldAdvantage ?? false,
@@ -3417,12 +3437,43 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     pBttsNo: fixture.pBttsNo,
     topScores: fixture.topScores,
     scorelines: fixture.scorelines,
-    stakePHome: stake?.pHome ?? fixture.stakePHome,
-    stakePDraw: stake?.pDraw ?? fixture.stakePDraw,
-    stakePAway: stake?.pAway ?? fixture.stakePAway,
-    ...(stake && markets ? { stakeObservedAt: markets.observedAt } : {}),
+    stakePHome,
+    stakePDraw,
+    stakePAway,
+    ...(stakeObservedAt ? { stakeObservedAt } : {}),
     oddsSources,
     marketDivergence: computeMarketDivergence(fixture, oddsSources),
+    pricing: buildMatchPricing({
+      fixtureId,
+      home: fixture.home,
+      away: fixture.away,
+      kickoff: fixture.date,
+      modelVersion: fixture.forecastProvenance?.ratingArtifactId,
+      pricedAt,
+      pHome: fixture.pHome,
+      pDraw: fixture.pDraw,
+      pAway: fixture.pAway,
+      markets: [
+        ...(stakePHome != null && stakePDraw != null && stakePAway != null
+          ? [{
+              source: "stake",
+              observedAt: stakeObservedAt ?? pricedAt,
+              pHome: stakePHome,
+              pDraw: stakePDraw,
+              pAway: stakePAway,
+              decimalOdds: null,
+            }]
+          : []),
+        ...oddsSources.map((source) => ({
+          source: source.source,
+          observedAt: source.observedAt,
+          pHome: source.pHome,
+          pDraw: source.pDraw,
+          pAway: source.pAway,
+          decimalOdds: null,
+        })),
+      ],
+    }),
   };
 }
 
@@ -7202,7 +7253,7 @@ export function deterministicGroundedResponse(
       return renderGroundedModelOnlyAnswer(grounding, asksInput);
     }
     return ANALYST_RESPONSE_V2
-      ? composeMatchResponse(question, grounding, planResponse(question, { groundingKind: "match" }))
+      ? composeMatchResponse(question, grounding, planResponse(question, { groundingKind: "match", hasUserLine: grounding.pricing.userLine != null }))
       : renderGroundedMatchAnswer(grounding);
   }
   return null;
@@ -7226,7 +7277,11 @@ export function closedGroundedAnswer(question: string, grounding: AskGrounding):
     && !isModelOnlyRequest(question)
     && !asksModelInputQuestion(question)) {
     if (!ANALYST_RESPONSE_V2) return null;
-    const plan = planResponse(question, { groundingKind: "match", hasHistory: true });
+    const plan = planResponse(question, {
+      groundingKind: "match",
+      hasHistory: true,
+      hasUserLine: grounding.pricing.userLine != null,
+    });
     // These modes are fully settled by typed server facts or a typed
     // limitation. They must not spend a search/model call or broaden into a
     // report. Team news and qualitative reads still reach evidence/expression.
@@ -7234,6 +7289,8 @@ export function closedGroundedAnswer(question: string, grounding: AskGrounding):
       "exact-score",
       "fair-price",
       "market-comparison",
+      "user-line",
+      "stake-refusal",
       "player-or-scorer",
       "lineup-counterfactual",
     ].includes(plan.mode)
@@ -7331,7 +7388,7 @@ export async function deliverAnswer(args: {
       analystResponseMetrics.acceptedDrafts += 1;
       console.log(JSON.stringify({
         event: "analyst_draft_accepted",
-        responseMode: planResponse(question, { groundingKind: "match", hasHistory }).mode,
+        responseMode: planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null }).mode,
         factReferences: [
           validatedDraft.draft.directAnswer,
           ...validatedDraft.draft.reasoning,
@@ -7345,12 +7402,12 @@ export async function deliverAnswer(args: {
       console.warn(JSON.stringify({
         event: "analyst_draft_rejected",
         reason: validatedDraft.reason,
-        responseMode: planResponse(question, { groundingKind: "match", hasHistory }).mode,
+        responseMode: planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null }).mode,
       }));
       expressionAnswer = composeMatchResponse(
         question,
         grounding,
-        planResponse(question, { groundingKind: "match", hasHistory })
+        planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
       );
     }
   }
@@ -7399,7 +7456,7 @@ export async function deliverAnswer(args: {
           checked.verification.status === "unavailable"
             ? "I couldn’t verify a dated team-news update because verification was unavailable, so I won’t make an availability claim."
             : composeMatchResponse(question, grounding,
-              planResponse(question, { groundingKind: "match", hasHistory })),
+              planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })),
           grounding,
           useV2
         )
@@ -7428,7 +7485,7 @@ export async function deliverAnswer(args: {
         ? finalizeDeliveredText(composeMatchResponse(
           question,
           grounding,
-          planResponse(question, { groundingKind: "match", hasHistory })
+          planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
         ), grounding, useV2)
         : renderGroundedMatchAnswer(grounding),
       citations: [],
@@ -7512,7 +7569,7 @@ export async function deliverAnswer(args: {
       ? composeMatchResponse(
         question,
         grounding,
-        planResponse(question, { groundingKind: "match", hasHistory })
+        planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
       )
       : renderGroundedMatchFallback(grounding);
     const completeFallback = useV2
@@ -7707,6 +7764,7 @@ function withPresentation(
   const plan = planResponse(question, {
     hasHistory,
     groundingKind: result.grounding?.kind ?? null,
+    hasUserLine: result.grounding?.kind === "match" && result.grounding.pricing.userLine != null,
   });
   return {
     ...result,
@@ -7715,15 +7773,21 @@ function withPresentation(
   };
 }
 
+function withOptionalUserLine(grounding: AskGrounding, userLine?: UserLine): AskGrounding {
+  if (!userLine || grounding?.kind !== "match") return grounding;
+  return { ...grounding, pricing: attachUserLine(grounding.pricing, userLine) };
+}
+
 export async function answerQuestion(
   question: string,
   history: ConversationTurn[] = [],
   teamContext?: TeamContext,
   signal?: AbortSignal,
-  fixtureContext?: FixtureContext
+  fixtureContext?: FixtureContext,
+  userLine?: UserLine
 ): Promise<AskResult> {
   const result = await withSearchQuestion(() =>
-    answerQuestionScoped(question, history, teamContext, signal, fixtureContext));
+    answerQuestionScoped(question, history, teamContext, signal, fixtureContext, userLine));
   return withPresentation(question, history.length > 0, result);
 }
 
@@ -7732,19 +7796,22 @@ async function answerQuestionScoped(
   history: ConversationTurn[] = [],
   teamContext?: TeamContext,
   signal?: AbortSignal,
-  fixtureContext?: FixtureContext
+  fixtureContext?: FixtureContext,
+  userLine?: UserLine
 ): Promise<{
   answer: string;
   grounding: AskGrounding;
   citations?: AskCitation[];
   verification: AskVerification;
 }> {
-  const { grounding, systemPrompt, messages, tier, client, candidateUnrecognized } = prepareAsk(
+  const prepared = prepareAsk(
     question,
     history,
     teamContext,
     fixtureContext
   );
+  const grounding = withOptionalUserLine(prepared.grounding, userLine);
+  const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   try {
     const evidenceFollowUp = deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
@@ -7866,10 +7933,11 @@ export async function answerQuestionStream(
   history: ConversationTurn[] = [],
   teamContext: TeamContext | undefined,
   handlers: AskStreamHandlers,
-  fixtureContext?: FixtureContext
+  fixtureContext?: FixtureContext,
+  userLine?: UserLine
 ): Promise<AskResult> {
   const result = await withSearchQuestion(() =>
-    answerQuestionStreamScoped(question, history, teamContext, handlers, fixtureContext));
+    answerQuestionStreamScoped(question, history, teamContext, handlers, fixtureContext, userLine));
   return withPresentation(question, history.length > 0, result);
 }
 
@@ -7878,19 +7946,22 @@ async function answerQuestionStreamScoped(
   history: ConversationTurn[] = [],
   teamContext: TeamContext | undefined,
   handlers: AskStreamHandlers,
-  fixtureContext?: FixtureContext
+  fixtureContext?: FixtureContext,
+  userLine?: UserLine
 ): Promise<{
   answer: string;
   grounding: AskGrounding;
   citations?: AskCitation[];
   verification: AskVerification;
 }> {
-  const { grounding, systemPrompt, messages, tier, client, candidateUnrecognized } = prepareAsk(
+  const prepared = prepareAsk(
     question,
     history,
     teamContext,
     fixtureContext
   );
+  const grounding = withOptionalUserLine(prepared.grounding, userLine);
+  const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   handlers.onGrounding(grounding);
   try {
     const evidenceFollowUp = deterministicUngroundedEvidenceFollowUp(question, history, grounding);

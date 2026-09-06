@@ -1,5 +1,88 @@
 export type OneXTwoOutcome = "home" | "draw" | "away";
 
+export type EdgeBand = "noise" | "thin" | "real" | "fat-and-fragile";
+export type RiskBand = "low" | "medium" | "high";
+
+export interface PricingLeg {
+  outcome: OneXTwoOutcome;
+  modelP: number;
+  fairOdds: number;
+  decimalOdds: number | null;
+  impliedP: number | null;
+  evPct: number | null;
+}
+
+export interface MarketPricingRow {
+  source: string;
+  observedAt: string;
+  legs: Record<OneXTwoOutcome, PricingLeg>;
+  edgeBand: EdgeBand | null;
+}
+
+export interface PricingObject {
+  fixtureId: string;
+  home: string;
+  away: string;
+  kickoff: string;
+  modelVersion: string;
+  pricedAt: string;
+  model: Record<OneXTwoOutcome, { p: number; fairOdds: number }>;
+  markets: MarketPricingRow[];
+  userLine: {
+    outcome: OneXTwoOutcome;
+    decimalOdds: number;
+    evPct: number;
+    edgeBand: EdgeBand;
+    passPrice: number;
+    playPrice: number;
+    riskBand: RiskBand;
+  } | null;
+  stakeFrac: null;
+}
+
+/** Stable sentinel when the fixture has no rating artifact id. Not a hash. */
+export const UNKNOWN_MODEL_VERSION = "unknown";
+
+export interface MatchPricingMarketInput {
+  source: string;
+  observedAt: string;
+  pHome: number;
+  pDraw: number | null;
+  pAway: number;
+  /**
+   * Real captured decimals only. A no-vig p is not a decimal — never pass `1/p`.
+   */
+  decimalOdds?: Partial<Record<OneXTwoOutcome, number | null>> | null;
+}
+
+export interface UserLineInput {
+  outcome: OneXTwoOutcome;
+  decimalOdds: number;
+}
+
+export interface MatchPricingInput {
+  fixtureId: string;
+  home: string;
+  away: string;
+  kickoff: string;
+  modelVersion?: string | null;
+  pricedAt: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  markets?: readonly MatchPricingMarketInput[];
+  userLine?: UserLineInput | null;
+}
+
+/** Temporary |evPct| thresholds. Named so they can move. */
+export const EDGE_BAND_NOISE = 0.01;
+export const EDGE_BAND_THIN = 0.03;
+export const EDGE_BAND_REAL = 0.08;
+
+/** Temporary fair-odds markups. Named so they can move. */
+export const PASS_PRICE_MARKUP = 0.01;
+export const PLAY_PRICE_MARKUP = 0.03;
+
 export interface OneXTwoMarketLeg {
   outcome: OneXTwoOutcome;
   decimalOdds: number;
@@ -28,6 +111,167 @@ const OUTCOMES: OneXTwoOutcome[] = ["home", "draw", "away"];
 /** Decimal odds have one and only one deterministic implied probability. */
 export function decimalImpliedProbability(decimalOdds: number): number | null {
   return Number.isFinite(decimalOdds) && decimalOdds > 1 ? 1 / decimalOdds : null;
+}
+
+export function fairOdds(p: number): number | null {
+  return Number.isFinite(p) && p > 0 && p < 1 ? 1 / p : null;
+}
+
+/** Same rule as `decimalImpliedProbability`. A no-vig p is not a decimal. */
+export function impliedP(decimal: number): number | null {
+  return decimalImpliedProbability(decimal);
+}
+
+export function evPct(modelP: number, decimal: number | null | undefined): number | null {
+  if (!Number.isFinite(modelP) || modelP < 0 || modelP > 1) return null;
+  if (decimal == null || !Number.isFinite(decimal) || decimal <= 1) return null;
+  return modelP * decimal - 1;
+}
+
+export function edgeBand(ev: number | null | undefined): EdgeBand | null {
+  if (ev == null || !Number.isFinite(ev)) return null;
+  const abs = Math.abs(ev);
+  if (abs < EDGE_BAND_NOISE) return "noise";
+  if (abs < EDGE_BAND_THIN) return "thin";
+  if (abs < EDGE_BAND_REAL) return "real";
+  return "fat-and-fragile";
+}
+
+export function passPrice(p: number): number | null {
+  const fair = fairOdds(p);
+  return fair === null ? null : fair * (1 + PASS_PRICE_MARKUP);
+}
+
+export function playPrice(p: number): number | null {
+  const fair = fairOdds(p);
+  return fair === null ? null : fair * (1 + PLAY_PRICE_MARKUP);
+}
+
+export function riskBand(modelP: number, ev: number | null | undefined): RiskBand | null {
+  if (!Number.isFinite(modelP) || modelP < 0 || modelP > 1) return null;
+  const band = edgeBand(ev);
+  if (band === null) return null;
+  if (modelP >= 0.5 && (band === "noise" || band === "thin")) return "low";
+  if (modelP < 0.25 || band === "fat-and-fragile") return "high";
+  return "medium";
+}
+
+function requiredFairOdds(p: number): number {
+  const odds = fairOdds(p);
+  if (odds !== null) return odds;
+  // Closed-interval p is not a priced leg. Keep the object typed without
+  // inventing a book decimal from a no-vig reconstruction.
+  return Number.isFinite(p) && p > 0 ? 1 / p : 1;
+}
+
+function capturedDecimal(decimal: number | null | undefined): number | null {
+  return decimal != null && Number.isFinite(decimal) && decimal > 1 ? decimal : null;
+}
+
+export function buildUserLine(
+  model: Record<OneXTwoOutcome, { p: number; fairOdds: number }>,
+  line: UserLineInput
+): PricingObject["userLine"] {
+  const modelP = model[line.outcome].p;
+  const ev = evPct(modelP, line.decimalOdds);
+  const band = edgeBand(ev);
+  const pass = passPrice(modelP);
+  const play = playPrice(modelP);
+  const risk = riskBand(modelP, ev);
+  if (ev == null || band == null || pass == null || play == null || risk == null) return null;
+  return {
+    outcome: line.outcome,
+    decimalOdds: line.decimalOdds,
+    evPct: ev,
+    edgeBand: band,
+    passPrice: pass,
+    playPrice: play,
+    riskBand: risk,
+  };
+}
+
+export function attachUserLine(
+  pricing: PricingObject,
+  line: UserLineInput | null | undefined
+): PricingObject {
+  return {
+    ...pricing,
+    userLine: line ? buildUserLine(pricing.model, line) : null,
+    stakeFrac: null,
+  };
+}
+
+function pricingLeg(outcome: OneXTwoOutcome, modelP: number, decimal: number | null): PricingLeg {
+  const realDecimal = capturedDecimal(decimal);
+  return {
+    outcome,
+    modelP,
+    fairOdds: requiredFairOdds(modelP),
+    decimalOdds: realDecimal,
+    impliedP: realDecimal === null ? null : impliedP(realDecimal),
+    evPct: evPct(modelP, realDecimal),
+  };
+}
+
+function completeMarketProbabilities(row: MatchPricingMarketInput): Record<OneXTwoOutcome, number> | null {
+  const probabilities = { home: row.pHome, draw: row.pDraw, away: row.pAway };
+  if (OUTCOMES.some((outcome) => {
+    const value = probabilities[outcome];
+    return value == null || !Number.isFinite(value) || value <= 0 || value >= 1;
+  })) return null;
+  return probabilities as Record<OneXTwoOutcome, number>;
+}
+
+/**
+ * Server-owned match pricing. `evPct` / `decimalOdds` fill only when a real
+ * captured decimal exists. No-vig rows keep `null` — do not pass reconstructed
+ * `1/p` legs from `groundingOneXTwoMarketLegs`.
+ */
+export function buildMatchPricing(input: MatchPricingInput): PricingObject {
+  const modelP: Record<OneXTwoOutcome, number> = {
+    home: input.pHome,
+    draw: input.pDraw,
+    away: input.pAway,
+  };
+  const markets: MarketPricingRow[] = [];
+  for (const row of input.markets ?? []) {
+    if (!completeMarketProbabilities(row)) continue;
+    const legs = {} as Record<OneXTwoOutcome, PricingLeg>;
+    const printableEv: number[] = [];
+    for (const outcome of OUTCOMES) {
+      const leg = pricingLeg(outcome, modelP[outcome], row.decimalOdds?.[outcome] ?? null);
+      legs[outcome] = leg;
+      if (leg.evPct != null) printableEv.push(leg.evPct);
+    }
+    const fattest = printableEv.reduce<number | null>(
+      (current, value) => current === null || Math.abs(value) > Math.abs(current) ? value : current,
+      null
+    );
+    markets.push({
+      source: row.source,
+      observedAt: row.observedAt,
+      legs,
+      edgeBand: fattest === null ? null : edgeBand(fattest),
+    });
+  }
+  const modelVersion = input.modelVersion?.trim();
+  const model = {
+    home: { p: input.pHome, fairOdds: requiredFairOdds(input.pHome) },
+    draw: { p: input.pDraw, fairOdds: requiredFairOdds(input.pDraw) },
+    away: { p: input.pAway, fairOdds: requiredFairOdds(input.pAway) },
+  };
+  return {
+    fixtureId: input.fixtureId,
+    home: input.home,
+    away: input.away,
+    kickoff: input.kickoff,
+    modelVersion: modelVersion || UNKNOWN_MODEL_VERSION,
+    pricedAt: input.pricedAt,
+    model,
+    markets,
+    userLine: input.userLine ? buildUserLine(model, input.userLine) : null,
+    stakeFrac: null,
+  };
 }
 
 export function probabilityTotalWithinTolerance(

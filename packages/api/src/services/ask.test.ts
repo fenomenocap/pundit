@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
+import { attachUserLine, buildMatchPricing } from "./response-correctness";
+import { STAKE_REFUSAL_SENTENCE } from "./response-composer";
 import {
   espnFixtureIdentity,
   recognizeEspnFixture,
@@ -103,12 +105,36 @@ vi.mock("./web-search", () => ({
  * disagrees with its own `oddsSources`.
  */
 function withDivergence(
-  grounding: Omit<Grounding, "marketDivergence"> & { marketDivergence?: MarketDivergence[] }
+  grounding: Omit<Grounding, "marketDivergence" | "pricing"> & {
+    marketDivergence?: MarketDivergence[];
+    pricing?: Grounding["pricing"];
+  }
 ): Grounding {
-  return {
+  const next = {
     ...grounding,
     marketDivergence: grounding.marketDivergence
       ?? computeMarketDivergence(grounding, grounding.oddsSources),
+  };
+  return {
+    ...next,
+    pricing: next.pricing ?? buildMatchPricing({
+      fixtureId: next.fixtureId,
+      home: next.home,
+      away: next.away,
+      kickoff: next.date,
+      pricedAt: next.oddsSources[0]?.observedAt ?? next.date,
+      pHome: next.pHome,
+      pDraw: next.pDraw,
+      pAway: next.pAway,
+      markets: next.oddsSources.map((source) => ({
+        source: source.source,
+        observedAt: source.observedAt,
+        pHome: source.pHome,
+        pDraw: source.pDraw,
+        pAway: source.pAway,
+        decimalOdds: null,
+      })),
+    }),
   };
 }
 
@@ -1113,6 +1139,29 @@ describe("current-news evidence hardening", () => {
         .toMatch(/reviewed team strength/i);
     });
 
+    it("settles a posted userLine from modelP * decimal - 1 without a stake", () => {
+      const match = model();
+      const grounded = {
+        ...match,
+        pricing: attachUserLine(match.pricing, { outcome: "away", decimalOdds: 7 }),
+      };
+      expect(grounded.pricing.userLine?.evPct).toBeCloseTo(grounded.pAway * 7 - 1);
+      expect(grounded.pricing.stakeFrac).toBeNull();
+      const answer = closedGroundedAnswer("I found Arsenal at 7 — pass or play?", grounded);
+      expect(answer).toMatch(/Coventry at 7\.00/);
+      expect(answer).toMatch(/I pass|I play|will not call it/);
+      expect(answer).toMatch(/Risk is/);
+      expect(answer).not.toMatch(/\block\b/i);
+    });
+
+    it("refuses to size a stake without a bankroll", () => {
+      const match = model();
+      const answer = closedGroundedAnswer("How much should I stake?", match);
+      expect(answer).toContain(STAKE_REFUSAL_SENTENCE);
+      expect(answer).toContain("Arsenal 97.3%");
+      expect(closedGroundedAnswer("Three points are at stake for Arsenal.", match)).toBeNull();
+    });
+
     it("leaves the non-match tiers settling exactly as before", () => {
       const table = buildCompetitionGrounding("eng.1", [
         {
@@ -2030,6 +2079,34 @@ describe("buildGrounding", () => {
       pBttsNo: 0.48,
       topScores: [{ score: "1-1", probability: 0.12 }],
     });
+  });
+
+  it("attaches reconstructable model fair odds on pricing", () => {
+    const grounding = buildGrounding(fixtures[0]);
+    expect(grounding.pricing.model.home.fairOdds).toBeCloseTo(1 / grounding.pHome);
+    expect(grounding.pricing.model.home.p).toBe(grounding.pHome);
+    expect(grounding.pricing.userLine).toBeNull();
+    expect(grounding.pricing.stakeFrac).toBeNull();
+    expect(grounding.pricing.kickoff).toBe(grounding.date);
+    expect(grounding.pricing.pricedAt).toBe(fixtures[0].utcDate);
+    expect(grounding.pricing.modelVersion).toBe("unknown");
+    for (const market of grounding.pricing.markets) {
+      expect(market.edgeBand).toBeNull();
+      for (const outcome of ["home", "draw", "away"] as const) {
+        expect(market.legs[outcome].decimalOdds).toBeNull();
+        expect(market.legs[outcome].impliedP).toBeNull();
+        expect(market.legs[outcome].evPct).toBeNull();
+      }
+    }
+  });
+
+  it("copies ratingArtifactId onto pricing.modelVersion", () => {
+    const grounding = buildGrounding(fixture("Arsenal", "Coventry City", {
+      forecastProvenance: {
+        ratingArtifactId: "clubelo@1:2da1616b28750ddb",
+      } as ModelFixture["forecastProvenance"],
+    }));
+    expect(grounding.pricing.modelVersion).toBe("clubelo@1:2da1616b28750ddb");
   });
 });
 

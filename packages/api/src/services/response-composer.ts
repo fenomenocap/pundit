@@ -2,6 +2,39 @@ import type { Grounding } from "./ask";
 import { buildResponseFacts, factById } from "./response-facts";
 import { planResponse, resolveRequestedScoreline, type ResponsePlan } from "./response-plan";
 
+export const STAKE_REFUSAL_SENTENCE =
+  "I can print the price. I will not size a stake without a bankroll and a risk band.";
+
+function outcomeLabel(grounding: Grounding, outcome: "home" | "draw" | "away"): string {
+  return outcome === "draw" ? "the draw" : grounding[outcome];
+}
+
+function signedEvPct(evPct: number): string {
+  const pct = evPct * 100;
+  return `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
+
+function composeUserLineAnswer(grounding: Grounding): string {
+  const line = grounding.pricing.userLine;
+  if (!line) {
+    return "I need a decimal line on home, draw, or away before I can pass or play.";
+  }
+  const subject = outcomeLabel(grounding, line.outcome);
+  const modelP = grounding.pricing.model[line.outcome].p;
+  const decimal = line.decimalOdds.toFixed(2);
+  const decision = line.decimalOdds >= line.playPrice
+    ? "play"
+    : line.decimalOdds < line.passPrice
+      ? "pass"
+      : "abstain";
+  const call = decision === "play"
+    ? `That clears the play price of ${line.playPrice.toFixed(2)}, so I play.`
+    : decision === "pass"
+      ? `That is below the pass price of ${line.passPrice.toFixed(2)}, so I pass.`
+      : `That sits between the pass price of ${line.passPrice.toFixed(2)} and the play price of ${line.playPrice.toFixed(2)}, so I will not call it.`;
+  return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, EV ${signedEvPct(line.evPct)} (${line.edgeBand}). ${call} Risk is ${line.riskBand}.`;
+}
+
 function pct(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
@@ -57,6 +90,15 @@ export function composeMatchResponse(
     return plan.mode === "fair-price"
       ? `${orientation} ${grounding.home} ${score} ${grounding.away}, I make it ${pct(fact.numeric.value)}, or about ${fair} in fair decimal odds. I don’t have a comparable live exact-score quote here, so that is a fair price, not a claim that the market is wrong.`
       : `${scoreRequest?.orientation === "home-away-default" ? `Reading ${score} in home-away order, I` : "I"} make ${grounding.home} ${score} ${grounding.away} ${pct(fact.numeric.value)} for this fixture.`;
+  }
+  if (plan.mode === "user-line") {
+    return composeUserLineAnswer(grounding);
+  }
+  if (plan.mode === "stake-refusal") {
+    const priced = grounding.pricing.userLine
+      ? composeUserLineAnswer(grounding)
+      : `My 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`;
+    return `${priced}\n\n${STAKE_REFUSAL_SENTENCE}`;
   }
   if (plan.mode === "market-comparison") {
     return headlineMarket(grounding)
