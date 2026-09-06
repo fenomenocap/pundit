@@ -273,6 +273,20 @@ describe("fixture registry", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("keeps bundled approved friendlies after the ESPN routing past horizon", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-approved-horizon-"));
+    process.env.PUNDIT_DATA_DIR = dir;
+    replaceFixtureRegistryForTests(loadBundledApprovedFixtures());
+    refreshFixtureRegistryFromEspn(
+      [footballFixture({ utcDate: "2026-09-06T14:00:00.000Z" })],
+      new Date("2026-09-06T16:00:00.000Z")
+    );
+    expect(getRecognizedFixtures().some((fixture) =>
+      fixture.fixtureId === "espn:club.friendly:401867142"
+    )).toBe(true);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("retains bounded material observation history for kickoff and status changes", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-history-"));
     process.env.PUNDIT_DATA_DIR = dir;

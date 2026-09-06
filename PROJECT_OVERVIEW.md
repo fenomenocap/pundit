@@ -180,7 +180,7 @@ Global limiter 100/min. `/api/ask` uses one **process-wide** bucket (not per-IP)
 - **629 API test cases** across 34 Vitest suites. Heaviest: `ask.test.ts` (3,244 lines), `analysis-response.test.ts` (2,023), `answer-survival.test.ts` (1,352 — pins that a *correct* answer survives every guard, paired survive/still-blocked assertions per guard), `response-correctness-idempotence.test.ts` (running the guard three times must be stable), `answer-delivery-faults.test.ts`, `web-search.test.ts` (715).
 - **Playwright** chromium smoke on `packages/web` in mock mode. No component unit tests by design.
 - **CI** (`.github/workflows/ci.yml`) on PR *and* push to main: tsc both packages, verify pinned club-strength artifact, API Vitest, chat-eval harness unit tests, chat-eval dry-run config validation, Vercel ignored-build policy test, deployed-SHA resolution test, web build, Playwright smoke.
-- **Verify Production** (`.github/workflows/verify-prod.yml`) on push to main: resolves the deployed SHA per target and runs `scripts/verify-prod.sh` in shadow mode.
+- **Verify Production** (`.github/workflows/verify-prod.yml`) on push to main: resolves the deployed SHA per target and runs `scripts/verify-prod.sh` against the live expansion-enabled registry.
 
 ### Chat eval harness (`scripts/chat-battle-test.mjs`, `evals/chat/scenarios.json`)
 
