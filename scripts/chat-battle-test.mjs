@@ -1047,9 +1047,23 @@ async function main() {
     .map((scenario) => ({ ...scenario, requiredForCertification: false }));
   const scenarios = [...scenarioConfig.fixed, ...adversarial];
   const pacer = createPacer(options.intervalMs);
+  const deploymentFromVersion = typeof preflightResult.apiVersion.body?.deploymentId === "string"
+    ? preflightResult.apiVersion.body.deploymentId.trim()
+    : "";
   const deploymentHeader = preflightResult.health.headers["x-railway-deployment-id"]
     ?? preflightResult.ready.headers["x-railway-deployment-id"]
     ?? null;
+  const deploymentId = options.deploymentId
+    || (deploymentFromVersion || null)
+    || deploymentHeader
+    || "unknown";
+  const deploymentSource = options.deploymentId
+    ? "argument/environment"
+    : deploymentFromVersion
+      ? "api version"
+      : deploymentHeader
+        ? "response header"
+        : "unavailable";
   const report = {
     schemaVersion: EVAL_SCHEMA_VERSION,
     runId,
@@ -1058,8 +1072,8 @@ async function main() {
     apiUrl: options.apiUrl,
     webUrl: options.webUrl,
     deployment: {
-      id: options.deploymentId ?? deploymentHeader ?? "unknown",
-      source: options.deploymentId ? "argument/environment" : deploymentHeader ? "response header" : "unavailable",
+      id: deploymentId,
+      source: deploymentSource,
       sourceSha,
       apiSha: preflightResult.apiVersion.body.sha,
       webSha: preflightResult.webVersion.body.sha,

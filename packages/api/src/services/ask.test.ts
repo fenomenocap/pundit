@@ -2851,6 +2851,35 @@ describe("resolveAskContext", () => {
     )).toMatchObject({ tier: "match", fixture: fixtures[0] });
   });
 
+  it("keeps a scorer follow-up on the retained fixture even when it names another club", () => {
+    const recognized = [recognizeEspnFixture({
+      id: fixtures[0].fixtureId,
+      competitionId: fixtures[0].competitionId,
+      competition: fixtures[0].competition,
+      homeTeam: fixtures[0].home,
+      awayTeam: fixtures[0].away,
+      utcDate: fixtures[0].utcDate,
+      status: "SCHEDULED",
+      stage: fixtures[0].stage,
+      matchday: null,
+      group: fixtures[0].group,
+      score: null,
+      neutralVenue: false,
+    })];
+    expect(resolveAskContext(
+      "Who will most likely score for Liverpool?",
+      [],
+      undefined,
+      fixtures,
+      [],
+      [],
+      {
+        recognizedFixtures: recognized,
+        fixtureContext: { fixtureId: recognized[0].fixtureId },
+      }
+    )).toEqual({ tier: "match", fixture: fixtures[0] });
+  });
+
   it("retains match grounding for conversational follow-ups without an explicit cue", () => {
     const teamContext: [string, string] = ["Arsenal", "Coventry City"];
     for (const question of [

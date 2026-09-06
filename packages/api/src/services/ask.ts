@@ -3153,7 +3153,18 @@ function hasMatchOutcomeIntent(question: string): boolean {
 
 export function shouldUseMatchGrounding(question: string): boolean {
   const normalized = normalizeTeamText(question);
-  return MATCH_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue));
+  if (MATCH_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue))) return true;
+  // A scorer or lineup follow-up can name a club that is not in the retained
+  // fixture ("who scores for Liverpool?" on Arsenal vs Chelsea). That is still
+  // a question about the current match, not a request to replace it.
+  const mode = planResponse(question, { groundingKind: "match" }).mode;
+  return mode === "player-or-scorer"
+    || mode === "lineup-counterfactual"
+    || mode === "fair-price"
+    || mode === "exact-score"
+    || mode === "user-line"
+    || mode === "stake-refusal"
+    || mode === "market-comparison";
 }
 
 // Questions that have plainly left the followed match: standalone football

@@ -120,6 +120,18 @@ describe("season simulator", () => {
     expect(fixtures.map((fixture) => fixture.id)).toEqual([301]);
   });
 
+  it("treats an in-play match as still remaining so a live kickoff cannot blank the outlook", () => {
+    // Standings do not increment until full time. Dropping IN_PLAY from the
+    // remaining set made expectedRemaining = 351 and actual = 350 whenever a
+    // Premier League match was live, so title-race questions fell through to
+    // the table.
+    const fixtures = remainingScheduledFixtures([
+      { ...scheduled[0], id: 201, status: "IN_PLAY" },
+      { ...scheduled[0], id: 203, status: "FINISHED" },
+    ], "eng.1");
+    expect(fixtures.map((fixture) => fixture.id)).toEqual([201]);
+  });
+
   it("orders simultaneous remaining fixtures by stable source ID", () => {
     const fixtures = remainingScheduledFixtures([
       { ...scheduled[0], id: 302 },

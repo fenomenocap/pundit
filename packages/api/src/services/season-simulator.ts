@@ -149,7 +149,7 @@ export function remainingScheduledFixtures(
   return matches
     .filter((match) =>
       match.competitionId === competitionId
-      && (match.status === "SCHEDULED" || match.status === "POSTPONED")
+      && (match.status === "SCHEDULED" || match.status === "POSTPONED" || match.status === "IN_PLAY")
     )
     .sort((a, b) =>
       a.utcDate.localeCompare(b.utcDate)
