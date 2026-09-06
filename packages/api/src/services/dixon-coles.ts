@@ -13,10 +13,12 @@ export function eloToLambdas(
   eloAway: number,
   homeAdvantageElo = 0
 ): [number, number] {
-  const eloFactor = 10 ** (((eloHome + homeAdvantageElo) - eloAway) / (2 * ELO_SCALE));
+  const d = eloHome + homeAdvantageElo - eloAway;
+  const r = 10 ** (d / ELO_SCALE);
+  const totalXg = 2 * BASE_GOALS;
   return [
-    Math.min(BASE_GOALS * eloFactor, LAMBDA_CAP),
-    Math.min(BASE_GOALS / eloFactor, LAMBDA_CAP),
+    Math.min((totalXg * r) / (1 + r), LAMBDA_CAP),
+    Math.min(totalXg / (1 + r), LAMBDA_CAP),
   ];
 }
 

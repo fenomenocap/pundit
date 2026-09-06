@@ -51,6 +51,13 @@ function renderFact(fact: ResponseFact, grounding: Grounding): string {
       + `${Math.abs(fact.marketObservation.gapPoints).toFixed(1)} percentage points ${direction}`
       + (fact.observedAt ? ` (observed ${fact.observedAt})` : "");
   }
+  if (fact.numeric?.unit === "decimal-odds") {
+    return `${fact.subject} fair decimal odds ${fact.numeric.value.toFixed(2)}`;
+  }
+  if (fact.numeric?.unit === "ev-fraction") {
+    const signed = `${fact.numeric.value >= 0 ? "+" : ""}${(fact.numeric.value * 100).toFixed(2)}%`;
+    return `${fact.subject} EV ${signed}`;
+  }
   if (fact.numeric?.unit === "probability") {
     const probability = `${(fact.numeric.value * 100).toFixed(1)}%`;
     if (fact.kind === "scoreline") {
@@ -130,6 +137,9 @@ function referencedNumbers(facts: readonly ResponseFact[]): {
       if (fact.numeric.value > 0 && fact.allowedClaims.includes("convert-to-fair-decimal-odds")) {
         fairDecimalOdds.add((1 / fact.numeric.value).toFixed(2));
       }
+    }
+    if (fact.numeric?.unit === "decimal-odds") {
+      fairDecimalOdds.add(fact.numeric.value.toFixed(2));
     }
     if (fact.numeric?.unit === "percentage-points") gaps.add(Math.abs(fact.numeric.value).toFixed(1));
     if (fact.marketObservation) {

@@ -372,6 +372,32 @@ test.describe("smoke", () => {
     await expect.poll(() => received.length).toBe(1);
     expect(received[0].fixtureContext).toEqual({ fixtureId: "espn:uefa.champions_qual:3" });
     expect(received[0].question).toContain("Dinamo Zagreb vs Viking");
+    expect(received[0]).not.toHaveProperty("userLine");
+  });
+
+  test("empty-state pull chip sends structured userLine on a priced fixture", async ({ page }) => {
+    const received: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      received.push(route.request().postDataJSON());
+      const answer = "On Coventry City at 7.00 I pass.";
+      const sse = [
+        `event: grounding\ndata: ${JSON.stringify({ grounding: null })}`,
+        `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+        `event: done\ndata: ${JSON.stringify({ answer, grounding: null })}`,
+        "",
+      ].join("\n\n");
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+    });
+
+    await page.goto("/");
+    const chip = page.getByRole("button", { name: "I found Arsenal at 7 — pass or play?" });
+    await expect(chip).toBeVisible();
+    await chip.click();
+
+    await expect.poll(() => received.length).toBe(1);
+    expect(received[0].question).toBe("I found Arsenal at 7 — pass or play?");
+    expect(received[0].fixtureContext).toEqual({ fixtureId: "espn:eng.1:1" });
+    expect(received[0].userLine).toEqual({ outcome: "away", decimalOdds: 7 });
   });
 
   test("shared question URL sends its opaque fixture identity and keeps q-only links compatible", async ({ page }) => {

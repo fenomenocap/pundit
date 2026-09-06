@@ -14,6 +14,7 @@ import {
   type ConversationTurn,
   type FixtureContext,
   type MatchGrounding,
+  type UserLine,
   type ModelFixtureResponse,
   type TeamContext,
   modelFixtureIdentity,
@@ -29,9 +30,16 @@ import { getDocsUrl } from "@/lib/site-links";
 import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
 import {
   capabilityLabel,
+  formatEdgeBand,
   formatObservedAt,
   formatPercent,
+  formatSignedEvPct,
+  marketEvFromPricing,
+  marketRowSource,
   marketRowsFromGrounding,
+  PULL_CHIP_DECIMAL,
+  PULL_CHIP_OUTCOME,
+  pullModeChipCopy,
 } from "@/lib/fixture-presentation";
 
 interface ChatMessage {
@@ -56,6 +64,7 @@ let nextId = 0;
 interface Suggestion {
   text: string;
   fixtureContext?: FixtureContext;
+  userLine?: UserLine;
 }
 
 // Shown whenever no active fixture can be grounded. Deliberately excludes match
@@ -386,6 +395,7 @@ function MatchFixtureCard({
   streaming: boolean;
 }) {
   const rows = marketRowsFromGrounding(grounding);
+  const evBySource = marketEvFromPricing(grounding.pricing);
   const hasMarkets = rows.length > 1;
   const homeHeader = teamAbbr(grounding.home);
   const awayHeader = teamAbbr(grounding.away);
@@ -433,24 +443,46 @@ function MatchFixtureCard({
           <span className="text-right">Draw</span>
           <span className="text-right">{awayHeader}</span>
         </div>
-        {rows.map((row) => (
-          <div
-            key={row.id}
-            className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 py-0.5 font-mono sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]"
-          >
-            <span className="min-w-0 text-foreground/80">
-              <span className="block truncate">{row.label}</span>
-              {row.observedAt && (
-                <span className="block truncate text-[9px] text-muted-foreground" title={row.observedAt}>
-                  {formatObservedAt(row.observedAt)}
+        {rows.map((row) => {
+          const evRow = evBySource.get(marketRowSource(row) ?? "");
+          return (
+            <div key={row.id}>
+              <div
+                className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 py-0.5 font-mono sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]"
+              >
+                <span className="min-w-0 text-foreground/80">
+                  <span className="block truncate">{row.label}</span>
+                  {row.observedAt && (
+                    <span className="block truncate text-[9px] text-muted-foreground" title={row.observedAt}>
+                      {formatObservedAt(row.observedAt)}
+                    </span>
+                  )}
                 </span>
+                <span className="text-right">{formatPercent(row.pHome)}</span>
+                <span className="text-right">{formatPercent(row.pDraw)}</span>
+                <span className="text-right">{formatPercent(row.pAway)}</span>
+              </div>
+              {evRow && (
+                <div
+                  data-testid={`market-ev-${evRow.source}`}
+                  className="grid grid-cols-[minmax(4rem,1fr)_repeat(3,minmax(3rem,1fr))] gap-x-2 pb-1 font-mono text-[9px] text-muted-foreground sm:grid-cols-[minmax(5rem,1fr)_repeat(3,3rem)]"
+                >
+                  <span className="min-w-0 truncate">{formatEdgeBand(evRow.edgeBand)}</span>
+                  {(["home", "draw", "away"] as const).map((outcome) => {
+                    const leg = evRow.legs[outcome];
+                    return (
+                      <span key={outcome} className="text-right">
+                        {leg
+                          ? `${formatPercent(leg.impliedP)} · ${formatSignedEvPct(leg.evPct)}`
+                          : ""}
+                      </span>
+                    );
+                  })}
+                </div>
               )}
-            </span>
-            <span className="text-right">{formatPercent(row.pHome)}</span>
-            <span className="text-right">{formatPercent(row.pDraw)}</span>
-            <span className="text-right">{formatPercent(row.pAway)}</span>
-          </div>
-        ))}
+            </div>
+          );
+        })}
         {!hasMarkets && (
           <p className="mt-1 text-xs text-muted-foreground">
             No live market line available
@@ -530,7 +562,8 @@ export function HomeChat() {
   const autoAskedRef = useRef<string | null>(null);
   const askRef = useRef<(
     question: string,
-    fixtureContext?: FixtureContext
+    fixtureContext?: FixtureContext,
+    userLine?: UserLine
   ) => Promise<void>>(async () => undefined);
   const streamingIdRef = useRef<number | null>(null);
   const requestIdRef = useRef(0);
@@ -543,12 +576,14 @@ export function HomeChat() {
     prompt: string;
     teamContext?: TeamContext;
     fixtureContext?: FixtureContext;
+    userLine?: UserLine;
     stopped: boolean;
   } | null>(null);
   const stoppedDraftRef = useRef<{
     prompt: string;
     teamContext?: TeamContext;
     fixtureContext?: FixtureContext;
+    userLine?: UserLine;
   } | null>(null);
 
   useEffect(() => {
@@ -573,8 +608,16 @@ export function HomeChat() {
         if (featured.length > 0) {
           // Every suggested fixture comes from the model, so each one grounds.
           // A model error alongside them means other fixtures went unpriced.
+          const pullFixture = model.fixtures[0];
           setFixtureState(model.error ? "partial" : "ready");
-          setSuggestions(featured);
+          setSuggestions([
+            ...featured,
+            {
+              text: pullModeChipCopy(pullFixture.home),
+              fixtureContext: { fixtureId: modelFixtureIdentity(pullFixture) },
+              userLine: { outcome: PULL_CHIP_OUTCOME, decimalOdds: PULL_CHIP_DECIMAL },
+            },
+          ]);
           return;
         }
 
@@ -610,7 +653,8 @@ export function HomeChat() {
   // rather than continuing whatever was in context.
   async function ask(
     question: string,
-    chipFixtureContext?: FixtureContext
+    chipFixtureContext?: FixtureContext,
+    chipUserLine?: UserLine
   ) {
     const trimmed = question.trim();
     if (!trimmed || loading) return;
@@ -624,6 +668,8 @@ export function HomeChat() {
       : (reuseStoppedDraft ? stoppedDraftRef.current?.teamContext : teamContext);
     const requestFixtureContext = chipFixtureContext
       ?? (reuseStoppedDraft ? stoppedDraftRef.current?.fixtureContext : fixtureContext);
+    const requestUserLine = chipUserLine
+      ?? (reuseStoppedDraft ? stoppedDraftRef.current?.userLine : undefined);
     const activeRequest = {
       requestId: requestIdRef.current++,
       controller: new AbortController(),
@@ -632,6 +678,7 @@ export function HomeChat() {
       prompt: trimmed,
       teamContext: requestTeamContext,
       fixtureContext: requestFixtureContext,
+      userLine: requestUserLine,
       stopped: false,
     };
     activeRequestRef.current = activeRequest;
@@ -656,6 +703,7 @@ export function HomeChat() {
         history,
         requestTeamContext,
         requestFixtureContext,
+        requestUserLine,
         {
         onGrounding: (initialGrounding) => {
           if (!requestIsLive()) return;
@@ -752,6 +800,7 @@ export function HomeChat() {
       prompt: activeRequest.prompt,
       teamContext: activeRequest.teamContext,
       fixtureContext: activeRequest.fixtureContext,
+      userLine: activeRequest.userLine,
     };
     activeRequest.controller.abort();
     setMessages((prev) => prev.filter((m) =>
@@ -1055,7 +1104,7 @@ export function HomeChat() {
               <button
                 key={s.text}
                 type="button"
-                onClick={() => ask(s.text, s.fixtureContext)}
+                onClick={() => ask(s.text, s.fixtureContext, s.userLine)}
                 className={cn(
                   "snap-start shrink-0 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                 )}

@@ -2,51 +2,75 @@ import { describe, expect, it } from "vitest";
 import { deliverAnswer, type Grounding } from "./ask";
 import { validateAnalystDraft } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
-import { composeMatchResponse } from "./response-composer";
+import { composeMatchResponse, STAKE_REFUSAL_SENTENCE } from "./response-composer";
 import { buildResponseFacts } from "./response-facts";
-import { planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
-import { stripUntraceableMatchPercentages } from "./response-correctness";
+import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
+import { attachUserLine, buildMatchPricing, stripUntraceableMatchPercentages } from "./response-correctness";
 
-const grounding = (): Grounding => ({
-  kind: "match",
-  fixtureId: "eng.1:1",
-  competitionId: "eng.1",
-  competition: "Premier League",
-  homeFieldAdvantage: true,
-  date: "2026-09-12T14:00:00Z",
-  stage: "Regular Season",
-  home: "Arsenal",
-  away: "Chelsea",
-  pHome: 0.563,
-  pDraw: 0.234,
-  pAway: 0.203,
-  pOver2_5: 0.589,
-  pUnder2_5: 0.411,
-  pBttsYes: 0.574,
-  pBttsNo: 0.426,
-  topScores: [{ score: "2-1", probability: 0.114 }, { score: "1-1", probability: 0.102 }],
-  scorelines: [
-    { score: "2-1", probability: 0.114 },
-    { score: "1-1", probability: 0.102 },
-    { score: "0-2", probability: 0.071 },
-  ],
-  stakePHome: null,
-  stakePDraw: null,
-  stakePAway: null,
-  oddsSources: [{
+const grounding = (): Grounding => {
+  const pHome = 0.563;
+  const pDraw = 0.234;
+  const pAway = 0.203;
+  const oddsSources: Grounding["oddsSources"] = [{
     source: "kalshi", observedAt: "2026-09-12T08:00:00Z",
     pHome: 0.501, pDraw: 0.296, pAway: 0.203,
-  }],
-  marketDivergence: [{
-    source: "kalshi", observedAt: "2026-09-12T08:00:00Z",
-    legs: [
-      { outcome: "home", label: "Arsenal", modelPercent: 56.3, marketPercent: 50.1, gapPoints: 6.2 },
-      { outcome: "draw", label: "the draw", modelPercent: 23.4, marketPercent: 29.6, gapPoints: -6.2 },
-      { outcome: "away", label: "Chelsea", modelPercent: 20.3, marketPercent: 20.3, gapPoints: 0 },
+  }];
+  return {
+    kind: "match",
+    fixtureId: "eng.1:1",
+    competitionId: "eng.1",
+    competition: "Premier League",
+    homeFieldAdvantage: true,
+    date: "2026-09-12T14:00:00Z",
+    stage: "Regular Season",
+    home: "Arsenal",
+    away: "Chelsea",
+    pHome,
+    pDraw,
+    pAway,
+    pOver2_5: 0.589,
+    pUnder2_5: 0.411,
+    pBttsYes: 0.574,
+    pBttsNo: 0.426,
+    topScores: [{ score: "2-1", probability: 0.114 }, { score: "1-1", probability: 0.102 }],
+    scorelines: [
+      { score: "2-1", probability: 0.114 },
+      { score: "1-1", probability: 0.102 },
+      { score: "0-2", probability: 0.071 },
     ],
-    largest: { outcome: "home", label: "Arsenal", modelPercent: 56.3, marketPercent: 50.1, gapPoints: 6.2 },
-  }],
-});
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    oddsSources,
+    marketDivergence: [{
+      source: "kalshi", observedAt: "2026-09-12T08:00:00Z",
+      legs: [
+        { outcome: "home", label: "Arsenal", modelPercent: 56.3, marketPercent: 50.1, gapPoints: 6.2 },
+        { outcome: "draw", label: "the draw", modelPercent: 23.4, marketPercent: 29.6, gapPoints: -6.2 },
+        { outcome: "away", label: "Chelsea", modelPercent: 20.3, marketPercent: 20.3, gapPoints: 0 },
+      ],
+      largest: { outcome: "home", label: "Arsenal", modelPercent: 56.3, marketPercent: 50.1, gapPoints: 6.2 },
+    }],
+    pricing: buildMatchPricing({
+      fixtureId: "eng.1:1",
+      home: "Arsenal",
+      away: "Chelsea",
+      kickoff: "2026-09-12T14:00:00Z",
+      pricedAt: "2026-09-12T08:00:00Z",
+      pHome,
+      pDraw,
+      pAway,
+      markets: oddsSources.map((source) => ({
+        source: source.source,
+        observedAt: source.observedAt,
+        pHome: source.pHome,
+        pDraw: source.pDraw,
+        pAway: source.pAway,
+        decimalOdds: null,
+      })),
+    }),
+  };
+};
 
 describe("V2 conversational architecture", () => {
   it("classifies narrow turns without requesting another full card", () => {
@@ -69,17 +93,32 @@ describe("V2 conversational architecture", () => {
     expect(planResponse("Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?", { groundingKind: "match", hasHistory: true }).mode).toBe("market-comparison");
     expect(planResponse("If the home striker is ruled out, exactly how many percentage points would you take off the home win?", { groundingKind: "match", hasHistory: true }).mode).toBe("lineup-counterfactual");
     expect(planResponse("What is the latest team news?", { groundingKind: "match" }).evidenceRequired).toBe(true);
+    expect(planResponse("I found Arsenal at 7 — pass or play?", { groundingKind: "match", hasUserLine: true }).mode)
+      .toBe("user-line");
+    expect(planResponse("How much should I stake?", { groundingKind: "match" }).mode).toBe("stake-refusal");
+    expect(asksStakeSizeQuestion("Three points are at stake for Arsenal")).toBe(false);
+    expect(planResponse("Three points are at stake for Arsenal", { groundingKind: "match", hasHistory: true }).mode)
+      .not.toBe("stake-refusal");
   });
 
   it("separates model, market and abstention facts", () => {
-    const facts = buildResponseFacts(grounding()).facts;
+    const match = grounding();
+    expect(match.pricing.model.home.fairOdds).toBeCloseTo(1 / match.pHome);
+    const facts = buildResponseFacts(match).facts;
     expect(facts.find((fact) => fact.id === "match.home")?.provenance).toBe("server-model");
+    expect(facts.find((fact) => fact.id === "pricing.model.home")?.numeric).toEqual({
+      value: match.pricing.model.home.fairOdds,
+      unit: "decimal-odds",
+    });
     expect(facts.find((fact) => fact.id === "market.kalshi.home")?.provenance).toBe("market-observation");
     expect(facts.find((fact) => fact.id === "market.kalshi.home")?.marketObservation).toEqual({
       modelProbability: 0.563,
       marketProbability: 0.501,
       gapPoints: 6.2,
     });
+    expect(facts.find((fact) => fact.id === "market.kalshi.home")?.prohibitedClaims)
+      .toContain("recommend-wager");
+    expect(facts.find((fact) => fact.id === "pricing.market.kalshi.home")).toBeUndefined();
     expect(facts.find((fact) => fact.id === "limit.player-pricing")?.provenance).toBe("abstention");
   });
 
@@ -119,6 +158,10 @@ describe("V2 conversational architecture", () => {
       directAnswer: { text: "I prefer {{match.away}}.", factIds: ["match.away"] },
       reasoning: [], citedClaims: [],
     }), grounding())).toEqual({ valid: false, reason: "unsupported-ranking" });
+    expect(validateAnalystDraft(JSON.stringify({
+      directAnswer: { text: "Chelsea is +40% EV at 7.00 against a 2.02 play price.", factIds: ["match.away"] },
+      reasoning: [], citedClaims: [],
+    }), grounding())).toEqual({ valid: false, reason: "untraceable-number" });
   });
 
   it("uses the structured draft contract in the real delivery boundary and fails closed", async () => {
@@ -155,6 +198,22 @@ describe("V2 conversational architecture", () => {
     });
     expect(rejected.answer).toMatch(/My short answer is Arsenal at 56\.3%/);
     expect(rejected.answer).not.toContain("71.2%");
+    expect(match.pricing.model.home.fairOdds).toBeCloseTo(1 / match.pHome);
+    expect(match.pricing.markets[0].legs.home.evPct).toBeNull();
+
+    const lined = {
+      ...match,
+      pricing: attachUserLine(match.pricing, { outcome: "away", decimalOdds: 7 }),
+    };
+    const emptied = await deliverAnswer({
+      ...base,
+      grounding: lined,
+      question: "I found Arsenal at 7 — pass or play?",
+      answer: "",
+    });
+    expect(emptied.answer).toMatch(/Chelsea at 7\.00/);
+    expect(lined.pricing.userLine?.evPct).toBeCloseTo(lined.pAway * 7 - 1);
+    expect(lined.pricing.stakeFrac).toBeNull();
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {
@@ -189,6 +248,42 @@ describe("V2 conversational architecture", () => {
     const input = composeMatchResponse("Which model input matters most to that edge?", match,
       planResponse("Which model input matters most to that edge?", { groundingKind: "match", hasHistory: true }));
     expect(input).toMatch(/^I can’t isolate one input/i);
+
+    const lined = {
+      ...match,
+      pricing: attachUserLine(match.pricing, { outcome: "away", decimalOdds: 7 }),
+    };
+    expect(lined.pricing.userLine?.evPct).toBeCloseTo(lined.pAway * 7 - 1);
+    expect(lined.pricing.stakeFrac).toBeNull();
+    const userLine = composeMatchResponse(
+      "I found Arsenal at 7 — pass or play?",
+      lined,
+      planResponse("I found Arsenal at 7 — pass or play?", { groundingKind: "match", hasUserLine: true })
+    );
+    expect(userLine).toMatch(/Chelsea at 7\.00/);
+    expect(userLine).toMatch(/I play/);
+    expect(userLine).toMatch(/Risk is high/);
+    expect(userLine).not.toMatch(/\block\b/i);
+    const pass = composeMatchResponse(
+      "I found Arsenal at 1.10 — pass or play?",
+      { ...match, pricing: attachUserLine(match.pricing, { outcome: "home", decimalOdds: 1.1 }) },
+      planResponse("I found Arsenal at 1.10 — pass or play?", { groundingKind: "match", hasUserLine: true })
+    );
+    expect(pass).toMatch(/I pass/);
+    const abstain = composeMatchResponse(
+      "I found Arsenal at 1.80 — pass or play?",
+      { ...match, pricing: attachUserLine(match.pricing, { outcome: "home", decimalOdds: 1.8 }) },
+      planResponse("I found Arsenal at 1.80 — pass or play?", { groundingKind: "match", hasUserLine: true })
+    );
+    expect(abstain).toMatch(/will not call it/);
+    const stake = composeMatchResponse(
+      "How much should I stake?",
+      lined,
+      planResponse("How much should I stake?", { groundingKind: "match", hasUserLine: true })
+    );
+    expect(stake).toContain(STAKE_REFUSAL_SENTENCE);
+    expect(stake).toMatch(/I play/);
+    expect(stake).not.toMatch(/kelly|unit size/i);
   });
 
   it("fails closed on untraceable percentages and strips unresolved final markers", () => {
