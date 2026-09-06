@@ -608,7 +608,7 @@ describe("current-news evidence hardening", () => {
       }],
     };
     const checked = await verifyCurrentClaims(
-      "This recognized fixture is outside Pundit's model coverage, so no Pundit probabilities or scoreline estimates are available.\n\n"
+      "This recognized fixture is outside Pundit's model coverage, so I can't publish probabilities or scoreline estimates.\n\n"
         + "The fixture is Thursday [[S1]]. An unsupported lineup is confirmed [[S1]].",
       bundle,
       {} as Parameters<typeof verifyCurrentClaims>[2],
@@ -963,6 +963,13 @@ describe("current-news evidence hardening", () => {
     );
     expect(normalizeAnalystIdentity("The model I work with sees this."))
       .not.toMatch(/I I work with/);
+    const rewrittenCoverage = normalizeAnalystIdentity(
+      "This recognized fixture is outside Pundit's model coverage, so I can't publish probabilities or scoreline estimates."
+    );
+    expect(rewrittenCoverage).toBe(
+      "This recognized fixture is outside my forecasting coverage, so I can't publish probabilities or scoreline estimates."
+    );
+    expect(rewrittenCoverage).not.toMatch(/no my probabilities/i);
   });
 
   it("corrects inverted high-press turnover location", () => {

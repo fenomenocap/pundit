@@ -1167,7 +1167,7 @@ export function sanitizeFixtureCoverageAnswer(answer: string, grounding: Fixture
       : reason === "unsupported-competition"
         ? "The competition is not supported by the public model."
         : "This fixture is disabled by the public model policy.";
-    return `This recognized fixture is outside Pundit's model coverage, so no Pundit probabilities or scoreline estimates are available.\n\n${explanation}`;
+    return `This recognized fixture is outside Pundit's model coverage, so I can't publish probabilities or scoreline estimates.\n\n${explanation}`;
   }
   if (grounding.capability.status === "temporarily-unpriced") {
     const explanation = reason === "model-initializing"
