@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { PricingObject } from "./api.ts";
+import type { PricingObject } from "./api";
 import {
   formatEdgeBand,
   formatSignedEvPct,
@@ -9,7 +9,7 @@ import {
   PULL_CHIP_DECIMAL,
   PULL_CHIP_OUTCOME,
   pullModeChipCopy,
-} from "./fixture-presentation.ts";
+} from "./fixture-presentation";
 
 function pricing(overrides: Partial<PricingObject> = {}): PricingObject {
   return {
