@@ -18,7 +18,8 @@ describe("local Dixon-Coles model", () => {
   it("preserves the calibrated Elo-to-goal constants and cap", () => {
     expect(eloToLambdas(1800, 1800)).toEqual([BASE_GOALS, BASE_GOALS]);
     const [stronger, weaker] = eloToLambdas(3000, 1000);
-    expect(stronger).toBe(LAMBDA_CAP);
+    expect(stronger).toBeLessThan(LAMBDA_CAP);
+    expect(stronger + weaker).toBeCloseTo(2 * BASE_GOALS, 12);
     expect(weaker).toBeLessThan(stronger);
   });
 
@@ -56,12 +57,23 @@ describe("local Dixon-Coles model", () => {
     expect(model.scorelines.slice(0, 5)).toEqual(model.topScores);
   });
 
-  it("matches the Python source for a representative Elo pair", () => {
+  it("pins the fixed-total Elo mapping for a representative Elo pair", () => {
     const matrix = scoreMatrix(...eloToLambdas(2050, 1750));
     const [home, draw, away] = matrixTo1x2(matrix);
-    expect(home).toBeCloseTo(0.8700927852674243, 12);
-    expect(draw).toBeCloseTo(0.09694632518374494, 12);
-    expect(away).toBeCloseTo(0.032960889548830696, 12);
+    expect(home).toBeCloseTo(0.7964736124811775, 12);
+    expect(draw).toBeCloseTo(0.15885878061181752, 12);
+    expect(away).toBeCloseTo(0.044667606907005795, 12);
+  });
+
+  it("keeps Hull vs United at 2.70 xG and a rating-faithful 1X2", () => {
+    const [hullXg, unitedXg] = eloToLambdas(1532.9, 1915.3, 42);
+    expect(hullXg + unitedXg).toBeCloseTo(2.7, 12);
+    expect(hullXg + unitedXg).toBeLessThan(3);
+    const model = computeMatchModel(1532.9, 1915.3, 42);
+    expect(model.pAway).toBeCloseTo(0.825, 2);
+    expect(model.pDraw).toBeCloseTo(0.142, 2);
+    expect(model.pHome).toBeCloseTo(0.033, 2);
+    expect(model.pOver2_5).toBeCloseTo(0.506, 2);
   });
 
   it("shifts home win probability upward with home-field advantage Elo", () => {

@@ -8,6 +8,7 @@ import {
   parseHistory,
   parseQuestion,
   parseTeamContext,
+  parseUserLine,
   resolveAskRateLimitConfig,
 } from "./ask";
 
@@ -139,6 +140,29 @@ describe("parseFixtureContext", () => {
       }
     }
   );
+});
+
+describe("parseUserLine", () => {
+  it("accepts a 1X2 outcome with decimal odds above 1", () => {
+    expect(parseUserLine({ outcome: "away", decimalOdds: 7 }))
+      .toEqual({ outcome: "away", decimalOdds: 7 });
+  });
+
+  it.each([
+    null,
+    {},
+    { outcome: "away" },
+    { outcome: "away", decimalOdds: 1 },
+    { outcome: "winner", decimalOdds: 7 },
+    { outcome: "away", decimalOdds: "7" },
+  ])("rejects a malformed price line %#", (value) => {
+    expect(() => parseUserLine(value)).toThrow(/price line is invalid/i);
+    try {
+      parseUserLine(value);
+    } catch (error) {
+      expect((error as Error).message).not.toMatch(/userLine|decimalOdds|outcome/i);
+    }
+  });
 });
 
 describe("generic ask validation", () => {

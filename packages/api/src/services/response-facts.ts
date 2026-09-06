@@ -1,4 +1,26 @@
 import type { Grounding } from "./ask";
+import { buildMatchPricing } from "./response-correctness";
+
+function pricingFromGrounding(grounding: Grounding) {
+  return buildMatchPricing({
+    fixtureId: grounding.fixtureId,
+    home: grounding.home,
+    away: grounding.away,
+    kickoff: grounding.date,
+    pricedAt: grounding.oddsSources[0]?.observedAt ?? grounding.date,
+    pHome: grounding.pHome,
+    pDraw: grounding.pDraw,
+    pAway: grounding.pAway,
+    markets: grounding.oddsSources.map((source) => ({
+      source: source.source,
+      observedAt: source.observedAt,
+      pHome: source.pHome,
+      pDraw: source.pDraw,
+      pAway: source.pAway,
+      decimalOdds: null,
+    })),
+  });
+}
 
 export type FactProvenance =
   | "server-model"
@@ -7,7 +29,7 @@ export type FactProvenance =
   | "analyst-inference"
   | "abstention";
 
-export type NumericUnit = "probability" | "percentage-points" | "decimal-odds";
+export type NumericUnit = "probability" | "percentage-points" | "decimal-odds" | "ev-fraction";
 
 export interface ResponseFact {
   id: string;
@@ -72,6 +94,51 @@ export function buildResponseFacts(grounding: Grounding): ResponseFacts {
     allowedClaims: ["quote-model-price", "quote-market-price", "state-gap-direction"],
     prohibitedClaims: ["infer-cause", "infer-lineup", "recommend-wager"],
   })));
+
+  const pricing = grounding.pricing ?? pricingFromGrounding(grounding);
+  (["home", "draw", "away"] as const).forEach((outcome) => {
+    const subject = outcome === "draw" ? "the draw" : grounding[outcome];
+    facts.push({
+      id: `pricing.model.${outcome}`,
+      kind: "probability",
+      provenance: "server-model",
+      subject,
+      numeric: { value: pricing.model[outcome].fairOdds, unit: "decimal-odds" },
+      allowedClaims: ["quote", "convert-to-fair-decimal-odds"],
+    });
+  });
+
+  if (pricing.userLine) {
+    const line = pricing.userLine;
+    const subject = line.outcome === "draw" ? "the draw" : grounding[line.outcome];
+    facts.push({
+      id: "pricing.user-line",
+      kind: "market-comparison",
+      provenance: "market-observation",
+      subject,
+      numeric: { value: line.evPct, unit: "ev-fraction" },
+      allowedClaims: ["quote"],
+      prohibitedClaims: ["infer-cause", "infer-lineup", "recommend-wager"],
+    });
+  }
+
+  pricing.markets.forEach((market) => (["home", "draw", "away"] as const).forEach((outcome) => {
+    const leg = market.legs[outcome];
+    if (leg.decimalOdds == null && leg.evPct == null) return;
+    facts.push({
+      id: `pricing.market.${market.source}.${outcome}`,
+      kind: "market-comparison",
+      provenance: "market-observation",
+      subject: outcome === "draw" ? "the draw" : grounding[outcome],
+      ...(leg.evPct != null ? { numeric: { value: leg.evPct, unit: "ev-fraction" as const } } : {
+        numeric: { value: leg.decimalOdds!, unit: "decimal-odds" as const },
+      }),
+      observedAt: market.observedAt,
+      sourceIds: [market.source],
+      allowedClaims: ["quote-model-price", "quote-market-price"],
+      prohibitedClaims: ["infer-cause", "infer-lineup", "recommend-wager"],
+    });
+  }));
 
   facts.push({
     id: "limit.player-pricing",

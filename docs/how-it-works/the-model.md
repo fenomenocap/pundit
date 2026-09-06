@@ -8,7 +8,8 @@ For each recognized, policy-eligible upcoming club fixture in the active window:
 
 * **Win / draw / win probabilities** (`pHome`, `pDraw`, `pAway`) — Dixon-Coles output for that specific matchup
 * **Over/under 2.5, BTTS, and likely scorelines** derived from the score matrix
-* **Home-field advantage** applied for Premier League home teams (not for neutral-site tournaments)
+* **Elo → expected goals** via a fixed 2.70 total xG split by the Elo odds ratio (not a geometric-mean mapping that inflates totals on mismatches)
+* **Home-field advantage** applied for Premier League and UEFA Champions League qualifier home teams when the venue is not neutral (not for neutral-site tournaments)
 
 Team strength comes from a pinned `clubelo@1` snapshot, scoped by competition rating profile (domestic league vs continental). Its selector, payload hash, source timestamp, minimum coverage and 30-day freshness are validated before use. A corrupt, expired or incomplete artifact fails closed rather than guessing ratings.
 

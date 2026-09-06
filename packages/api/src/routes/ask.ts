@@ -7,6 +7,7 @@ import {
   ConversationTurn,
   FixtureContext,
   TeamContext,
+  UserLine,
 } from "../services/ask";
 
 const router: Router = Router();
@@ -79,6 +80,22 @@ export function parseFixtureContext(raw: unknown): FixtureContext | undefined {
   return { fixtureId: (raw as { fixtureId: string }).fixtureId.trim() };
 }
 
+export function parseUserLine(raw: unknown): UserLine | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object") {
+    throw new AppError(400, "That price line is invalid. Use home, draw, or away with decimal odds above 1.");
+  }
+  const outcome = (raw as { outcome?: unknown }).outcome;
+  const decimalOdds = (raw as { decimalOdds?: unknown }).decimalOdds;
+  if (outcome !== "home" && outcome !== "draw" && outcome !== "away") {
+    throw new AppError(400, "That price line is invalid. Use home, draw, or away with decimal odds above 1.");
+  }
+  if (typeof decimalOdds !== "number" || !Number.isFinite(decimalOdds) || decimalOdds <= 1) {
+    throw new AppError(400, "That price line is invalid. Use home, draw, or away with decimal odds above 1.");
+  }
+  return { outcome, decimalOdds };
+}
+
 export interface AskRateLimitConfig {
   scope: "deployment";
   perMinute: number;
@@ -144,6 +161,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     const history = parseHistory(req.body?.history);
     const teamContext = parseTeamContext(req.body?.teamContext);
     const fixtureContext = parseFixtureContext(req.body?.fixtureContext);
+    const userLine = parseUserLine(req.body?.userLine);
     const requestAbort = new AbortController();
     const deadline = setTimeout(() => requestAbort.abort(new Error("request deadline exceeded")), 90_000);
     const abortOnDisconnect = () => {
@@ -159,7 +177,8 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           history,
           teamContext,
           requestAbort.signal,
-          fixtureContext
+          fixtureContext,
+          userLine
         );
         res.json(result);
       } finally {
@@ -220,7 +239,8 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           shouldContinue: () => !clientGone && !res.writableEnded,
           signal: requestAbort.signal,
         },
-        fixtureContext
+        fixtureContext,
+        userLine
       );
       stopHeartbeat();
       if (!clientGone && !res.writableEnded) {

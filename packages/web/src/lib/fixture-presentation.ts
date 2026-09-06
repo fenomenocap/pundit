@@ -1,8 +1,11 @@
 import type {
+  EdgeBand,
   FixtureCapability,
   MatchGrounding,
   MatchResponse,
   ModelFixtureResponse,
+  OneXTwoOutcome,
+  PricingObject,
   RecognizedFixtureSnapshotRow,
 } from "./api";
 
@@ -18,6 +21,69 @@ export interface MarketProbabilityRow {
 
 export function formatPercent(value: number | null): string {
   return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+/** Server `evPct` is a fraction. Format only — never recompute EV in the client. */
+export function formatSignedEvPct(evPct: number): string {
+  const pct = evPct * 100;
+  return `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
+
+export function formatEdgeBand(band: EdgeBand | null | undefined): string | null {
+  return band ?? null;
+}
+
+export interface MarketEvLegDisplay {
+  impliedP: number;
+  evPct: number;
+}
+
+export interface MarketEvRowDisplay {
+  source: string;
+  edgeBand: EdgeBand | null;
+  legs: Partial<Record<OneXTwoOutcome, MarketEvLegDisplay>>;
+}
+
+const OUTCOMES: OneXTwoOutcome[] = ["home", "draw", "away"];
+
+/**
+ * Reads printable EV from server `pricing`. A row without `evPct` is omitted
+ * so the card keeps today's percent grid.
+ */
+export function marketEvFromPricing(
+  pricing: PricingObject | null | undefined
+): Map<string, MarketEvRowDisplay> {
+  const rows = new Map<string, MarketEvRowDisplay>();
+  if (!pricing) return rows;
+  for (const market of pricing.markets) {
+    const legs: MarketEvRowDisplay["legs"] = {};
+    for (const outcome of OUTCOMES) {
+      const leg = market.legs[outcome];
+      if (leg.evPct == null || leg.impliedP == null) continue;
+      legs[outcome] = { impliedP: leg.impliedP, evPct: leg.evPct };
+    }
+    if (Object.keys(legs).length === 0) continue;
+    rows.set(market.source, {
+      source: market.source,
+      edgeBand: market.edgeBand,
+      legs,
+    });
+  }
+  return rows;
+}
+
+export function marketRowSource(row: Pick<MarketProbabilityRow, "id">): string | null {
+  if (row.id === "forecast") return null;
+  if (row.id.startsWith("market-")) return row.id.slice("market-".length);
+  return null;
+}
+
+/** Empty-state pull-mode chip. Structured `userLine` is away @ 7; do not parse the label. */
+export const PULL_CHIP_OUTCOME: OneXTwoOutcome = "away";
+export const PULL_CHIP_DECIMAL = 7;
+
+export function pullModeChipCopy(home: string, odds = PULL_CHIP_DECIMAL): string {
+  return `I found ${home} at ${odds} — pass or play?`;
 }
 
 export function formatObservedAt(value: string | null | undefined): string | null {

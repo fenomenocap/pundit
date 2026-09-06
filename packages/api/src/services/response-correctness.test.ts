@@ -4,13 +4,22 @@ import {
   attributeManagerEra,
   containsCorrectionCue,
   decimalImpliedProbability,
+  edgeBand,
+  evPct,
+  fairOdds,
   hasValidProbabilityAttribution,
+  impliedP,
+  passPrice,
+  playPrice,
   probabilityAttributionLabel,
   probabilityTotalWithinTolerance,
   reconcileContradictoryRationales,
+  riskBand,
   settleScorelineTotal,
   reviseAnswerWithClaimDecisions,
   validateCompleteOneXTwoMarket,
+  attachUserLine,
+  buildMatchPricing,
 } from "./response-correctness";
 
 const legs = [
@@ -18,6 +27,140 @@ const legs = [
   { outcome: "draw" as const, decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
   { outcome: "away" as const, decimalOdds: 4, source: "Book", observedAt: "2026-08-13T10:00:00Z" },
 ];
+
+describe("pricing math", () => {
+  it("classifies +0.34% as noise", () => {
+    expect(edgeBand(0.0034)).toBe("noise");
+  });
+
+  it("computes evPct as modelP * decimal - 1", () => {
+    expect(evPct(0.2, 7)).toBeCloseTo(0.4);
+    expect(evPct(0.2, 7.0)).toBeCloseTo(0.4);
+  });
+
+  it("returns null evPct when decimal is missing", () => {
+    expect(evPct(0.2, null)).toBeNull();
+    expect(evPct(0.2, undefined)).toBeNull();
+  });
+
+  it("does not invent a decimal from a no-vig probability", () => {
+    const noVigP = 0.25;
+    expect(impliedP(noVigP)).toBeNull();
+    expect(evPct(0.2, noVigP)).toBeNull();
+    expect(decimalImpliedProbability(noVigP)).toBeNull();
+    expect(fairOdds(noVigP)).toBe(4);
+  });
+
+  it("maps fairOdds and impliedP only on open unit intervals / decimals > 1", () => {
+    expect(fairOdds(0.2)).toBe(5);
+    expect(fairOdds(0)).toBeNull();
+    expect(fairOdds(1)).toBeNull();
+    expect(impliedP(5)).toBeCloseTo(0.2);
+    expect(impliedP(1)).toBeNull();
+  });
+
+  it("bands absolute EV and names pass / play / risk from the locked thresholds", () => {
+    expect(edgeBand(0.009)).toBe("noise");
+    expect(edgeBand(0.01)).toBe("thin");
+    expect(edgeBand(0.029)).toBe("thin");
+    expect(edgeBand(0.03)).toBe("real");
+    expect(edgeBand(0.079)).toBe("real");
+    expect(edgeBand(0.08)).toBe("fat-and-fragile");
+    expect(edgeBand(null)).toBeNull();
+    expect(passPrice(0.2)).toBeCloseTo(5.05);
+    expect(playPrice(0.2)).toBeCloseTo(5.15);
+    expect(riskBand(0.62, 0.0034)).toBe("low");
+    expect(riskBand(0.2, 0.4)).toBe("high");
+    expect(riskBand(0.4, 0.02)).toBe("medium");
+    expect(riskBand(0.62, null)).toBeNull();
+  });
+
+  it("builds a pricing object without inventing decimals from no-vig rows", () => {
+    const pricing = buildMatchPricing({
+      fixtureId: "espn:eng.1:1",
+      home: "Hull City",
+      away: "Manchester United",
+      kickoff: "2026-08-02",
+      pricedAt: "2026-08-02T15:00:00.000Z",
+      pHome: 0.2,
+      pDraw: 0.3,
+      pAway: 0.5,
+      markets: [{
+        source: "kalshi",
+        observedAt: "2026-08-02T12:00:00Z",
+        pHome: 0.25,
+        pDraw: 0.3,
+        pAway: 0.45,
+        decimalOdds: null,
+      }],
+    });
+    expect(pricing.model.home.fairOdds).toBeCloseTo(5);
+    expect(pricing.userLine).toBeNull();
+    expect(pricing.stakeFrac).toBeNull();
+    expect(pricing.modelVersion).toBe("unknown");
+    expect(pricing.markets).toHaveLength(1);
+    expect(pricing.markets[0].edgeBand).toBeNull();
+    expect(pricing.markets[0].legs.away).toMatchObject({
+      modelP: 0.5,
+      fairOdds: 2,
+      decimalOdds: null,
+      impliedP: null,
+      evPct: null,
+    });
+  });
+
+  it("fills evPct only when a real decimal exists", () => {
+    const pricing = buildMatchPricing({
+      fixtureId: "espn:eng.1:1",
+      home: "Hull City",
+      away: "Manchester United",
+      kickoff: "2026-08-02",
+      modelVersion: "clubelo@1:testhash",
+      pricedAt: "2026-08-02T15:00:00.000Z",
+      pHome: 0.2,
+      pDraw: 0.3,
+      pAway: 0.5,
+      markets: [{
+        source: "book",
+        observedAt: "2026-08-02T12:00:00Z",
+        pHome: 0.18,
+        pDraw: 0.28,
+        pAway: 0.54,
+        decimalOdds: { home: 7, draw: null, away: 1.8 },
+      }],
+    });
+    expect(pricing.modelVersion).toBe("clubelo@1:testhash");
+    expect(pricing.markets[0].legs.home.evPct).toBeCloseTo(0.4);
+    expect(pricing.markets[0].legs.home.impliedP).toBeCloseTo(1 / 7);
+    expect(pricing.markets[0].legs.draw.evPct).toBeNull();
+    expect(pricing.markets[0].legs.away.evPct).toBeCloseTo(-0.1);
+    expect(pricing.markets[0].edgeBand).toBe("fat-and-fragile");
+  });
+
+  it("fills userLine from modelP * decimal - 1 and leaves stakeFrac null", () => {
+    const pricing = attachUserLine(buildMatchPricing({
+      fixtureId: "espn:eng.1:1",
+      home: "Hull City",
+      away: "Manchester United",
+      kickoff: "2026-08-02",
+      pricedAt: "2026-08-02T15:00:00.000Z",
+      pHome: 0.2,
+      pDraw: 0.3,
+      pAway: 0.5,
+    }), { outcome: "away", decimalOdds: 7 });
+    expect(pricing.userLine).toMatchObject({
+      outcome: "away",
+      decimalOdds: 7,
+      evPct: 0.5 * 7 - 1,
+      edgeBand: "fat-and-fragile",
+      riskBand: "high",
+    });
+    expect(pricing.userLine?.evPct).toBeCloseTo(2.5);
+    expect(pricing.userLine?.passPrice).toBeCloseTo(2 * 1.01);
+    expect(pricing.userLine?.playPrice).toBeCloseTo(2 * 1.03);
+    expect(pricing.stakeFrac).toBeNull();
+  });
+});
 
 describe("odds correctness", () => {
   it("uses 1 / decimal odds and rejects invalid odds", () => {

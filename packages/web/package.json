@@ -12,7 +12,8 @@
     "lint": "next lint",
     "clean": "rm -rf .next",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:unit": "node --experimental-strip-types --test src/lib/fixture-presentation.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
