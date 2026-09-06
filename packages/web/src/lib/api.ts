@@ -318,6 +318,47 @@ export interface OddsSource {
   pAway: number;
 }
 
+export type OneXTwoOutcome = "home" | "draw" | "away";
+export type EdgeBand = "noise" | "thin" | "real" | "fat-and-fragile";
+export type RiskBand = "low" | "medium" | "high";
+
+export interface PricingLeg {
+  outcome: OneXTwoOutcome;
+  modelP: number;
+  fairOdds: number;
+  decimalOdds: number | null;
+  impliedP: number | null;
+  evPct: number | null;
+}
+
+export interface MarketPricingRow {
+  source: string;
+  observedAt: string;
+  legs: Record<OneXTwoOutcome, PricingLeg>;
+  edgeBand: EdgeBand | null;
+}
+
+export interface PricingObject {
+  fixtureId: string;
+  home: string;
+  away: string;
+  kickoff: string;
+  modelVersion: string;
+  pricedAt: string;
+  model: Record<OneXTwoOutcome, { p: number; fairOdds: number }>;
+  markets: MarketPricingRow[];
+  userLine: {
+    outcome: OneXTwoOutcome;
+    decimalOdds: number;
+    evPct: number;
+    edgeBand: EdgeBand;
+    passPrice: number;
+    playPrice: number;
+    riskBand: RiskBand;
+  } | null;
+  stakeFrac: null;
+}
+
 export interface MatchGrounding {
   kind: "match";
   fixtureId: string;
@@ -342,6 +383,7 @@ export interface MatchGrounding {
   stakePAway: number | null;
   stakeObservedAt?: string;
   oddsSources: OddsSource[];
+  pricing: PricingObject;
 }
 
 export type FixtureCapability =
@@ -474,6 +516,10 @@ export interface ConversationTurn {
 
 export type TeamContext = [string, string];
 export interface FixtureContext { fixtureId: string }
+export interface UserLine {
+  outcome: OneXTwoOutcome;
+  decimalOdds: number;
+}
 
 /**
  * Build a chat deep link while keeping the optional fixture address opaque.
@@ -492,11 +538,18 @@ export async function askQuestion(
   question: string,
   history: ConversationTurn[] = [],
   teamContext?: TeamContext,
-  fixtureContext?: FixtureContext
+  fixtureContext?: FixtureContext,
+  userLine?: UserLine
 ): Promise<AskResult> {
   return apiFetch<AskResult>("/api/ask", {
     method: "POST",
-    body: JSON.stringify({ question, history, teamContext, fixtureContext }),
+    body: JSON.stringify({
+      question,
+      history,
+      teamContext,
+      fixtureContext,
+      ...(userLine ? { userLine } : {}),
+    }),
   });
 }
 
@@ -533,6 +586,7 @@ export async function askQuestionStream(
   history: ConversationTurn[] = [],
   teamContext: TeamContext | undefined,
   fixtureContext: FixtureContext | undefined,
+  userLine: UserLine | undefined,
   handlers: AskStreamHandlers,
   signal?: AbortSignal
 ): Promise<AskResult> {
@@ -540,7 +594,14 @@ export async function askQuestionStream(
   const res = await fetch(`${API_URL}/api/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, history, teamContext, fixtureContext, stream: true }),
+    body: JSON.stringify({
+      question,
+      history,
+      teamContext,
+      fixtureContext,
+      ...(userLine ? { userLine } : {}),
+      stream: true,
+    }),
     signal,
   });
 
