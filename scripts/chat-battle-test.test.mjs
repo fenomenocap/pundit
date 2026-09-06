@@ -1126,6 +1126,7 @@ test("answer copy guard rejects internal methodology jargon", () => {
   assert.equal(validateAnswerCopy("Using Dixon-Coles probabilities here.").passed, false);
   assert.equal(validateAnswerCopy("ClubElo ratings drive the edge.").passed, false);
   assert.equal(validateAnswerCopy("This is model-grounded analysis.").passed, false);
+  assert.equal(validateAnswerCopy("so no my probabilities or scoreline estimates are available.").passed, false);
 });
 
 test("analyst expression guard enforces direct, scoped and honest follow-ups", () => {
