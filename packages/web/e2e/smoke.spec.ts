@@ -450,4 +450,180 @@ test.describe("smoke", () => {
     await expect(nav.getByRole("link", { name: "Predictions" })).toBeVisible();
     await expect(nav.getByText("WC Backtest")).not.toBeVisible();
   });
+
+  test("match card prints server EV% only when pricing.evPct exists", async ({ page }) => {
+    const grounding = {
+      kind: "match",
+      fixtureId: "espn:eng.1:1",
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeFieldAdvantage: true,
+      date: "2026-09-01",
+      stage: "match",
+      home: "Arsenal",
+      away: "Coventry City",
+      pHome: 0.72,
+      pDraw: 0.18,
+      pAway: 0.10,
+      pOver2_5: 0.55,
+      pUnder2_5: 0.45,
+      pBttsYes: 0.48,
+      pBttsNo: 0.52,
+      topScores: [{ score: "2-0", probability: 0.14 }],
+      scorelines: [{ score: "2-0", probability: 0.14 }],
+      stakePHome: null,
+      stakePDraw: null,
+      stakePAway: null,
+      oddsSources: [{
+        source: "polymarket",
+        observedAt: "2026-08-30T06:00:00.000Z",
+        pHome: 0.68,
+        pDraw: 0.20,
+        pAway: 0.12,
+      }],
+      pricing: {
+        fixtureId: "espn:eng.1:1",
+        home: "Arsenal",
+        away: "Coventry City",
+        kickoff: "2026-09-01",
+        modelVersion: "clubelo@1:test",
+        pricedAt: "2026-08-30T06:00:00.000Z",
+        model: {
+          home: { p: 0.72, fairOdds: 1 / 0.72 },
+          draw: { p: 0.18, fairOdds: 1 / 0.18 },
+          away: { p: 0.10, fairOdds: 10 },
+        },
+        markets: [{
+          source: "polymarket",
+          observedAt: "2026-08-30T06:00:00.000Z",
+          edgeBand: "fat-and-fragile",
+          legs: {
+            home: {
+              outcome: "home", modelP: 0.72, fairOdds: 1 / 0.72,
+              decimalOdds: 7, impliedP: 1 / 7, evPct: 0.72 * 7 - 1,
+            },
+            draw: {
+              outcome: "draw", modelP: 0.18, fairOdds: 1 / 0.18,
+              decimalOdds: null, impliedP: null, evPct: null,
+            },
+            away: {
+              outcome: "away", modelP: 0.10, fairOdds: 10,
+              decimalOdds: null, impliedP: null, evPct: null,
+            },
+          },
+        }],
+        userLine: null,
+        stakeFrac: null,
+      },
+    };
+    const answer = "I make Arsenal the favourite; the printed EV is server-owned.";
+    await page.route("**/api/ask", async (route) => {
+      const sse = [
+        `event: grounding\ndata: ${JSON.stringify({ grounding })}`,
+        `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+        `event: done\ndata: ${JSON.stringify({
+          answer,
+          grounding,
+          presentation: { responseMode: "match-preview", fixtureCard: "expanded" },
+        })}`,
+        "",
+      ].join("\n\n");
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+    });
+
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "Ask a question" }).fill("Preview Arsenal vs Coventry City");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByTestId("match-fixture-card")).toBeVisible();
+    const ev = page.getByTestId("market-ev-polymarket");
+    await expect(ev).toBeVisible();
+    await expect(ev).toContainText("fat-and-fragile");
+    await expect(ev).toContainText("14.3%");
+    await expect(ev).toContainText("+404.0%");
+  });
+
+  test("New Chat clears Following and strips a shared question URL", async ({ page }) => {
+    const grounding = {
+      kind: "match",
+      fixtureId: "espn:eng.1:1",
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeFieldAdvantage: true,
+      date: "2026-09-01",
+      stage: "match",
+      home: "Arsenal",
+      away: "Coventry City",
+      pHome: 0.72,
+      pDraw: 0.18,
+      pAway: 0.10,
+      pOver2_5: 0.55,
+      pUnder2_5: 0.45,
+      pBttsYes: 0.48,
+      pBttsNo: 0.52,
+      topScores: [{ score: "2-0", probability: 0.14 }],
+      scorelines: [{ score: "2-0", probability: 0.14 }],
+      stakePHome: null,
+      stakePDraw: null,
+      stakePAway: null,
+      oddsSources: [],
+    };
+    const answer = "I make Arsenal the favourite.";
+    await page.route("**/api/ask", async (route) => {
+      const sse = [
+        `event: grounding\ndata: ${JSON.stringify({ grounding })}`,
+        `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+        `event: done\ndata: ${JSON.stringify({
+          answer,
+          grounding,
+          presentation: { responseMode: "match-preview", fixtureCard: "expanded" },
+        })}`,
+        "",
+      ].join("\n\n");
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+    });
+
+    await page.goto("/?q=Preview%20Arsenal%20vs%20Coventry%20City&fixture=espn%3Aeng.1%3A1");
+    await expect(page.getByText("Following: Arsenal vs Coventry City").first()).toBeVisible();
+    await page.getByRole("button", { name: "New Chat" }).click();
+    await expect(page.getByRole("heading", { name: "Football analysis, grounded." })).toBeVisible();
+    await expect(page.getByText("Following:")).toHaveCount(0);
+    await expect.poll(() => new URL(page.url()).search).toBe("");
+  });
+
+  test("partial model coverage does not claim every fixture is ready", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "partial";
+    });
+    await page.goto("/");
+    await expect(page.getByTestId("chat-status")).toHaveText(
+      /Match forecasts ready for some fixtures/i
+    );
+    await expect(page.getByTestId("chat-status")).not.toHaveText(/active fixtures live/i);
+    await expect(page.getByRole("button", { name: /Arsenal vs Coventry City/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Dinamo Zagreb vs Viking/ })).toHaveCount(0);
+  });
+
+  test("unpriced window keeps table chips and does not offer 503 match suggestions", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "unpriced";
+    });
+    await page.goto("/");
+    await expect(page.getByTestId("chat-status")).toHaveText(
+      /Match model is catching up/i
+    );
+    await expect(page.getByRole("button", { name: "What does the current Premier League table show?" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Dinamo Zagreb vs Viking/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Arsenal vs Coventry City/ })).toHaveCount(0);
+  });
+
+  test("unavailable fixture list does not read as ready", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "unavailable";
+    });
+    await page.goto("/");
+    await expect(page.getByTestId("chat-status")).toHaveText(
+      /Model not ready/i
+    );
+    await expect(page.getByRole("button", { name: /Dinamo Zagreb vs Viking/ })).toHaveCount(0);
+  });
 });

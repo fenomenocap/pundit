@@ -355,6 +355,28 @@ test("request evidence snapshots do not gain later conversation turns", () => {
   assert.notEqual(turn2.history, history);
 });
 
+test("request evidence snapshots copy a structured userLine by value", () => {
+  const line = { outcome: "away", decimalOdds: 7 };
+  const body = snapshotAskRequest({
+    question: "I found the away side at 7 — pass or play?",
+    history: [],
+    teamContext: ["Alpha", "Beta"],
+    fixtureContext: { fixtureId: "fixture-1" },
+    userLine: line,
+  });
+  line.decimalOdds = 9;
+  assert.deepEqual(body.userLine, { outcome: "away", decimalOdds: 7 });
+  assert.equal(
+    snapshotAskRequest({
+      question: "How much should I stake?",
+      history: [],
+      teamContext: undefined,
+      fixtureContext: undefined,
+    }).userLine,
+    undefined
+  );
+});
+
 test("failed SSE requests have an immutable reproduction before transport validation", () => {
   const reproduction = snapshotSseReproduction("What does the current table show?");
   assert.deepEqual(reproduction, {
@@ -1124,6 +1146,12 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     "The market is lower because it knows the striker is injured, so back the draw for value.",
     { expectNoUnsupportedMarketCausality: true }
   ).passed, false);
+  const stakeRefusal = "I can print the price. I will not size a stake without a bankroll and a risk band.";
+  assert.equal(validateAnalystExpression(stakeRefusal, { expectStakeRefusal: true }).passed, true);
+  assert.equal(validateAnalystExpression("Kelly 4% of bankroll.", { expectStakeRefusal: true }).passed, false);
+  const userLinePlay = "On Chelsea at 7.00, I make it 10.0% against that line, EV +40.0% (fat-and-fragile). That clears the play price of 10.30, so I play. Risk is high.";
+  assert.equal(validateAnalystExpression(userLinePlay, { expectUserLinePassPlay: true }).passed, true);
+  assert.equal(validateAnalystExpression("I like the away side.", { expectUserLinePassPlay: true }).passed, false);
   assert.equal(validateAnalystExpression(
     "The markets agree, which proves my view is right.",
     { expectNoUnsupportedMarketCausality: true }
@@ -2484,6 +2512,8 @@ test("schema-17 permanent certification matrix names every authorized regression
     "suggestion-chip-identity-selects-its-leg",
     "observational-live-two-legged-matchup",
     "observational-live-suggestion-chip",
+    "user-line-pass-play",
+    "stake-refusal-without-bankroll",
   ]) {
     assert.equal(ids.has(id), true, `missing permanent scenario ${id}`);
   }
