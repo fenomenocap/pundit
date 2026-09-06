@@ -24,6 +24,11 @@ function pastISO(days: number): string {
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
 
+function e2eFixtureState(): string | null {
+  if (typeof window === "undefined") return null;
+  return (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ ?? null;
+}
+
 export interface MatchesPayload {
   matches: MatchResponse[];
   lastUpdated: string | null;
@@ -91,6 +96,13 @@ export async function fetchCompetitions() {
 }
 
 export async function fetchActiveFixtures(): Promise<MatchesPayload> {
+  const e2e = e2eFixtureState();
+  if (e2e === "unavailable") {
+    return { matches: [], lastUpdated: null, error: "e2e: fixture list unavailable" };
+  }
+  if (e2e === "no-fixtures") {
+    return { matches: [], lastUpdated: new Date(now).toISOString(), error: null };
+  }
   if (!USE_MOCK) {
     try {
       const { getActiveFixtures } = await import("./api");
@@ -323,6 +335,20 @@ export async function fetchActiveModelFixtures(): Promise<{
   lastUpdated: string | null;
   error: string | null;
 }> {
+  const e2e = e2eFixtureState();
+  if (e2e === "unavailable") {
+    return { fixtures: [], lastUpdated: null, error: "e2e: model unavailable" };
+  }
+  if (e2e === "unpriced" || e2e === "no-fixtures") {
+    return { fixtures: [], lastUpdated: new Date(now).toISOString(), error: null };
+  }
+  if (e2e === "partial") {
+    return {
+      fixtures: MOCK_MODEL_FIXTURES.slice(0, 1),
+      lastUpdated: new Date(now).toISOString(),
+      error: "e2e: some fixtures unpriced",
+    };
+  }
   if (!USE_MOCK) {
     try {
       const { getActiveModelFixtures } = await import("./api");

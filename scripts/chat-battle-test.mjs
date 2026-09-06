@@ -253,6 +253,7 @@ async function jsonTurn(
     history,
     teamContext,
     fixtureContext,
+    userLine: turn.userLine,
   });
   await onRequestStart({
     scenarioId: scenario.id,

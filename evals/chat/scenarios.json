@@ -662,6 +662,44 @@
       "kind": "featured-follow-up"
     },
     {
+      "id": "user-line-pass-play",
+      "description": "A structured away line at 7.00 is adjudicated from modelP × decimal − 1 with pass/play/risk and no stake.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "I found the away side at 7 — pass or play?",
+          "userLine": { "outcome": "away", "decimalOdds": 7 },
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectUserLinePassPlay": true
+        }
+      ]
+    },
+    {
+      "id": "stake-refusal-without-bankroll",
+      "description": "A stake-size question on a priced fixture returns the exact refusal sentence and does not size Kelly.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "How much should I stake?",
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectNarrowFollowup": true,
+          "expectStakeRefusal": true
+        }
+      ]
+    },
+    {
       "id": "sse-ordering",
       "description": "Streaming emits grounding before deltas and terminates with done.",
       "kind": "sse",

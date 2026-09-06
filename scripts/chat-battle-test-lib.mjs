@@ -328,8 +328,8 @@ export function regradeRecordedRuntimeHelpers(
 }
 
 /** Capture request evidence by value so later conversation turns cannot mutate it. */
-export function snapshotAskRequest({ question, history, teamContext, fixtureContext }) {
-  return {
+export function snapshotAskRequest({ question, history, teamContext, fixtureContext, userLine }) {
+  const body = {
     question,
     history: Array.isArray(history) ? history.map((turn) => ({ ...turn })) : history,
     teamContext: Array.isArray(teamContext) ? [...teamContext] : teamContext,
@@ -337,6 +337,10 @@ export function snapshotAskRequest({ question, history, teamContext, fixtureCont
       ? { ...fixtureContext }
       : fixtureContext,
   };
+  if (userLine && typeof userLine === "object") {
+    body.userLine = { ...userLine };
+  }
+  return body;
 }
 
 export function snapshotSseReproduction(question) {
@@ -1467,6 +1471,17 @@ export function validateAnalystExpression(answer, expectation = {}) {
       && !/\b(?:cannot|can't|won't|wouldn't|do not|don't|not able|unable|not enough|no reliable|would be wrong)\b/i.test(sentence)
     );
     assertions.noUnsupportedLineupEffect = !inventedLineupEffect;
+  }
+  if (expectation.expectStakeRefusal) {
+    assertions.stakeRefusalSentence = /I can print the price\.\s*I will not size a stake without a bankroll and a risk band\./i.test(text);
+    assertions.noStakeSizing = !/\b(?:kelly|stakefrac|stake frac|bankroll fraction|%\s+of (?:your |the )?bankroll)\b/i.test(text);
+  }
+  if (expectation.expectUserLinePassPlay) {
+    assertions.userLineDecimalPresent = /\bat 7\.00\b/.test(text);
+    assertions.userLineEvPresent = /\bEV [+-]\d+(?:\.\d+)?%/.test(text);
+    assertions.userLineDecision = /\bI (?:play|pass)\b|\bI will not call it\b/.test(text);
+    assertions.userLineRiskBand = /\bRisk is (?:low|medium|high)\b/.test(text);
+    assertions.noKellySizing = !/\bkelly\b/i.test(text);
   }
   const failures = Object.entries(assertions)
     .filter(([, passed]) => !passed)

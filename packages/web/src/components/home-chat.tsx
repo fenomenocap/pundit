@@ -1090,7 +1090,7 @@ export function HomeChat() {
                 modelState === "ready" && "animate-pulse"
               )}
             />
-            {statusLabel}
+            <span data-testid="chat-status">{statusLabel}</span>
           </span>
           {fixtureContextTeams && (
             <span className="hidden shrink-0 text-muted-foreground/70 sm:inline">
