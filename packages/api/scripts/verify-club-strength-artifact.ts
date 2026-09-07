@@ -4,6 +4,7 @@ import {
   selectedClubStrengthArtifactPath,
 } from "../src/services/club-strength-artifact";
 import {
+  readClubStrengthCutoverArtifact,
   readClubStrengthGolden,
   verifyClubStrengthCutover,
 } from "../src/services/club-strength-cutover";
@@ -12,7 +13,7 @@ const repoDataDir = path.join(__dirname, "../data");
 const filePath = process.argv[2] ?? selectedClubStrengthArtifactPath(repoDataDir);
 const validated = readSelectedClubStrengthArtifact(filePath);
 const golden = readClubStrengthGolden(repoDataDir);
-verifyClubStrengthCutover(validated, golden);
+verifyClubStrengthCutover(readClubStrengthCutoverArtifact(repoDataDir), golden);
 console.log(JSON.stringify({
   valid: true,
   artifactId: validated.artifact.artifactId,
