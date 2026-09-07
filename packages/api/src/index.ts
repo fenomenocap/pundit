@@ -263,21 +263,37 @@ function installProcessErrorHandlers(): void {
 
 export function startServer() {
   installProcessErrorHandlers();
-  return app.listen(port, () => {
-  console.log(`API server running on port ${port}`);
+  const server = app.listen(port, () => {
+    console.log(`API server running on port ${port}`);
 
-  void (async () => {
-    await startFootballCron();
-    // The registry observes the same authoritative ESPN cache in shadow mode
-    // by default. Enabling expanded routing is a separate release flag.
-    startFixtureRegistryShadow();
-    await startClubRatingsCron();
-    await startModelCron();
-    await startModelMarketOddsCron();
-  })().catch((error) => {
-    logFatalProcessError("Bootstrap", error);
+    void (async () => {
+      await startFootballCron();
+      // The registry observes the same authoritative ESPN cache in shadow mode
+      // by default. Enabling expanded routing is a separate release flag.
+      startFixtureRegistryShadow();
+      await startClubRatingsCron();
+      await startModelCron();
+      await startModelMarketOddsCron();
+    })().catch((error) => {
+      logFatalProcessError("Bootstrap", error);
+    });
   });
-  });
+
+  let shuttingDown = false;
+  function shutdown(signal: NodeJS.Signals): void {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(JSON.stringify({ level: "info", source: "shutdown", signal }));
+    server.close(() => {
+      process.exit(0);
+    });
+    // Safety net if open connections do not finish before Railway's SIGKILL.
+    setTimeout(() => process.exit(0), 15_000).unref();
+  }
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+
+  return server;
 }
 
 if (require.main === module) startServer();
