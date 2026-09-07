@@ -1132,7 +1132,7 @@ export function HomeChat() {
             <span data-testid="chat-status">{statusLabel}</span>
           </span>
           {fixtureContextTeams && (
-            <span className="hidden shrink-0 text-muted-foreground/70 sm:inline">
+            <span className="min-w-0 truncate text-muted-foreground/70">
               Following: {fixtureContextTeams[0]} vs {fixtureContextTeams[1]}
             </span>
           )}
