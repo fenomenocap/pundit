@@ -132,11 +132,15 @@ function summarizeChecks(checks) {
 
 function loadPlaywright() {
   const require = createRequire(import.meta.url);
-  try {
-    return require(require.resolve("playwright", { paths: [path.join(ROOT, "packages/web")] }));
-  } catch {
-    throw new Error("Playwright is not installed. From packages/web run: npx playwright install chromium");
+  const webRoot = path.join(ROOT, "packages/web");
+  for (const spec of ["playwright", "@playwright/test"]) {
+    try {
+      return require(require.resolve(spec, { paths: [webRoot] }));
+    } catch {
+      // Try the next spec. Web ships @playwright/test for smoke tests.
+    }
   }
+  throw new Error("Playwright is not installed. From packages/web run: pnpm exec playwright install chromium");
 }
 
 async function readLatestRun(filePath) {
@@ -191,10 +195,12 @@ async function runViewportChecks(page, webUrl, viewport, intervalMs) {
   await page.goto(`${webUrl}/evaluation/wc-2026`, { waitUntil: "domcontentloaded" });
   const wcHeading = await page.getByRole("heading", { name: "World Cup 2026 backtest" }).isVisible();
   const wcFrozen = await page.getByText("Frozen evaluation", { exact: true }).isVisible();
+  await page.getByText(/^Updated /).first().waitFor({ timeout: 15_000 }).catch(() => null);
   const wcUpdated = await page.getByText(/^Updated /).first().isVisible().catch(() => false);
   await page.goto(`${webUrl}/evaluation/club-season`, { waitUntil: "domcontentloaded" });
   const clubHeading = await page.getByRole("heading", { name: "Club season calibration" }).isVisible();
   const clubRolling = await page.getByText("Rolling snapshots", { exact: true }).isVisible();
+  await page.getByText(/^Updated /).first().waitFor({ timeout: 15_000 }).catch(() => null);
   const clubUpdated = await page.getByText(/^Updated /).first().isVisible().catch(() => false);
   checks["evaluation-calibration-presentation"] = recordViewport(
     checks["evaluation-calibration-presentation"],
@@ -226,6 +232,7 @@ async function runViewportChecks(page, webUrl, viewport, intervalMs) {
 
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "Ask a question" }).waitFor({ timeout: 30_000 });
+  await page.getByTestId("suggestion-chip").first().waitFor({ timeout: 30_000 });
   const fixtureChip = await collectFixtureChip(page);
   const names = fixtureNamesFromChip(fixtureChip?.text);
   let chatMatch = Boolean(names);
@@ -258,6 +265,7 @@ async function runViewportChecks(page, webUrl, viewport, intervalMs) {
   }
 
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
+  await page.getByTestId("suggestion-chip").first().waitFor({ timeout: 30_000 });
   if (fixtureChip && names) {
     const chip = await collectFixtureChip(page);
     if (chip) await chip.locator.click();
