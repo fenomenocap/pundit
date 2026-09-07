@@ -502,8 +502,7 @@ function isEligibleCachedFallback(fixture: ModelFixture): boolean {
   const forecastAt = Date.parse(fixture.forecastProvenance?.forecastAt ?? "");
   return Number.isFinite(kickoff)
     && Number.isFinite(forecastAt)
-    && forecastAt < kickoff
-    && kickoff - forecastAt <= PRE_KICKOFF_CHECKPOINT_WINDOW_MS;
+    && forecastAt < kickoff;
 }
 
 export function collectSnapshotTransitions(input: SnapshotTransitionInput): {
@@ -606,12 +605,46 @@ export function backupLegacyClubSeasonArtifact(now = new Date()): string | null 
   return backup;
 }
 
+const CHECKPOINT_STATE_RELATIVE_PATH = "evaluation/club-season-checkpoint-state.json";
+
+interface PersistedCheckpointState {
+  previousStatusByKey: Record<string, string>;
+  lastScheduledModelByKey: Record<string, ModelFixture>;
+}
+
 let previousStatusByKey = new Map<string, string>();
 let lastScheduledModelByKey = new Map<string, ModelFixture>();
+let checkpointStateLoaded = false;
+
+function checkpointStatePath(): string {
+  return resolveDataPath(CHECKPOINT_STATE_RELATIVE_PATH);
+}
+
+function loadCheckpointState(): void {
+  if (checkpointStateLoaded) return;
+  checkpointStateLoaded = true;
+  const parsed = readJsonFile<PersistedCheckpointState>(checkpointStatePath());
+  if (!parsed) return;
+  previousStatusByKey = new Map(Object.entries(parsed.previousStatusByKey ?? {}));
+  lastScheduledModelByKey = new Map(Object.entries(parsed.lastScheduledModelByKey ?? {}));
+}
+
+function persistCheckpointState(): void {
+  try {
+    writeJsonFileAtomic(checkpointStatePath(), {
+      previousStatusByKey: Object.fromEntries(previousStatusByKey),
+      lastScheduledModelByKey: Object.fromEntries(lastScheduledModelByKey),
+    } satisfies PersistedCheckpointState);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.warn(`[ClubSeason] Could not persist checkpoint state: ${message}`);
+  }
+}
 
 export function resetClubSeasonSnapshotState(): void {
   previousStatusByKey = new Map();
   lastScheduledModelByKey = new Map();
+  checkpointStateLoaded = false;
 }
 
 export function updateClubSeasonSnapshots(
@@ -619,6 +652,7 @@ export function updateClubSeasonSnapshots(
   modelFixtures: ModelFixture[],
   now = new Date()
 ): ClubSeasonEvaluationArtifact {
+  loadCheckpointState();
   const snapshottedAt = now.toISOString();
   const priorStatuses = previousStatusByKey;
   const { keysToSnapshot, statusUpdates, snapshotModels, checkpointReasons } = collectSnapshotTransitions({
@@ -732,6 +766,12 @@ export function updateClubSeasonSnapshots(
       console.log(`[ClubSeason] Sealed ${captured} forecast(s). Total: ${artifact.fixtures.length}.`);
     }
   }
+  for (const match of currentMatches) {
+    if (match.status !== "FINISHED") continue;
+    lastScheduledModelByKey.delete(fixtureKey(match.competitionId, match.id));
+    previousStatusByKey.delete(fixtureKey(match.competitionId, match.id));
+  }
+  persistCheckpointState();
   return artifact;
 }
 

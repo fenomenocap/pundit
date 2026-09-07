@@ -13,6 +13,8 @@
     "build:wc-evaluation": "npx ts-node --transpile-only scripts/build-wc2026-evaluation.ts",
     "build:club-history": "ts-node --transpile-only scripts/build-club-history-corpus.ts",
     "build:club-strength-artifact": "ts-node --transpile-only scripts/build-club-strength-artifact.ts",
+    "capture:clubelo-snapshot": "ts-node --transpile-only scripts/capture-clubelo-snapshot.ts",
+    "rebuild:club-strength-golden": "ts-node --transpile-only scripts/rebuild-club-strength-golden.ts",
     "verify:club-strength-artifact": "ts-node --transpile-only scripts/verify-club-strength-artifact.ts",
     "backup:club-season-ledger": "ts-node --transpile-only scripts/backup-club-season-ledger.ts",
     "start": "node dist/index.js",

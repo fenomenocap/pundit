@@ -358,7 +358,7 @@ describe("club-season snapshots", () => {
     expect(artifact.evaluation.exclusions.byReason.postKickoffForecast).toBe(1);
   });
 
-  it("records an idempotent missed checkpoint when no eligible forecast was captured", () => {
+  it("seals the last pre-kickoff forecast when kickoff arrives outside the 90-minute window", () => {
     useTempDataDir();
     updateClubSeasonSnapshots(
       [sampleMatch()],
@@ -371,15 +371,37 @@ describe("club-season snapshots", () => {
       new Date("2026-08-15T10:00:00.000Z")
     );
     const inPlay = sampleMatch({ status: "IN_PLAY", score: { home: 0, away: 0 } });
-    updateClubSeasonSnapshots(inPlay ? [inPlay] : [], [], new Date("2026-08-15T14:01:00.000Z"));
-    updateClubSeasonSnapshots(inPlay ? [inPlay] : [], [], new Date("2026-08-15T14:02:00.000Z"));
+    updateClubSeasonSnapshots([inPlay], [], new Date("2026-08-15T14:01:00.000Z"));
+    updateClubSeasonSnapshots([inPlay], [], new Date("2026-08-15T14:02:00.000Z"));
     const artifact = loadClubSeasonEvaluationArtifact();
-    expect(artifact.fixtures).toHaveLength(0);
-    expect(artifact.missedCheckpoints).toHaveLength(1);
-    expect(artifact.missedCheckpoints[0].reason).toBe("no_eligible_pre_kickoff_forecast");
+    expect(artifact.fixtures).toHaveLength(1);
+    expect(artifact.fixtures[0].checkpointReason).toBe("pre_kickoff_cached_fallback");
+    expect(artifact.fixtures[0].forecastAt).toBe("2026-08-15T10:00:00.000Z");
+    expect(artifact.missedCheckpoints).toHaveLength(0);
   });
 
-  it("records a missed checkpoint when restart first observes the fixture after kickoff", () => {
+  it("seals from persisted checkpoint state after a process restart", () => {
+    useTempDataDir();
+    updateClubSeasonSnapshots(
+      [sampleMatch()],
+      [sampleModelFixture({
+        forecastProvenance: {
+          ...sampleModelFixture().forecastProvenance!,
+          forecastAt: "2026-08-15T10:00:00.000Z",
+        },
+      })],
+      new Date("2026-08-15T10:00:00.000Z")
+    );
+    resetClubSeasonSnapshotState();
+    const inPlay = sampleMatch({ status: "IN_PLAY", score: { home: 0, away: 0 } });
+    updateClubSeasonSnapshots([inPlay], [], new Date("2026-08-15T14:01:00.000Z"));
+    const artifact = loadClubSeasonEvaluationArtifact();
+    expect(artifact.fixtures).toHaveLength(1);
+    expect(artifact.fixtures[0].checkpointReason).toBe("pre_kickoff_cached_fallback");
+    expect(artifact.missedCheckpoints).toHaveLength(0);
+  });
+
+  it("records a missed checkpoint when restart first observes the fixture after kickoff with no cached forecast", () => {
     useTempDataDir();
     resetClubSeasonSnapshotState();
     const inPlay = sampleMatch({ status: "IN_PLAY", score: { home: 0, away: 0 } });
