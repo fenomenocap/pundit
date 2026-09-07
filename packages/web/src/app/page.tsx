@@ -1,16 +1,18 @@
 import { Suspense } from "react";
-import { HomeChat } from "@/components/home-chat";
+import { Desk } from "@/desk/components/desk";
 
 export default function HomePage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto flex h-[calc(100vh-2.75rem)] max-w-2xl flex-col items-center justify-center px-4 text-sm text-muted-foreground">
-          Loading chat…
+        <div className="flex min-h-[calc(100dvh-2.75rem)] items-center justify-center bg-bg text-sm text-quiet">
+          Loading desk…
         </div>
       }
     >
-      <HomeChat />
+      <div className="bg-bg text-fg min-h-[calc(100dvh-2.75rem)]">
+        <Desk />
+      </div>
     </Suspense>
   );
 }

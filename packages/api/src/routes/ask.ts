@@ -162,6 +162,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     const teamContext = parseTeamContext(req.body?.teamContext);
     const fixtureContext = parseFixtureContext(req.body?.fixtureContext);
     const userLine = parseUserLine(req.body?.userLine);
+    const voice = req.body?.voice === "desk" ? ("desk" as const) : undefined;
     const requestAbort = new AbortController();
     const deadline = setTimeout(() => requestAbort.abort(new Error("request deadline exceeded")), 90_000);
     const abortOnDisconnect = () => {
@@ -178,7 +179,8 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           teamContext,
           requestAbort.signal,
           fixtureContext,
-          userLine
+          userLine,
+          voice
         );
         res.json(result);
       } finally {
