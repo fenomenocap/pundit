@@ -18,7 +18,13 @@ watchPatterns = [
 ]
 
 [deploy]
-startCommand = "pnpm --filter @sports-predict/api start"
+# Run Node as PID1, not pnpm. On rolling deploys Railway SIGTERMs the old
+# container; pnpm exits non-zero (ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL) and
+# triggers false "Deploy Crashed!" emails even when the new deploy is healthy.
+startCommand = "node packages/api/dist/index.js"
+# Give the old instance time to drain in-flight requests after SIGTERM before
+# SIGKILL. Matches packages/api graceful shutdown in src/index.ts.
+drainingSeconds = 20
 healthcheckPath = "/startup"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
