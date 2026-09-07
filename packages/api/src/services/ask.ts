@@ -78,6 +78,7 @@ import {
   TEAM_NEWS_COMPOSE_ABSTENTION,
 } from "./player-evidence";
 import { composeMatchResponse } from "./response-composer";
+import { writeDeskProse } from "./desk-voice";
 import { validateAnalystDraft } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
@@ -7940,11 +7941,20 @@ export async function answerQuestion(
   teamContext?: TeamContext,
   signal?: AbortSignal,
   fixtureContext?: FixtureContext,
-  userLine?: UserLine
+  userLine?: UserLine,
+  voice?: "desk"
 ): Promise<AskResult> {
   const result = await withSearchQuestion(() =>
     answerQuestionScoped(question, history, teamContext, signal, fixtureContext, userLine));
-  return withPresentation(question, history.length > 0, result);
+  const presented = withPresentation(question, history.length > 0, result);
+  if (voice === "desk" && presented.grounding?.kind === "match") {
+    const prose = await writeDeskProse(question, presented.grounding, history, signal);
+    if (prose) {
+      presented.answer = prose;
+      presented.presentation = { responseMode: "match-preview", fixtureCard: "expanded" };
+    }
+  }
+  return presented;
 }
 
 async function answerQuestionScoped(

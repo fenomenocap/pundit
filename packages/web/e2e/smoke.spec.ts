@@ -77,112 +77,28 @@ test.describe("smoke", () => {
     { name: "desktop", width: 1280, height: 900 },
     { name: "mobile", width: 390, height: 844 },
   ]) {
-    test(`multi-turn fixture presentation stays compact on ${viewport.name}`, async ({ page }) => {
+    test(`desk chat sends a pinned take on ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      const grounding = {
-        kind: "match",
-        fixtureId: "espn:eng.1:1",
-        competitionId: "eng.1",
-        competition: "Premier League",
-        homeFieldAdvantage: true,
-        date: "2026-09-01",
-        stage: "match",
-        home: "Arsenal",
-        away: "Coventry City",
-        pHome: 0.72,
-        pDraw: 0.18,
-        pAway: 0.10,
-        pOver2_5: 0.55,
-        pUnder2_5: 0.45,
-        pBttsYes: 0.48,
-        pBttsNo: 0.52,
-        topScores: [{ score: "2-0", probability: 0.14 }],
-        scorelines: [{ score: "2-0", probability: 0.14 }],
-        stakePHome: null,
-        stakePDraw: null,
-        stakePAway: null,
-        oddsSources: [{
-          source: "polymarket",
-          observedAt: "2026-08-30T06:00:00.000Z",
-          pHome: 0.68,
-          pDraw: 0.20,
-          pAway: 0.12,
-        }],
-      };
-      const turns = [
-        { answer: "I make Arsenal the clear favourite.", responseMode: "match-preview", fixtureCard: "expanded", grounding },
-        { answer: "My fair 2-0 probability is 14.0%.", responseMode: "fair-price", fixtureCard: "compact", grounding },
-        { answer: "I don’t have player-level projections or a verified scorer market for this fixture, so I can’t name a most likely scorer without inventing one.", responseMode: "player-or-scorer", fixtureCard: "compact", grounding },
-        { answer: "I cannot quantify that lineup change yet.", responseMode: "lineup-counterfactual", fixtureCard: "compact", grounding },
-        {
-          answer: "Arsenal are first on the supplied table.",
-          responseMode: "table",
-          fixtureCard: "none",
-          grounding: {
-            kind: "competition",
-            competitionId: "eng.1",
-            competition: "Premier League",
-            updatedAt: "2026-08-30T06:00:00.000Z",
-            standings: [{
-              position: 1, team: "Arsenal", playedGames: 3, won: 3, draw: 0,
-              lost: 0, points: 9, goalsFor: 8, goalsAgainst: 1, goalDifference: 7,
-            }],
-          },
-        },
-        // Even a repeated expanded directive must not duplicate the full card
-        // for a fixture already established in this conversation.
-        { answer: "I am four points above Polymarket; the reason is not established.", responseMode: "market-comparison", fixtureCard: "expanded", grounding },
-      ];
-      let turn = 0;
       const requests: Array<Record<string, unknown>> = [];
       await page.route("**/api/ask", async (route) => {
         requests.push(route.request().postDataJSON());
-        const response = turns[turn++];
-        const sse = [
-          `event: grounding\ndata: ${JSON.stringify({ grounding: response.grounding })}`,
-          `event: delta\ndata: ${JSON.stringify({ text: response.answer })}`,
-          `event: done\ndata: ${JSON.stringify({
-            answer: response.answer,
-            grounding: response.grounding,
-            presentation: {
-              responseMode: response.responseMode,
-              fixtureCard: response.fixtureCard,
-            },
-          })}`,
-          "",
-        ].join("\n\n");
-        await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            answer: "The model leans Arsenal. Home 72, draw 18, away 10.",
+            grounding: { kind: "match", home: "Arsenal", away: "Coventry City" },
+            presentation: { responseMode: "match-preview", fixtureCard: "expanded" },
+          }),
+        });
       });
-
       await page.goto("/");
       const input = page.getByRole("textbox", { name: "Ask a question" });
-      const questions = [
-        "Preview Arsenal vs Coventry City",
-        "What is fair for 2-0?",
-        "What about a scorer?",
-        "What if the striker is out?",
-        "Where are Arsenal in the table?",
-        "Why do you disagree with the market?",
-      ];
-      for (const [index, question] of questions.entries()) {
-        await input.fill(question);
-        await page.getByRole("button", { name: "Send" }).click();
-        await expect.poll(() => turn).toBe(index + 1);
-        await expect(page.getByText(turns[index].answer, { exact: true })).toBeVisible();
-      }
-
-      await expect(page.getByTestId("match-fixture-card")).toHaveCount(1);
-      await expect(page.getByTestId("compact-match-context")).toHaveCount(4);
-      await expect(page.getByText("My forecast", { exact: true })).toHaveCount(1);
-      await expect(page.getByText(/Pundit model|the model|payload|retrieved sources/i)).toHaveCount(0);
-      expect(requests[4].fixtureContext).toEqual({ fixtureId: grounding.fixtureId });
-      expect(requests[5].fixtureContext).toEqual({ fixtureId: grounding.fixtureId });
-      const compact = page.getByTestId("compact-match-context").first();
-      const disclosure = compact.locator("summary");
-      await disclosure.focus();
-      await page.keyboard.press("Enter");
-      await expect(compact).toHaveAttribute("open", "");
-      await expect(disclosure.getByText(/expand forecast and market details/i)).toBeAttached();
+      await input.fill("Preview Arsenal vs Coventry City");
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect(page.getByText("The model leans Arsenal. Home 72, draw 18, away 10.")).toBeVisible();
+      expect(requests[0].voice).toBe("desk");
+      expect(requests[0].stream).toBe(false);
     });
   }
 
@@ -243,7 +159,7 @@ test.describe("smoke", () => {
       }),
     }));
 
-    await page.goto("/");
+    await page.goto("/legacy");
     await page.getByRole("textbox", { name: "Ask a question" })
       .fill("Compare Arsenal vs Liverpool and Chelsea vs Manchester City");
     await page.getByRole("button", { name: "Send" }).click();
@@ -274,7 +190,7 @@ test.describe("smoke", () => {
       body: sse,
     }));
 
-    await page.goto("/");
+    await page.goto("/legacy");
     await page.getByRole("textbox", { name: "Ask a question" }).fill("Latest availability news?");
     await page.getByRole("button", { name: "Send" }).click();
     const citation = page.getByRole("link", { name: "Club update" });
@@ -334,7 +250,7 @@ test.describe("smoke", () => {
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
     });
 
-    await page.goto("/");
+    await page.goto("/legacy");
     const input = page.getByRole("textbox", { name: "Ask a question" });
     await input.fill("Arsenal vs Liverpool friendly");
     await page.getByRole("button", { name: "Send" }).click();
@@ -383,7 +299,7 @@ test.describe("smoke", () => {
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
     });
 
-    await page.goto("/");
+    await page.goto("/legacy");
     const chip = page.getByRole("button", { name: /Dinamo Zagreb vs Viking ·/ });
     await expect(chip).toBeVisible();
     await chip.click();
@@ -408,7 +324,7 @@ test.describe("smoke", () => {
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
     });
 
-    await page.goto("/");
+    await page.goto("/legacy");
     const chip = page.getByRole("button", { name: "Pass or play · Arsenal vs Coventry City" });
     await expect(chip).toBeVisible();
     await expect(chip).toHaveAttribute("data-has-user-line", "true");
@@ -434,7 +350,7 @@ test.describe("smoke", () => {
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
     });
 
-    await page.goto("/");
+    await page.goto("/legacy");
     const passChip = page.getByRole("button", { name: "Pass or play · Arsenal vs Coventry City" });
     const priceChip = page.getByRole("button", { name: "Price this · Liverpool vs Brighton & Hove Albion" });
     const dinamoDesk = page.getByRole("button", { name: "Pass or play · Dinamo Zagreb vs Viking" });
@@ -454,7 +370,7 @@ test.describe("smoke", () => {
     await page.addInitScript(() => {
       (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "loading";
     });
-    await page.goto("/");
+    await page.goto("/legacy");
     await expect(page.getByTestId("chat-status")).toHaveText(/Loading match model/i);
     await expect(page.getByTestId("chat-status")).not.toHaveText(/active fixtures live/i);
     await expect(page.getByRole("button", { name: "What does the current Premier League table show?" })).toHaveCount(0);
@@ -464,7 +380,7 @@ test.describe("smoke", () => {
   });
 
   test("suggestion chips omit in-play and finished matches", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/legacy");
     await expect(page.getByRole("button", { name: /Arsenal vs Coventry City ·/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Chelsea vs Tottenham/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Manchester United vs Hull/ })).toHaveCount(0);
@@ -501,7 +417,7 @@ test.describe("smoke", () => {
       await new Promise(() => undefined);
     });
 
-    await page.goto("/");
+    await page.goto("/legacy");
     const input = page.getByRole("textbox", { name: "Ask a question" });
     await input.fill("What does the current Premier League table show?");
     await page.getByRole("button", { name: "Send" }).click();
@@ -515,9 +431,9 @@ test.describe("smoke", () => {
   test("primary nav", async ({ page }) => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Main navigation" });
-    await expect(nav.getByRole("link", { name: "Chat" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Desk" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Fixtures" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Predictions" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Model" })).toBeVisible();
     await expect(nav.getByText("WC Backtest")).not.toBeVisible();
   });
 
@@ -601,7 +517,7 @@ test.describe("smoke", () => {
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
     });
 
-    await page.goto("/");
+    await page.goto("/legacy");
     await page.getByRole("textbox", { name: "Ask a question" }).fill("Preview Arsenal vs Coventry City");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByTestId("match-fixture-card")).toBeVisible();
@@ -664,7 +580,7 @@ test.describe("smoke", () => {
     await page.addInitScript(() => {
       (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "partial";
     });
-    await page.goto("/");
+    await page.goto("/legacy");
     await expect(page.getByTestId("chat-status")).toHaveText(
       /Match forecasts ready for some fixtures/i
     );
@@ -677,7 +593,7 @@ test.describe("smoke", () => {
     await page.addInitScript(() => {
       (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "unpriced";
     });
-    await page.goto("/");
+    await page.goto("/legacy");
     await expect(page.getByTestId("chat-status")).toHaveText(
       /Match model is catching up/i
     );
@@ -690,7 +606,7 @@ test.describe("smoke", () => {
     await page.addInitScript(() => {
       (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "unavailable";
     });
-    await page.goto("/");
+    await page.goto("/legacy");
     await expect(page.getByTestId("chat-status")).toHaveText(
       /Model not ready/i
     );

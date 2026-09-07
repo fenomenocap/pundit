@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { href: "/", label: "Chat", mobileLabel: "Chat" },
+  { href: "/", label: "Desk", mobileLabel: "Desk" },
   { href: "/fixtures", label: "Fixtures", mobileLabel: "Fixtures" },
-  { href: "/model", label: "Predictions", mobileLabel: "Model" },
-  { href: "/evaluation/wc-2026", label: "2026 FIFA World Cup", mobileLabel: "WC26" },
+  { href: "/model", label: "Model", mobileLabel: "Model" },
+  { href: "/evaluation/club-season", label: "Ledger", mobileLabel: "Ledger" },
 ];
 
 export function Navbar() {
@@ -21,13 +21,13 @@ export function Navbar() {
           <Link href="/" className="flex shrink-0 items-center gap-2">
             <span
               aria-hidden="true"
-              className="flex h-6 w-6 items-center justify-center rounded border border-primary/30 bg-primary/10 font-display text-base text-primary"
+              className="flex h-7 w-7 items-center justify-center rounded-sm bg-accent font-display text-lg font-semibold text-accent-fg leading-none"
             >
               P
             </span>
-            <span className="font-heading text-sm font-semibold text-white">
+            <h1 className="font-display text-xl uppercase tracking-wide text-fg leading-none">
               Pundit
-            </span>
+            </h1>
           </Link>
 
           <nav

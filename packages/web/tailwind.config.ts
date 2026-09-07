@@ -6,6 +6,7 @@ const config: Config = {
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/desk/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
@@ -32,8 +33,9 @@ const config: Config = {
           foreground: "hsl(var(--muted-foreground))",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: "#3eff8a",
+          foreground: "#06140c",
+          fg: "#06140c",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",
@@ -44,6 +46,18 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))",
         },
         "card-rim": "hsl(var(--card-rim))",
+        bg: "#07090d",
+        surface: "#0e1218",
+        elevated: "#151a22",
+        panel: "#1b212c",
+        fg: "#eef2f6",
+        subtle: "#5c6472",
+        "border-strong": "#323a48",
+        live: "#ff4b4b",
+        up: "#3eff8a",
+        down: "#ff5c6a",
+        warn: "#c5c8ce",
+        quiet: "#8b93a1",
         // Sportsbook palette: swap the stock neon cyan/pink for calmer,
         // higher-contrast tones (Tailwind's own sky/rose) without touching
         // any component — every `cyan-400`/`pink-500` etc. class updates.
@@ -59,20 +73,24 @@ const config: Config = {
         },
       },
       borderRadius: {
+        xs: "4px",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        sm: "8px",
         card: "var(--radius)",
+      },
+      fontSize: {
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }],
       },
       boxShadow: {
         card: "inset 0 1px 0 0 rgba(255,255,255,0.04), 0 1px 0 0 rgba(0,0,0,0.4)",
       },
       fontFamily: {
-        heading: ["'Space Grotesk'", "system-ui", "sans-serif"],
-        body: ["'Space Grotesk'", "system-ui", "sans-serif"],
-        sans: ["'Space Grotesk'", "system-ui", "sans-serif"],
-        mono: ["'Space Mono'", "monospace"],
-        display: ["'Instrument Serif'", "'Space Grotesk'", "serif"],
+        heading: ["'Barlow Condensed'", "'Barlow'", "system-ui", "sans-serif"],
+        body: ["'Barlow'", "system-ui", "sans-serif"],
+        sans: ["'Barlow'", "system-ui", "sans-serif"],
+        mono: ["'Barlow'", "system-ui", "sans-serif"],
+        display: ["'Barlow Condensed'", "'Barlow'", "system-ui", "sans-serif"],
       },
     },
   },
