@@ -18,7 +18,14 @@ export type ResponseMode =
 
 const ASKS_MATCH_PREVIEW =
   /\b(?:preview|analyse|analyze|analysis|break down|thoughts(?:\s+on)?|full (?:read|preview|analysis))\b/i;
-const ASKS_TOTALS = /\b(?:over|under)\s*2\.5\b|\btotals\b|\bover\/under\b|\bo\/u\b/i;
+// Betting shorthand is first-class: o2.5 / u2.5 / ou 2.5 / o/u 2.5. Keep the
+// letter+line forms tight so "to 2.5" or a stray "o" in "over" cannot match.
+const ASKS_TOTALS =
+  /\b(?:over|under)\s*2\.5\b|\btotals\b|\bover\s*\/\s*under\b|\bo\s*\/\s*u\b|\bou\s*2\.5\b|\b[ou]\s*2\.5\b/i;
+const ASKS_OVER_25 = /\bover\s*2\.5\b|\bo\s*2\.5\b/i;
+const ASKS_UNDER_25 = /\bunder\s*2\.5\b|\bu\s*2\.5\b/i;
+const ASKS_SCORELINE_BOARD =
+  /\b(?:possible|likely|top|correct)\s+(?:scores?|scorelines?)\b|\bscorelines?\b/i;
 
 export interface ResponsePlan {
   mode: ResponseMode;
@@ -49,6 +56,26 @@ const SCORELINE = /\b\d{1,2}\s*[-–—:]\s*\d{1,2}\b/;
  * and search remain owned by ask.ts; this planner only prevents a narrow turn
  * from being composed as another full match report.
  */
+export function asksTotalsQuestion(question: string): boolean {
+  return ASKS_TOTALS.test(question);
+}
+
+export function asksScorelineBoard(question: string): boolean {
+  return ASKS_SCORELINE_BOARD.test(question);
+}
+
+/** True when the user named the over side of 2.5 without also naming under. */
+export function asksOver25Only(question: string): boolean {
+  if (/\bunder\b/i.test(question) || ASKS_UNDER_25.test(question)) return false;
+  return ASKS_OVER_25.test(question);
+}
+
+/** True when the user named the under side of 2.5 without also naming over. */
+export function asksUnder25Only(question: string): boolean {
+  if (/\bover\b/i.test(question) || ASKS_OVER_25.test(question)) return false;
+  return ASKS_UNDER_25.test(question);
+}
+
 export function asksStakeSizeQuestion(question: string): boolean {
   const q = question.trim();
   // "Three points are at stake" is an idiom, not a bankroll question.
@@ -82,12 +109,13 @@ export function planResponse(
     mode = "team-news";
   } else if (/\b(?:table|standings?)\b/i.test(q)) mode = "table";
   else if (/\b(?:title race|top[- ]four|season outlook|champion)\b/i.test(q)) mode = "season";
-  else if (match && ASKS_TOTALS.test(q)) mode = "totals";
+  else if (match && asksTotalsQuestion(q)) mode = "totals";
   else if (match && /\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(q)) mode = "match-follow-up";
   else if (match && asksStakeSizeQuestion(q)) mode = "stake-refusal";
   else if (match && (hasUserLine || /\bpass or play\b/i.test(q))) mode = "user-line";
   else if (match && SCORELINE.test(q) && /\b(?:fair|price|odds?|decimal|implied)\b/i.test(q)) mode = "fair-price";
   else if (match && SCORELINE.test(q)) mode = "exact-score";
+  else if (match && asksScorelineBoard(q)) mode = "exact-score";
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
   else if (match && !hasHistory) mode = "pricing-desk";
   else if (match) mode = "match-follow-up";
