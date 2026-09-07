@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ConversationTurn, Grounding } from "./ask";
+import { managerForClub, stripUnlistedManagers } from "./pl-managers";
 
 const DESK_SYSTEM = `You are Pundit, a football analyst covering the 2026/27 Premier League. Voice: sharp broadcast pundit — Carragher after a freeze-frame, not a hedge-fund memo. Short. Specific. Numbered when listing. No emoji. No slang pile-up. No hedging fluff. Put a number on it.
 
@@ -8,6 +9,8 @@ You are not a bookmaker and you do not take stakes. Never invite a bet. Never sa
 Frame: analysis and a model view. "Pass or play" means: is the lean real, and is the board fat or thin versus Polymarket. Lead with the football, then the 1X2. Say "the model leans X" — not "play X".
 
 Ground every take in the attached match card. If a fact is not in the card, say you don't have it. Do not invent injuries, lineups, or scores.
+
+Managers: only name a coach if they appear on the DUGOUT line of the card. The 2026/27 dugouts turned over — Amorim is not at United, Guardiola is not at City, Slot is not at Liverpool. Do not recite last season's coaches. If DUGOUT is missing, talk about the side, not the person in the technical area.
 
 1X2 and BTTS on the card come from the live ClubElo Dixon–Coles engine — treat them as sealed. Totals sit near 50% on the engine because every match uses the same 2.70 expected goals — do not treat Over 2.5 as a real view unless the card labels a desk reconstruction. Polymarket is a comparison market, not a player ranking.
 
@@ -20,12 +23,26 @@ function pct(n: number | null | undefined) {
   return `${(n * 100).toFixed(0)}%`;
 }
 
-function card(g: Grounding) {
+function dugoutLine(g: Grounding): string {
+  const home = managerForClub(g.home);
+  const away = managerForClub(g.away);
+  if (!home && !away) {
+    return "DUGOUT: not on this card. Do not name a manager or coach.";
+  }
+  const bits = [
+    home ? `${g.home}: ${home.manager}` : `${g.home}: manager unknown — do not guess`,
+    away ? `${g.away}: ${away.manager}` : `${g.away}: manager unknown — do not guess`,
+  ];
+  return `DUGOUT (2026/27): ${bits.join(" · ")}.`;
+}
+
+export function card(g: Grounding) {
   const poly = g.oddsSources?.find((s) => s.source === "polymarket");
   const top = g.topScores?.slice(0, 3).map((s) => `${s.score} ${(s.probability * 100).toFixed(0)}%`).join(", ");
   const div = g.marketDivergence?.[0];
   return [
     `FOCUS: ${g.home} vs ${g.away}. ${g.competition}. ${g.date}. HFA ${g.homeFieldAdvantage ? "on" : "off"}.`,
+    dugoutLine(g),
     `Model 1X2 ${pct(g.pHome)} / ${pct(g.pDraw)} / ${pct(g.pAway)}.`,
     `Engine O2.5 ${pct(g.pOver2_5)} · U2.5 ${pct(g.pUnder2_5)} · BTTS ${pct(g.pBttsYes)}.`,
     top ? `Top scores: ${top}.` : "",
@@ -48,7 +65,16 @@ function hint(question: string) {
   if (/\bwho scores\b|\bscorer\b|\banytime\b|\bfirst goal\b/.test(q)) {
     return "HINT: No player model on this card. Do not cite betting-site quotes. Use xG, BTTS, modal score, and which side is more likely to score.";
   }
+  if (/\bmanager\b|\bcoach\b|\btactic/.test(q)) {
+    return "HINT: Use only the DUGOUT line. Do not name last season's coaches.";
+  }
   return "";
+}
+
+function allowedManagers(g: Grounding): string[] {
+  return [managerForClub(g.home)?.manager, managerForClub(g.away)?.manager].filter(
+    (n): n is string => Boolean(n),
+  );
 }
 
 function inferenceKey() {
@@ -97,7 +123,8 @@ export async function writeDeskProse(
       .map((b) => b.text)
       .join("\n")
       .trim();
-    return text || null;
+    if (!text) return null;
+    return stripUnlistedManagers(text, allowedManagers(grounding)) || text;
   } catch {
     return null;
   }
