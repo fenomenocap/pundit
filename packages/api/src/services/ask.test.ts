@@ -1959,6 +1959,8 @@ describe("current-news evidence hardening", () => {
     expect(rendered.answer).not.toMatch(/No verified, dated team-news update was established/i);
     expect(rendered.citations.map((citation) => citation.url))
       .toEqual(["https://example.com/undated"]);
+    expect(rendered.citations.map((citation) => citation.date))
+      .toEqual(["undated"]);
   });
 });
 
