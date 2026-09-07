@@ -3,6 +3,8 @@ import type { OneXTwoOutcome } from "./response-correctness";
 import { parseScoreline } from "./response-correctness";
 import {
   PLAYER_SCORER_ABSTENTION,
+  TEAM_NEWS_COMPOSE_ABSTENTION,
+  hasTeamNewsEvidence,
   hasTrustworthyPlayerEvidence,
   leadingScorerCandidate,
   type PlayerEvidenceBundle,
@@ -226,9 +228,10 @@ export function composePlayerScorerAnswer(
     "I don’t have player-level projections for this fixture, so I can’t name a most likely scorer from my match model.",
   ];
   if (market) {
-    const date = dateLabel(market.observedAt);
+    const date = market.observedAt ? dateLabel(market.observedAt) : "an undated report";
+    const teamBit = market.teamId ? `${market.teamId} name` : "name";
     lines.push(
-      `${market.playerName} is the shortest-priced ${market.teamId} name in the dated player-market quotes I have, `
+      `${market.playerName} is the shortest-priced ${teamBit} in the player-market quotes I have, `
       + `at ${market.decimalOdds.toFixed(2)} decimal [[${market.sourceId}]] (${date}). `
       + "I don't treat that quote as a Pundit probability."
     );
@@ -245,6 +248,32 @@ export function composePlayerScorerAnswer(
   } else {
     lines.push("That quote is a market observation, not a Pundit ranking.");
   }
+  return lines.join(" ");
+}
+
+export function composeTeamNewsAnswer(
+  grounding: Grounding,
+  evidence: PlayerEvidenceBundle | null
+): string {
+  if (!evidence || !hasTeamNewsEvidence(evidence)) {
+    return TEAM_NEWS_COMPOSE_ABSTENTION;
+  }
+  const dated = evidence.observations.filter((row): row is typeof row & { observedAt: string } =>
+    Boolean(row.observedAt)
+  ).slice(0, 3);
+  if (!dated.length) {
+    return TEAM_NEWS_COMPOSE_ABSTENTION;
+  }
+  const lines = dated.map((row) => {
+    const date = dateLabel(row.observedAt);
+    const team = row.teamId ? ` (${row.teamId})` : "";
+    if (row.evidenceType === "availability") {
+      return `${row.playerName}${team} is listed as unavailable according to a source [[${row.sourceId}]] (${date}).`;
+    }
+    const status = row.evidenceType === "confirmed-lineup" ? "confirmed" : "expected";
+    return `${row.playerName}${team} is ${status} to start according to a source [[${row.sourceId}]] (${date}).`;
+  });
+  lines.push("That is sourced availability, not a revised match forecast.");
   return lines.join(" ");
 }
 
@@ -267,7 +296,7 @@ export function composeMatchResponse(
     return "I can’t quantify that lineup effect without verified team news and a revised forecast. A confirmed change could alter my read, but I won’t invent a percentage adjustment.";
   }
   if (plan.mode === "team-news") {
-    return "I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim.";
+    return composeTeamNewsAnswer(grounding, playerEvidence);
   }
   const contract = buildResponseFacts(grounding);
   const scoreRequest = resolveRequestedScoreline(question, grounding);

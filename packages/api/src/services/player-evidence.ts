@@ -51,7 +51,7 @@ export interface PlayerMarketObservation {
   decimalOdds: number;
   impliedProbability: number;
   sourceId: string;
-  observedAt: string;
+  observedAt: string | null;
 }
 
 export interface PlayerEvidenceBundle {
@@ -65,11 +65,12 @@ const STOPWORDS = new Set([
   "lineup", "confirmed", "starting", "available", "doubtful", "suspended",
   "player", "props", "decimal", "price", "prices", "versus", "with", "from",
   "this", "that", "their", "they", "will", "most", "likely", "score",
+  "sports", "sky", "bbc", "betting", "preview", "football", "soccer", "latest",
+  "update", "updates", "best", "tips", "accumulator", "acca", "live", "blog",
 ]);
 
-const NAME = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/g;
-const DECIMAL_ODDS = /\b([1-9]\d?\.\d{2})\b/;
-const MARKET_CUE = /\b(?:anytime(?:\s+scorer)?|first(?:\s+scorer)?|goalscorer|to score|player prop)\b/i;
+const NAME = /\b([A-Z][a-zÀ-ÿ]+(?:\s+[A-Z][a-zÀ-ÿ]+){0,2})\b/g;
+const MARKET_CUE = /\b(?:anytime(?:\s+scorer)?|first(?:\s+(?:goal\s+)?scorer)?|goal\s*scorers?|to score(?:\s+anytime)?|player props?|scorer odds|scorers?)\b/i;
 const STARTS_CUE = /\b(?:expected to start|confirmed to start|starts|in the (?:starting )?xi|named in the xi)\b/i;
 const OUT_CUE = /\b(?:ruled out|doubtful|injured|suspended|misses? out|unavailable|out of the (?:side|xi))\b/i;
 
@@ -79,12 +80,21 @@ export const PLAYER_SCORER_ABSTENTION =
   "I don’t have player-level projections or a verified scorer market for this fixture, "
   + "so I can’t name a most likely scorer without inventing one.";
 
+export const TEAM_NEWS_COMPOSE_ABSTENTION =
+  "I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim.";
+
 function slug(name: string): string {
   return name.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function mentionsFixture(text: string, fixture: PlayerFixtureRef): boolean {
+  const lower = text.toLocaleLowerCase();
+  return lower.includes(fixture.home.toLocaleLowerCase())
+    || lower.includes(fixture.away.toLocaleLowerCase());
 }
 
 function uniqueTeamIn(text: string, fixture: PlayerFixtureRef): string | null {
@@ -100,11 +110,12 @@ function affiliatedTeam(text: string, fixture: PlayerFixtureRef): string | null 
   const home = escapeRegExp(fixture.home);
   const away = escapeRegExp(fixture.away);
   const pattern = new RegExp(
-    `\\b(?:for|of)\\s+(${home}|${away})\\b|\\b(${home}|${away})'s\\b|\\((${home}|${away})\\)`,
+    `\\b(?:for|of)\\s+(${home}|${away})\\b|\\b(${home}|${away})'s\\b|\\((${home}|${away})\\)`
+    + `|(${home}|${away})\\s*[:\\-]`,
     "i"
   );
   const match = text.match(pattern);
-  const raw = match?.[1] ?? match?.[2] ?? match?.[3];
+  const raw = match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4];
   if (!raw) return null;
   return raw.toLocaleLowerCase() === fixture.home.toLocaleLowerCase() ? fixture.home : fixture.away;
 }
@@ -120,19 +131,13 @@ function teamForPlayer(
   const unique = uniqueTeamIn(snippet, fixture) ?? uniqueTeamIn(blob, fixture);
   if (unique) return unique;
   const lower = blob.toLocaleLowerCase();
-  if (!lower.includes(fixture.home.toLocaleLowerCase()) && !lower.includes(fixture.away.toLocaleLowerCase())) {
-    return null;
-  }
-  // Both clubs appear (typical title) and there is no affiliation. Bind from
-  // the nearest unique-team window around later mentions of the player, not
-  // the "Home vs Away" title.
   const name = playerName.toLocaleLowerCase();
   let from = 0;
   while (from < lower.length) {
     const playerAt = lower.indexOf(name, from);
     if (playerAt < 0) break;
-    const window = blob.slice(playerAt, playerAt + playerName.length + 48);
-    const nearby = uniqueTeamIn(window, fixture);
+    const window = blob.slice(Math.max(0, playerAt - 24), playerAt + playerName.length + 96);
+    const nearby = uniqueTeamIn(window, fixture) ?? affiliatedTeam(window, fixture);
     if (nearby) return nearby;
     from = playerAt + name.length;
   }
@@ -153,13 +158,14 @@ function isPersonName(raw: string, fixture: PlayerFixtureRef): boolean {
   return !STOPWORDS.has(lower.split(/\s+/)[0] ?? "");
 }
 
-function parseObservedAt(date: string, kickoff: string): string | null {
+function parseObservedAt(date: string, kickoff: string): { ok: boolean; at: string | null } {
+  if (!date.trim()) return { ok: true, at: null };
   const observed = Date.parse(date);
   const kick = Date.parse(kickoff);
-  if (!Number.isFinite(observed) || !Number.isFinite(kick)) return null;
-  if (observed > kick) return null;
-  if (kick - observed > MAX_PRE_KICKOFF_AGE_MS) return null;
-  return new Date(observed).toISOString();
+  if (!Number.isFinite(observed) || !Number.isFinite(kick)) return { ok: false, at: null };
+  if (observed > kick) return { ok: false, at: null };
+  if (kick - observed > MAX_PRE_KICKOFF_AGE_MS) return { ok: false, at: null };
+  return { ok: true, at: new Date(observed).toISOString() };
 }
 
 function collectNames(text: string, fixture: PlayerFixtureRef): string[] {
@@ -187,6 +193,46 @@ function availabilityType(text: string): PlayerEvidenceType | null {
   return null;
 }
 
+function parseDecimalOdds(text: string): number | null {
+  if (/\bevens?\b/i.test(text)) return 2;
+  const twoDp = /\b([1-9]\d?\.\d{2})\b/.exec(text);
+  if (twoDp) {
+    const odds = Number(twoDp[1]);
+    return Number.isFinite(odds) ? odds : null;
+  }
+  const oneDp = /\b([1-9]\d?\.\d)\b/.exec(text);
+  if (oneDp) {
+    const odds = Number(oneDp[1]);
+    return Number.isFinite(odds) ? odds : null;
+  }
+  if (/\d{1,2}\/\d{1,2}\/\d/.test(text)) return null;
+  const fractional = /\b(\d{1,2})\/(\d{1,2})\b/.exec(text);
+  if (fractional) {
+    const num = Number(fractional[1]);
+    const den = Number(fractional[2]);
+    if (den > 0 && num >= 1 && num <= 50 && den <= 50) return 1 + num / den;
+  }
+  const american = /\b([+-]\d{3,4})\b/.exec(text);
+  if (american) {
+    const line = Number(american[1]);
+    if (!Number.isFinite(line) || line === 0) return null;
+    return line > 0 ? 1 + line / 100 : 1 + 100 / Math.abs(line);
+  }
+  return null;
+}
+
+function inRange(odds: number | null): odds is number {
+  return odds != null && odds > 1.01 && odds < 51;
+}
+
+function nearestOdds(segment: string, playerName: string): number | null {
+  const idx = segment.toLocaleLowerCase().indexOf(playerName.toLocaleLowerCase());
+  if (idx < 0) return parseDecimalOdds(segment);
+  const after = segment.slice(idx + playerName.length);
+  const untilNext = after.split(/[,;|\n]/)[0] ?? after;
+  return parseDecimalOdds(untilNext);
+}
+
 /**
  * Chat 2 seam: swap this extractor for a structured-stat adapter. Invariants
  * stay the same — identity, source, time, no market-as-Pundit-probability.
@@ -201,34 +247,43 @@ export function extractPlayerEvidence(
 
   for (const source of sources) {
     const blob = `${source.title} ${source.snippet}`;
-    const names = collectNames(blob, fixture);
-    if (!names.length) continue;
-    const playerName = names[0];
-    const teamId = teamForPlayer(source.snippet, blob, playerName, fixture);
-    if (!teamId) continue;
-    const observedAt = parseObservedAt(source.date, fixture.kickoff);
-    if (!observedAt) continue;
+    if (!mentionsFixture(blob, fixture)) continue;
+    const observed = parseObservedAt(source.date, fixture.kickoff);
+    if (!observed.ok) continue;
+    const observedAt = observed.at;
+    const marketCue = MARKET_CUE.test(blob);
+    const segments = [source.snippet, ...source.snippet.split(/[,;|\n]/), blob];
 
-    const oddsMatch = DECIMAL_ODDS.exec(blob);
-    const odds = oddsMatch ? Number(oddsMatch[1]) : NaN;
-    if (MARKET_CUE.test(blob) && Number.isFinite(odds) && odds > 1.01 && odds < 51) {
-      const playerName = names[0];
-      markets.push({
-        fixtureId: fixture.fixtureId,
-        playerId: slug(playerName),
-        playerName,
-        teamId,
-        market: marketKind(blob),
-        decimalOdds: odds,
-        impliedProbability: 1 / odds,
-        sourceId: source.id,
-        observedAt,
-      });
+    const seenMarket = new Set<string>();
+    for (const segment of segments) {
+      if (!marketCue && !MARKET_CUE.test(segment)) continue;
+      const names = collectNames(segment, fixture);
+      for (const playerName of names) {
+        const odds = nearestOdds(segment, playerName);
+        if (!inRange(odds)) continue;
+        const teamId = teamForPlayer(segment, blob, playerName, fixture) ?? "";
+        const key = `${slug(playerName)}:${odds.toFixed(2)}:${source.id}`;
+        if (seenMarket.has(key)) continue;
+        seenMarket.add(key);
+        markets.push({
+          fixtureId: fixture.fixtureId,
+          playerId: slug(playerName),
+          playerName,
+          teamId,
+          market: marketKind(`${blob} ${segment}`),
+          decimalOdds: Number(odds.toFixed(2)),
+          impliedProbability: 1 / odds,
+          sourceId: source.id,
+          observedAt,
+        });
+      }
     }
 
+    const names = collectNames(blob, fixture);
     const kind = availabilityType(blob);
-    if (kind) {
+    if (kind && names.length) {
       const playerName = names[0];
+      const teamId = teamForPlayer(source.snippet, blob, playerName, fixture) ?? "";
       const row: PlayerEvidence = {
         playerId: slug(playerName),
         playerName,
@@ -263,6 +318,17 @@ export function extractPlayerEvidence(
 export function hasTrustworthyPlayerEvidence(bundle: PlayerEvidenceBundle): boolean {
   return bundle.markets.length > 0 || bundle.observations.some((row) =>
     row.evidenceType === "expected-lineup" || row.evidenceType === "confirmed-lineup"
+  );
+}
+
+export function hasTeamNewsEvidence(bundle: PlayerEvidenceBundle): boolean {
+  return bundle.observations.some((row) =>
+    Boolean(row.observedAt)
+    && (
+      row.evidenceType === "expected-lineup"
+      || row.evidenceType === "confirmed-lineup"
+      || row.evidenceType === "availability"
+    )
   );
 }
 
