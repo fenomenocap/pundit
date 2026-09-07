@@ -80,6 +80,25 @@ describe("player evidence adapter", () => {
     expect(bundle.markets.some((row) => row.playerName === "Semenyo" && row.decimalOdds === 3.75)).toBe(true);
   });
 
+  it("strips Oddschecker See All Odds chrome and keeps the real anytime price", () => {
+    const bundle = extractPlayerEvidence([{
+      id: "S4",
+      title: "Bournemouth vs Brentford Betting Odds",
+      url: "https://www.oddschecker.com/football/english/premier-league/bournemouth-v-brentford/winner",
+      date: "",
+      snippet: "Anytime Goalscorer. Igor Thiago See All Odds (1). 5/4. Evanilson See All Odds ... To Score 2 Or More Goals.",
+    }], {
+      fixtureId: "eng.1:bournemouth-brentford",
+      home: "Bournemouth",
+      away: "Brentford",
+      kickoff: "2026-09-12T14:00:00Z",
+    });
+    expect(hasTrustworthyPlayerEvidence(bundle)).toBe(true);
+    expect(leadingScorerCandidate(bundle)?.playerName).toBe("Igor Thiago");
+    expect(leadingScorerCandidate(bundle)?.decimalOdds).toBe(2.25);
+    expect(bundle.markets.some((row) => /see/i.test(row.playerName))).toBe(false);
+  });
+
   it("drops contradictory lineup status for the same player", () => {
     const bundle = extractPlayerEvidence([
       source({

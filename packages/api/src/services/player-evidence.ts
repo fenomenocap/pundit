@@ -67,6 +67,7 @@ const STOPWORDS = new Set([
   "this", "that", "their", "they", "will", "most", "likely", "score",
   "sports", "sky", "bbc", "betting", "preview", "football", "soccer", "latest",
   "update", "updates", "best", "tips", "accumulator", "acca", "live", "blog",
+  "see", "all", "more", "click", "here", "nil", "chance", "double", "winner",
 ]);
 
 const NAME = /\b([A-Z][a-zÀ-ÿ]+(?:\s+[A-Z][a-zÀ-ÿ]+){0,2})\b/g;
@@ -144,6 +145,10 @@ function teamForPlayer(
   return null;
 }
 
+function stripMarketChrome(text: string): string {
+  return text.replace(/\bsee all odds\b/gi, " ");
+}
+
 function isPersonName(raw: string, fixture: PlayerFixtureRef): boolean {
   const name = raw.trim();
   if (name.length < 4) return false;
@@ -155,7 +160,8 @@ function isPersonName(raw: string, fixture: PlayerFixtureRef): boolean {
   if (fixture.home.toLocaleLowerCase().includes(lower) || fixture.away.toLocaleLowerCase().includes(lower)) {
     return false;
   }
-  return !STOPWORDS.has(lower.split(/\s+/)[0] ?? "");
+  const parts = lower.split(/\s+/);
+  return !STOPWORDS.has(parts[0] ?? "") && !STOPWORDS.has(parts[parts.length - 1] ?? "");
 }
 
 function parseObservedAt(date: string, kickoff: string): { ok: boolean; at: string | null } {
@@ -246,17 +252,17 @@ export function extractPlayerEvidence(
   const availabilityByPlayer = new Map<string, PlayerEvidence[]>();
 
   for (const source of sources) {
-    const blob = `${source.title} ${source.snippet}`;
+    const blob = stripMarketChrome(`${source.title} ${source.snippet}`);
     if (!mentionsFixture(blob, fixture)) continue;
     const observed = parseObservedAt(source.date, fixture.kickoff);
     if (!observed.ok) continue;
     const observedAt = observed.at;
-    const marketCue = MARKET_CUE.test(blob);
-    const segments = [source.snippet, ...source.snippet.split(/[,;|\n]/), blob];
+    const snippet = stripMarketChrome(source.snippet);
+    const segments = [snippet, ...snippet.split(/[,;|\n]/), blob];
 
     const seenMarket = new Set<string>();
     for (const segment of segments) {
-      if (!marketCue && !MARKET_CUE.test(segment)) continue;
+      if (!MARKET_CUE.test(segment)) continue;
       const names = collectNames(segment, fixture);
       for (const playerName of names) {
         const odds = nearestOdds(segment, playerName);
