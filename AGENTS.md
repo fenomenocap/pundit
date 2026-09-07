@@ -44,6 +44,13 @@ After Vercel or Railway env/config changes that affect production, run `pnpm ver
 
 Production chat eval (`pnpm chat-eval:production`) hits live MiniMax credits — run manually after Tier 1+ deploys as a post-deploy smoke, not in CI. Unit tests for the harness run via `pnpm chat-eval:test` (no production traffic). Dry-run config check: `pnpm chat-eval:dry-run`.
 
+Four-step certification loop after a Railway + Vercel deploy that contains the work under test. Do **not** put the paid eval or live browser capture in CI.
+
+1. **Battle-test** — `pnpm chat-eval:production` writes `artifacts/chat-evals/latest-run.json` (Schema-17, ≥13s pacing). Burns MiniMax credits.
+2. **Browser JSON** — `pnpm chat-eval:browser` reads that run and writes `<runId>.browser.json` against the evaluated production web origin (mobile + desktop). Use `--dry-run` to print the required checks without launching a browser or hitting production.
+3. **Agent critic JSON** — review the battle-test answers and write a critic file (`runId`, `schemaVersion`, `sourceSha`, `deploymentId`, per-scenario and per-turn verdicts). The critic is agent-authored, not a repo script.
+4. **Finalize** — `pnpm chat-eval:finalize --browser-json <path> --critic-json <path>` binds evidence onto the latest run. Release decisions require report `overall: "PASS"`.
+
 The Schema-17 production evaluator fails certification when delivered answers contain internal jargon (`Dixon-Coles`, `ClubElo`, `model-grounded`), raw search/tool payloads or bracketed search directives, orphaned section labels, or a structurally incomplete ending. Match-grounded evaluation checks explicit combined-scoreline percentages, team/score orientation, grounded scoreline rank/count/mass claims, and invented lineup/tactical probability counterfactuals after verification abstains. Model-only and season prompts have explicit request-fidelity and table-source-fidelity assertions. General analysis checks high-line geometry across bounded prose and Markdown boundaries, while independently rejecting contradictory reversed geometry. Certainty checks are clause-scoped: `cannot guarantee`, `no guarantee`, and `not a certainty` are refusals, but a separate affirmative guarantee still fails. Product scope, categorical source-nonexistence claims, and false denial of supplied history remain guarded. Team-news abstention protects only its own sentence; later availability claims still require a source and date. The artifact also records post-run readiness and the deployment-wide pre/post web-search counter delta for bounded diagnostics, without claiming that delta is per-turn attribution.
 
 Production runs must preserve at least 13,000 ms between every request start. Schema 17 records monotonic start offsets and observed gaps as well as wall-clock timestamps, adds a 25 ms scheduling safety margin, rechecks after waking, and fails certification unless the preserved start count, derived gaps, reported gaps, and minimum interval all agree. Final PASS requires every required scenario to pass, no optional material failure, only explicitly safe observational `INCONCLUSIVE` results, the required-traffic latency gate, the observed pacing gate, per-target build-floor SHA convergence, a real deployment ID, clean browser evidence, and critic PASS coverage for every successful HTTP-200 turn. A timeout or other failure without a comparable prior run is `FAIL`, not an unproven `EXISTING ISSUE`; release decisions require report `overall: "PASS"`.
@@ -86,6 +93,9 @@ packages/web/src/
   lib/mock-data.ts                 — mock-aware fixture/standing wrappers
   e2e/smoke.spec.ts              — Playwright UI shell smoke (mock mode)
   playwright.config.ts           — chromium-only, mock-mode webServer
+
+scripts/
+  capture-chat-eval-browser.mjs  — post-deploy Schema-17 browser JSON (pnpm chat-eval:browser)
 ```
 
 ## GitHub authentication on macOS

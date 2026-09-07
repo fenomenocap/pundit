@@ -42,11 +42,30 @@ test.describe("smoke", () => {
     await expect(table.or(emptyState)).toBeVisible({ timeout: 15_000 });
   });
 
+  test("model labels live and full-time instead of Upcoming", async ({ page }) => {
+    await page.goto("/model");
+    const chelsea = page.locator("tr").filter({ hasText: "Chelsea · Tottenham Hotspur" });
+    await expect(chelsea).toBeVisible();
+    await expect(chelsea.getByTestId("model-fixture-status")).toHaveText(/Live/);
+    await expect(chelsea.getByTestId("model-fixture-status")).not.toHaveText(/Upcoming/);
+
+    const united = page.locator("tr").filter({ hasText: "Manchester United · Hull City" });
+    await expect(united).toBeVisible();
+    await expect(united.getByTestId("model-fixture-status")).toHaveText(/Full time/);
+    await expect(united.getByTestId("model-fixture-status")).not.toHaveText(/Upcoming/);
+
+    const arsenal = page.locator("tr").filter({ hasText: "Arsenal · Coventry City" });
+    await expect(arsenal.getByTestId("model-fixture-status")).toHaveText(/Upcoming/);
+  });
+
   test("model expanded row shows cached market comparison", async ({ page }) => {
     await page.goto("/model");
     const arsenal = page.locator("tr").filter({ hasText: "Arsenal · Coventry City" });
     await expect(arsenal).toBeVisible();
     await arsenal.getByRole("button", { name: "Expand details" }).click();
+    await expect(page.getByTestId("totals-honesty")).toHaveText(
+      "Totals sit near 50% because every match uses the same 2.70 expected goals."
+    );
     await expect(page.getByText("Markets", { exact: true })).toBeVisible();
     await expect(page.getByText("Polymarket", { exact: true })).toBeVisible();
     await expect(page.locator('[title*="T"]').filter({ hasText: /./ }).first()).toBeVisible();
@@ -365,7 +384,7 @@ test.describe("smoke", () => {
     });
 
     await page.goto("/");
-    const chip = page.getByRole("button", { name: /Dinamo Zagreb vs Viking/ });
+    const chip = page.getByRole("button", { name: /Dinamo Zagreb vs Viking ·/ });
     await expect(chip).toBeVisible();
     await chip.click();
 
@@ -390,14 +409,65 @@ test.describe("smoke", () => {
     });
 
     await page.goto("/");
-    const chip = page.getByRole("button", { name: "I found Arsenal at 7 — pass or play?" });
+    const chip = page.getByRole("button", { name: "Pass or play · Arsenal vs Coventry City" });
     await expect(chip).toBeVisible();
+    await expect(chip).toHaveAttribute("data-has-user-line", "true");
     await chip.click();
 
     await expect.poll(() => received.length).toBe(1);
-    expect(received[0].question).toBe("I found Arsenal at 7 — pass or play?");
+    expect(received[0].question).toBe("Pass or play · Arsenal vs Coventry City");
     expect(received[0].fixtureContext).toEqual({ fixtureId: "espn:eng.1:1" });
     expect(received[0].userLine).toEqual({ outcome: "away", decimalOdds: 7 });
+  });
+
+  test("each featured match has a desk chip that writes userLine", async ({ page }) => {
+    const received: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      received.push(route.request().postDataJSON());
+      const answer = "Here is the desk.";
+      const sse = [
+        `event: grounding\ndata: ${JSON.stringify({ grounding: null })}`,
+        `event: delta\ndata: ${JSON.stringify({ text: answer })}`,
+        `event: done\ndata: ${JSON.stringify({ answer, grounding: null })}`,
+        "",
+      ].join("\n\n");
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
+    });
+
+    await page.goto("/");
+    const passChip = page.getByRole("button", { name: "Pass or play · Arsenal vs Coventry City" });
+    const priceChip = page.getByRole("button", { name: "Price this · Liverpool vs Brighton & Hove Albion" });
+    const dinamoDesk = page.getByRole("button", { name: "Pass or play · Dinamo Zagreb vs Viking" });
+    await expect(passChip).toBeVisible();
+    await expect(priceChip).toBeVisible();
+    await expect(dinamoDesk).toBeVisible();
+    await expect(page.locator('[data-testid="suggestion-chip"][data-has-user-line="true"]')).toHaveCount(3);
+
+    await priceChip.click();
+    await expect.poll(() => received.length).toBe(1);
+    expect(received[0].question).toBe("Price this · Liverpool vs Brighton & Hove Albion");
+    expect(received[0].fixtureContext).toEqual({ fixtureId: "espn:eng.1:2" });
+    expect(received[0].userLine).toEqual({ outcome: "away", decimalOdds: 7 });
+  });
+
+  test("first paint stays loading and does not flash ready fallback chips", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "loading";
+    });
+    await page.goto("/");
+    await expect(page.getByTestId("chat-status")).toHaveText(/Loading match model/i);
+    await expect(page.getByTestId("chat-status")).not.toHaveText(/active fixtures live/i);
+    await expect(page.getByRole("button", { name: "What does the current Premier League table show?" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Who is favourite for the Premier League title?" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /high defensive line/ })).toHaveCount(0);
+    await expect(page.getByTestId("suggestion-chip")).toHaveCount(0);
+  });
+
+  test("suggestion chips omit in-play and finished matches", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: /Arsenal vs Coventry City ·/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Chelsea vs Tottenham/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Manchester United vs Hull/ })).toHaveCount(0);
   });
 
   test("shared question URL sends its opaque fixture identity and keeps q-only links compatible", async ({ page }) => {
@@ -599,7 +669,7 @@ test.describe("smoke", () => {
       /Match forecasts ready for some fixtures/i
     );
     await expect(page.getByTestId("chat-status")).not.toHaveText(/active fixtures live/i);
-    await expect(page.getByRole("button", { name: /Arsenal vs Coventry City/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Arsenal vs Coventry City ·/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Dinamo Zagreb vs Viking/ })).toHaveCount(0);
   });
 

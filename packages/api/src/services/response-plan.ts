@@ -1,6 +1,8 @@
 export type ResponseMode =
   | "match-preview"
   | "match-follow-up"
+  | "pricing-desk"
+  | "totals"
   | "exact-score"
   | "fair-price"
   | "market-comparison"
@@ -13,6 +15,10 @@ export type ResponseMode =
   | "season"
   | "coverage"
   | "general";
+
+const ASKS_MATCH_PREVIEW =
+  /\b(?:preview|analyse|analyze|analysis|break down|thoughts(?:\s+on)?|full (?:read|preview|analysis))\b/i;
+const ASKS_TOTALS = /\b(?:over|under)\s*2\.5\b|\btotals\b|\bover\/under\b|\bo\/u\b/i;
 
 export interface ResponsePlan {
   mode: ResponseMode;
@@ -66,9 +72,9 @@ export function planResponse(
   let mode: ResponseMode;
 
   if (context.groundingKind === "fixture") mode = "coverage";
-  else if (match && !hasUserLine && !asksStakeSizeQuestion(q)
-    && /\b(?:full (?:read|preview|analysis)|preview of|analyse|analyze|break down)\b/i.test(q)) mode = "match-preview";
-  else if (/\b(?:if|suppose|assuming|without)\b.{0,80}\b(?:line-?up|starts?|benched|absent|missing|misses? out|ruled out|available)\b|\bwith\s+(?:a |the )?(?:changed|different|weakened|rotated|confirmed)\s+line-?up\b|\b(?:line-?up|starting xi)\b.{0,80}\b(?:change|shift|swing|reprice|probabilit)/i.test(q)) {
+  else if (match && !hasUserLine && !asksStakeSizeQuestion(q) && ASKS_MATCH_PREVIEW.test(q)) {
+    mode = "match-preview";
+  } else if (/\b(?:if|suppose|assuming|without)\b.{0,80}\b(?:line-?up|starts?|benched|absent|missing|misses? out|ruled out|available)\b|\bwith\s+(?:a |the )?(?:changed|different|weakened|rotated|confirmed)\s+line-?up\b|\b(?:line-?up|starting xi)\b.{0,80}\b(?:change|shift|swing|reprice|probabilit)/i.test(q)) {
     mode = "lineup-counterfactual";
   } else if (/\b(?:goalscorer|goal scorer|anytime scorer|first scorer|who scores|who (?:will|might|could) score|who (?:will|might|could) (?:most )?likely score|who (?:will|might|could) be (?:most )?likely to score|who is (?:most )?likely to score|player prop|assists?|cards?)\b/i.test(q)) {
     mode = "player-or-scorer";
@@ -76,26 +82,27 @@ export function planResponse(
     mode = "team-news";
   } else if (/\b(?:table|standings?)\b/i.test(q)) mode = "table";
   else if (/\b(?:title race|top[- ]four|season outlook|champion)\b/i.test(q)) mode = "season";
+  else if (match && ASKS_TOTALS.test(q)) mode = "totals";
   else if (match && /\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(q)) mode = "match-follow-up";
   else if (match && asksStakeSizeQuestion(q)) mode = "stake-refusal";
   else if (match && (hasUserLine || /\bpass or play\b/i.test(q))) mode = "user-line";
   else if (match && SCORELINE.test(q) && /\b(?:fair|price|odds?|decimal|implied)\b/i.test(q)) mode = "fair-price";
   else if (match && SCORELINE.test(q)) mode = "exact-score";
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
-  else if (match && (!hasHistory || /\b(?:preview|analyse|analyze|full (?:read|preview)|thoughts on|break down)\b/i.test(q))) mode = "match-preview";
+  else if (match && !hasHistory) mode = "pricing-desk";
   else if (match) mode = "match-follow-up";
   else mode = "general";
 
-  const full = mode === "match-preview";
+  const expanded = mode === "match-preview" || mode === "pricing-desk";
   return {
     mode,
     directAnswerRequired: true,
-    includeMatchCard: full ? "new-fixture" : match ? "compact-reference" : "none",
+    includeMatchCard: expanded ? "new-fixture" : match ? "compact-reference" : "none",
     // Player prices and lineup counterfactual deltas are unsupported
     // capabilities, so their correct answer is a deterministic abstention.
     // Only current team news requires external evidence in these match modes.
     evidenceRequired: mode === "team-news",
-    maxSections: full ? 4 : 1,
+    maxSections: mode === "match-preview" ? 4 : 1,
   };
 }
 

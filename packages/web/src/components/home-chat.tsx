@@ -37,9 +37,12 @@ import {
   marketEvFromPricing,
   marketRowSource,
   marketRowsFromGrounding,
+  deskChipCopy,
+  espnStatusByIdentity,
+  fixtureChipCopy,
+  isFutureScheduledFixture,
   PULL_CHIP_DECIMAL,
   PULL_CHIP_OUTCOME,
-  pullModeChipCopy,
 } from "@/lib/fixture-presentation";
 
 interface ChatMessage {
@@ -88,14 +91,16 @@ const NO_FIXTURE_SUGGESTIONS: Suggestion[] = [
  * - `unpriced`    fixtures exist but none are priced, so no match question works
  * - `no-fixtures` the window is genuinely empty, between rounds
  * - `unavailable` the fixture list could not be loaded at all
+ * - `loading`     first paint, before `/api/model/active` returns
  *
  * These were previously collapsed: any active fixture at all read as `ready`,
  * so the status bar claimed "Model grounded" while the suggestions beneath it
  * returned 503. Partial coverage is a standing state, not a transient one — a
  * club whose rating window has lapsed at the provider stays unpriced until the
- * provider publishes a new one.
+ * provider publishes a new one. Defaulting to `ready` while chips were still
+ * the no-fixture fallback flashed a live bar over table/title/high-line prompts.
  */
-type FixtureState = "ready" | "partial" | "unpriced" | "no-fixtures" | "unavailable";
+type FixtureState = "loading" | "ready" | "partial" | "unpriced" | "no-fixtures" | "unavailable";
 
 function completedHistory(messages: ChatMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
@@ -187,9 +192,29 @@ function formatSuggestionChip(fixture: ModelFixtureResponse): Suggestion {
   const day = new Date(fixture.utcDate).toLocaleDateString(undefined, { weekday: "short" });
   const abbr = competitionAbbr(fixture.competitionId, fixture.competition);
   return {
-    text: `${fixture.home} vs ${fixture.away} · ${abbr} · ${day}`,
+    text: fixtureChipCopy(fixture.home, fixture.away, abbr, day),
     fixtureContext: { fixtureId: modelFixtureIdentity(fixture) },
   };
+}
+
+function deskSuggestionChip(fixture: ModelFixtureResponse, index: number): Suggestion {
+  return {
+    text: deskChipCopy(
+      fixture.home,
+      fixture.away,
+      index % 2 === 0 ? "pass-or-play" : "price-this"
+    ),
+    fixtureContext: { fixtureId: modelFixtureIdentity(fixture) },
+    userLine: { outcome: PULL_CHIP_OUTCOME, decimalOdds: PULL_CHIP_DECIMAL },
+  };
+}
+
+function featuredDeskSuggestions(fixtures: ModelFixtureResponse[]): Suggestion[] {
+  const chips: Suggestion[] = [];
+  for (const [index, fixture] of fixtures.entries()) {
+    chips.push(formatSuggestionChip(fixture), deskSuggestionChip(fixture, index));
+  }
+  return chips;
 }
 
 function teamAbbr(name: string): string {
@@ -555,8 +580,8 @@ export function HomeChat() {
   const [teamContext, setTeamContext] = useState<TeamContext>();
   const [fixtureContext, setFixtureContext] = useState<FixtureContext>();
   const [fixtureContextTeams, setFixtureContextTeams] = useState<TeamContext>();
-  const [suggestions, setSuggestions] = useState(NO_FIXTURE_SUGGESTIONS);
-  const [fixtureState, setFixtureState] = useState<FixtureState>("ready");
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [fixtureState, setFixtureState] = useState<FixtureState>("loading");
   const [stopNotice, setStopNotice] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoAskedRef = useRef<string | null>(null);
@@ -602,34 +627,42 @@ export function HomeChat() {
     let cancelled = false;
     void (async () => {
       try {
-        const model = await fetchActiveModelFixtures();
+        const [model, active] = await Promise.all([
+          fetchActiveModelFixtures(),
+          fetchActiveFixtures(),
+        ]);
         if (cancelled) return;
-        const featured = model.fixtures.slice(0, 3).map(formatSuggestionChip);
+        const espnById = espnStatusByIdentity(active.matches);
+        const upcomingPriced = model.fixtures.filter((fixture) => (
+          isFutureScheduledFixture(
+            fixture.utcDate,
+            espnById.get(modelFixtureIdentity(fixture)) ?? fixture.status
+          )
+        ));
+        const featured = upcomingPriced.slice(0, 3);
         if (featured.length > 0) {
           // Every suggested fixture comes from the model, so each one grounds.
           // A model error alongside them means other fixtures went unpriced.
-          const pullFixture = model.fixtures[0];
+          // In-play and finished stay priced on /model; they are not "upcoming".
           setFixtureState(model.error ? "partial" : "ready");
-          setSuggestions([
-            ...featured,
-            {
-              text: pullModeChipCopy(pullFixture.home),
-              fixtureContext: { fixtureId: modelFixtureIdentity(pullFixture) },
-              userLine: { outcome: PULL_CHIP_OUTCOME, decimalOdds: PULL_CHIP_DECIMAL },
-            },
-          ]);
+          setSuggestions(featuredDeskSuggestions(featured));
           return;
         }
 
-        const active = await fetchActiveFixtures();
-        if (cancelled) return;
+        if (model.fixtures.length > 0) {
+          // Priced fixtures exist, but none are still SCHEDULED in the future.
+          setFixtureState(model.error ? "partial" : "ready");
+          setSuggestions(NO_FIXTURE_SUGGESTIONS);
+          return;
+        }
+
         // Nothing is priced. Suggesting the raw fixture list here is what
         // produced chips that answered 503, so fall back to prompts that work
         // without the match model in every one of these cases.
         setSuggestions(NO_FIXTURE_SUGGESTIONS);
         if (active.matches.length > 0) {
           setFixtureState("unpriced");
-        } else if (active.error) {
+        } else if (active.error || model.error) {
           // These wrappers report a transport failure on `error` rather than
           // throwing, so without this check an unreachable API is indistinguishable
           // from an empty window and gets announced as "no fixtures scheduled".
@@ -857,7 +890,9 @@ export function HomeChat() {
   const statusLabel = ((): string => {
     switch (modelState) {
       case "loading":
-        return `Loading match model — ${loadingMessage(loadingTier)}`;
+        return loadingTier
+          ? `Loading match model — ${loadingMessage(loadingTier)}`
+          : "Loading match model";
       case "ready":
         return "Match forecasts ready · active fixtures live";
       case "partial":
@@ -878,6 +913,12 @@ export function HomeChat() {
     : modelState === "ready"
       ? "ready"
       : "cold";
+  const hasUpcomingFixtureChips = suggestions.some((suggestion) => suggestion.fixtureContext);
+  const emptyStatePrompt = fixtureState === "loading"
+    ? "Ask me about a Premier League or UCL qualifier match, the table, or the title race."
+    : (fixtureState === "ready" || fixtureState === "partial") && hasUpcomingFixtureChips
+      ? "Ask me about an upcoming Premier League or UCL qualifier match for a grounded forecast."
+      : "Ask me about the Premier League table, the title race, or football in general.";
 
   // Older API releases do not send presentation hints. In that case, render
   // one full card for the first answer about each fixture and keep later turns
@@ -945,9 +986,7 @@ export function HomeChat() {
               Football analysis, grounded.
             </h2>
             <p className="mx-auto max-w-md text-sm leading-relaxed text-muted-foreground">
-              {fixtureState === "ready" || fixtureState === "partial"
-                ? "Ask me about an upcoming Premier League or UCL qualifier match for a grounded forecast."
-                : "Ask me about the Premier League table, the title race, or football in general."}
+              {emptyStatePrompt}
             </p>
           </div>
           {fixtureState === "partial" && (
@@ -1098,12 +1137,14 @@ export function HomeChat() {
             </span>
           )}
         </div>
-        {messages.length === 0 && suggestions.length > 0 && (
+        {messages.length === 0 && fixtureState !== "loading" && suggestions.length > 0 && (
           <div className="-mx-1 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1">
             {suggestions.map((s) => (
               <button
                 key={s.text}
                 type="button"
+                data-testid="suggestion-chip"
+                data-has-user-line={s.userLine ? "true" : "false"}
                 onClick={() => ask(s.text, s.fixtureContext, s.userLine)}
                 className={cn(
                   "snap-start shrink-0 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"

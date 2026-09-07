@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState, Fragment } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { fetchActiveModelFixtures, fetchCompetitions } from "@/lib/mock-data";
+import { fetchActiveFixtures, fetchActiveModelFixtures, fetchCompetitions, fetchRecentMatches } from "@/lib/mock-data";
 import { buildAskUrl, getReadiness, modelFixtureIdentity } from "@/lib/api";
-import type { ModelFixtureResponse } from "@/lib/api";
+import type { MatchResponse, ModelFixtureResponse } from "@/lib/api";
 import { Disclaimer } from "@/components/disclaimer";
 import { PageHeader } from "@/components/page-header";
 import { ErrorBanner } from "@/components/error-banner";
@@ -13,9 +13,12 @@ import { EmptyState } from "@/components/empty-state";
 import { FilterPill } from "@/components/filter-pill";
 import { ProbabilityBar } from "@/components/probability-bar";
 import {
+  espnStatusByIdentity,
   formatObservedAt,
   formatPercent as percent,
   marketRowsFromModel,
+  modelFixtureStatusLabel,
+  SHARED_TOTAL_XG_SENTENCE,
 } from "@/lib/fixture-presentation";
 
 function stageLabel(stage: string): string {
@@ -43,6 +46,7 @@ function kickoffDay(utcDate: string): string {
 
 export default function ModelPage() {
   const [fixtures, setFixtures] = useState<ModelFixtureResponse[]>([]);
+  const [espnMatches, setEspnMatches] = useState<MatchResponse[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState<string>("all");
   const [competitions, setCompetitions] = useState<Array<{ id: string; name: string }>>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -53,9 +57,16 @@ export default function ModelPage() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([fetchActiveModelFixtures(), fetchCompetitions(), getReadiness().catch(() => null)])
-      .then(([fixtureData, competitionData, readiness]) => {
+    Promise.all([
+      fetchActiveModelFixtures(),
+      fetchCompetitions(),
+      getReadiness().catch(() => null),
+      fetchActiveFixtures(),
+      fetchRecentMatches(),
+    ])
+      .then(([fixtureData, competitionData, readiness, active, recent]) => {
         setFixtures(fixtureData.fixtures);
+        setEspnMatches([...active.matches, ...recent.matches]);
         setLastUpdated(fixtureData.lastUpdated);
         setError(fixtureData.error);
         setModelReady(readiness?.model.ready ?? null);
@@ -80,6 +91,16 @@ export default function ModelPage() {
       ? fixtures
       : fixtures.filter((fixture) => fixture.competitionId === selectedCompetition)
   ), [fixtures, selectedCompetition]);
+
+  const espnStatusById = useMemo(() => espnStatusByIdentity(espnMatches), [espnMatches]);
+
+  const upcomingFilteredCount = filteredFixtures.filter((fixture) => (
+    modelFixtureStatusLabel({
+      utcDate: fixture.utcDate,
+      espnStatus: espnStatusById.get(modelFixtureIdentity(fixture)) ?? fixture.status,
+      result: fixture.result,
+    }) === "Upcoming"
+  )).length;
 
   function toggleExpanded(key: string) {
     setExpanded((prev) => {
@@ -124,7 +145,11 @@ export default function ModelPage() {
               <div>
                 <h2 className="text-sm font-semibold text-white">Active fixtures</h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {loading ? "…" : filteredFixtures.length} upcoming matches with model 1X2 probabilities.
+                  {loading
+                    ? "…"
+                    : upcomingFilteredCount === filteredFixtures.length
+                      ? `${filteredFixtures.length} upcoming matches with model 1X2 probabilities.`
+                      : `${filteredFixtures.length} matches with model 1X2 probabilities.`}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -180,6 +205,12 @@ export default function ModelPage() {
                     const isExpanded = expanded.has(key);
                     const topScores = fixture.topScores.slice(0, 3);
                     const markets = marketRowsFromModel(fixture);
+                    const espnStatus = espnStatusById.get(modelFixtureIdentity(fixture)) ?? fixture.status;
+                    const statusLabel = modelFixtureStatusLabel({
+                      utcDate: fixture.utcDate,
+                      espnStatus,
+                      result: fixture.result,
+                    });
                     return (
                       <Fragment key={key}>
                         <tr
@@ -236,8 +267,17 @@ export default function ModelPage() {
                               <span className="text-right text-pink-400">{percent(fixture.pAway)}</span>
                             </div>
                           </td>
-                          <td className="font-mono text-foreground">
-                            {fixture.result ? `${fixture.result.homeScore}–${fixture.result.awayScore}` : "Upcoming"}
+                          <td
+                            className="font-mono text-foreground"
+                            data-testid="model-fixture-status"
+                            data-espn-status={espnStatus ?? ""}
+                          >
+                            <div>{statusLabel}</div>
+                            {fixture.result && (
+                              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                {fixture.result.homeScore}–{fixture.result.awayScore}
+                              </div>
+                            )}
                           </td>
                           <td className="pr-3">
                             <Link
@@ -259,6 +299,12 @@ export default function ModelPage() {
                                 <div className="space-y-1">
                                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                     Goals
+                                  </p>
+                                  <p
+                                    data-testid="totals-honesty"
+                                    className="text-[11px] leading-snug text-muted-foreground"
+                                  >
+                                    {SHARED_TOTAL_XG_SENTENCE}
                                   </p>
                                   <div className="flex items-center justify-between font-mono text-sm tabular-nums">
                                     <span className="text-muted-foreground">Over 2.5</span>

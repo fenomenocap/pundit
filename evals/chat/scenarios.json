@@ -700,6 +700,38 @@
       ]
     },
     {
+      "id": "featured-fixture-opens-pricing-desk",
+      "description": "Naming a featured match without asking for a preview settles on the pricing desk: 1X2, fair odds, and no four-section preview essay.",
+      "kind": "featured-question",
+      "questionTemplate": "What about {home} vs {away}?",
+      "expectHeadlineOneXTwo": true,
+      "expectAnalystVoice": true,
+      "expectDirectAnswer": true,
+      "expectNarrowFollowup": true,
+      "expectPricingDesk": true
+    },
+    {
+      "id": "featured-totals-honesty",
+      "description": "An over/under 2.5 question settles from pOver2_5/pUnder2_5 and states the shared 2.70 expected-goals constant instead of selling 50.6% as a match insight.",
+      "kind": "featured-question",
+      "questionTemplate": "Is {home} vs {away} over or under 2.5?",
+      "expectAnalystVoice": true,
+      "expectDirectAnswer": true,
+      "expectNarrowFollowup": true,
+      "expectTotalsHonesty": true
+    },
+    {
+      "id": "featured-explicit-preview-stays-long-read",
+      "description": "An explicit preview request still gets the long read with a headline 1X2, not the one-section desk.",
+      "kind": "featured-question",
+      "questionTemplate": "Give me your full preview of {home} vs {away}, including the 1X2, likely scorelines and any comparable market disagreement.",
+      "expectHeadlineOneXTwo": true,
+      "expectAnalystVoice": true,
+      "expectDirectAnswer": true,
+      "expectNoUnsupportedMarketCausality": true,
+      "expectComparableMarketAttribution": true
+    },
+    {
       "id": "sse-ordering",
       "description": "Streaming emits grounding before deltas and terminates with done.",
       "kind": "sse",

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   hasCompleteLeagueSchedule,
   isSeasonOutlookQuestion,
+  reconcileRemainingToStandings,
   remainingScheduledFixtures,
   simulateSeasonOutlook,
 } from "./season-simulator";
@@ -130,6 +131,66 @@ describe("season simulator", () => {
       { ...scheduled[0], id: 203, status: "FINISHED" },
     ], "eng.1");
     expect(fixtures.map((fixture) => fixture.id)).toEqual([201]);
+  });
+
+  it("keeps an in-play match when standings are still behind that result", () => {
+    const now = new Date("2026-08-20T15:00:00.000Z");
+    const live = { ...scheduled[0], id: 201, status: "IN_PLAY" as const };
+    const reconciled = reconcileRemainingToStandings(standings, [live], now);
+    expect(reconciled?.map((fixture) => fixture.id)).toEqual([201]);
+    const ratings = {
+      world: new Map<string, number>(),
+      "eng-clubs": new Map([["Arsenal", 1850], ["Liverpool", 1840]]),
+      "uefa-clubs": new Map<string, number>(),
+    };
+    expect(simulateSeasonOutlook("eng.1", standings, [live], ratings, 20)).not.toBeNull();
+  });
+
+  it("drops surplus past-kickoff IN_PLAY oldest-first when standings have already absorbed the result", () => {
+    const now = new Date("2026-08-20T15:00:00.000Z");
+    const absorbed = { ...scheduled[0], id: 200, utcDate: "2026-08-10T14:00:00.000Z", status: "IN_PLAY" as const };
+    const remaining = { ...scheduled[0], id: 201, utcDate: "2026-08-20T14:00:00.000Z", status: "SCHEDULED" as const };
+    const reconciled = reconcileRemainingToStandings(standings, [absorbed, remaining], now);
+    expect(reconciled?.map((fixture) => fixture.id)).toEqual([201]);
+    const ratings = {
+      world: new Map<string, number>(),
+      "eng-clubs": new Map([["Arsenal", 1850], ["Liverpool", 1840]]),
+      "uefa-clubs": new Map<string, number>(),
+    };
+    const outlook = simulateSeasonOutlook("eng.1", standings, [absorbed, remaining], ratings, 20);
+    expect(outlook).not.toBeNull();
+    expect(outlook!.remainingFixtures).toBe(1);
+  });
+
+  it("drops surplus stuck SCHEDULED oldest-first when standings are ahead", () => {
+    const now = new Date("2026-08-20T15:00:00.000Z");
+    const oldestStuck = { ...scheduled[0], id: 198, utcDate: "2026-08-01T14:00:00.000Z", status: "SCHEDULED" as const };
+    const newerStuck = { ...scheduled[0], id: 199, utcDate: "2026-08-08T14:00:00.000Z", status: "SCHEDULED" as const };
+    const remaining = { ...scheduled[0], id: 201, utcDate: "2026-08-20T14:00:00.000Z", status: "SCHEDULED" as const };
+    expect(reconcileRemainingToStandings(
+      standings,
+      [remaining, newerStuck, oldestStuck],
+      now
+    )?.map((fixture) => fixture.id)).toEqual([201]);
+  });
+
+  it("fails closed when surplus future fixtures cannot be reconciled", () => {
+    const now = new Date("2026-08-01T12:00:00.000Z");
+    const remaining = { ...scheduled[0], id: 201, utcDate: "2026-10-20T14:00:00.000Z", status: "SCHEDULED" as const };
+    const extra = { ...scheduled[0], id: 202, utcDate: "2026-10-27T14:00:00.000Z", status: "SCHEDULED" as const };
+    expect(reconcileRemainingToStandings(standings, [remaining, extra], now)).toBeNull();
+    expect(hasCompleteLeagueSchedule(standings, [remaining, extra])).toBe(false);
+    expect(simulateSeasonOutlook(
+      "eng.1",
+      standings,
+      [remaining, extra],
+      {
+        world: new Map<string, number>(),
+        "eng-clubs": new Map([["Arsenal", 1850], ["Liverpool", 1840]]),
+        "uefa-clubs": new Map<string, number>(),
+      },
+      10
+    )).toBeNull();
   });
 
   it("orders simultaneous remaining fixtures by stable source ID", () => {

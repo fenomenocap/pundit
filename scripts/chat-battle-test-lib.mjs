@@ -1484,6 +1484,17 @@ export function validateAnalystExpression(answer, expectation = {}) {
     assertions.userLineRiskBand = /\bRisk is (?:low|medium|high)\b/.test(text);
     assertions.noKellySizing = !/\bkelly\b/i.test(text);
   }
+  if (expectation.expectPricingDesk) {
+    assertions.pricingDeskOneXTwo = (text.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(text);
+    assertions.pricingDeskFairOdds = /\bfair\b/i.test(text) && /\b\d+\.\d{2}\b/.test(text);
+    assertions.pricingDeskNotPreviewEssay = !/\bleading scorelines\b/i.test(text)
+      && text.split(/\n\s*\n/).length <= 2;
+  }
+  if (expectation.expectTotalsHonesty) {
+    assertions.totalsOverUnderPresent = /\bover 2\.5\b/i.test(text) && /\bunder 2\.5\b/i.test(text);
+    assertions.totalsSharedExpectedGoals = /\b2\.70\b/.test(text) && /\bexpected goals\b/i.test(text);
+    assertions.totalsNoEngineJargon = !/\b(?:dixon-?coles|clubelo)\b/i.test(text);
+  }
   const failures = Object.entries(assertions)
     .filter(([, passed]) => !passed)
     .map(([name]) => `analyst expression failed ${name}`);

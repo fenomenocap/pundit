@@ -244,6 +244,34 @@ describe("ESPN model inputs", () => {
     expect(seasonFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("retries the complete schedule on the 30-minute tick while serving last-good or error", async () => {
+    stubRollingEspn();
+    const seasonFetch = vi.fn(async () => ({
+      seasonId: premierLeagueSeasonWindow().seasonId,
+      fixtures: completeLeagueSchedule(),
+    }));
+    replaceSeasonScheduleForTests({
+      competitionId: "eng.1",
+      seasonId: premierLeagueSeasonWindow().seasonId,
+      fixtures: completeLeagueSchedule(),
+      lastUpdated: new Date(),
+      error: "upstream timeout",
+      servingLastGood: true,
+    });
+    await refreshFootballData({ fetchSeason: seasonFetch });
+    expect(seasonFetch).toHaveBeenCalledTimes(1);
+
+    seasonFetch.mockClear();
+    replaceSeasonScheduleForTests({
+      ...getCachedSeasonSchedule(),
+      lastUpdated: new Date(),
+      error: "validation failed",
+      servingLastGood: false,
+    });
+    await refreshFootballData({ fetchSeason: seasonFetch });
+    expect(seasonFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("bounds a never-settling ESPN request and keeps last-good usable", async () => {
     const neverSettlingFetch = (_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
       init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });

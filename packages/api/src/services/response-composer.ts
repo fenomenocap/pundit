@@ -1,6 +1,10 @@
 import type { Grounding } from "./ask";
+import type { OneXTwoOutcome } from "./response-correctness";
 import { buildResponseFacts, factById } from "./response-facts";
 import { planResponse, resolveRequestedScoreline, type ResponsePlan } from "./response-plan";
+
+export const SHARED_TOTAL_XG_SENTENCE =
+  "Totals sit near 50% because every match uses the same 2.70 expected goals.";
 
 export const STAKE_REFUSAL_SENTENCE =
   "I can print the price. I will not size a stake without a bankroll and a risk band.";
@@ -12,6 +16,65 @@ function outcomeLabel(grounding: Grounding, outcome: "home" | "draw" | "away"): 
 function signedEvPct(evPct: number): string {
   const pct = evPct * 100;
   return `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
+
+function composeTotalsAnswer(question: string, grounding: Grounding): string {
+  const askedUnder = /\bunder\b/i.test(question) && !/\bover\b/i.test(question);
+  const lead = askedUnder
+    ? `Under 2.5 is ${pct(grounding.pUnder2_5)}; over 2.5 is ${pct(grounding.pOver2_5)}.`
+    : `Over 2.5 is ${pct(grounding.pOver2_5)}; under 2.5 is ${pct(grounding.pUnder2_5)}.`;
+  return `${lead} ${SHARED_TOTAL_XG_SENTENCE}`;
+}
+
+function fattestCapturedEv(grounding: Grounding): {
+  source: string;
+  outcome: OneXTwoOutcome;
+  decimalOdds: number;
+  evPct: number;
+  edgeBand: string | null;
+} | null {
+  let best: {
+    source: string;
+    outcome: OneXTwoOutcome;
+    decimalOdds: number;
+    evPct: number;
+    edgeBand: string | null;
+  } | null = null;
+  for (const market of grounding.pricing.markets) {
+    for (const outcome of ["home", "draw", "away"] as const) {
+      const leg = market.legs[outcome];
+      if (leg.decimalOdds == null || leg.evPct == null) continue;
+      if (!best || Math.abs(leg.evPct) > Math.abs(best.evPct)) {
+        best = {
+          source: market.source,
+          outcome,
+          decimalOdds: leg.decimalOdds,
+          evPct: leg.evPct,
+          edgeBand: market.edgeBand,
+        };
+      }
+    }
+  }
+  return best;
+}
+
+function composePricingDeskAnswer(grounding: Grounding): string {
+  const model = grounding.pricing.model;
+  const oneXTwo = `My 1X2 is ${grounding.home} ${pct(model.home.p)} (fair ${model.home.fairOdds.toFixed(2)}), `
+    + `draw ${pct(model.draw.p)} (fair ${model.draw.fairOdds.toFixed(2)}) and `
+    + `${grounding.away} ${pct(model.away.p)} (fair ${model.away.fairOdds.toFixed(2)}).`;
+  if (grounding.pricing.userLine) {
+    return `${oneXTwo} ${composeUserLineAnswer(grounding)}`;
+  }
+  const captured = fattestCapturedEv(grounding);
+  if (captured) {
+    const subject = outcomeLabel(grounding, captured.outcome);
+    const source = captured.source[0].toUpperCase() + captured.source.slice(1);
+    const band = captured.edgeBand ? ` (${captured.edgeBand})` : "";
+    return `${oneXTwo} Against the captured ${source} decimal of ${captured.decimalOdds.toFixed(2)} on ${subject}, `
+      + `EV is ${signedEvPct(captured.evPct)}${band}.`;
+  }
+  return `${oneXTwo} I need a captured decimal line before I can print EV% or pass or play.`;
 }
 
 function composeUserLineAnswer(grounding: Grounding): string {
@@ -68,6 +131,12 @@ export function composeMatchResponse(
   const scoreRequest = resolveRequestedScoreline(question, grounding);
   const score = scoreRequest?.score ?? null;
 
+  if (plan.mode === "totals") {
+    return composeTotalsAnswer(question, grounding);
+  }
+  if (plan.mode === "pricing-desk") {
+    return composePricingDeskAnswer(grounding);
+  }
   if (plan.mode === "player-or-scorer") {
     return "I don’t have player-level projections or a verified scorer market for this fixture, "
       + "so I can’t name a most likely scorer without inventing one.";
@@ -139,7 +208,7 @@ export function composeMatchResponse(
   ].sort((a, b) => b.p - a.p);
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
-    `Over 2.5 is ${pct(grounding.pOver2_5)} and both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""}`,
+    `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${SHARED_TOTAL_XG_SENTENCE}`,
     [marketRows, market].filter(Boolean).join(" "),
     "I would revisit the read only after verified team news or a materially different market snapshot; I can’t assign a lineup effect from these facts alone.",
   ].filter(Boolean).join("\n\n");
