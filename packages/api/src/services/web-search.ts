@@ -28,7 +28,7 @@ const TIMEOUT_MS = 10_000;
 // rate-limit problem in one line.
 const CACHE_TTL_MS = 30 * 60_000;
 const VOLATILE_CACHE_TTL_MS = 5 * 60_000;
-const VOLATILE_QUERY = /\b(?:odds|price|prices|line|lines|movement|moved|prop|props|market)\b/i;
+const VOLATILE_QUERY = /\b(?:odds|price|prices|line|lines|movement|moved|prop|props|market|manager|managers|coach|head coach|injur(?:y|ies|ed)|suspension|line-?up|lineups|team news)\b/i;
 // Consecutive *questions* in which a provider failed every attempt. Counted per
 // question, so the six searches behind one answer contribute at most one.
 const BREAKER_FAILED_QUESTIONS = 3;
@@ -786,13 +786,19 @@ function backoffFor(attempt: number, hint: number | null): number {
 
 // ─── Public entry points ────────────────────────────────────────────────────
 
+export type SearchOptions = {
+  /** Skip the in-process cache and do not write back. Desk current-world facts. */
+  fresh?: boolean;
+};
+
 /**
  * Runs one question's planned searches under a single question scope, bounded
  * concurrency, and provider failover.
  */
 export async function searchWebBatch(
   queries: readonly string[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: SearchOptions
 ): Promise<WebSearchOutcome[]> {
   if (queries.length === 0) return [];
   return withSearchQuestion(async () => {
@@ -800,7 +806,7 @@ export async function searchWebBatch(
     let next = 0;
     const worker = async (): Promise<void> => {
       for (let index = next++; index < queries.length; index = next++) {
-        outcomes[index] = await searchWeb(queries[index], signal)
+        outcomes[index] = await searchWeb(queries[index], signal, options)
           .catch((error) => degraded(classifyThrown(error).reason));
       }
     };
@@ -830,7 +836,8 @@ export async function searchWebBatch(
  */
 export async function searchWeb(
   query: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: SearchOptions
 ): Promise<WebSearchOutcome> {
   const trimmed = query.trim().slice(0, MAX_QUERY_LENGTH);
   if (!trimmed) {
@@ -838,22 +845,25 @@ export async function searchWeb(
   }
 
   const cacheKey = trimmed.toLocaleLowerCase();
-  const cached = cache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return {
-      status: "ok",
-      results: cached.results.map((result) => ({ ...result })),
-      provider: status.lastGoodProvider,
-      reason: null,
-      usedFallback: false,
-      attempts: [],
-    };
+  const fresh = options?.fresh === true;
+  if (!fresh) {
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return {
+        status: "ok",
+        results: cached.results.map((result) => ({ ...result })),
+        provider: status.lastGoodProvider,
+        reason: null,
+        usedFallback: false,
+        attempts: [],
+      };
+    }
   }
 
   const existing = inFlight.get(cacheKey);
-  if (existing) return existing.then(cloneOutcome);
+  if (existing && !fresh) return existing.then(cloneOutcome);
 
-  const request = searchUncached(trimmed, signal).finally(() => inFlight.delete(cacheKey));
+  const request = searchUncached(trimmed, signal, { persistCache: !fresh }).finally(() => inFlight.delete(cacheKey));
   inFlight.set(cacheKey, request);
   return request.then(cloneOutcome);
 }
@@ -864,7 +874,11 @@ export async function searchWeb(
  * timeout, garbage payload -- moves to the next provider rather than being
  * mistaken for the web having no answer.
  */
-async function searchUncached(trimmed: string, signal?: AbortSignal): Promise<WebSearchOutcome> {
+async function searchUncached(
+  trimmed: string,
+  signal?: AbortSignal,
+  options?: { persistCache?: boolean }
+): Promise<WebSearchOutcome> {
   const startedAt = Date.now();
   status.totalSearches += 1;
   const scope = questionScope.getStore();
@@ -954,11 +968,13 @@ async function searchUncached(trimmed: string, signal?: AbortSignal): Promise<We
         recordProviderSuccess(provider.name);
         status.lastGoodProvider = provider.name;
         status.lastGoodAt = new Date().toISOString();
-        cache.set(trimmed.toLocaleLowerCase(), {
-          expiresAt: Date.now()
-            + (VOLATILE_QUERY.test(trimmed) ? VOLATILE_CACHE_TTL_MS : CACHE_TTL_MS),
-          results,
-        });
+        if (options?.persistCache !== false) {
+          cache.set(trimmed.toLocaleLowerCase(), {
+            expiresAt: Date.now()
+              + (VOLATILE_QUERY.test(trimmed) ? VOLATILE_CACHE_TTL_MS : CACHE_TTL_MS),
+            results,
+          });
+        }
         attempts.push({ provider: provider.name, outcome: "ok", reason: null, attempts: tries });
         const usedFallback = provider.name !== primary;
         console.log(JSON.stringify({

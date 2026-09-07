@@ -181,19 +181,30 @@ describe("searchWeb result handling", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("fresh searches skip the cache and do not write back", async () => {
+    fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
+    await searchWeb("arsenal current manager");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await searchWeb("arsenal current manager", undefined, { fresh: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await searchWeb("arsenal current manager", undefined, { fresh: true });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   // Team news and form move on a news cycle; prices move constantly. One
   // five-minute TTL for both meant every question re-ran every search.
-  it("keeps a team-news search past the window a price search expires in", async () => {
+  // Manager / injury / team-news queries are now volatile like prices.
+  it("keeps a non-news search past the window a price search expires in", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
 
-    await searchWeb("hull man united team news injuries");
+    await searchWeb("hull man united season preview");
     await searchWeb("hull man united betting odds over 2.5");
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     vi.setSystemTime(new Date(NOW.getTime() + 10 * 60_000));
-    await searchWeb("hull man united team news injuries");
+    await searchWeb("hull man united season preview");
     expect(fetchMock).toHaveBeenCalledTimes(2); // still cached
 
     await searchWeb("hull man united betting odds over 2.5");

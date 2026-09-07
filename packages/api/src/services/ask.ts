@@ -879,8 +879,8 @@ export function planEvidenceQueries(
       planned.push(`${fixture} team news injuries suspensions predicted lineup`);
       planned.push(`${fixture} betting odds decimal 1x2 over 2.5 both teams to score`);
       planned.push(`${grounding.home} ${grounding.away} recent form last 5 matches results`);
-      planned.push(`${grounding.home} current manager head coach 2026/27`);
-      planned.push(`${grounding.away} current manager head coach 2026/27`);
+      planned.push(`${grounding.home} current manager head coach today`);
+      planned.push(`${grounding.away} current manager head coach today`);
     } else {
       planned.push(`${fixture} team news injuries suspensions predicted lineup`);
       planned.push(`${grounding.home} ${grounding.away} recent form last 5 matches results`);

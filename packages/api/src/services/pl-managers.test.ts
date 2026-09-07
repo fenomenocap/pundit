@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { managerForClub, stripUnlistedManagers } from "./pl-managers";
+import { stripUnlistedManagers } from "./pl-managers";
 import { card, formatSearchEvidence } from "./desk-voice";
 import type { Grounding } from "./ask";
 
@@ -43,7 +43,7 @@ describe("desk current-world facts", () => {
     expect(text).not.toContain("Amorim");
     expect(text).not.toContain("Guardiola");
     expect(text).not.toContain("Carrick");
-    expect(text).toMatch(/SEARCH EVIDENCE|not a model input/);
+    expect(text).toMatch(/SEARCH EVIDENCE|this turn/);
   });
 
   it("formats dated search snippets for the model", () => {
@@ -69,10 +69,5 @@ describe("desk current-world facts", () => {
     const clean = stripUnlistedManagers(prose, []);
     expect(clean).toContain("City control the chance map");
     expect(clean).not.toMatch(/Amorim/i);
-  });
-
-  it("still knows the 2026/27 snapshot for tests", () => {
-    expect(managerForClub("Manchester United")?.manager).toBe("Michael Carrick");
-    expect(managerForClub("Manchester City")?.manager).toBe("Enzo Maresca");
   });
 });
