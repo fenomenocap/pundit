@@ -128,7 +128,7 @@ export function planResponse(
     mode = "match-preview";
   } else if (/\b(?:if|suppose|assuming|without)\b.{0,80}\b(?:line-?up|starts?|benched|absent|missing|misses? out|ruled out|available)\b|\bwith\s+(?:a |the )?(?:changed|different|weakened|rotated|confirmed)\s+line-?up\b|\b(?:line-?up|starting xi)\b.{0,80}\b(?:change|shift|swing|reprice|probabilit)/i.test(q)) {
     mode = "lineup-counterfactual";
-  } else if (/\b(?:goalscorer|goal scorer|anytime scorer|first scorer|who scores|who (?:will|might|could) score|who (?:will|might|could) (?:most )?likely score|who (?:will|might|could) be (?:most )?likely to score|who is (?:most )?likely to score|player prop|assists?|cards?)\b/i.test(q)) {
+  } else if (/\b(?:goalscorer|goal scorer|anytime scorer|first scorer|top scorer|leading scorer|who scores|who (?:will|might|could) score|who (?:will|might|could) (?:most )?likely score|who (?:will|might|could) be (?:most )?likely to score|who is (?:the )?(?:most )?likely to score|who is the scorer|player prop|assists?|cards?)\b/i.test(q)) {
     mode = "player-or-scorer";
   } else if (/\b(?:injur(?:y|ies|ed)|suspension|availability|team news|confirmed line-?up|starting xi)\b/i.test(q)) {
     mode = "team-news";

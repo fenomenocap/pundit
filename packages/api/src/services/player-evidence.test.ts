@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { composeMatchResponse, composePlayerScorerAnswer } from "./response-composer";
+import { composeMatchResponse, composePlayerScorerAnswer, composeTeamNewsAnswer } from "./response-composer";
 import { planResponse } from "./response-plan";
 import {
   PLAYER_SCORER_ABSTENTION,
+  TEAM_NEWS_COMPOSE_ABSTENTION,
   extractPlayerEvidence,
+  hasTeamNewsEvidence,
   hasTrustworthyPlayerEvidence,
   leadingScorerCandidate,
   type PlayerEvidenceSource,
@@ -38,12 +40,9 @@ describe("player evidence adapter", () => {
     expect(lead?.sourceId).toBe("S1");
   });
 
-  it("drops stale, undated, unidentified, and off-fixture names", () => {
+  it("drops stale, unidentified, and off-fixture names", () => {
     expect(hasTrustworthyPlayerEvidence(extractPlayerEvidence([source({
       date: "2026-08-01T00:00:00Z",
-    })], fixture))).toBe(false);
-    expect(hasTrustworthyPlayerEvidence(extractPlayerEvidence([source({
-      date: "",
     })], fixture))).toBe(false);
     expect(hasTrustworthyPlayerEvidence(extractPlayerEvidence([source({
       title: "Premier League odds",
@@ -53,6 +52,32 @@ describe("player evidence adapter", () => {
       snippet: "Zlatan Ibrahimovic anytime 1.50 for AC Milan",
       title: "Serie A scorers",
     })], fixture))).toBe(false);
+  });
+
+  it("keeps a fixture-bound undated market quote and labels it undated", () => {
+    const bundle = extractPlayerEvidence([source({ date: "" })], fixture);
+    expect(hasTrustworthyPlayerEvidence(bundle)).toBe(true);
+    expect(leadingScorerCandidate(bundle)?.observedAt).toBeNull();
+  });
+
+  it("extracts fractional list quotes on a Home vs Away title without inventing a side", () => {
+    const bundle = extractPlayerEvidence([{
+      id: "S1",
+      title: "Sky Sports Bournemouth vs Brentford scorer odds",
+      url: "https://example.com/scorers",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Semenyo 11/4 anytime, Wissa 2.1 to score",
+    }], {
+      fixtureId: "eng.1:bournemouth-brentford",
+      home: "Bournemouth",
+      away: "Brentford",
+      kickoff: "2026-09-12T14:00:00Z",
+    });
+    expect(hasTrustworthyPlayerEvidence(bundle)).toBe(true);
+    const lead = leadingScorerCandidate(bundle);
+    expect(lead?.playerName).toBe("Wissa");
+    expect(lead?.decimalOdds).toBe(2.1);
+    expect(bundle.markets.some((row) => row.playerName === "Semenyo" && row.decimalOdds === 3.75)).toBe(true);
   });
 
   it("drops contradictory lineup status for the same player", () => {
@@ -102,5 +127,40 @@ describe("player evidence adapter", () => {
       { kind: "match", fixtureId: fixture.fixtureId, home: fixture.home, away: fixture.away, date: fixture.kickoff } as never,
       planResponse("Who scores?", { groundingKind: "match", hasHistory: true })
     )).toBe(PLAYER_SCORER_ABSTENTION);
+  });
+
+  it("composes sourced availability and abstains when team news is empty", () => {
+    const evidence = extractPlayerEvidence([{
+      id: "S1",
+      title: "Arsenal vs Chelsea team news",
+      url: "https://example.com/news",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Cole Palmer ruled out for Chelsea.",
+    }], fixture);
+    expect(hasTeamNewsEvidence(evidence)).toBe(true);
+    const answer = composeTeamNewsAnswer({
+      kind: "match",
+      fixtureId: fixture.fixtureId,
+      home: fixture.home,
+      away: fixture.away,
+      date: fixture.kickoff,
+    } as never, evidence);
+    expect(answer).toMatch(/Cole Palmer/);
+    expect(answer).toMatch(/unavailable/);
+    expect(answer).toMatch(/not a revised match forecast/i);
+    expect(composeTeamNewsAnswer({
+      kind: "match",
+      fixtureId: fixture.fixtureId,
+      home: fixture.home,
+      away: fixture.away,
+      date: fixture.kickoff,
+    } as never, extractPlayerEvidence([], fixture))).toBe(TEAM_NEWS_COMPOSE_ABSTENTION);
+    expect(hasTeamNewsEvidence(extractPlayerEvidence([{
+      id: "S1",
+      title: "Arsenal vs Chelsea team news",
+      url: "https://example.com/news",
+      date: "",
+      snippet: "Cole Palmer ruled out for Chelsea.",
+    }], fixture))).toBe(false);
   });
 });

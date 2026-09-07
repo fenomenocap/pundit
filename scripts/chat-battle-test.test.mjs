@@ -1373,6 +1373,12 @@ test("team-news guard accepts a sourced claim or an explicit abstention", () => 
   assert.equal(validateTeamNewsDiscipline(
     "No additional verified, dated injury update was established by the available evidence."
   ).passed, true);
+  assert.equal(validateTeamNewsDiscipline(
+    "I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim."
+  ).passed, true);
+  assert.equal(validateTeamNewsDiscipline(
+    "Cole Palmer (Chelsea) is listed as unavailable according to a source [[S1]] (11 September 2026). That is sourced availability, not a revised match forecast."
+  ).passed, true);
   // Nothing to source: an answer that never asserts availability is unaffected.
   assert.equal(validateTeamNewsDiscipline(
     "The model gives the home side a clear edge on the totals market."
@@ -1669,6 +1675,12 @@ test("schema-17 verification contract enforces shape, counts, and abstention sem
   }).passed, false);
   assert.equal(validateVerification({
     status: "abstain", supportedClaimCount: 0, removedClaimCount: 1,
+  }, { requireCitation: true, allowAbstention: true }).passed, true);
+  assert.equal(validateVerification({
+    status: "not-required", supportedClaimCount: 0, removedClaimCount: 0,
+  }, { requireCitation: true, allowAbstention: true }).passed, false);
+  assert.equal(validateVerification({
+    status: "verified", supportedClaimCount: 1, removedClaimCount: 0,
   }, { requireCitation: true, allowAbstention: true }).passed, true);
   assert.equal(validateVerification(null).passed, false);
 });
