@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deliverAnswer, type Grounding } from "./ask";
 import { validateAnalystDraft } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
-import { composeMatchResponse, STAKE_REFUSAL_SENTENCE } from "./response-composer";
+import { composeMatchResponse, SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
 import { buildResponseFacts } from "./response-facts";
 import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
 import { attachUserLine, buildMatchPricing, stripUntraceableMatchPercentages } from "./response-correctness";
@@ -76,6 +76,11 @@ describe("V2 conversational architecture", () => {
   it("classifies narrow turns without requesting another full card", () => {
     const preview = planResponse("Preview Arsenal v Chelsea", { groundingKind: "match" });
     expect(responsePresentation(preview)).toEqual({ responseMode: "match-preview", fixtureCard: "expanded" });
+    const desk = planResponse("What about Arsenal vs Chelsea?", { groundingKind: "match" });
+    expect(responsePresentation(desk)).toEqual({ responseMode: "pricing-desk", fixtureCard: "expanded" });
+    expect(desk.maxSections).toBe(1);
+    expect(planResponse("Is Arsenal vs Chelsea over or under 2.5?", { groundingKind: "match" }).mode)
+      .toBe("totals");
     for (const [question, mode] of [
       ["What is fair value for 2-1?", "fair-price"],
       ["Who is most likely to score?", "player-or-scorer"],
@@ -284,6 +289,37 @@ describe("V2 conversational architecture", () => {
     expect(stake).toContain(STAKE_REFUSAL_SENTENCE);
     expect(stake).toMatch(/I play/);
     expect(stake).not.toMatch(/kelly|unit size/i);
+
+    const totals = composeMatchResponse(
+      "Is Arsenal vs Chelsea over or under 2.5?",
+      match,
+      planResponse("Is Arsenal vs Chelsea over or under 2.5?", { groundingKind: "match" })
+    );
+    expect(totals).toMatch(/Over 2\.5 is 58\.9%/);
+    expect(totals).toMatch(/under 2\.5 is 41\.1%/);
+    expect(totals).toContain(SHARED_TOTAL_XG_SENTENCE);
+    expect(totals).not.toMatch(/ClubElo|Dixon-Coles|Dixon–Coles/i);
+
+    const named = composeMatchResponse(
+      "What about Arsenal vs Chelsea?",
+      match,
+      planResponse("What about Arsenal vs Chelsea?", { groundingKind: "match" })
+    );
+    expect(named).toMatch(/My 1X2 is Arsenal 56\.3% \(fair 1\.78\)/);
+    expect(named).toMatch(/draw 23\.4% \(fair 4\.27\)/);
+    expect(named).toMatch(/Chelsea 20\.3% \(fair 4\.93\)/);
+    expect(named).toMatch(/captured decimal line before I can print EV%/);
+    expect(named).not.toContain(SHARED_TOTAL_XG_SENTENCE);
+    expect(named).not.toMatch(/leading scorelines/i);
+
+    const previewCopy = composeMatchResponse(
+      "Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.",
+      match,
+      planResponse("Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.", { groundingKind: "match" })
+    );
+    expect(previewCopy).toMatch(/full 1X2/);
+    expect(previewCopy).toContain(SHARED_TOTAL_XG_SENTENCE);
+    expect(previewCopy).not.toMatch(/Over 2\.5 is 58\.9%/);
   });
 
   it("fails closed on untraceable percentages and strips unresolved final markers", () => {

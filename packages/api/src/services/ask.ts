@@ -94,6 +94,7 @@ import {
   remainingScheduledFixtures,
   simulateSeasonOutlook,
   SeasonOutlook,
+  SEASON_OUTLOOK_UNAVAILABLE,
   SEASON_QUESTION_PATTERNS,
 } from "./season-simulator";
 
@@ -3164,7 +3165,8 @@ export function shouldUseMatchGrounding(question: string): boolean {
     || mode === "exact-score"
     || mode === "user-line"
     || mode === "stake-refusal"
-    || mode === "market-comparison";
+    || mode === "market-comparison"
+    || mode === "totals";
 }
 
 // Questions that have plainly left the followed match: standalone football
@@ -6363,8 +6365,8 @@ export function prepareAsk(
       currentMessage = `Season outlook: ${JSON.stringify(grounding)}\nUser question: ${question}`;
     } else {
       systemPrompt = COMPETITION_SYSTEM_PROMPT;
-      currentMessage = "The complete season outlook is temporarily unavailable. Answer only from "
-        + `the current competition standings: ${JSON.stringify(grounding)}\nUser question: ${question}`;
+      currentMessage = `${SEASON_OUTLOOK_UNAVAILABLE} Do not rank a title race or champion from the standings.\n`
+        + `User question: ${question}`;
     }
   } else if (context.tier === "match") {
     grounding = buildGrounding(context.fixture);
@@ -7176,6 +7178,10 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
 }
 
 function renderGroundedCompetitionAnswer(question: string, grounding: CompetitionGrounding): string {
+  const tableSourceExclusive = /\b(?:based on|using|from)\s+(?:only\s+)?(?:the\s+)?current (?:table|standings)\b|\bcurrent (?:table|standings)\s+(?:alone|only)\b/i.test(question);
+  if (!tableSourceExclusive && isSeasonOutlookQuestion(question)) {
+    return SEASON_OUTLOOK_UNAVAILABLE;
+  }
   if (/\b(?:sensitive|sensitivity|one upset|one result|one loss|one win)\b/i.test(question)) {
     return "The standings alone cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
   }
@@ -7283,14 +7289,18 @@ export function deterministicGroundedResponse(
  * question about the match and has to be generated, where the guard chain and
  * the grounded fallback already own correctness.
  */
-export function closedGroundedAnswer(question: string, grounding: AskGrounding): string | null {
+export function closedGroundedAnswer(
+  question: string,
+  grounding: AskGrounding,
+  hasHistory = false
+): string | null {
   if (grounding?.kind === "match"
     && !isModelOnlyRequest(question)
     && !asksModelInputQuestion(question)) {
     if (!ANALYST_RESPONSE_V2) return null;
     const plan = planResponse(question, {
       groundingKind: "match",
-      hasHistory: true,
+      hasHistory,
       hasUserLine: grounding.pricing.userLine != null,
     });
     // These modes are fully settled by typed server facts or a typed
@@ -7304,6 +7314,8 @@ export function closedGroundedAnswer(question: string, grounding: AskGrounding):
       "stake-refusal",
       "player-or-scorer",
       "lineup-counterfactual",
+      "totals",
+      "pricing-desk",
     ].includes(plan.mode)
       ? composeMatchResponse(question, grounding, plan)
       : null;
@@ -7867,7 +7879,7 @@ async function answerQuestionScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
-    const closedAnswer = closedGroundedAnswer(question, grounding);
+    const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     if (closedAnswer) {
       return {
         answer: closedAnswer,
@@ -8020,7 +8032,7 @@ async function answerQuestionStreamScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
-    const closedAnswer = closedGroundedAnswer(question, grounding);
+    const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     if (closedAnswer) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(closedAnswer);
       return {

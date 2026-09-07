@@ -142,6 +142,9 @@ function rankTeams(state: Map<string, TeamStandingState>): string[] {
     .map((row) => row.team);
 }
 
+export const SEASON_OUTLOOK_UNAVAILABLE =
+  "The season outlook is temporarily unavailable, so I cannot rank the title race from the current table alone.";
+
 export function remainingScheduledFixtures(
   matches: FootballMatch[],
   competitionId: string
@@ -155,6 +158,52 @@ export function remainingScheduledFixtures(
       a.utcDate.localeCompare(b.utcDate)
       || String(a.id).localeCompare(String(b.id))
     );
+}
+
+export function expectedRemainingFromStandings(standings: FootballStanding[]): number | null {
+  const teamCount = standings.length;
+  if (teamCount < 2) return null;
+  const playedAppearances = standings.reduce((sum, row) => sum + row.playedGames, 0);
+  if (playedAppearances % 2 !== 0) return null;
+  return teamCount * (teamCount - 1) - playedAppearances / 2;
+}
+
+function isPastKickoff(fixture: FootballMatch, now: Date): boolean {
+  const kickoff = Date.parse(fixture.utcDate);
+  return Number.isFinite(kickoff) && kickoff <= now.getTime();
+}
+
+/**
+ * Align remaining fixtures to played-game counts. Keep live matches when
+ * standings are behind (#158). When standings are ahead, drop surplus
+ * past-kickoff IN_PLAY / stuck SCHEDULED oldest-first. Fail closed if the
+ * count still disagrees — do not invent fixtures.
+ */
+export function reconcileRemainingToStandings(
+  standings: FootballStanding[],
+  remaining: FootballMatch[],
+  now = new Date()
+): FootballMatch[] | null {
+  const expected = expectedRemainingFromStandings(standings);
+  if (expected === null || expected < 0) return null;
+
+  let fixtures = [...remaining].sort((a, b) =>
+    a.utcDate.localeCompare(b.utcDate)
+    || String(a.id).localeCompare(String(b.id))
+  );
+
+  if (fixtures.length > expected) {
+    const droppable = fixtures.filter((fixture) =>
+      isPastKickoff(fixture, now)
+      && (fixture.status === "IN_PLAY" || fixture.status === "SCHEDULED")
+    );
+    const surplus = fixtures.length - expected;
+    const dropped = new Set(droppable.slice(0, surplus).map((fixture) => fixture.id));
+    fixtures = fixtures.filter((fixture) => !dropped.has(fixture.id));
+  }
+
+  if (fixtures.length !== expected) return null;
+  return fixtures;
 }
 
 export function hasCompleteLeagueSchedule(
@@ -205,14 +254,13 @@ export function simulateSeasonOutlook(
   );
   if (baseState.size === 0) return null;
 
-  const fixtures = scheduledFixtures
-    .filter((fixture) => baseState.has(fixture.homeTeam) && baseState.has(fixture.awayTeam))
-    .sort((a, b) =>
-      a.utcDate.localeCompare(b.utcDate)
-      || String(a.id).localeCompare(String(b.id))
-    );
   const competitionStandings = standings.filter((row) => row.competitionId === competitionId);
-  if (fixtures.length === 0 || !hasCompleteLeagueSchedule(competitionStandings, fixtures)) {
+  const fixtures = reconcileRemainingToStandings(
+    competitionStandings,
+    scheduledFixtures
+      .filter((fixture) => baseState.has(fixture.homeTeam) && baseState.has(fixture.awayTeam))
+  );
+  if (!fixtures || fixtures.length === 0 || !hasCompleteLeagueSchedule(competitionStandings, fixtures)) {
     return null;
   }
   const ratedFixtures = fixtures.map((fixture) => ({

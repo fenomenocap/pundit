@@ -612,7 +612,9 @@ export async function refreshFootballData(dependencies: {
     return;
   }
 
-  const shouldRefreshSeason = seasonScheduleRefreshDue(seasonScheduleCache);
+  const shouldRefreshSeason = seasonScheduleRefreshDue(seasonScheduleCache)
+    || seasonScheduleCache.servingLastGood
+    || seasonScheduleCache.error !== null;
   const [competitionResults, seasonResult] = await Promise.all([
     Promise.allSettled(enabled.map(async (competition) => {
       const data = await refreshCompetition(competition);

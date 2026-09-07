@@ -4,7 +4,8 @@ import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
 import { attachUserLine, buildMatchPricing } from "./response-correctness";
-import { STAKE_REFUSAL_SENTENCE } from "./response-composer";
+import { SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
+import { SEASON_OUTLOOK_UNAVAILABLE } from "./season-simulator";
 import {
   espnFixtureIdentity,
   recognizeEspnFixture,
@@ -1098,6 +1099,8 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("Kalshi market-implied probabilities:");
       expect(answer).toContain("Arsenal 82.2%, draw 11.9%, Coventry 5.9%");
       expect(answer).toContain("establishes the disagreement, not its cause or a bet to place");
+      expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
+      expect(answer).not.toMatch(/Over 2\.5 is \d/);
       expect(answer).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
       expect(answer).not.toMatch(/Arteta|already been played|result on record|future replay/i);
     });
@@ -1135,6 +1138,10 @@ describe("current-news evidence hardening", () => {
       expect(naturalScorerFollowUp).toMatch(/can’t name a most likely scorer without inventing one/i);
       expect(naturalScorerFollowUp).not.toMatch(/Liverpool at 77\.6%|My short answer is/i);
       expect(closedGroundedAnswer("Analyse Arsenal vs Coventry.", model())).toBeNull();
+      expect(closedGroundedAnswer("What about Arsenal vs Coventry?", model()))
+        .toMatch(/My 1X2 is Arsenal 97\.3% \(fair 1\.03\)/);
+      expect(closedGroundedAnswer("Is Arsenal vs Coventry over 2.5?", model()))
+        .toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
         .toMatch(/I am at .*Kalshi is at .*percentage points/i);
     });
@@ -1169,7 +1176,9 @@ describe("current-news evidence hardening", () => {
       const answer = closedGroundedAnswer("How much should I stake?", match);
       expect(answer).toContain(STAKE_REFUSAL_SENTENCE);
       expect(answer).toContain("Arsenal 97.3%");
-      expect(closedGroundedAnswer("Three points are at stake for Arsenal.", match)).toBeNull();
+      expect(closedGroundedAnswer("Three points are at stake for Arsenal.", match, true)).toBeNull();
+      expect(closedGroundedAnswer("Three points are at stake for Arsenal.", match))
+        .not.toContain(STAKE_REFUSAL_SENTENCE);
     });
 
     it("leaves the non-match tiers settling exactly as before", () => {
@@ -1183,6 +1192,26 @@ describe("current-news evidence hardening", () => {
       const question = "What does the current table show?";
       expect(closedGroundedAnswer(question, table))
         .toBe(deterministicGroundedResponse(question, table));
+    });
+
+    it("does not silently rank a title race from the table when the outlook is unavailable", () => {
+      const table = buildCompetitionGrounding("eng.1", [
+        {
+          competitionId: "eng.1", position: 1, team: "Arsenal", playedGames: 3,
+          won: 2, draw: 1, lost: 0, points: 7, goalsFor: 6, goalsAgainst: 2,
+          goalDifference: 4, group: null, advanced: false,
+        },
+        {
+          competitionId: "eng.1", position: 2, team: "Liverpool", playedGames: 3,
+          won: 2, draw: 0, lost: 1, points: 6, goalsFor: 5, goalsAgainst: 3,
+          goalDifference: 2, group: null, advanced: false,
+        },
+      ], new Date("2026-08-21T07:57:47.409Z"));
+      const answer = closedGroundedAnswer("Who is leading the Premier League title race?", table);
+      expect(answer).toBe(SEASON_OUTLOOK_UNAVAILABLE);
+      expect(answer).not.toMatch(/Arsenal lead|most likely champion/i);
+      expect(deterministicGroundedResponse("Who wins the Premier League?", table))
+        .toBe(SEASON_OUTLOOK_UNAVAILABLE);
     });
 
     it("renders season rankings completely and refuses a demanded certainty", () => {
@@ -2247,6 +2276,7 @@ describe("shouldUseMatchGrounding", () => {
       .toBe(true);
     expect(shouldUseMatchGrounding("Which model input matters most to that edge?"))
       .toBe(true);
+    expect(shouldUseMatchGrounding("Is this over 2.5?")).toBe(true);
   });
 
   it("does not classify an unrelated tactical question", () => {

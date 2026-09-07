@@ -20,6 +20,10 @@ function pastISO(days: number): string {
   return new Date(now - days * DAY).toISOString();
 }
 
+function hoursAgo(hours: number): string {
+  return new Date(now - hours * 3_600_000).toISOString();
+}
+
 // ─── Data layer (mock ↔ real API swap) ──────────────────────────────────────
 
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
@@ -63,6 +67,13 @@ const MOCK_RECENT_MATCHES: MatchResponse[] = [
   },
 ];
 
+const MOCK_LIVE_MATCH: MatchResponse = {
+  id: 5, competitionId: "eng.1", competition: "Premier League",
+  homeTeam: "Chelsea", awayTeam: "Tottenham Hotspur",
+  utcDate: hoursAgo(0.5), status: "IN_PLAY", stage: null, matchday: null, group: null,
+  score: { home: 1, away: 0 },
+};
+
 const MOCK_STANDINGS: StandingResponse[] = [
   {
     competitionId: "eng.1", position: 1, team: "Arsenal", playedGames: 0, won: 0, draw: 0,
@@ -97,6 +108,9 @@ export async function fetchCompetitions() {
 
 export async function fetchActiveFixtures(): Promise<MatchesPayload> {
   const e2e = e2eFixtureState();
+  if (e2e === "loading") {
+    await new Promise(() => undefined);
+  }
   if (e2e === "unavailable") {
     return { matches: [], lastUpdated: null, error: "e2e: fixture list unavailable" };
   }
@@ -120,7 +134,11 @@ export async function fetchActiveFixtures(): Promise<MatchesPayload> {
       };
     }
   }
-  return { matches: MOCK_UPCOMING_MATCHES, lastUpdated: new Date(now).toISOString(), error: null };
+  return {
+    matches: [...MOCK_UPCOMING_MATCHES, MOCK_LIVE_MATCH],
+    lastUpdated: new Date(now).toISOString(),
+    error: null,
+  };
 }
 
 export async function fetchRecognizedFixtures(): Promise<{
@@ -328,6 +346,63 @@ const MOCK_MODEL_FIXTURES: ModelFixtureResponse[] = [
     stakePAway: null,
     result: null,
   },
+  {
+    competitionId: "eng.1",
+    competition: "Premier League",
+    fixtureId: 5,
+    utcDate: hoursAgo(0.5),
+    status: "IN_PLAY",
+    date: new Date(hoursAgo(0.5)).toISOString().slice(0, 10),
+    group: null,
+    stage: "match",
+    home: "Chelsea",
+    away: "Tottenham Hotspur",
+    homeElo: 1840,
+    awayElo: 1780,
+    pHome: 0.46,
+    pDraw: 0.28,
+    pAway: 0.26,
+    pOver2_5: 0.51,
+    pUnder2_5: 0.49,
+    pBttsYes: 0.50,
+    pBttsNo: 0.50,
+    topScores: [{ score: "1-1", probability: 0.12 }],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    result: null,
+  },
+  {
+    competitionId: "eng.1",
+    competition: "Premier League",
+    fixtureId: 3,
+    utcDate: pastISO(1),
+    status: "FINISHED",
+    date: new Date(pastISO(1)).toISOString().slice(0, 10),
+    group: null,
+    stage: "match",
+    home: "Manchester United",
+    away: "Hull City",
+    homeElo: 1915,
+    awayElo: 1533,
+    pHome: 0.82,
+    pDraw: 0.14,
+    pAway: 0.04,
+    pOver2_5: 0.51,
+    pUnder2_5: 0.49,
+    pBttsYes: 0.26,
+    pBttsNo: 0.74,
+    topScores: [{ score: "2-0", probability: 0.13 }],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    result: {
+      homeScore: 2,
+      awayScore: 1,
+      status: "FT",
+      winner: "Manchester United",
+    },
+  },
 ];
 
 export async function fetchActiveModelFixtures(): Promise<{
@@ -336,6 +411,9 @@ export async function fetchActiveModelFixtures(): Promise<{
   error: string | null;
 }> {
   const e2e = e2eFixtureState();
+  if (e2e === "loading") {
+    await new Promise(() => undefined);
+  }
   if (e2e === "unavailable") {
     return { fixtures: [], lastUpdated: null, error: "e2e: model unavailable" };
   }

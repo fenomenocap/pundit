@@ -1161,6 +1161,15 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     "The prices are close, but I wouldn't call that a value bet.",
     { expectNoUnsupportedMarketCausality: true }
   ).passed, true);
+  const desk = "My 1X2 is Arsenal 56.3% (fair 1.78), draw 23.4% (fair 4.27) and Chelsea 20.3% (fair 4.93). I need a captured decimal line before I can print EV% or pass or play.";
+  assert.equal(validateAnalystExpression(desk, { expectPricingDesk: true }).passed, true);
+  assert.equal(validateAnalystExpression(
+    "I make Arsenal the likeliest outcome at 56.3%.\n\nOver 2.5 is 50.6%.\n\nThe leading scorelines are 1-1.\n\nI would revisit the read.",
+    { expectPricingDesk: true }
+  ).passed, false);
+  const totals = "Over 2.5 is 50.6%; under 2.5 is 49.4%. Totals sit near 50% because every match uses the same 2.70 expected goals.";
+  assert.equal(validateAnalystExpression(totals, { expectTotalsHonesty: true }).passed, true);
+  assert.equal(validateAnalystExpression("Over 2.5 is 50.6% for this open game.", { expectTotalsHonesty: true }).passed, false);
   assert.equal(validateAnswerStructure("I make it close [[S?]].").assertions.noUnresolvedMarker, false);
 });
 

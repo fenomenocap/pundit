@@ -258,7 +258,11 @@ async function main() {
   console.log(JSON.stringify({ runId: report.runId, overall: report.overall, report: paths }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(`chat report finalization failed: ${error.message}`);
-  process.exitCode = 1;
-});
+const executedDirectly = import.meta.url === `file://${process.argv[1]}`
+  || process.argv[1]?.endsWith("finalize-chat-report.mjs");
+if (executedDirectly) {
+  main().catch((error) => {
+    console.error(`chat report finalization failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}

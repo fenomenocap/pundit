@@ -53,6 +53,8 @@ export interface ModelFixtureResponse {
   competition: string;
   fixtureId: number;
   utcDate: string;
+  /** ESPN status when the model payload already carries it (`SCHEDULED` / `IN_PLAY` / `FINISHED`). */
+  status?: string;
   date: string;
   group: string | null;
   stage: string;
@@ -481,9 +483,13 @@ export interface AskCitation {
 export type ResponseMode =
   | "match-preview"
   | "match-follow-up"
+  | "pricing-desk"
+  | "totals"
   | "exact-score"
   | "fair-price"
   | "market-comparison"
+  | "user-line"
+  | "stake-refusal"
   | "player-or-scorer"
   | "team-news"
   | "lineup-counterfactual"
