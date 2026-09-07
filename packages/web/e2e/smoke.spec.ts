@@ -432,6 +432,9 @@ test.describe("smoke", () => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Main navigation" });
     await expect(nav.getByRole("link", { name: "Desk" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Paper" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Draft" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Vaults" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Fixtures" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Model" })).toBeVisible();
     await expect(nav.getByText("WC Backtest")).not.toBeVisible();
