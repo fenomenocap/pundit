@@ -9,7 +9,7 @@ export function Footer() {
   const pathname = usePathname();
   const docsUrl = getDocsUrl();
   // Chat is a full-viewport composition — keep the footer off that surface.
-  if (pathname === "/") return null;
+  if (pathname === "/" || pathname === "/board" || pathname === "/draft" || pathname === "/vault") return null;
 
   return (
     <footer className="border-t border-border px-4 py-2.5">
