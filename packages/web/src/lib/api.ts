@@ -485,6 +485,7 @@ export type ResponseMode =
   | "match-follow-up"
   | "pricing-desk"
   | "totals"
+  | "btts"
   | "exact-score"
   | "fair-price"
   | "market-comparison"

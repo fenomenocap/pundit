@@ -3,6 +3,7 @@ export type ResponseMode =
   | "match-follow-up"
   | "pricing-desk"
   | "totals"
+  | "btts"
   | "exact-score"
   | "fair-price"
   | "market-comparison"
@@ -26,6 +27,10 @@ const ASKS_OVER_25 = /\bover\s*2\.5\b|\bo\s*2\.5\b/i;
 const ASKS_UNDER_25 = /\bunder\s*2\.5\b|\bu\s*2\.5\b/i;
 const ASKS_SCORELINE_BOARD =
   /\b(?:possible|likely|top|correct)\s+(?:scores?|scorelines?)\b|\bscorelines?\b/i;
+const ASKS_BTTS = /\bbtts\b|both teams to score/i;
+const ASKS_1X2 = /\b1x2\b|\bmatch odds\b/i;
+const ASKS_UNPRICED_MARKET =
+  /\b(?:draw no bet|\bdnb\b|asian(?:\s+handicap)?|\bhandicap\b|\bcorners?\b|next goal|first goal|clean sheet)\b/i;
 
 export interface ResponsePlan {
   mode: ResponseMode;
@@ -62,6 +67,26 @@ export function asksTotalsQuestion(question: string): boolean {
 
 export function asksScorelineBoard(question: string): boolean {
   return ASKS_SCORELINE_BOARD.test(question);
+}
+
+export function asksBttsQuestion(question: string): boolean {
+  return ASKS_BTTS.test(question);
+}
+
+export type PricedGridMarket = "1x2" | "totals" | "btts" | "scorelines";
+
+/** Markets this fixture already prices. A named market not in this set must abstain, not dump 1X2. */
+export function pricedGridMarketsAsked(question: string): PricedGridMarket[] {
+  const asked: PricedGridMarket[] = [];
+  if (ASKS_1X2.test(question)) asked.push("1x2");
+  if (asksTotalsQuestion(question)) asked.push("totals");
+  if (asksBttsQuestion(question)) asked.push("btts");
+  if (asksScorelineBoard(question)) asked.push("scorelines");
+  return asked;
+}
+
+export function asksUnpricedMarket(question: string): boolean {
+  return ASKS_UNPRICED_MARKET.test(question);
 }
 
 /** True when the user named the over side of 2.5 without also naming under. */
@@ -110,6 +135,7 @@ export function planResponse(
   } else if (/\b(?:table|standings?)\b/i.test(q)) mode = "table";
   else if (/\b(?:title race|top[- ]four|season outlook|champion)\b/i.test(q)) mode = "season";
   else if (match && asksTotalsQuestion(q)) mode = "totals";
+  else if (match && asksBttsQuestion(q)) mode = "btts";
   else if (match && /\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(q)) mode = "match-follow-up";
   else if (match && asksStakeSizeQuestion(q)) mode = "stake-refusal";
   else if (match && (hasUserLine || /\bpass or play\b/i.test(q))) mode = "user-line";

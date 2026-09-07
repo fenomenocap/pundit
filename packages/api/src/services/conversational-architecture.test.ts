@@ -82,6 +82,9 @@ describe("V2 conversational architecture", () => {
     expect(planResponse("Is Arsenal vs Chelsea over or under 2.5?", { groundingKind: "match" }).mode)
       .toBe("totals");
     const followUp = { groundingKind: "match" as const, hasHistory: true };
+    expect(planResponse("BTTS?", followUp).mode).toBe("btts");
+    expect(planResponse("btts", followUp).mode).toBe("btts");
+    expect(planResponse("both teams to score", followUp).mode).toBe("btts");
     expect(planResponse("what are the possible scorelines and odds for o2.5", followUp).mode)
       .toBe("totals");
     for (const question of ["o2.5", "over2.5", "ou 2.5", "o/u 2.5", "o 2.5"]) {
@@ -321,6 +324,19 @@ describe("V2 conversational architecture", () => {
     expect(combined).not.toMatch(/\b1-1\b/);
     expect(combined).not.toContain("My short answer is");
     expect(combined).not.toMatch(/full 1X2/i);
+
+    const bttsQuestion = "BTTS?";
+    const btts = composeMatchResponse(
+      bttsQuestion,
+      match,
+      planResponse(bttsQuestion, { groundingKind: "match", hasHistory: true })
+    );
+    expect(btts).toMatch(/I have BTTS yes at 57\.4%/);
+    expect(btts).toMatch(/BTTS no is 42\.6%/);
+    expect(btts).not.toContain("My short answer is");
+    expect(btts).not.toMatch(/56\.3%/);
+    expect(btts).not.toMatch(/full 1X2/i);
+    expect(btts).not.toMatch(/No verified, dated team-news/i);
 
     const scoreBoard = composeMatchResponse(
       "possible scorelines",
