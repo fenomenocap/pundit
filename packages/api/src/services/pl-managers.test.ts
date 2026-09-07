@@ -31,7 +31,7 @@ function match(over: Partial<Grounding> = {}): Grounding {
       pHome: 0.26,
       pDraw: 0.21,
       pAway: 0.53,
-    } as Grounding["pricing"],
+    } as unknown as Grounding["pricing"],
     marketDivergence: [],
     ...over,
   };
