@@ -26,6 +26,11 @@ packages/api/data/fixture-registry/*
 !packages/api/data/fixture-registry/approved-fixtures-v1.json
 packages/api/data/evaluation/friendly-shadow-v1.json
 packages/api/data/evaluation/friendly-shadow-v1.json.last-good
+packages/api/data/evaluation/club-season-checkpoint-state.json
 
 # Source-study captures are evidence-only; commit the normalized matrix, not raw payloads.
 packages/api/data/research/fixture-sources/raw/
+
+# Reviewed ClubElo capture working copies. Commit the content-addressed
+# artifact and production.json selector, not the raw CSV snapshot.
+packages/api/data/model-artifacts/clubelo/.capture/
