@@ -1468,6 +1468,16 @@ test("citation provenance gates exact clickable citations and rejects draft narr
     true
   ).passed, true);
   assert.equal(validateCitationContract("Player is available. [[S99]]", [], true).passed, false);
+  assert.equal(validateCitationContract(
+    "Igor Thiago is the shortest-priced name ([Odds](https://example.com/o), undated).",
+    [{ id: "S4", title: "Odds", url: "https://example.com/o", date: "" }],
+    true
+  ).assertions.citationsValid, false);
+  assert.equal(validateCitationContract(
+    "Igor Thiago is the shortest-priced name ([Odds](https://example.com/o), undated).",
+    [{ id: "S4", title: "Odds", url: "https://example.com/o", date: "undated" }],
+    true
+  ).passed, true);
   assert.equal(validateNoDraftLeak("Let me search for the latest injuries.").passed, false);
   assert.equal(validateNoDraftLeak("No verified injury update was established.").passed, true);
 });
