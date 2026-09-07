@@ -70,6 +70,7 @@ import {
   type ValidatedOneXTwoMarket,
   type VerifiableClaim,
 } from "./response-correctness";
+import { extractPlayerEvidence, hasTrustworthyPlayerEvidence } from "./player-evidence";
 import { composeMatchResponse } from "./response-composer";
 import { validateAnalystDraft } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
@@ -855,15 +856,24 @@ export function planEvidenceQueries(
   if (baseQuery) planned.push(baseQuery);
   if (grounding?.kind === "match") {
     const fixture = `${grounding.home} vs ${grounding.away}`;
-    const props = `${fixture} anytime goalscorer odds player props`;
-    // A player question gets its market first; every other match question still
-    // gets it, because a betting read is usually built on more than the 1X2.
-    if (PLAYER_MARKET_QUESTION.test(question)) planned.push(props);
-    planned.push(`${fixture} team news injuries suspensions predicted lineup`);
-    planned.push(`${fixture} betting odds decimal over 2.5 goals both teams to score`);
-    planned.push(`${fixture} odds movement line move opening price public betting percentages`);
-    if (!PLAYER_MARKET_QUESTION.test(question)) planned.push(props);
-    planned.push(`${grounding.home} ${grounding.away} recent form last 5 matches results`);
+    const mode = planResponse(question, { groundingKind: "match", hasHistory: true }).mode;
+    if (mode === "player-or-scorer") {
+      planned.push(`${fixture} anytime goalscorer first scorer odds`);
+      planned.push(`${fixture} predicted lineup confirmed starting xi`);
+      planned.push(`${fixture} team news injuries suspensions availability`);
+      planned.push(`${grounding.home} ${grounding.away} attacking form goals shots`);
+    } else if (mode === "team-news") {
+      planned.push(`${fixture} team news injuries suspensions predicted lineup`);
+      planned.push(`${fixture} confirmed starting xi availability`);
+    } else {
+      const props = `${fixture} anytime goalscorer odds player props`;
+      if (PLAYER_MARKET_QUESTION.test(question)) planned.push(props);
+      planned.push(`${fixture} team news injuries suspensions predicted lineup`);
+      planned.push(`${fixture} betting odds decimal over 2.5 goals both teams to score`);
+      planned.push(`${fixture} odds movement line move opening price public betting percentages`);
+      if (!PLAYER_MARKET_QUESTION.test(question)) planned.push(props);
+      planned.push(`${grounding.home} ${grounding.away} recent form last 5 matches results`);
+    }
     if (!baseQuery) planned.push(`${question.slice(0, 180)} ${fixture}`);
   }
   const unique = new Map<string, string>();
@@ -7277,6 +7287,37 @@ export function deterministicGroundedResponse(
   return null;
 }
 
+function settlePlayerScorerFromBundle(
+  question: string,
+  grounding: AskGrounding,
+  bundle: EvidenceBundle,
+  hasHistory: boolean
+): { answer: string; citations: AskCitation[] } | null {
+  if (grounding?.kind !== "match") return null;
+  const plan = planResponse(question, {
+    groundingKind: "match",
+    hasHistory,
+    hasUserLine: grounding.pricing.userLine != null,
+  });
+  if (plan.mode !== "player-or-scorer") return null;
+  const evidence = extractPlayerEvidence(bundle.results, {
+    fixtureId: grounding.fixtureId,
+    home: grounding.home,
+    away: grounding.away,
+    kickoff: grounding.date,
+  });
+  const composed = composeMatchResponse(question, grounding, plan, evidence);
+  const rendered = renderEvidenceCitations(
+    composed,
+    bundle,
+    hasTrustworthyPlayerEvidence(evidence)
+  );
+  return {
+    answer: finalizeDeliveredText(rendered.answer, grounding, false),
+    citations: rendered.citations,
+  };
+}
+
 /**
  * The pre-generation short-circuit: an answer the server can settle without
  * calling the model at all.
@@ -7313,7 +7354,6 @@ export function closedGroundedAnswer(
       "market-comparison",
       "user-line",
       "stake-refusal",
-      "player-or-scorer",
       "lineup-counterfactual",
       "totals",
       "btts",
@@ -7404,6 +7444,21 @@ export async function deliverAnswer(args: {
     structuredDraftExpected = false,
     signal,
   } = args;
+  // Scorer answers are composed from extracted observations, never from a
+  // MiniMax draft. If this path is reached, ignore generated 1X2 rather than
+  // answering "who scores?" with the favourite.
+  const scorerSettled = settlePlayerScorerFromBundle(question, grounding, bundle, hasHistory);
+  if (scorerSettled) {
+    return {
+      answer: scorerSettled.answer,
+      citations: scorerSettled.citations,
+      verification: {
+        status: "not-required",
+        supportedClaimCount: 0,
+        removedClaimCount: 0,
+      },
+    };
+  }
   const useV2 = ANALYST_RESPONSE_V2 && structuredDraftExpected;
   let expressionAnswer = rawAnswer;
   if (useV2 && grounding?.kind === "match") {
@@ -7897,6 +7952,15 @@ async function answerQuestionScoped(
     const bundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal)
       : { queries: [], results: [], providerCalls: 0 };
+    const scorerSettled = settlePlayerScorerFromBundle(question, grounding, bundle, history.length > 0);
+    if (scorerSettled) {
+      return {
+        answer: scorerSettled.answer,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+        ...(scorerSettled.citations.length ? { citations: scorerSettled.citations } : {}),
+      };
+    }
     const preparedMessages = attachEvidence(messages, bundle);
     const rawAnswer = await generateAnalysis(
       client,
@@ -8048,6 +8112,16 @@ async function answerQuestionStreamScoped(
     const bundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, handlers.signal)
       : { queries: [], results: [], providerCalls: 0 };
+    const scorerSettled = settlePlayerScorerFromBundle(question, grounding, bundle, history.length > 0);
+    if (scorerSettled) {
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(scorerSettled.answer);
+      return {
+        answer: scorerSettled.answer,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+        ...(scorerSettled.citations.length ? { citations: scorerSettled.citations } : {}),
+      };
+    }
     const preparedMessages = attachEvidence(messages, bundle);
     // Search-backed turns are held until their citation markers have been
     // validated and rendered. Ordinary no-search answers remain progressive.
