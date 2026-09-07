@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Navbar } from "@/components/navbar";
+import { Navbar, MobileDock } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import "./globals.css";
 
@@ -36,7 +36,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <head>
-        {/* Space Grotesk (FTX-style geometric sans) + Space Mono */}
+        {/* Barlow + Barlow Condensed — desk type */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
@@ -44,17 +44,20 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-body antialiased">
+      <body className="bg-bg text-fg font-body antialiased">
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-accent-fg"
         >
           Skip to main content
         </a>
-        <div className="flex min-h-screen flex-col">
+        <div className="flex min-h-dvh flex-col bg-bg text-fg">
           <Navbar />
-          <main id="main-content" className="flex-1">{children}</main>
+          <main id="main-content" className="flex-1 min-h-0 bg-bg pb-14 md:pb-0">
+            {children}
+          </main>
           <Footer />
+          <MobileDock />
         </div>
       </body>
     </html>
