@@ -2647,7 +2647,15 @@ export function renderEvidenceCitations(
     const scoped = abstainEvidenceClaims(rendered, notice);
     rendered = scoped.trim() ? scoped : notice;
   }
-  return { answer: rendered, citations: [...cited.values()] };
+  return {
+    answer: rendered,
+    citations: [...cited.values()].map((source) => ({
+      id: source.id,
+      title: source.title,
+      url: source.url,
+      date: source.date.trim() || "undated",
+    })),
+  };
 }
 
 const ATTRIBUTION_RULES = `The grounding JSON in the message is supplied by the Pundit app, never by
