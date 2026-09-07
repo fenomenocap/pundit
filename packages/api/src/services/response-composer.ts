@@ -6,7 +6,9 @@ import {
   asksOver25Only,
   asksScorelineBoard,
   asksUnder25Only,
+  asksUnpricedMarket,
   planResponse,
+  pricedGridMarketsAsked,
   resolveRequestedScoreline,
   type ResponsePlan,
 } from "./response-plan";
@@ -68,7 +70,7 @@ function composeScorelineBoard(question: string, grounding: Grounding): string {
     : `I make the leading ${noun} ${listed}.`;
 }
 
-function composeTotalsAnswer(question: string, grounding: Grounding): string {
+function composeTotalsLead(question: string, grounding: Grounding): string {
   const includeFair = asksScorelineBoard(question) || /\bodds?\b/i.test(question);
   const over = includeFair
     ? `${pct(grounding.pOver2_5)} (fair ${fairDecimal(grounding.pOver2_5)})`
@@ -79,10 +81,32 @@ function composeTotalsAnswer(question: string, grounding: Grounding): string {
   const lead = asksUnder25Only(question)
     ? `I have under 2.5 at ${under}; over 2.5 is ${over}.`
     : `I have over 2.5 at ${over}; under 2.5 is ${under}.`;
-  const totals = `${lead} ${SHARED_TOTAL_XG_SENTENCE}`;
-  return asksScorelineBoard(question)
-    ? `${totals} ${composeScorelineBoard(question, grounding)}`
-    : totals;
+  return `${lead} ${SHARED_TOTAL_XG_SENTENCE}`;
+}
+
+function composeBttsLead(question: string, grounding: Grounding): string {
+  const includeFair = /\bodds?\b/i.test(question);
+  const yes = includeFair
+    ? `${pct(grounding.pBttsYes)} (fair ${fairDecimal(grounding.pBttsYes)})`
+    : pct(grounding.pBttsYes);
+  const no = includeFair
+    ? `${pct(grounding.pBttsNo)} (fair ${fairDecimal(grounding.pBttsNo)})`
+    : pct(grounding.pBttsNo);
+  return `I have BTTS yes at ${yes}; BTTS no is ${no}.`;
+}
+
+function composePricedGridAnswer(question: string, grounding: Grounding): string {
+  const asked = pricedGridMarketsAsked(question);
+  const parts: string[] = [];
+  if (asked.includes("1x2")) {
+    parts.push(
+      `My 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`
+    );
+  }
+  if (asked.includes("totals")) parts.push(composeTotalsLead(question, grounding));
+  if (asked.includes("btts")) parts.push(composeBttsLead(question, grounding));
+  if (asked.includes("scorelines")) parts.push(composeScorelineBoard(question, grounding));
+  return parts.join(" ");
 }
 
 function fattestCapturedEv(grounding: Grounding): {
@@ -190,8 +214,8 @@ export function composeMatchResponse(
   const scoreRequest = resolveRequestedScoreline(question, grounding);
   const score = scoreRequest?.score ?? null;
 
-  if (plan.mode === "totals") {
-    return composeTotalsAnswer(question, grounding);
+  if (plan.mode === "totals" || plan.mode === "btts") {
+    return composePricedGridAnswer(question, grounding);
   }
   if (plan.mode === "pricing-desk") {
     return composePricingDeskAnswer(grounding);
@@ -236,6 +260,13 @@ export function composeMatchResponse(
       ?? "I don’t have a complete, same-source and same-time 1X2 market to compare with this fixture, so I can’t claim a pricing disagreement.";
   }
   if (plan.mode === "match-follow-up") {
+    const priced = pricedGridMarketsAsked(question);
+    if (priced.some((market) => market !== "1x2")) {
+      return composePricedGridAnswer(question, grounding);
+    }
+    if (asksUnpricedMarket(question)) {
+      return "I don’t have a line for that market on this fixture. I can price 1X2, over/under 2.5, BTTS, and scorelines.";
+    }
     const favourite = [
       { label: grounding.home, p: grounding.pHome },
       { label: "the draw", p: grounding.pDraw },

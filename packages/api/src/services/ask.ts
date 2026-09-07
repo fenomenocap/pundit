@@ -3166,7 +3166,8 @@ export function shouldUseMatchGrounding(question: string): boolean {
     || mode === "user-line"
     || mode === "stake-refusal"
     || mode === "market-comparison"
-    || mode === "totals";
+    || mode === "totals"
+    || mode === "btts";
 }
 
 // Questions that have plainly left the followed match: standalone football
@@ -7306,7 +7307,7 @@ export function closedGroundedAnswer(
     // These modes are fully settled by typed server facts or a typed
     // limitation. They must not spend a search/model call or broaden into a
     // report. Team news and qualitative reads still reach evidence/expression.
-    return !plan.evidenceRequired && [
+    const settled = !plan.evidenceRequired && [
       "exact-score",
       "fair-price",
       "market-comparison",
@@ -7315,8 +7316,10 @@ export function closedGroundedAnswer(
       "player-or-scorer",
       "lineup-counterfactual",
       "totals",
+      "btts",
       "pricing-desk",
-    ].includes(plan.mode)
+    ].includes(plan.mode);
+    return settled
       ? composeMatchResponse(question, grounding, plan)
       : null;
   }

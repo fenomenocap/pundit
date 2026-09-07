@@ -1142,6 +1142,10 @@ describe("current-news evidence hardening", () => {
         .toMatch(/My 1X2 is Arsenal 97\.3% \(fair 1\.03\)/);
       expect(closedGroundedAnswer("Is Arsenal vs Coventry over 2.5?", model()))
         .toContain(SHARED_TOTAL_XG_SENTENCE);
+      expect(closedGroundedAnswer("BTTS?", model(), true))
+        .toMatch(/I have BTTS yes at /i);
+      expect(closedGroundedAnswer("BTTS?", model(), true))
+        .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
         .toMatch(/I am at .*Kalshi is at .*percentage points/i);
     });
