@@ -1,7 +1,15 @@
 import type { Grounding } from "./ask";
 import type { OneXTwoOutcome } from "./response-correctness";
+import { parseScoreline } from "./response-correctness";
 import { buildResponseFacts, factById } from "./response-facts";
-import { planResponse, resolveRequestedScoreline, type ResponsePlan } from "./response-plan";
+import {
+  asksOver25Only,
+  asksScorelineBoard,
+  asksUnder25Only,
+  planResponse,
+  resolveRequestedScoreline,
+  type ResponsePlan,
+} from "./response-plan";
 
 export const SHARED_TOTAL_XG_SENTENCE =
   "Totals sit near 50% because every match uses the same 2.70 expected goals.";
@@ -18,12 +26,63 @@ function signedEvPct(evPct: number): string {
   return `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
 }
 
+function fairDecimal(probability: number): string {
+  return (1 / probability).toFixed(2);
+}
+
+function formatScorelineList(
+  rows: Array<{ score: string; probability: number }>
+): string {
+  const items = rows.map((row) =>
+    `${row.score} at ${pct(row.probability)} (fair ${fairDecimal(row.probability)})`
+  );
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function leadingScorelines(
+  question: string,
+  grounding: Grounding
+): { rows: Array<{ score: string; probability: number }>; overFiltered: boolean } {
+  const top = grounding.topScores;
+  if (asksOver25Only(question)) {
+    const over = top.filter((row) => {
+      const parsed = parseScoreline(row.score);
+      return parsed != null && parsed.home + parsed.away >= 3;
+    });
+    if (over.length) return { rows: over, overFiltered: true };
+  }
+  return { rows: top, overFiltered: false };
+}
+
+function composeScorelineBoard(question: string, grounding: Grounding): string {
+  const { rows, overFiltered } = leadingScorelines(question, grounding);
+  if (!rows.length) {
+    return "I don’t have a publishable scoreline board for this fixture, so I can’t list likely scores without inventing them.";
+  }
+  const listed = formatScorelineList(rows);
+  const noun = rows.length === 1 ? "scoreline" : "scorelines";
+  return overFiltered
+    ? `I make the leading over 2.5 ${noun} ${listed}.`
+    : `I make the leading ${noun} ${listed}.`;
+}
+
 function composeTotalsAnswer(question: string, grounding: Grounding): string {
-  const askedUnder = /\bunder\b/i.test(question) && !/\bover\b/i.test(question);
-  const lead = askedUnder
-    ? `I have under 2.5 at ${pct(grounding.pUnder2_5)}; over 2.5 is ${pct(grounding.pOver2_5)}.`
-    : `I have over 2.5 at ${pct(grounding.pOver2_5)}; under 2.5 is ${pct(grounding.pUnder2_5)}.`;
-  return `${lead} ${SHARED_TOTAL_XG_SENTENCE}`;
+  const includeFair = asksScorelineBoard(question) || /\bodds?\b/i.test(question);
+  const over = includeFair
+    ? `${pct(grounding.pOver2_5)} (fair ${fairDecimal(grounding.pOver2_5)})`
+    : pct(grounding.pOver2_5);
+  const under = includeFair
+    ? `${pct(grounding.pUnder2_5)} (fair ${fairDecimal(grounding.pUnder2_5)})`
+    : pct(grounding.pUnder2_5);
+  const lead = asksUnder25Only(question)
+    ? `I have under 2.5 at ${under}; over 2.5 is ${over}.`
+    : `I have over 2.5 at ${over}; under 2.5 is ${under}.`;
+  const totals = `${lead} ${SHARED_TOTAL_XG_SENTENCE}`;
+  return asksScorelineBoard(question)
+    ? `${totals} ${composeScorelineBoard(question, grounding)}`
+    : totals;
 }
 
 function fattestCapturedEv(grounding: Grounding): {
@@ -159,6 +218,9 @@ export function composeMatchResponse(
     return plan.mode === "fair-price"
       ? `${orientation} ${grounding.home} ${score} ${grounding.away}, I make it ${pct(fact.numeric.value)}, or about ${fair} in fair decimal odds. I don’t have a comparable live exact-score quote here, so that is a fair price, not a claim that the market is wrong.`
       : `${scoreRequest?.orientation === "home-away-default" ? `Reading ${score} in home-away order, I` : "I"} make ${grounding.home} ${score} ${grounding.away} ${pct(fact.numeric.value)} for this fixture.`;
+  }
+  if (plan.mode === "exact-score") {
+    return composeScorelineBoard(question, grounding);
   }
   if (plan.mode === "user-line") {
     return composeUserLineAnswer(grounding);

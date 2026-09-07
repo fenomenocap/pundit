@@ -721,6 +721,25 @@
       "expectTotalsHonesty": true
     },
     {
+      "id": "featured-o25-scoreline-follow-up",
+      "description": "After a match is in view, possible scorelines plus o2.5 shorthand settles totals and a scoreline board instead of repeating the 1X2 favourite.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "What about {home} vs {away}?",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "what are the possible scorelines and odds for o2.5",
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectTotalsHonesty": true
+        }
+      ]
+    },
+    {
       "id": "featured-explicit-preview-stays-long-read",
       "description": "An explicit preview request still gets the long read with a headline 1X2, not the one-section desk.",
       "kind": "featured-question",

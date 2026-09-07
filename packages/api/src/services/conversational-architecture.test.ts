@@ -81,6 +81,14 @@ describe("V2 conversational architecture", () => {
     expect(desk.maxSections).toBe(1);
     expect(planResponse("Is Arsenal vs Chelsea over or under 2.5?", { groundingKind: "match" }).mode)
       .toBe("totals");
+    const followUp = { groundingKind: "match" as const, hasHistory: true };
+    expect(planResponse("what are the possible scorelines and odds for o2.5", followUp).mode)
+      .toBe("totals");
+    for (const question of ["o2.5", "over2.5", "ou 2.5", "o/u 2.5", "o 2.5"]) {
+      expect(planResponse(question, followUp).mode).toBe("totals");
+    }
+    expect(planResponse("possible scorelines", followUp).mode).toBe("exact-score");
+    expect(planResponse("likely scores", followUp).mode).toBe("exact-score");
     for (const [question, mode] of [
       ["What is fair value for 2-1?", "fair-price"],
       ["Who is most likely to score?", "player-or-scorer"],
@@ -299,6 +307,31 @@ describe("V2 conversational architecture", () => {
     expect(totals).toMatch(/under 2\.5 is 41\.1%/);
     expect(totals).toContain(SHARED_TOTAL_XG_SENTENCE);
     expect(totals).not.toMatch(/ClubElo|Dixon-Coles|Dixon–Coles/i);
+
+    const combinedQuestion = "what are the possible scorelines and odds for o2.5";
+    const combined = composeMatchResponse(
+      combinedQuestion,
+      match,
+      planResponse(combinedQuestion, { groundingKind: "match", hasHistory: true })
+    );
+    expect(combined).toMatch(/I have over 2\.5 at 58\.9% \(fair 1\.70\)/);
+    expect(combined).toMatch(/under 2\.5 is 41\.1%/);
+    expect(combined).toContain(SHARED_TOTAL_XG_SENTENCE);
+    expect(combined).toMatch(/2-1 at 11\.4% \(fair 8\.77\)/);
+    expect(combined).not.toMatch(/\b1-1\b/);
+    expect(combined).not.toContain("My short answer is");
+    expect(combined).not.toMatch(/full 1X2/i);
+
+    const scoreBoard = composeMatchResponse(
+      "possible scorelines",
+      match,
+      planResponse("possible scorelines", { groundingKind: "match", hasHistory: true })
+    );
+    expect(scoreBoard).toMatch(/2-1 at 11\.4% \(fair 8\.77\)/);
+    expect(scoreBoard).toMatch(/1-1 at 10\.2% \(fair 9\.80\)/);
+    expect(scoreBoard).not.toMatch(/My short answer is/);
+    expect(scoreBoard).not.toMatch(/56\.3%/);
+    expect(scoreBoard).not.toMatch(/full 1X2/i);
 
     const named = composeMatchResponse(
       "What about Arsenal vs Chelsea?",
