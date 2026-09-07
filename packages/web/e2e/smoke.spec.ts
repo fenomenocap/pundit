@@ -112,7 +112,7 @@ test.describe("smoke", () => {
       const turns = [
         { answer: "I make Arsenal the clear favourite.", responseMode: "match-preview", fixtureCard: "expanded", grounding },
         { answer: "My fair 2-0 probability is 14.0%.", responseMode: "fair-price", fixtureCard: "compact", grounding },
-        { answer: "I cannot price a scorer from this forecast.", responseMode: "player-or-scorer", fixtureCard: "compact", grounding },
+        { answer: "I don’t have player-level projections or a verified scorer market for this fixture, so I can’t name a most likely scorer without inventing one.", responseMode: "player-or-scorer", fixtureCard: "compact", grounding },
         { answer: "I cannot quantify that lineup change yet.", responseMode: "lineup-counterfactual", fixtureCard: "compact", grounding },
         {
           answer: "Arsenal are first on the supplied table.",

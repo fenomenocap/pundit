@@ -152,10 +152,9 @@ export function planResponse(
     mode,
     directAnswerRequired: true,
     includeMatchCard: expanded ? "new-fixture" : match ? "compact-reference" : "none",
-    // Player prices and lineup counterfactual deltas are unsupported
-    // capabilities, so their correct answer is a deterministic abstention.
-    // Only current team news requires external evidence in these match modes.
-    evidenceRequired: mode === "team-news",
+    // Lineup counterfactual deltas stay a typed limitation. Scorer and team
+    // news retrieve public evidence; they still cannot invent a Pundit price.
+    evidenceRequired: mode === "team-news" || mode === "player-or-scorer",
     maxSections: mode === "match-preview" ? 4 : 1,
   };
 }

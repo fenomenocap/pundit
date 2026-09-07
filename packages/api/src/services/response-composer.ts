@@ -1,6 +1,12 @@
 import type { Grounding } from "./ask";
 import type { OneXTwoOutcome } from "./response-correctness";
 import { parseScoreline } from "./response-correctness";
+import {
+  PLAYER_SCORER_ABSTENTION,
+  hasTrustworthyPlayerEvidence,
+  leadingScorerCandidate,
+  type PlayerEvidenceBundle,
+} from "./player-evidence";
 import { buildResponseFacts, factById } from "./response-facts";
 import {
   asksOver25Only,
@@ -205,15 +211,49 @@ function headlineMarket(grounding: Grounding): string | null {
     + "That establishes the disagreement, not its cause or a bet to place.";
 }
 
+export function composePlayerScorerAnswer(
+  grounding: Grounding,
+  evidence: PlayerEvidenceBundle | null
+): string {
+  if (!evidence || !hasTrustworthyPlayerEvidence(evidence)) {
+    return PLAYER_SCORER_ABSTENTION;
+  }
+  const market = leadingScorerCandidate(evidence);
+  const start = evidence.observations.find((row) =>
+    row.evidenceType === "confirmed-lineup" || row.evidenceType === "expected-lineup"
+  );
+  const lines = [
+    "I don’t have player-level projections for this fixture, so I can’t name a most likely scorer from my match model.",
+  ];
+  if (market) {
+    const date = dateLabel(market.observedAt);
+    lines.push(
+      `${market.playerName} is the shortest-priced ${market.teamId} name in the dated player-market quotes I have, `
+      + `at ${market.decimalOdds.toFixed(2)} decimal [[${market.sourceId}]] (${date}). `
+      + "I don't treat that quote as a Pundit probability."
+    );
+  }
+  if (start) {
+    const date = start.observedAt ? dateLabel(start.observedAt) : "an undated report";
+    const status = start.evidenceType === "confirmed-lineup" ? "confirmed" : "expected";
+    lines.push(
+      `${start.playerName} is ${status} to start according to a dated source [[${start.sourceId}]] (${date}).`
+    );
+  }
+  if (!market && start) {
+    lines.push("I could not establish a comparable scorer market, so that availability note is not a ranking.");
+  } else {
+    lines.push("That quote is a market observation, not a Pundit ranking.");
+  }
+  return lines.join(" ");
+}
+
 export function composeMatchResponse(
   question: string,
   grounding: Grounding,
-  plan: ResponsePlan = planResponse(question, { groundingKind: "match" })
+  plan: ResponsePlan = planResponse(question, { groundingKind: "match" }),
+  playerEvidence: PlayerEvidenceBundle | null = null
 ): string {
-  const contract = buildResponseFacts(grounding);
-  const scoreRequest = resolveRequestedScoreline(question, grounding);
-  const score = scoreRequest?.score ?? null;
-
   if (plan.mode === "totals" || plan.mode === "btts") {
     return composePricedGridAnswer(question, grounding);
   }
@@ -221,8 +261,7 @@ export function composeMatchResponse(
     return composePricingDeskAnswer(grounding);
   }
   if (plan.mode === "player-or-scorer") {
-    return "I don’t have player-level projections or a verified scorer market for this fixture, "
-      + "so I can’t name a most likely scorer without inventing one.";
+    return composePlayerScorerAnswer(grounding, playerEvidence);
   }
   if (plan.mode === "lineup-counterfactual") {
     return "I can’t quantify that lineup effect without verified team news and a revised forecast. A confirmed change could alter my read, but I won’t invent a percentage adjustment.";
@@ -230,6 +269,9 @@ export function composeMatchResponse(
   if (plan.mode === "team-news") {
     return "I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim.";
   }
+  const contract = buildResponseFacts(grounding);
+  const scoreRequest = resolveRequestedScoreline(question, grounding);
+  const score = scoreRequest?.score ?? null;
   if ((plan.mode === "fair-price" || plan.mode === "exact-score") && score) {
     const fact = factById(contract, `score.${score}`);
     if (!fact?.numeric || fact.numeric.value <= 0) {

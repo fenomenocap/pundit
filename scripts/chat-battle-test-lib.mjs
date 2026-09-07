@@ -1435,9 +1435,13 @@ export function validateAnalystExpression(answer, expectation = {}) {
       || /\b(?:cannot|can't|unable)\b[^.!?\n]{0,100}\b(?:price|quantif|reprice)\w*/i.test(text);
   }
   if (expectation.expectNoUnsupportedScorerInference) {
+    const sourced = (sentence) => /\[\[S\d+\]\]/.test(sentence)
+      || /\(\d{1,2} [A-Za-z]+ \d{4}\)/.test(sentence)
+      || /\b(?:dated|source|quoted at)\b/i.test(sentence);
     const affirmativeScorer = text.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
       /\b(?:best|top|most likely|first|anytime)\b[^.!?\n]{0,60}\b(?:scorer|to score)\b|\b(?:scorer|to score)\b[^.!?\n]{0,60}\b(?:best|top|most likely|first|anytime)\b/i.test(sentence)
       && !/\b(?:cannot|can't|do not|don't|won't|wouldn't|no verified|not enough)\b/i.test(sentence)
+      && !sourced(sentence)
     );
     const teamToPlayerCause = text.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
       /\b(?:scorer|to score|player prop)\b/i.test(sentence)

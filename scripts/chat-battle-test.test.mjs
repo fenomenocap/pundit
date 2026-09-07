@@ -1169,6 +1169,18 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
   ).passed, false);
   const totals = "I have over 2.5 at 50.6%; under 2.5 is 49.4%. Totals sit near 50% because every match uses the same 2.70 expected goals.";
   assert.equal(validateAnalystExpression(totals, { expectTotalsHonesty: true }).passed, true);
+  assert.equal(validateAnalystExpression(
+    "Salah is the most likely scorer because Arsenal are 77.6% to win.",
+    { expectNoUnsupportedScorerInference: true }
+  ).passed, false);
+  assert.equal(validateAnalystExpression(
+    "I don't have player-level projections or a verified scorer market for this fixture, so I can't name a most likely scorer without inventing one.",
+    { expectNoUnsupportedScorerInference: true, expectAnalystVoice: true, expectDirectAnswer: true, expectCannotReprice: true }
+  ).passed, true);
+  assert.equal(validateAnalystExpression(
+    "Cole Palmer is the shortest-priced Chelsea name in the dated player-market quotes I have, at 2.10 decimal [[S1]] (11 September 2026). I don't treat that quote as a Pundit probability.",
+    { expectNoUnsupportedScorerInference: true }
+  ).passed, true);
   assert.equal(validateAnalystExpression("Over 2.5 is 50.6% for this open game.", { expectTotalsHonesty: true }).passed, false);
   assert.equal(validateAnswerStructure("I make it close [[S?]].").assertions.noUnresolvedMarker, false);
 });
@@ -2524,6 +2536,8 @@ test("schema-17 permanent certification matrix names every authorized regression
     "observational-live-suggestion-chip",
     "user-line-pass-play",
     "stake-refusal-without-bankroll",
+    "table-detour-then-scorer-retention",
+    "third-club-scorer-retains-fixture",
   ]) {
     assert.equal(ids.has(id), true, `missing permanent scenario ${id}`);
   }
