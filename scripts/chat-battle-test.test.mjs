@@ -1167,7 +1167,7 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     "I make Arsenal the likeliest outcome at 56.3%.\n\nOver 2.5 is 50.6%.\n\nThe leading scorelines are 1-1.\n\nI would revisit the read.",
     { expectPricingDesk: true }
   ).passed, false);
-  const totals = "Over 2.5 is 50.6%; under 2.5 is 49.4%. Totals sit near 50% because every match uses the same 2.70 expected goals.";
+  const totals = "I have over 2.5 at 50.6%; under 2.5 is 49.4%. Totals sit near 50% because every match uses the same 2.70 expected goals.";
   assert.equal(validateAnalystExpression(totals, { expectTotalsHonesty: true }).passed, true);
   assert.equal(validateAnalystExpression("Over 2.5 is 50.6% for this open game.", { expectTotalsHonesty: true }).passed, false);
   assert.equal(validateAnswerStructure("I make it close [[S?]].").assertions.noUnresolvedMarker, false);

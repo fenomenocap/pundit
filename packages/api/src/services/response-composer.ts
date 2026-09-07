@@ -21,8 +21,8 @@ function signedEvPct(evPct: number): string {
 function composeTotalsAnswer(question: string, grounding: Grounding): string {
   const askedUnder = /\bunder\b/i.test(question) && !/\bover\b/i.test(question);
   const lead = askedUnder
-    ? `Under 2.5 is ${pct(grounding.pUnder2_5)}; over 2.5 is ${pct(grounding.pOver2_5)}.`
-    : `Over 2.5 is ${pct(grounding.pOver2_5)}; under 2.5 is ${pct(grounding.pUnder2_5)}.`;
+    ? `I have under 2.5 at ${pct(grounding.pUnder2_5)}; over 2.5 is ${pct(grounding.pOver2_5)}.`
+    : `I have over 2.5 at ${pct(grounding.pOver2_5)}; under 2.5 is ${pct(grounding.pUnder2_5)}.`;
   return `${lead} ${SHARED_TOTAL_XG_SENTENCE}`;
 }
 

@@ -295,7 +295,7 @@ describe("V2 conversational architecture", () => {
       match,
       planResponse("Is Arsenal vs Chelsea over or under 2.5?", { groundingKind: "match" })
     );
-    expect(totals).toMatch(/Over 2\.5 is 58\.9%/);
+    expect(totals).toMatch(/I have over 2\.5 at 58\.9%/);
     expect(totals).toMatch(/under 2\.5 is 41\.1%/);
     expect(totals).toContain(SHARED_TOTAL_XG_SENTENCE);
     expect(totals).not.toMatch(/ClubElo|Dixon-Coles|Dixon–Coles/i);
