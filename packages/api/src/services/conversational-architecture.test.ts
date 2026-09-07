@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deliverAnswer, planEvidenceQueries, type Grounding } from "./ask";
 import { validateAnalystDraft } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
-import { PLAYER_SCORER_ABSTENTION } from "./player-evidence";
+import { PLAYER_SCORER_ABSTENTION, TEAM_NEWS_COMPOSE_ABSTENTION } from "./player-evidence";
 import { composeMatchResponse, SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
 import { buildResponseFacts } from "./response-facts";
 import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
@@ -109,12 +109,31 @@ describe("V2 conversational architecture", () => {
     expect(planResponse("Anytime scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
     expect(planResponse("First goal scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
     expect(planResponse("Who might score tonight?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
+    expect(planResponse("Who is the top scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
+    expect(planResponse("Leading scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
+    expect(planResponse("Who is the scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
     const scorerQueries = planEvidenceQueries("Who scores?", grounding(), null);
     expect(scorerQueries.some((query) => /anytime goalscorer first scorer/.test(query))).toBe(true);
     expect(scorerQueries.some((query) => /odds movement|over 2\.5|public betting/.test(query))).toBe(false);
     const teamNewsQueries = planEvidenceQueries("What is the latest team news?", grounding(), null);
     expect(teamNewsQueries.some((query) => /team news injuries/.test(query))).toBe(true);
     expect(teamNewsQueries.some((query) => /odds movement|public betting/.test(query))).toBe(false);
+    const previewQueries = planEvidenceQueries(
+      "Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.",
+      grounding(),
+      null
+    );
+    expect(previewQueries.some((query) => /public betting/.test(query))).toBe(false);
+    expect(previewQueries.some((query) => /odds movement/.test(query))).toBe(false);
+    const deskQueries = planEvidenceQueries("What about Arsenal vs Chelsea?", grounding(), null);
+    expect(deskQueries.some((query) => /public betting|odds movement/.test(query))).toBe(false);
+    const marketQueries = planEvidenceQueries(
+      "Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?",
+      grounding(),
+      null
+    );
+    expect(marketQueries.some((query) => /odds movement/.test(query))).toBe(true);
+    expect(marketQueries.some((query) => /public betting/.test(query))).toBe(false);
     expect(planResponse("Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.", { groundingKind: "match" }).mode).toBe("match-preview");
     expect(planResponse("Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?", { groundingKind: "match", hasHistory: true }).mode).toBe("market-comparison");
     expect(planResponse("If the home striker is ruled out, exactly how many percentage points would you take off the home win?", { groundingKind: "match", hasHistory: true }).mode).toBe("lineup-counterfactual");
@@ -253,7 +272,7 @@ describe("V2 conversational architecture", () => {
     });
     expect(scorerFallback.answer).toBe(PLAYER_SCORER_ABSTENTION);
     expect(scorerFallback.answer).not.toMatch(/56\.3%/);
-    expect(scorerFallback.verification.status).toBe("not-required");
+    expect(scorerFallback.verification.status).toBe("abstain");
 
     const quoted = await deliverAnswer({
       ...base,
@@ -279,6 +298,46 @@ describe("V2 conversational architecture", () => {
     expect(quoted.answer).not.toMatch(/56\.3%/);
     expect(quoted.answer).not.toMatch(/Salah/);
     expect(quoted.citations.map((citation) => citation.id)).toEqual(["S1"]);
+    expect(quoted.verification.status).toBe("verified");
+
+    const teamNewsEmpty = await deliverAnswer({
+      ...base,
+      question: "What is the latest team news?",
+      evidenceRequired: true,
+      answer: JSON.stringify({
+        directAnswer: { text: "I favour {{match.home}}.", factIds: ["match.home"] },
+        reasoning: [],
+        citedClaims: [],
+      }),
+    });
+    expect(teamNewsEmpty.answer).toBe(TEAM_NEWS_COMPOSE_ABSTENTION);
+    expect(teamNewsEmpty.answer).not.toMatch(/56\.3%/);
+    expect(teamNewsEmpty.verification.status).toBe("abstain");
+
+    const teamNewsQuoted = await deliverAnswer({
+      ...base,
+      question: "What is the latest team news?",
+      evidenceRequired: true,
+      bundle: {
+        queries: ["Arsenal vs Chelsea team news"],
+        providerCalls: 1,
+        results: [{
+          id: "S1",
+          title: "Arsenal vs Chelsea injury update",
+          url: "https://example.com/news",
+          date: "2026-09-11T08:00:00Z",
+          snippet: "Cole Palmer ruled out for Chelsea.",
+        }],
+      },
+      answer: "I make Arsenal 56.3% and therefore Palmer is fine to start.",
+    });
+    expect(teamNewsQuoted.answer).toMatch(/Cole Palmer/);
+    expect(teamNewsQuoted.answer).toMatch(/unavailable/);
+    expect(teamNewsQuoted.answer).toMatch(/example\.com\/news/);
+    expect(teamNewsQuoted.answer).toMatch(/not a revised match forecast/i);
+    expect(teamNewsQuoted.answer).not.toMatch(/56\.3%/);
+    expect(teamNewsQuoted.citations.map((citation) => citation.id)).toEqual(["S1"]);
+    expect(teamNewsQuoted.verification.status).toBe("verified");
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {

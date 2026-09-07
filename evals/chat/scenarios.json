@@ -595,7 +595,7 @@
     },
     {
       "id": "team-news-sourcing",
-      "description": "A team-news question either cites a source and date or states plainly that no verified update was established.",
+      "description": "A dedicated team-news question either cites a sourced availability observation or states that no verified, dated team-news update was established.",
       "kind": "featured-question",
       "questionTemplate": "Any injury or lineup news for {home} vs {away}?",
       "requireSourcedTeamNews": true,

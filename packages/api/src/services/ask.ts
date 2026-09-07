@@ -70,7 +70,13 @@ import {
   type ValidatedOneXTwoMarket,
   type VerifiableClaim,
 } from "./response-correctness";
-import { extractPlayerEvidence, hasTrustworthyPlayerEvidence } from "./player-evidence";
+import {
+  extractPlayerEvidence,
+  hasTeamNewsEvidence,
+  hasTrustworthyPlayerEvidence,
+  PLAYER_SCORER_ABSTENTION,
+  TEAM_NEWS_COMPOSE_ABSTENTION,
+} from "./player-evidence";
 import { composeMatchResponse } from "./response-composer";
 import { validateAnalystDraft } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
@@ -865,14 +871,19 @@ export function planEvidenceQueries(
     } else if (mode === "team-news") {
       planned.push(`${fixture} team news injuries suspensions predicted lineup`);
       planned.push(`${fixture} confirmed starting xi availability`);
-    } else {
-      const props = `${fixture} anytime goalscorer odds player props`;
-      if (PLAYER_MARKET_QUESTION.test(question)) planned.push(props);
-      planned.push(`${fixture} team news injuries suspensions predicted lineup`);
+    } else if (mode === "market-comparison") {
       planned.push(`${fixture} betting odds decimal over 2.5 goals both teams to score`);
-      planned.push(`${fixture} odds movement line move opening price public betting percentages`);
-      if (!PLAYER_MARKET_QUESTION.test(question)) planned.push(props);
+      planned.push(`${fixture} odds movement line move opening price`);
+    } else if (mode === "match-preview") {
+      planned.push(`${fixture} team news injuries suspensions predicted lineup`);
+      planned.push(`${fixture} betting odds decimal 1x2 over 2.5 both teams to score`);
       planned.push(`${grounding.home} ${grounding.away} recent form last 5 matches results`);
+    } else {
+      planned.push(`${fixture} team news injuries suspensions predicted lineup`);
+      planned.push(`${grounding.home} ${grounding.away} recent form last 5 matches results`);
+      if (PLAYER_MARKET_QUESTION.test(question)) {
+        planned.push(`${fixture} anytime goalscorer odds player props`);
+      }
     }
     if (!baseQuery) planned.push(`${question.slice(0, 180)} ${fixture}`);
   }
@@ -7287,6 +7298,18 @@ export function deterministicGroundedResponse(
   return null;
 }
 
+function evidenceBundleForMatch(
+  grounding: Extract<AskGrounding, { kind: "match" }>,
+  bundle: EvidenceBundle
+) {
+  return extractPlayerEvidence(bundle.results, {
+    fixtureId: grounding.fixtureId,
+    home: grounding.home,
+    away: grounding.away,
+    kickoff: grounding.date,
+  });
+}
+
 function settlePlayerScorerFromBundle(
   question: string,
   grounding: AskGrounding,
@@ -7300,12 +7323,7 @@ function settlePlayerScorerFromBundle(
     hasUserLine: grounding.pricing.userLine != null,
   });
   if (plan.mode !== "player-or-scorer") return null;
-  const evidence = extractPlayerEvidence(bundle.results, {
-    fixtureId: grounding.fixtureId,
-    home: grounding.home,
-    away: grounding.away,
-    kickoff: grounding.date,
-  });
+  const evidence = evidenceBundleForMatch(grounding, bundle);
   const composed = composeMatchResponse(question, grounding, plan, evidence);
   const rendered = renderEvidenceCitations(
     composed,
@@ -7315,6 +7333,59 @@ function settlePlayerScorerFromBundle(
   return {
     answer: finalizeDeliveredText(rendered.answer, grounding, false),
     citations: rendered.citations,
+  };
+}
+
+function settleTeamNewsFromBundle(
+  question: string,
+  grounding: AskGrounding,
+  bundle: EvidenceBundle,
+  hasHistory: boolean
+): { answer: string; citations: AskCitation[] } | null {
+  if (grounding?.kind !== "match") return null;
+  const plan = planResponse(question, {
+    groundingKind: "match",
+    hasHistory,
+    hasUserLine: grounding.pricing.userLine != null,
+  });
+  if (plan.mode !== "team-news") return null;
+  const evidence = evidenceBundleForMatch(grounding, bundle);
+  const composed = composeMatchResponse(question, grounding, plan, evidence);
+  const rendered = renderEvidenceCitations(
+    composed,
+    bundle,
+    hasTeamNewsEvidence(evidence)
+  );
+  return {
+    answer: finalizeDeliveredText(rendered.answer, grounding, false),
+    citations: rendered.citations,
+  };
+}
+
+function settleEvidenceModeFromBundle(
+  question: string,
+  grounding: AskGrounding,
+  bundle: EvidenceBundle,
+  hasHistory: boolean
+): { answer: string; citations: AskCitation[] } | null {
+  return settlePlayerScorerFromBundle(question, grounding, bundle, hasHistory)
+    ?? settleTeamNewsFromBundle(question, grounding, bundle, hasHistory);
+}
+
+function verificationForSettledEvidence(
+  answer: string,
+  citations: AskCitation[]
+): AskVerification {
+  const abstained = answer === PLAYER_SCORER_ABSTENTION
+    || answer === TEAM_NEWS_COMPOSE_ABSTENTION
+    || citations.length === 0;
+  if (abstained) {
+    return { status: "abstain", supportedClaimCount: 0, removedClaimCount: 0 };
+  }
+  return {
+    status: "verified",
+    supportedClaimCount: citations.length,
+    removedClaimCount: 0,
   };
 }
 
@@ -7447,16 +7518,12 @@ export async function deliverAnswer(args: {
   // Scorer answers are composed from extracted observations, never from a
   // MiniMax draft. If this path is reached, ignore generated 1X2 rather than
   // answering "who scores?" with the favourite.
-  const scorerSettled = settlePlayerScorerFromBundle(question, grounding, bundle, hasHistory);
+  const scorerSettled = settleEvidenceModeFromBundle(question, grounding, bundle, hasHistory);
   if (scorerSettled) {
     return {
       answer: scorerSettled.answer,
       citations: scorerSettled.citations,
-      verification: {
-        status: "not-required",
-        supportedClaimCount: 0,
-        removedClaimCount: 0,
-      },
+      verification: verificationForSettledEvidence(scorerSettled.answer, scorerSettled.citations),
     };
   }
   const useV2 = ANALYST_RESPONSE_V2 && structuredDraftExpected;
@@ -7952,12 +8019,12 @@ async function answerQuestionScoped(
     const bundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal)
       : { queries: [], results: [], providerCalls: 0 };
-    const scorerSettled = settlePlayerScorerFromBundle(question, grounding, bundle, history.length > 0);
+    const scorerSettled = settleEvidenceModeFromBundle(question, grounding, bundle, history.length > 0);
     if (scorerSettled) {
       return {
         answer: scorerSettled.answer,
         grounding,
-        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+        verification: verificationForSettledEvidence(scorerSettled.answer, scorerSettled.citations),
         ...(scorerSettled.citations.length ? { citations: scorerSettled.citations } : {}),
       };
     }
@@ -8112,13 +8179,13 @@ async function answerQuestionStreamScoped(
     const bundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, handlers.signal)
       : { queries: [], results: [], providerCalls: 0 };
-    const scorerSettled = settlePlayerScorerFromBundle(question, grounding, bundle, history.length > 0);
+    const scorerSettled = settleEvidenceModeFromBundle(question, grounding, bundle, history.length > 0);
     if (scorerSettled) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(scorerSettled.answer);
       return {
         answer: scorerSettled.answer,
         grounding,
-        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+        verification: verificationForSettledEvidence(scorerSettled.answer, scorerSettled.citations),
         ...(scorerSettled.citations.length ? { citations: scorerSettled.citations } : {}),
       };
     }
