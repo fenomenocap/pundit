@@ -170,6 +170,10 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function collectFixtureChip(page) {
   const chips = page.getByTestId("suggestion-chip");
   const count = await chips.count();
@@ -238,9 +242,13 @@ async function runViewportChecks(page, webUrl, viewport, intervalMs) {
   let chatMatch = Boolean(names);
   if (names) {
     await page.goto(`${webUrl}/fixtures`, { waitUntil: "domcontentloaded" });
-    const fixturesVisible = await page.getByText(names.home, { exact: true }).first().isVisible().catch(() => false);
+    const homeOnFixtures = page.getByText(new RegExp(escapeRegExp(names.home), "i")).first();
+    await homeOnFixtures.waitFor({ timeout: 15_000 }).catch(() => null);
+    const fixturesVisible = await homeOnFixtures.isVisible().catch(() => false);
     await page.goto(`${webUrl}/model`, { waitUntil: "domcontentloaded" });
-    const modelVisible = await page.getByText(`${names.home} · ${names.away}`).first().isVisible().catch(() => false);
+    const modelPair = page.getByText(`${names.home} · ${names.away}`).first();
+    await modelPair.waitFor({ timeout: 15_000 }).catch(() => null);
+    const modelVisible = await modelPair.isVisible().catch(() => false);
     checks["cross-surface-fixture-parity"] = recordViewport(
       checks["cross-surface-fixture-parity"],
       viewport,
@@ -346,13 +354,17 @@ async function runViewportChecks(page, webUrl, viewport, intervalMs) {
   }
 
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox", { name: "Ask a question" }).waitFor({ timeout: 30_000 });
   await sleep(intervalMs);
   await ask(page, CANDIDATE_QUESTION);
-  const fixtureBadge = await page.getByText(/Match forecast|Outside forecast coverage|Forecast ready/i).first()
+  const liveRegion = page.locator("[aria-live='polite']");
+  const fixtureBadge = await liveRegion
+    .getByText(/^Match forecast ·|^Outside forecast coverage/i)
+    .first()
     .isVisible()
     .catch(() => false);
   const followingCandidate = await page.getByText(/^Following:/).first().isVisible().catch(() => false);
-  const generalBadge = await page.getByText("General football analysis").first().isVisible().catch(() => false);
+  const generalBadge = await liveRegion.getByText("General football analysis").first().isVisible().catch(() => false);
   checks["candidate-no-fixture-badge"] = recordViewport(
     checks["candidate-no-fixture-badge"],
     viewport,
