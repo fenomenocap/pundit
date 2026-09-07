@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deliverAnswer, type Grounding } from "./ask";
+import { deliverAnswer, planEvidenceQueries, type Grounding } from "./ask";
 import { validateAnalystDraft } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
+import { PLAYER_SCORER_ABSTENTION } from "./player-evidence";
 import { composeMatchResponse, SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
 import { buildResponseFacts } from "./response-facts";
 import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
@@ -104,7 +105,16 @@ describe("V2 conversational architecture", () => {
       expect(responsePresentation(plan).fixtureCard).toBe("compact");
       expect(plan.maxSections).toBe(1);
     }
-    expect(planResponse("Who scores?", { groundingKind: "match" }).evidenceRequired).toBe(false);
+    expect(planResponse("Who scores?", { groundingKind: "match" }).evidenceRequired).toBe(true);
+    expect(planResponse("Anytime scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
+    expect(planResponse("First goal scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
+    expect(planResponse("Who might score tonight?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
+    const scorerQueries = planEvidenceQueries("Who scores?", grounding(), null);
+    expect(scorerQueries.some((query) => /anytime goalscorer first scorer/.test(query))).toBe(true);
+    expect(scorerQueries.some((query) => /odds movement|over 2\.5|public betting/.test(query))).toBe(false);
+    const teamNewsQueries = planEvidenceQueries("What is the latest team news?", grounding(), null);
+    expect(teamNewsQueries.some((query) => /team news injuries/.test(query))).toBe(true);
+    expect(teamNewsQueries.some((query) => /odds movement|public betting/.test(query))).toBe(false);
     expect(planResponse("Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.", { groundingKind: "match" }).mode).toBe("match-preview");
     expect(planResponse("Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?", { groundingKind: "match", hasHistory: true }).mode).toBe("market-comparison");
     expect(planResponse("If the home striker is ruled out, exactly how many percentage points would you take off the home win?", { groundingKind: "match", hasHistory: true }).mode).toBe("lineup-counterfactual");
@@ -230,6 +240,45 @@ describe("V2 conversational architecture", () => {
     expect(emptied.answer).toMatch(/Chelsea at 7\.00/);
     expect(lined.pricing.userLine?.evPct).toBeCloseTo(lined.pAway * 7 - 1);
     expect(lined.pricing.stakeFrac).toBeNull();
+
+    const scorerFallback = await deliverAnswer({
+      ...base,
+      question: "Who is most likely to score?",
+      evidenceRequired: true,
+      answer: JSON.stringify({
+        directAnswer: { text: "I favour {{match.home}}.", factIds: ["match.home"] },
+        reasoning: [],
+        citedClaims: [],
+      }),
+    });
+    expect(scorerFallback.answer).toBe(PLAYER_SCORER_ABSTENTION);
+    expect(scorerFallback.answer).not.toMatch(/56\.3%/);
+    expect(scorerFallback.verification.status).toBe("not-required");
+
+    const quoted = await deliverAnswer({
+      ...base,
+      question: "Who is most likely to score?",
+      evidenceRequired: true,
+      bundle: {
+        queries: ["Arsenal vs Chelsea anytime goalscorer"],
+        providerCalls: 1,
+        results: [{
+          id: "S1",
+          title: "Chelsea vs Arsenal anytime scorer odds",
+          url: "https://example.com/scorers",
+          date: "2026-09-11T08:00:00Z",
+          snippet: "Cole Palmer anytime 2.10, Cole Palmer expected to start for Chelsea.",
+        }],
+      },
+      answer: "I make Arsenal 56.3% and therefore Salah is the most likely scorer.",
+    });
+    expect(quoted.answer).toMatch(/Cole Palmer/);
+    expect(quoted.answer).toMatch(/2\.10 decimal/);
+    expect(quoted.answer).toMatch(/example\.com\/scorers/);
+    expect(quoted.answer).toMatch(/don't treat that quote as a Pundit probability/i);
+    expect(quoted.answer).not.toMatch(/56\.3%/);
+    expect(quoted.answer).not.toMatch(/Salah/);
+    expect(quoted.citations.map((citation) => citation.id)).toEqual(["S1"]);
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {

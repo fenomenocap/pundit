@@ -603,6 +603,57 @@
       "allowAbstention": true
     },
     {
+      "id": "table-detour-then-scorer-retention",
+      "description": "A scorer follow-up after a table detour stays on the retained fixture and never answers with a 1X2 favourite.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match",
+          "expectHeadlineOneXTwo": true,
+          "expectAnalystVoice": true
+        },
+        {
+          "question": "Quick detour: what does the current Premier League table show?",
+          "expectGrounding": "competition",
+          "expectCompetitionId": "eng.1",
+          "expectDirectAnswer": true
+        },
+        {
+          "question": "Who is most likely to score?",
+          "expectGrounding": "match",
+          "allowAbstention": true,
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectCannotReprice": true,
+          "expectNoUnsupportedScorerInference": true
+        }
+      ]
+    },
+    {
+      "id": "third-club-scorer-retains-fixture",
+      "description": "A scorer question naming a third club keeps the retained fixture instead of dropping match grounding.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match",
+          "expectAnalystVoice": true
+        },
+        {
+          "question": "Who will most likely score for Liverpool?",
+          "expectGrounding": "match",
+          "allowAbstention": true,
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectCannotReprice": true,
+          "expectNoUnsupportedScorerInference": true
+        }
+      ]
+    },
+    {
       "id": "market-comparison-coverage",
       "description": "A market-comparison question keeps its grounded scoreline payload; the odds-source count is reported so a missing market line is visible rather than silent, and an abstained verification cannot license invented lineup or tactical probability counterfactuals.",
       "kind": "featured-question",

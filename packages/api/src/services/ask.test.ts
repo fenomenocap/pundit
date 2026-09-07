@@ -1129,14 +1129,11 @@ describe("current-news evidence hardening", () => {
     // question *about the payload*; a question about the match has to be
     // generated.
     it("settles narrow typed-fact or typed-limitation turns without generation", () => {
-      expect(closedGroundedAnswer("Who is most likely to score?", model()))
-        .toMatch(/don’t have player-level projections/i);
-      const naturalScorerFollowUp = closedGroundedAnswer(
+      expect(closedGroundedAnswer("Who is most likely to score?", model())).toBeNull();
+      expect(closedGroundedAnswer(
         "Who will most likely score for Liverpool?",
         model()
-      );
-      expect(naturalScorerFollowUp).toMatch(/can’t name a most likely scorer without inventing one/i);
-      expect(naturalScorerFollowUp).not.toMatch(/Liverpool at 77\.6%|My short answer is/i);
+      )).toBeNull();
       expect(closedGroundedAnswer("Analyse Arsenal vs Coventry.", model())).toBeNull();
       expect(closedGroundedAnswer("What about Arsenal vs Coventry?", model()))
         .toMatch(/My 1X2 is Arsenal 97\.3% \(fair 1\.03\)/);
@@ -2281,6 +2278,8 @@ describe("shouldUseMatchGrounding", () => {
     expect(shouldUseMatchGrounding("Which model input matters most to that edge?"))
       .toBe(true);
     expect(shouldUseMatchGrounding("Is this over 2.5?")).toBe(true);
+    expect(shouldUseMatchGrounding("Who is most likely to score?")).toBe(true);
+    expect(shouldUseMatchGrounding("Who will most likely score for Liverpool?")).toBe(true);
   });
 
   it("does not classify an unrelated tactical question", () => {
