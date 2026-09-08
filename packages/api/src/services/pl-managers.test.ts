@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stripUnlistedManagers } from "./pl-managers";
+import { stripUnlistedManagers, managersNamedInEvidence } from "./pl-managers";
 import { card, formatSearchEvidence } from "./desk-voice";
 import type { Grounding } from "./ask";
 
@@ -69,5 +69,37 @@ describe("desk current-world facts", () => {
     const clean = stripUnlistedManagers(prose, []);
     expect(clean).toContain("City control the chance map");
     expect(clean).not.toMatch(/Amorim/i);
+  });
+
+  it("keeps a cited current coach named in this turn's evidence and still strips Amorim", () => {
+    const evidence = [{
+      title: "Manchester United appoint Michael Carrick as permanent head coach",
+      snippet: "Carrick has been United head coach since January 2026. Guardiola remains at City.",
+    }];
+    const allowed = managersNamedInEvidence(evidence);
+    expect(allowed.some((name) => /guardiola/i.test(name))).toBe(true);
+    const prose = [
+      "Carrick has United in a 4-2-3-1 [[S1]].",
+      "Guardiola still manages City [[S2]].",
+      "If Amorim's lot nick an early one, the 1-1 modal jumps.",
+    ].join(" ");
+    const clean = stripUnlistedManagers(prose, allowed);
+    expect(clean).toMatch(/Carrick/);
+    expect(clean).toMatch(/Guardiola/);
+    expect(clean).not.toMatch(/Amorim/i);
+  });
+
+  it("formats search evidence with [[S]] markers for desk citations", () => {
+    const block = formatSearchEvidence([
+      {
+        id: "S1",
+        title: "Manchester United appoint Michael Carrick as permanent head coach",
+        snippet: "Carrick has been United head coach since January 2026.",
+        date: "2026-05-22",
+      },
+    ]);
+    expect(block).toContain("[[S1]]");
+    expect(block).toContain("2026-05-22");
+    expect(block).not.toMatch(/^\[1\]/m);
   });
 });

@@ -37,8 +37,10 @@ import {
   retrieveEvidencePages,
   prefetchEvidencePages,
   createEvidencePageCache,
+  extractPlainTextPublicationDate,
   type EvidenceAuthority,
   type EvidencePageCache,
+  type RetrievedEvidencePage,
 } from "./evidence-page-retrieval";
 import {
   SECTION_LABEL_LINE,
@@ -79,7 +81,7 @@ import {
 } from "./player-evidence";
 import { composeMatchResponse } from "./response-composer";
 import { writeDeskProse } from "./desk-voice";
-import { validateAnalystDraft } from "./analyst-draft";
+import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
   planResponse,
@@ -521,6 +523,7 @@ const MAX_EVIDENCE_RESULTS = 30;
 
 const CURRENT_NEWS_QUESTION = /\b(latest|current|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
 const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it))\b/i;
+const STATS_QUESTION = /\b(stats?|statistics|statistically|xg|assists?|appearances?)\b/i;
 // `unknown` and `unconfirmed` used to match as bare words, which handed any
 // sentence a way out of the squad-claim guard: an answer wrote "Beer-Sheva's
 // wider injury list is the more material unknown going into kickoff" -- an
@@ -557,6 +560,10 @@ const TEAM_NEWS_ABSTENTION_UNRETRIEVABLE =
   "No verified, dated team-news update was established from retrievable sources.";
 const TEAM_NEWS_ABSTENTION_UNAVAILABLE =
   "No verified, dated team-news update was established, because verification was unavailable.";
+const CURRENT_CLAIM_ABSTENTION =
+  "No verified current source in this conversation supports that claim.";
+const SEASON_STATS_LINE =
+  /\b(?:\d+\s*(?:goals?|assists?|appearances?|starts?|caps?)|\d+\s*mins?(?:utes)?|fotmob rating|\bxg\b)/i;
 
 /**
  * A server-owned citation marker, in every shape the generator actually emits.
@@ -726,14 +733,41 @@ function abstainEvidenceClaims(answer: string, notice: string): string {
   return revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function stripUncitedSeasonStats(answer: string): string {
+  return reviseAnswerSentences(answer, (sentence) => {
+    if (evidenceMarkerIds(sentence).length > 0 || ABSTENTION.test(sentence)) return sentence;
+    return SEASON_STATS_LINE.test(sentence) ? "" : sentence;
+  }).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function currentFootballSeasonLabel(now: Date): string {
+  const year = now.getUTCFullYear();
+  const startYear = now.getUTCMonth() >= 7 ? year : year - 1;
+  return `${startYear}/${String((startYear + 1) % 100).padStart(2, "0")}`;
+}
+
+function asksPerformedThisSeason(question: string, now: Date): boolean {
+  if (!/\bperformed\b/i.test(question)) return false;
+  if (/\bthis season\b/i.test(question)) return true;
+  const label = currentFootballSeasonLabel(now);
+  const pattern = label.replace("/", "[/\\-–]");
+  return new RegExp(`\\b${pattern}\\b`, "i").test(question);
+}
+
+function asksStatisticalQuestion(question: string, now = new Date()): boolean {
+  return STATS_QUESTION.test(question) || asksPerformedThisSeason(question, now);
+}
+
 export function deterministicSearchQuery(
   question: string,
   correctionContext = "",
   grounding?: AskGrounding
 ): string | null {
+  const asksStats = asksStatisticalQuestion(question);
   if (!CURRENT_NEWS_QUESTION.test(question)
     && !AMBIGUOUS_CURRENT_QUESTION.test(question)
-    && !containsCorrectionCue(question)) return null;
+    && !containsCorrectionCue(question)
+    && !asksStats) return null;
   const mandatoryExternal = /\b(?:latest|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i.test(question)
     || containsCorrectionCue(question);
   const asksOwnedMatchFact = grounding?.kind === "match"
@@ -857,10 +891,22 @@ const PLAYER_MARKET_QUESTION =
 export function planEvidenceQueries(
   question: string,
   grounding: AskGrounding,
-  baseQuery: string | null
+  baseQuery: string | null,
+  now = new Date()
 ): string[] {
   const planned: string[] = [];
+  const raw = question.replace(/\s+/g, " ").trim().slice(0, 220);
+  const asksStats = asksStatisticalQuestion(question, now);
+  if (raw.length >= 3 && (baseQuery || asksStats)) planned.push(raw);
   if (baseQuery) planned.push(baseQuery);
+  const slice = raw.replace(/[?!.]+$/g, "").slice(0, 100).trim();
+  const season = currentFootballSeasonLabel(now);
+  if (asksStats && slice.length >= 3) {
+    planned.push(`${slice} stats ${season}`);
+  }
+  if (CURRENT_NEWS_QUESTION.test(question) && grounding?.kind !== "match" && slice.length >= 3) {
+    planned.push(`${slice} recent form ${season}`);
+  }
   if (grounding?.kind === "match") {
     const fixture = `${grounding.home} vs ${grounding.away}`;
     const mode = planResponse(question, { groundingKind: "match", hasHistory: true }).mode;
@@ -888,7 +934,6 @@ export function planEvidenceQueries(
         planned.push(`${fixture} anytime goalscorer odds player props`);
       }
     }
-    if (!baseQuery) planned.push(`${question.slice(0, 180)} ${fixture}`);
   }
   const unique = new Map<string, string>();
   for (const raw of planned) {
@@ -896,6 +941,21 @@ export function planEvidenceQueries(
     if (query.length >= 3) unique.set(query.toLocaleLowerCase(), query);
   }
   return [...unique.values()].slice(0, MAX_EVIDENCE_QUERIES);
+}
+
+function planTurnEvidenceQueries(
+  question: string,
+  grounding: AskGrounding,
+  query: string | null,
+  voice?: "desk"
+): string[] {
+  const planned = planEvidenceQueries(question, grounding, query);
+  if (planned.length || voice !== "desk") return planned;
+  return planEvidenceQueries(
+    question,
+    grounding,
+    `${question.slice(0, 220)} football latest`
+  );
 }
 
 async function buildEvidenceBundle(
@@ -927,6 +987,7 @@ async function buildEvidenceBundle(
     event: "evidence_bundle_built",
     queries: planned.length,
     results: results.length,
+    datedResults: results.filter((result) => Number.isFinite(Date.parse(result.date))).length,
     // Present only when retrieval itself failed. A thin answer with a reason
     // here is a retrieval outage; a thin answer without one is the web.
     degradedSearches: bundle.degradedSearches ?? 0,
@@ -1024,6 +1085,33 @@ export function evidenceAuthority(rawUrl: string): EvidenceAuthority {
   }
 }
 
+function writeRetrievedDatesOntoBundle(
+  bundle: EvidenceBundle,
+  pages: readonly { id: string; url: string; date: string }[]
+): void {
+  const byId = new Map(pages.filter((page) => page.date).map((page) => [page.id, page]));
+  const byUrl = new Map(pages.filter((page) => page.url).map((page) => [page.url, page]));
+  const now = new Date();
+  for (const result of bundle.results) {
+    const page = byId.get(result.id) ?? byUrl.get(result.url);
+    if (page?.date) {
+      result.date = page.date;
+      continue;
+    }
+    if (result.date.trim()) continue;
+    const fromSnippet = extractPlainTextPublicationDate(`${result.title}\n${result.snippet}`, now);
+    if (fromSnippet) result.date = fromSnippet;
+  }
+}
+
+function evidenceSourceDate(
+  source: { date: string; title: string; snippet: string },
+  now = new Date()
+): string {
+  if (source.date.trim() && Number.isFinite(Date.parse(source.date))) return source.date;
+  return extractPlainTextPublicationDate(`${source.title}\n${source.snippet}`, now);
+}
+
 export function verifiableCurrentClaims(answer: string): VerifiableClaim[] {
   return splitAnswerSentences(answer)
     // Server-owned citation markers identify the externally sourced claims.
@@ -1094,6 +1182,7 @@ export async function verifyCurrentClaims(
     signal,
     { cache: bundle.pageCache }
   );
+  writeRetrievedDatesOntoBundle(bundle, fetched);
   // Most publishers block a server-side fetch, so verification ran against one
   // retrieved page out of thirty sources and abstained on nearly everything --
   // the same question answering with cited team news or with the notice
@@ -1116,7 +1205,7 @@ export async function verifyCurrentClaims(
       id: source.id,
       url: source.url,
       title: source.title,
-      date: source.date,
+      date: evidenceSourceDate(source),
       authority: evidenceAuthority(source.url),
       finalUrl: source.url,
       text: `${source.title}\n${source.snippet}`,
@@ -1158,6 +1247,9 @@ export async function verifyCurrentClaims(
   // The notices no longer need re-adding by hand -- they are simply never
   // touched.
   const applied = reviseAnswerWithClaimDecisions(answer, claims, result.decisions);
+  const nextAnswer = result.status === "unavailable"
+    ? stripUncitedSeasonStats(applied.answer)
+    : applied.answer;
   console.log(JSON.stringify({
     event: "claims_verified",
     status: result.status,
@@ -1171,7 +1263,7 @@ export async function verifyCurrentClaims(
     removed: applied.removedClaimIds.length,
   }));
   return {
-    answer: applied.answer.trim(),
+    answer: nextAnswer.trim(),
     verification: {
       status: result.status,
       supportedClaimCount: applied.supported.length,
@@ -2522,7 +2614,14 @@ export function failClosedEmptyCurrentVerification(
   // the model's probabilities, which had never been up for verification.
   // Keeping model content is not a loosening: an unsupported squad claim is
   // still replaced by the abstention, wherever in the answer it was written.
-  return abstainEvidenceClaims(answer, abstention);
+  const revised = abstainEvidenceClaims(answer, abstention);
+  if (hasMeaningfulProse(revised)) return revised;
+  // Verification removed every current claim and left no model prose behind.
+  // Returning empty here used to 502 a researched stats answer; the honest
+  // remainder is the abstention, not a blank generation failure.
+  return verification.status === "unavailable"
+    ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
+    : CURRENT_CLAIM_ABSTENTION;
 }
 
 function acknowledgeCorrection(answer: string, verification: AskVerification): string {
@@ -7311,9 +7410,20 @@ export function deterministicGroundedResponse(
 
 function evidenceBundleForMatch(
   grounding: Extract<AskGrounding, { kind: "match" }>,
-  bundle: EvidenceBundle
+  bundle: EvidenceBundle,
+  pages: readonly RetrievedEvidencePage[] = []
 ) {
-  return extractPlayerEvidence(bundle.results, {
+  const byId = new Map(pages.map((page) => [page.id, page]));
+  const sources = bundle.results.map((source) => {
+    const page = byId.get(source.id);
+    if (!page?.text.trim()) return source;
+    return {
+      ...source,
+      date: source.date.trim() || page.date,
+      snippet: page.text.slice(0, 8_000),
+    };
+  });
+  return extractPlayerEvidence(sources, {
     fixtureId: grounding.fixtureId,
     home: grounding.home,
     away: grounding.away,
@@ -7321,12 +7431,33 @@ function evidenceBundleForMatch(
   });
 }
 
-function settlePlayerScorerFromBundle(
+async function hydrateBundlePublicationDates(
+  bundle: EvidenceBundle,
+  signal?: AbortSignal
+): Promise<RetrievedEvidencePage[]> {
+  if (!bundle.results.length) return [];
+  const pages = await retrieveEvidencePages(
+    bundle.results.map((source) => ({
+      id: source.id,
+      url: source.url,
+      title: source.title,
+      date: source.date,
+      authority: evidenceAuthority(source.url),
+    })),
+    signal,
+    { cache: bundle.pageCache }
+  );
+  writeRetrievedDatesOntoBundle(bundle, pages);
+  return pages;
+}
+
+async function settlePlayerScorerFromBundle(
   question: string,
   grounding: AskGrounding,
   bundle: EvidenceBundle,
-  hasHistory: boolean
-): { answer: string; citations: AskCitation[] } | null {
+  hasHistory: boolean,
+  signal?: AbortSignal
+): Promise<{ answer: string; citations: AskCitation[] } | null> {
   if (grounding?.kind !== "match") return null;
   const plan = planResponse(question, {
     groundingKind: "match",
@@ -7334,7 +7465,8 @@ function settlePlayerScorerFromBundle(
     hasUserLine: grounding.pricing.userLine != null,
   });
   if (plan.mode !== "player-or-scorer") return null;
-  const evidence = evidenceBundleForMatch(grounding, bundle);
+  const pages = await hydrateBundlePublicationDates(bundle, signal);
+  const evidence = evidenceBundleForMatch(grounding, bundle, pages);
   const composed = composeMatchResponse(question, grounding, plan, evidence);
   const rendered = renderEvidenceCitations(
     composed,
@@ -7347,12 +7479,13 @@ function settlePlayerScorerFromBundle(
   };
 }
 
-function settleTeamNewsFromBundle(
+async function settleTeamNewsFromBundle(
   question: string,
   grounding: AskGrounding,
   bundle: EvidenceBundle,
-  hasHistory: boolean
-): { answer: string; citations: AskCitation[] } | null {
+  hasHistory: boolean,
+  signal?: AbortSignal
+): Promise<{ answer: string; citations: AskCitation[] } | null> {
   if (grounding?.kind !== "match") return null;
   const plan = planResponse(question, {
     groundingKind: "match",
@@ -7360,12 +7493,28 @@ function settleTeamNewsFromBundle(
     hasUserLine: grounding.pricing.userLine != null,
   });
   if (plan.mode !== "team-news") return null;
-  const evidence = evidenceBundleForMatch(grounding, bundle);
+  const pages = await hydrateBundlePublicationDates(bundle, signal);
+  const evidence = evidenceBundleForMatch(grounding, bundle, pages);
   const composed = composeMatchResponse(question, grounding, plan, evidence);
+  if (hasTeamNewsEvidence(evidence)) {
+    const rendered = renderEvidenceCitations(composed, bundle, true);
+    return {
+      answer: finalizeDeliveredText(rendered.answer, grounding, false),
+      citations: rendered.citations,
+    };
+  }
+  // A dated page in the bundle is worth a generated, verified pass. The
+  // composer abstention is correct when extraction found nothing *and* nothing
+  // dated was retrieved; short-circuiting while dated sources sit unused is
+  // how a 4s canned notice beat a researched team-news answer.
+  if (composed === TEAM_NEWS_COMPOSE_ABSTENTION
+    && bundle.results.some((row) => Number.isFinite(Date.parse(row.date)))) {
+    return null;
+  }
   const rendered = renderEvidenceCitations(
     composed,
     bundle,
-    hasTeamNewsEvidence(evidence)
+    false
   );
   return {
     answer: finalizeDeliveredText(rendered.answer, grounding, false),
@@ -7373,14 +7522,15 @@ function settleTeamNewsFromBundle(
   };
 }
 
-function settleEvidenceModeFromBundle(
+async function settleEvidenceModeFromBundle(
   question: string,
   grounding: AskGrounding,
   bundle: EvidenceBundle,
-  hasHistory: boolean
-): { answer: string; citations: AskCitation[] } | null {
-  return settlePlayerScorerFromBundle(question, grounding, bundle, hasHistory)
-    ?? settleTeamNewsFromBundle(question, grounding, bundle, hasHistory);
+  hasHistory: boolean,
+  signal?: AbortSignal
+): Promise<{ answer: string; citations: AskCitation[] } | null> {
+  return await settlePlayerScorerFromBundle(question, grounding, bundle, hasHistory, signal)
+    ?? await settleTeamNewsFromBundle(question, grounding, bundle, hasHistory, signal);
 }
 
 function verificationForSettledEvidence(
@@ -7512,6 +7662,8 @@ export async function deliverAnswer(args: {
   /** True only for output produced under MATCH_SYSTEM_PROMPT's JSON contract. */
   structuredDraftExpected?: boolean;
   signal?: AbortSignal;
+  voice?: "desk";
+  history?: ConversationTurn[];
 }): Promise<{ answer: string; citations: AskCitation[]; verification: AskVerification }> {
   const {
     answer: rawAnswer,
@@ -7525,11 +7677,68 @@ export async function deliverAnswer(args: {
     hasHistory = false,
     structuredDraftExpected = false,
     signal,
+    voice,
+    history = [],
   } = args;
+  const deskVoice = voice === "desk";
+  if (deskVoice) {
+    const settledFromBundle = await settleEvidenceModeFromBundle(
+      question, grounding, bundle, hasHistory, signal
+    );
+    if (settledFromBundle && settledFromBundle.citations.length > 0) {
+      return {
+        answer: settledFromBundle.answer,
+        citations: settledFromBundle.citations,
+        verification: verificationForSettledEvidence(
+          settledFromBundle.answer,
+          settledFromBundle.citations
+        ),
+      };
+    }
+    const sourceIds = bundle.results.map((source) => source.id);
+    const salvaged = salvageCitedClaimProse(rawAnswer, sourceIds);
+    const rawLooksLikeDraft = (() => {
+      const trimmed = rawAnswer.trim().replace(/^```(?:json)?\s*/i, "");
+      return trimmed.startsWith("{") && /"(?:citedClaims|directAnswer)"/.test(trimmed);
+    })();
+    const prose = salvaged
+      || (!rawLooksLikeDraft && rawAnswer.trim() ? rawAnswer.trim() : "")
+      || await writeDeskProse(question, grounding, history, signal, bundle);
+    if (prose) {
+      const checked = candidateUnrecognized
+        ? {
+            answer: prose,
+            verification: {
+              status: "abstain" as const,
+              supportedClaimCount: 0,
+              removedClaimCount: 0,
+            },
+          }
+        : await verifyCurrentClaims(prose, bundle, client, signal);
+      const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
+        checked.answer,
+        checked.verification,
+        true
+      );
+      const rendered = renderEvidenceCitations(evidenceSafeAnswer, bundle, true);
+      const settledAnswer = dropEmptyEmphasis(
+        dropOrphanedSectionLabels(
+          dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, bundle)))
+        )
+      );
+      return {
+        answer: finalizeDeliveredText(settledAnswer, grounding, false),
+        citations: rendered.citations,
+        verification: checked.verification,
+      };
+    }
+  }
   // Scorer answers are composed from extracted observations, never from a
   // MiniMax draft. If this path is reached, ignore generated 1X2 rather than
   // answering "who scores?" with the favourite.
-  const scorerSettled = settleEvidenceModeFromBundle(question, grounding, bundle, hasHistory);
+  const scorerSettled = await settleEvidenceModeFromBundle(
+    question, grounding, bundle, hasHistory, signal
+  );
   if (scorerSettled) {
     return {
       answer: scorerSettled.answer,
@@ -7558,16 +7767,27 @@ export async function deliverAnswer(args: {
       expressionAnswer = validatedDraft.answer;
     } else {
       analystResponseMetrics.rejectedDrafts += 1;
+      const mode = planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null }).mode;
       console.warn(JSON.stringify({
         event: "analyst_draft_rejected",
         reason: validatedDraft.reason,
-        responseMode: planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null }).mode,
+        responseMode: mode,
       }));
-      expressionAnswer = composeMatchResponse(
-        question,
-        grounding,
-        planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
-      );
+      const sourceIds = bundle.results.map((source) => source.id);
+      const salvaged = mode === "team-news" ? salvageCitedClaimProse(rawAnswer, sourceIds) : null;
+      if (salvaged) {
+        expressionAnswer = salvaged;
+      } else if (mode === "team-news" && evidenceMarkerIds(rawAnswer).length > 0) {
+        expressionAnswer = rawAnswer;
+      } else {
+        const pages = await hydrateBundlePublicationDates(bundle, signal);
+        const evidence = evidenceBundleForMatch(grounding, bundle, pages);
+        expressionAnswer = composeMatchResponse(question, grounding, planResponse(question, {
+          groundingKind: "match",
+          hasHistory,
+          hasUserLine: grounding.pricing.userLine != null,
+        }), evidence);
+      }
     }
   }
   const requestSafeAnswer = sanitizeRequestFidelity(expressionAnswer, question, hasHistory);
@@ -7606,6 +7826,22 @@ export async function deliverAnswer(args: {
     && /\b(?:injur(?:y|ies|ed)|suspension|availability|line-?up|team news)\b/i.test(question)
     && checked.verification.supportedClaimCount === 0
     && (checked.verification.status === "abstain" || checked.verification.status === "unavailable")) {
+    const pages = await hydrateBundlePublicationDates(bundle, signal);
+    const evidence = evidenceBundleForMatch(grounding, bundle, pages);
+    if (hasTeamNewsEvidence(evidence)) {
+      const composed = composeMatchResponse(
+        question,
+        grounding,
+        planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null }),
+        evidence
+      );
+      const rendered = renderEvidenceCitations(composed, bundle, true);
+      return {
+        answer: finalizeDeliveredText(rendered.answer, grounding, useV2),
+        citations: rendered.citations,
+        verification: verificationForSettledEvidence(rendered.answer, rendered.citations),
+      };
+    }
     const abstention = checked.verification.status === "unavailable"
       ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
       : TEAM_NEWS_ABSTENTION;
@@ -7752,8 +7988,22 @@ export async function deliverAnswer(args: {
     };
   }
   // General, competition and season answers have no server-owned payload to
-  // rebuild from, so a canned one-liner there would be a fabricated answer
-  // rather than a degraded one. Those fail the way an empty generation does.
+  // rebuild from. An empty *generation* is still a 502. An emptied
+  // verification is not: the model wrote claims, none survived, and the
+  // honest remainder is the abstention rather than a blank bubble.
+  if (evidenceRequired
+    && (checked.verification.status === "abstain"
+      || checked.verification.status === "unavailable"
+      || checked.verification.status === "conflict")
+    && checked.verification.supportedClaimCount === 0) {
+    return {
+      answer: checked.verification.status === "unavailable"
+        ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
+        : CURRENT_CLAIM_ABSTENTION,
+      citations: [],
+      verification: checked.verification,
+    };
+  }
   throw new AppError(502, "Analysis service returned an empty response.");
 }
 
@@ -7947,14 +8197,13 @@ export async function answerQuestion(
   voice?: "desk"
 ): Promise<AskResult> {
   const result = await withSearchQuestion(() =>
-    answerQuestionScoped(question, history, teamContext, signal, fixtureContext, userLine));
+    answerQuestionScoped(question, history, teamContext, signal, fixtureContext, userLine, voice));
   const presented = withPresentation(question, history.length > 0, result);
-  if (voice === "desk" && presented.grounding?.kind === "match") {
-    const prose = await writeDeskProse(question, presented.grounding, history, signal);
-    if (prose) {
-      presented.answer = prose;
-      presented.presentation = { responseMode: "match-preview", fixtureCard: "expanded" };
-    }
+  if (voice === "desk") {
+    presented.presentation = {
+      responseMode: presented.grounding?.kind === "match" ? "match-preview" : presented.presentation.responseMode,
+      fixtureCard: presented.grounding?.kind === "match" ? "expanded" : presented.presentation.fixtureCard,
+    };
   }
   return presented;
 }
@@ -7965,7 +8214,8 @@ async function answerQuestionScoped(
   teamContext?: TeamContext,
   signal?: AbortSignal,
   fixtureContext?: FixtureContext,
-  userLine?: UserLine
+  userLine?: UserLine,
+  voice?: "desk"
 ): Promise<{
   answer: string;
   grounding: AskGrounding;
@@ -8025,7 +8275,7 @@ async function answerQuestionScoped(
       };
     }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
-    if (closedAnswer) {
+    if (closedAnswer && !(voice === "desk" && (grounding?.kind === "match" || grounding === null))) {
       return {
         answer: closedAnswer,
         grounding,
@@ -8034,12 +8284,48 @@ async function answerQuestionScoped(
     }
     // `query` still decides whether a turn *owes* a search; the planned set
     // decides how well that search is done. A match question always earns the
-    // full set, which is what separates a read from a recital.
-    const plannedQueries = planEvidenceQueries(question, grounding, query);
+    // full set, which is what separates a read from a recital. Desk turns
+    // without a cue still search, including fixture-less club questions.
+    const plannedQueries = planTurnEvidenceQueries(question, grounding, query, voice);
     const bundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal)
       : { queries: [], results: [], providerCalls: 0 };
-    const scorerSettled = settleEvidenceModeFromBundle(question, grounding, bundle, history.length > 0);
+    // Desk team-news uses the match evidence path (V2 salvage + verify) so a
+    // dated retrieved page can keep a cited sentence. Extraction-only compose
+    // is still preferred inside deliverAnswer when it has citations.
+    const deskUsesMatchEvidencePath =
+      voice === "desk"
+      && grounding?.kind === "match"
+      && planResponse(question, { groundingKind: "match" }).mode === "team-news";
+    if (voice === "desk" && !deskUsesMatchEvidencePath) {
+      const prose = await writeDeskProse(question, grounding, history, signal, bundle);
+      if (prose) {
+        const delivered = await deliverAnswer({
+          answer: prose,
+          tier,
+          grounding,
+          bundle,
+          client,
+          question,
+          evidenceRequired: true,
+          candidateUnrecognized,
+          hasHistory: history.length > 0,
+          structuredDraftExpected: false,
+          signal,
+          voice: "desk",
+          history,
+        });
+        return {
+          answer: delivered.answer,
+          grounding,
+          verification: delivered.verification,
+          ...(delivered.citations.length ? { citations: delivered.citations } : {}),
+        };
+      }
+    }
+    const scorerSettled = await settleEvidenceModeFromBundle(
+      question, grounding, bundle, history.length > 0, signal
+    );
     if (scorerSettled) {
       return {
         answer: scorerSettled.answer,
@@ -8072,6 +8358,7 @@ async function answerQuestionScoped(
       hasHistory: history.length > 0,
       structuredDraftExpected: ANALYST_RESPONSE_V2 && grounding?.kind === "match",
       signal,
+      ...(voice === "desk" ? { voice, history } : {}),
     });
     return {
       answer: delivered.answer,
@@ -8199,7 +8486,9 @@ async function answerQuestionStreamScoped(
     const bundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, handlers.signal)
       : { queries: [], results: [], providerCalls: 0 };
-    const scorerSettled = settleEvidenceModeFromBundle(question, grounding, bundle, history.length > 0);
+    const scorerSettled = await settleEvidenceModeFromBundle(
+      question, grounding, bundle, history.length > 0, handlers.signal
+    );
     if (scorerSettled) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(scorerSettled.answer);
       return {

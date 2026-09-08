@@ -68,6 +68,8 @@ const STOPWORDS = new Set([
   "sports", "sky", "bbc", "betting", "preview", "football", "soccer", "latest",
   "update", "updates", "best", "tips", "accumulator", "acca", "live", "blog",
   "see", "all", "more", "click", "here", "nil", "chance", "double", "winner",
+  "compare", "filter", "share", "sort", "oddschecker", "betfair", "select",
+  "reset", "apply", "cookies", "privacy", "newsletter",
 ]);
 
 const NAME = /\b([A-Z][a-zÀ-ÿ]+(?:\s+[A-Z][a-zÀ-ÿ]+){0,2})\b/g;
@@ -149,6 +151,19 @@ function stripMarketChrome(text: string): string {
   return text.replace(/\bsee all odds\b/gi, " ");
 }
 
+/** 1X2 winner pages are not scorer markets. Player names there are chrome. */
+function isOneXTwoMarketUrl(url: string): boolean {
+  try {
+    const path = new URL(url).pathname.toLowerCase();
+    if (/(?:anytime|first).*(?:scorer|goalscorer)|goalscorer|player-props|\/scorers?(?:\/|$)/.test(path)) {
+      return false;
+    }
+    return /\/winner(?:\/|$)/.test(path) || /\/1x2(?:\/|$)/.test(path);
+  } catch {
+    return false;
+  }
+}
+
 function isPersonName(raw: string, fixture: PlayerFixtureRef): boolean {
   const name = raw.trim();
   if (name.length < 4) return false;
@@ -197,6 +212,38 @@ function availabilityType(text: string): PlayerEvidenceType | null {
   if (STARTS_CUE.test(text)) return "expected-lineup";
   if (OUT_CUE.test(text)) return "availability";
   return null;
+}
+
+function nearestAvailabilityType(window: string, playerName: string): PlayerEvidenceType | null {
+  const nameAt = window.toLocaleLowerCase().indexOf(playerName.toLocaleLowerCase());
+  if (nameAt < 0) return availabilityType(window);
+  const cues: Array<{ kind: PlayerEvidenceType; at: number; len: number }> = [];
+  const collect = (pattern: RegExp, kind: PlayerEvidenceType) => {
+    for (const match of window.matchAll(new RegExp(pattern, "gi"))) {
+      if (match.index == null) continue;
+      cues.push({ kind, at: match.index, len: match[0].length });
+    }
+  };
+  collect(/\bconfirmed to start|named in the xi\b/i, "confirmed-lineup");
+  collect(STARTS_CUE, "expected-lineup");
+  collect(OUT_CUE, "availability");
+  if (!cues.length) return null;
+  cues.sort((left, right) => {
+    const distance = (cue: { at: number; len: number }) =>
+      Math.min(Math.abs(cue.at - nameAt), Math.abs(cue.at + cue.len - nameAt));
+    const delta = distance(left) - distance(right);
+    if (delta !== 0) return delta;
+    const rank = { "confirmed-lineup": 0, "expected-lineup": 1, availability: 2 } as const;
+    return rank[left.kind] - rank[right.kind];
+  });
+  const nearest = cues[0];
+  if (!nearest) return null;
+  const dist = Math.min(
+    Math.abs(nearest.at - nameAt),
+    Math.abs(nearest.at + nearest.len - nameAt)
+  );
+  if (dist > 40) return null;
+  return nearest.kind;
 }
 
 function parseDecimalOdds(text: string): number | null {
@@ -261,37 +308,63 @@ export function extractPlayerEvidence(
     const segments = [snippet, ...snippet.split(/[,;|\n]/), blob];
 
     const seenMarket = new Set<string>();
-    for (const segment of segments) {
-      if (!MARKET_CUE.test(segment)) continue;
-      const names = collectNames(segment, fixture);
-      for (const playerName of names) {
-        const odds = nearestOdds(segment, playerName);
-        if (!inRange(odds)) continue;
-        const teamId = teamForPlayer(segment, blob, playerName, fixture) ?? "";
-        const key = `${slug(playerName)}:${odds.toFixed(2)}:${source.id}`;
-        if (seenMarket.has(key)) continue;
-        seenMarket.add(key);
-        markets.push({
-          fixtureId: fixture.fixtureId,
-          playerId: slug(playerName),
-          playerName,
-          teamId,
-          market: marketKind(`${blob} ${segment}`),
-          decimalOdds: Number(odds.toFixed(2)),
-          impliedProbability: 1 / odds,
-          sourceId: source.id,
-          observedAt,
-        });
+    if (!isOneXTwoMarketUrl(source.url)) {
+      for (const segment of segments) {
+        if (!MARKET_CUE.test(segment)) continue;
+        const names = collectNames(segment, fixture);
+        for (const playerName of names) {
+          const idx = segment.toLocaleLowerCase().indexOf(playerName.toLocaleLowerCase());
+          const window = idx < 0
+            ? segment
+            : segment.slice(Math.max(0, idx - 72), idx + playerName.length + 48);
+          if (!MARKET_CUE.test(window)) continue;
+          const odds = nearestOdds(segment, playerName);
+          if (!inRange(odds)) continue;
+          const teamId = teamForPlayer(segment, blob, playerName, fixture) ?? "";
+          const key = `${slug(playerName)}:${odds.toFixed(2)}:${source.id}`;
+          if (seenMarket.has(key)) continue;
+          seenMarket.add(key);
+          markets.push({
+            fixtureId: fixture.fixtureId,
+            playerId: slug(playerName),
+            playerName,
+            teamId,
+            market: marketKind(`${blob} ${segment}`),
+            decimalOdds: Number(odds.toFixed(2)),
+            impliedProbability: 1 / odds,
+            sourceId: source.id,
+            observedAt,
+          });
+        }
       }
     }
 
-    const names = collectNames(blob, fixture);
-    const kind = availabilityType(blob);
-    if (kind && names.length) {
-      const playerName = names[0];
-      const teamId = teamForPlayer(source.snippet, blob, playerName, fixture) ?? "";
+    // Cue and name must share a short window. Whole-blob `names[0]` picked
+    // chrome; whole-sentence classification tagged every name in a mixed line.
+    const haystack = `${source.title}\n${snippet}`;
+    const seenAvailability = new Set<string>();
+    for (const playerName of collectNames(haystack, fixture)) {
+      const lower = haystack.toLocaleLowerCase();
+      const needle = playerName.toLocaleLowerCase();
+      let from = 0;
+      let kind: PlayerEvidenceType | null = null;
+      let window = "";
+      while (from < lower.length) {
+        const idx = lower.indexOf(needle, from);
+        if (idx < 0) break;
+        window = haystack.slice(Math.max(0, idx - 48), idx + playerName.length + 80);
+        kind = nearestAvailabilityType(window, playerName);
+        if (kind) break;
+        from = idx + needle.length;
+      }
+      if (!kind) continue;
+      const playerId = slug(playerName);
+      const key = `${playerId}:${kind}:${source.id}`;
+      if (seenAvailability.has(key)) continue;
+      seenAvailability.add(key);
+      const teamId = teamForPlayer(window, blob, playerName, fixture) ?? "";
       const row: PlayerEvidence = {
-        playerId: slug(playerName),
+        playerId,
         playerName,
         teamId,
         fixtureId: fixture.fixtureId,

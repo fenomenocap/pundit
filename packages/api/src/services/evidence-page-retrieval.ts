@@ -14,6 +14,10 @@ const MAX_REDIRECTS = 3;
 const DEFAULT_TIMEOUT_MS = 6_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 512 * 1024;
 const DEFAULT_MAX_TEXT_CHARS = 16_000;
+// Identified client, matching `elo-ratings.ts`. CloudFront returns 503 on
+// premierleague.com when the pinned request has no User-Agent at all; a
+// browser UA is not required.
+const EVIDENCE_USER_AGENT = "Mozilla/5.0 (compatible; pundit/1.0)";
 
 export type EvidenceAuthority = "official" | "reputable" | "other";
 
@@ -48,6 +52,12 @@ interface FetchedPageBody {
   finalUrl: string;
   text: string;
   retrievedAt: string;
+  /**
+   * Publication date recovered from the page itself. Empty when the HTML had
+   * no usable `datePublished`. The provider date is merged on later, so an
+   * empty value here must not overwrite a search-result date.
+   */
+  date: string;
 }
 
 /**
@@ -69,6 +79,24 @@ export interface RetrievalOptions {
   maxTextChars?: number;
   now?: () => Date;
   cache?: EvidencePageCache;
+}
+
+function hasDisallowedPort(url: URL): boolean {
+  if (!url.port) return false;
+  if (url.protocol === "https:" && url.port === "443") return false;
+  if (url.protocol === "http:" && url.port === "80") return false;
+  return true;
+}
+
+/**
+ * Apex and `www.` of the same host are one publisher. Search results and
+ * Location headers mix them constantly (`premierleague.com` →
+ * `www.premierleague.com:443/`); treating that as a cross-host open redirect
+ * dropped the official page. `news.bbc.co.uk` vs `www.bbc.co.uk` still fails.
+ */
+export function sameEvidenceHost(left: string, right: string): boolean {
+  const normalize = (host: string) => host.toLocaleLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+  return normalize(left) === normalize(right);
 }
 
 function parseIpv4(address: string): number[] | null {
@@ -130,7 +158,8 @@ async function assertPublicHttpUrl(
     throw new Error("invalid evidence URL");
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("unsupported URL scheme");
-  if (url.username || url.password || url.port) throw new Error("URL credentials and custom ports are not allowed");
+  if (url.username || url.password) throw new Error("URL credentials are not allowed");
+  if (hasDisallowedPort(url)) throw new Error("custom ports are not allowed");
   const hostname = url.hostname.toLocaleLowerCase().replace(/\.$/, "");
   if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")) {
     throw new Error("local evidence URL blocked");
@@ -184,8 +213,9 @@ async function fetchPinned(
 }
 
 async function readBoundedBody(response: Response, maxBytes: number): Promise<string> {
-  const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("evidence page exceeded size limit");
+  // Modern news pages are often 0.8–1.5MB. Dates live in the first kilobytes
+  // and verification only keeps 16KB of text, so a hard reject on
+  // Content-Length (BBC, Guardian, club sites) was discarding usable pages.
   if (!response.body) return "";
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -193,11 +223,18 @@ async function readBoundedBody(response: Response, maxBytes: number): Promise<st
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    received += value.byteLength;
-    if (received > maxBytes) {
+    const remaining = maxBytes - received;
+    if (remaining <= 0) {
       await reader.cancel();
-      throw new Error("evidence page exceeded size limit");
+      break;
     }
+    if (value.byteLength > remaining) {
+      chunks.push(value.subarray(0, remaining));
+      received += remaining;
+      await reader.cancel();
+      break;
+    }
+    received += value.byteLength;
     chunks.push(value);
   }
   const body = new Uint8Array(received);
@@ -207,6 +244,183 @@ async function readBoundedBody(response: Response, maxBytes: number): Promise<st
     offset += chunk.byteLength;
   }
   return new TextDecoder().decode(body);
+}
+
+function usablePublicationDate(raw: string, now: Date): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  const publishedAt = Date.parse(trimmed);
+  if (!Number.isFinite(publishedAt)) return "";
+  if (publishedAt > now.getTime()) return "";
+  return trimmed;
+}
+
+function jsonLdDatePublished(value: unknown, now: Date): string {
+  if (typeof value === "string") return usablePublicationDate(value, now);
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = jsonLdDatePublished(entry, now);
+      if (found) return found;
+    }
+    return "";
+  }
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  if (record["@graph"]) {
+    const found = jsonLdDatePublished(record["@graph"], now);
+    if (found) return found;
+  }
+  // Ignore dateModified: it launders old copy into the recency window.
+  const published = record.datePublished;
+  if (typeof published === "string") {
+    const found = usablePublicationDate(published, now);
+    if (found) return found;
+  } else if (published && typeof published === "object" && !Array.isArray(published)) {
+    const nested = (published as Record<string, unknown>)["@value"];
+    if (typeof nested === "string") {
+      const found = usablePublicationDate(nested, now);
+      if (found) return found;
+    }
+  }
+  for (const nested of Object.values(record)) {
+    if (!nested || typeof nested !== "object") continue;
+    const found = jsonLdDatePublished(nested, now);
+    if (found) return found;
+  }
+  return "";
+}
+
+function attrValue(tag: string, name: string): string {
+  const quoted = new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`, "i").exec(tag);
+  if (quoted?.[1]) return quoted[1];
+  const bare = new RegExp(`\\b${name}\\s*=\\s*([^\\s>]+)`, "i").exec(tag);
+  return bare?.[1] ?? "";
+}
+
+function extractJsonLdPublished(html: string, now: Date): string {
+  const scripts = html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi);
+  for (const match of scripts) {
+    if (!/type\s*=\s*["']application\/ld\+json["']/i.test(match[1] ?? "")) continue;
+    try {
+      const parsed: unknown = JSON.parse((match[2] ?? "").trim());
+      const found = jsonLdDatePublished(parsed, now);
+      if (found) return found;
+    } catch {
+      // Malformed JSON-LD is not a publication date.
+    }
+  }
+  return "";
+}
+
+function extractMetaPublished(html: string, now: Date): string {
+  const tags = [...html.matchAll(/<meta\b[^>]*>/gi)].map((match) => match[0]);
+  const pick = (test: (tag: string) => boolean): string => {
+    for (const tag of tags) {
+      if (!test(tag)) continue;
+      const found = usablePublicationDate(attrValue(tag, "content"), now);
+      if (found) return found;
+    }
+    return "";
+  };
+  return pick((tag) =>
+    /(?:property|name)\s*=\s*["']article:published_time["']/i.test(tag)
+  )
+    || pick((tag) => /name\s*=\s*["']pubdate["']/i.test(tag))
+    || pick((tag) => /itemprop\s*=\s*["']datePublished["']/i.test(tag));
+}
+
+function extractTimePublished(html: string, now: Date): string {
+  for (const match of html.matchAll(/<time\b[^>]*>/gi)) {
+    const found = usablePublicationDate(attrValue(match[0], "datetime"), now);
+    if (found) return found;
+  }
+  return "";
+}
+
+/**
+ * Publication date from raw HTML, before tags are stripped. Preference:
+ * JSON-LD `datePublished`, then article/pubdate meta, then `<time datetime>`.
+ * `dateModified` is ignored. Unparseable and future dates are rejected.
+ */
+export function extractPublicationDate(raw: string, now: Date): string {
+  return extractJsonLdPublished(raw, now)
+    || extractMetaPublished(raw, now)
+    || extractTimePublished(raw, now);
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/**
+ * A calendar date written into a search snippet or title, used when the HTML
+ * fetch fails and the provider `date` field is empty. ISO dates first, then a
+ * day-month-year or month-day-year with an English month name. Bare years and
+ * season labels (`2026/27`) are ignored.
+ */
+export function extractPlainTextPublicationDate(text: string, now: Date): string {
+  const iso = /\b(20\d{2}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?)\b/.exec(text);
+  if (iso?.[1]) {
+    const found = usablePublicationDate(iso[1], now);
+    if (found) return found;
+  }
+  const written = text.match(
+    /\b(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.?,?\s+20\d{2}|(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.?\s+\d{1,2},?\s+20\d{2})\b/i
+  );
+  if (!written?.[1]) return "";
+  const parsed = Date.parse(written[1]);
+  if (!Number.isFinite(parsed) || parsed > now.getTime()) return "";
+  const date = new Date(parsed);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function usableEvidenceKind(raw: string, contentType: string): "html" | "text" | null {
+  const ct = contentType.toLocaleLowerCase();
+  if (ct.includes("text/html") || ct.includes("application/xhtml+xml")) return "html";
+  if (ct.includes("text/plain")) return "text";
+  if (!ct.trim() && /^\s*</.test(raw)) return "html";
+  return null;
+}
+
+function evidenceLogUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "";
+  }
+}
+
+function logEvidenceFetchFailure(url: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const statusMatch = /status (\d+)/i.exec(message);
+  let reason = "error";
+  if (statusMatch) {
+    const status = Number(statusMatch[1]);
+    reason = status >= 400 ? "publisher_http" : status === 202 || status === 203 ? "publisher_challenge" : "http_status";
+  }
+  else if (/content type/i.test(message)) reason = "unsupported_content_type";
+  else if (/cross-host/i.test(message)) reason = "cross_host_redirect";
+  else if (/too many evidence redirects/i.test(message)) reason = "too_many_redirects";
+  else if (/no readable text/i.test(message)) reason = "empty_body";
+  else if (/timeout|aborted/i.test(message) || (error instanceof Error && error.name === "TimeoutError")) {
+    reason = "timeout";
+  } else if (/private|local evidence|public addresses/i.test(message)) reason = "ssrf_blocked";
+  else if (/custom ports|credentials|unsupported URL scheme|invalid evidence URL/i.test(message)) {
+    reason = "disallowed_url";
+  } else if (/ENOTFOUND|EAI_AGAIN/i.test(message)) reason = "dns";
+  else if (/cert|SSL|TLS|UNABLE_TO_VERIFY/i.test(message)) reason = "tls";
+  else if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH/i.test(message)) reason = "network";
+  console.warn(JSON.stringify({
+    event: "evidence_page_fetch_failed",
+    url: evidenceLogUrl(url),
+    reason,
+    ...(statusMatch ? { status: Number(statusMatch[1]) } : {}),
+  }));
+}
+
+function pinAddress(addresses: AddressRecord[]): AddressRecord {
+  return addresses.find((record) => record.family === 4) ?? addresses[0];
 }
 
 function plainTextFromPage(raw: string, contentType: string, maxChars: number): string {
@@ -244,10 +458,13 @@ async function retrieveOne(
     if (signal.aborted) throw signal.reason;
     response = await options.fetch(url, {
       method: "GET",
-      headers: { accept: "text/html, text/plain;q=0.9" },
+      headers: {
+        accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
+        "user-agent": EVIDENCE_USER_AGENT,
+      },
       redirect: "manual",
       signal,
-    }, resolved.addresses[0]);
+    }, pinAddress(resolved.addresses));
     if (![301, 302, 303, 307, 308].includes(response.status)) break;
     if (redirects === MAX_REDIRECTS) throw new Error("too many evidence redirects");
     const location = response.headers.get("location");
@@ -261,28 +478,32 @@ async function retrieveOne(
     // host. Following it to another host would verify one body while citing a
     // different source (and can turn an official-domain open redirect into
     // false official provenance), so cross-host redirects fail closed.
-    if (redirected.url.hostname.toLocaleLowerCase() !== url.hostname.toLocaleLowerCase()) {
+    // Apex ↔ www of the same host is the same publisher, not an open redirect.
+    if (!sameEvidenceHost(redirected.url.hostname, url.hostname)) {
       throw new Error("cross-host evidence redirect blocked");
     }
     resolved = redirected;
     url = redirected.url;
   }
-  if (!response?.ok) throw new Error(`evidence page returned status ${response?.status ?? 0}`);
-  const contentType = response.headers.get("content-type")?.toLocaleLowerCase() ?? "";
-  if (!contentType.includes("text/html") && !contentType.includes("text/plain")) {
-    throw new Error("unsupported evidence content type");
-  }
+  // 202/403/503 from CDNs are publisher blocks, not "ok enough". `response.ok`
+  // would have accepted ESPN's 202 challenge page as evidence.
+  if (response?.status !== 200) throw new Error(`evidence page returned status ${response?.status ?? 0}`);
   const raw = await readBoundedBody(response, options.maxResponseBytes);
-  const text = plainTextFromPage(raw, contentType, options.maxTextChars);
+  const contentType = response.headers.get("content-type")?.toLocaleLowerCase() ?? "";
+  const kind = usableEvidenceKind(raw, contentType);
+  if (!kind) throw new Error("unsupported evidence content type");
+  const extractedDate = kind === "html" ? extractPublicationDate(raw, options.now()) : "";
+  const text = plainTextFromPage(raw, kind === "html" ? "text/html" : "text/plain", options.maxTextChars);
   if (!text) throw new Error("evidence page contained no readable text");
-  return { ...candidate, finalUrl: url.toString(), text, retrievedAt: options.now().toISOString() };
+  return {
+    ...candidate,
+    date: extractedDate,
+    finalUrl: url.toString(),
+    text,
+    retrievedAt: options.now().toISOString(),
+  };
 }
 
-/**
- * Selectively retrieves no more than three pages, preferring official and then
- * reputable sources. Individual failures are omitted; an aborted shared request
- * is propagated so retrieval cannot outlive the API's global deadline.
- */
 /**
  * Which candidates are worth a fetch, in the order they will be attempted.
  * Shared by retrieval and the prefetch so the two cannot select different
@@ -320,7 +541,11 @@ export async function retrieveEvidencePages(
   const settled = await Promise.all(selected.map(async (candidate) => {
     try {
       const body = await bodyFor(candidate, signal, resolved, options.cache);
-      return body ? { ...candidate, ...body } : null;
+      if (!body) return null;
+      const now = resolved.now();
+      const pageDate = usablePublicationDate(body.date, now);
+      const providerDate = usablePublicationDate(candidate.date, now);
+      return { ...candidate, ...body, date: pageDate || providerDate };
     } catch (error) {
       if (signal?.aborted) throw error;
       return null;
@@ -361,8 +586,18 @@ async function retrieveBody(
   resolved: Required<Pick<RetrievalOptions, "timeoutMs" | "maxResponseBytes" | "maxTextChars" | "now">>
     & { fetch: FetchPage; resolveHost: ResolveHost }
 ): Promise<FetchedPageBody> {
-  const page = await retrieveOne(candidate, signal, resolved);
-  return { finalUrl: page.finalUrl, text: page.text, retrievedAt: page.retrievedAt };
+  try {
+    const page = await retrieveOne(candidate, signal, resolved);
+    return {
+      finalUrl: page.finalUrl,
+      text: page.text,
+      retrievedAt: page.retrievedAt,
+      date: page.date,
+    };
+  } catch (error) {
+    if (!signal?.aborted) logEvidenceFetchFailure(candidate.url, error);
+    throw error;
+  }
 }
 
 /**

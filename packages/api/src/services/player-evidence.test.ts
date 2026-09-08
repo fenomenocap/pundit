@@ -84,7 +84,7 @@ describe("player evidence adapter", () => {
     const bundle = extractPlayerEvidence([{
       id: "S4",
       title: "Bournemouth vs Brentford Betting Odds",
-      url: "https://www.oddschecker.com/football/english/premier-league/bournemouth-v-brentford/winner",
+      url: "https://www.oddschecker.com/football/english/premier-league/bournemouth-v-brentford/anytime-goalscorer",
       date: "",
       snippet: "Anytime Goalscorer. Igor Thiago See All Odds (1). 5/4. Evanilson See All Odds ... To Score 2 Or More Goals.",
     }], {
@@ -181,5 +181,100 @@ describe("player evidence adapter", () => {
       date: "",
       snippet: "Cole Palmer ruled out for Chelsea.",
     }], fixture))).toBe(false);
+  });
+
+  it("extracts availability from a dated page body even when chrome names come first", () => {
+    const bournemouth = {
+      fixtureId: "eng.1:bournemouth-brentford",
+      home: "Bournemouth",
+      away: "Brentford",
+      kickoff: "2026-09-12T14:00:00Z",
+    };
+    const evidence = extractPlayerEvidence([{
+      id: "S3",
+      title: "Bournemouth vs Brentford team news",
+      url: "https://example.com/news",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Match preview. Kick-off is 15:00. Manager quotes follow. Evanilson is ruled out for Bournemouth. Tickets remain on sale.",
+    }], bournemouth);
+    expect(hasTeamNewsEvidence(evidence)).toBe(true);
+    expect(evidence.observations.some((row) => row.playerName === "Evanilson")).toBe(true);
+    expect(evidence.observations.some((row) => row.playerName === "Match")).toBe(false);
+
+    const unpunctuated = extractPlayerEvidence([{
+      id: "S4",
+      title: "Bournemouth vs Brentford team news",
+      url: "https://example.com/news",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Match preview Kick-off is 15:00 Manager quotes follow Evanilson is ruled out for Bournemouth Tickets remain on sale",
+    }], bournemouth);
+    expect(hasTeamNewsEvidence(unpunctuated)).toBe(true);
+    expect(unpunctuated.observations.some((row) => row.playerName === "Evanilson")).toBe(true);
+
+    const mixed = extractPlayerEvidence([{
+      id: "S5",
+      title: "Bournemouth vs Brentford team news",
+      url: "https://example.com/news",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Evanilson is ruled out for Bournemouth; Kluivert is expected to start for Bournemouth.",
+    }], bournemouth);
+    expect(mixed.observations.find((row) => row.playerName === "Evanilson")?.value).toBe("out");
+    expect(mixed.observations.find((row) => row.playerName === "Kluivert")?.value).toBe("start");
+  });
+
+  it("does not treat a 1X2 winner page number next to a player as scorer odds", () => {
+    const bundle = extractPlayerEvidence([{
+      id: "S2",
+      title: "Bournemouth vs Brentford Betting Odds | Oddschecker",
+      url: "https://www.oddschecker.com/football/english/premier-league/bournemouth-v-brentford/winner",
+      date: "",
+      snippet: "Match Winner. Callum Wilson 35.46. Anytime Goalscorer. Igor Thiago 5/4.",
+    }], {
+      fixtureId: "eng.1:bournemouth-brentford",
+      home: "Bournemouth",
+      away: "Brentford",
+      kickoff: "2026-09-12T14:00:00Z",
+    });
+    expect(bundle.markets.some((row) => row.playerName === "Callum Wilson")).toBe(false);
+  });
+
+  it("keeps a team-news claim once a fetched publication date is written back", () => {
+    const undated: PlayerEvidenceSource = {
+      id: "S1",
+      title: "Arsenal vs Chelsea team news",
+      url: "https://example.com/news",
+      date: "",
+      snippet: "Cole Palmer ruled out for Chelsea.",
+    };
+    expect(hasTeamNewsEvidence(extractPlayerEvidence([undated], fixture))).toBe(false);
+    const dated = { ...undated, date: "2026-09-11T08:00:00Z" };
+    const evidence = extractPlayerEvidence([dated], fixture);
+    expect(hasTeamNewsEvidence(evidence)).toBe(true);
+    expect(composeTeamNewsAnswer({
+      kind: "match",
+      fixtureId: fixture.fixtureId,
+      home: fixture.home,
+      away: fixture.away,
+      date: fixture.kickoff,
+    } as never, evidence)).toMatch(/Cole Palmer/);
+  });
+
+  it("does not treat Oddschecker Compare chrome as the leading scorer", () => {
+    const bundle = extractPlayerEvidence([{
+      id: "S1",
+      title: "Arsenal vs Chelsea Betting Odds",
+      url: "https://www.oddschecker.com/football/english/premier-league/arsenal-v-chelsea/anytime-goalscorer",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Anytime Goalscorer. Compare 43.49. Filter Share Sort. Cole Palmer anytime 2.10 for Chelsea.",
+    }], fixture);
+    expect(bundle.markets.some((row) => /compare/i.test(row.playerName))).toBe(false);
+    expect(leadingScorerCandidate(bundle)?.playerName).toBe("Cole Palmer");
+    expect(leadingScorerCandidate(extractPlayerEvidence([{
+      id: "S1",
+      title: "Arsenal vs Chelsea anytime scorers",
+      url: "https://www.oddschecker.com/football",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Anytime Goalscorer. Compare 43.49.",
+    }], fixture))).toBeNull();
   });
 });
