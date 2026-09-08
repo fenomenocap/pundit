@@ -26,6 +26,8 @@ The default-on conversational response path is `ANALYST_RESPONSE_V2`. It plans a
 
 ## Production and secrets
 
+- **Vercel access:** Hobby team `fenomenocap` is owner-only — see [`docs/ops/vercel-access.md`](docs/ops/vercel-access.md). Do not invite collaborators or upgrade plans without an explicit Owner decision.
+
 - `MINIMAX_API_KEY` is configured on the Railway `@pundit/api` service. Never read it back, log it, hardcode it, or store it in the repository.
 - Optional `ALLOWED_ORIGINS` (comma-separated) restricts browser CORS; leave unset only while debugging, and set it to the Vercel frontend origin(s) in production.
 - `/health` is liveness. `/ready` reports model, ESPN, active-fixture, and market-odds cache readiness without exposing secrets.
