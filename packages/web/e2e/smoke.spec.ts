@@ -5,7 +5,9 @@ test.describe("smoke", () => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Pundit" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Ask a question" })).toBeVisible();
-    await expect(page.getByText("Analysis only — not betting advice")).toBeVisible();
+    // Desk repeats the disclaimer in the hero, brief, and match panel; the header
+    // strip is the unambiguous smoke target.
+    await expect(page.getByText("Analysis only — not betting advice.", { exact: true })).toBeVisible();
   });
 
   test("fixtures", async ({ page }) => {
@@ -400,14 +402,14 @@ test.describe("smoke", () => {
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
     });
 
-    await page.goto("/?q=Viking%20vs%20Dinamo%20Zagreb&fixture=espn%3Auefa.champions_qual%3A4");
+    await page.goto("/legacy?q=Viking%20vs%20Dinamo%20Zagreb&fixture=espn%3Auefa.champions_qual%3A4");
     await expect.poll(() => received.length).toBe(1);
     expect(received[0].fixtureContext).toEqual({
       fixtureId: "espn:uefa.champions_qual:4",
     });
     expect(received[0].question).toBe("Viking vs Dinamo Zagreb");
 
-    await page.goto("/?q=What%20does%20the%20table%20show%3F");
+    await page.goto("/legacy?q=What%20does%20the%20table%20show%3F");
     await expect.poll(() => received.length).toBe(2);
     expect(received[1]).not.toHaveProperty("fixtureContext");
   });
@@ -571,7 +573,7 @@ test.describe("smoke", () => {
       await route.fulfill({ status: 200, contentType: "text/event-stream", body: sse });
     });
 
-    await page.goto("/?q=Preview%20Arsenal%20vs%20Coventry%20City&fixture=espn%3Aeng.1%3A1");
+    await page.goto("/legacy?q=Preview%20Arsenal%20vs%20Coventry%20City&fixture=espn%3Aeng.1%3A1");
     await expect(page.getByText("Following: Arsenal vs Coventry City").first()).toBeVisible();
     await page.getByRole("button", { name: "New Chat" }).click();
     await expect(page.getByRole("heading", { name: "Football analysis, grounded." })).toBeVisible();
