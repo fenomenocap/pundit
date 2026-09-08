@@ -273,3 +273,40 @@ export function validateAnalystDraft(
   ].filter((part): part is string => Boolean(part)).join("\n\n");
   return { valid: true, draft, answer };
 }
+
+/**
+ * Team-news drafts often bind unused numeric fact IDs and fail as a whole.
+ * Cited claim text is still the only current-world payload worth keeping.
+ */
+export function salvageCitedClaimProse(
+  raw: string,
+  sourceIds: readonly string[] = []
+): string | null {
+  const trimmed = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  let value: unknown;
+  try {
+    value = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const claims = (value as { citedClaims?: unknown }).citedClaims;
+  if (!Array.isArray(claims) || claims.length === 0) return null;
+  const allowed = new Set(sourceIds);
+  const lines: string[] = [];
+  for (const candidate of claims) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const record = candidate as { text?: unknown; sourceIds?: unknown };
+    const text = typeof record.text === "string"
+      ? record.text.trim().replace(/\{\{[^}]+\}\}/g, "").replace(/\s+/g, " ").replace(/\s+([.,;:])/g, "$1").trim()
+      : "";
+    if (!text || !Array.isArray(record.sourceIds)) continue;
+    const ids = record.sourceIds.filter((id): id is string =>
+      typeof id === "string" && SOURCE_ID.test(id) && (allowed.size === 0 || allowed.has(id))
+    );
+    if (!ids.length) continue;
+    const markers = ids.map((id) => `[[${id}]]`).join(" ");
+    lines.push(/[.!?]$/.test(text) ? text.replace(/([.!?])$/, ` ${markers}$1`) : `${text} ${markers}.`);
+  }
+  return lines.length ? lines.join(" ") : null;
+}

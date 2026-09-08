@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   EvidencePageCandidate,
   createEvidencePageCache,
+  extractPlainTextPublicationDate,
+  extractPublicationDate,
   isPrivateOrReservedAddress,
   prefetchEvidencePages,
   retrieveEvidencePages,
+  sameEvidenceHost,
 } from "./evidence-page-retrieval";
 
 const candidates: EvidencePageCandidate[] = [
@@ -26,7 +29,7 @@ describe("evidence page retrieval", () => {
     expect(isPrivateOrReservedAddress("93.184.216.34")).toBe(false);
   });
 
-  it("retrieves at most three pages with official-domain priority", async () => {
+  it("retrieves official and reputable pages with official-domain priority", async () => {
     const fetch = vi.fn(async (input: string | URL, _init?: RequestInit, address?: { address: string }) => new Response(
       `<html><script>ignore me</script><body>Evidence from ${String(input)}</body></html>`,
       { status: 200, headers: { "content-type": "text/html" } }
@@ -40,6 +43,9 @@ describe("evidence page retrieval", () => {
     expect(pages.some((page) => page.authority === "other")).toBe(false);
     expect(pages[0].text).not.toContain("ignore me");
     expect(pages[0].retrievedAt).toBe("2026-08-13T12:00:00.000Z");
+    expect(fetch.mock.calls[0][1]?.headers).toMatchObject({
+      "user-agent": expect.stringMatching(/pundit/i),
+    });
   });
 
   it("does not retrieve unknown-domain evidence as official or reputable", async () => {
@@ -88,19 +94,72 @@ describe("evidence page retrieval", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects oversized and non-text responses", async () => {
-    const tooLarge = vi.fn(async () => new Response("x".repeat(20), {
-      status: 200, headers: { "content-type": "text/plain", "content-length": "20" },
-    }));
-    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
-      fetch: tooLarge, resolveHost: publicResolver, maxResponseBytes: 10,
-    })).toEqual([]);
+  it("follows apex to www redirects and default-port Location headers", async () => {
+    const fetch = vi.fn(async (input: string | URL) => {
+      const href = String(input);
+      if (href.includes("www.club.example") || href.includes(":443")) {
+        return new Response("<html><body>Official club story.</body></html>", {
+          status: 200, headers: { "content-type": "text/html" },
+        });
+      }
+      return new Response(null, {
+        status: 301, headers: { location: "https://www.club.example:443/one" },
+      });
+    });
+    const pages = await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch, resolveHost: publicResolver, now: () => new Date("2026-08-13T12:00:00Z"),
+    });
+    expect(pages).toHaveLength(1);
+    expect(pages[0].id).toBe("S1");
+    expect(pages[0].finalUrl).toBe("https://www.club.example/one");
+    expect(pages[0].text).toContain("Official club story");
+  });
+
+  it("pins IPv4 when DNS returns IPv6 first", async () => {
+    const resolveHost = vi.fn(async () => [
+      { address: "2606:4700::1", family: 6 },
+      { address: "93.184.216.34", family: 4 },
+    ]);
+    const fetch = vi.fn(async (_input: string | URL, _init?: RequestInit, address?: { address: string }) => {
+      if (address?.address !== "93.184.216.34") throw new Error(`pinned ${address?.address}`);
+      return new Response("Pinned evidence", {
+        status: 200, headers: { "content-type": "text/plain" },
+      });
+    });
+    const pages = await retrieveEvidencePages(candidates.slice(1, 2), undefined, { fetch, resolveHost });
+    expect(pages).toHaveLength(1);
+    expect(fetch.mock.calls[0][2]?.address).toBe("93.184.216.34");
+  });
+
+  it("rejects non-text responses and non-200 publisher statuses", async () => {
     const json = vi.fn(async () => new Response("{}", {
       status: 200, headers: { "content-type": "application/json" },
     }));
     expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
       fetch: json, resolveHost: publicResolver,
     })).toEqual([]);
+    const challenged = vi.fn(async () => new Response("<html>challenge</html>", {
+      status: 202, headers: { "content-type": "text/html" },
+    }));
+    expect(await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch: challenged, resolveHost: publicResolver,
+    })).toEqual([]);
+  });
+
+  it("truncates oversized HTML instead of dropping the page", async () => {
+    const prefix = `<html><meta property="article:published_time" content="2026-09-06"><body>Winless in three.`;
+    const html = `${prefix}${"x".repeat(5_000)}</body></html>`;
+    const fetch = vi.fn(async () => new Response(html, {
+      status: 200,
+      headers: { "content-type": "text/html", "content-length": String(html.length) },
+    }));
+    const pages = await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
+      fetch, resolveHost: publicResolver, maxResponseBytes: prefix.length + 40,
+      now: () => new Date("2026-09-08T12:00:00Z"),
+    });
+    expect(pages).toHaveLength(1);
+    expect(pages[0].date).toBe("2026-09-06");
+    expect(pages[0].text).toContain("Winless in three");
   });
 
   it("propagates the request abort instead of degrading it", async () => {
@@ -126,6 +185,25 @@ describe("evidence page retrieval", () => {
     })).toEqual([]);
     expect(receivedSignal).toBeInstanceOf(AbortSignal);
     expect(receivedSignal?.aborted).toBe(true);
+  });
+
+  it("caps retrieval at eight official or reputable pages", async () => {
+    const many: EvidencePageCandidate[] = Array.from({ length: 10 }, (_, index) => ({
+      id: `S${index + 1}`,
+      url: `https://news.example/story-${index + 1}`,
+      title: `Story ${index + 1}`,
+      date: "2026-08-13",
+      authority: "reputable" as const,
+    }));
+    const fetch = vi.fn(async (input: string | URL) => new Response(
+      `<html><body>Evidence from ${String(input)}</body></html>`,
+      { status: 200, headers: { "content-type": "text/html" } }
+    ));
+    const pages = await retrieveEvidencePages(many, undefined, {
+      fetch, resolveHost: publicResolver, now: () => new Date("2026-08-13T12:00:00Z"),
+    });
+    expect(fetch).toHaveBeenCalledTimes(8);
+    expect(pages).toHaveLength(8);
   });
 });
 
@@ -270,5 +348,106 @@ describe("prefetch removes page retrieval from the critical path", () => {
     // overlap at all, not a precise timing.
     expect(serialMs).toBeGreaterThan(GENERATION_MS + PAGE_MS - 25);
     expect(overlappedMs).toBeLessThan(serialMs - 25);
+  });
+});
+
+describe("publication dates recovered from fetched HTML", () => {
+  const now = () => new Date("2026-09-08T12:00:00Z");
+  const official: EvidencePageCandidate = {
+    id: "S1",
+    url: "https://club.example/story",
+    title: "Club story",
+    date: "",
+    authority: "official",
+  };
+
+  async function retrieveHtml(html: string, candidate: EvidencePageCandidate = official) {
+    const fetch = vi.fn(async () => new Response(html, {
+      status: 200, headers: { "content-type": "text/html" },
+    }));
+    return retrieveEvidencePages([candidate], undefined, {
+      fetch, resolveHost: publicResolver, now,
+    });
+  }
+
+  it("reads JSON-LD datePublished, article:published_time, and time datetime", async () => {
+    const jsonLd = await retrieveHtml(`<html><script type="application/ld+json">{"@type":"NewsArticle","datePublished":"2026-09-06","dateModified":"2026-09-08"}</script><body>Tottenham went winless across their opening three league games.</body></html>`);
+    expect(jsonLd[0]?.date).toBe("2026-09-06");
+
+    const meta = await retrieveHtml(`<html><meta property="article:published_time" content="2026-09-05T09:00:00Z"><body>Team news.</body></html>`);
+    expect(meta[0]?.date).toBe("2026-09-05T09:00:00Z");
+
+    const time = await retrieveHtml(`<html><body><time datetime="2026-09-04">4 Sept</time> Form guide.</body></html>`);
+    expect(time[0]?.date).toBe("2026-09-04");
+  });
+
+  it("keeps the provider date when the page has no publication signal", async () => {
+    const pages = await retrieveHtml(
+      "<html><body>Undated club notes.</body></html>",
+      { ...official, date: "2026-09-01" }
+    );
+    expect(pages[0]?.date).toBe("2026-09-01");
+  });
+
+  it("does not treat dateModified alone as published", async () => {
+    expect(extractPublicationDate(
+      `<html><script type="application/ld+json">{"@type":"NewsArticle","dateModified":"2026-09-08"}</script><body>Old copy.</body></html>`,
+      now()
+    )).toBe("");
+    const pages = await retrieveHtml(
+      `<html><script type="application/ld+json">{"@type":"NewsArticle","dateModified":"2026-09-08"}</script><body>Old copy.</body></html>`,
+      { ...official, date: "2026-08-20" }
+    );
+    expect(pages[0]?.date).toBe("2026-08-20");
+  });
+
+  it("rejects unparseable and future page dates", async () => {
+    expect(extractPublicationDate(
+      `<html><meta property="article:published_time" content="coming-soon"><body>x</body></html>`,
+      now()
+    )).toBe("");
+    const pages = await retrieveHtml(
+      `<html><meta property="article:published_time" content="2026-09-20"><body>Future dated.</body></html>`,
+      { ...official, date: "2026-09-01" }
+    );
+    expect(pages[0]?.date).toBe("2026-09-01");
+  });
+
+  it("prefers the page publication date over the provider date", async () => {
+    const pages = await retrieveHtml(
+      `<html><meta property="article:published_time" content="2026-09-06"><body>Winless in three.</body></html>`,
+      { ...official, date: "2026-08-01" }
+    );
+    expect(pages[0]?.date).toBe("2026-09-06");
+  });
+
+  it("keeps an extracted date on the cached body so a later retrieve cannot lose it", async () => {
+    const html = `<html><script type="application/ld+json">{"@type":"NewsArticle","datePublished":"2026-09-06"}</script><body>Winless in three.</body></html>`;
+    const fetch = vi.fn(async () => new Response(html, {
+      status: 200, headers: { "content-type": "text/html" },
+    }));
+    const cache = createEvidencePageCache();
+    const options = { fetch, resolveHost: publicResolver, now };
+    prefetchEvidencePages([{ ...official, date: "" }], undefined, cache, options);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    const pages = await retrieveEvidencePages([{ ...official, date: "" }], undefined, { ...options, cache });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(pages[0]?.date).toBe("2026-09-06");
+  });
+});
+
+describe("plain-text publication dates and www hosts", () => {
+  const now = () => new Date("2026-09-08T12:00:00Z");
+
+  it("reads ISO and English month dates from a snippet, not a season label", () => {
+    expect(extractPlainTextPublicationDate("Appearances 3. 2026-09-07.", now())).toBe("2026-09-07");
+    expect(extractPlainTextPublicationDate("Published 7 September 2026. Goals 2.", now())).toBe("2026-09-07");
+    expect(extractPlainTextPublicationDate("September 7, 2026 club notes.", now())).toBe("2026-09-07");
+    expect(extractPlainTextPublicationDate("Stats for the 2026/27 season.", now())).toBe("");
+  });
+
+  it("treats www and apex as the same evidence host", () => {
+    expect(sameEvidenceHost("www.premierleague.com", "premierleague.com")).toBe(true);
+    expect(sameEvidenceHost("news.bbc.co.uk", "www.bbc.co.uk")).toBe(false);
   });
 });

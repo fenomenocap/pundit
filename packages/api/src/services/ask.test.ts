@@ -25,6 +25,7 @@ import {
   shouldUseCompetitionGrounding,
   shouldUseMatchGrounding,
   deterministicSearchQuery,
+  planEvidenceQueries,
   evidenceAuthority,
   failClosedEmptyCurrentVerification,
   dropMisbucketedTotalsScorelines,
@@ -382,6 +383,24 @@ describe("current-news evidence hardening", () => {
       .toContain("football latest");
   });
 
+  it("owes a search for statistical questions without widening current-news cues", () => {
+    const match = {
+      kind: "match", home: "Arsenal", away: "Coventry",
+    } as unknown as Grounding;
+    const mbeumo = "How has Bryan Mbeumo performed statistically this season?";
+    expect(deterministicSearchQuery(mbeumo)).toContain("football latest");
+    const planned = planEvidenceQueries(mbeumo, null, deterministicSearchQuery(mbeumo));
+    expect(planned.length).toBeGreaterThanOrEqual(2);
+    expect(planned.some((query) => /stats/.test(query))).toBe(true);
+    expect(deterministicSearchQuery("Explain the offside rule")).toBeNull();
+    expect(planEvidenceQueries("Explain the offside rule", null, null)).toEqual([]);
+    expect(deterministicSearchQuery("What are Pundit's current 1X2 probabilities?", "", match))
+      .toBeNull();
+    expect(deterministicSearchQuery("Is it over 2.5 goals?", "", match)).toBeNull();
+    expect(planEvidenceQueries("Is it over 2.5 goals?", match, null)
+      .some((query) => /\bstats\b/.test(query))).toBe(false);
+  });
+
   it("holds model-only and history-bearing SSE turns until request-fidelity guards settle", () => {
     expect(shouldHoldRequestFidelity("Which side has the stronger model case, and why?", false))
       .toBe(true);
@@ -557,6 +576,39 @@ describe("current-news evidence hardening", () => {
     )).toEqual([{ id: "C1", text: "The manager is Pat Doe [[S1]]." }]);
   });
 
+  it("strips uncited season stats when claim verification is unavailable", async () => {
+    const bundle = {
+      queries: ["mbeumo stats"],
+      providerCalls: 0,
+      results: [
+        { id: "S1", title: "Stats", url: "https://uefa.com/mbeumo", date: "2026-09-07", snippet: "2 goals." },
+      ],
+    };
+    const checked = await verifyCurrentClaims(
+      "The verified 2026/27 line is 2 goals in 3 starts (180 mins), 0 assists, with a 7.73 FotMob rating. Mbeumo has 2 goals [[S1]].",
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      {
+        retrieve: async (candidates) => candidates.map((candidate) => ({
+          ...candidate,
+          finalUrl: candidate.url,
+          text: "Unrelated page.",
+          retrievedAt: "2026-09-08T00:00:00.000Z",
+        })),
+        verify: async () => ({
+          status: "unavailable",
+          decisions: [{ claimId: "C1", outcome: "unsupported", evidenceIds: [] }],
+          summary: "timeout",
+        }),
+      }
+    );
+    expect(checked.answer).not.toMatch(/180 mins|FotMob rating/i);
+    expect(checked.answer).not.toMatch(/Mbeumo has 2 goals/);
+    expect(checked.verification.status).toBe("unavailable");
+  });
+
   it("binds accepted claims to the verifier-selected server evidence ID", async () => {
     const bundle = {
       queries: ["current manager"],
@@ -594,6 +646,162 @@ describe("current-news evidence hardening", () => {
       removedClaimCount: 0,
     });
     expect(bundle.providerCalls).toBe(1);
+  });
+
+  it("writes extracted publication dates back onto matching bundle results", async () => {
+    const bundle: EvidenceBundle = {
+      queries: ["tottenham form"],
+      providerCalls: 0,
+      results: [{
+        id: "S1",
+        title: "Spurs form",
+        url: "https://uefa.com/spurs",
+        date: "",
+        snippet: "Tottenham going winless across their opening three league games.",
+      }],
+    };
+    const checked = await verifyCurrentClaims(
+      "Tottenham are winless in three [[S1]].",
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      {
+        retrieve: async (candidates) => candidates.map((candidate) => ({
+          ...candidate,
+          date: "2026-09-06",
+          finalUrl: candidate.url,
+          text: "Tottenham Hotspur going winless across their opening three league games.",
+          retrievedAt: "2026-09-08T12:00:00.000Z",
+        })),
+        verify: async (_client, _claims, pages) => ({
+          status: "verified",
+          decisions: [{
+            claimId: "C1",
+            outcome: "supported",
+            evidenceIds: pages.some((page) => page.date === "2026-09-06") ? ["S1"] : [],
+          }],
+          summary: "supported",
+        }),
+      }
+    );
+    expect(bundle.results[0].date).toBe("2026-09-06");
+    expect(checked.answer).toContain("winless in three [[S1]]");
+    expect(checked.verification).toEqual({
+      status: "verified",
+      supportedClaimCount: 1,
+      removedClaimCount: 0,
+    });
+  });
+
+  it("verifies a cited claim from a dated snippet when every page fetch fails", async () => {
+    const bundle: EvidenceBundle = {
+      queries: ["mbeumo stats"],
+      providerCalls: 0,
+      results: [{
+        id: "S1",
+        title: "Bryan Mbeumo stats",
+        url: "https://www.premierleague.com/en/players/542645/Bryan-Mbeumo/stats",
+        date: "2026-09-07",
+        snippet: "Appearances 3, Goals 2.",
+      }],
+    };
+    const verify = vi.fn(async (_client, _claims, pages) => {
+      expect(pages).toHaveLength(1);
+      expect(pages[0].id).toBe("S1");
+      expect(pages[0].date).toBe("2026-09-07");
+      expect(pages[0].text).toContain("Goals 2");
+      return {
+        status: "verified" as const,
+        decisions: [{ claimId: "C1", outcome: "supported" as const, evidenceIds: ["S1"] }],
+        summary: "supported",
+      };
+    });
+    const checked = await verifyCurrentClaims(
+      "Mbeumo has two goals this season [[S1]].",
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      { retrieve: async () => [], verify }
+    );
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(checked.answer).toContain("[[S1]]");
+    expect(checked.verification).toEqual({
+      status: "verified",
+      supportedClaimCount: 1,
+      removedClaimCount: 0,
+    });
+  });
+
+  it("recovers a snippet date when the provider date is empty and fetch fails", async () => {
+    const bundle: EvidenceBundle = {
+      queries: ["mbeumo stats"],
+      providerCalls: 0,
+      results: [{
+        id: "S1",
+        title: "Bryan Mbeumo stats",
+        url: "https://www.manutd.com/en/news",
+        date: "",
+        snippet: "Published 7 September 2026. Appearances 3, Goals 2.",
+      }],
+    };
+    const verify = vi.fn(async (_client, _claims, pages) => ({
+      status: "verified" as const,
+      decisions: [{
+        claimId: "C1",
+        outcome: pages[0]?.date === "2026-09-07" ? "supported" as const : "unsupported" as const,
+        evidenceIds: pages[0]?.date === "2026-09-07" ? ["S1"] : [],
+      }],
+      summary: "supported",
+    }));
+    const checked = await verifyCurrentClaims(
+      "Mbeumo has two goals this season [[S1]].",
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      { retrieve: async () => [], verify }
+    );
+    expect(bundle.results[0].date).toBe("2026-09-07");
+    expect(checked.answer).toContain("[[S1]]");
+    expect(checked.verification.supportedClaimCount).toBe(1);
+  });
+
+  it("does not let dated extracted evidence rewrite model 1X2 sentences", async () => {
+    const bundle: EvidenceBundle = {
+      queries: ["team news"],
+      providerCalls: 0,
+      results: [{
+        id: "S1",
+        title: "Official",
+        url: "https://uefa.com/news",
+        date: "2026-09-06",
+        snippet: "Pat Doe is manager.",
+      }],
+    };
+    const checked = await verifyCurrentClaims(
+      "Pundit's model has Arsenal at 56.3%. The manager is Pat Doe [[S1]].",
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      {
+        retrieve: async (candidates) => candidates.map((candidate) => ({
+          ...candidate,
+          finalUrl: candidate.url,
+          text: "Pat Doe is manager.",
+          retrievedAt: "2026-09-08T12:00:00.000Z",
+        })),
+        verify: async () => ({
+          status: "verified",
+          decisions: [{ claimId: "C1", outcome: "supported", evidenceIds: ["S1"] }],
+          summary: "supported",
+        }),
+      }
+    );
+    expect(checked.answer).toContain("56.3%");
+    expect(checked.answer).toContain("Pat Doe [[S1]]");
   });
 
   it("preserves server-authored outside-coverage safety text while filtering factual claims", async () => {
@@ -682,6 +890,14 @@ describe("current-news evidence hardening", () => {
       supportedClaimCount: 0,
       removedClaimCount: 0,
     }, false)).toBe(unsafe);
+  });
+
+  it("abstains instead of emptying a researched answer whose claims were all removed", () => {
+    expect(failClosedEmptyCurrentVerification("", {
+      status: "abstain",
+      supportedClaimCount: 0,
+      removedClaimCount: 6,
+    }, true)).toBe("No verified current source in this conversation supports that claim.");
   });
 
   it("drops deterministic model and market interpretations that contradict grounding", () => {

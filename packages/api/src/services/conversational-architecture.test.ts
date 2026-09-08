@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { deliverAnswer, planEvidenceQueries, type Grounding } from "./ask";
-import { validateAnalystDraft } from "./analyst-draft";
+import { deliverAnswer, deterministicSearchQuery, planEvidenceQueries, type Grounding } from "./ask";
+import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
 import { PLAYER_SCORER_ABSTENTION, TEAM_NEWS_COMPOSE_ABSTENTION } from "./player-evidence";
 import { composeMatchResponse, SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
@@ -146,6 +146,24 @@ describe("V2 conversational architecture", () => {
       .not.toBe("stake-refusal");
   });
 
+  it("plans real retrieval for stats questions without searching owned match facts", () => {
+    const mbeumo = "How has Bryan Mbeumo performed statistically this season?";
+    const planned = planEvidenceQueries(mbeumo, null, deterministicSearchQuery(mbeumo));
+    expect(planned.length).toBeGreaterThanOrEqual(2);
+    expect(planEvidenceQueries("Explain the offside rule", null, deterministicSearchQuery("Explain the offside rule")))
+      .toEqual([]);
+    expect(deterministicSearchQuery("What are Pundit's current 1X2 probabilities?", "", grounding())).toBeNull();
+    expect(deterministicSearchQuery("What does the current table show?", "", {
+      kind: "competition",
+      competitionId: "eng.1",
+      competition: "Premier League",
+      updatedAt: "2026-09-08T00:00:00Z",
+      standings: [],
+    })).toBeNull();
+    expect(planEvidenceQueries("Is Arsenal vs Chelsea over 2.5 goals?", grounding(), null)
+      .some((query) => /\bstats\b/.test(query))).toBe(false);
+  });
+
   it("separates model, market and abstention facts", () => {
     const match = grounding();
     expect(match.pricing.model.home.fairOdds).toBeCloseTo(1 / match.pHome);
@@ -207,6 +225,16 @@ describe("V2 conversational architecture", () => {
       directAnswer: { text: "Chelsea is +40% EV at 7.00 against a 2.02 play price.", factIds: ["match.away"] },
       reasoning: [], citedClaims: [],
     }), grounding())).toEqual({ valid: false, reason: "untraceable-number" });
+    expect(salvageCitedClaimProse(JSON.stringify({
+      directAnswer: { text: "I favour the home side.", factIds: ["match.home"] },
+      citedClaims: [{ text: "Cole Palmer is ruled out.", sourceIds: ["S1"] }],
+    }), ["S1"])).toMatch(/Cole Palmer is ruled out \[\[S1\]\]/);
+    expect(salvageCitedClaimProse(JSON.stringify({
+      citedClaims: [{ text: "Squawka preview dated {{date:2026-09-06}}.", sourceIds: ["S1"] }],
+    }), ["S1"])).toMatch(/Squawka preview dated \[\[S1\]\]/);
+    expect(salvageCitedClaimProse(JSON.stringify({
+      citedClaims: [{ text: "Squawka preview dated {{date:2026-09-06}}.", sourceIds: ["S1"] }],
+    }), ["S1"])).not.toMatch(/\{\{/);
   });
 
   it("uses the structured draft contract in the real delivery boundary and fails closed", async () => {
@@ -338,6 +366,55 @@ describe("V2 conversational architecture", () => {
     expect(teamNewsQuoted.answer).not.toMatch(/56\.3%/);
     expect(teamNewsQuoted.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(teamNewsQuoted.verification.status).toBe("verified");
+
+    const deskNews = await deliverAnswer({
+      ...base,
+      voice: "desk",
+      question: "What is the latest team news?",
+      evidenceRequired: true,
+      bundle: {
+        queries: ["Arsenal vs Chelsea team news"],
+        providerCalls: 1,
+        results: [{
+          id: "S1",
+          title: "Arsenal vs Chelsea injury update",
+          url: "https://example.com/news",
+          date: "2026-09-11T08:00:00Z",
+          snippet: "Cole Palmer ruled out for Chelsea.",
+        }],
+      },
+      answer: "Iraola is gone and Marco Rose took over in April [[S1]].",
+    });
+    expect(deskNews.answer).toMatch(/Cole Palmer/);
+    expect(deskNews.answer).toMatch(/example\.com\/news/);
+    expect(deskNews.citations.map((citation) => citation.id)).toEqual(["S1"]);
+    expect(deskNews.verification.status).toBe("verified");
+
+    const deskSalvage = await deliverAnswer({
+      ...base,
+      voice: "desk",
+      question: "What is the latest team news?",
+      evidenceRequired: true,
+      bundle: {
+        queries: ["Arsenal vs Chelsea team news"],
+        providerCalls: 1,
+        results: [{
+          id: "S1",
+          title: "Arsenal vs Chelsea injury update",
+          url: "https://example.com/news",
+          date: "2026-09-11T08:00:00Z",
+          snippet: "Cole Palmer ruled out for Chelsea.",
+        }],
+      },
+      answer: JSON.stringify({
+        directAnswer: { text: "I favour {{match.home}}.", factIds: ["match.home", "match.pHome"] },
+        reasoning: [],
+        citedClaims: [{ text: "Cole Palmer is ruled out for Chelsea.", sourceIds: ["S1"] }],
+      }),
+    });
+    expect(deskSalvage.answer).toMatch(/Cole Palmer/);
+    expect(deskSalvage.citations.map((citation) => citation.id)).toEqual(["S1"]);
+    expect(deskSalvage.answer).not.toContain("directAnswer");
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {

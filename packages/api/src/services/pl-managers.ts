@@ -31,6 +31,20 @@ function surnames(name: string): string[] {
     .map((p) => p.replace(/[^\p{L}’-]/gu, ""));
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Stale-list names this turn's search titles/snippets actually established. */
+export function managersNamedInEvidence(
+  results: readonly { title: string; snippet: string }[]
+): string[] {
+  const blob = results.map((row) => `${row.title} ${row.snippet}`).join("\n");
+  return STALE_MANAGER_NAMES.filter((name) =>
+    new RegExp(`\\b${escapeRegExp(name)}\\b`, "i").test(blob)
+  );
+}
+
 export function stripUnlistedManagers(text: string, allowed: readonly string[]): string {
   const allow = new Set(allowed.flatMap(surnames).map((s) => s.toLocaleLowerCase()));
   const stale = STALE_MANAGER_NAMES.filter((n) => {
