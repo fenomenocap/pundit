@@ -214,11 +214,13 @@ function availabilityType(text: string): PlayerEvidenceType | null {
   return null;
 }
 
+type AvailabilityKind = "confirmed-lineup" | "expected-lineup" | "availability";
+
 function nearestAvailabilityType(window: string, playerName: string): PlayerEvidenceType | null {
   const nameAt = window.toLocaleLowerCase().indexOf(playerName.toLocaleLowerCase());
   if (nameAt < 0) return availabilityType(window);
-  const cues: Array<{ kind: PlayerEvidenceType; at: number; len: number }> = [];
-  const collect = (pattern: RegExp, kind: PlayerEvidenceType) => {
+  const cues: Array<{ kind: AvailabilityKind; at: number; len: number }> = [];
+  const collect = (pattern: RegExp, kind: AvailabilityKind) => {
     for (const match of window.matchAll(new RegExp(pattern, "gi"))) {
       if (match.index == null) continue;
       cues.push({ kind, at: match.index, len: match[0].length });
