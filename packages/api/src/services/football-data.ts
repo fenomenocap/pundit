@@ -34,7 +34,16 @@ export interface FootballMatch {
     away: number | null;
   } | null;
   winner?: string | null;
+  /** League goals from ESPN scoreboard details. Own goals are omitted. */
+  scorers?: MatchScorer[];
 }
+
+export type MatchScorer = {
+  playerId: string;
+  name: string;
+  team: string;
+  position: string | null;
+};
 
 export interface FootballStanding {
   competitionId: string;
@@ -403,6 +412,7 @@ export function parseEvent(e: any, context: ParseEventContext): FootballMatch {
   const awayScore = parseScore(away?.score);
   const hasScore = homeScore !== null && awayScore !== null;
   const groupMatch = /Group ([A-Z])/.exec(competitionMeta?.altGameNote || "");
+  const scorers = parseMatchScorers(competitors, competitionMeta?.details);
 
   return {
     id: Number(e.id),
@@ -440,7 +450,34 @@ export function parseEvent(e: any, context: ParseEventContext): FootballMatch {
           ? canonicalTeamName(away?.team?.displayName || "")
           : null
       : null,
+    ...(scorers.length > 0 ? { scorers } : {}),
   };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function parseMatchScorers(competitors: any[], details: any[] | undefined): MatchScorer[] {
+  if (!Array.isArray(details) || details.length === 0) return [];
+  const teamByEspnId = new Map<string, string>();
+  for (const competitor of competitors ?? []) {
+    const espnId = competitor?.team?.id;
+    const displayName = competitor?.team?.displayName;
+    if (espnId == null || !displayName) continue;
+    teamByEspnId.set(String(espnId), canonicalTeamName(displayName));
+  }
+  const scorers: MatchScorer[] = [];
+  for (const detail of details) {
+    if (!detail?.scoringPlay || detail?.ownGoal) continue;
+    const team = teamByEspnId.get(String(detail?.team?.id ?? ""));
+    const athlete = detail?.athletesInvolved?.[0];
+    const playerId = athlete?.id != null ? String(athlete.id) : "";
+    const name = typeof athlete?.displayName === "string" ? athlete.displayName.trim() : "";
+    if (!team || !playerId || !name) continue;
+    const position = typeof athlete?.position === "string" && athlete.position.trim()
+      ? athlete.position.trim()
+      : null;
+    scorers.push({ playerId, name, team, position });
+  }
+  return scorers;
 }
 
 function splitMatches(matches: FootballMatch[]): Pick<CompetitionCache, "upcoming" | "recent"> {

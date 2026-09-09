@@ -19,6 +19,25 @@ export interface MatchResponse {
   } | null;
 }
 
+export interface ClubFormResponse {
+  competitionId: string;
+  seasonId: string | null;
+  source: "season-schedule" | "rolling-window";
+  lastUpdated: string | null;
+  teams: {
+    team: string;
+    form: Array<"W" | "D" | "L">;
+    played: number;
+    scorers: {
+      id: string;
+      name: string;
+      team: string;
+      position: "GK" | "DEF" | "MID" | "FWD";
+      goals: number;
+    }[];
+  }[];
+}
+
 export interface StandingResponse {
   competitionId: string;
   position: number;
@@ -204,9 +223,12 @@ export async function getUpcomingMatches(competition?: string) {
 
 export async function getRecentMatches(competition?: string) {
   const query = competition ? `?competition=${encodeURIComponent(competition)}` : "";
-  return apiFetch<{ matches: MatchResponse[]; lastUpdated: string | null; error?: string | null }>(
-    `/api/matches/recent${query}`
-  );
+  return apiFetch<{
+    matches: MatchResponse[];
+    lastUpdated: string | null;
+    error?: string | null;
+    clubForm?: ClubFormResponse;
+  }>(`/api/matches/recent${query}`);
 }
 
 // Legacy wrappers without competition filter — kept for existing callers.

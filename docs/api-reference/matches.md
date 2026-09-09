@@ -42,6 +42,32 @@ Up to the next 50 scheduled/in-play matches, sorted earliest first. Optional fil
 
 The most recent 20 finished matches, sorted most recent first. Same shape as `/upcoming`, with `status: "FINISHED"` and `score` populated. Optional `?competition=`.
 
+Also returns `clubForm`: last-N league form and league scorers computed from the same ESPN season schedule / rolling scoreboard already cached for that competition. Unscoped requests default the form snapshot to `eng.1`. Form is not padded to five letters when a club has played fewer games.
+
+```json
+{
+  "matches": [],
+  "lastUpdated": "2026-09-09T10:00:00.000Z",
+  "error": null,
+  "clubForm": {
+    "competitionId": "eng.1",
+    "seasonId": "2026-27",
+    "source": "season-schedule",
+    "lastUpdated": "2026-09-09T10:00:00.000Z",
+    "teams": [
+      {
+        "team": "Man United",
+        "form": ["L", "W", "D"],
+        "played": 3,
+        "scorers": [
+          { "id": "bruno", "name": "Bruno Fernandes", "team": "Man United", "position": "MID", "goals": 3 }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ### `GET /api/matches/standings`
 
 League standings for enabled competitions. Optional `?competition=eng.1`.

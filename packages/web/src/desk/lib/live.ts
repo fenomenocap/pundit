@@ -4,10 +4,9 @@ import {
   SETTLED_FIXTURES,
   getFixture as getStaticFixture,
 } from "./data/fixtures";
-import { FORM } from "./data/form";
-import { playersForTeam } from "./data/players";
+import { applyLiveForm, FORM, type ResultMark } from "./data/form";
 import type { TeamId } from "./data/teams";
-import { TEAMS } from "./data/teams";
+import { TEAM_LIST, TEAMS } from "./data/teams";
 import { mildLambdas, over25 } from "./grid";
 
 export const LIVE_API =
@@ -18,10 +17,13 @@ const NAME_TO_ID: Record<string, TeamId> = {
   Arsenal: "ARS",
   "Aston Villa": "AVL",
   Bournemouth: "BOU",
+  "AFC Bournemouth": "BOU",
   Brentford: "BRE",
   Brighton: "BHA",
+  "Brighton & Hove Albion": "BHA",
   Chelsea: "CHE",
   Coventry: "COV",
+  "Coventry City": "COV",
   "Crystal Palace": "CRY",
   Everton: "EVE",
   Fulham: "FUL",
@@ -46,7 +48,62 @@ const NAME_TO_ID: Record<string, TeamId> = {
 };
 
 export function teamIdFromName(name: string): TeamId | null {
-  return NAME_TO_ID[name] ?? null;
+  if (NAME_TO_ID[name]) return NAME_TO_ID[name];
+  const lower = name.trim().toLowerCase();
+  for (const team of TEAM_LIST) {
+    if (team.name.toLowerCase() === lower || team.short.toLowerCase() === lower) return team.id;
+  }
+  return null;
+}
+
+export type LiveScorer = {
+  id: string;
+  name: string;
+  pos: "GK" | "DEF" | "MID" | "FWD";
+  goals: number;
+};
+
+const liveScorers: Partial<Record<TeamId, LiveScorer[]>> = {};
+
+export function scorersForTeam(team: TeamId, n = 3): LiveScorer[] {
+  return (liveScorers[team] ?? []).slice(0, n);
+}
+
+export function applyLiveScorers(rows: Partial<Record<TeamId, LiveScorer[]>>) {
+  for (const team of TEAM_LIST) {
+    delete liveScorers[team.id];
+    if (rows[team.id]?.length) liveScorers[team.id] = [...rows[team.id]!];
+  }
+}
+
+export function resetLiveScorers() {
+  for (const team of TEAM_LIST) delete liveScorers[team.id];
+}
+
+type ClubFormSnapshot = {
+  teams: {
+    team: string;
+    form: ResultMark[];
+    scorers: { id: string; name: string; position: LiveScorer["pos"]; goals: number }[];
+  }[];
+};
+
+function applyClubForm(snapshot: ClubFormSnapshot) {
+  const form: Partial<Record<TeamId, ResultMark[]>> = {};
+  const scorers: Partial<Record<TeamId, LiveScorer[]>> = {};
+  for (const row of snapshot.teams) {
+    const id = teamIdFromName(row.team);
+    if (!id) continue;
+    form[id] = row.form;
+    scorers[id] = row.scorers.map((player) => ({
+      id: player.id,
+      name: player.name,
+      pos: player.position,
+      goals: player.goals,
+    }));
+  }
+  applyLiveForm(form);
+  applyLiveScorers(scorers);
 }
 
 type LiveModelRow = {
@@ -117,8 +174,8 @@ function polyOdds(row: LiveModelRow) {
 }
 
 function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey, over: number, xg: [number, number]): string {
-  const menH = playersForTeam(home, 2).map((p) => p.name).join(", ");
-  const menA = playersForTeam(away, 2).map((p) => p.name).join(", ");
+  const menH = scorersForTeam(home, 2).map((p) => p.name).join(", ");
+  const menA = scorersForTeam(away, 2).map((p) => p.name).join(", ");
   const formH = FORM[home]?.join("") ?? "";
   const formA = FORM[away]?.join("") ?? "";
   const top = row.topScores?.[0];
@@ -130,7 +187,7 @@ function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey
     `BTTS ${(row.pBttsYes * 100).toFixed(0)} · O2.5 ${(over * 100).toFixed(0)} (desk).`,
     top ? `Modal ${top.score} (${(top.probability * 100).toFixed(0)}%).` : "",
     `Lean ${lean}.`,
-    menH || menA ? `In form: ${menH} · ${menA}.` : "",
+    menH || menA ? `Recent scorers: ${menH} · ${menA}.` : "Recent scorers: none in ESPN results yet.",
   ];
   return parts.filter(Boolean).join(" ");
 }
@@ -227,8 +284,11 @@ export async function fetchLiveSlate(): Promise<LiveSlate> {
   const [model, active, recent] = await Promise.all([
     getJson<{ fixtures: LiveModelRow[] }>("/api/model/active"),
     getJson<{ fixtures: LiveMatch[] }>("/api/matches/active"),
-    getJson<{ matches: LiveMatch[] }>("/api/matches/recent"),
+    getJson<{ matches: LiveMatch[]; clubForm?: ClubFormSnapshot }>(
+      "/api/matches/recent?competition=eng.1",
+    ),
   ]);
+  applyClubForm(recent.clubForm ?? { teams: [] });
   const venueById = new Map(active.fixtures.map((m) => [m.id, m.venue]));
   const open = model.fixtures
     .filter((r) => r.competitionId === "eng.1")

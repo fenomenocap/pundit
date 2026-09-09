@@ -1,25 +1,18 @@
-import {
-  OPEN_FIXTURES,
-  SETTLED_FIXTURES,
-  gw3Record,
-  modelProbFor,
-  selectionLabel,
-  type Fixture,
-} from "./data/fixtures";
+import { OPEN_FIXTURES, SETTLED_FIXTURES, gw3Record, modelProbFor, selectionLabel, type Fixture } from "./data/fixtures";
 import { FORM, formString } from "./data/form";
-import { playersForTeam } from "./data/players";
 import { TEAMS } from "./data/teams";
 import { fmtKickoff, fmtPct } from "./format";
+import { scorersForTeam } from "./live";
 
 function lineFor(f: Fixture) {
   const home = TEAMS[f.home];
   const away = TEAMS[f.away];
   const lean = selectionLabel(f, f.modelPick);
   const p = modelProbFor(f, f.modelPick);
-  const menH = playersForTeam(f.home, 2)
+  const menH = scorersForTeam(f.home, 2)
     .map((x) => x.name)
     .join(", ");
-  const menA = playersForTeam(f.away, 2)
+  const menA = scorersForTeam(f.away, 2)
     .map((x) => x.name)
     .join(", ");
   return [
@@ -30,7 +23,7 @@ function lineFor(f: Fixture) {
     `model 1X2 ${fmtPct(f.model.home)} / ${fmtPct(f.model.draw)} / ${fmtPct(f.model.away)}`,
     `O2.5 ${fmtPct(f.model.over25)} (desk) · BTTS ${fmtPct(f.model.btts)} (engine)`,
     `lean ${lean} (${fmtPct(p)})`,
-    `in form: ${menH} · ${menA}`,
+    `in form: ${menH || "—"} · ${menA || "—"}`,
     f.brief,
   ].join(" · ");
 }
@@ -57,11 +50,11 @@ export function fixtureCard(f: Fixture) {
   const home = TEAMS[f.home];
   const away = TEAMS[f.away];
   const score = f.score ? ` FT ${f.score[0]}–${f.score[1]}` : " upcoming";
-  const menH = playersForTeam(f.home, 3)
-    .map((x) => `${x.name} ${x.pos} form ${x.form.toFixed(1)}`)
+  const menH = scorersForTeam(f.home, 3)
+    .map((x) => `${x.name} ${x.pos} ${x.goals}g`)
     .join(", ");
-  const menA = playersForTeam(f.away, 3)
-    .map((x) => `${x.name} ${x.pos} form ${x.form.toFixed(1)}`)
+  const menA = scorersForTeam(f.away, 3)
+    .map((x) => `${x.name} ${x.pos} ${x.goals}g`)
     .join(", ");
   return [
     `FOCUS: ${home.name} vs ${away.name}${score}`,

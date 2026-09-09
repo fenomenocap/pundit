@@ -15,21 +15,24 @@ import { useLiveSlate } from "@/desk/components/use-live-slate";
 export function Desk() {
   const rec = gw3Record();
   const { source } = useLiveSlate();
-  const hydrate = useDesk((s) => s.hydrateSlate);
   const select = useDesk((s) => s.selectFixture);
   const queueAsk = useDesk((s) => s.queueAsk);
   const params = useSearchParams();
 
   useEffect(() => {
     let cancelled = false;
-    void loadSlate().then((slate) => {
-      if (cancelled) return;
-      hydrate(slate.open, slate.settled, slate.source);
-    });
+    void loadSlate()
+      .then((slate) => {
+        if (cancelled) return;
+        useDesk.getState().hydrateSlate(slate.open, slate.settled, slate.source);
+      })
+      .catch((error) => {
+        console.warn("[desk] live slate hydrate failed", error);
+      });
     return () => {
       cancelled = true;
     };
-  }, [hydrate]);
+  }, []);
 
   useEffect(() => {
     const fixture = params.get("fixture");
