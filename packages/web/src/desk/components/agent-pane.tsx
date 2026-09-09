@@ -5,6 +5,7 @@ import { ArrowUp, Plus } from "lucide-react";
 import { rankedOpen, weekendNote } from "@/desk/lib/brief";
 import { getFixture } from "@/desk/lib/data/fixtures";
 import { TEAMS } from "@/desk/lib/data/teams";
+import { completedDeskHistory } from "@/desk/lib/chat-history";
 import { askPundit } from "@/desk/lib/pundit";
 import { useDesk, type ChatMsg } from "@/desk/lib/store";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ const SLATE_CHIPS = [
 export function AgentPane() {
   const messages = useDesk((s) => s.messages);
   const push = useDesk((s) => s.pushChat);
+  const removeChat = useDesk((s) => s.removeChat);
   const reset = useDesk((s) => s.resetChat);
   const selectedId = useDesk((s) => s.selectedId);
   const queued = useDesk((s) => s.queuedAsk);
@@ -59,6 +61,7 @@ export function AgentPane() {
     if (!q || busy) return;
     setErr(null);
     setDraft("");
+    const history = completedDeskHistory(useDesk.getState().messages);
     const userMsg: ChatMsg = {
       id: `u-${Date.now()}`,
       role: "user",
@@ -68,15 +71,9 @@ export function AgentPane() {
     };
     push(userMsg);
     setBusy(true);
-    const history = [...useDesk.getState().messages]
-      .filter((m) => m.role === "user" || m.role === "pundit")
-      .map((m) => ({
-        role: m.role === "pundit" ? ("assistant" as const) : ("user" as const),
-        content: m.text,
-      }));
     try {
       const res = await askPundit({
-        data: { messages: history, fixtureId: selectedId },
+        data: { question: q, history, fixtureId: selectedId },
       });
       push({
         id: `p-${Date.now()}`,
@@ -86,6 +83,7 @@ export function AgentPane() {
         at: Date.now(),
       });
     } catch (e) {
+      removeChat(userMsg.id);
       setErr(e instanceof Error && e.message ? e.message : "Pundit is quiet. Try again.");
     } finally {
       setBusy(false);
@@ -129,7 +127,11 @@ export function AgentPane() {
         </Button>
       </header>
 
-      <div ref={scroller} className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+      <div
+        ref={scroller}
+        data-testid="desk-chat-transcript"
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-5"
+      >
         {messages.length === 0 ? (
           <div>
             <p className="font-display uppercase tracking-wide text-3xl sm:text-4xl leading-none text-fg">
@@ -251,7 +253,10 @@ function Bubble({ msg }: { msg: ChatMsg }) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[36rem] rounded-md rounded-br-xs bg-elevated px-3.5 py-2.5 text-sm leading-6">
+        <div
+          data-testid="desk-user-bubble"
+          className="max-w-[36rem] rounded-md rounded-br-xs bg-elevated px-3.5 py-2.5 text-sm leading-6"
+        >
           {msg.text}
         </div>
       </div>
