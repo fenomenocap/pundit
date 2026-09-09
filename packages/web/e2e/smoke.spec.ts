@@ -132,6 +132,7 @@ test.describe("smoke", () => {
     await input.fill("How do Liverpool win this?");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText("Analysis generation failed.", { exact: true })).toBeVisible();
+    await expect(page.getByText("How do Liverpool win this?", { exact: true })).not.toBeVisible();
     await page.getByRole("button", { name: "Tactical matchup" }).click();
     await expect(page.getByText("Liverpool control the tempo through the half-spaces.")).toBeVisible();
     expect(requests).toHaveLength(2);

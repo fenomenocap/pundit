@@ -24,6 +24,7 @@ const SLATE_CHIPS = [
 export function AgentPane() {
   const messages = useDesk((s) => s.messages);
   const push = useDesk((s) => s.pushChat);
+  const removeChat = useDesk((s) => s.removeChat);
   const reset = useDesk((s) => s.resetChat);
   const selectedId = useDesk((s) => s.selectedId);
   const queued = useDesk((s) => s.queuedAsk);
@@ -82,6 +83,7 @@ export function AgentPane() {
         at: Date.now(),
       });
     } catch (e) {
+      removeChat(userMsg.id);
       setErr(e instanceof Error && e.message ? e.message : "Pundit is quiet. Try again.");
     } finally {
       setBusy(false);
