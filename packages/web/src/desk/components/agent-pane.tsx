@@ -5,6 +5,7 @@ import { ArrowUp, Plus } from "lucide-react";
 import { rankedOpen, weekendNote } from "@/desk/lib/brief";
 import { getFixture } from "@/desk/lib/data/fixtures";
 import { TEAMS } from "@/desk/lib/data/teams";
+import { completedDeskHistory } from "@/desk/lib/chat-history";
 import { askPundit } from "@/desk/lib/pundit";
 import { useDesk, type ChatMsg } from "@/desk/lib/store";
 import { cn } from "@/lib/utils";
@@ -59,6 +60,7 @@ export function AgentPane() {
     if (!q || busy) return;
     setErr(null);
     setDraft("");
+    const history = completedDeskHistory(useDesk.getState().messages);
     const userMsg: ChatMsg = {
       id: `u-${Date.now()}`,
       role: "user",
@@ -68,15 +70,9 @@ export function AgentPane() {
     };
     push(userMsg);
     setBusy(true);
-    const history = [...useDesk.getState().messages]
-      .filter((m) => m.role === "user" || m.role === "pundit")
-      .map((m) => ({
-        role: m.role === "pundit" ? ("assistant" as const) : ("user" as const),
-        content: m.text,
-      }));
     try {
       const res = await askPundit({
-        data: { messages: history, fixtureId: selectedId },
+        data: { question: q, history, fixtureId: selectedId },
       });
       push({
         id: `p-${Date.now()}`,

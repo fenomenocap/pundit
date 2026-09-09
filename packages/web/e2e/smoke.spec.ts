@@ -104,6 +104,40 @@ test.describe("smoke", () => {
     });
   }
 
+  test("desk retries after a failed ask without sending dangling history", async ({ page }) => {
+    let call = 0;
+    const requests: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      call += 1;
+      requests.push(route.request().postDataJSON());
+      if (call === 1) {
+        await route.fulfill({
+          status: 502,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Analysis generation failed." }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          answer: "Liverpool control the tempo through the half-spaces.",
+          grounding: { kind: "match", home: "Liverpool", away: "Fulham" },
+        }),
+      });
+    });
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await input.fill("How do Liverpool win this?");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByText("Analysis generation failed.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Tactical matchup" }).click();
+    await expect(page.getByText("Liverpool control the tempo through the half-spaces.")).toBeVisible();
+    expect(requests).toHaveLength(2);
+    expect(requests[1].history).toEqual([]);
+  });
+
   test("fixture and model Ask links retain their rendered fixture identity", async ({ page }) => {
     await page.goto("/fixtures");
     const fixtureCard = page.getByText("Riga FC", { exact: true }).first()
