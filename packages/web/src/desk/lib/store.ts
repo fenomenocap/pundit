@@ -164,6 +164,7 @@ type State = {
   resetDraft: () => void;
   tickDraft: () => void;
   pushChat: (msg: ChatMsg) => void;
+  removeChat: (id: string) => void;
   resetChat: () => void;
   queueAsk: (text: string) => void;
   clearQueuedAsk: () => void;
@@ -341,6 +342,11 @@ export const useDesk = create<State>()(
       pushChat: (msg) =>
         set((s) => ({
           messages: [...s.messages, msg].slice(-40),
+        })),
+
+      removeChat: (id) =>
+        set((s) => ({
+          messages: s.messages.filter((msg) => msg.id !== id),
         })),
 
       resetChat: () => set({ messages: [] }),
