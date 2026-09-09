@@ -81,16 +81,48 @@ export function resetLiveScorers() {
 }
 
 type ClubFormSnapshot = {
+  source?: "season-schedule" | "rolling-window" | "season-and-prior";
   teams: {
     team: string;
     form: ResultMark[];
+    position?: number | null;
+    playedGames?: number | null;
+    points?: number | null;
+    goalsFor?: number | null;
+    goalsAgainst?: number | null;
     scorers: { id: string; name: string; position: LiveScorer["pos"]; goals: number }[];
   }[];
 };
 
+export type LiveClubStats = {
+  position: number | null;
+  playedGames: number | null;
+  points: number | null;
+  goalsFor: number | null;
+  goalsAgainst: number | null;
+};
+
+const liveStats: Partial<Record<TeamId, LiveClubStats>> = {};
+
+export function statsForTeam(team: TeamId): LiveClubStats | null {
+  return liveStats[team] ?? null;
+}
+
+function applyLiveStats(rows: Partial<Record<TeamId, LiveClubStats>>) {
+  for (const team of TEAM_LIST) {
+    delete liveStats[team.id];
+    if (rows[team.id]) liveStats[team.id] = rows[team.id]!;
+  }
+}
+
+export function resetLiveStats() {
+  applyLiveStats({});
+}
+
 function applyClubForm(snapshot: ClubFormSnapshot) {
   const form: Partial<Record<TeamId, ResultMark[]>> = {};
   const scorers: Partial<Record<TeamId, LiveScorer[]>> = {};
+  const stats: Partial<Record<TeamId, LiveClubStats>> = {};
   for (const row of snapshot.teams) {
     const id = teamIdFromName(row.team);
     if (!id) continue;
@@ -101,9 +133,17 @@ function applyClubForm(snapshot: ClubFormSnapshot) {
       pos: player.position,
       goals: player.goals,
     }));
+    stats[id] = {
+      position: row.position ?? null,
+      playedGames: row.playedGames ?? null,
+      points: row.points ?? null,
+      goalsFor: row.goalsFor ?? null,
+      goalsAgainst: row.goalsAgainst ?? null,
+    };
   }
   applyLiveForm(form);
   applyLiveScorers(scorers);
+  applyLiveStats(stats);
 }
 
 type LiveModelRow = {

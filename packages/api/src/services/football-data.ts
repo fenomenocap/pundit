@@ -137,6 +137,23 @@ const seasonScheduleCache: SeasonScheduleCache = {
   servingLastGood: false,
 };
 
+// Finished matches from the previous Premier League season, used only for
+// last-N form / recent scorers on the desk. Never mixed into the current
+// 380-fixture simulator cache.
+export type PriorSeasonResultsCache = {
+  seasonId: string;
+  fixtures: FootballMatch[];
+  lastUpdated: Date | null;
+  error: string | null;
+};
+
+const priorSeasonResultsCache: PriorSeasonResultsCache = {
+  seasonId: "unknown",
+  fixtures: [],
+  lastUpdated: null,
+  error: null,
+};
+
 export function getCachedMatches(): CachedData {
   return { ...cache };
 }
@@ -170,6 +187,14 @@ export function getCachedSeasonSchedule(competitionId = "eng.1"): SeasonSchedule
 
 export function replaceSeasonScheduleForTests(state: SeasonScheduleCache): void {
   Object.assign(seasonScheduleCache, { ...state, fixtures: [...state.fixtures] });
+}
+
+export function getCachedPriorSeasonResults(): PriorSeasonResultsCache {
+  return { ...priorSeasonResultsCache, fixtures: [...priorSeasonResultsCache.fixtures] };
+}
+
+export function replacePriorSeasonResultsForTests(state: PriorSeasonResultsCache): void {
+  Object.assign(priorSeasonResultsCache, { ...state, fixtures: [...state.fixtures] });
 }
 
 export function seasonScheduleStatus(state: SeasonScheduleCache, now = new Date()): {
@@ -345,6 +370,18 @@ export function premierLeagueSeasonWindow(now = new Date()): {
   // July is treated as the start of the next English season so the published
   // schedule can be loaded before the first August kickoff.
   const startYear = now.getUTCMonth() >= 6 ? year : year - 1;
+  return {
+    seasonId: `${startYear}-${String(startYear + 1).slice(-2)}`,
+    dateRange: `${startYear}0701-${startYear + 1}0630`,
+  };
+}
+
+export function premierLeaguePriorSeasonWindow(now = new Date()): {
+  seasonId: string;
+  dateRange: string;
+} {
+  const current = premierLeagueSeasonWindow(now);
+  const startYear = Number(current.seasonId.slice(0, 4)) - 1;
   return {
     seasonId: `${startYear}-${String(startYear + 1).slice(-2)}`,
     dateRange: `${startYear}0701-${startYear + 1}0630`,
@@ -547,6 +584,26 @@ export async function fetchCompletePremierLeagueSchedule(
   return { seasonId, fixtures };
 }
 
+export async function fetchPriorPremierLeagueResults(
+  now = new Date()
+): Promise<{ seasonId: string; fixtures: FootballMatch[] }> {
+  const competition = getCompetitionById("eng.1");
+  if (!competition) throw new Error("Premier League competition is not configured.");
+  const { seasonId, dateRange } = premierLeaguePriorSeasonWindow(now);
+  const data = await espnFetch<{ events?: unknown[] }>(
+    `${ESPN_SCOREBOARD_BASE}/${competition.espnScoreboardPath}`
+      + `/scoreboard?dates=${dateRange}&limit=1000`
+  );
+  const context = { competitionId: competition.id, competitionName: competition.name };
+  const fixtures = (data.events ?? [])
+    .map((event) => parseEvent(event, context))
+    .filter((match) => match.status === "FINISHED");
+  if (fixtures.length === 0) {
+    throw new Error("Prior Premier League season returned no finished matches.");
+  }
+  return { seasonId, fixtures };
+}
+
 export function nextSeasonScheduleCache(
   previous: SeasonScheduleCache,
   result: PromiseSettledResult<{ seasonId: string; fixtures: FootballMatch[] }>,
@@ -640,6 +697,7 @@ function mergeCaches(byCompetition: Record<string, CompetitionCache>): void {
 
 export async function refreshFootballData(dependencies: {
   fetchSeason?: typeof fetchCompletePremierLeagueSchedule;
+  fetchPriorSeason?: typeof fetchPriorPremierLeagueResults;
 } = {}): Promise<void> {
   console.log("[FootballData] Refreshing data from ESPN...");
   const enabled = getEnabledCompetitions();
@@ -652,7 +710,11 @@ export async function refreshFootballData(dependencies: {
   const shouldRefreshSeason = seasonScheduleRefreshDue(seasonScheduleCache)
     || seasonScheduleCache.servingLastGood
     || seasonScheduleCache.error !== null;
-  const [competitionResults, seasonResult] = await Promise.all([
+  const priorWindow = premierLeaguePriorSeasonWindow();
+  const shouldRefreshPrior = priorSeasonResultsCache.seasonId !== priorWindow.seasonId
+    || priorSeasonResultsCache.fixtures.length === 0
+    || priorSeasonResultsCache.error !== null;
+  const [competitionResults, seasonResult, priorResult] = await Promise.all([
     Promise.allSettled(enabled.map(async (competition) => {
       const data = await refreshCompetition(competition);
       return { competition, data };
@@ -660,6 +722,11 @@ export async function refreshFootballData(dependencies: {
     shouldRefreshSeason
       ? Promise.allSettled([
         (dependencies.fetchSeason ?? fetchCompletePremierLeagueSchedule)(),
+      ]).then(([result]) => result)
+      : Promise.resolve(null),
+    shouldRefreshPrior
+      ? Promise.allSettled([
+        (dependencies.fetchPriorSeason ?? fetchPriorPremierLeagueResults)(),
       ]).then(([result]) => result)
       : Promise.resolve(null),
   ]);
@@ -707,6 +774,27 @@ export async function refreshFootballData(dependencies: {
       // last-good schedule from a fresh one through `error` without losing the
       // only complete input during a transient source failure.
       console.error(`[FootballData] eng.1 complete-season refresh error: ${nextSeason.error}`);
+    }
+  }
+
+  if (priorResult !== null) {
+    if (priorResult.status === "fulfilled") {
+      Object.assign(priorSeasonResultsCache, {
+        seasonId: priorResult.value.seasonId,
+        fixtures: priorResult.value.fixtures,
+        lastUpdated: new Date(),
+        error: null,
+      });
+      console.log(
+        `[FootballData]   eng.1 prior ${priorResult.value.seasonId}: `
+        + `${priorResult.value.fixtures.length} finished matches for last-N form`
+      );
+    } else {
+      const message = priorResult.reason instanceof Error
+        ? priorResult.reason.message
+        : "Unknown error";
+      priorSeasonResultsCache.error = message;
+      console.error(`[FootballData] eng.1 prior-season refresh error: ${message}`);
     }
   }
 

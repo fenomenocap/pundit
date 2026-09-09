@@ -2,8 +2,10 @@ import { normalizeTeamName } from "../lib/team-names";
 import {
   getCachedMatches,
   getCachedMatchesForCompetition,
+  getCachedPriorSeasonResults,
   getCachedSeasonSchedule,
   type FootballMatch,
+  type FootballStanding,
   type MatchScorer,
 } from "./football-data";
 
@@ -22,13 +24,22 @@ export type ClubFormRow = {
   team: string;
   form: ResultMark[];
   played: number;
+  position: number | null;
+  playedGames: number | null;
+  won: number | null;
+  draw: number | null;
+  lost: number | null;
+  points: number | null;
+  goalsFor: number | null;
+  goalsAgainst: number | null;
+  goalDifference: number | null;
   scorers: ClubScorer[];
 };
 
 export type ClubFormSnapshot = {
   competitionId: string;
   seasonId: string | null;
-  source: "season-schedule" | "rolling-window";
+  source: "season-schedule" | "rolling-window" | "season-and-prior";
   lastUpdated: string | null;
   teams: ClubFormRow[];
 };
@@ -52,15 +63,23 @@ export function resultMarkForTeam(match: FootballMatch, team: string): ResultMar
   return won ? "W" : "L";
 }
 
+export function lastLeagueMatches(
+  team: string,
+  fixtures: readonly FootballMatch[],
+  n = FORM_LENGTH
+): FootballMatch[] {
+  return fixtures
+    .filter((match) => resultMarkForTeam(match, team) !== null)
+    .sort((a, b) => Date.parse(a.utcDate) - Date.parse(b.utcDate))
+    .slice(-n);
+}
+
 export function lastLeagueForm(
   team: string,
   fixtures: readonly FootballMatch[],
   n = FORM_LENGTH
 ): ResultMark[] {
-  const played = fixtures
-    .filter((match) => resultMarkForTeam(match, team) !== null)
-    .sort((a, b) => Date.parse(a.utcDate) - Date.parse(b.utcDate));
-  return played.slice(-n).map((match) => resultMarkForTeam(match, team)!);
+  return lastLeagueMatches(team, fixtures, n).map((match) => resultMarkForTeam(match, team)!);
 }
 
 export function deskPosition(espnPosition: string | null | undefined): DeskPos {
@@ -151,18 +170,36 @@ export function teamsFromFixtures(fixtures: readonly FootballMatch[]): string[] 
 export function buildClubFormRows(
   formFixtures: readonly FootballMatch[],
   scorerFixtures: readonly FootballMatch[],
+  standings: readonly FootballStanding[] = [],
   n = FORM_LENGTH
 ): ClubFormRow[] {
-  const scorers = aggregateScorers(scorerFixtures);
   return teamsFromFixtures(formFixtures).map((team) => {
     const form = lastLeagueForm(team, formFixtures, n);
+    const recent = lastLeagueMatches(team, scorerFixtures, n);
+    const standing = standingForTeam(team, standings);
     return {
       team,
       form,
       played: form.length,
-      scorers: lookupScorers(scorers, team),
+      position: standing?.position ?? null,
+      playedGames: standing?.playedGames ?? null,
+      won: standing?.won ?? null,
+      draw: standing?.draw ?? null,
+      lost: standing?.lost ?? null,
+      points: standing?.points ?? null,
+      goalsFor: standing?.goalsFor ?? null,
+      goalsAgainst: standing?.goalsAgainst ?? null,
+      goalDifference: standing?.goalDifference ?? null,
+      scorers: lookupScorers(aggregateScorers(recent), team),
     };
   });
+}
+
+function standingForTeam(
+  team: string,
+  standings: readonly FootballStanding[]
+): FootballStanding | null {
+  return standings.find((row) => sameClub(row.team, team)) ?? null;
 }
 
 function lookupScorers(scorers: Map<string, ClubScorer[]>, team: string): ClubScorer[] {
@@ -177,19 +214,25 @@ function lookupScorers(scorers: Map<string, ClubScorer[]>, team: string): ClubSc
 export function getClubFormSnapshot(competitionId = "eng.1"): ClubFormSnapshot {
   const rolling = getCachedMatchesForCompetition(competitionId);
   const season = competitionId === "eng.1" ? getCachedSeasonSchedule() : null;
+  const prior = competitionId === "eng.1" ? getCachedPriorSeasonResults() : { fixtures: [] };
   const seasonFixtures = season?.fixtures ?? [];
+  const priorFixtures = prior.fixtures ?? [];
   const rollingFixtures = [...rolling.recent, ...rolling.upcoming];
   const useSeason = seasonFixtures.length > 0;
-  const formFixtures = useSeason ? seasonFixtures : rolling.recent;
-  const scorerFixtures = [...seasonFixtures, ...rollingFixtures];
+  const formFixtures = useSeason ? [...priorFixtures, ...seasonFixtures] : rolling.recent;
+  const scorerFixtures = useSeason ? formFixtures : [...seasonFixtures, ...rollingFixtures];
   const lastUpdated = useSeason
     ? season?.lastUpdated ?? null
     : getCachedMatches().lastUpdated;
   return {
     competitionId,
     seasonId: useSeason ? season?.seasonId ?? null : null,
-    source: useSeason ? "season-schedule" : "rolling-window",
+    source: useSeason && priorFixtures.length > 0
+      ? "season-and-prior"
+      : useSeason
+        ? "season-schedule"
+        : "rolling-window",
     lastUpdated: lastUpdated?.toISOString() ?? null,
-    teams: buildClubFormRows(formFixtures, scorerFixtures),
+    teams: buildClubFormRows(formFixtures, scorerFixtures, rolling.standings),
   };
 }

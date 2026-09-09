@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,11 +6,14 @@ import {
   buildFetchDateRange,
   deserialiseSeasonSchedule,
   getCachedSeasonSchedule,
+  getCachedPriorSeasonResults,
   loadPersistedSeasonSchedule,
   nextSeasonScheduleCache,
   parseEvent,
   persistSeasonSchedule,
+  premierLeaguePriorSeasonWindow,
   premierLeagueSeasonWindow,
+  replacePriorSeasonResultsForTests,
   replaceSeasonScheduleForTests,
   serialiseSeasonSchedule,
   seasonScheduleStatus,
@@ -29,6 +32,27 @@ import {
 
 const wcContext = { competitionId: "fifa.world", competitionName: "FIFA World Cup" };
 const originalDataDir = process.env.PUNDIT_DATA_DIR;
+
+beforeEach(() => {
+  replacePriorSeasonResultsForTests({
+    seasonId: premierLeaguePriorSeasonWindow().seasonId,
+    fixtures: [{
+      id: 1,
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeTeam: "Arsenal",
+      awayTeam: "Liverpool",
+      utcDate: "2026-05-01T00:00:00Z",
+      status: "FINISHED",
+      stage: null,
+      matchday: null,
+      group: null,
+      score: { home: 1, away: 0 },
+    }],
+    lastUpdated: new Date(),
+    error: null,
+  });
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -202,6 +226,13 @@ describe("ESPN model inputs", () => {
     });
   });
 
+  it("points the prior-season form window at the previous English season", () => {
+    expect(premierLeaguePriorSeasonWindow(new Date("2026-09-09T00:00:00Z"))).toEqual({
+      seasonId: "2025-26",
+      dateRange: "20250701-20260630",
+    });
+  });
+
   it("refreshes the large season payload ahead of its six-hour readiness deadline", () => {
     const now = new Date("2026-08-13T12:00:00Z");
     expect(seasonScheduleRefreshDue({ seasonId: "2026-27", lastUpdated: null }, now)).toBe(true);
@@ -217,6 +248,38 @@ describe("ESPN model inputs", () => {
       seasonId: "2025-26",
       lastUpdated: new Date("2026-08-13T11:59:00Z"),
     }, now)).toBe(true);
+  });
+
+  it("keeps the current season schedule when the prior-season form fetch fails", async () => {
+    stubRollingEspn();
+    replacePriorSeasonResultsForTests({
+      seasonId: "unknown",
+      fixtures: [],
+      lastUpdated: null,
+      error: null,
+    });
+    const seasonFetch = vi.fn(async () => ({
+      seasonId: premierLeagueSeasonWindow().seasonId,
+      fixtures: completeLeagueSchedule(),
+    }));
+    replaceSeasonScheduleForTests({
+      competitionId: "eng.1",
+      seasonId: "unknown",
+      fixtures: [],
+      lastUpdated: null,
+      error: null,
+      servingLastGood: false,
+    });
+    await refreshFootballData({
+      fetchSeason: seasonFetch,
+      fetchPriorSeason: async () => {
+        throw new Error("prior ESPN 403");
+      },
+    });
+    expect(seasonFetch).toHaveBeenCalledTimes(1);
+    expect(getCachedSeasonSchedule().fixtures).toHaveLength(380);
+    expect(getCachedPriorSeasonResults().fixtures).toHaveLength(0);
+    expect(getCachedPriorSeasonResults().error).toMatch(/403/);
   });
 
   it("integrates the refresh-ahead skip and due decisions into the refresh", async () => {
