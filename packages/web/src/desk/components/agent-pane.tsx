@@ -127,7 +127,11 @@ export function AgentPane() {
         </Button>
       </header>
 
-      <div ref={scroller} className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+      <div
+        ref={scroller}
+        data-testid="desk-chat-transcript"
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-5"
+      >
         {messages.length === 0 ? (
           <div>
             <p className="font-display uppercase tracking-wide text-3xl sm:text-4xl leading-none text-fg">
@@ -249,7 +253,10 @@ function Bubble({ msg }: { msg: ChatMsg }) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[36rem] rounded-md rounded-br-xs bg-elevated px-3.5 py-2.5 text-sm leading-6">
+        <div
+          data-testid="desk-user-bubble"
+          className="max-w-[36rem] rounded-md rounded-br-xs bg-elevated px-3.5 py-2.5 text-sm leading-6"
+        >
           {msg.text}
         </div>
       </div>
