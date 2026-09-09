@@ -1,0 +1,736 @@
+{
+  "schemaVersion": 17,
+  "fixed": [
+    {
+      "id": "active-match-grounding",
+      "description": "A model-backed active club fixture receives match grounding and delivers a complete headline win/draw/win line under a section label that is not left empty. A provider-labelled normal end_turn still fails if the answer ends in a numeric or Markdown fragment.",
+      "kind": "featured",
+      "expectHeadlineOneXTwo": true
+    },
+    {
+      "id": "priced-fixture-retains-1x2-context",
+      "description": "An explicit 1X2 follow-up cannot lose or replace the exact priced fixture.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "What will the 1X2 be?",
+          "expectGrounding": "match"
+        }
+      ]
+    },
+    {
+      "id": "analyst-conversation-golden-path",
+      "description": "One coherent analyst handles a full preview, exact-score fair price, scorer boundary, lineup counterfactual, table detour and market disagreement without repeating a full report or exposing internal machinery.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Give me your full preview of {home} vs {away}, including the 1X2, likely scorelines and any comparable market disagreement.",
+          "expectGrounding": "match",
+          "expectHeadlineOneXTwo": true,
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNoUnsupportedMarketCausality": true,
+          "expectComparableMarketAttribution": true
+        },
+        {
+          "question": "What is your fair decimal price for an exact 2-1 score?",
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectExactScoreFairPrice": "2-1"
+        },
+        {
+          "question": "Who will most likely score for Liverpool?",
+          "expectGrounding": "match",
+          "allowAbstention": true,
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectCannotReprice": true,
+          "expectNoUnsupportedScorerInference": true,
+          "expectNoUnsupportedMarketCausality": true
+        },
+        {
+          "question": "If the home striker is ruled out, exactly how many percentage points would you take off the home win?",
+          "expectGrounding": "match",
+          "allowAbstention": true,
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectCannotReprice": true,
+          "expectNoUnsupportedMarketCausality": true,
+          "expectNoUnsupportedLineupEffect": true
+        },
+        {
+          "question": "Quick detour: what does the current Premier League table show?",
+          "expectGrounding": "competition",
+          "expectCompetitionId": "eng.1",
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectTableMatchCountsGrounded": true
+        },
+        {
+          "question": "Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?",
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectNoUnsupportedMarketCausality": true,
+          "expectComparableMarketAttribution": true
+        }
+      ]
+    },
+    {
+      "id": "suggestion-chip-identity-selects-its-leg",
+      "description": "A homepage suggestion chip carries the identity of the fixture it rendered, so each leg of a two-legged tie resolves to its own priced row and a bare follow-up stays on it.",
+      "kind": "runtime-helper",
+      "helper": "resolveFixtureRoutingSequence",
+      "args": {
+        "recognizedFixtures": [
+          {
+            "fixtureId": "espn:uefa.champions_qual:5001",
+            "primarySource": "espn",
+            "primarySourceFixtureId": "5001",
+            "homeTeam": {
+              "id": "alpha",
+              "name": "Alpha"
+            },
+            "awayTeam": {
+              "id": "beta",
+              "name": "Beta"
+            },
+            "kickoff": "2026-08-18T19:00:00Z",
+            "venue": "Stadium",
+            "neutralVenue": false,
+            "competition": {
+              "id": "uefa.champions_qual",
+              "name": "UEFA Champions League Qualifiers",
+              "category": "club-continental"
+            },
+            "status": "scheduled",
+            "recognition": "authoritative",
+            "observedSources": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "5001",
+                "authority": "authoritative",
+                "observedAt": "2026-08-13T10:00:00Z"
+              }
+            ],
+            "observationHistory": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "5001",
+                "observedAt": "2026-08-13T10:00:00Z",
+                "kickoff": "2026-08-18T19:00:00Z",
+                "venue": "Stadium",
+                "neutralVenue": false,
+                "status": "scheduled"
+              }
+            ]
+          },
+          {
+            "fixtureId": "espn:uefa.champions_qual:5002",
+            "primarySource": "espn",
+            "primarySourceFixtureId": "5002",
+            "homeTeam": {
+              "id": "beta",
+              "name": "Beta"
+            },
+            "awayTeam": {
+              "id": "alpha",
+              "name": "Alpha"
+            },
+            "kickoff": "2026-08-26T19:00:00Z",
+            "venue": "Stadium",
+            "neutralVenue": false,
+            "competition": {
+              "id": "uefa.champions_qual",
+              "name": "UEFA Champions League Qualifiers",
+              "category": "club-continental"
+            },
+            "status": "scheduled",
+            "recognition": "authoritative",
+            "observedSources": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "5002",
+                "authority": "authoritative",
+                "observedAt": "2026-08-13T10:00:00Z"
+              }
+            ],
+            "observationHistory": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "5002",
+                "observedAt": "2026-08-13T10:00:00Z",
+                "kickoff": "2026-08-26T19:00:00Z",
+                "venue": "Stadium",
+                "neutralVenue": false,
+                "status": "scheduled"
+              }
+            ]
+          }
+        ],
+        "modelFixtures": [
+          {
+            "competitionId": "uefa.champions_qual",
+            "competition": "UEFA Champions League Qualifiers",
+            "fixtureId": 5001,
+            "utcDate": "2026-08-18T19:00:00Z",
+            "date": "2026-08-18",
+            "group": null,
+            "stage": "qualifying",
+            "home": "Alpha",
+            "away": "Beta",
+            "homeElo": 1660,
+            "awayElo": 1520,
+            "pHome": 0.56,
+            "pDraw": 0.24,
+            "pAway": 0.2,
+            "pOver2_5": 0.51,
+            "pUnder2_5": 0.49,
+            "pBttsYes": 0.5,
+            "pBttsNo": 0.5,
+            "topScores": [
+              {
+                "score": "2-1",
+                "probability": 0.1
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "2-1",
+                "probability": 0.1
+              },
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "stakePHome": null,
+            "stakePDraw": null,
+            "stakePAway": null,
+            "result": null
+          },
+          {
+            "competitionId": "uefa.champions_qual",
+            "competition": "UEFA Champions League Qualifiers",
+            "fixtureId": 5002,
+            "utcDate": "2026-08-26T19:00:00Z",
+            "date": "2026-08-26",
+            "group": null,
+            "stage": "qualifying",
+            "home": "Beta",
+            "away": "Alpha",
+            "homeElo": 1660,
+            "awayElo": 1520,
+            "pHome": 0.56,
+            "pDraw": 0.24,
+            "pAway": 0.2,
+            "pOver2_5": 0.51,
+            "pUnder2_5": 0.49,
+            "pBttsYes": 0.5,
+            "pBttsNo": 0.5,
+            "topScores": [
+              {
+                "score": "2-1",
+                "probability": 0.1
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "2-1",
+                "probability": 0.1
+              },
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "stakePHome": null,
+            "stakePDraw": null,
+            "stakePAway": null,
+            "result": null
+          }
+        ],
+        "routingState": {
+          "modelInitialized": true,
+          "ratingsAvailable": true
+        },
+        "steps": [
+          {
+            "question": "Alpha vs Beta · UCL · Tue",
+            "fixtureContext": {
+              "fixtureId": "espn:uefa.champions_qual:5001"
+            }
+          },
+          {
+            "question": "Beta vs Alpha · UCL · Wed",
+            "fixtureContext": {
+              "fixtureId": "espn:uefa.champions_qual:5002"
+            }
+          },
+          {
+            "question": "Why?",
+            "fixtureContext": {
+              "fixtureId": "espn:uefa.champions_qual:5002"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tier": "match",
+          "fixtureId": "uefa.champions_qual:5001",
+          "capability": null
+        },
+        {
+          "tier": "match",
+          "fixtureId": "uefa.champions_qual:5002",
+          "capability": null
+        },
+        {
+          "tier": "match",
+          "fixtureId": "uefa.champions_qual:5002",
+          "capability": null
+        }
+      ],
+      "forbidText": [
+        "candidate"
+      ]
+    },
+    {
+      "id": "two-legged-tie-resolves-to-a-real-leg",
+      "description": "The built routing path resolves a matchup whose clubs meet twice to a priced leg -- the next unplayed leg by default, and the cued leg when the question names one -- instead of failing closed to a discovery candidate.",
+      "kind": "runtime-helper",
+      "helper": "resolveFixtureRoutingSequence",
+      "args": {
+        "recognizedFixtures": [
+          {
+            "fixtureId": "espn:uefa.champions_qual:5001",
+            "primarySource": "espn",
+            "primarySourceFixtureId": "5001",
+            "homeTeam": {
+              "id": "alpha",
+              "name": "Alpha"
+            },
+            "awayTeam": {
+              "id": "beta",
+              "name": "Beta"
+            },
+            "kickoff": "2026-08-18T19:00:00Z",
+            "venue": "Stadium",
+            "neutralVenue": false,
+            "competition": {
+              "id": "uefa.champions_qual",
+              "name": "UEFA Champions League Qualifiers",
+              "category": "club-continental"
+            },
+            "status": "scheduled",
+            "recognition": "authoritative",
+            "observedSources": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "5001",
+                "authority": "authoritative",
+                "observedAt": "2026-08-13T10:00:00Z"
+              }
+            ],
+            "observationHistory": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "5001",
+                "observedAt": "2026-08-13T10:00:00Z",
+                "kickoff": "2026-08-18T19:00:00Z",
+                "venue": "Stadium",
+                "neutralVenue": false,
+                "status": "scheduled"
+              }
+            ]
+          },
+          {
+            "fixtureId": "espn:uefa.champions_qual:5002",
+            "primarySource": "espn",
+            "primarySourceFixtureId": "5002",
+            "homeTeam": {
+              "id": "beta",
+              "name": "Beta"
+            },
+            "awayTeam": {
+              "id": "alpha",
+              "name": "Alpha"
+            },
+            "kickoff": "2026-08-26T19:00:00Z",
+            "venue": "Stadium",
+            "neutralVenue": false,
+            "competition": {
+              "id": "uefa.champions_qual",
+              "name": "UEFA Champions League Qualifiers",
+              "category": "club-continental"
+            },
+            "status": "scheduled",
+            "recognition": "authoritative",
+            "observedSources": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "5002",
+                "authority": "authoritative",
+                "observedAt": "2026-08-13T10:00:00Z"
+              }
+            ],
+            "observationHistory": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "5002",
+                "observedAt": "2026-08-13T10:00:00Z",
+                "kickoff": "2026-08-26T19:00:00Z",
+                "venue": "Stadium",
+                "neutralVenue": false,
+                "status": "scheduled"
+              }
+            ]
+          }
+        ],
+        "modelFixtures": [
+          {
+            "competitionId": "uefa.champions_qual",
+            "competition": "UEFA Champions League Qualifiers",
+            "fixtureId": 5001,
+            "utcDate": "2026-08-18T19:00:00Z",
+            "date": "2026-08-18",
+            "group": null,
+            "stage": "qualifying",
+            "home": "Alpha",
+            "away": "Beta",
+            "homeElo": 1660,
+            "awayElo": 1520,
+            "pHome": 0.56,
+            "pDraw": 0.24,
+            "pAway": 0.2,
+            "pOver2_5": 0.51,
+            "pUnder2_5": 0.49,
+            "pBttsYes": 0.5,
+            "pBttsNo": 0.5,
+            "topScores": [
+              {
+                "score": "2-1",
+                "probability": 0.1
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "2-1",
+                "probability": 0.1
+              },
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "stakePHome": null,
+            "stakePDraw": null,
+            "stakePAway": null,
+            "result": null
+          },
+          {
+            "competitionId": "uefa.champions_qual",
+            "competition": "UEFA Champions League Qualifiers",
+            "fixtureId": 5002,
+            "utcDate": "2026-08-26T19:00:00Z",
+            "date": "2026-08-26",
+            "group": null,
+            "stage": "qualifying",
+            "home": "Beta",
+            "away": "Alpha",
+            "homeElo": 1660,
+            "awayElo": 1520,
+            "pHome": 0.56,
+            "pDraw": 0.24,
+            "pAway": 0.2,
+            "pOver2_5": 0.51,
+            "pUnder2_5": 0.49,
+            "pBttsYes": 0.5,
+            "pBttsNo": 0.5,
+            "topScores": [
+              {
+                "score": "2-1",
+                "probability": 0.1
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "2-1",
+                "probability": 0.1
+              },
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "stakePHome": null,
+            "stakePDraw": null,
+            "stakePAway": null,
+            "result": null
+          }
+        ],
+        "routingState": {
+          "modelInitialized": true,
+          "ratingsAvailable": true
+        },
+        "steps": [
+          {
+            "question": "Alpha vs Beta"
+          },
+          {
+            "question": "Alpha vs Beta second leg"
+          },
+          {
+            "question": "Alpha vs Beta on the 26th"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tier": "match",
+          "fixtureId": "uefa.champions_qual:5001",
+          "capability": null
+        },
+        {
+          "tier": "match",
+          "fixtureId": "uefa.champions_qual:5002",
+          "capability": null
+        },
+        {
+          "tier": "match",
+          "fixtureId": "uefa.champions_qual:5002",
+          "capability": null
+        }
+      ],
+      "forbidText": [
+        "candidate"
+      ]
+    },
+    {
+      "id": "temporary-fixture-unavailability",
+      "description": "The built routing path reports a recognized eligible fixture as temporarily unpriced while the model initializes.",
+      "kind": "runtime-helper",
+      "helper": "resolveFixtureRoutingSequence",
+      "args": {
+        "recognizedFixtures": [
+          {
+            "fixtureId": "espn:eng.1:2",
+            "primarySource": "espn",
+            "primarySourceFixtureId": "2",
+            "homeTeam": {
+              "id": "alpha",
+              "name": "Alpha"
+            },
+            "awayTeam": {
+              "id": "beta",
+              "name": "Beta"
+            },
+            "kickoff": "2026-08-14T10:00:00Z",
+            "venue": "Stadium",
+            "neutralVenue": false,
+            "competition": {
+              "id": "eng.1",
+              "name": "Premier League",
+              "category": "domestic-league"
+            },
+            "status": "scheduled",
+            "recognition": "authoritative",
+            "observedSources": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "2",
+                "authority": "authoritative",
+                "observedAt": "2026-08-13T10:00:00Z"
+              }
+            ],
+            "observationHistory": [
+              {
+                "source": "espn",
+                "sourceFixtureId": "2",
+                "observedAt": "2026-08-13T10:00:00Z",
+                "kickoff": "2026-08-14T10:00:00Z",
+                "venue": "Stadium",
+                "neutralVenue": false,
+                "status": "scheduled"
+              }
+            ]
+          }
+        ],
+        "routingState": {
+          "modelInitialized": false,
+          "ratingsAvailable": true
+        },
+        "steps": [
+          {
+            "question": "Analyse Alpha vs Beta.",
+            "fixtureContext": {
+              "fixtureId": "espn:eng.1:2"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tier": "fixture",
+          "fixtureId": "espn:eng.1:2",
+          "capability": {
+            "status": "temporarily-unpriced",
+            "reason": "model-initializing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "complete-market-arithmetic",
+      "description": "A complete same-source/time decimal 1X2 market uses 1/odds and normalizes to 100 percent.",
+      "kind": "runtime-helper",
+      "helper": "validateCompleteOneXTwoMarket",
+      "args": [
+        [
+          {
+            "outcome": "home",
+            "decimalOdds": 2,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          },
+          {
+            "outcome": "draw",
+            "decimalOdds": 4,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          },
+          {
+            "outcome": "away",
+            "decimalOdds": 4,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          }
+        ]
+      ],
+      "expect": {
+        "valid": true
+      },
+      "expectText": [
+        "noVigProbabilities",
+        "overround"
+      ]
+    },
+    {
+      "id": "incomplete-market-fails-closed",
+      "description": "A missing 1X2 leg is never guessed or normalized.",
+      "kind": "runtime-helper",
+      "helper": "validateCompleteOneXTwoMarket",
+      "args": [
+        [
+          {
+            "outcome": "home",
+            "decimalOdds": 2,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          },
+          {
+            "outcome": "away",
+            "decimalOdds": 4,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          }
+        ]
+      ],
+      "expect": {
+        "valid": false,
+        "reason": "missing-leg"
+      }
+    },
+    {
+      "id": "uncited-injury-claim-is-still-removed",
+      "description": "Survival must not become permissiveness: an availability claim with no source or date is replaced by the explicit abstention, while the model's own headline numbers are left standing.",
+      "kind": "runtime-helper",
+      "helper": "sanitizeFinalMatchAnswer",
+      "args": [
+        "**Verdict**\nI make Arsenal **56.3%**, the draw **23.4%** and Chelsea **20.3%**.\n\n**Team news**\nNo injury concerns were reported for either side."
+      ],
+      "expect": {},
+      "expectText": [
+        "**Verdict**",
+        "56.3%",
+        "23.4%",
+        "20.3%",
+        "**Team news**",
+        "No additional verified, dated injury or lineup update was established"
+      ],
+      "forbidText": [
+        "No injury concerns were reported",
+        "I could not establish a supported"
+      ]
+    },
+    {
+      "id": "team-news-abstains-without-wiping-verdict",
+      "description": "When search establishes nothing, the abstention replaces the team-news sentence only. Replacing the whole answer with it is the exact regression that reduced three of five live match answers to a single boilerplate line. That property is enforced by the required model text above, not by forbidding the abstention wording: the same sentence is correct inside the team-news section and only wrong when it stands as the answer, so a plain substring ban would now fail the target shape.",
+      "kind": "runtime-helper",
+      "helper": "deliverMatchAnswerOffline",
+      "args": [
+        "**Verdict**\nI make Arsenal **56.3%**, the draw **23.4%** and Chelsea **20.3%**.\n\n**Goals**\nOver 2.5 lands at **54.0%**, BTTS yes at **52.1%**.\n\n**Team news**\nNo verified team-news update was established.",
+        null,
+        {
+          "queries": [
+            "arsenal team news"
+          ],
+          "results": [],
+          "providerCalls": 1
+        },
+        true
+      ],
+      "expect": {},
+      "expectText": [
+        "**Verdict**",
+        "56.3%",
+        "23.4%",
+        "20.3%",
+        "**Goals**",
+        "54.0%",
+        "52.1%",
+        "No verified team-news update was established"
+      ],
+      "forbidText": [
+        "I could not establish a supported",
+        "The structured probabilities are available"
+      ]
+    },
+    {
+      "id": "malformed-history",
+      "description": "A dangling conversation-history turn is rejected without model traffic.",
+      "kind": "invalid",
+      "body": {
+        "question": "And what about them?",
+        "history": [
+          {
+            "role": "user",
+            "content": "Compare the two teams."
+          }
+        ]
+      },
+      "expectStatus": 400
+    },
+    {
+      "id": "featured-fixture-opens-pricing-desk",
+      "description": "Naming a featured match without asking for a preview settles on the pricing desk: 1X2, fair odds, and no four-section preview essay.",
+      "kind": "featured-question",
+      "questionTemplate": "What about {home} vs {away}?",
+      "expectHeadlineOneXTwo": true,
+      "expectAnalystVoice": true,
+      "expectDirectAnswer": true,
+      "expectNarrowFollowup": true,
+      "expectPricingDesk": true
+    }
+  ]
+}
