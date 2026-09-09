@@ -2,7 +2,7 @@ import { TEAM_LIST, type TeamId } from "./teams";
 
 export type ResultMark = "W" | "D" | "L";
 
-/** Last-N league form from ESPN `/api/matches/recent` `clubForm`. Empty before hydrate. */
+/** Last-N league form from ESPN `/api/matches/recent` `clubForm`, including the previous season when needed. Empty before hydrate. */
 export const FORM: Record<TeamId, ResultMark[]> = Object.fromEntries(
   TEAM_LIST.map((team) => [team.id, [] as ResultMark[]]),
 ) as Record<TeamId, ResultMark[]>;

@@ -76,7 +76,7 @@ packages/api/src/
     dixon-coles.ts                 — Elo-to-goal and analytical score model (+ HFA)
     model-data.ts                  — active-club fixture model cache
     football-data.ts               — ESPN fixtures/results/standings cache
-    club-form.ts                   — last-N league form and scorers from that cache
+    club-form.ts                   — last-5 league form, table row, and scorers from that cache
     fixture-registry.ts            — recognized identities, capabilities, atomic persistence
     active-fixtures.ts             — 14-day active fixture index
     featured-fixtures.ts           — cross-comp featured selector
