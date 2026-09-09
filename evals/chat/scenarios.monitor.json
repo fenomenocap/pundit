@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 17,
+  "fixed": [
+    {
+      "id": "active-match-grounding",
+      "description": "A model-backed active club fixture receives match grounding and delivers a complete headline win/draw/win line under a section label that is not left empty. A provider-labelled normal end_turn still fails if the answer ends in a numeric or Markdown fragment.",
+      "kind": "featured",
+      "expectHeadlineOneXTwo": true
+    },
+    {
+      "id": "priced-fixture-retains-1x2-context",
+      "description": "An explicit 1X2 follow-up cannot lose or replace the exact priced fixture.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "What will the 1X2 be?",
+          "expectGrounding": "match"
+        }
+      ]
+    },
+    {
+      "id": "complete-market-arithmetic",
+      "description": "A complete same-source/time decimal 1X2 market uses 1/odds and normalizes to 100 percent.",
+      "kind": "runtime-helper",
+      "helper": "validateCompleteOneXTwoMarket",
+      "args": [[
+        { "outcome": "home", "decimalOdds": 2, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
+        { "outcome": "draw", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
+        { "outcome": "away", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" }
+      ]],
+      "expect": { "valid": true },
+      "expectText": ["noVigProbabilities", "overround"]
+    },
+    {
+      "id": "combined-scoreline-arithmetic",
+      "description": "The built settled match sanitizer corrects an explicit aggregate of two grounded scorelines to their summed probability at the precision stated.",
+      "kind": "runtime-helper",
+      "helper": "sanitizeFinalMatchAnswer",
+      "args": [
+        "The 2-1 and 2-0 outcomes combine to 21%.",
+        {
+          "fixtureId": "espn:eng.1:1",
+          "competitionId": "eng.1",
+          "competition": "Premier League",
+          "home": "Arsenal",
+          "away": "Chelsea",
+          "scorelines": [
+            { "score": "2-1", "probability": 0.0795 },
+            { "score": "2-0", "probability": 0.0568 }
+          ],
+          "oddsSources": []
+        }
+      ],
+      "expect": {},
+      "expectText": ["13.6%"],
+      "forbidText": ["21%"]
+    },
+    {
+      "id": "incomplete-market-fails-closed",
+      "description": "A missing 1X2 leg is never guessed or normalized.",
+      "kind": "runtime-helper",
+      "helper": "validateCompleteOneXTwoMarket",
+      "args": [[
+        { "outcome": "home", "decimalOdds": 2, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
+        { "outcome": "away", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" }
+      ]],
+      "expect": { "valid": false, "reason": "missing-leg" }
+    },
+    {
+      "id": "model-probabilities-survive-market-guard",
+      "description": "The settled match guard chain keeps Pundit's own headline 1X2, totals and BTTS numbers when the answer also states plainly that no market line is available, which the match prompt requires it to say.",
+      "kind": "runtime-helper",
+      "helper": "sanitizeFinalMatchAnswer",
+      "args": ["**Verdict**\nNo Kalshi market is available.\nMan United win **77.6%**, draw **14.2%**, Hull **8.2%**.\nOver 2.5 sits at **77.6%**.\nBTTS No at **61.0%**."],
+      "expect": {},
+      "expectText": ["**Verdict**", "No Kalshi market is available.", "77.6%", "14.2%", "8.2%", "61.0%"],
+      "forbidText": ["omitted those numbers"]
+    },
+    {
+      "id": "external-market-price-still-fails-closed",
+      "description": "A price positively attributed to a named external source is still removed for the fail-closed notice, and the section label it emptied does not survive as a heading over blank space.",
+      "kind": "runtime-helper",
+      "helper": "sanitizeFinalMatchAnswer",
+      "args": ["**Verdict**\nKalshi has Arsenal at 62% and the bookmakers price the draw at 3.40.\n\n**Read on the underdog**\nChelsea need an early goal."],
+      "expect": {},
+      "expectText": ["omitted those numbers", "**Read on the underdog**"],
+      "forbidText": ["62%", "3.40", "**Verdict**"]
+    },
+    {
+      "id": "featured-fixture-opens-pricing-desk",
+      "description": "Naming a featured match without asking for a preview settles on the pricing desk: 1X2, fair odds, and no four-section preview essay.",
+      "kind": "featured-question",
+      "questionTemplate": "What about {home} vs {away}?",
+      "expectHeadlineOneXTwo": true,
+      "expectAnalystVoice": true,
+      "expectDirectAnswer": true,
+      "expectNarrowFollowup": true,
+      "expectPricingDesk": true
+    },
+    {
+      "id": "featured-totals-honesty",
+      "description": "An over/under 2.5 question settles from pOver2_5/pUnder2_5 and states the shared 2.70 expected-goals constant instead of selling 50.6% as a match insight.",
+      "kind": "featured-question",
+      "questionTemplate": "Is {home} vs {away} over or under 2.5?",
+      "expectAnalystVoice": true,
+      "expectDirectAnswer": true,
+      "expectNarrowFollowup": true,
+      "expectTotalsHonesty": true
+    },
+    {
+      "id": "featured-o25-scoreline-follow-up",
+      "description": "After a match is in view, possible scorelines plus o2.5 shorthand settles totals and a scoreline board instead of repeating the 1X2 favourite.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "What about {home} vs {away}?",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "what are the possible scorelines and odds for o2.5",
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectTotalsHonesty": true
+        }
+      ]
+    },
+    {
+      "id": "user-line-pass-play",
+      "description": "A structured away line at 7.00 is adjudicated from modelP × decimal − 1 with pass/play/risk and no stake.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "I found the away side at 7 — pass or play?",
+          "userLine": { "outcome": "away", "decimalOdds": 7 },
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectUserLinePassPlay": true
+        }
+      ]
+    },
+    {
+      "id": "stake-refusal-without-bankroll",
+      "description": "A stake-size question on a priced fixture returns the exact refusal sentence and does not size Kelly.",
+      "kind": "featured-turns",
+      "turns": [
+        {
+          "questionTemplate": "Analyse {home} vs {away}.",
+          "expectGrounding": "match"
+        },
+        {
+          "question": "How much should I stake?",
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectNarrowFollowup": true,
+          "expectStakeRefusal": true
+        }
+      ]
+    }
+  ]
+}
