@@ -15,6 +15,7 @@ export type Player = {
 
 export const HEAT_LABELS = ["G", "A", "xG", "Min", "CS", "Bon"] as const;
 
+// Draft board only. Match intel reads ESPN scorers from `/api/matches/recent`.
 export const PLAYERS: Player[] = [
   { id: "haaland", name: "Haaland", team: "MCI", pos: "FWD", adp: 1.2, heat: [99, 42, 98, 88, 12, 94], form: 8.4 },
   { id: "isak", name: "Isak", team: "LIV", pos: "FWD", adp: 2.1, heat: [96, 55, 94, 86, 18, 91], form: 9.1 },
