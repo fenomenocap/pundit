@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sampleAgentFreshness } from "../config/freshness-policy";
 import { deliverAnswer, deterministicSearchQuery, planEvidenceQueries, type Grounding } from "./ask";
 import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
@@ -77,6 +78,7 @@ const grounding = (): Grounding => {
       })),
       consensus: pricingConsensusFromBlock(consensus),
     }),
+    freshness: sampleAgentFreshness(),
   };
 };
 

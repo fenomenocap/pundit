@@ -162,12 +162,17 @@ export function card(g: Grounding) {
     { label: "the draw", p: g.pDraw },
     { label: g.away, p: g.pAway },
   ].sort((a, b) => b.p - a.p)[0];
+  const fr = g.freshness;
+  const freshnessLine = fr
+    ? `Refresh tier ${fr.tier} — ESPN ${fr.espnLastUpdated?.slice(0, 16) ?? "—"}, model ${fr.modelLastUpdated?.slice(0, 16) ?? "—"}, markets ${fr.marketOddsLastUpdated?.slice(0, 16) ?? "—"}.`
+    : "";
   return [
-    `HOME: ${g.home}. AWAY: ${g.away}. ${g.competition}. ${g.date}.`,
+    `HOME: ${g.home}. AWAY: ${g.away}. ${g.competition}. ${g.date}. HFA ${g.homeFieldAdvantage ? "on" : "off"}.`,
     `${g.home} are at home. Do not name a stadium or ground.`,
+    freshnessLine,
     "CURRENT-WORLD FACTS: only from SEARCH EVIDENCE this turn. Never from memory.",
     `The model leans ${favourite.label}. A server board already shows 1X2, totals, BTTS and scorelines — do not recite them.`,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function clubNeedles(club: string): string[] {
