@@ -4,6 +4,10 @@
 // and the retry classification below working unchanged. Do not "correct" this
 // to an Anthropic model or key -- see MINIMAX_BASE_URL.
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  buildAgentFreshnessMetadata,
+  type AgentFreshnessMetadata,
+} from "../config/freshness-policy";
 import { getCompetitionById } from "../config/competitions";
 import { AppError } from "../middleware";
 import {
@@ -17,13 +21,17 @@ import {
   ModelFixture,
 } from "./model-data";
 import {
+  footballMatchesForFreshness,
   getCachedMatches,
   getCachedSeasonSchedule,
   seasonScheduleStatus,
   FootballStanding,
 } from "./football-data";
 import { getActiveFixtures } from "./active-fixtures";
-import { getCachedFixtureMarketOdds } from "./model-market-odds";
+import {
+  getCachedFixtureMarketOdds,
+  getModelMarketOddsStatus,
+} from "./model-market-odds";
 import { clubRatingsAreCurrent, getCachedClubRatings } from "./club-ratings";
 import {
   searchWeb,
@@ -183,6 +191,8 @@ export interface Grounding {
    * server-owned figure to guarantee it with when the model still omits it.
    */
   marketDivergence: MarketDivergence[];
+  /** When each upstream cache was last refreshed — agent must not imply realtime beyond this. */
+  freshness: AgentFreshnessMetadata;
 }
 
 export interface FixtureGrounding {
@@ -2989,6 +2999,14 @@ top-ranked scorelines), and scorelines (every scoreline at or above a 0.1%
 probability). Quote those supplied values exactly; a score missing from the
 scorelines list has a probability below 0.1% -- say that rather than refusing
 or inventing a number.
+The payload includes freshness: tier (live, matchday, or normal), reason, and
+asOf timestamps for the ESPN schedule (espnLastUpdated), model probabilities
+(modelLastUpdated), market odds (marketOddsLastUpdated), and club ratings
+(ratingsAsOf). Those timestamps are the ceiling on how current your numbers
+are. Do not claim live, real-time, or just-updated beyond what freshness.tier
+and those asOf fields support. If asked how fresh the data is, cite the relevant
+timestamp plainly. Team news and injuries still require web_search regardless
+of tier.
 Every score string is written home-away against this fixture's home and away
 fields, so "0-3" is the home side 0, the away side 3. When the user names a
 scoreline for a club by name, translate it into that orientation before you
@@ -3539,6 +3557,10 @@ export function computeMarketDivergence(
 }
 
 export function buildGrounding(fixture: ModelFixture): Grounding {
+  const football = getCachedMatches();
+  const model = getCachedModelData();
+  const marketStatus = getModelMarketOddsStatus();
+  const ratings = getCachedClubRatings();
   const oddsSources: OddsSource[] = [];
   const markets = getCachedFixtureMarketOdds(fixture);
   if (markets?.kalshi) oddsSources.push({
@@ -3618,6 +3640,13 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
           decimalOdds: null,
         })),
       ],
+    }),
+    freshness: buildAgentFreshnessMetadata({
+      matches: footballMatchesForFreshness(),
+      espnLastUpdated: football.lastUpdated,
+      modelLastUpdated: model.lastUpdated,
+      marketOddsLastUpdated: marketStatus.lastUpdated,
+      ratingsAsOf: ratings.fetchedAt,
     }),
   };
 }

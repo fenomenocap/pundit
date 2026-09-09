@@ -56,8 +56,13 @@ export function card(g: Grounding) {
   const poly = g.oddsSources?.find((s) => s.source === "polymarket");
   const top = g.topScores?.slice(0, 3).map((s) => `${s.score} ${(s.probability * 100).toFixed(0)}%`).join(", ");
   const div = g.marketDivergence?.[0];
+  const fr = g.freshness;
+  const freshnessLine = fr
+    ? `Refresh tier ${fr.tier} — ESPN ${fr.espnLastUpdated?.slice(0, 16) ?? "—"}, model ${fr.modelLastUpdated?.slice(0, 16) ?? "—"}, markets ${fr.marketOddsLastUpdated?.slice(0, 16) ?? "—"}.`
+    : "";
   return [
     `FOCUS: ${g.home} vs ${g.away}. ${g.competition}. ${g.date}. HFA ${g.homeFieldAdvantage ? "on" : "off"}.`,
+    freshnessLine,
     "CURRENT-WORLD FACTS: only from SEARCH EVIDENCE this turn. Never from memory.",
     `Model 1X2 ${pct(g.pHome)} / ${pct(g.pDraw)} / ${pct(g.pAway)}.`,
     `Engine O2.5 ${pct(g.pOver2_5)} · U2.5 ${pct(g.pUnder2_5)} · BTTS ${pct(g.pBttsYes)}.`,

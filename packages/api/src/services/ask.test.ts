@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
+import { sampleAgentFreshness } from "../config/freshness-policy";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
@@ -107,13 +108,15 @@ vi.mock("./web-search", () => ({
  * disagrees with its own `oddsSources`.
  */
 function withDivergence(
-  grounding: Omit<Grounding, "marketDivergence" | "pricing"> & {
+  grounding: Omit<Grounding, "marketDivergence" | "pricing" | "freshness"> & {
     marketDivergence?: MarketDivergence[];
     pricing?: Grounding["pricing"];
+    freshness?: Grounding["freshness"];
   }
 ): Grounding {
   const next = {
     ...grounding,
+    freshness: grounding.freshness ?? sampleAgentFreshness(),
     marketDivergence: grounding.marketDivergence
       ?? computeMarketDivergence(grounding, grounding.oddsSources),
   };
