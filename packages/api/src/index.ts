@@ -27,7 +27,9 @@ import {
   getModelMarketOddsStatus,
   startModelMarketOddsCron,
 } from "./services/model-market-odds";
+import { buildFreshnessSnapshot } from "./config/freshness-policy";
 import { evaluateReadiness } from "./services/readiness";
+import { footballMatchesForFreshness } from "./services/football-data";
 import { getWebSearchStatus } from "./services/web-search";
 import { getAnalystResponseStatus, getInferenceStatus } from "./services/ask";
 import { getRuntimeVersion } from "./services/runtime-version";
@@ -220,6 +222,20 @@ app.get("/ready", (_req, res) => {
       sourceWarnings: odds.sourceWarnings,
       coverage: odds.coverage,
     },
+    freshness: (() => {
+      const snapshot = buildFreshnessSnapshot(footballMatchesForFreshness());
+      return {
+        tier: snapshot.tier,
+        reason: snapshot.reason,
+        inPlayCount: snapshot.inPlayCount,
+        matchdayCount: snapshot.matchdayCount,
+        refreshIntervalsMs: {
+          football: snapshot.footballRefreshMs,
+          marketOdds: snapshot.marketOddsRefreshMs,
+          model: snapshot.modelRefreshMs,
+        },
+      };
+    })(),
     fixtureRegistry: getFixtureRegistryStatus(),
   });
 });

@@ -1,3 +1,5 @@
+import { buildFreshnessSnapshot } from "../config/freshness-policy";
+import { footballMatchesForFreshness } from "./football-data";
 import { getCachedModelData, getModelFixtureKey, ModelFixture } from "./model-data";
 import {
   disabledSourceReason,
@@ -12,8 +14,7 @@ import {
   updateClubSeasonSnapshots,
 } from "./club-season-snapshots";
 
-// Market prices move fastest on match day; 30 minutes keeps the comparison
-// honest while staying trivial for three public endpoints.
+// Default cadence; live/matchday tiers shorten this via freshness-policy.
 export const MARKET_ODDS_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 export const MARKET_ODDS_COLD_RETRY_MS = 2 * 60 * 1000;
 
@@ -256,9 +257,10 @@ export async function refreshModelMarketOdds(): Promise<void> {
 export function marketOddsRefreshDelay(
   status: Pick<MarketOddsCache, "lastUpdated" | "error">
 ): number {
-  return status.lastUpdated === null && status.error === "Active model is not ready."
-    ? MARKET_ODDS_COLD_RETRY_MS
-    : MARKET_ODDS_REFRESH_INTERVAL_MS;
+  if (status.lastUpdated === null && status.error === "Active model is not ready.") {
+    return MARKET_ODDS_COLD_RETRY_MS;
+  }
+  return buildFreshnessSnapshot(footballMatchesForFreshness()).marketOddsRefreshMs;
 }
 
 let cronTimer: ReturnType<typeof setTimeout> | null = null;

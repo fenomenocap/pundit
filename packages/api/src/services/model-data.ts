@@ -1,6 +1,7 @@
 // Active-club fixture model: Dixon-Coles probabilities for enabled competitions only.
 // WC live model/tournament sim is retired — see /api/evaluation/wc-2026 for backtest.
 
+import { buildFreshnessSnapshot } from "../config/freshness-policy";
 import { getCompetitionById, RatingProfile } from "../config/competitions";
 import { canonicalClubName, modelFixtureKey, normalizeTeamName } from "../lib/team-names";
 import { ActiveFixture, getActiveFixtures } from "./active-fixtures";
@@ -11,7 +12,7 @@ import {
   lookupClubRating,
 } from "./club-ratings";
 import { DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
-import { getCachedMatches } from "./football-data";
+import { footballMatchesForFreshness, getCachedMatches } from "./football-data";
 import { updateClubSeasonSnapshots } from "./club-season-snapshots";
 import {
   ELO_CHAMPION,
@@ -419,9 +420,10 @@ export function modelRefreshDelay(
   cacheState: Pick<ModelDataCache, "fixtures" | "lastUpdated">,
   activeFixtures: ActiveFixture[]
 ): number {
-  return modelDataCoversActiveFixtures(cacheState, activeFixtures)
-    ? MODEL_REFRESH_INTERVAL_MS
-    : MODEL_COLD_RETRY_MS;
+  if (!modelDataCoversActiveFixtures(cacheState, activeFixtures)) {
+    return MODEL_COLD_RETRY_MS;
+  }
+  return buildFreshnessSnapshot(footballMatchesForFreshness()).modelRefreshMs;
 }
 
 let cronTimer: ReturnType<typeof setTimeout> | null = null;

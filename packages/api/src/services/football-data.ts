@@ -9,6 +9,10 @@ import {
   getCompetitionById,
   getEnabledCompetitions,
 } from "../config/competitions";
+import {
+  buildFreshnessSnapshot,
+  FOOTBALL_REFRESH_NORMAL_MS,
+} from "../config/freshness-policy";
 import { readJsonFile, resolveDataPath, writeJsonFileAtomic } from "./persistent-store";
 
 const ESPN_SCOREBOARD_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
@@ -97,7 +101,8 @@ interface PersistedSeasonSchedule {
 
 const SEASON_SCHEDULE_FILE = "cache/eng-1-season-schedule.json";
 const SEASON_SCHEDULE_RECOVERY_FILE = "cache/eng-1-season-schedule.last-good.json";
-export const FOOTBALL_DATA_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+/** @deprecated Use FOOTBALL_REFRESH_NORMAL_MS from freshness-policy for new code. */
+export const FOOTBALL_DATA_REFRESH_INTERVAL_MS = FOOTBALL_REFRESH_NORMAL_MS;
 export const SEASON_SCHEDULE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 export const ESPN_FETCH_TIMEOUT_MS = 15_000;
 // The scheduler only wakes every 30 minutes and a bounded ESPN request can use
@@ -812,18 +817,44 @@ export async function refreshFootballData(dependencies: {
 
 // ─── Cron Scheduler ─────────────────────────────────────────────────────────
 
-let cronTimer: ReturnType<typeof setInterval> | null = null;
+let cronTimer: ReturnType<typeof setTimeout> | null = null;
+let cronEnabled = false;
+
+export function footballMatchesForFreshness(): FootballMatch[] {
+  return [...cache.upcoming, ...cache.recent.filter((match) => match.status === "IN_PLAY")];
+}
+
+export function footballRefreshDelay(): number {
+  return buildFreshnessSnapshot(footballMatchesForFreshness()).footballRefreshMs;
+}
+
+function scheduleFootballRefresh(): void {
+  if (!cronEnabled) return;
+  const delay = footballRefreshDelay();
+  cronTimer = setTimeout(() => {
+    cronTimer = null;
+    void refreshFootballData().finally(() => {
+      if (cronEnabled) scheduleFootballRefresh();
+    });
+  }, delay);
+}
 
 export async function startFootballCron(): Promise<void> {
+  cronEnabled = true;
+  if (cronTimer) clearTimeout(cronTimer);
   loadPersistedSeasonSchedule();
   await refreshFootballData();
-  cronTimer = setInterval(refreshFootballData, FOOTBALL_DATA_REFRESH_INTERVAL_MS);
-  console.log("[FootballData] Cron started — refreshing every 30 minutes");
+  scheduleFootballRefresh();
+  const snapshot = buildFreshnessSnapshot(footballMatchesForFreshness());
+  console.log(
+    `[FootballData] Cron started — tier ${snapshot.tier}, next refresh in ${snapshot.footballRefreshMs / 1000}s`
+  );
 }
 
 export function stopFootballCron(): void {
+  cronEnabled = false;
   if (cronTimer) {
-    clearInterval(cronTimer);
+    clearTimeout(cronTimer);
     cronTimer = null;
   }
 }
