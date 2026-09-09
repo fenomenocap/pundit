@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { COMPETITIONS, getEnabledCompetitions } from "../config/competitions";
 import { getActiveFixtures } from "../services/active-fixtures";
+import { getClubFormSnapshot } from "../services/club-form";
 import { getCachedMatches, getCachedMatchesForCompetition } from "../services/football-data";
 
 const router: Router = Router();
@@ -99,10 +100,14 @@ router.get("/upcoming", (req: Request, res: Response, next: NextFunction) => {
 router.get("/recent", (req: Request, res: Response, next: NextFunction) => {
   try {
     const payload = matchesForRequest(req);
+    const competitionId = resolveCompetitionId(req) ?? "eng.1";
     res.json({
       matches: payload.recent,
       lastUpdated: payload.lastUpdated,
       error: payload.error,
+      // ESPN-derived last-N form and league scorers from the same cached
+      // scoreboard / season schedule this route already serves.
+      clubForm: getClubFormSnapshot(competitionId),
     });
   } catch (err) {
     next(err);

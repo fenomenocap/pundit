@@ -18,7 +18,7 @@ const SLATE_CHIPS = [
   "Walk the slate",
   "Banker of the weekend",
   "The derby",
-  "Who's in form?",
+        "Who scored recently?",
 ];
 
 export function AgentPane() {

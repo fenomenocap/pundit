@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { getFixture, modelProbFor, selectionLabel } from "@/desk/lib/data/fixtures";
-import { playersForTeam } from "@/desk/lib/data/players";
 import { TEAMS } from "@/desk/lib/data/teams";
 import { fmtKickoff, fmtPct } from "@/desk/lib/format";
+import { scorersForTeam } from "@/desk/lib/live";
 import { useDesk } from "@/desk/lib/store";
 import { FormLetters } from "@/desk/components/form-dots";
 import { KitPip } from "@/desk/components/kit";
@@ -22,8 +22,8 @@ export function MatchIntel() {
 
   if (!f) return null;
   const score = scores[f.id] ?? f.score;
-  const homeMen = playersForTeam(f.home, 3);
-  const awayMen = playersForTeam(f.away, 3);
+  const homeMen = scorersForTeam(f.home, 3);
+  const awayMen = scorersForTeam(f.away, 3);
   const leanP = modelProbFor(f, f.modelPick);
 
   return (
@@ -84,15 +84,33 @@ export function MatchIntel() {
         </p>
 
         <div className="mt-5">
-          <div className="eyebrow mb-2">In form</div>
-          <ul className="space-y-1.5">
-            {homeMen.map((p) => (
-              <PlayerLine key={p.id} name={p.name} pos={p.pos} form={p.form} team={TEAMS[f.home].short} />
-            ))}
-            {awayMen.map((p) => (
-              <PlayerLine key={p.id} name={p.name} pos={p.pos} form={p.form} team={TEAMS[f.away].short} />
-            ))}
-          </ul>
+          <div className="eyebrow mb-2">Recent scorers</div>
+          {homeMen.length + awayMen.length === 0 ? (
+            <p className="text-sm text-quiet">
+              No league goals in the ESPN results for these sides yet.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {homeMen.map((p) => (
+                <PlayerLine
+                  key={p.id}
+                  name={p.name}
+                  pos={p.pos}
+                  goals={p.goals}
+                  team={TEAMS[f.home].short}
+                />
+              ))}
+              {awayMen.map((p) => (
+                <PlayerLine
+                  key={p.id}
+                  name={p.name}
+                  pos={p.pos}
+                  goals={p.goals}
+                  team={TEAMS[f.away].short}
+                />
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="mt-5 flex flex-col gap-2">
@@ -131,12 +149,12 @@ function Stat({ k, v }: { k: string; v: string }) {
 function PlayerLine({
   name,
   pos,
-  form,
+  goals,
   team,
 }: {
   name: string;
   pos: string;
-  form: number;
+  goals: number;
   team: string;
 }) {
   return (
@@ -144,7 +162,7 @@ function PlayerLine({
       <span className="text-2xs uppercase tracking-wide text-subtle w-8">{pos}</span>
       <span className="truncate">{name}</span>
       <span className="text-2xs text-quiet">{team}</span>
-      <span className="ml-auto font-display tabular-nums text-accent">{form.toFixed(1)}</span>
+      <span className="ml-auto font-display tabular-nums text-accent">{goals}</span>
     </li>
   );
 }

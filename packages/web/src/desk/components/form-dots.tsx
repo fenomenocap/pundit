@@ -9,7 +9,10 @@ const TONE: Record<ResultMark, string> = {
 };
 
 export function FormDots({ team, size = "md" }: { team: TeamId; size?: "sm" | "md" }) {
-  const marks = FORM[team];
+  const marks = FORM[team] ?? [];
+  if (marks.length === 0) {
+    return <span className="text-2xs text-subtle" aria-label="Form unavailable">—</span>;
+  }
   const dim = size === "sm" ? "size-1.5" : "size-2";
   return (
     <span className="inline-flex items-center gap-0.5" title={marks.join("")} aria-label={`Form ${marks.join(" ")}`}>
@@ -21,7 +24,10 @@ export function FormDots({ team, size = "md" }: { team: TeamId; size?: "sm" | "m
 }
 
 export function FormLetters({ team }: { team: TeamId }) {
-  const marks = FORM[team];
+  const marks = FORM[team] ?? [];
+  if (marks.length === 0) {
+    return <span className="text-2xs text-subtle">No league form yet</span>;
+  }
   return (
     <span className="inline-flex items-center gap-0.5 font-display text-xs tracking-wide">
       {marks.map((m, i) => (
