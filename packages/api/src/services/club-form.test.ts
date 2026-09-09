@@ -10,6 +10,7 @@ import {
 import {
   parseEvent,
   replaceFootballDataForTests,
+  replacePriorSeasonResultsForTests,
   replaceSeasonScheduleForTests,
   type FootballMatch,
 } from "./football-data";
@@ -45,6 +46,12 @@ afterEach(() => {
     lastUpdated: null,
     error: null,
     servingLastGood: false,
+  });
+  replacePriorSeasonResultsForTests({
+    seasonId: "unknown",
+    fixtures: [],
+    lastUpdated: null,
+    error: null,
   });
 });
 
@@ -292,6 +299,110 @@ describe("club form snapshot", () => {
     const united = snapshot.teams.find((row) => row.team === "Man United");
     expect(united?.form).toEqual(["L", "W", "D"]);
     expect(united?.scorers[0]).toMatchObject({ name: "Bruno Fernandes", goals: 1, position: "MID" });
+  });
+
+  it("fills last five from the previous Premier League season and attaches the table row", () => {
+    replaceFootballDataForTests({
+      byCompetition: {
+        "eng.1": {
+          upcoming: [],
+          recent: [],
+          standings: [
+            {
+              competitionId: "eng.1",
+              position: 18,
+              team: "Tottenham",
+              playedGames: 3,
+              won: 0,
+              draw: 1,
+              lost: 2,
+              points: 1,
+              goalsFor: 0,
+              goalsAgainst: 5,
+              goalDifference: -5,
+              group: null,
+              advanced: false,
+            },
+          ],
+          error: null,
+        },
+      },
+    });
+    replacePriorSeasonResultsForTests({
+      seasonId: "2025-26",
+      lastUpdated: new Date("2026-05-24T16:00:00Z"),
+      error: null,
+      fixtures: [
+        match({
+          id: 90,
+          homeTeam: "Chelsea",
+          awayTeam: "Tottenham",
+          utcDate: "2026-05-19T19:15:00Z",
+          status: "FINISHED",
+          score: { home: 2, away: 1 },
+          scorers: [
+            { playerId: "johnson", name: "Brennan Johnson", team: "Tottenham", position: "W" },
+          ],
+        }),
+        match({
+          id: 91,
+          homeTeam: "Tottenham",
+          awayTeam: "Everton",
+          utcDate: "2026-05-24T15:00:00Z",
+          status: "FINISHED",
+          score: { home: 1, away: 0 },
+          scorers: [
+            { playerId: "maddison", name: "James Maddison", team: "Tottenham", position: "AM" },
+          ],
+        }),
+      ],
+    });
+    replaceSeasonScheduleForTests({
+      competitionId: "eng.1",
+      seasonId: "2026-27",
+      lastUpdated: new Date("2026-09-09T12:00:00Z"),
+      error: null,
+      servingLastGood: false,
+      fixtures: [
+        match({
+          id: 101,
+          homeTeam: "Brentford",
+          awayTeam: "Tottenham",
+          utcDate: "2026-08-22T16:30:00Z",
+          status: "FINISHED",
+          score: { home: 3, away: 0 },
+        }),
+        match({
+          id: 102,
+          homeTeam: "Tottenham",
+          awayTeam: "Newcastle",
+          utcDate: "2026-08-29T16:30:00Z",
+          status: "FINISHED",
+          score: { home: 0, away: 2 },
+        }),
+        match({
+          id: 103,
+          homeTeam: "Nott'm Forest",
+          awayTeam: "Tottenham",
+          utcDate: "2026-09-05T14:00:00Z",
+          status: "FINISHED",
+          score: { home: 0, away: 0 },
+        }),
+      ],
+    });
+    const snapshot = getClubFormSnapshot("eng.1");
+    expect(snapshot.source).toBe("season-and-prior");
+    const spurs = snapshot.teams.find((row) => row.team === "Tottenham");
+    expect(spurs?.form).toEqual(["L", "W", "L", "L", "D"]);
+    expect(spurs?.played).toBe(5);
+    expect(spurs).toMatchObject({
+      position: 18,
+      playedGames: 3,
+      points: 1,
+      goalsFor: 0,
+      goalsAgainst: 5,
+    });
+    expect(spurs?.scorers.map((row) => row.name)).toEqual(["Brennan Johnson", "James Maddison"]);
   });
 
   it("does not invent a five-letter form when a side has played fewer games", () => {

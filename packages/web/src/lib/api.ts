@@ -22,12 +22,21 @@ export interface MatchResponse {
 export interface ClubFormResponse {
   competitionId: string;
   seasonId: string | null;
-  source: "season-schedule" | "rolling-window";
+  source: "season-schedule" | "rolling-window" | "season-and-prior";
   lastUpdated: string | null;
   teams: {
     team: string;
     form: Array<"W" | "D" | "L">;
     played: number;
+    position: number | null;
+    playedGames: number | null;
+    won: number | null;
+    draw: number | null;
+    lost: number | null;
+    points: number | null;
+    goalsFor: number | null;
+    goalsAgainst: number | null;
+    goalDifference: number | null;
     scorers: {
       id: string;
       name: string;

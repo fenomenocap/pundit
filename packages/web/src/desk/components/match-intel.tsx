@@ -4,7 +4,7 @@ import Link from "next/link";
 import { getFixture, modelProbFor, selectionLabel } from "@/desk/lib/data/fixtures";
 import { TEAMS } from "@/desk/lib/data/teams";
 import { fmtKickoff, fmtPct } from "@/desk/lib/format";
-import { scorersForTeam } from "@/desk/lib/live";
+import { scorersForTeam, statsForTeam } from "@/desk/lib/live";
 import { useDesk } from "@/desk/lib/store";
 import { FormLetters } from "@/desk/components/form-dots";
 import { KitPip } from "@/desk/components/kit";
@@ -21,10 +21,13 @@ export function MatchIntel() {
   useLiveSlate();
 
   if (!f) return null;
-  const score = scores[f.id] ?? f.score;
   const homeMen = scorersForTeam(f.home, 3);
   const awayMen = scorersForTeam(f.away, 3);
+  const homeStats = statsForTeam(f.home);
+  const awayStats = statsForTeam(f.away);
   const leanP = modelProbFor(f, f.modelPick);
+  const settledScore = f.status === "ft" ? (scores[f.id] ?? f.score) : undefined;
+  const projectedScore = f.status === "upcoming" ? scores[f.id] : undefined;
 
   return (
     <aside className="hidden lg:block border-l border-border bg-surface min-w-0 lg:h-[calc(100dvh-7.5rem)] lg:overflow-y-auto">
@@ -46,6 +49,7 @@ export function MatchIntel() {
             <div className="mt-1.5">
               <FormLetters team={f.home} />
             </div>
+            <LeagueLine stats={homeStats} />
             <div className="flex items-center gap-2 mt-3">
               <KitPip team={f.away} size="lg" />
               <h2 className="font-display text-4xl uppercase tracking-wide leading-none text-quiet">
@@ -55,10 +59,18 @@ export function MatchIntel() {
             <div className="mt-1.5">
               <FormLetters team={f.away} />
             </div>
+            <LeagueLine stats={awayStats} />
           </div>
-          {score ? (
+          {settledScore ? (
             <div className="font-display text-5xl tabular-nums leading-none">
-              {score[0]}–{score[1]}
+              {settledScore[0]}–{settledScore[1]}
+            </div>
+          ) : projectedScore ? (
+            <div className="text-right">
+              <div className="eyebrow">Proj</div>
+              <div className="font-display text-3xl tabular-nums leading-none text-quiet">
+                {projectedScore[0]}–{projectedScore[1]}
+              </div>
             </div>
           ) : (
             <Button size="sm" variant="subtle" onClick={() => simulate(f.id)}>
@@ -87,7 +99,7 @@ export function MatchIntel() {
           <div className="eyebrow mb-2">Recent scorers</div>
           {homeMen.length + awayMen.length === 0 ? (
             <p className="text-sm text-quiet">
-              No league goals in the ESPN results for these sides yet.
+              No goals in these sides' last five league matches.
             </p>
           ) : (
             <ul className="space-y-1.5">
@@ -135,6 +147,31 @@ export function MatchIntel() {
       </div>
     </aside>
   );
+}
+
+function LeagueLine({
+  stats,
+}: {
+  stats: { position: number | null; playedGames: number | null; points: number | null; goalsFor: number | null; goalsAgainst: number | null } | null;
+}) {
+  if (!stats || stats.position == null || stats.playedGames == null) return null;
+  const gf = stats.goalsFor ?? 0;
+  const ga = stats.goalsAgainst ?? 0;
+  const pts = stats.points ?? 0;
+  return (
+    <div className="mt-1 text-2xs tabular-nums text-quiet">
+      {ordinal(stats.position)} · {stats.playedGames} played · {pts} pts · {gf}–{ga}
+    </div>
+  );
+}
+
+function ordinal(n: number) {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  if (n % 10 === 1) return `${n}st`;
+  if (n % 10 === 2) return `${n}nd`;
+  if (n % 10 === 3) return `${n}rd`;
+  return `${n}th`;
 }
 
 function Stat({ k, v }: { k: string; v: string }) {

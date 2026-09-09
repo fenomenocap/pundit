@@ -42,7 +42,7 @@ Up to the next 50 scheduled/in-play matches, sorted earliest first. Optional fil
 
 The most recent 20 finished matches, sorted most recent first. Same shape as `/upcoming`, with `status: "FINISHED"` and `score` populated. Optional `?competition=`.
 
-Also returns `clubForm`: last-N league form and league scorers computed from the same ESPN season schedule / rolling scoreboard already cached for that competition. Unscoped requests default the form snapshot to `eng.1`. Form is not padded to five letters when a club has played fewer games.
+Also returns `clubForm`: last five Premier League results (carrying over the previous season when the current season is shorter than five), scorers from those same matches, and the current ESPN table row (position, played, points, GF/GA). Unscoped requests default the form snapshot to `eng.1`. Form is not padded with invented letters. This is desk context only; it does not enter the match model.
 
 ```json
 {
@@ -52,16 +52,23 @@ Also returns `clubForm`: last-N league form and league scorers computed from the
   "clubForm": {
     "competitionId": "eng.1",
     "seasonId": "2026-27",
-    "source": "season-schedule",
+    "source": "season-and-prior",
     "lastUpdated": "2026-09-09T10:00:00.000Z",
     "teams": [
       {
-        "team": "Man United",
-        "form": ["L", "W", "D"],
-        "played": 3,
-        "scorers": [
-          { "id": "bruno", "name": "Bruno Fernandes", "team": "Man United", "position": "MID", "goals": 3 }
-        ]
+        "team": "Tottenham",
+        "form": ["L", "W", "L", "L", "D"],
+        "played": 5,
+        "position": 18,
+        "playedGames": 3,
+        "won": 0,
+        "draw": 1,
+        "lost": 2,
+        "points": 1,
+        "goalsFor": 0,
+        "goalsAgainst": 5,
+        "goalDifference": -5,
+        "scorers": []
       }
     ]
   }
