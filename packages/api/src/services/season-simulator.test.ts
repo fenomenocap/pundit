@@ -300,7 +300,7 @@ describe("season simulator", () => {
     const outlook = simulateSeasonOutlook("eng.1", standings, scheduled, ratings, 20, injected);
 
     expect(outlook).not.toBeNull();
-    expect(calls).toBeGreaterThan(0);
+    expect(calls).toBe(20);
   });
 
   it("preserves seeded season output and RNG consumption through the contributor boundary", () => {

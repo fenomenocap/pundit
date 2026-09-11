@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  HISTORICAL_SEASON_SPECS,
   HistoricalFixture,
   HistoricalSeasonSpec,
   parseHistoricalScoreboard,
@@ -72,6 +73,29 @@ describe("club history corpus", () => {
     expect(validation.status).toBe("inconclusive");
     expect(validation.trainingEligibleCount).toBe(0);
     expect(validation.nonRegulationFinalCount).toBe(1);
+  });
+
+  it("pins full-season ESPN ranges rather than the live 7-day window", () => {
+    for (const spec of HISTORICAL_SEASON_SPECS) {
+      expect(spec.dateRange).toMatch(/^\d{8}-\d{8}$/);
+      const start = Date.UTC(
+        Number(spec.dateRange.slice(0, 4)),
+        Number(spec.dateRange.slice(4, 6)) - 1,
+        Number(spec.dateRange.slice(6, 8))
+      );
+      const end = Date.UTC(
+        Number(spec.dateRange.slice(9, 13)),
+        Number(spec.dateRange.slice(13, 15)) - 1,
+        Number(spec.dateRange.slice(15, 17))
+      );
+      expect(end - start).toBeGreaterThan(7 * 86_400_000);
+    }
+    const premierLeague = HISTORICAL_SEASON_SPECS.filter((spec) => spec.competitionId === "eng.1");
+    expect(premierLeague).toHaveLength(2);
+    expect(premierLeague.every((spec) => spec.expectedFixtureCount === 380)).toBe(true);
+    const ucl = HISTORICAL_SEASON_SPECS.filter((spec) => spec.competitionId === "uefa.champions_qual");
+    expect(ucl.every((spec) => spec.completenessMode === "structural-only")).toBe(true);
+    expect(ucl.every((spec) => spec.expectedFixtureCount === null)).toBe(true);
   });
 
   it("uses event-level season metadata and records a misleading top-level season", () => {

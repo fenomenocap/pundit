@@ -808,6 +808,13 @@ export async function refreshFootballData(dependencies: {
     `[FootballData] ${cache.upcoming.length} upcoming, ${cache.recent.length} recent total`
   );
   console.log("[FootballData] Data refresh complete.");
+  try {
+    const { runClubSeasonCheckpointTick } = await import("./club-season-snapshots");
+    await runClubSeasonCheckpointTick(cache.lastUpdated ?? new Date());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.warn(`[FootballData] Club-season checkpoint sync failed: ${message}`);
+  }
 }
 
 // ─── Cron Scheduler ─────────────────────────────────────────────────────────

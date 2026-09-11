@@ -24,6 +24,7 @@ function pricingFromGrounding(grounding: Grounding) {
 
 export type FactProvenance =
   | "server-model"
+  | "pundit-consensus"
   | "market-observation"
   | "verified-evidence"
   | "analyst-inference"
@@ -78,7 +79,30 @@ export function buildResponseFacts(grounding: Grounding): ResponseFacts {
     allowedClaims: ["quote", "rank", "convert-to-fair-decimal-odds"],
   }));
 
-  grounding.marketDivergence.forEach((market) => market.legs.forEach((leg) => facts.push({
+  if (grounding.consensus) {
+    const consensus = grounding.consensus;
+    ([
+      ["consensus.home", `${consensus.label} ${grounding.home}`, consensus.pHome],
+      ["consensus.draw", `${consensus.label} the draw`, consensus.pDraw],
+      ["consensus.away", `${consensus.label} ${grounding.away}`, consensus.pAway],
+      ["consensus.over-2.5", `${consensus.label} over 2.5 goals`, consensus.pOver2_5],
+      ["consensus.under-2.5", `${consensus.label} under 2.5 goals`, consensus.pUnder2_5],
+      ["consensus.btts-yes", `${consensus.label} both teams to score`, consensus.pBttsYes],
+      ["consensus.btts-no", `${consensus.label} both teams not to score`, consensus.pBttsNo],
+    ] as const).forEach(([id, subject, value]) => facts.push({
+      id,
+      kind: "probability",
+      provenance: "pundit-consensus",
+      subject,
+      numeric: { value, unit: "probability" },
+      observedAt: consensus.observedAt,
+      sourceIds: [consensus.marketSource],
+      allowedClaims: ["quote", "compare", "convert-to-fair-decimal-odds"],
+      prohibitedClaims: ["present-as-fundamental", "recommend-wager"],
+    }));
+  }
+
+  (grounding.marketDivergence ?? []).forEach((market) => market.legs.forEach((leg) => facts.push({
     id: `market.${market.source}.${leg.outcome}`,
     kind: "market-comparison",
     provenance: "market-observation",

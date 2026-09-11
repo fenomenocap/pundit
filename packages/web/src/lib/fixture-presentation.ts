@@ -7,6 +7,7 @@ import type {
   OneXTwoOutcome,
   PricingObject,
   RecognizedFixtureSnapshotRow,
+  UserLine,
 } from "./api";
 
 export interface MarketProbabilityRow {
@@ -16,7 +17,7 @@ export interface MarketProbabilityRow {
   pDraw: number | null;
   pAway: number;
   observedAt: string | null;
-  provenance: "forecast" | "market";
+  provenance: "forecast" | "market" | "consensus";
 }
 
 export function formatPercent(value: number | null): string {
@@ -31,6 +32,118 @@ export function formatSignedEvPct(evPct: number): string {
 
 export function formatEdgeBand(band: EdgeBand | null | undefined): string | null {
   return band ?? null;
+}
+
+/** Server fair `1/p`. Display only — never invert a probability in the client. */
+export function formatFairOdds(value: number): string {
+  return value.toFixed(2);
+}
+
+/** Copy when Stake / Kalshi / Polymarket 1X2 is missing from match grounding. */
+export const NO_COMPARISON_MARKET = "No comparison market";
+
+/**
+ * Desk +EV / pass-or-play turns. Used only to decide whether to POST `userLine`;
+ * the decimal always comes from the structured field, never from chip copy.
+ */
+const DESK_USER_LINE_QUESTION =
+  /\+ev\b|\bexpected value\b|\bpass or play\b|\bedge vs(?:\s+the)?\s+book\b/i;
+
+export function parseDeskUserLine(
+  outcome: OneXTwoOutcome,
+  decimalText: string,
+): UserLine | undefined {
+  const decimalOdds = Number(decimalText.trim());
+  if (!Number.isFinite(decimalOdds) || decimalOdds <= 1) return undefined;
+  return { outcome, decimalOdds };
+}
+
+export function userLinePayloadForAsk(
+  question: string,
+  outcome: OneXTwoOutcome,
+  decimalText: string,
+): UserLine | undefined {
+  if (!DESK_USER_LINE_QUESTION.test(question)) return undefined;
+  return parseDeskUserLine(outcome, decimalText);
+}
+
+export interface DeskBoardOneXTwo {
+  home: string;
+  away: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  fairHome: number;
+  fairDraw: number;
+  fairAway: number;
+}
+
+export interface DeskBoardUserLine {
+  outcome: OneXTwoOutcome;
+  outcomeLabel: string;
+  decimalOdds: number;
+  evPct: number;
+  edgeBand: EdgeBand;
+}
+
+export interface DeskBoardView {
+  oneXTwo: DeskBoardOneXTwo;
+  bttsYes: number;
+  bttsNo: number;
+  over25: number;
+  under25: number;
+  totalsHonesty: string;
+  topScores: Array<{ score: string; probability: number }>;
+  markets: MarketProbabilityRow[];
+  consensus: MarketProbabilityRow | null;
+  userLine: DeskBoardUserLine | null;
+  capturedEv: MarketEvRowDisplay[];
+}
+
+function outcomeLabel(grounding: MatchGrounding, outcome: OneXTwoOutcome): string {
+  if (outcome === "home") return grounding.home;
+  if (outcome === "away") return grounding.away;
+  return "Draw";
+}
+
+/**
+ * Flatten match grounding for the desk board. Fair odds and EV% are copied
+ * from the server object — never recomputed from p or decimal.
+ */
+export function deskBoardFromGrounding(grounding: MatchGrounding): DeskBoardView {
+  const model = grounding.pricing.model;
+  const line = grounding.pricing.userLine;
+  const rows = marketRowsFromGrounding(grounding);
+  return {
+    oneXTwo: {
+      home: grounding.home,
+      away: grounding.away,
+      pHome: grounding.pHome,
+      pDraw: grounding.pDraw,
+      pAway: grounding.pAway,
+      fairHome: model.home.fairOdds,
+      fairDraw: model.draw.fairOdds,
+      fairAway: model.away.fairOdds,
+    },
+    bttsYes: grounding.pBttsYes,
+    bttsNo: grounding.pBttsNo,
+    over25: grounding.pOver2_5,
+    under25: grounding.pUnder2_5,
+    totalsHonesty: SHARED_TOTAL_XG_SENTENCE,
+    topScores: grounding.topScores.slice(0, 3),
+    markets: rows.filter((row) => row.provenance === "market"),
+    consensus: rows.find((row) => row.provenance === "consensus") ?? null,
+    userLine: line
+      ? {
+          outcome: line.outcome,
+          outcomeLabel: outcomeLabel(grounding, line.outcome),
+          decimalOdds: line.decimalOdds,
+          evPct: line.evPct,
+          edgeBand: line.edgeBand,
+        }
+      : null,
+    capturedEv: [...marketEvFromPricing(grounding.pricing).values()],
+  };
 }
 
 export interface MarketEvLegDisplay {
@@ -73,7 +186,7 @@ export function marketEvFromPricing(
 }
 
 export function marketRowSource(row: Pick<MarketProbabilityRow, "id">): string | null {
-  if (row.id === "forecast") return null;
+  if (row.id === "forecast" || row.id === "consensus") return null;
   if (row.id.startsWith("market-")) return row.id.slice("market-".length);
   return null;
 }
@@ -81,6 +194,9 @@ export function marketRowSource(row: Pick<MarketProbabilityRow, "id">): string |
 /** Same honesty line the API prints for totals. Do not sell Over 2.5 as match-specific. */
 export const SHARED_TOTAL_XG_SENTENCE =
   "Totals sit near 50% because every match uses the same 2.70 expected goals.";
+
+export const PUNDIT_FUNDAMENTAL_ROW_LABEL = "My forecast";
+export const PUNDIT_CONSENSUS_ROW_LABEL = "Pundit Consensus";
 
 /** Empty-state pull-mode chip. Structured `userLine` is away @ 7; do not parse the label. */
 export const PULL_CHIP_OUTCOME: OneXTwoOutcome = "away";
@@ -187,13 +303,25 @@ function sourceLabel(source: "kalshi" | "polymarket"): string {
 export function marketRowsFromGrounding(grounding: MatchGrounding): MarketProbabilityRow[] {
   const rows: MarketProbabilityRow[] = [{
     id: "forecast",
-    label: "My forecast",
+    label: PUNDIT_FUNDAMENTAL_ROW_LABEL,
     pHome: grounding.pHome,
     pDraw: grounding.pDraw,
     pAway: grounding.pAway,
     observedAt: null,
     provenance: "forecast",
   }];
+
+  if (grounding.consensus) {
+    rows.push({
+      id: "consensus",
+      label: grounding.consensus.label || PUNDIT_CONSENSUS_ROW_LABEL,
+      pHome: grounding.consensus.pHome,
+      pDraw: grounding.consensus.pDraw,
+      pAway: grounding.consensus.pAway,
+      observedAt: grounding.consensus.observedAt,
+      provenance: "consensus",
+    });
+  }
 
   if (
     grounding.stakePHome !== null

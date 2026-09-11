@@ -1,12 +1,67 @@
 # Prediction-model improvement brief
 
-**Status:** Working analysis, not current production behaviour.  
-**Dates:** Engine diagnosis 2026-08-21 · SIRE comparison 2026-08-22 · Next-action decision 2026-08-24  
+**Status:** Phase 0 shipped on `main` (2026-09). Leftovers, Phase 1a sealing, Phase 1b calibrator, PL ESPN corpus, MLE trainer, labelled Consensus, and a fail-closed rolling-origin eval gate are in tree. Production constants stay 1.35 / 42 / −0.1. Source `REGISTERED_CHALLENGERS` holds one offline `dixon-coles-mle` challenger at artifact `15e20da1…` (**590/760 partial** fit). Registration is not activation — `model-data.ts` still uses `ELO_CHAMPION` only; `activateProduction` stays false. Full PL corpus ClubElo (760/760) was **not** acquired. Do not remap Elo→goals.  
+**Dates:** Engine diagnosis 2026-08-21 · SIRE comparison 2026-08-22 · Next-action decision 2026-08-24 · Status review 2026-09-09  
 **Regression example:** Hull City vs Manchester United (golden fixture `401879322`)
 
-Any later plan or implementation must take this whole brief into account. Do not restart the diagnosis from a blank slate. Do not “improve the model” in a way that contradicts the constraints below.
+Any later plan or implementation must take this whole brief into account. Do not restart the diagnosis from a blank slate. Do not re-implement Phase 0.
 
-Related code: `packages/api/src/services/dixon-coles.ts`, `model-contributors.ts`, `model-data.ts`, `club-ratings.ts`, `club-strength-artifact.ts`, `club-strength-cutover.ts`, `season-simulator.ts`, `model-market-odds.ts`, `fixture-market-sources.ts`, `packages/api/data/model-artifacts/clubelo/`.
+### Current status (2026-09-09)
+
+Phase 0 is in production. `eloToLambdas` keeps total xG at 2.70 and splits by the Elo odds ratio. Golden Hull vs United is **3.26 / 14.23 / 82.52**, over 2.5 **50.64%**, BTTS **26.23%**, top scores **0–2 / 0–1 / 0–3**. Do **not** remake the mapping. The August 2.0 / 7.0 / 91.0 and 4.1 xG figures below are the **pre-fix** worked example.
+
+- **Leftovers (shipped).** Season simulation samples the Dixon–Coles score grid (`sampleScoreFromMatrix`). `PUNDIT_FUNDAMENTAL_MODEL_VERSION` is `"2"`. Desk slate Over 2.5 uses the server `pOver2_5`, not a second inflated grid.
+- **Ledger (Phase 1a).** Production Railway `/data/evaluation/club-season.json` has **44 official `scheduled_window` seals** (52 total rows, 8 legacy excluded, including the 4–6 Sep PL round). The in-repo `club-season.json` seed is not that ledger. Code now seals on the football 30-minute refresh, a 15-minute checkpoint tick, and market-odds failure when the model is ready. First pre-kickoff `forecastAt` is kept. Miss reasons are split (`fixture_unpriced` / `never_observed_scheduled` / `cached_ineligible`).
+- **Phase 1b.** Offline `calibrate:champion` exists. Production stays **1.35 / 42 / −0.1** because the fit did not beat shipped 1X2 Brier. Constants are not auto-loaded into `dixon-coles.ts`.
+- **Phase 2.** PL ESPN club-history corpus built (`00f7065a…`, 380/380 both seasons). Live ClubElo dated CSV and per-club CSV still **HTTP 502** — do not hammer. Wayback dated ranking CSVs remain five days; dated capture **0/253**. **0/23** PL clubs cover 2024-08-15 → 2026-05-23 via Wayback. [tonyelhabr/club-rankings](https://github.com/tonyelhabr/club-rankings) `clubelo-club-rankings.csv` is official ClubElo schema (**2023-03-27 → 2026-01-14**). Strict From/To join is **590/760** (170 fixtures excluded — Christmas 2025-01-03..05, post-scrape 2026-01-15..2026-02-08, remainder through 2026-05-23). **2026-09-09 archive sweep** (HuggingFace, Zenodo, OSF, Dataverse, soccerdata/worldfootballR/penaltyblog caches): no new official-schema dump closing the 170 holes. **Partial fit shipped:** `train:dixon-coles-mle --force` on the **590 joined rows only** (`fitScope: joined-pl-rows-with-pre-kickoff-elo`; artifact `15e20da1ed543d9a8e898524ec84ef904eeab2cba2b0a3a81d8bdef78bf17009`; 23 clubs; MLE converged). Rolling-origin eval on Elo-covered holdouts only: challenger beats champion on all three origins (Brier/log-loss **0.567/0.954 vs 0.604/1.009**, **0.576/0.966 vs 0.626/1.041**, **0.691/1.110 vs 0.802/1.247**); `recommendPromotion: true` but `activateProduction: false`. Source `REGISTERED_CHALLENGERS` holds `dixon-coles-mle` at that SHA (challenger, ClubElo prior). Do not claim full corpus acquisition. Do not wire `model-data.ts` / chat.
+- **Phase 3.** Labelled Pundit Consensus is optional on a complete no-vig 1X2 and does not overwrite Fundamental.
+- **Next.** The tonyelhabr dump is ClubElo’s own numbers but fails the full-window gate. Existing reviewed snapshots still cannot join the PL corpus without look-ahead. Do not hammer live ClubElo or Wayback. Do not invent Elo. Do not placeholder-register. MiniMax stays commentary-only.
+
+### Phase 2 data status (2026-09-09 inventory)
+
+**Resume check 2026-09-10T00:04+08:00:** single probe `http://api.clubelo.com/2026-02-01` (UA `pundit-release-capture/1.0`, 15s timeout) → **HTTP 502** (empty body; not official CSV). No further HTTP calls. Coverage unchanged **590/760**; partial-fit challenger unchanged.
+
+**Academic sweep 2026-09-10:** arXiv / figshare / Dryad / Dataverse / DataCite / ZBW / Mendeley — **no official-schema ClubElo dump** closing 2025-01-03..05 or 2026-01-15→2026-05-23. Papers cite live API only; JBNST replication has aggregated season Elo, not From/To chronology. No train.
+
+Reviewed in-repo ClubElo artifacts only (runtime never contacts ClubElo). Git history of `packages/api/data/model-artifacts/clubelo/` has **two** payload snapshots — no earlier dated corpus was ever committed.
+
+| Artifact | Full SHA-256 | Snapshot | Commit | Role |
+|---|---|---|---|---|
+| `2da1616b…` | `2da1616b28750ddbba93bb107ee4f1c5b450ef6fe1c92bda6914b6e3fb8ba6cf` | **2026-08-12** | `2d34d63` | Frozen cutover; golden-cutover Elo source |
+| `ba5d688a…` | `ba5d688af8ac4a2cbb48580703f245497d46725eed9e71a7c68590efd7103cfd` | **2026-09-07** (capture ranking date **2026-09-06**) | `343ad9f` | Current `production.json` |
+
+**Two distinct snapshot dates**, both **after** the ESPN PL corpus window (2024-08-15 → 2026-05-23). Lookup is `latest-ranking-strictly-before-kickoff-utc-date`; a later snapshot must not be used for an earlier match. Golden-cutover locks **18** contemporaneous fixtures from `2da1616b` (no kickoff timestamps; not a training join). `club-season.json` stores no Elo. Frozen WC-2026 Elo is national-team, not PL. `clubelo-history/index.json` has `rankings: []` and **253** missing dates. **Do not train on these snapshots.** Partial training uses tonyelhabr From/To join rows only (`research/dixon-coles-mle/latest.json`, SHA `15e20da1…`, **590/760**).
+
+**New mirror checked 2026-09-09 (not live API, not Wayback):** [tonyelhabr/club-rankings](https://github.com/tonyelhabr/club-rankings) release asset `clubelo-club-rankings.csv` is official ClubElo schema plus scrape `date`. 914 scrape days, **2023-03-27 → 2026-01-14**. 23/23 PL clubs present on 2024-08-15 / 2025-08-15 / 2026-01-14. PL UTC-day-before ranking dates: **150/223** exact hits; strict From/To join **590/760** (370/380 2024–25, 220/380 2025–26) with all-club policy dates **166/223**; 14-day stale join **600/760** (370/380, 230/380). Remaining holes: ~2024-12-20 → 2025-01-03 scrape gap; **2026-01-15 → 2026-05-23** after the dump ends. Rejected as incomplete: eddwebster `football_analytics` From/To CSVs (~2021), xgabora/Kaggle twice-monthly remapped Elo (through Dec 2024), ArturJFFreitas fork of the same release, clubelo.com/About (no bulk CSV besides the 502 API). Gitignored inventory: `packages/api/data/research/clubelo-history/raw/tonyelhabr/`. **Do not train or register on this partial dump.**
+
+**Re-verified 2026-09-09 (evening, gh/curl; no live API, no Wayback):** tonyelhabr release unchanged (**2026-01-14** max scrape). **Archive sweep 2026-09-09 (night):** HuggingFace (xgabora/Mehdi remapped twice-monthly Elo — no From/To), Zenodo, OSF, Dataverse, soccerdata/penaltyblog/worldfootballR package caches — all live-API wrappers or incomplete mirrors; **no new dump**. Partial train/eval/register on **590/760** only (170 excluded; no invented Elo). Source `REGISTERED_CHALLENGERS` holds the partial-fit challenger.
+
+Live / Wayback paths are exhausted — do not retry this session:
+
+- Live dated CSV and per-club CSV: **HTTP 502**
+- Wayback dated ranking CSVs: five days (`2008-02-02`, `2008-03-29`, `2017-01-01`, `2024-09-02`, `2025-01-23`); none of the 253 corpus ranking dates; capture **0/253**
+- Wayback club From/To: **0/23** PL clubs cover 2024-08-15 → 2026-05-23
+
+Do **not** invent Elo from results. Do **not** wire the partial challenger into production. Production champion stays `clubelo`. `activateProduction` stays false.
+
+Resume full-corpus retrain only after **new** reviewed chronological captures close the 170 holes (760/760), then re-run:
+
+```bash
+# Host inventory first. Stop if the body is HTML / Temporarily Offline. Do not hammer live ClubElo.
+curl -sS -A 'Mozilla/5.0 (compatible; pundit-release-capture/1.0)' --max-time 30 \
+  'https://web.archive.org/cdx/search/cdx?url=api.clubelo.com&matchType=host&output=json&fl=original,mimetype,statuscode&collapse=urlkey'
+
+pnpm --filter @sports-predict/api build:clubelo-pre-kickoff
+pnpm --filter @sports-predict/api train:dixon-coles-mle
+pnpm --filter @sports-predict/api eval:dixon-coles-mle
+pnpm --filter @sports-predict/api register:dixon-coles-mle
+```
+
+Registration is not activation. Do not wire `model-data.ts` / chat / readiness to the challenger.
+
+Ratings pin is `clubelo@1:ba5d688a…` (snapshot 2026-09-07): Hull 1633, United 1884.
+
+Related code: `packages/api/src/services/dixon-coles.ts`, `model-contributors.ts`, `challenger-registration.ts`, `challenger-eval.ts`, `model-data.ts`, `club-ratings.ts`, `club-strength-artifact.ts`, `club-strength-cutover.ts`, `season-simulator.ts`, `model-market-odds.ts`, `fixture-market-sources.ts`, `dixon-coles-mle.ts`, `pundit-consensus.ts`, `clubelo-club-history.ts`, `packages/api/data/model-artifacts/clubelo/`.
 
 Related product docs: `docs/how-it-works/the-model.md`, `docs/architecture/multi-source-model-foundation.md`.
 
@@ -23,7 +78,7 @@ Two independent systems, one score grid.
 
 The model is highest leverage because **every bet type is a sum over the same grid**. Fix the grid once; all markets move together.
 
-MiniMax synergises by talking about honest numbers. It is not SIRE’s “LLM is the engine.” Complete match grounding already bypasses MiniMax. Do not change MiniMax to improve the model. Change `eloToLambdas`.
+MiniMax synergises by talking about honest numbers. It is not SIRE’s “LLM is the engine.” Complete match grounding already bypasses MiniMax. Do not change MiniMax to improve the model. Phase 0 already changed `eloToLambdas`; do not change it again without a calibration result.
 
 Pundit “betting odds” are **fair prices** `decimal = 1 / p`. They are not a bookmaker card. Books add ~5–8% 1X2 overround. Stake / Kalshi / Polymarket are **comparison-only** no-vig 1X2. They do not enter the Fundamental forecast.
 
@@ -36,7 +91,7 @@ Pundit is **not** a fitted Dixon–Coles attack/defence model. It is:
 1. ESPN fixture → registry **gate** (identity, venue, policy; no numeric inputs).
 2. Pinned `clubelo@1` Elo lookup (`eng-clubs` / `uefa-clubs`). Runtime never contacts ClubElo.
 3. Home-field advantage: `DEFAULT_HOME_ADVANTAGE_ELO = 42` if the competition has `homeFieldAdvantage` **and** the venue is not neutral; else 0. Applied to **Premier League and UCL qualifiers** (docs that say PL-only are stale).
-4. Hand-tuned `eloToLambdas()` → expected goals.
+4. `eloToLambdas()` → expected goals. **Current (Phase 0):** fixed total 2.70 split by Elo odds ratio. **Pre-fix (August diagnosis):** geometric-mean mapping that inflated totals on mismatches.
 5. Independent Poisson 0–10 score grid, Dixon–Coles `tau` on `{0,1}×{0,1}`, then renormalise.
 6. 1X2 / O/U 2.5 / BTTS / top scores are **sums over that same grid**.
 7. Markets are comparison-only.
@@ -55,7 +110,7 @@ Frozen constants (not estimated at runtime):
 
 Production artifact at analysis time: `clubelo@1:2da1616b…`, snapshot **2026-08-12**. Golden cutover `golden-cutover-v1.json` **locks 18 fixtures**, including Hull vs Man United.
 
-Season outlook uses `simulateMatch()` = **plain independent Poisson**, not `rho`. Docs claim the same Dixon–Coles engine; that is a small inconsistency.
+Season outlook samples the same Dixon–Coles score grid via `ELO_CHAMPION.sampleScore` (`sampleScoreFromMatrix`). `PUNDIT_FUNDAMENTAL_MODEL_VERSION` is `"2"`.
 
 ### Layman version
 
@@ -214,9 +269,9 @@ Pundit already has the **responsible** version of their architecture. `docs/arch
 
 Keep: ClubElo pin, contributor boundary, deterministic match grounding, labelled market comparison, MiniMax as commentary-only.
 
-### Phase 0 — fix Elo→goals mapping (do this first)
+### Phase 0 — fix Elo→goals mapping (**done** on `main`, `b30a12b`)
 
-**Decision already recommended:** fixed total **2.70** xG + Elo odds ratio. Leave mild inflation for Phase 1, when ledger volume exists to fit it.
+Shipped: fixed total **2.70** xG + Elo odds ratio. Golden rebuilt. Leave mild inflation for Phase 1, when ledger volume exists to fit it. Do not re-run this phase.
 
 ```
 r = 10^(d / 400)
@@ -263,7 +318,7 @@ Never silently average Pundit and Stake into one probability called “the model
 
 ## 8. What not to start now
 
-Do not start fitted Dixon–Coles, Davidson, Sarmanov, Consensus blending, injury features, or MiniMax-authored 1X2 until Phase 0 is in production and the rolling ledger has something to score. Those need a chronological ClubElo corpus, a non-empty club-season ledger, or they violate the model / MiniMax split.
+Phase 0 is in production. Do not remake the Elo→goals mapping. Do not copy Phase 1b research constants into `dixon-coles.ts` without a human decision that beats Brier. Do not register a placeholder challenger or wire `dixon-coles-mle` into `model-data.ts` / chat / readiness. Phase 2 still needs chronological pre-match ClubElo (dated CSV and per-club history CSV were 502). MiniMax stays commentary-only.
 
 ---
 
@@ -271,8 +326,8 @@ Do not start fitted Dixon–Coles, Davidson, Sarmanov, Consensus blending, injur
 
 - Do **not** scrape live ClubElo at runtime. Refresh via reviewed release artifacts (consider 7-day cadence later if form lag hurts).
 - Do **not** put injuries/lineups into the numeric model without a dated sourced feature feed. Chat already handles that in prose.
-- Do **not** add Asian lines / player props on top of the current geometric mapping; they inherit blowout bias.
-- Do **not** sneak around the golden cutover; replace it when Phase 0 lands.
+- Do **not** add Asian lines / player props until attack/defence exist; totals and player markets are still slaved to a single Elo.
+- Golden cutover was rebuilt for Phase 0; do not restore the geometric-mean golden.
 - Preserve exact public capability reasons and deterministic grounded-response contracts.
 - Fair odds in user-facing copy are `1/p`, not a juiced book.
 - Do **not** import from SIRE: LLM-authored 1X2, PnL packet weighting, Kelly sizing, random slot dropout as a production estimator, VLA/PVF/Bittensor, aVault/aLink, on-chain, autonomous retrain/deploy, Sportsmonks-style paid feeds as a substitute for a fitted local model, or ROI headlines as a promotion metric.
@@ -284,4 +339,4 @@ Do not start fitted Dixon–Coles, Davidson, Sarmanov, Consensus blending, injur
 
 The product shell is ahead of the maths. Hull vs United shows why: a real 340-Elo gap is turned into **4.1 xG and a 1.10 favourite**. SIRE confirms the missing maths is fitted 1X2 (Davidson) and fitted goals (real DC, later Sarmanov), and that markets belong in a **labelled** ensemble, not the champion.
 
-**Next action:** implement Phase 0, fixed total 2.70. Then fit. Then estimate attack/defence with ClubElo as the prior. Keep MiniMax independent. Do not clone the betting stack.
+**Next action:** Chronological ClubElo is still the blocker. Existing reviewed snapshots (2026-08-12, 2026-09-07) cannot join the PL corpus without look-ahead — see Phase 2 data status. Do not invent Elo. Do not placeholder-register. Do not hammer live ClubElo or Wayback. Grow PL sealed volume for a later constants decision. Keep MiniMax independent. Do not clone the betting stack. Do not remake the Elo→goals mapping.

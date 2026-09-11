@@ -11,6 +11,11 @@ import { RatingProfile } from "../src/config/competitions";
  *
  * Prefers the documented CSV API. When that endpoint is unavailable, falls
  * back to ClubElo's published ranking page for the same dated snapshot.
+ *
+ * This script is one calendar snapshot for the production strength artifact.
+ * Chronological pre-kickoff ratings are a separate reviewed pipeline:
+ * capture-clubelo-history + build-clubelo-pre-kickoff-corpus. Do not use
+ * today's ranking HTML as a historical ranking.
  */
 const CLUBELO_CSV_BASE = "http://api.clubelo.com";
 const CLUBELO_SITE = "https://clubelo.com";

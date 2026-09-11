@@ -8,7 +8,12 @@ import { TEAMS } from "@/desk/lib/data/teams";
 import { completedDeskHistory } from "@/desk/lib/chat-history";
 import { askPundit } from "@/desk/lib/pundit";
 import { useDesk, type ChatMsg } from "@/desk/lib/store";
+import type { OneXTwoOutcome } from "@/lib/api";
+import { userLinePayloadForAsk } from "@/lib/fixture-presentation";
+import { SafeMarkdown } from "@/lib/safe-markdown";
 import { cn } from "@/lib/utils";
+import { humaniseDeskCitationDates } from "@/desk/lib/prose";
+import { DeskBoard, DeskUnpricedNotice } from "@/desk/components/desk-board";
 import { FormDots } from "@/desk/components/form-dots";
 import { KitPip } from "@/desk/components/kit";
 import { Button } from "@/desk/components/ui/button";
@@ -33,6 +38,8 @@ export function AgentPane() {
   const fixture = getFixture(selectedId);
   const { epoch, source } = useLiveSlate();
   const [draft, setDraft] = useState("");
+  const [lineOutcome, setLineOutcome] = useState<OneXTwoOutcome>("home");
+  const [lineDecimal, setLineDecimal] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -53,6 +60,8 @@ export function AgentPane() {
         "Tactical matchup",
         "Who decides it?",
         "Projected score",
+        "What are the odds",
+        "+EV",
       ]
     : SLATE_CHIPS;
 
@@ -73,13 +82,19 @@ export function AgentPane() {
     setBusy(true);
     try {
       const res = await askPundit({
-        data: { question: q, history, fixtureId: selectedId },
+        data: {
+          question: q,
+          history,
+          fixtureId: selectedId,
+          userLine: userLinePayloadForAsk(q, lineOutcome, lineDecimal),
+        },
       });
       push({
         id: `p-${Date.now()}`,
         role: "pundit",
         text: res.text || opening,
         fixtureId: selectedId,
+        grounding: res.grounding,
         at: Date.now(),
       });
     } catch (e) {
@@ -196,6 +211,53 @@ export function AgentPane() {
             </button>
           ))}
         </div>
+        {fixture ? (
+          <div
+            data-testid="desk-user-line-control"
+            className="mb-2.5 flex flex-wrap items-center gap-1.5"
+          >
+            <span className="text-2xs uppercase tracking-wide text-quiet">Line</span>
+            {([
+              ["home", TEAMS[fixture.home].short],
+              ["draw", "Draw"],
+              ["away", TEAMS[fixture.away].short],
+            ] as const).map(([outcome, label]) => (
+              <button
+                key={outcome}
+                type="button"
+                disabled={busy}
+                data-testid={`desk-user-line-outcome-${outcome}`}
+                aria-pressed={lineOutcome === outcome}
+                onClick={() => setLineOutcome(outcome)}
+                className={cn(
+                  "h-8 rounded-full border px-3 text-2xs uppercase tracking-wide transition-colors duration-150 disabled:opacity-40",
+                  lineOutcome === outcome
+                    ? "border-accent text-fg bg-accent/15"
+                    : "border-border text-quiet hover:text-fg hover:border-border-strong",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+            <label className="sr-only" htmlFor="desk-user-line-decimal">
+              Decimal odds
+            </label>
+            <input
+              id="desk-user-line-decimal"
+              data-testid="desk-user-line-decimal"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+              value={lineDecimal}
+              placeholder="2.10"
+              onChange={(e) => setLineDecimal(e.target.value)}
+              className="h-8 w-[4.5rem] rounded-sm border border-border bg-elevated px-2 text-sm tabular-nums text-fg placeholder:text-subtle focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-40"
+            />
+            <span className="text-2xs text-subtle">decimal · analysis only</span>
+          </div>
+        ) : null}
         <form
           className="flex items-end gap-2"
           onSubmit={(e) => {
@@ -263,7 +325,7 @@ function Bubble({ msg }: { msg: ChatMsg }) {
     );
   }
   return (
-    <div className="max-w-[40rem]">
+    <div className="max-w-[40rem]" data-testid="desk-pundit-bubble">
       <div className="flex items-baseline gap-2 mb-1.5">
         <span className="eyebrow text-accent">Pundit</span>
         {f ? (
@@ -272,7 +334,16 @@ function Bubble({ msg }: { msg: ChatMsg }) {
           </span>
         ) : null}
       </div>
-      <p className={cn("text-sm leading-7 text-fg/90 whitespace-pre-wrap")}>{msg.text}</p>
+      <div className="text-sm leading-7 text-fg/90">
+        <SafeMarkdown
+          content={humaniseDeskCitationDates(msg.text)}
+          paragraphClassName="mb-2 last:mb-0"
+          strongClassName="font-semibold"
+          linkClassName="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+        />
+      </div>
+      {msg.grounding?.kind === "match" ? <DeskBoard grounding={msg.grounding} /> : null}
+      {msg.grounding?.kind === "fixture" ? <DeskUnpricedNotice grounding={msg.grounding} /> : null}
     </div>
   );
 }

@@ -154,9 +154,6 @@ function composePricingDeskAnswer(grounding: Grounding): string {
   const oneXTwo = `My 1X2 is ${grounding.home} ${pct(model.home.p)} (fair ${model.home.fairOdds.toFixed(2)}), `
     + `draw ${pct(model.draw.p)} (fair ${model.draw.fairOdds.toFixed(2)}) and `
     + `${grounding.away} ${pct(model.away.p)} (fair ${model.away.fairOdds.toFixed(2)}).`;
-  if (grounding.pricing.userLine) {
-    return `${oneXTwo} ${composeUserLineAnswer(grounding)}`;
-  }
   const captured = fattestCapturedEv(grounding);
   if (captured) {
     const subject = outcomeLabel(grounding, captured.outcome);
@@ -365,6 +362,13 @@ export function composeMatchResponse(
       return `${source} market-implied probabilities: ${grounding.home} ${pct(row.pHome)}, `
         + `draw ${pct(row.pDraw!)}, ${grounding.away} ${pct(row.pAway)}.`;
     }).join(" ");
+  const consensus = grounding.consensus
+    ? `${grounding.consensus.label} (toward ${grounding.consensus.marketLabel}, `
+      + `not the sealed ${grounding.consensus.fundamentalLabel} forecast): `
+      + `${grounding.home} ${pct(grounding.consensus.pHome)}, draw ${pct(grounding.consensus.pDraw)} `
+      + `and ${grounding.away} ${pct(grounding.consensus.pAway)}. `
+      + `Over 2.5 on that Consensus grid is ${pct(grounding.consensus.pOver2_5)}.`
+    : "";
   const outcomes = [
     { label: grounding.home, p: grounding.pHome },
     { label: "the draw", p: grounding.pDraw },
@@ -373,7 +377,7 @@ export function composeMatchResponse(
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
     `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${SHARED_TOTAL_XG_SENTENCE}`,
-    [marketRows, market].filter(Boolean).join(" "),
+    [marketRows, market, consensus].filter(Boolean).join(" "),
     "I would revisit the read only after verified team news or a materially different market snapshot; I can’t assign a lineup effect from these facts alone.",
   ].filter(Boolean).join("\n\n");
 }

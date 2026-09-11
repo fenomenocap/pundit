@@ -17,6 +17,13 @@ import {
   ModelFixture,
 } from "./model-data";
 import {
+  buildPunditConsensus,
+  consensusCandidateRows,
+  firstCompleteNoVigMarket,
+  pricingConsensusFromBlock,
+  type PunditConsensusBlock,
+} from "./pundit-consensus";
+import {
   getCachedMatches,
   getCachedSeasonSchedule,
   seasonScheduleStatus,
@@ -63,6 +70,7 @@ import {
   stripUntraceableMatchPercentages,
   buildMatchPricing,
   attachUserLine,
+  applyDeskFootnotes,
   type DirectionalRationale,
   type ManagerTenure,
   type OneXTwoMarketLeg,
@@ -80,11 +88,19 @@ import {
   TEAM_NEWS_COMPOSE_ABSTENTION,
 } from "./player-evidence";
 import { composeMatchResponse } from "./response-composer";
-import { writeDeskProse } from "./desk-voice";
+import {
+  filterDeskEvidenceBundle,
+  humaniseDeskCitationDates,
+  sanitizeDeskModelProse,
+  stripDeskBoardRecitals,
+  writeDeskProse,
+} from "./desk-voice";
 import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
+  asksExpectedValueQuestion,
   planResponse,
+  questionAcceptsUserLine,
   responsePresentation,
   type ResponsePresentation,
 } from "./response-plan";
@@ -171,6 +187,11 @@ export interface Grounding {
   stakeObservedAt?: string;
   oddsSources: OddsSource[];
   pricing: PricingObject;
+  /**
+   * Optional labelled Consensus view. Present only when a complete same-source
+   * no-vig 1X2 exists. Never replaces `pHome` / `pDraw` / `pAway` (Fundamental).
+   */
+  consensus?: PunditConsensusBlock;
   /**
    * `oddsSources` differenced against the model, one entry per complete source.
    *
@@ -2579,10 +2600,19 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
     grounding.pOver2_5, grounding.pUnder2_5, grounding.pBttsYes, grounding.pBttsNo,
     ...(grounding.scorelines ?? []).map((row) => row.probability),
   ];
+  const consensus = grounding.consensus;
+  const consensusProbabilities = consensus
+    ? [
+        consensus.pHome, consensus.pDraw, consensus.pAway,
+        consensus.pOver2_5, consensus.pUnder2_5, consensus.pBttsYes, consensus.pBttsNo,
+        ...consensus.scorelines.map((row) => row.probability),
+      ]
+    : [];
   const userLine = grounding.pricing?.userLine;
   return stripUntraceableMatchPercentages(answer, {
     probabilities: [
       ...modelProbabilities,
+      ...consensusProbabilities,
       ...(grounding.oddsSources ?? []).flatMap((source) =>
         [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
       ...(userLine ? [Math.abs(userLine.evPct), 1 / userLine.decimalOdds] : []),
@@ -2591,6 +2621,7 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
       market.legs.map((leg) => leg.gapPoints)),
     fairDecimalOdds: [
       ...modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
+      ...consensusProbabilities.filter((value) => value > 0).map((value) => 1 / value),
       ...(userLine ? [userLine.decimalOdds, userLine.passPrice, userLine.playPrice] : []),
     ],
   });
@@ -2631,6 +2662,18 @@ function acknowledgeCorrection(answer: string, verification: AskVerification): s
       ? "You're right to challenge the earlier claim. The current sources conflict, so I removed the disputed point."
       : "You're right to challenge the earlier claim. I could not re-establish it from current evidence, so I have not repeated it.";
   return `${acknowledgement}\n\n${answer}`.trim();
+}
+
+/**
+ * Citation dates the reader sees. Empty → "undated". A calendar day stays
+ * `YYYY-MM-DD`. An ISO instant keeps only the UTC calendar day so
+ * `2026-09-09T17:47:51.000Z` cannot leak into the bubble.
+ */
+function formatRenderedCitationDate(date: string): string {
+  const trimmed = date.trim();
+  if (!trimmed) return "undated";
+  const instant = /^(\d{4}-\d{2}-\d{2})T/.exec(trimmed);
+  return instant ? instant[1] : trimmed;
 }
 
 export function renderEvidenceCitations(
@@ -2712,7 +2755,10 @@ export function renderEvidenceCitations(
       // citation left a sourced claim looking exactly like an invented one --
       // the reader could not tell them apart. It still cannot carry a squad
       // claim; that rule is enforced above, before this renders anything.
-      return `([${safeTitle}](${source.url}), ${source.date || "undated"})`;
+      // Calendar dates stay `YYYY-MM-DD` for homepage tests. An ISO instant
+      // (`2026-09-09T17:47:51.000Z`) is a machine timestamp — render the
+      // calendar day only. Desk voice then shortens that to "9 Sep".
+      return `([${safeTitle}](${source.url}), ${formatRenderedCitationDate(source.date)})`;
     });
   });
 
@@ -2984,6 +3030,11 @@ state the model value, market value, gap size and direction compactly. It may al
 those are often absent (null) -- when a source is absent, never guess its price;
 if marketDivergence is empty and no market source is present at all, say plainly
 that no market line is available.
+If the payload includes consensus, that is an optional labelled Pundit Consensus
+view: a 1X2 shrink toward one timestamped no-vig market, with lambdas refit so
+totals and scorelines stay on the same Dixon-Coles grid. Name it Pundit Consensus
+and name the market it used. Never quote Consensus as the sealed Pundit
+Fundamental 1X2, and never invent an unlabelled blend of Pundit and a book.
 The data also includes over/under 2.5, both-teams-to-score, topScores (the
 top-ranked scorelines), and scorelines (every scoreline at or above a 0.1%
 probability). Quote those supplied values exactly; a score missing from the
@@ -3286,6 +3337,9 @@ function hasMatchOutcomeIntent(question: string): boolean {
 export function shouldUseMatchGrounding(question: string): boolean {
   const normalized = normalizeTeamText(question);
   if (MATCH_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue))) return true;
+  // "what is a +EV bet here" matches the general-explainer exit ("what is a")
+  // but is a priced-card question. Keep the selected fixture.
+  if (asksExpectedValueQuestion(question)) return true;
   // A scorer or lineup follow-up can name a club that is not in the retained
   // fixture ("who scores for Liverpool?" on Arsenal vs Chelsea). That is still
   // a question about the current match, not a request to replace it.
@@ -3337,6 +3391,9 @@ export function leavesMatchContext(
   fixtures: TeamFixture[]
 ): boolean {
   if (mentionsTeamOutsideContext(question, teamContext, fixtures)) return true;
+  // Expected-value wording is a match-card question even when it starts with
+  // "what is a", which would otherwise trip the general-explainer exit.
+  if (asksExpectedValueQuestion(question)) return false;
   const normalized = normalizeTeamText(question);
   return MATCH_CONTEXT_EXIT_PATTERNS.some((pattern) => pattern.test(normalized));
 }
@@ -3563,6 +3620,25 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     ?? fixture.utcDate
     ?? fixture.date;
 
+  const consensusMarket = firstCompleteNoVigMarket(consensusCandidateRows({
+    stakePHome,
+    stakePDraw,
+    stakePAway,
+    stakeObservedAt,
+    pricedAt,
+    oddsSources,
+  }));
+  const consensus = consensusMarket
+    ? buildPunditConsensus({
+        fundamental: {
+          pHome: fixture.pHome,
+          pDraw: fixture.pDraw,
+          pAway: fixture.pAway,
+        },
+        market: consensusMarket,
+      })
+    : null;
+
   return {
     kind: "match",
     fixtureId,
@@ -3587,6 +3663,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     stakePAway,
     ...(stakeObservedAt ? { stakeObservedAt } : {}),
     oddsSources,
+    ...(consensus ? { consensus } : {}),
     marketDivergence: computeMarketDivergence(fixture, oddsSources),
     pricing: buildMatchPricing({
       fixtureId,
@@ -3618,6 +3695,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
           decimalOdds: null,
         })),
       ],
+      consensus: consensus ? pricingConsensusFromBlock(consensus) : null,
     }),
   };
 }
@@ -7681,13 +7759,25 @@ export async function deliverAnswer(args: {
     history = [],
   } = args;
   const deskVoice = voice === "desk";
+  const evidenceBundle = deskVoice ? filterDeskEvidenceBundle(bundle, grounding) : bundle;
+  const deskFootnotes = (text: string) => {
+    if (!deskVoice) return text;
+    const stripped = grounding?.kind === "match"
+      ? (stripDeskBoardRecitals(text) || text)
+      : text;
+    return humaniseDeskCitationDates(applyDeskFootnotes(stripped, question, planResponse(question, {
+      groundingKind: grounding?.kind ?? undefined,
+      hasHistory,
+      hasUserLine: grounding?.kind === "match" && grounding.pricing.userLine != null,
+    }).mode));
+  };
   if (deskVoice) {
     const settledFromBundle = await settleEvidenceModeFromBundle(
-      question, grounding, bundle, hasHistory, signal
+      question, grounding, evidenceBundle, hasHistory, signal
     );
     if (settledFromBundle && settledFromBundle.citations.length > 0) {
       return {
-        answer: settledFromBundle.answer,
+        answer: deskFootnotes(settledFromBundle.answer),
         citations: settledFromBundle.citations,
         verification: verificationForSettledEvidence(
           settledFromBundle.answer,
@@ -7695,15 +7785,16 @@ export async function deliverAnswer(args: {
         ),
       };
     }
-    const sourceIds = bundle.results.map((source) => source.id);
+    const sourceIds = evidenceBundle.results.map((source) => source.id);
     const salvaged = salvageCitedClaimProse(rawAnswer, sourceIds);
     const rawLooksLikeDraft = (() => {
       const trimmed = rawAnswer.trim().replace(/^```(?:json)?\s*/i, "");
       return trimmed.startsWith("{") && /"(?:citedClaims|directAnswer)"/.test(trimmed);
     })();
+    const prepared = sanitizeDeskModelProse(rawAnswer, grounding, evidenceBundle.results);
     const prose = salvaged
-      || (!rawLooksLikeDraft && rawAnswer.trim() ? rawAnswer.trim() : "")
-      || await writeDeskProse(question, grounding, history, signal, bundle);
+      || (!rawLooksLikeDraft && prepared ? prepared : "")
+      || await writeDeskProse(question, grounding, history, signal, evidenceBundle);
     if (prose) {
       const checked = candidateUnrecognized
         ? {
@@ -7714,20 +7805,20 @@ export async function deliverAnswer(args: {
               removedClaimCount: 0,
             },
           }
-        : await verifyCurrentClaims(prose, bundle, client, signal);
+        : await verifyCurrentClaims(prose, evidenceBundle, client, signal);
       const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
         checked.answer,
         checked.verification,
         true
       );
-      const rendered = renderEvidenceCitations(evidenceSafeAnswer, bundle, true);
+      const rendered = renderEvidenceCitations(evidenceSafeAnswer, evidenceBundle, true);
       const settledAnswer = dropEmptyEmphasis(
         dropOrphanedSectionLabels(
-          dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, bundle)))
+          dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, evidenceBundle)))
         )
       );
       return {
-        answer: finalizeDeliveredText(settledAnswer, grounding, false),
+        answer: deskFootnotes(finalizeDeliveredText(settledAnswer, grounding, false)),
         citations: rendered.citations,
         verification: checked.verification,
       };
@@ -7741,7 +7832,7 @@ export async function deliverAnswer(args: {
   );
   if (scorerSettled) {
     return {
-      answer: scorerSettled.answer,
+      answer: deskFootnotes(scorerSettled.answer),
       citations: scorerSettled.citations,
       verification: verificationForSettledEvidence(scorerSettled.answer, scorerSettled.citations),
     };
@@ -8182,8 +8273,16 @@ function withPresentation(
   };
 }
 
-function withOptionalUserLine(grounding: AskGrounding, userLine?: UserLine): AskGrounding {
-  if (!userLine || grounding?.kind !== "match") return grounding;
+function withOptionalUserLine(
+  grounding: AskGrounding,
+  userLine: UserLine | undefined,
+  question: string
+): AskGrounding {
+  if (grounding?.kind !== "match") return grounding;
+  if (!userLine || !questionAcceptsUserLine(question)) {
+    if (!grounding.pricing.userLine) return grounding;
+    return { ...grounding, pricing: { ...grounding.pricing, userLine: null } };
+  }
   return { ...grounding, pricing: attachUserLine(grounding.pricing, userLine) };
 }
 
@@ -8200,6 +8299,7 @@ export async function answerQuestion(
     answerQuestionScoped(question, history, teamContext, signal, fixtureContext, userLine, voice));
   const presented = withPresentation(question, history.length > 0, result);
   if (voice === "desk") {
+    presented.answer = humaniseDeskCitationDates(presented.answer);
     presented.presentation = {
       responseMode: presented.grounding?.kind === "match" ? "match-preview" : presented.presentation.responseMode,
       fixtureCard: presented.grounding?.kind === "match" ? "expanded" : presented.presentation.fixtureCard,
@@ -8228,7 +8328,7 @@ async function answerQuestionScoped(
     teamContext,
     fixtureContext
   );
-  const grounding = withOptionalUserLine(prepared.grounding, userLine);
+  const grounding = withOptionalUserLine(prepared.grounding, userLine, question);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   try {
     const evidenceFollowUp = deterministicUngroundedEvidenceFollowUp(question, history, grounding);
@@ -8275,9 +8375,18 @@ async function answerQuestionScoped(
       };
     }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
-    if (closedAnswer && !(voice === "desk" && (grounding?.kind === "match" || grounding === null))) {
+    // Desk match settled modes now take this path; ungrounded desk still uses MiniMax.
+    const deskSkipClosedUngrounded = voice === "desk" && grounding === null;
+    if (closedAnswer && !deskSkipClosedUngrounded) {
+      const answer = voice === "desk"
+        ? applyDeskFootnotes(closedAnswer, question, planResponse(question, {
+            groundingKind: grounding?.kind ?? undefined,
+            hasHistory: history.length > 0,
+            hasUserLine: grounding?.kind === "match" && grounding.pricing.userLine != null,
+          }).mode)
+        : closedAnswer;
       return {
-        answer: closedAnswer,
+        answer,
         grounding,
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
@@ -8287,9 +8396,12 @@ async function answerQuestionScoped(
     // full set, which is what separates a read from a recital. Desk turns
     // without a cue still search, including fixture-less club questions.
     const plannedQueries = planTurnEvidenceQueries(question, grounding, query, voice);
-    const bundle: EvidenceBundle = plannedQueries.length
+    const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal)
       : { queries: [], results: [], providerCalls: 0 };
+    const bundle = voice === "desk"
+      ? filterDeskEvidenceBundle(rawBundle, grounding)
+      : rawBundle;
     // Desk team-news uses the match evidence path (V2 salvage + verify) so a
     // dated retrieved page can keep a cited sentence. Extraction-only compose
     // is still preferred inside deliverAnswer when it has citations.
@@ -8424,7 +8536,7 @@ async function answerQuestionStreamScoped(
     teamContext,
     fixtureContext
   );
-  const grounding = withOptionalUserLine(prepared.grounding, userLine);
+  const grounding = withOptionalUserLine(prepared.grounding, userLine, question);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   handlers.onGrounding(grounding);
   try {

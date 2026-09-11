@@ -80,26 +80,36 @@ export function SlateRail() {
         <h2 className="eyebrow">GW3 settled</h2>
       </header>
       <ul className="max-h-48 overflow-y-auto">
-        {settled.map((f) => (
-          <li
-            key={f.id}
-            className="flex items-center gap-2 px-3 py-1.5 border-b border-border text-sm"
-          >
-            <TeamMark team={f.home} withName={false} size="sm" />
-            <span className="font-display text-sm tabular-nums text-quiet w-10 text-center">
-              {f.score?.[0]}–{f.score?.[1]}
-            </span>
-            <TeamMark team={f.away} withName={false} size="sm" />
-            <span
-              className={cn(
-                "ml-auto text-2xs uppercase tracking-wider font-semibold",
-                f.modelHit ? "text-up" : "text-down",
-              )}
-            >
-              {f.modelHit ? "HIT" : "MISS"}
-            </span>
-          </li>
-        ))}
+        {settled.map((f) => {
+          const active = f.id === selectedId;
+          return (
+            <li key={f.id}>
+              <button
+                type="button"
+                data-testid={`desk-settled-${f.id}`}
+                onClick={() => select(f.id)}
+                className={cn(
+                  "w-full flex items-center gap-2 px-3 py-1.5 border-b border-border text-sm text-left transition-colors duration-150",
+                  active ? "bg-panel" : "hover:bg-elevated",
+                )}
+              >
+                <TeamMark team={f.home} withName={false} size="sm" />
+                <span className="font-display text-sm tabular-nums text-quiet w-10 text-center">
+                  {f.score?.[0]}–{f.score?.[1]}
+                </span>
+                <TeamMark team={f.away} withName={false} size="sm" />
+                <span
+                  className={cn(
+                    "ml-auto text-2xs uppercase tracking-wider font-semibold",
+                    f.modelHit ? "text-up" : "text-down",
+                  )}
+                >
+                  {f.modelHit ? "HIT" : "MISS"}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

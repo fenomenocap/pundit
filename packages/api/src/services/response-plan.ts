@@ -26,11 +26,30 @@ const ASKS_TOTALS =
 const ASKS_OVER_25 = /\bover\s*2\.5\b|\bo\s*2\.5\b/i;
 const ASKS_UNDER_25 = /\bunder\s*2\.5\b|\bu\s*2\.5\b/i;
 const ASKS_SCORELINE_BOARD =
-  /\b(?:possible|likely|top|correct)\s+(?:scores?|scorelines?)\b|\bscorelines?\b/i;
+  /\b(?:possible|likely|top|correct|projected|predicted)\s+(?:scores?|scorelines?)\b|\bscorelines?\b|\bcorrect score\b/i;
 const ASKS_BTTS = /\bbtts\b|both teams to score/i;
 const ASKS_1X2 = /\b1x2\b|\bmatch odds\b/i;
+const ASKS_ODDS_OR_BOARD =
+  /\b1x2\b|\bmatch odds\b|\bthe odds\b|\bthe line\b|\bthe board\b|\bodds\b/i;
+const ASKS_EXPECTED_VALUE =
+  /\+ev\b|\bev%\b|\bexpected value\b|\bplus[\s-]?ev\b|\ba \+ev bet\b|\bedge vs(?:\s+the)?\s+(?:book|market|line)\b/i;
+const ASKS_QUALITATIVE_TAKE =
+  /\btactical(?:\s+matchup)?\b|\btactics\b|\bwho decides\b|\bhow they win\b|\bhow (?:do|does|can|will)\b.{0,40}\bwin this\b|\bhow (?:the |this )?favourite wins\b|\bwhy (?:it |this )?(?:is )?low[- ]event\b/i;
 const ASKS_UNPRICED_MARKET =
   /\b(?:draw no bet|\bdnb\b|asian(?:\s+handicap)?|\bhandicap\b|\bcorners?\b|next goal|first goal|clean sheet)\b/i;
+
+/** Modes the match composer can settle without MiniMax. */
+export const SETTLED_MATCH_MODES: readonly ResponseMode[] = [
+  "exact-score",
+  "fair-price",
+  "market-comparison",
+  "user-line",
+  "stake-refusal",
+  "lineup-counterfactual",
+  "totals",
+  "btts",
+  "pricing-desk",
+];
 
 export interface ResponsePlan {
   mode: ResponseMode;
@@ -67,6 +86,27 @@ export function asksTotalsQuestion(question: string): boolean {
 
 export function asksScorelineBoard(question: string): boolean {
   return ASKS_SCORELINE_BOARD.test(question);
+}
+
+export function asksOddsOrBoardQuestion(question: string): boolean {
+  return ASKS_1X2.test(question) || ASKS_ODDS_OR_BOARD.test(question);
+}
+
+export function asksExpectedValueQuestion(question: string): boolean {
+  return ASKS_EXPECTED_VALUE.test(question);
+}
+
+/** Structured `userLine` is only consumed on +EV / pass-or-play turns. */
+export function questionAcceptsUserLine(question: string): boolean {
+  return asksExpectedValueQuestion(question) || /\bpass or play\b/i.test(question);
+}
+
+export function asksQualitativeMatchTake(question: string): boolean {
+  return ASKS_QUALITATIVE_TAKE.test(question);
+}
+
+export function isSettledMatchMode(mode: ResponseMode): boolean {
+  return (SETTLED_MATCH_MODES as readonly ResponseMode[]).includes(mode);
 }
 
 export function asksBttsQuestion(question: string): boolean {
@@ -124,7 +164,7 @@ export function planResponse(
   let mode: ResponseMode;
 
   if (context.groundingKind === "fixture") mode = "coverage";
-  else if (match && !hasUserLine && !asksStakeSizeQuestion(q) && ASKS_MATCH_PREVIEW.test(q)) {
+  else if (match && !asksStakeSizeQuestion(q) && ASKS_MATCH_PREVIEW.test(q)) {
     mode = "match-preview";
   } else if (/\b(?:if|suppose|assuming|without)\b.{0,80}\b(?:line-?up|starts?|benched|absent|missing|misses? out|ruled out|available)\b|\bwith\s+(?:a |the )?(?:changed|different|weakened|rotated|confirmed)\s+line-?up\b|\b(?:line-?up|starting xi)\b.{0,80}\b(?:change|shift|swing|reprice|probabilit)/i.test(q)) {
     mode = "lineup-counterfactual";
@@ -138,11 +178,15 @@ export function planResponse(
   else if (match && asksBttsQuestion(q)) mode = "btts";
   else if (match && /\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(q)) mode = "match-follow-up";
   else if (match && asksStakeSizeQuestion(q)) mode = "stake-refusal";
-  else if (match && (hasUserLine || /\bpass or play\b/i.test(q))) mode = "user-line";
+  else if (match && /\bpass or play\b/i.test(q)) mode = "user-line";
+  else if (match && hasUserLine && asksExpectedValueQuestion(q)) mode = "user-line";
+  else if (match && asksExpectedValueQuestion(q)) mode = "pricing-desk";
   else if (match && SCORELINE.test(q) && /\b(?:fair|price|odds?|decimal|implied)\b/i.test(q)) mode = "fair-price";
   else if (match && SCORELINE.test(q)) mode = "exact-score";
   else if (match && asksScorelineBoard(q)) mode = "exact-score";
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
+  else if (match && asksOddsOrBoardQuestion(q)) mode = "pricing-desk";
+  else if (match && asksQualitativeMatchTake(q)) mode = "match-follow-up";
   else if (match && !hasHistory) mode = "pricing-desk";
   else if (match) mode = "match-follow-up";
   else mode = "general";

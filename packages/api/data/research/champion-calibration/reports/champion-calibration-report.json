@@ -1,0 +1,456 @@
+{
+  "schemaVersion": 1,
+  "builtAt": "2026-09-09T13:41:17.437Z",
+  "methodId": "clubelo-fixed-total-dixon-coles-calibrated",
+  "ledger": {
+    "path": "packages/api/data/research/champion-calibration/ledgers/production-2026-09-09.json",
+    "usedDocumentedSample": false,
+    "productionOfficialNTarget": 44,
+    "productionDataDirHint": "PUNDIT_DATA_DIR=/data",
+    "rowCount": 52,
+    "officialN": 44,
+    "officialWithResultN": 44,
+    "premierLeagueN": 30,
+    "uclQualN": 14,
+    "excluded": {
+      "total": 8,
+      "byReason": {
+        "legacyPartialProvenance": 8,
+        "incompleteInputProvenance": 0,
+        "postKickoffForecast": 0,
+        "invalidForecastTimestamp": 0
+      },
+      "withoutResult": 0
+    },
+    "publishedMappingCounts": {
+      "geometricMeanLambdas": 43,
+      "fixedTotal": 1,
+      "neither": 0
+    }
+  },
+  "shippedConstants": {
+    "baseGoals": 1.35,
+    "homeAdvantageElo": 42,
+    "rho": -0.1,
+    "mismatchInflation": 0
+  },
+  "fitted": {
+    "constants": {
+      "baseGoals": 1.42,
+      "homeAdvantageElo": 40,
+      "rho": 0,
+      "mismatchInflation": 0,
+      "baseGoalsByCompetition": {
+        "eng.1": 1.42,
+        "uefa.champions_qual": 1.35
+      }
+    },
+    "nll": 90.75,
+    "aic": 187.5001,
+    "nestedNoInflation": {
+      "constants": {
+        "baseGoals": 1.42,
+        "homeAdvantageElo": 40,
+        "rho": 0,
+        "mismatchInflation": 0
+      },
+      "nll": 90.75,
+      "aic": 187.5001
+    },
+    "uclBaseGoals": "frozen",
+    "uncertainty": {
+      "baseGoals": {
+        "p10": 1.24,
+        "p50": 1.45,
+        "p90": 1.6
+      },
+      "homeAdvantageElo": {
+        "p10": 0,
+        "p50": 44,
+        "p90": 88
+      },
+      "rho": {
+        "p10": -0.24,
+        "p50": 0.08,
+        "p90": 0.08
+      },
+      "mismatchInflation": {
+        "p10": 0,
+        "p50": 0,
+        "p90": 0
+      },
+      "deltaBrierVsShipped": {
+        "p10": -0.1249,
+        "p50": -0.041,
+        "p90": 0.0589
+      }
+    },
+    "fitCompetitionIds": [
+      "eng.1"
+    ]
+  },
+  "metrics": {
+    "shippedRecomputed": {
+      "n": 44,
+      "brier": 0.6456,
+      "logLoss": 1.0834,
+      "winnerAccuracy": 0.4091,
+      "scoreLogLoss": 3.098,
+      "over25Brier": 0.2489,
+      "meanTotalXg": 2.7,
+      "actualMeanGoals": 3.023,
+      "actualOver25Rate": 0.5909
+    },
+    "fittedRecomputed": {
+      "n": 44,
+      "brier": 0.6554,
+      "logLoss": 1.0952,
+      "winnerAccuracy": 0.4091,
+      "scoreLogLoss": 3.1031,
+      "over25Brier": 0.2499,
+      "meanTotalXg": 2.795,
+      "actualMeanGoals": 3.023,
+      "actualOver25Rate": 0.5909
+    },
+    "publishedSealed": {
+      "n": 44,
+      "brier": 0.6522,
+      "logLoss": 1.1016,
+      "winnerAccuracy": 0.4091,
+      "scoreLogLoss": null,
+      "over25Brier": 0.254,
+      "meanTotalXg": 2.7,
+      "actualMeanGoals": 3.023,
+      "actualOver25Rate": 0.5909
+    },
+    "byCompetition": {
+      "eng.1": {
+        "shippedRecomputed": {
+          "n": 30,
+          "brier": 0.6579,
+          "logLoss": 1.1024,
+          "winnerAccuracy": 0.4,
+          "scoreLogLoss": 3.0308,
+          "over25Brier": 0.25,
+          "meanTotalXg": 2.7,
+          "actualMeanGoals": 2.833,
+          "actualOver25Rate": 0.5
+        },
+        "fittedRecomputed": {
+          "n": 30,
+          "brier": 0.6694,
+          "logLoss": 1.1176,
+          "winnerAccuracy": 0.4,
+          "scoreLogLoss": 3.025,
+          "over25Brier": 0.2516,
+          "meanTotalXg": 2.84,
+          "actualMeanGoals": 2.833,
+          "actualOver25Rate": 0.5
+        }
+      },
+      "uefa.champions_qual": {
+        "shippedRecomputed": {
+          "n": 14,
+          "brier": 0.6193,
+          "logLoss": 1.0425,
+          "winnerAccuracy": 0.4286,
+          "scoreLogLoss": 3.2421,
+          "over25Brier": 0.2464,
+          "meanTotalXg": 2.7,
+          "actualMeanGoals": 3.429,
+          "actualOver25Rate": 0.7857
+        },
+        "fittedRecomputed": {
+          "n": 14,
+          "brier": 0.6255,
+          "logLoss": 1.047,
+          "winnerAccuracy": 0.4286,
+          "scoreLogLoss": 3.2705,
+          "over25Brier": 0.2464,
+          "meanTotalXg": 2.7,
+          "actualMeanGoals": 3.429,
+          "actualOver25Rate": 0.7857
+        }
+      }
+    },
+    "vsMarketNoVig": {
+      "shippedRecomputed": {
+        "n": 44,
+        "model": {
+          "brier": 0.6456,
+          "logLoss": 1.0834
+        },
+        "market": {
+          "brier": 0.5907,
+          "logLoss": 0.9924
+        }
+      },
+      "fittedRecomputed": {
+        "n": 44,
+        "model": {
+          "brier": 0.6554,
+          "logLoss": 1.0952
+        },
+        "market": {
+          "brier": 0.5907,
+          "logLoss": 0.9924
+        }
+      },
+      "publishedSealed": {
+        "n": 44,
+        "model": {
+          "brier": 0.6522,
+          "logLoss": 1.1016
+        },
+        "market": {
+          "brier": 0.5907,
+          "logLoss": 0.9924
+        }
+      }
+    },
+    "reliabilityByEloGap": {
+      "shippedRecomputed": [
+        {
+          "label": "close (<50)",
+          "minAbsGap": 0,
+          "maxAbsGap": 50,
+          "n": 12,
+          "meanAbsGap": 26.9,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.3437,
+              "actual": 0.3333
+            },
+            "pDraw": {
+              "predicted": 0.2805,
+              "actual": 0.5
+            },
+            "pAway": {
+              "predicted": 0.3758,
+              "actual": 0.1667
+            }
+          },
+          "over25": {
+            "predicted": 0.5064,
+            "actual": 0.5
+          }
+        },
+        {
+          "label": "moderate (50–150)",
+          "minAbsGap": 50,
+          "maxAbsGap": 150,
+          "n": 19,
+          "meanAbsGap": 102.2,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.4222,
+              "actual": 0.3158
+            },
+            "pDraw": {
+              "predicted": 0.2578,
+              "actual": 0.3158
+            },
+            "pAway": {
+              "predicted": 0.32,
+              "actual": 0.3684
+            }
+          },
+          "over25": {
+            "predicted": 0.5064,
+            "actual": 0.6842
+          }
+        },
+        {
+          "label": "large (150–250)",
+          "minAbsGap": 150,
+          "maxAbsGap": 250,
+          "n": 7,
+          "meanAbsGap": 197,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.5228,
+              "actual": 0.5714
+            },
+            "pDraw": {
+              "predicted": 0.2107,
+              "actual": 0.1429
+            },
+            "pAway": {
+              "predicted": 0.2665,
+              "actual": 0.2857
+            }
+          },
+          "over25": {
+            "predicted": 0.5064,
+            "actual": 0.5714
+          }
+        },
+        {
+          "label": "mismatch (≥250)",
+          "minAbsGap": 250,
+          "maxAbsGap": null,
+          "n": 6,
+          "meanAbsGap": 345.7,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.5591,
+              "actual": 0.8333
+            },
+            "pDraw": {
+              "predicted": 0.1422,
+              "actual": 0.1667
+            },
+            "pAway": {
+              "predicted": 0.2987,
+              "actual": 0
+            }
+          },
+          "over25": {
+            "predicted": 0.5064,
+            "actual": 0.5
+          }
+        }
+      ],
+      "fittedRecomputed": [
+        {
+          "label": "close (<50)",
+          "minAbsGap": 0,
+          "maxAbsGap": 50,
+          "n": 12,
+          "meanAbsGap": 26.9,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.355,
+              "actual": 0.3333
+            },
+            "pDraw": {
+              "predicted": 0.2505,
+              "actual": 0.5
+            },
+            "pAway": {
+              "predicted": 0.3945,
+              "actual": 0.1667
+            }
+          },
+          "over25": {
+            "predicted": 0.5316,
+            "actual": 0.5
+          }
+        },
+        {
+          "label": "moderate (50–150)",
+          "minAbsGap": 50,
+          "maxAbsGap": 150,
+          "n": 19,
+          "meanAbsGap": 102.2,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.4343,
+              "actual": 0.3158
+            },
+            "pDraw": {
+              "predicted": 0.2301,
+              "actual": 0.3158
+            },
+            "pAway": {
+              "predicted": 0.3356,
+              "actual": 0.3684
+            }
+          },
+          "over25": {
+            "predicted": 0.5294,
+            "actual": 0.6842
+          }
+        },
+        {
+          "label": "large (150–250)",
+          "minAbsGap": 150,
+          "maxAbsGap": 250,
+          "n": 7,
+          "meanAbsGap": 197,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.5308,
+              "actual": 0.5714
+            },
+            "pDraw": {
+              "predicted": 0.1905,
+              "actual": 0.1429
+            },
+            "pAway": {
+              "predicted": 0.2788,
+              "actual": 0.2857
+            }
+          },
+          "over25": {
+            "predicted": 0.516,
+            "actual": 0.5714
+          }
+        },
+        {
+          "label": "mismatch (≥250)",
+          "minAbsGap": 250,
+          "maxAbsGap": null,
+          "n": 6,
+          "meanAbsGap": 345.7,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.5705,
+              "actual": 0.8333
+            },
+            "pDraw": {
+              "predicted": 0.122,
+              "actual": 0.1667
+            },
+            "pAway": {
+              "predicted": 0.3075,
+              "actual": 0
+            }
+          },
+          "over25": {
+            "predicted": 0.54,
+            "actual": 0.5
+          }
+        }
+      ]
+    }
+  },
+  "decision": {
+    "recommendProductionChange": false,
+    "changeShippedConstants": false,
+    "rebuildGoldenCutover": false,
+    "reasons": [
+      "Production dixon-coles.ts constants were not changed by this offline report.",
+      "Golden-cutover rebuild is reserved for a human decision after shipped constants move.",
+      "Premier League official n=30 is below the ~40 bar for shipping new constants.",
+      "Fitted 1X2 Brier is not clearly better than shipped 1.35/42/−0.1.",
+      "Bootstrap 10–90% interval on ΔBrier vs shipped does not lie entirely below 0.",
+      "Production target remains n=44 official scheduled_window rows on Railway (PUNDIT_DATA_DIR=/data)."
+    ]
+  },
+  "config": {
+    "schemaVersion": 1,
+    "productionAutoLoad": false,
+    "recommendedForProduction": false,
+    "methodId": "clubelo-fixed-total-dixon-coles-calibrated",
+    "mapping": "fixed-total-elo-odds-ratio",
+    "constants": {
+      "baseGoals": 1.42,
+      "homeAdvantageElo": 40,
+      "rho": 0,
+      "mismatchInflation": 0,
+      "baseGoalsByCompetition": {
+        "eng.1": 1.42,
+        "uefa.champions_qual": 1.35
+      }
+    },
+    "source": {
+      "officialN": 44,
+      "premierLeagueN": 30,
+      "uclQualN": 14,
+      "ledgerNote": "Official sealed rows from packages/api/data/research/champion-calibration/ledgers/production-2026-09-09.json. Production evidence is Railway PUNDIT_DATA_DIR=/data, not the in-repo seed."
+    },
+    "id": "champion-calibration@1:93e271e4ff96d96beb2dc3ab8d086d85893c52d6385f82960c01e6ac728fad27",
+    "sha256": "93e271e4ff96d96beb2dc3ab8d086d85893c52d6385f82960c01e6ac728fad27"
+  }
+}

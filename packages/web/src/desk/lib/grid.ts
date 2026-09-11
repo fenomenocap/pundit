@@ -1,52 +1,58 @@
-/** Dixon–Coles grid. 1X2 on the desk still comes from the live API.
- *  Totals use a mild-inflation λ split so Over 2.5 can actually move. */
+/** Reconstruct production Elo→λ. Totals on the desk come from the live API row. */
 
 const SCALE = 400;
 const BASE = 1.35;
 const CAP = 5;
-const RHO = -0.1;
-const MAX = 10;
-/** Blend: 0 = frozen 2.70 total (production). 1 = old geometric blow-up. 0.3 matches the Phase-1 "mild" column. */
-const INFLATE = 0.3;
 
-export function mildLambdas(homeElo: number, awayElo: number, hfa = 42): [number, number] {
+export type ImpliedLambdaOptions = {
+  hfa?: number;
+  baseGoals?: number;
+  eloScale?: number;
+  lambdaCap?: number;
+};
+
+export type ModelRowLambdas = {
+  homeElo: number;
+  awayElo: number;
+  pOver2_5: number;
+  forecastProvenance?: {
+    homeAdvantageElo?: number;
+    config?: { baseGoals?: number; eloScale?: number; lambdaCap?: number };
+  };
+};
+
+/** Fixed-total 2×baseGoals split by Elo odds ratio — same mapping as the API. */
+export function impliedLambdas(
+  homeElo: number,
+  awayElo: number,
+  options: ImpliedLambdaOptions = {}
+): [number, number] {
+  const hfa = options.hfa ?? 42;
+  const baseGoals = options.baseGoals ?? BASE;
+  const eloScale = options.eloScale ?? SCALE;
+  const lambdaCap = options.lambdaCap ?? CAP;
   const d = homeElo + hfa - awayElo;
-  const r = 10 ** (d / SCALE);
-  const f = 10 ** (d / (SCALE * 2));
-  const geometricTotal = BASE * (f + 1 / f);
-  const total = Math.min(2 * BASE + INFLATE * (geometricTotal - 2 * BASE), 2 * CAP);
+  const r = 10 ** (d / eloScale);
+  const totalXg = 2 * baseGoals;
   return [
-    Math.min((total * r) / (1 + r), CAP),
-    Math.min(total / (1 + r), CAP),
+    Math.min((totalXg * r) / (1 + r), lambdaCap),
+    Math.min(totalXg / (1 + r), lambdaCap),
   ];
 }
 
-function poissonPmf(lambda: number) {
-  const p = new Array<number>(MAX + 1);
-  p[0] = Math.exp(-lambda);
-  for (let k = 1; k <= MAX; k++) p[k] = (p[k - 1] * lambda) / k;
-  return p;
-}
-
-function tau(h: number, a: number, lh: number, la: number) {
-  if (h === 0 && a === 0) return 1 - lh * la * RHO;
-  if (h === 0 && a === 1) return 1 + lh * RHO;
-  if (h === 1 && a === 0) return 1 + la * RHO;
-  if (h === 1 && a === 1) return 1 - RHO;
-  return 1;
-}
-
-export function over25(lh: number, la: number) {
-  const home = poissonPmf(lh);
-  const away = poissonPmf(la);
-  let over = 0;
-  let mass = 0;
-  for (let i = 0; i <= MAX; i++) {
-    for (let j = 0; j <= MAX; j++) {
-      const v = home[i] * away[j] * tau(i, j, lh, la);
-      mass += v;
-      if (i + j > 2) over += v;
-    }
-  }
-  return over / mass;
+/** xG from production λ; Over 2.5 is the server probability, never a second grid. */
+export function deskNumbersFromModelRow(row: ModelRowLambdas): {
+  xg: [number, number];
+  over25: number;
+} {
+  const [lh, la] = impliedLambdas(row.homeElo, row.awayElo, {
+    hfa: row.forecastProvenance?.homeAdvantageElo ?? 42,
+    baseGoals: row.forecastProvenance?.config?.baseGoals,
+    eloScale: row.forecastProvenance?.config?.eloScale,
+    lambdaCap: row.forecastProvenance?.config?.lambdaCap,
+  });
+  return {
+    xg: [Math.round(lh * 100) / 100, Math.round(la * 100) / 100],
+    over25: row.pOver2_5,
+  };
 }

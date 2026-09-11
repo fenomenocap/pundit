@@ -81,6 +81,13 @@ export interface ClubSeasonSnapshotFixture {
   method: ClubSeasonSnapshotMethod;
 }
 
+export type MissedForecastCheckpointReason =
+  | "fixture_unpriced"
+  | "never_observed_scheduled"
+  | "cached_ineligible"
+  // Kept so already-persisted production rows and older tests remain valid.
+  | "no_eligible_pre_kickoff_forecast";
+
 export interface MissedForecastCheckpoint {
   competitionId: string;
   fixtureId: number;
@@ -89,7 +96,7 @@ export interface MissedForecastCheckpoint {
   away: string;
   checkpointPolicyId: string;
   recordedAt: string;
-  reason: "fixture_unpriced" | "no_eligible_pre_kickoff_forecast";
+  reason: MissedForecastCheckpointReason;
 }
 
 export interface EvaluationSegment {
@@ -183,7 +190,7 @@ function forecastIdentity(fixture: ModelFixture): string {
     + PRE_KICKOFF_CHECKPOINT_POLICY_ID;
 }
 
-type OfficialExclusionReason = "legacyPartialProvenance" | "incompleteInputProvenance"
+export type OfficialExclusionReason = "legacyPartialProvenance" | "incompleteInputProvenance"
   | "postKickoffForecast"
   | "invalidForecastTimestamp";
 
@@ -212,6 +219,17 @@ function officialExclusionReason(fixture: ClubSeasonSnapshotFixture): OfficialEx
     return "invalidForecastTimestamp";
   }
   return forecastAt >= kickoff ? "postKickoffForecast" : null;
+}
+
+/** Same official-row gate the ledger uses for metrics. Calibration must not invent a second definition. */
+export function officialClubSeasonExclusionReason(
+  fixture: ClubSeasonSnapshotFixture
+): OfficialExclusionReason | null {
+  return officialExclusionReason(fixture);
+}
+
+export function isOfficialSealedClubSeasonFixture(fixture: ClubSeasonSnapshotFixture): boolean {
+  return officialExclusionReason(fixture) === null;
 }
 
 function seasonId(utcDate: string): string {
@@ -394,9 +412,17 @@ export function getClubSeasonEvaluationArtifactPath(): string {
 }
 
 export function loadClubSeasonEvaluationArtifact(): ClubSeasonEvaluationArtifact {
-  const parsed = readJsonFile<LegacyArtifact>(getClubSeasonEvaluationArtifactPath())
-    ?? readJsonFile<LegacyArtifact>(resolveRepoDataPath(ARTIFACT_RELATIVE_PATH));
-  return migrateClubSeasonEvaluationArtifact(parsed);
+  const parsed = readJsonFile<LegacyArtifact>(getClubSeasonEvaluationArtifactPath());
+  if (parsed) return migrateClubSeasonEvaluationArtifact(parsed);
+  // A configured data dir (Railway /data, or a test temp dir) is the ledger
+  // itself. Do not copy the in-repo seed into it: that seed is not production
+  // truth and a local missed-checkpoint cold-start must not land on the volume.
+  if (process.env.PUNDIT_DATA_DIR?.trim()) {
+    return migrateClubSeasonEvaluationArtifact(null);
+  }
+  return migrateClubSeasonEvaluationArtifact(
+    readJsonFile<LegacyArtifact>(resolveRepoDataPath(ARTIFACT_RELATIVE_PATH))
+  );
 }
 
 export function buildSnapshotFromModel(
@@ -486,9 +512,21 @@ export interface SnapshotTransitionInput {
   now?: Date;
 }
 
+function forecastTimestamp(fixture: ModelFixture): number {
+  return Date.parse(fixture.forecastProvenance?.forecastAt ?? "");
+}
+
+function isPreKickoffForecast(fixture: ModelFixture): boolean {
+  const kickoff = Date.parse(fixture.utcDate);
+  const forecastAt = forecastTimestamp(fixture);
+  return Number.isFinite(kickoff) && Number.isFinite(forecastAt) && forecastAt < kickoff;
+}
+
 function isEligibleForecast(fixture: ModelFixture, now: Date): boolean {
   const kickoff = Date.parse(fixture.utcDate);
-  const forecastAt = Date.parse(fixture.forecastProvenance?.forecastAt ?? now.toISOString());
+  const forecastAt = Number.isFinite(forecastTimestamp(fixture))
+    ? forecastTimestamp(fixture)
+    : now.getTime();
   const untilKickoff = kickoff - now.getTime();
   return Number.isFinite(kickoff)
     && Number.isFinite(forecastAt)
@@ -498,11 +536,20 @@ function isEligibleForecast(fixture: ModelFixture, now: Date): boolean {
 }
 
 function isEligibleCachedFallback(fixture: ModelFixture): boolean {
-  const kickoff = Date.parse(fixture.utcDate);
-  const forecastAt = Date.parse(fixture.forecastProvenance?.forecastAt ?? "");
-  return Number.isFinite(kickoff)
-    && Number.isFinite(forecastAt)
-    && forecastAt < kickoff;
+  return isPreKickoffForecast(fixture);
+}
+
+function missedCheckpointReason(input: {
+  transitionedFromScheduled: boolean;
+  cached: ModelFixture | undefined;
+}): MissedForecastCheckpointReason {
+  if (input.cached) {
+    return isEligibleCachedFallback(input.cached)
+      ? "no_eligible_pre_kickoff_forecast"
+      : "cached_ineligible";
+  }
+  if (input.transitionedFromScheduled) return "fixture_unpriced";
+  return "never_observed_scheduled";
 }
 
 export function collectSnapshotTransitions(input: SnapshotTransitionInput): {
@@ -641,6 +688,13 @@ function persistCheckpointState(): void {
   }
 }
 
+function rememberFirstPreKickoffModel(key: string, modelFixture: ModelFixture): void {
+  if (!isPreKickoffForecast(modelFixture)) return;
+  const existing = lastScheduledModelByKey.get(key);
+  if (existing && isPreKickoffForecast(existing)) return;
+  lastScheduledModelByKey.set(key, modelFixture);
+}
+
 export function resetClubSeasonSnapshotState(): void {
   previousStatusByKey = new Map();
   lastScheduledModelByKey = new Map();
@@ -671,7 +725,7 @@ export function updateClubSeasonSnapshots(
     if (match.status !== "SCHEDULED") continue;
     const key = fixtureKey(match.competitionId, match.id);
     const modelFixture = modelByKey.get(key);
-    if (modelFixture) lastScheduledModelByKey.set(key, modelFixture);
+    if (modelFixture) rememberFirstPreKickoffModel(key, modelFixture);
   }
 
   let artifact = loadClubSeasonEvaluationArtifact();
@@ -738,11 +792,10 @@ export function updateClubSeasonSnapshots(
           away: match.awayTeam,
           checkpointPolicyId: PRE_KICKOFF_CHECKPOINT_POLICY_ID,
           recordedAt: snapshottedAt,
-          reason: transitionedPastKickoff && !lastScheduledModelByKey.has(key)
-            ? "fixture_unpriced"
-            : lastScheduledModelByKey.has(key)
-            ? "no_eligible_pre_kickoff_forecast"
-            : "no_eligible_pre_kickoff_forecast",
+          reason: missedCheckpointReason({
+            transitionedFromScheduled: transitionedPastKickoff,
+            cached: lastScheduledModelByKey.get(key),
+          }),
         });
         evidenceUpdated = true;
       }
@@ -815,4 +868,45 @@ export function seedClubSeasonSnapshotState(
   );
   const keys = new Set(fixtures.map((fixture) => fixtureKey(fixture.competitionId, fixture.fixtureId)));
   return mergeSnapshots(emptyArtifact(snapshottedAt), fixtures, keys, snapshottedAt);
+}
+
+export const CLUB_SEASON_CHECKPOINT_TICK_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
+ * Scan current ESPN matches against the live model cache. Used by the 15-minute
+ * checkpoint tick and by the football 30-minute refresh so a fixture still
+ * SCHEDULED inside the 90-minute window can seal without waiting on model/odds
+ * crons. Never invents probabilities after kickoff.
+ */
+export async function runClubSeasonCheckpointTick(
+  now = new Date()
+): Promise<ClubSeasonEvaluationArtifact | null> {
+  const { getCachedMatches } = await import("./football-data");
+  const { getCachedModelData } = await import("./model-data");
+  const football = getCachedMatches();
+  const matches = [...football.upcoming, ...football.recent];
+  if (matches.length === 0) return null;
+  return updateClubSeasonSnapshots(matches, getCachedModelData().fixtures, now);
+}
+
+let checkpointTickTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startClubSeasonCheckpointCron(): void {
+  if (checkpointTickTimer) clearInterval(checkpointTickTimer);
+  checkpointTickTimer = setInterval(() => {
+    void runClubSeasonCheckpointTick().catch((error) => {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.warn(`[ClubSeason] Checkpoint tick failed: ${message}`);
+    });
+  }, CLUB_SEASON_CHECKPOINT_TICK_INTERVAL_MS);
+  console.log(
+    "[ClubSeason] Checkpoint tick started — scanning scheduled 90-minute windows every 15 minutes"
+  );
+}
+
+export function stopClubSeasonCheckpointCron(): void {
+  if (checkpointTickTimer) {
+    clearInterval(checkpointTickTimer);
+    checkpointTickTimer = null;
+  }
 }

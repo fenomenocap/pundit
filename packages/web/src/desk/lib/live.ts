@@ -7,7 +7,7 @@ import {
 import { applyLiveForm, FORM, type ResultMark } from "./data/form";
 import type { TeamId } from "./data/teams";
 import { TEAM_LIST, TEAMS } from "./data/teams";
-import { mildLambdas, over25 } from "./grid";
+import { deskNumbersFromModelRow } from "./grid";
 
 export const LIVE_API =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
@@ -171,7 +171,7 @@ type LiveModelRow = {
     methodId?: string;
     ratingArtifactId?: string;
     homeAdvantageElo?: number;
-    config?: { baseGoals?: number; eloScale?: number; dixonColesRho?: number };
+    config?: { baseGoals?: number; eloScale?: number; lambdaCap?: number; dixonColesRho?: number };
   };
 };
 
@@ -185,8 +185,6 @@ type LiveMatch = {
   venue?: string | null;
   score?: { home: number; away: number } | null;
 };
-
-/** Frozen-total 2.70 split — production engine. Desk xG/O2.5 uses mildLambdas. */
 
 function pickLean(pHome: number, pDraw: number, pAway: number, pBtts: number): MarketKey {
   const oneXTwo: { key: MarketKey; p: number }[] = [
@@ -224,7 +222,7 @@ function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey
     `Form ${formH} / ${formA}.`,
     `xG ${xg[0].toFixed(2)}–${xg[1].toFixed(2)}.`,
     `1X2 ${(row.pHome * 100).toFixed(0)}/${(row.pDraw * 100).toFixed(0)}/${(row.pAway * 100).toFixed(0)}.`,
-    `BTTS ${(row.pBttsYes * 100).toFixed(0)} · O2.5 ${(over * 100).toFixed(0)} (desk).`,
+    `BTTS ${(row.pBttsYes * 100).toFixed(0)} · O2.5 ${(over * 100).toFixed(0)}.`,
     top ? `Modal ${top.score} (${(top.probability * 100).toFixed(0)}%).` : "",
     `Lean ${lean}.`,
     menH || menA ? `Recent scorers: ${menH} · ${menA}.` : "Recent scorers: none in ESPN results yet.",
@@ -241,8 +239,7 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
   const home = teamIdFromName(row.home);
   const away = teamIdFromName(row.away);
   if (!home || !away) return null;
-  const [lh, la] = mildLambdas(row.homeElo, row.awayElo);
-  const over = over25(lh, la);
+  const { xg, over25: over } = deskNumbersFromModelRow(row);
   const lean = pickLean(row.pHome, row.pDraw, row.pAway, row.pBttsYes);
   return {
     id: espnId(row.competitionId, row.fixtureId),
@@ -252,7 +249,7 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
     home,
     away,
     status: "upcoming",
-    xg: [Math.round(lh * 100) / 100, Math.round(la * 100) / 100],
+    xg,
     model: {
       home: row.pHome,
       draw: row.pDraw,
@@ -261,7 +258,7 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
       btts: row.pBttsYes,
     },
     odds: polyOdds(row),
-    brief: briefFor(row, home, away, lean, over, [Math.round(lh * 100) / 100, Math.round(la * 100) / 100]),
+    brief: briefFor(row, home, away, lean, over, xg),
     modelPick: lean,
   };
 }

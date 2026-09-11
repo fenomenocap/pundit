@@ -1361,6 +1361,26 @@ describe("current-news evidence hardening", () => {
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
         .toMatch(/I am at .*Kalshi is at .*percentage points/i);
+      expect(closedGroundedAnswer("what are the odds", model(), true))
+        .toMatch(/My 1X2 is Arsenal 97\.3% \(fair 1\.03\)/);
+      expect(closedGroundedAnswer("what is a +EV bet", model(), true))
+        .toMatch(/captured decimal line before I can print EV%/);
+      expect(closedGroundedAnswer("projected score", model(), true))
+        .toMatch(/leading (?:over 2\.5 )?scorelines?/i);
+      expect(closedGroundedAnswer("Tactical matchup", model(), true)).toBeNull();
+      expect(closedGroundedAnswer("who decides this", model())).toBeNull();
+      const leftoverLine = {
+        ...model(),
+        pricing: attachUserLine(model().pricing, { outcome: "away", decimalOdds: 2.1 }),
+      };
+      expect(closedGroundedAnswer("what are the odds", leftoverLine, true))
+        .toMatch(/My 1X2 is Arsenal 97\.3% \(fair 1\.03\)/);
+      expect(closedGroundedAnswer("projected score", leftoverLine, true))
+        .toMatch(/leading (?:over 2\.5 )?scorelines?/i);
+      expect(closedGroundedAnswer("Tactical matchup", leftoverLine, true)).toBeNull();
+      expect(closedGroundedAnswer("How do Chelsea win this?", leftoverLine, true)).toBeNull();
+      expect(closedGroundedAnswer("what are the odds", leftoverLine, true)).not.toMatch(/EV [+\-]/);
+      expect(closedGroundedAnswer("what is a +EV bet", leftoverLine, true)).toMatch(/EV /);
     });
 
     it("still settles the match questions the payload fully answers", () => {
@@ -2498,6 +2518,8 @@ describe("shouldUseMatchGrounding", () => {
     expect(shouldUseMatchGrounding("Is this over 2.5?")).toBe(true);
     expect(shouldUseMatchGrounding("Who is most likely to score?")).toBe(true);
     expect(shouldUseMatchGrounding("Who will most likely score for Liverpool?")).toBe(true);
+    expect(shouldUseMatchGrounding("what is a +EV bet here")).toBe(true);
+    expect(shouldUseMatchGrounding("what is a +EV bet")).toBe(true);
   });
 
   it("does not classify an unrelated tactical question", () => {
@@ -3143,6 +3165,51 @@ describe("resolveAskContext", () => {
     )).toEqual({ tier: "match", fixture: fixtures[0] });
   });
 
+  it("keeps a +EV question on the retained priced fixture despite the 'what is a' explainer shape", () => {
+    const recognized = [recognizeEspnFixture({
+      id: fixtures[0].fixtureId,
+      competitionId: fixtures[0].competitionId,
+      competition: fixtures[0].competition,
+      homeTeam: fixtures[0].home,
+      awayTeam: fixtures[0].away,
+      utcDate: fixtures[0].utcDate,
+      status: "SCHEDULED",
+      stage: fixtures[0].stage,
+      matchday: null,
+      group: fixtures[0].group,
+      score: null,
+      neutralVenue: false,
+    })];
+    expect(resolveAskContext(
+      "what is a +EV bet here",
+      [],
+      undefined,
+      fixtures,
+      [],
+      [],
+      {
+        recognizedFixtures: recognized,
+        fixtureContext: { fixtureId: recognized[0].fixtureId },
+      }
+    )).toEqual({ tier: "match", fixture: fixtures[0] });
+  });
+
+  it("keeps a +EV question on a retained unpriced fixture instead of general analysis", () => {
+    const friendly = recognizedFriendly(800, "Arsenal", "Liverpool");
+    expect(resolveAskContext(
+      "what is a +EV bet here",
+      [],
+      undefined,
+      [],
+      [],
+      [],
+      {
+        recognizedFixtures: [friendly],
+        fixtureContext: { fixtureId: friendly.fixtureId },
+      }
+    )).toMatchObject({ tier: "fixture", fixture: { fixtureId: friendly.fixtureId } });
+  });
+
   it("retains match grounding for conversational follow-ups without an explicit cue", () => {
     const teamContext: [string, string] = ["Arsenal", "Coventry City"];
     for (const question of [
@@ -3391,6 +3458,24 @@ describe("evidence guards leave model-derived answers intact", () => {
     expect(rendered.answer).toBe(
       "Saka is back in training ([Saka trains](https://bbc.co.uk/x), 2026-08-18)."
     );
+
+    const isoDated = {
+      queries: ["q"],
+      results: [{
+        id: "S1",
+        title: "Chelsea XI vs Leeds: Predicted lineup and confirmed team news",
+        url: "https://www.standard.co.uk/sport/football/chelsea-xi-vs-leeds-b1296122.html",
+        date: "2026-09-09T17:47:51.000Z",
+        snippet: "Lineup.",
+      }],
+    };
+    const isoRendered = renderEvidenceCitations("Jackson is a doubt [[S1]].", isoDated, true);
+    expect(isoRendered.answer).toContain(
+      "[Chelsea XI vs Leeds: Predicted lineup and confirmed team news](https://www.standard.co.uk/sport/football/chelsea-xi-vs-leeds-b1296122.html)"
+    );
+    expect(isoRendered.answer).toContain(", 2026-09-09)");
+    expect(isoRendered.answer).not.toContain("T17:47:51");
+    expect(isoRendered.answer).not.toContain(".000Z");
     expect(rendered.citations).toEqual([expect.objectContaining({ id: "S1" })]);
 
     // A marker naming an id the bundle does not contain is still removed, in

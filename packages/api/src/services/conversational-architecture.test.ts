@@ -1,12 +1,72 @@
 import { describe, expect, it } from "vitest";
-import { deliverAnswer, deterministicSearchQuery, planEvidenceQueries, type Grounding } from "./ask";
+import { closedGroundedAnswer, deliverAnswer, deterministicSearchQuery, planEvidenceQueries, type Grounding } from "./ask";
 import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
 import { PLAYER_SCORER_ABSTENTION, TEAM_NEWS_COMPOSE_ABSTENTION } from "./player-evidence";
 import { composeMatchResponse, SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
 import { buildResponseFacts } from "./response-facts";
-import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
+import { asksStakeSizeQuestion, isSettledMatchMode, planResponse, questionAcceptsUserLine, resolveRequestedScoreline, responsePresentation } from "./response-plan";
 import { attachUserLine, buildMatchPricing, stripUntraceableMatchPercentages } from "./response-correctness";
+
+function matchGrounding(input: {
+  fixtureId: string;
+  home: string;
+  away: string;
+  date: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  pOver2_5: number;
+  pUnder2_5: number;
+  pBttsYes: number;
+  pBttsNo: number;
+  topScores: Grounding["topScores"];
+  oddsSources: Grounding["oddsSources"];
+}): Grounding {
+  return {
+    kind: "match",
+    fixtureId: input.fixtureId,
+    competitionId: "eng.1",
+    competition: "Premier League",
+    homeFieldAdvantage: true,
+    date: input.date,
+    stage: "Regular Season",
+    home: input.home,
+    away: input.away,
+    pHome: input.pHome,
+    pDraw: input.pDraw,
+    pAway: input.pAway,
+    pOver2_5: input.pOver2_5,
+    pUnder2_5: input.pUnder2_5,
+    pBttsYes: input.pBttsYes,
+    pBttsNo: input.pBttsNo,
+    topScores: input.topScores,
+    scorelines: input.topScores,
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    oddsSources: input.oddsSources,
+    marketDivergence: [],
+    pricing: buildMatchPricing({
+      fixtureId: input.fixtureId,
+      home: input.home,
+      away: input.away,
+      kickoff: input.date,
+      pricedAt: "2026-09-09T10:00:00Z",
+      pHome: input.pHome,
+      pDraw: input.pDraw,
+      pAway: input.pAway,
+      markets: input.oddsSources.map((source) => ({
+        source: source.source,
+        observedAt: source.observedAt,
+        pHome: source.pHome,
+        pDraw: source.pDraw,
+        pAway: source.pAway,
+        decimalOdds: null,
+      })),
+    }),
+  };
+}
 
 const grounding = (): Grounding => {
   const pHome = 0.563;
@@ -72,6 +132,56 @@ const grounding = (): Grounding => {
     }),
   };
 };
+
+function liverpoolGrounding(): Grounding {
+  return matchGrounding({
+    fixtureId: "espn:eng.1:401879279",
+    home: "Liverpool",
+    away: "Fulham",
+    date: "2026-09-12T14:00:00Z",
+    pHome: 0.66,
+    pDraw: 0.223,
+    pAway: 0.117,
+    pOver2_5: 0.5,
+    pUnder2_5: 0.5,
+    pBttsYes: 0.45,
+    pBttsNo: 0.55,
+    topScores: [
+      { score: "2-0", probability: 0.132 },
+      { score: "1-0", probability: 0.123 },
+      { score: "1-1", probability: 0.106 },
+    ],
+    oddsSources: [{
+      source: "polymarket",
+      observedAt: "2026-09-09T10:00:00Z",
+      pHome: 0.64,
+      pDraw: 0.23,
+      pAway: 0.13,
+    }],
+  });
+}
+
+function arsenalChelseaGrounding(): Grounding {
+  return matchGrounding({
+    fixtureId: "espn:eng.1:401879292",
+    home: "Arsenal",
+    away: "Chelsea",
+    date: "2026-09-06T15:30:00Z",
+    pHome: 0.52,
+    pDraw: 0.25,
+    pAway: 0.23,
+    pOver2_5: 0.57,
+    pUnder2_5: 0.43,
+    pBttsYes: 0.55,
+    pBttsNo: 0.45,
+    topScores: [
+      { score: "2-1", probability: 0.098 },
+      { score: "1-1", probability: 0.09 },
+      { score: "1-0", probability: 0.085 },
+    ],
+    oddsSources: [],
+  });
+}
 
 describe("V2 conversational architecture", () => {
   it("classifies narrow turns without requesting another full card", () => {
@@ -144,6 +254,35 @@ describe("V2 conversational architecture", () => {
     expect(asksStakeSizeQuestion("Three points are at stake for Arsenal")).toBe(false);
     expect(planResponse("Three points are at stake for Arsenal", { groundingKind: "match", hasHistory: true }).mode)
       .not.toBe("stake-refusal");
+    const followUpOdds = { groundingKind: "match" as const, hasHistory: true };
+    expect(planResponse("what are the odds", followUpOdds).mode).toBe("pricing-desk");
+    expect(planResponse("what's the line", followUpOdds).mode).toBe("pricing-desk");
+    expect(planResponse("show me the board", followUpOdds).mode).toBe("pricing-desk");
+    expect(planResponse("what is a +EV bet", followUpOdds).mode).toBe("pricing-desk");
+    expect(planResponse("what's the expected value", followUpOdds).mode).toBe("pricing-desk");
+    expect(planResponse("edge vs the book", followUpOdds).mode).toBe("pricing-desk");
+    expect(planResponse("projected score", followUpOdds).mode).toBe("exact-score");
+    expect(planResponse("what's the projected score", followUpOdds).mode).toBe("exact-score");
+    expect(planResponse("Tactical matchup", followUpOdds).mode).toBe("match-follow-up");
+    expect(planResponse("How do Chelsea win this?", { groundingKind: "match" }).mode).toBe("match-follow-up");
+    expect(planResponse("How do Cherries win this?", { groundingKind: "match" }).mode).toBe("match-follow-up");
+    expect(planResponse("How do Man Utd win this?", { groundingKind: "match" }).mode).toBe("match-follow-up");
+    expect(closedGroundedAnswer("How do Chelsea win this?", grounding())).toBeNull();
+    expect(planResponse("who decides this", { groundingKind: "match" }).mode).toBe("match-follow-up");
+    expect(planResponse("I found Arsenal at 7 — what's the +EV?", {
+      groundingKind: "match", hasUserLine: true, hasHistory: true,
+    }).mode).toBe("user-line");
+    const leftoverLine = { groundingKind: "match" as const, hasHistory: true, hasUserLine: true };
+    expect(planResponse("what are the odds", leftoverLine).mode).toBe("pricing-desk");
+    expect(planResponse("projected score", leftoverLine).mode).toBe("exact-score");
+    expect(planResponse("Tactical matchup", leftoverLine).mode).toBe("match-follow-up");
+    expect(planResponse("what is a +EV bet", leftoverLine).mode).toBe("user-line");
+    expect(planResponse("what is a +EV bet", { groundingKind: "match", hasHistory: true }).mode)
+      .toBe("pricing-desk");
+    expect(questionAcceptsUserLine("+EV")).toBe(true);
+    expect(questionAcceptsUserLine("What are the odds")).toBe(false);
+    expect(questionAcceptsUserLine("Tactical matchup")).toBe(false);
+    expect(questionAcceptsUserLine("Projected score")).toBe(false);
   });
 
   it("plans real retrieval for stats questions without searching owned match facts", () => {
@@ -387,6 +526,8 @@ describe("V2 conversational architecture", () => {
     });
     expect(deskNews.answer).toMatch(/Cole Palmer/);
     expect(deskNews.answer).toMatch(/example\.com\/news/);
+    expect(deskNews.answer).toMatch(/11 Sep/);
+    expect(deskNews.answer).not.toMatch(/T\d{2}:\d{2}:\d{2}/);
     expect(deskNews.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(deskNews.verification.status).toBe("verified");
 
@@ -554,6 +695,175 @@ describe("V2 conversational architecture", () => {
     expect(previewCopy).toMatch(/full 1X2/);
     expect(previewCopy).toContain(SHARED_TOTAL_XG_SENTENCE);
     expect(previewCopy).not.toMatch(/Over 2\.5 is 58\.9%/);
+  });
+
+  it("settles desk odds, +EV and projected-score turns from the composer", () => {
+    const match = grounding();
+    const history = { groundingKind: "match" as const, hasHistory: true };
+    expect(isSettledMatchMode(planResponse("what are the odds", history).mode)).toBe(true);
+    expect(closedGroundedAnswer("what are the odds", match, true)).toMatch(/My 1X2 is Arsenal/);
+    expect(closedGroundedAnswer("what is a +EV bet", match, true)).toMatch(/captured decimal line/);
+    expect(closedGroundedAnswer("projected score", match, true)).toMatch(/leading scorelines/);
+    expect(isSettledMatchMode(planResponse("Tactical matchup", history).mode)).toBe(false);
+    expect(closedGroundedAnswer("Tactical matchup", match, true)).toBeNull();
+    const leftover = {
+      ...match,
+      pricing: attachUserLine(match.pricing, { outcome: "away", decimalOdds: 2.1 }),
+    };
+    expect(closedGroundedAnswer("what are the odds", leftover, true)).toMatch(/My 1X2 is Arsenal/);
+    expect(closedGroundedAnswer("what are the odds", leftover, true)).not.toMatch(/EV [+\-]/);
+    expect(closedGroundedAnswer("projected score", leftover, true)).toMatch(/leading scorelines/);
+    expect(closedGroundedAnswer("Tactical matchup", leftover, true)).toBeNull();
+    expect(closedGroundedAnswer("How do Chelsea win this?", leftover, true)).toBeNull();
+    expect(closedGroundedAnswer("what is a +EV bet", leftover, true)).toMatch(/EV /);
+
+    const odds = composeMatchResponse("what are the odds", match, planResponse("what are the odds", history));
+    expect(odds).toMatch(/My 1X2 is Arsenal 56\.3% \(fair 1\.78\)/);
+    expect(odds).toMatch(/captured decimal line before I can print EV%/);
+    expect(odds).not.toMatch(/leading scorelines/i);
+
+    const ev = composeMatchResponse("what is a +EV bet", match, planResponse("what is a +EV bet", history));
+    expect(ev).toMatch(/captured decimal line before I can print EV%/);
+    expect(ev).not.toMatch(/I will not size a stake/i);
+
+    const lined = {
+      ...match,
+      pricing: attachUserLine(match.pricing, { outcome: "away", decimalOdds: 7 }),
+    };
+    const posted = composeMatchResponse(
+      "what is a +EV bet",
+      lined,
+      planResponse("what is a +EV bet", { groundingKind: "match", hasHistory: true, hasUserLine: true })
+    );
+    expect(posted).toMatch(/EV \+/);
+    expect(posted).toMatch(/Chelsea at 7\.00/);
+
+    const projected = composeMatchResponse(
+      "projected score",
+      match,
+      planResponse("projected score", history)
+    );
+    expect(projected).toMatch(/2-1 at 11\.4% \(fair 8\.77\)/);
+    expect(projected).not.toMatch(/56\.3%/);
+  });
+
+  it("settles odds, projected score and +EV for a second open fixture with a named market", () => {
+    const liverpool = liverpoolGrounding();
+    const history = { groundingKind: "match" as const, hasHistory: true };
+    expect(planResponse("what are the odds", history).mode).toBe("pricing-desk");
+    expect(planResponse("projected score", history).mode).toBe("exact-score");
+    expect(planResponse("what is a +EV bet", history).mode).toBe("pricing-desk");
+    expect(closedGroundedAnswer("what are the odds", liverpool, true)).toMatch(/My 1X2 is Liverpool/);
+    expect(closedGroundedAnswer("projected score", liverpool, true)).toMatch(/leading scorelines/);
+    expect(closedGroundedAnswer("what is a +EV bet", liverpool, true)).toMatch(/captured decimal line/);
+
+    const odds = composeMatchResponse("what are the odds", liverpool, planResponse("what are the odds", history));
+    expect(odds).toMatch(/Liverpool 66\.0% \(fair 1\.52\)/);
+    expect(odds).toMatch(/Fulham 11\.7% \(fair 8\.55\)/);
+    expect(odds).toMatch(/captured decimal line before I can print EV%/);
+
+    const projected = composeMatchResponse(
+      "projected score",
+      liverpool,
+      planResponse("projected score", history)
+    );
+    expect(projected).toMatch(/2-0 at 13\.2% \(fair 7\.58\)/);
+    expect(projected).not.toMatch(/66\.0%/);
+
+    const lined = {
+      ...liverpool,
+      pricing: attachUserLine(liverpool.pricing, { outcome: "home", decimalOdds: 1.44 }),
+    };
+    expect(planResponse("what is a +EV bet", { ...history, hasUserLine: true }).mode).toBe("user-line");
+    const posted = composeMatchResponse(
+      "what is a +EV bet",
+      lined,
+      planResponse("what is a +EV bet", { ...history, hasUserLine: true })
+    );
+    expect(posted).toMatch(/Liverpool at 1\.44/);
+    expect(posted).toMatch(/EV /);
+  });
+
+  it("applies the same desk compose/plan contract across remaining GW4 opens", () => {
+    const remaining = [
+      { fixtureId: "espn:eng.1:401879281", home: "Crystal Palace", away: "Ipswich Town" },
+      { fixtureId: "espn:eng.1:401879284", home: "Aston Villa", away: "Nottingham Forest" },
+      { fixtureId: "espn:eng.1:401879285", home: "Bournemouth", away: "Brentford" },
+      { fixtureId: "espn:eng.1:401879277", home: "Tottenham", away: "Everton" },
+      { fixtureId: "espn:eng.1:401878779", home: "Sunderland", away: "Arsenal" },
+      { fixtureId: "espn:eng.1:401879282", home: "Coventry City", away: "Brighton" },
+      { fixtureId: "espn:eng.1:401879280", home: "Leeds United", away: "Newcastle" },
+    ] as const;
+    const history = { groundingKind: "match" as const, hasHistory: true };
+    const leftover = { ...history, hasUserLine: true };
+    expect(planResponse("what are the odds", leftover).mode).toBe("pricing-desk");
+    expect(planResponse("projected score", leftover).mode).toBe("exact-score");
+    expect(planResponse("what is a +EV bet", history).mode).toBe("pricing-desk");
+    expect(planResponse("what is a +EV bet", leftover).mode).toBe("user-line");
+    expect(planResponse("what are the odds", { groundingKind: "fixture" }).mode).toBe("coverage");
+
+    for (const row of remaining) {
+      const g = matchGrounding({
+        fixtureId: row.fixtureId,
+        home: row.home,
+        away: row.away,
+        date: "2026-09-12T14:00:00Z",
+        pHome: 0.48,
+        pDraw: 0.26,
+        pAway: 0.26,
+        pOver2_5: 0.5,
+        pUnder2_5: 0.5,
+        pBttsYes: 0.47,
+        pBttsNo: 0.53,
+        topScores: [
+          { score: "1-0", probability: 0.11 },
+          { score: "1-1", probability: 0.1 },
+          { score: "2-1", probability: 0.09 },
+        ],
+        oddsSources: [],
+      });
+      expect(closedGroundedAnswer("what are the odds", g, true)).toMatch(new RegExp(row.home.split(" ")[0]));
+      expect(closedGroundedAnswer("what is a +EV bet", g, true)).toMatch(/captured decimal line/);
+      const projected = composeMatchResponse(
+        "projected score",
+        g,
+        planResponse("projected score", history)
+      );
+      expect(projected).toMatch(/1-0 at 11\.0%/);
+      expect(projected).not.toMatch(/48\.0%/);
+    }
+  });
+
+  it("still composes a board from completed-match grounding when a decimal is present or missing", () => {
+    const historical = arsenalChelseaGrounding();
+    const history = { groundingKind: "match" as const, hasHistory: true };
+    expect(closedGroundedAnswer("what are the odds", historical, true)).toMatch(/My 1X2 is Arsenal/);
+    expect(closedGroundedAnswer("projected score", historical, true)).toMatch(/leading scorelines/);
+    expect(closedGroundedAnswer("what is a +EV bet", historical, true)).toMatch(/captured decimal line/);
+
+    const odds = composeMatchResponse("what are the odds", historical, planResponse("what are the odds", history));
+    expect(odds).toMatch(/Arsenal 52\.0% \(fair 1\.92\)/);
+    expect(odds).toMatch(/Chelsea 23\.0% \(fair 4\.35\)/);
+    expect(odds).toMatch(/captured decimal line before I can print EV%/);
+
+    const projected = composeMatchResponse(
+      "projected score",
+      historical,
+      planResponse("projected score", history)
+    );
+    expect(projected).toMatch(/2-1 at 9\.8%/);
+
+    const lined = {
+      ...historical,
+      pricing: attachUserLine(historical.pricing, { outcome: "home", decimalOdds: 1.85 }),
+    };
+    const posted = composeMatchResponse(
+      "what is a +EV bet",
+      lined,
+      planResponse("what is a +EV bet", { ...history, hasUserLine: true })
+    );
+    expect(posted).toMatch(/Arsenal at 1\.85/);
+    expect(posted).toMatch(/EV /);
   });
 
   it("fails closed on untraceable percentages and strips unresolved final markers", () => {

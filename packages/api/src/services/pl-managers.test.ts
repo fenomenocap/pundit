@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { stripUnlistedManagers, managersNamedInEvidence } from "./pl-managers";
-import { card, formatSearchEvidence } from "./desk-voice";
+import { card, DESK_SYSTEM, formatSearchEvidence, humaniseDeskCitationDates, stripDeskBoardRecitals } from "./desk-voice";
 import type { Grounding } from "./ask";
 
 function match(over: Partial<Grounding> = {}): Grounding {
@@ -55,7 +55,7 @@ describe("desk current-world facts", () => {
         date: "2026-05-22",
       },
     ]);
-    expect(block).toContain("2026-05-22");
+    expect(block).toContain("22 May");
     expect(block).toContain("Carrick");
     expect(block).toContain("SEARCH EVIDENCE");
   });
@@ -99,7 +99,55 @@ describe("desk current-world facts", () => {
       },
     ]);
     expect(block).toContain("[[S1]]");
-    expect(block).toContain("2026-05-22");
+    expect(block).toContain("22 May");
     expect(block).not.toMatch(/^\[1\]/m);
+  });
+});
+
+describe("desk football voice", () => {
+  it("forbids MiniMax from reciting board numbers or hedge-fund jargon", () => {
+    expect(DESK_SYSTEM).toMatch(/Do not print probabilities/);
+    expect(DESK_SYSTEM).toMatch(/Do not author EV%/);
+    expect(DESK_SYSTEM).not.toMatch(/Put a number on it/);
+    expect(DESK_SYSTEM).not.toMatch(/Never print EV%/);
+    expect(DESK_SYSTEM).toMatch(/Never paste a URL/);
+    expect(DESK_SYSTEM).toMatch(/2–4 sentences/);
+    expect(DESK_SYSTEM).toMatch(/Do not use numbered lists/);
+    expect(DESK_SYSTEM).toMatch(/category error/);
+  });
+
+  it("strips leftover percent and odds recitals from a football take", () => {
+    const leaked = [
+      "City should control territory and wait for the extra man in the box.",
+      "I make City 53% and United 26%, fair 1.89.",
+      "BTTS sits at 53%.",
+      "Over 2.5 is a coin flip on the shared 2.70 xG.",
+      "Who decides it is the first goal in behind.",
+    ].join(" ");
+    const clean = stripDeskBoardRecitals(leaked);
+    expect(clean).toContain("City should control territory");
+    expect(clean).toContain("Who decides it is the first goal in behind.");
+    expect(clean).not.toMatch(/%/);
+    expect(clean).not.toMatch(/fair 1\.89/i);
+    expect(clean).not.toMatch(/BTTS/i);
+    expect(clean).not.toMatch(/Over 2\.5/i);
+  });
+
+  it("strips a bare 1X2 recital without percent signs", () => {
+    const clean = stripDeskBoardRecitals(
+      "Chelsea should play through the half-spaces. Chelsea 79/16/5 on the card. Who decides it is the first ball in behind."
+    );
+    expect(clean).toContain("Chelsea should play through the half-spaces.");
+    expect(clean).toContain("Who decides it is the first ball in behind.");
+    expect(clean).not.toMatch(/79\/16\/5/);
+  });
+
+  it("shortens a citation ISO instant to a short date", () => {
+    const out = humaniseDeskCitationDates(
+      "Jackson is a doubt ([Chelsea XI vs Leeds](https://www.standard.co.uk/x), 2026-09-09T17:47:51.000Z)."
+    );
+    expect(out).toContain("9 Sep");
+    expect(out).not.toContain("T17:47:51");
+    expect(out).toContain("](https://www.standard.co.uk/x)");
   });
 });

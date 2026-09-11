@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "productionAutoLoad": false,
+  "recommendedForProduction": false,
+  "methodId": "clubelo-fixed-total-dixon-coles-calibrated",
+  "mapping": "fixed-total-elo-odds-ratio",
+  "constants": {
+    "baseGoals": 1.42,
+    "homeAdvantageElo": 40,
+    "rho": 0,
+    "mismatchInflation": 0,
+    "baseGoalsByCompetition": {
+      "eng.1": 1.42,
+      "uefa.champions_qual": 1.35
+    }
+  },
+  "source": {
+    "officialN": 44,
+    "premierLeagueN": 30,
+    "uclQualN": 14,
+    "ledgerNote": "Official sealed rows from packages/api/data/research/champion-calibration/ledgers/production-2026-09-09.json. Production evidence is Railway PUNDIT_DATA_DIR=/data, not the in-repo seed."
+  },
+  "id": "champion-calibration@1:93e271e4ff96d96beb2dc3ab8d086d85893c52d6385f82960c01e6ac728fad27",
+  "sha256": "93e271e4ff96d96beb2dc3ab8d086d85893c52d6385f82960c01e6ac728fad27"
+}

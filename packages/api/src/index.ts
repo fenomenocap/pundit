@@ -16,6 +16,7 @@ import {
   startClubRatingsCron,
 } from "./services/club-ratings";
 import { getCachedModelData, getModelRefreshState, startModelCron } from "./services/model-data";
+import { startClubSeasonCheckpointCron } from "./services/club-season-snapshots";
 import {
   getCachedMatches,
   getCachedSeasonSchedule,
@@ -274,6 +275,7 @@ export function startServer() {
       await startClubRatingsCron();
       await startModelCron();
       await startModelMarketOddsCron();
+      startClubSeasonCheckpointCron();
     })().catch((error) => {
       logFatalProcessError("Bootstrap", error);
     });

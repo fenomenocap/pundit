@@ -120,6 +120,13 @@ Once that contract is satisfied, add an offline-only trainer that emits a
 content-addressed artifact and paired champion/challenger forecasts. Do not wire
 it into readiness or production selection until the promotion gate passes.
 
+The trainer (`train:dixon-coles-mle`) and the paired rolling-origin eval
+(`eval:dixon-coles-mle` in `challenger-eval.ts`) exist. Both fail closed without
+a complete pre-kickoff ClubElo join and a validated fitted artifact. Empty
+holdouts report unavailable metrics, not zero loss. A promotion recommendation
+still requires a human deploy; `activateProduction` stays false and
+`model-data.ts` continues to use `ELO_CHAMPION` only.
+
 ### Corpus gate result — 2026-08-10
 
 The protected prior-worktree audit produced a content-addressed ESPN corpus.

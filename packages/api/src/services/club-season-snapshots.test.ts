@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,11 +11,24 @@ import {
   mergeSnapshots,
   migrateClubSeasonEvaluationArtifact,
   resetClubSeasonSnapshotState,
+  runClubSeasonCheckpointTick,
   seedClubSeasonSnapshotState,
   updateClubSeasonSnapshots,
 } from "./club-season-snapshots";
 import type { ModelFixture } from "./model-data";
+import { replaceModelDataForTests } from "./model-data";
 import { ELO_CHAMPION_CONFIG } from "./model-contributors";
+import { replaceFootballDataForTests } from "./football-data";
+import { fetchAllMarketOdds } from "./fixture-market-sources";
+import { refreshModelMarketOdds } from "./model-market-odds";
+
+vi.mock("./fixture-market-sources", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./fixture-market-sources")>();
+  return {
+    ...actual,
+    fetchAllMarketOdds: vi.fn(),
+  };
+});
 
 const originalDataDir = process.env.PUNDIT_DATA_DIR;
 let tempDataDir: string | null = null;
@@ -72,6 +85,17 @@ describe("club-season snapshots", () => {
     tempDataDir = null;
     if (originalDataDir === undefined) delete process.env.PUNDIT_DATA_DIR;
     else process.env.PUNDIT_DATA_DIR = originalDataDir;
+    replaceFootballDataForTests({
+      upcoming: [],
+      recent: [],
+      lastUpdated: null,
+      error: null,
+    });
+    replaceModelDataForTests({
+      fixtures: [],
+      lastUpdated: null,
+      error: null,
+    });
   });
 
   it("detects scheduled-to-in-play transitions", () => {
@@ -415,8 +439,109 @@ describe("club-season snapshots", () => {
     expect(artifact.missedCheckpoints).toHaveLength(1);
     expect(artifact.missedCheckpoints[0]).toMatchObject({
       fixtureId: 101,
-      reason: "no_eligible_pre_kickoff_forecast",
+      reason: "never_observed_scheduled",
     });
+  });
+
+  it("records fixture_unpriced when a scheduled fixture was never in the model cache", () => {
+    useTempDataDir();
+    updateClubSeasonSnapshots([sampleMatch()], [], new Date("2026-08-15T13:15:00.000Z"));
+    updateClubSeasonSnapshots(
+      [sampleMatch({ status: "IN_PLAY", score: { home: 0, away: 0 } })],
+      [],
+      new Date("2026-08-15T14:01:00.000Z")
+    );
+    const artifact = loadClubSeasonEvaluationArtifact();
+    expect(artifact.fixtures).toHaveLength(0);
+    expect(artifact.missedCheckpoints).toHaveLength(1);
+    expect(artifact.missedCheckpoints[0]).toMatchObject({
+      fixtureId: 101,
+      reason: "fixture_unpriced",
+    });
+  });
+
+  it("seals from the football-cadence checkpoint tick while the fixture is still scheduled", async () => {
+    useTempDataDir();
+    const now = new Date("2026-08-15T13:15:00.000Z");
+    replaceFootballDataForTests({
+      upcoming: [sampleMatch()],
+      recent: [],
+      lastUpdated: now,
+      error: null,
+    });
+    replaceModelDataForTests({
+      fixtures: [sampleModelFixture()],
+      lastUpdated: now,
+      error: null,
+    });
+    const artifact = await runClubSeasonCheckpointTick(now);
+    expect(artifact?.fixtures).toHaveLength(1);
+    expect(artifact?.fixtures[0].checkpointReason).toBe("scheduled_window");
+  });
+
+  it("still seals a scheduled window when market odds refresh fails", async () => {
+    useTempDataDir();
+    const now = new Date();
+    const kickoff = new Date(now.getTime() + 45 * 60 * 1000).toISOString();
+    const match = sampleMatch({ utcDate: kickoff });
+    const fixture = sampleModelFixture({
+      utcDate: kickoff,
+      date: kickoff.slice(0, 10),
+      forecastProvenance: {
+        ...sampleModelFixture().forecastProvenance!,
+        forecastAt: now.toISOString(),
+      },
+    });
+    replaceFootballDataForTests({
+      upcoming: [match],
+      recent: [],
+      lastUpdated: now,
+      error: null,
+    });
+    replaceModelDataForTests({
+      fixtures: [fixture],
+      lastUpdated: now,
+      error: null,
+    });
+    vi.mocked(fetchAllMarketOdds).mockRejectedValue(new Error("Kalshi 503"));
+    await refreshModelMarketOdds();
+    const artifact = loadClubSeasonEvaluationArtifact();
+    expect(artifact.fixtures).toHaveLength(1);
+    expect(artifact.fixtures[0].checkpointReason).toBe("scheduled_window");
+  });
+
+  it("keeps the first pre-kickoff forecastAt when a later refresh ages past kickoff", () => {
+    useTempDataDir();
+    updateClubSeasonSnapshots(
+      [sampleMatch()],
+      [sampleModelFixture({
+        forecastProvenance: {
+          ...sampleModelFixture().forecastProvenance!,
+          forecastAt: "2026-08-15T12:00:00.000Z",
+        },
+      })],
+      new Date("2026-08-15T12:00:00.000Z")
+    );
+    updateClubSeasonSnapshots(
+      [sampleMatch()],
+      [sampleModelFixture({
+        forecastProvenance: {
+          ...sampleModelFixture().forecastProvenance!,
+          forecastAt: "2026-08-15T14:01:00.000Z",
+        },
+      })],
+      new Date("2026-08-15T14:01:00.000Z")
+    );
+    updateClubSeasonSnapshots(
+      [sampleMatch({ status: "IN_PLAY", score: { home: 0, away: 0 } })],
+      [],
+      new Date("2026-08-15T14:02:00.000Z")
+    );
+    const artifact = loadClubSeasonEvaluationArtifact();
+    expect(artifact.fixtures).toHaveLength(1);
+    expect(artifact.fixtures[0].forecastAt).toBe("2026-08-15T12:00:00.000Z");
+    expect(artifact.fixtures[0].checkpointReason).toBe("pre_kickoff_cached_fallback");
+    expect(artifact.missedCheckpoints).toHaveLength(0);
   });
 
   it("appends timestamped market evidence without changing the sealed probabilities", () => {

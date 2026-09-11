@@ -304,7 +304,11 @@ export interface ClubSeasonEvaluationResponse {
     away: string;
     checkpointPolicyId: string;
     recordedAt: string;
-    reason: "fixture_unpriced" | "no_eligible_pre_kickoff_forecast";
+    reason:
+      | "fixture_unpriced"
+      | "never_observed_scheduled"
+      | "cached_ineligible"
+      | "no_eligible_pre_kickoff_forecast";
   }>;
   metrics: Omit<Wc2026EvaluationResponse["metrics"], "brierScore" | "logLoss" | "winnerAccuracy"> & {
     brierScore: number | null;
@@ -380,6 +384,15 @@ export interface PricingObject {
   pricedAt: string;
   model: Record<OneXTwoOutcome, { p: number; fairOdds: number }>;
   markets: MarketPricingRow[];
+  consensus?: {
+    label: string;
+    fundamentalLabel: string;
+    marketSource: string;
+    marketLabel: string;
+    observedAt: string;
+    marketWeight: number;
+    model: Record<OneXTwoOutcome, { p: number; fairOdds: number }>;
+  };
   userLine: {
     outcome: OneXTwoOutcome;
     decimalOdds: number;
@@ -417,6 +430,22 @@ export interface MatchGrounding {
   stakeObservedAt?: string;
   oddsSources: OddsSource[];
   pricing: PricingObject;
+  consensus?: {
+    label: string;
+    fundamentalLabel: string;
+    marketSource: string;
+    marketLabel: string;
+    observedAt: string;
+    marketWeight: number;
+    pHome: number;
+    pDraw: number;
+    pAway: number;
+    pOver2_5: number;
+    pUnder2_5: number;
+    pBttsYes: number;
+    pBttsNo: number;
+    topScores: Array<{ score: string; probability: number }>;
+  };
 }
 
 export type FixtureCapability =

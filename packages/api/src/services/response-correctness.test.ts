@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   applyClaimDecisions,
+  applyDeskFootnotes,
+  CONFLICT_ABSTENTION,
+  DESK_NO_DECIMAL_FOOTNOTE,
+  DESK_TEAM_NEWS_FOOTNOTE,
   attributeManagerEra,
   containsCorrectionCue,
   decimalImpliedProbability,
@@ -326,5 +330,47 @@ describe("reviseAnswerWithClaimDecisions", () => {
       ]
     );
     expect(revised.answer).toBe("Saka is injured [[S1]].  Kick-off is Saturday.");
+  });
+});
+
+describe("applyDeskFootnotes", () => {
+  it("omits conflict and team-news notices on an odds question", () => {
+    const answer = "My 1X2 is Arsenal 56.3% (fair 1.78). "
+      + `${CONFLICT_ABSTENTION} `
+      + "No verified, dated team-news update was established.";
+    const quiet = applyDeskFootnotes(answer, "what are the odds", "pricing-desk");
+    expect(quiet).toContain("My 1X2 is Arsenal 56.3%");
+    expect(quiet).not.toContain(CONFLICT_ABSTENTION);
+    expect(quiet).not.toContain("No verified, dated team-news");
+    expect(quiet).not.toContain(DESK_TEAM_NEWS_FOOTNOTE);
+  });
+
+  it("omits gap notices on projected score and +EV unless team news was asked", () => {
+    const withNews = "I make the leading scorelines 2-1 at 11.4%. "
+      + "No verified, dated team-news update was established.";
+    expect(applyDeskFootnotes(withNews, "projected score", "exact-score"))
+      .not.toMatch(/No dated XI|No verified, dated team-news/);
+    expect(applyDeskFootnotes(withNews, "what is a +EV bet", "pricing-desk"))
+      .not.toMatch(/No dated XI|No verified, dated team-news/);
+    expect(applyDeskFootnotes(withNews, "any injury news with the odds", "pricing-desk"))
+      .toBe(`I make the leading scorelines 2-1 at 11.4%.\n\n${DESK_TEAM_NEWS_FOOTNOTE}`);
+  });
+
+  it("relocates a captured-decimal ask to the short desk footnote", () => {
+    const composed = "My 1X2 is Arsenal 56.3% (fair 1.78), draw 23.4% (fair 4.27) and Chelsea 20.3% (fair 4.93). "
+      + "I need a captured decimal line before I can print EV% or pass or play.";
+    const quiet = applyDeskFootnotes(composed, "what is a +EV bet", "pricing-desk");
+    expect(quiet).toContain("My 1X2 is Arsenal 56.3%");
+    expect(quiet).toContain(DESK_NO_DECIMAL_FOOTNOTE);
+    expect(quiet).not.toContain("captured decimal line");
+  });
+
+  it("relocates conflict on a qualitative take to a trailing one-liner", () => {
+    const take = "City should control territory and wait for the extra man in the box. "
+      + CONFLICT_ABSTENTION;
+    const quiet = applyDeskFootnotes(take, "Tactical matchup", "match-follow-up");
+    expect(quiet.startsWith("City should control territory")).toBe(true);
+    expect(quiet.endsWith(CONFLICT_ABSTENTION)).toBe(true);
+    expect(quiet).toContain("\n\n");
   });
 });

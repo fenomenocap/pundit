@@ -156,17 +156,36 @@ export function samplePoisson(lambda: number, random: () => number = Math.random
   return count - 1;
 }
 
+/** Inverse-CDF draw from a renormalised Dixon–Coles score grid. One uniform. */
+export function sampleScoreFromMatrix(
+  matrix: ScoreMatrix,
+  random: () => number = Math.random
+): [number, number] {
+  const target = random();
+  let cumulative = 0;
+  let last: [number, number] = [0, 0];
+  for (let i = 0; i < matrix.length; i += 1) {
+    for (let j = 0; j < matrix[i].length; j += 1) {
+      cumulative += matrix[i][j];
+      last = [i, j];
+      if (target < cumulative) return last;
+    }
+  }
+  return last;
+}
+
 export function simulateMatch(
   lambdaHome: number,
   lambdaAway: number,
   knockout = false,
   random: () => number = Math.random
 ): [number, number] {
-  let home = samplePoisson(lambdaHome, random);
-  let away = samplePoisson(lambdaAway, random);
+  let [home, away] = sampleScoreFromMatrix(scoreMatrix(lambdaHome, lambdaAway), random);
   if (!knockout || home !== away) return [home, away];
-  const extraHome = samplePoisson(lambdaHome / 3, random);
-  const extraAway = samplePoisson(lambdaAway / 3, random);
+  const [extraHome, extraAway] = sampleScoreFromMatrix(
+    scoreMatrix(lambdaHome / 3, lambdaAway / 3),
+    random
+  );
   home += extraHome;
   away += extraAway;
   if (home !== away) return [home, away];

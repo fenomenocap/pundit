@@ -31,6 +31,32 @@ packages/api/data/evaluation/club-season-checkpoint-state.json
 # Source-study captures are evidence-only; commit the normalized matrix, not raw payloads.
 packages/api/data/research/fixture-sources/raw/
 
+# Club-history ESPN corpus: commit README + tests, not raw dumps or generated datasets.
+packages/api/data/research/club-history/raw/
+packages/api/data/research/club-history/datasets/
+packages/api/data/research/club-history/builds/
+packages/api/data/research/club-history/latest.json
+
+# Chronological ClubElo research corpus. Runtime never reads these files.
+packages/api/data/research/clubelo-history/raw/
+packages/api/data/research/clubelo-history/datasets/
+packages/api/data/research/clubelo-history/builds/
+packages/api/data/research/clubelo-history/index.json
+packages/api/data/research/clubelo-history/latest.json
+
+# Offline per-club ClubElo From/To series (Wayback identity captures).
+packages/api/data/research/clubelo-club-history/raw/
+packages/api/data/research/clubelo-club-history/index.json
+packages/api/data/research/clubelo-club-history/latest.json
+
+# Offline fitted Dixon-Coles artifacts. Not a production challenger.
+packages/api/data/research/dixon-coles-mle/
+
+# Local copies of production club-season ledgers used for offline champion
+# calibration. Never treat these as the in-repo evaluation seed, and never write
+# calibration output back to PUNDIT_DATA_DIR=/data.
+packages/api/data/research/champion-calibration/ledgers/
+
 # Reviewed ClubElo capture working copies. Commit the content-addressed
 # artifact and production.json selector, not the raw CSV snapshot.
 packages/api/data/model-artifacts/clubelo/.capture/

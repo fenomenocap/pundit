@@ -20,7 +20,7 @@ Fixture recognition is a gate, not a numeric input. The registry binds approved 
 For Premier League title-race and top-four questions, Pundit runs a **Monte Carlo simulation** over remaining scheduled fixtures:
 
 * Uses current ESPN standings as the starting state
-* Samples match outcomes from the same Dixon-Coles engine used for individual fixtures
+* Samples 90-minute scores from the same Dixon-Coles score matrix used for individual fixtures (inverse-CDF of the τ-corrected 0–10 grid)
 * Reports title probability and top-four probability per team
 
 The default simulation seed is derived from the complete standings, remaining fixtures, ratings, run count, and active contributor identity. Identical grounded inputs therefore replay to identical probabilities across follow-up turns; changing a grounded input changes the replay. Tests may still inject an explicit random source.
@@ -52,6 +52,8 @@ Two read-only evaluation artifacts measure how well pre-kickoff probabilities ma
 | **WC 2026 (frozen)** | `/evaluation/wc-2026` | Reconstructed pre-kickoff probabilities for every finished World Cup 2026 match |
 
 The live Model page recalculates older fixtures with the release's **pinned, freshness-gated** ratings artifact — useful for exploration, but not a look-ahead-free backtest. Rigorous calibration uses the evaluation artifacts above.
+
+An **offline Phase 1b calibrator** (`pnpm --filter @sports-predict/api calibrate:champion`) can refit `BASE_GOALS`, home-field advantage, and `rho` on official sealed club-season rows. It writes a research report only; production still uses the shipped 1.35 / 42 / −0.1 constants until a human copies a reviewed config. The in-repo ledger seed is not production truth — Railway `PUNDIT_DATA_DIR=/data` is. MiniMax does not author these numbers.
 
 ### Historical note: World Cup 2026
 

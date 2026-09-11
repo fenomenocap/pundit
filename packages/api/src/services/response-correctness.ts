@@ -19,6 +19,16 @@ export interface MarketPricingRow {
   edgeBand: EdgeBand | null;
 }
 
+export interface PricingConsensusBlock {
+  label: string;
+  fundamentalLabel: string;
+  marketSource: string;
+  marketLabel: string;
+  observedAt: string;
+  marketWeight: number;
+  model: Record<OneXTwoOutcome, { p: number; fairOdds: number }>;
+}
+
 export interface PricingObject {
   fixtureId: string;
   home: string;
@@ -28,6 +38,8 @@ export interface PricingObject {
   pricedAt: string;
   model: Record<OneXTwoOutcome, { p: number; fairOdds: number }>;
   markets: MarketPricingRow[];
+  /** Optional labelled Consensus 1X2. Never overwrites `model` (Fundamental). */
+  consensus?: PricingConsensusBlock;
   userLine: {
     outcome: OneXTwoOutcome;
     decimalOdds: number;
@@ -71,6 +83,7 @@ export interface MatchPricingInput {
   pDraw: number;
   pAway: number;
   markets?: readonly MatchPricingMarketInput[];
+  consensus?: PricingConsensusBlock | null;
   userLine?: UserLineInput | null;
 }
 
@@ -269,6 +282,7 @@ export function buildMatchPricing(input: MatchPricingInput): PricingObject {
     pricedAt: input.pricedAt,
     model,
     markets,
+    ...(input.consensus ? { consensus: input.consensus } : {}),
     userLine: input.userLine ? buildUserLine(model, input.userLine) : null,
     stakeFrac: null,
   };
@@ -378,16 +392,33 @@ export function stripUntraceableMatchPercentages(
 
 export type ProbabilityOrigin =
   | { kind: "pundit-model" }
+  | { kind: "pundit-fundamental" }
+  | { kind: "pundit-consensus"; marketSource: string; observedAt: string }
   | { kind: "external-market"; source: string; observedAt: string };
 
 export function probabilityAttributionLabel(origin: ProbabilityOrigin): string {
   if (origin.kind === "pundit-model") return "Pundit model probabilities";
+  if (origin.kind === "pundit-fundamental") return "Pundit Fundamental";
+  if (origin.kind === "pundit-consensus") {
+    const source = origin.marketSource.trim() || "the named market";
+    return `Pundit Consensus (shrunk toward ${source} no-vig; not the sealed Fundamental forecast)`;
+  }
   const source = origin.source.trim();
   return `${source || "Third-party"} market-implied probabilities (third-party data, not a Pundit forecast)`;
 }
 
 export function hasValidProbabilityAttribution(label: string, origin: ProbabilityOrigin): boolean {
   if (origin.kind === "pundit-model") return /\bpundit\b/i.test(label);
+  if (origin.kind === "pundit-fundamental") {
+    return /\bpundit\b/i.test(label) && /\bfundamental\b/i.test(label);
+  }
+  if (origin.kind === "pundit-consensus") {
+    const source = origin.marketSource.trim();
+    const namesConsensus = /\bconsensus\b/i.test(label);
+    const namesSource = Boolean(source) && label.toLocaleLowerCase().includes(source.toLocaleLowerCase());
+    const claimsFundamental = /\bfundamental\b/i.test(label) && !/\bnot\b.{0,40}\bfundamental\b/i.test(label);
+    return namesConsensus && namesSource && !claimsFundamental;
+  }
   const source = origin.source.trim();
   const explicitDisclaimer = /\bnot\s+(?:a\s+)?pundit(?:'s)?(?:\s+model)?\b/i.test(label);
   const misattributed = /\bpundit(?:'s)?\s+(?:model\s+)?(?:forecast|prediction|probabilit)/i.test(label);
@@ -499,8 +530,67 @@ export interface ClaimDecision {
   explanation?: string;
 }
 
-const CONFLICT_ABSTENTION =
+export const CONFLICT_ABSTENTION =
   "Current reports conflict on one or more requested facts, so I’ve left those claims out.";
+
+export const DESK_TEAM_NEWS_FOOTNOTE = "No dated XI this turn.";
+export const DESK_NO_DECIMAL_FOOTNOTE = "No book decimal on the card — fair prices only.";
+
+const TEAM_NEWS_HOMEPAGE_NOTICES = [
+  "No verified, dated team-news update was established.",
+  "No verified, dated team-news update was established from retrievable sources.",
+  "No verified, dated team-news update was established, because verification was unavailable.",
+  "I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim.",
+  "No verified team-news update was established for this fixture.",
+];
+
+const NEED_DECIMAL_SENTENCE =
+  /I need a captured decimal line before I can print EV% or pass or play\./i;
+
+const DESK_QUIET_NOTICE_MODES = new Set([
+  "pricing-desk",
+  "exact-score",
+  "fair-price",
+  "user-line",
+]);
+
+function asksTeamNewsInQuestion(question: string): boolean {
+  return /\b(?:injur(?:y|ies|ed)|suspension|availability|team news|confirmed line-?up|starting xi)\b/i.test(question);
+}
+
+/**
+ * Desk-only: pull conflict/team-news recitals out of the body and, when they
+ * still belong, pin a one-line footnote. Odds / score / +EV turns omit those
+ * gap notices unless the user asked for team news. Homepage strings stay
+ * verbatim in `applyClaimDecisions`.
+ */
+export function applyDeskFootnotes(
+  answer: string,
+  question: string,
+  mode: string
+): string {
+  const askedTeamNews = asksTeamNewsInQuestion(question);
+  const omitGapNotices = DESK_QUIET_NOTICE_MODES.has(mode) && !askedTeamNews;
+  const hadConflict = answer.includes(CONFLICT_ABSTENTION);
+  const hadTeamNews = TEAM_NEWS_HOMEPAGE_NOTICES.some((notice) => answer.includes(notice));
+  const hadNeedDecimal = NEED_DECIMAL_SENTENCE.test(answer);
+
+  let body = answer.split(CONFLICT_ABSTENTION).join("");
+  body = body.replace(NEED_DECIMAL_SENTENCE, "");
+  for (const notice of TEAM_NEWS_HOMEPAGE_NOTICES) {
+    body = body.split(notice).join("");
+  }
+  body = body.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/ {2,}/g, " ").trim();
+
+  let footnote: string | null = null;
+  if (askedTeamNews && hadTeamNews) footnote = DESK_TEAM_NEWS_FOOTNOTE;
+  else if (hadNeedDecimal) footnote = DESK_NO_DECIMAL_FOOTNOTE;
+  else if (!omitGapNotices && hadTeamNews) footnote = DESK_TEAM_NEWS_FOOTNOTE;
+  else if (!omitGapNotices && hadConflict) footnote = CONFLICT_ABSTENTION;
+
+  if (!footnote) return body;
+  return body ? `${body}\n\n${footnote}` : footnote;
+}
 
 export function applyClaimDecisions(
   claims: readonly VerifiableClaim[],

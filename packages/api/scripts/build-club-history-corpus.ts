@@ -100,6 +100,10 @@ async function main(): Promise<void> {
     : statuses.includes("inconclusive") ? "inconclusive" : "pass";
   const builtAt = new Date().toISOString();
   const buildId = `${builtAt.replaceAll(":", "-").replaceAll(".", "-")}-${datasetSha256.slice(0, 12)}`;
+  const clubEloLatestPath = path.join(__dirname, "../data/research/clubelo-history/latest.json");
+  const clubEloLatest = fs.existsSync(clubEloLatestPath)
+    ? JSON.parse(fs.readFileSync(clubEloLatestPath, "utf8")) as { datasetSha256?: string }
+    : null;
   const manifest = {
     schemaVersion: 1,
     buildId,
@@ -112,12 +116,14 @@ async function main(): Promise<void> {
         .filter((entry) => entry.spec.competitionId === "eng.1")
         .every((entry) => entry.validation.status === "pass"),
       eligibleForCrossCompetitionPromotion: corpusStatus === "pass",
-      historicalChampionInputs: "missing",
+      historicalChampionInputs: clubEloLatest?.datasetSha256 ?? "missing",
       blockers: [
         ...(corpusStatus === "inconclusive"
           ? ["UCL qualifying lacks an independent expected-count manifest and regulation-time scores for AET/penalty ties."]
           : []),
-        "Chronological ClubElo inputs have not yet been acquired, so paired champion evaluation cannot run.",
+        ...(clubEloLatest
+          ? []
+          : ["Chronological ClubElo inputs have not yet been captured. See data/research/clubelo-history/README.md."]),
       ],
     },
     seasons: seasonArtifacts.map(({ spec, source, validation }) => ({ spec, source, validation })),
