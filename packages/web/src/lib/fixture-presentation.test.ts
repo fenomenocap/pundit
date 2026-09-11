@@ -124,7 +124,7 @@ describe("pricing presentation", () => {
   it("does not sell Over 2.5 as a match-specific insight", () => {
     assert.equal(
       SHARED_TOTAL_XG_SENTENCE,
-      "Totals sit near 50% because every match uses the same 2.70 expected goals."
+      "Totals sit near even because every match uses the same 2.70 expected goals."
     );
     assert.equal(/ClubElo|Dixon-Coles|Dixon–Coles/i.test(SHARED_TOTAL_XG_SENTENCE), false);
   });

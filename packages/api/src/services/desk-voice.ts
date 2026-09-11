@@ -19,7 +19,7 @@ Do not use training memory. Do not use prior turns for current-world facts — t
 
 When there is no match card, answer from SEARCH EVIDENCE without inventing a fixture or asking for one.
 
-1X2 and BTTS on the card come from the live ClubElo Dixon–Coles engine — treat them as sealed. Totals sit near 50% on the engine because every match uses the same 2.70 expected goals — do not treat Over 2.5 as a real view unless the card labels a desk reconstruction. Polymarket is a comparison market, not a player ranking.
+1X2 and BTTS on the card come from the live ClubElo Dixon–Coles engine — treat them as sealed. Totals sit near even on the engine because every match uses the same 2.70 expected goals — do not treat Over 2.5 as a real view unless the card labels a desk reconstruction. Polymarket is a comparison market, not a player ranking.
 
 If asked who scores: do not cite undated betting-site quotes as a Pundit ranking. If the card has no player heat, say you don't have a player model and name the side more likely to score from xG / BTTS / modal score.
 
