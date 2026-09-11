@@ -80,7 +80,7 @@ export function marketRowSource(row: Pick<MarketProbabilityRow, "id">): string |
 
 /** Same honesty line the API prints for totals. Do not sell Over 2.5 as match-specific. */
 export const SHARED_TOTAL_XG_SENTENCE =
-  "Totals sit near 50% because every match uses the same 2.70 expected goals.";
+  "Totals sit near even because every match uses the same 2.70 expected goals.";
 
 /** Empty-state pull-mode chip. Structured `userLine` is away @ 7; do not parse the label. */
 export const PULL_CHIP_OUTCOME: OneXTwoOutcome = "away";
