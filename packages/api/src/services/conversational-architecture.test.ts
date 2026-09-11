@@ -556,6 +556,64 @@ describe("V2 conversational architecture", () => {
     expect(previewCopy).not.toMatch(/Over 2\.5 is 58\.9%/);
   });
 
+  // Production regression (featured-totals-honesty / featured-o25-scoreline-follow-up):
+  // closedGroundedAnswer composes a single-line totals answer that includes the shared
+  // 2.70 xG honesty sentence, then withPresentation runs enforceMatchNumericTraceability.
+  // A bare "50%" in that sentence is not a grounded probability, so the stripper blanked
+  // the whole line and the API returned HTTP 200 with answer "".
+  it("keeps composed totals answers through numeric-traceability finalize", () => {
+    const match = grounding();
+    const question = "Is Arsenal vs Chelsea over or under 2.5?";
+    const composed = composeMatchResponse(
+      question,
+      match,
+      planResponse(question, { groundingKind: "match" })
+    );
+    expect(composed.trim().length).toBeGreaterThan(0);
+    expect(composed).toContain(SHARED_TOTAL_XG_SENTENCE);
+    expect(SHARED_TOTAL_XG_SENTENCE).not.toMatch(/\d+(?:\.\d+)?\s*%/);
+
+    const modelProbabilities = [
+      match.pHome, match.pDraw, match.pAway,
+      match.pOver2_5, match.pUnder2_5, match.pBttsYes, match.pBttsNo,
+      ...match.scorelines.map((row) => row.probability),
+    ];
+    const finalized = stripUntraceableMatchPercentages(composed, {
+      probabilities: [
+        ...modelProbabilities,
+        ...match.oddsSources.flatMap((source) =>
+          [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
+      ],
+      percentagePointGaps: match.marketDivergence.flatMap((market) =>
+        market.legs.map((leg) => leg.gapPoints)),
+      fairDecimalOdds: modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
+    });
+    expect(finalized.trim().length).toBeGreaterThan(0);
+    expect(finalized).toMatch(/over 2\.5/i);
+    expect(finalized).toMatch(/under 2\.5/i);
+    expect(finalized).toContain(SHARED_TOTAL_XG_SENTENCE);
+
+    const followUp = "what are the possible scorelines and odds for o2.5";
+    const combined = composeMatchResponse(
+      followUp,
+      match,
+      planResponse(followUp, { groundingKind: "match", hasHistory: true })
+    );
+    const combinedFinal = stripUntraceableMatchPercentages(combined, {
+      probabilities: [
+        ...modelProbabilities,
+        ...match.oddsSources.flatMap((source) =>
+          [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
+      ],
+      percentagePointGaps: match.marketDivergence.flatMap((market) =>
+        market.legs.map((leg) => leg.gapPoints)),
+      fairDecimalOdds: modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
+    });
+    expect(combinedFinal.trim().length).toBeGreaterThan(0);
+    expect(combinedFinal).toContain(SHARED_TOTAL_XG_SENTENCE);
+    expect(combinedFinal).toMatch(/2-1/);
+  });
+
   it("fails closed on untraceable percentages and strips unresolved final markers", () => {
     const safe = stripUntraceableMatchPercentages(
       "I make Arsenal 56.3%.\nI make Arsenal 71.2%.\nSaka trained [[S1]] and is 80% fit.",

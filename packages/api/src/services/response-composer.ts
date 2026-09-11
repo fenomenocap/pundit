@@ -22,7 +22,7 @@ import {
 } from "./response-plan";
 
 export const SHARED_TOTAL_XG_SENTENCE =
-  "Totals sit near 50% because every match uses the same 2.70 expected goals.";
+  "Totals sit near even because every match uses the same 2.70 expected goals.";
 
 export const STAKE_REFUSAL_SENTENCE =
   "I can print the price. I will not size a stake without a bankroll and a risk band.";
