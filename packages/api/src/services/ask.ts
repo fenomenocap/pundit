@@ -80,7 +80,12 @@ import {
   TEAM_NEWS_COMPOSE_ABSTENTION,
 } from "./player-evidence";
 import { composeMatchResponse } from "./response-composer";
-import { writeDeskProse } from "./desk-voice";
+import {
+  filterDeskEvidenceBundle,
+  humaniseDeskCitationDates,
+  sanitizeDeskModelProse,
+  writeDeskProse,
+} from "./desk-voice";
 import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
@@ -7681,13 +7686,17 @@ export async function deliverAnswer(args: {
     history = [],
   } = args;
   const deskVoice = voice === "desk";
+  const evidenceBundle = deskVoice ? filterDeskEvidenceBundle(bundle, grounding) : bundle;
+  const deskFootnotes = (text: string) => (
+    deskVoice ? humaniseDeskCitationDates(text) : text
+  );
   if (deskVoice) {
     const settledFromBundle = await settleEvidenceModeFromBundle(
-      question, grounding, bundle, hasHistory, signal
+      question, grounding, evidenceBundle, hasHistory, signal
     );
     if (settledFromBundle && settledFromBundle.citations.length > 0) {
       return {
-        answer: settledFromBundle.answer,
+        answer: deskFootnotes(settledFromBundle.answer),
         citations: settledFromBundle.citations,
         verification: verificationForSettledEvidence(
           settledFromBundle.answer,
@@ -7695,15 +7704,16 @@ export async function deliverAnswer(args: {
         ),
       };
     }
-    const sourceIds = bundle.results.map((source) => source.id);
+    const sourceIds = evidenceBundle.results.map((source) => source.id);
     const salvaged = salvageCitedClaimProse(rawAnswer, sourceIds);
     const rawLooksLikeDraft = (() => {
       const trimmed = rawAnswer.trim().replace(/^```(?:json)?\s*/i, "");
       return trimmed.startsWith("{") && /"(?:citedClaims|directAnswer)"/.test(trimmed);
     })();
+    const prepared = sanitizeDeskModelProse(rawAnswer, evidenceBundle.results);
     const prose = salvaged
-      || (!rawLooksLikeDraft && rawAnswer.trim() ? rawAnswer.trim() : "")
-      || await writeDeskProse(question, grounding, history, signal, bundle);
+      || (!rawLooksLikeDraft && prepared ? prepared : "")
+      || await writeDeskProse(question, grounding, history, signal, evidenceBundle);
     if (prose) {
       const checked = candidateUnrecognized
         ? {
@@ -7714,20 +7724,20 @@ export async function deliverAnswer(args: {
               removedClaimCount: 0,
             },
           }
-        : await verifyCurrentClaims(prose, bundle, client, signal);
+        : await verifyCurrentClaims(prose, evidenceBundle, client, signal);
       const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
         checked.answer,
         checked.verification,
         true
       );
-      const rendered = renderEvidenceCitations(evidenceSafeAnswer, bundle, true);
+      const rendered = renderEvidenceCitations(evidenceSafeAnswer, evidenceBundle, true);
       const settledAnswer = dropEmptyEmphasis(
         dropOrphanedSectionLabels(
-          dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, bundle)))
+          dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, evidenceBundle)))
         )
       );
       return {
-        answer: finalizeDeliveredText(settledAnswer, grounding, false),
+        answer: deskFootnotes(finalizeDeliveredText(settledAnswer, grounding, false)),
         citations: rendered.citations,
         verification: checked.verification,
       };
@@ -8200,6 +8210,7 @@ export async function answerQuestion(
     answerQuestionScoped(question, history, teamContext, signal, fixtureContext, userLine, voice));
   const presented = withPresentation(question, history.length > 0, result);
   if (voice === "desk") {
+    presented.answer = humaniseDeskCitationDates(presented.answer);
     presented.presentation = {
       responseMode: presented.grounding?.kind === "match" ? "match-preview" : presented.presentation.responseMode,
       fixtureCard: presented.grounding?.kind === "match" ? "expanded" : presented.presentation.fixtureCard,
@@ -8287,9 +8298,12 @@ async function answerQuestionScoped(
     // full set, which is what separates a read from a recital. Desk turns
     // without a cue still search, including fixture-less club questions.
     const plannedQueries = planTurnEvidenceQueries(question, grounding, query, voice);
-    const bundle: EvidenceBundle = plannedQueries.length
+    const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal)
       : { queries: [], results: [], providerCalls: 0 };
+    const bundle = voice === "desk"
+      ? filterDeskEvidenceBundle(rawBundle, grounding)
+      : rawBundle;
     // Desk team-news uses the match evidence path (V2 salvage + verify) so a
     // dated retrieved page can keep a cited sentence. Extraction-only compose
     // is still preferred inside deliverAnswer when it has citations.
