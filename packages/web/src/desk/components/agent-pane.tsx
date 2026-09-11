@@ -8,7 +8,8 @@ import { TEAMS } from "@/desk/lib/data/teams";
 import { completedDeskHistory } from "@/desk/lib/chat-history";
 import { askPundit } from "@/desk/lib/pundit";
 import { useDesk, type ChatMsg } from "@/desk/lib/store";
-import { cn } from "@/lib/utils";
+import { SafeMarkdown } from "@/lib/safe-markdown";
+import { humaniseDeskCitationDates } from "@/desk/lib/prose";
 import { FormDots } from "@/desk/components/form-dots";
 import { KitPip } from "@/desk/components/kit";
 import { Button } from "@/desk/components/ui/button";
@@ -272,7 +273,14 @@ function Bubble({ msg }: { msg: ChatMsg }) {
           </span>
         ) : null}
       </div>
-      <p className={cn("text-sm leading-7 text-fg/90 whitespace-pre-wrap")}>{msg.text}</p>
+      <div className="text-sm leading-7 text-fg/90">
+        <SafeMarkdown
+          content={humaniseDeskCitationDates(msg.text)}
+          paragraphClassName="mb-2 last:mb-0"
+          strongClassName="font-semibold"
+          linkClassName="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+        />
+      </div>
     </div>
   );
 }
