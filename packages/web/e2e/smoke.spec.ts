@@ -66,7 +66,7 @@ test.describe("smoke", () => {
     await expect(arsenal).toBeVisible();
     await arsenal.getByRole("button", { name: "Expand details" }).click();
     await expect(page.getByTestId("totals-honesty")).toHaveText(
-      "Totals sit near 50% because every match uses the same 2.70 expected goals."
+      "Totals sit near even because every match uses the same 2.70 expected goals."
     );
     await expect(page.getByText("Markets", { exact: true })).toBeVisible();
     await expect(page.getByText("Polymarket", { exact: true })).toBeVisible();

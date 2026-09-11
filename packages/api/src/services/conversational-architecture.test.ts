@@ -556,6 +556,25 @@ describe("V2 conversational architecture", () => {
     expect(previewCopy).not.toMatch(/Over 2\.5 is 58\.9%/);
   });
 
+  it("keeps composed totals answers after numeric traceability", () => {
+    const match = grounding();
+    const totals = composeMatchResponse(
+      "Is Arsenal vs Chelsea over or under 2.5?",
+      match,
+      planResponse("Is Arsenal vs Chelsea over or under 2.5?", { groundingKind: "match" })
+    );
+    const traced = stripUntraceableMatchPercentages(totals, {
+      probabilities: [
+        match.pHome, match.pDraw, match.pAway,
+        match.pOver2_5, match.pUnder2_5, match.pBttsYes, match.pBttsNo,
+      ],
+      fairDecimalOdds: [1 / match.pOver2_5, 1 / match.pUnder2_5],
+    });
+    expect(traced).toContain(SHARED_TOTAL_XG_SENTENCE);
+    expect(traced).toMatch(/over 2\.5 at 58\.9%/);
+    expect(traced.length).toBeGreaterThan(20);
+  });
+
   it("fails closed on untraceable percentages and strips unresolved final markers", () => {
     const safe = stripUntraceableMatchPercentages(
       "I make Arsenal 56.3%.\nI make Arsenal 71.2%.\nSaka trained [[S1]] and is 80% fit.",
