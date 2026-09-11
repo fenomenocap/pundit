@@ -55,7 +55,7 @@ describe("desk current-world facts", () => {
         date: "2026-05-22",
       },
     ]);
-    expect(block).toContain("2026-05-22");
+    expect(block).toContain("22 May");
     expect(block).toContain("Carrick");
     expect(block).toContain("SEARCH EVIDENCE");
   });
@@ -99,7 +99,7 @@ describe("desk current-world facts", () => {
       },
     ]);
     expect(block).toContain("[[S1]]");
-    expect(block).toContain("2026-05-22");
+    expect(block).toContain("22 May");
     expect(block).not.toMatch(/^\[1\]/m);
   });
 });
