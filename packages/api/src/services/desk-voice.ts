@@ -4,14 +4,18 @@ import type { AskGrounding, ConversationTurn, EvidenceBundle, Grounding } from "
 import { managersNamedInEvidence, stripUnlistedManagers } from "./pl-managers";
 import { searchWebBatch, type WebSearchResult } from "./web-search";
 
-const DESK_SYSTEM = `You are Pundit, a football analyst covering the current Premier League. Voice: sharp broadcast pundit — Carragher after a freeze-frame, not a hedge-fund memo. Short. Specific. Numbered when listing. No emoji. No slang pile-up. No hedging fluff. Put a number on it.
+export const DESK_SYSTEM = `You are Pundit, a football analyst covering the current Premier League. Voice: sharp broadcast pundit — Carragher after a freeze-frame, not a hedge-fund memo. Short. Specific. No emoji. No slang pile-up. No hedging fluff.
 
-You are not a bookmaker and you do not take stakes. Never invite a bet. Never say "back this", "place this", "the ticket", or "clear the play price". Never discuss staking, parlays, or how to beat a sportsbook. Never print EV%. Never say fat-and-fragile. Never ask the user for a decimal line.
+Write 2–4 football sentences: how the favourite wins, who decides the match, why it is low-event or open. Do not use numbered lists. Do not print probabilities, percents, fair odds, BTTS, over/under, scoreline frequencies, 1X2 splits, source IDs, or betting recommendations. Do not author EV%. A server-owned board already shows those numbers; the match card is context for the take, not text to recite.
 
-Frame: analysis and a model view. "Pass or play" means: is the lean real, and is the board fat or thin versus Polymarket. Lead with the football, then the 1X2. Say "the model leans X" — not "play X".
+You are not a bookmaker and you do not take stakes. Never invite a bet. Never say "back this", "place this", "the ticket", or "clear the play price". Never discuss staking, parlays, or how to beat a sportsbook. Never say fat-and-fragile. Never ask the user for a decimal line. Never say "category error", "payload", "desk reconstruction", "2.70", or "the engine".
+
+Say "the model leans X" — not "play X".
+
+The HOME team is named on the card. Do not name a stadium or ground. Do not move the fixture to the away side's ground.
 
 SOURCES THIS TURN:
-1. The MATCH CARD — present only for a priced fixture. ClubElo engine numbers (1X2, BTTS, totals, scorelines, Polymarket). These are the model, not news.
+1. The MATCH CARD — present only for a priced fixture. Use it to shape the take. Do not recite its numbers.
 2. SEARCH EVIDENCE — dated web snippets for this turn, labelled [[S1]], [[S2]], … This is the only source for managers, coaches, injuries, lineups, team news, form, and any other current-world fact.
 
 Cite every current-world claim in the same sentence with [[S1]] using only supplied ids. Uncited manager, injury, lineup and form claims will be removed. Never invent an S id. Never paste a URL, a markdown link, or a source title — the server renders citations from [[S1]].
@@ -20,16 +24,13 @@ Do not use training memory. Do not use prior turns for current-world facts — t
 
 When there is no match card, answer from SEARCH EVIDENCE without inventing a fixture or asking for one.
 
-1X2 and BTTS on the card come from the live ClubElo Dixon–Coles engine — treat them as sealed. Totals sit near even on the engine because every match uses the same 2.70 expected goals — do not treat Over 2.5 as a real view unless the card labels a desk reconstruction. Polymarket is a comparison market, not a player ranking.
+If asked who scores: do not cite undated betting-site quotes as a Pundit ranking. If the card has no player heat, say you don't have a player model and name the side more likely to score without printing a percentage.`;
 
-If asked who scores: do not cite undated betting-site quotes as a Pundit ranking. If the card has no player heat, say you don't have a player model and name the side more likely to score from xG / BTTS / modal score.
+export const DESK_BOARD_FALLBACK =
+  "The model has a lean on this fixture. The board under this take has the numbers.";
 
-2–6 tight paragraphs, or a short numbered take. First line should earn the rest.`;
-
-function pct(n: number | null | undefined) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${(n * 100).toFixed(0)}%`;
-}
+const DESK_STADIUM =
+  /\b(?:the )?(?:etihad|old trafford|anfield|stamford bridge|emirates stadium|tottenham hotspur stadium|villa park|st james'? park|selhurst park|craven cottage|london stadium|city of manchester stadium)\b/i;
 
 export interface DeskEvidenceRow {
   id?: string;
@@ -114,6 +115,34 @@ export function sanitizeDeskModelProse(
   return stripUnevidencedDeskInjuries(stripDeskAuthoredMarkdownLinks(text), evidence);
 }
 
+/**
+ * Removes leaked board numbers from MiniMax desk prose so they cannot fight
+ * the server-owned UI board. Football sentences stay.
+ */
+export function stripDeskBoardRecitals(text: string): string {
+  return text.split(/(?<=[.!?])\s+|(?=\d+\.\s)/).filter((sentence) => {
+    const piece = sentence.trim();
+    if (!piece) return false;
+    if (/\d+(?:\.\d+)?\s*%/.test(piece)) return false;
+    if (/\bEV%?\b/i.test(piece)) return false;
+    if (/\bfair(?:\s+odds?)?\s+\d/i.test(piece)) return false;
+    if (/\bBTTS\b/i.test(piece)) return false;
+    if (/\b(?:over|under)\s*2\.5\b|\bo\s*\/\s*u\b|\btotals\b/i.test(piece)) return false;
+    if (/\b1x2\b/i.test(piece)) return false;
+    if (/\bpolymarket\b/i.test(piece)) return false;
+    if (/\b(?:the )?engine\b/i.test(piece)) return false;
+    if (/\bdesk reconstruction\b/i.test(piece)) return false;
+    if (/\b2\.70\b/.test(piece)) return false;
+    if (/\bmodel says\b/i.test(piece)) return false;
+    if (/\bxG\b/.test(piece)) return false;
+    if (/\b(?:pt|point)s?\s+gap\b|\bpoint edge\b/i.test(piece)) return false;
+    if (/\bmodal scores?\b/i.test(piece)) return false;
+    if (/\b\d{1,2}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}\b/.test(piece)) return false;
+    if (DESK_STADIUM.test(piece)) return false;
+    return /[A-Za-z]/.test(piece);
+  }).join(" ").replace(/\s{2,}/g, " ").replace(/^\d+\.\s+/g, "").trim();
+}
+
 export function formatSearchEvidence(results: readonly DeskEvidenceRow[]): string {
   const lines = results.slice(0, 8).map((r, i) => {
     const id = r.id && /^S\d+$/i.test(r.id) ? r.id.replace(/^s/i, "S") : `S${i + 1}`;
@@ -128,24 +157,17 @@ export function formatSearchEvidence(results: readonly DeskEvidenceRow[]): strin
 }
 
 export function card(g: Grounding) {
-  const poly = g.oddsSources?.find((s) => s.source === "polymarket");
-  const top = g.topScores?.slice(0, 3).map((s) => `${s.score} ${(s.probability * 100).toFixed(0)}%`).join(", ");
-  const div = g.marketDivergence?.[0];
+  const favourite = [
+    { label: g.home, p: g.pHome },
+    { label: "the draw", p: g.pDraw },
+    { label: g.away, p: g.pAway },
+  ].sort((a, b) => b.p - a.p)[0];
   return [
-    `FOCUS: ${g.home} vs ${g.away}. ${g.competition}. ${g.date}. HFA ${g.homeFieldAdvantage ? "on" : "off"}.`,
+    `HOME: ${g.home}. AWAY: ${g.away}. ${g.competition}. ${g.date}.`,
+    `${g.home} are at home. Do not name a stadium or ground.`,
     "CURRENT-WORLD FACTS: only from SEARCH EVIDENCE this turn. Never from memory.",
-    `Model 1X2 ${pct(g.pHome)} / ${pct(g.pDraw)} / ${pct(g.pAway)}.`,
-    `Engine O2.5 ${pct(g.pOver2_5)} · U2.5 ${pct(g.pUnder2_5)} · BTTS ${pct(g.pBttsYes)}.`,
-    top ? `Top scores: ${top}.` : "",
-    poly
-      ? `Polymarket implied 1X2 ${pct(poly.pHome)} / ${pct(poly.pDraw)} / ${pct(poly.pAway)}.`
-      : "No Polymarket line on the card.",
-    div
-      ? `Largest gap vs ${div.source}: ${div.largest.label} model ${div.largest.modelPercent}% vs market ${div.largest.marketPercent}% (${div.largest.gapPoints > 0 ? "+" : ""}${div.largest.gapPoints} pts).`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+    `The model leans ${favourite.label}. A server board already shows 1X2, totals, BTTS and scorelines — do not recite them.`,
+  ].join("\n");
 }
 
 function clubNeedles(club: string): string[] {
@@ -255,15 +277,15 @@ export function filterDeskEvidenceBundle(
 function hint(question: string) {
   const q = question.toLowerCase();
   if (/\bpass or play\b|\bprice this\b|\bev\b|\bfair (?:price|odds)\b/.test(q)) {
-    return "HINT: Model-view question. Football first, then 1X2. Do not ask for a decimal. Do not print EV%.";
+    return "HINT: Football take only. Do not print 1X2, percents, fair odds, or EV%.";
   }
   if (/\bwho scores\b|\bscorer\b|\banytime\b|\bfirst goal\b/.test(q)) {
-    return "HINT: No player model on this card. Do not cite betting-site quotes. Use xG, BTTS, modal score, and which side is more likely to score.";
+    return "HINT: No player model on this card. Do not cite betting-site quotes. Name the side more likely to score. Do not print a percentage.";
   }
   if (/\bmanager\b|\bcoach\b|\btactic|\binjur|\bline-?up|\bteam news/.test(q)) {
-    return "HINT: Live facts only from this turn's SEARCH EVIDENCE. Do not recite training memory.";
+    return "HINT: Live facts only from this turn's SEARCH EVIDENCE. Do not recite training memory. Do not print board numbers.";
   }
-  return "HINT: Live facts (managers, injuries, XIs) only from this turn's SEARCH EVIDENCE.";
+  return "HINT: Live facts (managers, injuries, XIs) only from this turn's SEARCH EVIDENCE. Do not print probabilities or name a stadium.";
 }
 
 function inferenceKey() {
@@ -364,7 +386,7 @@ export async function writeDeskProse(
     const msg = await client.messages.create(
       {
         model,
-        max_tokens: 700,
+        max_tokens: 280,
         temperature: 0.45,
         system: DESK_SYSTEM,
         messages: convo,
@@ -379,7 +401,8 @@ export async function writeDeskProse(
     if (!text) return null;
     const allowed = managersNamedInEvidence(evidence);
     const cleaned = stripUnlistedManagers(text, allowed) || text;
-    return sanitizeDeskModelProse(cleaned, evidence) || null;
+    const football = stripDeskBoardRecitals(sanitizeDeskModelProse(cleaned, evidence));
+    return football || DESK_BOARD_FALLBACK;
   } catch {
     return null;
   }
