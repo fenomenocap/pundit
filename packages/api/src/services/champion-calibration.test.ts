@@ -165,9 +165,7 @@ describe("champion calibration", () => {
 
   it("reports 3-way Brier/log-loss vs market no-vig and Elo-gap reliability", () => {
     const withMarket = buildSnapshotFromModel(
-      officialModel({
-        marketComparisons: undefined,
-      }),
+      officialModel(),
       "2026-08-15T13:31:00.000Z",
       "scheduled_window",
       [{

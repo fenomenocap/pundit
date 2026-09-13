@@ -140,7 +140,7 @@ export function validateFittedDixonColesArtifact(
   ) {
     return { ok: false, reason: "invalid-fitted-artifact" };
   }
-  return { ok: true, artifact: value as FittedDixonColesArtifact };
+  return { ok: true, artifact: value as unknown as FittedDixonColesArtifact };
 }
 
 function parseLatestPointer(value: unknown): DixonColesMleLatestPointer | null {

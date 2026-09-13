@@ -28,7 +28,7 @@ import { getRepoDataDir, readJsonFile, resolveDataPath, resolveRepoDataPath } fr
  * does not register a challenger.
  */
 export const CHAMPION_CALIBRATION_SCHEMA_VERSION = 1;
-export const CHAMPION_CALIBRATION_METHOD_ID = "clubelo-fixed-total-dixon-coles-calibrated";
+export const CHAMPION_CALIBRATION_METHOD_ID = "clubelo-fixed-total-dixon-coles-calibrated" as const;
 export const PRODUCTION_OFFICIAL_N_TARGET = 44;
 export const MIN_PL_N_TO_RECOMMEND_SHIP = 40;
 export const MIN_COMPETITION_N_FOR_SEPARATE_BASE_GOALS = 20;

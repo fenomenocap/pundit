@@ -3597,10 +3597,13 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
       decimalOdds: null,
     })),
   ];
-  const consensus = buildPunditConsensus({
-    fundamental: { pHome: fixture.pHome, pDraw: fixture.pDraw, pAway: fixture.pAway },
-    market: firstCompleteNoVigMarket(pricingMarkets) ?? undefined,
-  });
+  const consensusMarket = firstCompleteNoVigMarket(pricingMarkets);
+  const consensus = consensusMarket
+    ? buildPunditConsensus({
+        fundamental: { pHome: fixture.pHome, pDraw: fixture.pDraw, pAway: fixture.pAway },
+        market: consensusMarket,
+      })
+    : null;
 
   return {
     kind: "match",
