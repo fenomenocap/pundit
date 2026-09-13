@@ -19,6 +19,16 @@ export interface MarketPricingRow {
   edgeBand: EdgeBand | null;
 }
 
+export interface PricingConsensusBlock {
+  label: string;
+  fundamentalLabel: string;
+  marketSource: string;
+  marketLabel: string;
+  observedAt: string;
+  marketWeight: number;
+  model: Record<OneXTwoOutcome, { p: number; fairOdds: number }>;
+}
+
 export interface PricingObject {
   fixtureId: string;
   home: string;
@@ -27,6 +37,7 @@ export interface PricingObject {
   modelVersion: string;
   pricedAt: string;
   model: Record<OneXTwoOutcome, { p: number; fairOdds: number }>;
+  consensus?: PricingConsensusBlock;
   markets: MarketPricingRow[];
   userLine: {
     outcome: OneXTwoOutcome;
@@ -72,6 +83,7 @@ export interface MatchPricingInput {
   pAway: number;
   markets?: readonly MatchPricingMarketInput[];
   userLine?: UserLineInput | null;
+  consensus?: PricingConsensusBlock | null;
 }
 
 /** Temporary |evPct| thresholds. Named so they can move. */
@@ -268,6 +280,7 @@ export function buildMatchPricing(input: MatchPricingInput): PricingObject {
     modelVersion: modelVersion || UNKNOWN_MODEL_VERSION,
     pricedAt: input.pricedAt,
     model,
+    ...(input.consensus ? { consensus: input.consensus } : {}),
     markets,
     userLine: input.userLine ? buildUserLine(model, input.userLine) : null,
     stakeFrac: null,
@@ -378,16 +391,33 @@ export function stripUntraceableMatchPercentages(
 
 export type ProbabilityOrigin =
   | { kind: "pundit-model" }
+  | { kind: "pundit-fundamental" }
+  | { kind: "pundit-consensus"; marketSource: string; observedAt: string }
   | { kind: "external-market"; source: string; observedAt: string };
 
 export function probabilityAttributionLabel(origin: ProbabilityOrigin): string {
   if (origin.kind === "pundit-model") return "Pundit model probabilities";
+  if (origin.kind === "pundit-fundamental") return "Pundit Fundamental";
+  if (origin.kind === "pundit-consensus") {
+    const source = origin.marketSource.trim() || "market";
+    return `Pundit Consensus (shrunk toward ${source} no-vig; not the sealed Fundamental forecast)`;
+  }
   const source = origin.source.trim();
   return `${source || "Third-party"} market-implied probabilities (third-party data, not a Pundit forecast)`;
 }
 
 export function hasValidProbabilityAttribution(label: string, origin: ProbabilityOrigin): boolean {
-  if (origin.kind === "pundit-model") return /\bpundit\b/i.test(label);
+  if (origin.kind === "pundit-model" || origin.kind === "pundit-fundamental") {
+    return /\bpundit\b/i.test(label);
+  }
+  if (origin.kind === "pundit-consensus") {
+    const source = origin.marketSource.trim();
+    return /\bconsensus\b/i.test(label)
+      && Boolean(source)
+      && label.toLocaleLowerCase().includes(source.toLocaleLowerCase())
+      && !/sealed Pundit Fundamental/i.test(label)
+      && !/\bthe model\b/i.test(label);
+  }
   const source = origin.source.trim();
   const explicitDisclaimer = /\bnot\s+(?:a\s+)?pundit(?:'s)?(?:\s+model)?\b/i.test(label);
   const misattributed = /\bpundit(?:'s)?\s+(?:model\s+)?(?:forecast|prediction|probabilit)/i.test(label);

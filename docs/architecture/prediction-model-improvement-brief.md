@@ -1,7 +1,7 @@
 # Prediction-model improvement brief
 
-**Status:** Working analysis, not current production behaviour.  
-**Dates:** Engine diagnosis 2026-08-21 · SIRE comparison 2026-08-22 · Next-action decision 2026-08-24  
+**Status:** Working analysis plus in-progress `feat/fundamental-phase2` implementation. Production `main` still has Phase 0 only until this branch ships.  
+**Dates:** Engine diagnosis 2026-08-21 · SIRE comparison 2026-08-22 · Next-action decision 2026-08-24 · Phase 2 restore 2026-09-14  
 **Regression example:** Hull City vs Manchester United (golden fixture `401879322`)
 
 Any later plan or implementation must take this whole brief into account. Do not restart the diagnosis from a blank slate. Do not “improve the model” in a way that contradicts the constraints below.
@@ -269,7 +269,7 @@ Do not start fitted Dixon–Coles, Davidson, Sarmanov, Consensus blending, injur
 
 ## 9. Hard constraints
 
-- Do **not** scrape live ClubElo at runtime. Refresh via reviewed release artifacts (consider 7-day cadence later if form lag hurts).
+- Do **not** scrape live ClubElo at runtime. Refresh via reviewed release artifacts on a 7-day post–game-week cadence (`refresh:clubelo-snapshot`). `/ready` `ratingsRefreshDue` warns at 7 days; the 30-day gate still fails closed.
 - Do **not** put injuries/lineups into the numeric model without a dated sourced feature feed. Chat already handles that in prose.
 - Do **not** add Asian lines / player props on top of the current geometric mapping; they inherit blowout bias.
 - Do **not** sneak around the golden cutover; replace it when Phase 0 lands.
@@ -284,4 +284,12 @@ Do not start fitted Dixon–Coles, Davidson, Sarmanov, Consensus blending, injur
 
 The product shell is ahead of the maths. Hull vs United shows why: a real 340-Elo gap is turned into **4.1 xG and a 1.10 favourite**. SIRE confirms the missing maths is fitted 1X2 (Davidson) and fitted goals (real DC, later Sarmanov), and that markets belong in a **labelled** ensemble, not the champion.
 
-**Next action:** implement Phase 0, fixed total 2.70. Then fit. Then estimate attack/defence with ClubElo as the prior. Keep MiniMax independent. Do not clone the betting stack.
+**Shipped on `main`:** Phase 0 fixed-total 2.70. Shipped constants remain 1.35 / 42 / −0.1.
+
+**On `feat/fundamental-phase2`:** leftovers (season-sim samples the DC grid; Fundamental version `"2"`; desk uses server Over 2.5), ledger 15-minute checkpoint + football-cadence seal, offline Phase 1b calibrator (`productionAutoLoad: false`), labelled Consensus that refits λ, and a fail-closed fitted Dixon–Coles challenger trained on **760/760** PL fixtures. Pre-kickoff ClubElo uses the last published From/To window on or before the UTC day before kickoff — ClubElo's own number, not an interpolation, and never a later snapshot. Artifact `dixon-coles-mle@4cfcbe57…`. Rolling-origin eval (1146 paired forecasts) does **not** recommend promotion: challenger Brier 0.586 vs 0.621 on 2025-01-01, but it does not beat the champion on every required origin.
+
+**Promotion:** rolling-origin eval can recommend; `activateProduction` stays false until a human decision. Production `model-data.ts` still calls `ELO_CHAMPION` only.
+
+**Live pin cadence:** after each PL weekend (and UCL midweek when needed) run `refresh:clubelo-snapshot`, review, commit the new `clubelo@1` artifact, deploy. Monday CI (`clubelo-freshness.yml`) fails if the committed pin is ≥7 days old.
+
+**Resume if ClubElo's dated API recovers:** `capture:clubelo-history` then rebuild/train/register so last-known windows are shorter than the tonyelhabr 2026-01-14 cutoff.

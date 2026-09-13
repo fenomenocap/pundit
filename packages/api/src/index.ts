@@ -12,10 +12,12 @@ import evaluationRoutes from "./routes/evaluation";
 import {
   clubRatingsAgeDays,
   clubRatingsAreCurrent,
+  clubRatingsNeedRefresh,
   getCachedClubRatings,
   startClubRatingsCron,
 } from "./services/club-ratings";
 import { getCachedModelData, getModelRefreshState, startModelCron } from "./services/model-data";
+import { startClubSeasonCheckpointCron } from "./services/club-season-snapshots";
 import {
   getCachedMatches,
   getCachedSeasonSchedule,
@@ -159,6 +161,7 @@ app.get("/ready", (_req, res) => {
       // invalid and a validated /data current/last-good artifact was recovered.
       ratingsAsOf: ratings.fetchedAt?.toISOString() ?? null,
       ratingsAgeDays: clubRatingsAgeDays(ratings.fetchedAt),
+      ratingsRefreshDue: clubRatingsNeedRefresh(ratings),
       ratingsServedFromCache: ratings.servingPersisted,
       ratingArtifactId: ratings.artifactId,
       ratingArtifactSha256: ratings.artifactSha256,
@@ -274,6 +277,7 @@ export function startServer() {
       await startClubRatingsCron();
       await startModelCron();
       await startModelMarketOddsCron();
+      startClubSeasonCheckpointCron();
     })().catch((error) => {
       logFatalProcessError("Bootstrap", error);
     });

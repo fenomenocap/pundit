@@ -83,6 +83,9 @@ describe("GET /ready season schedule", () => {
     });
     const { body } = await getJson("/ready");
     expect(body.askRateLimit).toMatchObject({ scope: "deployment" });
+    expect(body.model).toMatchObject({
+      ratingsRefreshDue: expect.any(Boolean),
+    });
     expect(body.seasonSchedule).toMatchObject({
       ready: true,
       fixtureCount: 380,

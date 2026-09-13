@@ -7,7 +7,7 @@ import {
 import { applyLiveForm, FORM, type ResultMark } from "./data/form";
 import type { TeamId } from "./data/teams";
 import { TEAM_LIST, TEAMS } from "./data/teams";
-import { mildLambdas, over25 } from "./grid";
+import { deskNumbersFromModelRow } from "./grid";
 
 export const LIVE_API =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
@@ -171,7 +171,7 @@ type LiveModelRow = {
     methodId?: string;
     ratingArtifactId?: string;
     homeAdvantageElo?: number;
-    config?: { baseGoals?: number; eloScale?: number; dixonColesRho?: number };
+    config?: { baseGoals?: number; eloScale?: number; dixonColesRho?: number; lambdaCap?: number };
   };
 };
 
@@ -186,7 +186,7 @@ type LiveMatch = {
   score?: { home: number; away: number } | null;
 };
 
-/** Frozen-total 2.70 split — production engine. Desk xG/O2.5 uses mildLambdas. */
+/** Frozen-total 2.70 split — production engine. Desk Over 2.5 uses the server probability. */
 
 function pickLean(pHome: number, pDraw: number, pAway: number, pBtts: number): MarketKey {
   const oneXTwo: { key: MarketKey; p: number }[] = [
@@ -241,8 +241,7 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
   const home = teamIdFromName(row.home);
   const away = teamIdFromName(row.away);
   if (!home || !away) return null;
-  const [lh, la] = mildLambdas(row.homeElo, row.awayElo);
-  const over = over25(lh, la);
+  const { xg, over25: over } = deskNumbersFromModelRow(row);
   const lean = pickLean(row.pHome, row.pDraw, row.pAway, row.pBttsYes);
   return {
     id: espnId(row.competitionId, row.fixtureId),
@@ -252,7 +251,7 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
     home,
     away,
     status: "upcoming",
-    xg: [Math.round(lh * 100) / 100, Math.round(la * 100) / 100],
+    xg,
     model: {
       home: row.pHome,
       draw: row.pDraw,
@@ -261,7 +260,7 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
       btts: row.pBttsYes,
     },
     odds: polyOdds(row),
-    brief: briefFor(row, home, away, lean, over, [Math.round(lh * 100) / 100, Math.round(la * 100) / 100]),
+    brief: briefFor(row, home, away, lean, over, xg),
     modelPick: lean,
   };
 }

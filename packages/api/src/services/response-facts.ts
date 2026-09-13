@@ -24,6 +24,7 @@ function pricingFromGrounding(grounding: Grounding) {
 
 export type FactProvenance =
   | "server-model"
+  | "pundit-consensus"
   | "market-observation"
   | "verified-evidence"
   | "analyst-inference"
@@ -68,6 +69,25 @@ export function buildResponseFacts(grounding: Grounding): ResponseFacts {
     subject: String(subject), numeric: { value: Number(value), unit: "probability" as const },
     allowedClaims: ["quote", "compare", "convert-to-fair-decimal-odds"],
   }));
+
+  if (grounding.consensus) {
+    const consensus = grounding.consensus;
+    ([
+      ["consensus.home", grounding.home, consensus.pHome],
+      ["consensus.draw", "the draw", consensus.pDraw],
+      ["consensus.away", grounding.away, consensus.pAway],
+    ] as const).forEach(([id, subject, value]) => facts.push({
+      id,
+      kind: "probability",
+      provenance: "pundit-consensus",
+      subject: `${consensus.label}: ${subject}`,
+      numeric: { value, unit: "probability" },
+      observedAt: consensus.observedAt,
+      sourceIds: [consensus.marketSource],
+      allowedClaims: ["quote", "compare", "label-as-consensus"],
+      prohibitedClaims: ["present-as-fundamental", "recommend-wager"],
+    }));
+  }
 
   grounding.scorelines.forEach((row) => facts.push({
     id: `score.${row.score}`,

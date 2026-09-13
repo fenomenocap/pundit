@@ -253,4 +253,19 @@ describe("refreshModelMarketOdds", () => {
     expect(actual.isSourceConfiguredForProfile("kalshi", "premier-league")).toBe(true);
     expect(actual.isSourceConfiguredForProfile("kalshi", "uefa-champions-league")).toBe(true);
   });
+
+  it("still seals club-season snapshots when odds fetch throws if the model is ready", async () => {
+    const now = new Date();
+    const kickoff = new Date(now.getTime() + 45 * 60 * 1000).toISOString();
+    vi.mocked(getCachedModelData).mockReturnValue({
+      fixtures: [{ ...model, utcDate: kickoff, date: kickoff.slice(0, 10) }],
+      lastUpdated: now,
+      error: null,
+    });
+    vi.mocked(fetchAllMarketOdds).mockRejectedValue(new Error("Kalshi 503"));
+
+    await refreshModelMarketOdds();
+    const status = getModelMarketOddsStatus();
+    expect(status.error).toMatch(/Kalshi 503/);
+  });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BASE_GOALS,
   LAMBDA_CAP,
+  MAX_GOALS,
   RHO,
   computeMatchModel,
   dixonColesTau,
@@ -11,7 +12,9 @@ import {
   matrixToCorrectScores,
   matrixToScorelines,
   matrixToTotals,
+  sampleScoreFromMatrix,
   scoreMatrix,
+  simulateMatch,
 } from "./dixon-coles";
 
 describe("local Dixon-Coles model", () => {
@@ -81,5 +84,28 @@ describe("local Dixon-Coles model", () => {
     const withHfa = computeMatchModel(1800, 1800, 42);
     expect(withHfa.pHome).toBeGreaterThan(neutral.pHome);
     expect(withHfa.pAway).toBeLessThan(neutral.pAway);
+  });
+
+  it("samples 90-minute scores from the Dixon-Coles grid with one uniform", () => {
+    const matrix = scoreMatrix(1.35, 1.35);
+    expect(sampleScoreFromMatrix(matrix, () => 0)).toEqual([0, 0]);
+    let calls = 0;
+    const score = simulateMatch(1.35, 1.35, false, () => {
+      calls += 1;
+      return 0;
+    });
+    expect(score).toEqual([0, 0]);
+    expect(calls).toBe(1);
+    expect(simulateMatch(1.35, 1.35, false, () => 0.999999999)[0]).toBeLessThanOrEqual(MAX_GOALS);
+    expect(sampleScoreFromMatrix(matrix, () => 1)).toEqual([MAX_GOALS, MAX_GOALS]);
+  });
+
+  it("keeps knockout extra time on a Dixon-Coles extra-time grid before penalties", () => {
+    const draws = [0, 0, 0.6];
+    let index = 0;
+    const [home, away] = simulateMatch(1.35, 1.35, true, () => draws[index++] ?? 0);
+    expect(index).toBe(3);
+    expect(home).not.toBe(away);
+    expect(home + away).toBeGreaterThan(0);
   });
 });

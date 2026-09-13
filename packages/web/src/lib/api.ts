@@ -705,6 +705,7 @@ export async function getReadiness() {
       error: string | null;
       ratingsAsOf: string | null;
       ratingsAgeDays: number | null;
+      ratingsRefreshDue: boolean;
       ratingsServedFromCache: boolean;
       ratingArtifactId: string | null;
       ratingArtifactSha256: string | null;

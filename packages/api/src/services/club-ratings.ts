@@ -4,7 +4,9 @@ import { canonicalClubName } from "../lib/team-names";
 import { RatingProfile } from "../config/competitions";
 import {
   CLUB_STRENGTH_MAX_AGE_DAYS,
+  CLUB_STRENGTH_WARN_AGE_DAYS,
   clubStrengthSnapshotIsCurrent,
+  clubStrengthSnapshotNeedsRefresh,
   ClubStrengthArtifact,
   readClubStrengthArtifact,
   readSelectedClubStrengthArtifact,
@@ -88,6 +90,14 @@ export function clubRatingsAreCurrent(
     && state.artifactId === `clubelo@1:${sha}`;
 }
 
+/** Form-lag signal only. Does not change pricing eligibility. */
+export function clubRatingsNeedRefresh(
+  state: ClubRatingsCache = getCachedClubRatings(),
+  now = new Date()
+): boolean {
+  return state.fetchedAt !== null && clubStrengthSnapshotNeedsRefresh(state.fetchedAt, now);
+}
+
 function adoptArtifact(validated: ValidatedClubStrengthArtifact, persisted: boolean): void {
   cache.byProfile = validated.byProfile;
   cache.fetchedAt = validated.snapshotAt;
@@ -132,10 +142,16 @@ export function loadClubStrengthArtifact(now = new Date()): boolean {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.warn(`[ClubRatings] Could not persist artifact recovery copies: ${message}`);
     }
-    console.log(
-      `[ClubRatings] Loaded release artifact ${bundled.artifact.artifactId} `
-      + `(${bundled.byProfile["uefa-clubs"].size} UEFA clubs, ${bundled.ageDays}d old).`
-    );
+    const loadMessage = `[ClubRatings] Loaded release artifact ${bundled.artifact.artifactId} `
+      + `(${bundled.byProfile["uefa-clubs"].size} UEFA clubs, ${bundled.ageDays}d old).`;
+    if (bundled.ageDays >= CLUB_STRENGTH_WARN_AGE_DAYS) {
+      console.warn(
+        `${loadMessage} WARN: refresh due after ${CLUB_STRENGTH_WARN_AGE_DAYS}d; `
+        + `fail-closed at ${CLUB_STRENGTH_MAX_AGE_DAYS}d.`
+      );
+    } else {
+      console.log(loadMessage);
+    }
     return true;
   } catch (error) {
     const bundledMessage = error instanceof Error ? error.message : "Unknown error";
