@@ -4,8 +4,15 @@ Pundit's current `clubelo@1` champion is selected by `production.json`. The
 selector pins an immutable `<payloadSha256>.json` artifact. Runtime code reads
 and validates those local files only; it never contacts ClubElo.
 
-Capture a reviewed ClubElo snapshot, then build and verify the release
-artifact:
+Refresh after each Premier League weekend (Sunday night / Monday) and after
+UEFA Champions League midweeks that sit in the active 14-day window. Target
+age is **7 days**. The 30-day gate still fails closed. Runtime never fetches.
+
+```bash
+pnpm --filter @sports-predict/api refresh:clubelo-snapshot
+```
+
+That is capture → build → verify. The same steps remain available separately:
 
 ```bash
 pnpm --filter @sports-predict/api capture:clubelo-snapshot \
@@ -15,7 +22,15 @@ pnpm --filter @sports-predict/api build:club-strength-artifact \
   data/model-artifacts/clubelo/production.json
 pnpm --filter @sports-predict/api verify:club-strength-artifact \
   data/model-artifacts/clubelo/production.json
+pnpm --filter @sports-predict/api check:club-strength-freshness
 ```
+
+Before merge: ranking date should be within two days of capture, ENG/UEFA
+coverage should not drop vs the previous pin, and a few active-fixture Elos
+should keep a sensible order. Commit the new immutable artifact and selector
+together, then deploy. `/ready` reports `ratingsRefreshDue` once age is 7
+days; forecasts continue until day 30. A Monday GitHub Action fails if the
+committed pin is 7 or more days old so an ageing snapshot cannot stay silent.
 
 The capture prefers ClubElo's documented CSV API and falls back to the
 published ranking page when that API is unavailable. Neither path is imported

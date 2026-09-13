@@ -73,6 +73,12 @@ import {
   type VerifiableClaim,
 } from "./response-correctness";
 import {
+  buildPunditConsensus,
+  firstCompleteNoVigMarket,
+  pricingConsensusFromBlock,
+  type PunditConsensusBlock,
+} from "./pundit-consensus";
+import {
   extractPlayerEvidence,
   hasTeamNewsEvidence,
   hasTrustworthyPlayerEvidence,
@@ -178,6 +184,7 @@ export interface Grounding {
   stakePAway: number | null;
   stakeObservedAt?: string;
   oddsSources: OddsSource[];
+  consensus?: PunditConsensusBlock;
   pricing: PricingObject;
   /**
    * `oddsSources` differenced against the model, one entry per complete source.
@@ -3570,6 +3577,30 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     ?? fixture.forecastProvenance?.forecastAt
     ?? fixture.utcDate
     ?? fixture.date;
+  const pricingMarkets = [
+    ...(stakePHome != null && stakePDraw != null && stakePAway != null
+      ? [{
+          source: "stake",
+          observedAt: stakeObservedAt ?? pricedAt,
+          pHome: stakePHome,
+          pDraw: stakePDraw,
+          pAway: stakePAway,
+          decimalOdds: null,
+        }]
+      : []),
+    ...oddsSources.map((source) => ({
+      source: source.source,
+      observedAt: source.observedAt,
+      pHome: source.pHome,
+      pDraw: source.pDraw,
+      pAway: source.pAway,
+      decimalOdds: null,
+    })),
+  ];
+  const consensus = buildPunditConsensus({
+    fundamental: { pHome: fixture.pHome, pDraw: fixture.pDraw, pAway: fixture.pAway },
+    market: firstCompleteNoVigMarket(pricingMarkets) ?? undefined,
+  });
 
   return {
     kind: "match",
@@ -3595,6 +3626,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     stakePAway,
     ...(stakeObservedAt ? { stakeObservedAt } : {}),
     oddsSources,
+    ...(consensus ? { consensus } : {}),
     marketDivergence: computeMarketDivergence(fixture, oddsSources),
     pricing: buildMatchPricing({
       fixtureId,
@@ -3606,26 +3638,8 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
       pHome: fixture.pHome,
       pDraw: fixture.pDraw,
       pAway: fixture.pAway,
-      markets: [
-        ...(stakePHome != null && stakePDraw != null && stakePAway != null
-          ? [{
-              source: "stake",
-              observedAt: stakeObservedAt ?? pricedAt,
-              pHome: stakePHome,
-              pDraw: stakePDraw,
-              pAway: stakePAway,
-              decimalOdds: null,
-            }]
-          : []),
-        ...oddsSources.map((source) => ({
-          source: source.source,
-          observedAt: source.observedAt,
-          pHome: source.pHome,
-          pDraw: source.pDraw,
-          pAway: source.pAway,
-          decimalOdds: null,
-        })),
-      ],
+      markets: pricingMarkets,
+      consensus: consensus ? pricingConsensusFromBlock(consensus) : null,
     }),
   };
 }

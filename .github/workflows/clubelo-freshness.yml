@@ -1,0 +1,30 @@
+name: ClubElo freshness
+
+# Monday after a typical Premier League weekend. Does not run on pull requests
+# so an ageing pin cannot block unrelated work. Runtime never contacts ClubElo;
+# this only reads the committed production selector.
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check-pin-age:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fail if the production pin is 7 or more days old
+        run: pnpm --filter @sports-predict/api check:club-strength-freshness

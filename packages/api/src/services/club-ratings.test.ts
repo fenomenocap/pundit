@@ -6,6 +6,7 @@ import {
   backfillMissingClubRatings,
   clubRatingsAgeDays,
   clubRatingsAreCurrent,
+  clubRatingsNeedRefresh,
   clubRatingsRefreshDelay,
   CLUB_RATINGS_COLD_RETRY_MS,
   CLUB_RATINGS_REFRESH_INTERVAL_MS,
@@ -13,7 +14,7 @@ import {
   lookupClubRating,
   refreshClubRatings,
 } from "./club-ratings";
-import { CLUB_STRENGTH_MAX_AGE_MS } from "./club-strength-artifact";
+import { CLUB_STRENGTH_MAX_AGE_MS, CLUB_STRENGTH_WARN_AGE_MS } from "./club-strength-artifact";
 
 const originalDataDir = process.env.PUNDIT_DATA_DIR;
 let scratchDataDir: string;
@@ -90,5 +91,16 @@ describe("club ratings artifact adapter", () => {
     expect(clubRatingsAgeDays(snapshotAt, new Date(boundary))).toBe(30);
     expect(clubRatingsAreCurrent(ratings, new Date(boundary + 1))).toBe(false);
     expect(clubRatingsAgeDays(snapshotAt, new Date(boundary + 1))).toBe(30);
+  });
+
+  it("flags a 7-day refresh without withholding forecasts", async () => {
+    await refreshClubRatings();
+    const ratings = getCachedClubRatings();
+    const snapshotAt = ratings.fetchedAt!;
+    const warnAt = snapshotAt.getTime() + CLUB_STRENGTH_WARN_AGE_MS;
+
+    expect(clubRatingsNeedRefresh(ratings, new Date(warnAt - 1))).toBe(false);
+    expect(clubRatingsAreCurrent(ratings, new Date(warnAt))).toBe(true);
+    expect(clubRatingsNeedRefresh(ratings, new Date(warnAt))).toBe(true);
   });
 });

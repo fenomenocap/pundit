@@ -1,4 +1,5 @@
 import type { Grounding } from "./ask";
+import { PUNDIT_CONSENSUS_LABEL, PUNDIT_FUNDAMENTAL_LABEL } from "./pundit-consensus";
 import type { OneXTwoOutcome } from "./response-correctness";
 import { parseScoreline } from "./response-correctness";
 import {
@@ -370,10 +371,13 @@ export function composeMatchResponse(
     { label: "the draw", p: grounding.pDraw },
     { label: grounding.away, p: grounding.pAway },
   ].sort((a, b) => b.p - a.p);
+  const consensus = grounding.consensus
+    ? `${PUNDIT_FUNDAMENTAL_LABEL} is the sealed 1X2 above. ${PUNDIT_CONSENSUS_LABEL} (shrunk toward ${grounding.consensus.marketLabel}; not the sealed Fundamental forecast) is ${grounding.home} ${pct(grounding.consensus.pHome)}, draw ${pct(grounding.consensus.pDraw)} and ${grounding.away} ${pct(grounding.consensus.pAway)}.`
+    : "";
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
     `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${SHARED_TOTAL_XG_SENTENCE}`,
-    [marketRows, market].filter(Boolean).join(" "),
+    [marketRows, market, consensus].filter(Boolean).join(" "),
     "I would revisit the read only after verified team news or a materially different market snapshot; I can’t assign a lineup effect from these facts alone.",
   ].filter(Boolean).join("\n\n");
 }

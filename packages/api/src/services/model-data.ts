@@ -104,6 +104,10 @@ export function getCachedModelData(): ModelDataCache {
   return { ...cache };
 }
 
+export function replaceModelDataForTests(state: Partial<ModelDataCache>): void {
+  Object.assign(cache, state);
+}
+
 export function getModelRefreshState(): {
   refreshing: boolean;
   missingRatingTeamIds: ReadonlySet<string>;

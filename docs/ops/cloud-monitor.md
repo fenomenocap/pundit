@@ -94,8 +94,10 @@ an authorized release, explicit expected SHAs remain supported:
 
 Use **Railway MCP** to fetch latest deploy/build logs for `@pundit/api` in production.
 
-Grep logs for: `fatal`, `[Bootstrap]`, `[ClubRatings] ALERT`, `unhandledRejection`, `uncaughtException`,
+Grep logs for: `fatal`, `[Bootstrap]`, `[ClubRatings] ALERT`, `[ClubRatings] WARN`, `unhandledRejection`, `uncaughtException`,
 `web_search_provider_failed`, `web_search_failed`.
+
+`GET /ready` `model.ratingsRefreshDue` is true when the ClubElo pin is 7 or more days old. Forecasts keep serving until the 30-day fail-closed gate. Refresh with `pnpm --filter @sports-predict/api refresh:clubelo-snapshot`, then review and deploy the new artifact.
 
 ### Step 1b — Chat answers degraded but the service is up
 
