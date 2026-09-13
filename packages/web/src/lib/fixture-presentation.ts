@@ -7,6 +7,7 @@ import type {
   OneXTwoOutcome,
   PricingObject,
   RecognizedFixtureSnapshotRow,
+  UserLine,
 } from "./api";
 
 export interface MarketProbabilityRow {
@@ -31,6 +32,120 @@ export function formatSignedEvPct(evPct: number): string {
 
 export function formatEdgeBand(band: EdgeBand | null | undefined): string | null {
   return band ?? null;
+}
+
+/** Server fair `1/p`. Display only — never invert a probability in the client. */
+export function formatFairOdds(value: number): string {
+  return value.toFixed(2);
+}
+
+/** Copy when Stake / Kalshi / Polymarket 1X2 is missing from match grounding. */
+export const NO_COMPARISON_MARKET = "No comparison market";
+
+/**
+ * Desk +EV / pass-or-play turns. Used only to decide whether to POST `userLine`;
+ * the decimal always comes from the structured field, never from chip copy.
+ */
+const DESK_USER_LINE_QUESTION =
+  /\+ev\b|\bexpected value\b|\bpass or play\b|\bedge vs(?:\s+the)?\s+book\b/i;
+
+export function parseDeskUserLine(
+  outcome: OneXTwoOutcome,
+  decimalText: string,
+): UserLine | undefined {
+  const decimalOdds = Number(decimalText.trim());
+  if (!Number.isFinite(decimalOdds) || decimalOdds <= 1) return undefined;
+  return { outcome, decimalOdds };
+}
+
+export function userLinePayloadForAsk(
+  question: string,
+  outcome: OneXTwoOutcome,
+  decimalText: string,
+): UserLine | undefined {
+  if (!DESK_USER_LINE_QUESTION.test(question)) return undefined;
+  return parseDeskUserLine(outcome, decimalText);
+}
+
+export interface DeskBoardOneXTwo {
+  home: string;
+  away: string;
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  fairHome: number;
+  fairDraw: number;
+  fairAway: number;
+}
+
+export interface DeskBoardUserLine {
+  outcome: OneXTwoOutcome;
+  outcomeLabel: string;
+  decimalOdds: number;
+  evPct: number;
+  edgeBand: EdgeBand;
+}
+
+export interface DeskBoardView {
+  oneXTwo: DeskBoardOneXTwo;
+  bttsYes: number;
+  bttsNo: number;
+  over25: number;
+  under25: number;
+  totalsHonesty: string;
+  topScores: Array<{ score: string; probability: number }>;
+  markets: MarketProbabilityRow[];
+  userLine: DeskBoardUserLine | null;
+  capturedEv: MarketEvRowDisplay[];
+}
+
+function outcomeLabel(grounding: MatchGrounding, outcome: OneXTwoOutcome): string {
+  if (outcome === "home") return grounding.home;
+  if (outcome === "away") return grounding.away;
+  return "Draw";
+}
+
+export function canRenderDeskBoard(grounding: MatchGrounding): boolean {
+  return Boolean(grounding.pricing?.model?.home && grounding.pricing.model.draw && grounding.pricing.model.away);
+}
+
+/**
+ * Flatten match grounding for the desk board. Fair odds and EV% are copied
+ * from the server object — never recomputed from p or decimal.
+ */
+export function deskBoardFromGrounding(grounding: MatchGrounding): DeskBoardView {
+  const model = grounding.pricing.model;
+  const line = grounding.pricing.userLine;
+  const rows = marketRowsFromGrounding(grounding);
+  return {
+    oneXTwo: {
+      home: grounding.home,
+      away: grounding.away,
+      pHome: grounding.pHome,
+      pDraw: grounding.pDraw,
+      pAway: grounding.pAway,
+      fairHome: model.home.fairOdds,
+      fairDraw: model.draw.fairOdds,
+      fairAway: model.away.fairOdds,
+    },
+    bttsYes: grounding.pBttsYes,
+    bttsNo: grounding.pBttsNo,
+    over25: grounding.pOver2_5,
+    under25: grounding.pUnder2_5,
+    totalsHonesty: SHARED_TOTAL_XG_SENTENCE,
+    topScores: (grounding.topScores ?? []).slice(0, 3),
+    markets: rows.filter((row) => row.provenance === "market"),
+    userLine: line
+      ? {
+          outcome: line.outcome,
+          outcomeLabel: outcomeLabel(grounding, line.outcome),
+          decimalOdds: line.decimalOdds,
+          evPct: line.evPct,
+          edgeBand: line.edgeBand,
+        }
+      : null,
+    capturedEv: [...marketEvFromPricing(grounding.pricing).values()],
+  };
 }
 
 export interface MarketEvLegDisplay {
