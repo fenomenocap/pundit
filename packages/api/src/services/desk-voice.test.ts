@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Grounding } from "./ask";
 import {
+  DESK_SYSTEM,
+  card,
   filterDeskEvidenceRows,
   formatSearchEvidence,
   humaniseDeskCitationDates,
   sanitizeDeskModelProse,
+  stripDeskBoardRecitals,
 } from "./desk-voice";
 
 function match(over: Partial<Grounding> = {}): Grounding {
@@ -148,5 +151,34 @@ describe("formatSearchEvidence dates", () => {
     ]);
     expect(block).toContain("9 Sep");
     expect(block).not.toContain("T17:47:51");
+  });
+});
+
+describe("desk qualitative voice", () => {
+  it("forbids MiniMax from printing the board, 2.70, or a stadium", () => {
+    expect(DESK_SYSTEM).toMatch(/Do not print probabilities/);
+    expect(DESK_SYSTEM).toMatch(/Do not name a stadium/);
+    expect(DESK_SYSTEM).not.toMatch(/Put a number on it/);
+    expect(DESK_SYSTEM).toMatch(/"2\.70"/);
+    const prompt = card(match());
+    expect(prompt).toContain("Manchester City are at home");
+    expect(prompt).not.toMatch(/\d+%/);
+    expect(prompt).not.toMatch(/Etihad|2\.70|Old Trafford/i);
+  });
+
+  it("strips board recitals and keeps the football sentence", () => {
+    const dump = [
+      "United vs City at the Etihad, derby frame, and I puts City around 53% to win with a 26% draw and 21% home win.",
+      "City walk into the fixture without a corresponding blow named on the list, so the visitors keep their structure intact.",
+      "The engine sees it tight on goals — Over 2.5 at 51% versus Under at 49%.",
+      "Totals sit near even because every match uses the same 2.70 expected goals.",
+      "The modal scoreline is 1-1 at 13%.",
+      "City 21 / 26 / 53 on the 1X2.",
+    ].join(" ");
+    const clean = stripDeskBoardRecitals(dump);
+    expect(clean).toContain("City walk into the fixture");
+    expect(clean).not.toMatch(/\d+(?:\.\d+)?\s*%/);
+    expect(clean).not.toMatch(/Etihad|2\.70|the engine|1x2|BTTS|modal/i);
+    expect(clean).not.toMatch(/\b21\s*\/\s*26\s*\/\s*53\b/);
   });
 });

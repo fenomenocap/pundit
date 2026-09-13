@@ -81,14 +81,17 @@ import {
 } from "./player-evidence";
 import { composeMatchResponse } from "./response-composer";
 import {
+  DESK_BOARD_FALLBACK,
   filterDeskEvidenceBundle,
   humaniseDeskCitationDates,
   sanitizeDeskModelProse,
+  stripDeskBoardRecitals,
   writeDeskProse,
 } from "./desk-voice";
 import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
+  DESK_COMPOSER_MODES,
   planResponse,
   responsePresentation,
   type ResponsePresentation,
@@ -7687,9 +7690,13 @@ export async function deliverAnswer(args: {
   } = args;
   const deskVoice = voice === "desk";
   const evidenceBundle = deskVoice ? filterDeskEvidenceBundle(bundle, grounding) : bundle;
-  const deskFootnotes = (text: string) => (
-    deskVoice ? humaniseDeskCitationDates(text) : text
-  );
+  const deskFootnotes = (text: string) => {
+    if (!deskVoice) return text;
+    const stripped = grounding?.kind === "match"
+      ? (stripDeskBoardRecitals(text) || DESK_BOARD_FALLBACK)
+      : text;
+    return humaniseDeskCitationDates(stripped);
+  };
   if (deskVoice) {
     const settledFromBundle = await settleEvidenceModeFromBundle(
       question, grounding, evidenceBundle, hasHistory, signal
@@ -8286,9 +8293,18 @@ async function answerQuestionScoped(
       };
     }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
-    if (closedAnswer && !(voice === "desk" && (grounding?.kind === "match" || grounding === null))) {
+    const deskPlan = planResponse(question, {
+      groundingKind: grounding?.kind ?? undefined,
+      hasHistory: history.length > 0,
+      hasUserLine: grounding?.kind === "match" && grounding.pricing.userLine != null,
+    });
+    const deskSkipClosed = voice === "desk" && (
+      grounding === null
+      || (grounding.kind === "match" && !DESK_COMPOSER_MODES.has(deskPlan.mode))
+    );
+    if (closedAnswer && !deskSkipClosed) {
       return {
-        answer: closedAnswer,
+        answer: voice === "desk" ? humaniseDeskCitationDates(closedAnswer) : closedAnswer,
         grounding,
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };

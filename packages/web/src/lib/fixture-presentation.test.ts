@@ -1,22 +1,28 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { PricingObject } from "./api";
+import type { MatchGrounding, PricingObject } from "./api";
 import {
+  canRenderDeskBoard,
+  deskBoardFromGrounding,
   deskChipCopy,
   espnStatusByIdentity,
   fixtureChipCopy,
   formatEdgeBand,
+  formatFairOdds,
   formatSignedEvPct,
   isFutureScheduledFixture,
   marketEvFromPricing,
   marketRowSource,
   modelFixtureStatusLabel,
+  NO_COMPARISON_MARKET,
+  parseDeskUserLine,
   passOrPlayChipCopy,
   priceThisChipCopy,
   PULL_CHIP_DECIMAL,
   PULL_CHIP_OUTCOME,
   pullModeChipCopy,
   SHARED_TOTAL_XG_SENTENCE,
+  userLinePayloadForAsk,
 } from "./fixture-presentation.ts";
 
 function pricing(overrides: Partial<PricingObject> = {}): PricingObject {
@@ -175,5 +181,81 @@ describe("pricing presentation", () => {
       espnStatusByIdentity([{ competitionId: "eng.1", id: 5, status: "IN_PLAY" }]).get("espn:eng.1:5"),
       "IN_PLAY"
     );
+  });
+});
+
+function matchGrounding(over: Partial<MatchGrounding> = {}): MatchGrounding {
+  return {
+    kind: "match",
+    fixtureId: "espn:eng.1:1",
+    competitionId: "eng.1",
+    competition: "Premier League",
+    homeFieldAdvantage: true,
+    date: "2026-09-13",
+    stage: "match",
+    home: "Arsenal",
+    away: "Coventry City",
+    pHome: 0.72,
+    pDraw: 0.18,
+    pAway: 0.1,
+    pOver2_5: 0.506,
+    pUnder2_5: 0.494,
+    pBttsYes: 0.4,
+    pBttsNo: 0.6,
+    topScores: [
+      { score: "2-0", probability: 0.12 },
+      { score: "1-0", probability: 0.11 },
+      { score: "2-1", probability: 0.09 },
+    ],
+    scorelines: [],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    oddsSources: [],
+    pricing: pricing(),
+    ...over,
+  };
+}
+
+describe("desk board presentation", () => {
+  it("posts structured userLine only on +EV / pass-or-play copy, never from a typed decimal alone", () => {
+    assert.deepEqual(parseDeskUserLine("away", "2.10"), { outcome: "away", decimalOdds: 2.1 });
+    assert.equal(parseDeskUserLine("away", "1"), undefined);
+    assert.equal(userLinePayloadForAsk("Tactical matchup", "away", "2.10"), undefined);
+    assert.deepEqual(userLinePayloadForAsk("+EV", "away", "2.10"), {
+      outcome: "away",
+      decimalOdds: 2.1,
+    });
+    assert.equal(userLinePayloadForAsk("+EV", "away", ""), undefined);
+  });
+
+  it("copies server fair odds onto the board and does not invent a comparison market", () => {
+    const board = deskBoardFromGrounding(matchGrounding());
+    assert.equal(board.oneXTwo.fairHome, 1 / 0.72);
+    assert.equal(formatFairOdds(board.oneXTwo.fairHome), (1 / 0.72).toFixed(2));
+    assert.equal(board.markets.length, 0);
+    assert.equal(NO_COMPARISON_MARKET, "No comparison market");
+    assert.equal(board.totalsHonesty, SHARED_TOTAL_XG_SENTENCE);
+    assert.equal(canRenderDeskBoard(matchGrounding({ pricing: undefined as never })), false);
+  });
+
+  it("surfaces server userLine EV% without recomputing it", () => {
+    const board = deskBoardFromGrounding(matchGrounding({
+      pricing: pricing({
+        userLine: {
+          outcome: "away",
+          decimalOdds: 2.1,
+          evPct: 0.1 * 2.1 - 1,
+          edgeBand: "thin",
+          passPrice: 1.2,
+          playPrice: 1.4,
+          riskBand: "high",
+        },
+      }),
+    }));
+    assert.equal(board.userLine?.outcomeLabel, "Coventry City");
+    assert.equal(board.userLine?.decimalOdds, 2.1);
+    assert.equal(board.userLine?.evPct, 0.1 * 2.1 - 1);
+    assert.equal(formatSignedEvPct(board.userLine!.evPct), "-79.0%");
   });
 });

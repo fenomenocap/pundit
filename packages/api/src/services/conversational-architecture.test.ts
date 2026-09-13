@@ -105,6 +105,20 @@ describe("V2 conversational architecture", () => {
       expect(responsePresentation(plan).fixtureCard).toBe("compact");
       expect(plan.maxSections).toBe(1);
     }
+    expect(planResponse("What about Arsenal vs Chelsea?", { groundingKind: "match" }).mode)
+      .toBe("pricing-desk");
+    expect(planResponse("Projected score", { groundingKind: "match" }).mode).toBe("exact-score");
+    expect(planResponse("Tactical matchup", { groundingKind: "match" }).mode).toBe("match-follow-up");
+    expect(planResponse("How do Man Utd win this?", { groundingKind: "match" }).mode)
+      .toBe("match-follow-up");
+    expect(planResponse("Who decides it?", { groundingKind: "match" }).mode).toBe("match-follow-up");
+    const projected = composeMatchResponse(
+      "Projected score",
+      grounding(),
+      planResponse("Projected score", { groundingKind: "match" })
+    );
+    expect(projected).toMatch(/I make the leading scorelines/);
+    expect(projected).not.toMatch(/team news|2\.70|Etihad/i);
     expect(planResponse("Who scores?", { groundingKind: "match" }).evidenceRequired).toBe(true);
     expect(planResponse("Anytime scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
     expect(planResponse("First goal scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
@@ -140,6 +154,11 @@ describe("V2 conversational architecture", () => {
     expect(planResponse("What is the latest team news?", { groundingKind: "match" }).evidenceRequired).toBe(true);
     expect(planResponse("I found Arsenal at 7 — pass or play?", { groundingKind: "match", hasUserLine: true }).mode)
       .toBe("user-line");
+    expect(planResponse("What are the odds", followUp).mode).toBe("pricing-desk");
+    expect(planResponse("Projected score", followUp).mode).toBe("exact-score");
+    expect(planResponse("what is a +EV bet", followUp).mode).toBe("pricing-desk");
+    expect(planResponse("what is a +EV bet", { ...followUp, hasUserLine: true }).mode).toBe("user-line");
+    expect(planResponse("Tactical matchup", { ...followUp, hasUserLine: true }).mode).toBe("match-follow-up");
     expect(planResponse("How much should I stake?", { groundingKind: "match" }).mode).toBe("stake-refusal");
     expect(asksStakeSizeQuestion("Three points are at stake for Arsenal")).toBe(false);
     expect(planResponse("Three points are at stake for Arsenal", { groundingKind: "match", hasHistory: true }).mode)

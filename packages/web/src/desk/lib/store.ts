@@ -14,6 +14,7 @@ import {
 } from "./data/fixtures";
 import { PLAYERS_BY_ADP, getPlayer, type Pos } from "./data/players";
 import { poisson } from "./format";
+import type { AskGrounding } from "@/lib/api";
 import type { VaultId } from "./data/vaults";
 
 const STARTING = 10_000;
@@ -52,6 +53,7 @@ export type ChatMsg = {
   role: ChatRole;
   text: string;
   fixtureId?: string;
+  grounding?: AskGrounding;
   at: number;
 };
 
@@ -360,7 +362,9 @@ export const useDesk = create<State>()(
         for (const f of settled) {
           if (f.score) scores[f.id] = f.score;
         }
-        const still = open.some((f) => f.id === get().selectedId);
+        const still =
+          open.some((f) => f.id === get().selectedId)
+          || settled.some((f) => f.id === get().selectedId);
         const banker =
           open.find((f) => f.home === "LIV" && f.away === "FUL") ??
           open.find((f) => f.home === "MUN" && f.away === "MCI") ??

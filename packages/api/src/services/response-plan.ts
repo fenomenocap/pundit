@@ -28,6 +28,14 @@ const ASKS_UNDER_25 = /\bunder\s*2\.5\b|\bu\s*2\.5\b/i;
 const ASKS_SCORELINE_BOARD =
   /\b(?:possible|likely|top|correct)\s+(?:scores?|scorelines?)\b|\bscorelines?\b/i;
 const ASKS_BTTS = /\bbtts\b|both teams to score/i;
+const ASKS_PROJECTED_SCORE =
+  /\b(?:projected|likely|correct|most likely)\s+score\b|\bcorrect score\b/i;
+const ASKS_TACTICAL_TAKE =
+  /\btactical matchup\b|\bwho decides\b|\bhow do .{1,60} win (?:this|it)\b/i;
+const ASKS_ODDS_BOARD =
+  /\bwhat(?:'s| is| are) (?:the )?(?:odds|line)\b|\bshow me the board\b|\bthe board\b|\bmatch odds\b/i;
+const ASKS_EXPECTED_VALUE =
+  /\+ev\b|\bev%\b|\bexpected value\b|\bplus[\s-]?ev\b|\ba \+ev bet\b|\bedge vs(?:\s+the)?\s+(?:book|market|line)\b/i;
 const ASKS_1X2 = /\b1x2\b|\bmatch odds\b/i;
 const ASKS_UNPRICED_MARKET =
   /\b(?:draw no bet|\bdnb\b|asian(?:\s+handicap)?|\bhandicap\b|\bcorners?\b|next goal|first goal|clean sheet)\b/i;
@@ -89,6 +97,40 @@ export function asksUnpricedMarket(question: string): boolean {
   return ASKS_UNPRICED_MARKET.test(question);
 }
 
+export function asksProjectedScore(question: string): boolean {
+  return ASKS_PROJECTED_SCORE.test(question);
+}
+
+export function asksTacticalTake(question: string): boolean {
+  return ASKS_TACTICAL_TAKE.test(question);
+}
+
+export function asksOddsBoard(question: string): boolean {
+  return ASKS_ODDS_BOARD.test(question);
+}
+
+export function asksExpectedValueQuestion(question: string): boolean {
+  return ASKS_EXPECTED_VALUE.test(question);
+}
+
+/** Structured `userLine` is only consumed on +EV / pass-or-play turns. */
+export function questionAcceptsUserLine(question: string): boolean {
+  return asksExpectedValueQuestion(question) || /\bpass or play\b/i.test(question);
+}
+
+/** Desk numeric questions the server already composes. MiniMax must not narrate these. */
+export const DESK_COMPOSER_MODES: ReadonlySet<ResponseMode> = new Set([
+  "exact-score",
+  "fair-price",
+  "market-comparison",
+  "user-line",
+  "stake-refusal",
+  "lineup-counterfactual",
+  "totals",
+  "btts",
+  "pricing-desk",
+]);
+
 /** True when the user named the over side of 2.5 without also naming under. */
 export function asksOver25Only(question: string): boolean {
   if (/\bunder\b/i.test(question) || ASKS_UNDER_25.test(question)) return false;
@@ -138,11 +180,16 @@ export function planResponse(
   else if (match && asksBttsQuestion(q)) mode = "btts";
   else if (match && /\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(q)) mode = "match-follow-up";
   else if (match && asksStakeSizeQuestion(q)) mode = "stake-refusal";
-  else if (match && (hasUserLine || /\bpass or play\b/i.test(q))) mode = "user-line";
+  else if (match && /\bpass or play\b/i.test(q)) mode = "user-line";
+  else if (match && hasUserLine && asksExpectedValueQuestion(q)) mode = "user-line";
+  else if (match && asksExpectedValueQuestion(q)) mode = "pricing-desk";
   else if (match && SCORELINE.test(q) && /\b(?:fair|price|odds?|decimal|implied)\b/i.test(q)) mode = "fair-price";
   else if (match && SCORELINE.test(q)) mode = "exact-score";
+  else if (match && asksProjectedScore(q)) mode = "exact-score";
   else if (match && asksScorelineBoard(q)) mode = "exact-score";
+  else if (match && asksTacticalTake(q)) mode = "match-follow-up";
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
+  else if (match && asksOddsBoard(q)) mode = "pricing-desk";
   else if (match && !hasHistory) mode = "pricing-desk";
   else if (match) mode = "match-follow-up";
   else mode = "general";
