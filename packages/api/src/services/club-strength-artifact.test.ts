@@ -4,6 +4,8 @@ import {
   buildClubStrengthArtifactSelector,
   CLUB_STRENGTH_MAX_AGE_MS,
   CLUB_STRENGTH_MAX_AGE_DAYS,
+  CLUB_STRENGTH_WARN_AGE_MS,
+  clubStrengthSnapshotNeedsRefresh,
   validateClubStrengthArtifact,
   readSelectedClubStrengthArtifact,
 } from "./club-strength-artifact";
@@ -39,6 +41,17 @@ describe("club strength artifact", () => {
       artifact,
       new Date("2026-08-13T00:00:00.000Z")
     )).toThrow("hash does not match");
+  });
+
+  it("warns at 7 days without failing the 30-day serving gate", () => {
+    const snapshot = new Date("2026-08-12T00:00:00.000Z");
+    const warnAt = snapshot.getTime() + CLUB_STRENGTH_WARN_AGE_MS;
+    expect(clubStrengthSnapshotNeedsRefresh(snapshot, new Date(warnAt - 1))).toBe(false);
+    expect(clubStrengthSnapshotNeedsRefresh(snapshot, new Date(warnAt))).toBe(true);
+    expect(validateClubStrengthArtifact(
+      validArtifact(snapshot.toISOString()),
+      new Date(warnAt)
+    ).ageDays).toBe(7);
   });
 
   it("uses exact elapsed time at the 30-day freshness boundary", () => {

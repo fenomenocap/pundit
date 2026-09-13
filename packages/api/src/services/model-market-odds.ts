@@ -164,16 +164,30 @@ export function changedMarketSourceWarnings(
     .map((name) => next[name]!);
 }
 
+function sealClubSeasonFromReadyModel(model: { fixtures: ModelFixture[] }, now: Date): void {
+  // The 30-minute market cadence is also a second deterministic checkpoint
+  // opportunity between hourly model refreshes. Odds failures must not skip
+  // this: market rows are comparison-only and never enter the Fundamental
+  // calculation.
+  const football = getCachedMatches();
+  updateClubSeasonSnapshots(
+    [...football.upcoming, ...football.recent],
+    model.fixtures,
+    now
+  );
+}
+
 export async function refreshModelMarketOdds(): Promise<void> {
   console.log("[ModelMarketOdds] Refreshing active fixture odds...");
+  const model = getCachedModelData();
+  if (model.lastUpdated === null) {
+    cache.error = "Active model is not ready.";
+    console.warn("[ModelMarketOdds] Active model is not ready; refresh deferred.");
+    return;
+  }
+  const active = model.fixtures;
+  let oddsUpdatedAt: Date | null = null;
   try {
-    const model = getCachedModelData();
-    if (model.lastUpdated === null) {
-      cache.error = "Active model is not ready.";
-      console.warn("[ModelMarketOdds] Active model is not ready; refresh deferred.");
-      return;
-    }
-    const active = model.fixtures;
     const { odds: sources, errors } = await fetchAllMarketOdds(active);
     const names = ["stake", "polymarket", "kalshi"] as const;
     const profiles = marketProfilesForFixtures(active);
@@ -230,26 +244,20 @@ export async function refreshModelMarketOdds(): Promise<void> {
     }));
     cache.lastUpdated = new Date(observedAt);
     cache.error = null;
+    oddsUpdatedAt = cache.lastUpdated;
     console.log(`[ModelMarketOdds] ${cache.byFixture.size}/${active.length} active fixtures cached.`);
-
-    // The 30-minute market cadence is also a second deterministic checkpoint
-    // opportunity between hourly model refreshes. It can seal the currently
-    // live Fundamental forecast and then append timestamped benchmark evidence;
-    // market probabilities never enter the Fundamental calculation.
-    const football = getCachedMatches();
-    updateClubSeasonSnapshots(
-      [...football.upcoming, ...football.recent],
-      active,
-      cache.lastUpdated
-    );
-    appendMarketComparisons(
-      buildLedgerMarketComparisons(active, cache.byFixture, cache.lastUpdated.toISOString()),
-      cache.lastUpdated
-    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     cache.error = message;
     console.error(`[ModelMarketOdds] Refresh error: ${message}`);
+  }
+
+  sealClubSeasonFromReadyModel(model, oddsUpdatedAt ?? new Date());
+  if (oddsUpdatedAt) {
+    appendMarketComparisons(
+      buildLedgerMarketComparisons(active, cache.byFixture, oddsUpdatedAt.toISOString()),
+      oddsUpdatedAt
+    );
   }
 }
 
