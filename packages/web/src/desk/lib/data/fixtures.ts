@@ -1,8 +1,9 @@
 import type { TeamId } from "./teams";
+import { capturedRecord } from "../slate-selection";
 
 export type MarketKey = "home" | "draw" | "away" | "over25" | "under25" | "bttsY" | "bttsN";
 
-export type Odds = Record<MarketKey, number>;
+export type Odds = Record<MarketKey, number | null>;
 
 export type FixtureStatus = "ft" | "upcoming";
 
@@ -16,13 +17,23 @@ export type Fixture = {
   status: FixtureStatus;
   score?: [number, number];
   scorers?: string;
-  xg: [number, number];
-  model: { home: number; draw: number; away: number; over25: number; btts: number };
-  odds: Odds;
+  xg: [number, number] | null;
+  model: { home: number; draw: number; away: number; over25: number; btts: number } | null;
+  odds: Odds | null;
   brief: string;
-  modelPick: MarketKey;
+  modelPick: MarketKey | null;
   modelHit?: boolean;
 };
+
+export type ForecastFixture = Fixture & {
+  xg: [number, number];
+  model: NonNullable<Fixture["model"]>;
+  modelPick: MarketKey;
+};
+
+export function hasCapturedForecast(fixture: Fixture): fixture is ForecastFixture {
+  return fixture.xg !== null && fixture.model !== null && fixture.modelPick !== null;
+}
 
 export const MARKET_LABEL: Record<MarketKey, string> = {
   home: "Home",
@@ -34,7 +45,7 @@ export const MARKET_LABEL: Record<MarketKey, string> = {
   bttsN: "BTTS No",
 };
 
-export const FIXTURES: Fixture[] = [
+const STATIC_FIXTURES: Fixture[] = [
   {
     id: "gw3-ips-liv",
     gw: 3,
@@ -347,6 +358,11 @@ export const FIXTURES: Fixture[] = [
   },
 ];
 
+// The handcrafted slate supports the explicit Playwright/mock experience only.
+// Never let it become a production fallback when live data is partial or down.
+export const FIXTURES: Fixture[] = process.env.NEXT_PUBLIC_USE_MOCK === "true"
+  ? [...STATIC_FIXTURES]
+  : [];
 export const OPEN_FIXTURES = FIXTURES.filter((f) => f.status === "upcoming");
 export const SETTLED_FIXTURES = FIXTURES.filter((f) => f.status === "ft");
 
@@ -368,7 +384,7 @@ export function edge(modelProb: number, price: number) {
   return modelProb - implied(price);
 }
 
-export function modelProbFor(f: Fixture, key: MarketKey): number {
+export function modelProbFor(f: ForecastFixture, key: MarketKey): number {
   switch (key) {
     case "home":
       return f.model.home;
@@ -429,7 +445,5 @@ export function settlesWon(score: [number, number], key: MarketKey): boolean {
 }
 
 export function gw3Record() {
-  const settled = SETTLED_FIXTURES;
-  const hits = settled.filter((f) => f.modelHit).length;
-  return { hits, n: settled.length, pct: hits / settled.length };
+  return capturedRecord(SETTLED_FIXTURES);
 }

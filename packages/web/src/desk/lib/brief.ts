@@ -1,10 +1,10 @@
-import { OPEN_FIXTURES, SETTLED_FIXTURES, gw3Record, modelProbFor, selectionLabel, type Fixture } from "./data/fixtures";
+import { OPEN_FIXTURES, SETTLED_FIXTURES, gw3Record, hasCapturedForecast, modelProbFor, selectionLabel, type ForecastFixture, type Fixture } from "./data/fixtures";
 import { FORM, formString } from "./data/form";
 import { TEAMS } from "./data/teams";
 import { fmtKickoff, fmtPct } from "./format";
 import { scorersForTeam } from "./live";
 
-function lineFor(f: Fixture) {
+function lineFor(f: ForecastFixture) {
   const home = TEAMS[f.home];
   const away = TEAMS[f.away];
   const lean = selectionLabel(f, f.modelPick);
@@ -32,17 +32,22 @@ export function slateBlock() {
   const rec = gw3Record();
   const settled = SETTLED_FIXTURES.map((f) => {
     const score = f.score ? `${f.score[0]}–${f.score[1]}` : "n/a";
+    if (!hasCapturedForecast(f) || typeof f.modelHit !== "boolean") {
+      return `${TEAMS[f.home].short} ${score} ${TEAMS[f.away].short} · no captured pre-kickoff forecast`;
+    }
     return `${TEAMS[f.home].short} ${score} ${TEAMS[f.away].short} · lean ${selectionLabel(f, f.modelPick)} · ${f.modelHit ? "HIT" : "MISS"} · ${f.brief}`;
   }).join("\n");
-  const open = OPEN_FIXTURES.map(lineFor).join("\n");
+  const open = OPEN_FIXTURES.filter(hasCapturedForecast).map(lineFor).join("\n");
   return [
-    `GW3 model 1X2 record: ${rec.hits}/${rec.n} (${fmtPct(rec.pct)}).`,
+    rec.pct === null
+      ? "No captured settled forecasts are available for a record."
+      : `Captured model 1X2 record: ${rec.hits}/${rec.n} (${fmtPct(rec.pct)}).`,
     "",
-    "SETTLED GW3:",
-    settled,
+    "RECENT RESULTS:",
+    settled || "No recent results.",
     "",
-    "OPEN GW4:",
-    open,
+    "CURRENT PRICED FIXTURES:",
+    open || "No priced fixtures are live right now.",
   ].join("\n");
 }
 
@@ -56,14 +61,17 @@ export function fixtureCard(f: Fixture) {
   const menA = scorersForTeam(f.away, 3)
     .map((x) => `${x.name} ${x.pos} ${x.goals}g`)
     .join(", ");
-  return [
-    `FOCUS: ${home.name} vs ${away.name}${score}`,
-    `${f.venue}. Kickoff ${fmtKickoff(f.kickoff)}.`,
-    `Form ${home.short} ${formString(f.home)} (${FORM[f.home].join("-")}). ${away.short} ${formString(f.away)}.`,
+  const forecast = hasCapturedForecast(f) ? [
     `xG ${f.xg[0].toFixed(2)}–${f.xg[1].toFixed(2)}.`,
     `Model 1X2 ${fmtPct(f.model.home)} / ${fmtPct(f.model.draw)} / ${fmtPct(f.model.away)}.`,
     `Over 2.5 ${fmtPct(f.model.over25)}. BTTS ${fmtPct(f.model.btts)}.`,
     `Model lean: ${selectionLabel(f, f.modelPick)}.`,
+  ] : ["No captured pre-kickoff forecast is available for this result."];
+  return [
+    `FOCUS: ${home.name} vs ${away.name}${score}`,
+    `${f.venue}. Kickoff ${fmtKickoff(f.kickoff)}.`,
+    `Form ${home.short} ${formString(f.home)} (${FORM[f.home].join("-")}). ${away.short} ${formString(f.away)}.`,
+    ...forecast,
     `Key ${home.short}: ${menH}.`,
     `Key ${away.short}: ${menA}.`,
     f.brief,
@@ -72,7 +80,7 @@ export function fixtureCard(f: Fixture) {
 
 export function weekendNote() {
   const rec = gw3Record();
-  const ranked = [...OPEN_FIXTURES]
+  const ranked = [...OPEN_FIXTURES].filter(hasCapturedForecast)
     .map((f) => ({ f, p: modelProbFor(f, f.modelPick) }))
     .sort((a, b) => b.p - a.p);
   const top = ranked.slice(0, 3);
@@ -81,14 +89,15 @@ export function weekendNote() {
     const f = t.f;
     return `${i + 1}. ${TEAMS[f.home].short} vs ${TEAMS[f.away].short} — ${selectionLabel(f, f.modelPick)}, model ${fmtPct(t.p)}. ${f.brief}`;
   });
-  const missNote =
-    rec.pct < 0.5
+  const missNote = rec.pct === null
+    ? "There is no captured settled sample to score yet."
+    : rec.pct < 0.5
       ? "The misses were the games that died — 0-0s and late steals. Bankers paid; coin-flips did not."
       : "The model cleared the weekend on the sides it was supposed to.";
   return [
-    `GW3 the model went ${rec.hits} from ${rec.n} on 1X2. ${missNote}`,
+    rec.pct === null ? missNote : `The captured model went ${rec.hits} from ${rec.n} on 1X2. ${missNote}`,
     "",
-    "GW4, in order of conviction:",
+    "Current priced fixtures, in order of conviction:",
     ...lines,
     derby
       ? `\nThe derby at Old Trafford is the argument of the weekend — ${derby.brief}`
@@ -100,11 +109,11 @@ export function weekendNote() {
 }
 
 export function conviction(f: Fixture) {
-  return modelProbFor(f, f.modelPick);
+  return hasCapturedForecast(f) ? modelProbFor(f, f.modelPick) : 0;
 }
 
 export function rankedOpen() {
-  return [...OPEN_FIXTURES]
+  return [...OPEN_FIXTURES].filter(hasCapturedForecast)
     .map((f) => ({ f, p: modelProbFor(f, f.modelPick) }))
     .sort((a, b) => b.p - a.p);
 }

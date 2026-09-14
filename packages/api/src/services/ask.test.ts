@@ -262,7 +262,8 @@ describe("season grounding degradation", () => {
       expect(searchWeb).not.toHaveBeenCalled();
       expect(followUpJson.grounding).toMatchObject({ kind: "competition", competitionId: "eng.1" });
       expect(followUpJson.answer).toContain("standings alone cannot quantify");
-      expect(followUpJson.answer).toContain("rerun the season outlook after the result");
+      expect(followUpJson.answer).toMatch(/^I can’t stress-test/);
+      expect(followUpJson.answer).toContain("One upset can move several positions");
 
       const followUpDeltas: string[] = [];
       const followUpGroundingKinds: string[] = [];
@@ -1652,6 +1653,8 @@ describe("current-news evidence hardening", () => {
       expect(current).not.toMatch(/seeding|promoted|squad ranking/i);
       const sensitivity = deterministicGroundedResponse("How sensitive is that view to one upset?", table);
       expect(sensitivity).toContain("standings alone cannot quantify");
+      expect(sensitivity).toMatch(/^I can’t stress-test/);
+      expect(sensitivity).toContain("One upset can move several positions");
       expect(sensitivity).not.toMatch(/few percentage points|top two are entrenched/i);
     });
 
@@ -3118,7 +3121,7 @@ describe("resolveAskContext", () => {
     )).toMatchObject({ tier: "match", fixture: fixtures[0] });
   });
 
-  it("keeps a scorer follow-up on the retained fixture even when it names another club", () => {
+  it("releases a retained fixture when a scorer question names another club", () => {
     const recognized = [recognizeEspnFixture({
       id: fixtures[0].fixtureId,
       competitionId: fixtures[0].competitionId,
@@ -3144,7 +3147,59 @@ describe("resolveAskContext", () => {
         recognizedFixtures: recognized,
         fixtureContext: { fixtureId: recognized[0].fixtureId },
       }
-    )).toEqual({ tier: "match", fixture: fixtures[0] });
+    )).toEqual({ tier: "general" });
+    expect(deterministicUngroundedClarification(
+      "Who will most likely score for Liverpool?",
+      null
+    )).toBe("Which Liverpool fixture do you mean? Name the opponent, and I’ll check the scorer market and current team news for that match.");
+    expect(resolveAskContext(
+      "Who scores for Everton?",
+      [],
+      undefined,
+      [fixtures[0]],
+      [],
+      [],
+      {
+        recognizedFixtures: recognized,
+        fixtureContext: { fixtureId: recognized[0].fixtureId },
+      }
+    )).toEqual({ tier: "general" });
+    expect(deterministicUngroundedClarification(
+      "Who scores for Everton?",
+      null
+    )).toBe("Which Everton fixture do you mean? Name the opponent, and I’ll check the scorer market and current team news for that match.");
+    expect(resolveAskContext(
+      "Who scores for Arsenal?",
+      [],
+      undefined,
+      [fixtures[0]],
+      [],
+      [],
+      {
+        recognizedFixtures: recognized,
+        fixtureContext: { fixtureId: recognized[0].fixtureId },
+      }
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
+    for (const referential of [
+      "Who scores for either team?",
+      "Who is most likely to score for this team?",
+      "Who scores for the hosts?",
+      "Who scores for the visitors?",
+    ]) {
+      expect(resolveAskContext(
+        referential,
+        [],
+        undefined,
+        [fixtures[0]],
+        [],
+        [],
+        {
+          recognizedFixtures: recognized,
+          fixtureContext: { fixtureId: recognized[0].fixtureId },
+        }
+      )).toMatchObject({ tier: "match", fixture: fixtures[0] });
+      expect(deterministicUngroundedClarification(referential, null)).toBeNull();
+    }
   });
 
   it("retains match grounding for conversational follow-ups without an explicit cue", () => {

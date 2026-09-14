@@ -6,13 +6,19 @@ export async function loadSlate() {
     return await fetchLiveSlate();
   } catch (error) {
     const message = error instanceof Error ? error.stack ?? error.message : String(error);
-    console.warn("[desk] live slate unavailable; using static fixtures", message);
+    const useStaticFixtures = process.env.NEXT_PUBLIC_USE_MOCK === "true";
+    console.warn(
+      useStaticFixtures
+        ? "[desk] live slate unavailable; using explicit mock fixtures"
+        : "[desk] live slate unavailable",
+      message,
+    );
     resetLiveScorers();
     resetLiveStats();
     return {
-      open: OPEN_FIXTURES,
-      settled: SETTLED_FIXTURES,
-      source: "static" as const,
+      open: useStaticFixtures ? OPEN_FIXTURES : [],
+      settled: useStaticFixtures ? SETTLED_FIXTURES : [],
+      source: useStaticFixtures ? "static" as const : "unavailable" as const,
       asOf: new Date().toISOString(),
     };
   }

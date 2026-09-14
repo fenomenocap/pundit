@@ -1,6 +1,6 @@
 "use client";
 
-import { modelProbFor, selectionLabel } from "@/desk/lib/data/fixtures";
+import { hasCapturedForecast, modelProbFor, selectionLabel } from "@/desk/lib/data/fixtures";
 import { TEAMS } from "@/desk/lib/data/teams";
 import { fmtKickoffShort, fmtPct } from "@/desk/lib/format";
 import { useDesk } from "@/desk/lib/store";
@@ -18,11 +18,23 @@ export function SlateRail() {
   return (
     <section className="hidden lg:flex flex-col border-r border-border min-w-0 bg-surface lg:h-[calc(100dvh-7.5rem)]">
       <header className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <h2 className="eyebrow">Slate · {source === "live" ? "LIVE" : "GW4"}</h2>
+        <h2 className="eyebrow">
+          Slate · {source === "live"
+            ? "LIVE"
+            : source === "no-fixtures"
+              ? "NO FIXTURES"
+            : source === "static"
+              ? "MOCK"
+              : source === "pending" ? "LOADING" : "UNAVAILABLE"}
+        </h2>
         <span className="text-2xs text-subtle tabular-nums">{open.length}</span>
       </header>
       <ul className="flex-1 overflow-y-auto">
+        {source === "no-fixtures" ? (
+          <li className="px-3 py-4 text-sm text-quiet">No priced fixtures are live right now.</li>
+        ) : null}
         {open.map((f) => {
+          if (!hasCapturedForecast(f)) return null;
           const active = f.id === selectedId;
           const score = scores[f.id];
           const p = modelProbFor(f, f.modelPick);
@@ -30,6 +42,8 @@ export function SlateRail() {
             <li key={f.id}>
               <button
                 type="button"
+                data-testid="desk-slate-fixture"
+                data-fixture-id={f.id}
                 onClick={() => select(f.id)}
                 className={cn(
                   "w-full text-left px-3 py-2.5 border-b border-border transition-colors duration-150",
@@ -77,7 +91,7 @@ export function SlateRail() {
         })}
       </ul>
       <header className="flex items-center justify-between px-3 py-2 border-y border-border">
-        <h2 className="eyebrow">GW3 settled</h2>
+        <h2 className="eyebrow">{source === "static" ? "Mock settled" : "Recent settled"}</h2>
       </header>
       <ul className="max-h-48 overflow-y-auto">
         {settled.map((f) => (
@@ -93,10 +107,10 @@ export function SlateRail() {
             <span
               className={cn(
                 "ml-auto text-2xs uppercase tracking-wider font-semibold",
-                f.modelHit ? "text-up" : "text-down",
+                f.modelHit === true ? "text-up" : f.modelHit === false ? "text-down" : "text-subtle",
               )}
             >
-              {f.modelHit ? "HIT" : "MISS"}
+              {f.modelHit === true ? "HIT" : f.modelHit === false ? "MISS" : "NO FORECAST"}
             </span>
           </li>
         ))}
@@ -115,6 +129,7 @@ export function SlateChips() {
     <div className="lg:hidden border-b border-border bg-surface">
       <div className="flex gap-2 overflow-x-auto px-3 py-2">
         {open.map((f) => {
+          if (!hasCapturedForecast(f)) return null;
           const active = f.id === selectedId;
           const score = scores[f.id];
           const p = modelProbFor(f, f.modelPick);
@@ -122,6 +137,8 @@ export function SlateChips() {
             <button
               key={f.id}
               type="button"
+              data-testid="desk-slate-fixture"
+              data-fixture-id={f.id}
               onClick={() => select(f.id)}
               className={cn(
                 "shrink-0 rounded-sm border px-3 py-2 min-h-11 text-left transition-colors duration-150",

@@ -214,6 +214,10 @@ export default function ModelPage() {
                     return (
                       <Fragment key={key}>
                         <tr
+                          data-testid="model-fixture-row"
+                          data-fixture-id={modelFixtureIdentity(fixture)}
+                          data-model-version={fixture.forecastProvenance?.modelVersion}
+                          data-forecast-at={fixture.forecastProvenance?.forecastAt}
                           className="cursor-pointer border-t border-border/60 transition-colors hover:bg-secondary/30"
                           onClick={() => toggleExpanded(key)}
                           aria-expanded={isExpanded}

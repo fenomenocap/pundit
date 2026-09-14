@@ -7,6 +7,7 @@ import {
   MARKET_LABEL,
   getFixture,
   gw3Record,
+  hasCapturedForecast,
   modelProbFor,
   selectionLabel,
   type MarketKey,
@@ -51,6 +52,7 @@ export function BoardView() {
 
 function PaperStrip() {
   const rec = gw3Record();
+  const { source } = useLiveSlate();
   const simulateAll = useDesk((s) => s.simulateAll);
   const resetBook = useDesk((s) => s.resetBook);
   const open = useDesk((s) => s.tickets.filter((t) => t.status === "open").length);
@@ -59,9 +61,15 @@ function PaperStrip() {
       <span className="rounded-xs bg-accent/15 px-1.5 py-0.5 font-display text-2xs uppercase tracking-wider text-accent">
         Paper lab
       </span>
-      <span className="font-display tabular-nums text-fg">
-        {rec.hits}/{rec.n} <span className="text-quiet">model 1X2</span> {fmtPct(rec.pct)}
-      </span>
+      {rec.pct !== null ? (
+        <span className="font-display tabular-nums text-fg">
+          {rec.hits}/{rec.n} <span className="text-quiet">captured 1X2</span> {fmtPct(rec.pct)}
+        </span>
+      ) : (
+        <span className="text-quiet">No captured settled forecasts</span>
+      )}
+      {source === "live" ? <span className="text-quiet">Live slate</span> : null}
+      {source === "no-fixtures" ? <span className="text-quiet">No priced fixtures</span> : null}
       <span className="hidden sm:inline text-quiet">
         Simulated prices. Pundit is not a bookmaker.
       </span>
@@ -86,19 +94,24 @@ function MarketList() {
   const scores = useDesk((s) => s.scores);
   const addLeg = useDesk((s) => s.addLeg);
   const slip = useDesk((s) => s.slip);
-  const { open, settled } = useLiveSlate();
+  const { open, settled, source } = useLiveSlate();
 
   return (
     <section className="border-b lg:border-b-0 lg:border-r border-border min-w-0">
       <header className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border">
-        <h2 className="eyebrow">Open · GW4</h2>
+        <h2 className="eyebrow">Current priced fixtures</h2>
         <span className="text-2xs text-subtle tabular-nums">{open.length} listed</span>
       </header>
       <ul>
+        {source === "no-fixtures" ? (
+          <li className="px-3 sm:px-4 py-4 text-sm text-quiet">No priced fixtures are live right now.</li>
+        ) : null}
         {open.map((f) => {
+          if (!hasCapturedForecast(f)) return null;
           const active = f.id === selectedId;
           const score = scores[f.id];
-          const edgeHome = modelProbFor(f, "home") - 1 / f.odds.home;
+          const odds = f.odds;
+          const edgeHome = odds?.home ? modelProbFor(f, "home") - 1 / odds.home : null;
           const onSlip = slip.find((l) => l.fixtureId === f.id);
           return (
             <li key={f.id}>
@@ -132,31 +145,41 @@ function MarketList() {
                     <div className="font-display text-2xl tabular-nums px-2">
                       {score[0]}–{score[1]}
                     </div>
-                  ) : (
+                  ) : odds ? (
                     <div
                       className="grid grid-cols-3 gap-1 w-[168px] shrink-0"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {ONE_X_TWO.map(({ key, label }) => (
-                        <OddsBtn
-                          key={key}
-                          label={label}
-                          price={f.odds[key]}
-                          edge={modelProbFor(f, key) - 1 / f.odds[key]}
-                          active={onSlip?.market === key}
-                          onClick={() => {
-                            addLeg({ fixtureId: f.id, market: key, price: f.odds[key] });
-                            select(f.id);
-                          }}
-                        />
-                      ))}
+                      {ONE_X_TWO.map(({ key, label }) => {
+                        const price = odds[key];
+                        if (price === null) return null;
+                        return (
+                          <OddsBtn
+                            key={key}
+                            label={label}
+                            price={price}
+                            edge={modelProbFor(f, key) - 1 / price}
+                            active={onSlip?.market === key}
+                            onClick={() => {
+                              addLeg({ fixtureId: f.id, market: key, price });
+                              select(f.id);
+                            }}
+                          />
+                        );
+                      })}
                     </div>
+                  ) : (
+                    <span className="text-right text-xs text-quiet">No comparison market</span>
                   )}
                 </div>
                 <div className="mt-2 flex items-center gap-2 text-2xs">
-                  <span className={cn("tabular-nums", signedClass(edgeHome))}>
-                    H {fmtEdge(edgeHome)}
-                  </span>
+                  {edgeHome !== null ? (
+                    <span className={cn("tabular-nums", signedClass(edgeHome))}>
+                      H {fmtEdge(edgeHome)}
+                    </span>
+                  ) : (
+                    <span className="text-quiet">No comparison market</span>
+                  )}
                   <span className="text-quiet">lean {selectionLabel(f, f.modelPick)}</span>
                   {onSlip ? <span className="ml-auto text-accent">on slip</span> : null}
                 </div>
@@ -166,7 +189,7 @@ function MarketList() {
         })}
       </ul>
       <header className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border mt-2">
-        <h2 className="eyebrow">GW3 settled</h2>
+        <h2 className="eyebrow">Recent results</h2>
       </header>
       <ul>
         {settled.map((f) => (
@@ -185,10 +208,10 @@ function MarketList() {
             <span
               className={cn(
                 "ml-auto text-2xs uppercase tracking-wider font-semibold",
-                f.modelHit ? "text-up" : "text-down",
+                f.modelHit === true ? "text-up" : f.modelHit === false ? "text-down" : "text-subtle",
               )}
             >
-              {f.modelHit ? "HIT" : "MISS"}
+              {f.modelHit === true ? "HIT" : f.modelHit === false ? "MISS" : "NO FORECAST"}
             </span>
           </li>
         ))}
@@ -211,6 +234,8 @@ function TicketPanel() {
   const score = scores[f.id] ?? f.score;
   const onSlip = slip.find((l) => l.fixtureId === f.id);
   const edge = bestEdge(f.id);
+  const odds = f.odds;
+  const hasForecast = hasCapturedForecast(f);
 
   return (
     <section className="border-b lg:border-b-0 lg:border-r border-border min-w-0 bg-surface">
@@ -239,43 +264,61 @@ function TicketPanel() {
             <div className="font-display text-4xl tabular-nums">
               {score[0]}–{score[1]}
             </div>
-          ) : (
+          ) : hasForecast ? (
             <Button size="sm" variant="subtle" onClick={() => simulate(f.id)}>
               Project score
             </Button>
-          )}
+          ) : null}
         </div>
 
-        <div className="mt-5">
-          <ProbBar home={f.model.home} draw={f.model.draw} away={f.model.away} />
-        </div>
+        {hasForecast ? (
+          <div className="mt-5">
+            <ProbBar home={f.model.home} draw={f.model.draw} away={f.model.away} />
+          </div>
+        ) : (
+          <p className="mt-5 text-sm text-quiet">No captured pre-kickoff forecast is available for this result.</p>
+        )}
 
-        <div className="mt-4 grid grid-cols-3 gap-1.5">
-          {ONE_X_TWO.map(({ key, label }) => (
-            <OddsBtn
-              key={key}
-              label={`${label} · ${key === "home" ? TEAMS[f.home].short : key === "away" ? TEAMS[f.away].short : "Draw"}`}
-              price={f.odds[key]}
-              edge={modelProbFor(f, key) - 1 / f.odds[key]}
-              active={onSlip?.market === key}
-              dim={!!score}
-              onClick={() => addLeg({ fixtureId: f.id, market: key, price: f.odds[key] })}
-            />
-          ))}
-        </div>
-        <div className="mt-1.5 grid grid-cols-4 gap-1.5">
-          {ALT.map(({ key, label }) => (
-            <OddsBtn
-              key={key}
-              label={label}
-              price={f.odds[key]}
-              edge={modelProbFor(f, key) - 1 / f.odds[key]}
-              active={onSlip?.market === key}
-              dim={!!score}
-              onClick={() => addLeg({ fixtureId: f.id, market: key, price: f.odds[key] })}
-            />
-          ))}
-        </div>
+        {odds && hasForecast ? (
+          <>
+            <div className="mt-4 grid grid-cols-3 gap-1.5">
+              {ONE_X_TWO.map(({ key, label }) => {
+                const price = odds[key];
+                if (price === null) return null;
+                return (
+                  <OddsBtn
+                    key={key}
+                    label={`${label} · ${key === "home" ? TEAMS[f.home].short : key === "away" ? TEAMS[f.away].short : "Draw"}`}
+                    price={price}
+                    edge={modelProbFor(f, key) - 1 / price}
+                    active={onSlip?.market === key}
+                    dim={!!score}
+                    onClick={() => addLeg({ fixtureId: f.id, market: key, price })}
+                  />
+                );
+              })}
+            </div>
+            <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+              {ALT.map(({ key, label }) => {
+                const price = odds[key];
+                if (price === null) return null;
+                return (
+                  <OddsBtn
+                    key={key}
+                    label={label}
+                    price={price}
+                    edge={modelProbFor(f, key) - 1 / price}
+                    active={onSlip?.market === key}
+                    dim={!!score}
+                    onClick={() => addLeg({ fixtureId: f.id, market: key, price })}
+                  />
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <p className="mt-4 text-sm text-quiet">No comparison market is currently available.</p>
+        )}
 
         {edge ? (
           <p className="mt-4 text-sm text-quiet leading-relaxed">
@@ -311,10 +354,19 @@ function SlipRail() {
   const clear = useDesk((s) => s.clearSlip);
   const remove = useDesk((s) => s.removeLeg);
   const tickets = useDesk((s) => s.tickets);
+  const source = useDesk((s) => s.liveSource);
   const [err, setErr] = useState<string | null>(null);
 
   const price = useMemo(() => accaPrice(slip.map((l) => l.price)), [slip]);
   const ret = stake * price;
+
+  if (source === "pending" || source === "unavailable") {
+    return (
+      <aside id="slip" className="min-w-0 bg-bg px-4 py-4 text-sm text-quiet">
+        Paper positions are unavailable until the live slate is loaded.
+      </aside>
+    );
+  }
 
   return (
     <aside id="slip" className="min-w-0 bg-bg">
@@ -393,14 +445,14 @@ function SlipRail() {
 
       <header className="px-4 py-2 border-y border-border flex items-center justify-between mt-2">
         <h2 className="eyebrow">Positions</h2>
-        <span className="text-2xs text-subtle tabular-nums">{tickets.length}</span>
+        <span data-testid="paper-position-count" className="text-2xs text-subtle tabular-nums">{tickets.length}</span>
       </header>
       <ul className="max-h-80 overflow-auto">
         {tickets.length === 0 ? (
           <li className="px-4 py-3 text-sm text-quiet">No paper tickets yet.</li>
         ) : (
           tickets.map((t) => (
-            <li key={t.id} className="px-4 py-2.5 border-b border-border text-sm">
+            <li key={t.id} data-ticket-id={t.id} className="px-4 py-2.5 border-b border-border text-sm">
               <div className="flex items-center gap-2">
                 <span
                   className={cn(

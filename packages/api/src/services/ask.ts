@@ -2595,17 +2595,22 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
     ...(grounding.scorelines ?? []).map((row) => row.probability),
   ];
   const userLine = grounding.pricing?.userLine;
+  const consensusProbabilities = grounding.consensus
+    ? [grounding.consensus.pHome, grounding.consensus.pDraw, grounding.consensus.pAway]
+    : [];
   return stripUntraceableMatchPercentages(answer, {
     probabilities: [
       ...modelProbabilities,
       ...(grounding.oddsSources ?? []).flatMap((source) =>
         [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
+      ...consensusProbabilities,
       ...(userLine ? [Math.abs(userLine.evPct), 1 / userLine.decimalOdds] : []),
     ],
     percentagePointGaps: (grounding.marketDivergence ?? []).flatMap((market) =>
       market.legs.map((leg) => leg.gapPoints)),
     fairDecimalOdds: [
       ...modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
+      ...consensusProbabilities.filter((value) => value > 0).map((value) => 1 / value),
       ...(userLine ? [userLine.decimalOdds, userLine.passPrice, userLine.playPrice] : []),
     ],
   });
@@ -3301,9 +3306,9 @@ function hasMatchOutcomeIntent(question: string): boolean {
 export function shouldUseMatchGrounding(question: string): boolean {
   const normalized = normalizeTeamText(question);
   if (MATCH_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue))) return true;
-  // A scorer or lineup follow-up can name a club that is not in the retained
-  // fixture ("who scores for Liverpool?" on Arsenal vs Chelsea). That is still
-  // a question about the current match, not a request to replace it.
+  // This classifies match-shaped language only. resolveAskContext separately
+  // rejects an explicitly named club outside the retained fixture before this
+  // signal may preserve context.
   const mode = planResponse(question, { groundingKind: "match" }).mode;
   return mode === "player-or-scorer"
     || mode === "lineup-counterfactual"
@@ -3314,6 +3319,15 @@ export function shouldUseMatchGrounding(question: string): boolean {
     || mode === "market-comparison"
     || mode === "totals"
     || mode === "btts";
+}
+
+function explicitScorerClub(question: string): string | null {
+  const match = /\bwho\s+(?:will|might|could|is(?:\s+the)?)?\s*(?:most\s+)?likely\s+(?:to\s+)?score\s+for\s+([\p{L}][\p{L} .'-]{1,50}?)(?=\s+(?:against|versus|vs\.?|in\s+(?:this|the)|tonight|today|tomorrow)\b|[?!.,]|$)/iu.exec(question)
+    ?? /\bwho\s+(?:will|might|could)?\s*scores?\s+for\s+([\p{L}][\p{L} .'-]{1,50}?)(?=\s+(?:against|versus|vs\.?|in\s+(?:this|the)|tonight|today|tomorrow)\b|[?!.,]|$)/iu.exec(question);
+  const club = match?.[1]?.trim() ?? "";
+  return club && !/^(?:them|us|you|it|either (?:team|side)|both teams?|this (?:team|side)|that (?:team|side)|the (?:home|away) (?:side|team)|the hosts?|the visitors?)$/i.test(club)
+    ? club
+    : null;
 }
 
 // Questions that have plainly left the followed match: standalone football
@@ -3352,6 +3366,17 @@ export function leavesMatchContext(
   fixtures: TeamFixture[]
 ): boolean {
   if (mentionsTeamOutsideContext(question, teamContext, fixtures)) return true;
+  // A scorer request can name a club absent from the current active-fixture
+  // index. Do not let that unknown club inherit the followed fixture merely
+  // because the fixture-aware team resolver cannot see it.
+  const scorerClub = explicitScorerClub(question);
+  if (scorerClub) {
+    const normalizedClub = normalizeTeamName(scorerClub);
+    const staysInContext = teamContext.some((team) =>
+      normalizeTeamName(team) === normalizedClub
+      || normalizeTeamText(team) === normalizeTeamText(scorerClub));
+    if (!staysInContext) return true;
+  }
   const normalized = normalizeTeamText(question);
   return MATCH_CONTEXT_EXIT_PATTERNS.some((pattern) => pattern.test(normalized));
 }
@@ -3852,8 +3877,7 @@ export function resolveAskContext(
   // It wins over the temporary legacy teamContext when both are supplied.
   if (!teams && routing.fixtureContext && (!competitionId || hasMatchOutcomeIntent(question))) {
     if (contextualTeams
-      && (shouldUseMatchGrounding(question)
-        || !leavesMatchContext(question, contextualTeams, searchableFixtures))) {
+      && !leavesMatchContext(question, contextualTeams, searchableFixtures)) {
       if (contextualFixture) return resolveRecognizedFixture(contextualFixture, fixtures, routing);
       if (contextualModelFixture) return { tier: "match", fixture: contextualModelFixture };
     }
@@ -3864,8 +3888,7 @@ export function resolveAskContext(
     && !competitionId
     && !routing.fixtureContext
     && teamContext
-    && (shouldUseMatchGrounding(question)
-      || !leavesMatchContext(question, teamContext, [...fixtures, ...activeFixtures]))
+    && !leavesMatchContext(question, teamContext, [...fixtures, ...activeFixtures])
   ) {
     const contextualFixture = findFixture(teamContext[0], teamContext[1], fixtures);
     if (contextualFixture) return { tier: "match", fixture: contextualFixture };
@@ -4734,8 +4757,11 @@ function stripModelAttributedProbabilities(answer: string, correction: string): 
   return kept.join("\n").trim();
 }
 
+const STANDINGS_SENSITIVITY_LIMIT =
+  "I can’t stress-test a contender ranking the table does not establish. One upset can move several positions in an early-season table, but the standings alone cannot quantify a title-probability swing.";
+
 export function sanitizeCompetitionAnswer(answer: string): string {
-  const correction = "The standings alone cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
+  const correction = STANDINGS_SENSITIVITY_LIMIT;
   let emitted = false;
   const extrapolationSafe = answer.split("\n").map((line) => {
     if (/^\s*\*\*[^*]*(?:title prices?|title odds)[^*]*pundit[^*]*\*\*\s*$/i.test(line)) {
@@ -7340,7 +7366,7 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
     return SEASON_OUTLOOK_UNAVAILABLE;
   }
   if (/\b(?:sensitive|sensitivity|one upset|one result|one loss|one win)\b/i.test(question)) {
-    return "The standings alone cannot quantify how one upset changes the title race; rerun the season outlook after the result.";
+    return STANDINGS_SENSITIVITY_LIMIT;
   }
   if (/\bclearest path\b/i.test(question)) {
     return "I can’t identify which contender has the clearest title path from the current table alone. That requires club strengths and the remaining fixture schedule; this table establishes only the current points, matches played and goal difference.";
@@ -7629,9 +7655,14 @@ export function deterministicUngroundedClarification(
 ): string | null {
   if (grounding !== null) return null;
   const identityFreeManagerReplacement = /\bwho\s+(?:is|will be|could be)\s+replac\w*\b[^?\n]{0,80}\b(?:the|that|this|an?)\s+(?:injured|departing|sacked|suspended|absent)\s+manager\b/i;
-  return identityFreeManagerReplacement.test(question)
-    ? "I need the manager and club before I can identify a replacement. Tell me both, and I’ll check the current evidence."
-    : null;
+  if (identityFreeManagerReplacement.test(question)) {
+    return "I need the manager and club before I can identify a replacement. Tell me both, and I’ll check the current evidence.";
+  }
+  const club = explicitScorerClub(question);
+  if (club) {
+    return `Which ${club} fixture do you mean? Name the opponent, and I’ll check the scorer market and current team news for that match.`;
+  }
+  return null;
 }
 
 export function deterministicUngroundedAnalysis(

@@ -1,4 +1,100 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+async function routeTwoFixtureDeskSlate(page: Page) {
+  const fixtures = [
+    { fixtureId: 901, home: "Arsenal", away: "Chelsea", pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+    { fixtureId: 902, home: "Liverpool", away: "Fulham", pHome: 0.65, pDraw: 0.2, pAway: 0.15 },
+  ];
+  await page.route("**/api/model/active", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ fixtures: fixtures.map((fixture) => ({
+      competitionId: "eng.1",
+      utcDate: "2099-09-20T19:00:00.000Z",
+      homeElo: 1900,
+      awayElo: 1800,
+      pOver2_5: 0.52,
+      pBttsYes: 0.5,
+      oddsSources: [],
+      ...fixture,
+    })) }),
+  }));
+  await page.route("**/api/matches/active", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ fixtures: fixtures.map((fixture) => ({
+      id: fixture.fixtureId,
+      competitionId: "eng.1",
+      homeTeam: fixture.home,
+      awayTeam: fixture.away,
+      utcDate: "2099-09-20T19:00:00.000Z",
+      status: "SCHEDULED",
+    })) }),
+  }));
+  await page.route("**/api/matches/recent?competition=eng.1", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ matches: [], clubForm: { teams: [] } }),
+  }));
+}
+
+function deskMatchGrounding(fixtureId: string) {
+  return {
+    kind: "match",
+    fixtureId,
+    competitionId: "eng.1",
+    competition: "Premier League",
+    homeFieldAdvantage: true,
+    date: "2026-09-12",
+    stage: "match",
+    home: "Sunderland",
+    away: "Arsenal",
+    pHome: 0.18,
+    pDraw: 0.24,
+    pAway: 0.58,
+    pOver2_5: 0.52,
+    pUnder2_5: 0.48,
+    pBttsYes: 0.46,
+    pBttsNo: 0.54,
+    topScores: [{ score: "0-1", probability: 0.14 }],
+    scorelines: [{ score: "0-1", probability: 0.14 }],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    oddsSources: [{
+      source: "polymarket",
+      observedAt: "2026-09-10T12:00:00.000Z",
+      pHome: 0.2,
+      pDraw: 0.25,
+      pAway: 0.55,
+    }],
+    pricing: {
+      fixtureId,
+      home: "Sunderland",
+      away: "Arsenal",
+      kickoff: "2026-09-12T19:00:00.000Z",
+      modelVersion: "test",
+      pricedAt: "2026-09-10T12:00:00.000Z",
+      model: {
+        home: { p: 0.18, fairOdds: 5.56 },
+        draw: { p: 0.24, fairOdds: 4.17 },
+        away: { p: 0.58, fairOdds: 1.72 },
+      },
+      markets: [{
+        source: "polymarket",
+        observedAt: "2026-09-10T12:00:00.000Z",
+        edgeBand: "agreement",
+        legs: {
+          home: { outcome: "home", modelP: 0.18, fairOdds: 5.56, decimalOdds: 5, impliedP: 0.2, evPct: -0.1 },
+          draw: { outcome: "draw", modelP: 0.24, fairOdds: 4.17, decimalOdds: 4, impliedP: 0.25, evPct: -0.04 },
+          away: { outcome: "away", modelP: 0.58, fairOdds: 1.72, decimalOdds: 1.82, impliedP: 0.55, evPct: 0.0556 },
+        },
+      }],
+      userLine: null,
+      stakeFrac: null,
+    },
+  };
+}
 
 test.describe("smoke", () => {
   test("homepage", async ({ page }) => {
@@ -64,6 +160,9 @@ test.describe("smoke", () => {
     await page.goto("/model");
     const arsenal = page.locator("tr").filter({ hasText: "Arsenal · Coventry City" });
     await expect(arsenal).toBeVisible();
+    await expect(arsenal).toHaveAttribute("data-fixture-id", "espn:eng.1:1");
+    await expect(arsenal).toHaveAttribute("data-model-version", "mock-v1");
+    await expect(arsenal).toHaveAttribute("data-forecast-at", /T/);
     await arsenal.getByRole("button", { name: "Expand details" }).click();
     await expect(page.getByTestId("totals-honesty")).toHaveText(
       "Totals sit near even because every match uses the same 2.70 expected goals."
@@ -101,8 +200,245 @@ test.describe("smoke", () => {
       await expect(page.getByText("The model leans Arsenal. Home 72, draw 18, away 10.")).toBeVisible();
       expect(requests[0].voice).toBe("desk");
       expect(requests[0].stream).toBe(false);
+      expect(requests[0]).not.toHaveProperty("fixtureContext");
     });
   }
+
+  test("desk featured fixture keeps its identity and renders grounded market rows", async ({ page }) => {
+    const requests: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      const request = route.request().postDataJSON() as Record<string, unknown>;
+      requests.push(request);
+      const fixtureId = ((request.fixtureContext as { fixtureId?: string } | undefined)?.fixtureId) ?? "missing";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          answer: "I make Arsenal the side, with the market close to my numbers.",
+          grounding: deskMatchGrounding(fixtureId),
+        }),
+      });
+    });
+
+    await page.goto("/");
+    const arsenal = page.locator('[data-testid="desk-featured-fixture"][data-fixture-id="gw4-sun-ars"]');
+    await expect(arsenal).toBeVisible();
+    await arsenal.click();
+    await expect.poll(() => requests.length).toBe(1);
+    expect(requests[0].fixtureContext).toEqual({ fixtureId: "gw4-sun-ars" });
+    await expect(page.getByTestId("desk-match-board")).toBeVisible();
+    await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-fixture-id", "gw4-sun-ars");
+    await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-rating-artifact-id", "test");
+    await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-priced-at", "2026-09-10T12:00:00.000Z");
+    await expect(page.getByTestId("desk-board-markets")).toContainText("Polymarket");
+    await expect(page.getByTestId("desk-board-markets")).toContainText("55.0%");
+    await expect(arsenal).toHaveCount(1);
+  });
+
+  test("New Chat clears fixture context, queued state and shared URL", async ({ page }) => {
+    const requests: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      requests.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ answer: "Here is the read.", grounding: null }),
+      });
+    });
+
+    await page.goto("/?fixture=gw4-sun-ars&q=Give%20me%20the%20match%20briefing");
+    await expect.poll(() => requests.length).toBe(1);
+    await expect(page.getByText("Pinned · Sunderland vs Arsenal")).toBeVisible();
+    await page.getByRole("button", { name: "New Chat" }).click();
+    await expect(page.getByTestId("desk-chat-transcript").getByTestId("desk-user-bubble")).toHaveCount(0);
+    await expect(page.getByText(/Pinned ·/)).toHaveCount(0);
+    await expect.poll(() => new URL(page.url()).search).toBe("");
+
+    await page.getByRole("textbox", { name: "Ask a question" }).fill("Walk the slate");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect.poll(() => requests.length).toBe(2);
+    expect(requests[1]).not.toHaveProperty("fixtureContext");
+  });
+
+  test("desk rejects oversized questions and hostile text cannot overflow mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    let calls = 0;
+    await page.route("**/api/ask", async (route) => {
+      calls += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ answer: "A".repeat(500), grounding: null }),
+      });
+    });
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await expect(input).toHaveAttribute("maxlength", "500");
+    await input.evaluate((node) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(node, "X".repeat(501));
+      node.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Questions must be 500 characters or fewer.");
+    expect(calls).toBe(0);
+
+    await input.fill("X".repeat(500));
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect.poll(() => calls).toBe(1);
+    await expect(page.getByTestId("desk-pundit-bubble")).toBeVisible();
+    const widths = await page.evaluate(() => ({
+      client: document.documentElement.clientWidth,
+      scroll: document.documentElement.scrollWidth,
+    }));
+    expect(widths.scroll).toBeLessThanOrEqual(widths.client);
+  });
+
+  test("desk accepts a valid partial live slate without static backfill", async ({ page }) => {
+    await page.route("**/api/model/active", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ fixtures: [{
+        competitionId: "eng.1", fixtureId: 777, utcDate: "2099-09-20T19:00:00.000Z",
+        home: "Arsenal", away: "Liverpool", homeElo: 1900, awayElo: 1880,
+        pHome: 0.44, pDraw: 0.27, pAway: 0.29, pOver2_5: 0.53, pBttsYes: 0.55,
+        topScores: [{ score: "1-1", probability: 0.13 }], oddsSources: [],
+      }] }),
+    }));
+    await page.route("**/api/matches/active", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ fixtures: [{
+        id: 777, competitionId: "eng.1", homeTeam: "Arsenal", awayTeam: "Liverpool",
+        utcDate: "2099-09-20T19:00:00.000Z", status: "SCHEDULED", venue: "Emirates Stadium",
+      }] }),
+    }));
+    await page.route("**/api/matches/recent?competition=eng.1", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ matches: [], clubForm: { teams: [] } }),
+    }));
+
+    await page.goto("/");
+    await expect(page.getByText("Live model", { exact: true })).toBeVisible();
+    await expect(page.locator('[data-fixture-id="espn:eng.1:777"]')).toBeVisible();
+    await expect(page.getByText("11", { exact: true })).toHaveCount(0);
+    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
+    await expect(page.getByText("No comparison market", { exact: true }).first()).toBeVisible();
+  });
+
+  test("desk tells the truth when the live slate has no priced fixtures or captured forecasts", async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("pundit-desk-v2", JSON.stringify({
+        state: {
+          cash: 9800,
+          tickets: [
+            {
+              id: "settling-ticket",
+              legs: [{ fixtureId: "espn:eng.1:778", market: "away", price: 1.6 }],
+              stake: 100,
+              price: 1.6,
+              status: "open",
+              pnl: 0,
+              placedAt: 1,
+            },
+            {
+              id: "stale-ticket",
+              legs: [{ fixtureId: "gw4-sun-ars", market: "away", price: 1.6 }],
+              stake: 100,
+              price: 1.6,
+              status: "open",
+              pnl: 0,
+              placedAt: 1,
+            },
+          ],
+          selectedId: "gw4-sun-ars",
+          scores: { "gw4-sun-ars": [2, 0] },
+          vaultAlloc: { alpha: 0, neutral: 0, yield: 0 },
+          messages: [],
+        },
+        version: 0,
+      }));
+    });
+    await page.route("**/api/model/active", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ fixtures: [] }),
+    }));
+    await page.route("**/api/matches/active", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ fixtures: [] }),
+    }));
+    await page.route("**/api/matches/recent?competition=eng.1", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        matches: [{
+          id: 778,
+          competitionId: "eng.1",
+          homeTeam: "Everton",
+          awayTeam: "Chelsea",
+          utcDate: "2026-09-13T14:00:00.000Z",
+          status: "STATUS_FINAL",
+          score: { home: 1, away: 2 },
+        }],
+        clubForm: { teams: [] },
+      }),
+    }));
+
+    await page.goto("/");
+    await expect(page.getByText("No priced fixtures", { exact: true })).toBeVisible();
+    await expect(page.getByText("No priced fixtures are live right now.", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("NO FORECAST", { exact: true })).toBeVisible();
+    await expect(page.getByText("MISS", { exact: true })).toHaveCount(0);
+    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
+    await expect(page.getByText("No captured settled forecasts", { exact: true })).toBeVisible();
+    await expect(page.getByText("won", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("paper-position-count")).toHaveText("1");
+    await expect(page.locator('[data-ticket-id="stale-ticket"]')).toHaveCount(0);
+    await expect(page.getByText("10,060", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText(/NaN|GW3|GW4/)).toHaveCount(0);
+  });
+
+  test("desk binds a user line to its selected fixture and clears it on fixture change", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await routeTwoFixtureDeskSlate(page);
+    const requests: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      requests.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ answer: "No line is attached to this fixture.", grounding: null }),
+      });
+    });
+    await page.goto("/");
+    const fixtures = page.locator('[data-testid="desk-slate-fixture"]:visible');
+    await expect(fixtures).toHaveCount(2);
+    await fixtures.nth(0).click();
+    const line = page.getByTestId("desk-user-line-decimal");
+    await line.fill("2.10");
+    await page.getByTestId("desk-user-line-outcome-away").click();
+    await fixtures.nth(1).click();
+    await expect(line).toHaveValue("");
+    await expect(page.getByTestId("desk-user-line-outcome-home")).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "+EV", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(1);
+    expect(requests[0]).not.toHaveProperty("userLine");
+  });
+
+  test("New Chat clears fixture-only context before any message is sent", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await routeTwoFixtureDeskSlate(page);
+    await page.goto("/");
+    await page.locator('[data-testid="desk-slate-fixture"]:visible').first().click();
+    const reset = page.getByRole("button", { name: "New Chat" });
+    await expect(reset).toBeEnabled();
+    await reset.click();
+    await expect(page.getByText(/Pinned ·/)).toHaveCount(0);
+    await expect(reset).toBeDisabled();
+  });
 
   test("desk retries after a failed ask without sending dangling history", async ({ page }) => {
     let call = 0;

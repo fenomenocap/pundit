@@ -234,7 +234,7 @@ export function composePlayerScorerAnswer(
     lines.push(
       `${market.playerName} is the shortest-priced ${teamBit} in the player-market quotes I have, `
       + `at ${market.decimalOdds.toFixed(2)} decimal [[${market.sourceId}]] (${date}). `
-      + "I don't treat that quote as a Pundit probability."
+      + "I treat that quote as a market price, not my probability."
     );
   }
   if (start) {
@@ -245,9 +245,9 @@ export function composePlayerScorerAnswer(
     );
   }
   if (!market && start) {
-    lines.push("I could not establish a comparable scorer market, so that availability note is not a ranking.");
+    lines.push("I could not establish a comparable scorer market, so that availability note is not my scorer ranking.");
   } else {
-    lines.push("That quote is a market observation, not a Pundit ranking.");
+    lines.push("That quote is a market observation, not my player ranking.");
   }
   return lines.join(" ");
 }
@@ -377,7 +377,8 @@ export function composeMatchResponse(
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
     `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${SHARED_TOTAL_XG_SENTENCE}`,
-    [marketRows, market, consensus].filter(Boolean).join(" "),
+    [marketRows, market].filter(Boolean).join(" "),
+    consensus,
     "I would revisit the read only after verified team news or a materially different market snapshot; I can’t assign a lineup effect from these facts alone.",
   ].filter(Boolean).join("\n\n");
 }

@@ -115,6 +115,22 @@ export interface ModelFixtureResponse {
     status: string;
     winner: string | null;
   } | null;
+  forecastProvenance?: {
+    modelId: string;
+    modelVersion: string;
+    contributorId: string;
+    contributorVersion: string;
+    methodId: string;
+    forecastAt: string;
+    ratingProfile: string;
+    ratingSnapshotAt: string | null;
+    ratingAgeMinutes: number | null;
+    ratingSourceState: "live" | "artifact" | "persisted" | "unknown";
+    ratingArtifactId?: string;
+    ratingArtifactSha256?: string;
+    homeAdvantageElo: number;
+    config: Record<string, number>;
+  };
 }
 
 export interface Wc2026EvaluationFixture {

@@ -199,17 +199,20 @@ function pickLean(pHome: number, pDraw: number, pAway: number, pBtts: number): M
   return oneXTwo[0].key;
 }
 
-function polyOdds(row: LiveModelRow) {
-  const poly = row.oddsSources?.find((s) => s.source === "polymarket");
-  const implied = (p: number, fallback: number) => (p > 0.02 ? 1 / p : fallback);
+function comparisonOdds(row: LiveModelRow): Fixture["odds"] {
+  const market = row.oddsSources?.find((source) => (
+    source.pHome > 0.02 && source.pDraw > 0.02 && source.pAway > 0.02
+  ));
+  if (!market) return null;
+  const implied = (p: number) => 1 / p;
   return {
-    home: implied(poly?.pHome ?? 0, 1 / Math.max(row.pHome, 0.05)),
-    draw: implied(poly?.pDraw ?? 0, 1 / Math.max(row.pDraw, 0.05)),
-    away: implied(poly?.pAway ?? 0, 1 / Math.max(row.pAway, 0.05)),
-    over25: 1.9,
-    under25: 1.9,
-    bttsY: implied(row.pBttsYes, 1.85),
-    bttsN: implied(1 - row.pBttsYes, 1.95),
+    home: implied(market.pHome),
+    draw: implied(market.pDraw),
+    away: implied(market.pAway),
+    over25: null,
+    under25: null,
+    bttsY: null,
+    bttsN: null,
   };
 }
 
@@ -259,7 +262,7 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
       over25: over,
       btts: row.pBttsYes,
     },
-    odds: polyOdds(row),
+    odds: comparisonOdds(row),
     brief: briefFor(row, home, away, lean, over, xg),
     modelPick: lean,
   };
@@ -275,7 +278,7 @@ function toSettled(m: LiveMatch): Fixture | null {
     SETTLED_FIXTURES.find((f) => f.home === home && f.away === away) ??
     getStaticFixture(`gw3-${home.toLowerCase()}-${away.toLowerCase()}`);
   const won =
-    score && prior
+    score && prior?.modelPick
       ? prior.modelPick === "home"
         ? score[0] > score[1]
         : prior.modelPick === "away"
@@ -294,11 +297,11 @@ function toSettled(m: LiveMatch): Fixture | null {
     status: "ft",
     score,
     scorers: prior?.scorers,
-    xg: prior?.xg ?? [1.2, 1.1],
-    model: prior?.model ?? { home: 0.4, draw: 0.28, away: 0.32, over25: 0.5, btts: 0.5 },
-    odds: prior?.odds ?? { home: 2.2, draw: 3.4, away: 3.2, over25: 1.9, under25: 1.9, bttsY: 1.8, bttsN: 2.0 },
+    xg: prior?.xg ?? null,
+    model: prior?.model ?? null,
+    odds: prior?.odds ?? null,
     brief: prior?.brief ?? `${TEAMS[home].short} ${score ? score[0] : "?"}–${score ? score[1] : "?"} ${TEAMS[away].short}.`,
-    modelPick: prior?.modelPick ?? "home",
+    modelPick: prior?.modelPick ?? null,
     modelHit: won,
   };
 }
@@ -315,7 +318,7 @@ async function getJson<T>(path: string): Promise<T> {
 export type LiveSlate = {
   open: Fixture[];
   settled: Fixture[];
-  source: "live" | "static";
+  source: "live" | "no-fixtures" | "static" | "unavailable";
   asOf: string;
 };
 
@@ -338,8 +341,12 @@ export async function fetchLiveSlate(): Promise<LiveSlate> {
     .map(toSettled)
     .filter((f): f is Fixture => Boolean(f))
     .slice(0, 10);
-  if (open.length < 6) throw new Error("Live slate too thin");
-  return { open, settled, source: "live", asOf: new Date().toISOString() };
+  return {
+    open,
+    settled,
+    source: open.length > 0 ? "live" : "no-fixtures",
+    asOf: new Date().toISOString(),
+  };
 }
 
 export function liveFixtureContext(id: string) {

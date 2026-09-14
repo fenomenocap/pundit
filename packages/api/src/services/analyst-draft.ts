@@ -170,6 +170,14 @@ function partNumbersTrace(part: AnalystDraftPart, factsById: Map<string, Respons
 
 function partViolatesProhibitions(part: AnalystDraftPart, factsById: Map<string, ResponseFact>): boolean {
   const prohibitions = new Set(part.factIds.flatMap((id) => factsById.get(id)?.prohibitedClaims ?? []));
+  if (prohibitions.has("present-as-fundamental")) {
+    // Consensus slots are allowed only when the prose labels them as
+    // consensus. A blacklist alone is too easy to evade with phrases such as
+    // "sealed fundamental read" or "my underlying view".
+    const labelledAsConsensus = /\bconsensus\b/i.test(part.text);
+    const claimsOwnForecast = /\b(?:fundamental|sealed|underlying|(?:the|my) model|my (?:forecast|probabilit(?:y|ies)|1x2|estimate|read|view)|I (?:make|have|rate|give|am at))\b/i.test(part.text);
+    if (!labelledAsConsensus || claimsOwnForecast) return true;
+  }
   if (prohibitions.has("recommend-wager")
     && /\b(?:bet|back|lay|wager|stake|take the price|value is on)\b/i.test(part.text)
     && !/\b(?:not|isn['’]t|is not)\s+(?:a\s+)?(?:bet|wager|recommendation)\b/i.test(part.text)) return true;

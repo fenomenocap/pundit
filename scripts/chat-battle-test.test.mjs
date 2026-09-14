@@ -56,6 +56,11 @@ import {
   writeFailureReport,
   writeReport
 } from "./chat-battle-test-lib.mjs";
+import {
+  CRITIC_DIMENSIONS,
+  criticEvidencePasses,
+  evidenceSchemaFailures,
+} from "./finalize-chat-report.mjs";
 
 function runNode(args) {
   return new Promise((resolve, reject) => {
@@ -74,14 +79,108 @@ function runNode(args) {
   });
 }
 
+const TEST_SHA = "abc1234";
+
+function completeDeployment(id = "deploy-a", sourceSha = TEST_SHA) {
+  return {
+    id,
+    source: "test",
+    sourceSha,
+    apiSha: sourceSha,
+    shaConverged: true,
+    shaGrading: {
+      api: { floorSha: sourceSha, servedSha: sourceSha, state: "match" },
+      web: { floorSha: sourceSha, servedSha: sourceSha, state: "match" },
+    },
+  };
+}
+
+function completeApiPacing(finalStart = "2026-08-13T10:00:00.000Z") {
+  return {
+    minimumIntervalMs: 13_000,
+    requestStarts: [finalStart],
+    observedStartOffsetsMs: [0],
+    observedGapsMs: [],
+  };
+}
+
+function completeCriticEvidence(identity, overrides = {}) {
+  return {
+    ...identity,
+    materialIssue: false,
+    overallVerdict: "PASS",
+    recommendations: [],
+    scenarioVerdicts: [],
+    turnVerdicts: [],
+    dimensionScores: {
+      correctness: 4,
+      usefulness: 4,
+      clarity: 4,
+      calibration: 4,
+      groundingFidelity: 4,
+      unsupportedCertainty: 4,
+    },
+    dimensionReasons: {
+      correctness: "Claims agree with the supplied evidence.",
+      usefulness: "Answers address the requested decisions.",
+      clarity: "Answers are direct and readable.",
+      calibration: "Uncertainty is expressed proportionately.",
+      groundingFidelity: "Claims stay within the grounded facts.",
+      unsupportedCertainty: "No unsupported certainty is present.",
+    },
+    ...overrides,
+  };
+}
+
 function completeBrowserEvidence(identity, overrides = {}) {
   const checkViewports = [{ width: 390, height: 844 }, { width: 1440, height: 900 }];
+  const firstBrowserStart = identity.capturedAt;
+  const finalApiStart = new Date(Date.parse(firstBrowserStart) - 60_000).toISOString();
+  const secondBrowserStart = new Date(Date.parse(firstBrowserStart) + 13_025).toISOString();
   return {
     ...identity,
     url: "https://thepundit.vercel.app/",
     viewport: { width: 390, height: 844 },
     viewports: [{ width: 390, height: 844 }, { width: 1440, height: 900 }],
     console: { errors: [], warnings: [] },
+    pacing: {
+      minimumIntervalMs: 13_025,
+      requestStarts: [firstBrowserStart, secondBrowserStart],
+      requestStartOffsetsMs: [0, 13_025],
+      observedGapsMs: [13_025],
+      requestStartCount: 2,
+      apiAskRequestCount: 2,
+      finalApiRequestStart: finalApiStart,
+      harnessCompletedAt: null,
+      cooldownAnchor: finalApiStart,
+      firstBrowserRequestStart: firstBrowserStart,
+      cooldownMinimumMs: 60_000,
+      cooldownObservedMs: 60_000,
+      passed: true,
+    },
+    webVersion: {
+      expectedServedSha: identity.sourceSha,
+      floorSha: identity.sourceSha,
+      gradedState: "match",
+      before: { sha: identity.sourceSha, capturedAt: firstBrowserStart },
+      after: { sha: identity.sourceSha, capturedAt: secondBrowserStart },
+      passed: true,
+    },
+    apiVersion: {
+      expectedSha: identity.sourceSha,
+      expectedDeploymentId: identity.deploymentId,
+      before: {
+        sha: identity.sourceSha,
+        deploymentId: identity.deploymentId,
+        capturedAt: firstBrowserStart,
+      },
+      after: {
+        sha: identity.sourceSha,
+        deploymentId: identity.deploymentId,
+        capturedAt: secondBrowserStart,
+      },
+      passed: true,
+    },
     passed: true,
     summary: "Required production browser contracts passed.",
     checks: [
@@ -125,6 +224,11 @@ function completeBrowserEvidence(identity, overrides = {}) {
         scenarioIds: ["analyst-conversation-golden-path"],
         viewports: checkViewports,
         turnCount: 6,
+        marketEvidence: checkViewports.map(() => ({
+          expectedRows: false,
+          oddsRows: 0,
+          explicitNoMarket: true,
+        })),
       },
       {
         id: "cross-surface-fixture-parity",
@@ -134,12 +238,73 @@ function completeBrowserEvidence(identity, overrides = {}) {
         scenarioIds: ["analyst-conversation-golden-path", "market-comparison-coverage"],
         viewports: checkViewports,
         surfaces: ["chat", "fixtures", "predictions"],
+        parityEvidence: checkViewports.map(() => ({
+          canonicalFixture: {
+            fixtureId: "espn:eng.1:123",
+            capability: "priced",
+            home: "Arsenal",
+            away: "Chelsea",
+            probabilities: [0.5, 0.25, 0.25],
+            reportProbabilities: [0.5, 0.25, 0.25],
+            reportMatches: true,
+            reportPricingVersion: "test-ratings",
+            ratingArtifactId: "test-ratings",
+            modelVersion: "test-model",
+            forecastAt: "2026-08-13T09:30:00.000Z",
+          },
+          surfaceSnapshots: Object.fromEntries(
+            ["chat", "fixtures", "predictions"].map((surface) => [surface, {
+              visible: true,
+              fixtureId: "espn:eng.1:123",
+              capability: "priced",
+              probabilities: [0.5, 0.25, 0.25],
+              ...(surface === "chat" ? { ratingArtifactId: "test-ratings" } : {}),
+              ...(surface === "predictions" ? { modelVersion: "test-model" } : {}),
+              ...(surface === "chat" ? { pricedAt: "2026-08-13T09:31:00.000Z" } : {}),
+              ...(surface === "predictions"
+                ? { forecastAt: "2026-08-13T09:30:00.000Z" }
+                : {}),
+            }])
+          ),
+        })),
       },
       {
         id: "evaluation-calibration-presentation",
         passed: true,
         evidence: "WC and club-season pages identify forecasts and show one consistent timestamp.",
         reproduction: ["Open both evaluation pages", "Inspect headers and calibration tables"],
+        scenarioIds: [],
+        viewports: checkViewports,
+      },
+      {
+        id: "responsive-no-horizontal-overflow",
+        passed: true,
+        evidence: "The Desk stayed within the viewport after the full chat flow.",
+        reproduction: ["Open the Desk", "Complete the chat flow", "Inspect document width"],
+        scenarioIds: [],
+        viewports: checkViewports,
+      },
+      {
+        id: "visible-analyst-loading-state",
+        passed: true,
+        evidence: "The writing state appeared before the analyst answer completed.",
+        reproduction: ["Start the realistic analyst flow", "Observe the writing state"],
+        scenarioIds: ["analyst-conversation-golden-path"],
+        viewports: checkViewports,
+      },
+      {
+        id: "oversized-prompt-client-error",
+        passed: true,
+        evidence: "A 501-character prompt rendered an error without an API request.",
+        reproduction: ["Paste a 501-character prompt", "Inspect the error and network count"],
+        scenarioIds: [],
+        viewports: checkViewports,
+      },
+      {
+        id: "frozen-backtest-nonempty",
+        passed: true,
+        evidence: "The frozen evaluation showed non-zero fixture and forecast counts.",
+        reproduction: ["Open the World Cup evaluation", "Read the backtest counts"],
         scenarioIds: [],
         viewports: checkViewports,
       },
@@ -158,6 +323,112 @@ function browserContractScenarios() {
     "market-comparison-coverage",
   ].map((id) => ({ id, passed: true, outcome: "PASS", evidence: "Browser contract prerequisite." }));
 }
+
+test("finalizer schema binds pacing, web version, parity, markets and six critic dimensions", () => {
+  const identity = {
+    runId: "schema-contract-run",
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: TEST_SHA,
+    deploymentId: "deploy-a",
+    capturedAt: "2026-08-13T10:01:00.000Z",
+  };
+  const report = {
+    runId: identity.runId,
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    startedAt: "2026-08-13T09:59:00.000Z",
+    webUrl: "https://thepundit.vercel.app",
+    deployment: completeDeployment(),
+    pacing: completeApiPacing(),
+    scenarios: browserContractScenarios(),
+    progress: { status: "complete" },
+  };
+  const browser = completeBrowserEvidence(identity);
+  const critic = completeCriticEvidence(identity);
+  assert.deepEqual(evidenceSchemaFailures(report, browser, critic), []);
+  assert.deepEqual(Object.keys(critic.dimensionScores), [...CRITIC_DIMENSIONS]);
+  assert.equal(criticEvidencePasses(critic), true);
+
+  const roundedWallClock = structuredClone(browser);
+  roundedWallClock.pacing.requestStarts[1] = "2026-08-13T10:01:13.024Z";
+  assert.deepEqual(evidenceSchemaFailures(report, roundedWallClock, critic), []);
+
+  const countMismatch = structuredClone(browser);
+  countMismatch.pacing.apiAskRequestCount = 1;
+  assert.ok(evidenceSchemaFailures(report, countMismatch, critic)
+    .some((failure) => /pacing passed flag is inconsistent/.test(failure)));
+
+  const unboundVersion = structuredClone(browser);
+  unboundVersion.webVersion.expectedServedSha = "def5678";
+  assert.ok(evidenceSchemaFailures(report, unboundVersion, critic)
+    .some((failure) => /web version samples bound/.test(failure)));
+
+  const unboundApiVersion = structuredClone(browser);
+  unboundApiVersion.apiVersion.expectedDeploymentId = "deploy-b";
+  assert.ok(evidenceSchemaFailures(report, unboundApiVersion, critic)
+    .some((failure) => /API version samples bound/.test(failure)));
+
+  const invalidParity = structuredClone(browser);
+  invalidParity.checks.find(({ id }) => id === "cross-surface-fixture-parity")
+    .parityEvidence[0].surfaceSnapshots.chat.probabilities = [0.7, 0.1, 0.2];
+  assert.ok(evidenceSchemaFailures(report, invalidParity, critic)
+    .some((failure) => /invalid identity, capability, forecast, or probability/.test(failure)));
+
+  const staleDeskVersion = structuredClone(browser);
+  staleDeskVersion.checks.find(({ id }) => id === "cross-surface-fixture-parity")
+    .parityEvidence[0].surfaceSnapshots.chat.ratingArtifactId = "stale-ratings";
+  assert.ok(evidenceSchemaFailures(report, staleDeskVersion, critic)
+    .some((failure) => /invalid identity, capability, forecast, or probability/.test(failure)));
+
+  const missingReason = structuredClone(critic);
+  missingReason.dimensionReasons.clarity = "";
+  assert.ok(evidenceSchemaFailures(report, browser, missingReason)
+    .includes("critic dimension missing or invalid: clarity"));
+
+  const lowUsefulness = structuredClone(critic);
+  lowUsefulness.dimensionScores.usefulness = 2;
+  assert.equal(criticEvidencePasses(lowUsefulness), false);
+});
+
+test("finalizer accepts honest failed cooldown and web drift evidence but rejects a false market claim", () => {
+  const identity = {
+    runId: "honest-failure-run",
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: TEST_SHA,
+    deploymentId: "deploy-a",
+    capturedAt: "2026-08-13T10:01:00.000Z",
+  };
+  const report = {
+    runId: identity.runId,
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    startedAt: "2026-08-13T09:59:00.000Z",
+    webUrl: "https://thepundit.vercel.app",
+    deployment: completeDeployment(),
+    pacing: completeApiPacing(),
+    scenarios: browserContractScenarios(),
+    progress: { status: "complete" },
+  };
+  const browser = completeBrowserEvidence(identity);
+  browser.pacing.finalApiRequestStart = "2026-08-13T10:00:00.000Z";
+  browser.pacing.firstBrowserRequestStart = "2026-08-13T10:00:59.000Z";
+  browser.pacing.requestStarts = ["2026-08-13T10:00:59.000Z", "2026-08-13T10:01:12.025Z"];
+  browser.pacing.cooldownObservedMs = 59_000;
+  browser.pacing.passed = false;
+  browser.webVersion.before.capturedAt = "2026-08-13T10:00:58.000Z";
+  browser.webVersion.after.sha = "def5678";
+  browser.webVersion.passed = false;
+  browser.apiVersion.before.capturedAt = "2026-08-13T10:00:58.000Z";
+  browser.apiVersion.after.deploymentId = "deploy-b";
+  browser.apiVersion.passed = false;
+  browser.passed = false;
+  assert.deepEqual(evidenceSchemaFailures(report, browser, completeCriticEvidence(identity)), []);
+
+  const marketReport = structuredClone(report);
+  marketReport.scenarios.find(({ id }) => id === "market-comparison-coverage").observations = {
+    turn1: { oddsSourceCount: 1 },
+  };
+  assert.ok(evidenceSchemaFailures(marketReport, completeBrowserEvidence(identity), completeCriticEvidence(identity))
+    .some((failure) => /market evidence does not match report odds coverage/.test(failure)));
+});
 
 test("selectFeaturedMatch uses a model-backed active club fixture with known teams", () => {
   const match = selectFeaturedMatch([
@@ -595,7 +866,8 @@ test("atomic report writing preserves the previous report and updates latest", a
     schemaVersion: EVAL_SCHEMA_VERSION,
     runId,
     startedAt: "2026-07-27T00:00:00.000Z",
-    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234" },
+    deployment: completeDeployment(),
+    pacing: completeApiPacing("2026-07-27T00:00:00.000Z"),
     scenarios: [{
       id: "scenario",
       passed,
@@ -674,7 +946,8 @@ test("finalizer enriches the latest failed run without replacing latest complete
     runId: "complete",
     startedAt: "2026-07-27T00:00:00.000Z",
     completedAt: "2026-07-27T00:01:00.000Z",
-    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234" },
+    deployment: completeDeployment(),
+    pacing: completeApiPacing("2026-07-27T00:00:00.000Z"),
     webUrl: "https://thepundit.vercel.app",
     scenarios: [{
       id: "scenario",
@@ -694,6 +967,8 @@ test("finalizer enriches the latest failed run without replacing latest complete
   const failed = {
     ...complete,
     runId: "failed",
+    completedAt: null,
+    pacing: completeApiPacing("2026-07-27T00:05:00.000Z"),
     progress: { status: "failed" },
     scenarios: [{
       id: "scenario",
@@ -716,13 +991,9 @@ test("finalizer enriches the latest failed run without replacing latest complete
     capturedAt: "2026-07-27T00:06:00.000Z",
   };
   await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(evidenceIdentity)));
-  await writeFile(criticPath, JSON.stringify({
-    ...evidenceIdentity,
-    materialIssue: false,
-    overallVerdict: "PASS",
-    scenarioVerdicts: [],
+  await writeFile(criticPath, JSON.stringify(completeCriticEvidence(evidenceIdentity, {
     recommendations: ["Keep monitoring."],
-  }));
+  })));
 
   const result = await runNode([
     "scripts/finalize-chat-report.mjs",
@@ -746,7 +1017,8 @@ test("finalizer rejects browser or critic evidence from another run", async () =
     schemaVersion: EVAL_SCHEMA_VERSION,
     runId: "expected-run",
     startedAt: "2026-08-13T10:00:00.000Z",
-    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234" },
+    deployment: completeDeployment(),
+    pacing: completeApiPacing(),
     webUrl: "https://thepundit.vercel.app",
     scenarios: browserContractScenarios(),
     progress: { status: "complete" },
@@ -764,12 +1036,7 @@ test("finalizer rejects browser or critic evidence from another run", async () =
     capturedAt: "2026-08-13T10:01:00.000Z",
   };
   await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
-  await writeFile(criticPath, JSON.stringify({
-    ...identity,
-    materialIssue: false,
-    overallVerdict: "PASS",
-    scenarioVerdicts: [],
-  }));
+  await writeFile(criticPath, JSON.stringify(completeCriticEvidence(identity)));
   const result = await runNode([
     "scripts/finalize-chat-report.mjs",
     "--output-dir", directory,
@@ -808,7 +1075,8 @@ test("finalizer rejects a generic browser pass without named UI contract coverag
     runId: "browser-contract-run",
     startedAt: "2026-08-13T10:00:00.000Z",
     webUrl: "https://thepundit.vercel.app",
-    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+    deployment: completeDeployment(),
+    pacing: completeApiPacing(),
     scenarios: browserContractScenarios(),
     progress: { status: "complete" },
     browserEvidence: null,
@@ -839,12 +1107,7 @@ test("finalizer rejects a generic browser pass without named UI contract coverag
       scenarioIds: [],
     }],
   }));
-  await writeFile(criticPath, JSON.stringify({
-    ...identity,
-    materialIssue: false,
-    overallVerdict: "PASS",
-    scenarioVerdicts: [],
-  }));
+  await writeFile(criticPath, JSON.stringify(completeCriticEvidence(identity)));
 
   const result = await runNode([
     "scripts/finalize-chat-report.mjs",
@@ -863,7 +1126,8 @@ test("finalizer binds every mandatory browser check to mobile and desktop eviden
     runId: "check-viewport-run",
     startedAt: "2026-08-13T10:00:00.000Z",
     webUrl: "https://thepundit.vercel.app",
-    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+    deployment: completeDeployment(),
+    pacing: completeApiPacing(),
     scenarios: browserContractScenarios(),
     progress: { status: "complete" },
     browserEvidence: null,
@@ -884,12 +1148,7 @@ test("finalizer binds every mandatory browser check to mobile and desktop eviden
   const browserPath = path.join(directory, "browser.json");
   const criticPath = path.join(directory, "critic.json");
   await writeFile(browserPath, JSON.stringify(browserEvidence));
-  await writeFile(criticPath, JSON.stringify({
-    ...identity,
-    materialIssue: false,
-    overallVerdict: "PASS",
-    scenarioVerdicts: [],
-  }));
+  await writeFile(criticPath, JSON.stringify(completeCriticEvidence(identity)));
 
   const result = await runNode([
     "scripts/finalize-chat-report.mjs",
@@ -901,13 +1160,130 @@ test("finalizer binds every mandatory browser check to mobile and desktop eviden
   assert.match(result.stderr, /browser check analyst-multi-turn-flow requires mobile and desktop evidence/);
 });
 
+test("finalizer attaches evidence when a browser-linked required API scenario failed", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-api-failure-"));
+  const scenarios = browserContractScenarios();
+  const golden = scenarios.find(({ id }) => id === "analyst-conversation-golden-path");
+  Object.assign(golden, {
+    passed: false,
+    outcome: "FAIL",
+    evidence: "The answer contradicted the fixture evidence.",
+    answer: "Incorrect answer.",
+    turnResults: [{ turn: 1, status: 200, answer: "Incorrect answer." }],
+  });
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "failed-api-scenario-run",
+    startedAt: "2026-08-13T10:00:00.000Z",
+    webUrl: "https://thepundit.vercel.app",
+    deployment: completeDeployment(),
+    pacing: completeApiPacing(),
+    scenarios,
+    progress: { status: "complete" },
+    browserEvidence: null,
+    recommendations: [],
+  }, null);
+  await writeReport(report, directory);
+  const identity = {
+    runId: report.runId,
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: "abc1234",
+    deploymentId: "deploy-a",
+    capturedAt: "2026-08-13T10:01:00.000Z",
+  };
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
+  await writeFile(criticPath, JSON.stringify(completeCriticEvidence(identity, {
+    materialIssue: true,
+    overallVerdict: "ISSUES FOUND",
+    recommendations: [],
+    scenarioVerdicts: [{
+      scenarioId: golden.id,
+      verdict: "ISSUES FOUND",
+      correctness: 1,
+      reason: "The answer contradicted the fixture evidence.",
+    }],
+    turnVerdicts: [{
+      scenarioId: golden.id,
+      turn: 1,
+      verdict: "ISSUES FOUND",
+      correctness: 1,
+      reason: "The answer contradicted the fixture evidence.",
+    }],
+    dimensionScores: {
+      ...completeCriticEvidence(identity).dimensionScores,
+      correctness: 1,
+    },
+    dimensionReasons: completeCriticEvidence(identity).dimensionReasons,
+  })));
+
+  const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
+    "--browser-json", browserPath, "--critic-json", criticPath]);
+  assert.equal(result.code, 0, result.stderr);
+  const finalized = JSON.parse(await readFile(path.join(directory, "latest.json"), "utf8"));
+  assert.equal(finalized.overall, "ISSUES FOUND");
+  assert.ok(finalized.certificationGate.requiredFailures.includes(golden.id));
+  assert.equal(finalized.certificationGate.passed, false);
+  assert.equal(finalized.browserEvidence.runId, report.runId);
+});
+
+test("finalizer attaches honest failed browser evidence with console errors and a short flow", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-browser-failure-"));
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "failed-browser-run",
+    startedAt: "2026-08-13T10:00:00.000Z",
+    webUrl: "https://thepundit.vercel.app",
+    deployment: completeDeployment(),
+    pacing: completeApiPacing(),
+    scenarios: browserContractScenarios(),
+    progress: { status: "complete" },
+    browserEvidence: null,
+    recommendations: [],
+  }, null);
+  await writeReport(report, directory);
+  const identity = {
+    runId: report.runId,
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: "abc1234",
+    deploymentId: "deploy-a",
+    capturedAt: "2026-08-13T10:01:00.000Z",
+  };
+  const browserEvidence = completeBrowserEvidence(identity);
+  browserEvidence.passed = false;
+  browserEvidence.summary = "Browser contracts failed: analyst-multi-turn-flow.";
+  browserEvidence.console.errors = ["Rendered page error"];
+  const analyst = browserEvidence.checks.find(({ id }) => id === "analyst-multi-turn-flow");
+  analyst.passed = false;
+  analyst.turnCount = 2;
+  analyst.evidence = "The conversation stopped after two observed turns.";
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  await writeFile(browserPath, JSON.stringify(browserEvidence));
+  await writeFile(criticPath, JSON.stringify(completeCriticEvidence(identity, {
+    recommendations: [],
+    scenarioVerdicts: [],
+    turnVerdicts: [],
+  })));
+
+  const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
+    "--browser-json", browserPath, "--critic-json", criticPath]);
+  assert.equal(result.code, 0, result.stderr);
+  const finalized = JSON.parse(await readFile(path.join(directory, "latest.json"), "utf8"));
+  assert.equal(finalized.overall, "ISSUES FOUND");
+  assert.equal(finalized.certificationGate.browserPassed, false);
+  assert.equal(finalized.certificationGate.passed, false);
+  assert.deepEqual(finalized.browserEvidence.console.errors, ["Rendered page error"]);
+});
+
 test("finalizer requires and applies explicit critic correctness for every passed answer", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-chat-finalize-correctness-"));
   const report = finalizeClassifications({
     schemaVersion: EVAL_SCHEMA_VERSION,
     runId: "critic-run",
     startedAt: "2026-08-13T10:00:00.000Z",
-    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+    deployment: completeDeployment(),
     webUrl: "https://thepundit.vercel.app",
     scenarios: [...browserContractScenarios(), {
       id: "answer-scenario", passed: true, outcome: "PASS", answer: "Grounded answer.",
@@ -926,11 +1302,10 @@ test("finalizer requires and applies explicit critic correctness for every passe
   const browserPath = path.join(directory, "browser.json");
   const criticPath = path.join(directory, "critic.json");
   await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
-  await writeFile(criticPath, JSON.stringify({
-    ...identity, materialIssue: false, overallVerdict: "PASS", recommendations: [],
+  await writeFile(criticPath, JSON.stringify(completeCriticEvidence(identity, {
     scenarioVerdicts: [{ scenarioId: "answer-scenario", verdict: "PASS", correctness: 4, reason: "Verified." }],
     turnVerdicts: [{ scenarioId: "answer-scenario", turn: 1, verdict: "PASS", correctness: 4, reason: "Verified." }],
-  }));
+  })));
   const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
     "--browser-json", browserPath, "--critic-json", criticPath]);
   assert.equal(result.code, 0, result.stderr);
@@ -948,7 +1323,8 @@ test("finalizer requires critic coverage for every successful HTTP-200 turn", as
     schemaVersion: EVAL_SCHEMA_VERSION,
     runId: "turn-critic-run",
     startedAt: "2026-08-13T10:00:00.000Z",
-    deployment: { id: "deploy-a", source: "test", sourceSha: "abc1234", shaConverged: true },
+    deployment: completeDeployment(),
+    pacing: completeApiPacing(),
     webUrl: "https://thepundit.vercel.app",
     scenarios: [...browserContractScenarios(), {
       id: "two-turn-answer", passed: true, outcome: "PASS", answer: "Second answer.",
@@ -967,11 +1343,10 @@ test("finalizer requires critic coverage for every successful HTTP-200 turn", as
   const browserPath = path.join(directory, "browser.json");
   const criticPath = path.join(directory, "critic.json");
   await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
-  const critic = {
-    ...identity, materialIssue: false, overallVerdict: "PASS", recommendations: [],
+  const critic = completeCriticEvidence(identity, {
     scenarioVerdicts: [{ scenarioId: "two-turn-answer", verdict: "PASS", correctness: 4, reason: "Final answer verified." }],
     turnVerdicts: [{ scenarioId: "two-turn-answer", turn: 1, verdict: "PASS", correctness: 4, reason: "First answer verified." }],
-  };
+  });
   await writeFile(criticPath, JSON.stringify(critic));
   const missing = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
     "--browser-json", browserPath, "--critic-json", criticPath]);
@@ -1002,7 +1377,8 @@ test("finalizer preserves same-schema comparator when critic turns a prior pass 
   const report = finalizeClassifications({
     schemaVersion: EVAL_SCHEMA_VERSION, runId: "critic-regression",
     startedAt: "2026-08-13T10:00:00.000Z",
-    deployment: { id: "deploy-b", source: "test", sourceSha: "abc1234", shaConverged: true },
+    deployment: completeDeployment("deploy-b"),
+    pacing: completeApiPacing(),
     webUrl: "https://thepundit.vercel.app",
     scenarios: [...browserContractScenarios(),
       { id: "answer-scenario", passed: true, outcome: "PASS", answer: "Wrong answer.",
@@ -1016,10 +1392,10 @@ test("finalizer preserves same-schema comparator when critic turns a prior pass 
   const browserPath = path.join(directory, "browser.json");
   const criticPath = path.join(directory, "critic.json");
   await writeFile(browserPath, JSON.stringify(completeBrowserEvidence(identity)));
-  await writeFile(criticPath, JSON.stringify({ ...identity, materialIssue: true,
+  await writeFile(criticPath, JSON.stringify(completeCriticEvidence(identity, { materialIssue: true,
     overallVerdict: "ISSUES FOUND", recommendations: [], scenarioVerdicts: [{
       scenarioId: "answer-scenario", verdict: "ISSUES FOUND", correctness: 1, reason: "Factually wrong.",
-    }] }));
+    }], dimensionScores: { ...completeCriticEvidence(identity).dimensionScores, correctness: 1 } })));
   const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
     "--browser-json", browserPath, "--critic-json", criticPath]);
   assert.equal(result.code, 0, result.stderr);

@@ -937,7 +937,8 @@ describe("sanitizeCompetitionAnswer fabricated model odds", () => {
     ].join("\n\n");
     const safe = sanitizeCompetitionAnswer(unsafe);
     expect(safe).toContain("**Limits of this table**");
-    expect(safe).toContain("cannot quantify how one upset changes the title race");
+    expect(safe).toMatch(/I can’t stress-test a contender ranking/);
+    expect(safe).toContain("standings alone cannot quantify a title-probability swing");
     expect(safe).not.toMatch(/2\.6%|nudge Liverpool|title prices/);
   });
 
