@@ -873,7 +873,7 @@ describe("current-news evidence hardening", () => {
   });
 
   it("removes artifact-shaped positive team news when verification supported nothing", () => {
-    const candidateNotice = "I could not establish an authoritative structured fixture identity for that matchup; no verified fixture identity was established, so it remains a discovery candidate and has no Pundit fixture badge or probabilities.";
+    const candidateNotice = "I couldn't confirm that matchup. Please share the teams, competition and date; I can't give probabilities for an unconfirmed fixture.";
     const unsafe = `${candidateNotice}\n\nLyon: Jason Denayer is out with a knock. Paulo Fonseca expects key Fenerbahce attackers to be unavailable. If Saliba and Timber are missed and Saka or Bruno join them, the clean-sheet concentration eases. Confirmed absence of Saliba and Timber alone is unlikely to move the gap, but a Rice or Saka start would sharpen the defensive read; if Guimaraes is genuinely out, clarify the source.`;
     const safe = failClosedEmptyCurrentVerification(unsafe, {
       status: "abstain",
@@ -1243,8 +1243,8 @@ describe("current-news evidence hardening", () => {
       "Arsenal 48%, draw 25%, Milan 27%. Likely score 2-1. The fixture is on Thursday [[S1]].",
       grounding
     );
-    expect(safe).toMatch(/outside Pundit's model coverage/i);
-    expect(safe).toContain("Public friendly forecasts are disabled by policy");
+    expect(safe).toMatch(/I don’t publish forecasts for friendlies/i);
+    expect(safe).toContain("I don’t publish forecasts for friendlies");
     expect(safe).not.toMatch(/48%|2-1/);
     expect(safe).not.toContain("The fixture is on Thursday");
   });
@@ -1260,9 +1260,10 @@ describe("current-news evidence hardening", () => {
     const safe = sanitizeUnrecognizedCandidateAnswer(
       "Pundit's probabilities are 50%, 25%, 25%. Likely score 2-1."
     );
-    expect(safe).toMatch(/could not establish an authoritative structured fixture identity/i);
+    expect(safe).toMatch(/couldn't confirm that matchup/i);
     expect(safe).not.toMatch(/50%|2-1/);
-    expect(safe).not.toMatch(/S1|S2|grounding links|BERT/i);
+    expect(safe).not.toMatch(/S1|S2|grounding links|BERT|structured fixture|fixture identity|discovery candidate|fixture badge/i);
+    expect(safe).toMatch(/^I /);
     const datedQuestion = "What are Pundit's probabilities for Northbridge Athletic vs Southbank Rovers tomorrow?";
     expect(deterministicSearchQuery(datedQuestion)).not.toBeNull();
     expect(deterministicCoverageResponse(true, null)).toBe(safe);
@@ -1680,18 +1681,22 @@ describe("current-news evidence hardening", () => {
       });
       fixture.competition.category = "club-friendly";
       const cases: Array<[FixtureGrounding["capability"], RegExp]> = [
-        [{ status: "outside-coverage", reason: "friendly-policy-disabled" }, /friendly forecasts are disabled by policy/i],
-        [{ status: "outside-coverage", reason: "unsupported-competition" }, /competition is not supported/i],
-        [{ status: "outside-coverage", reason: "model-policy-disabled" }, /disabled by the public model policy/i],
-        [{ status: "temporarily-unpriced", reason: "model-initializing" }, /model is still initializing/i],
-        [{ status: "temporarily-unpriced", reason: "ratings-refreshing" }, /club-strength ratings are refreshing/i],
-        [{ status: "insufficient-model-input", reason: "ratings-unavailable" }, /club-strength rating is unavailable/i],
-        [{ status: "insufficient-model-input", reason: "neutral-venue-unknown" }, /neutral status has not been established/i],
-        [{ status: "insufficient-model-input", reason: "required-context-missing" }, /required model context or input is missing/i],
+        [{ status: "outside-coverage", reason: "friendly-policy-disabled" }, /don’t publish forecasts for friendlies/i],
+        [{ status: "outside-coverage", reason: "unsupported-competition" }, /don’t cover this competition/i],
+        [{ status: "outside-coverage", reason: "model-policy-disabled" }, /exclude this fixture under my forecasting policy/i],
+        [{ status: "temporarily-unpriced", reason: "model-initializing" }, /still preparing my forecasts/i],
+        [{ status: "temporarily-unpriced", reason: "ratings-refreshing" }, /refreshing the team-strength ratings/i],
+        [{ status: "insufficient-model-input", reason: "ratings-unavailable" }, /don't have a required team-strength rating/i],
+        [{ status: "insufficient-model-input", reason: "neutral-venue-unknown" }, /haven't confirmed whether this is at a neutral venue/i],
+        [{ status: "insufficient-model-input", reason: "required-context-missing" }, /don't yet have enough information about this fixture/i],
       ];
       for (const [capability, expected] of cases) {
         const answer = deterministicCoverageResponse(false, { kind: "fixture", fixture, capability });
         expect(answer).toMatch(expected);
+        {
+          expect(answer).toMatch(/^I[ ’]/);
+          expect(answer).not.toMatch(/recognized fixture|model input|model context|payload|grounding/i);
+        }
         expect(answer).not.toMatch(/squad|line-?up|S1|S2|probabilit(?:y|ies):?\s*\d/i);
       }
     });
@@ -2133,6 +2138,12 @@ describe("current-news evidence hardening", () => {
     for (const notice of [
       "This recognized fixture is missing a required model input, so I can't estimate probabilities.",
       "Required model context or input is missing.",
+      "I don't yet have enough information about this fixture. I can't estimate probabilities until I have that information.",
+      "I don't have a required team-strength rating. I can't estimate probabilities until I have that information.",
+      "I haven't confirmed whether this is at a neutral venue. I can't estimate probabilities until I have that information.",
+      "I’m still preparing my forecasts. I can’t give probabilities for this fixture yet.",
+      "I’m refreshing the team-strength ratings. I can’t give probabilities for this fixture yet.",
+      "I don’t publish forecasts for friendlies. I can’t give probabilities or scoreline estimates for it.",
       "A complete market is missing for this fixture.",
     ]) {
       const rendered = renderEvidenceCitations(notice, { queries: ["q"], results: [] }, true);

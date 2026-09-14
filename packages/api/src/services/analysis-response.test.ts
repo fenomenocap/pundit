@@ -107,13 +107,13 @@ describe("deterministic coverage search discipline", () => {
         "What is the latest injury news for Northbridge Athletic vs Southbank Rovers tomorrow?"
       );
       expect(searchWeb).toHaveBeenCalledTimes(1);
-      expect(result.answer).toMatch(/could not establish an authoritative structured fixture identity/i);
+      expect(result.answer).toMatch(/couldn't confirm that matchup/i);
       expect(result.answer).not.toMatch(/S1|S2|Arsenal team news|probabilit(?:y|ies):?\s*\d/i);
 
       searchWeb.mockClear();
       const closed = await answerQuestion("Northbridge Athletic vs Southbank Rovers");
       expect(searchWeb).not.toHaveBeenCalled();
-      expect(closed.answer).toMatch(/discovery candidate/i);
+      expect(closed.answer).toMatch(/can't give probabilities for an unconfirmed fixture/i);
     } finally {
       if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
       else process.env.MINIMAX_API_KEY = originalKey;
@@ -152,7 +152,7 @@ describe("deterministic coverage search discipline", () => {
       );
       expect(searchWeb).toHaveBeenCalledTimes(1);
       expect(json.grounding).toMatchObject({ kind: "fixture" });
-      expect(json.answer).toMatch(/outside my forecasting coverage/i);
+      expect(json.answer).toMatch(/don’t publish forecasts for friendlies/i);
       expect(json.answer).not.toMatch(/Arsenal team news|\[S1\]/i);
 
       searchWeb.mockClear();
@@ -177,7 +177,7 @@ describe("deterministic coverage search discipline", () => {
         fixtureContext
       );
       expect(searchWeb).not.toHaveBeenCalled();
-      expect(closed.answer).toContain("Public friendly forecasts are disabled by policy");
+      expect(closed.answer).toContain("I don’t publish forecasts for friendlies");
     } finally {
       replaceFixtureRegistryForTests([]);
       if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;

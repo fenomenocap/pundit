@@ -3241,7 +3241,9 @@ test("schema-17 accepts an unqualified space-behind acknowledgement", () => {
 });
 
 test("certification rejects internal ambiguity copy and requires a useful totals limitation", () => {
-  for (const copy of ["I need the grounding JSON.", "My retrieval found no fixture."]) {
+  for (const copy of ["I need the grounding JSON.", "My retrieval found no fixture.",
+    "I could not establish a structured fixture identity; this remains a discovery candidate.",
+    "Required model context or input is missing.", "This fixture is missing a required model input."]) {
     assert.equal(validateAnswerCopy(copy).passed, false);
   }
   assert.equal(validateAnalystExpression(
@@ -3267,4 +3269,23 @@ test("direct-answer gate accepts the missing-opponent clarification without admi
   assert.equal(validateAnalystExpression(unsafe, {
     expectDirectAnswer: true, expectNoUnsupportedScorerInference: true,
   }).passed, false);
+});
+
+test("plain capability notices preserve the typed reason without internal terminology", () => {
+  const cases = [
+    ["friendly-policy-disabled", "I don’t publish forecasts for friendlies. I can’t give probabilities or scoreline estimates for it."],
+    ["unsupported-competition", "I don’t cover this competition. I can’t give probabilities or scoreline estimates for it."],
+    ["model-policy-disabled", "I exclude this fixture under my forecasting policy. I can’t give probabilities or scoreline estimates for it."],
+    ["model-initializing", "I’m still preparing my forecasts. I can’t give probabilities for this fixture yet."],
+    ["ratings-refreshing", "I’m refreshing the team-strength ratings. I can’t give probabilities for this fixture yet."],
+    ["ratings-unavailable", "I don't have a required team-strength rating. I can't estimate probabilities until I have that information."],
+    ["neutral-venue-unknown", "I haven't confirmed whether this is at a neutral venue. I can't estimate probabilities until I have that information."],
+    ["required-context-missing", "I don't yet have enough information about this fixture. I can't estimate probabilities until I have that information."],
+  ];
+  for (const [reason, answer] of cases) {
+    assert.equal(validateResponseCorrectness(answer, [], { kind: "fixture", capability: { reason } }, {}).assertions.capabilityReasonFidelity, true, reason);
+    assert.equal(validateAnswerCopy(answer).passed, true, reason);
+  }
+  assert.equal(validateResponseCorrectness(cases[0][1], [], { kind: "fixture", capability: { reason: "required-context-missing" } }, {}).assertions.capabilityReasonFidelity, false);
+  assert.equal(validateResponseCorrectness(`${cases[7][1]} Confirmed squad and lineups are required to unlock coverage.`, [], { kind: "fixture", capability: { reason: "required-context-missing" } }, {}).assertions.capabilityReasonFidelity, false);
 });
