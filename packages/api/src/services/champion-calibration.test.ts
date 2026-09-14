@@ -16,6 +16,7 @@ import {
   SHIPPED_CHAMPION_CONSTANTS,
   assertCalibrationOutputNotInDataDir,
   calibrateChampion,
+  chronologicalCalibration,
   classifyPublishedMapping,
   documentedSampleLedgerPath,
   eloToLambdasWithConstants,
@@ -149,6 +150,14 @@ describe("champion calibration", () => {
     expect(report.config.productionAutoLoad).toBe(false);
   });
 
+  it("excludes cached fallback checkpoints from scheduled-window calibration", () => {
+    const scheduled = buildSnapshotFromModel(officialModel(), "2026-08-15T13:31:00Z");
+    const fallback = { ...scheduled, fixtureId: 999, checkpointReason: "pre_kickoff_cached_fallback" as const };
+    const report = calibrateChampion({ ledgerPath: writeLedger([scheduled, fallback]), bootstrapDraws: 0 });
+    expect(report.ledger.officialWithResultN).toBe(1);
+    expect(report.ledger.excludedCheckpointPolicyN).toBe(1);
+  });
+
   it("falls back to the documented sample when the in-repo ledger has 0 official fixtures", () => {
     const emptyPath = writeLedger([]);
     const resolved = resolveCalibrationLedger({ ledgerPath: emptyPath });
@@ -212,6 +221,37 @@ describe("champion calibration", () => {
     expect(report.ledger.premierLeagueN).toBe(3);
     expect(report.decision.recommendProductionChange).toBe(false);
     expect(report.decision.reasons.some((reason) => reason.includes("below the ~40"))).toBe(true);
+  });
+
+  it("fits chronological folds without learning from held-out results", () => {
+    const rows = Array.from({ length: 30 }, (_, index) => {
+      const day = index < 20 ? "2026-08-08" : "2026-08-22";
+      return buildSnapshotFromModel(officialModel({ fixtureId: 1000 + index, utcDate: `${day}T14:00:00Z`,
+        forecastProvenance: { ...officialModel().forecastProvenance!, forecastAt: `${day}T13:30:00Z` },
+      }), `${day}T13:31:00Z`);
+    });
+    const before = chronologicalCalibration(rows, 1000);
+    const changed = rows.map((row, index) => index < 20 ? row : {
+      ...row, result: { homeScore: 0, awayScore: 8, winner: "away" as const },
+    });
+    const after = chronologicalCalibration(changed, 1000);
+    expect(before.folds).toHaveLength(1);
+    expect(before.folds[0].trainN).toBe(20);
+    expect(before.folds[0].constants).toEqual(after.folds[0].constants);
+    expect(before.fitted.brier).not.toBe(after.fitted.brier);
+    expect(before.uncertainty?.n).toBe(10);
+    expect(before.uncertainty?.blockCount).toBe(1);
+    expect(chronologicalCalibration(rows, 0).uncertainty).toBeNull();
+  });
+
+  it("does not treat 40 in-sample matches or omitted uncertainty as promotion evidence", () => {
+    const rows = Array.from({ length: 40 }, (_, index) => buildSnapshotFromModel(
+      officialModel({ fixtureId: 2000 + index }), "2026-08-15T13:31:00Z"));
+    const report = calibrateChampion({ ledgerPath: writeLedger(rows), bootstrapDraws: 0, allowSampleFallback: false });
+    expect(report.ledger.premierLeagueN).toBe(40);
+    expect(report.validation.fitted.n).toBe(0);
+    expect(report.decision.recommendProductionChange).toBe(false);
+    expect(report.decision.reasons.some((reason) => reason.includes("missing uncertainty cannot pass"))).toBe(true);
   });
 
   it("classifies sealed Hull-style geometric 1X2 as the old mapping", () => {

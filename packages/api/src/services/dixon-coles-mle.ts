@@ -499,6 +499,9 @@ function maximize(
 ): { x: Float64Array; value: number; iterations: number; converged: boolean } {
   let x = Float64Array.from(x0);
   let current = evalFn(x);
+  if (!Number.isFinite(current.value) || current.grad.some((value) => !Number.isFinite(value))) {
+    throw new Error("Cannot optimize Dixon-Coles from an invalid likelihood or gradient.");
+  }
   let step = 0.05;
   let iterations = 0;
   for (; iterations < maxIterations; iterations += 1) {
@@ -511,7 +514,8 @@ function maximize(
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const next = Float64Array.from(x, (value, index) => value + trialStep * current.grad[index]);
       const candidate = evalFn(next);
-      if (Number.isFinite(candidate.value) && candidate.value > current.value + 1e-12) {
+      if (Number.isFinite(candidate.value) && candidate.grad.every(Number.isFinite)
+        && candidate.value > current.value + 1e-12) {
         const deltaX = Float64Array.from(next, (value, index) => value - x[index]);
         const deltaG = Float64Array.from(candidate.grad, (value, index) => value - current.grad[index]);
         let sDotS = 0;
@@ -567,18 +571,16 @@ export function fitTimeDecayedDixonColes(
   const weights = rows.map((row) => timeDecayWeight(row.kickoff, referenceIso, timeDecayXi));
   const indexOf = new Map(clubs.map((club, index) => [club, index]));
   const x0 = initialVector(rows, clubs, priorAttack, priorDefence);
+  const evaluate = (x: Float64Array) => objectiveAndGradient(
+    x, rows, clubs, indexOf, weights, priorAttack, priorDefence, priorPrecision
+  );
+  // New club priors can make the initial rho=-0.1 inadmissible. Start at
+  // independent Poisson in that case, never interpret an invalid zero gradient
+  // as convergence. This leaves previously valid initializations unchanged.
+  if (!Number.isFinite(evaluate(x0).value)) x0[2] = 0;
   const fitted = maximize(
     x0,
-    (x) => objectiveAndGradient(
-      x,
-      rows,
-      clubs,
-      indexOf,
-      weights,
-      priorAttack,
-      priorDefence,
-      priorPrecision
-    ),
+    evaluate,
     options.maxIterations ?? 250
   );
   const unpacked = unpack(fitted.x, clubs);

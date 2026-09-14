@@ -7,6 +7,7 @@ import {
   MIN_HOLDOUT_N_FOR_PROMOTION,
   MIN_SCORED_ORIGINS_FOR_PROMOTION,
   championGrid1x2,
+  challengerOutcomeMetrics,
   evaluatePairedRollingOrigin,
   evaluatePairedRollingOriginFromDataDir,
   promotionGateDecision,
@@ -15,6 +16,7 @@ import {
 } from "./challenger-eval";
 import {
   forecastFittedDixonColes,
+  fitTimeDecayedDixonColes,
   writeFittedDixonColesArtifact,
   type FittedDixonColesArtifact,
 } from "./dixon-coles-mle";
@@ -90,12 +92,14 @@ function row(
     awayGoals,
     homeElo,
     awayElo,
+    rankingDate: new Date(Date.parse(kickoff) - 86400000).toISOString().slice(0, 10),
   };
 }
 
 function improvingOrigin(origin: string, n = MIN_HOLDOUT_N_FOR_PROMOTION): OriginEval {
   return {
     origin,
+    training: { n: 100, through: "2024-12-01T00:00:00Z", paramsSha256: "a".repeat(64), converged: true },
     holdoutCount: n,
     scoredCount: n,
     uncoveredCount: 0,
@@ -106,6 +110,7 @@ function improvingOrigin(origin: string, n = MIN_HOLDOUT_N_FOR_PROMOTION): Origi
       winnerAccuracy: 0.4,
       over25Brier: 0.3,
       calibrationMae: 0.4,
+      reliabilityEce: 0.1, bttsBrier: 0.3, scoreLogLoss: 3,
     },
     challenger: {
       n,
@@ -114,6 +119,7 @@ function improvingOrigin(origin: string, n = MIN_HOLDOUT_N_FOR_PROMOTION): Origi
       winnerAccuracy: 0.5,
       over25Brier: 0.25,
       calibrationMae: 0.3,
+      reliabilityEce: 0.05, bttsBrier: 0.25, scoreLogLoss: 2.8,
     },
     championCalibration: [],
     challengerCalibration: [],
@@ -178,7 +184,9 @@ describe("paired champion/challenger rolling-origin eval", () => {
     const [lh, la] = eloToLambdas(1633, 1884, DEFAULT_HOME_ADVANTAGE_ELO);
     expect(lh + la).toBeCloseTo(2 * BASE_GOALS, 12);
     expect(pair.champion.totalXg).toBeCloseTo(2 * BASE_GOALS, 12);
-    const fitted = forecastFittedDixonColes(artifact().params, "Hull", "Man United");
+    const fitted = forecastFittedDixonColes(fitTimeDecayedDixonColes([
+      row("early", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1, 1532, 1915),
+    ]).params, "Hull", "Man United");
     expect(pair.challenger?.pHome).toBeCloseTo(fitted!.pHome, 12);
     expect(result.origins[0]?.scoredCount).toBe(1);
     expect(result.decision.recommendPromotion).toBe(false);
@@ -194,7 +202,8 @@ describe("paired champion/challenger rolling-origin eval", () => {
   it("does not invent attack/defence for a club missing from the artifact", () => {
     const result = evaluatePairedRollingOrigin({
       artifact: artifact(),
-      rows: [row("late", "2025-08-16T14:00:00Z", "Arsenal", "Man United", 1, 0)],
+      rows: [row("early", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1),
+        row("late", "2025-08-16T14:00:00Z", "Arsenal", "Man United", 1, 0)],
     });
     expect(result.status).toBe("evaluated");
     expect(result.pairedForecasts[0]?.challenger).toBeNull();
@@ -207,6 +216,7 @@ describe("paired champion/challenger rolling-origin eval", () => {
   it("reports unavailable metrics on an empty holdout instead of perfect zero loss", () => {
     const result = evaluatePairedRollingOrigin({
       artifact: artifact(),
+      splits: [{ origin: "2025-01-01T00:00:00.000Z", trainEventIds: ["early"], holdoutEventIds: [] }],
       rows: [row("early", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1)],
     });
     expect(result.origins[0]?.holdoutCount).toBe(0);
@@ -259,6 +269,50 @@ describe("paired champion/challenger rolling-origin eval", () => {
     expect(blockedCorpus.decision.activateProduction).toBe(false);
     expect(REGISTERED_CHALLENGERS).toHaveLength(1);
     expect(REGISTERED_CHALLENGERS[0]).toBe(REGISTERED_DIXON_COLES_MLE);
+  });
+
+  it("distinguishes reliability from absolute error against individual outcomes", () => {
+    const forecast = { pHome: 0.5, pDraw: 0.25, pAway: 0.25, pOver2_5: 0.5,
+      pBttsYes: 0.5, totalXg: 2.7, scoreProbability: 0.1 };
+    const { metrics } = challengerOutcomeMetrics((["home", "home", "draw", "away"] as const)
+      .map(result => ({ forecast, result, homeGoals: 1, awayGoals: 0 })));
+    expect(metrics.reliabilityEce).toBe(0);
+    expect(metrics.calibrationMae).toBeGreaterThan(0);
+    expect(metrics.bttsBrier).toBe(0.25);
+    expect(metrics.scoreLogLoss).toBeCloseTo(-Math.log(0.1), 6);
+  });
+
+  it("never learns from held-out results or full-corpus fitted parameters", () => {
+    const rows = [row("early", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1),
+      row("late", "2025-08-16T14:00:00Z", "Hull", "Man United", 0, 2)];
+    const before = evaluatePairedRollingOrigin({ artifact: artifact(), rows });
+    const after = evaluatePairedRollingOrigin({ artifact: artifact({ intercept: 5, attack: { Hull: 9, "Man United": -9 } }),
+      rows: [rows[0], { ...rows[1], homeGoals: 8, awayGoals: 0 }] });
+    expect(before.origins[0].training?.paramsSha256).toBe(after.origins[0].training?.paramsSha256);
+    expect(before.pairedForecasts[0].challenger?.pHome).toBe(after.pairedForecasts[0].challenger?.pHome);
+    expect(before.origins[0].challenger.brier).not.toBe(after.origins[0].challenger.brier);
+  });
+
+  it("blocks incomplete, overlapping and look-ahead manifests", () => {
+    const rows = [row("early", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1),
+      row("late", "2025-08-16T14:00:00Z", "Hull", "Man United", 0, 2)];
+    const run = (trainEventIds: string[], holdoutEventIds: string[]) => evaluatePairedRollingOrigin({
+      artifact: artifact(), rows, splits: [{ origin: "2025-01-01T00:00:00Z", trainEventIds, holdoutEventIds }],
+    });
+    expect(run(["early"], ["missing"]).reason).toBe("incomplete-or-overlapping-split");
+    expect(run(["early", "late"], ["late"]).decision.recommendPromotion).toBe(false);
+    expect(run(["late"], ["early"]).reason).toBe("split-lookahead");
+    expect(evaluatePairedRollingOrigin({ artifact: artifact(), rows: [rows[0], { ...rows[1], rankingDate: "2025-08-16" }] }).reason)
+      .toBe("invalid-or-lookahead-row-date");
+  });
+
+  it("blocks an unconverged or undersized origin even when other origins improve", () => {
+    const a = improvingOrigin("2025-01-01");
+    const b = improvingOrigin("2025-08-01");
+    const c = improvingOrigin("2026-01-01", 1);
+    expect(promotionGateDecision([a, b, c]).recommendPromotion).toBe(false);
+    b.training!.converged = false;
+    expect(promotionGateDecision([a, b]).recommendPromotion).toBe(false);
   });
 
   it("keeps production champion constants and does not wire eval into runtime", () => {
