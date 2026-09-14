@@ -161,7 +161,7 @@ function reportExpectsMarketRows(report) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+  const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(15_000) });
   if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
   return response.json();
 }
@@ -195,8 +195,6 @@ async function canonicalFixtureSnapshot(report) {
     reportPricingVersion,
     ratingArtifactId,
     reportMatches: Boolean(reportGrounding)
-      && reportGrounding.home === fixture.home
-      && reportGrounding.away === fixture.away
       && tripletsAgree(reportProbabilities, probabilities)
       && reportPricingVersion === ratingArtifactId,
     modelVersion: fixture.forecastProvenance?.modelVersion ?? null,
@@ -331,23 +329,40 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function fixtureLocator(page, testId, fixtureId, visibleOnly = false) {
+  if (!fixtureId) throw new Error("Canonical fixture ID is missing");
+  return page.locator(`[data-testid=${JSON.stringify(testId)}][data-fixture-id=${JSON.stringify(fixtureId)}]${visibleOnly ? ":visible" : ""}`);
 }
 
-async function collectFeaturedFixture(page) {
-  const locator = page.getByTestId("desk-featured-fixture").first();
-  if (!await locator.isVisible().catch(() => false)) return null;
+async function structuredProbabilities(locator) {
+  const values = await Promise.all(["home", "draw", "away"].map((side) => locator.getAttribute(`data-p-${side}`)));
+  return values.every((value) => value !== null && value !== "" && Number.isFinite(Number(value)))
+    ? values.map(Number) : null;
+}
+
+async function collectFeaturedFixture(page, canonical) {
+  const locator = fixtureLocator(page, "desk-featured-fixture", canonical?.fixtureId);
+  if (!await locator.isVisible()) {
+    // The opening chips show only three ranked fixtures. The full slate still
+    // owns the report fixture; selecting it changes context without a request.
+    const slate = fixtureLocator(page, "desk-slate-fixture", canonical?.fixtureId, true);
+    await slate.waitFor({ state: "visible", timeout: 30_000 });
+    return { locator: slate, fixtureId: canonical.fixtureId, home: canonical.home, away: canonical.away, source: "slate" };
+  }
   const [fixtureId, home, away] = await Promise.all([
     locator.getAttribute("data-fixture-id"),
     locator.getAttribute("data-home"),
     locator.getAttribute("data-away"),
   ]);
   if (!fixtureId || !home || !away) return null;
-  return { locator, fixtureId, home, away };
+  return { locator, fixtureId, home, away, source: "featured" };
 }
 
 async function clickFeaturedFixture(page, fixture, pacer) {
+  if (fixture.source === "slate") {
+    await fixture.locator.click();
+    return ask(page, `Give me your take on ${fixture.home} vs ${fixture.away}.`, pacer);
+  }
   const previousBubbleCount = await page.getByTestId("desk-pundit-bubble").count();
   await pacer.beforeRequest();
   const loadingObservation = page.getByText("Writing the take…", { exact: true })
@@ -358,14 +373,12 @@ async function clickFeaturedFixture(page, fixture, pacer) {
   return { ...(await waitForAnswer(page, previousBubbleCount)), loadingObserved };
 }
 
-async function latestBoardIdentity(page, home, away) {
+async function latestBoardIdentity(page, fixtureId) {
   const bubble = page.getByTestId("desk-pundit-bubble").last();
   const board = bubble.getByTestId("desk-match-board");
-  const text = (await board.textContent().catch(() => "")) ?? "";
   return {
     boardVisible: await board.isVisible().catch(() => false),
-    identityMatches: text.toLowerCase().includes(home.toLowerCase())
-      && text.toLowerCase().includes(away.toLowerCase()),
+    identityMatches: await board.getAttribute("data-fixture-id").catch(() => null) === fixtureId,
     oddsRows: await board.locator('[data-testid="desk-board-markets"] li').count().catch(() => 0),
   };
 }
@@ -374,11 +387,13 @@ async function hasHorizontalOverflow(page) {
   return page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 }
 
-async function runViewportChecks(page, webUrl, viewport, pacer, report, canonical, traffic) {
+async function runViewportChecks(page, webUrl, viewport, pacer, report, canonical, traffic, progress) {
   const checks = Object.fromEntries(requiredCheckIds().map((id) => [id, emptyCheck(id)]));
+  progress.checks = checks;
   page.on("request", (request) => {
     if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/api/ask")) {
       traffic.apiAskRequestCount += 1;
+      traffic.lastFixtureId = request.postDataJSON()?.fixtureId ?? null;
     }
   });
   const reproduction = {
@@ -394,6 +409,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     frozen: ["Open the frozen World Cup evaluation", "Read the finished-fixture and calibration-forecast counts"],
   };
 
+  progress.phase = "frozen-evaluation";
   await page.goto(`${webUrl}/evaluation/wc-2026`, { waitUntil: "domcontentloaded" });
   const wcHeading = await page.getByRole("heading", { name: "World Cup 2026 backtest" }).isVisible();
   const wcFrozen = await page.getByText("Frozen evaluation", { exact: true }).isVisible();
@@ -416,6 +432,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
       reproduction: reproduction.frozen,
     }
   );
+  progress.phase = "club-season-evaluation";
   await page.goto(`${webUrl}/evaluation/club-season`, { waitUntil: "domcontentloaded" });
   const clubHeading = await page.getByRole("heading", { name: "Club season calibration" }).isVisible();
   const clubRolling = await page.getByText("Rolling snapshots", { exact: true }).isVisible();
@@ -431,6 +448,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     }
   );
 
+  progress.phase = "fixture-capability";
   await page.goto(`${webUrl}/fixtures`, { waitUntil: "domcontentloaded" });
   const capabilityText = (
     await page.getByText(/Forecast ready|Outside forecast coverage|Forecast loading|Team ratings unavailable/i).first()
@@ -449,39 +467,34 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     }
   );
 
+  progress.phase = "desk-selection";
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "Ask a question" }).waitFor({ timeout: 30_000 });
   await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
-  const featuredFixture = await collectFeaturedFixture(page);
+  const featuredFixture = await collectFeaturedFixture(page, canonical);
   const chatMatch = Boolean(featuredFixture);
   let fixtureSurface = null;
   let modelSurface = null;
   if (featuredFixture) {
     const { home, away } = featuredFixture;
+    progress.phase = "fixtures-parity";
     await page.goto(`${webUrl}/fixtures`, { waitUntil: "domcontentloaded" });
-    const fixtureRow = page.getByTestId("fixture-row")
-      .filter({ hasText: new RegExp(escapeRegExp(home), "i") })
-      .filter({ hasText: new RegExp(escapeRegExp(away), "i") })
-      .first();
+    const fixtureRow = fixtureLocator(page, "fixture-row", canonical.fixtureId);
     await fixtureRow.waitFor({ timeout: 15_000 }).catch(() => null);
     const fixturesVisible = await fixtureRow.isVisible().catch(() => false);
     const fixtureForecast = fixtureRow.getByTestId("fixture-forecast");
-    const fixtureForecastText = (await fixtureForecast.textContent().catch(() => "")) ?? "";
     const fixtureDomId = await fixtureRow.getAttribute("data-fixture-id");
     fixtureSurface = {
       visible: fixturesVisible && await fixtureForecast.isVisible().catch(() => false),
-      fixtureId: fixtureDomId === `${canonical?.competitionId}-${canonical?.numericFixtureId}`
-        ? canonical.fixtureId
-        : fixtureDomId,
-      capability: await fixtureForecast.isVisible().catch(() => false) ? "priced" : "unknown",
-      probabilities: percentageTriplet(fixtureForecastText),
+      fixtureId: fixtureDomId,
+      capability: await fixtureRow.getAttribute("data-capability"),
+      probabilities: await structuredProbabilities(fixtureRow),
     };
+    progress.collected.fixtures = fixtureSurface;
+    progress.phase = "model-parity";
     await page.goto(`${webUrl}/model`, { waitUntil: "domcontentloaded" });
-    const modelRow = page.getByTestId("model-fixture-row")
-      .filter({ hasText: `${home} · ${away}` })
-      .first();
+    const modelRow = fixtureLocator(page, "model-fixture-row", canonical.fixtureId);
     await modelRow.waitFor({ timeout: 15_000 }).catch(() => null);
-    const modelText = (await modelRow.textContent().catch(() => "")) ?? "";
     const [modelFixtureId, modelVersion, forecastAt] = await Promise.all([
       modelRow.getAttribute("data-fixture-id"),
       modelRow.getAttribute("data-model-version"),
@@ -490,25 +503,28 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     modelSurface = {
       visible: await modelRow.isVisible().catch(() => false),
       fixtureId: modelFixtureId,
-      capability: /Forecast ready/i.test(modelText) ? "priced" : "unknown",
-      probabilities: percentageTriplet(modelText),
+      capability: await modelRow.getAttribute("data-capability"),
+      probabilities: await structuredProbabilities(modelRow),
       modelVersion,
       forecastAt,
     };
+    progress.collected.model = modelSurface;
   }
 
+  progress.phase = "desk-selection";
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
   await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
-  const opener = await collectFeaturedFixture(page);
+  progress.phase = "desk-parity";
+  const opener = await collectFeaturedFixture(page, canonical);
   if (opener && featuredFixture) {
     const { home, away } = featuredFixture;
     const openingResult = await clickFeaturedFixture(page, opener, pacer);
+    if (traffic.lastFixtureId !== canonical.fixtureId) throw new Error("Desk opener sent a different fixture ID");
     const pinnedAfterOpen = await page.getByText(/^Pinned ·/).first()
       .isVisible()
       .catch(() => false);
-    const openingGrounding = await latestBoardIdentity(page, home, away);
+    const openingGrounding = await latestBoardIdentity(page, canonical.fixtureId);
     const openingBoard = page.getByTestId("desk-pundit-bubble").last().getByTestId("desk-match-board");
-    const openingBoardText = (await openingBoard.textContent().catch(() => "")) ?? "";
     const [deskFixtureId, deskRatingArtifactId, deskPricedAt] = await Promise.all([
       openingBoard.getAttribute("data-fixture-id"),
       openingBoard.getAttribute("data-rating-artifact-id"),
@@ -517,11 +533,12 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     const deskSurface = {
       visible: openingGrounding.boardVisible,
       fixtureId: deskFixtureId,
-      capability: openingGrounding.boardVisible ? "priced" : "unknown",
-      probabilities: percentageTriplet(openingBoardText),
+      capability: await openingBoard.getAttribute("data-capability"),
+      probabilities: await structuredProbabilities(openingBoard),
       ratingArtifactId: deskRatingArtifactId,
       pricedAt: deskPricedAt,
     };
+    progress.collected.desk = deskSurface;
     const parityPassed = Boolean(canonical?.reportMatches)
       && chatMatch
       && [deskSurface, fixtureSurface, modelSurface].every((surface) =>
@@ -549,6 +566,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
         },
       }
     );
+    progress.phase = "fixture-retention";
     const tableResult = await ask(page, TABLE_QUESTION, pacer);
     const pinnedAfterTable = await page.getByText(/^Pinned ·/).first()
       .isVisible()
@@ -557,7 +575,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     const pinnedAfterReturn = await page.getByText(/^Pinned ·/).first()
       .isVisible()
       .catch(() => false);
-    const returnGrounding = await latestBoardIdentity(page, home, away);
+    const returnGrounding = await latestBoardIdentity(page, canonical.fixtureId);
     checks["fixture-context-retention"] = recordViewport(
       checks["fixture-context-retention"],
       viewport,
@@ -588,18 +606,20 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     );
 
     await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
-    const analystOpener = await collectFeaturedFixture(page);
+    progress.phase = "analyst-conversation";
+    const analystOpener = await collectFeaturedFixture(page, canonical);
     const analystResults = [];
-    if (analystOpener) analystResults.push(await clickFeaturedFixture(page, analystOpener, pacer));
+    if (analystOpener) {
+      analystResults.push(await clickFeaturedFixture(page, analystOpener, pacer));
+      if (traffic.lastFixtureId !== canonical.fixtureId) throw new Error("Analyst opener sent a different fixture ID");
+    }
     for (const followUp of ANALYST_FOLLOW_UPS) {
       analystResults.push(await ask(page, followUp, pacer));
     }
     const turnCount = analystResults.filter(({ answered, error }) => answered || error).length;
     const analystOpeningBubble = page.getByTestId("desk-pundit-bubble").first();
     const analystBoard = analystOpeningBubble.getByTestId("desk-match-board");
-    const analystBoardText = (await analystBoard.textContent().catch(() => "")) ?? "";
-    const analystBoardIdentity = analystBoardText.toLowerCase().includes(home.toLowerCase())
-      && analystBoardText.toLowerCase().includes(away.toLowerCase());
+    const analystBoardIdentity = await analystBoard.getAttribute("data-fixture-id").catch(() => null) === canonical.fixtureId;
     const oddsRows = await analystBoard.locator('[data-testid="desk-board-markets"] li').count().catch(() => 0);
     const explicitNoMarket = await analystBoard.getByText(/No comparison market|No comparable market price is available/i)
       .isVisible().catch(() => false);
@@ -666,6 +686,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     );
   }
 
+  progress.phase = "desk-selection";
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "Ask a question" }).waitFor({ timeout: 30_000 });
   const newChat = page.getByRole("button", { name: "New Chat" });
@@ -811,110 +832,166 @@ function buildEvidence({
   };
 }
 
-async function captureLive(options, report) {
+async function captureLive(options, report, dependencies = {}) {
+  const captureWeb = dependencies.captureWebVersion ?? captureWebVersion;
+  const captureApi = dependencies.captureApiVersion ?? captureApiVersion;
+  const captureCanonical = dependencies.canonicalFixtureSnapshot ?? canonicalFixtureSnapshot;
+  const playwright = dependencies.loadPlaywright ?? loadPlaywright;
+  const runChecks = dependencies.runViewportChecks ?? runViewportChecks;
   if (options.intervalMs < MIN_BROWSER_REQUEST_INTERVAL_MS) {
     throw new Error(`Browser capture request spacing must be at least ${MIN_BROWSER_REQUEST_INTERVAL_MS} ms.`);
   }
   const identity = identityFromReport(report);
   const finalApiStart = finalApiRequestStart(report);
   const cooldownAnchor = apiCooldownAnchor(report, finalApiStart);
-  const webVersionBefore = await captureWebVersion(options.webUrl);
-  const apiVersionBefore = await captureApiVersion(report.apiUrl);
-  const canonical = await canonicalFixtureSnapshot(report);
-  const { chromium } = loadPlaywright();
-  const browser = await chromium.launch();
+  const progress = { phase: "preflight", checks: {}, collected: {} };
   const consoleEvidence = { errors: [], warnings: [] };
-  const viewports = [MOBILE_VIEWPORT, DESKTOP_VIEWPORT];
-  const traffic = { apiAskRequestCount: 0 };
-  const pacer = createRequestStartPacer({
-    intervalMs: options.intervalMs,
-    firstRequestNotBeforeEpochMs: cooldownAnchor.epochMs + BROWSER_COOLDOWN_MS,
-  });
   let checks = [];
   try {
-    for (const viewport of viewports) {
-      const context = await browser.newContext({ viewport });
-      const page = await context.newPage();
-      attachConsole(page, consoleEvidence);
-      const observed = await runViewportChecks(
-        page,
-        options.webUrl,
-        viewport,
-        pacer,
-        report,
-        canonical,
-        traffic
-      );
-      checks = checks.length === 0 ? observed : mergeChecks(checks, observed);
-      await context.close();
+    const webVersionBefore = await captureWeb(options.webUrl);
+    progress.collected.webVersionBefore = webVersionBefore;
+    const apiVersionBefore = await captureApi(report.apiUrl);
+    progress.collected.apiVersionBefore = apiVersionBefore;
+    const canonical = await captureCanonical(report);
+    progress.collected.canonical = canonical;
+    if (!canonical?.reportMatches) throw new Error("Canonical report fixture is unavailable or has changed");
+    progress.phase = "browser-launch";
+    const { chromium } = playwright();
+    const browser = await chromium.launch();
+    const viewports = [MOBILE_VIEWPORT, DESKTOP_VIEWPORT];
+    const traffic = { apiAskRequestCount: 0 };
+    progress.collected.traffic = traffic;
+    const pacer = createRequestStartPacer({
+      intervalMs: options.intervalMs,
+      firstRequestNotBeforeEpochMs: cooldownAnchor.epochMs + BROWSER_COOLDOWN_MS,
+    });
+    progress.collected.requestStarts = pacer.wallStarts;
+    progress.collected.monotonicStarts = pacer.starts;
+    try {
+      for (const viewport of viewports) {
+        progress.phase = `viewport-${viewport.width}x${viewport.height}`;
+        progress.checks = {};
+        const context = await browser.newContext({ viewport });
+        const page = await context.newPage();
+        attachConsole(page, consoleEvidence);
+        const observed = await runChecks(
+          page,
+          options.webUrl,
+          viewport,
+          pacer,
+          report,
+          canonical,
+          traffic,
+          progress
+        );
+        checks = checks.length === 0 ? observed : mergeChecks(checks, observed);
+        await context.close();
+      }
+    } finally {
+      await browser.close();
     }
-  } finally {
-    await browser.close();
+    progress.phase = "postflight";
+    progress.checks = {};
+    const webVersionAfter = await captureWeb(options.webUrl);
+    const apiVersionAfter = await captureApi(report.apiUrl);
+    const requestStartOffsetsMs = pacer.starts.map((start) => start - pacer.starts[0]);
+    const observedGapsMs = pacer.starts.slice(1).map((start, index) => start - pacer.starts[index]);
+    const firstBrowserRequestStart = pacer.wallStarts[0] ?? null;
+    const cooldownObservedMs = firstBrowserRequestStart
+      ? Date.parse(firstBrowserRequestStart) - cooldownAnchor.epochMs
+      : null;
+    const pacing = {
+      minimumIntervalMs: pacer.intervalMs,
+      requestStarts: pacer.wallStarts,
+      requestStartOffsetsMs,
+      observedGapsMs,
+      requestStartCount: pacer.starts.length,
+      apiAskRequestCount: traffic.apiAskRequestCount,
+      finalApiRequestStart: finalApiStart.value,
+      harnessCompletedAt: report.completedAt ?? null,
+      cooldownAnchor: cooldownAnchor.value,
+      firstBrowserRequestStart,
+      cooldownMinimumMs: BROWSER_COOLDOWN_MS,
+      cooldownObservedMs,
+      passed: pacer.starts.length > 0
+        && traffic.apiAskRequestCount === pacer.starts.length
+        && observedGapsMs.length === Math.max(0, pacer.starts.length - 1)
+        && observedGapsMs.every((gap) => gap >= MIN_BROWSER_REQUEST_INTERVAL_MS)
+        && Number.isFinite(cooldownObservedMs)
+        && cooldownObservedMs >= BROWSER_COOLDOWN_MS,
+    };
+    const gradedWeb = report.deployment?.shaGrading?.web ?? {};
+    const webVersion = {
+      expectedServedSha: gradedWeb.servedSha ?? null,
+      floorSha: gradedWeb.floorSha ?? null,
+      gradedState: gradedWeb.state ?? null,
+      before: webVersionBefore,
+      after: webVersionAfter,
+      passed: Boolean(gradedWeb.servedSha)
+        && webVersionBefore.sha === gradedWeb.servedSha
+        && webVersionAfter.sha === gradedWeb.servedSha,
+    };
+    const expectedApiSha = report.deployment?.apiSha
+      ?? report.deployment?.shaGrading?.api?.servedSha
+      ?? null;
+    const apiVersion = {
+      expectedSha: expectedApiSha,
+      expectedDeploymentId: report.deployment?.id ?? null,
+      before: apiVersionBefore,
+      after: apiVersionAfter,
+      passed: Boolean(expectedApiSha && report.deployment?.id)
+        && apiVersionBefore.sha === expectedApiSha
+        && apiVersionAfter.sha === expectedApiSha
+        && apiVersionBefore.deploymentId === report.deployment.id
+        && apiVersionAfter.deploymentId === report.deployment.id,
+    };
+    return buildEvidence({
+      identity,
+      url: options.webUrl,
+      viewport: MOBILE_VIEWPORT,
+      viewports,
+      console: consoleEvidence,
+      checks,
+      pacing,
+      webVersion,
+      apiVersion,
+    });
+  } catch (error) {
+    const partialChecks = mergeChecks(checks, Object.values(progress.checks));
+    error.browserEvidence = {
+      ...buildEvidence({ identity, url: options.webUrl, viewport: MOBILE_VIEWPORT,
+        viewports: [MOBILE_VIEWPORT, DESKTOP_VIEWPORT], console: consoleEvidence,
+        checks: mergeChecks(requiredCheckIds().filter((id) => !partialChecks.some((check) => check.id === id)).map(emptyCheck), partialChecks),
+      }),
+      passed: false,
+      failure: { phase: progress.phase, message: error.message },
+      collected: progress.collected,
+      summary: `Browser capture failed during ${progress.phase}: ${error.message}`,
+    };
+    throw error;
   }
-  const webVersionAfter = await captureWebVersion(options.webUrl);
-  const apiVersionAfter = await captureApiVersion(report.apiUrl);
-  const requestStartOffsetsMs = pacer.starts.map((start) => start - pacer.starts[0]);
-  const observedGapsMs = pacer.starts.slice(1).map((start, index) => start - pacer.starts[index]);
-  const firstBrowserRequestStart = pacer.wallStarts[0] ?? null;
-  const cooldownObservedMs = firstBrowserRequestStart
-    ? Date.parse(firstBrowserRequestStart) - cooldownAnchor.epochMs
-    : null;
-  const pacing = {
-    minimumIntervalMs: pacer.intervalMs,
-    requestStarts: pacer.wallStarts,
-    requestStartOffsetsMs,
-    observedGapsMs,
-    requestStartCount: pacer.starts.length,
-    apiAskRequestCount: traffic.apiAskRequestCount,
-    finalApiRequestStart: finalApiStart.value,
-    harnessCompletedAt: report.completedAt ?? null,
-    cooldownAnchor: cooldownAnchor.value,
-    firstBrowserRequestStart,
-    cooldownMinimumMs: BROWSER_COOLDOWN_MS,
-    cooldownObservedMs,
-    passed: pacer.starts.length > 0
-      && traffic.apiAskRequestCount === pacer.starts.length
-      && observedGapsMs.length === Math.max(0, pacer.starts.length - 1)
-      && observedGapsMs.every((gap) => gap >= MIN_BROWSER_REQUEST_INTERVAL_MS)
-      && Number.isFinite(cooldownObservedMs)
-      && cooldownObservedMs >= BROWSER_COOLDOWN_MS,
-  };
-  const gradedWeb = report.deployment?.shaGrading?.web ?? {};
-  const webVersion = {
-    expectedServedSha: gradedWeb.servedSha ?? null,
-    floorSha: gradedWeb.floorSha ?? null,
-    gradedState: gradedWeb.state ?? null,
-    before: webVersionBefore,
-    after: webVersionAfter,
-    passed: Boolean(gradedWeb.servedSha)
-      && webVersionBefore.sha === gradedWeb.servedSha
-      && webVersionAfter.sha === gradedWeb.servedSha,
-  };
-  const expectedApiSha = report.deployment?.apiSha
-    ?? report.deployment?.shaGrading?.api?.servedSha
-    ?? null;
-  const apiVersion = {
-    expectedSha: expectedApiSha,
-    expectedDeploymentId: report.deployment?.id ?? null,
-    before: apiVersionBefore,
-    after: apiVersionAfter,
-    passed: Boolean(expectedApiSha && report.deployment?.id)
-      && apiVersionBefore.sha === expectedApiSha
-      && apiVersionAfter.sha === expectedApiSha
-      && apiVersionBefore.deploymentId === report.deployment.id
-      && apiVersionAfter.deploymentId === report.deployment.id,
-  };
-  return buildEvidence({
-    identity,
-    url: options.webUrl,
-    viewport: MOBILE_VIEWPORT,
-    viewports,
-    console: consoleEvidence,
-    checks,
-    pacing,
-    webVersion,
-    apiVersion,
-  });
+}
+
+async function captureAndPersist(options, report, capture = captureLive) {
+  let evidence;
+  try {
+    evidence = await capture(options, report);
+    return evidence;
+  } catch (error) {
+    evidence = error.browserEvidence ?? {
+      ...buildEvidence({ identity: identityFromReport(report), url: options.webUrl,
+        viewport: MOBILE_VIEWPORT, viewports: [MOBILE_VIEWPORT, DESKTOP_VIEWPORT],
+        console: { errors: [], warnings: [] }, checks: requiredCheckIds().map(emptyCheck) }),
+      passed: false, failure: { phase: "initialization", message: error.message },
+    };
+    throw error;
+  } finally {
+    if (evidence) {
+      const outputPath = options.output ?? browserOutputPath(options.outputDir, evidence.runId);
+      await mkdir(path.dirname(outputPath), { recursive: true });
+      await writeFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
+    }
+  }
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -944,10 +1021,8 @@ async function main(argv = process.argv.slice(2)) {
       throw new Error(`--web-url ${options.webUrl} does not match the evaluated origin ${reportOrigin}`);
     }
   }
-  const evidence = await captureLive(options, report);
+  const evidence = await captureAndPersist(options, report);
   const outputPath = options.output ?? browserOutputPath(options.outputDir, evidence.runId);
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
   console.log(JSON.stringify({
     runId: evidence.runId,
     passed: evidence.passed,
@@ -959,6 +1034,11 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 export {
+  captureAndPersist,
+  captureLive,
+  collectFeaturedFixture,
+  fixtureLocator,
+  structuredProbabilities,
   ANALYST_FOLLOW_UPS,
   BROWSER_PACING_SAFETY_MS,
   BROWSER_COOLDOWN_MS,

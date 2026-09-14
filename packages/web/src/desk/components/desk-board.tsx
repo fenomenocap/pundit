@@ -41,6 +41,10 @@ export function DeskBoard({ grounding }: { grounding?: AskGrounding }) {
     <div
       data-testid="desk-match-board"
       data-fixture-id={grounding.fixtureId}
+      data-capability="priced"
+      data-p-home={grounding.pHome}
+      data-p-draw={grounding.pDraw}
+      data-p-away={grounding.pAway}
       data-rating-artifact-id={grounding.pricing.modelVersion}
       data-priced-at={grounding.pricing.pricedAt}
       className="mt-4 rounded-md border border-border bg-elevated/40 px-3 py-3"
