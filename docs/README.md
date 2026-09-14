@@ -1,6 +1,6 @@
 # Welcome to Pundit
 
-Pundit is a chat-first analysis app for the club season — Premier League and UEFA Champions League qualifiers. Ask about an upcoming match for probabilities grounded in Pundit's statistical model, ask about the league table or title race, or get clearly labelled general football analysis.
+Pundit is an analysis desk for the club season — Premier League and UEFA Champions League qualifiers. Ask about an upcoming match for probabilities grounded in Pundit's statistical model, ask about the league table or title race, or get clearly labelled general football analysis. The homepage is the desk; Paper, Draft, and Vaults are a local paper lab, not a bookmaker.
 
 Under the hood, every answer is backed by:
 
@@ -16,7 +16,7 @@ Pundit doesn't run its own markets and there's nothing to trade here — it's an
 ### Where to start
 
 * [What is Pundit](getting-started/what-is-pundit.md) — the short version of what this product does
-* [How to Use Pundit](getting-started/how-to-use.md) — the chat, fixtures page, model page, and evaluation pages
+* [How to Use Pundit](getting-started/how-to-use.md) — the desk, paper lab, fixtures, model, and ledger
 * [The Model](how-it-works/the-model.md) — how the underlying probabilities are actually generated
 * [Evaluation API](api-reference/evaluation.md) — calibration artifacts and metrics
 * [API Reference](api-reference/overview.md) — if you want to pull the data yourself

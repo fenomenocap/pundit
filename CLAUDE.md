@@ -1,6 +1,6 @@
 # Pundit — Football Prediction Analysis
 
-Chat-first club-season analysis for the Premier League and UEFA Champions League qualifiers. Recognized, policy-eligible active fixtures are grounded in locally computed match probabilities; recognized non-priced fixtures retain context with an explicit capability reason and no Pundit probabilities. Competition questions use ESPN standings, and other football questions are clearly labelled general analysis. World Cup 2026 live pipelines are retired, with historical credibility retained in the frozen backtest at `/evaluation/wc-2026`. No blockchain, database, or trading. The former platform is archived at `archive/onchain-trading-v1`.
+Chat-first analysis **desk** for the Premier League and UEFA Champions League qualifiers. Recognized, policy-eligible active fixtures are grounded in locally computed match probabilities; recognized non-priced fixtures retain context with an explicit capability reason and no Pundit probabilities. Competition questions use ESPN standings, and other football questions are clearly labelled general analysis. World Cup 2026 live pipelines are retired, with historical credibility retained in the frozen backtest at `/evaluation/wc-2026`. No blockchain, database, or trading. Paper / Draft / Vaults on the web app are a local simulator, not a book. The former platform is archived at `archive/onchain-trading-v1`.
 
 **Status:** Deployed (Vercel + Railway). `POST /api/ask` is live in production with the MiniMax key managed in Railway.
 

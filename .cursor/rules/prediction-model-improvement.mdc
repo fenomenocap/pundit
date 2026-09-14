@@ -7,12 +7,12 @@ alwaysApply: true
 
 > **2026-09-15 evaluation correction:** Read `docs/architecture/prediction-model-review-2026-09-15.md`. Earlier challenger Brier wins below used full-corpus parameters on holdouts and are invalid promotion evidence. The corrected evaluator refits each origin; promotion remains blocked. Phase 0 and production boundaries remain unchanged.
 
-The Hull diagnosis and SIRE comparison below are the original working analysis. **Do not remake Phase 0.** Production `main` (deployed SHA `7a5df13`) already uses the fixed-total 2.70 Elo→goals mapping. Any later plan or implementation must take the **whole brief** into account — the diagnosis, the SIRE comparison, **and the shipped state**. Do not restart from a blank slate.
+The Hull diagnosis and SIRE comparison below are the original working analysis. **Do not remake Phase 0.** Production `main` (API SHA `4784eef`, PR #186) already uses the fixed-total 2.70 Elo→goals mapping **and** the chronological evaluator. Constants, registration, and `model-data.ts` did not change with that PR. Any later plan or implementation must take the **whole brief** into account — the diagnosis, the SIRE comparison, **and the shipped state**. Do not restart from a blank slate.
 
 **Shipped as of 2026-09-14 (do not undo):**
 
 - Phase 0: `eloToLambdas` is fixed total `2 * BASE_GOALS` split by Elo odds ratio. Hull golden rebuilt (~3.26 / 14.23 / 82.52, over 2.5 ~50.64%). Shipped constants remain **1.35 / 42 / −0.1**.
-- Ledger: 90-minute `pre-kickoff-90m-v1` seals the first eligible forecast; 15-minute checkpoint + football-cadence tick. Railway `/data` had **53 official sealed rows** (39 PL + 14 UCL quals) on 2026-09-13; 8 legacy post-kickoff rows are excluded. In-repo `club-season.json` seed stays empty.
+- Ledger: 90-minute `pre-kickoff-90m-v1` seals the first eligible forecast; 15-minute checkpoint + football-cadence tick. Railway `/data` had **54 official sealed rows** (40 PL + 14 UCL quals) on 2026-09-15; 8 legacy post-kickoff rows remain excluded. First Fundamental `"2"` seal is Leeds–Newcastle. In-repo `club-season.json` seed stays empty.
 - Phase 1: offline `calibrate:champion` on that live ledger fitted 1.40 / 0 / −0.115. **Do not ship it.** 1X2 Brier 0.666 vs shipped 0.668; PL n=39 is below the 40 bar; bootstrap ΔBrier does not exclude 0. `productionAutoLoad: false`.
 - Phase 2: `REGISTERED_CHALLENGERS` has `dixon-coles-mle@4cfcbe57…` (ClubElo last-known-before-kickoff prior, 760/760 PL). `forecast` / `sampleScore` throw. `model-data.ts` still calls `ELO_CHAMPION` only. Rolling-origin eval does **not** recommend promotion. Activate only if a human says **promote**.
 - Phase 3: labelled **Pundit Consensus** shrinks 1X2 halfway toward one complete same-source no-vig market, then `refitLambdasToTarget1x2`. Never present Consensus as Fundamental. MiniMax never authors 1X2.
@@ -117,7 +117,7 @@ BTTS is only 39% despite 4.1 total xG because almost all goals are on United’s
 ## Other findings to preserve
 
 - Product around the model (artifact pin, fail-closed ratings, deterministic grounding, labelled market comparison / Consensus, registered-not-activated challenger) is **stronger than the maths**.
-- Repo `packages/api/data/evaluation/club-season.json` stays an empty seed. Live ledger is Railway `/data` (53 official 90-minute seals as of 2026-09-13). Do not overwrite `/data` with the seed.
+- Repo `packages/api/data/evaluation/club-season.json` stays an empty seed. Live ledger is Railway `/data` (54 official 90-minute seals as of 2026-09-15). Do not overwrite `/data` with the seed.
 - Frozen WC 2026 backtest (same mapping, neutral venues): 104 matches, Brier **0.4383**, log-loss **0.7853**, winner accuracy **68.3%**. Includes the same 90%+ blowouts (e.g. Mexico vs South Africa 91.7%). Calibration buckets in that artifact look unusable (`actualRate: 1` in every bin).
 - HFA applies to Premier League **and** UCL qualifiers when the venue is not neutral.
 
@@ -158,7 +158,7 @@ Fit `BASE_GOALS` per competition; fit HFA; fit `rho`; optionally mild total-xG i
 
 ### Phase 2 — real Dixon–Coles challenger (**registered; not activated**)
 
-Registered behind `REGISTERED_CHALLENGERS`: time-decayed attack/defence MLE; ClubElo as **prior** for promoted / low-sample clubs (exactly Hull). This is what SIRE means by Dixon–Coles, not production `eloToLambdas`. Keep current champion until the rolling-origin gate **and** a human say promote. Last eval: challenger Brier better on all three origins, calibration MAE slightly worse on the first — `recommendPromotion: false`.
+Registered behind `REGISTERED_CHALLENGERS`: time-decayed attack/defence MLE; ClubElo as **prior** for promoted / low-sample clubs (exactly Hull). This is what SIRE means by Dixon–Coles, not production `eloToLambdas`. Keep current champion until the rolling-origin gate **and** a human say promote. Corrected 2026-09-15 eval refits each origin and does **not** recommend promotion — do not quote earlier full-corpus Brier wins.
 
 Optional extra (not a Phase 0 detour): **Davidson** as a cheap 1X2-only challenger (fitted strength, HFA, draw param). Useful as a 1X2 sanity check. It cannot replace the score matrix chat needs.
 

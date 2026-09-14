@@ -75,13 +75,13 @@ Both users share the same spine. They do not share the same output schema.
 
 | Layer | What | Path / URL |
 |---|---|---|
-| Web | Next.js 14 App Router, chat homepage, fixtures, model, evaluation | `packages/web` · thepundit.vercel.app |
+| Web | Next.js 14 App Router, analysis desk, paper lab, fixtures, model, evaluation | `packages/web` · thepundit.vercel.app |
 | API | Express, four-tier `/api/ask`, model, matches, evaluation | `packages/api` · thepundit.up.railway.app |
 | Model | Dixon-Coles bivariate Poisson from pinned ClubElo artifact | `packages/api/src/services/dixon-coles.ts` |
 | Football data | ESPN scoreboard / standings, 30-min cache | `packages/api/src/services/football-data.ts` |
 | Markets | Stake / Kalshi / Polymarket, no-vig 1X2, 30-min cache | `packages/api/src/services/fixture-market-sources.ts`, `model-market-odds.ts` |
-| Chat orchestration | 7,157-line four-tier ask + guards | `packages/api/src/services/ask.ts` |
-| Chat UI | Single box, chips, New Chat, match card, SSE | `packages/web/src/components/home-chat.tsx` |
+| Chat orchestration | Four-tier `/api/ask` + guards | `packages/api/src/services/ask.ts` |
+| Desk UI | Live slate + analyst pane on `/`; previous chat homepage at `/legacy` | `packages/web/src/desk/`, `packages/web/src/app/legacy/page.tsx` |
 | Calibration | Rolling club-season snapshots + frozen WC 2026 backtest | `packages/api/src/services/club-season-snapshots.ts`, `wc-evaluation.ts` |
 | Persistence | No database. Atomic JSON under `PUNDIT_DATA_DIR` | `packages/api/src/services/persistent-store.ts` |
 
@@ -256,7 +256,7 @@ The May SIRE clip already taught the honesty rule: a +0.34% BTTS is “aligned b
 
 | Surface | Priority | Status | Path |
 |---|---|---|---|
-| Chat homepage | v1 | **Built** | `packages/web/src/app/page.tsx` → `home-chat.tsx` |
+| Chat homepage | v1 | **Superseded** — `/` is the analysis desk; previous chat lives at `/legacy` | `packages/web/src/desk/`, `packages/web/src/app/legacy/page.tsx` |
 | Match card | v1 | **Partial** — probabilities + market rows + prose. No EV / risk / pass / play | `MatchFixtureCard` in `home-chat.tsx` |
 | Fixtures board | v1 | **Built** | `packages/web/src/app/fixtures/page.tsx` |
 | Model reference | v1 | **Built** | `packages/web/src/app/model/page.tsx` |

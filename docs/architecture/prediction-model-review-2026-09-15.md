@@ -96,7 +96,7 @@ Davidson, Negative Binomial/Sarmanov, lineup features and further market blendin
 - Final full API Vitest run: **54 files, 991 tests passed**.
 - API build and TypeScript checks passed; club-strength artifact verification passed with **18 unchanged golden fixtures**.
 - New regressions cover held-out outcome isolation, ignoring full-corpus fitted parameters, invalid/incomplete/overlapping splits, missing uncertainty, paired resampling, scheduled-window policy, reliability versus outcome MAE, and false optimizer convergence.
-- At completion of the research review, changes were local and uncommitted. A subsequent release is tracked through Git history and the deployment record. Pre-existing unrelated working-tree edits were preserved. No production configuration, live ledger, model constants, artifact registration, or frontend was changed. No paid chat evaluation was run because there was no deployment or chat change.
+- Research merged as [PR #186](https://github.com/fenomenocap/pundit/pull/186) (`4784eef` on `main`). Railway API production observed 2026-09-15 reports that SHA; Vercel web stayed on `0224c95` because `packages/web` did not change. No production configuration, live ledger, model constants, artifact registration, or frontend was changed by the evaluator work. No paid chat evaluation was run because there was no production model or chat change. Follow-up product/docs QA: [pre-next-phase-qa-2026-09-15.md](./pre-next-phase-qa-2026-09-15.md).
 
 ## Reproduction and evidence
 
