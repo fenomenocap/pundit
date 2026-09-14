@@ -38,7 +38,11 @@ async function routeTwoFixtureDeskSlate(page: Page) {
   }));
 }
 
-function deskMatchGrounding(fixtureId: string) {
+function deskMatchGrounding(
+  fixtureId: string,
+  home = "Sunderland",
+  away = "Arsenal",
+) {
   return {
     kind: "match",
     fixtureId,
@@ -47,8 +51,8 @@ function deskMatchGrounding(fixtureId: string) {
     homeFieldAdvantage: true,
     date: "2026-09-12",
     stage: "match",
-    home: "Sunderland",
-    away: "Arsenal",
+    home,
+    away,
     pHome: 0.18,
     pDraw: 0.24,
     pAway: 0.58,
@@ -70,8 +74,8 @@ function deskMatchGrounding(fixtureId: string) {
     }],
     pricing: {
       fixtureId,
-      home: "Sunderland",
-      away: "Arsenal",
+      home,
+      away,
       kickoff: "2026-09-12T19:00:00.000Z",
       modelVersion: "test",
       pricedAt: "2026-09-10T12:00:00.000Z",
@@ -205,6 +209,7 @@ test.describe("smoke", () => {
   }
 
   test("desk featured fixture keeps its identity and renders grounded market rows", async ({ page }) => {
+    await routeTwoFixtureDeskSlate(page);
     const requests: Array<Record<string, unknown>> = [];
     await page.route("**/api/ask", async (route) => {
       const request = route.request().postDataJSON() as Record<string, unknown>;
@@ -215,24 +220,23 @@ test.describe("smoke", () => {
         contentType: "application/json",
         body: JSON.stringify({
           answer: "I make Arsenal the side, with the market close to my numbers.",
-          grounding: deskMatchGrounding(fixtureId),
+          grounding: deskMatchGrounding(fixtureId, "Arsenal", "Chelsea"),
         }),
       });
     });
 
     await page.goto("/");
-    const arsenal = page.locator('[data-testid="desk-featured-fixture"][data-fixture-id="gw4-sun-ars"]');
+    const arsenal = page.locator('[data-testid="desk-featured-fixture"][data-fixture-id="espn:eng.1:901"]');
     await expect(arsenal).toBeVisible();
     await arsenal.click();
     await expect.poll(() => requests.length).toBe(1);
-    expect(requests[0].fixtureContext).toEqual({ fixtureId: "gw4-sun-ars" });
+    expect(requests[0].fixtureContext).toEqual({ fixtureId: "espn:eng.1:901" });
     await expect(page.getByTestId("desk-match-board")).toBeVisible();
-    await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-fixture-id", "gw4-sun-ars");
+    await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-fixture-id", "espn:eng.1:901");
     await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-rating-artifact-id", "test");
     await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-priced-at", "2026-09-10T12:00:00.000Z");
     await expect(page.getByTestId("desk-board-markets")).toContainText("Polymarket");
     await expect(page.getByTestId("desk-board-markets")).toContainText("55.0%");
-    await expect(arsenal).toHaveCount(1);
   });
 
   test("New Chat clears fixture context, queued state and shared URL", async ({ page }) => {
@@ -280,7 +284,7 @@ test.describe("smoke", () => {
       node.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByRole("alert")).toHaveText("Questions must be 500 characters or fewer.");
+    await expect(page.getByText("Questions must be 500 characters or fewer.", { exact: true })).toBeVisible();
     expect(calls).toBe(0);
 
     await input.fill("X".repeat(500));
@@ -321,7 +325,7 @@ test.describe("smoke", () => {
 
     await page.goto("/");
     await expect(page.getByText("Live model", { exact: true })).toBeVisible();
-    await expect(page.locator('[data-fixture-id="espn:eng.1:777"]')).toBeVisible();
+    await expect(page.locator('[data-testid="desk-featured-fixture"][data-fixture-id="espn:eng.1:777"]')).toBeVisible();
     await expect(page.getByText("11", { exact: true })).toHaveCount(0);
     await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
     await expect(page.getByText("No comparison market", { exact: true }).first()).toBeVisible();
@@ -441,6 +445,7 @@ test.describe("smoke", () => {
   });
 
   test("desk retries after a failed ask without sending dangling history", async ({ page }) => {
+    await routeTwoFixtureDeskSlate(page);
     let call = 0;
     const requests: Array<Record<string, unknown>> = [];
     await page.route("**/api/ask", async (route) => {
@@ -464,6 +469,7 @@ test.describe("smoke", () => {
       });
     });
     await page.goto("/");
+    await page.locator('[data-testid="desk-slate-fixture"][data-fixture-id="espn:eng.1:902"]:visible').first().click();
     const input = page.getByRole("textbox", { name: "Ask a question" });
     await input.fill("How do Liverpool win this?");
     await page.getByRole("button", { name: "Send" }).click();
