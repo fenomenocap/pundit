@@ -1074,12 +1074,12 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     const reasonText = {
       "ratings-unavailable": /\b(?:rating|strength)\b/i,
       "neutral-venue-unknown": /\b(?:neutral|venue)\b/i,
-      "required-context-missing": /\b(?:required|missing)\b[^.!?\n]{0,50}\b(?:context|input)\b|\b(?:context|input)\b[^.!?\n]{0,50}\b(?:required|missing)\b/i,
-      "model-initializing": /\b(?:initializ|starting up|temporar)\w*\b/i,
+      "required-context-missing": /\b(?:required|missing)\b[^.!?\n]{0,50}\b(?:context|input)\b|\b(?:context|input)\b[^.!?\n]{0,50}\b(?:required|missing)\b|\bI don['’]t yet have enough information about this fixture\b/i,
+      "model-initializing": /\b(?:initializ|starting up|temporar)\w*\b|\bI['’]m still preparing my forecasts\b/i,
       "ratings-refreshing": /\b(?:rating|strength)\b[^.!?\n]{0,40}\brefresh\w*\b|\brefresh\w*\b[^.!?\n]{0,40}\b(?:rating|strength)\b/i,
-      "unsupported-competition": /\b(?:outside|unsupported)\b[^.!?\n]{0,40}\b(?:coverage|competition)\b/i,
-      "friendly-policy-disabled": /\b(?:friendly|outside)\b[^.!?\n]{0,50}\b(?:coverage|polic|disabled)\b/i,
-      "model-policy-disabled": /\b(?:model|pricing)\b[^.!?\n]{0,50}\b(?:polic|disabled|outside coverage)\b/i,
+      "unsupported-competition": /\b(?:outside|unsupported)\b[^.!?\n]{0,40}\b(?:coverage|competition)\b|\bI don['’]t cover this competition\b/i,
+      "friendly-policy-disabled": /\b(?:friendly|outside)\b[^.!?\n]{0,50}\b(?:coverage|polic|disabled)\b|\bI don['’]t publish forecasts for friendlies\b/i,
+      "model-policy-disabled": /\b(?:model|pricing)\b[^.!?\n]{0,50}\b(?:polic|disabled|outside coverage)\b|\bI exclude this fixture under my forecasting policy\b/i,
     }[reason];
     const inventsDifferentReason = reason === "required-context-missing"
       && /\b(?:confirmed squad|injur(?:y|ies)|lineups?|availability data)\b[^.!?\n]{0,100}\b(?:require|required|unblock|coverage)\b|\b(?:require|required|unblock|coverage)\b[^.!?\n]{0,100}\b(?:confirmed squad|injur(?:y|ies)|lineups?|availability data)\b/i.test(text);
@@ -1384,6 +1384,10 @@ export const FORBIDDEN_ANSWER_TERMS = [
   "grounding data",
   "grounding json",
   "retrieval",
+  "structured fixture identity",
+  "discovery candidate",
+  "model context",
+  "required model input",
   "i i work with",
   "no my probabilities",
   "where the money sits",
