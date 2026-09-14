@@ -302,9 +302,9 @@ async function waitForAnswer(page, previousBubbleCount) {
   const result = await page.waitForFunction(({ previousBubbleCount }) => {
     const bubbles = document.querySelectorAll('[data-testid="desk-pundit-bubble"]');
     const alert = document.querySelector('[role="alert"]');
-    const send = document.querySelector('button[aria-label="Send"]');
+    const input = document.querySelector('textarea[aria-label="Ask a question"]');
     const finished = bubbles.length > previousBubbleCount || Boolean(alert?.textContent?.trim());
-    return finished && send instanceof HTMLButtonElement && !send.disabled
+    return finished && input instanceof HTMLTextAreaElement && !input.disabled
       ? { answered: bubbles.length > previousBubbleCount, error: alert?.textContent?.trim() ?? "" }
       : null;
   }, { previousBubbleCount }, { timeout: ASK_TIMEOUT_MS });
@@ -387,13 +387,18 @@ async function hasHorizontalOverflow(page) {
   return page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 }
 
+function requestFixtureIdentity(body) {
+  return typeof body?.fixtureContext?.fixtureId === "string" ? body.fixtureContext.fixtureId : null;
+}
+
 async function runViewportChecks(page, webUrl, viewport, pacer, report, canonical, traffic, progress) {
+  page.setDefaultTimeout(15_000);
   const checks = Object.fromEntries(requiredCheckIds().map((id) => [id, emptyCheck(id)]));
   progress.checks = checks;
   page.on("request", (request) => {
     if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/api/ask")) {
       traffic.apiAskRequestCount += 1;
-      traffic.lastFixtureId = request.postDataJSON()?.fixtureId ?? null;
+      traffic.lastFixtureId = requestFixtureIdentity(request.postDataJSON());
     }
   });
   const reproduction = {
@@ -480,7 +485,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     progress.phase = "fixtures-parity";
     await page.goto(`${webUrl}/fixtures`, { waitUntil: "domcontentloaded" });
     const fixtureRow = fixtureLocator(page, "fixture-row", canonical.fixtureId);
-    await fixtureRow.waitFor({ timeout: 15_000 }).catch(() => null);
+    await fixtureRow.waitFor({ timeout: 15_000 });
     const fixturesVisible = await fixtureRow.isVisible().catch(() => false);
     const fixtureForecast = fixtureRow.getByTestId("fixture-forecast");
     const fixtureDomId = await fixtureRow.getAttribute("data-fixture-id");
@@ -494,7 +499,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     progress.phase = "model-parity";
     await page.goto(`${webUrl}/model`, { waitUntil: "domcontentloaded" });
     const modelRow = fixtureLocator(page, "model-fixture-row", canonical.fixtureId);
-    await modelRow.waitFor({ timeout: 15_000 }).catch(() => null);
+    await modelRow.waitFor({ timeout: 15_000 });
     const [modelFixtureId, modelVersion, forecastAt] = await Promise.all([
       modelRow.getAttribute("data-fixture-id"),
       modelRow.getAttribute("data-model-version"),
@@ -1034,6 +1039,9 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 export {
+  runViewportChecks,
+  requestFixtureIdentity,
+  waitForAnswer,
   captureAndPersist,
   captureLive,
   collectFeaturedFixture,
