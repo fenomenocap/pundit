@@ -1,3 +1,6 @@
+import { aggregateScorers, lastLeagueMatches, sameClub } from "./club-form";
+import type { FootballMatch } from "./football-data";
+
 /**
  * Request-local player evidence. Chat 1 consumes web-search snippets through
  * this adapter; Chat 2 can swap the extractor without changing compose or
@@ -57,6 +60,44 @@ export interface PlayerMarketObservation {
 export interface PlayerEvidenceBundle {
   observations: PlayerEvidence[];
   markets: PlayerMarketObservation[];
+  recentScorers?: RecentScorerContext[];
+}
+
+export interface RecentScorerContext {
+  team: string;
+  players: string[];
+  matchCount: number;
+  throughDate: string;
+  source: "ESPN";
+}
+
+export interface PlayerCapabilities {
+  playerProjections: "unavailable";
+  recentScorers: "available" | "unavailable";
+  teamNews: "verified" | "unavailable";
+  scorerMarket: "verified" | "unavailable";
+}
+
+export function playerCapabilities(bundle: PlayerEvidenceBundle | null): PlayerCapabilities {
+  return {
+    playerProjections: "unavailable",
+    recentScorers: bundle?.recentScorers?.length ? "available" : "unavailable",
+    teamNews: bundle && hasTeamNewsEvidence(bundle) ? "verified" : "unavailable",
+    scorerMarket: bundle?.markets.length ? "verified" : "unavailable",
+  };
+}
+
+export function recentScorerContext(fixtures: readonly FootballMatch[], fixture: PlayerFixtureRef): RecentScorerContext[] {
+  const cutoff = Math.min(Date.now(), Date.parse(fixture.kickoff));
+  const past = fixtures.filter((match) => Date.parse(match.utcDate) < cutoff
+    && cutoff - Date.parse(match.utcDate) <= 60 * 24 * 60 * 60 * 1000);
+  return [fixture.home, fixture.away].flatMap((team) => {
+    const matches = lastLeagueMatches(team, past);
+    const players = [...aggregateScorers(matches).values()].flat()
+      .filter((player) => sameClub(player.team, team)).map((player) => player.name);
+    return players.length ? [{ team, players, matchCount: matches.length,
+      throughDate: matches[matches.length - 1].utcDate.slice(0, 10), source: "ESPN" as const }] : [];
+  });
 }
 
 const STOPWORDS = new Set([
@@ -81,7 +122,7 @@ const MAX_PRE_KICKOFF_AGE_MS = 21 * 24 * 60 * 60 * 1000;
 
 export const PLAYER_SCORER_ABSTENTION =
   "I don’t have player-level projections or a verified scorer market for this fixture, "
-  + "so I can’t name a most likely scorer without inventing one.";
+  + "so I can’t name a most likely scorer without inventing one. Confirmed starters, expected minutes and a dated scorer market would help me assess the options.";
 
 export const TEAM_NEWS_COMPOSE_ABSTENTION =
   "I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim.";

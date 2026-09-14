@@ -8,6 +8,7 @@ import {
   hasTeamNewsEvidence,
   hasTrustworthyPlayerEvidence,
   leadingScorerCandidate,
+  playerCapabilities,
   type PlayerEvidenceBundle,
 } from "./player-evidence";
 import { buildResponseFacts, factById } from "./response-facts";
@@ -23,7 +24,7 @@ import {
 } from "./response-plan";
 
 export const SHARED_TOTAL_XG_SENTENCE =
-  "Totals sit near even because every match uses the same 2.70 expected goals.";
+  "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
 
 export const STAKE_REFUSAL_SENTENCE =
   "I can print the price. I will not size a stake without a bankroll and a risk band.";
@@ -162,11 +163,21 @@ function composePricingDeskAnswer(grounding: Grounding): string {
   if (captured) {
     const subject = outcomeLabel(grounding, captured.outcome);
     const source = captured.source[0].toUpperCase() + captured.source.slice(1);
-    const band = captured.edgeBand ? ` (${captured.edgeBand})` : "";
+    const band = captured.edgeBand ? ` (${explainEdgeBand(captured.edgeBand)})` : "";
     return `${oneXTwo} Against the captured ${source} decimal of ${captured.decimalOdds.toFixed(2)} on ${subject}, `
       + `EV is ${signedEvPct(captured.evPct)}${band}.`;
   }
   return `${oneXTwo} I need a captured decimal line before I can print EV% or pass or play.`;
+}
+
+function explainEdgeBand(band: string): string {
+  const explanations: Record<string, string> = {
+    noise: "a negligible estimated price gap",
+    thin: "a small estimated price gap that forecast error could erase",
+    real: "a material estimated price gap, still dependent on forecast accuracy",
+    "fat-and-fragile": "a large estimated price gap that is sensitive to forecast error",
+  };
+  return `${band}: ${explanations[band] ?? "an estimated price gap"}`;
 }
 
 function composeUserLineAnswer(grounding: Grounding): string {
@@ -187,7 +198,12 @@ function composeUserLineAnswer(grounding: Grounding): string {
     : decision === "pass"
       ? `That is below the pass price of ${line.passPrice.toFixed(2)}, so I pass.`
       : `That sits between the pass price of ${line.passPrice.toFixed(2)} and the play price of ${line.playPrice.toFixed(2)}, so I will not call it.`;
-  return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, EV ${signedEvPct(line.evPct)} (${line.edgeBand}). ${call} Risk is ${line.riskBand}.`;
+  const riskExplanation = line.riskBand === "high"
+    ? "a low chance of winning or a large price gap makes the estimate more vulnerable"
+    : line.riskBand === "low"
+      ? "a higher chance of winning and a small price gap; losses are still possible"
+      : "neither the lower-risk nor higher-risk conditions apply; losses are still possible";
+  return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)}). ${call} Risk is ${line.riskBand}: ${riskExplanation}.`;
 }
 
 function pct(value: number): string {
@@ -218,7 +234,8 @@ export function composePlayerScorerAnswer(
   grounding: Grounding,
   evidence: PlayerEvidenceBundle | null
 ): string {
-  if (!evidence || !hasTrustworthyPlayerEvidence(evidence)) {
+  const capabilities = playerCapabilities(evidence);
+  if (!evidence || (!hasTrustworthyPlayerEvidence(evidence) && capabilities.recentScorers === "unavailable")) {
     return PLAYER_SCORER_ABSTENTION;
   }
   const market = leadingScorerCandidate(evidence);
@@ -226,8 +243,11 @@ export function composePlayerScorerAnswer(
     row.evidenceType === "confirmed-lineup" || row.evidenceType === "expected-lineup"
   );
   const lines = [
-    "I don’t have player-level projections for this fixture, so I can’t name a most likely scorer from my match model.",
+    "I don’t have player-level projections for this fixture, so I can’t name a most likely scorer from match probabilities.",
   ];
+  for (const recent of evidence.recentScorers ?? []) {
+    lines.push(`For recent scoring context, ESPN records ${recent.players.slice(0, 3).join(", ")} scoring for ${recent.team} across the last ${recent.matchCount} available matches in this competition through ${recent.throughDate}. That history is not a projection or evidence that they will start.`);
+  }
   if (market) {
     const date = market.observedAt ? dateLabel(market.observedAt) : "an undated report";
     const teamBit = market.teamId ? `${market.teamId} name` : "name";
@@ -246,9 +266,10 @@ export function composePlayerScorerAnswer(
   }
   if (!market && start) {
     lines.push("I could not establish a comparable scorer market, so that availability note is not my scorer ranking.");
-  } else {
+  } else if (market) {
     lines.push("That quote is a market observation, not my player ranking.");
   }
+  lines.push("Confirmed starters, expected minutes and a dated scorer market would help me assess the options.");
   return lines.join(" ");
 }
 

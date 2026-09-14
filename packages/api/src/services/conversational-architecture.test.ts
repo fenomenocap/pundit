@@ -692,3 +692,18 @@ describe("V2 conversational architecture", () => {
       .toBe("Answer.\n\nDone.");
   });
 });
+
+it("explains fixed totals and risk labels without inventing fixture-specific insight", () => {
+  const match = grounding();
+  const totals = composeMatchResponse("over or under 2.5?", match);
+  expect(totals).toContain("I use a fixed total-goals assumption");
+  expect(totals).toContain("cannot tell me whether this particular match will be more open or tighter");
+  expect(totals).not.toMatch(/2\.70|Totals sit near even/);
+  expect(totals.split(SHARED_TOTAL_XG_SENTENCE)).toHaveLength(2);
+  const lined = { ...match, pricing: attachUserLine(match.pricing, { outcome: "away", decimalOdds: 7 }) };
+  const answer = composeMatchResponse("pass or play?", lined,
+    planResponse("pass or play?", { groundingKind: "match", hasUserLine: true }));
+  expect(answer).toContain("fat-and-fragile: a large estimated price gap that is sensitive to forecast error");
+  expect(answer).toContain("Risk is high: a low chance of winning or a large price gap makes the estimate more vulnerable");
+  expect(answer).not.toMatch(/payload|grounding|JSON|Dixon.Coles|ClubElo/i);
+});

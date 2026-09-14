@@ -18,6 +18,7 @@ import {
 } from "./model-data";
 import {
   getCachedMatches,
+  getCachedMatchesForCompetition,
   getCachedSeasonSchedule,
   seasonScheduleStatus,
   FootballStanding,
@@ -80,6 +81,7 @@ import {
 } from "./pundit-consensus";
 import {
   extractPlayerEvidence,
+  recentScorerContext,
   hasTeamNewsEvidence,
   hasTrustworthyPlayerEvidence,
   PLAYER_SCORER_ABSTENTION,
@@ -3307,8 +3309,8 @@ export function shouldUseMatchGrounding(question: string): boolean {
   const normalized = normalizeTeamText(question);
   if (MATCH_FOLLOW_UP_CUES.some((cue) => normalized.includes(cue))) return true;
   // This classifies match-shaped language only. resolveAskContext separately
-  // rejects an explicitly named club outside the retained fixture before this
-  // signal may preserve context.
+  // distinguishes an unresolved club switch from a fully identified replacement
+  // before this signal may preserve context.
   const mode = planResponse(question, { groundingKind: "match" }).mode;
   return mode === "player-or-scorer"
     || mode === "lineup-counterfactual"
@@ -3328,6 +3330,29 @@ function explicitScorerClub(question: string): string | null {
   return club && !/^(?:them|us|you|it|either (?:team|side)|both teams?|this (?:team|side)|that (?:team|side)|the (?:home|away) (?:side|team)|the hosts?|the visitors?)$/i.test(club)
     ? club
     : null;
+}
+
+// A single named club requests a switch but cannot establish a replacement fixture.
+function unresolvedSwitchClub(question: string, context: TeamContext): string | null {
+  if (MATCH_CONTEXT_EXIT_PATTERNS.some((pattern) => pattern.test(normalizeTeamText(question)))) return null;
+  const scorer = explicitScorerClub(question);
+  if (scorer) return context.some((team) => normalizeTeamName(team) === normalizeTeamName(scorer)) ? null : scorer;
+  const requested = /^(?:what about|switch to|how about)\s+([\p{L}][\p{L} .’-]{1,50})[?!]?$/iu.exec(question.trim())?.[1]
+    ?? /^([\p{L}][\p{L} .’-]{1,50}?)\s+(?:odds|chances|preview)[?!]?$/iu.exec(question.trim())?.[1];
+  const namedClub = requested && getCachedModelData().fixtures.some((fixture) => [fixture.home, fixture.away]
+    .some((team) => normalizeTeamName(team) === normalizeTeamName(requested)));
+  if (requested && namedClub && !/\b(?:vs|versus|against|and|or)\b/i.test(requested)) {
+    const club = requested.replace(/[?.!]+$/, "").trim();
+    if (!context.some((team) => normalizeTeamName(team) === normalizeTeamName(club))) return club;
+  }
+  const normalized = ` ${normalizeTeamText(question).replace(/[^\p{L}\p{N} ]/gu, " ")} `;
+  const named = new Map<string, string>();
+  for (const [alias, canonical] of getTeamNameAliases()) {
+    if (normalized.includes(` ${normalizeTeamText(alias)} `)) named.set(normalizeTeamName(canonical), canonical);
+  }
+  if (named.size !== 1) return null;
+  const [canonical, label] = [...named][0];
+  return context.some((team) => normalizeTeamName(team) === canonical) ? null : label;
 }
 
 // Questions that have plainly left the followed match: standalone football
@@ -3877,7 +3902,8 @@ export function resolveAskContext(
   // It wins over the temporary legacy teamContext when both are supplied.
   if (!teams && routing.fixtureContext && (!competitionId || hasMatchOutcomeIntent(question))) {
     if (contextualTeams
-      && !leavesMatchContext(question, contextualTeams, searchableFixtures)) {
+      && (!leavesMatchContext(question, contextualTeams, searchableFixtures)
+        || unresolvedSwitchClub(question, contextualTeams) !== null)) {
       if (contextualFixture) return resolveRecognizedFixture(contextualFixture, fixtures, routing);
       if (contextualModelFixture) return { tier: "match", fixture: contextualModelFixture };
     }
@@ -3888,7 +3914,8 @@ export function resolveAskContext(
     && !competitionId
     && !routing.fixtureContext
     && teamContext
-    && !leavesMatchContext(question, teamContext, [...fixtures, ...activeFixtures])
+    && (!leavesMatchContext(question, teamContext, [...fixtures, ...activeFixtures])
+      || unresolvedSwitchClub(question, teamContext) !== null)
   ) {
     const contextualFixture = findFixture(teamContext[0], teamContext[1], fixtures);
     if (contextualFixture) return { tier: "match", fixture: contextualFixture };
@@ -7518,6 +7545,10 @@ async function settlePlayerScorerFromBundle(
   if (plan.mode !== "player-or-scorer") return null;
   const pages = await hydrateBundlePublicationDates(bundle, signal);
   const evidence = evidenceBundleForMatch(grounding, bundle, pages);
+  evidence.recentScorers = recentScorerContext(
+    getCachedMatchesForCompetition(grounding.competitionId).recent,
+    { fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date }
+  );
   const composed = composeMatchResponse(question, grounding, plan, evidence);
   const rendered = renderEvidenceCitations(
     composed,
@@ -7653,14 +7684,25 @@ export function deterministicUngroundedClarification(
   question: string,
   grounding: AskGrounding
 ): string | null {
+  const club = grounding?.kind === "match"
+    ? unresolvedSwitchClub(question, [grounding.home, grounding.away])
+    : explicitScorerClub(question);
+  if (grounding?.kind === "match" && club
+    && ![grounding.home, grounding.away].some((team) => normalizeTeamName(team) === normalizeTeamName(club))) {
+    const capability = planResponse(question, { groundingKind: "match" }).mode === "player-or-scorer"
+      ? " I don’t have player-level projections; a dated scorer market and confirmed starters would help me assess the options." : "";
+    return `I need ${club}’s opponent before I can switch fixtures. I’m keeping ${grounding.home} vs ${grounding.away} in view until then.${capability}`;
+  }
   if (grounding !== null) return null;
+  if (/\b(?:which side|that match|this match|that side)\b/i.test(question)) {
+    return "I need the two teams before I can give you a match view. Which fixture do you mean?";
+  }
   const identityFreeManagerReplacement = /\bwho\s+(?:is|will be|could be)\s+replac\w*\b[^?\n]{0,80}\b(?:the|that|this|an?)\s+(?:injured|departing|sacked|suspended|absent)\s+manager\b/i;
   if (identityFreeManagerReplacement.test(question)) {
     return "I need the manager and club before I can identify a replacement. Tell me both, and I’ll check the current evidence.";
   }
-  const club = explicitScorerClub(question);
   if (club) {
-    return `Which ${club} fixture do you mean? Name the opponent, and I’ll check the scorer market and current team news for that match.`;
+    return `I need ${club}’s opponent before I can switch fixtures. Name the opponent, and I’ll check the scorer market and current team news for that match.`;
   }
   return null;
 }
@@ -7686,7 +7728,14 @@ export function deterministicUngroundedEvidenceFollowUp(
   history: ConversationTurn[],
   grounding: AskGrounding
 ): string | null {
-  if (grounding !== null || !/\bwhat evidence would change that answer\b/i.test(question)) return null;
+  if (!/\bwhat evidence would change that answer\b/i.test(question)) return null;
+  const previousUser = [...history].reverse().find((turn) => turn.role === "user");
+  if (previousUser && planResponse(previousUser.content, { groundingKind: "match" }).mode === "player-or-scorer") {
+    const needsFixture = grounding?.kind !== "match"
+      || unresolvedSwitchClub(previousUser.content, [grounding.home, grounding.away]) !== null;
+    return `I’d need ${needsFixture ? "the fixture, " : ""}confirmed starters, expected minutes and a dated scorer market to assess the options. Recent goals alone cannot establish who is most likely to score, and I don’t have player-level projections.`;
+  }
+  if (grounding !== null) return null;
   const priorMatchAmbiguity = history.some((turn) => turn.role === "user"
     && /\b(?:that match|which side|that side)\b/i.test(turn.content));
   if (!priorMatchAmbiguity) return null;

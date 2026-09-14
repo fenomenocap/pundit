@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { buildGrounding, deliverAnswer } from "./ask";
+import { fixture as modelFixture } from "./__fixtures__/model-fixture";
+import * as footballData from "./football-data";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { composeMatchResponse, composePlayerScorerAnswer, composeTeamNewsAnswer } from "./response-composer";
 import { planResponse } from "./response-plan";
 import {
@@ -8,9 +11,13 @@ import {
   hasTeamNewsEvidence,
   hasTrustworthyPlayerEvidence,
   leadingScorerCandidate,
+  playerCapabilities,
+  recentScorerContext,
   type PlayerEvidenceSource,
   type PlayerFixtureRef,
 } from "./player-evidence";
+
+afterEach(() => vi.restoreAllMocks());
 
 const fixture: PlayerFixtureRef = {
   fixtureId: "eng.1:1",
@@ -374,4 +381,37 @@ describe("player evidence adapter", () => {
       snippet: "Anytime Goalscorer. Compare 43.49.",
     }], fixture))).toBeNull();
   });
+});
+
+
+describe("scorer capability boundaries", () => {
+  it("keeps historical scorers distinct from forecasts, news and quotes", () => {
+    const evidence = { observations: [], markets: [], recentScorers: [{ team: "Arsenal", players: ["Bukayo Saka"], matchCount: 3, throughDate: "2026-09-10", source: "ESPN" as const }] };
+    expect(playerCapabilities(evidence)).toEqual({ playerProjections: "unavailable", recentScorers: "available", teamNews: "unavailable", scorerMarket: "unavailable" });
+    const answer = composePlayerScorerAnswer({} as never, evidence);
+    expect(answer).toContain("recent scoring context");
+    expect(answer).toContain("Bukayo Saka");
+    expect(answer).toContain("not a projection or evidence that they will start");
+    expect(answer).toContain("Confirmed starters, expected minutes and a dated scorer market");
+    expect(answer).not.toMatch(/shortest-priced|most likely scorer is|JSON|grounding|payload|retrieval/i);
+  });
+  it("excludes future and unfinished fixtures from recent scorer context", () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-15T00:00:00Z"));
+    const match = { homeTeam: "Arsenal", awayTeam: "Chelsea", status: "FINISHED", score: { home: 1, away: 0 }, utcDate: "2026-09-10T12:00:00Z", scorers: [{ playerId: "1", name: "Bukayo Saka", team: "Arsenal" }] };
+    const recent = recentScorerContext([match, { ...match, status: "SCHEDULED" }, { ...match, utcDate: "2027-01-01T12:00:00Z" }] as never, fixture);
+    expect(recent).toEqual([{ team: "Arsenal", players: ["Bukayo Saka"], matchCount: 1, throughDate: "2026-09-10", source: "ESPN" }]);
+  });
+});
+
+it("delivers recent scorers safely when web evidence is unavailable", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-15T00:00:00Z"));
+  const cached = vi.spyOn(footballData, "getCachedMatchesForCompetition").mockReturnValue({ recent: [{ homeTeam: "Arsenal", awayTeam: "Chelsea", status: "FINISHED", score: { home: 1, away: 0 }, utcDate: "2026-09-10T12:00:00Z", scorers: [{ playerId: "1", name: "Bukayo Saka", team: "Arsenal" }] }], upcoming: [], standings: [], error: null } as never);
+  try {
+    const result = await deliverAnswer({ question: "Who is most likely to score?", answer: "Invented scorer ranking", tier: "match", grounding: buildGrounding(modelFixture("Arsenal", "Chelsea", { date: "2026-09-12" })), bundle: { queries: [], providerCalls: 0, results: [] }, client: {} as never, evidenceRequired: true, candidateUnrecognized: false });
+    expect(result.answer).toContain("Bukayo Saka");
+    expect(result.answer).toContain("not a projection");
+    expect(result.answer).not.toMatch(/Invented|JSON|grounding|payload|retrieval/i);
+    expect(result.citations).toEqual([]);
+    expect(result.verification.status).toBe("abstain");
+  } finally { cached.mockRestore(); }
 });
