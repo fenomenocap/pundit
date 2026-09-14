@@ -71,6 +71,8 @@ export function AgentPane() {
         "Who decides it?",
         "Projected score",
         "What are the odds",
+        "BTTS?",
+        "Over 2.5?",
         "+EV",
       ]
     : SLATE_CHIPS;
