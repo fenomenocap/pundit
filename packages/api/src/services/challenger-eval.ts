@@ -1,5 +1,7 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
+import { pairedBootstrap, utcWeekStart, type PairedBootstrap } from "./paired-bootstrap";
 import {
   loadValidatedDixonColesMleArtifact,
 } from "./challenger-registration";
@@ -16,9 +18,11 @@ import {
   FittedDixonColesTrainingRow,
   RollingOriginSplit,
   forecastFittedDixonColes,
+  fitTimeDecayedDixonColes,
   joinTrainingRows,
   loadOfflineTrainingCorpus,
   researchArtifactPath,
+  resolveOfflineTrainingMode,
 } from "./dixon-coles-mle";
 import {
   ELO_CHAMPION,
@@ -31,7 +35,7 @@ import {
  * production ledger, does not change shipped 1.35 / 42 / −0.1, and does not
  * activate production (model-data.ts still uses ELO_CHAMPION only).
  */
-export const CHALLENGER_EVAL_SCHEMA_VERSION = 1;
+export const CHALLENGER_EVAL_SCHEMA_VERSION = 2;
 export const MIN_HOLDOUT_N_FOR_PROMOTION = 40;
 export const MIN_SCORED_ORIGINS_FOR_PROMOTION = 2;
 export const CHALLENGER_EVAL_NOT_ACTIVATED =
@@ -49,6 +53,7 @@ export interface ChallengerEvalRow {
   awayGoals: number;
   homeElo: number;
   awayElo: number;
+  rankingDate: string;
 }
 
 export interface OneXTwoForecast {
@@ -57,6 +62,8 @@ export interface OneXTwoForecast {
   pAway: number;
   pOver2_5: number;
   totalXg: number;
+  pBttsYes: number;
+  scoreProbability: number;
 }
 
 export interface PairedHoldoutForecast {
@@ -66,7 +73,7 @@ export interface PairedHoldoutForecast {
   kickoff: string;
   champion: OneXTwoForecast;
   challenger: OneXTwoForecast | null;
-  challengerReason?: "missing-club-params";
+  challengerReason?: "missing-club-params" | "invalid-score-grid";
   result: "home" | "draw" | "away";
 }
 
@@ -76,7 +83,11 @@ export interface OriginMetrics {
   logLoss: number | null;
   winnerAccuracy: number | null;
   over25Brier: number | null;
+  /** Legacy per-result absolute error; not a calibration measure. */
   calibrationMae: number | null;
+  reliabilityEce: number | null;
+  bttsBrier: number | null;
+  scoreLogLoss: number | null;
 }
 
 export interface CalibrationBucket {
@@ -90,6 +101,8 @@ export interface CalibrationBucket {
 
 export interface OriginEval {
   origin: string;
+  training?: { n: number; through: string; paramsSha256: string; converged: boolean };
+  brierUncertainty?: PairedBootstrap | null;
   holdoutCount: number;
   scoredCount: number;
   uncoveredCount: number;
@@ -117,7 +130,7 @@ export interface ChallengerEvalDecision {
 export interface ChallengerEvalResult {
   status: ChallengerEvalStatus;
   reason: string;
-  schemaVersion: 1;
+  schemaVersion: 2;
   artifactSha256: string | null;
   champion: {
     id: "clubelo";
@@ -137,6 +150,7 @@ export interface ChallengerEvalResult {
   pairedForecasts: PairedHoldoutForecast[];
   decision: ChallengerEvalDecision;
   registeredChallengers: number;
+  uniqueHoldoutCount: number;
 }
 
 const HOME_PROB_BUCKETS: ReadonlyArray<{ label: string; min: number; max: number }> = [
@@ -173,6 +187,8 @@ function championForecast(row: ChallengerEvalRow): OneXTwoForecast {
     pAway: model.pAway,
     pOver2_5: model.pOver2_5,
     totalXg: lambdaHome + lambdaAway,
+    pBttsYes: model.pBttsYes,
+    scoreProbability: scoreMatrix(lambdaHome, lambdaAway)[row.homeGoals]?.[row.awayGoals] ?? 0,
   };
 }
 
@@ -184,6 +200,9 @@ function emptyMetrics(): OriginMetrics {
     winnerAccuracy: null,
     over25Brier: null,
     calibrationMae: null,
+    reliabilityEce: null,
+    bttsBrier: null,
+    scoreLogLoss: null,
   };
 }
 
@@ -196,7 +215,7 @@ function emptyBuckets(): CalibrationBucket[] {
   }));
 }
 
-function outcomeMetrics(
+export function challengerOutcomeMetrics(
   rows: readonly { forecast: OneXTwoForecast; result: "home" | "draw" | "away"; homeGoals: number; awayGoals: number }[]
 ): { metrics: OriginMetrics; buckets: CalibrationBucket[] } {
   if (rows.length === 0) {
@@ -207,6 +226,10 @@ function outcomeMetrics(
   let winnerHits = 0;
   let overBrier = 0;
   let calibrationMae = 0;
+  let bttsBrier = 0;
+  let scoreLogLoss = 0;
+  // Fixed five-bin one-vs-rest reliability across all three outcomes.
+  const reliability = Array.from({ length: 5 }, () => ({ n: 0, predicted: 0, actual: 0 }));
   const bucketHits = HOME_PROB_BUCKETS.map(() => ({ n: 0, predicted: 0, actual: 0 }));
 
   for (const row of rows) {
@@ -238,6 +261,14 @@ function outcomeMetrics(
       + Math.abs(row.forecast.pDraw - oneHot.draw)
       + Math.abs(row.forecast.pAway - oneHot.away)
     ) / 3;
+    bttsBrier += (row.forecast.pBttsYes - Number(row.homeGoals > 0 && row.awayGoals > 0)) ** 2;
+    scoreLogLoss -= Math.log(Math.max(row.forecast.scoreProbability, 1e-15));
+    for (const [p, actual] of [[row.forecast.pHome, oneHot.home], [row.forecast.pDraw, oneHot.draw], [row.forecast.pAway, oneHot.away]]) {
+      const bucket = reliability[Math.min(4, Math.floor(p * 5))];
+      bucket.n += 1;
+      bucket.predicted += p;
+      bucket.actual += actual;
+    }
     const bucketIndex = HOME_PROB_BUCKETS.findIndex((bucket) => (
       row.forecast.pHome >= bucket.min && row.forecast.pHome < bucket.max
     ));
@@ -257,6 +288,9 @@ function outcomeMetrics(
       winnerAccuracy: rounded(winnerHits / n),
       over25Brier: rounded(overBrier / n),
       calibrationMae: rounded(calibrationMae / n),
+      reliabilityEce: rounded(reliability.reduce((sum, bucket) => sum + Math.abs(bucket.predicted - bucket.actual), 0) / (3 * n)),
+      bttsBrier: rounded(bttsBrier / n),
+      scoreLogLoss: rounded(scoreLogLoss / n),
     },
     buckets: HOME_PROB_BUCKETS.map((bucket, index) => {
       const hits = bucketHits[index];
@@ -303,6 +337,7 @@ function blockedResult(reason: string, extra?: Partial<ChallengerEvalResult>): C
     pairedForecasts: extra?.pairedForecasts ?? [],
     decision: blockedDecision([reason, CHALLENGER_EVAL_NOT_ACTIVATED]),
     registeredChallengers: REGISTERED_CHALLENGERS.length,
+    uniqueHoldoutCount: 0,
   };
 }
 
@@ -322,7 +357,8 @@ export function promotionGateDecision(origins: readonly OriginEval[]): Challenge
       reasons,
     };
   }
-  const incomplete = scored.filter((origin) => origin.uncoveredCount > 0 || origin.challengerImproves !== true);
+  const incomplete = origins.filter((origin) => origin.scoredCount < MIN_HOLDOUT_N_FOR_PROMOTION
+    || origin.uncoveredCount > 0 || origin.challengerImproves !== true || origin.training?.converged !== true);
   if (incomplete.length > 0) {
     reasons.unshift(
       "challenger-does-not-beat-champion-on-all-required-origins"
@@ -336,7 +372,7 @@ export function promotionGateDecision(origins: readonly OriginEval[]): Challenge
     };
   }
   reasons.unshift(
-    "held-out Brier, log-loss, and calibration improve on every required origin; "
+    "held-out Brier, log-loss, legacy outcome MAE, and reliability improve on every required origin; "
     + "deployment remains a separate human decision"
   );
   return {
@@ -358,22 +394,28 @@ function pairHoldout(
     row.homeCanonicalName,
     row.awayCanonicalName
   );
+  const matrix = challenger ? scoreMatrix(challenger.lambdaHome, challenger.lambdaAway, artifact.params.rho) : null;
+  const validGrid = matrix !== null && matrix.every((scores) => scores.every((p) => Number.isFinite(p) && p >= 0))
+    && Math.abs(matrix.flat().reduce((sum, p) => sum + p, 0) - 1) < 1e-9;
   return {
     sourceEventId: row.sourceEventId,
     origin,
     competitionId: row.competitionId,
     kickoff: row.kickoff,
     champion: championForecast(row),
-    challenger: challenger
+    challenger: challenger && validGrid
       ? {
         pHome: challenger.pHome,
         pDraw: challenger.pDraw,
         pAway: challenger.pAway,
         pOver2_5: challenger.pOver2_5,
         totalXg: challenger.totalXg,
+        pBttsYes: challenger.pBttsYes,
+        scoreProbability: matrix![row.homeGoals]?.[row.awayGoals] ?? 0,
       }
       : null,
-    ...(challenger ? {} : { challengerReason: "missing-club-params" as const }),
+    ...(!challenger ? { challengerReason: "missing-club-params" as const }
+      : !validGrid ? { challengerReason: "invalid-score-grid" as const } : {}),
     result: winnerFromGoals(row.homeGoals, row.awayGoals),
   };
 }
@@ -406,8 +448,8 @@ function evaluateOrigin(
     homeGoals: source.homeGoals,
     awayGoals: source.awayGoals,
   }));
-  const champion = outcomeMetrics(championRows);
-  const challenger = outcomeMetrics(challengerRows);
+  const champion = challengerOutcomeMetrics(championRows);
+  const challenger = challengerOutcomeMetrics(challengerRows);
   const deltas = champion.metrics.n > 0 && challenger.metrics.n > 0
     && champion.metrics.brier != null
     && challenger.metrics.brier != null
@@ -427,9 +469,11 @@ function evaluateOrigin(
     reason = "empty-holdout";
   } else if (uncoveredCount > 0) {
     challengerImproves = false;
-    reason = "missing-club-params";
+    reason = pairs.some((pair) => pair.challengerReason === "invalid-score-grid") ? "invalid-score-grid" : "missing-club-params";
   } else if (deltas) {
-    challengerImproves = deltas.brier < 0 && deltas.logLoss < 0 && deltas.calibrationMae < 0;
+    challengerImproves = deltas.brier < 0 && deltas.logLoss < 0 && deltas.calibrationMae < 0
+      && challenger.metrics.reliabilityEce !== null && champion.metrics.reliabilityEce !== null
+      && challenger.metrics.reliabilityEce < champion.metrics.reliabilityEce;
     if (!challengerImproves) reason = "challenger-does-not-improve";
   } else {
     reason = "unavailable-metrics";
@@ -463,6 +507,7 @@ function toEvalRows(rows: readonly FittedDixonColesTrainingRow[]): ChallengerEva
     awayGoals: row.awayGoals,
     homeElo: row.homeElo,
     awayElo: row.awayElo,
+    rankingDate: row.rankingDate,
   }));
 }
 
@@ -507,21 +552,65 @@ export function evaluatePairedRollingOrigin(input: {
   }
 
   const byId = new Map(rows.map((row) => [row.sourceEventId, row]));
+  const invalid = (reason: string) => blockedResult(reason, { artifactSha256: input.artifactSha256 ?? null });
+  if (byId.size !== rows.length) return invalid("duplicate-event-id");
+  for (const row of rows) {
+    const kickoff = Date.parse(row.kickoff);
+    const ranking = Date.parse(row.rankingDate);
+    const kickoffDay = Number.isFinite(kickoff) ? Date.parse(new Date(kickoff).toISOString().slice(0, 10)) : NaN;
+    if (!Number.isFinite(kickoff) || !Number.isFinite(ranking) || ranking > kickoffDay - 86400000
+      || row.competitionId !== "eng.1" || !Number.isFinite(row.homeElo) || !Number.isFinite(row.awayElo)
+      || !Number.isInteger(row.homeGoals) || row.homeGoals < 0 || !Number.isInteger(row.awayGoals) || row.awayGoals < 0) {
+      return invalid("invalid-or-lookahead-row-date");
+    }
+  }
   const origins: OriginEval[] = [];
   const pairedForecasts: PairedHoldoutForecast[] = [];
+  if (new Set(splits.map((split) => Date.parse(split.origin))).size !== splits.length) return invalid("duplicate-origin");
   for (const split of splits) {
-    const holdout = split.holdoutEventIds.flatMap((id) => {
-      const row = byId.get(id);
-      return row ? [row] : [];
+    const originMs = Date.parse(split.origin);
+    if (!Number.isFinite(originMs)) return invalid("invalid-origin");
+    const ids = [...split.trainEventIds, ...split.holdoutEventIds];
+    if (new Set(ids).size !== ids.length || ids.length !== rows.length || ids.some((id) => !byId.has(id))) {
+      return invalid("incomplete-or-overlapping-split");
+    }
+    const train = split.trainEventIds.map((id) => byId.get(id)!)
+      .sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff));
+    const holdout = split.holdoutEventIds.map((id) => byId.get(id)!);
+    if (train.some((row) => Date.parse(row.kickoff) >= originMs)
+      || holdout.some((row) => Date.parse(row.kickoff) < originMs)) return invalid("split-lookahead");
+    if (train.length === 0) return invalid("empty-origin-training");
+    if (train.some((row) => Date.parse(row.kickoff) > originMs - 86400000)) {
+      return invalid("split-result-availability-lag");
+    }
+    // Only hyperparameters come from the registered artifact. Never reuse its
+    // full-corpus fitted parameters, club universe, or outcome-derived priors.
+    const fit = fitTimeDecayedDixonColes(train, {
+      timeDecayXi: input.artifact.params.timeDecayXi,
+      clubEloPriorStrength: input.artifact.params.clubEloPriorStrength,
     });
-    const evaluated = evaluateOrigin(split.origin, holdout, input.artifact);
+    const evaluated = evaluateOrigin(split.origin, holdout, { ...input.artifact, params: fit.params });
+    evaluated.eval.training = { n: train.length, through: train[train.length - 1].kickoff,
+      paramsSha256: createHash("sha256").update(JSON.stringify(fit.params)).digest("hex"), converged: fit.converged };
+    if (!fit.converged && holdout.length > 0) {
+      evaluated.eval.challengerImproves = false;
+      evaluated.eval.reason = "origin-fit-not-converged";
+    }
+    const brier = (p: OneXTwoForecast, result: PairedHoldoutForecast["result"]) => (
+      (p.pHome - Number(result === "home")) ** 2 + (p.pDraw - Number(result === "draw")) ** 2
+      + (p.pAway - Number(result === "away")) ** 2
+    );
+    evaluated.eval.brierUncertainty = pairedBootstrap(evaluated.pairs.filter((pair) => pair.challenger).map((pair) => ({
+      block: utcWeekStart(pair.kickoff), champion: brier(pair.champion, pair.result),
+      challenger: brier(pair.challenger!, pair.result),
+    })));
     origins.push(evaluated.eval);
     pairedForecasts.push(...evaluated.pairs);
   }
 
   return {
     status: "evaluated",
-    reason: "paired-rolling-origin",
+    reason: "refitted-paired-rolling-origin",
     schemaVersion: CHALLENGER_EVAL_SCHEMA_VERSION,
     artifactSha256: input.artifactSha256 ?? null,
     champion: {
@@ -542,6 +631,7 @@ export function evaluatePairedRollingOrigin(input: {
     pairedForecasts,
     decision: promotionGateDecision(origins),
     registeredChallengers: REGISTERED_CHALLENGERS.length,
+    uniqueHoldoutCount: new Set(pairedForecasts.map((pair) => pair.sourceEventId)).size,
   };
 }
 
@@ -552,7 +642,7 @@ function atomicWrite(filePath: string, value: string): void {
   fs.renameSync(temp, filePath);
 }
 
-export function evaluatePairedRollingOriginFromDataDir(dataDir: string): ChallengerEvalResult {
+function evaluateFromDataDir(dataDir: string): ChallengerEvalResult {
   const loaded = loadValidatedDixonColesMleArtifact(dataDir);
   if (!loaded.ok) {
     return blockedResult(loaded.reason);
@@ -568,6 +658,12 @@ export function evaluatePairedRollingOriginFromDataDir(dataDir: string): Challen
       },
     });
   }
+  const eligibility = resolveOfflineTrainingMode(corpus.corpus);
+  if (!eligibility.ok) return blockedResult(eligibility.reason);
+  if (loaded.artifact.training.clubHistoryDatasetSha256 !== corpus.corpus.clubHistoryDatasetSha256
+    || loaded.artifact.training.preKickoffEloDatasetSha256 !== corpus.corpus.preKickoffEloDatasetSha256) {
+    return blockedResult("artifact-corpus-hash-mismatch");
+  }
   const rows = toEvalRows(joinTrainingRows(corpus.corpus.fixtures, corpus.corpus.preKickoffRows));
   const result = evaluatePairedRollingOrigin({
     artifact: loaded.artifact,
@@ -577,6 +673,11 @@ export function evaluatePairedRollingOriginFromDataDir(dataDir: string): Challen
       ? loaded.artifact.training.splitManifest
       : undefined,
   });
+  return result;
+}
+
+export function evaluatePairedRollingOriginFromDataDir(dataDir: string): ChallengerEvalResult {
+  const result = evaluateFromDataDir(dataDir);
   const reportPath = researchArtifactPath(dataDir, "dixon-coles-mle/eval-report.json");
   atomicWrite(reportPath, `${JSON.stringify(result, null, 2)}\n`);
   return result;

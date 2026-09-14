@@ -61,3 +61,4 @@ packages/api/data/research/dixon-coles-mle/
 # calibration. Never treat these as the in-repo evaluation seed, and never write
 # calibration output back to PUNDIT_DATA_DIR=/data.
 packages/api/data/research/champion-calibration/ledgers/
+packages/api/data/research/champion-calibration/reports/

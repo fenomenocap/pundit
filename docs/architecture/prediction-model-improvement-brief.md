@@ -1,7 +1,9 @@
 # Prediction-model improvement brief
 
-**Status:** Working analysis plus in-progress `feat/fundamental-phase2` implementation. Production `main` still has Phase 0 only until this branch ships.  
-**Dates:** Engine diagnosis 2026-08-21 · SIRE comparison 2026-08-22 · Next-action decision 2026-08-24 · Phase 2 restore 2026-09-14  
+> **Current evaluation: [2026-09-15 completed review](./prediction-model-review-2026-09-15.md).** The September 14 challenger figures below are invalid as holdout evidence because the evaluator reused full-corpus fitted parameters. Sections describing the geometric mapping, an empty challenger registry, or a plain-Poisson season simulator preserve the historical diagnosis; they are not current implementation instructions.
+
+**Status:** Diagnosis preserved. Production `main` (`7a5df13`) has Phase 0, a sealing 90-minute ledger, Phase 1 calibrator (`productionAutoLoad: false`), a registered-not-activated fitted Dixon–Coles challenger, and labelled Consensus. Do not remake Phase 0. Do not activate the challenger unless a human says **promote**.
+**Dates:** Engine diagnosis 2026-08-21 · SIRE comparison 2026-08-22 · Next-action decision 2026-08-24 · Phase 2 restore 2026-09-14 · Live-ledger Phase 1 2026-09-14
 **Regression example:** Hull City vs Manchester United (golden fixture `401879322`)
 
 Any later plan or implementation must take this whole brief into account. Do not restart the diagnosis from a blank slate. Do not “improve the model” in a way that contradicts the constraints below.
@@ -190,14 +192,14 @@ They then argue traditional models are “noise,” pivot to LLM “orthogonal s
 | Layer | SIRE | Pundit now |
 |---|---|---|
 | Purpose | +EV, Kelly, aVault | Fair `1/p` analysis |
-| Elo | 1X2 from rating gap | ClubElo pin + geometric λ (the defect) |
-| Dixon–Coles | Fitted attack/defence | Elo→goals + ρ garnish |
+| Elo | 1X2 from rating gap | ClubElo pin + **fixed-total** λ (geometric defect retired) |
+| Dixon–Coles | Fitted attack/defence | Registered MLE challenger; champion still Elo→goals + ρ |
 | Market | Feature inside the meta | Comparison-only no-vig |
-| Ensemble | Meta Pairwise / Logistic | Named Consensus, not built |
+| Ensemble | Meta Pairwise / Logistic | Named Consensus, labelled, λ-refit |
 | Multi-source | LLM + PnL packet weights | Typed contributor + sealed ledger + human promotion |
 | LLM | Generates / fuses forecasts | MiniMax for current prose; complete match answers bypass it |
-| Evaluation | Bankroll, ROI, live PnL | Brier / log-loss / calibration; in-repo club-season ledger empty |
-| Train data | Implied years of top-5 leagues | PL corpus gate passed; chronological ClubElo blocked; UCL incomplete |
+| Evaluation | Bankroll, ROI, live PnL | Brier / log-loss / calibration; Railway ledger sealing |
+| Train data | Implied years of top-5 leagues | Last-known-before-kickoff ClubElo; UCL incomplete |
 
 Pundit already has the **responsible** version of their architecture. `docs/architecture/multi-source-model-foundation.md` already lists SIRE-shaped ideas as **explicit non-goals**: no LLM probabilities, no PnL-only promotion, no autonomous champion switch, no betting execution, no new DB.
 
@@ -206,7 +208,7 @@ Pundit already has the **responsible** version of their architecture. `docs/arch
 - Does **not** replace Phase 0. Does **not** justify delaying the mapping fix for an LLM.
 - Sharpens Phase 2 as “their Dixon–Coles.” Optional Davidson; Sarmanov later.
 - Phase 3 Consensus ≈ Meta Pairwise **with a label**. Their +33% story is the exhibit for why Consensus must stay a second number.
-- Empty club-season volume is the live-eval gap, not a missing LLM.
+- Club-season volume is now a live Railway ledger, not a missing LLM. Do not treat the empty in-repo seed as production evidence.
 
 ---
 
@@ -271,7 +273,7 @@ Do not start fitted Dixon–Coles, Davidson, Sarmanov, Consensus blending, injur
 
 - Do **not** scrape live ClubElo at runtime. Refresh via reviewed release artifacts on a 7-day post–game-week cadence (`refresh:clubelo-snapshot`). `/ready` `ratingsRefreshDue` warns at 7 days; the 30-day gate still fails closed.
 - Do **not** put injuries/lineups into the numeric model without a dated sourced feature feed. Chat already handles that in prose.
-- Do **not** add Asian lines / player props on top of the current geometric mapping; they inherit blowout bias.
+- Do **not** add Asian lines / player props that inherit a blowout-biased mapping. Phase 0 removed the geometric inflation; do not reintroduce it.
 - Do **not** sneak around the golden cutover; replace it when Phase 0 lands.
 - Preserve exact public capability reasons and deterministic grounded-response contracts.
 - Fair odds in user-facing copy are `1/p`, not a juiced book.
@@ -284,9 +286,9 @@ Do not start fitted Dixon–Coles, Davidson, Sarmanov, Consensus blending, injur
 
 The product shell is ahead of the maths. Hull vs United shows why: a real 340-Elo gap is turned into **4.1 xG and a 1.10 favourite**. SIRE confirms the missing maths is fitted 1X2 (Davidson) and fitted goals (real DC, later Sarmanov), and that markets belong in a **labelled** ensemble, not the champion.
 
-**Shipped on `main`:** Phase 0 fixed-total 2.70. Shipped constants remain 1.35 / 42 / −0.1.
+**Shipped on `main` (`7a5df13`, Railway + Vercel):** Phase 0 fixed-total 2.70; leftovers (season-sim samples the DC grid; Fundamental version `"2"`; desk uses server Over 2.5); 90-minute ledger seal with 15-minute checkpoint; offline Phase 1b calibrator (`productionAutoLoad: false`); labelled Consensus that refits λ; fail-closed fitted Dixon–Coles challenger trained on **760/760** PL fixtures. Pre-kickoff ClubElo uses the last published From/To window on or before the UTC day before kickoff — ClubElo's own number, not an interpolation, and never a later snapshot. Artifact `dixon-coles-mle@4cfcbe57…`. Rolling-origin eval (1146 paired forecasts) does **not** recommend promotion: challenger Brier 0.586 vs 0.621 on 2025-01-01, but it does not beat the champion on every required origin.
 
-**On `feat/fundamental-phase2`:** leftovers (season-sim samples the DC grid; Fundamental version `"2"`; desk uses server Over 2.5), ledger 15-minute checkpoint + football-cadence seal, offline Phase 1b calibrator (`productionAutoLoad: false`), labelled Consensus that refits λ, and a fail-closed fitted Dixon–Coles challenger trained on **760/760** PL fixtures. Pre-kickoff ClubElo uses the last published From/To window on or before the UTC day before kickoff — ClubElo's own number, not an interpolation, and never a later snapshot. Artifact `dixon-coles-mle@4cfcbe57…`. Rolling-origin eval (1146 paired forecasts) does **not** recommend promotion: challenger Brier 0.586 vs 0.621 on 2025-01-01, but it does not beat the champion on every required origin.
+**Live ledger Phase 1 (2026-09-14):** Railway `/api/evaluation/club-season` had 53 official `scheduled_window` rows (39 PL, 14 UCL quals) plus 8 excluded legacy post-kickoff seals. Fit on those official Elos: 1.40 / 0 / −0.115. Shipped recomputed Brier **0.668** vs fitted **0.666** — not a clear win, PL n below 40, bootstrap ΔBrier does not exclude 0. **Do not change shipped 1.35 / 42 / −0.1.** Re-run after more official PL seals. Active cache is already `modelVersion: "2"`; the next 90-minute window (Leeds–Newcastle 2026-09-14T19:00Z) is the first version-`"2"` seal candidate.
 
 **Promotion:** rolling-origin eval can recommend; `activateProduction` stays false until a human decision. Production `model-data.ts` still calls `ELO_CHAMPION` only.
 

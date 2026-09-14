@@ -109,6 +109,16 @@ function establishedFixtures(): {
 }
 
 describe("fitted Dixon-Coles trainer", () => {
+  it("does not report an invalid initial likelihood as zero-step convergence", () => {
+    const kickoff = "2025-01-01T14:00:00Z";
+    const rows = joinTrainingRows([historyFixture("extreme", kickoff, 1, 0)],
+      [eloRow("extreme", kickoff, "Hull", "Man United", 1000, 5000)]);
+    const fit = fitTimeDecayedDixonColes(rows, { maxIterations: 5 });
+    expect(Number.isFinite(fit.logLikelihood)).toBe(true);
+    expect(fit.iterations).toBeGreaterThan(0);
+    expect(fit.converged).toBe(false);
+  });
+
   it("fails closed without research artifacts and does not invent parameters", () => {
     const result = trainFittedDixonColes({});
     expect(result.status).toBe("blocked");

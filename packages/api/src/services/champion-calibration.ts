@@ -19,7 +19,16 @@ import {
   MarketComparisonObservation,
   migrateClubSeasonEvaluationArtifact,
   officialClubSeasonExclusionReason,
+  PRE_KICKOFF_CHECKPOINT_POLICY_ID,
 } from "./club-season-snapshots";
+import {
+  DEFAULT_BOOTSTRAP_DRAWS,
+  MIN_BOOTSTRAP_DRAWS,
+  MIN_BOOTSTRAP_BLOCKS,
+  pairedBootstrap,
+  utcWeekStart,
+  type PairedBootstrap,
+} from "./paired-bootstrap";
 import { getRepoDataDir, readJsonFile, resolveDataPath, resolveRepoDataPath } from "./persistent-store";
 
 /**
@@ -27,7 +36,9 @@ import { getRepoDataDir, readJsonFile, resolveDataPath, resolveRepoDataPath } fr
  * grid). Does not write dixon-coles.ts, does not auto-load in production, and
  * does not register a challenger.
  */
-export const CHAMPION_CALIBRATION_SCHEMA_VERSION = 1;
+export const CHAMPION_CALIBRATION_SCHEMA_VERSION = 2;
+export const MIN_CALIBRATION_TRAIN_N = 20;
+export const MIN_CALIBRATION_HOLDOUT_N = 40;
 export const CHAMPION_CALIBRATION_METHOD_ID = "clubelo-fixed-total-dixon-coles-calibrated" as const;
 export const PRODUCTION_OFFICIAL_N_TARGET = 44;
 export const MIN_PL_N_TO_RECOMMEND_SHIP = 40;
@@ -84,12 +95,21 @@ export interface MarketComparisonMetrics {
   market: { brier: number | null; logLoss: number | null };
 }
 
-export interface FittedConstantsUncertainty {
-  baseGoals: { p10: number; p50: number; p90: number };
-  homeAdvantageElo: { p10: number; p50: number; p90: number };
-  rho: { p10: number; p50: number; p90: number };
-  mismatchInflation: { p10: number; p50: number; p90: number };
-  deltaBrierVsShipped: { p10: number; p50: number; p90: number };
+export interface ChronologicalCalibration {
+  method: "expanding-utc-week";
+  minimumTrainN: number;
+  minimumHoldoutN: number;
+  resultLagHours: 24;
+  folds: Array<{
+    origin: string;
+    trainN: number;
+    trainThrough: string;
+    holdoutIds: string[];
+    constants: ChampionConstants;
+  }>;
+  shipped: OutcomeMetrics;
+  fitted: OutcomeMetrics;
+  uncertainty: PairedBootstrap | null;
 }
 
 export interface ChampionCalibrationDecision {
@@ -117,7 +137,8 @@ export interface ChampionCalibrationConfig {
 }
 
 export interface ChampionCalibrationReport {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  validation: ChronologicalCalibration;
   builtAt: string;
   methodId: typeof CHAMPION_CALIBRATION_METHOD_ID;
   ledger: {
@@ -128,6 +149,7 @@ export interface ChampionCalibrationReport {
     rowCount: number;
     officialN: number;
     officialWithResultN: number;
+    excludedCheckpointPolicyN: number;
     premierLeagueN: number;
     uclQualN: number;
     excluded: ReturnType<typeof countExclusions>;
@@ -140,7 +162,6 @@ export interface ChampionCalibrationReport {
     aic: number;
     nestedNoInflation: { constants: ChampionConstants; nll: number; aic: number };
     uclBaseGoals: "frozen" | "fitted";
-    uncertainty: FittedConstantsUncertainty | null;
     fitCompetitionIds: string[];
   };
   metrics: {
@@ -220,6 +241,8 @@ export function officialCalibrationRows(
 ): ClubSeasonSnapshotFixture[] {
   return artifact.fixtures.filter((fixture) => (
     officialClubSeasonExclusionReason(fixture) === null && fixture.result !== null
+    && fixture.checkpointPolicyId === PRE_KICKOFF_CHECKPOINT_POLICY_ID
+    && fixture.checkpointReason === "scheduled_window"
   ));
 }
 
@@ -721,68 +744,53 @@ function fitSharedConstants(
     : fromShipped;
 }
 
-function lcg(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-    return state / 0x100000000;
-  };
-}
-
-function resample<T>(rows: readonly T[], random: () => number): T[] {
-  const sample: T[] = [];
-  for (let index = 0; index < rows.length; index += 1) {
-    sample.push(rows[Math.floor(random() * rows.length)]!);
-  }
-  return sample;
-}
-
-function percentile(values: number[], p: number): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor(p * (sorted.length - 1))));
-  return rounded(sorted[index]!, 4);
-}
-
-function bootstrapUncertainty(
+/** Refit only on completed prior weeks; no same-day outcomes enter a fold. */
+export function chronologicalCalibration(
   rows: readonly ClubSeasonSnapshotFixture[],
-  fitted: ChampionConstants,
-  shippedBrier: number | null,
-  draws: number,
-  seed: number
-): FittedConstantsUncertainty | null {
-  if (draws <= 0 || rows.length === 0) return null;
-  const random = lcg(seed);
-  const baseGoals: number[] = [];
-  const homeAdvantageElo: number[] = [];
-  const rho: number[] = [];
-  const mismatchInflation: number[] = [];
-  const deltaBrier: number[] = [];
-  for (let draw = 0; draw < draws; draw += 1) {
-    const sample = resample(rows, random);
-    const constants = fitSharedConstants(sample, {
-      fitInflation: fitted.mismatchInflation > 0,
-      start: fitted,
-      search: "local",
-    });
-    baseGoals.push(constants.baseGoals);
-    homeAdvantageElo.push(constants.homeAdvantageElo);
-    rho.push(constants.rho);
-    mismatchInflation.push(constants.mismatchInflation);
-    const brier = metricsFromConstants(sample, constants).brier;
-    if (brier !== null && shippedBrier !== null) deltaBrier.push(brier - shippedBrier);
+  draws = DEFAULT_BOOTSTRAP_DRAWS,
+  seed = 20260915
+): ChronologicalCalibration {
+  const pl = rows.filter((row) => row.competitionId === PREMIER_LEAGUE_COMPETITION_ID)
+    .sort((a, b) => Date.parse(a.utcDate) - Date.parse(b.utcDate));
+  if (new Set(pl.map((row) => row.forecastId)).size !== pl.length) {
+    throw new Error("Duplicate forecast ID in chronological calibration.");
   }
-  const spread = (values: number[]) => ({
-    p10: percentile(values, 0.1),
-    p50: percentile(values, 0.5),
-    p90: percentile(values, 0.9),
-  });
+  const forecasts = new Map<ClubSeasonSnapshotFixture, ReturnType<typeof forecastWithConstants>>();
+  const heldout: ClubSeasonSnapshotFixture[] = [];
+  const folds: ChronologicalCalibration["folds"] = [];
+  for (const origin of [...new Set(pl.map((row) => utcWeekStart(row.utcDate)))].sort()) {
+    // Ledger result-availability timestamps are absent. A full UTC-day lag is
+    // conservative for regulation-time PL games; report this replay assumption.
+    const cutoff = Date.parse(origin) - 86400000;
+    const train = pl.filter((row) => Date.parse(row.utcDate) < cutoff);
+    if (train.length < MIN_CALIBRATION_TRAIN_N) continue;
+    const test = pl.filter((row) => utcWeekStart(row.utcDate) === origin);
+    const nested = fitSharedConstants(train, { fitInflation: false });
+    const inflated = fitSharedConstants(train, { fitInflation: true, start: nested });
+    const constants = aic(scoreNegativeLogLikelihood(train, inflated), 4)
+      < aic(scoreNegativeLogLikelihood(train, nested), 3) ? inflated : nested;
+    folds.push({ origin, trainN: train.length, trainThrough: train[train.length - 1].utcDate,
+      holdoutIds: test.map((row) => row.forecastId), constants });
+    for (const row of test) {
+      forecasts.set(row, forecastWithConstants(row, constants));
+      heldout.push(row);
+    }
+  }
+  const brier = (row: ClubSeasonSnapshotFixture, forecast: ReturnType<typeof forecastWithConstants>) => (
+    (forecast.pHome - Number(row.result!.winner === "home")) ** 2
+    + (forecast.pDraw - Number(row.result!.winner === "draw")) ** 2
+    + (forecast.pAway - Number(row.result!.winner === "away")) ** 2
+  );
   return {
-    baseGoals: spread(baseGoals),
-    homeAdvantageElo: spread(homeAdvantageElo),
-    rho: spread(rho),
-    mismatchInflation: spread(mismatchInflation),
-    deltaBrierVsShipped: spread(deltaBrier),
+    method: "expanding-utc-week", minimumTrainN: MIN_CALIBRATION_TRAIN_N,
+    minimumHoldoutN: MIN_CALIBRATION_HOLDOUT_N, resultLagHours: 24, folds,
+    shipped: metricsFromConstants(heldout, SHIPPED_CHAMPION_CONSTANTS),
+    fitted: outcomeMetrics(heldout, (row) => forecasts.get(row)!),
+    uncertainty: pairedBootstrap(heldout.map((row) => ({
+      block: utcWeekStart(row.utcDate),
+      champion: brier(row, forecastWithConstants(row, SHIPPED_CHAMPION_CONSTANTS)),
+      challenger: brier(row, forecasts.get(row)!),
+    })), draws, seed),
   };
 }
 
@@ -824,7 +832,8 @@ function decide(input: {
   fittedMetrics: OutcomeMetrics;
   nestedAic: number;
   fittedAic: number;
-  uncertainty: FittedConstantsUncertainty | null;
+  validation: ChronologicalCalibration;
+  usedDocumentedSample: boolean;
 }): ChampionCalibrationDecision {
   const reasons: string[] = [
     "Production dixon-coles.ts constants were not changed by this offline report.",
@@ -841,25 +850,25 @@ function decide(input: {
   if (!brierImproved) {
     reasons.push("Fitted 1X2 Brier is not clearly better than shipped 1.35/42/−0.1.");
   }
-  const deltaExcludesZero = input.uncertainty !== null
-    && input.uncertainty.deltaBrierVsShipped.p90 < 0;
-  if (input.uncertainty && !deltaExcludesZero) {
-    reasons.push("Bootstrap 10–90% interval on ΔBrier vs shipped does not lie entirely below 0.");
-  }
-  if (input.fittedAic + 1e-9 >= input.nestedAic && input.fitted.mismatchInflation > 0) {
-    reasons.push("Fitted mismatch inflation does not improve AIC over the kappa=0 nested model.");
-  }
-  reasons.push(
-    `Production target remains n=${PRODUCTION_OFFICIAL_N_TARGET} official scheduled_window rows on Railway (PUNDIT_DATA_DIR=/data).`
-  );
+  const heldout = input.validation;
+  const interval = heldout.uncertainty;
+  const adequateHoldout = heldout.fitted.n >= MIN_CALIBRATION_HOLDOUT_N;
+  const adequateBootstrap = interval !== null && interval.draws >= MIN_BOOTSTRAP_DRAWS
+    && interval.blockCount >= MIN_BOOTSTRAP_BLOCKS;
+  const heldoutImproved = interval !== null && interval.meanDelta < -0.005;
+  const deltaExcludesZero = interval !== null && interval.p90 < 0;
+  if (!adequateHoldout) reasons.push(`Chronological PL holdout n=${heldout.fitted.n}; need ${MIN_CALIBRATION_HOLDOUT_N}.`);
+  if (!adequateBootstrap) reasons.push(`Need at least ${MIN_BOOTSTRAP_DRAWS} paired bootstrap draws and ${MIN_BOOTSTRAP_BLOCKS} held-out UTC weeks; missing uncertainty cannot pass.`);
+  if (!heldoutImproved) reasons.push("Held-out 1X2 Brier does not improve by more than 0.005.");
+  if (!deltaExcludesZero) reasons.push("Held-out paired bootstrap 10–90% interval on ΔBrier does not lie entirely below 0.");
+  if (input.usedDocumentedSample) reasons.push("Documented sample is demonstration data, never production-change evidence.");
+  const inflationAllowed = input.fitted.mismatchInflation === 0 || input.fittedAic + 1e-9 < input.nestedAic;
+  if (!inflationAllowed) reasons.push("Mismatch inflation does not improve AIC over the nested model.");
+  if (input.fitted.homeAdvantageElo === 0) reasons.push("Zero home advantage requires investigation; do not ship this fit.");
   const recommendProductionChange = input.premierLeagueN >= MIN_PL_N_TO_RECOMMEND_SHIP
-    && brierImproved
-    && (input.uncertainty === null || deltaExcludesZero);
-  if (recommendProductionChange) {
-    reasons.unshift(
-      "Fit is better on this sample, but production still does not auto-load the config; a human must copy constants."
-    );
-  }
+    && brierImproved && adequateHoldout && adequateBootstrap && heldoutImproved && deltaExcludesZero
+    && !input.usedDocumentedSample && inflationAllowed && input.fitted.homeAdvantageElo > 0;
+  if (recommendProductionChange) reasons.unshift("Chronological replay passes; prospective confirmation and a human release decision remain required.");
   return {
     recommendProductionChange,
     changeShippedConstants: false,
@@ -924,14 +933,8 @@ export function calibrateChampion(options: CalibrateChampionOptions = {}): Champ
   const shippedMetrics = metricsFromConstants(rows, SHIPPED_CHAMPION_CONSTANTS);
   const fittedMetrics = metricsFromConstants(rows, fitted);
   const publishedMetrics = metricsFromPublished(rows);
-  const bootstrapDraws = options.bootstrapDraws ?? 0;
-  const uncertainty = bootstrapUncertainty(
-    fitRows,
-    shared,
-    metricsFromConstants(fitRows, SHIPPED_CHAMPION_CONSTANTS).brier,
-    bootstrapDraws,
-    options.bootstrapSeed ?? 20260909
-  );
+  const validation = chronologicalCalibration(rows, options.bootstrapDraws ?? DEFAULT_BOOTSTRAP_DRAWS,
+    options.bootstrapSeed ?? 20260915);
   const mappingCounts = { geometricMeanLambdas: 0, fixedTotal: 0, neither: 0 };
   for (const fixture of rows) mappingCounts[classifyPublishedMapping(fixture)] += 1;
 
@@ -962,7 +965,8 @@ export function calibrateChampion(options: CalibrateChampionOptions = {}): Champ
     fittedMetrics,
     nestedAic,
     fittedAic: inflationAic < nestedAic ? inflationAic : nestedAic,
-    uncertainty,
+    validation,
+    usedDocumentedSample: resolved.usedDocumentedSample,
   });
   const shownPath = displayLedgerPath(resolved.path);
   const config = buildConfig(fitted, {
@@ -976,6 +980,7 @@ export function calibrateChampion(options: CalibrateChampionOptions = {}): Champ
 
   return {
     schemaVersion: CHAMPION_CALIBRATION_SCHEMA_VERSION,
+    validation,
     builtAt: new Date().toISOString(),
     methodId: CHAMPION_CALIBRATION_METHOD_ID,
     ledger: {
@@ -988,6 +993,10 @@ export function calibrateChampion(options: CalibrateChampionOptions = {}): Champ
         (fixture) => officialClubSeasonExclusionReason(fixture) === null
       ).length,
       officialWithResultN: rows.length,
+      excludedCheckpointPolicyN: resolved.artifact.fixtures.filter((fixture) => (
+        officialClubSeasonExclusionReason(fixture) === null
+        && (fixture.checkpointPolicyId !== PRE_KICKOFF_CHECKPOINT_POLICY_ID || fixture.checkpointReason !== "scheduled_window")
+      )).length,
       premierLeagueN: premierLeague.length,
       uclQualN: ucl.length,
       excluded: countExclusions(resolved.artifact.fixtures),
@@ -1010,7 +1019,6 @@ export function calibrateChampion(options: CalibrateChampionOptions = {}): Champ
         aic: rounded(nestedAic, 4),
       },
       uclBaseGoals,
-      uncertainty,
       fitCompetitionIds: [...new Set(fitRows.map((row) => row.competitionId))],
     },
     metrics: {
@@ -1050,6 +1058,7 @@ export function formatCalibrationMarkdown(report: ChampionCalibrationReport): st
     `- Path: \`${report.ledger.path}\``,
     `- Used documented sample: **${report.ledger.usedDocumentedSample ? "yes" : "no"}**`,
     `- Rows: ${report.ledger.rowCount} · official with result: **${report.ledger.officialWithResultN}** (PL ${report.ledger.premierLeagueN}, UCL quals ${report.ledger.uclQualN})`,
+    `- Excluded outside scheduled checkpoint policy: ${report.ledger.excludedCheckpointPolicyN}`,
     `- Excluded: ${report.ledger.excluded.total} (legacy ${report.ledger.excluded.byReason.legacyPartialProvenance}, incomplete ${report.ledger.excluded.byReason.incompleteInputProvenance}, post-kickoff ${report.ledger.excluded.byReason.postKickoffForecast})`,
     `- Published sealed mapping: geometric ${report.ledger.publishedMappingCounts.geometricMeanLambdas}, fixed-total ${report.ledger.publishedMappingCounts.fixedTotal}, neither ${report.ledger.publishedMappingCounts.neither}`,
     `- Production target: **n=${report.ledger.productionOfficialNTarget}** official \`scheduled_window\` rows on Railway (\`${report.ledger.productionDataDirHint}\`). Do not treat the in-repo seed as truth.`,
@@ -1074,6 +1083,14 @@ export function formatCalibrationMarkdown(report: ChampionCalibrationReport): st
     metricRow("Published sealed (historical)", report.metrics.publishedSealed),
     "",
     "Published sealed rows may still be the pre–Phase 0 geometric mapping. Shipped recomputed is the current champion on the same pre-kickoff Elos.",
+    "",
+    "## Chronological validation (PL only)",
+    "",
+    "Expanding weekly refits use only earlier results with a 24-hour kickoff lag. Historical replay, not a prospective seal of fitted constants. Final full-sample fit metrics above are descriptive only.",
+    "",
+    `- Held-out matches: ${report.validation.fitted.n}; folds: ${report.validation.folds.length}`,
+    `- Held-out Brier: shipped ${report.validation.shipped.brier}, fitted ${report.validation.fitted.brier}`,
+    `- Paired UTC-week bootstrap: ${JSON.stringify(report.validation.uncertainty)}`,
     "",
     "## vs market no-vig (when `marketComparisons` exist)",
     "",
