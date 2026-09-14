@@ -3249,3 +3249,22 @@ test("certification rejects internal ambiguity copy and requires a useful totals
     { expectTotalsHonesty: true }
   ).passed, false);
 });
+
+test("direct-answer gate accepts the missing-opponent clarification without admitting process preambles", () => {
+  for (const club of ["Liverpool", "Manchester City"]) {
+    for (const apostrophe of ["'", "’"]) {
+      const answer = `I need ${club}${apostrophe}s opponent before I can switch fixtures. I’m keeping Leeds vs Newcastle in view until then. I don’t have player-level projections; a dated scorer market and confirmed starters would help me assess the options.`;
+      assert.equal(validateAnalystExpression(answer, {
+        expectDirectAnswer: true, expectAnalystVoice: true,
+        expectCannotReprice: true, expectNoUnsupportedScorerInference: true,
+      }).passed, true);
+    }
+  }
+  for (const answer of ["I need to explain the analysis before answering.", "I need more time to look at the match."]) {
+    assert.equal(validateAnalystExpression(answer, { expectDirectAnswer: true }).passed, false);
+  }
+  const unsafe = "I need Liverpool’s opponent before I can switch fixtures. Salah is the most likely scorer because Liverpool are 77.6% to win.";
+  assert.equal(validateAnalystExpression(unsafe, {
+    expectDirectAnswer: true, expectNoUnsupportedScorerInference: true,
+  }).passed, false);
+});

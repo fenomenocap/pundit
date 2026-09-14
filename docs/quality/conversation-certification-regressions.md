@@ -26,3 +26,13 @@ Targeted tests must first reproduce the observed failures, then pass alongside t
 The initial full browser run exposed old fixture-ID and edge-label expectations (34 passed, two failed). Expectations now assert canonical IDs and the required plain-language definitions; the next complete run passed all 37 tests. The shared UI totals sentence was updated as well as API copy. No forecast mathematics or assertion of numerical provenance was loosened.
 
 Production release remains pending explicit approval to push and deploy the final commit to Railway and Vercel, then run one paced Schema-17 evaluation, the cooldown-bound browser capture, a critic and finalization. Local evidence cannot guarantee live search availability, provider prose quality or that the evaluated fixture remains in the active window.
+
+## Authorized production attempt: interrupted
+
+The user approved SHA `0224c955d2bfcf2a832b18f67ab6ab03c7ad8e2e`. It was fast-forwarded to `main`; Railway deployment `2bdab572-d9d6-48d0-b06f-e998319a99ec` reached SUCCESS and both production version endpoints matched. Production verification and remote CI passed.
+
+One paced evaluation began at `2026-09-14T17:45:42.293Z`. During it, an external `main` change (`4784eefbe7ebcabba0c874fe272575a786046a2b`, PR #186) triggered replacement deployment `3667ff8c-86f4-47be-87e7-b95fc9886902`. The approved container stopped at `17:49:43.819Z`; subsequent team-news/scorer requests received three 502 responses. Once the changed version was confirmed, this task terminated its evaluator. The checkpoint records 42 scenarios and 25 request starts, with minimum observed spacing 13,025.78 ms. It is incomplete, not certified. No browser chat capture, retry or backfill followed.
+
+The captured golden-path third-club answer correctly retains Leeds–Newcastle and requests Liverpool’s opponent. A local reproduction identified a separate evaluator false negative: the direct-answer opening whitelist excluded this exact intentional clarification. The follow-up patch admits only the specific opponent-before-switch opening, with straight/curly apostrophe and alias tests; process preambles and unsupported scorer inference still fail. All 106 evaluator tests and the dry-run pass. This correction does not change the saved failed production checkpoint.
+
+Artifacts: `2026-09-14T17-45-42-293Z.partial.json`, `.interruption.json`, and `.runtime-evidence.json` in ignored `artifacts/chat-evals/`. A fresh exact-SHA certification requires a coordinated stable deployment window and fresh approval; do not redeploy the old commit over the concurrent release.
