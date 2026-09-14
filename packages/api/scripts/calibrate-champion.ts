@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { DEFAULT_BOOTSTRAP_DRAWS } from "../src/services/paired-bootstrap";
 import {
   PRODUCTION_OFFICIAL_N_TARGET,
   assertCalibrationOutputNotInDataDir,
@@ -16,14 +17,28 @@ import {
  * Usage:
  *   pnpm --filter @sports-predict/api calibrate:champion -- [ledgerPath]
  */
+function resolveUserPath(input: string, mustExist: boolean): string {
+  const candidates = [
+    path.resolve(input),
+    path.resolve(__dirname, "..", input),
+    path.resolve(__dirname, "../../..", input),
+  ];
+  if (mustExist) {
+    return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+  }
+  return candidates.find((candidate) => (
+    fs.existsSync(candidate) || fs.existsSync(path.dirname(candidate))
+  )) ?? candidates[0];
+}
+
 function parseArgs(argv: string[]): { ledgerPath?: string; outDir: string; bootstrapDraws: number } {
   let ledgerPath: string | undefined;
   let outDir = calibrationResearchDir();
-  let bootstrapDraws = 40;
+  let bootstrapDraws = DEFAULT_BOOTSTRAP_DRAWS;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!;
     if (arg === "--out-dir") {
-      outDir = path.resolve(argv[++index] ?? outDir);
+      outDir = resolveUserPath(argv[++index] ?? outDir, false);
     } else if (arg === "--bootstrap") {
       bootstrapDraws = Number(argv[++index]);
     } else if (arg === "--help" || arg === "-h") {
@@ -37,12 +52,7 @@ function parseArgs(argv: string[]): { ledgerPath?: string; outDir: string; boots
     } else if (arg === "--") {
       continue;
     } else if (!arg.startsWith("-") && !ledgerPath) {
-      const candidates = [
-        path.resolve(arg),
-        path.resolve(__dirname, "..", arg),
-        path.resolve(__dirname, "../../..", arg),
-      ];
-      ledgerPath = candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+      ledgerPath = resolveUserPath(arg, true);
     }
   }
   return { ledgerPath, outDir, bootstrapDraws };
@@ -53,7 +63,8 @@ function main(): void {
   assertCalibrationOutputNotInDataDir(args.outDir);
   const report = calibrateChampion({
     ledgerPath: args.ledgerPath,
-    bootstrapDraws: Number.isFinite(args.bootstrapDraws) ? args.bootstrapDraws : 40,
+    bootstrapDraws: args.bootstrapDraws,
+    allowSampleFallback: args.ledgerPath === undefined,
   });
   const paths = writeChampionCalibrationArtifacts(report, args.outDir);
   if (report.ledger.usedDocumentedSample) {

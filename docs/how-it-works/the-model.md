@@ -48,7 +48,7 @@ Two read-only evaluation artifacts measure how well pre-kickoff probabilities ma
 
 | Artifact | Path | Method |
 |---|---|---|
-| **Club season (rolling)** | `/evaluation/club-season` | Immutable pre-kickoff snapshots captured when fixtures leave the scheduled window |
+| **Club season (rolling)** | `/evaluation/club-season` | First eligible forecast sealed in the 90-minute pre-kickoff window (`pre-kickoff-90m-v1`). Live volume is on Railway `/data`, not the empty in-repo seed. |
 | **WC 2026 (frozen)** | `/evaluation/wc-2026` | Reconstructed pre-kickoff probabilities for every finished World Cup 2026 match |
 
 The live Model page recalculates older fixtures with the release's **pinned, freshness-gated** ratings artifact — useful for exploration, but not a look-ahead-free backtest. Rigorous calibration uses the evaluation artifacts above.
