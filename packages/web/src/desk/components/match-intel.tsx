@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { getFixture, modelProbFor, selectionLabel } from "@/desk/lib/data/fixtures";
+import { getFixture, hasCapturedForecast, modelProbFor, selectionLabel } from "@/desk/lib/data/fixtures";
 import { TEAMS } from "@/desk/lib/data/teams";
 import { fmtKickoff, fmtPct } from "@/desk/lib/format";
 import { scorersForTeam, statsForTeam } from "@/desk/lib/live";
@@ -25,7 +25,8 @@ export function MatchIntel() {
   const awayMen = scorersForTeam(f.away, 3);
   const homeStats = statsForTeam(f.home);
   const awayStats = statsForTeam(f.away);
-  const leanP = modelProbFor(f, f.modelPick);
+  const hasForecast = hasCapturedForecast(f);
+  const leanP = hasForecast ? modelProbFor(f, f.modelPick) : null;
   const settledScore = f.status === "ft" ? (scores[f.id] ?? f.score) : undefined;
   const projectedScore = f.status === "upcoming" ? scores[f.id] : undefined;
 
@@ -72,28 +73,34 @@ export function MatchIntel() {
                 {projectedScore[0]}–{projectedScore[1]}
               </div>
             </div>
-          ) : (
+          ) : hasForecast ? (
             <Button size="sm" variant="subtle" onClick={() => simulate(f.id)}>
               Project score
             </Button>
-          )}
+          ) : null}
         </div>
 
-        <div className="mt-5">
-          <ProbBar home={f.model.home} draw={f.model.draw} away={f.model.away} />
-        </div>
-
-        <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-          <Stat k="xG" v={`${f.xg[0].toFixed(2)}–${f.xg[1].toFixed(2)}`} />
-          <Stat k="O2.5" v={fmtPct(f.model.over25)} />
-          <Stat k="BTTS" v={fmtPct(f.model.btts)} />
-        </dl>
-
-        <p className="mt-4 text-sm leading-relaxed text-quiet">
-          Model lean{" "}
-          <span className="text-fg font-medium">{selectionLabel(f, f.modelPick)}</span> at{" "}
-          <span className="text-accent tabular-nums">{fmtPct(leanP)}</span>. {f.brief}
-        </p>
+        {hasForecast ? (
+          <>
+            <div className="mt-5">
+              <ProbBar home={f.model.home} draw={f.model.draw} away={f.model.away} />
+            </div>
+            <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+              <Stat k="xG" v={`${f.xg[0].toFixed(2)}–${f.xg[1].toFixed(2)}`} />
+              <Stat k="O2.5" v={fmtPct(f.model.over25)} />
+              <Stat k="BTTS" v={fmtPct(f.model.btts)} />
+            </dl>
+            <p className="mt-4 text-sm leading-relaxed text-quiet">
+              Model lean{" "}
+              <span className="text-fg font-medium">{selectionLabel(f, f.modelPick)}</span> at{" "}
+              <span className="text-accent tabular-nums">{leanP === null ? "—" : fmtPct(leanP)}</span>. {f.brief}
+            </p>
+          </>
+        ) : (
+          <p className="mt-5 rounded-sm border border-border bg-elevated px-3 py-3 text-sm text-quiet">
+            No captured pre-kickoff forecast is available for this result.
+          </p>
+        )}
 
         <div className="mt-5">
           <div className="eyebrow mb-2">Recent scorers</div>

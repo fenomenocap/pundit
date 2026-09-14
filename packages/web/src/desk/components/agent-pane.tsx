@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Plus } from "lucide-react";
 import { rankedOpen, weekendNote } from "@/desk/lib/brief";
 import { getFixture } from "@/desk/lib/data/fixtures";
@@ -36,17 +36,27 @@ export function AgentPane() {
   const clearQueued = useDesk((s) => s.clearQueuedAsk);
   const select = useDesk((s) => s.selectFixture);
   const fixture = getFixture(selectedId);
-  const { epoch, source } = useLiveSlate();
+  const { source } = useLiveSlate();
   const [draft, setDraft] = useState("");
   const [lineOutcome, setLineOutcome] = useState<OneXTwoOutcome>("home");
   const [lineDecimal, setLineDecimal] = useState("");
+  const [lineFixtureId, setLineFixtureId] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
-  const opening = useMemo(() => weekendNote(), [epoch]);
-  const ranked = useMemo(() => rankedOpen().slice(0, 3), [epoch]);
+  const opening = (() => {
+    if (source === "pending") return "Loading the live fixture slate…";
+    if (source === "unavailable") {
+      return "I can’t load the live fixture slate right now. Try again shortly, or ask a general football question.";
+    }
+    if (source === "no-fixtures") {
+      return "No priced fixtures are live right now. I can still answer a general football question.";
+    }
+    return weekendNote();
+  })();
+  const ranked = rankedOpen().slice(0, 3);
 
   useEffect(() => {
     const el = scroller.current;
@@ -65,9 +75,13 @@ export function AgentPane() {
       ]
     : SLATE_CHIPS;
 
-  async function send(text: string) {
-    const q = text.trim().slice(0, 500);
+  async function send(text: string, fixtureId = selectedId) {
+    const q = text.trim();
     if (!q || busy) return;
+    if (q.length > 500) {
+      setErr("Questions must be 500 characters or fewer.");
+      return;
+    }
     setErr(null);
     setDraft("");
     const history = completedDeskHistory(useDesk.getState().messages);
@@ -75,7 +89,7 @@ export function AgentPane() {
       id: `u-${Date.now()}`,
       role: "user",
       text: q,
-      fixtureId: selectedId,
+      fixtureId: fixtureId || undefined,
       at: Date.now(),
     };
     push(userMsg);
@@ -85,15 +99,17 @@ export function AgentPane() {
         data: {
           question: q,
           history,
-          fixtureId: selectedId,
-          userLine: userLinePayloadForAsk(q, lineOutcome, lineDecimal),
+          fixtureId: fixtureId || undefined,
+          userLine: lineFixtureId === fixtureId
+            ? userLinePayloadForAsk(q, lineOutcome, lineDecimal)
+            : undefined,
         },
       });
       push({
         id: `p-${Date.now()}`,
         role: "pundit",
         text: res.text || opening,
-        fixtureId: selectedId,
+        fixtureId: fixtureId || undefined,
         grounding: res.grounding,
         at: Date.now(),
       });
@@ -115,6 +131,12 @@ export function AgentPane() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queued]);
 
+  useEffect(() => {
+    setLineOutcome("home");
+    setLineDecimal("");
+    setLineFixtureId("");
+  }, [selectedId]);
+
   return (
     <section className="flex min-h-[58dvh] lg:min-h-0 flex-col bg-bg lg:h-[calc(100dvh-7.5rem)]">
       <header className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border">
@@ -124,8 +146,10 @@ export function AgentPane() {
             {fixture
               ? `Pinned · ${TEAMS[fixture.home].short} vs ${TEAMS[fixture.away].short}`
               : source === "live"
-                ? "Slate · live ClubElo"
-                : "Slate · GW4"}
+                ? "Slate · live"
+                : source === "no-fixtures"
+                  ? "Slate · no priced fixtures"
+                  : source === "static" ? "Slate · mock" : "Slate unavailable"}
           </p>
         </div>
         <Button
@@ -133,12 +157,17 @@ export function AgentPane() {
           variant="ghost"
           onClick={() => {
             reset();
+            setDraft("");
+            setLineOutcome("home");
+            setLineDecimal("");
+            setLineFixtureId("");
             setErr(null);
+            window.history.replaceState({}, "", window.location.pathname);
           }}
-          disabled={busy || messages.length === 0}
+          disabled={busy || (messages.length === 0 && !fixture)}
         >
           <Plus className="size-3.5" />
-          New
+          New Chat
         </Button>
       </header>
 
@@ -160,11 +189,16 @@ export function AgentPane() {
               {ranked.map(({ f, p }) => (
                 <button
                   key={f.id}
+                  data-testid="desk-featured-fixture"
+                  data-fixture-id={f.id}
+                  data-home={TEAMS[f.home].name}
+                  data-away={TEAMS[f.away].name}
                   type="button"
                   onClick={() => {
                     select(f.id);
                     void send(
                       `Give me the match briefing for ${TEAMS[f.home].name} vs ${TEAMS[f.away].name}.`,
+                      f.id,
                     );
                   }}
                   className="flex items-center gap-3 rounded-sm border border-border bg-surface px-3 py-2.5 text-left hover:border-border-strong hover:bg-elevated transition-colors duration-150 min-h-11"
@@ -228,7 +262,10 @@ export function AgentPane() {
                 disabled={busy}
                 data-testid={`desk-user-line-outcome-${outcome}`}
                 aria-pressed={lineOutcome === outcome}
-                onClick={() => setLineOutcome(outcome)}
+                onClick={() => {
+                  setLineOutcome(outcome);
+                  setLineFixtureId(fixture.id);
+                }}
                 className={cn(
                   "h-8 rounded-full border px-3 text-2xs uppercase tracking-wide transition-colors duration-150 disabled:opacity-40",
                   lineOutcome === outcome
@@ -252,7 +289,10 @@ export function AgentPane() {
               disabled={busy}
               value={lineDecimal}
               placeholder="2.10"
-              onChange={(e) => setLineDecimal(e.target.value)}
+              onChange={(e) => {
+                setLineDecimal(e.target.value);
+                setLineFixtureId(fixture.id);
+              }}
               className="h-8 w-[4.5rem] rounded-sm border border-border bg-elevated px-2 text-sm tabular-nums text-fg placeholder:text-subtle focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-40"
             />
             <span className="text-2xs text-subtle">decimal · analysis only</span>
@@ -273,9 +313,23 @@ export function AgentPane() {
             ref={box}
             rows={1}
             value={draft}
+            maxLength={500}
+            aria-invalid={err === "Questions must be 500 characters or fewer."}
             disabled={busy}
             suppressHydrationWarning
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setDraft(next);
+              if (next.length > 500) setErr("Questions must be 500 characters or fewer.");
+              else if (err === "Questions must be 500 characters or fewer.") setErr(null);
+            }}
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData("text");
+              const nextLength = draft.length - (e.currentTarget.selectionEnd - e.currentTarget.selectionStart) + pasted.length;
+              if (nextLength <= 500) return;
+              e.preventDefault();
+              setErr("Questions must be 500 characters or fewer.");
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -317,7 +371,7 @@ function Bubble({ msg }: { msg: ChatMsg }) {
       <div className="flex justify-end">
         <div
           data-testid="desk-user-bubble"
-          className="max-w-[36rem] rounded-md rounded-br-xs bg-elevated px-3.5 py-2.5 text-sm leading-6"
+          className="min-w-0 max-w-full break-words [overflow-wrap:anywhere] sm:max-w-[36rem] rounded-md rounded-br-xs bg-elevated px-3.5 py-2.5 text-sm leading-6"
         >
           {msg.text}
         </div>
@@ -325,7 +379,7 @@ function Bubble({ msg }: { msg: ChatMsg }) {
     );
   }
   return (
-    <div className="max-w-[40rem]" data-testid="desk-pundit-bubble">
+    <div className="min-w-0 max-w-full break-words [overflow-wrap:anywhere] sm:max-w-[40rem]" data-testid="desk-pundit-bubble">
       <div className="flex items-baseline gap-2 mb-1.5">
         <span className="eyebrow text-accent">Pundit</span>
         {f ? (

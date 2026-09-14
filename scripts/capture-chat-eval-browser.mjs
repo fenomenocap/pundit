@@ -12,12 +12,16 @@ const DEFAULT_WEB_URL = "https://thepundit.vercel.app";
 const MOBILE_VIEWPORT = Object.freeze({ width: 390, height: 844 });
 const DESKTOP_VIEWPORT = Object.freeze({ width: 1440, height: 900 });
 const ASK_TIMEOUT_MS = 180_000;
+const BROWSER_PACING_SAFETY_MS = 25;
+const MIN_BROWSER_REQUEST_INTERVAL_MS = MIN_REQUEST_INTERVAL_MS + BROWSER_PACING_SAFETY_MS;
+const BROWSER_COOLDOWN_MS = 60_000;
 const CANDIDATE_QUESTION =
   "What are Pundit's probabilities for Northbridge Athletic vs Southbank Rovers tomorrow?";
 const TABLE_QUESTION = "What does the current Premier League table show?";
+const OVERSIZED_QUESTION = "Give me a concise betting read. ".padEnd(501, "x");
 const ANALYST_FOLLOW_UPS = Object.freeze([
   "What is your fair decimal price for an exact 2-1 score?",
-  "Who will most likely score for Liverpool?",
+  "Who is most likely to score in this match?",
   "If the home striker is ruled out, exactly how many percentage points would you take off the home win?",
   "Quick detour: what does the current Premier League table show?",
   "Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?",
@@ -30,7 +34,7 @@ function parseArgs(argv) {
     output: null,
     latestRunPath: null,
     dryRun: false,
-    intervalMs: MIN_REQUEST_INTERVAL_MS,
+    intervalMs: MIN_BROWSER_REQUEST_INTERVAL_MS,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -43,8 +47,8 @@ function parseArgs(argv) {
     else if (argument === "--interval-ms") options.intervalMs = Number(argv[++index]);
     else throw new Error(`Unknown argument: ${argument}`);
   }
-  if (!Number.isFinite(options.intervalMs) || options.intervalMs < 0) {
-    throw new Error("--interval-ms must be a non-negative number.");
+  if (!Number.isFinite(options.intervalMs) || options.intervalMs < MIN_BROWSER_REQUEST_INTERVAL_MS) {
+    throw new Error(`--interval-ms must be at least ${MIN_BROWSER_REQUEST_INTERVAL_MS}.`);
   }
   try {
     const parsed = new URL(options.webUrl);
@@ -82,20 +86,162 @@ function identityFromReport(report) {
   };
 }
 
-function isFixtureChipText(text) {
-  if (typeof text !== "string" || !text.includes(" vs ")) return false;
-  if (/^Pass or play ·|^Price this ·/i.test(text)) return false;
-  return /\s·\s(?:PL|UCL)\s·\s\w+/.test(text)
-    && !/\b(?:preview|analyse|analyze|thoughts)\b/i.test(text);
+function createRequestStartPacer({
+  intervalMs = MIN_BROWSER_REQUEST_INTERVAL_MS,
+  now = () => performance.now(),
+  wallNow = () => Date.now(),
+  wait = sleep,
+  firstRequestNotBeforeEpochMs = null,
+} = {}) {
+  if (!Number.isFinite(intervalMs) || intervalMs < MIN_BROWSER_REQUEST_INTERVAL_MS) {
+    throw new Error(`request pacer interval must be at least ${MIN_BROWSER_REQUEST_INTERVAL_MS} ms`);
+  }
+  const starts = [];
+  const wallStarts = [];
+  let lastStart = null;
+  return {
+    starts,
+    wallStarts,
+    intervalMs,
+    async beforeRequest() {
+      while (starts.length === 0 && Number.isFinite(firstRequestNotBeforeEpochMs)) {
+        const remaining = firstRequestNotBeforeEpochMs - wallNow();
+        if (remaining <= 0) break;
+        await wait(remaining);
+      }
+      while (lastStart != null) {
+        const remaining = intervalMs - (now() - lastStart);
+        if (remaining <= 0) break;
+        await wait(remaining);
+      }
+      const startedAt = now();
+      starts.push(startedAt);
+      wallStarts.push(new Date(wallNow()).toISOString());
+      lastStart = startedAt;
+      return startedAt;
+    },
+  };
 }
 
-function fixtureNamesFromChip(text) {
-  const match = /^(.+?) vs (.+?) ·/.exec(text ?? "");
-  return match ? { home: match[1], away: match[2] } : null;
+function finalApiRequestStart(report) {
+  const starts = report?.pacing?.requestStarts;
+  if (!Array.isArray(starts) || starts.length === 0) {
+    throw new Error("latest run has no authoritative API request starts");
+  }
+  const value = starts.at(-1);
+  const epochMs = Date.parse(value);
+  if (Number.isNaN(epochMs)) throw new Error("latest run has an invalid final API request start");
+  return { value, epochMs };
+}
+
+function apiCooldownAnchor(report, finalStart = finalApiRequestStart(report)) {
+  const completedAt = report?.completedAt;
+  const completedEpochMs = Date.parse(completedAt ?? "");
+  if (!Number.isNaN(completedEpochMs) && completedEpochMs > finalStart.epochMs) {
+    return { value: completedAt, epochMs: completedEpochMs };
+  }
+  return finalStart;
+}
+
+function percentageTriplet(text) {
+  const values = [...String(text ?? "").matchAll(/(\d+(?:\.\d+)?)%/g)]
+    .slice(0, 3)
+    .map((match) => Number(match[1]) / 100);
+  return values.length === 3 && values.every(Number.isFinite) ? values : null;
+}
+
+function tripletsAgree(left, right, tolerance = 0.00051) {
+  return Array.isArray(left) && Array.isArray(right) && left.length === 3 && right.length === 3
+    && left.every((value, index) => Math.abs(value - right[index]) <= tolerance);
+}
+
+function reportExpectsMarketRows(report) {
+  const scenario = (report?.scenarios ?? []).find(({ id }) => id === "market-comparison-coverage");
+  return Number(scenario?.observations?.turn1?.oddsSourceCount ?? 0) > 0;
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
+  if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+  return response.json();
+}
+
+async function canonicalFixtureSnapshot(report) {
+  const fixtureId = report?.preflight?.fixtureDiscovery?.featured?.recognizedFixtureId;
+  if (!fixtureId || !report?.apiUrl) return null;
+  const reportGrounding = (report?.scenarios ?? [])
+    .flatMap((scenario) => [scenario?.grounding, ...(scenario?.turnResults ?? []).map((turn) => turn?.grounding)])
+    .find((grounding) => grounding?.kind === "match" && grounding.fixtureId === fixtureId);
+  const payload = await fetchJson(`${report.apiUrl}/api/model/active`);
+  const fixture = (payload?.fixtures ?? []).find((row) =>
+    `espn:${row.competitionId}:${row.fixtureId}` === fixtureId
+  );
+  if (!fixture) return null;
+  const probabilities = [fixture.pHome, fixture.pDraw, fixture.pAway];
+  const reportProbabilities = reportGrounding
+    ? [reportGrounding.pHome, reportGrounding.pDraw, reportGrounding.pAway]
+    : null;
+  const ratingArtifactId = fixture.forecastProvenance?.ratingArtifactId ?? null;
+  const reportPricingVersion = reportGrounding?.pricing?.modelVersion ?? null;
+  return {
+    fixtureId,
+    capability: "priced",
+    competitionId: fixture.competitionId,
+    numericFixtureId: fixture.fixtureId,
+    home: fixture.home,
+    away: fixture.away,
+    probabilities,
+    reportProbabilities,
+    reportPricingVersion,
+    ratingArtifactId,
+    reportMatches: Boolean(reportGrounding)
+      && reportGrounding.home === fixture.home
+      && reportGrounding.away === fixture.away
+      && tripletsAgree(reportProbabilities, probabilities)
+      && reportPricingVersion === ratingArtifactId,
+    modelVersion: fixture.forecastProvenance?.modelVersion ?? null,
+    forecastAt: fixture.forecastProvenance?.forecastAt ?? null,
+  };
+}
+
+async function captureWebVersion(webUrl) {
+  const capturedAt = new Date().toISOString();
+  const body = await fetchJson(`${webUrl}/api/version`);
+  return { capturedAt, sha: typeof body?.sha === "string" ? body.sha : null };
+}
+
+async function captureApiVersion(apiUrl) {
+  const capturedAt = new Date().toISOString();
+  const body = await fetchJson(`${apiUrl}/version`);
+  return {
+    capturedAt,
+    sha: typeof body?.sha === "string" ? body.sha : null,
+    deploymentId: typeof body?.deploymentId === "string" ? body.deploymentId : null,
+  };
 }
 
 function requiredCheckIds() {
   return Object.keys(REQUIRED_BROWSER_CHECKS);
+}
+
+function parseBacktestCounts(text) {
+  const match = /(\d+)\s+finished fixtures\s+·\s+(\d+)\s+calibration forecasts/i.exec(text ?? "");
+  if (!match) return null;
+  return { fixtureCount: Number(match[1]), forecastCount: Number(match[2]) };
+}
+
+function oversizedPromptCheckPasses({
+  inputLength,
+  errorVisible,
+  askRequestsBefore,
+  askRequestsAfter,
+  pacedStartsBefore,
+  pacedStartsAfter,
+}) {
+  return inputLength > 500
+    && errorVisible
+    && askRequestsAfter === askRequestsBefore
+    && pacedStartsAfter === pacedStartsBefore;
 }
 
 function emptyCheck(id) {
@@ -154,15 +300,30 @@ async function readLatestRun(filePath) {
   }
 }
 
-async function waitForAnswer(page) {
-  await page.getByRole("button", { name: "Send" }).waitFor({ state: "visible", timeout: ASK_TIMEOUT_MS });
+async function waitForAnswer(page, previousBubbleCount) {
+  const result = await page.waitForFunction(({ previousBubbleCount }) => {
+    const bubbles = document.querySelectorAll('[data-testid="desk-pundit-bubble"]');
+    const alert = document.querySelector('[role="alert"]');
+    const send = document.querySelector('button[aria-label="Send"]');
+    const finished = bubbles.length > previousBubbleCount || Boolean(alert?.textContent?.trim());
+    return finished && send instanceof HTMLButtonElement && !send.disabled
+      ? { answered: bubbles.length > previousBubbleCount, error: alert?.textContent?.trim() ?? "" }
+      : null;
+  }, { previousBubbleCount }, { timeout: ASK_TIMEOUT_MS });
+  return result.jsonValue();
 }
 
-async function ask(page, question) {
+async function ask(page, question, pacer) {
   const input = page.getByRole("textbox", { name: "Ask a question" });
+  const previousBubbleCount = await page.getByTestId("desk-pundit-bubble").count();
   await input.fill(question);
+  await pacer.beforeRequest();
+  const loadingObservation = page.getByText("Writing the take…", { exact: true })
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true, () => false);
   await page.getByRole("button", { name: "Send" }).click();
-  await waitForAnswer(page);
+  const loadingObserved = await loadingObservation;
+  return { ...(await waitForAnswer(page, previousBubbleCount)), loadingObserved };
 }
 
 async function sleep(ms) {
@@ -174,18 +335,52 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-async function collectFixtureChip(page) {
-  const chips = page.getByTestId("suggestion-chip");
-  const count = await chips.count();
-  for (let index = 0; index < count; index += 1) {
-    const text = (await chips.nth(index).innerText()).trim();
-    if (isFixtureChipText(text)) return { locator: chips.nth(index), text };
-  }
-  return null;
+async function collectFeaturedFixture(page) {
+  const locator = page.getByTestId("desk-featured-fixture").first();
+  if (!await locator.isVisible().catch(() => false)) return null;
+  const [fixtureId, home, away] = await Promise.all([
+    locator.getAttribute("data-fixture-id"),
+    locator.getAttribute("data-home"),
+    locator.getAttribute("data-away"),
+  ]);
+  if (!fixtureId || !home || !away) return null;
+  return { locator, fixtureId, home, away };
 }
 
-async function runViewportChecks(page, webUrl, viewport, intervalMs) {
+async function clickFeaturedFixture(page, fixture, pacer) {
+  const previousBubbleCount = await page.getByTestId("desk-pundit-bubble").count();
+  await pacer.beforeRequest();
+  const loadingObservation = page.getByText("Writing the take…", { exact: true })
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true, () => false);
+  await fixture.locator.click();
+  const loadingObserved = await loadingObservation;
+  return { ...(await waitForAnswer(page, previousBubbleCount)), loadingObserved };
+}
+
+async function latestBoardIdentity(page, home, away) {
+  const bubble = page.getByTestId("desk-pundit-bubble").last();
+  const board = bubble.getByTestId("desk-match-board");
+  const text = (await board.textContent().catch(() => "")) ?? "";
+  return {
+    boardVisible: await board.isVisible().catch(() => false),
+    identityMatches: text.toLowerCase().includes(home.toLowerCase())
+      && text.toLowerCase().includes(away.toLowerCase()),
+    oddsRows: await board.locator('[data-testid="desk-board-markets"] li').count().catch(() => 0),
+  };
+}
+
+async function hasHorizontalOverflow(page) {
+  return page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+}
+
+async function runViewportChecks(page, webUrl, viewport, pacer, report, canonical, traffic) {
   const checks = Object.fromEntries(requiredCheckIds().map((id) => [id, emptyCheck(id)]));
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/api/ask")) {
+      traffic.apiAskRequestCount += 1;
+    }
+  });
   const reproduction = {
     capability: ["Open /fixtures", "Read the fixture capability label"],
     retention: ["Ask about a featured fixture", "Ask for the Premier League table", "Return to the fixture"],
@@ -194,6 +389,9 @@ async function runViewportChecks(page, webUrl, viewport, intervalMs) {
     analyst: ["Run the six-turn analyst conversation", "Inspect every follow-up"],
     parity: ["Open the fixture in Chat", "Compare Predictions and Fixtures"],
     evaluation: ["Open both evaluation pages", "Inspect headers and calibration tables"],
+    loading: ["Start the realistic analyst conversation", "Observe the visible writing state before the answer"],
+    oversized: ["Paste a 501-character question", "Inspect the client error", "Verify no /api/ask request started"],
+    frozen: ["Open the frozen World Cup evaluation", "Read the finished-fixture and calibration-forecast counts"],
   };
 
   await page.goto(`${webUrl}/evaluation/wc-2026`, { waitUntil: "domcontentloaded" });
@@ -201,6 +399,23 @@ async function runViewportChecks(page, webUrl, viewport, intervalMs) {
   const wcFrozen = await page.getByText("Frozen evaluation", { exact: true }).isVisible();
   await page.getByText(/^Updated /).first().waitFor({ timeout: 15_000 }).catch(() => null);
   const wcUpdated = await page.getByText(/^Updated /).first().isVisible().catch(() => false);
+  const backtestCountText = (await page.getByText(/finished fixtures\s+·\s+\d+ calibration forecasts/i)
+    .first().textContent().catch(() => "")) ?? "";
+  const backtestCounts = parseBacktestCounts(backtestCountText);
+  const backtestNonempty = Boolean(backtestCounts
+    && backtestCounts.fixtureCount > 0
+    && backtestCounts.forecastCount > 0);
+  checks["frozen-backtest-nonempty"] = recordViewport(
+    checks["frozen-backtest-nonempty"],
+    viewport,
+    {
+      passed: backtestNonempty,
+      evidence: backtestCounts
+        ? `Frozen backtest has ${backtestCounts.fixtureCount} finished fixtures and ${backtestCounts.forecastCount} calibration forecasts.`
+        : "Frozen backtest counts were missing or malformed.",
+      reproduction: reproduction.frozen,
+    }
+  );
   await page.goto(`${webUrl}/evaluation/club-season`, { waitUntil: "domcontentloaded" });
   const clubHeading = await page.getByRole("heading", { name: "Club season calibration" }).isVisible();
   const clubRolling = await page.getByText("Rolling snapshots", { exact: true }).isVisible();
@@ -236,144 +451,281 @@ async function runViewportChecks(page, webUrl, viewport, intervalMs) {
 
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "Ask a question" }).waitFor({ timeout: 30_000 });
-  await page.getByTestId("suggestion-chip").first().waitFor({ timeout: 30_000 });
-  const fixtureChip = await collectFixtureChip(page);
-  const names = fixtureNamesFromChip(fixtureChip?.text);
-  let chatMatch = Boolean(names);
-  if (names) {
+  await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
+  const featuredFixture = await collectFeaturedFixture(page);
+  const chatMatch = Boolean(featuredFixture);
+  let fixtureSurface = null;
+  let modelSurface = null;
+  if (featuredFixture) {
+    const { home, away } = featuredFixture;
     await page.goto(`${webUrl}/fixtures`, { waitUntil: "domcontentloaded" });
-    const homeOnFixtures = page.getByText(new RegExp(escapeRegExp(names.home), "i")).first();
-    await homeOnFixtures.waitFor({ timeout: 15_000 }).catch(() => null);
-    const fixturesVisible = await homeOnFixtures.isVisible().catch(() => false);
+    const fixtureRow = page.getByTestId("fixture-row")
+      .filter({ hasText: new RegExp(escapeRegExp(home), "i") })
+      .filter({ hasText: new RegExp(escapeRegExp(away), "i") })
+      .first();
+    await fixtureRow.waitFor({ timeout: 15_000 }).catch(() => null);
+    const fixturesVisible = await fixtureRow.isVisible().catch(() => false);
+    const fixtureForecast = fixtureRow.getByTestId("fixture-forecast");
+    const fixtureForecastText = (await fixtureForecast.textContent().catch(() => "")) ?? "";
+    const fixtureDomId = await fixtureRow.getAttribute("data-fixture-id");
+    fixtureSurface = {
+      visible: fixturesVisible && await fixtureForecast.isVisible().catch(() => false),
+      fixtureId: fixtureDomId === `${canonical?.competitionId}-${canonical?.numericFixtureId}`
+        ? canonical.fixtureId
+        : fixtureDomId,
+      capability: await fixtureForecast.isVisible().catch(() => false) ? "priced" : "unknown",
+      probabilities: percentageTriplet(fixtureForecastText),
+    };
     await page.goto(`${webUrl}/model`, { waitUntil: "domcontentloaded" });
-    const modelPair = page.getByText(`${names.home} · ${names.away}`).first();
-    await modelPair.waitFor({ timeout: 15_000 }).catch(() => null);
-    const modelVisible = await modelPair.isVisible().catch(() => false);
-    checks["cross-surface-fixture-parity"] = recordViewport(
-      checks["cross-surface-fixture-parity"],
-      viewport,
-      {
-        passed: chatMatch && fixturesVisible && modelVisible,
-        evidence: `${names.home} vs ${names.away}: chat chip=${chatMatch}, fixtures=${fixturesVisible}, predictions=${modelVisible}.`,
-        reproduction: reproduction.parity,
-        extras: { surfaces: ["chat", "fixtures", "predictions"] },
-      }
-    );
-  } else {
-    checks["cross-surface-fixture-parity"] = recordViewport(
-      checks["cross-surface-fixture-parity"],
-      viewport,
-      {
-        passed: false,
-        evidence: "No upcoming fixture chip was available to compare across surfaces.",
-        reproduction: reproduction.parity,
-        extras: { surfaces: ["chat", "fixtures", "predictions"] },
-      }
-    );
+    const modelRow = page.getByTestId("model-fixture-row")
+      .filter({ hasText: `${home} · ${away}` })
+      .first();
+    await modelRow.waitFor({ timeout: 15_000 }).catch(() => null);
+    const modelText = (await modelRow.textContent().catch(() => "")) ?? "";
+    const [modelFixtureId, modelVersion, forecastAt] = await Promise.all([
+      modelRow.getAttribute("data-fixture-id"),
+      modelRow.getAttribute("data-model-version"),
+      modelRow.getAttribute("data-forecast-at"),
+    ]);
+    modelSurface = {
+      visible: await modelRow.isVisible().catch(() => false),
+      fixtureId: modelFixtureId,
+      capability: /Forecast ready/i.test(modelText) ? "priced" : "unknown",
+      probabilities: percentageTriplet(modelText),
+      modelVersion,
+      forecastAt,
+    };
   }
 
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
-  await page.getByTestId("suggestion-chip").first().waitFor({ timeout: 30_000 });
-  if (fixtureChip && names) {
-    const chip = await collectFixtureChip(page);
-    if (chip) await chip.locator.click();
-    await waitForAnswer(page);
-    const followingAfterChip = await page.getByText(`Following: ${names.home} vs ${names.away}`).first()
+  await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
+  const opener = await collectFeaturedFixture(page);
+  if (opener && featuredFixture) {
+    const { home, away } = featuredFixture;
+    const openingResult = await clickFeaturedFixture(page, opener, pacer);
+    const pinnedAfterOpen = await page.getByText(/^Pinned ·/).first()
       .isVisible()
       .catch(() => false);
-    await sleep(intervalMs);
-    await ask(page, TABLE_QUESTION);
-    const followingAfterTable = await page.getByText(`Following: ${names.home} vs ${names.away}`).first()
+    const openingGrounding = await latestBoardIdentity(page, home, away);
+    const openingBoard = page.getByTestId("desk-pundit-bubble").last().getByTestId("desk-match-board");
+    const openingBoardText = (await openingBoard.textContent().catch(() => "")) ?? "";
+    const [deskFixtureId, deskRatingArtifactId, deskPricedAt] = await Promise.all([
+      openingBoard.getAttribute("data-fixture-id"),
+      openingBoard.getAttribute("data-rating-artifact-id"),
+      openingBoard.getAttribute("data-priced-at"),
+    ]);
+    const deskSurface = {
+      visible: openingGrounding.boardVisible,
+      fixtureId: deskFixtureId,
+      capability: openingGrounding.boardVisible ? "priced" : "unknown",
+      probabilities: percentageTriplet(openingBoardText),
+      ratingArtifactId: deskRatingArtifactId,
+      pricedAt: deskPricedAt,
+    };
+    const parityPassed = Boolean(canonical?.reportMatches)
+      && chatMatch
+      && [deskSurface, fixtureSurface, modelSurface].every((surface) =>
+        surface?.visible
+        && surface.fixtureId === canonical.fixtureId
+        && surface.capability === canonical.capability
+        && tripletsAgree(surface.probabilities, canonical.probabilities)
+      )
+      && deskSurface.ratingArtifactId === canonical.ratingArtifactId
+      && modelSurface.modelVersion === canonical.modelVersion
+      && modelSurface.forecastAt === canonical.forecastAt;
+    checks["cross-surface-fixture-parity"] = recordViewport(
+      checks["cross-surface-fixture-parity"],
+      viewport,
+      {
+        passed: parityPassed,
+        evidence: `Canonical ${canonical?.fixtureId ?? "missing"} ${canonical?.modelVersion ?? "unknown-version"} @ ${canonical?.forecastAt ?? "unknown-time"}; Desk=${JSON.stringify(deskSurface)}; Fixtures=${JSON.stringify(fixtureSurface)}; Predictions=${JSON.stringify(modelSurface)}.`,
+        reproduction: reproduction.parity,
+        extras: {
+          surfaces: ["chat", "fixtures", "predictions"],
+          parityEvidence: [{
+            canonicalFixture: canonical,
+            surfaceSnapshots: { chat: deskSurface, fixtures: fixtureSurface, predictions: modelSurface },
+          }],
+        },
+      }
+    );
+    const tableResult = await ask(page, TABLE_QUESTION, pacer);
+    const pinnedAfterTable = await page.getByText(/^Pinned ·/).first()
       .isVisible()
       .catch(() => false);
-    await sleep(intervalMs);
-    await ask(page, "Back to that match: what will the 1X2 be?");
-    const followingAfterReturn = await page.getByText(`Following: ${names.home} vs ${names.away}`).first()
+    const returnResult = await ask(page, "Back to that match: what will the 1X2 be?", pacer);
+    const pinnedAfterReturn = await page.getByText(/^Pinned ·/).first()
       .isVisible()
       .catch(() => false);
+    const returnGrounding = await latestBoardIdentity(page, home, away);
     checks["fixture-context-retention"] = recordViewport(
       checks["fixture-context-retention"],
       viewport,
       {
-        passed: followingAfterChip && followingAfterTable && followingAfterReturn,
-        evidence: `Following retained after chip=${followingAfterChip}, table=${followingAfterTable}, return=${followingAfterReturn}.`,
+        passed: openingResult.answered && tableResult.answered && returnResult.answered
+          && pinnedAfterOpen && pinnedAfterTable && pinnedAfterReturn
+          && openingGrounding.boardVisible && openingGrounding.identityMatches
+          && returnGrounding.boardVisible && returnGrounding.identityMatches,
+        evidence: `Pinned after open=${pinnedAfterOpen}, table=${pinnedAfterTable}, return=${pinnedAfterReturn}; opening board=${openingGrounding.boardVisible}/${openingGrounding.identityMatches}, return board=${returnGrounding.boardVisible}/${returnGrounding.identityMatches}.`,
         reproduction: reproduction.retention,
       }
     );
 
     await page.getByRole("button", { name: "New Chat" }).click();
-    const followingAfterReset = await page.getByText(/^Following:/).first().isVisible().catch(() => false);
-    const transcriptGone = await page.getByTestId("match-fixture-card").count() === 0;
+    const pinnedAfterReset = await page.getByText(/^Pinned ·/).first().isVisible().catch(() => false);
+    const transcriptGone = await page.getByTestId("desk-user-bubble").count() === 0
+      && await page.getByTestId("desk-pundit-bubble").count() === 0;
     checks["new-chat-clears-context"] = recordViewport(
       checks["new-chat-clears-context"],
       viewport,
       {
-        passed: !followingAfterReset && transcriptGone,
-        evidence: followingAfterReset
-          ? "New Chat left fixture context visible."
+        passed: !pinnedAfterReset && transcriptGone,
+        evidence: pinnedAfterReset
+          ? "New Chat left pinned fixture context visible."
           : "New Chat removed the retained fixture and visible transcript.",
         reproduction: reproduction.newChat,
       }
     );
 
-    await sleep(intervalMs);
-    await ask(page, `Give me your full preview of ${names.home} vs ${names.away}, including the 1X2, likely scorelines and any comparable market disagreement.`);
-    let turnCount = 1;
+    await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
+    const analystOpener = await collectFeaturedFixture(page);
+    const analystResults = [];
+    if (analystOpener) analystResults.push(await clickFeaturedFixture(page, analystOpener, pacer));
     for (const followUp of ANALYST_FOLLOW_UPS) {
-      await sleep(intervalMs);
-      await ask(page, followUp);
-      turnCount += 1;
+      analystResults.push(await ask(page, followUp, pacer));
     }
-    const stillFollowing = await page.getByText(`Following: ${names.home} vs ${names.away}`).first()
-      .isVisible()
-      .catch(() => false);
+    const turnCount = analystResults.filter(({ answered, error }) => answered || error).length;
+    const analystOpeningBubble = page.getByTestId("desk-pundit-bubble").first();
+    const analystBoard = analystOpeningBubble.getByTestId("desk-match-board");
+    const analystBoardText = (await analystBoard.textContent().catch(() => "")) ?? "";
+    const analystBoardIdentity = analystBoardText.toLowerCase().includes(home.toLowerCase())
+      && analystBoardText.toLowerCase().includes(away.toLowerCase());
+    const oddsRows = await analystBoard.locator('[data-testid="desk-board-markets"] li').count().catch(() => 0);
+    const explicitNoMarket = await analystBoard.getByText(/No comparison market|No comparable market price is available/i)
+      .isVisible().catch(() => false);
+    const marketRowsExpected = reportExpectsMarketRows(report);
+    const marketStateValid = marketRowsExpected ? oddsRows > 0 : explicitNoMarket;
+    const loadingObserved = analystResults.some((result) => result.loadingObserved);
     checks["analyst-multi-turn-flow"] = recordViewport(
       checks["analyst-multi-turn-flow"],
       viewport,
       {
-        passed: turnCount >= 6 && stillFollowing,
-        evidence: `Observed ${turnCount} analyst turns; following retained=${stillFollowing}.`,
+        passed: turnCount >= 6
+          && analystResults.every(({ answered, error }) => answered && !error)
+          && await analystBoard.isVisible().catch(() => false)
+          && analystBoardIdentity
+          && marketStateValid
+          && loadingObserved,
+        evidence: `Observed ${turnCount} analyst turns; opening board identity=${analystBoardIdentity}; report expects market rows=${marketRowsExpected}; market rows=${oddsRows}; explicit no-market=${explicitNoMarket}; visible writing state=${loadingObserved}.`,
         reproduction: reproduction.analyst,
-        extras: { turnCount },
+        extras: {
+          turnCount,
+          marketEvidence: [{ expectedRows: marketRowsExpected, oddsRows, explicitNoMarket }],
+        },
+      }
+    );
+    checks["visible-analyst-loading-state"] = recordViewport(
+      checks["visible-analyst-loading-state"],
+      viewport,
+      {
+        passed: loadingObserved,
+        evidence: `Visible "Writing the take…" state observed=${loadingObserved} during the realistic analyst flow.`,
+        reproduction: reproduction.loading,
       }
     );
   } else {
-    const skipped = "No upcoming fixture chip was available.";
-    for (const id of ["fixture-context-retention", "new-chat-clears-context", "analyst-multi-turn-flow"]) {
+    const skipped = "No attributed Desk featured fixture was available.";
+    for (const id of [
+      "fixture-context-retention",
+      "new-chat-clears-context",
+      "analyst-multi-turn-flow",
+      "visible-analyst-loading-state",
+    ]) {
       checks[id] = recordViewport(checks[id], viewport, {
         passed: false,
         evidence: skipped,
-        reproduction: id === "analyst-multi-turn-flow"
-          ? reproduction.analyst
+        reproduction: id === "visible-analyst-loading-state"
+          ? reproduction.loading
+          : id === "analyst-multi-turn-flow"
+            ? reproduction.analyst
           : id === "new-chat-clears-context"
             ? reproduction.newChat
             : reproduction.retention,
         extras: id === "analyst-multi-turn-flow" ? { turnCount: 0 } : {},
       });
     }
+    checks["cross-surface-fixture-parity"] = recordViewport(
+      checks["cross-surface-fixture-parity"],
+      viewport,
+      {
+        passed: false,
+        evidence: "No attributed Desk featured fixture was available to compare across surfaces.",
+        reproduction: reproduction.parity,
+        extras: { surfaces: ["chat", "fixtures", "predictions"], parityEvidence: [] },
+      }
+    );
   }
 
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "Ask a question" }).waitFor({ timeout: 30_000 });
-  await sleep(intervalMs);
-  await ask(page, CANDIDATE_QUESTION);
-  const liveRegion = page.locator("[aria-live='polite']");
-  const fixtureBadge = await liveRegion
-    .getByText(/^Match forecast ·|^Outside forecast coverage/i)
-    .first()
-    .isVisible()
-    .catch(() => false);
-  const followingCandidate = await page.getByText(/^Following:/).first().isVisible().catch(() => false);
-  const generalBadge = await liveRegion.getByText("General football analysis").first().isVisible().catch(() => false);
+  const newChat = page.getByRole("button", { name: "New Chat" });
+  if (await newChat.isEnabled().catch(() => false)) await newChat.click();
+  const candidateResult = await ask(page, CANDIDATE_QUESTION, pacer);
+  const candidateBubble = page.getByTestId("desk-pundit-bubble").last();
+  const fixtureBoard = await candidateBubble.getByTestId("desk-match-board").isVisible().catch(() => false);
+  const unpricedNotice = await candidateBubble.getByTestId("desk-unpriced-notice").isVisible().catch(() => false);
+  const pinnedCandidate = await page.getByText(/^Pinned ·/).first().isVisible().catch(() => false);
   checks["candidate-no-fixture-badge"] = recordViewport(
     checks["candidate-no-fixture-badge"],
     viewport,
     {
-      passed: !fixtureBadge && !followingCandidate && generalBadge,
-      evidence: generalBadge && !fixtureBadge
-        ? "An unrecognized candidate displayed no fixture badge."
-        : "Candidate turn showed a fixture badge or retained fixture context.",
+      passed: candidateResult.answered && !candidateResult.error
+        && !fixtureBoard && !unpricedNotice && !pinnedCandidate,
+      evidence: `Candidate answered=${candidateResult.answered}; match board=${fixtureBoard}; unpriced notice=${unpricedNotice}; pinned context=${pinnedCandidate}.`,
       reproduction: reproduction.candidate,
+    }
+  );
+
+  const askRequestsBeforeOversized = traffic.apiAskRequestCount;
+  const pacedStartsBeforeOversized = pacer.starts.length;
+  const oversizedInput = page.getByRole("textbox", { name: "Ask a question" });
+  const oversizedInputLength = await oversizedInput.evaluate((element, value) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    setter?.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    return element.value.length;
+  }, OVERSIZED_QUESTION);
+  const oversizedError = page.getByRole("alert")
+    .filter({ hasText: "Questions must be 500 characters or fewer." });
+  await oversizedError.waitFor({ state: "visible", timeout: 5_000 }).catch(() => null);
+  await page.waitForTimeout(100);
+  const oversizedErrorVisible = await oversizedError.isVisible().catch(() => false);
+  const oversizedPassed = oversizedPromptCheckPasses({
+    inputLength: oversizedInputLength,
+    errorVisible: oversizedErrorVisible,
+    askRequestsBefore: askRequestsBeforeOversized,
+    askRequestsAfter: traffic.apiAskRequestCount,
+    pacedStartsBefore: pacedStartsBeforeOversized,
+    pacedStartsAfter: pacer.starts.length,
+  });
+  checks["oversized-prompt-client-error"] = recordViewport(
+    checks["oversized-prompt-client-error"],
+    viewport,
+    {
+      passed: oversizedPassed,
+      evidence: `Input length=${oversizedInputLength}; error visible=${oversizedErrorVisible}; /api/ask count ${askRequestsBeforeOversized}->${traffic.apiAskRequestCount}; paced starts ${pacedStartsBeforeOversized}->${pacer.starts.length}.`,
+      reproduction: reproduction.oversized,
+    }
+  );
+
+  const overflow = await hasHorizontalOverflow(page);
+  checks["responsive-no-horizontal-overflow"] = recordViewport(
+    checks["responsive-no-horizontal-overflow"],
+    viewport,
+    {
+      passed: !overflow,
+      evidence: `document width overflow=${overflow}.`,
+      reproduction: ["Open the Desk", "Complete the adversarial chat flow", "Compare scrollWidth with clientWidth"],
     }
   );
 
@@ -396,6 +748,12 @@ function mergeChecks(left, right) {
       viewports: [...existing.viewports, ...check.viewports],
       ...(check.turnCount != null ? { turnCount: Math.max(existing.turnCount ?? 0, check.turnCount) } : {}),
       ...(check.surfaces ? { surfaces: check.surfaces } : {}),
+      ...(check.parityEvidence
+        ? { parityEvidence: [...(existing.parityEvidence ?? []), ...check.parityEvidence] }
+        : {}),
+      ...(check.marketEvidence
+        ? { marketEvidence: [...(existing.marketEvidence ?? []), ...check.marketEvidence] }
+        : {}),
     });
   }
   return [...byId.values()];
@@ -412,8 +770,29 @@ function attachConsole(page, bucket) {
   });
 }
 
-function buildEvidence({ identity, url, viewport, viewports, console: consoleEvidence, checks }) {
-  const passed = checks.every((check) => check.passed) && consoleEvidence.errors.length === 0;
+function buildEvidence({
+  identity,
+  url,
+  viewport,
+  viewports,
+  console: consoleEvidence,
+  checks,
+  pacing = null,
+  webVersion = null,
+  apiVersion = null,
+}) {
+  const passed = checks.every((check) => check.passed)
+    && consoleEvidence.errors.length === 0
+    && pacing?.passed !== false
+    && webVersion?.passed !== false
+    && apiVersion?.passed !== false;
+  const failedMeta = [
+    ...(consoleEvidence.errors.length > 0 ? ["console-errors"] : []),
+    ...(pacing?.passed === false ? ["request-pacing"] : []),
+    ...(webVersion?.passed === false ? ["web-version"] : []),
+    ...(apiVersion?.passed === false ? ["api-version"] : []),
+  ];
+  const checkSummary = summarizeChecks(checks);
   return {
     ...identity,
     capturedAt: new Date().toISOString(),
@@ -422,32 +801,109 @@ function buildEvidence({ identity, url, viewport, viewports, console: consoleEvi
     viewports,
     console: consoleEvidence,
     passed,
-    summary: summarizeChecks(checks),
+    summary: failedMeta.length === 0
+      ? checkSummary
+      : `${checkSummary} Evidence gates failed: ${failedMeta.join(", ")}.`,
     checks,
+    ...(pacing ? { pacing } : {}),
+    ...(webVersion ? { webVersion } : {}),
+    ...(apiVersion ? { apiVersion } : {}),
   };
 }
 
 async function captureLive(options, report) {
-  if (options.intervalMs < MIN_REQUEST_INTERVAL_MS) {
-    throw new Error(`Browser capture request spacing must be at least ${MIN_REQUEST_INTERVAL_MS} ms.`);
+  if (options.intervalMs < MIN_BROWSER_REQUEST_INTERVAL_MS) {
+    throw new Error(`Browser capture request spacing must be at least ${MIN_BROWSER_REQUEST_INTERVAL_MS} ms.`);
   }
   const identity = identityFromReport(report);
+  const finalApiStart = finalApiRequestStart(report);
+  const cooldownAnchor = apiCooldownAnchor(report, finalApiStart);
+  const webVersionBefore = await captureWebVersion(options.webUrl);
+  const apiVersionBefore = await captureApiVersion(report.apiUrl);
+  const canonical = await canonicalFixtureSnapshot(report);
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch();
   const consoleEvidence = { errors: [], warnings: [] };
   const viewports = [MOBILE_VIEWPORT, DESKTOP_VIEWPORT];
+  const traffic = { apiAskRequestCount: 0 };
+  const pacer = createRequestStartPacer({
+    intervalMs: options.intervalMs,
+    firstRequestNotBeforeEpochMs: cooldownAnchor.epochMs + BROWSER_COOLDOWN_MS,
+  });
   let checks = [];
   try {
     for (const viewport of viewports) {
-      const page = await browser.newPage({ viewport });
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
       attachConsole(page, consoleEvidence);
-      const observed = await runViewportChecks(page, options.webUrl, viewport, options.intervalMs);
+      const observed = await runViewportChecks(
+        page,
+        options.webUrl,
+        viewport,
+        pacer,
+        report,
+        canonical,
+        traffic
+      );
       checks = checks.length === 0 ? observed : mergeChecks(checks, observed);
-      await page.close();
+      await context.close();
     }
   } finally {
     await browser.close();
   }
+  const webVersionAfter = await captureWebVersion(options.webUrl);
+  const apiVersionAfter = await captureApiVersion(report.apiUrl);
+  const requestStartOffsetsMs = pacer.starts.map((start) => start - pacer.starts[0]);
+  const observedGapsMs = pacer.starts.slice(1).map((start, index) => start - pacer.starts[index]);
+  const firstBrowserRequestStart = pacer.wallStarts[0] ?? null;
+  const cooldownObservedMs = firstBrowserRequestStart
+    ? Date.parse(firstBrowserRequestStart) - cooldownAnchor.epochMs
+    : null;
+  const pacing = {
+    minimumIntervalMs: pacer.intervalMs,
+    requestStarts: pacer.wallStarts,
+    requestStartOffsetsMs,
+    observedGapsMs,
+    requestStartCount: pacer.starts.length,
+    apiAskRequestCount: traffic.apiAskRequestCount,
+    finalApiRequestStart: finalApiStart.value,
+    harnessCompletedAt: report.completedAt ?? null,
+    cooldownAnchor: cooldownAnchor.value,
+    firstBrowserRequestStart,
+    cooldownMinimumMs: BROWSER_COOLDOWN_MS,
+    cooldownObservedMs,
+    passed: pacer.starts.length > 0
+      && traffic.apiAskRequestCount === pacer.starts.length
+      && observedGapsMs.length === Math.max(0, pacer.starts.length - 1)
+      && observedGapsMs.every((gap) => gap >= MIN_BROWSER_REQUEST_INTERVAL_MS)
+      && Number.isFinite(cooldownObservedMs)
+      && cooldownObservedMs >= BROWSER_COOLDOWN_MS,
+  };
+  const gradedWeb = report.deployment?.shaGrading?.web ?? {};
+  const webVersion = {
+    expectedServedSha: gradedWeb.servedSha ?? null,
+    floorSha: gradedWeb.floorSha ?? null,
+    gradedState: gradedWeb.state ?? null,
+    before: webVersionBefore,
+    after: webVersionAfter,
+    passed: Boolean(gradedWeb.servedSha)
+      && webVersionBefore.sha === gradedWeb.servedSha
+      && webVersionAfter.sha === gradedWeb.servedSha,
+  };
+  const expectedApiSha = report.deployment?.apiSha
+    ?? report.deployment?.shaGrading?.api?.servedSha
+    ?? null;
+  const apiVersion = {
+    expectedSha: expectedApiSha,
+    expectedDeploymentId: report.deployment?.id ?? null,
+    before: apiVersionBefore,
+    after: apiVersionAfter,
+    passed: Boolean(expectedApiSha && report.deployment?.id)
+      && apiVersionBefore.sha === expectedApiSha
+      && apiVersionAfter.sha === expectedApiSha
+      && apiVersionBefore.deploymentId === report.deployment.id
+      && apiVersionAfter.deploymentId === report.deployment.id,
+  };
   return buildEvidence({
     identity,
     url: options.webUrl,
@@ -455,6 +911,9 @@ async function captureLive(options, report) {
     viewports,
     console: consoleEvidence,
     checks,
+    pacing,
+    webVersion,
+    apiVersion,
   });
 }
 
@@ -470,6 +929,9 @@ async function main(argv = process.argv.slice(2)) {
       requiredChecks: requiredCheckIds(),
       viewports: [MOBILE_VIEWPORT, DESKTOP_VIEWPORT],
       minimumRequestIntervalMs: options.intervalMs,
+      apiToBrowserCooldownMs: BROWSER_COOLDOWN_MS,
+      webVersionPath: "/api/version",
+      apiVersionPath: "/version",
       outputDir: options.outputDir,
     }, null, 2));
     return { dryRun: true };
@@ -498,16 +960,26 @@ async function main(argv = process.argv.slice(2)) {
 
 export {
   ANALYST_FOLLOW_UPS,
+  BROWSER_PACING_SAFETY_MS,
+  BROWSER_COOLDOWN_MS,
   CANDIDATE_QUESTION,
   DEFAULT_WEB_URL,
   DESKTOP_VIEWPORT,
   MOBILE_VIEWPORT,
+  MIN_BROWSER_REQUEST_INTERVAL_MS,
+  OVERSIZED_QUESTION,
+  apiCooldownAnchor,
   browserOutputPath,
   buildEvidence,
-  fixtureNamesFromChip,
+  createRequestStartPacer,
+  finalApiRequestStart,
   identityFromReport,
-  isFixtureChipText,
   latestRunPath,
+  oversizedPromptCheckPasses,
+  parseBacktestCounts,
+  percentageTriplet,
+  reportExpectsMarketRows,
+  tripletsAgree,
   parseArgs,
   requiredCheckIds,
 };

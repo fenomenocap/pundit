@@ -95,18 +95,14 @@ function escapeRegExp(value: string): string {
 }
 
 function mentionsFixture(text: string, fixture: PlayerFixtureRef): boolean {
-  const lower = text.toLocaleLowerCase();
-  return lower.includes(fixture.home.toLocaleLowerCase())
-    || lower.includes(fixture.away.toLocaleLowerCase());
-}
-
-function uniqueTeamIn(text: string, fixture: PlayerFixtureRef): string | null {
-  const lower = text.toLocaleLowerCase();
-  const home = lower.includes(fixture.home.toLocaleLowerCase());
-  const away = lower.includes(fixture.away.toLocaleLowerCase());
-  if (home && !away) return fixture.home;
-  if (away && !home) return fixture.away;
-  return null;
+  // A source must identify this matchup, not merely mention both clubs in
+  // unrelated cards. This is deliberately narrower than page-wide team
+  // presence because accepted claims become fixture-scoped typed evidence.
+  const home = escapeRegExp(fixture.home);
+  const away = escapeRegExp(fixture.away);
+  const connector = "(?:v(?:s\\.?)?|versus|against|at|@|host(?:s|ing)?|face(?:s|ing)?|travel(?:s|ling)?\\s+to)";
+  return new RegExp(`\\b${home}\\b\\s*.{0,24}?\\s*${connector}\\s*.{0,24}?\\b${away}\\b|\\b${away}\\b\\s*.{0,24}?\\s*${connector}\\s*.{0,24}?\\b${home}\\b`, "i")
+    .test(text);
 }
 
 function affiliatedTeam(text: string, fixture: PlayerFixtureRef): string | null {
@@ -125,26 +121,13 @@ function affiliatedTeam(text: string, fixture: PlayerFixtureRef): string | null 
 
 function teamForPlayer(
   snippet: string,
-  blob: string,
-  playerName: string,
   fixture: PlayerFixtureRef
 ): string | null {
-  const affiliated = affiliatedTeam(snippet, fixture) ?? affiliatedTeam(blob, fixture);
-  if (affiliated) return affiliated;
-  const unique = uniqueTeamIn(snippet, fixture) ?? uniqueTeamIn(blob, fixture);
-  if (unique) return unique;
-  const lower = blob.toLocaleLowerCase();
-  const name = playerName.toLocaleLowerCase();
-  let from = 0;
-  while (from < lower.length) {
-    const playerAt = lower.indexOf(name, from);
-    if (playerAt < 0) break;
-    const window = blob.slice(Math.max(0, playerAt - 24), playerAt + playerName.length + 96);
-    const nearby = uniqueTeamIn(window, fixture) ?? affiliatedTeam(window, fixture);
-    if (nearby) return nearby;
-    from = playerAt + name.length;
-  }
-  return null;
+  // Team attribution is claim-local. Falling back to the first "for Leeds" (or
+  // equivalent) anywhere in an 8k page body assigned unrelated navigation and
+  // recommendation-card names to that club.
+  const affiliated = affiliatedTeam(snippet, fixture);
+  return affiliated;
 }
 
 function stripMarketChrome(text: string): string {
@@ -201,6 +184,20 @@ function collectNames(text: string, fixture: PlayerFixtureRef): string[] {
     names.push(candidate);
   }
   return names;
+}
+
+/** Bounded clause around one player mention; never crosses a list, sentence or card boundary. */
+function localClaimWindow(text: string, nameAt: number, nameLength: number): string {
+  const afterStart = nameAt + nameLength;
+  const boundaries = [...text.matchAll(/[!?;,|](?=\s|$)|\.(?=\s+[A-Z]|\s*$)|\n/g)]
+    .map((match) => match.index ?? -1)
+    .filter((index) => index >= 0);
+  const priorBoundary = boundaries.filter((index) => index < nameAt).at(-1) ?? -1;
+  const nextBoundary = boundaries.find((index) => index >= afterStart) ?? text.length;
+  return text.slice(
+    Math.max(priorBoundary + 1, nameAt - 72),
+    Math.min(nextBoundary + 1, afterStart + 96)
+  );
 }
 
 function marketKind(text: string): PlayerMarketKind {
@@ -318,11 +315,16 @@ export function extractPlayerEvidence(
           const idx = segment.toLocaleLowerCase().indexOf(playerName.toLocaleLowerCase());
           const window = idx < 0
             ? segment
-            : segment.slice(Math.max(0, idx - 72), idx + playerName.length + 48);
-          if (!MARKET_CUE.test(window)) continue;
-          const odds = nearestOdds(segment, playerName);
+            : localClaimWindow(segment, idx, playerName.length);
+          // Market pages often put "Anytime Goalscorer" in a heading just
+          // before the player card. The player, price and team must remain in
+          // the local window; only the market-type cue may come from the
+          // enclosing segment.
+          if (!MARKET_CUE.test(window) && !MARKET_CUE.test(segment)) continue;
+          const odds = nearestOdds(window, playerName);
           if (!inRange(odds)) continue;
-          const teamId = teamForPlayer(segment, blob, playerName, fixture) ?? "";
+          const teamId = teamForPlayer(window, fixture);
+          if (!teamId) continue;
           const key = `${slug(playerName)}:${odds.toFixed(2)}:${source.id}`;
           if (seenMarket.has(key)) continue;
           seenMarket.add(key);
@@ -354,7 +356,7 @@ export function extractPlayerEvidence(
       while (from < lower.length) {
         const idx = lower.indexOf(needle, from);
         if (idx < 0) break;
-        window = haystack.slice(Math.max(0, idx - 48), idx + playerName.length + 80);
+        window = localClaimWindow(haystack, idx, playerName.length);
         kind = nearestAvailabilityType(window, playerName);
         if (kind) break;
         from = idx + needle.length;
@@ -364,7 +366,8 @@ export function extractPlayerEvidence(
       const key = `${playerId}:${kind}:${source.id}`;
       if (seenAvailability.has(key)) continue;
       seenAvailability.add(key);
-      const teamId = teamForPlayer(window, blob, playerName, fixture) ?? "";
+      const teamId = teamForPlayer(window, fixture);
+      if (!teamId) continue;
       const row: PlayerEvidence = {
         playerId,
         playerName,

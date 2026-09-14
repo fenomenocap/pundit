@@ -26,7 +26,9 @@ function hoursAgo(hours: number): string {
 
 // ─── Data layer (mock ↔ real API swap) ──────────────────────────────────────
 
-const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
+// Mock data is a deliberate test/dev mode. Production must fail against the
+// real API rather than quietly presenting the demo fixture set as live truth.
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 
 function e2eFixtureState(): string | null {
   if (typeof window === "undefined") return null;
@@ -267,6 +269,20 @@ const MOCK_MODEL_FIXTURES: ModelFixtureResponse[] = [
       { source: "polymarket", observedAt: futureISO(0), pHome: 0.68, pDraw: 0.20, pAway: 0.12 },
     ],
     result: null,
+    forecastProvenance: {
+      modelId: "mock-club-season",
+      modelVersion: "mock-v1",
+      contributorId: "mock-ratings",
+      contributorVersion: "mock-v1",
+      methodId: "mock-method-v1",
+      forecastAt: new Date(now).toISOString(),
+      ratingProfile: "mock",
+      ratingSnapshotAt: new Date(now).toISOString(),
+      ratingAgeMinutes: 0,
+      ratingSourceState: "artifact",
+      homeAdvantageElo: 65,
+      config: {},
+    },
   },
   {
     competitionId: "eng.1",

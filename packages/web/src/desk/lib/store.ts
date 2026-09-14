@@ -5,10 +5,10 @@ import { persist } from "zustand/middleware";
 import {
   FIXTURES,
   OPEN_FIXTURES,
+  hasCapturedForecast,
   applyLiveSlate,
   getFixture,
   modelProbFor,
-  settlesWon,
   type Fixture,
   type MarketKey,
 } from "./data/fixtures";
@@ -16,6 +16,8 @@ import { PLAYERS_BY_ADP, getPlayer, type Pos } from "./data/players";
 import { poisson } from "./format";
 import type { AskGrounding } from "@/lib/api";
 import type { VaultId } from "./data/vaults";
+import { reconcileHydratedPaperState, resolveHydratedSelection } from "./slate-selection";
+import { applyScores } from "./paper-settlement";
 
 const STARTING = 10_000;
 const USER_SEAT = 3;
@@ -104,34 +106,6 @@ function cpuPick(taken: Set<string>, myPicks: string[]) {
   return PLAYERS_BY_ADP.find((p) => !taken.has(p.id))?.id ?? PLAYERS_BY_ADP[0].id;
 }
 
-function applyScores(
-  tickets: Ticket[],
-  scores: Record<string, [number, number]>,
-  cash: number,
-) {
-  const nextTickets = tickets.map((t) => {
-    if (t.status !== "open") return t;
-    const resolved = t.legs.map((leg) => {
-      const sc = scores[leg.fixtureId];
-      if (!sc) return "open";
-      return settlesWon(sc, leg.market) ? "won" : "lost";
-    });
-    if (resolved.some((r) => r === "open")) return t;
-    const won = resolved.every((r) => r === "won");
-    return {
-      ...t,
-      status: won ? ("won" as const) : ("lost" as const),
-      pnl: won ? t.stake * t.price - t.stake : -t.stake,
-    };
-  });
-  let credit = 0;
-  for (const t of nextTickets) {
-    const old = tickets.find((o) => o.id === t.id);
-    if (old?.status === "open" && t.status === "won") credit += t.stake * t.price;
-  }
-  return { tickets: nextTickets, cash: cash + credit };
-}
-
 export type DraftPhase = "idle" | "live" | "done";
 
 type State = {
@@ -149,7 +123,7 @@ type State = {
   messages: ChatMsg[];
   queuedAsk: string | null;
   slateEpoch: number;
-  liveSource: "live" | "static" | "pending";
+  liveSource: "live" | "no-fixtures" | "static" | "unavailable" | "pending";
   addLeg: (leg: SlipLeg) => void;
   removeLeg: (fixtureId: string, market: MarketKey) => void;
   setStake: (n: number) => void;
@@ -170,7 +144,7 @@ type State = {
   resetChat: () => void;
   queueAsk: (text: string) => void;
   clearQueuedAsk: () => void;
-  hydrateSlate: (open: Fixture[], settled: Fixture[], source: "live" | "static") => void;
+  hydrateSlate: (open: Fixture[], settled: Fixture[], source: "live" | "no-fixtures" | "static" | "unavailable") => void;
 };
 
 const ftScores = Object.fromEntries(
@@ -184,7 +158,7 @@ export const useDesk = create<State>()(
       tickets: [],
       slip: [],
       slipStake: 100,
-      selectedId: OPEN_FIXTURES[2]?.id ?? OPEN_FIXTURES[0]?.id ?? "",
+      selectedId: "",
       scores: ftScores,
       vaultAlloc: { alpha: 0, neutral: 0, yield: 0 },
       draftPhase: "idle",
@@ -241,7 +215,7 @@ export const useDesk = create<State>()(
 
       simulate: (id) => {
         const f = getFixture(id);
-        if (!f || f.status === "ft") return get().scores[id] ?? null;
+        if (!f || f.status === "ft" || !f.xg) return get().scores[id] ?? null;
         if (get().scores[id]) return get().scores[id];
         const score: [number, number] = [poisson(f.xg[0]), poisson(f.xg[1])];
         set((s) => {
@@ -256,7 +230,7 @@ export const useDesk = create<State>()(
         set((st) => {
           const scores = { ...st.scores };
           for (const f of OPEN_FIXTURES) {
-            if (!scores[f.id]) scores[f.id] = [poisson(f.xg[0]), poisson(f.xg[1])];
+            if (!scores[f.id] && f.xg) scores[f.id] = [poisson(f.xg[0]), poisson(f.xg[1])];
           }
           const applied = applyScores(st.tickets, scores, st.cash);
           return { scores, tickets: applied.tickets, cash: applied.cash };
@@ -351,29 +325,53 @@ export const useDesk = create<State>()(
           messages: s.messages.filter((msg) => msg.id !== id),
         })),
 
-      resetChat: () => set({ messages: [] }),
+      resetChat: () => set({ messages: [], selectedId: "", queuedAsk: null }),
 
       queueAsk: (text) => set({ queuedAsk: text }),
       clearQueuedAsk: () => set({ queuedAsk: null }),
 
       hydrateSlate: (open, settled, source) => {
         applyLiveSlate(open, settled);
-        const scores: Record<string, [number, number]> = { ...get().scores };
+        const current = get();
+        if (source === "unavailable") {
+          set({
+            selectedId: "",
+            slip: [],
+            liveSource: source,
+            slateEpoch: current.slateEpoch + 1,
+          });
+          return;
+        }
+        const reconciled = reconcileHydratedPaperState(
+          current.slip,
+          current.tickets,
+          current.scores,
+          open,
+          settled,
+        );
+        const scores: Record<string, [number, number]> = { ...reconciled.scores };
+        const refundedStake = reconciled.removedTickets
+          .filter((ticket) => ticket.status === "open")
+          .reduce((sum, ticket) => sum + ticket.stake, 0);
         for (const f of settled) {
           if (f.score) scores[f.id] = f.score;
         }
-        const still =
-          open.some((f) => f.id === get().selectedId)
-          || settled.some((f) => f.id === get().selectedId);
-        const banker =
-          open.find((f) => f.home === "LIV" && f.away === "FUL") ??
-          open.find((f) => f.home === "MUN" && f.away === "MCI") ??
-          open[0];
+        const applied = applyScores(
+          reconciled.tickets,
+          scores,
+          current.cash + refundedStake,
+        );
         set({
           scores,
-          selectedId: still ? get().selectedId : banker?.id ?? get().selectedId,
+          slip: reconciled.slip,
+          tickets: applied.tickets,
+          cash: applied.cash,
+          // Never preserve a persisted fixture that is absent from the live
+          // snapshot. When the live slate is empty/unavailable, an old static
+          // ID must not leak back into chat as authoritative fixture context.
+          selectedId: resolveHydratedSelection(current.selectedId, open, settled),
           liveSource: source,
-          slateEpoch: get().slateEpoch + 1,
+          slateEpoch: current.slateEpoch + 1,
         });
       },
     }),
@@ -410,12 +408,14 @@ export function rosterScore(picks: string[]) {
 
 export function bestEdge(fixtureId: string) {
   const f = getFixture(fixtureId);
-  if (!f) return null;
+  if (!f?.odds || !hasCapturedForecast(f)) return null;
   const keys: MarketKey[] = ["home", "draw", "away", "over25", "under25", "bttsY", "bttsN"];
   let best: { key: MarketKey; edge: number; price: number } | null = null;
   for (const key of keys) {
-    const e = modelProbFor(f, key) - 1 / f.odds[key];
-    if (!best || e > best.edge) best = { key, edge: e, price: f.odds[key] };
+    const price = f.odds[key];
+    if (price === null) continue;
+    const e = modelProbFor(f, key) - 1 / price;
+    if (!best || e > best.edge) best = { key, edge: e, price };
   }
   return best;
 }

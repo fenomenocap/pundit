@@ -24,7 +24,7 @@ const source = (over: Partial<PlayerEvidenceSource> = {}): PlayerEvidenceSource 
   title: "Chelsea vs Arsenal anytime scorer odds",
   url: "https://example.com/scorers",
   date: "2026-09-11T08:00:00Z",
-  snippet: "Cole Palmer anytime 2.10, Cole Palmer expected to start for Chelsea.",
+  snippet: "Cole Palmer anytime 2.10 for Chelsea, Cole Palmer expected to start for Chelsea.",
   ...over,
 });
 
@@ -60,13 +60,13 @@ describe("player evidence adapter", () => {
     expect(leadingScorerCandidate(bundle)?.observedAt).toBeNull();
   });
 
-  it("extracts fractional list quotes on a Home vs Away title without inventing a side", () => {
+  it("extracts fractional list quotes only when each player is locally bound to a side", () => {
     const bundle = extractPlayerEvidence([{
       id: "S1",
       title: "Sky Sports Bournemouth vs Brentford scorer odds",
       url: "https://example.com/scorers",
       date: "2026-09-11T08:00:00Z",
-      snippet: "Semenyo 11/4 anytime, Wissa 2.1 to score",
+      snippet: "Semenyo 11/4 anytime for Bournemouth, Wissa 2.1 to score for Brentford",
     }], {
       fixtureId: "eng.1:bournemouth-brentford",
       home: "Bournemouth",
@@ -80,13 +80,54 @@ describe("player evidence adapter", () => {
     expect(bundle.markets.some((row) => row.playerName === "Semenyo" && row.decimalOdds === 3.75)).toBe(true);
   });
 
+  it("does not carry a later player's club affiliation across a comma", () => {
+    const bundle = extractPlayerEvidence([{
+      id: "S1",
+      title: "Bournemouth vs Brentford scorer odds",
+      url: "https://example.com/scorers",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Anytime scorers: Semenyo 11/4, Wissa 2.10 for Brentford.",
+    }], {
+      fixtureId: "eng.1:bournemouth-brentford",
+      home: "Bournemouth",
+      away: "Brentford",
+      kickoff: "2026-09-12T14:00:00Z",
+    });
+    expect(bundle.markets.map((row) => ({
+      playerName: row.playerName,
+      teamId: row.teamId,
+      decimalOdds: row.decimalOdds,
+    }))).toEqual([{
+      playerName: "Wissa",
+      teamId: "Brentford",
+      decimalOdds: 2.1,
+    }]);
+  });
+
+  it("does not carry a later player's price into an earlier local claim", () => {
+    const bundle = extractPlayerEvidence([{
+      id: "S1",
+      title: "Bournemouth vs Brentford scorer odds",
+      url: "https://example.com/scorers",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Anytime scorers: Semenyo for Bournemouth, Wissa 2.10 for Brentford.",
+    }], {
+      fixtureId: "eng.1:bournemouth-brentford",
+      home: "Bournemouth",
+      away: "Brentford",
+      kickoff: "2026-09-12T14:00:00Z",
+    });
+    expect(bundle.markets.map((row) => row.playerName)).toEqual(["Wissa"]);
+    expect(bundle.markets[0]?.decimalOdds).toBe(2.1);
+  });
+
   it("strips Oddschecker See All Odds chrome and keeps the real anytime price", () => {
     const bundle = extractPlayerEvidence([{
       id: "S4",
       title: "Bournemouth vs Brentford Betting Odds",
       url: "https://www.oddschecker.com/football/english/premier-league/bournemouth-v-brentford/anytime-goalscorer",
       date: "",
-      snippet: "Anytime Goalscorer. Igor Thiago See All Odds (1). 5/4. Evanilson See All Odds ... To Score 2 Or More Goals.",
+      snippet: "Anytime Goalscorer. Igor Thiago See All Odds (1). 5/4 for Brentford. Evanilson See All Odds ... To Score 2 Or More Goals for Bournemouth.",
     }], {
       fixtureId: "eng.1:bournemouth-brentford",
       home: "Bournemouth",
@@ -117,7 +158,7 @@ describe("player evidence adapter", () => {
     expect(bundle.markets).toEqual([]);
   });
 
-  it("composes a labelled market observation without a Pundit scorer probability", () => {
+  it("composes a labelled market observation in first-person analyst voice", () => {
     const evidence = extractPlayerEvidence([source()], fixture);
     const answer = composePlayerScorerAnswer({
       kind: "match",
@@ -128,7 +169,9 @@ describe("player evidence adapter", () => {
     } as never, evidence);
     expect(answer).toMatch(/Cole Palmer/);
     expect(answer).toMatch(/2\.10 decimal \[\[S1\]\]/);
-    expect(answer).toMatch(/don't treat that quote as a Pundit probability/i);
+    expect(answer).toMatch(/market price, not my probability/i);
+    expect(answer).toMatch(/not my player ranking/i);
+    expect(answer).not.toMatch(/a Pundit (?:probability|ranking)/i);
     expect(answer).not.toMatch(/I make Cole Palmer \d/);
     expect(answer).not.toMatch(/My short answer is/);
   });
@@ -220,6 +263,60 @@ describe("player evidence adapter", () => {
     }], bournemouth);
     expect(mixed.observations.find((row) => row.playerName === "Evanilson")?.value).toBe("out");
     expect(mixed.observations.find((row) => row.playerName === "Kluivert")?.value).toBe("start");
+  });
+
+  it("rejects unrelated player cards and never assigns them from a page-wide fixture mention", () => {
+    const evidence = extractPlayerEvidence([{
+      id: "S6",
+      title: "Leeds vs Newcastle prediction, team news, lineups",
+      url: "https://example.com/leeds-newcastle",
+      date: "2026-09-12T08:00:00Z",
+      snippet: "Leeds vs Newcastle preview. Related: Arsenal expected to start Gyokeres and Dowman. Later coverage is available for Leeds.",
+    }], {
+      fixtureId: "eng.1:leeds-newcastle",
+      home: "Leeds",
+      away: "Newcastle",
+      kickoff: "2026-09-14T14:00:00Z",
+    });
+    expect(evidence.observations).toEqual([]);
+    expect(evidence.markets).toEqual([]);
+    expect(hasTeamNewsEvidence(evidence)).toBe(false);
+  });
+
+  it("requires both fixture teams before accepting a player claim", () => {
+    const evidence = extractPlayerEvidence([{
+      id: "S7",
+      title: "Chelsea team news",
+      url: "https://example.com/chelsea",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Cole Palmer is ruled out for Chelsea.",
+    }], fixture);
+    expect(evidence.observations).toEqual([]);
+    expect(evidence.markets).toEqual([]);
+  });
+
+  it("requires the two fixture teams to identify the same bounded fixture context", () => {
+    const evidence = extractPlayerEvidence([{
+      id: "S8",
+      title: "Chelsea team news",
+      url: "https://example.com/chelsea",
+      date: "2026-09-11T08:00:00Z",
+      snippet: `${"Unrelated coverage. ".repeat(12)}Arsenal results. Cole Palmer is ruled out for Chelsea.`,
+    }], fixture);
+    expect(evidence.observations).toEqual([]);
+    expect(evidence.markets).toEqual([]);
+  });
+
+  it("does not treat a dash between unrelated page sections as a fixture", () => {
+    const evidence = extractPlayerEvidence([{
+      id: "S9",
+      title: "Arsenal injuries — Chelsea transfer news",
+      url: "https://example.com/news-roundup",
+      date: "2026-09-11T08:00:00Z",
+      snippet: "Cole Palmer is ruled out for Chelsea.",
+    }], fixture);
+    expect(evidence.observations).toEqual([]);
+    expect(evidence.markets).toEqual([]);
   });
 
   it("does not treat a 1X2 winner page number next to a player as scorer odds", () => {

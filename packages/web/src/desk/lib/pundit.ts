@@ -15,7 +15,8 @@ export async function askPundit({
     userLine?: UserLine;
   };
 }): Promise<{ ok: true; text: string; grounding: AskGrounding }> {
-  const question = data.question.trim().slice(0, 500) || "Give me the weekend briefing.";
+  const question = data.question.trim() || "Give me the weekend briefing.";
+  if (question.length > 500) throw new Error("Questions must be 500 characters or fewer.");
   const history = data.history ?? [];
   const res = await fetch(`${API_URL}/api/ask`, {
     method: "POST",

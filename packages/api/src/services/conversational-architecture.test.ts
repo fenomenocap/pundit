@@ -7,6 +7,7 @@ import { composeMatchResponse, SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE 
 import { buildResponseFacts } from "./response-facts";
 import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
 import { attachUserLine, buildMatchPricing, stripUntraceableMatchPercentages } from "./response-correctness";
+import { buildPunditConsensus, pricingConsensusFromBlock } from "./pundit-consensus";
 
 const grounding = (): Grounding => {
   const pHome = 0.563;
@@ -16,6 +17,10 @@ const grounding = (): Grounding => {
     source: "kalshi", observedAt: "2026-09-12T08:00:00Z",
     pHome: 0.501, pDraw: 0.296, pAway: 0.203,
   }];
+  const consensus = buildPunditConsensus({
+    fundamental: { pHome, pDraw, pAway },
+    market: { source: "kalshi", observedAt: oddsSources[0].observedAt, pHome: 0.501, pDraw: 0.296, pAway: 0.203 },
+  })!;
   return {
     kind: "match",
     fixtureId: "eng.1:1",
@@ -43,6 +48,7 @@ const grounding = (): Grounding => {
     stakePDraw: null,
     stakePAway: null,
     oddsSources,
+    consensus,
     marketDivergence: [{
       source: "kalshi", observedAt: "2026-09-12T08:00:00Z",
       legs: [
@@ -69,6 +75,7 @@ const grounding = (): Grounding => {
         pAway: source.pAway,
         decimalOdds: null,
       })),
+      consensus: pricingConsensusFromBlock(consensus),
     }),
   };
 };
@@ -233,6 +240,28 @@ describe("V2 conversational architecture", () => {
       reasoning: [], citedClaims: [],
     }), grounding())).toEqual({ valid: false, reason: "prohibited-claim" });
     expect(validateAnalystDraft(JSON.stringify({
+      directAnswer: {
+        text: "My fundamental forecast is {{consensus.home}}.",
+        factIds: ["consensus.home"],
+      },
+      reasoning: [], citedClaims: [],
+    }), grounding())).toEqual({ valid: false, reason: "prohibited-claim" });
+    expect(validateAnalystDraft(JSON.stringify({
+      directAnswer: {
+        text: "My sealed fundamental read is {{consensus.home}}.",
+        factIds: ["consensus.home"],
+      },
+      reasoning: [], citedClaims: [],
+    }), grounding())).toEqual({ valid: false, reason: "prohibited-claim" });
+    const labelledConsensus = validateAnalystDraft(JSON.stringify({
+      directAnswer: {
+        text: "The consensus view is {{consensus.home}}.",
+        factIds: ["consensus.home"],
+      },
+      reasoning: [], citedClaims: [],
+    }), grounding());
+    expect(labelledConsensus.valid).toBe(true);
+    expect(validateAnalystDraft(JSON.stringify({
       directAnswer: { text: "I make Chelsea {{match.home}}.", factIds: ["match.home"] },
       reasoning: [], citedClaims: [],
     }), grounding())).toEqual({ valid: false, reason: "free-text-match-subject" });
@@ -333,7 +362,7 @@ describe("V2 conversational architecture", () => {
           title: "Chelsea vs Arsenal anytime scorer odds",
           url: "https://example.com/scorers",
           date: "2026-09-11T08:00:00Z",
-          snippet: "Cole Palmer anytime 2.10, Cole Palmer expected to start for Chelsea.",
+          snippet: "Cole Palmer anytime 2.10 for Chelsea, Cole Palmer expected to start for Chelsea.",
         }],
       },
       answer: "I make Arsenal 56.3% and therefore Salah is the most likely scorer.",
@@ -341,11 +370,23 @@ describe("V2 conversational architecture", () => {
     expect(quoted.answer).toMatch(/Cole Palmer/);
     expect(quoted.answer).toMatch(/2\.10 decimal/);
     expect(quoted.answer).toMatch(/example\.com\/scorers/);
-    expect(quoted.answer).toMatch(/don't treat that quote as a Pundit probability/i);
+    expect(quoted.answer).toMatch(/market price, not my probability/i);
     expect(quoted.answer).not.toMatch(/56\.3%/);
     expect(quoted.answer).not.toMatch(/Salah/);
     expect(quoted.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(quoted.verification.status).toBe("verified");
+
+    const previewQuestion = "Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.";
+    const preview = await deliverAnswer({
+      ...base,
+      question: previewQuestion,
+      hasHistory: false,
+      answer: "not a structured draft",
+    });
+    expect(preview.answer).toMatch(/Kalshi market-implied probabilities/i);
+    expect(preview.answer).toMatch(/6\.2 percentage points/i);
+    expect(preview.answer).toContain("Pundit Consensus");
+    expect(preview.answer).toMatch(new RegExp(`${(match.consensus!.pHome * 100).toFixed(1)}%`));
 
     const teamNewsEmpty = await deliverAnswer({
       ...base,
@@ -572,6 +613,8 @@ describe("V2 conversational architecture", () => {
     );
     expect(previewCopy).toMatch(/full 1X2/);
     expect(previewCopy).toContain(SHARED_TOTAL_XG_SENTENCE);
+    expect(previewCopy).toMatch(/market-implied probabilities/i);
+    expect(previewCopy).toMatch(/percentage points/i);
     expect(previewCopy).not.toMatch(/Over 2\.5 is 58\.9%/);
   });
 

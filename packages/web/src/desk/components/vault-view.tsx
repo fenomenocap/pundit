@@ -19,7 +19,7 @@ export function VaultView() {
         Model books
       </h1>
       <p className="mt-3 max-w-xl text-quiet leading-relaxed">
-        Three ways the model reads a gameweek. Paper-track them against the GW4 slate. Same engine
+        Three ways the model reads a gameweek. Paper-track them against the current slate. Same engine
         as the desk. Not a deposit, not a bookmaker.
       </p>
       <div className="mt-6 flex flex-wrap gap-6 text-sm">

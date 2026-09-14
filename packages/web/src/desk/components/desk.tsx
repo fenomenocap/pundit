@@ -45,10 +45,20 @@ export function Desk() {
     <div className="flex flex-col min-h-0">
       <Ticker />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border bg-surface px-3 sm:px-4 py-2 text-xs">
-        <span className="eyebrow">{source === "live" ? "Live model" : "GW3 model"}</span>
-        <span className="font-display text-base tabular-nums leading-none">
-          {rec.hits}/{rec.n} <span className="text-quiet">1X2</span> {fmtPct(rec.pct)}
+        <span className="eyebrow">
+          {source === "live"
+            ? "Live model"
+            : source === "no-fixtures"
+              ? "No priced fixtures"
+            : source === "static"
+              ? "Mock model"
+              : source === "pending" ? "Loading model" : "Model unavailable"}
         </span>
+        {source === "static" && rec.pct !== null ? (
+          <span className="font-display text-base tabular-nums leading-none">
+            {rec.hits}/{rec.n} <span className="text-quiet">1X2</span> {fmtPct(rec.pct)}
+          </span>
+        ) : null}
         <span className="hidden sm:inline text-quiet">
           Analysis only — not betting advice.
         </span>

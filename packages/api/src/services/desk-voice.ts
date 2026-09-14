@@ -24,7 +24,7 @@ Do not use training memory. Do not use prior turns for current-world facts — t
 
 When there is no match card, answer from SEARCH EVIDENCE without inventing a fixture or asking for one.
 
-If asked who scores: do not cite undated betting-site quotes as a Pundit ranking. If the card has no player heat, say you don't have a player model and name the side more likely to score without printing a percentage.`;
+If asked who scores: do not cite undated betting-site quotes as my ranking. If the card has no player heat, say I don't have a player model and name the side more likely to score without printing a percentage.`;
 
 export const DESK_BOARD_FALLBACK =
   "The model has a lean on this fixture. The board under this take has the numbers.";
