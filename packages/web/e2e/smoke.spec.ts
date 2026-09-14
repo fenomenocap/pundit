@@ -121,9 +121,9 @@ test.describe("smoke", () => {
     await page.goto("/fixtures");
     const rows = page.getByTestId("fixture-row");
     await expect(rows).toHaveCount(3);
-    await expect(rows.nth(0)).toHaveAttribute("data-fixture-id", "eng.1-3");
-    await expect(rows.nth(1)).toHaveAttribute("data-fixture-id", "eng.1-1");
-    await expect(rows.nth(2)).toHaveAttribute("data-fixture-id", "uefa.champions_qual-2");
+    await expect(rows.nth(0)).toHaveAttribute("data-fixture-id", "espn:eng.1:3");
+    await expect(rows.nth(1)).toHaveAttribute("data-fixture-id", "espn:eng.1:1");
+    await expect(rows.nth(2)).toHaveAttribute("data-fixture-id", "espn:uefa.champions_qual:2");
     await expect(rows.nth(1).getByText("Forecast ready", { exact: true })).toBeVisible();
     await expect(rows.nth(1).getByText("My forecast", { exact: true })).toBeVisible();
     await expect(rows.nth(1).getByText("Polymarket", { exact: false })).toBeVisible();
@@ -169,7 +169,7 @@ test.describe("smoke", () => {
     await expect(arsenal).toHaveAttribute("data-forecast-at", /T/);
     await arsenal.getByRole("button", { name: "Expand details" }).click();
     await expect(page.getByTestId("totals-honesty")).toHaveText(
-      "Totals sit near even because every match uses the same 2.70 expected goals."
+      "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter."
     );
     await expect(page.getByText("Markets", { exact: true })).toBeVisible();
     await expect(page.getByText("Polymarket", { exact: true })).toBeVisible();
@@ -237,6 +237,40 @@ test.describe("smoke", () => {
     await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-priced-at", "2026-09-10T12:00:00.000Z");
     await expect(page.getByTestId("desk-board-markets")).toContainText("Polymarket");
     await expect(page.getByTestId("desk-board-markets")).toContainText("55.0%");
+  });
+
+  test("desk preserves an unresolved scorer switch and pins a resolved replacement", async ({ page }) => {
+    await routeTwoFixtureDeskSlate(page);
+    const requests: Array<Record<string, unknown>> = [];
+    await page.route("**/api/ask", async (route) => {
+      requests.push(route.request().postDataJSON());
+      const turn = requests.length;
+      const grounding = turn === 2 ? null : turn >= 4
+        ? deskMatchGrounding("espn:eng.1:902", "Liverpool", "Fulham")
+        : deskMatchGrounding("espn:eng.1:901", "Arsenal", "Chelsea");
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        answer: `Reply ${turn}.`, grounding,
+      }) });
+    });
+    await page.goto("/");
+    await page.locator('[data-testid="desk-featured-fixture"][data-fixture-id="espn:eng.1:901"]').click();
+    await expect(page.getByText("Reply 1.", { exact: true })).toBeVisible();
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    for (const [index, question] of [
+      "Who is most likely to score for Liverpool?",
+      "Back to this match: who scored recently?",
+      "Switch to Liverpool vs Fulham",
+      "Who scored recently?",
+    ].entries()) {
+      await input.fill(question);
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect(page.getByText(`Reply ${index + 2}.`, { exact: true })).toBeVisible();
+    }
+    expect(requests.slice(0, 4).map((request) => request.fixtureContext)).toEqual(
+      Array(4).fill({ fixtureId: "espn:eng.1:901" }),
+    );
+    expect(requests[4].fixtureContext).toEqual({ fixtureId: "espn:eng.1:902" });
+    await expect(page.getByText("Pinned · Liverpool vs Fulham", { exact: true })).toBeVisible();
   });
 
   test("New Chat clears fixture context, queued state and shared URL", async ({ page }) => {
@@ -906,7 +940,7 @@ test.describe("smoke", () => {
     await expect(page.getByTestId("match-fixture-card")).toBeVisible();
     const ev = page.getByTestId("market-ev-polymarket");
     await expect(ev).toBeVisible();
-    await expect(ev).toContainText("fat-and-fragile");
+    await expect(ev).toContainText("large price gap; sensitive to forecast error");
     await expect(ev).toContainText("14.3%");
     await expect(ev).toContainText("+404.0%");
   });
@@ -995,4 +1029,30 @@ test.describe("smoke", () => {
     );
     await expect(page.getByRole("button", { name: /Dinamo Zagreb vs Viking/ })).toHaveCount(0);
   });
+});
+
+test("canonical probability attributes agree across Fixtures, Model and Desk despite aliases", async ({ page }) => {
+  const fixtureId = "espn:eng.1:1";
+  await page.goto("/fixtures");
+  const fixture = page.locator(`[data-testid="fixture-row"][data-fixture-id="${fixtureId}"]`);
+  await expect(fixture).toHaveAttribute("data-capability", "priced");
+  const values = await Promise.all(["home", "draw", "away"].map((side) => fixture.getAttribute(`data-p-${side}`)));
+  await page.goto("/model");
+  const model = page.locator(`[data-testid="model-fixture-row"][data-fixture-id="${fixtureId}"]`);
+  for (const [index, side] of ["home", "draw", "away"].entries()) {
+    await expect(model).toHaveAttribute(`data-p-${side}`, values[index]!);
+  }
+  await routeTwoFixtureDeskSlate(page);
+  await page.route("**/api/ask", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+    answer: "I have the fixture in view.",
+    grounding: { ...deskMatchGrounding(fixtureId, "Arsenal FC", "Coventry"), pHome: Number(values[0]), pDraw: Number(values[1]), pAway: Number(values[2]) },
+  }) }));
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Ask a question" }).fill("Arsenal vs Coventry");
+  await page.getByRole("button", { name: "Send" }).click();
+  const desk = page.locator(`[data-testid="desk-match-board"][data-fixture-id="${fixtureId}"]`);
+  await expect(desk).toHaveAttribute("data-capability", "priced");
+  for (const [index, side] of ["home", "draw", "away"].entries()) {
+    await expect(desk).toHaveAttribute(`data-p-${side}`, values[index]!);
+  }
 });

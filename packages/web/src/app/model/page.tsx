@@ -216,6 +216,10 @@ export default function ModelPage() {
                         <tr
                           data-testid="model-fixture-row"
                           data-fixture-id={modelFixtureIdentity(fixture)}
+                          data-capability="priced"
+                          data-p-home={fixture.pHome}
+                          data-p-draw={fixture.pDraw}
+                          data-p-away={fixture.pAway}
                           data-model-version={fixture.forecastProvenance?.modelVersion}
                           data-forecast-at={fixture.forecastProvenance?.forecastAt}
                           className="cursor-pointer border-t border-border/60 transition-colors hover:bg-secondary/30"

@@ -1543,7 +1543,7 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     "I make Arsenal the likeliest outcome at 56.3%.\n\nOver 2.5 is 50.6%.\n\nThe leading scorelines are 1-1.\n\nI would revisit the read.",
     { expectPricingDesk: true }
   ).passed, false);
-  const totals = "I have over 2.5 at 50.6%; under 2.5 is 49.4%. Totals sit near even because every match uses the same 2.70 expected goals.";
+  const totals = "I have over 2.5 at 50.6%; under 2.5 is 49.4%. I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
   assert.equal(validateAnalystExpression(totals, { expectTotalsHonesty: true }).passed, true);
   assert.equal(validateAnalystExpression(
     "Salah is the most likely scorer because Arsenal are 77.6% to win.",
@@ -3238,4 +3238,14 @@ test("schema-17 accepts an unqualified space-behind acknowledgement", () => {
   ]) assert.equal(validateResponseCorrectness(
     answer, [], null, { expectCorrectHighLineGeometry: true }
   ).passed, false, answer);
+});
+
+test("certification rejects internal ambiguity copy and requires a useful totals limitation", () => {
+  for (const copy of ["I need the grounding JSON.", "My retrieval found no fixture."]) {
+    assert.equal(validateAnswerCopy(copy).passed, false);
+  }
+  assert.equal(validateAnalystExpression(
+    "I have over 2.5 at 50.6%; under 2.5 is 49.4%. Every match uses the same 2.70 expected goals.",
+    { expectTotalsHonesty: true }
+  ).passed, false);
 });

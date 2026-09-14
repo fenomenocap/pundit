@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
+import * as modelData from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
 import { attachUserLine, buildMatchPricing } from "./response-correctness";
 import { SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
@@ -3121,7 +3122,7 @@ describe("resolveAskContext", () => {
     )).toMatchObject({ tier: "match", fixture: fixtures[0] });
   });
 
-  it("releases a retained fixture when a scorer question names another club", () => {
+  it("preserves a retained fixture while clarifying a third-club scorer switch", () => {
     const recognized = [recognizeEspnFixture({
       id: fixtures[0].fixtureId,
       competitionId: fixtures[0].competitionId,
@@ -3147,11 +3148,11 @@ describe("resolveAskContext", () => {
         recognizedFixtures: recognized,
         fixtureContext: { fixtureId: recognized[0].fixtureId },
       }
-    )).toEqual({ tier: "general" });
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
     expect(deterministicUngroundedClarification(
       "Who will most likely score for Liverpool?",
       null
-    )).toBe("Which Liverpool fixture do you mean? Name the opponent, and I’ll check the scorer market and current team news for that match.");
+    )).toBe("I need Liverpool’s opponent before I can switch fixtures. Name the opponent, and I’ll check the scorer market and current team news for that match.");
     expect(resolveAskContext(
       "Who scores for Everton?",
       [],
@@ -3163,11 +3164,11 @@ describe("resolveAskContext", () => {
         recognizedFixtures: recognized,
         fixtureContext: { fixtureId: recognized[0].fixtureId },
       }
-    )).toEqual({ tier: "general" });
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
     expect(deterministicUngroundedClarification(
       "Who scores for Everton?",
       null
-    )).toBe("Which Everton fixture do you mean? Name the opponent, and I’ll check the scorer market and current team news for that match.");
+    )).toBe("I need Everton’s opponent before I can switch fixtures. Name the opponent, and I’ll check the scorer market and current team news for that match.");
     expect(resolveAskContext(
       "Who scores for Arsenal?",
       [],
@@ -3294,7 +3295,7 @@ describe("resolveAskContext", () => {
     }
   });
 
-  it("releases match grounding once the question names another team", () => {
+  it("retains match grounding until another team has an identified opponent", () => {
     const teamContext: [string, string] = ["Arsenal", "Coventry City"];
     expect(resolveAskContext(
       "How is Tottenham Hotspur doing?",
@@ -3302,7 +3303,7 @@ describe("resolveAskContext", () => {
       teamContext,
       fixtures,
       []
-    )).toEqual({ tier: "general" });
+    )).toMatchObject({ tier: "match", fixture: fixtures[0] });
   });
 
   it("does not silently generalize a match follow-up while its model row is unavailable", () => {
@@ -4490,4 +4491,40 @@ describe("inference credential configuration", () => {
     expect(getInferenceStatus()).toMatchObject({ totalCalls: 0, failures: 0 });
     resetInferenceStatus();
   });
+});
+
+describe("deterministic fixture clarification", () => {
+  it("settles identity-free ambiguity in first person without internal terminology", () => {
+    const answer = deterministicUngroundedClarification("Which side should I trust more here?", null);
+    expect(answer).toMatch(/^I need/);
+    expect(answer).not.toMatch(/JSON|grounding|payload|retrieval|model plumbing/i);
+  });
+  it("acknowledges a third club without answering for the pinned match", () => {
+    const grounding = buildGrounding(fixture("Arsenal", "Chelsea"));
+    const answer = deterministicUngroundedClarification("Who scores for Everton?", grounding);
+    expect(answer).toContain("Everton’s opponent");
+    expect(answer).toContain(`${grounding.home} vs ${grounding.away}`);
+    expect(answer).toContain("player-level projections");
+    expect(answer).not.toMatch(/JSON|grounding|payload|retrieval/i);
+  });
+});
+
+it.each(["What about Liverpool?", "Liverpool odds?"])("retains the explicit fixture for an unresolved switch: %s", (question) => {
+  const model = fixture("Arsenal", "Chelsea");
+  const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model, fixture("Liverpool", "Everton")], lastUpdated: null, error: null });
+  try {
+    expect(resolveAskContext(question, [], undefined, [model], [], [], { fixtureContext: { fixtureId: espnFixtureIdentity(model) } })).toMatchObject({ tier: "match", fixture: model });
+    expect(deterministicUngroundedClarification(question, buildGrounding(model))).toContain("opponent before I can switch fixtures");
+  } finally { cached.mockRestore(); }
+});
+
+it("keeps scorer evidence follow-ups concise and distinct from projections", () => {
+  const answer = deterministicUngroundedEvidenceFollowUp("What evidence would change that answer?", [{ role: "user", content: "Who scores for Liverpool?" }], buildGrounding(fixture("Arsenal", "Chelsea")));
+  expect(answer).toContain("confirmed starters, expected minutes and a dated scorer market");
+  expect(answer).toContain("Recent goals alone cannot establish");
+  expect(answer!.length).toBeLessThan(300);
+});
+
+it.each(["What about Injuries?", "What about The weather?", "What about Pressing?"])("does not mistake a conceptual follow-up for a club: %s", (question) => {
+  expect(deterministicUngroundedClarification(question, buildGrounding(fixture("Arsenal", "Chelsea")))).toBeNull();
 });

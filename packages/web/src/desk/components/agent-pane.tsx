@@ -105,11 +105,19 @@ export function AgentPane() {
             : undefined,
         },
       });
+      // Only a resolved server identity replaces the pin. A clarification or
+      // general answer keeps it, and an in-flight reply cannot undo a newer click.
+      const resolvedFixtureId = res.grounding?.kind === "match"
+        ? res.grounding.fixtureId
+        : res.grounding?.kind === "fixture" ? res.grounding.fixture.fixtureId : undefined;
+      if (resolvedFixtureId && useDesk.getState().selectedId === fixtureId) {
+        select(resolvedFixtureId);
+      }
       push({
         id: `p-${Date.now()}`,
         role: "pundit",
         text: res.text || opening,
-        fixtureId: fixtureId || undefined,
+        fixtureId: resolvedFixtureId || fixtureId || undefined,
         grounding: res.grounding,
         at: Date.now(),
       });
