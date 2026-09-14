@@ -223,7 +223,7 @@ Sportsbook Odds API adapter, claim_id ledger, CLV, Kelly, more leagues, `ask.ts`
 
 ## 6. Definition of done for thesis-v1 (all slices)
 
-A Saturday operator on the chat homepage can:
+A Saturday operator on the desk can:
 
 1. Open a priced Premier League fixture chip.
 2. See model p, fair odds, at least one named venue.

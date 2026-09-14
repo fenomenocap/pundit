@@ -4,23 +4,23 @@ Read `CLAUDE.md` first for architecture, data sources, and standing constraints.
 
 ## Current state
 
-Pundit is a deployed chat-first club-season analysis app (Premier League + UCL qualifiers). It has no blockchain or database; the former trading platform is archived at `archive/onchain-trading-v1`. World Cup 2026 live pipelines are retired — credibility lives on the frozen backtest at `/evaluation/wc-2026`.
+Pundit is a deployed analysis desk for the club season (Premier League + UCL qualifiers). It has no blockchain or database; the former trading platform is archived at `archive/onchain-trading-v1`. World Cup 2026 live pipelines are retired — credibility lives on the frozen backtest at `/evaluation/wc-2026`.
 
 | Area | Current behavior |
 |---|---|
-| Chat homepage | Live multi-turn chat with status-aware errors, New Chat, grounding labels (match/recognized fixture/competition/season/general), active market comparisons, and suggestions from featured active club fixtures. Recognized non-priced fixtures retain context and show distinct outside-coverage, temporary-unavailability, or missing-input labels without Pundit probabilities; discovery-only candidates receive no fixture badge. The status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpriced`, `no-fixtures`, and `unavailable`; suggestions only ever offer fixtures the model has priced, so a chip never answers 503. |
+| Desk homepage | Live slate + analyst pane (`packages/web/src/desk`). Status-aware errors, New Chat, grounding labels (match/recognized fixture/competition/season/general), active market comparisons. Paper (`/board`), Draft (`/draft`), and Vaults (`/vault`) are a local paper lab on the same slate — not a bookmaker. Legacy chat remains at `/legacy`. Recognized non-priced fixtures retain context and show distinct outside-coverage, temporary-unavailability, or missing-input labels without Pundit probabilities. Suggestions and the rail only offer fixtures the model has priced. |
 | `POST /api/ask` | Four tiers: active-match model grounding (pinned club-strength artifact + HFA), competition standings grounding (ESPN table), Premier League season outlook (Monte Carlo title/top-four), and clearly labelled general football analysis. Every no-search response with complete server grounding is deterministic and bypasses MiniMax. “Current” alone does not trigger external search for an owned table, model, or season-outlook fact; injuries, managers, odds and other externally current facts still do. `current table` and `current standings` are explicit referential cues: they retain the most recent competition named by the user, or default to the Premier League when no competition is in view because it is the only supported league-style table. Arbitrary pronouns do not inherit competition context. An all-zero table explicitly requested as the sole source cannot rank a champion or leak ratings-and-schedule probabilities. Non-priced capability and identity-not-established candidate notices are always deterministic; mandatory current searches cannot alter capability or promote identity. A market search that establishes no supported claim falls back to complete structured market rows already in match grounding, with no generated counterfactual or citation. MiniMax is limited to supported evidence-required prose plus general/ungrounded open-ended analysis. Identical complete season inputs use a stable replay seed. Uses aliases, a 12-turn/12,000-character history cap, a shared 90-second request deadline, deterministic pre-search for clearly current questions, one bounded ambiguous fallback, and a 10 requests/minute deployment-wide limit divided across replicas. Positive current-news claims require same-sentence server-owned citations; unsupported claims are removed or the answer abstains. |
 | Active model | `/api/model/active` and `/api/model/fixtures` serve Dixon-Coles 1X2 (plus totals/BTTS/scorelines) for active club fixtures only. |
 | Fixture registry | Approved structured identities persist atomically under `/data`; `/api/fixtures/recognized` exposes read-only capability decisions. Candidates/search never become grounding. Expanded routing is flag-gated and friendlies remain outside public model coverage. |
 | Featured fixtures | Next N active fixtures across enabled competitions (EPL priority), joined to model rows for chat suggestions and market odds. |
 | Fixture markets | `fixture-market-sources.ts` fetches Stake/Kalshi/Polymarket by market profile; `model-market-odds.ts` caches no-vig 1X2 for the active fixture set. Source failures stay isolated. |
-| `/fixtures` | Multi-competition live schedule/history and standings from ESPN, with competition tabs and Ask-about-this-match links into chat. |
+| `/fixtures` | Multi-competition live schedule/history and standings from ESPN, with competition tabs and links onto the desk. |
 | `/model` | Native read-only view of active club fixture model probabilities; links to WC backtest. |
-| `/evaluation/club-season` | Rolling pre-kickoff snapshot calibration (read-only JSON artifact). |
+| `/evaluation/club-season` | Rolling 90-minute pre-kickoff seal ledger (read-only JSON; live volume on Railway `/data`). |
 | `/evaluation/wc-2026` | Frozen WC 2026 backtest artifact (read-only, no cron). |
 | CI | `.github/workflows/ci.yml` runs TypeScript checks, API Vitest, web build, and Playwright smoke tests on pull requests. |
 
-The default-on conversational response path is `ANALYST_RESPONSE_V2`. It plans a response mode before expression, settles exact-score/fair-price/market and unsupported player/lineup turns from typed server facts, and renders all match numbers through server-owned fact slots. Generated prose may connect those facts naturally in first person, but it cannot author probabilities, fair odds, gaps, source IDs, betting recommendations, or lineup effects. Current team news remains evidence-required. Set the flag exactly to `false` only for emergency legacy rollback; `/ready` reports the active version and process-local accepted/rejected/guard counters.
+The default-on conversational response path is `ANALYST_RESPONSE_V2`. It plans a response mode before expression, settles exact-score/fair-price/market, **totals, BTTS, scoreline boards**, and unsupported player/lineup turns from typed server facts, and renders all match numbers through server-owned fact slots. Generated prose may connect those facts naturally in first person, but it cannot author probabilities, fair odds, gaps, source IDs, betting recommendations, or lineup effects. A named market that is not on the grid abstains instead of repeating 1X2. Current team news remains evidence-required. Set the flag exactly to `false` only for emergency legacy rollback; `/ready` reports the active version and process-local accepted/rejected/guard counters.
 
 `packages/api` has focused Vitest coverage. `packages/web` has Playwright smoke tests only (`pnpm --filter web test:e2e`); no component unit tests unless explicitly requested.
 
@@ -83,19 +83,27 @@ packages/api/src/
     fixture-market-sources.ts      — Stake/Kalshi/Polymarket by market profile
     model-market-odds.ts           — normalized active fixture 1X2 cache
     wc-evaluation.ts               — frozen WC backtest read path
-    club-season-snapshots.ts         — rolling pre-kickoff snapshot persistence
-    season-simulator.ts              — PL title/top-four Monte Carlo
+    club-season-snapshots.ts     — rolling pre-kickoff snapshot persistence
+    season-simulator.ts          — PL title/top-four Monte Carlo
+    champion-calibration.ts      — offline Phase 1b fit (research only)
+    challenger-eval.ts           — chronological MLE rolling-origin eval
+    dixon-coles-mle.ts           — registered fitted DC (forecast throws)
 
 packages/web/src/
-  app/page.tsx                     — chat, featured suggestions, labels, inline odds
+  app/page.tsx                     — analysis desk
+  app/board/page.tsx               — local paper board
+  app/draft/page.tsx               — draft room
+  app/vault/page.tsx               — paper model books
+  app/legacy/page.tsx              — previous chat homepage
   app/fixtures/page.tsx            — multi-comp schedule/history and standings
   app/model/page.tsx               — active club fixture model reference
   app/evaluation/club-season/page.tsx — rolling club-season calibration UI
   app/evaluation/wc-2026/page.tsx  — frozen WC backtest UI
+  desk/                            — slate, analyst pane, intel, paper lab
   lib/api.ts                       — typed API boundary
   lib/mock-data.ts                 — mock-aware fixture/standing wrappers
-  e2e/smoke.spec.ts              — Playwright UI shell smoke (mock mode)
-  playwright.config.ts           — chromium-only, mock-mode webServer
+  e2e/smoke.spec.ts                — Playwright UI shell smoke (mock mode)
+  playwright.config.ts             — chromium-only, mock-mode webServer
 
 scripts/
   capture-chat-eval-browser.mjs  — post-deploy Schema-17 browser JSON (pnpm chat-eval:browser)
