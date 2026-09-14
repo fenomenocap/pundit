@@ -1382,6 +1382,8 @@ export const FORBIDDEN_ANSWER_TERMS = [
   "server grounding",
   "pre-training",
   "grounding data",
+  "grounding json",
+  "retrieval",
   "i i work with",
   "no my probabilities",
   "where the money sits",
@@ -1496,7 +1498,8 @@ export function validateAnalystExpression(answer, expectation = {}) {
   }
   if (expectation.expectTotalsHonesty) {
     assertions.totalsOverUnderPresent = /\bover 2\.5\b/i.test(text) && /\bunder 2\.5\b/i.test(text);
-    assertions.totalsSharedExpectedGoals = /\b2\.70\b/.test(text) && /\bexpected goals\b/i.test(text);
+    assertions.totalsSharedExpectedGoals = /\bfixed total-goals assumption\b/i.test(text)
+      && /\bcannot tell me whether this particular match will be more open or tighter\b/i.test(text);
     assertions.totalsNoEngineJargon = !/\b(?:dixon-?coles|clubelo)\b/i.test(text);
   }
   const failures = Object.entries(assertions)

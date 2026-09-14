@@ -50,7 +50,10 @@ describe("pricing presentation", () => {
     assert.equal(formatSignedEvPct(0.4), "+40.0%");
     assert.equal(formatSignedEvPct(-0.1), "-10.0%");
     assert.equal(formatSignedEvPct(0.0034), "+0.3%");
-    assert.equal(formatEdgeBand("fat-and-fragile"), "fat-and-fragile");
+    assert.equal(formatEdgeBand("fat-and-fragile"), "large price gap; sensitive to forecast error");
+    assert.equal(formatEdgeBand("noise"), "negligible price gap");
+    assert.equal(formatEdgeBand("thin"), "small price gap; error could erase it");
+    assert.equal(formatEdgeBand("real"), "material price gap; depends on forecast accuracy");
     assert.equal(formatEdgeBand(null), null);
   });
 
@@ -130,7 +133,7 @@ describe("pricing presentation", () => {
   it("does not sell Over 2.5 as a match-specific insight", () => {
     assert.equal(
       SHARED_TOTAL_XG_SENTENCE,
-      "Totals sit near even because every match uses the same 2.70 expected goals."
+      "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter."
     );
     assert.equal(/ClubElo|Dixon-Coles|Dixon–Coles/i.test(SHARED_TOTAL_XG_SENTENCE), false);
   });

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { ArrowUp } from "lucide-react";
 import {
@@ -571,6 +571,7 @@ function CompactMatchContext({ grounding }: { grounding: MatchGrounding }) {
 
 export function HomeChat() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -776,8 +777,8 @@ export function HomeChat() {
       // A competition or general answer does not establish a new match, but it
       // does not end the one under discussion either. Keeping the context lets
       // a later follow-up resolve back to that match instead of dropping to the
-      // general tier; the API releases it once another team is named, and "New
-      // Chat" clears it outright.
+      // general tier. Only a resolved replacement changes it; "New Chat"
+      // clears it outright.
       if (grounding?.kind === "match") {
         setTeamContext([grounding.home, grounding.away]);
         setFixtureContext({ fixtureId: grounding.fixtureId });
@@ -874,7 +875,7 @@ export function HomeChat() {
     setFixtureContextTeams(undefined);
     autoAskedRef.current = null;
     if (searchParams.get("q") || searchParams.get("fixture")) {
-      router.replace("/", { scroll: false });
+      router.replace(pathname, { scroll: false });
     }
   }
 

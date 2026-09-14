@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import os from "node:os";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import test from "node:test";
 import { EVAL_SCHEMA_VERSION } from "./chat-battle-test-lib.mjs";
 import { REQUIRED_BROWSER_CHECKS } from "./finalize-chat-report.mjs";
 import {
+  captureAndPersist,
+  captureLive,
+  collectFeaturedFixture,
+  fixtureLocator,
+  structuredProbabilities,
   BROWSER_COOLDOWN_MS,
   DEFAULT_WEB_URL,
   DESKTOP_VIEWPORT,
@@ -267,4 +274,96 @@ test("chat-eval:browser --dry-run stays local and lists the required checks", as
   assert.equal(payload.apiToBrowserCooldownMs, 60_000);
   assert.equal(payload.webVersionPath, "/api/version");
   assert.equal(payload.apiVersionPath, "/version");
+});
+
+
+test("canonical fixture selection ignores first-row ordering and team aliases on every surface", async () => {
+  const canonical = { fixtureId: "espn:eng.1:123" };
+  const selectors = [];
+  const locator = {
+    isVisible: async () => true,
+    waitFor: async () => {},
+    getAttribute: async (name) => ({ "data-fixture-id": canonical.fixtureId,
+      "data-home": "Man City", "data-away": "Sunderland" })[name] ?? null,
+  };
+  const page = { locator: (selector) => { selectors.push(selector); return locator; } };
+  const featured = await collectFeaturedFixture(page, canonical);
+  assert.equal(featured.fixtureId, canonical.fixtureId);
+  assert.equal(featured.home, "Man City");
+  for (const surface of ["fixture-row", "model-fixture-row"]) fixtureLocator(page, surface, canonical.fixtureId);
+  assert.equal(selectors.length, 3);
+  assert.ok(selectors.every((selector) => selector.includes('[data-fixture-id="espn:eng.1:123"]')));
+  assert.ok(selectors.every((selector) => !/City|Sunderland/.test(selector)));
+  assert.throws(() => fixtureLocator(page, "fixture-row", null), /Canonical fixture ID/);
+});
+
+test("probability parity reads structured attributes and fails closed for missing values", async () => {
+  const locator = { getAttribute: async (name) => ({ "data-p-home": "0.822", "data-p-draw": "0.144", "data-p-away": "0.034" })[name] };
+  assert.deepEqual(await structuredProbabilities(locator), [0.822, 0.144, 0.034]);
+  assert.equal(await structuredProbabilities({ getAttribute: async () => null }), null);
+});
+
+test("a viewport timeout saves report-bound partial evidence before rethrowing without retries", async () => {
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), "pundit-browser-partial-"));
+  const report = { runId: "timeout-run", schemaVersion: EVAL_SCHEMA_VERSION,
+    completedAt: "2026-09-14T10:00:00.000Z",
+    pacing: { requestStarts: ["2026-09-14T09:59:00.000Z"] },
+    deployment: { id: "deploy-a", sourceSha: "abc1234" }, apiUrl: "http://localhost:3001" };
+  const options = { outputDir, webUrl: "http://localhost:3000", intervalMs: MIN_BROWSER_REQUEST_INTERVAL_MS };
+  let calls = 0;
+  let closed = false;
+  const dependencies = {
+    captureWebVersion: async () => ({ sha: "abc1234" }),
+    captureApiVersion: async () => ({ sha: "abc1234" }),
+    canonicalFixtureSnapshot: async () => ({ fixtureId: "espn:eng.1:123", reportMatches: true }),
+    loadPlaywright: () => ({ chromium: { launch: async () => ({
+      newContext: async () => ({ newPage: async () => ({ on: () => {} }) }),
+      close: async () => { closed = true; },
+    }) } }),
+    runViewportChecks: async (_page, _url, viewport, _pacer, _report, _canonical, _traffic, progress) => {
+      calls += 1;
+      progress.phase = "fixtures-parity";
+      progress.collected.fixtures = { fixtureId: "espn:eng.1:123", probabilities: [0.5, 0.3, 0.2] };
+      progress.checks = { "frozen-backtest-rendering": {
+        id: "frozen-backtest-rendering", passed: true, evidence: "Already observed frozen artifact",
+        reproduction: ["Open evaluation"], scenarioIds: [], viewports: [viewport],
+      } };
+      throw new Error("locator.getAttribute timed out");
+    },
+  };
+  try {
+    await assert.rejects(captureAndPersist(options, report,
+      (opts, run) => captureLive(opts, run, dependencies)), /timed out/);
+    const evidence = JSON.parse(await readFile(browserOutputPath(outputDir, report.runId), "utf8"));
+    assert.equal(evidence.passed, false);
+    assert.equal(evidence.failure.phase, "fixtures-parity");
+    assert.equal(evidence.runId, report.runId);
+    assert.equal(evidence.deploymentId, "deploy-a");
+    assert.equal(evidence.collected.fixtures.fixtureId, "espn:eng.1:123");
+    assert.deepEqual(evidence.collected.requestStarts, []);
+    assert.ok(evidence.checks.some((check) => check.evidence === "Already observed frozen artifact"));
+    assert.ok(requiredCheckIds().every((id) => evidence.checks.some((check) => check.id === id)));
+    assert.equal(calls, 1);
+    assert.equal(closed, true);
+  } finally {
+    await rm(outputDir, { recursive: true, force: true });
+  }
+});
+
+
+test("canonical fixture outside the three opening chips is selected from the full slate", async () => {
+  const canonical = { fixtureId: "espn:eng.1:999", home: "Leeds", away: "Newcastle" };
+  const selectors = [];
+  const slate = { waitFor: async () => {} };
+  const page = { locator: (selector) => {
+    selectors.push(selector);
+    return selector.includes("desk-featured-fixture")
+      ? { isVisible: async () => false }
+      : (assert.ok(selector.endsWith(":visible")), slate);
+  } };
+  const selected = await collectFeaturedFixture(page, canonical);
+  assert.equal(selected.source, "slate");
+  assert.equal(selected.fixtureId, canonical.fixtureId);
+  assert.equal(selected.locator, slate);
+  assert.ok(selectors.every((selector) => selector.includes(canonical.fixtureId)));
 });

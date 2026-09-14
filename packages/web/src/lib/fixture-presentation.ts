@@ -31,7 +31,13 @@ export function formatSignedEvPct(evPct: number): string {
 }
 
 export function formatEdgeBand(band: EdgeBand | null | undefined): string | null {
-  return band ?? null;
+  if (!band) return null;
+  return {
+    noise: "negligible price gap",
+    thin: "small price gap; error could erase it",
+    real: "material price gap; depends on forecast accuracy",
+    "fat-and-fragile": "large price gap; sensitive to forecast error",
+  }[band];
 }
 
 /** Server fair `1/p`. Display only — never invert a probability in the client. */
@@ -195,7 +201,7 @@ export function marketRowSource(row: Pick<MarketProbabilityRow, "id">): string |
 
 /** Same honesty line the API prints for totals. Do not sell Over 2.5 as match-specific. */
 export const SHARED_TOTAL_XG_SENTENCE =
-  "Totals sit near even because every match uses the same 2.70 expected goals.";
+  "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
 
 /** Empty-state pull-mode chip. Structured `userLine` is away @ 7; do not parse the label. */
 export const PULL_CHIP_OUTCOME: OneXTwoOutcome = "away";

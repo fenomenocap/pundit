@@ -178,7 +178,11 @@ function MatchRow({
   return (
     <div
       data-testid="fixture-row"
-      data-fixture-id={`${match.competitionId}-${match.id}`}
+      data-fixture-id={modelFixtureIdentity({ competitionId: match.competitionId, fixtureId: match.id })}
+      data-capability={modelFixture ? "priced" : "unpriced"}
+      data-p-home={modelFixture?.pHome}
+      data-p-draw={modelFixture?.pDraw}
+      data-p-away={modelFixture?.pAway}
       className="relative overflow-hidden rounded-xl border border-card-rim bg-card shadow-card"
     >
       <div

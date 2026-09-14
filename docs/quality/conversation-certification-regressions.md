@@ -1,0 +1,28 @@
+# Conversation and browser certification regressions
+
+Baseline: complete Schema-17 run `2026-09-14T10-02-34-543Z`, source `4bdb834afdc62e495a64c1dcbaa49aa13f25357f`. Evidence remains in the ignored evaluation artifacts; this patch does not amend the historical report.
+
+The report records lost fixture context on third-club scorer turns and internal terminology in an ambiguous follow-up. The browser capture selected a different fixture from the API report, then timed out on a team-name alias. These are distinct product and harness defects; a safe clarification alone does not satisfy fixture retention or browser certification.
+
+## Totals and risk language
+
+The active Elo-to-goals calculation allocates a shared total of `2 * BASE_GOALS` (2.7) between the teams. The consensus mapping also preserves that total. This patch changes no forecast inputs, constants, probabilities or price thresholds. Totals copy explains the practical limitation once per answer containing totals: it cannot identify whether this particular fixture will be more open or tighter. Risk and edge labels describe estimated price disagreement and forecast uncertainty, including negative gaps; they do not establish that a positive return is real.
+
+A future fixture-specific totals model is separate work. It requires dated attacking/defensive inputs, held-out calibration and scoring comparisons against the fixed-total baseline, leakage checks, model-version provenance and reviewed promotion. Wording changes are not evidence for promoting different mathematics.
+
+## Local and production evidence
+
+Targeted tests must first reproduce the observed failures, then pass alongside the full API, web and evaluator suites. Local mocks cannot establish live provider quality or current production certification. A new exact-SHA production run, browser capture and independent critic are still required after explicit approval; do not backfill the failed baseline or treat local success as production PASS.
+
+## Local certification completed 2026-09-15 (SGT)
+
+- API: 53 test files, 992 tests passed; API build and pinned-artifact verification passed.
+- Web: 25 unit tests passed; production build, TypeScript check and full 37-test Chromium run passed, including desktop/mobile Desk and canonical cross-surface probability attributes with display aliases.
+- Evaluator: 105 tests passed; API and browser dry-runs passed without production traffic. Deployment-SHA and Vercel ignored-build policy tests passed.
+- Baseline reproductions: totals limitation regression failed before copy changes; Desk resolved-switch regression failed with the old pin; API scorer routing previously returned general/null; browser canonical-selection failure is recorded in the complete production baseline and covered locally by alias/order/fallback and timeout persistence tests.
+- Independent local critic: PASS after fixing competition-neutral scorer history, avoiding redundant fixture requests, and rejecting capitalized conceptual topics as club switches. This is a code/test review, not a live generated-response evaluation.
+- All changed clarification and scorer settlement branches are deterministic; targeted tests were repeated during integration. No live inference, deployment or production configuration changes were performed.
+
+The initial full browser run exposed old fixture-ID and edge-label expectations (34 passed, two failed). Expectations now assert canonical IDs and the required plain-language definitions; the next complete run passed all 37 tests. The shared UI totals sentence was updated as well as API copy. No forecast mathematics or assertion of numerical provenance was loosened.
+
+Production release remains pending explicit approval to push and deploy the final commit to Railway and Vercel, then run one paced Schema-17 evaluation, the cooldown-bound browser capture, a critic and finalization. Local evidence cannot guarantee live search availability, provider prose quality or that the evaluated fixture remains in the active window.
