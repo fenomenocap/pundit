@@ -1425,6 +1425,7 @@ export function validateAnalystExpression(answer, expectation = {}) {
     assertions.directAnswerFirst = !processPreamble && (
       /\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s+(?:decimal|odds)|^\s*\d+\s*[.)]/i.test(lead)
       || /^\s*(?:I|I'm|I've|I'd)\s+(?:make|have|rate|see|favour|favor|lean|land|cannot|can't|do not|don't|would not|wouldn't|am unable|could not|couldn't)\b/i.test(lead)
+      || /^I need [\p{L}][\p{L} .'-]{0,60}'s opponent before I can switch fixtures\./iu.test(lead)
       || /^\s*(?:no comparable|not enough|unable|cannot|can't|the table|standings|[\p{L}][\p{L} .'-]{1,60}\s+(?:lead(?:s|ing)?|is first|are first))\b/iu.test(lead)
     );
   }
