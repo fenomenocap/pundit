@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sampleAgentFreshness } from "../config/freshness-policy";
 import type { Grounding } from "./ask";
 import {
   DESK_SYSTEM,
@@ -40,6 +41,7 @@ function match(over: Partial<Grounding> = {}): Grounding {
       pAway: 0.05,
     } as unknown as Grounding["pricing"],
     marketDivergence: [],
+    freshness: sampleAgentFreshness(),
     ...over,
   };
 }
