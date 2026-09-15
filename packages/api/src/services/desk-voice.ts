@@ -7,6 +7,11 @@ import {
   formatTableLine,
 } from "./match-context";
 import { managersNamedInEvidence, stripUnlistedManagers } from "./pl-managers";
+import {
+  MAX_FEDERATED_QUERIES,
+  mergeSearchResults,
+  planFederatedQueries,
+} from "./federated-evidence";
 import { searchWebBatch, type WebSearchResult } from "./web-search";
 
 export const DESK_SYSTEM = `You are Pundit, a football analyst covering the current Premier League. Voice: sharp broadcast pundit — Carragher after a freeze-frame, not a hedge-fund memo. Short. Specific. No emoji. No slang pile-up. No hedging fluff.
@@ -314,34 +319,45 @@ function inferenceBase() {
     ?? "https://api.minimax.io/anthropic";
 }
 
+function uniqueQueries(queries: readonly string[]): string[] {
+  const unique = new Map<string, string>();
+  for (const raw of queries) {
+    const query = raw.replace(/\s+/g, " ").trim();
+    if (query.length >= 3) unique.set(query.toLocaleLowerCase(), query);
+  }
+  return [...unique.values()];
+}
+
 export async function fetchDeskEvidence(
   grounding: AskGrounding,
   question: string,
   signal?: AbortSignal
 ): Promise<WebSearchResult[]> {
-  const queries = grounding?.kind === "match"
-    ? [
+  const baseQuery = grounding?.kind === "match"
+    ? null
+    : `${question.slice(0, 180)} football latest`;
+  let queries = planFederatedQueries(question, grounding, baseQuery);
+  if (!queries.length) {
+    queries = planFederatedQueries(
+      question,
+      grounding,
+      `${question.slice(0, 220)} football latest`
+    );
+  }
+  if (grounding?.kind === "match") {
+    queries = uniqueQueries([
+      ...queries,
       `${grounding.home} current manager head coach today`,
       `${grounding.away} current manager head coach today`,
-      `${grounding.home} vs ${grounding.away} team news injuries lineup today`,
-    ]
-    : [
-      `${question.slice(0, 180)} football latest`,
-      `${question.slice(0, 120)} current manager head coach today`,
-      `${question.slice(0, 120)} recent form results this season`,
-    ];
-  const outcomes = await searchWebBatch(queries, signal, { fresh: true });
-  const seen = new Set<string>();
-  const results: WebSearchResult[] = [];
-  for (const outcome of outcomes) {
-    if (outcome.status !== "ok") continue;
-    for (const row of outcome.results) {
-      if (seen.has(row.link)) continue;
-      seen.add(row.link);
-      results.push(row);
-    }
+    ]).slice(0, MAX_FEDERATED_QUERIES);
   }
-  return results.slice(0, 8);
+  const outcomes = await searchWebBatch(queries, signal, { fresh: true });
+  return mergeSearchResults(outcomes, { maxResults: 8 }).map((row) => ({
+    title: row.title,
+    link: row.link,
+    snippet: row.snippet,
+    date: row.date,
+  }));
 }
 
 function deskRowsFromSearch(results: readonly WebSearchResult[]): DeskEvidenceRow[] {

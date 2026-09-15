@@ -54,6 +54,11 @@ import {
 } from "./evidence-page-retrieval";
 import { evidenceAuthority } from "./evidence-authority";
 import {
+  asksStatisticalQuestion as federatedAsksStatisticalQuestion,
+  mergeSearchResults,
+  planFederatedQueries,
+} from "./federated-evidence";
+import {
   SECTION_LABEL_LINE,
   splitAnswerSentences,
   splitPriceSafeSentences,
@@ -944,53 +949,7 @@ export function planEvidenceQueries(
   baseQuery: string | null,
   now = new Date()
 ): string[] {
-  const planned: string[] = [];
-  const raw = question.replace(/\s+/g, " ").trim().slice(0, 220);
-  const asksStats = asksStatisticalQuestion(question, now);
-  if (raw.length >= 3 && (baseQuery || asksStats)) planned.push(raw);
-  if (baseQuery) planned.push(baseQuery);
-  const slice = raw.replace(/[?!.]+$/g, "").slice(0, 100).trim();
-  const season = currentFootballSeasonLabel(now);
-  if (asksStats && slice.length >= 3) {
-    planned.push(`${slice} stats ${season}`);
-  }
-  if (CURRENT_NEWS_QUESTION.test(question) && grounding?.kind !== "match" && slice.length >= 3) {
-    planned.push(`${slice} recent form ${season}`);
-  }
-  if (grounding?.kind === "match") {
-    const fixture = `${grounding.home} vs ${grounding.away}`;
-    const mode = planResponse(question, { groundingKind: "match", hasHistory: true }).mode;
-    if (mode === "player-or-scorer") {
-      planned.push(`${fixture} anytime goalscorer first scorer odds`);
-      planned.push(`${fixture} predicted lineup confirmed starting xi`);
-      planned.push(`${fixture} team news injuries suspensions availability`);
-      planned.push(`${grounding.home} ${grounding.away} attacking form goals shots`);
-    } else if (mode === "team-news") {
-      planned.push(`${fixture} team news injuries suspensions predicted lineup`);
-      planned.push(`${fixture} confirmed starting xi availability`);
-    } else if (mode === "market-comparison") {
-      planned.push(`${fixture} betting odds decimal over 2.5 goals both teams to score`);
-      planned.push(`${fixture} odds movement line move opening price`);
-    } else if (mode === "match-preview") {
-      planned.push(`${fixture} team news injuries suspensions predicted lineup`);
-      planned.push(`${fixture} betting odds decimal 1x2 over 2.5 both teams to score`);
-      planned.push(`${grounding.home} ${grounding.away} recent form last 5 matches results`);
-      planned.push(`${grounding.home} current manager head coach today`);
-      planned.push(`${grounding.away} current manager head coach today`);
-    } else {
-      planned.push(`${fixture} team news injuries suspensions predicted lineup`);
-      planned.push(`${grounding.home} ${grounding.away} recent form last 5 matches results`);
-      if (PLAYER_MARKET_QUESTION.test(question)) {
-        planned.push(`${fixture} anytime goalscorer odds player props`);
-      }
-    }
-  }
-  const unique = new Map<string, string>();
-  for (const raw of planned) {
-    const query = raw.replace(/\s+/g, " ").trim();
-    if (query.length >= 3) unique.set(query.toLocaleLowerCase(), query);
-  }
-  return [...unique.values()].slice(0, MAX_EVIDENCE_QUERIES);
+  return planFederatedQueries(question, grounding, baseQuery, now);
 }
 
 function planTurnEvidenceQueries(
@@ -1010,7 +969,8 @@ function planTurnEvidenceQueries(
 
 async function buildEvidenceBundle(
   queries: string | string[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  mergeOptions?: { asksStats?: boolean }
 ): Promise<EvidenceBundle> {
   const planned = (Array.isArray(queries) ? queries : [queries]).slice(0, MAX_EVIDENCE_QUERIES);
   // Run together: they are independent lookups, and a researched answer should
@@ -1019,20 +979,18 @@ async function buildEvidenceBundle(
   const found = await searchWebBatch(planned, signal);
   const bundle: EvidenceBundle = { queries: planned, providerCalls: planned.length, results: [] };
   for (const outcome of found) noteSearchOutcome(bundle, outcome);
-  const results = bundle.results;
-  const seen = new Set<string>();
-  found.flatMap((outcome) => outcome.results).forEach((result) => {
-    const key = (result.link || result.title || "").toLocaleLowerCase();
-    if (!key || seen.has(key) || results.length >= MAX_EVIDENCE_RESULTS) return;
-    seen.add(key);
-    results.push({
-      id: `S${results.length + 1}`,
-      title: result.title,
-      url: result.link,
-      date: result.date,
-      snippet: result.snippet,
-    });
+  const merged = mergeSearchResults(found, {
+    asksStats: mergeOptions?.asksStats,
+    maxResults: MAX_EVIDENCE_RESULTS,
   });
+  bundle.results = merged.map((result, index) => ({
+    id: `S${index + 1}`,
+    title: result.title,
+    url: result.link,
+    date: result.date,
+    snippet: result.snippet,
+  }));
+  const results = bundle.results;
   console.log(JSON.stringify({
     event: "evidence_bundle_built",
     queries: planned.length,
@@ -8414,7 +8372,9 @@ async function answerQuestionScoped(
     // without a cue still search, including fixture-less club questions.
     const plannedQueries = planTurnEvidenceQueries(question, grounding, query, voice);
     const rawBundle: EvidenceBundle = plannedQueries.length
-      ? await buildEvidenceBundle(plannedQueries, signal)
+      ? await buildEvidenceBundle(plannedQueries, signal, {
+        asksStats: federatedAsksStatisticalQuestion(question),
+      })
       : { queries: [], results: [], providerCalls: 0 };
     const bundle = voice === "desk"
       ? filterDeskEvidenceBundle(rawBundle, grounding)
@@ -8613,7 +8573,9 @@ async function answerQuestionStreamScoped(
     }
     const plannedQueries = planEvidenceQueries(question, grounding, query);
     const bundle: EvidenceBundle = plannedQueries.length
-      ? await buildEvidenceBundle(plannedQueries, handlers.signal)
+      ? await buildEvidenceBundle(plannedQueries, handlers.signal, {
+        asksStats: federatedAsksStatisticalQuestion(question),
+      })
       : { queries: [], results: [], providerCalls: 0 };
     const scorerSettled = await settleEvidenceModeFromBundle(
       question, grounding, bundle, history.length > 0, handlers.signal
