@@ -264,14 +264,39 @@ function eventDateMatches(text: string, fixture: ModelFixture): boolean {
   });
 }
 
-function eventMatchesFixture(event: UnknownRecord, fixture: ModelFixture): boolean {
-  const text = normalizeTeamText(["title", "subtitle", "sub_title", "slug", "event_ticker"]
+function eventMatchText(event: UnknownRecord): string {
+  return normalizeTeamText(["title", "subtitle", "sub_title", "slug", "event_ticker"]
     .map((key) => String(event[key] ?? ""))
     .join(" "));
-  const namesMatch = [fixture.home, fixture.away].every((team) =>
+}
+
+function eventNamesMatchFixture(event: UnknownRecord, fixture: ModelFixture): boolean {
+  const text = eventMatchText(event);
+  return [fixture.home, fixture.away].every((team) =>
     teamSearchTerms(team).some((term) => text.includes(term))
   );
-  return namesMatch && eventDateMatches(text, fixture);
+}
+
+function eventMatchesFixture(event: UnknownRecord, fixture: ModelFixture): boolean {
+  const text = eventMatchText(event);
+  return eventNamesMatchFixture(event, fixture) && eventDateMatches(text, fixture);
+}
+
+/** KXWCGAME/KXUCLGAME label moneyline explicitly; KXEPLGAME uses "Team wins" legs. */
+function isKalshiMatchOutcomeMarket(label: string): boolean {
+  return /(moneyline|match result|winner|to win|regulation time|\bwins?\b|tie is the result)/.test(label);
+}
+
+export type KalshiParseRejection =
+  | "invalid_event"
+  | "names_mismatch"
+  | "date_mismatch"
+  | "no_match_outcome_markets"
+  | "incomplete_1x2";
+
+export interface KalshiParseResult {
+  odds: ThreeWayOdds | null;
+  rejection: KalshiParseRejection | null;
 }
 
 export function parseStakeFixture(raw: unknown, fixtures: ModelFixture[]) {
@@ -349,23 +374,41 @@ function kalshiPrice(market: UnknownRecord): number | null {
 }
 
 
-export function parseKalshiEvent(raw: unknown, fixture: ModelFixture): ThreeWayOdds | null {
+export function parseKalshiEventDetailed(raw: unknown, fixture: ModelFixture): KalshiParseResult {
   const event = record(raw);
-  if (!event || !eventMatchesFixture(event, fixture)) return null;
+  if (!event) return { odds: null, rejection: "invalid_event" };
+  if (!eventNamesMatchFixture(event, fixture)) {
+    return { odds: null, rejection: "names_mismatch" };
+  }
+  const text = eventMatchText(event);
+  if (!eventDateMatches(text, fixture)) {
+    return { odds: null, rejection: "date_mismatch" };
+  }
   const prices: Partial<Record<"home" | "draw" | "away", number>> = {};
+  let sawMatchOutcomeMarket = false;
   for (const marketValue of array(event.markets)) {
     const market = record(marketValue);
     if (!market || !["open", "active"].includes(String(market.status ?? "open"))) continue;
     const label = [event.title, event.sub_title, market.title, market.subtitle]
       .map((value) => String(value ?? "").toLowerCase()).join(" ");
-    if (!/(moneyline|match result|winner|to win|regulation time)/.test(label)) continue;
+    if (!isKalshiMatchOutcomeMarket(label)) continue;
+    sawMatchOutcomeMarket = true;
     const key = marketSelection(String(market.yes_sub_title ?? market.subtitle ?? ""), fixture);
     const price = kalshiPrice(market);
     if (key && price !== null) prices[key] = price;
   }
-  return prices.home && prices.draw && prices.away
-    ? normalizeThreeWay({ home: prices.home, draw: prices.draw, away: prices.away })
-    : null;
+  if (!sawMatchOutcomeMarket) {
+    return { odds: null, rejection: "no_match_outcome_markets" };
+  }
+  if (!prices.home || !prices.draw || !prices.away) {
+    return { odds: null, rejection: "incomplete_1x2" };
+  }
+  const odds = normalizeThreeWay({ home: prices.home, draw: prices.draw, away: prices.away });
+  return odds ? { odds, rejection: null } : { odds: null, rejection: "incomplete_1x2" };
+}
+
+export function parseKalshiEvent(raw: unknown, fixture: ModelFixture): ThreeWayOdds | null {
+  return parseKalshiEventDetailed(raw, fixture).odds;
 }
 
 async function jsonFetch(url: string, init?: RequestInit): Promise<unknown> {
@@ -508,6 +551,8 @@ export async function fetchPolymarketOdds(fixtures: ModelFixture[]): Promise<Map
 
 const KALSHI_MAX_PAGES = 3;
 
+const KALSHI_REJECTION_SAMPLE_LIMIT = 8;
+
 export async function fetchKalshiOdds(
   fixtures: ModelFixture[],
   profile: MarketProfile
@@ -518,6 +563,27 @@ export async function fetchKalshiOdds(
 
   let cursor = "";
   let pages = 0;
+  let eventsFetched = 0;
+  let matchesAttempted = 0;
+  let matchesSucceeded = 0;
+  const rejectionCounts = new Map<KalshiParseRejection, number>();
+  const rejectionSamples: Array<{ reason: KalshiParseRejection; eventTitle: string; fixtureKey: string }> = [];
+
+  const noteRejection = (
+    reason: KalshiParseRejection,
+    event: unknown,
+    fixture: ModelFixture
+  ) => {
+    rejectionCounts.set(reason, (rejectionCounts.get(reason) ?? 0) + 1);
+    if (rejectionSamples.length >= KALSHI_REJECTION_SAMPLE_LIMIT) return;
+    const eventRecord = record(event);
+    rejectionSamples.push({
+      reason,
+      eventTitle: String(eventRecord?.title ?? eventRecord?.event_ticker ?? "unknown"),
+      fixtureKey: getModelFixtureKey(fixture),
+    });
+  };
+
   do {
     const params = new URLSearchParams({
       series_ticker: seriesTicker,
@@ -529,15 +595,38 @@ export async function fetchKalshiOdds(
     const payload = record(await jsonFetch(`${KALSHI_URL}?${params}`, {
       headers: { Accept: "application/json" },
     }));
-    for (const event of array(payload?.events)) {
+    const events = array(payload?.events);
+    eventsFetched += events.length;
+    for (const event of events) {
       for (const fixture of fixtures) {
-        const odds = parseKalshiEvent(event, fixture);
-        if (odds) result.set(getModelFixtureKey(fixture), odds);
+        matchesAttempted += 1;
+        const parsed = parseKalshiEventDetailed(event, fixture);
+        if (parsed.odds) {
+          matchesSucceeded += 1;
+          result.set(getModelFixtureKey(fixture), parsed.odds);
+        } else if (parsed.rejection) {
+          noteRejection(parsed.rejection, event, fixture);
+        }
       }
     }
     cursor = typeof payload?.cursor === "string" ? payload.cursor : "";
     pages += 1;
   } while (cursor && pages < KALSHI_MAX_PAGES);
+
+  console.log(JSON.stringify({
+    event: "kalshi_fetch_summary",
+    profile,
+    seriesTicker,
+    pagesFetched: pages,
+    eventsFetched,
+    fixturesRequested: fixtures.length,
+    matchesAttempted,
+    matchesSucceeded,
+    fixturesMatched: result.size,
+    rejectionReasons: Object.fromEntries(rejectionCounts),
+    rejectionSamples,
+  }));
+
   return result;
 }
 
