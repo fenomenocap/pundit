@@ -27,13 +27,15 @@ The default simulation seed is derived from the complete standings, remaining fi
 
 This is separate from the per-fixture active cache — it answers "who wins the league?" rather than "who wins this match?"
 
-### How the chat uses it
+### How the desk uses it
 
-For a recognized, priced fixture in the 14-day window, Pundit treats the fixture's precomputed probabilities as ground truth. Every complete no-search match response is rendered deterministically from that grounding payload. MiniMax is reserved for evidence-required current turns and general/ungrounded open-ended analysis. Pundit then:
+For a recognized, priced fixture in the 14-day window, Pundit treats the fixture's precomputed probabilities as ground truth. Every complete no-search match response is rendered deterministically from that grounding payload. MiniMax is reserved for evidence-required current turns and general/ungrounded open-ended analysis. Follow-ups that name a market already on the grid — 1X2, over/under 2.5 (including `o2.5`), BTTS, or likely scorelines — quote those facts. They do not fall back to restating the favourite.
 
-1. Compares the model's win/draw/win read with complete active Stake, Kalshi, and Polymarket 1X2 prices when available
+Pundit then:
+
+1. Compares the model's win/draw/win read with complete active Stake, Kalshi, and Polymarket 1X2 prices when available. Labelled **Pundit Consensus**, when shown, is a separate number that may shrink toward one complete same-source market and then refit expected goals. It is never the Fundamental headline.
 2. Runs a live web search whenever the question touches injuries, suspensions, lineups, form, transfers, or a recent result — for a specific fixture that information changes the read, so Pundit searches rather than answering from memory. Every item it reports names its source and date, and it says plainly where a search turned up nothing
-3. Responds in plain language: headline odds, 1–2 likely scorelines, and what the underdog would need
+3. Responds in plain language from the server-owned facts, including fair prices `1/p`. Totals sit near 50% on every row because every match uses the same 2.70 expected goals; that sentence is honesty, not match insight.
 
 Odds and market questions also retain mandatory search. If verification supports no external claim, Pundit discards the generated prose and deterministically renders only complete same-source market rows already present in match grounding. The verification remains `abstain` or `unavailable`, citations are empty, and an incomplete or absent grounded market is omitted rather than guessed.
 
@@ -54,6 +56,8 @@ Two read-only evaluation artifacts measure how well pre-kickoff probabilities ma
 The live Model page recalculates older fixtures with the release's **pinned, freshness-gated** ratings artifact — useful for exploration, but not a look-ahead-free backtest. Rigorous calibration uses the evaluation artifacts above.
 
 An **offline Phase 1b calibrator** (`pnpm --filter @sports-predict/api calibrate:champion`) can refit `BASE_GOALS`, home-field advantage, and `rho` on official sealed club-season rows. It writes a research report only; production still uses the shipped 1.35 / 42 / −0.1 constants until a human copies a reviewed config. The in-repo ledger seed is not production truth — Railway `PUNDIT_DATA_DIR=/data` is. MiniMax does not author these numbers.
+
+A fitted attack/defence Dixon–Coles challenger is **registered, not activated**. Production `model-data.ts` still calls the ClubElo → fixed-total λ champion. Promotion requires the chronological rolling-origin gate **and** an explicit human **promote**. See [the 2026-09-15 review](../architecture/prediction-model-review-2026-09-15.md).
 
 ### Historical note: World Cup 2026
 

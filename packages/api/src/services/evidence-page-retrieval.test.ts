@@ -12,9 +12,14 @@ import {
 
 const candidates: EvidencePageCandidate[] = [
   { id: "S3", url: "https://blog.example/three", title: "Other", date: "2026-08-13", authority: "other" },
-  { id: "S1", url: "https://club.example/one", title: "Official", date: "2026-08-13", authority: "official" },
-  { id: "S2", url: "https://news.example/two", title: "Reputable", date: "2026-08-13", authority: "reputable" },
-  { id: "S4", url: "https://wire.example/four", title: "Fourth", date: "2026-08-13", authority: "reputable" },
+  { id: "S1", url: "https://www.premierleague.com/news/one", title: "Official", date: "2026-08-13", authority: "official" },
+  { id: "S2", url: "https://www.reuters.com/two", title: "Reputable", date: "2026-08-13", authority: "reputable" },
+  { id: "S4", url: "https://www.skysports.com/four", title: "Fourth", date: "2026-08-13", authority: "reputable" },
+];
+
+const analyticsCandidates: EvidencePageCandidate[] = [
+  { id: "A1", url: "https://fbref.com/en/squads/abc", title: "Analytics", date: "2026-08-13", authority: "reputable" },
+  { id: "A2", url: "https://blog.example/other", title: "Other", date: "2026-08-13", authority: "other" },
 ];
 
 const publicResolver = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
@@ -57,6 +62,20 @@ describe("evidence page retrieval", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("retrieves analytics-tier pages like reputable news", async () => {
+    const fetch = vi.fn(async (input: string | URL) => new Response(
+      `<html><body>Analytics from ${String(input)}</body></html>`,
+      { status: 200, headers: { "content-type": "text/html" } }
+    ));
+    const pages = await retrieveEvidencePages(analyticsCandidates, undefined, {
+      fetch, resolveHost: publicResolver, now: () => new Date("2026-08-13T12:00:00Z"),
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].id).toBe("A1");
+    expect(pages[0].url).toBe("https://fbref.com/en/squads/abc");
+  });
+
   it("pins the validated DNS address into the connection seam", async () => {
     const resolveHost = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
     const fetch = vi.fn(async (_input: string | URL, _init?: RequestInit, address?: { address: string }) => {
@@ -97,13 +116,13 @@ describe("evidence page retrieval", () => {
   it("follows apex to www redirects and default-port Location headers", async () => {
     const fetch = vi.fn(async (input: string | URL) => {
       const href = String(input);
-      if (href.includes("www.club.example") || href.includes(":443")) {
+      if (href.includes("www.premierleague.com") || href.includes(":443")) {
         return new Response("<html><body>Official club story.</body></html>", {
           status: 200, headers: { "content-type": "text/html" },
         });
       }
       return new Response(null, {
-        status: 301, headers: { location: "https://www.club.example:443/one" },
+        status: 301, headers: { location: "https://www.premierleague.com:443/news/one" },
       });
     });
     const pages = await retrieveEvidencePages(candidates.slice(1, 2), undefined, {
@@ -111,7 +130,7 @@ describe("evidence page retrieval", () => {
     });
     expect(pages).toHaveLength(1);
     expect(pages[0].id).toBe("S1");
-    expect(pages[0].finalUrl).toBe("https://www.club.example/one");
+    expect(pages[0].finalUrl).toBe("https://www.premierleague.com/news/one");
     expect(pages[0].text).toContain("Official club story");
   });
 
@@ -190,7 +209,7 @@ describe("evidence page retrieval", () => {
   it("caps retrieval at eight official or reputable pages", async () => {
     const many: EvidencePageCandidate[] = Array.from({ length: 10 }, (_, index) => ({
       id: `S${index + 1}`,
-      url: `https://news.example/story-${index + 1}`,
+      url: `https://www.reuters.com/story-${index + 1}`,
       title: `Story ${index + 1}`,
       date: "2026-08-13",
       authority: "reputable" as const,
@@ -226,7 +245,7 @@ describe("prefetching pages ahead of verification", () => {
     // starting its own round of identical requests.
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(pages.map((page) => page.id)).toEqual(["S1", "S2", "S4"]);
-    expect(pages[0].text).toContain("club.example/one");
+    expect(pages[0].text).toContain("premierleague.com/news/one");
   });
 
   it("returns exactly what an uncached retrieval would", async () => {
@@ -249,7 +268,7 @@ describe("prefetching pages ahead of verification", () => {
     // The cache stores the body only. If it stored whole pages, a second
     // candidate sharing a URL would inherit the first one's id and title --
     // a citation naming one source while quoting another.
-    const shared = "https://news.example/two";
+    const shared = "https://www.reuters.com/two";
     const cache = createEvidencePageCache();
     const options = {
       fetch: vi.fn(async (input: string | URL) => html(input)),
@@ -355,7 +374,7 @@ describe("publication dates recovered from fetched HTML", () => {
   const now = () => new Date("2026-09-08T12:00:00Z");
   const official: EvidencePageCandidate = {
     id: "S1",
-    url: "https://club.example/story",
+    url: "https://www.premierleague.com/story",
     title: "Club story",
     date: "",
     authority: "official",

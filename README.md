@@ -41,7 +41,7 @@ Public football and market sources are keyless and cached server-side on a caden
 
 ```
 packages/
-  web/   — Next.js 14 frontend: chat homepage, /fixtures, /model, /evaluation/wc-2026
+  web/   — Next.js 14 frontend: analysis desk, paper lab, /fixtures, /model, /evaluation
   api/   — Express REST API: /api/ask, /api/matches, /api/model, /api/evaluation
 ```
 
@@ -110,10 +110,12 @@ pnpm test && pnpm build
 
 ## Frontend Pages
 
-- **`/`** — chat homepage: grounded active-match analysis, competition/table questions, and general football follow-ups
+- **`/`** — analysis desk: live slate plus analyst pane for grounded match, table, season, and general questions
+- **`/board`**, **`/draft`**, **`/vault`** — local paper lab on the same slate (not a bookmaker)
+- **`/legacy`** — previous chat-only homepage
 - **`/fixtures`** — multi-competition live schedule, results, and standings (ESPN-backed)
 - **`/model`** — native reference view of active club fixture model probabilities
-- **`/evaluation/club-season`** — rolling pre-kickoff club-season calibration
+- **`/evaluation/club-season`** — rolling 90-minute pre-kickoff club-season ledger
 - **`/evaluation/wc-2026`** — frozen WC 2026 backtest metrics and fixture table
 
 ---

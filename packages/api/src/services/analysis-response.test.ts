@@ -515,7 +515,7 @@ describe("emphasis and link hygiene", () => {
     const bundle = {
       queries: ["q"],
       providerCalls: 1,
-      results: [{ id: "S2", title: "Predicted XIs", url: "https://example.com/xi", date: "2026-08-21", snippet: "" }],
+      results: [{ id: "S2", title: "Predicted XIs", url: "https://example.com/xi", date: "2026-08-21", snippet: "", tier: "news" as const }],
     };
     expect(nameMarkerLinks("Tzolakis starts ([S2](https://example.com/xi), 2026-08-21).", bundle))
       .toContain("[Predicted XIs](https://example.com/xi)");
@@ -553,7 +553,7 @@ describe("attachEvidence", () => {
   const bundle = {
     queries: ["q"],
     providerCalls: 1,
-    results: [{ id: "S1", title: "Preview", url: "https://example.com/a", date: "2026-08-20", snippet: "out" }],
+    results: [{ id: "S1", title: "Preview", url: "https://example.com/a", date: "2026-08-20", snippet: "out", tier: "news" as const }],
   };
 
   // Production served the streaming path only, and that path still gated the
@@ -573,6 +573,39 @@ describe("attachEvidence", () => {
     expect(attachEvidence(messages, { queries: [], providerCalls: 0, results: [] }))
       .toEqual(messages);
   });
+
+  it("groups attached evidence into analytics and news sections with external-model guidance", () => {
+    const bundle = {
+      queries: ["q"],
+      providerCalls: 1,
+      results: [
+        {
+          id: "S1",
+          title: "xG table",
+          url: "https://www.fbref.com/match",
+          date: "2026-08-20",
+          snippet: "1.8 xG",
+          tier: "analytics" as const,
+        },
+        {
+          id: "S2",
+          title: "Preview",
+          url: "https://www.bbc.co.uk/sport",
+          date: "2026-08-20",
+          snippet: "injury doubt",
+          tier: "news" as const,
+        },
+      ],
+      conflicts: ["Player One: unavailable in S1 but available in S2"],
+    };
+    const [turn] = attachEvidence([{ role: "user", content: "preview?" }], bundle);
+    expect(turn.content).toContain("ANALYTICS EVIDENCE");
+    expect(turn.content).toContain("NEWS EVIDENCE");
+    expect(turn.content).toContain("fbref.com");
+    expect(turn.content).toContain("bbc.co.uk");
+    expect(turn.content).toMatch(/never treat them as Pundit'?s model/i);
+    expect(turn.content).toContain("Conflicting reports in the evidence");
+  });
 });
 
 describe("renderEvidenceCitations abstention scope", () => {
@@ -580,8 +613,8 @@ describe("renderEvidenceCitations abstention scope", () => {
     queries: ["hull man united team news"],
     providerCalls: 1,
     results: [
-      { id: "S1", title: "Hull v Man Utd preview", url: "https://example.com/a", date: "2026-08-20", snippet: "" },
-      { id: "S2", title: "Undated listing", url: "https://example.com/b", date: "", snippet: "" },
+      { id: "S1", title: "Hull v Man Utd preview", url: "https://example.com/a", date: "2026-08-20", snippet: "", tier: "news" as const },
+      { id: "S2", title: "Undated listing", url: "https://example.com/b", date: "", snippet: "", tier: "other" as const },
     ],
   };
 
