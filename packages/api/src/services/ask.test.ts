@@ -754,6 +754,7 @@ describe("current-news evidence hardening", () => {
       "Chelsea expect Palestra back in training [[S1]].",
       { queries: [], providerCalls: 0, results: [{
         id: "S1", title: "Chelsea team news", url: "https://www.youtube.com/watch?v=unreviewed",
+        tier: "other",
         date: "2026-09-14", snippet: "Palestra returns to training; several players still out.",
       }] },
       {} as Parameters<typeof verifyCurrentClaims>[2],
