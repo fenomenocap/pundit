@@ -23,7 +23,7 @@
 
 ## Evaluation
 
-* [Evaluation API](api-reference/evaluation.md) — club-season rolling snapshots and frozen WC 2026 backtest
+* [Evaluation API](api-reference/evaluation.md) — club-season 90-minute seals and frozen WC 2026 backtest
 
 ## Overview
 

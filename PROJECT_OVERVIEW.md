@@ -1,8 +1,8 @@
 # Pundit — Exhaustive Project Overview
 
-*Snapshot: 2026-08-25 · branch `main` @ `b60cd09` · 292 commits · deployed*
+*Snapshot: 2026-08-25 · later product surface is the analysis desk on `/` (see `AGENTS.md`). This file remains a deep code map; route names below were updated 2026-09-15.*
 
-Pundit is a **chat-first football analysis product** for the club season (Premier League + UEFA Champions League qualifiers). You ask about an upcoming match, the title race, the table, or football in general, and you get a **clearly labelled** answer: either grounded in server-owned data (fixture model, ESPN table, season simulation) or explicitly marked as general analysis.
+Pundit is a **desk-first football analysis product** for the club season (Premier League + UEFA Champions League qualifiers). You ask about an upcoming match, the title race, the table, or football in general, and you get a **clearly labelled** answer: either grounded in server-owned data (fixture model, ESPN table, season simulation) or explicitly marked as general analysis.
 
 The defining constraint of the codebase: **when the server owns a complete answer, the LLM never touches it.** MiniMax is reserved for (a) evidence-required "current" turns that need live web search and citation verification, and (b) open-ended general/ungrounded analysis. Everything else renders deterministically from a grounding payload.
 
@@ -16,10 +16,12 @@ There is **no database, no blockchain, no trading, nothing to buy.** The former 
 
 | Route | What it is |
 |---|---|
-| `/` | The product. Multi-turn chat with grounding badges, suggestion chips built from priced fixtures, inline market comparison rows, streaming (SSE), New Chat, copy/share actions, status-aware error copy. |
-| `/fixtures` | Multi-competition live schedule, results and standings from ESPN, with competition tabs and "Ask about this match" links into chat. |
+| `/` | The product. Analysis desk: live slate + analyst pane (`packages/web/src/desk`), grounding badges, streaming (SSE), New Chat. |
+| `/board`, `/draft`, `/vault` | Local paper lab on the same slate — not a bookmaker. |
+| `/legacy` | Previous chat-only homepage (`home-chat.tsx`). |
+| `/fixtures` | Multi-competition live schedule, results and standings from ESPN, with competition tabs and links onto the desk. |
 | `/model` | Read-only native reference view over the active club-fixture model cache (`/api/model/*`). |
-| `/evaluation/club-season` | Rolling pre-kickoff club-season calibration artifact. |
+| `/evaluation/club-season` | Rolling 90-minute pre-kickoff club-season ledger (live volume on Railway `/data`). |
 | `/evaluation/wc-2026` | **Frozen** World Cup 2026 backtest — a historical credibility artifact, deliberately disconnected from live caches and cron. |
 
 Chat status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpriced`, `no-fixtures`, `unavailable`. Suggestion chips only ever offer fixtures the model has actually priced, so a chip can never answer 503.
@@ -205,7 +207,7 @@ packages/
     data/                   pinned artifacts, registry, evaluation JSON
     scripts/                artifact build + verify, corpus build, ledger backup
   web/                      Next.js 14 App Router
-    src/app/                page.tsx (chat) · fixtures · model · evaluation/*
+    src/app/                page.tsx (desk) · board · draft · vault · legacy · fixtures · model · evaluation/*
     src/components/         home-chat.tsx (1,028 lines) + ui/ (shadcn primitives)
     src/lib/                api.ts (typed boundary) · mock-data.ts · team-logos · site-links
     e2e/smoke.spec.ts

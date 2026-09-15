@@ -1,97 +1,108 @@
 # Prediction-model next session
 
-> **Superseded performance evidence (2026-09-15):** The full workflow was completed in one sitting. Read [the completed review](./prediction-model-review-2026-09-15.md). The old challenger rolling-origin figures below leaked held-out outcomes through full-corpus fitted parameters. Corrected evaluation does not support promotion. This handoff remains historical context.
+> **Canonical performance evidence:** [prediction-model-review-2026-09-15.md](./prediction-model-review-2026-09-15.md). Do not use earlier rolling-origin Brier headlines as promotion evidence. Those reused full-corpus fitted parameters on holdouts.
 
-**Handoff date:** 2026-09-14
-**Production SHA:** `7a5df13` (Railway API + Vercel web)
-**Purpose:** Operating plan for a better Fundamental. Not a new diagnosis. Read this first in a new session, then the full brief if you need the Hull / SIRE background.
+**Handoff date:** 2026-09-15  
+**Production API SHA:** `4784eef` (Railway, PR #186, observed 2026-09-15)  
+**Production web SHA:** `0224c95` (Vercel; unchanged by the API-only evaluator merge)  
+**Purpose:** Operating plan after the completed review **and** the merged evaluator. Not a new diagnosis. Not permission to promote.
 
-Related: [`prediction-model-improvement-brief.md`](./prediction-model-improvement-brief.md) · [`.cursor/rules/prediction-model-improvement.mdc`](../../.cursor/rules/prediction-model-improvement.mdc)
+Related: [`prediction-model-improvement-brief.md`](./prediction-model-improvement-brief.md) · [`prediction-model-review-2026-09-15.md`](./prediction-model-review-2026-09-15.md) · [`pre-next-phase-qa-2026-09-15.md`](./pre-next-phase-qa-2026-09-15.md) · [`.cursor/rules/prediction-model-improvement.mdc`](../../.cursor/rules/prediction-model-improvement.mdc)
 
 ---
 
 ## Already true — do not undo
 
-- **Phase 0 shipped.** `eloToLambdas` is fixed total `2 * BASE_GOALS` (2.70) split by Elo odds ratio. Do **not** remake it. Do **not** restore geometric-mean λ. Hull vs Man United (`401879322`) is the regression story for why.
-- **Shipped constants stay 1.35 / 42 / −0.1** until a better official-ledger fit *and* a human copy. `productionAutoLoad: false`.
+- **Phase 0 shipped.** `eloToLambdas` is fixed total `2 * BASE_GOALS` (2.70) split by Elo odds ratio. Do **not** remake it. Do **not** restore geometric-mean λ. Hull vs Man United (`401879322`) is the regression story for why. Live active fixtures share Over 2.5 ≈ 50.64% because the total is shared.
+- **Shipped constants stay 1.35 / 42 / −0.1** until a better official-ledger fit *and* a human copy. `productionAutoLoad: false`. Do **not** ship HFA=0.
 - **Ledger seals.** Policy `pre-kickoff-90m-v1` keeps the first eligible forecast. 15-minute checkpoint + football-cadence tick. Railway `/data` is production truth. In-repo `packages/api/data/evaluation/club-season.json` stays an empty seed — never overwrite `/data` with it.
 - **Phase 2 registered, not activated.** `REGISTERED_CHALLENGERS` has `dixon-coles-mle@4cfcbe57…`. `forecast` / `sampleScore` throw. `model-data.ts` still calls `ELO_CHAMPION` only. Chat still says Pundit Fundamental.
 - **Phase 3 shipped, not the headline.** Labelled **Pundit Consensus** shrinks 1X2 halfway toward one complete same-source no-vig market, then `refitLambdasToTarget1x2`. Never present Consensus as Fundamental.
 - **Leftovers shipped.** Season sim samples the Dixon–Coles score grid (ρ included). `PUNDIT_FUNDAMENTAL_MODEL_VERSION = "2"`. Desk uses server `pOver2_5`. Live pin `clubelo@1:1da9aa95…` (ranking date 2026-09-13). MiniMax never authors 1X2.
 
-Promote the MLE challenger **only** if the rolling-origin gate says yes **and** a human says **promote**.
+Promote the MLE challenger **only** if a corrected rolling-origin gate says yes **and** a human says **promote**.
 
 ---
 
-## What actually improves forecasts
+## What the 2026-09-15 review actually showed
 
-One Elo cannot do attack vs defence, so totals and BTTS stay slaved to the 1X2 gap. The registered MLE challenger is the real Dixon–Coles (time-decayed attack/defence, ClubElo only as a prior for Hull-like clubs). It already wins Brier on the rolling-origin cuts; it failed promotion because calibration MAE was slightly worse on the first origin. That is the right gate.
+- Champion full-sample fit 1.40 / 0 / −0.115 does **not** beat shipped 1.35 / 42 / −0.1 on the official ledger (Brier 0.666 vs 0.668; PL n below a 40-holdout bar; chronological holdout worse).
+- Corrected challenger eval **refits each origin**. It does **not** support promotion. First two origins uncover clubs; third improves 1X2 Brier but Over 2.5 Brier and legacy outcome MAE worsen. Overlapping holdouts: 1,146 attempted pairs, **572 unique fixtures**.
+- First Fundamental `"2"` seal: Leeds–Newcastle (`401879280`), 2026-09-14T17:31:15Z, `pre-kickoff-90m-v1` / `scheduled_window`. Do not count a pending seal as calibration n.
 
-Markets beat the champion on the live sample (no-vig Brier ~0.62 vs model ~0.67). That is expected. Do not silently blend books into Fundamental.
+One Elo still cannot do attack vs defence, so totals and BTTS stay slaved to the 1X2 gap. Markets remain comparison-only. Do not silently blend books into Fundamental.
 
 ---
 
 ## Do this, in order
 
-### 1. Seal this week, then recalibrate the champion
+### 0. Evaluator integrity is already on production API
 
-Leeds–Newcastle (2026-09-14T19:00Z) is the first Fundamental `"2"` seal candidate. After the weekend, Premier League official n should clear the 40 bar.
+PR #186 is merged. Do not open another “fix the evaluator” branch unless a new contamination is found. The next calibrate/train/eval cycle must use this evaluator. Do not quote a report generated by the pre-correction evaluator.
 
-1. Confirm seals on production: `GET https://thepundit.up.railway.app/api/evaluation/club-season`
-   Official rows are `checkpointPolicyId: "pre-kickoff-90m-v1"` + `checkpointReason: "scheduled_window"`. Ignore the 8 legacy post-kickoff rows.
-2. Download that JSON to a research path (gitignored):
+### 1. Recalibrate the champion only after more official PL seals
 
-   ```bash
-   mkdir -p packages/api/data/research/champion-calibration/ledgers
-   curl -fsS "https://thepundit.up.railway.app/api/evaluation/club-season" \
-     -o packages/api/data/research/champion-calibration/ledgers/production-YYYY-MM-DD.json
-   ```
+Forty *total* PL seals is not forty *held-out* forecasts. After more `pre-kickoff-90m-v1` / `scheduled_window` completions:
 
-3. Fit. Never write `dixon-coles.ts` or Railway `/data`:
+```bash
+mkdir -p packages/api/data/research/champion-calibration/ledgers
+curl -fsS "https://thepundit.up.railway.app/api/evaluation/club-season" \
+  -o packages/api/data/research/champion-calibration/ledgers/production-YYYY-MM-DD.json
+pnpm --filter @sports-predict/api calibrate:champion -- \
+  packages/api/data/research/champion-calibration/ledgers/production-YYYY-MM-DD.json
+```
 
-   ```bash
-   pnpm --filter @sports-predict/api calibrate:champion -- \
-     packages/api/data/research/champion-calibration/ledgers/production-YYYY-MM-DD.json
-   ```
-
-4. **Ship new 1.35 / 42 / −0.1 replacements only if** 1X2 Brier is clearly better (fitted + 0.005 < shipped) **and** bootstrap ΔBrier 10–90% lies entirely below 0 **and** PL official n ≥ 40. Last run (2026-09-14): fitted 1.40 / 0 / −0.115, Brier 0.666 vs 0.668, PL n=39. **Do not ship HFA=0.**
+**Ship new 1.35 / 42 / −0.1 replacements only if** 1X2 Brier is clearly better (fitted + 0.005 < shipped) **and** bootstrap ΔBrier 10–90% lies entirely below 0 **and** chronological PL holdout n and week-count gates pass. Last valid run: do not ship.
 
 ### 2. Refresh the ClubElo pin after each PL weekend
 
-The champion is only as current as the pin. Runtime never scrapes ClubElo.
+Runtime never scrapes ClubElo. Observed production pin on 2026-09-15: `clubelo@1:1da9aa95…`, age 1 day, `ratingsRefreshDue: false`.
 
 ```bash
 pnpm --filter @sports-predict/api refresh:clubelo-snapshot
 pnpm --filter @sports-predict/api check:club-strength-freshness
 ```
 
-Review the new `clubelo@1` artifact, commit, deploy. Monday CI (`clubelo-freshness.yml`) fails if the committed pin is ≥7 days old. `/ready` `ratingsRefreshDue` warns at 7 days; the 30-day gate still fails closed.
+### 3. Next MLE work — not another contaminated rolling-origin headline
 
-### 3. Retrain the MLE challenger on the same weekend’s results
+The review’s remaining model work is specific:
 
-ClubElo is a **prior** for promoted / low-sample clubs, not the living strength source.
+1. Dated ClubElo **prior-only initialization** for clubs with zero training matches at forecast time.
+2. A predefined **weekly expanding-window** retraining cadence; train only on results available before each forecast week; report uncovered rows.
+3. Fresher historical ratings where a documented dated source exists. Do not replace historical inputs with today’s pin.
+4. Collect more naturally sealed completed forecasts. Freeze any selected research candidate before prospective validation.
+5. Set any revised multi-market promotion criteria **before** a new selection experiment. Do not relax legacy MAE to turn today’s FAIL into PASS.
 
 ```bash
 pnpm --filter @sports-predict/api train:dixon-coles-mle -- --force
 pnpm --filter @sports-predict/api eval:dixon-coles-mle
 ```
 
-Historical join uses the last published From/To window on or before the UTC day before kickoff — ClubElo’s own number, not interpolation. Do not train on ESPN’s 7-day window.
-
 Register a new artifact only if eval + a human agree. **Do not** wire `model-data.ts` to the challenger unless the user says **promote**.
-
-Last eval: 1146 paired forecasts; challenger Brier better on all three origins (e.g. 0.586 vs 0.621); `recommendPromotion: false` / `activateProduction: false` because calibration MAE was slightly worse on the first origin.
 
 ### 4. Leave Consensus labelled
 
-It is the sharper number vs books because it uses a book. Using it as the headline is the SIRE Meta Pairwise path, not a better Fundamental. MiniMax still authors no 1X2.
+It is the sharper number vs books because it uses a book. Using it as the headline is the SIRE Meta Pairwise path, not a better Fundamental.
+
+---
+
+## Parked until a later shipping phase
+
+Not this merge. Do not start them as a workaround for calibration n.
+
+- Paid Odds API so `decimalOdds` fills and EV% can print (`modelP × decimal − 1`).
+- `claim_id` + ESPN results + CLV.
+- Davidson / Sarmanov.
+- Lineup features in the numeric model.
+- Dedicated `MINIMAX_INFERENCE_API_KEY` (optional ops). Brave remains optional failover.
+- A Vercel redeploy solely to align web SHA with API SHA.
 
 ---
 
 ## Do not do
 
-- Ship HFA=0 or any Phase 1 fit that loses on 1X2 Brier / bootstrap.
-- Promote on Brier alone.
+- Ship HFA=0 or any Phase 1 fit that loses on 1X2 Brier / bootstrap / chronological holdout.
+- Promote on Brier alone, or on the pre-correction rolling-origin numbers.
 - Blend Stake / Kalshi / Polymarket into Fundamental.
 - Let MiniMax write probabilities.
 - Remake Phase 0 or restore geometric-mean λ.
@@ -102,23 +113,15 @@ It is the sharper number vs books because it uses a book. Using it as the headli
 
 ---
 
-## Later — only after the fitted DC is champion
-
-- **Davidson** as a cheap 1X2-only sanity check (cannot replace the score matrix).
-- **Sarmanov / NegBin** for totals / BTTS overdispersion.
-- Recapture dated ClubElo if the API recovers (`capture:clubelo-history` → `build:clubelo-pre-kickoff` → train/eval) so last-known windows are shorter than the tonyelhabr 2026-01-14 cutoff.
-- UCL qualifying completeness and regulation-time scoring are unresolved and must **not** drive promotion.
-
----
-
 ## Evidence to re-check at session start
 
 | Surface | What to confirm |
 |---|---|
 | `GET /ready` | `ratingArtifactId`, `ratingsAgeDays`, `ratingsRefreshDue`, `version.sha` |
 | `GET /api/model/active` | `forecastProvenance.modelVersion` is `"2"`; constants 1.35 / 42 / −0.1 |
-| `GET /api/evaluation/club-season` | Official n, PL n, `modelVersion` of new seals |
+| `GET /api/evaluation/club-season` | Official n, PL n, `modelVersion` of new seals; pending seals ≠ completed n |
 | `REGISTERED_CHALLENGERS` | Still one challenger; `forecast` still throws |
 | `model-data.ts` | Still `ELO_CHAMPION.forecast` only |
+| Latest eval report | Schema 2; each origin refit; unique-fixture count stated |
 
-If the user says **promote**, switch production forecasts to the registered MLE only after reading the latest `eval:dixon-coles-mle` report and stating the gate result in the PR.
+If the user says **promote**, switch production forecasts to the registered MLE only after reading the latest corrected `eval:dixon-coles-mle` report and stating the gate result in the PR.

@@ -60,4 +60,4 @@ Returns **410 Gone**. The live World Cup tournament model is retired. See [Evalu
 
 ### Important caveat
 
-The active fixture cache recalculates probabilities from the release's pinned **ClubElo rating artifact** on each refresh. The artifact is content-addressed and freshness-gated, but the active endpoint is still not an immutable pre-kickoff archive. For calibration metrics, use [Evaluation](evaluation.md).
+The active fixture cache recalculates probabilities from the release's pinned **ClubElo rating artifact** on each refresh. The artifact is content-addressed and freshness-gated, but the active endpoint is still not an immutable pre-kickoff archive. Rows include `forecastProvenance.modelVersion` (`"2"` for the current Fundamental). For calibration metrics, use [Evaluation](evaluation.md).

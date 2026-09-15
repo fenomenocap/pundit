@@ -3,6 +3,7 @@ import { lookup } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import { Readable } from "node:stream";
+import { evidenceTier, type EvidenceAuthority, type EvidenceTier } from "./evidence-authority";
 
 // Three pages against a bundle of thirty sources meant verification usually
 // ran on one fetched page: claims citing anything else could not be supported,
@@ -19,7 +20,7 @@ const DEFAULT_MAX_TEXT_CHARS = 16_000;
 // browser UA is not required.
 const EVIDENCE_USER_AGENT = "Mozilla/5.0 (compatible; pundit/1.0)";
 
-export type EvidenceAuthority = "official" | "reputable" | "other";
+export type { EvidenceAuthority } from "./evidence-authority";
 
 export interface EvidencePageCandidate {
   id: string;
@@ -509,17 +510,26 @@ async function retrieveOne(
  * Shared by retrieval and the prefetch so the two cannot select different
  * pages -- a prefetch that warmed the wrong URLs would be pure cost.
  */
+function isRetrievableTier(tier: EvidenceTier): boolean {
+  return tier === "official" || tier === "analytics" || tier === "news";
+}
+
 function selectRetrievable(
   candidates: readonly EvidencePageCandidate[]
 ): EvidencePageCandidate[] {
-  const rank: Record<EvidenceAuthority, number> = { official: 0, reputable: 1, other: 2 };
+  const tierRank: Record<EvidenceTier, number> = {
+    official: 0,
+    analytics: 1,
+    news: 1,
+    other: 2,
+  };
   return [...candidates]
     .filter((candidate) =>
       candidate.id.trim()
       && candidate.url.trim()
-      && (candidate.authority === "official" || candidate.authority === "reputable")
+      && isRetrievableTier(evidenceTier(candidate.url))
     )
-    .sort((a, b) => rank[a.authority] - rank[b.authority])
+    .sort((a, b) => tierRank[evidenceTier(a.url)] - tierRank[evidenceTier(b.url)])
     .filter((candidate, index, all) => all.findIndex((entry) => entry.url === candidate.url) === index)
     .slice(0, MAX_PAGES);
 }

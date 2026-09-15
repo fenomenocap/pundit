@@ -3,7 +3,7 @@
 **Can I bet or trade on Pundit?**
 No. Pundit doesn't run markets, hold funds, or offer any way to place a wager. It's an analysis tool — see the [Disclaimer](disclaimer.md).
 
-**Which questions receive model-grounded chat answers?**
+**Which questions receive model-grounded answers?**
 Four tiers:
 
 1. **Match** — recognized, policy-eligible fixtures in the 14-day active window (Premier League and UCL qualifiers) with the required model inputs
@@ -23,10 +23,16 @@ ESPN fixtures/standings and active market odds refresh every 30 minutes, and the
 No. Recognition establishes a structured identity; capability separately decides whether the public model can price it. Friendlies remain outside public model coverage, and missing ratings or venue context fail closed.
 
 **Does "home"/"away" imply home-field advantage?**
-For Premier League fixtures, yes — the model applies a configured home-field boost. For UCL qualifiers and neutral-site matches, home/away are positional labels from ESPN; advantage is applied only where configured.
+For Premier League and UCL-qualifier fixtures, yes when the venue is not marked neutral — the model applies a configured home-field boost. Neutral-site matches get 0. Home/away labels still come from ESPN.
+
+**Can I ask BTTS or over 2.5 without getting the 1X2 favourite again?**
+Yes. Those markets are already on the score grid. The desk settles `BTTS`, `o2.5` / `U2.5`, and likely scorelines from the same fixture facts. A market Pundit does not price (player, Asian, corners) is refused rather than answered with the favourite.
+
+**Are Paper, Draft, and Vaults real bets?**
+No. They are a local paper lab on the live slate. Nothing is a deposit, a bookmaker ticket, or an on-chain vault.
 
 **What are the evaluation pages?**
-`/evaluation/club-season` shows rolling pre-kickoff calibration snapshots for finished club fixtures. `/evaluation/wc-2026` is a frozen World Cup 2026 backtest — historical only, not live forecasts.
+`/evaluation/club-season` (Ledger in the nav) shows rolling 90-minute pre-kickoff seals for club fixtures. Live volume is on Railway `/data`. `/evaluation/wc-2026` is a frozen World Cup 2026 backtest — historical only, not live forecasts.
 
 **Is there an API?**
 Yes, all data shown in the app is available read-only with no authentication (except chat, which requires `MINIMAX_API_KEY` on the server). See the [API Reference](../api-reference/overview.md).
