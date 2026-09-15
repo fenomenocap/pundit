@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getTeamNameAliases, normalizeTeamName, normalizedTeamPairKey, normalizeTeamText } from "../lib/team-names";
 import type { AskGrounding, ConversationTurn, EvidenceBundle, Grounding } from "./ask";
+import {
+  formatFormMarks,
+  formatScorersLine,
+  formatTableLine,
+} from "./match-context";
 import { managersNamedInEvidence, stripUnlistedManagers } from "./pl-managers";
 import { searchWebBatch, type WebSearchResult } from "./web-search";
 
@@ -169,6 +174,12 @@ export function card(g: Grounding) {
   return [
     `HOME: ${g.home}. AWAY: ${g.away}. ${g.competition}. ${g.date}. HFA ${g.homeFieldAdvantage ? "on" : "off"}.`,
     `${g.home} are at home. Do not name a stadium or ground.`,
+    `Elo ${g.home} ${Math.round(g.homeElo)} vs ${g.away} ${Math.round(g.awayElo)}.`,
+    `Form ${g.home} ${formatFormMarks(g.homeForm)} · ${g.away} ${formatFormMarks(g.awayForm)}.`,
+    formatTableLine(g.home, g.homeTable),
+    formatTableLine(g.away, g.awayTable),
+    formatScorersLine(g.home, g.homeScorers),
+    formatScorersLine(g.away, g.awayScorers),
     freshnessLine,
     "CURRENT-WORLD FACTS: only from SEARCH EVIDENCE this turn. Never from memory.",
     `The model leans ${favourite.label}. A server board already shows 1X2, totals, BTTS and scorelines — do not recite them.`,

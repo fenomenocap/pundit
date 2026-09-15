@@ -1,0 +1,354 @@
+{
+  "schemaVersion": 1,
+  "auditedAt": "2026-09-15T05:15:00Z",
+  "purpose": "Agent-accessible data source roster for rich match analysis. Research and planning only — not runtime configuration, not permission to scrape, and not a substitute for fixture-registry or club-strength release gates.",
+  "sources": [
+    {
+      "id": "espn-public-scoreboard",
+      "name": "ESPN",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/soccer",
+      "tier": "fixture-spine",
+      "roles": [
+        "fixture-schedule",
+        "standings",
+        "match-results",
+        "recent-form",
+        "goal-scorers",
+        "venue-status"
+      ],
+      "access": "server-owned",
+      "punditUse": "grounding",
+      "notes": "Technical primary for enabled competitions (eng.1, uefa.champions, uefa.champions_qual). 30-minute bounded refresh via football-data.ts. Undocumented public JSON; Disney terms restrict automated extraction without written permission. See packages/api/data/research/fixture-sources/coverage-matrix.json. Never match fixtures on canonical name alone — retain ESPN stable IDs."
+    },
+    {
+      "id": "fbref",
+      "name": "FBref",
+      "url": "https://fbref.com",
+      "tier": "analytics",
+      "roles": [
+        "advanced-stats",
+        "xg",
+        "squad-roster",
+        "season-totals",
+        "h2h"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Stats Perform / Opta-derived tables (xG, possession, passing, defensive actions). Agent may cite for prose context on form and style; numbers do not enter the Dixon-Coles forecast. No bounded server fetch today."
+    },
+    {
+      "id": "the-analyst",
+      "name": "The Analyst",
+      "url": "https://theanalyst.com",
+      "tier": "analytics",
+      "roles": [
+        "tactical-analysis",
+        "advanced-stats",
+        "xg",
+        "editorial-research"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Opta-powered editorial and data journalism (formerly Opta Analyst). Useful for tactical framing and verified stat-led narratives. Evidence-only; not a structured ingestion contract."
+    },
+    {
+      "id": "whoscored",
+      "name": "WhoScored",
+      "url": "https://www.whoscored.com",
+      "tier": "analytics",
+      "roles": [
+        "player-ratings",
+        "predicted-lineups",
+        "form",
+        "match-preview",
+        "advanced-stats"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Opta-backed ratings and predicted XI. Listed in REPUTABLE_EVIDENCE_DOMAINS for team-news and lineup evidence. Predicted lineups are not confirmed starters; cite with date and treat as corroboration, not model input."
+    },
+    {
+      "id": "transfermarkt",
+      "name": "Transfermarkt",
+      "url": "https://www.transfermarkt.com",
+      "tier": "analytics",
+      "roles": [
+        "squad-roster",
+        "injuries",
+        "suspensions",
+        "market-values",
+        "availability-hints"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Squad lists, injury/suspension pages, and transfer context. Reputable evidence domain for player and availability questions. Does not supply fixture IDs; fixture scope must come from ESPN grounding first."
+    },
+    {
+      "id": "statbunker",
+      "name": "Statbunker",
+      "url": "https://www.statbunker.com",
+      "tier": "analytics",
+      "roles": [
+        "season-totals",
+        "h2h",
+        "form",
+        "league-tables"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Historical PL and cup stat compendium. Useful for head-to-head and season-long counting stats in agent prose. No public API; search snippets only."
+    },
+    {
+      "id": "fotmob",
+      "name": "FotMob",
+      "url": "https://www.fotmob.com",
+      "tier": "analytics",
+      "roles": [
+        "live-scores",
+        "lineups",
+        "xg",
+        "player-stats",
+        "form"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Mobile-first live scores with xG and lineup cards. Reputable evidence domain. Good for near-kickoff lineup confirmation when search returns a dated match page tied to the grounded fixture."
+    },
+    {
+      "id": "sofascore",
+      "name": "SofaScore",
+      "url": "https://www.sofascore.com",
+      "tier": "analytics",
+      "roles": [
+        "player-ratings",
+        "lineups",
+        "live-scores",
+        "heatmaps",
+        "form"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Ratings, lineups, and live event data in search results. Reputable evidence domain. Same fixture-scoping rule as other analytics sites — must reference the grounded matchup, not club names in isolation."
+    },
+    {
+      "id": "footystats",
+      "name": "FootyStats",
+      "url": "https://footystats.org",
+      "tier": "analytics",
+      "roles": [
+        "predictive-stats",
+        "h2h",
+        "over-under-trends",
+        "btts-trends",
+        "form"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Aggregated league and match tendency stats (BTTS%, O/U rates). Useful for contextual prose; do not treat as Pundit probabilities or blend into Fundamental. Comparison and narrative only."
+    },
+    {
+      "id": "bbc-sport",
+      "name": "BBC Sport",
+      "url": "https://www.bbc.co.uk/sport/football",
+      "tier": "news",
+      "roles": [
+        "team-news",
+        "injuries",
+        "match-reports",
+        "official-quotes",
+        "lineups"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Primary UK wire for breaking team news and confirmed lineups. Reputable evidence domain. Positive availability claims require same-sentence dated citation per Analyst V2 contract."
+    },
+    {
+      "id": "goal-com",
+      "name": "Goal.com",
+      "url": "https://www.goal.com",
+      "tier": "news",
+      "roles": [
+        "team-news",
+        "injuries",
+        "transfers",
+        "match-preview"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "Global football news and preview content. Reputable evidence domain. Corroborate injury and lineup claims with a second source when possible."
+    },
+    {
+      "id": "cbs-sports",
+      "name": "CBS Sports",
+      "url": "https://www.cbssports.com/soccer",
+      "tier": "news",
+      "roles": [
+        "match-preview",
+        "team-news",
+        "standings-context",
+        "broadcast-schedule"
+      ],
+      "access": "minimax-search",
+      "punditUse": "evidence",
+      "notes": "US-facing soccer coverage and previews. Reputable evidence domain. Useful for UCL and PL context in general-analysis turns; not a fixture spine."
+    },
+    {
+      "id": "premier-league-official",
+      "name": "Premier League (official)",
+      "url": "https://www.premierleague.com",
+      "tier": "official",
+      "roles": [
+        "official-announcements",
+        "fixture-amendments",
+        "disciplinary",
+        "match-centre"
+      ],
+      "access": "minimax-search",
+      "punditUse": "corroborate-only",
+      "notes": "Competition-organizer authority for PL schedule changes, postponements, and official statements. OFFICIAL_EVIDENCE_DOMAIN. Terms prohibit database scraping without written approval; do not automate ingestion. See fixture-sources coverage-matrix premier-league-web-ecal entry."
+    },
+    {
+      "id": "uefa-official",
+      "name": "UEFA",
+      "url": "https://www.uefa.com",
+      "tier": "official",
+      "roles": [
+        "official-announcements",
+        "fixture-amendments",
+        "disciplinary",
+        "competition-regulations"
+      ],
+      "access": "minimax-search",
+      "punditUse": "corroborate-only",
+      "notes": "Organizer authority for UCL and qualifiers. OFFICIAL_EVIDENCE_DOMAIN. UEFA terms prohibit systematic collection and automated scraping. Corroborate venue, neutral-site, and status conflicts; never reverse-engineer internal payloads."
+    },
+    {
+      "id": "oddschecker",
+      "name": "Oddschecker",
+      "url": "https://www.oddschecker.com",
+      "tier": "market-compare",
+      "roles": [
+        "market-1x2",
+        "market-totals",
+        "player-markets",
+        "odds-aggregation"
+      ],
+      "access": "minimax-search",
+      "punditUse": "compare-only",
+      "notes": "Odds aggregator across UK books. Reputable evidence domain; used in player-evidence tests for scorer markets. Compare-only for 1X2 — never blend into Fundamental or Consensus without explicit labelled refit. Player markets are evidence, not Pundit projections."
+    },
+    {
+      "id": "oddsportal",
+      "name": "Oddsportal",
+      "url": "https://www.oddsportal.com",
+      "tier": "market-compare",
+      "roles": [
+        "market-1x2",
+        "market-totals",
+        "odds-aggregation",
+        "closing-lines"
+      ],
+      "access": "minimax-search",
+      "punditUse": "compare-only",
+      "notes": "Historical and live odds comparison site. Reputable evidence domain. Agent may cite market disagreement in prose; production comparison spine remains Stake/Kalshi/Polymarket bounded fetch where configured."
+    },
+    {
+      "id": "api-football",
+      "name": "API-Football",
+      "url": "https://www.api-football.com",
+      "tier": "analytics",
+      "roles": [
+        "fixture-schedule",
+        "standings",
+        "lineups",
+        "injuries",
+        "market-odds",
+        "advanced-stats"
+      ],
+      "access": "deferred-vendor",
+      "punditUse": "evidence",
+      "notes": "Paid RapidAPI vendor bundling fixtures, stats, and odds. Deferred — candidate unified feed behind fixture-market-sources.ts seam per GOAL.md / product vision. Would require license review, identity mapping to ESPN IDs, and explicit product decision before any server-owned fetch. Not a workaround for ESPN rights review."
+    },
+    {
+      "id": "statsperform",
+      "name": "StatsPerform (Opta)",
+      "url": "https://www.statsperform.com",
+      "tier": "analytics",
+      "roles": [
+        "event-data",
+        "advanced-stats",
+        "xg",
+        "tracking-data",
+        "official-data-feed"
+      ],
+      "access": "deferred-vendor",
+      "punditUse": "evidence",
+      "notes": "Enterprise parent of Opta. Powers FBref, The Analyst, and many broadcast graphics under license. Deferred — no commercial contract in Pundit today. Would be the path to fitted Dixon-Coles event feeds (Phase 2+) if licensed; do not substitute scraped Opta pages for a feed."
+    },
+    {
+      "id": "statsbomb-open",
+      "name": "StatsBomb Open Data",
+      "url": "https://github.com/statsbomb/open-data",
+      "tier": "analytics",
+      "roles": [
+        "event-data",
+        "xg",
+        "research-corpus",
+        "competition-samples"
+      ],
+      "access": "deferred-vendor",
+      "punditUse": "evidence",
+      "notes": "Free CC-licensed event JSON for selected competitions (WC, WWC, La Liga sample, etc.). Deferred for agent runtime — useful offline for methodology research and challenger training prototypes. Does not cover live PL/UCL qualifying windows; not a production spine."
+    },
+    {
+      "id": "stake",
+      "name": "Stake",
+      "url": "https://stake.bet",
+      "tier": "market-compare",
+      "roles": [
+        "market-1x2"
+      ],
+      "access": "bounded-fetch",
+      "punditUse": "compare-only",
+      "notes": "GraphQL public adapter in fixture-market-sources.ts. 30-minute cache via model-market-odds.ts. Compare-only; Cloudflare has blocked production adapter (pre-next-phase QA 2026-09-15). Never enter Fundamental forecast. Returns no-vig probabilities, not tradable decimals."
+    },
+    {
+      "id": "kalshi",
+      "name": "Kalshi",
+      "url": "https://kalshi.com",
+      "tier": "market-compare",
+      "roles": [
+        "market-1x2"
+      ],
+      "access": "bounded-fetch",
+      "punditUse": "compare-only",
+      "notes": "Elections trade API (KXEPLGAME, KXUCLGAME series). Bounded fetch with fixture name matching. Compare-only. Coverage often 0/N on active slates; failures stay isolated. US-regulated prediction-market prices normalized to no-vig 1X2."
+    },
+    {
+      "id": "polymarket",
+      "name": "Polymarket",
+      "url": "https://polymarket.com",
+      "tier": "market-compare",
+      "roles": [
+        "market-1x2"
+      ],
+      "access": "bounded-fetch",
+      "punditUse": "compare-only",
+      "notes": "Gamma API public events search. Usually the strongest active comparison source (11/11 PL fixtures observed 2026-09-15). Compare-only. Labelled Pundit Consensus may shrink toward one complete same-source no-vig market — still not Fundamental."
+    },
+    {
+      "id": "clubelo-artifact",
+      "name": "ClubElo (pinned artifact)",
+      "url": "https://clubelo.com",
+      "tier": "analytics",
+      "roles": [
+        "club-strength",
+        "elo-ratings",
+        "historical-rankings"
+      ],
+      "access": "server-owned",
+      "punditUse": "grounding",
+      "notes": "Reviewed content-addressed clubelo@1 snapshot in packages/api/data/model-artifacts/clubelo/. Runtime never contacts ClubElo. Hash, coverage, and 30-day freshness fail closed. Refresh via refresh:clubelo-snapshot release workflow only. Historical pre-kickoff corpus is a separate offline research path (clubelo-history/)."
+    }
+  ]
+}
