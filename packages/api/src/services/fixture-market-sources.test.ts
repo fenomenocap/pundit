@@ -249,6 +249,56 @@ describe("local fixture market normalization", () => {
     expect(queries.slice(1).join(" ")).toMatch(/Gilloise/);
   });
 
+  // KXEPLGAME lists each leg as a separate "Team wins" binary rather than a
+  // single "Regulation Time Moneyline" block. The old label filter dropped
+  // every EPL event because "wins" is not "to win".
+  it("parses a KXEPLGAME event with per-team win binaries", () => {
+    const eplFixture: ModelFixture = {
+      ...fixture,
+      competitionId: "eng.1",
+      competition: "Premier League",
+      home: "Brentford",
+      away: "Chelsea",
+      utcDate: "2026-09-18T19:00:00Z",
+      date: "2026-09-18",
+    };
+    const odds = parseKalshiEvent({
+      title: "Brentford vs Chelsea",
+      sub_title: "BRE vs CFC (Sep 18)",
+      markets: [
+        { status: "active", title: "Brentford wins", yes_sub_title: "Brentford", yes_ask_dollars: 0.32 },
+        { status: "active", title: "Chelsea wins", yes_sub_title: "Chelsea", yes_ask_dollars: 0.44 },
+        { status: "active", title: "Tie is the result", yes_sub_title: "Tie", yes_ask_dollars: 0.26 },
+      ],
+    }, eplFixture);
+    const total = 0.32 + 0.44 + 0.26;
+    expect(odds?.pHome).toBeCloseTo(0.32 / total);
+    expect(odds?.pDraw).toBeCloseTo(0.26 / total);
+    expect(odds?.pAway).toBeCloseTo(0.44 / total);
+  });
+
+  it("maps Kalshi EPL legs when the model carries ClubElo abbreviations", () => {
+    const eplFixture: ModelFixture = {
+      ...fixture,
+      competitionId: "eng.1",
+      competition: "Premier League",
+      home: "Tottenham",
+      away: "Man United",
+      utcDate: "2026-09-19T14:30:00Z",
+      date: "2026-09-19",
+    };
+    const odds = parseKalshiEvent({
+      title: "Tottenham vs Manchester United",
+      sub_title: "TOT vs MUN (Sep 19)",
+      markets: [
+        { status: "active", title: "Tottenham wins", yes_sub_title: "Tottenham", yes_ask_dollars: 0.47 },
+        { status: "active", title: "Manchester United wins", yes_sub_title: "Manchester United", yes_ask_dollars: 0.30 },
+        { status: "active", title: "Tie is the result", yes_sub_title: "Tie", yes_ask_dollars: 0.25 },
+      ],
+    }, eplFixture);
+    expect(odds).not.toBeNull();
+  });
+
   // Shape cut from the live KXWCGAME series response: outcome labels carry a
   // "Reg Time:" prefix and prices live only in the *_dollars fields.
   it("parses a KXWCGAME event with prefixed labels and dollar-only prices", () => {
@@ -279,6 +329,47 @@ describe("market source fetchers", () => {
     new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it("emits a structured kalshi_fetch_summary log after fetching", async () => {
+    const eplFixture: ModelFixture = {
+      ...fixture,
+      competitionId: "eng.1",
+      competition: "Premier League",
+      home: "Brentford",
+      away: "Chelsea",
+      utcDate: "2026-09-18T19:00:00Z",
+      date: "2026-09-18",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      events: [{
+        title: "Brentford vs Chelsea",
+        sub_title: "BRE vs CFC (Sep 18)",
+        markets: [
+          { status: "active", title: "Brentford wins", yes_sub_title: "Brentford", yes_ask_dollars: 0.32 },
+          { status: "active", title: "Chelsea wins", yes_sub_title: "Chelsea", yes_ask_dollars: 0.44 },
+          { status: "active", title: "Tie is the result", yes_sub_title: "Tie", yes_ask_dollars: 0.26 },
+        ],
+      }],
+      cursor: "",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const result = await fetchKalshiOdds([eplFixture], "premier-league");
+    expect(result.size).toBe(1);
+    const summary = logSpy.mock.calls
+      .map(([payload]) => JSON.parse(String(payload)))
+      .find((entry) => entry.event === "kalshi_fetch_summary");
+    expect(summary).toMatchObject({
+      profile: "premier-league",
+      seriesTicker: "KXEPLGAME",
+      eventsFetched: 1,
+      matchesAttempted: 1,
+      matchesSucceeded: 1,
+      fixturesMatched: 1,
+    });
+    expect(summary.rejectionReasons).toEqual({});
+    logSpy.mockRestore();
+  });
 
   it("queries Kalshi by the WC match series and maps the fixture", async () => {
     const wcFixture: ModelFixture = {

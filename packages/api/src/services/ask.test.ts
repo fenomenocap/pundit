@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
+import { sampleAgentFreshness } from "../config/freshness-policy";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
 import * as modelData from "./model-data";
@@ -84,6 +85,8 @@ import {
   type FootballMatch,
 } from "./football-data";
 import { refreshClubRatings } from "./club-ratings";
+import { sampleMatchContextFields } from "./match-context";
+import { eloToLambdas } from "./dixon-coles";
 
 const searchWeb = vi.hoisted(() => vi.fn());
 const toOutcome = vi.hoisted(() => (results: unknown[]) => ({
@@ -108,13 +111,16 @@ vi.mock("./web-search", () => ({
  * disagrees with its own `oddsSources`.
  */
 function withDivergence(
-  grounding: Omit<Grounding, "marketDivergence" | "pricing"> & {
+  grounding: Omit<Grounding, "marketDivergence" | "pricing" | "freshness" | keyof ReturnType<typeof sampleMatchContextFields>> & {
     marketDivergence?: MarketDivergence[];
     pricing?: Grounding["pricing"];
-  }
+    freshness?: Grounding["freshness"];
+  } & Partial<ReturnType<typeof sampleMatchContextFields>>
 ): Grounding {
   const next = {
+    ...sampleMatchContextFields(),
     ...grounding,
+    freshness: grounding.freshness ?? sampleAgentFreshness(),
     marketDivergence: grounding.marketDivergence
       ?? computeMarketDivergence(grounding, grounding.oddsSources),
   };
@@ -583,7 +589,7 @@ describe("current-news evidence hardening", () => {
       queries: ["mbeumo stats"],
       providerCalls: 0,
       results: [
-        { id: "S1", title: "Stats", url: "https://uefa.com/mbeumo", date: "2026-09-07", snippet: "2 goals." },
+        { id: "S1", title: "Stats", url: "https://uefa.com/mbeumo", date: "2026-09-07", snippet: "2 goals.", tier: "official" as const },
       ],
     };
     const checked = await verifyCurrentClaims(
@@ -616,8 +622,8 @@ describe("current-news evidence hardening", () => {
       queries: ["current manager"],
       providerCalls: 0,
       results: [
-        { id: "S1", title: "Official", url: "https://uefa.com/one", date: "2026-08-13", snippet: "Pat Doe is manager." },
-        { id: "S2", title: "Other", url: "https://news.example/two", date: "2026-08-13", snippet: "Unrelated." },
+        { id: "S1", title: "Official", url: "https://uefa.com/one", date: "2026-08-13", snippet: "Pat Doe is manager.", tier: "official" as const },
+        { id: "S2", title: "Other", url: "https://news.example/two", date: "2026-08-13", snippet: "Unrelated.", tier: "other" as const },
       ],
     };
     const checked = await verifyCurrentClaims(
@@ -660,6 +666,7 @@ describe("current-news evidence hardening", () => {
         url: "https://uefa.com/spurs",
         date: "",
         snippet: "Tottenham going winless across their opening three league games.",
+        tier: "official" as const,
       }],
     };
     const checked = await verifyCurrentClaims(
@@ -706,6 +713,7 @@ describe("current-news evidence hardening", () => {
         url: "https://www.premierleague.com/en/players/542645/Bryan-Mbeumo/stats",
         date: "2026-09-07",
         snippet: "Appearances 3, Goals 2.",
+        tier: "official" as const,
       }],
     };
     const verify = vi.fn(async (_client, _claims, pages) => {
@@ -746,6 +754,7 @@ describe("current-news evidence hardening", () => {
         url: "https://www.manutd.com/en/news",
         date: "",
         snippet: "Published 7 September 2026. Appearances 3, Goals 2.",
+        tier: "official" as const,
       }],
     };
     const verify = vi.fn(async (_client, _claims, pages) => ({
@@ -780,6 +789,7 @@ describe("current-news evidence hardening", () => {
         url: "https://uefa.com/news",
         date: "2026-09-06",
         snippet: "Pat Doe is manager.",
+        tier: "official" as const,
       }],
     };
     const checked = await verifyCurrentClaims(
@@ -816,6 +826,7 @@ describe("current-news evidence hardening", () => {
         url: "https://uefa.com/fixture",
         date: "2026-08-13",
         snippet: "The fixture is Thursday.",
+        tier: "official" as const,
       }],
     };
     const checked = await verifyCurrentClaims(
@@ -1706,6 +1717,7 @@ describe("current-news evidence hardening", () => {
         url: "https://example.com/team-news",
         date: "2026-08-12",
         snippet: "A player returned to training.",
+        tier: "news" as const,
       }],
     };
     const rendered = renderEvidenceCitations(
@@ -1842,7 +1854,7 @@ describe("current-news evidence hardening", () => {
 
     it("keeps a real marker and ordinary double brackets", () => {
       const bundle = { queries: ["q"], results: [{
-        id: "S1", title: "Club", url: "https://example.com/a", date: "2026-08-26", snippet: "",
+        id: "S1", title: "Club", url: "https://example.com/a", date: "2026-08-26", snippet: "", tier: "news" as const,
       }] } as unknown as EvidenceBundle;
       expect(renderEvidenceCitations("Timber returns [[S1]].", bundle, false).answer)
         .toContain("[Club](https://example.com/a)");
@@ -2114,6 +2126,7 @@ describe("current-news evidence hardening", () => {
         url: "https://example.com/xi",
         date: "2026-08-23",
         snippet: "Leno starts in goal.",
+        tier: "news" as const,
       }],
     };
     const rendered = renderEvidenceCitations(
@@ -2149,6 +2162,7 @@ describe("current-news evidence hardening", () => {
         url: "https://example.com/update",
         date: "2026-08-12",
         snippet: "One player is available.",
+        tier: "news" as const,
       }],
     };
     const rendered = renderEvidenceCitations(
@@ -2175,6 +2189,7 @@ describe("current-news evidence hardening", () => {
         url: "https://example.com/undated",
         date: "",
         snippet: "Available",
+        tier: "news" as const,
       }] },
       true
     );
@@ -2375,6 +2390,118 @@ describe("buildGrounding", () => {
       } as ModelFixture["forecastProvenance"],
     }));
     expect(grounding.pricing.modelVersion).toBe("clubelo@1:2da1616b28750ddb");
+  });
+
+  it("includes Elo, lambdas, form, table and scorers from match context", () => {
+    replaceFootballDataForTests({
+      byCompetition: {
+        "eng.1": {
+          upcoming: [],
+          recent: [],
+          standings: [
+            {
+              competitionId: "eng.1",
+              position: 1,
+              team: "Arsenal",
+              playedGames: 4,
+              won: 3,
+              draw: 1,
+              lost: 0,
+              points: 10,
+              goalsFor: 9,
+              goalsAgainst: 2,
+              goalDifference: 7,
+              group: null,
+              advanced: false,
+            },
+            {
+              competitionId: "eng.1",
+              position: 18,
+              team: "Coventry City",
+              playedGames: 4,
+              won: 0,
+              draw: 1,
+              lost: 3,
+              points: 1,
+              goalsFor: 2,
+              goalsAgainst: 8,
+              goalDifference: -6,
+              group: null,
+              advanced: false,
+            },
+          ],
+          error: null,
+        },
+      },
+    });
+    replaceSeasonScheduleForTests({
+      competitionId: "eng.1",
+      seasonId: "2026-27",
+      lastUpdated: new Date("2026-09-09T12:00:00Z"),
+      error: null,
+      servingLastGood: false,
+      fixtures: [
+        {
+          id: 1,
+          competitionId: "eng.1",
+          competition: "Premier League",
+          homeTeam: "Arsenal",
+          awayTeam: "Liverpool",
+          utcDate: "2026-09-06T14:00:00Z",
+          status: "FINISHED",
+          stage: null,
+          matchday: null,
+          group: null,
+          score: { home: 2, away: 1 },
+          scorers: [
+            { playerId: "saka", name: "Bukayo Saka", team: "Arsenal", position: "W" },
+          ],
+        },
+        {
+          id: 2,
+          competitionId: "eng.1",
+          competition: "Premier League",
+          homeTeam: "Coventry City",
+          awayTeam: "Hull",
+          utcDate: "2026-09-07T14:00:00Z",
+          status: "FINISHED",
+          stage: null,
+          matchday: null,
+          group: null,
+          score: { home: 0, away: 2 },
+        },
+      ],
+    });
+    const model = fixture("Arsenal", "Coventry City", {
+      homeElo: 1900,
+      awayElo: 1600,
+      forecastProvenance: {
+        homeAdvantageElo: 42,
+      } as ModelFixture["forecastProvenance"],
+    });
+    const grounding = buildGrounding(model);
+    const [lambdaHome, lambdaAway] = eloToLambdas(1900, 1600, 42);
+    expect(grounding.homeElo).toBe(1900);
+    expect(grounding.awayElo).toBe(1600);
+    expect(grounding.lambdaHome).toBeCloseTo(lambdaHome, 4);
+    expect(grounding.lambdaAway).toBeCloseTo(lambdaAway, 4);
+    expect(grounding.totalXg).toBeCloseTo(lambdaHome + lambdaAway, 4);
+    expect(grounding.homeForm).toEqual(["W"]);
+    expect(grounding.awayForm).toEqual(["L"]);
+    expect(grounding.homeTable).toEqual({
+      position: 1,
+      points: 10,
+      goalDifference: 7,
+      playedGames: 4,
+    });
+    expect(grounding.awayTable).toEqual({
+      position: 18,
+      points: 1,
+      goalDifference: -6,
+      playedGames: 4,
+    });
+    expect(grounding.homeScorers[0]).toMatchObject({ name: "Bukayo Saka", goals: 1 });
+    expect(grounding.awayScorers).toEqual([]);
   });
 });
 
@@ -3445,6 +3572,7 @@ describe("evidence guards leave model-derived answers intact", () => {
         url: "https://bbc.co.uk/x",
         date: "2026-08-18",
         snippet: "Saka trained.",
+        tier: "news" as const,
       }],
     };
     const rendered = renderEvidenceCitations("Saka is back in training [[1]].", bundle, true);

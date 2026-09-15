@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { sampleAgentFreshness } from "../config/freshness-policy";
 import { stripUnlistedManagers, managersNamedInEvidence } from "./pl-managers";
 import { card, formatSearchEvidence } from "./desk-voice";
 import type { Grounding } from "./ask";
+import { sampleMatchContextFields } from "./match-context";
 
 function match(over: Partial<Grounding> = {}): Grounding {
   return {
@@ -33,6 +35,8 @@ function match(over: Partial<Grounding> = {}): Grounding {
       pAway: 0.53,
     } as unknown as Grounding["pricing"],
     marketDivergence: [],
+    freshness: sampleAgentFreshness(),
+    ...sampleMatchContextFields(),
     ...over,
   };
 }
@@ -44,6 +48,15 @@ describe("desk current-world facts", () => {
     expect(text).not.toContain("Guardiola");
     expect(text).not.toContain("Carrick");
     expect(text).toMatch(/SEARCH EVIDENCE|this turn/);
+  });
+
+  it("includes refresh tier and asOf timestamps on the engine card", () => {
+    const text = card(match({
+      freshness: sampleAgentFreshness({ tier: "matchday", reason: "2 fixtures kick off within 24 hours" }),
+    }));
+    expect(text).toContain("Refresh tier matchday");
+    expect(text).toContain("ESPN 2026-09-09T12:00");
+    expect(text).toContain("model 2026-09-09T12:00");
   });
 
   it("formats dated search snippets for the model", () => {
