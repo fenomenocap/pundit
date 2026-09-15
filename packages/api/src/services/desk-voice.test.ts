@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { sampleAgentFreshness } from "../config/freshness-policy";
 import type { Grounding } from "./ask";
+import { sampleMatchContextFields } from "./match-context";
 import {
   DESK_SYSTEM,
   card,
@@ -40,6 +42,15 @@ function match(over: Partial<Grounding> = {}): Grounding {
       pAway: 0.05,
     } as unknown as Grounding["pricing"],
     marketDivergence: [],
+    freshness: sampleAgentFreshness(),
+    ...sampleMatchContextFields({
+      homeElo: 1950,
+      awayElo: 1520,
+      homeForm: ["W", "W", "D"],
+      awayForm: ["L", "D", "L"],
+      homeTable: { position: 2, points: 10, goalDifference: 6, playedGames: 4 },
+      awayTable: { position: 18, points: 2, goalDifference: -5, playedGames: 4 },
+    }),
     ...over,
   };
 }
@@ -152,6 +163,29 @@ describe("formatSearchEvidence dates", () => {
     expect(block).toContain("9 Sep");
     expect(block).not.toContain("T17:47:51");
   });
+
+  it("groups desk search evidence by tier when tiers are present", () => {
+    const block = formatSearchEvidence([
+      {
+        id: "S1",
+        title: "xG report",
+        snippet: "City 2.1 xG last five.",
+        date: "2026-09-09",
+        tier: "analytics",
+      },
+      {
+        id: "S2",
+        title: "Team news",
+        snippet: "Rodri still out.",
+        date: "2026-09-09",
+        tier: "news",
+      },
+    ]);
+    expect(block).toContain("ANALYTICS EVIDENCE");
+    expect(block).toContain("NEWS EVIDENCE");
+    expect(block).toContain("[[S1]]");
+    expect(block).toContain("[[S2]]");
+  });
 });
 
 describe("desk qualitative voice", () => {
@@ -162,6 +196,9 @@ describe("desk qualitative voice", () => {
     expect(DESK_SYSTEM).toMatch(/"2\.70"/);
     const prompt = card(match());
     expect(prompt).toContain("Manchester City are at home");
+    expect(prompt).toContain("Elo Manchester City 1950 vs Sunderland 1520");
+    expect(prompt).toContain("Form Manchester City WWD");
+    expect(prompt).toContain("Manchester City: 2nd, 10 pts");
     expect(prompt).not.toMatch(/\d+%/);
     expect(prompt).not.toMatch(/Etihad|2\.70|Old Trafford/i);
   });

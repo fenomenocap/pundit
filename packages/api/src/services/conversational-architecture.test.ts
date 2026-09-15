@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sampleAgentFreshness } from "../config/freshness-policy";
 import { deliverAnswer, deterministicSearchQuery, planEvidenceQueries, type Grounding } from "./ask";
 import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
@@ -8,6 +9,7 @@ import { buildResponseFacts } from "./response-facts";
 import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
 import { attachUserLine, buildMatchPricing, stripUntraceableMatchPercentages } from "./response-correctness";
 import { buildPunditConsensus, pricingConsensusFromBlock } from "./pundit-consensus";
+import { sampleMatchContextFields } from "./match-context";
 
 const grounding = (): Grounding => {
   const pHome = 0.563;
@@ -77,6 +79,8 @@ const grounding = (): Grounding => {
       })),
       consensus: pricingConsensusFromBlock(consensus),
     }),
+    freshness: sampleAgentFreshness(),
+    ...sampleMatchContextFields(),
   };
 };
 
@@ -363,6 +367,7 @@ describe("V2 conversational architecture", () => {
           url: "https://example.com/scorers",
           date: "2026-09-11T08:00:00Z",
           snippet: "Cole Palmer anytime 2.10 for Chelsea, Cole Palmer expected to start for Chelsea.",
+          tier: "news" as const,
         }],
       },
       answer: "I make Arsenal 56.3% and therefore Salah is the most likely scorer.",
@@ -415,6 +420,7 @@ describe("V2 conversational architecture", () => {
           url: "https://example.com/news",
           date: "2026-09-11T08:00:00Z",
           snippet: "Cole Palmer ruled out for Chelsea.",
+          tier: "news" as const,
         }],
       },
       answer: "I make Arsenal 56.3% and therefore Palmer is fine to start.",
@@ -441,6 +447,7 @@ describe("V2 conversational architecture", () => {
           url: "https://example.com/news",
           date: "2026-09-11T08:00:00Z",
           snippet: "Cole Palmer ruled out for Chelsea.",
+          tier: "news" as const,
         }],
       },
       answer: "Iraola is gone and Marco Rose took over in April [[S1]].",
@@ -464,6 +471,7 @@ describe("V2 conversational architecture", () => {
           url: "https://example.com/news",
           date: "2026-09-11T08:00:00Z",
           snippet: "Cole Palmer ruled out for Chelsea.",
+          tier: "news" as const,
         }],
       },
       answer: JSON.stringify({

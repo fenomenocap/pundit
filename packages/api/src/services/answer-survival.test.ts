@@ -83,6 +83,7 @@ const SOURCE = {
   url: "https://example.com/coventry-team-news",
   date: "2026-08-01",
   snippet: "Coventry City's first-choice keeper is suspended.",
+  tier: "news" as const,
 };
 
 beforeEach(() => {
