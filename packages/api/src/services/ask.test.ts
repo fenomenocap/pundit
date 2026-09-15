@@ -589,7 +589,7 @@ describe("current-news evidence hardening", () => {
       queries: ["mbeumo stats"],
       providerCalls: 0,
       results: [
-        { id: "S1", title: "Stats", url: "https://uefa.com/mbeumo", date: "2026-09-07", snippet: "2 goals." },
+        { id: "S1", title: "Stats", url: "https://uefa.com/mbeumo", date: "2026-09-07", snippet: "2 goals.", tier: "official" as const },
       ],
     };
     const checked = await verifyCurrentClaims(
@@ -622,8 +622,8 @@ describe("current-news evidence hardening", () => {
       queries: ["current manager"],
       providerCalls: 0,
       results: [
-        { id: "S1", title: "Official", url: "https://uefa.com/one", date: "2026-08-13", snippet: "Pat Doe is manager." },
-        { id: "S2", title: "Other", url: "https://news.example/two", date: "2026-08-13", snippet: "Unrelated." },
+        { id: "S1", title: "Official", url: "https://uefa.com/one", date: "2026-08-13", snippet: "Pat Doe is manager.", tier: "official" as const },
+        { id: "S2", title: "Other", url: "https://news.example/two", date: "2026-08-13", snippet: "Unrelated.", tier: "other" as const },
       ],
     };
     const checked = await verifyCurrentClaims(
@@ -666,6 +666,7 @@ describe("current-news evidence hardening", () => {
         url: "https://uefa.com/spurs",
         date: "",
         snippet: "Tottenham going winless across their opening three league games.",
+        tier: "official" as const,
       }],
     };
     const checked = await verifyCurrentClaims(
@@ -712,6 +713,7 @@ describe("current-news evidence hardening", () => {
         url: "https://www.premierleague.com/en/players/542645/Bryan-Mbeumo/stats",
         date: "2026-09-07",
         snippet: "Appearances 3, Goals 2.",
+        tier: "official" as const,
       }],
     };
     const verify = vi.fn(async (_client, _claims, pages) => {
@@ -752,6 +754,7 @@ describe("current-news evidence hardening", () => {
         url: "https://www.manutd.com/en/news",
         date: "",
         snippet: "Published 7 September 2026. Appearances 3, Goals 2.",
+        tier: "official" as const,
       }],
     };
     const verify = vi.fn(async (_client, _claims, pages) => ({
@@ -786,6 +789,7 @@ describe("current-news evidence hardening", () => {
         url: "https://uefa.com/news",
         date: "2026-09-06",
         snippet: "Pat Doe is manager.",
+        tier: "official" as const,
       }],
     };
     const checked = await verifyCurrentClaims(
@@ -822,6 +826,7 @@ describe("current-news evidence hardening", () => {
         url: "https://uefa.com/fixture",
         date: "2026-08-13",
         snippet: "The fixture is Thursday.",
+        tier: "official" as const,
       }],
     };
     const checked = await verifyCurrentClaims(
@@ -1712,6 +1717,7 @@ describe("current-news evidence hardening", () => {
         url: "https://example.com/team-news",
         date: "2026-08-12",
         snippet: "A player returned to training.",
+        tier: "news" as const,
       }],
     };
     const rendered = renderEvidenceCitations(
@@ -1848,7 +1854,7 @@ describe("current-news evidence hardening", () => {
 
     it("keeps a real marker and ordinary double brackets", () => {
       const bundle = { queries: ["q"], results: [{
-        id: "S1", title: "Club", url: "https://example.com/a", date: "2026-08-26", snippet: "",
+        id: "S1", title: "Club", url: "https://example.com/a", date: "2026-08-26", snippet: "", tier: "news" as const,
       }] } as unknown as EvidenceBundle;
       expect(renderEvidenceCitations("Timber returns [[S1]].", bundle, false).answer)
         .toContain("[Club](https://example.com/a)");
@@ -2120,6 +2126,7 @@ describe("current-news evidence hardening", () => {
         url: "https://example.com/xi",
         date: "2026-08-23",
         snippet: "Leno starts in goal.",
+        tier: "news" as const,
       }],
     };
     const rendered = renderEvidenceCitations(
@@ -2155,6 +2162,7 @@ describe("current-news evidence hardening", () => {
         url: "https://example.com/update",
         date: "2026-08-12",
         snippet: "One player is available.",
+        tier: "news" as const,
       }],
     };
     const rendered = renderEvidenceCitations(
@@ -2181,6 +2189,7 @@ describe("current-news evidence hardening", () => {
         url: "https://example.com/undated",
         date: "",
         snippet: "Available",
+        tier: "news" as const,
       }] },
       true
     );
@@ -3563,6 +3572,7 @@ describe("evidence guards leave model-derived answers intact", () => {
         url: "https://bbc.co.uk/x",
         date: "2026-08-18",
         snippet: "Saka trained.",
+        tier: "news" as const,
       }],
     };
     const rendered = renderEvidenceCitations("Saka is back in training [[1]].", bundle, true);

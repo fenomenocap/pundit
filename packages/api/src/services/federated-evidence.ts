@@ -226,3 +226,10 @@ export function mergeSearchResults(
 export function isRecentFormQuery(query: string): boolean {
   return RECENT_FORM_QUERY.test(query);
 }
+
+/** Queries omitted because match form and freshness are already on the card. */
+export function groundedSkippedQueries(grounding: FederatedGrounding): string[] {
+  if (!skipFormQueriesWhenGrounded(grounding) || !isMatchGrounding(grounding)) return [];
+  const match = grounding;
+  return [`${match.home} ${match.away} recent form last 5 matches results`];
+}

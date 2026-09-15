@@ -3,6 +3,7 @@ import { sampleAgentFreshness } from "../config/freshness-policy";
 import { deterministicSearchQuery } from "./ask";
 import {
   asksStatisticalQuestion,
+  groundedSkippedQueries,
   isRecentFormQuery,
   mergeSearchResults,
   planFederatedQueries,
@@ -144,5 +145,17 @@ describe("asksStatisticalQuestion", () => {
   it("detects explicit stats vocabulary and performed-this-season phrasing", () => {
     expect(asksStatisticalQuestion("How has Bryan Mbeumo performed statistically this season?")).toBe(true);
     expect(asksStatisticalQuestion("Explain the offside rule")).toBe(false);
+  });
+});
+
+describe("groundedSkippedQueries", () => {
+  it("returns the recent-form query skipped when match form is already grounded", () => {
+    expect(groundedSkippedQueries(matchGrounding())).toEqual([
+      "Arsenal Chelsea recent form last 5 matches results",
+    ]);
+  });
+
+  it("returns nothing when form is not already on the card", () => {
+    expect(groundedSkippedQueries(null)).toEqual([]);
   });
 });

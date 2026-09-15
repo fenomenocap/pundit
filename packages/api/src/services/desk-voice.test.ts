@@ -163,6 +163,29 @@ describe("formatSearchEvidence dates", () => {
     expect(block).toContain("9 Sep");
     expect(block).not.toContain("T17:47:51");
   });
+
+  it("groups desk search evidence by tier when tiers are present", () => {
+    const block = formatSearchEvidence([
+      {
+        id: "S1",
+        title: "xG report",
+        snippet: "City 2.1 xG last five.",
+        date: "2026-09-09",
+        tier: "analytics",
+      },
+      {
+        id: "S2",
+        title: "Team news",
+        snippet: "Rodri still out.",
+        date: "2026-09-09",
+        tier: "news",
+      },
+    ]);
+    expect(block).toContain("ANALYTICS EVIDENCE");
+    expect(block).toContain("NEWS EVIDENCE");
+    expect(block).toContain("[[S1]]");
+    expect(block).toContain("[[S2]]");
+  });
 });
 
 describe("desk qualitative voice", () => {
