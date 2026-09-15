@@ -736,6 +736,27 @@ describe("current-news evidence hardening", () => {
     });
   });
 
+  it("does not verify current availability from an unreviewed video snippet", async () => {
+    const verify = vi.fn(async () => ({
+      status: "verified" as const,
+      decisions: [{ claimId: "C1", outcome: "supported" as const, evidenceIds: ["S1"] }],
+      summary: "Snippet repeats the claim.",
+    }));
+    const checked = await verifyCurrentClaims(
+      "Chelsea expect Palestra back in training [[S1]].",
+      { queries: [], providerCalls: 0, results: [{
+        id: "S1", title: "Chelsea team news", url: "https://www.youtube.com/watch?v=unreviewed",
+        date: "2026-09-14", snippet: "Palestra returns to training; several players still out.",
+      }] },
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined, false, { retrieve: async () => [], verify }
+    );
+    expect(verify).not.toHaveBeenCalled();
+    expect(checked.verification.status).toBe("abstain");
+    expect(checked.verification.supportedClaimCount).toBe(0);
+    expect(checked.answer).not.toContain("expect Palestra back");
+  });
+
   it("recovers a snippet date when the provider date is empty and fetch fails", async () => {
     const bundle: EvidenceBundle = {
       queries: ["mbeumo stats"],
