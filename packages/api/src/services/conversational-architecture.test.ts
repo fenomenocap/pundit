@@ -9,6 +9,7 @@ import { buildResponseFacts } from "./response-facts";
 import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
 import { attachUserLine, buildMatchPricing, stripUntraceableMatchPercentages } from "./response-correctness";
 import { buildPunditConsensus, pricingConsensusFromBlock } from "./pundit-consensus";
+import { sampleMatchContextFields } from "./match-context";
 
 const grounding = (): Grounding => {
   const pHome = 0.563;
@@ -79,6 +80,7 @@ const grounding = (): Grounding => {
       consensus: pricingConsensusFromBlock(consensus),
     }),
     freshness: sampleAgentFreshness(),
+    ...sampleMatchContextFields(),
   };
 };
 

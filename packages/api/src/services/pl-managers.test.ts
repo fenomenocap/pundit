@@ -3,6 +3,7 @@ import { sampleAgentFreshness } from "../config/freshness-policy";
 import { stripUnlistedManagers, managersNamedInEvidence } from "./pl-managers";
 import { card, formatSearchEvidence } from "./desk-voice";
 import type { Grounding } from "./ask";
+import { sampleMatchContextFields } from "./match-context";
 
 function match(over: Partial<Grounding> = {}): Grounding {
   return {
@@ -35,6 +36,7 @@ function match(over: Partial<Grounding> = {}): Grounding {
     } as unknown as Grounding["pricing"],
     marketDivergence: [],
     freshness: sampleAgentFreshness(),
+    ...sampleMatchContextFields(),
     ...over,
   };
 }

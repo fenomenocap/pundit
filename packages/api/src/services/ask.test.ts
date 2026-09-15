@@ -85,6 +85,8 @@ import {
   type FootballMatch,
 } from "./football-data";
 import { refreshClubRatings } from "./club-ratings";
+import { sampleMatchContextFields } from "./match-context";
+import { eloToLambdas } from "./dixon-coles";
 
 const searchWeb = vi.hoisted(() => vi.fn());
 const toOutcome = vi.hoisted(() => (results: unknown[]) => ({
@@ -109,13 +111,14 @@ vi.mock("./web-search", () => ({
  * disagrees with its own `oddsSources`.
  */
 function withDivergence(
-  grounding: Omit<Grounding, "marketDivergence" | "pricing" | "freshness"> & {
+  grounding: Omit<Grounding, "marketDivergence" | "pricing" | "freshness" | keyof ReturnType<typeof sampleMatchContextFields>> & {
     marketDivergence?: MarketDivergence[];
     pricing?: Grounding["pricing"];
     freshness?: Grounding["freshness"];
-  }
+  } & Partial<ReturnType<typeof sampleMatchContextFields>>
 ): Grounding {
   const next = {
+    ...sampleMatchContextFields(),
     ...grounding,
     freshness: grounding.freshness ?? sampleAgentFreshness(),
     marketDivergence: grounding.marketDivergence
@@ -2378,6 +2381,118 @@ describe("buildGrounding", () => {
       } as ModelFixture["forecastProvenance"],
     }));
     expect(grounding.pricing.modelVersion).toBe("clubelo@1:2da1616b28750ddb");
+  });
+
+  it("includes Elo, lambdas, form, table and scorers from match context", () => {
+    replaceFootballDataForTests({
+      byCompetition: {
+        "eng.1": {
+          upcoming: [],
+          recent: [],
+          standings: [
+            {
+              competitionId: "eng.1",
+              position: 1,
+              team: "Arsenal",
+              playedGames: 4,
+              won: 3,
+              draw: 1,
+              lost: 0,
+              points: 10,
+              goalsFor: 9,
+              goalsAgainst: 2,
+              goalDifference: 7,
+              group: null,
+              advanced: false,
+            },
+            {
+              competitionId: "eng.1",
+              position: 18,
+              team: "Coventry City",
+              playedGames: 4,
+              won: 0,
+              draw: 1,
+              lost: 3,
+              points: 1,
+              goalsFor: 2,
+              goalsAgainst: 8,
+              goalDifference: -6,
+              group: null,
+              advanced: false,
+            },
+          ],
+          error: null,
+        },
+      },
+    });
+    replaceSeasonScheduleForTests({
+      competitionId: "eng.1",
+      seasonId: "2026-27",
+      lastUpdated: new Date("2026-09-09T12:00:00Z"),
+      error: null,
+      servingLastGood: false,
+      fixtures: [
+        {
+          id: 1,
+          competitionId: "eng.1",
+          competition: "Premier League",
+          homeTeam: "Arsenal",
+          awayTeam: "Liverpool",
+          utcDate: "2026-09-06T14:00:00Z",
+          status: "FINISHED",
+          stage: null,
+          matchday: null,
+          group: null,
+          score: { home: 2, away: 1 },
+          scorers: [
+            { playerId: "saka", name: "Bukayo Saka", team: "Arsenal", position: "W" },
+          ],
+        },
+        {
+          id: 2,
+          competitionId: "eng.1",
+          competition: "Premier League",
+          homeTeam: "Coventry City",
+          awayTeam: "Hull",
+          utcDate: "2026-09-07T14:00:00Z",
+          status: "FINISHED",
+          stage: null,
+          matchday: null,
+          group: null,
+          score: { home: 0, away: 2 },
+        },
+      ],
+    });
+    const model = fixture("Arsenal", "Coventry City", {
+      homeElo: 1900,
+      awayElo: 1600,
+      forecastProvenance: {
+        homeAdvantageElo: 42,
+      } as ModelFixture["forecastProvenance"],
+    });
+    const grounding = buildGrounding(model);
+    const [lambdaHome, lambdaAway] = eloToLambdas(1900, 1600, 42);
+    expect(grounding.homeElo).toBe(1900);
+    expect(grounding.awayElo).toBe(1600);
+    expect(grounding.lambdaHome).toBeCloseTo(lambdaHome, 4);
+    expect(grounding.lambdaAway).toBeCloseTo(lambdaAway, 4);
+    expect(grounding.totalXg).toBeCloseTo(lambdaHome + lambdaAway, 4);
+    expect(grounding.homeForm).toEqual(["W"]);
+    expect(grounding.awayForm).toEqual(["L"]);
+    expect(grounding.homeTable).toEqual({
+      position: 1,
+      points: 10,
+      goalDifference: 7,
+      playedGames: 4,
+    });
+    expect(grounding.awayTable).toEqual({
+      position: 18,
+      points: 1,
+      goalDifference: -6,
+      playedGames: 4,
+    });
+    expect(grounding.homeScorers[0]).toMatchObject({ name: "Bukayo Saka", goals: 1 });
+    expect(grounding.awayScorers).toEqual([]);
   });
 });
 
