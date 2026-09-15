@@ -49,10 +49,10 @@ import {
   prefetchEvidencePages,
   createEvidencePageCache,
   extractPlainTextPublicationDate,
-  type EvidenceAuthority,
   type EvidencePageCache,
   type RetrievedEvidencePage,
 } from "./evidence-page-retrieval";
+import { evidenceAuthority } from "./evidence-authority";
 import {
   SECTION_LABEL_LINE,
   splitAnswerSentences,
@@ -1065,75 +1065,7 @@ async function buildEvidenceBundle(
   return bundle;
 }
 
-const OFFICIAL_EVIDENCE_DOMAINS = [
-  "premierleague.com",
-  "uefa.com",
-  "fifa.com",
-  "thefa.com",
-  "englandfootball.com",
-  // Supported-club first-party domains. Unknown hosts deliberately remain
-  // `other`; a search result does not become reputable merely by existing.
-  "arsenal.com",
-  "avfc.co.uk",
-  "afcb.co.uk",
-  "brentfordfc.com",
-  "brightonandhovealbion.com",
-  "burnleyfootballclub.com",
-  "chelseafc.com",
-  "cpfc.co.uk",
-  "evertonfc.com",
-  "fulhamfc.com",
-  "leedsunited.com",
-  "liverpoolfc.com",
-  "mancity.com",
-  "manutd.com",
-  "newcastleunited.com",
-  "nottinghamforest.co.uk",
-  "safc.com",
-  "tottenhamhotspur.com",
-  "whufc.com",
-  "wolves.co.uk",
-];
-// Verification can only run against pages it is allowed to fetch, and this
-// list was seven wire services and broadcasters. Football team news is broken
-// by beat reporters and the specialist press, so a search that returned
-// exactly the right report -- six Hull players ruled out, dated -- retrieved
-// zero pages, verified zero claims, and answered "no verified team-news update
-// was established". These are publishers with mastheads and corrections
-// policies, not an open door: an unknown host is still `other` and still
-// unfetched.
-const REPUTABLE_EVIDENCE_DOMAINS = [
-  // Wires and broadcasters.
-  "espn.com", "espn.co.uk", "bbc.com", "bbc.co.uk", "reuters.com", "apnews.com",
-  "theathletic.com", "skysports.com", "talksport.com", "cbssports.com", "nbcsports.com",
-  // National press that breaks and follows team news.
-  "theguardian.com", "telegraph.co.uk", "independent.co.uk", "standard.co.uk",
-  "thetimes.co.uk", "mirror.co.uk", "nytimes.com",
-  // Football specialists.
-  "goal.com", "90min.com", "football365.com", "sportsmole.co.uk", "fourfourtwo.com",
-  "premierinjuries.com", "physioroom.com",
-  // Local beats, which carry a club's lineup news first.
-  "football.london", "manchestereveningnews.co.uk", "liverpoolecho.co.uk",
-  "birminghammail.co.uk", "chroniclelive.co.uk", "hulldailymail.co.uk",
-  // Structured data: squads, availability, form and prices.
-  "transfermarkt.com", "transfermarkt.co.uk", "transfermarkt.us",
-  "fotmob.com", "whoscored.com", "sofascore.com", "flashscore.com",
-  "oddschecker.com", "oddsportal.com",
-];
-
-export function evidenceAuthority(rawUrl: string): EvidenceAuthority {
-  try {
-    const hostname = new URL(rawUrl).hostname.toLocaleLowerCase();
-    if (OFFICIAL_EVIDENCE_DOMAINS.some((domain) =>
-      hostname === domain || hostname.endsWith(`.${domain}`)
-    )) return "official";
-    return REPUTABLE_EVIDENCE_DOMAINS.some((domain) =>
-      hostname === domain || hostname.endsWith(`.${domain}`)
-    ) ? "reputable" : "other";
-  } catch {
-    return "other";
-  }
-}
+export { evidenceAuthority } from "./evidence-authority";
 
 function writeRetrievedDatesOntoBundle(
   bundle: EvidenceBundle,
