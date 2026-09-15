@@ -104,6 +104,35 @@ export function formatScorersLine(team: string, scorers: ClubScorer[]): string {
   return `${team} scorers: ${names}`;
 }
 
+export function emptyMatchTableContext(): MatchTableContext {
+  return {
+    position: null,
+    points: null,
+    goalDifference: null,
+    playedGames: null,
+  };
+}
+
+/** Minimal match-context fields for hand-built Grounding literals in tests. */
+export function sampleMatchContextFields(
+  overrides: Partial<MatchContext> = {}
+): MatchContext {
+  return {
+    homeElo: 1800,
+    awayElo: 1700,
+    lambdaHome: 1.35,
+    lambdaAway: 1.35,
+    totalXg: 2.7,
+    homeForm: [],
+    awayForm: [],
+    homeTable: emptyMatchTableContext(),
+    awayTable: emptyMatchTableContext(),
+    homeScorers: [],
+    awayScorers: [],
+    ...overrides,
+  };
+}
+
 function ordinalSuffix(position: number): string {
   const mod100 = position % 100;
   if (mod100 >= 11 && mod100 <= 13) return "th";
