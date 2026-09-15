@@ -412,6 +412,7 @@ describe("V2 conversational architecture", () => {
       question: "Any injury or lineup news for Arsenal vs Chelsea?",
       bundle: { queries: [], providerCalls: 0, results: [{
         id: "S1", title: "Match preview", url: "https://example.com/preview",
+        tier: "other",
         date: "2026-09-11T08:00:00Z", snippet: "The clubs meet this weekend.",
       }] },
       answer: JSON.stringify({ directAnswer: {
