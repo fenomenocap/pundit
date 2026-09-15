@@ -96,7 +96,7 @@ import {
   stripDeskBoardRecitals,
   writeDeskProse,
 } from "./desk-voice";
-import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
+import { validateAnalystDraft, salvageCitedClaimProse, containsAnalystDraftSyntax } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
   DESK_COMPOSER_MODES,
@@ -7810,10 +7810,7 @@ export async function deliverAnswer(args: {
     }
     const sourceIds = evidenceBundle.results.map((source) => source.id);
     const salvaged = salvageCitedClaimProse(rawAnswer, sourceIds);
-    const rawLooksLikeDraft = (() => {
-      const trimmed = rawAnswer.trim().replace(/^```(?:json)?\s*/i, "");
-      return trimmed.startsWith("{") && /"(?:citedClaims|directAnswer)"/.test(trimmed);
-    })();
+    const rawLooksLikeDraft = containsAnalystDraftSyntax(rawAnswer);
     const prepared = sanitizeDeskModelProse(rawAnswer, evidenceBundle.results);
     const prose = salvaged
       || (!rawLooksLikeDraft && prepared ? prepared : "")
@@ -7891,7 +7888,8 @@ export async function deliverAnswer(args: {
       const salvaged = mode === "team-news" ? salvageCitedClaimProse(rawAnswer, sourceIds) : null;
       if (salvaged) {
         expressionAnswer = salvaged;
-      } else if (mode === "team-news" && evidenceMarkerIds(rawAnswer).length > 0) {
+      } else if (mode === "team-news" && evidenceMarkerIds(rawAnswer).length > 0
+        && !containsAnalystDraftSyntax(rawAnswer)) {
         expressionAnswer = rawAnswer;
       } else {
         const pages = await hydrateBundlePublicationDates(bundle, signal);
