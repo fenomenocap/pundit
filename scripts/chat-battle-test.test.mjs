@@ -1559,6 +1559,8 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
   ).passed, true);
   assert.equal(validateAnalystExpression("Over 2.5 is 50.6% for this open game.", { expectTotalsHonesty: true }).passed, false);
   assert.equal(validateAnswerStructure("I make it close [[S?]].").assertions.noUnresolvedMarker, false);
+  assert.equal(validateAnswerStructure('I favour {{match.home}}.').passed, false);
+  assert.equal(validateAnswerStructure('{"directAnswer":{"text":"I favour Arsenal.","factIds":[]}}').passed, false);
 });
 
 test("golden conversation guards trace exact-score prices and table-wide counts", () => {
@@ -3241,11 +3243,51 @@ test("schema-17 accepts an unqualified space-behind acknowledgement", () => {
 });
 
 test("certification rejects internal ambiguity copy and requires a useful totals limitation", () => {
-  for (const copy of ["I need the grounding JSON.", "My retrieval found no fixture."]) {
+  for (const copy of ["I need the grounding JSON.", "My retrieval found no fixture.",
+    "I could not establish a structured fixture identity; this remains a discovery candidate.",
+    "Required model context or input is missing.", "This fixture is missing a required model input."]) {
     assert.equal(validateAnswerCopy(copy).passed, false);
   }
   assert.equal(validateAnalystExpression(
     "I have over 2.5 at 50.6%; under 2.5 is 49.4%. Every match uses the same 2.70 expected goals.",
     { expectTotalsHonesty: true }
   ).passed, false);
+});
+
+test("direct-answer gate accepts the missing-opponent clarification without admitting process preambles", () => {
+  for (const club of ["Liverpool", "Manchester City"]) {
+    for (const apostrophe of ["'", "’"]) {
+      const answer = `I need ${club}${apostrophe}s opponent before I can switch fixtures. I’m keeping Leeds vs Newcastle in view until then. I don’t have player-level projections; a dated scorer market and confirmed starters would help me assess the options.`;
+      assert.equal(validateAnalystExpression(answer, {
+        expectDirectAnswer: true, expectAnalystVoice: true,
+        expectCannotReprice: true, expectNoUnsupportedScorerInference: true,
+      }).passed, true);
+    }
+  }
+  for (const answer of ["I need to explain the analysis before answering.", "I need more time to look at the match."]) {
+    assert.equal(validateAnalystExpression(answer, { expectDirectAnswer: true }).passed, false);
+  }
+  const unsafe = "I need Liverpool’s opponent before I can switch fixtures. Salah is the most likely scorer because Liverpool are 77.6% to win.";
+  assert.equal(validateAnalystExpression(unsafe, {
+    expectDirectAnswer: true, expectNoUnsupportedScorerInference: true,
+  }).passed, false);
+});
+
+test("plain capability notices preserve the typed reason without internal terminology", () => {
+  const cases = [
+    ["friendly-policy-disabled", "I don’t publish forecasts for friendlies. I can’t give probabilities or scoreline estimates for it."],
+    ["unsupported-competition", "I don’t cover this competition. I can’t give probabilities or scoreline estimates for it."],
+    ["model-policy-disabled", "I exclude this fixture under my forecasting policy. I can’t give probabilities or scoreline estimates for it."],
+    ["model-initializing", "I’m still preparing my forecasts. I can’t give probabilities for this fixture yet."],
+    ["ratings-refreshing", "I’m refreshing the team-strength ratings. I can’t give probabilities for this fixture yet."],
+    ["ratings-unavailable", "I don't have a required team-strength rating. I can't estimate probabilities until I have that information."],
+    ["neutral-venue-unknown", "I haven't confirmed whether this is at a neutral venue. I can't estimate probabilities until I have that information."],
+    ["required-context-missing", "I don't yet have enough information about this fixture. I can't estimate probabilities until I have that information."],
+  ];
+  for (const [reason, answer] of cases) {
+    assert.equal(validateResponseCorrectness(answer, [], { kind: "fixture", capability: { reason } }, {}).assertions.capabilityReasonFidelity, true, reason);
+    assert.equal(validateAnswerCopy(answer).passed, true, reason);
+  }
+  assert.equal(validateResponseCorrectness(cases[0][1], [], { kind: "fixture", capability: { reason: "required-context-missing" } }, {}).assertions.capabilityReasonFidelity, false);
+  assert.equal(validateResponseCorrectness(`${cases[7][1]} Confirmed squad and lineups are required to unlock coverage.`, [], { kind: "fixture", capability: { reason: "required-context-missing" } }, {}).assertions.capabilityReasonFidelity, false);
 });

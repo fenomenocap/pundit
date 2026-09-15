@@ -282,6 +282,11 @@ export function validateAnalystDraft(
   return { valid: true, draft, answer };
 }
 
+/** Malformed draft envelopes and fact slots are never publishable prose. */
+export function containsAnalystDraftSyntax(raw: string): boolean {
+  return /\{\{[^}\n]+\}\}|"(?:directAnswer|factIds|citedClaims)"\s*:/.test(raw);
+}
+
 /**
  * Team-news drafts often bind unused numeric fact IDs and fail as a whole.
  * Cited claim text is still the only current-world payload worth keeping.

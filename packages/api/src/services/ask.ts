@@ -113,7 +113,7 @@ import {
   stripDeskBoardRecitals,
   writeDeskProse,
 } from "./desk-voice";
-import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
+import { validateAnalystDraft, salvageCitedClaimProse, containsAnalystDraftSyntax } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
   DESK_COMPOSER_MODES,
@@ -1226,6 +1226,7 @@ export async function verifyCurrentClaims(
   const snippetBacked = bundle.results
     .filter((source) => citedIds.has(source.id)
       && !fetchedIds.has(source.id)
+      && evidenceAuthority(source.url) !== "other"
       && source.snippet.trim().length > 0)
     .map((source) => ({
       id: source.id,
@@ -1306,29 +1307,29 @@ export function sanitizeFixtureCoverageAnswer(answer: string, grounding: Fixture
   const reason = grounding.capability.reason;
   if (grounding.capability.status === "outside-coverage") {
     const explanation = reason === "friendly-policy-disabled"
-      ? "Public friendly forecasts are disabled by policy."
+      ? "I don’t publish forecasts for friendlies."
       : reason === "unsupported-competition"
-        ? "The competition is not supported by the public model."
-        : "This fixture is disabled by the public model policy.";
-    return `This recognized fixture is outside Pundit's model coverage, so I can't publish probabilities or scoreline estimates.\n\n${explanation}`;
+        ? "I don’t cover this competition."
+        : "I exclude this fixture under my forecasting policy.";
+    return `${explanation} I can’t give probabilities or scoreline estimates for it.`;
   }
   if (grounding.capability.status === "temporarily-unpriced") {
     const explanation = reason === "model-initializing"
-      ? "The model is still initializing."
-      : "The club-strength ratings are refreshing.";
-    return `This recognized fixture is temporarily unpriced.\n\n${explanation}`;
+      ? "I’m still preparing my forecasts."
+      : "I’m refreshing the team-strength ratings.";
+    return `${explanation} I can’t give probabilities for this fixture yet.`;
   }
   const explanation = reason === "ratings-unavailable"
-    ? "A required club-strength rating is unavailable."
+    ? "I don't have a required team-strength rating."
     : reason === "neutral-venue-unknown"
-      ? "The venue's neutral status has not been established."
-      : "Required model context or input is missing.";
-  return `This recognized fixture is missing a required model input, so I can't estimate probabilities.\n\n${explanation}`;
+      ? "I haven't confirmed whether this is at a neutral venue."
+      : "I don't yet have enough information about this fixture.";
+  return `${explanation} I can't estimate probabilities until I have that information.`;
 }
 
 export function sanitizeUnrecognizedCandidateAnswer(answer: string): string {
   void answer;
-  return "I could not establish an authoritative structured fixture identity for that matchup; no verified fixture identity was established, so it remains a discovery candidate and has no Pundit fixture badge or probabilities.";
+  return "I couldn't confirm that matchup. Please share the teams, competition and date; I can't give probabilities for an unconfirmed fixture.";
 }
 
 /**
@@ -7858,10 +7859,7 @@ export async function deliverAnswer(args: {
     }
     const sourceIds = evidenceBundle.results.map((source) => source.id);
     const salvaged = salvageCitedClaimProse(rawAnswer, sourceIds);
-    const rawLooksLikeDraft = (() => {
-      const trimmed = rawAnswer.trim().replace(/^```(?:json)?\s*/i, "");
-      return trimmed.startsWith("{") && /"(?:citedClaims|directAnswer)"/.test(trimmed);
-    })();
+    const rawLooksLikeDraft = containsAnalystDraftSyntax(rawAnswer);
     const prepared = sanitizeDeskModelProse(rawAnswer, evidenceBundle.results);
     const prose = salvaged
       || (!rawLooksLikeDraft && prepared ? prepared : "")
@@ -7939,7 +7937,8 @@ export async function deliverAnswer(args: {
       const salvaged = mode === "team-news" ? salvageCitedClaimProse(rawAnswer, sourceIds) : null;
       if (salvaged) {
         expressionAnswer = salvaged;
-      } else if (mode === "team-news" && evidenceMarkerIds(rawAnswer).length > 0) {
+      } else if (mode === "team-news" && evidenceMarkerIds(rawAnswer).length > 0
+        && !containsAnalystDraftSyntax(rawAnswer)) {
         expressionAnswer = rawAnswer;
       } else {
         const pages = await hydrateBundlePublicationDates(bundle, signal);
