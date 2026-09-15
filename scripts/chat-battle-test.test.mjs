@@ -1559,6 +1559,8 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
   ).passed, true);
   assert.equal(validateAnalystExpression("Over 2.5 is 50.6% for this open game.", { expectTotalsHonesty: true }).passed, false);
   assert.equal(validateAnswerStructure("I make it close [[S?]].").assertions.noUnresolvedMarker, false);
+  assert.equal(validateAnswerStructure('I favour {{match.home}}.').passed, false);
+  assert.equal(validateAnswerStructure('{"directAnswer":{"text":"I favour Arsenal.","factIds":[]}}').passed, false);
 });
 
 test("golden conversation guards trace exact-score prices and table-wide counts", () => {

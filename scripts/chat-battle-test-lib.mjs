@@ -1539,7 +1539,8 @@ export function validateAnswerStructure(answer, expectation = {}) {
     noOrphanedSectionLabel: orphaned.length === 0,
     noMalformedLeadingFragment: !leadingMalformedFragment,
     noDanglingConditionalRequest: !danglingConditionalRequest,
-    noUnresolvedMarker: !/\[\[|\]\]/.test(typeof answer === "string" ? answer : ""),
+    noUnresolvedMarker: !/\[\[|\]\]|\{\{|\}\}/.test(typeof answer === "string" ? answer : ""),
+    noStructuredDraft: !/"(?:directAnswer|factIds|citedClaims)"\s*:/.test(typeof answer === "string" ? answer : ""),
   };
   if (expectation.expectHeadlineOneXTwo) {
     assertions.headlineOneXTwoPresent = lines.some((line) =>
