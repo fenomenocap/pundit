@@ -453,7 +453,11 @@ const braveProvider: SearchProvider = {
 };
 
 const KNOWN_PROVIDERS: SearchProvider[] = [minimaxProvider, braveProvider];
-const DEFAULT_ORDER = ["minimax", "brave"];
+
+function defaultProviderOrder(): string[] {
+  if (!process.env.BRAVE_SEARCH_API_KEY) return ["minimax"];
+  return ["minimax", "brave"];
+}
 
 /**
  * Resolved per call so an operator can reorder providers -- including promoting
@@ -466,14 +470,18 @@ function providerChain(): SearchProvider[] {
     .split(",")
     .map((name) => name.trim().toLowerCase())
     .filter(Boolean);
-  const order = configured.length ? configured : DEFAULT_ORDER;
+  const implicitDefault = configured.length === 0;
+  const order = implicitDefault ? defaultProviderOrder() : configured;
   const chain = order
     .map((name) => KNOWN_PROVIDERS.find((provider) => provider.name === name))
     .filter((provider): provider is SearchProvider => Boolean(provider));
   // Anything the operator did not name still trails the chain, so adding a key
-  // is enough to gain a fallback.
+  // is enough to gain a fallback — except the implicit MiniMax-only default,
+  // which must not trail an unconfigured Brave.
   for (const provider of KNOWN_PROVIDERS) {
-    if (!chain.includes(provider)) chain.push(provider);
+    if (chain.includes(provider)) continue;
+    if (implicitDefault && !process.env.BRAVE_SEARCH_API_KEY && provider.name === "brave") continue;
+    chain.push(provider);
   }
   return chain;
 }

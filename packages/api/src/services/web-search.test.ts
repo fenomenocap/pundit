@@ -469,9 +469,8 @@ describe("provider failover", () => {
     expect((await searchWeb("solo")).provider).toBe("minimax");
     const status = getWebSearchStatus();
     expect(status.enabledProviders).toEqual(["minimax"]);
-    // The seam is still visible, so adding a key is all that is needed.
-    expect(status.configuredProviders).toEqual(["minimax", "brave"]);
-    expect(status.providers.brave.enabled).toBe(false);
+    expect(status.configuredProviders).toEqual(["minimax"]);
+    expect(status.providers.brave).toBeUndefined();
   });
 
   it("retries a throttled provider at most once before failing over", async () => {
