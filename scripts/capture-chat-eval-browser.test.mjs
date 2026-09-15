@@ -4,9 +4,12 @@ import path from "node:path";
 import os from "node:os";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import { EVAL_SCHEMA_VERSION } from "./chat-battle-test-lib.mjs";
 import { REQUIRED_BROWSER_CHECKS } from "./finalize-chat-report.mjs";
 import {
+  requestFixtureIdentity,
+  waitForAnswer,
   captureAndPersist,
   captureLive,
   collectFeaturedFixture,
@@ -33,6 +36,42 @@ import {
   requiredCheckIds,
   tripletsAgree,
 } from "./capture-chat-eval-browser.mjs";
+
+test("request identity reads the API fixtureContext contract without promoting unrelated IDs", () => {
+  assert.equal(requestFixtureIdentity({ fixtureContext: { fixtureId: "espn:eng.1:401879280" } }), "espn:eng.1:401879280");
+  assert.equal(requestFixtureIdentity({ fixtureId: "espn:eng.1:401879280" }), null);
+  assert.equal(requestFixtureIdentity({ fixtureContext: { fixtureId: 401879280 } }), null);
+  assert.equal(requestFixtureIdentity({ question: "Leeds vs Newcastle" }), null);
+});
+
+test("answer completion uses the editable composer, not the empty draft's disabled Send button", async () => {
+  class Textarea { disabled = false; }
+  const input = new Textarea();
+  let bubbles = 2;
+  let error = "";
+  const document = {
+    querySelectorAll: () => Array(bubbles).fill({}),
+    querySelector: (selector) => selector.startsWith("textarea") ? input
+      : selector === '[role="alert"]' ? { textContent: error } : { disabled: true },
+  };
+  const page = {
+    waitForFunction: async (predicate, args) => ({
+      jsonValue: () => runInNewContext(`(${predicate.toString()})(args)`, {
+        document, HTMLTextAreaElement: Textarea, args,
+      }),
+    }),
+  };
+  assert.equal((await waitForAnswer(page, 1)).answered, true);
+  input.disabled = true;
+  assert.equal(await waitForAnswer(page, 1), null);
+  input.disabled = false;
+  bubbles = 1;
+  assert.equal(await waitForAnswer(page, 1), null);
+  error = "Request failed";
+  const failed = await waitForAnswer(page, 1);
+  assert.equal(failed.answered, false);
+  assert.equal(failed.error, error);
+});
 
 function runNode(args) {
   return new Promise((resolve, reject) => {

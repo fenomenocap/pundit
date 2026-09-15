@@ -98,7 +98,7 @@ describe("one-call claim verifier", () => {
     warn.mockRestore();
   });
 
-  it("on timeout keeps a cited claim that a dated page directly supports", async () => {
+  it("never promotes word overlap to verification after a timeout", async () => {
     const timeout = Object.assign(new Error("Request timed out"), { name: "TimeoutError" });
     const create = vi.fn().mockRejectedValue(timeout);
     const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
@@ -114,11 +114,11 @@ describe("one-call claim verifier", () => {
       [{ id: "C1", text: "Mbeumo has 2 goals in 3 starts and 180 minutes [[S1]]." }],
       [dated]
     );
-    expect(result.status).toBe("verified");
+    expect(result.status).toBe("unavailable");
     expect(result.decisions[0]).toEqual({
       claimId: "C1",
-      outcome: "supported",
-      evidenceIds: ["S1"],
+      outcome: "unsupported",
+      evidenceIds: [],
     });
     const invented = await verifyClaimsOnce(
       client,
@@ -141,16 +141,16 @@ describe("one-call claim verifier", () => {
         { ...dated, id: "S2", date: "", text: "Profile page with no season line." },
       ]
     );
-    expect(rebound.status).toBe("verified");
+    expect(rebound.status).toBe("unavailable");
     expect(rebound.decisions[0]).toEqual({
       claimId: "C1",
-      outcome: "supported",
-      evidenceIds: ["S1"],
+      outcome: "unsupported",
+      evidenceIds: [],
     });
     warn.mockRestore();
   });
 
-  it("keeps a dated overlapping claim when the model abstains", async () => {
+  it("preserves unsupported decisions despite matching names and numbers", async () => {
     const dated: RetrievedEvidencePage = {
       ...pages[0],
       date: "2026-09-07",
@@ -166,11 +166,11 @@ describe("one-call claim verifier", () => {
       [{ id: "C1", text: "Mbeumo has 2 goals in 3 starts and 180 minutes [[S1]]." }],
       [dated]
     );
-    expect(result.status).toBe("verified");
+    expect(result.status).toBe("abstain");
     expect(result.decisions[0]).toEqual({
       claimId: "C1",
-      outcome: "supported",
-      evidenceIds: ["S1"],
+      outcome: "unsupported",
+      evidenceIds: [],
     });
   });
 
