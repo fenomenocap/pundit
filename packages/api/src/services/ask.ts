@@ -1217,6 +1217,7 @@ export async function verifyCurrentClaims(
   const snippetBacked = bundle.results
     .filter((source) => citedIds.has(source.id)
       && !fetchedIds.has(source.id)
+      && evidenceAuthority(source.url) !== "other"
       && source.snippet.trim().length > 0)
     .map((source) => ({
       id: source.id,

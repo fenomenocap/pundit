@@ -55,49 +55,6 @@ function fallbackDecisions(claims: readonly VerifiableClaim[]): ClaimDecision[] 
   return claims.map((claim) => ({ claimId: claim.id, outcome: "unsupported", evidenceIds: [] }));
 }
 
-function datedPageSupportsClaim(claim: string, page: RetrievedEvidencePage): boolean {
-  if (!Number.isFinite(Date.parse(page.date))) return false;
-  const blob = `${page.title}\n${page.text}`.toLowerCase();
-  const unmarked = claim.replace(/\[\[\s*S?\d{1,3}\s*\]\]/g, " ");
-  const names = [...unmarked.matchAll(/\b([A-Z][a-zÀ-ÿ]{3,}(?:\s+[A-Z][a-zÀ-ÿ]{2,})?)\b/g)]
-    .map((match) => match[1])
-    .filter((name) => !/^(The|This|That|With|From|September|August|Premier|League)$/i.test(name));
-  if (!names.some((name) => blob.includes(name.toLowerCase()))) return false;
-  if (/\b(?:ruled out|injur|suspen|unavailable|doubtful|expected to start|starting xi|line-?up)\b/i.test(unmarked)) {
-    return /\b(?:ruled out|injur|suspen|unavailable|doubtful|expected to start|starting xi|line-?up)\b/i.test(blob);
-  }
-  const numbers = [...new Set(unmarked.match(/\b\d{1,4}\b/g) ?? [])]
-    .filter((value) => !/^(?:19|20)\d{2}$/.test(value));
-  return numbers.some((value) => blob.includes(value));
-}
-
-function decisionsFromDatedPageOverlap(
-  claims: readonly VerifiableClaim[],
-  pages: readonly RetrievedEvidencePage[]
-): ClaimDecision[] {
-  return claims.map((claim) => {
-    const cited = citedEvidenceIds([claim]);
-    const hit = pages.find((page) => cited.has(page.id) && datedPageSupportsClaim(claim.text, page))
-      ?? pages.find((page) => datedPageSupportsClaim(claim.text, page));
-    return hit
-      ? { claimId: claim.id, outcome: "supported" as const, evidenceIds: [hit.id] }
-      : { claimId: claim.id, outcome: "unsupported" as const, evidenceIds: [] };
-  });
-}
-
-function withDatedOverlapSupport(
-  decisions: readonly ClaimDecision[],
-  claims: readonly VerifiableClaim[],
-  pages: readonly RetrievedEvidencePage[]
-): ClaimDecision[] {
-  const overlap = decisionsFromDatedPageOverlap(claims, pages);
-  return decisions.map((decision, index) => {
-    if (decision.outcome !== "unsupported") return decision;
-    const hit = overlap[index];
-    return hit?.outcome === "supported" ? hit : decision;
-  });
-}
-
 function citedEvidenceIds(claims: readonly VerifiableClaim[]): Set<string> {
   const ids = new Set<string>();
   const marker = /\[\[\s*S?(\d{1,3})\s*\]\]/g;
@@ -231,12 +188,9 @@ export async function verifyClaimsOnce(
       status,
       dedicatedKey: Boolean(process.env.MINIMAX_INFERENCE_API_KEY),
     }));
-    const decisions = timedOut
-      ? decisionsFromDatedPageOverlap(input.claims, pages)
-      : fallbackDecisions(input.claims);
-    const supported = decisions.some((decision) => decision.outcome === "supported");
+    const decisions = fallbackDecisions(input.claims);
     return {
-      status: supported ? "verified" : "unavailable",
+      status: "unavailable",
       decisions,
       summary: "Claim verification was unavailable; no claim was accepted without verification.",
     };
@@ -250,11 +204,7 @@ export async function verifyClaimsOnce(
     };
   }
   const visiblePages = pages.filter((page) => input.pages.some((entry) => entry.id === page.id));
-  const decisions = withDatedOverlapSupport(
-    normalizeDecisions(parsed.decisions, input.claims, visiblePages),
-    input.claims,
-    visiblePages
-  );
+  const decisions = normalizeDecisions(parsed.decisions, input.claims, visiblePages);
   const conflicts = decisions.some((decision) => decision.outcome === "conflict");
   const supported = decisions.some((decision) => decision.outcome === "supported");
   const summary = typeof parsed.summary === "string"
