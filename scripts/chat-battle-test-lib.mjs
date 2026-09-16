@@ -1074,7 +1074,7 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     const reasonText = {
       "ratings-unavailable": /\b(?:rating|strength)\b/i,
       "neutral-venue-unknown": /\b(?:neutral|venue)\b/i,
-      "required-context-missing": /\b(?:required|missing)\b[^.!?\n]{0,50}\b(?:context|input)\b|\b(?:context|input)\b[^.!?\n]{0,50}\b(?:required|missing)\b|\bI don['’]t yet have enough information about this fixture\b/i,
+      "required-context-missing": /\b(?:required|missing)\b[^.!?\n]{0,50}\b(?:context|inputs?)\b|\b(?:context|inputs?)\b[^.!?\n]{0,50}\b(?:required|missing)\b/i,
       "model-initializing": /\b(?:initializ|starting up|temporar)\w*\b|\bI['’]m still preparing my forecasts\b/i,
       "ratings-refreshing": /\b(?:rating|strength)\b[^.!?\n]{0,40}\brefresh\w*\b|\brefresh\w*\b[^.!?\n]{0,40}\b(?:rating|strength)\b/i,
       "unsupported-competition": /\b(?:outside|unsupported)\b[^.!?\n]{0,40}\b(?:coverage|competition)\b|\bI don['’]t cover this competition\b/i,
@@ -1429,7 +1429,6 @@ export function validateAnalystExpression(answer, expectation = {}) {
     assertions.directAnswerFirst = !processPreamble && (
       /\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s+(?:decimal|odds)|^\s*\d+\s*[.)]/i.test(lead)
       || /^\s*(?:I|I'm|I've|I'd)\s+(?:make|have|rate|see|favour|favor|lean|land|cannot|can't|do not|don't|would not|wouldn't|am unable|could not|couldn't)\b/i.test(lead)
-      || /^I need [\p{L}][\p{L} .'-]{0,60}'s opponent before I can switch fixtures\./iu.test(lead)
       || /^\s*(?:no comparable|not enough|unable|cannot|can't|the table|standings|[\p{L}][\p{L} .'-]{1,60}\s+(?:lead(?:s|ing)?|is first|are first))\b/iu.test(lead)
     );
   }

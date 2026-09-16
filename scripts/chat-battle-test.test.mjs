@@ -3254,17 +3254,21 @@ test("certification rejects internal ambiguity copy and requires a useful totals
   ).passed, false);
 });
 
-test("direct-answer gate accepts the missing-opponent clarification without admitting process preambles", () => {
+test("direct-answer gate requires the scorer limitation before the missing-opponent clarification", () => {
   for (const club of ["Liverpool", "Manchester City"]) {
     for (const apostrophe of ["'", "’"]) {
-      const answer = `I need ${club}${apostrophe}s opponent before I can switch fixtures. I’m keeping Leeds vs Newcastle in view until then. I don’t have player-level projections; a dated scorer market and confirmed starters would help me assess the options.`;
+      const answer = `I can't name ${club}${apostrophe}s most likely scorer from the match forecast because I don't have player-level projections. I need ${club}${apostrophe}s opponent before I can switch fixtures, so I'm keeping Leeds vs Newcastle in view until then. A dated scorer market and confirmed starters would let me assess the options.`;
       assert.equal(validateAnalystExpression(answer, {
         expectDirectAnswer: true, expectAnalystVoice: true,
         expectCannotReprice: true, expectNoUnsupportedScorerInference: true,
       }).passed, true);
     }
   }
-  for (const answer of ["I need to explain the analysis before answering.", "I need more time to look at the match."]) {
+  for (const answer of [
+    "I need to explain the analysis before answering.",
+    "I need more time to look at the match.",
+    "I need Liverpool's opponent before I can switch fixtures. I'm keeping Leeds vs Newcastle in view until then.",
+  ]) {
     assert.equal(validateAnalystExpression(answer, { expectDirectAnswer: true }).passed, false);
   }
   const unsafe = "I need Liverpool’s opponent before I can switch fixtures. Salah is the most likely scorer because Liverpool are 77.6% to win.";
@@ -3282,12 +3286,16 @@ test("plain capability notices preserve the typed reason without internal termin
     ["ratings-refreshing", "I’m refreshing the team-strength ratings. I can’t give probabilities for this fixture yet."],
     ["ratings-unavailable", "I don't have a required team-strength rating. I can't estimate probabilities until I have that information."],
     ["neutral-venue-unknown", "I haven't confirmed whether this is at a neutral venue. I can't estimate probabilities until I have that information."],
-    ["required-context-missing", "I don't yet have enough information about this fixture. I can't estimate probabilities until I have that information."],
+    ["required-context-missing", "I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities."],
   ];
   for (const [reason, answer] of cases) {
     assert.equal(validateResponseCorrectness(answer, [], { kind: "fixture", capability: { reason } }, {}).assertions.capabilityReasonFidelity, true, reason);
     assert.equal(validateAnswerCopy(answer).passed, true, reason);
   }
+  assert.equal(validateResponseCorrectness(
+    "I don't yet have enough information about this fixture. I can't estimate probabilities until I have that information.",
+    [], { kind: "fixture", capability: { reason: "required-context-missing" } }, {}
+  ).assertions.capabilityReasonFidelity, false);
   assert.equal(validateResponseCorrectness(cases[0][1], [], { kind: "fixture", capability: { reason: "required-context-missing" } }, {}).assertions.capabilityReasonFidelity, false);
   assert.equal(validateResponseCorrectness(`${cases[7][1]} Confirmed squad and lineups are required to unlock coverage.`, [], { kind: "fixture", capability: { reason: "required-context-missing" } }, {}).assertions.capabilityReasonFidelity, false);
 });

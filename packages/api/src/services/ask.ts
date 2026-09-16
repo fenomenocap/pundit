@@ -1319,11 +1319,12 @@ export function sanitizeFixtureCoverageAnswer(answer: string, grounding: Fixture
       : "I’m refreshing the team-strength ratings.";
     return `${explanation} I can’t give probabilities for this fixture yet.`;
   }
+  if (reason === "required-context-missing") {
+    return "I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities.";
+  }
   const explanation = reason === "ratings-unavailable"
     ? "I don't have a required team-strength rating."
-    : reason === "neutral-venue-unknown"
-      ? "I haven't confirmed whether this is at a neutral venue."
-      : "I don't yet have enough information about this fixture.";
+    : "I haven't confirmed whether this is at a neutral venue.";
   return `${explanation} I can't estimate probabilities until I have that information.`;
 }
 
@@ -7738,9 +7739,10 @@ export function deterministicUngroundedClarification(
     : explicitScorerClub(question);
   if (grounding?.kind === "match" && club
     && ![grounding.home, grounding.away].some((team) => normalizeTeamName(team) === normalizeTeamName(club))) {
-    const capability = planResponse(question, { groundingKind: "match" }).mode === "player-or-scorer"
-      ? " I don’t have player-level projections; a dated scorer market and confirmed starters would help me assess the options." : "";
-    return `I need ${club}’s opponent before I can switch fixtures. I’m keeping ${grounding.home} vs ${grounding.away} in view until then.${capability}`;
+    if (planResponse(question, { groundingKind: "match" }).mode === "player-or-scorer") {
+      return `I can’t name ${club}’s most likely scorer from the match forecast because I don’t have player-level projections. I need ${club}’s opponent before I can switch fixtures, so I’m keeping ${grounding.home} vs ${grounding.away} in view until then. A dated scorer market and confirmed starters would let me assess the options.`;
+    }
+    return `I need ${club}’s opponent before I can switch fixtures. I’m keeping ${grounding.home} vs ${grounding.away} in view until then.`;
   }
   if (grounding !== null) return null;
   if (/\b(?:which side|that match|this match|that side)\b/i.test(question)) {
@@ -7751,7 +7753,10 @@ export function deterministicUngroundedClarification(
     return "I need the manager and club before I can identify a replacement. Tell me both, and I’ll check the current evidence.";
   }
   if (club) {
-    return `I need ${club}’s opponent before I can switch fixtures. Name the opponent, and I’ll check the scorer market and current team news for that match.`;
+    if (planResponse(question, { groundingKind: "general" }).mode === "player-or-scorer") {
+      return `I can’t name ${club}’s most likely scorer without a fixture and player-level evidence. Tell me ${club}’s opponent, and I’ll check a dated scorer market and current team news for that match.`;
+    }
+    return `I need ${club}’s opponent before I can switch fixtures. Name the opponent, and I’ll check the relevant current evidence.`;
   }
   return null;
 }
