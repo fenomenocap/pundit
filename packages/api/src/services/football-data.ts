@@ -564,11 +564,33 @@ function parseStandingsEntries(
 
 async function fetchCompetitionMatches(competition: CompetitionConfig): Promise<FootballMatch[]> {
   const dateRange = buildFetchDateRange(competition);
-  const data = await espnFetch<{ events?: unknown[] }>(
-    `${ESPN_SCOREBOARD_BASE}/${competition.espnScoreboardPath}/scoreboard?dates=${dateRange}&limit=200`
+  return mergeUniqueById(await fetchScoreboardWindow(competition, dateRange));
+}
+
+async function fetchScoreboardWindow(
+  competition: CompetitionConfig,
+  dateRange: string
+): Promise<FootballMatch[]> {
+  const match = /^(\d{4})(\d{2})(\d{2})-(\d{4})(\d{2})(\d{2})$/.exec(dateRange);
+  if (!match) throw new Error(`Invalid ESPN date range: ${dateRange}`);
+  const start = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const endExclusive = Date.UTC(Number(match[4]), Number(match[5]) - 1, Number(match[6]) + 1);
+  const years = Array.from(
+    { length: Number(match[4]) - Number(match[1]) + 1 },
+    (_, index) => Number(match[1]) + index
   );
+  const payloads = await Promise.all(years.map((year) =>
+    espnFetch<{ events?: unknown[] }>(
+      `${ESPN_SCOREBOARD_BASE}/${competition.espnScoreboardPath}`
+        + `/scoreboard?dates=${year}&limit=1000`
+    )));
   const context = { competitionId: competition.id, competitionName: competition.name };
-  return (data.events || []).map((event) => parseEvent(event, context));
+  return payloads.flatMap((data) => data.events ?? [])
+    .map((event) => parseEvent(event, context))
+    .filter((fixture) => {
+      const kickoff = Date.parse(fixture.utcDate);
+      return kickoff >= start && kickoff < endExclusive;
+    });
 }
 
 export async function fetchCompletePremierLeagueSchedule(
@@ -577,12 +599,7 @@ export async function fetchCompletePremierLeagueSchedule(
   const competition = getCompetitionById("eng.1");
   if (!competition) throw new Error("Premier League competition is not configured.");
   const { seasonId, dateRange } = premierLeagueSeasonWindow(now);
-  const data = await espnFetch<{ events?: unknown[] }>(
-    `${ESPN_SCOREBOARD_BASE}/${competition.espnScoreboardPath}`
-      + `/scoreboard?dates=${dateRange}&limit=1000`
-  );
-  const context = { competitionId: competition.id, competitionName: competition.name };
-  const fixtures = (data.events ?? []).map((event) => parseEvent(event, context));
+  const fixtures = await fetchScoreboardWindow(competition, dateRange);
   // Validate the source rows before deduplication so duplicate identifiers or
   // pairings cannot masquerade as a complete response and replace last-good.
   validateCompletePremierLeagueSchedule(fixtures);
@@ -595,13 +612,7 @@ export async function fetchPriorPremierLeagueResults(
   const competition = getCompetitionById("eng.1");
   if (!competition) throw new Error("Premier League competition is not configured.");
   const { seasonId, dateRange } = premierLeaguePriorSeasonWindow(now);
-  const data = await espnFetch<{ events?: unknown[] }>(
-    `${ESPN_SCOREBOARD_BASE}/${competition.espnScoreboardPath}`
-      + `/scoreboard?dates=${dateRange}&limit=1000`
-  );
-  const context = { competitionId: competition.id, competitionName: competition.name };
-  const fixtures = (data.events ?? [])
-    .map((event) => parseEvent(event, context))
+  const fixtures = (await fetchScoreboardWindow(competition, dateRange))
     .filter((match) => match.status === "FINISHED");
   if (fixtures.length === 0) {
     throw new Error("Prior Premier League season returned no finished matches.");
