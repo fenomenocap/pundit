@@ -1721,7 +1721,7 @@ describe("current-news evidence hardening", () => {
         [{ status: "temporarily-unpriced", reason: "ratings-refreshing" }, /refreshing the team-strength ratings/i],
         [{ status: "insufficient-model-input", reason: "ratings-unavailable" }, /don't have a required team-strength rating/i],
         [{ status: "insufficient-model-input", reason: "neutral-venue-unknown" }, /haven't confirmed whether this is at a neutral venue/i],
-        [{ status: "insufficient-model-input", reason: "required-context-missing" }, /don't yet have enough information about this fixture/i],
+        [{ status: "insufficient-model-input", reason: "required-context-missing" }, /don't have the required pricing inputs for it yet/i],
       ];
       for (const [capability, expected] of cases) {
         const answer = deterministicCoverageResponse(false, { kind: "fixture", fixture, capability });
@@ -2174,6 +2174,7 @@ describe("current-news evidence hardening", () => {
       "This recognized fixture is missing a required model input, so I can't estimate probabilities.",
       "Required model context or input is missing.",
       "I don't yet have enough information about this fixture. I can't estimate probabilities until I have that information.",
+      "I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities.",
       "I don't have a required team-strength rating. I can't estimate probabilities until I have that information.",
       "I haven't confirmed whether this is at a neutral venue. I can't estimate probabilities until I have that information.",
       "I’m still preparing my forecasts. I can’t give probabilities for this fixture yet.",
@@ -3312,7 +3313,11 @@ describe("resolveAskContext", () => {
     expect(deterministicUngroundedClarification(
       "Who will most likely score for Liverpool?",
       null
-    )).toBe("I need Liverpool’s opponent before I can switch fixtures. Name the opponent, and I’ll check the scorer market and current team news for that match.");
+    )).toBe("I can’t name Liverpool’s most likely scorer without a fixture and player-level evidence. Tell me Liverpool’s opponent, and I’ll check a dated scorer market and current team news for that match.");
+    expect(deterministicUngroundedClarification(
+      "Who will most likely score for Liverpool?",
+      buildGrounding(fixtures[0])
+    )).toBe(`I can’t name Liverpool’s most likely scorer from the match forecast because I don’t have player-level projections. I need Liverpool’s opponent before I can switch fixtures, so I’m keeping ${fixtures[0].home} vs ${fixtures[0].away} in view until then. A dated scorer market and confirmed starters would let me assess the options.`);
     expect(resolveAskContext(
       "Who scores for Everton?",
       [],
@@ -3328,7 +3333,7 @@ describe("resolveAskContext", () => {
     expect(deterministicUngroundedClarification(
       "Who scores for Everton?",
       null
-    )).toBe("I need Everton’s opponent before I can switch fixtures. Name the opponent, and I’ll check the scorer market and current team news for that match.");
+    )).toBe("I can’t name Everton’s most likely scorer without a fixture and player-level evidence. Tell me Everton’s opponent, and I’ll check a dated scorer market and current team news for that match.");
     expect(resolveAskContext(
       "Who scores for Arsenal?",
       [],
