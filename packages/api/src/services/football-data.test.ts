@@ -19,6 +19,7 @@ import {
   seasonScheduleStatus,
   ESPN_FETCH_TIMEOUT_MS,
   espnFetch,
+  fetchCompetitionMatchesById,
   FOOTBALL_DATA_REFRESH_INTERVAL_MS,
   refreshFootballData,
   SEASON_SCHEDULE_MAX_AGE_MS,
@@ -213,6 +214,41 @@ describe("ESPN model inputs", () => {
       homeFieldAdvantage: true,
     });
     expect(range).toMatch(/^\d{8}-\d{8}$/);
+  });
+
+  it("uses ESPN year buckets and filters them to the rolling window", async () => {
+    const now = new Date();
+    const inside = new Date(now);
+    inside.setUTCDate(inside.getUTCDate() + 1);
+    const outside = new Date(now);
+    outside.setUTCDate(outside.getUTCDate() + 60);
+    const event = (id: string, date: Date) => ({
+      id,
+      date: date.toISOString(),
+      competitions: [{
+        status: { type: { state: "pre", completed: false } },
+        competitors: [
+          { homeAway: "home", team: { displayName: "Arsenal" } },
+          { homeAway: "away", team: { displayName: "Liverpool" } },
+        ],
+      }],
+    });
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ events: [event("1", inside), event("2", outside)] }),
+      text: async () => "",
+    } as Response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fixtures = await fetchCompetitionMatchesById("eng.1");
+
+    expect(fixtures.map((fixture) => fixture.id)).toEqual([1]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/scoreboard\?dates=\d{4}&limit=1000$/),
+      expect.any(Object)
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).not.toContain("-");
   });
 
   it("builds a complete season-aware Premier League window", () => {
