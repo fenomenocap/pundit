@@ -4,6 +4,7 @@ import { Footer } from "@/components/footer";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://thepundit.vercel.app"),
   title: {
     default: "Pundit",
     template: "%s | Pundit",
