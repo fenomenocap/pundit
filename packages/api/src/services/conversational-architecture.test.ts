@@ -160,6 +160,12 @@ describe("V2 conversational architecture", () => {
     expect(marketQueries.some((query) => /odds movement/.test(query))).toBe(true);
     expect(marketQueries.some((query) => /public betting/.test(query))).toBe(false);
     expect(planResponse("Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.", { groundingKind: "match" }).mode).toBe("match-preview");
+    expect(planResponse("Give me the match briefing for Arsenal vs Leeds United.", { groundingKind: "match" }).mode)
+      .toBe("match-preview");
+    expect(planResponse(
+      "Give me the match briefing for Arsenal vs Leeds United. Tactics, who decides it, and the model lean.",
+      { groundingKind: "match" }
+    ).mode).toBe("match-preview");
     expect(planResponse("Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?", { groundingKind: "match", hasHistory: true }).mode).toBe("market-comparison");
     expect(planResponse("If the home striker is ruled out, exactly how many percentage points would you take off the home win?", { groundingKind: "match", hasHistory: true }).mode).toBe("lineup-counterfactual");
     expect(planResponse("What is the latest team news?", { groundingKind: "match" }).evidenceRequired).toBe(true);
@@ -555,6 +561,32 @@ describe("V2 conversational architecture", () => {
     expect(deskSalvage.answer).toMatch(/Cole Palmer/);
     expect(deskSalvage.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(deskSalvage.answer).not.toContain("directAnswer");
+
+    const briefingWipe = await deliverAnswer({
+      ...base,
+      voice: "desk",
+      question: "Give me the match briefing for Arsenal vs Chelsea.",
+      hasHistory: false,
+      evidenceRequired: false,
+      answer: "Current reports conflict on one or more requested facts, so I’ve left those claims out.",
+    });
+    expect(briefingWipe.answer).toMatch(/Arsenal should control this at home/);
+    expect(briefingWipe.answer).toMatch(/Chelsea only get a result|Who decides it/);
+    expect(briefingWipe.answer).not.toMatch(/conflict on one or more requested facts/i);
+    expect(briefingWipe.answer).not.toMatch(/captured decimal/i);
+    expect(briefingWipe.answer).not.toMatch(/\d+(?:\.\d+)?\s*%/);
+
+    const tacticalWipe = await deliverAnswer({
+      ...base,
+      voice: "desk",
+      question: "Tactical matchup",
+      hasHistory: true,
+      evidenceRequired: false,
+      answer: "Current reports conflict on one or more requested facts, so I’ve left those claims out.",
+    });
+    expect(tacticalWipe.answer).toMatch(/Arsenal should control this at home/);
+    expect(tacticalWipe.answer).not.toMatch(/conflict on one or more requested facts/i);
+    expect(tacticalWipe.answer).not.toMatch(/captured decimal/i);
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {
@@ -685,6 +717,14 @@ describe("V2 conversational architecture", () => {
     expect(named).toMatch(/captured decimal line before I can print EV%/);
     expect(named).not.toContain(SHARED_TOTAL_XG_SENTENCE);
     expect(named).not.toMatch(/leading scorelines/i);
+
+    const briefing = composeMatchResponse(
+      "Give me the match briefing for Arsenal vs Chelsea.",
+      match,
+      planResponse("Give me the match briefing for Arsenal vs Chelsea.", { groundingKind: "match" })
+    );
+    expect(briefing).toMatch(/full 1X2/);
+    expect(briefing).not.toMatch(/captured decimal line before I can print EV%/);
 
     const previewCopy = composeMatchResponse(
       "Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.",

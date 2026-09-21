@@ -5,10 +5,13 @@ import { sampleMatchContextFields } from "./match-context";
 import {
   DESK_SYSTEM,
   card,
+  composeDeskFootballTake,
+  deskProseIsCurrentNewsRemainder,
   filterDeskEvidenceRows,
   formatSearchEvidence,
   humaniseDeskCitationDates,
   sanitizeDeskModelProse,
+  shouldRestoreDeskFootballTake,
   stripDeskBoardRecitals,
 } from "./desk-voice";
 
@@ -185,6 +188,30 @@ describe("formatSearchEvidence dates", () => {
     expect(block).toContain("NEWS EVIDENCE");
     expect(block).toContain("[[S1]]");
     expect(block).toContain("[[S2]]");
+  });
+});
+
+describe("desk football-take floor", () => {
+  it("writes a schematic take without board numbers or current-news claims", () => {
+    const take = composeDeskFootballTake(match());
+    expect(take).toMatch(/Manchester City should control this at home/);
+    expect(take).toMatch(/Sunderland only get a result/);
+    expect(take).toMatch(/team-strength view/);
+    expect(take).not.toMatch(/\d+(?:\.\d+)?\s*%/);
+    expect(take).not.toMatch(/EV%|captured decimal|2\.70|Etihad|injured|manager/i);
+    expect(stripDeskBoardRecitals(take)).toBe(take);
+  });
+
+  it("treats a conflict notice as empty remainder and keeps a briefing restorable", () => {
+    expect(deskProseIsCurrentNewsRemainder(
+      "Current reports conflict on one or more requested facts, so I’ve left those claims out."
+    )).toBe(true);
+    expect(deskProseIsCurrentNewsRemainder(
+      "City should control this at home. Current reports conflict on one or more requested facts, so I’ve left those claims out."
+    )).toBe(false);
+    expect(shouldRestoreDeskFootballTake("Give me the match briefing for Arsenal vs Leeds United.")).toBe(true);
+    expect(shouldRestoreDeskFootballTake("Tactical matchup")).toBe(true);
+    expect(shouldRestoreDeskFootballTake("What is the latest team news?")).toBe(false);
   });
 });
 

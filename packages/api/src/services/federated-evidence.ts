@@ -1,7 +1,7 @@
 import type { AgentFreshnessMetadata } from "../config/freshness-policy";
 import type { ResultMark } from "./club-form";
 import { evidenceTier, type EvidenceTier } from "./evidence-authority";
-import { planResponse } from "./response-plan";
+import { isSchematicMatchTake, planResponse } from "./response-plan";
 import type { WebSearchOutcome } from "./web-search";
 
 export const MAX_FEDERATED_QUERIES = 6;
@@ -136,14 +136,10 @@ function newsFanOutQueries(
   } else if (mode === "market-comparison") {
     planned.push(`${fixture} betting odds decimal over 2.5 goals both teams to score`);
     planned.push(`${fixture} odds movement line move opening price`);
-  } else if (mode === "match-preview") {
-    planned.push(`${fixture} team news injuries suspensions predicted lineup`);
-    planned.push(`${fixture} betting odds decimal 1x2 over 2.5 both teams to score`);
+  } else if (isSchematicMatchTake(question)) {
     if (!skipForm) {
       planned.push(`${match.home} ${match.away} recent form last 5 matches results`);
     }
-    planned.push(`${match.home} current manager head coach today`);
-    planned.push(`${match.away} current manager head coach today`);
   } else {
     planned.push(`${fixture} team news injuries suspensions predicted lineup`);
     if (!skipForm) {

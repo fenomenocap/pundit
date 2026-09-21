@@ -13,6 +13,7 @@ import {
   mergeSearchResults,
   planFederatedQueries,
 } from "./federated-evidence";
+import { isSchematicMatchTake, planResponse } from "./response-plan";
 import { searchWebBatch, type WebSearchResult } from "./web-search";
 
 export const DESK_SYSTEM = `You are Pundit, a football analyst covering the current Premier League. Voice: sharp broadcast pundit — Carragher after a freeze-frame, not a hedge-fund memo. Short. Specific. No emoji. No slang pile-up. No hedging fluff.
@@ -29,9 +30,11 @@ SOURCES THIS TURN:
 1. The MATCH CARD — present only for a priced fixture. Use it to shape the take. Do not recite its numbers.
 2. SEARCH EVIDENCE — dated web snippets for this turn, labelled [[S1]], [[S2]], … This is the only source for managers, coaches, injuries, lineups, team news, form, and any other current-world fact.
 
+Write the schematic match take first, with no citation markers: how the favourite wins, who decides it, why the night is controlled or stretched. Cited current-world sentences are optional garnish only. If SEARCH EVIDENCE is silent or conflicting, keep the schematic take and leave those facts out.
+
 Cite every current-world claim in the same sentence with [[S1]] using only supplied ids. Uncited manager, injury, lineup and form claims will be removed. Never invent an S id. Never paste a URL, a markdown link, or a source title — the server renders citations from [[S1]].
 
-Do not use training memory. Do not use prior turns for current-world facts — they may be stale. Do not name a player as injured, out, or in the XI unless SEARCH EVIDENCE this turn names that player for THIS fixture. Do not invent a coach, injury, or XI. If SEARCH EVIDENCE is present, use it; never say you don't have current search results when it is sitting above the question. If it is silent on a fact, say you don't have a live update on that fact only.
+Do not use training memory. Do not use prior turns for current-world facts — they may be stale. Do not name a player as injured, out, or in the XI unless SEARCH EVIDENCE this turn names that player for THIS fixture. Do not invent a coach, injury, or XI. If SEARCH EVIDENCE is present, use it for garnish only; never say you don't have current search results when it is sitting above the question. If it is silent on a fact, leave that fact out and keep the schematic take.
 
 When there is no match card, answer from SEARCH EVIDENCE without inventing a fixture or asking for one.
 
@@ -39,6 +42,56 @@ If asked who scores: do not cite undated betting-site quotes as my ranking. If t
 
 export const DESK_BOARD_FALLBACK =
   "The model has a lean on this fixture. The board under this take has the numbers.";
+
+const DESK_CURRENT_NEWS_REMAINDER = [
+  /current reports conflict on one or more requested facts/i,
+  /no verified current source in this conversation supports that claim/i,
+  /no verified, dated team-news update was established/i,
+  /the model has a lean on this fixture/i,
+];
+
+/** True when verification left only an abstention / conflict notice. */
+export function deskProseIsCurrentNewsRemainder(text: string): boolean {
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  if (!sentences.length) return true;
+  return sentences.every((sentence) =>
+    DESK_CURRENT_NEWS_REMAINDER.some((pattern) => pattern.test(sentence))
+  );
+}
+
+/**
+ * Server-owned football take for briefing / tactical chips. No percents, no
+ * EV, no injuries, no managers — those are the facts verification wipes.
+ */
+export function composeDeskFootballTake(g: Grounding): string {
+  const sides = [
+    { label: g.home, p: g.pHome, role: "home" as const },
+    { label: "the draw", p: g.pDraw, role: "draw" as const },
+    { label: g.away, p: g.pAway, role: "away" as const },
+  ].sort((a, b) => b.p - a.p);
+  const favourite = sides[0];
+  const mismatch = Math.abs(g.pHome - g.pAway) >= 0.35;
+  const lean = favourite.role === "home"
+    ? `${g.home} should control this at home — the lean is a gap, not a coin flip.`
+    : favourite.role === "away"
+      ? `${g.away} are the lean even away from home.`
+      : "This looks like a tight night rather than a one-side walkover.";
+  const underdog = favourite.role === "home" ? g.away : favourite.role === "away" ? g.home : null;
+  const decide = !underdog
+    ? `Who decides it is whether either side can break a midfield stalemate without giving the other a clean run.`
+    : mismatch
+      ? `${underdog} only get a result if they stretch the game and force chaos; a controlled night plays to ${favourite.label}.`
+      : `Who decides it is whether ${g.home} can keep the game in their half without getting opened up on the break.`;
+  return `${lean} ${decide} This is a team-strength view, not a confirmed lineup. I would only change the shape after verified team news.`;
+}
+
+export function shouldRestoreDeskFootballTake(question: string): boolean {
+  const mode = planResponse(question, { groundingKind: "match" }).mode;
+  return mode === "match-preview" || mode === "match-follow-up";
+}
 
 const DESK_STADIUM =
   /\b(?:the )?(?:etihad|old trafford|anfield|stamford bridge|emirates stadium|tottenham hotspur stadium|villa park|st james'? park|selhurst park|craven cottage|london stadium|city of manchester stadium)\b/i;
@@ -330,10 +383,13 @@ function hint(question: string) {
   if (/\bwho scores\b|\bscorer\b|\banytime\b|\bfirst goal\b/.test(q)) {
     return "HINT: No player model on this card. Do not cite betting-site quotes. Name the side more likely to score. Do not print a percentage.";
   }
-  if (/\bmanager\b|\bcoach\b|\btactic|\binjur|\bline-?up|\bteam news/.test(q)) {
+  if (isSchematicMatchTake(question)) {
+    return "HINT: Schematic take from the MATCH CARD first — how the favourite wins, who decides it. Do not invent a manager, injury, or XI. Only add a separate cited sentence if SEARCH EVIDENCE this turn clearly supports that current fact. If evidence is silent or conflicting, leave current facts out and keep the schematic take. Do not print board numbers.";
+  }
+  if (/\bmanager\b|\bcoach\b|\binjur|\bline-?up|\bteam news/.test(q)) {
     return "HINT: Live facts only from this turn's SEARCH EVIDENCE. Do not recite training memory. Do not print board numbers.";
   }
-  return "HINT: Live facts (managers, injuries, XIs) only from this turn's SEARCH EVIDENCE. Do not print probabilities or name a stadium.";
+  return "HINT: Write the football take from the MATCH CARD. Live facts (managers, injuries, XIs) only from this turn's SEARCH EVIDENCE. Do not print probabilities or name a stadium.";
 }
 
 function inferenceKey() {
@@ -371,7 +427,10 @@ export async function fetchDeskEvidence(
       `${question.slice(0, 220)} football latest`
     );
   }
-  if (grounding?.kind === "match") {
+  if (grounding?.kind === "match"
+    && !isSchematicMatchTake(question)
+    && (planResponse(question, { groundingKind: "match" }).mode === "team-news"
+      || /\bmanager\b|\bcoach\b/.test(question))) {
     queries = uniqueQueries([
       ...queries,
       `${grounding.home} current manager head coach today`,
@@ -406,12 +465,13 @@ export async function writeDeskProse(
   signal?: AbortSignal,
   bundle?: EvidenceBundle
 ): Promise<string | null> {
+  const fallback = grounding?.kind === "match" ? composeDeskFootballTake(grounding) : null;
   const apiKey = inferenceKey();
-  if (!apiKey) return null;
+  if (!apiKey) return fallback;
   const client = new Anthropic({ apiKey, baseURL: inferenceBase(), maxRetries: 0 });
   const model = process.env.MINIMAX_MODEL ?? "MiniMax-M3";
   let evidence: DeskEvidenceRow[] = filterDeskEvidenceRows(deskRowsFromBundle(bundle), grounding);
-  if (!evidence.length) {
+  if (!evidence.length && !isSchematicMatchTake(question)) {
     try {
       evidence = filterDeskEvidenceRows(
         deskRowsFromSearch(await fetchDeskEvidence(grounding, question, signal)),
@@ -463,8 +523,8 @@ export async function writeDeskProse(
     const allowed = managersNamedInEvidence(evidence);
     const cleaned = stripUnlistedManagers(text, allowed) || text;
     const football = stripDeskBoardRecitals(sanitizeDeskModelProse(cleaned, evidence));
-    return football || DESK_BOARD_FALLBACK;
+    return football || fallback || DESK_BOARD_FALLBACK;
   } catch {
-    return null;
+    return fallback;
   }
 }

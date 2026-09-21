@@ -813,6 +813,30 @@
       ]
     },
     {
+      "id": "featured-match-briefing-is-not-pricing-desk",
+      "description": "The homepage briefing chip is a football take, not an EV desk recitation or a conflict-only abstention.",
+      "kind": "featured-question",
+      "questionTemplate": "Give me the match briefing for {home} vs {away}.",
+      "expectAnalystVoice": true,
+      "expectDirectAnswer": true,
+      "forbidText": [
+        "captured decimal line",
+        "Current reports conflict on one or more requested facts"
+      ]
+    },
+    {
+      "id": "featured-tactical-matchup-keeps-a-take",
+      "description": "Tactical matchup keeps a strength-and-shape take when current-news sources collide.",
+      "kind": "featured-question",
+      "questionTemplate": "Tactical matchup",
+      "expectAnalystVoice": true,
+      "expectDirectAnswer": true,
+      "forbidText": [
+        "captured decimal line",
+        "Current reports conflict on one or more requested facts"
+      ]
+    },
+    {
       "id": "featured-explicit-preview-stays-long-read",
       "description": "An explicit preview request still gets the long read with a headline 1X2, not the one-section desk.",
       "kind": "featured-question",

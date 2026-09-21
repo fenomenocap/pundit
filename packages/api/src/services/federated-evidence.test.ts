@@ -65,6 +65,18 @@ describe("planFederatedQueries", () => {
     expect(planned.some((query) => isRecentFormQuery(query))).toBe(true);
   });
 
+  it("does not search injuries or managers for a tactical or briefing take", () => {
+    const grounding = matchGrounding();
+    for (const question of [
+      "Tactical matchup",
+      "Give me the match briefing for Arsenal vs Chelsea.",
+    ]) {
+      const planned = planFederatedQueries(question, grounding, null);
+      expect(planned.some((query) => /team news injuries|predicted lineup|head coach/.test(query)))
+        .toBe(false);
+    }
+  });
+
   it("reuses team-news fan-out without market-only queries", () => {
     const grounding = matchGrounding();
     const teamNewsQueries = planFederatedQueries(

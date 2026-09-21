@@ -18,7 +18,7 @@ export type ResponseMode =
   | "general";
 
 const ASKS_MATCH_PREVIEW =
-  /\b(?:preview|analyse|analyze|analysis|break down|thoughts(?:\s+on)?|full (?:read|preview|analysis))\b/i;
+  /\b(?:preview|briefing|analyse|analyze|analysis|break down|thoughts(?:\s+on)?|full (?:read|preview|analysis|briefing))\b/i;
 // Betting shorthand is first-class: o2.5 / u2.5 / ou 2.5 / o/u 2.5. Keep the
 // letter+line forms tight so "to 2.5" or a stray "o" in "over" cannot match.
 const ASKS_TOTALS =
@@ -103,6 +103,20 @@ export function asksProjectedScore(question: string): boolean {
 
 export function asksTacticalTake(question: string): boolean {
   return ASKS_TACTICAL_TAKE.test(question);
+}
+
+export function asksMatchPreview(question: string): boolean {
+  return ASKS_MATCH_PREVIEW.test(question);
+}
+
+/**
+ * Desk briefing / tactical chips: a strength-and-shape take from the match
+ * card, not a team-news packet. Injury and manager searches on these turns
+ * collide and wipe the football take.
+ */
+export function isSchematicMatchTake(question: string): boolean {
+  const mode = planResponse(question, { groundingKind: "match", hasHistory: true }).mode;
+  return mode === "match-preview" || (mode === "match-follow-up" && asksTacticalTake(question));
 }
 
 export function asksOddsBoard(question: string): boolean {
