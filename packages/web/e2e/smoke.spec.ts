@@ -208,6 +208,39 @@ test.describe("smoke", () => {
     });
   }
 
+  test("desk labels season, table and general answers without internal grounding jargon", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const season = {
+      kind: "season", competitionId: "eng.1", competition: "Premier League",
+      updatedAt: "2026-09-21T10:00:00.000Z", standings: [],
+      seasonOutlook: { competitionId: "eng.1", competition: "Premier League", runs: 10000,
+        titleProbabilities: [], topFourProbabilities: [], remainingFixtures: 330,
+        updatedAt: "2026-09-21T10:00:00.000Z" },
+    };
+    const responses = [
+      { answer: "Man City lead my title outlook.", grounding: season },
+      { answer: "The table is only five matches old.", grounding: {
+        kind: "competition", competitionId: "eng.1", competition: "Premier League",
+        updatedAt: "2026-09-21T10:00:00.000Z", standings: [],
+      } },
+      { answer: "A high line leaves space behind.", grounding: null },
+    ];
+    await page.route("**/api/ask", (route) => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify(responses.shift()),
+    }));
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    for (const question of ["Who leads the title outlook?", "What does the table show?", "Explain a high line."]) {
+      await input.fill(question);
+      await page.getByRole("button", { name: "Send" }).click();
+    }
+    await expect(page.getByTestId("desk-grounding-label")).toHaveText([
+      "Season outlook · Premier League", "Current table · Premier League", "General analysis",
+    ]);
+    await expect(page.locator("body")).not.toContainText("model-grounded");
+  });
+
   test("desk featured fixture keeps its identity and renders grounded market rows", async ({ page }) => {
     await routeTwoFixtureDeskSlate(page);
     const requests: Array<Record<string, unknown>> = [];
