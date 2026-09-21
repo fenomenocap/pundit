@@ -1393,6 +1393,7 @@ describe("current-news evidence hardening", () => {
       expect(closedGroundedAnswer("Projected score", model())).not.toMatch(/team news/i);
       expect(closedGroundedAnswer("Tactical matchup", model())).toBeNull();
       expect(closedGroundedAnswer("How do Man Utd win this?", model())).toBeNull();
+      expect(closedGroundedAnswer("Give me the match briefing for Arsenal vs Coventry.", model())).toBeNull();
       expect(closedGroundedAnswer("Is Arsenal vs Coventry over 2.5?", model()))
         .toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(closedGroundedAnswer("BTTS?", model(), true))
