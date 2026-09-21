@@ -195,7 +195,7 @@ SIRE named the agents. Pundit should keep the names as internal modules, not use
 | Module | Job | Priority | Status | Path |
 |---|---|---|---|---|
 | Coordinator | Route, hold context, refuse to size without bankroll | v1 | **Partial** — four-tier router exists; no bankroll/profile | `packages/api/src/services/ask.ts` |
-| Fixtures | Slate + kickoff + venue | v1 | **Built** (14-day active set, not an arbitrary slate) | `active-fixtures.ts`, `featured-fixtures.ts`, `fixture-registry.ts` |
+| Fixtures | Slate + kickoff + venue | v1 | **Built** (21-day active set, not an arbitrary slate) | `active-fixtures.ts`, `featured-fixtures.ts`, `fixture-registry.ts` |
 | Standings | Table context | v1 | **Built** | `football-data.ts`, competition tier in `ask.ts` |
 | Team insights | Form, injuries, lineup | v1 | **Partial** — search + citation, no form store | `web-search.ts`, `evidence-page-retrieval.ts`, `claim-verifier.ts` |
 | Search / news | Breaking context with source + time | v1.5 | **Built** | `web-search.ts`, provider chain documented in `PROJECT_OVERVIEW.md` §4 |

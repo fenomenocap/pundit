@@ -32,7 +32,7 @@ Chat status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpr
 |---|---|---|
 | POST | `/api/ask` | The four-tier analysis endpoint. Requires a MiniMax key. Rate-limited 10/min deployment-wide. |
 | GET | `/api/matches/competitions` | Enabled competition registry |
-| GET | `/api/matches/active` | Active fixtures (14-day horizon) |
+| GET | `/api/matches/active` | Active fixtures (21-day horizon) |
 | GET | `/api/matches/upcoming` | Upcoming ESPN fixtures (`?competition=`) |
 | GET | `/api/matches/recent` | Recent results |
 | GET | `/api/matches/standings` | ESPN standings |
@@ -86,7 +86,7 @@ Budgets: `PROVIDER_CALL_BUDGET = 10`, `MAX_CONTINUATIONS = 2`, 90-second shared 
 | **ESPN scoreboard/standings** | `football-data.ts` | Keyless. Enabled competitions refresh every 30 min (`FOOTBALL_DATA_REFRESH_INTERVAL_MS`), 15s fetch timeout. A separate **strictly complete** season-aware Premier League schedule is validated (`validateCompletePremierLeagueSchedule`), persisted atomically, with a 6-hour freshness deadline, a 60s safety margin, and last-good recovery for the simulator. |
 | **Fixture registry** | `fixture-registry.ts` | Approved structured ESPN identities, persisted atomically with last-good recovery. Observes in **shadow mode** by default; `FIXTURE_REGISTRY_ENABLED` turns on expanded routing. Reviewed friendlies need an ESPN stable ID *plus* an official corroborating URL, and remain unpriced. Search results and user text create **candidates only** — never registry, grounding, or model input. |
 | **Pinned ClubElo artifact** | `club-strength-artifact.ts`, `club-ratings.ts` | A reviewed, content-addressed `clubelo@1` snapshot ships with each release. **Production runtime never contacts ClubElo.** Selector, SHA-256 payload hash, coverage, plausible-rating bounds (500–3000) and a 30-day freshness gate all fail closed. Atomic `/data` current/last-good copies recover a damaged selector without changing inputs. |
-| **Local model** | `dixon-coles.ts`, `model-data.ts` | Computes 1X2, totals, BTTS and scorelines for the 14-day active club-fixture set. Hourly refresh, 6-min cold retry. |
+| **Local model** | `dixon-coles.ts`, `model-data.ts` | Computes 1X2, totals, BTTS and scorelines for the 21-day active club-fixture set. Hourly refresh, 6-min cold retry. |
 | **Stake / Kalshi / Polymarket** | `fixture-market-sources.ts`, `model-market-odds.ts` | Best-effort direct fetches, normalized to **no-vig** 1X2 every 30 min, scoped by market profile. Source failures stay isolated and are surfaced as `sourceWarnings`. |
 | **Web search** | `web-search.ts` | See §4. |
 | **Frozen WC evaluation** | `wc-evaluation.ts` | Read-only historical backtest. No cron, no live coupling. |

@@ -423,8 +423,8 @@ test.describe("smoke", () => {
               placedAt: 1,
             },
           ],
-          selectedId: "gw4-sun-ars",
-          scores: { "gw4-sun-ars": [2, 0] },
+          selectedId: "espn:eng.1:778",
+          scores: { "espn:eng.1:778": [1, 2] },
           vaultAlloc: { alpha: 0, neutral: 0, yield: 0 },
           messages: [],
         },
@@ -461,6 +461,7 @@ test.describe("smoke", () => {
     await page.goto("/");
     await expect(page.getByText("No priced fixtures", { exact: true })).toBeVisible();
     await expect(page.getByText("No priced fixtures are live right now.", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/Pinned ·/)).toHaveCount(0);
     await expect(page.getByText("NO FORECAST", { exact: true })).toBeVisible();
     await expect(page.getByText("MISS", { exact: true })).toHaveCount(0);
     await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();

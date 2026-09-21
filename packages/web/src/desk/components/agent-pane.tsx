@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Plus } from "lucide-react";
 import { rankedOpen, weekendNote } from "@/desk/lib/brief";
-import { getFixture } from "@/desk/lib/data/fixtures";
+import { getFixture, isLivePricedFixture } from "@/desk/lib/data/fixtures";
 import { TEAMS } from "@/desk/lib/data/teams";
 import { completedDeskHistory } from "@/desk/lib/chat-history";
 import { askPundit } from "@/desk/lib/pundit";
@@ -36,6 +36,7 @@ export function AgentPane() {
   const clearQueued = useDesk((s) => s.clearQueuedAsk);
   const select = useDesk((s) => s.selectFixture);
   const fixture = getFixture(selectedId);
+  const liveFixture = isLivePricedFixture(fixture) ? fixture : undefined;
   const { source } = useLiveSlate();
   const [draft, setDraft] = useState("");
   const [lineOutcome, setLineOutcome] = useState<OneXTwoOutcome>("home");
@@ -64,9 +65,9 @@ export function AgentPane() {
     el.scrollTop = el.scrollHeight;
   }, [messages, busy]);
 
-  const matchChips = fixture
+  const matchChips = liveFixture
     ? [
-        `How do ${TEAMS[fixture.home].short} win this?`,
+        `How do ${TEAMS[liveFixture.home].short} win this?`,
         "Tactical matchup",
         "Who decides it?",
         "Projected score",
@@ -77,7 +78,7 @@ export function AgentPane() {
       ]
     : SLATE_CHIPS;
 
-  async function send(text: string, fixtureId = selectedId) {
+  async function send(text: string, fixtureId = liveFixture?.id ?? "") {
     const q = text.trim();
     if (!q || busy) return;
     if (q.length > 500) {
@@ -153,8 +154,8 @@ export function AgentPane() {
         <div className="min-w-0">
           <div className="eyebrow text-accent">Pundit</div>
           <p className="text-sm text-quiet truncate">
-            {fixture
-              ? `Pinned · ${TEAMS[fixture.home].short} vs ${TEAMS[fixture.away].short}`
+            {liveFixture
+              ? `Pinned · ${TEAMS[liveFixture.home].short} vs ${TEAMS[liveFixture.away].short}`
               : source === "live"
                 ? "Slate · live"
                 : source === "no-fixtures"
@@ -174,7 +175,7 @@ export function AgentPane() {
             setErr(null);
             window.history.replaceState({}, "", window.location.pathname);
           }}
-          disabled={busy || (messages.length === 0 && !fixture)}
+          disabled={busy || (messages.length === 0 && !liveFixture)}
         >
           <Plus className="size-3.5" />
           New Chat
@@ -255,16 +256,16 @@ export function AgentPane() {
             </button>
           ))}
         </div>
-        {fixture ? (
+        {liveFixture ? (
           <div
             data-testid="desk-user-line-control"
             className="mb-2.5 flex flex-wrap items-center gap-1.5"
           >
             <span className="text-2xs uppercase tracking-wide text-quiet">Line</span>
             {([
-              ["home", TEAMS[fixture.home].short],
+              ["home", TEAMS[liveFixture.home].short],
               ["draw", "Draw"],
-              ["away", TEAMS[fixture.away].short],
+              ["away", TEAMS[liveFixture.away].short],
             ] as const).map(([outcome, label]) => (
               <button
                 key={outcome}
@@ -274,7 +275,7 @@ export function AgentPane() {
                 aria-pressed={lineOutcome === outcome}
                 onClick={() => {
                   setLineOutcome(outcome);
-                  setLineFixtureId(fixture.id);
+                  setLineFixtureId(liveFixture.id);
                 }}
                 className={cn(
                   "h-8 rounded-full border px-3 text-2xs uppercase tracking-wide transition-colors duration-150 disabled:opacity-40",
@@ -301,7 +302,7 @@ export function AgentPane() {
               placeholder="2.10"
               onChange={(e) => {
                 setLineDecimal(e.target.value);
-                setLineFixtureId(fixture.id);
+                setLineFixtureId(liveFixture.id);
               }}
               className="h-8 w-[4.5rem] rounded-sm border border-border bg-elevated px-2 text-sm tabular-nums text-fg placeholder:text-subtle focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-40"
             />
@@ -360,13 +361,13 @@ export function AgentPane() {
             <ArrowUp className="size-4" />
           </Button>
         </form>
-        {fixture ? (
+        {liveFixture ? (
           <div className="mt-2 flex items-center gap-2 text-2xs text-quiet">
-            <FormDots team={fixture.home} size="sm" />
+            <FormDots team={liveFixture.home} size="sm" />
             <span>
-              {TEAMS[fixture.home].short} vs {TEAMS[fixture.away].short}
+              {TEAMS[liveFixture.home].short} vs {TEAMS[liveFixture.away].short}
             </span>
-            <FormDots team={fixture.away} size="sm" />
+            <FormDots team={liveFixture.away} size="sm" />
           </div>
         ) : null}
       </div>

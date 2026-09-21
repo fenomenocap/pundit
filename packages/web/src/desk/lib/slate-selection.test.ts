@@ -3,19 +3,24 @@ import { describe, it } from "node:test";
 import { capturedRecord, reconcileHydratedPaperState, resolveHydratedSelection } from "./slate-selection.ts";
 
 describe("resolveHydratedSelection", () => {
-  it("keeps a persisted fixture only while it belongs to the hydrated slate", () => {
+  it("keeps a persisted fixture only while it belongs to the live priced slate", () => {
     const open = [{ id: "espn:eng.1:1", home: "ARS", away: "CHE" }];
-    assert.equal(resolveHydratedSelection("espn:eng.1:1", open, []), "espn:eng.1:1");
+    assert.equal(resolveHydratedSelection("espn:eng.1:1", open), "espn:eng.1:1");
   });
 
   it("clears a stale fixture when the live slate has no matching or banker fixture", () => {
     const open = [{ id: "espn:eng.1:2", home: "ARS", away: "CHE" }];
-    assert.equal(resolveHydratedSelection("gw4-mun-mci", open, []), "");
+    assert.equal(resolveHydratedSelection("gw4-mun-mci", open), "");
   });
 
   it("does not auto-pin a banker for a general first question", () => {
     const open = [{ id: "espn:eng.1:3", home: "LIV", away: "FUL" }];
-    assert.equal(resolveHydratedSelection("gw4-mun-mci", open, []), "");
+    assert.equal(resolveHydratedSelection("gw4-mun-mci", open), "");
+  });
+
+  it("does not keep a finished result pinned as a live forecast", () => {
+    const open: { id: string; home: string; away: string }[] = [];
+    assert.equal(resolveHydratedSelection("espn:eng.1:401879271", open), "");
   });
 });
 

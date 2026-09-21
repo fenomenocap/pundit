@@ -90,7 +90,7 @@ pnpm test && pnpm build
 |---|---|---|
 | POST | `/api/ask` | Multi-turn match, competition, or general football analysis. Requires `MINIMAX_API_KEY`. |
 | GET | `/api/matches/competitions` | Enabled competition registry |
-| GET | `/api/matches/active` | Active fixtures (14-day horizon) |
+| GET | `/api/matches/active` | Active fixtures (21-day horizon) |
 | GET | `/api/matches/upcoming` | Upcoming fixtures (ESPN, optional `?competition=`) |
 | GET | `/api/matches/recent` | Recent results (ESPN) |
 | GET | `/api/matches/standings` | Standings (ESPN) |

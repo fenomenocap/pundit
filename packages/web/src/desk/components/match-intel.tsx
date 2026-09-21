@@ -91,7 +91,7 @@ export function MatchIntel() {
               <Stat k="BTTS" v={fmtPct(f.model.btts)} />
             </dl>
             <p className="mt-4 text-sm leading-relaxed text-quiet">
-              Model lean{" "}
+              {f.status === "ft" ? "Pre-kickoff lean" : "Model lean"}{" "}
               <span className="text-fg font-medium">{selectionLabel(f, f.modelPick)}</span> at{" "}
               <span className="text-accent tabular-nums">{leanP === null ? "—" : fmtPct(leanP)}</span>. {f.brief}
             </p>
