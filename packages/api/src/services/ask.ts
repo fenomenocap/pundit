@@ -3269,6 +3269,19 @@ export function shouldUseCompetitionGrounding(
   return resolveCompetitionContext(question, history) !== undefined;
 }
 
+function continuesSeasonOutlook(question: string, history: ConversationTurn[]): boolean {
+  if (resolveCompetitionQuestion(question)
+    || /\b(?:match|fixture|game|vs|against|1x2|scoreline|btts)\b/i.test(question)) return false;
+  if (!/\b(?:guarantee|certain|certainty)\b[^?.!]*\b(?:win|winner|champion)\b|\bwhat would change (?:that|this|the) (?:view|outlook|forecast)\b/i.test(question)) {
+    return false;
+  }
+  const previousQuestion = [...history].reverse().find(({ role }) => role === "user")?.content;
+  return Boolean(previousQuestion
+    && resolveCompetitionQuestion(previousQuestion) === "eng.1"
+    && isSeasonOutlookQuestion(previousQuestion)
+    && !/\b(?:based on|using|from)\s+(?:only\s+)?(?:the\s+)?current (?:table|standings)\b/i.test(previousQuestion));
+}
+
 const MATCHUP_CUE_PATTERNS = [
   /\b(?:vs|v)\b\.?/,
   /\bagainst\b/,
@@ -3866,7 +3879,9 @@ export function resolveAskContext(
     ? recognizedFixtureMatchesByTeams(teams[0], teams[1], recognizedFixtures)
     : [];
   const explicitRecognized = recognizedMatches.length === 1 ? recognizedMatches[0] : undefined;
-  const competitionId = resolveCompetitionContext(question, history);
+  const seasonContinuation = continuesSeasonOutlook(question, history);
+  const competitionId = resolveCompetitionContext(question, history)
+    ?? (seasonContinuation ? "eng.1" : undefined);
   const contextualFixture = routing.fixtureContext
     ? recognizedFixtures.find((fixture) => fixture.fixtureId === routing.fixtureContext?.fixtureId)
     : undefined;
@@ -3924,7 +3939,7 @@ export function resolveAskContext(
 
   if (
     competitionId === "eng.1"
-    && isSeasonOutlookQuestion(question)
+    && (isSeasonOutlookQuestion(question) || seasonContinuation)
     && standings.some((row) => row.competitionId === competitionId)
   ) {
     return { tier: "season", competitionId };
@@ -7417,6 +7432,16 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
   }
   const leader = title[0];
   const certaintyDemand = /\b(?:guarantee|100% certainty|state (?:the )?champion as (?:a )?fact|promise|remove all uncertainty)\b/i.test(question);
+  if (/\bwhat would change (?:that|this|the) (?:view|outlook|forecast)\b/i.test(question)) {
+    return [
+      `I can’t guarantee a winner. ${leader
+        ? `${leader.team} is the most likely champion at ${asPercent(leader.probability)}, not a certainty.`
+        : "This outlook does not identify a certain champion."}`,
+      `There are ${grounding.seasonOutlook.remainingFixtures} fixtures still to play. `
+        + "New results change the standings and the remaining schedule, so I’d refresh the outlook as they come in. "
+        + "This snapshot does not quantify the swing from any one result, injury or lineup change.",
+    ].join("\n\n");
+  }
   return [
     "**Title race**",
     title.map((row, index) => `${index + 1}. **${row.team} ${asPercent(row.probability)}**`).join("\n"),
@@ -7475,7 +7500,7 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
   // table, not a request for the table. Reprinting the standings answered a
   // question nobody asked and left the actual one unanswered -- and the caveat
   // is a property of the payload, so the server can state it exactly.
-  if (/\bcaveat|limitation|how (?:reliable|meaningful|strong)|weak(?:ness|est)?\b|why (?:might|would).{0,30}\bwrong\b/i.test(question)) {
+  if (/\bcaveat|counter[- ]?argument|limitation|how (?:reliable|meaningful|strong)|weak(?:ness|est)?\b|why (?:might|would).{0,30}\bwrong\b/i.test(question)) {
     const leaders = rows.slice(0, 2);
     const tiedOnPoints = leaders.length === 2 && leaders[0].points === leaders[1].points;
     const matchWord = played === 1 ? "match" : "matches";

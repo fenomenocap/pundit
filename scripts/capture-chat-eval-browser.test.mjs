@@ -389,6 +389,41 @@ test("a viewport timeout saves report-bound partial evidence before rethrowing w
   }
 });
 
+test("a run with no priced fixture still captures both viewports as incomplete evidence", async () => {
+  const report = {
+    runId: "no-fixture-run", schemaVersion: EVAL_SCHEMA_VERSION,
+    completedAt: "2026-09-14T10:00:00.000Z",
+    pacing: { requestStarts: ["2026-09-14T09:59:00.000Z"] },
+    deployment: { id: "deploy-a", sourceSha: "abc1234" },
+    apiUrl: "http://localhost:3001",
+    preflight: { fixtureDiscovery: { featured: null } },
+  };
+  const seen = [];
+  const evidence = await captureLive(
+    { webUrl: "http://localhost:3000", intervalMs: MIN_BROWSER_REQUEST_INTERVAL_MS },
+    report,
+    {
+      captureWebVersion: async () => ({ sha: "abc1234" }),
+      captureApiVersion: async () => ({ sha: "abc1234", deploymentId: "deploy-a" }),
+      canonicalFixtureSnapshot: async () => null,
+      loadPlaywright: () => ({ chromium: { launch: async () => ({
+        newContext: async () => ({ newPage: async () => ({ on: () => {} }), close: async () => {} }),
+        close: async () => {},
+      }) } }),
+      runViewportChecks: async (_page, _url, viewport, _pacer, _report, canonical) => {
+        seen.push({ viewport, canonical });
+        return [{ id: "cross-surface-fixture-parity", passed: false,
+          evidence: "No priced fixture exists in the evaluated window.",
+          reproduction: ["Inspect the active slate"], scenarioIds: [], viewports: [viewport] }];
+      },
+    }
+  );
+  assert.equal(evidence.passed, false);
+  assert.equal(evidence.failure, undefined);
+  assert.deepEqual(seen.map(({ viewport }) => viewport), [MOBILE_VIEWPORT, DESKTOP_VIEWPORT]);
+  assert.ok(seen.every(({ canonical }) => canonical === null));
+});
+
 
 test("canonical fixture outside the three opening chips is selected from the full slate", async () => {
   const canonical = { fixtureId: "espn:eng.1:999", home: "Leeds", away: "Newcastle" };

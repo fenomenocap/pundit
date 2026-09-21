@@ -2450,6 +2450,14 @@ test("schema-17 rejects certainty, scoreline universals, counts and draw-mass co
     { expectNoCertaintyContradiction: true }
   ).assertions.noCertaintyContradiction, true);
   assert.equal(validateResponseCorrectness(
+    "**No guarantee**\nI can’t guarantee a winner. Arsenal is most likely at 93.47%, not a certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, true);
+  assert.equal(validateResponseCorrectness(
+    "I can’t guarantee a winner. Arsenal will win with 100% certainty.", [], season,
+    { expectNoCertaintyContradiction: true }
+  ).assertions.noCertaintyContradiction, false);
+  assert.equal(validateResponseCorrectness(
     "Pundit cannot guarantee a winner. Arsenal will win with 100% certainty.", [], season,
     { expectNoCertaintyContradiction: true }
   ).assertions.noCertaintyContradiction, false);
@@ -2573,6 +2581,19 @@ test("schema-17 rejects unsupported competition, fixture-status and capability-r
     "The most important input is market staleness; team-strength ratings also exist.", [], null,
     { expectNamedModelInput: true }
   ).assertions.namedModelInput, false);
+});
+
+test("table follow-up cannot pass by repeating standings instead of answering the caveat", () => {
+  const grounding = { kind: "competition", standings: [] };
+  const expectation = { expectTableFollowupAnswered: true };
+  assert.equal(validateResponseCorrectness(
+    "Man City lead with 15 points from 5 matches. The current top five are Man City, Arsenal and Brighton.",
+    [], grounding, expectation
+  ).assertions.tableFollowupAnswered, false);
+  assert.equal(validateResponseCorrectness(
+    "**Strongest caveat**\nSample size. Five matches are too few to settle the title race.",
+    [], grounding, expectation
+  ).assertions.tableFollowupAnswered, true);
 });
 
 test("schema-17 catches leading malformed fragments and named-player claims after abstention", () => {

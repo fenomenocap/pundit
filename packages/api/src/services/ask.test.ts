@@ -1516,6 +1516,16 @@ describe("current-news evidence hardening", () => {
       expect(certainty).toContain("Arsenal is the most likely champion at 93.5%, not a certainty");
       expect(certainty).not.toMatch(/Arsenal will win[^.]*100% certainty/i);
 
+      const changeFollowUp = deterministicGroundedResponse(
+        "Can you guarantee Arsenal will win, or what would change that view?",
+        season
+      );
+      expect(changeFollowUp).toMatch(/^I can’t guarantee a winner\./);
+      expect(changeFollowUp).toContain("Arsenal is the most likely champion at 93.5%");
+      expect(changeFollowUp).toContain("380 fixtures still to play");
+      expect(changeFollowUp).toMatch(/new results/i);
+      expect(changeFollowUp).not.toContain("**Top-four outlook**");
+
       const tableOnly = deterministicGroundedResponse(
         "Who is most likely to win the Premier League based on the current table?",
         season
@@ -1562,6 +1572,14 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("do not support");
       expect(answer).toMatch(/may look very different/i);
       expect(answer).not.toMatch(/will bear little resemblance/i);
+
+      const counterargument = deterministicGroundedResponse(
+        "Given that the current table cannot rank them, what is the strongest counterargument to that ranking?",
+        table
+      ) as string;
+      expect(counterargument).toContain("**Strongest caveat**");
+      expect(counterargument).toContain("Sample size");
+      expect(counterargument).not.toMatch(/^Brighton lead/);
     });
 
     it("abstains directly when the table cannot establish the clearest title path", () => {
@@ -3183,6 +3201,44 @@ describe("resolveAskContext", () => {
       [standing()],
       [{ home: "Arsenal", away: "Coventry City" }]
     )).toEqual({ tier: "season", competitionId: "eng.1" });
+  });
+
+  it("retains a season outlook for a narrow certainty follow-up", () => {
+    const history = [
+      { role: "user" as const, content: "Who is leading the Premier League title race right now?" },
+      { role: "assistant" as const, content: "Man City is most likely at 53.5%, not a guarantee." },
+    ];
+    expect(resolveAskContext(
+      "Can you guarantee Man City will win, or what would change that view?",
+      history,
+      undefined,
+      [],
+      [standing()]
+    )).toEqual({ tier: "season", competitionId: "eng.1" });
+    expect(resolveAskContext(
+      "Can you guarantee Man City will win the next match?",
+      history,
+      undefined,
+      [],
+      [standing()]
+    )).toEqual({ tier: "general" });
+    expect(resolveAskContext(
+      "What would change that view?",
+      history,
+      undefined,
+      [],
+      [standing()]
+    )).toEqual({ tier: "season", competitionId: "eng.1" });
+    expect(resolveAskContext(
+      "Can you guarantee Man City will win?",
+      [
+        { role: "user", content: "Rank the title race using the current table." },
+        { role: "assistant", content: "The table alone cannot establish a champion." },
+      ],
+      undefined,
+      [],
+      [standing()]
+    )).toEqual({ tier: "general" });
   });
 
   it("reports an active matchup whose model row is unavailable", () => {

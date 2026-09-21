@@ -694,6 +694,28 @@
       ]
     },
     {
+      "id": "season-certainty-follow-up",
+      "description": "A natural certainty-and-what-changes follow-up keeps the grounded title outlook instead of disclaiming its own prior answer.",
+      "kind": "json",
+      "turns": [
+        {
+          "question": "Who is leading the Premier League title race right now?",
+          "expectGrounding": "season",
+          "expectCompetitionId": "eng.1",
+          "expectSeasonRanking": true
+        },
+        {
+          "question": "Can you guarantee the leader will win, or what would change that view?",
+          "expectGrounding": "season",
+          "expectCompetitionId": "eng.1",
+          "expectNoCertaintyContradiction": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true,
+          "expectAnalystVoice": true
+        }
+      ]
+    },
+    {
       "id": "general-analysis-label",
       "description": "A general football question remains explicitly ungrounded, explains the high-line trade-off without reversing the space behind the defence, accurately describes Pundit's live club and frozen WC surfaces, and does not claim that no credible source exists.",
       "kind": "json",
