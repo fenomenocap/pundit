@@ -72,7 +72,7 @@ describe("planFederatedQueries", () => {
       "Give me the match briefing for Arsenal vs Chelsea.",
     ]) {
       const planned = planFederatedQueries(question, grounding, null);
-      expect(planned.some((query) => /team news injuries|predicted lineup|head coach/.test(query)))
+      expect(planned.some((query) => /team news injuries|predicted lineup|head coach|recent form/.test(query)))
         .toBe(false);
     }
   });

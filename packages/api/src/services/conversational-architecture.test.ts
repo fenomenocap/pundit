@@ -587,6 +587,17 @@ describe("V2 conversational architecture", () => {
     expect(tacticalWipe.answer).toMatch(/Arsenal should control this at home/);
     expect(tacticalWipe.answer).not.toMatch(/conflict on one or more requested facts/i);
     expect(tacticalWipe.answer).not.toMatch(/captured decimal/i);
+
+    const briefingKeep = await deliverAnswer({
+      ...base,
+      voice: "desk",
+      question: "Give me the match briefing for Arsenal vs Chelsea.",
+      hasHistory: false,
+      evidenceRequired: false,
+      answer: "Arsenal should control this at home through territory. Current reports conflict on one or more requested facts, so I’ve left those claims out.",
+    });
+    expect(briefingKeep.answer).toMatch(/Arsenal should control this at home/);
+    expect(briefingKeep.answer).not.toMatch(/conflict on one or more requested facts/i);
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {

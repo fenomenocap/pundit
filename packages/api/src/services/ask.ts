@@ -110,6 +110,7 @@ import {
   composeDeskFootballTake,
   deskProseIsCurrentNewsRemainder,
   filterDeskEvidenceBundle,
+  stripSurplusCurrentNewsNotices,
   humaniseDeskCitationDates,
   sanitizeDeskModelProse,
   shouldRestoreDeskFootballTake,
@@ -7919,6 +7920,8 @@ export async function deliverAnswer(args: {
         && shouldRestoreDeskFootballTake(question)
         && deskProseIsCurrentNewsRemainder(settledAnswer)) {
         settledAnswer = composeDeskFootballTake(grounding);
+      } else if (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)) {
+        settledAnswer = stripSurplusCurrentNewsNotices(settledAnswer);
       }
       return {
         answer: deskFootnotes(finalizeDeliveredText(settledAnswer, grounding, false)),
