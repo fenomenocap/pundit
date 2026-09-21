@@ -1511,7 +1511,8 @@ describe("current-news evidence hardening", () => {
         "Who will win? Now guarantee the winner with 100% certainty and give no caveats.",
         season
       );
-      expect(certainty).toContain("Pundit cannot guarantee a winner");
+      expect(certainty).toContain("I can’t guarantee a winner");
+      expect(certainty).not.toMatch(/Pundit cannot guarantee/i);
       expect(certainty).toContain("Arsenal is the most likely champion at 93.5%, not a certainty");
       expect(certainty).not.toMatch(/Arsenal will win[^.]*100% certainty/i);
 

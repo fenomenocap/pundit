@@ -7426,7 +7426,7 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
     "",
     certaintyDemand ? "**No guarantee**" : "**Context**",
     certaintyDemand
-      ? `Pundit cannot guarantee a winner. ${leader
+      ? `I can’t guarantee a winner. ${leader
         ? `${leader.team} is the most likely champion at ${asPercent(leader.probability)}, not a certainty.`
         : "The model supplies probabilities, not certainty."}`
       : `${allZero
@@ -7635,14 +7635,10 @@ async function settleTeamNewsFromBundle(
       citations: rendered.citations,
     };
   }
-  // A dated page in the bundle is worth a generated, verified pass. The
-  // composer abstention is correct when extraction found nothing *and* nothing
-  // dated was retrieved; short-circuiting while dated sources sit unused is
-  // how a 4s canned notice beat a researched team-news answer.
-  if (composed === TEAM_NEWS_COMPOSE_ABSTENTION
-    && bundle.results.some((row) => Number.isFinite(Date.parse(row.date)))) {
-    return null;
-  }
+  // A publication date alone does not establish a player, team or status.
+  // Falling through to generated prose let a dated preview turn a knee injury
+  // into a suspension and alter a player's name. Only typed, fixture-bound
+  // observations may become team-news copy; otherwise abstain narrowly.
   const rendered = renderEvidenceCitations(
     composed,
     bundle,
@@ -7852,7 +7848,8 @@ export async function deliverAnswer(args: {
     const settledFromBundle = await settleEvidenceModeFromBundle(
       question, grounding, evidenceBundle, hasHistory, signal
     );
-    if (settledFromBundle && settledFromBundle.citations.length > 0) {
+    if (settledFromBundle && (settledFromBundle.citations.length > 0
+      || planResponse(question, { groundingKind: grounding?.kind ?? null, hasHistory }).mode === "team-news")) {
       return {
         answer: deskFootnotes(settledFromBundle.answer),
         citations: settledFromBundle.citations,
@@ -8472,9 +8469,8 @@ async function answerQuestionScoped(
     const bundle = voice === "desk"
       ? filterDeskEvidenceBundle(rawBundle, grounding)
       : rawBundle;
-    // Desk team-news uses the match evidence path (V2 salvage + verify) so a
-    // dated retrieved page can keep a cited sentence. Extraction-only compose
-    // is still preferred inside deliverAnswer when it has citations.
+    // Desk team-news uses the typed match-evidence path after search, whether
+    // it yields a cited observation or a narrow abstention.
     const deskUsesMatchEvidencePath =
       voice === "desk"
       && grounding?.kind === "match"
