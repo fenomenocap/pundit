@@ -7518,18 +7518,11 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
           : "So ")
         + "one result moves a club several places, and this ordering may look "
         + "very different by the end of the season.";
-    return [
-      "**Strongest caveat**",
-      caveat,
-      "",
-      "**What it does establish**",
-      "The points, matches played and goal differences above are exact as supplied. "
-        + "What they do not support is a title-race ranking"
-        + (played < 6 ? " at this stage of the season" : "") + ".",
-      "",
-      "**Current table**",
-      ...tableRows,
-    ].join("\n");
+    return "The table's strongest caveat is sample size. "
+      + caveat.replace(/^Sample size\.\s*/, "") + " "
+      + "The points and goal differences are exact as supplied, but they do not "
+      + "support a title-race ranking"
+      + (played < 6 ? " at this stage of the season" : "") + ".";
   }
 
   const leader = rows[0];

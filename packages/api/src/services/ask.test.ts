@@ -1565,8 +1565,7 @@ describe("current-news evidence hardening", () => {
         "What is the strongest caveat to that table-based ranking?",
         table
       ) as string;
-      expect(answer).toContain("**Strongest caveat**");
-      expect(answer).toContain("Sample size");
+      expect(answer).toMatch(/^The table's strongest caveat is sample size\./);
       // The specific weakness of this table, not a generic hedge.
       expect(answer).toContain("level on points and separated only by goal difference");
       expect(answer).toContain("do not support");
@@ -1577,9 +1576,9 @@ describe("current-news evidence hardening", () => {
         "Given that the current table cannot rank them, what is the strongest counterargument to that ranking?",
         table
       ) as string;
-      expect(counterargument).toContain("**Strongest caveat**");
-      expect(counterargument).toContain("Sample size");
+      expect(counterargument).toMatch(/^The table's strongest caveat is sample size\./);
       expect(counterargument).not.toMatch(/^Brighton lead/);
+      expect(counterargument).not.toContain("**Current table**");
     });
 
     it("abstains directly when the table cannot establish the clearest title path", () => {
