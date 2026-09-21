@@ -35,6 +35,10 @@ export function hasCapturedForecast(fixture: Fixture): fixture is ForecastFixtur
   return fixture.xg !== null && fixture.model !== null && fixture.modelPick !== null;
 }
 
+export function isLivePricedFixture(fixture: Fixture | undefined): fixture is ForecastFixture {
+  return Boolean(fixture && fixture.status === "upcoming" && hasCapturedForecast(fixture));
+}
+
 export const MARKET_LABEL: Record<MarketKey, string> = {
   home: "Home",
   draw: "Draw",

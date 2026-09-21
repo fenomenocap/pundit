@@ -62,7 +62,7 @@ withheld by the server.
 
 `grounding` is one of:
 
-* **`kind: "match"`** — an active fixture in the 14-day window with model 1X2, O/U 2.5, BTTS, top scorelines, and available active market prices
+* **`kind: "match"`** — an active fixture in the 21-day window with model 1X2, O/U 2.5, BTTS, top scorelines, and available active market prices
 * **`kind: "fixture"`** — an authoritative/corroborated recognized fixture plus a non-priced capability; it contains no Pundit probabilities
 * **`kind: "competition"`** — ESPN standings for an enabled competition
 * **`kind: "season"`** — Premier League standings plus Monte Carlo title/top-four outlook, when the complete persisted season schedule and all required ratings are available

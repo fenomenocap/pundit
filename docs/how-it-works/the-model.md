@@ -1,6 +1,6 @@
 # The Model
 
-Pundit's match probabilities come from a **Dixon-Coles Poisson model** calibrated on a reviewed **ClubElo** ratings artifact and computed locally inside the API. The content-addressed ratings snapshot ships with a release; the active fixture set (14-day horizon across enabled competitions) is recomputed hourly without contacting ClubElo at runtime.
+Pundit's match probabilities come from a **Dixon-Coles Poisson model** calibrated on a reviewed **ClubElo** ratings artifact and computed locally inside the API. The content-addressed ratings snapshot ships with a release; the active fixture set (21-day horizon across enabled competitions) is recomputed hourly without contacting ClubElo at runtime.
 
 ### Active fixture model
 
@@ -29,7 +29,7 @@ This is separate from the per-fixture active cache — it answers "who wins the 
 
 ### How the desk uses it
 
-For a recognized, priced fixture in the 14-day window, Pundit treats the fixture's precomputed probabilities as ground truth. Every complete no-search match response is rendered deterministically from that grounding payload. MiniMax is reserved for evidence-required current turns and general/ungrounded open-ended analysis. Follow-ups that name a market already on the grid — 1X2, over/under 2.5 (including `o2.5`), BTTS, or likely scorelines — quote those facts. They do not fall back to restating the favourite.
+For a recognized, priced fixture in the 21-day window, Pundit treats the fixture's precomputed probabilities as ground truth. Every complete no-search match response is rendered deterministically from that grounding payload. MiniMax is reserved for evidence-required current turns and general/ungrounded open-ended analysis. Follow-ups that name a market already on the grid — 1X2, over/under 2.5 (including `o2.5`), BTTS, or likely scorelines — quote those facts. They do not fall back to restating the favourite.
 
 Pundit then:
 

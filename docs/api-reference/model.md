@@ -1,6 +1,6 @@
 # Model
 
-Cached output from Pundit's local Dixon-Coles engine, using the release's pinned ClubElo strength artifact, for the **active club-fixture set** (14-day horizon). See [The Model](../how-it-works/the-model.md).
+Cached output from Pundit's local Dixon-Coles engine, using the release's pinned ClubElo strength artifact, for the **active club-fixture set** (21-day horizon). See [The Model](../how-it-works/the-model.md).
 
 ### `GET /api/model/active`
 

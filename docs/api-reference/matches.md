@@ -8,7 +8,7 @@ Registry of enabled competitions with id, name, type, and priority.
 
 ### `GET /api/matches/active`
 
-Fixtures in the 14-day active window used for model grounding and featured chat suggestions.
+Fixtures in the 21-day active window used for model grounding and featured chat suggestions.
 
 ### `GET /api/matches/upcoming`
 

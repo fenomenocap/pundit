@@ -367,9 +367,9 @@ export const useDesk = create<State>()(
           tickets: applied.tickets,
           cash: applied.cash,
           // Never preserve a persisted fixture that is absent from the live
-          // snapshot. When the live slate is empty/unavailable, an old static
-          // ID must not leak back into chat as authoritative fixture context.
-          selectedId: resolveHydratedSelection(current.selectedId, open, settled),
+          // priced slate. Finished results stay on the rail for paper, but they
+          // must not leak back into chat as an active forecast pin.
+          selectedId: resolveHydratedSelection(current.selectedId, open),
           liveSource: source,
           slateEpoch: current.slateEpoch + 1,
         });

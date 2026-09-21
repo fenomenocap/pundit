@@ -38,6 +38,18 @@ describe("active fixtures", () => {
     )).toBe(false);
   });
 
+  it("keeps the next round after an international-break gap inside the 21-day horizon", () => {
+    const now = Date.parse("2026-09-21T15:00:00.000Z");
+    expect(isActiveFootballMatch(
+      baseMatch({ utcDate: "2026-10-10T11:30:00.000Z" }),
+      now,
+    )).toBe(true);
+    expect(isActiveFootballMatch(
+      baseMatch({ utcDate: "2026-10-13T15:00:00.000Z" }),
+      now,
+    )).toBe(false);
+  });
+
   it("keeps in-play fixtures even when kickoff is in the past", () => {
     const now = Date.parse("2026-07-28T12:00:00.000Z");
     const match = baseMatch({

@@ -78,7 +78,7 @@ packages/api/src/
     football-data.ts               — ESPN fixtures/results/standings cache
     club-form.ts                   — last-5 league form, table row, and scorers from that cache
     fixture-registry.ts            — recognized identities, capabilities, atomic persistence
-    active-fixtures.ts             — 14-day active fixture index
+    active-fixtures.ts             — 21-day active fixture index
     featured-fixtures.ts           — cross-comp featured selector
     fixture-market-sources.ts      — Stake/Kalshi/Polymarket by market profile
     model-market-odds.ts           — normalized active fixture 1X2 cache
