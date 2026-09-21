@@ -50,6 +50,19 @@ const DESK_CURRENT_NEWS_REMAINDER = [
   /the model has a lean on this fixture/i,
 ];
 
+/** Drop conflict/abstention notices when a football take already survived. */
+export function stripSurplusCurrentNewsNotices(text: string): string {
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const kept = sentences.filter((sentence) =>
+    !DESK_CURRENT_NEWS_REMAINDER.some((pattern) => pattern.test(sentence))
+  );
+  if (!kept.length) return text.trim();
+  return kept.join(" ").replace(/\s{2,}/g, " ").trim();
+}
+
 /** True when verification left only an abstention / conflict notice. */
 export function deskProseIsCurrentNewsRemainder(text: string): boolean {
   const sentences = text

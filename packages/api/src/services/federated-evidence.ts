@@ -137,9 +137,8 @@ function newsFanOutQueries(
     planned.push(`${fixture} betting odds decimal over 2.5 goals both teams to score`);
     planned.push(`${fixture} odds movement line move opening price`);
   } else if (isSchematicMatchTake(question)) {
-    if (!skipForm) {
-      planned.push(`${match.home} ${match.away} recent form last 5 matches results`);
-    }
+    // Strength-and-shape take from the match card. Form/news packets collide
+    // and append a conflict notice onto an otherwise complete briefing.
   } else {
     planned.push(`${fixture} team news injuries suspensions predicted lineup`);
     if (!skipForm) {
