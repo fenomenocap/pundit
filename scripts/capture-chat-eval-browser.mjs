@@ -475,8 +475,10 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
   progress.phase = "desk-selection";
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "Ask a question" }).waitFor({ timeout: 30_000 });
-  await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
-  const featuredFixture = await collectFeaturedFixture(page, canonical);
+  if (canonical) {
+    await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
+  }
+  const featuredFixture = canonical ? await collectFeaturedFixture(page, canonical) : null;
   const chatMatch = Boolean(featuredFixture);
   let fixtureSurface = null;
   let modelSurface = null;
@@ -518,9 +520,11 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
 
   progress.phase = "desk-selection";
   await page.goto(webUrl, { waitUntil: "domcontentloaded" });
-  await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
+  if (canonical) {
+    await page.getByTestId("desk-featured-fixture").first().waitFor({ timeout: 30_000 }).catch(() => null);
+  }
   progress.phase = "desk-parity";
-  const opener = await collectFeaturedFixture(page, canonical);
+  const opener = canonical ? await collectFeaturedFixture(page, canonical) : null;
   if (opener && featuredFixture) {
     const { home, away } = featuredFixture;
     const openingResult = await clickFeaturedFixture(page, opener, pacer);
@@ -662,9 +666,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     const skipped = "No attributed Desk featured fixture was available.";
     for (const id of [
       "fixture-context-retention",
-      "new-chat-clears-context",
       "analyst-multi-turn-flow",
-      "visible-analyst-loading-state",
     ]) {
       checks[id] = recordViewport(checks[id], viewport, {
         passed: false,
@@ -711,6 +713,27 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
       reproduction: reproduction.candidate,
     }
   );
+
+  if (!opener) {
+    checks["visible-analyst-loading-state"] = recordViewport(
+      checks["visible-analyst-loading-state"], viewport, {
+        passed: candidateResult.loadingObserved === true,
+        evidence: `Visible "Writing the take…" state observed=${candidateResult.loadingObserved === true} during the candidate question.`,
+        reproduction: ["Ask about an unconfirmed matchup", "Observe the writing state before the answer"],
+      }
+    );
+    await page.getByRole("button", { name: "New Chat" }).click();
+    const transcriptGone = await page.getByTestId("desk-user-bubble").count() === 0
+      && await page.getByTestId("desk-pundit-bubble").count() === 0;
+    const pinnedAfterReset = await page.getByText(/^Pinned ·/).first().isVisible().catch(() => false);
+    checks["new-chat-clears-context"] = recordViewport(
+      checks["new-chat-clears-context"], viewport, {
+        passed: transcriptGone && !pinnedAfterReset,
+        evidence: `New Chat cleared the candidate conversation=${transcriptGone}; pinned context visible=${pinnedAfterReset}.`,
+        reproduction: ["Ask about an unconfirmed matchup", "Choose New Chat", "Inspect the cleared transcript"],
+      }
+    );
+  }
 
   const askRequestsBeforeOversized = traffic.apiAskRequestCount;
   const pacedStartsBeforeOversized = pacer.starts.length;
@@ -859,7 +882,9 @@ async function captureLive(options, report, dependencies = {}) {
     progress.collected.apiVersionBefore = apiVersionBefore;
     const canonical = await captureCanonical(report);
     progress.collected.canonical = canonical;
-    if (!canonical?.reportMatches) throw new Error("Canonical report fixture is unavailable or has changed");
+    if (report?.preflight?.fixtureDiscovery?.featured?.recognizedFixtureId && !canonical?.reportMatches) {
+      throw new Error("Canonical report fixture is unavailable or has changed");
+    }
     progress.phase = "browser-launch";
     const { chromium } = playwright();
     const browser = await chromium.launch();

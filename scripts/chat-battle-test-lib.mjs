@@ -838,6 +838,10 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     const deniesAvailableHistory = /\b(?:i\s+(?:do not|don't)\s+have|there\s+(?:is|was)\s+no)\b[^.!?\n]{0,70}\b(?:previous|prior|earlier)\s+(?:answer|response|message)\b[^.!?\n]{0,40}\b(?:to\s+(?:refer|reference)|available)\b/i.test(text);
     assertions.noHistoryDenial = !deniesAvailableHistory;
   }
+  if (expectation.expectTableFollowupAnswered) {
+    assertions.tableFollowupAnswered = /\b(?:sample size|current table alone|standings alone|table does not establish)\b/i
+      .test(text.slice(0, 250));
+  }
   if (expectation.expectAccurateProductScope) {
     const wcOnly = /\bpundit(?:'s)?\b[^.!?\n]{0,100}\b(?:evaluation|data|model|coverage)\b[^.!?\n]{0,100}\b(?:world cup|wc)\b[^.!?\n]{0,40}\bonly\b|\bpundit(?:'s)?\b[^.!?\n]{0,80}\bonly\b[^.!?\n]{0,80}\b(?:world cup|wc)\b/i.test(text);
     const inventedTacticalInputs = /\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,100}\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,50}\b(?:already\s+)?(?:captur|track|includ|us|show)\w*\b|\bpundit(?:'s)?\b[^.!?\n]{0,40}\bmatch forecasts?\b[^.!?\n]{0,100}\b(?:pressing intensity|counter-?pressing|transition(?:al)? xg|xg[^.!?\n]{0,24}counter-?attacks?)\b[^.!?\n]{0,40}\b(?:captur|track|includ|us|show)\w*\b|\b(?:the )?model\b[^.!?\n]{0,100}\b(?:captur|treat|model|track|includ)\w*\b[^.!?\n]{0,100}\b(?:pressing intensity|conceded[- ]shot variance|variance of conceded shots)\b/i.test(text);
@@ -889,7 +893,7 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     // A refusal and a later guarantee must not cancel each other out. Split
     // sentences, Markdown lines and explicit contrast clauses, then apply the
     // negation only to the clause that contains it.
-    const certaintyRegions = text.replaceAll("**", "")
+    const certaintyRegions = text.replaceAll("**", "").replace(/[‘’]/g, "'")
       .split(/(?<=[.!?])\s+|\n+|[;:–—]\s*|(?:,\s*|\s+)(?:but|however|yet|although|though|nevertheless|nonetheless)(?:,\s*|\s+)|(?:,\s*|\s+)even\s+so(?:,\s*|\s+)|(?:\s+and\s+|,\s+)(?=[^.!?\n]{0,60}(?:100\s*%|guarantee\w*[^.!?\n]{0,40}\b(?:win|winner|champion)|\b(?:will|must)\b|certain\s+champion|definitely\s+(?:the\s+)?champion|no doubt))/i)
       .map((region) => region.trim())
       .filter(Boolean);
@@ -1988,7 +1992,8 @@ export function generateAdversarialScenarios(seed, featured) {
           expectCompetitionId: "eng.1",
           expectNoUngroundedProbability: true,
           expectDirectAnswer: true,
-          expectNarrowFollowup: true
+          expectNarrowFollowup: true,
+          expectTableFollowupAnswered: true
         }
       ]
     },
