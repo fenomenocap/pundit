@@ -6,7 +6,7 @@ No. Pundit doesn't run markets, hold funds, or offer any way to place a wager. I
 **Which questions receive model-grounded answers?**
 Four tiers:
 
-1. **Match** — recognized, policy-eligible fixtures in the 14-day active window (Premier League and UCL qualifiers) with the required model inputs
+1. **Match** — recognized, policy-eligible fixtures in the 21-day active window (Premier League and UCL qualifiers) with the required model inputs
 2. **Competition** — league table / standings questions for enabled competitions
 3. **Season** — Premier League title race and top-four outlook (Monte Carlo over remaining fixtures)
 4. **General** — everything else, clearly labelled as not grounded in Pundit's model

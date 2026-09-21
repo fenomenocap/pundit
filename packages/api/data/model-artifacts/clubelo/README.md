@@ -5,7 +5,7 @@ selector pins an immutable `<payloadSha256>.json` artifact. Runtime code reads
 and validates those local files only; it never contacts ClubElo.
 
 Refresh after each Premier League weekend (Sunday night / Monday) and after
-UEFA Champions League midweeks that sit in the active 14-day window. Target
+UEFA Champions League midweeks that sit in the active 21-day window. Target
 age is **7 days**. The 30-day gate still fails closed. Runtime never fetches.
 
 ```bash

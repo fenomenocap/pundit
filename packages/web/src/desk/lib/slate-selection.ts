@@ -4,14 +4,12 @@ type SelectableFixture = {
   away: string;
 };
 
-/** Resolve persisted selection only against the authoritative hydrated slate. */
+/** Resolve persisted chat/desk selection only against the live priced slate. */
 export function resolveHydratedSelection(
   selectedId: string,
   open: readonly SelectableFixture[],
-  settled: readonly SelectableFixture[],
 ): string {
-  if (open.some((fixture) => fixture.id === selectedId)
-    || settled.some((fixture) => fixture.id === selectedId)) {
+  if (open.some((fixture) => fixture.id === selectedId)) {
     return selectedId;
   }
   return "";

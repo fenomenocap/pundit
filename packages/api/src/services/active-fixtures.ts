@@ -1,7 +1,9 @@
 import { getEnabledCompetitions } from "../config/competitions";
 import { FootballMatch, getCachedMatches } from "./football-data";
 
-export const ACTIVE_FIXTURE_HORIZON_MS = 14 * 24 * 60 * 60 * 1000;
+/** Keep this aligned with ESPN's default lookahead so a round after a break still prices. */
+export const ACTIVE_FIXTURE_HORIZON_DAYS = 21;
+export const ACTIVE_FIXTURE_HORIZON_MS = ACTIVE_FIXTURE_HORIZON_DAYS * 24 * 60 * 60 * 1000;
 const PLACEHOLDER_TEAM = /^(tbd|unknown)$/i;
 const BRACKET_PLACEHOLDER = /\b(?:winner|loser)\b/i;
 
