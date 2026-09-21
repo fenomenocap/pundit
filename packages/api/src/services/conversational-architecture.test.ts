@@ -425,6 +425,37 @@ describe("V2 conversational architecture", () => {
     expect(nestedNewsDraft.answer).not.toMatch(/directAnswer|factIds|citedClaims|\{\{/);
     expect(nestedNewsDraft.answer).toBe(TEAM_NEWS_COMPOSE_ABSTENTION);
 
+    // A dated preview is not itself a verified player-availability fact.
+    // The model's wording must never replace an unextracted name or turn an
+    // injury into a suspension, including through the desk-voice path.
+    for (const voice of [undefined, "desk"] as const) {
+      for (const generated of [
+        "Kaye Furo is suspended for Chelsea [[S1]].",
+        "Arsenal are missing Palmer through suspension [[S1]].",
+      ]) {
+        const guarded = await deliverAnswer({
+          ...base,
+          voice,
+          question: "What is the latest team news?",
+          evidenceRequired: true,
+          bundle: {
+            queries: ["Arsenal vs Chelsea team news"],
+            providerCalls: 1,
+            results: [{
+              id: "S1", title: "Arsenal vs Chelsea match preview",
+              url: "https://example.com/preview", date: "2026-09-11T08:00:00Z",
+              snippet: "A match preview with no attributable player availability update.",
+              tier: "news" as const,
+            }],
+          },
+          answer: generated,
+        });
+        expect(guarded.answer).toBe(TEAM_NEWS_COMPOSE_ABSTENTION);
+        expect(guarded.citations).toEqual([]);
+        expect(guarded.verification.status).toBe("abstain");
+      }
+    }
+
     const teamNewsQuoted = await deliverAnswer({
       ...base,
       question: "What is the latest team news?",
@@ -450,6 +481,29 @@ describe("V2 conversational architecture", () => {
     expect(teamNewsQuoted.answer).not.toMatch(/56\.3%/);
     expect(teamNewsQuoted.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(teamNewsQuoted.verification.status).toBe("verified");
+
+    const exactNames = await deliverAnswer({
+      ...base,
+      grounding: { ...match, fixtureId: "eng.1:brentford-chelsea", home: "Brentford", away: "Chelsea" },
+      question: "Any injury or lineup news for Brentford vs Chelsea?",
+      evidenceRequired: true,
+      bundle: {
+        queries: ["Brentford vs Chelsea team news"],
+        providerCalls: 1,
+        results: [{
+          id: "S1", title: "Brentford vs Chelsea team news",
+          url: "https://example.com/brentford-chelsea", date: "2026-09-11T08:00:00Z",
+          snippet: "Antoni Milambo is ruled out for Brentford with a knee injury. Kafe Furo is ruled out for Brentford with an injury.",
+          tier: "news" as const,
+        }],
+      },
+      answer: "Brentford 36.3%. Antoni Milambo is suspended and Kaye Furo is injured [[S1]].",
+    });
+    expect(exactNames.answer).toContain("Antoni Milambo");
+    expect(exactNames.answer).toContain("Kafe Furo");
+    expect(exactNames.answer).not.toMatch(/suspend|Kaye Furo|36\.3%/i);
+    expect(exactNames.citations.map((citation) => citation.id)).toEqual(["S1"]);
+    expect(exactNames.verification.status).toBe("verified");
 
     const deskNews = await deliverAnswer({
       ...base,
