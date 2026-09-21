@@ -107,9 +107,12 @@ import {
 import { composeMatchResponse } from "./response-composer";
 import {
   DESK_BOARD_FALLBACK,
+  composeDeskFootballTake,
+  deskProseIsCurrentNewsRemainder,
   filterDeskEvidenceBundle,
   humaniseDeskCitationDates,
   sanitizeDeskModelProse,
+  shouldRestoreDeskFootballTake,
   stripDeskBoardRecitals,
   writeDeskProse,
 } from "./desk-voice";
@@ -117,6 +120,7 @@ import { validateAnalystDraft, salvageCitedClaimProse, containsAnalystDraftSynta
 import { buildResponseFacts } from "./response-facts";
 import {
   DESK_COMPOSER_MODES,
+  isSchematicMatchTake,
   planResponse,
   responsePresentation,
   type ResponsePresentation,
@@ -1040,6 +1044,7 @@ function planTurnEvidenceQueries(
 ): string[] {
   const planned = planEvidenceQueries(question, grounding, query);
   if (planned.length || voice !== "desk") return planned;
+  if (grounding?.kind === "match" && isSchematicMatchTake(question)) return [];
   return planEvidenceQueries(
     question,
     grounding,
@@ -7885,6 +7890,10 @@ export async function deliverAnswer(args: {
       || (!rawLooksLikeDraft && prepared ? prepared : "")
       || await writeDeskProse(question, grounding, history, signal, evidenceBundle);
     if (prose) {
+      const deskPlan = planResponse(question, {
+        groundingKind: grounding?.kind ?? null,
+        hasHistory,
+      });
       const checked = candidateUnrecognized
         ? {
             answer: prose,
@@ -7898,14 +7907,19 @@ export async function deliverAnswer(args: {
       const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
         checked.answer,
         checked.verification,
-        true
+        deskPlan.evidenceRequired
       );
       const rendered = renderEvidenceCitations(evidenceSafeAnswer, evidenceBundle, true);
-      const settledAnswer = dropEmptyEmphasis(
+      let settledAnswer = dropEmptyEmphasis(
         dropOrphanedSectionLabels(
           dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, evidenceBundle)))
         )
       );
+      if (grounding?.kind === "match"
+        && shouldRestoreDeskFootballTake(question)
+        && deskProseIsCurrentNewsRemainder(settledAnswer)) {
+        settledAnswer = composeDeskFootballTake(grounding);
+      }
       return {
         answer: deskFootnotes(finalizeDeliveredText(settledAnswer, grounding, false)),
         citations: rendered.citations,
@@ -8503,7 +8517,7 @@ async function answerQuestionScoped(
           bundle,
           client,
           question,
-          evidenceRequired: true,
+          evidenceRequired: deskPlan.evidenceRequired,
           candidateUnrecognized,
           hasHistory: history.length > 0,
           structuredDraftExpected: false,
