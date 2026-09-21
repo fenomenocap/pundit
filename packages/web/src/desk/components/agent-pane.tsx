@@ -376,6 +376,12 @@ export function AgentPane() {
 
 function Bubble({ msg }: { msg: ChatMsg }) {
   const f = msg.fixtureId ? getFixture(msg.fixtureId) : undefined;
+  const groundingLabel = msg.grounding === undefined ? null
+    : msg.grounding?.kind === "season" ? `Season outlook · ${msg.grounding.competition}`
+      : msg.grounding?.kind === "competition" ? `Current table · ${msg.grounding.competition}`
+        : msg.grounding?.kind === "match" ? "Match forecast"
+          : msg.grounding?.kind === "fixture" ? "Fixture context"
+            : "General analysis";
   if (msg.role === "user") {
     return (
       <div className="flex justify-end">
@@ -392,6 +398,11 @@ function Bubble({ msg }: { msg: ChatMsg }) {
     <div className="min-w-0 max-w-full break-words [overflow-wrap:anywhere] sm:max-w-[40rem]" data-testid="desk-pundit-bubble">
       <div className="flex items-baseline gap-2 mb-1.5">
         <span className="eyebrow text-accent">Pundit</span>
+        {groundingLabel ? (
+          <span data-testid="desk-grounding-label" className="min-w-0 truncate text-2xs text-subtle">
+            {groundingLabel}
+          </span>
+        ) : null}
         {f ? (
           <span className="text-2xs text-subtle">
             {TEAMS[f.home].short}–{TEAMS[f.away].short}
