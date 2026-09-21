@@ -7,6 +7,7 @@ import {
   card,
   composeDeskFootballTake,
   deskProseIsCurrentNewsRemainder,
+  stripSurplusCurrentNewsNotices,
   filterDeskEvidenceRows,
   formatSearchEvidence,
   humaniseDeskCitationDates,
@@ -212,6 +213,9 @@ describe("desk football-take floor", () => {
     expect(shouldRestoreDeskFootballTake("Give me the match briefing for Arsenal vs Leeds United.")).toBe(true);
     expect(shouldRestoreDeskFootballTake("Tactical matchup")).toBe(true);
     expect(shouldRestoreDeskFootballTake("What is the latest team news?")).toBe(false);
+    expect(stripSurplusCurrentNewsNotices(
+      "Arsenal should control this at home. Current reports conflict on one or more requested facts, so I’ve left those claims out."
+    )).toBe("Arsenal should control this at home.");
   });
 });
 
