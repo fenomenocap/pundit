@@ -22,7 +22,7 @@ else
   EXPECTED_WEB_SHA="$(bash "$SCRIPT_DIR/resolve-deployed-sha.sh" web)"
 fi
 EXPECTED_REGISTRY_MODE="${3:-${EXPECTED_REGISTRY_MODE:-enabled}}"
-POLL_ATTEMPTS="${VERIFY_PROD_POLL_ATTEMPTS:-40}"
+POLL_ATTEMPTS="${VERIFY_PROD_POLL_ATTEMPTS:-48}"
 POLL_INTERVAL_SECONDS="${VERIFY_PROD_POLL_INTERVAL_SECONDS:-5}"
 
 json_sha() {
@@ -59,19 +59,53 @@ echo "API:        $EXPECTED_API_SHA"
 echo "web:        $EXPECTED_WEB_SHA"
 echo "registry:   $EXPECTED_REGISTRY_MODE"
 
+startup_poll_passed() {
+  local startup_http="$1"
+  local health_http="$2"
+  local served_sha="$3"
+  local poll_json
+  poll_json=$(node "$SCRIPT_DIR/verify-prod-lib.mjs" startup-poll \
+    --startup "$startup_http" \
+    --health "$health_http" \
+    --served "$served_sha" \
+    --floor "$EXPECTED_API_SHA")
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["pass"])' <<<"$poll_json"
+}
+
+startup_poll_reason() {
+  local startup_http="$1"
+  local health_http="$2"
+  local served_sha="$3"
+  local poll_json
+  poll_json=$(node "$SCRIPT_DIR/verify-prod-lib.mjs" startup-poll \
+    --startup "$startup_http" \
+    --health "$health_http" \
+    --served "$served_sha" \
+    --floor "$EXPECTED_API_SHA")
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["reason"])' <<<"$poll_json"
+}
+
 echo "=== 2. Poll API startup/version ==="
 API_SHA=""
+STARTUP_DEFERRED=""
 for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
   STARTUP_HTTP=$(curl -sS -o /dev/null -w "%{http_code}" "$API_URL/startup" || true)
+  HEALTH_HTTP=$(curl -sS -o /dev/null -w "%{http_code}" "$API_URL/health" || true)
   API_VERSION=$(curl -fsS "$API_URL/version" 2>/dev/null || true)
   API_SHA=$(printf '%s' "$API_VERSION" | json_sha 2>/dev/null || true)
-  if [[ "$STARTUP_HTTP" == "200" ]] && sha_matches "$API_SHA" "$EXPECTED_API_SHA"; then
-    echo "OK (SHA $API_SHA)"
+  if [[ "$(startup_poll_passed "$STARTUP_HTTP" "$HEALTH_HTTP" "$API_SHA")" == "True" ]]; then
+    STARTUP_REASON=$(startup_poll_reason "$STARTUP_HTTP" "$HEALTH_HTTP" "$API_SHA")
+    if [[ "$STARTUP_REASON" == "rollout-proxy-502" ]]; then
+      STARTUP_DEFERRED="yes"
+      echo "OK (SHA $API_SHA; /startup HTTP 502 during rollout, /health ok — deferring to /ready)"
+    else
+      echo "OK (SHA $API_SHA)"
+    fi
     break
   fi
   if [[ "$attempt" -eq "$POLL_ATTEMPTS" ]]; then
     echo "FAIL: API did not serve ready startup and a SHA at or after $EXPECTED_API_SHA"
-    echo "      /startup HTTP $STARTUP_HTTP, served SHA ${API_SHA:-missing} ($(sha_state "$API_SHA" "$EXPECTED_API_SHA"))"
+    echo "      /startup HTTP $STARTUP_HTTP, /health HTTP $HEALTH_HTTP, served SHA ${API_SHA:-missing} ($(sha_state "$API_SHA" "$EXPECTED_API_SHA"))"
     exit 1
   fi
   sleep "$POLL_INTERVAL_SECONDS"
@@ -106,12 +140,22 @@ echo "OK"
 
 echo "=== 5. API ready ==="
 READY_TMP=$(mktemp)
-READY_HTTP=$(curl -sS -w "%{http_code}" -o "$READY_TMP" "$API_URL/ready" || true)
-if [[ "$READY_HTTP" != "200" ]]; then
-  echo "FAIL: /ready returned HTTP $READY_HTTP (expected 200)"
-  rm -f "$READY_TMP"
-  exit 1
-fi
+READY_HTTP=""
+for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
+  READY_HTTP=$(curl -sS -w "%{http_code}" -o "$READY_TMP" "$API_URL/ready" || true)
+  if [[ "$READY_HTTP" == "200" ]]; then
+    break
+  fi
+  if [[ "$attempt" -eq "$POLL_ATTEMPTS" ]]; then
+    echo "FAIL: /ready returned HTTP $READY_HTTP (expected 200)"
+    if [[ "$STARTUP_DEFERRED" == "yes" ]]; then
+      echo "      startup poll deferred on rollout /startup 502; readiness never converged"
+    fi
+    rm -f "$READY_TMP"
+    exit 1
+  fi
+  sleep "$POLL_INTERVAL_SECONDS"
+done
 if ! grep -q '"status"' "$READY_TMP"; then
   echo "FAIL: /ready JSON missing status field"
   cat "$READY_TMP"

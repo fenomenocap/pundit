@@ -55,6 +55,9 @@ jobs:
       - name: Test deployed SHA resolution
         run: pnpm test:deployed-sha
 
+      - name: Test verify-prod startup poll
+        run: pnpm test:verify-prod
+
       - name: Build web
         run: pnpm --filter @sports-predict/web build
 
