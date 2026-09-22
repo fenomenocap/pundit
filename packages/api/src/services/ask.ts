@@ -7726,6 +7726,13 @@ export function closedGroundedAnswer(
       ? composeMatchResponse(question, grounding, plan)
       : null;
   }
+  // A competition or season payload answers only owned table / outlook facts.
+  // Injury, lineup, manager and other current-external cues still owe search.
+  // Settling the table here shipped standings while presentation said team-news.
+  if ((grounding?.kind === "competition" || grounding?.kind === "season")
+    && deterministicSearchQuery(question, "", grounding)) {
+    return null;
+  }
   return deterministicGroundedResponse(question, grounding);
 }
 

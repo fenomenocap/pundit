@@ -283,12 +283,15 @@ Keys are managed in Railway for production and in the gitignored repo-root `.env
 
 ### Work in progress (uncommitted, ~1,900 insertions)
 
-The **search provider chain and credential split** is built but not yet committed:
+Brave search and a dedicated `MINIMAX_INFERENCE_API_KEY` are done paths that must
+not be re-added; answers and search use `OPENROUTER_API_KEY`.
 
-- `web-search.ts` (+935) — rewritten as a typed-outcome provider chain: `WebSearchOutcome`, per-provider `ProviderHealth`, `withSearchQuestion` scoping, bounded JSON reads, `Retry-After`-aware backoff, concurrency slots, Brave provider, configurable chain order.
-- `ask.ts` (+247) — `InferenceStatus`, dedicated inference credential, `getInferenceStatus()`.
+The **search provider chain** work that was in flight:
+
+- `web-search.ts` (+935) — rewritten as a typed-outcome provider chain: `WebSearchOutcome`, per-provider `ProviderHealth`, `withSearchQuestion` scoping, bounded JSON reads, `Retry-After`-aware backoff, concurrency slots, configurable chain order.
+- `ask.ts` (+247) — `InferenceStatus`, `getInferenceStatus()`.
 - `index.ts` (+17) — `webSearch` and `inference` blocks on `/ready`.
-- `.env.example` (+37) and `CLAUDE.md` — documenting the split and the failover requirement.
+- `.env.example` (+37) and `CLAUDE.md` — documenting current search/inference credentials.
 - Tests: `web-search.test.ts` (+669), `readiness-route.test.ts` (+128), `ask.test.ts` (+117).
 
 Also untracked: `.cursor/rules/prediction-model-improvement.mdc`.

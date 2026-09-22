@@ -1451,6 +1451,25 @@ describe("current-news evidence hardening", () => {
         .toBe(deterministicGroundedResponse(question, table));
     });
 
+    it("does not settle the table when the question asks for current team news", () => {
+      const table = buildCompetitionGrounding("eng.1", [
+        {
+          competitionId: "eng.1", position: 1, team: "Man City", playedGames: 5,
+          won: 5, draw: 0, lost: 0, points: 15, goalsFor: 12, goalsAgainst: 4,
+          goalDifference: 8, group: null, advanced: false,
+        },
+        {
+          competitionId: "eng.1", position: 2, team: "Arsenal", playedGames: 5,
+          won: 4, draw: 0, lost: 1, points: 12, goalsFor: 10, goalsAgainst: 6,
+          goalDifference: 4, group: null, advanced: false,
+        },
+      ], new Date("2026-09-22T07:57:47.409Z"));
+      const question =
+        "What is the latest Arsenal injury and team news ahead of their next Premier League match?";
+      expect(closedGroundedAnswer(question, table)).toBeNull();
+      expect(deterministicSearchQuery(question, "", table)).toMatch(/injury|team news/i);
+    });
+
     it("does not silently rank a title race from the table when the outlook is unavailable", () => {
       const table = buildCompetitionGrounding("eng.1", [
         {
