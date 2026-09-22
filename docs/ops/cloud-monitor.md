@@ -111,12 +111,12 @@ important.
 
 ```json
 "webSearch": {
-  "lastGoodProvider": "minimax",
+  "lastGoodProvider": "openrouter",
   "lastGoodAt": "2026-08-11T10:31:02.104Z",
   "consecutiveFailures": 0,
   "totalSearches": 41,
   "providerFailures": {},
-  "enabledProviders": ["minimax"]
+  "enabledProviders": ["openrouter"]
 }
 ```
 
@@ -126,15 +126,14 @@ Alert on either of:
 - `lastGoodProvider` stuck at an old `lastGoodAt` while `totalSearches` climbs — searches
   are running but none are succeeding.
 
-**Why the primary is the fragile part.** MiniMax's search endpoint
-(`POST /v1/coding_plan/search`) is undocumented; it was identified from the source of
-MiniMax's published `minimax-coding-plan-mcp` server. It uses the same key and coding-plan
-quota as inference, so it adds no vendor or bill, but it can change shape without notice.
+**Why search can look empty when it is not.** Search calls OpenRouter chat completions
+with `openrouter:web_search` and keeps `url_citation` pages. A reply with no citation
+and no recorded search is `malformed_response`, not an empty web. The answer client
+does not receive that tool.
 
-**Recovery** is a code change: the response shape is parsed in one place (`web-search.ts`,
-`minimaxProvider.run`), so adapting to a changed payload — or slotting in a replacement
-backend — touches that file only. There is deliberately no second vendor configured; search
-rides the key and quota Pundit already pays for.
+**Recovery** is a code change in `openRouterProvider.run` inside `web-search.ts`.
+Search and answers share `OPENROUTER_API_KEY`. There is no Brave or MiniMax search
+provider.
 
 ### Step 1c — Rate limiting and replica count
 

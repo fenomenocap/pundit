@@ -1,27 +1,28 @@
 // Web search for the chat tier.
 //
-// Anthropic's hosted web_search server tool had no MiniMax equivalent, so
-// Pundit executes search itself and hands results back as a tool_result.
+// Pundit executes search itself and hands results back as evidence. The answer
+// model never receives a web-search tool, so it cannot browse and write the
+// reply.
 //
-// Search is a *provider chain*, not a vendor. MiniMax's own search endpoint is
-// still first by default because it rides a key Pundit already pays for, but it
-// is undocumented, subscription-metered, and throttles under exactly the load a
-// researched answer creates -- so it is treated as an optional provider. A
-// second, documented provider (Brave) sits behind the same seam and takes over
-// automatically. Either can be made primary through WEB_SEARCH_PROVIDER_ORDER
-// without touching this file.
+// Search is a provider chain. The provider calls OpenRouter chat completions
+// with the pinned DeepSeek model and `openrouter:web_search` (Exa). DeepSeek
+// only decides to run that one search. The model's prose is discarded; the
+// cited pages are the evidence. The same OPENROUTER_API_KEY funds answers.
 //
 // Two invariants hold the design together:
 //   1. A provider failure is never reported as "no results". The caller gets a
 //      typed outcome and can degrade on purpose. Silent [] is what turned a
-//      rate limit into "the model got worse".
+//      rate limit into "the model got worse". A reply with no citation and no
+//      recorded search is that failure, not an empty web.
 //   2. Breaker health is per provider and counted per *question*. One question
 //      fans out into ~6 searches; it must never be able to open a breaker by
-//      itself, and one provider's outage must never disable the other.
+//      itself.
 
 // Well inside ask.ts's REQUEST_TIMEOUT_MS: a turn may run several searches plus
 // the model round trips, so no single search may monopolise the budget.
-const TIMEOUT_MS = 10_000;
+// A search is one model tool-call plus Exa. 10s was sized for a direct index
+// GET and was cutting off the round trip.
+const TIMEOUT_MS = 25_000;
 // Team news, form and predicted XIs move on the scale of a news cycle; prices
 // move constantly. One five-minute TTL for both meant every question re-ran
 // every search, which on a subscription key sized for one user is the whole
@@ -372,38 +373,57 @@ async function readBodyWithinCap(response: {
 }
 
 /**
- * MiniMax's own search. Undocumented -- identified from the source of MiniMax's
- * published `minimax-coding-plan-mcp` server -- and metered against the coding
- * plan, so it is optional by construction: the chain runs without it.
- *
- * It reads MINIMAX_SEARCH_API_KEY first so search can be pointed at a key that
- * is not the one serving inference. Falling back to MINIMAX_API_KEY keeps every
- * existing deployment working unchanged.
+ * OpenRouter web search. DeepSeek has no search index of its own, so the
+ * pinned model is only allowed to call `openrouter:web_search` once. Exa runs
+ * the query. Citations come back as `url_citation` annotations; the message
+ * text is never evidence.
  */
-const minimaxProvider: SearchProvider = {
-  name: "minimax",
-  enabled: () => Boolean(process.env.MINIMAX_SEARCH_API_KEY || process.env.MINIMAX_API_KEY),
+const openRouterProvider: SearchProvider = {
+  name: "openrouter",
+  enabled: () => Boolean(process.env.OPENROUTER_API_KEY?.trim()),
   async run(query, requestSignal) {
-    const key = process.env.MINIMAX_SEARCH_API_KEY || process.env.MINIMAX_API_KEY;
-    const response = await fetch(
-      process.env.MINIMAX_SEARCH_URL || "https://api.minimax.io/v1/coding_plan/search",
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${key}`,
-          "content-type": "application/json",
-          // The endpoint is reached through MiniMax's MCP tooling in its
-          // documented form; the header identifies the caller the same way.
-          "MM-API-Source": "Minimax-MCP",
-        },
-        body: JSON.stringify({ q: query }),
-        signal: requestSignalFor(requestSignal),
-      }
-    );
+    const key = process.env.OPENROUTER_API_KEY?.trim();
+    const response = await fetch(openRouterChatUrl(), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: openRouterModelId(),
+        messages: [
+          {
+            role: "system",
+            content: "Call the web search tool exactly once. Do not call it again. Do not answer from memory.",
+          },
+          { role: "user", content: query },
+        ],
+        tools: [{
+          type: "openrouter:web_search",
+          parameters: {
+            engine: "exa",
+            mode: "fast",
+            max_results: MAX_RESULTS,
+            max_uses: 1,
+            max_characters: MAX_SNIPPET_LENGTH,
+          },
+        }],
+        max_tool_calls: 1,
+        temperature: 0,
+        // A reasoning trace doubled the tool call and spent most of the budget
+        // before Exa returned. The citations are the product, not the trace.
+        reasoning: { enabled: false },
+      }),
+      signal: requestSignalFor(requestSignal),
+    });
     if (!response.ok) throw classifyHttpStatus(response.status, retryAfterMs(response));
     const body = await readBoundedJson(response);
-    return normalizeResults(body.organic, (entry) => ({
-      title: asString(entry.title),
+    const citations = citationRecords(body);
+    if (citations.length === 0 && searchRequestCount(body) === 0) {
+      throw new ProviderError("malformed_response", "search tool did not run");
+    }
+    return normalizeResults(citations, (entry) => ({
+      title: asString(entry.title) || hostnameOf(asString(entry.link)),
       link: asString(entry.link),
       snippet: asString(entry.snippet),
       date: asString(entry.date),
@@ -411,52 +431,64 @@ const minimaxProvider: SearchProvider = {
   },
 };
 
-/**
- * Brave Search. The documented, contractual half of the chain: a published API
- * with its own key, its own quota and its own status page, so an answer is no
- * longer hostage to one undocumented subscription endpoint.
- *
- * Chosen over Serper/Exa/Tavily because it is a first-party index reached with
- * a plain GET and one header -- the smallest adapter of the four, and the one
- * least likely to need maintenance.
- */
-const braveProvider: SearchProvider = {
-  name: "brave",
-  enabled: () => Boolean(process.env.BRAVE_SEARCH_API_KEY),
-  async run(query, requestSignal) {
-    const endpoint = new URL(
-      process.env.BRAVE_SEARCH_URL || "https://api.search.brave.com/res/v1/web/search"
-    );
-    endpoint.searchParams.set("q", query);
-    endpoint.searchParams.set("count", String(MAX_RESULTS));
-    const response = await fetch(endpoint.toString(), {
-      method: "GET",
-      headers: {
-        accept: "application/json",
-        "accept-encoding": "gzip",
-        "x-subscription-token": process.env.BRAVE_SEARCH_API_KEY as string,
-      },
-      signal: requestSignalFor(requestSignal),
-    });
-    if (!response.ok) throw classifyHttpStatus(response.status, retryAfterMs(response));
-    const body = await readBoundedJson(response);
-    const web = (body.web ?? {}) as { results?: unknown };
-    return normalizeResults(web.results, (entry) => ({
-      title: asString(entry.title),
-      link: asString(entry.url),
-      snippet: asString(entry.description),
-      // `page_age` is an ISO instant when Brave knows it; `age` is the human
-      // form ("3 days ago"), which normalizeSearchDate already understands.
-      date: asString(entry.page_age) || asString(entry.age),
-    }));
-  },
-};
+function openRouterChatUrl(): string {
+  const base = (process.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api").replace(/\/$/, "");
+  if (base.endsWith("/chat/completions")) return base;
+  if (base.endsWith("/v1")) return `${base}/chat/completions`;
+  return `${base}/v1/chat/completions`;
+}
 
-const KNOWN_PROVIDERS: SearchProvider[] = [minimaxProvider, braveProvider];
+function hostnameOf(link: string): string {
+  try {
+    return new URL(link).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function citationRecords(body: Record<string, unknown>): Record<string, unknown>[] {
+  const choices = Array.isArray(body.choices) ? body.choices : [];
+  const records: Record<string, unknown>[] = [];
+  for (const choice of choices) {
+    const message = ((choice as Record<string, unknown>)?.message ?? {}) as Record<string, unknown>;
+    const annotations = [
+      ...(Array.isArray(message.annotations) ? message.annotations : []),
+      ...(Array.isArray((choice as Record<string, unknown>).annotations)
+        ? (choice as Record<string, unknown>).annotations as unknown[]
+        : []),
+    ];
+    for (const annotation of annotations) {
+      const record = (annotation ?? {}) as Record<string, unknown>;
+      const nested = (record.url_citation ?? record) as Record<string, unknown>;
+      const link = asString(nested.url) || asString(nested.link);
+      if (!link) continue;
+      records.push({
+        title: nested.title,
+        link,
+        snippet: nested.content ?? nested.snippet,
+        date: nested.date ?? "",
+      });
+    }
+  }
+  return records;
+}
+
+function searchRequestCount(body: Record<string, unknown>): number {
+  const usage = (body.usage ?? {}) as Record<string, unknown>;
+  // Live responses report server_tool_use_details. The older docs name
+  // server_tool_use. Either count means the tool ran.
+  for (const candidate of [usage.server_tool_use_details, usage.server_tool_use]) {
+    const server = (candidate ?? {}) as Record<string, unknown>;
+    const count = Number(server.web_search_requests);
+    if (Number.isFinite(count) && count > 0) return count;
+  }
+  return 0;
+}
+
+const KNOWN_PROVIDERS: SearchProvider[] = [openRouterProvider];
 
 function defaultProviderOrder(): string[] {
-  if (!process.env.BRAVE_SEARCH_API_KEY) return ["minimax"];
-  return ["minimax", "brave"];
+  return ["openrouter"];
 }
 
 /**
@@ -475,12 +507,10 @@ function providerChain(): SearchProvider[] {
   const chain = order
     .map((name) => KNOWN_PROVIDERS.find((provider) => provider.name === name))
     .filter((provider): provider is SearchProvider => Boolean(provider));
-  // Anything the operator did not name still trails the chain, so adding a key
-  // is enough to gain a fallback — except the implicit MiniMax-only default,
-  // which must not trail an unconfigured Brave.
+  // Anything the operator did not name still trails the chain, so a known
+  // provider is not dropped by an order that only lists unknown names.
   for (const provider of KNOWN_PROVIDERS) {
     if (chain.includes(provider)) continue;
-    if (implicitDefault && !process.env.BRAVE_SEARCH_API_KEY && provider.name === "brave") continue;
     chain.push(provider);
   }
   return chain;
@@ -648,6 +678,7 @@ export function resetWebSearchStatus(): void {
 // ─── Question scope ─────────────────────────────────────────────────────────
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { openRouterModelId } from "./inference-config";
 
 /**
  * One user question's searches, so breaker accounting can ask "did this
