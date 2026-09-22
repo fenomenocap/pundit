@@ -1571,6 +1571,43 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
   assert.equal(validateAnswerStructure('{"directAnswer":{"text":"I favour Arsenal.","factIds":[]}}').passed, false);
 });
 
+test("schema-17 market attribution accepts a curly refusal and rejects an unnamed snapshot", () => {
+  const empty = { kind: "match", home: "Arsenal", away: "Leeds", oddsSources: [] };
+  const refusal = "I don’t have a complete, same-source and same-time 1X2 market to compare with this fixture, so I can’t claim a pricing disagreement.";
+  const preview = [
+    "I make Arsenal the likeliest outcome at 75.9%. For 10 October 2026, my full 1X2 is Arsenal 75.9%, draw 17.9% and Leeds 6.2%.",
+    "I would revisit the read only after verified team news; I can’t assign a lineup effect from these facts alone.",
+  ].join("\n\n");
+  assert.equal(validateResponseCorrectness(refusal, [], empty, {
+    expectComparableMarketAttribution: true,
+  }).assertions.comparableMarketAttribution, true);
+  assert.equal(validateResponseCorrectness(preview, [], empty, {
+    expectComparableMarketAttribution: true,
+  }).assertions.comparableMarketAttribution, true);
+  const snapshot = "I would revisit the read only after verified team news or a materially different market snapshot.";
+  assert.equal(validateResponseCorrectness(snapshot, [], empty, {
+    expectComparableMarketAttribution: true,
+  }).assertions.comparableMarketAttribution, false);
+  const named = {
+    kind: "match",
+    home: "Arsenal",
+    away: "Leeds",
+    oddsSources: [{
+      source: "kalshi",
+      observedAt: "2026-09-22T12:00:00.000Z",
+      pHome: 0.5,
+      pDraw: 0.3,
+      pAway: 0.2,
+    }],
+  };
+  assert.equal(validateResponseCorrectness(
+    "Kalshi market-implied probabilities: Arsenal 50.0%, draw 30.0%, Leeds 20.0%.",
+    [],
+    named,
+    { expectComparableMarketAttribution: true }
+  ).assertions.comparableMarketAttribution, true);
+});
+
 test("golden conversation guards trace exact-score prices and table-wide counts", () => {
   const match = {
     kind: "match",
