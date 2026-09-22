@@ -1375,25 +1375,24 @@ describe("current-news evidence hardening", () => {
       expect(answer).not.toMatch(/kalshi|polymarket|market staleness|pricing error/i);
     });
 
-    // Production regression: every match turn settled on the deterministic
-    // payload before the model was ever called, so "who will score?" and "who
-    // wins?" came back byte-identical in ~2ms. The renderer is right for a
-    // question *about the payload*; a question about the match has to be
-    // generated.
+    // Narrow facts, the long preview, and typed limitations settle on the
+    // server. Scorer questions and tactical takes still go to generation.
     it("settles narrow typed-fact or typed-limitation turns without generation", () => {
       expect(closedGroundedAnswer("Who is most likely to score?", model())).toBeNull();
       expect(closedGroundedAnswer(
         "Who will most likely score for Liverpool?",
         model()
       )).toBeNull();
-      expect(closedGroundedAnswer("Analyse Arsenal vs Coventry.", model())).toBeNull();
+      expect(closedGroundedAnswer("Analyse Arsenal vs Coventry.", model()))
+        .toMatch(/I make Arsenal the likeliest outcome/);
       expect(closedGroundedAnswer("What about Arsenal vs Coventry?", model()))
         .toMatch(/My 1X2 is Arsenal 97\.3% \(fair 1\.03\)/);
       expect(closedGroundedAnswer("Projected score", model())).toMatch(/scoreline/i);
       expect(closedGroundedAnswer("Projected score", model())).not.toMatch(/team news/i);
       expect(closedGroundedAnswer("Tactical matchup", model())).toBeNull();
       expect(closedGroundedAnswer("How do Man Utd win this?", model())).toBeNull();
-      expect(closedGroundedAnswer("Give me the match briefing for Arsenal vs Coventry.", model())).toBeNull();
+      expect(closedGroundedAnswer("Give me the match briefing for Arsenal vs Coventry.", model()))
+        .toMatch(/full 1X2/);
       expect(closedGroundedAnswer("Is Arsenal vs Coventry over 2.5?", model()))
         .toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(closedGroundedAnswer("BTTS?", model(), true))
@@ -4577,6 +4576,10 @@ describe("inference credential configuration", () => {
     "MINIMAX_INFERENCE_API_KEY",
     "MINIMAX_BASE_URL",
     "MINIMAX_INFERENCE_BASE_URL",
+    "MINIMAX_MODEL",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_MODEL",
+    "OPENROUTER_BASE_URL",
   ] as const;
 
   function withEnv(values: Partial<Record<(typeof envKeys)[number], string>>, run: () => void) {
@@ -4617,6 +4620,30 @@ describe("inference credential configuration", () => {
         const client = prepareAsk("Who wins the Premier League?", []).client as unknown as
           { apiKey: string };
         expect(client.apiKey).toBe("payg-key");
+      }
+    );
+  });
+
+  it("pins answers to one OpenRouter model and leaves the auto-router unused", () => {
+    withEnv(
+      {
+        OPENROUTER_API_KEY: "openrouter-key",
+        OPENROUTER_MODEL: "openrouter/auto",
+        MINIMAX_API_KEY: "shared-subscription-key",
+        MINIMAX_INFERENCE_API_KEY: "payg-key",
+      },
+      () => {
+        const client = prepareAsk("Who wins the Premier League?", []).client as unknown as
+          { apiKey: string; baseURL: string };
+        expect(client.apiKey).toBe("openrouter-key");
+        expect(client.baseURL).toBe("https://openrouter.ai/api");
+        expect(getInferenceStatus()).toMatchObject({
+          configured: true,
+          dedicatedKey: true,
+          keySource: "OPENROUTER_API_KEY",
+          model: "deepseek/deepseek-v4-flash",
+          endpointHost: "openrouter.ai",
+        });
       }
     );
   });

@@ -14,6 +14,7 @@ import {
   planFederatedQueries,
 } from "./federated-evidence";
 import { isSchematicMatchTake, planResponse } from "./response-plan";
+import { resolveInference } from "./inference-config";
 import { searchWebBatch, type WebSearchResult } from "./web-search";
 
 export const DESK_SYSTEM = `You are Pundit, a football analyst covering the current Premier League. Voice: sharp broadcast pundit — Carragher after a freeze-frame, not a hedge-fund memo. Short. Specific. No emoji. No slang pile-up. No hedging fluff.
@@ -414,15 +415,6 @@ function hint(question: string) {
   return "HINT: Write the football take from the MATCH CARD. Live facts (managers, injuries, XIs) only from this turn's SEARCH EVIDENCE. Do not print probabilities or name a stadium.";
 }
 
-function inferenceKey() {
-  return process.env.MINIMAX_INFERENCE_API_KEY || process.env.MINIMAX_API_KEY;
-}
-
-function inferenceBase() {
-  return process.env.MINIMAX_INFERENCE_BASE_URL
-    ?? process.env.MINIMAX_BASE_URL
-    ?? "https://api.minimax.io/anthropic";
-}
 
 function uniqueQueries(queries: readonly string[]): string[] {
   const unique = new Map<string, string>();
@@ -488,10 +480,10 @@ export async function writeDeskProse(
   bundle?: EvidenceBundle
 ): Promise<string | null> {
   const fallback = grounding?.kind === "match" ? composeDeskFootballTake(grounding) : null;
-  const apiKey = inferenceKey();
-  if (!apiKey) return fallback;
-  const client = new Anthropic({ apiKey, baseURL: inferenceBase(), maxRetries: 0 });
-  const model = process.env.MINIMAX_MODEL ?? "MiniMax-M3";
+  const inference = resolveInference();
+  if (!inference.apiKey) return fallback;
+  const client = new Anthropic({ apiKey: inference.apiKey, baseURL: inference.baseURL, maxRetries: 0 });
+  const model = inference.model;
   let evidence: DeskEvidenceRow[] = filterDeskEvidenceRows(deskRowsFromBundle(bundle), grounding);
   if (!evidence.length && !isSchematicMatchTake(question)) {
     try {

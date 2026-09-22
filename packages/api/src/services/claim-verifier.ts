@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { resolveInference } from "./inference-config";
 import { ClaimDecision, VerifiableClaim } from "./response-correctness";
 import { RetrievedEvidencePage } from "./evidence-page-retrieval";
 
@@ -168,7 +169,7 @@ export async function verifyClaimsOnce(
   let response: Anthropic.Message;
   try {
     response = await client.messages.create({
-      model: options.model ?? process.env.MINIMAX_MODEL ?? "MiniMax-M3",
+      model: options.model ?? resolveInference().model,
       max_tokens: 1_200,
       temperature: 0,
       system: SYSTEM_PROMPT,
@@ -186,7 +187,7 @@ export async function verifyClaimsOnce(
       event: "claim_verifier_unavailable",
       reason: status === 429 ? "rate_limited" : status ? "http_error" : timedOut ? "timeout" : "provider_error",
       status,
-      dedicatedKey: Boolean(process.env.MINIMAX_INFERENCE_API_KEY),
+      dedicatedKey: resolveInference().dedicatedKey,
     }));
     const decisions = fallbackDecisions(input.claims);
     return {

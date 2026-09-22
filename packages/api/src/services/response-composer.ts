@@ -220,6 +220,23 @@ function dateLabel(value: string): string {
   return `${Number(match[3])} ${month} ${match[1]}`;
 }
 
+function hasCompleteOneXTwo(grounding: Grounding): boolean {
+  return grounding.oddsSources.some((row) =>
+    row.pDraw !== null
+    && Number.isFinite(row.pHome)
+    && Number.isFinite(row.pDraw)
+    && Number.isFinite(row.pAway)
+    && Number.isFinite(Date.parse(row.observedAt))
+  );
+}
+
+function revisitAfterNews(grounding: Grounding): string {
+  const news = hasCompleteOneXTwo(grounding)
+    ? "verified team news or a materially different line from the source named above"
+    : "verified team news";
+  return `I would revisit the read only after ${news}; I can’t assign a lineup effect from these facts alone.`;
+}
+
 function headlineMarket(grounding: Grounding): string | null {
   const row = grounding.marketDivergence
     .flatMap((market) => market.legs.map((leg) => ({ market, leg })))
@@ -405,6 +422,6 @@ export function composeMatchResponse(
     `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${SHARED_TOTAL_XG_SENTENCE}`,
     [marketRows, market].filter(Boolean).join(" "),
     consensus,
-    "I would revisit the read only after verified team news or a materially different market snapshot; I can’t assign a lineup effect from these facts alone.",
+    revisitAfterNews(grounding),
   ].filter(Boolean).join("\n\n");
 }
