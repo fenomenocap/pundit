@@ -88,6 +88,8 @@ The review’s remaining model work is specific:
 1. Dated ClubElo **prior-only initialization** for clubs with zero training matches at forecast time. **Landed 2026-09-22:** missing fitted attack/defence may use the row’s dated pre-kickoff Elo + training-mean Elo, marked `priorOnly`; missing dated Elo still returns null. Not today’s production pin.
 2. A predefined **weekly expanding-window** retraining cadence; train only on results available before each forecast week; report uncovered rows. **Landed 2026-09-22** (`evaluateWeeklyExpandingWindow` + `eval-report-weekly.json`).
 3. Fresher historical ratings where a documented dated source exists. Do not replace historical inputs with today’s pin.
+
+   **2026-09-22 capture attempt stopped:** `api.clubelo.com/YYYY-MM-DD` returned **HTTP 502** (empty body) for probed dates including the known coverage hole (`2026-01-15`, `2026-05-23`) and a control date (`2024-08-17`). Per plan: stop on 502; no Wayback retry; no invented ratings; production forecasts do not wait on this. `build:clubelo-pre-kickoff` remains blocked until a successful capture.
 4. Collect more naturally sealed completed forecasts. Freeze any selected research candidate before prospective validation.
 5. Set any revised multi-market promotion criteria **before** a new selection experiment. Do not relax legacy MAE to turn today’s FAIL into PASS.
 
