@@ -729,6 +729,23 @@ describe("V2 conversational architecture", () => {
     expect(named).not.toContain(SHARED_TOTAL_XG_SENTENCE);
     expect(named).not.toMatch(/leading scorelines/i);
 
+    for (const question of [
+      "Tactical matchup",
+      "Who decides it?",
+      "How do Arsenal win this?",
+    ]) {
+      const tactical = composeMatchResponse(
+        question,
+        match,
+        planResponse(question, { groundingKind: "match", hasHistory: true })
+      );
+      expect(tactical).toMatch(/I lean to Arsenal at home/);
+      expect(tactical).toMatch(/Who decides it|only get a result if they stretch|keep the game in their half/i);
+      expect(tactical).toMatch(/team-strength view/);
+      expect(tactical).not.toMatch(/My short answer is/i);
+      expect(tactical).not.toMatch(/\d+(?:\.\d+)?\s*%/);
+    }
+
     const briefing = composeMatchResponse(
       "Give me the match briefing for Arsenal vs Chelsea.",
       match,
