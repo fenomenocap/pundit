@@ -103,7 +103,7 @@ import {
   PLAYER_SCORER_ABSTENTION,
   TEAM_NEWS_COMPOSE_ABSTENTION,
 } from "./player-evidence";
-import { composeMatchResponse } from "./response-composer";
+import { composeDeskTakeOutline, composeMatchResponse } from "./response-composer";
 import {
   DESK_BOARD_FALLBACK,
   composeDeskFootballTake,
@@ -7854,6 +7854,20 @@ export async function deliverAnswer(args: {
       : text;
     return humaniseDeskCitationDates(stripped);
   };
+  /** Labelled 1X2 + optional wrinkle + football. Strip MiniMax board numbers first. */
+  const deskSchematicOutline = (footballLayer: string): string => {
+    if (grounding?.kind !== "match") return footballLayer;
+    const playerEvidence = evidenceBundleForMatch(grounding, evidenceBundle);
+    const stripped = stripDeskBoardRecitals(footballLayer);
+    const cleaned = stripSurplusCurrentNewsNotices(stripped || footballLayer);
+    const football = deskProseIsCurrentNewsRemainder(cleaned) || !cleaned.trim()
+      ? composeDeskFootballTake(grounding)
+      : cleaned;
+    return composeDeskTakeOutline(grounding, {
+      footballProse: football,
+      playerEvidence,
+    });
+  };
   if (deskVoice) {
     const settledFromBundle = await settleEvidenceModeFromBundle(
       question, grounding, evidenceBundle, hasHistory, signal
@@ -7896,19 +7910,30 @@ export async function deliverAnswer(args: {
         checked.verification,
         deskPlan.evidenceRequired
       );
+      if (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)) {
+        // Assemble outline before citation render so a sourced wrinkle's [[S1]]
+        // expands. Server 1X2 must not pass through stripDeskBoardRecitals.
+        const outlined = deskSchematicOutline(evidenceSafeAnswer);
+        const rendered = renderEvidenceCitations(outlined, evidenceBundle, true);
+        const settledAnswer = dropEmptyEmphasis(
+          dropOrphanedSectionLabels(
+            dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, evidenceBundle)))
+          )
+        );
+        return {
+          answer: humaniseDeskCitationDates(
+            finalizeDeliveredText(settledAnswer, grounding, false)
+          ),
+          citations: rendered.citations,
+          verification: checked.verification,
+        };
+      }
       const rendered = renderEvidenceCitations(evidenceSafeAnswer, evidenceBundle, true);
-      let settledAnswer = dropEmptyEmphasis(
+      const settledAnswer = dropEmptyEmphasis(
         dropOrphanedSectionLabels(
           dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, evidenceBundle)))
         )
       );
-      if (grounding?.kind === "match"
-        && shouldRestoreDeskFootballTake(question)
-        && deskProseIsCurrentNewsRemainder(settledAnswer)) {
-        settledAnswer = composeDeskFootballTake(grounding);
-      } else if (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)) {
-        settledAnswer = stripSurplusCurrentNewsNotices(settledAnswer);
-      }
       return {
         answer: deskFootnotes(finalizeDeliveredText(settledAnswer, grounding, false)),
         citations: rendered.citations,
