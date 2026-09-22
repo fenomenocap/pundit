@@ -14,6 +14,7 @@
     "test:vercel-ignore": "node --test scripts/vercel-ignore-build.test.mjs",
     "test:deployed-sha": "node --test scripts/resolve-deployed-sha.test.mjs",
     "test:verify-prod": "node --test scripts/verify-prod.test.mjs",
+    "test:wait-railway-deploy": "node --test scripts/wait-for-railway-deploy.test.mjs",
     "clean": "pnpm -r clean",
     "verify:prod": "bash scripts/verify-prod.sh",
     "verify:local": "bash scripts/verify-local.sh"
