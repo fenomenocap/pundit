@@ -85,8 +85,8 @@ pnpm --filter @sports-predict/api check:club-strength-freshness
 
 The review’s remaining model work is specific:
 
-1. Dated ClubElo **prior-only initialization** for clubs with zero training matches at forecast time.
-2. A predefined **weekly expanding-window** retraining cadence; train only on results available before each forecast week; report uncovered rows.
+1. Dated ClubElo **prior-only initialization** for clubs with zero training matches at forecast time. **Landed 2026-09-22:** missing fitted attack/defence may use the row’s dated pre-kickoff Elo + training-mean Elo, marked `priorOnly`; missing dated Elo still returns null. Not today’s production pin.
+2. A predefined **weekly expanding-window** retraining cadence; train only on results available before each forecast week; report uncovered rows. **Landed 2026-09-22** (`evaluateWeeklyExpandingWindow` + `eval-report-weekly.json`).
 3. Fresher historical ratings where a documented dated source exists. Do not replace historical inputs with today’s pin.
 4. Collect more naturally sealed completed forecasts. Freeze any selected research candidate before prospective validation.
 5. Set any revised multi-market promotion criteria **before** a new selection experiment. Do not relax legacy MAE to turn today’s FAIL into PASS.
@@ -95,6 +95,8 @@ The review’s remaining model work is specific:
 pnpm --filter @sports-predict/api train:dixon-coles-mle -- --force
 pnpm --filter @sports-predict/api eval:dixon-coles-mle
 ```
+
+**2026-09-22 eval (corrected rolling-origin + weekly):** scored 1146/1146 fixed-origin pairs (216 prior-only); weekly 69 origins, 5 uncovered. `recommendPromotion: false`. A human has **not** said promote. **Do not register a new artifact.** `model-data.ts` still calls `ELO_CHAMPION` only.
 
 Register a new artifact only if eval + a human agree. **Do not** wire `model-data.ts` to the challenger unless the user says **promote**.
 
