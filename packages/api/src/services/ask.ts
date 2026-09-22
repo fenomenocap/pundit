@@ -296,6 +296,7 @@ const analystResponseMetrics = {
   acceptedDrafts: 0,
   rejectedDrafts: 0,
   numericGuardInterventions: 0,
+  rejectReasons: {} as Record<string, number>,
 };
 
 export function getAnalystResponseStatus() {
@@ -1755,8 +1756,8 @@ function reconcileMarketSentence(
 
   const wrong: { figure: MarketFigure; outcome: OneXTwoOutcome; market: ValidatedOneXTwoMarket }[] = [];
   for (const [record, figures] of owned) {
-    // A bare triple is the shape MATCH_EXAMPLE demonstrates ("41.0% / 32.4% /
-    // 26.6%"), and 1X2 order is the only order Pundit ever writes or reads.
+    // A bare 1X2 triple is still the only order Pundit ever writes or reads once
+    // server-rendered slots become prose (home / draw / away).
     if (figures.length === OUTCOME_ORDER.length && figures.every((figure) => !figure.outcome)) {
       figures.forEach((figure, index) => { figure.outcome = OUTCOME_ORDER[index]; });
     }
@@ -2932,11 +2933,11 @@ export const MATCH_ANALYSIS_PRIORITIES = `Reason from the numbers rather than re
 can already see the probabilities; what they cannot see is which of them matters. Every sentence
 should be able to change a decision.
 Lead with model-versus-market disagreement. The payload has already differenced it for you: open the
-answer with marketDivergence's largest leg and report its gapPoints -- that is
-how many percentage points it is, and which way it runs. Do not derive the gap yourself and do not
-round it away.
-State it as a number and a direction -- "the model is 11.5 percentage points higher on the home
-win than the priced probability" -- never as a vague "the model is more bullish".
+answer with the largest marketDivergence leg via its fact slot (for example {{market.kalshi.home}})
+so the server renders model percent, market percent, and gapPoints. Do not derive the gap yourself
+and do not write those figures as free-text digits.
+State the disagreement as direction and which slot carries it -- never as a vague "the model is more
+bullish", and never by typing a percentage or "percentage points" figure into the JSON text.
 Agreement is a conclusion, not a hole to fill. When every gapPoints sits within about two points on
 every outcome, say plainly that there is no meaningful disagreement here and the fixture looks
 efficiently priced. That is a real, useful finding. Never manufacture an edge to have something to
@@ -2956,9 +2957,10 @@ line starts, the low-scoring lines hold up; if two of them are missing, the mode
 favourite is the first thing to shrink" -- rather than "team news unconfirmed". An abstention follows
 the same shape: what to check, and how the read moves either way. An answer that ends without saying
 what would move it is incomplete, however correct its numbers. A dead end helps nobody.
-Keep every grounded number you would have reported anyway: the 1X2 probabilities, over/under 2.5,
-both teams to score, the leading scorelines, and the fixture date. Interpretation replaces the
-recital around those numbers, never the numbers themselves.`;
+Keep every grounded number you would have reported anyway by inserting its fact slot: the 1X2
+probabilities, over/under 2.5, both teams to score, the leading scorelines, and the fixture date.
+Interpretation replaces the recital around those numbers, never the numbers themselves, and never
+by typing the digits into the draft text.`;
 
 /**
  * The ambition above must not become a licence to invent.
@@ -2985,9 +2987,9 @@ probability" without re-naming the source. Pundit re-renders any sentence that n
 from its own record of that market, so reasoning written inside such a sentence is replaced along
 with the quote and never reaches the user.
 Do not write that the market "favours" or "gives the edge to" a side that is not the market's own
-strongest outcome; say by how much its probability differs from the model's instead. And write gaps
-in percentage points ("about 11 percentage points"), never in points that could read as league
-points.`;
+strongest outcome; say by how much its probability differs from the model's instead, using the
+matching market fact slot so the server renders the gap. Never type percentage-point digits into the
+draft text.`;
 
 // Worked examples do what the rules cannot: they set length, density and
 // register by demonstration. The numbers here are illustrative only -- the
@@ -2996,15 +2998,12 @@ points.`;
 // beyond style: the divergence leads, the goal-market figures and the scoreline
 // list sit in separate sections, and the closing section is conditional rather
 // than a restatement.
-const MATCH_EXAMPLE = `For a full preview, write in first person and lead directly: "I make Riverton
-48.2%, the draw 24.7% and Ashcombe 27.1%." Add goals, one or two scorelines and a compact market
-comparison only when they help. For a narrow follow-up, answer only that question: "I make 2-1
-11.4%, about 8.77 in fair decimal odds; I have no comparable live exact-score quote here." Never
-turn a scorer question, lineup hypothetical or one-line follow-up into another full preview.`;
+/** Worked example for V2 drafts. Must use fact slots only — free-text % fails closed. */
+export const MATCH_EXAMPLE = `For a full preview, write in first person and lead with slots: "I prefer {{match.home}} over {{match.draw}} and {{match.away}}." Add goals, one or two scorelines and a compact market comparison only when they help: "The goals lean is {{total.over-2.5}}; one scoreline is {{score.2-1}}; the largest priced gap is {{market.kalshi.home}}." For a narrow follow-up, answer only that question: "I make {{score.2-1}}; I have no comparable live exact-score quote here." Never turn a scorer question, lineup hypothetical or one-line follow-up into another full preview. Never write a percentage, gap or fair price as digits in the JSON text fields.`;
 
-const MATCH_STRUCTURED_OUTPUT = `Return only one JSON object with this exact shape, with no Markdown fence or prose outside it:
+export const MATCH_STRUCTURED_OUTPUT = `Return only one JSON object with this exact shape, with no Markdown fence or prose outside it:
 {"directAnswer":{"text":"I prefer {{match.home}}.","factIds":["match.home"]},"reasoning":[{"text":"The goals lean is {{total.over-2.5}}.","factIds":["total.over-2.5"]}],"uncertainty":{"text":"I cannot quantify a lineup change.","factIds":["limit.lineup-counterfactual"]},"citedClaims":[{"text":"A dated team-news claim","factIds":[],"sourceIds":["S1"]}]}
-Write no match number, percentage, gap or fair price directly in text. Insert a fact slot such as {{match.home}}, {{score.2-1}} or {{market.kalshi.home}} instead; the server renders its canonical subject and values. Every numeric factId must actually appear as its matching slot in the same text part. Every current external claim belongs in citedClaims and must reference source IDs from the evidence bundle. Use an empty reasoning or citedClaims array when none is needed. Do not invent an ID or a slot.`;
+Write no match number, percentage, gap or fair price directly in text. Insert a fact slot such as {{match.home}}, {{score.2-1}} or {{market.kalshi.home}} instead; the server renders its canonical subject and values. Every numeric factId must actually appear as its matching slot in the same text part. Every current external claim belongs in citedClaims and must reference source IDs from the evidence bundle. reasoning and citedClaims must be JSON arrays (use [] when empty), never a bare string. Do not invent an ID or a slot.`;
 
 const MATCH_SYSTEM_PROMPT = `You are Pundit: one coherent, first-person expert football analyst. Never
 refer to "Pundit's model", "the model", "the payload" or "the retrieved sources" in reader-facing
@@ -5342,8 +5341,8 @@ const RESOLVED_CITATION_LINK = /\]\(https?:\/\//i;
  * So this test is positive and format-agnostic: it asks for the thing the
  * prompt mandates instead of asking for the absence of things we have
  * catalogued. `FORMAT_RULES` requires every section to start with a bold label
- * on its own line, and `MATCH_EXAMPLE` expresses every grounded figure as a
- * percentage.
+ * on its own line, and V2 match drafts express every grounded figure via a
+ * fact slot that the server renders (not free-text percentages in the JSON).
  *
  * Two further signals cover the answers those two do not describe. A pure
  * team-news question ("any injury news for Celtic vs LASK?") is answered either
@@ -7965,10 +7964,13 @@ export async function deliverAnswer(args: {
     } else {
       analystResponseMetrics.rejectedDrafts += 1;
       const mode = planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null }).mode;
+      analystResponseMetrics.rejectReasons[validatedDraft.reason] =
+        (analystResponseMetrics.rejectReasons[validatedDraft.reason] ?? 0) + 1;
       console.warn(JSON.stringify({
         event: "analyst_draft_rejected",
         reason: validatedDraft.reason,
         responseMode: mode,
+        reasonHistogram: { ...analystResponseMetrics.rejectReasons },
       }));
       const sourceIds = bundle.results.map((source) => source.id);
       const salvaged = mode === "team-news" ? salvageCitedClaimProse(rawAnswer, sourceIds) : null;
