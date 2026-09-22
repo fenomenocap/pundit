@@ -16,6 +16,8 @@ jobs:
       - name: Resolve deployed web SHA
         id: web-sha
         shell: bash
+        env:
+          DEPLOY_REF: ${{ github.sha }}
         run: |
           sha=$(bash scripts/resolve-deployed-sha.sh web)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -23,8 +25,16 @@ jobs:
       - name: Resolve deployed API SHA
         id: api-sha
         shell: bash
+        env:
+          DEPLOY_REF: ${{ github.sha }}
         run: |
           sha=$(bash scripts/resolve-deployed-sha.sh api)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Railway API deploy
+        if: steps.api-sha.outputs.sha == github.sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/wait-for-railway-deploy.mjs --sha "${{ github.sha }}"
 
       - run: bash scripts/verify-prod.sh "${{ steps.api-sha.outputs.sha }}" "${{ steps.web-sha.outputs.sha }}" enabled

@@ -58,6 +58,9 @@ jobs:
       - name: Test verify-prod startup poll
         run: pnpm test:verify-prod
 
+      - name: Test wait-for-railway-deploy helper
+        run: pnpm test:wait-railway-deploy
+
       - name: Build web
         run: pnpm --filter @sports-predict/web build
 
