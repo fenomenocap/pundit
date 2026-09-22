@@ -101,11 +101,13 @@ Grep logs for: `fatal`, `[Bootstrap]`, `[ClubRatings] ALERT`, `[ClubRatings] WAR
 
 ### Step 1b — Chat answers degraded but the service is up
 
-Chat runs on MiniMax M3, and its web search is a Pundit-executed tool rather than a hosted
-one. Search failing does **not** take the whole service down. Structured model/competition
-grounding remains usable, while current-fact requests fail closed or abstain instead of
-falling back to stale pre-training. The degradation is safe for claims but still operationally
-important.
+Chat answers are pinned to `deepseek/deepseek-v4-flash` via `OPENROUTER_API_KEY`,
+with MiniMax only as the fallback when that key is unset. Web search is a
+Pundit-executed OpenRouter tool rather than a hosted one. Search failing does
+**not** take the whole service down. Structured model/competition grounding
+remains usable, while current-fact requests fail closed or abstain instead of
+falling back to stale pre-training. The degradation is safe for claims but still
+operationally important.
 
 `GET /ready` reports `webSearch`:
 
