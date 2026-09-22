@@ -48,7 +48,7 @@ Active fixtures with model probabilities. Optional filter: `?competition=eng.1`.
 }
 ```
 
-`stakeP*` is Stake when that source returned a complete 1X2; it is `null` when Stake is disabled or missed. `oddsSources` is joined at read time from the 30-minute Kalshi/Polymarket cache. Incomplete legs are omitted. Full scoreline matrices are stripped from the HTTP response.
+`stakeP*` is Stake when that source returned a complete 1X2; it is `null` when Stake is disabled or missed. `oddsSources` is joined at read time from the Kalshi and Polymarket cache. That cache follows the adaptive market cadence: 30 minutes when nothing is live or imminent, 10 minutes on a match day, 5 minutes while a match is in play. Incomplete legs are omitted. Full scoreline matrices are stripped from the HTTP response.
 
 ### `GET /api/model/fixtures`
 

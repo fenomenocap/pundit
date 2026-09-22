@@ -7,6 +7,7 @@ import { LeagueMark } from "@/desk/components/kit";
 import { fmtMoney } from "@/desk/lib/format";
 import { loadSlate } from "@/desk/lib/slate";
 import { useDesk } from "@/desk/lib/store";
+import { getDocsUrl } from "@/lib/site-links";
 import { cn } from "@/lib/utils";
 
 const PRIMARY = [
@@ -91,6 +92,14 @@ export function Navbar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-3 sm:gap-4">
+          <a
+            href={getDocsUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold uppercase tracking-wider text-subtle transition-colors duration-150 hover:text-fg"
+          >
+            How it works
+          </a>
           <div className="hidden sm:flex items-center gap-2.5 text-2xs uppercase tracking-wider text-quiet">
             <LeagueMark className="size-6" />
             <span className="inline-flex items-center gap-1.5">

@@ -21,10 +21,6 @@
 * [Evaluation](api-reference/evaluation.md)
 * [Polymarket Reference Odds](api-reference/polymarkets.md)
 
-## Evaluation
-
-* [Evaluation API](api-reference/evaluation.md) — club-season 90-minute seals and frozen WC 2026 backtest
-
 ## Overview
 
 * [Product Vision](overview/product-vision.md)
