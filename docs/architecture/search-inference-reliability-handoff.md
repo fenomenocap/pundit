@@ -333,6 +333,12 @@ Historical checklist this handoff shipped:
 
 ## 11. Disposition
 
+Superseded. Do not set `BRAVE_SEARCH_API_KEY` or `MINIMAX_INFERENCE_API_KEY`.
+Those keys are not read. Current production uses `OPENROUTER_API_KEY` for
+answers and search.
+
+Historical disposition from this handoff:
+
 **The code is production-safe. The deployment is not yet — and the gap is
 entirely configuration, not implementation.**
 
