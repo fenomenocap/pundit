@@ -6,6 +6,8 @@ Read-only calibration artifacts. The endpoints do not trigger live fetches. The 
 
 Rolling pre-kickoff forecasts for club-season fixtures (Premier League and UCL qualifiers). The first eligible Fundamental forecast observed within 90 minutes of kickoff is sealed. Result evidence and distinct timestamped pre-kickoff market comparisons can be appended, but a later model recalculation cannot replace the forecast.
 
+The JSON below shows the response shape. The numbers in it are not a published result. Live club-season metrics are on Railway `/data`, and the in-repo seed is empty.
+
 ```json
 {
   "schemaVersion": 2,
@@ -38,7 +40,7 @@ UI: [`/evaluation/club-season`](https://thepundit.vercel.app/evaluation/club-sea
 
 ### `GET /api/evaluation/wc-2026`
 
-Frozen World Cup 2026 backtest. Pre-kickoff probabilities were **reconstructed** from historical Elo ratings and the Dixon-Coles engine — not live snapshots. This artifact is immutable; no cron refreshes it.
+Frozen World Cup 2026 backtest. Pre-kickoff probabilities were **reconstructed** from historical Elo ratings and the Dixon-Coles engine — not live snapshots. This artifact is immutable; no cron refreshes it. The frozen headline is **104** matches, Brier **0.4383**, log loss **0.7853**, winner accuracy **0.6827** (68.3%), and **24** draws.
 
 ```json
 {
@@ -48,9 +50,9 @@ Frozen World Cup 2026 backtest. Pre-kickoff probabilities were **reconstructed**
   "disclaimer": "Immutable pre-kickoff probabilities reconstructed for backtesting...",
   "metrics": {
     "fixtureCount": 104,
-    "brierScore": 0.5912,
-    "logLoss": 1.0456,
-    "winnerAccuracy": 0.49,
+    "brierScore": 0.4383,
+    "logLoss": 0.7853,
+    "winnerAccuracy": 0.6827,
     "drawCount": 24,
     "calibration": [ /* buckets */ ]
   },
