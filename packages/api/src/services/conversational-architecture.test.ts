@@ -592,11 +592,11 @@ describe("V2 conversational architecture", () => {
       evidenceRequired: false,
       answer: "Current reports conflict on one or more requested facts, so I’ve left those claims out.",
     });
+    expect(briefingWipe.answer).toMatch(/My 1X2 is Arsenal 56\.3% \(fair 1\.78\)/);
     expect(briefingWipe.answer).toMatch(/Arsenal should control this at home/);
     expect(briefingWipe.answer).toMatch(/Chelsea only get a result|Who decides it/);
     expect(briefingWipe.answer).not.toMatch(/conflict on one or more requested facts/i);
-    expect(briefingWipe.answer).not.toMatch(/captured decimal/i);
-    expect(briefingWipe.answer).not.toMatch(/\d+(?:\.\d+)?\s*%/);
+    expect(briefingWipe.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
 
     const tacticalWipe = await deliverAnswer({
       ...base,
@@ -606,9 +606,10 @@ describe("V2 conversational architecture", () => {
       evidenceRequired: false,
       answer: "Current reports conflict on one or more requested facts, so I’ve left those claims out.",
     });
+    expect(tacticalWipe.answer).toMatch(/My 1X2 is Arsenal 56\.3%/);
     expect(tacticalWipe.answer).toMatch(/Arsenal should control this at home/);
     expect(tacticalWipe.answer).not.toMatch(/conflict on one or more requested facts/i);
-    expect(tacticalWipe.answer).not.toMatch(/captured decimal/i);
+    expect(tacticalWipe.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
 
     const briefingKeep = await deliverAnswer({
       ...base,
@@ -618,8 +619,37 @@ describe("V2 conversational architecture", () => {
       evidenceRequired: false,
       answer: "Arsenal should control this at home through territory. Current reports conflict on one or more requested facts, so I’ve left those claims out.",
     });
+    expect(briefingKeep.answer).toMatch(/My 1X2 is Arsenal 56\.3%/);
     expect(briefingKeep.answer).toMatch(/Arsenal should control this at home/);
     expect(briefingKeep.answer).not.toMatch(/conflict on one or more requested facts/i);
+
+    const briefingWithWrinkle = await deliverAnswer({
+      ...base,
+      voice: "desk",
+      question: "Give me the match briefing for Arsenal vs Chelsea.",
+      hasHistory: false,
+      evidenceRequired: false,
+      bundle: {
+        queries: [],
+        providerCalls: 0,
+        results: [{
+          id: "S1",
+          title: "Arsenal vs Chelsea injury update",
+          url: "https://example.com/news",
+          date: "2026-09-11T08:00:00Z",
+          snippet: "Cole Palmer ruled out for Chelsea.",
+          tier: "news" as const,
+        }],
+      },
+      answer: "Arsenal should control this at home through territory.",
+    });
+    expect(briefingWithWrinkle.answer).toMatch(/My 1X2 is Arsenal 56\.3%/);
+    expect(briefingWithWrinkle.answer).toMatch(/Cole Palmer/);
+    expect(briefingWithWrinkle.answer).toMatch(/not priced into the 1X2 above/i);
+    expect(briefingWithWrinkle.answer).toMatch(/Arsenal should control this at home/);
+    expect(briefingWithWrinkle.answer).toMatch(/example\.com\/news/);
+    expect(briefingWithWrinkle.citations.map((citation) => citation.id)).toEqual(["S1"]);
+    expect(briefingWithWrinkle.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {
@@ -761,11 +791,14 @@ describe("V2 conversational architecture", () => {
         match,
         planResponse(question, { groundingKind: "match", hasHistory: true })
       );
+      expect(tactical).toMatch(/My 1X2 is Arsenal 56\.3% \(fair 1\.78\)/);
+      expect(tactical).toMatch(/draw 23\.4% \(fair 4\.27\)/);
+      expect(tactical).toMatch(/Chelsea 20\.3% \(fair 4\.93\)/);
       expect(tactical).toMatch(/I lean to Arsenal at home/);
       expect(tactical).toMatch(/Who decides it|only get a result if they stretch|keep the game in their half/i);
       expect(tactical).toMatch(/team-strength view/);
       expect(tactical).not.toMatch(/My short answer is/i);
-      expect(tactical).not.toMatch(/\d+(?:\.\d+)?\s*%/);
+      expect(tactical).not.toMatch(/captured decimal|EV%|pass or play/i);
     }
 
     const briefing = composeMatchResponse(
