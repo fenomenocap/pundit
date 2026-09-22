@@ -260,42 +260,78 @@ export interface FittedDixonColesForecast {
   lambdaHome: number;
   lambdaAway: number;
   totalXg: number;
+  /** True when either club used dated ClubElo prior-only params (zero training matches). */
+  priorOnly: boolean;
 }
 
-/** Attack/defence λ. Missing club parameters fail closed; ratings are not invented. */
+/**
+ * Dated pre-kickoff Elo already on the eval/training row. Used only when a club
+ * has no fitted attack/defence. Never substitute today's production pin.
+ */
+export interface PriorOnlyEloContext {
+  meanElo: number;
+  homeElo: number | null;
+  awayElo: number | null;
+}
+
+function resolveClubAttackDefence(
+  params: FittedDixonColesArtifact["params"],
+  clubCanonicalName: string,
+  datedElo: number | null | undefined,
+  meanElo: number
+): { attack: number; defence: number; priorOnly: boolean } | null {
+  const attack = params.attack[clubCanonicalName];
+  const defence = params.defence[clubCanonicalName];
+  if (Number.isFinite(attack) && Number.isFinite(defence)) {
+    return { attack: attack as number, defence: defence as number, priorOnly: false };
+  }
+  if (datedElo == null || !Number.isFinite(datedElo) || !Number.isFinite(meanElo)) {
+    return null;
+  }
+  const prior = clubEloAttackDefencePrior(datedElo, meanElo);
+  return { attack: prior.attack, defence: prior.defence, priorOnly: true };
+}
+
+/** Attack/defence λ. Missing fitted clubs may use dated Elo prior-only; otherwise fail closed. */
 export function fittedDixonColesLambdas(
   params: FittedDixonColesArtifact["params"],
   homeCanonicalName: string,
-  awayCanonicalName: string
-): [number, number] | null {
-  const attackHome = params.attack[homeCanonicalName];
-  const attackAway = params.attack[awayCanonicalName];
-  const defenceHome = params.defence[homeCanonicalName];
-  const defenceAway = params.defence[awayCanonicalName];
-  if (
-    !Number.isFinite(attackHome)
-    || !Number.isFinite(attackAway)
-    || !Number.isFinite(defenceHome)
-    || !Number.isFinite(defenceAway)
-  ) {
-    return null;
-  }
-  const etaHome = params.intercept + params.homeAdvantage + attackHome + defenceAway;
-  const etaAway = params.intercept + attackAway + defenceHome;
-  return [
-    Math.exp(Math.min(8, Math.max(-8, etaHome))),
-    Math.exp(Math.min(8, Math.max(-8, etaAway))),
-  ];
+  awayCanonicalName: string,
+  priorElo?: PriorOnlyEloContext | null
+): { lambdas: [number, number]; priorOnly: boolean } | null {
+  const home = resolveClubAttackDefence(
+    params,
+    homeCanonicalName,
+    priorElo?.homeElo,
+    priorElo?.meanElo ?? NaN
+  );
+  const away = resolveClubAttackDefence(
+    params,
+    awayCanonicalName,
+    priorElo?.awayElo,
+    priorElo?.meanElo ?? NaN
+  );
+  if (!home || !away) return null;
+  const etaHome = params.intercept + params.homeAdvantage + home.attack + away.defence;
+  const etaAway = params.intercept + away.attack + home.defence;
+  return {
+    lambdas: [
+      Math.exp(Math.min(8, Math.max(-8, etaHome))),
+      Math.exp(Math.min(8, Math.max(-8, etaAway))),
+    ],
+    priorOnly: home.priorOnly || away.priorOnly,
+  };
 }
 
 export function forecastFittedDixonColes(
   params: FittedDixonColesArtifact["params"],
   homeCanonicalName: string,
-  awayCanonicalName: string
+  awayCanonicalName: string,
+  priorElo?: PriorOnlyEloContext | null
 ): FittedDixonColesForecast | null {
-  const lambdas = fittedDixonColesLambdas(params, homeCanonicalName, awayCanonicalName);
-  if (!lambdas) return null;
-  const [lambdaHome, lambdaAway] = lambdas;
+  const resolved = fittedDixonColesLambdas(params, homeCanonicalName, awayCanonicalName, priorElo);
+  if (!resolved) return null;
+  const [lambdaHome, lambdaAway] = resolved.lambdas;
   const matrix = scoreMatrix(lambdaHome, lambdaAway, params.rho);
   const [pHome, pDraw, pAway] = matrixTo1x2(matrix);
   const [pOver2_5, pUnder2_5] = matrixToTotals(matrix, 2.5);
@@ -311,6 +347,7 @@ export function forecastFittedDixonColes(
     lambdaHome,
     lambdaAway,
     totalXg: lambdaHome + lambdaAway,
+    priorOnly: resolved.priorOnly,
   };
 }
 
@@ -323,7 +360,7 @@ function uniqueClubs(rows: readonly FittedDixonColesTrainingRow[]): string[] {
   return [...names].sort();
 }
 
-function clubEloMeans(rows: readonly FittedDixonColesTrainingRow[]): {
+export function clubEloMeans(rows: readonly FittedDixonColesTrainingRow[]): {
   meanElo: number;
   byClub: Map<string, number>;
   matchCount: Map<string, number>;
@@ -551,6 +588,8 @@ export function fitTimeDecayedDixonColes(
   converged: boolean;
   iterations: number;
   logLikelihood: number;
+  /** Training-row Elo mean; required for prior-only forecast of zero-match clubs. */
+  meanElo: number;
 } {
   if (rows.length === 0) {
     throw new Error("Cannot fit Dixon-Coles MLE on zero training rows.");
@@ -603,6 +642,7 @@ export function fitTimeDecayedDixonColes(
     converged: fitted.converged,
     iterations: fitted.iterations,
     logLikelihood: fitted.value,
+    meanElo,
   };
 }
 
