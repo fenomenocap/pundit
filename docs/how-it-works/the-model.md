@@ -1,12 +1,12 @@
 # The Model
 
-Pundit's match probabilities come from a **Dixon-Coles Poisson model** calibrated on a reviewed **ClubElo** ratings artifact and computed locally inside the API. The content-addressed ratings snapshot ships with a release; the active fixture set (21-day horizon across enabled competitions) is recomputed hourly without contacting ClubElo at runtime.
+Pundit's match probabilities come from an independent Poisson score matrix with a **Dixon–Coles** low-score correction. Expected goals are not a fitted attack/defence model: they are a fixed 2.70 total split by the Elo odds ratio from a reviewed, pinned **ClubElo** artifact, computed locally inside the API. The content-addressed ratings snapshot ships with a release. The active fixture set (21-day horizon across enabled competitions) recomputes on the adaptive model cadence — hourly when nothing is live or imminent, every 30 minutes on a match day, every 15 minutes while a match is in play — without contacting ClubElo at runtime.
 
 ### Active fixture model
 
 For each recognized, policy-eligible upcoming club fixture in the active window:
 
-* **Win / draw / win probabilities** (`pHome`, `pDraw`, `pAway`) — Dixon-Coles output for that specific matchup
+* **Win, draw, or loss probabilities** (`pHome`, `pDraw`, `pAway`) — Dixon-Coles output for that specific matchup
 * **Over/under 2.5, BTTS, and likely scorelines** derived from the score matrix
 * **Elo → expected goals** via a fixed 2.70 total xG split by the Elo odds ratio (not a geometric-mean mapping that inflates totals on mismatches)
 * **Home-field advantage** applied for Premier League and UEFA Champions League qualifier home teams when the venue is not neutral (not for neutral-site tournaments)
@@ -33,7 +33,7 @@ For a recognized, priced fixture in the 21-day window, Pundit treats the fixture
 
 Pundit then:
 
-1. Compares the model's win/draw/win read with complete active Stake, Kalshi, and Polymarket 1X2 prices when available. Labelled **Pundit Consensus**, when shown, is a separate number that may shrink toward one complete same-source market and then refit expected goals. It is never the Fundamental headline.
+1. Compares the model's win, draw, or loss read with complete active Stake, Kalshi, and Polymarket 1X2 prices when available. Labelled **Pundit Consensus**, when shown, is a separate number that may shrink toward one complete same-source market and then refit expected goals. It is never the Fundamental headline.
 2. Runs a live web search whenever the question touches injuries, suspensions, lineups, form, transfers, or a recent result — for a specific fixture that information changes the read, so Pundit searches rather than answering from memory. Every item it reports names its source and date, and it says plainly where a search turned up nothing
 3. Responds in plain language from the server-owned facts, including fair prices `1/p`. Totals sit near 50% on every row because every match uses the same 2.70 expected goals; that sentence is honesty, not match insight.
 
@@ -57,7 +57,7 @@ The live Model page recalculates older fixtures with the release's **pinned, fre
 
 An **offline Phase 1b calibrator** (`pnpm --filter @sports-predict/api calibrate:champion`) can refit `BASE_GOALS`, home-field advantage, and `rho` on official sealed club-season rows. It writes a research report only; production still uses the shipped 1.35 / 42 / −0.1 constants until a human copies a reviewed config. The in-repo ledger seed is not production truth — Railway `PUNDIT_DATA_DIR=/data` is. MiniMax does not author these numbers.
 
-A fitted attack/defence Dixon–Coles challenger is **registered, not activated**. Production `model-data.ts` still calls the ClubElo → fixed-total λ champion. Promotion requires the chronological rolling-origin gate **and** an explicit human **promote**. See [the 2026-09-15 review](../architecture/prediction-model-review-2026-09-15.md).
+A fitted attack/defence Dixon–Coles challenger is **registered, not activated**. Production still calls the ClubElo → fixed-total λ champion. Promotion requires the chronological rolling-origin gate **and** an explicit human **promote**. The 2026-09-15 evaluation refits each origin and does not recommend promotion.
 
 ### Historical note: World Cup 2026
 

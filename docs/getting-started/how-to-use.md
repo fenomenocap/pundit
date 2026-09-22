@@ -8,7 +8,9 @@ The desk is a live slate of recognized, priced Premier League and UCL-qualifier 
 
 Select a fixture from the rail or chips, or type a question. Follow-ups stay on that fixture until you pick another.
 
-**Match questions** receive win/draw/win, over/under 2.5, BTTS, and likely scorelines from Pundit’s model, plus any available Stake, Kalshi, or Polymarket 1X2 prices. Shorthand such as `BTTS?`, `o2.5`, or “possible scorelines” is settled from those same numbers — not by restating the 1X2 favourite.
+**Match questions** receive win, draw, or loss, over/under 2.5, BTTS, and likely scorelines from Pundit’s model, plus any available Stake, Kalshi, or Polymarket 1X2 prices. Shorthand such as `BTTS?`, `o2.5`, or “possible scorelines” is settled from those same numbers — not by restating the 1X2 favourite.
+
+The featured briefing and the tactical chips (**Tactical matchup**, **Who decides it?**) are football takes on those same fixture facts. They do not open the pricing desk.
 
 **Competition questions** (e.g. “Who leads the Premier League?”) are grounded in the current ESPN standings table.
 
