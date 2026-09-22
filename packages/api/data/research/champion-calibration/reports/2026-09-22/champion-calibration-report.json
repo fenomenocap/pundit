@@ -1,0 +1,518 @@
+{
+  "schemaVersion": 2,
+  "validation": {
+    "method": "expanding-utc-week",
+    "minimumTrainN": 20,
+    "minimumHoldoutN": 40,
+    "resultLagHours": 24,
+    "folds": [
+      {
+        "origin": "2026-09-07T00:00:00.000Z",
+        "trainN": 28,
+        "trainThrough": "2026-09-05T16:30Z",
+        "holdoutIds": [
+          "eng.1:401879279:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879281:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879283:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879284:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879285:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879277:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401878779:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879282:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879278:clubelo@1:pre-kickoff-90m-v1"
+        ],
+        "constants": {
+          "baseGoals": 1.39,
+          "homeAdvantageElo": 41,
+          "rho": -0.01,
+          "mismatchInflation": 0
+        }
+      },
+      {
+        "origin": "2026-09-14T00:00:00.000Z",
+        "trainN": 37,
+        "trainThrough": "2026-09-12T19:00Z",
+        "holdoutIds": [
+          "eng.1:401879280:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879275:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879269:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401878778:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879271:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879274:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879270:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879272:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879273:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401879276:clubelo@1:pre-kickoff-90m-v1",
+          "eng.1:401878777:clubelo@1:pre-kickoff-90m-v1"
+        ],
+        "constants": {
+          "baseGoals": 1.4,
+          "homeAdvantageElo": 1,
+          "rho": -0.16,
+          "mismatchInflation": 0
+        }
+      }
+    ],
+    "shipped": {
+      "n": 20,
+      "brier": 0.6827,
+      "logLoss": 1.1277,
+      "winnerAccuracy": 0.45,
+      "scoreLogLoss": 3.4294,
+      "over25Brier": 0.2494,
+      "meanTotalXg": 2.7,
+      "actualMeanGoals": 2.8,
+      "actualOver25Rate": 0.55
+    },
+    "fitted": {
+      "n": 20,
+      "brier": 0.7024,
+      "logLoss": 1.1604,
+      "winnerAccuracy": 0.4,
+      "scoreLogLoss": 3.4702,
+      "over25Brier": 0.248,
+      "meanTotalXg": 2.791,
+      "actualMeanGoals": 2.8,
+      "actualOver25Rate": 0.55
+    },
+    "uncertainty": {
+      "method": "paired-utc-week-heldout",
+      "draws": 2000,
+      "seed": 20260915,
+      "n": 20,
+      "blockCount": 2,
+      "meanDelta": 0.01978060150266398,
+      "p10": 0.015455061841680766,
+      "p50": 0.01978060150266398,
+      "p90": 0.02331967940710479
+    }
+  },
+  "builtAt": "2026-09-22T09:06:30.031Z",
+  "methodId": "clubelo-fixed-total-dixon-coles-calibrated",
+  "ledger": {
+    "path": "packages/api/data/research/champion-calibration/ledgers/production-2026-09-22.json",
+    "usedDocumentedSample": false,
+    "productionOfficialNTarget": 44,
+    "productionDataDirHint": "PUNDIT_DATA_DIR=/data",
+    "rowCount": 72,
+    "officialN": 64,
+    "officialWithResultN": 64,
+    "excludedCheckpointPolicyN": 0,
+    "premierLeagueN": 50,
+    "uclQualN": 14,
+    "excluded": {
+      "total": 8,
+      "byReason": {
+        "legacyPartialProvenance": 8,
+        "incompleteInputProvenance": 0,
+        "postKickoffForecast": 0,
+        "invalidForecastTimestamp": 0
+      },
+      "withoutResult": 0
+    },
+    "publishedMappingCounts": {
+      "geometricMeanLambdas": 43,
+      "fixedTotal": 21,
+      "neither": 0
+    }
+  },
+  "shippedConstants": {
+    "baseGoals": 1.35,
+    "homeAdvantageElo": 42,
+    "rho": -0.1,
+    "mismatchInflation": 0
+  },
+  "fitted": {
+    "constants": {
+      "baseGoals": 1.41,
+      "homeAdvantageElo": 11,
+      "rho": -0.05,
+      "mismatchInflation": 0,
+      "baseGoalsByCompetition": {
+        "eng.1": 1.41,
+        "uefa.champions_qual": 1.35
+      }
+    },
+    "nll": 158.8283,
+    "aic": 323.6567,
+    "nestedNoInflation": {
+      "constants": {
+        "baseGoals": 1.41,
+        "homeAdvantageElo": 11,
+        "rho": -0.05,
+        "mismatchInflation": 0
+      },
+      "nll": 158.8283,
+      "aic": 323.6567
+    },
+    "uclBaseGoals": "frozen",
+    "fitCompetitionIds": [
+      "eng.1"
+    ]
+  },
+  "metrics": {
+    "shippedRecomputed": {
+      "n": 64,
+      "brier": 0.6572,
+      "logLoss": 1.0972,
+      "winnerAccuracy": 0.4219,
+      "scoreLogLoss": 3.2016,
+      "over25Brier": 0.249,
+      "meanTotalXg": 2.7,
+      "actualMeanGoals": 2.953,
+      "actualOver25Rate": 0.5781
+    },
+    "fittedRecomputed": {
+      "n": 64,
+      "brier": 0.662,
+      "logLoss": 1.1047,
+      "winnerAccuracy": 0.4219,
+      "scoreLogLoss": 3.2122,
+      "over25Brier": 0.2491,
+      "meanTotalXg": 2.794,
+      "actualMeanGoals": 2.953,
+      "actualOver25Rate": 0.5781
+    },
+    "publishedSealed": {
+      "n": 64,
+      "brier": 0.6617,
+      "logLoss": 1.1097,
+      "winnerAccuracy": 0.4219,
+      "scoreLogLoss": null,
+      "over25Brier": 0.2526,
+      "meanTotalXg": 2.7,
+      "actualMeanGoals": 2.953,
+      "actualOver25Rate": 0.5781
+    },
+    "byCompetition": {
+      "eng.1": {
+        "shippedRecomputed": {
+          "n": 50,
+          "brier": 0.6678,
+          "logLoss": 1.1126,
+          "winnerAccuracy": 0.42,
+          "scoreLogLoss": 3.1902,
+          "over25Brier": 0.2498,
+          "meanTotalXg": 2.7,
+          "actualMeanGoals": 2.82,
+          "actualOver25Rate": 0.52
+        },
+        "fittedRecomputed": {
+          "n": 50,
+          "brier": 0.6662,
+          "logLoss": 1.1133,
+          "winnerAccuracy": 0.42,
+          "scoreLogLoss": 3.1766,
+          "over25Brier": 0.2498,
+          "meanTotalXg": 2.82,
+          "actualMeanGoals": 2.82,
+          "actualOver25Rate": 0.52
+        }
+      },
+      "uefa.champions_qual": {
+        "shippedRecomputed": {
+          "n": 14,
+          "brier": 0.6193,
+          "logLoss": 1.0425,
+          "winnerAccuracy": 0.4286,
+          "scoreLogLoss": 3.2421,
+          "over25Brier": 0.2464,
+          "meanTotalXg": 2.7,
+          "actualMeanGoals": 3.429,
+          "actualOver25Rate": 0.7857
+        },
+        "fittedRecomputed": {
+          "n": 14,
+          "brier": 0.6468,
+          "logLoss": 1.074,
+          "winnerAccuracy": 0.4286,
+          "scoreLogLoss": 3.3395,
+          "over25Brier": 0.2464,
+          "meanTotalXg": 2.7,
+          "actualMeanGoals": 3.429,
+          "actualOver25Rate": 0.7857
+        }
+      }
+    },
+    "vsMarketNoVig": {
+      "shippedRecomputed": {
+        "n": 63,
+        "model": {
+          "brier": 0.6624,
+          "logLoss": 1.1047
+        },
+        "market": {
+          "brier": 0.6265,
+          "logLoss": 1.0418
+        }
+      },
+      "fittedRecomputed": {
+        "n": 63,
+        "model": {
+          "brier": 0.6686,
+          "logLoss": 1.1141
+        },
+        "market": {
+          "brier": 0.6265,
+          "logLoss": 1.0418
+        }
+      },
+      "publishedSealed": {
+        "n": 63,
+        "model": {
+          "brier": 0.667,
+          "logLoss": 1.1174
+        },
+        "market": {
+          "brier": 0.6265,
+          "logLoss": 1.0418
+        }
+      }
+    },
+    "reliabilityByEloGap": {
+      "shippedRecomputed": [
+        {
+          "label": "close (<50)",
+          "minAbsGap": 0,
+          "maxAbsGap": 50,
+          "n": 19,
+          "meanAbsGap": 28.1,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.3416,
+              "actual": 0.3158
+            },
+            "pDraw": {
+              "predicted": 0.2803,
+              "actual": 0.4737
+            },
+            "pAway": {
+              "predicted": 0.3781,
+              "actual": 0.2105
+            }
+          },
+          "over25": {
+            "predicted": 0.5064,
+            "actual": 0.4737
+          }
+        },
+        {
+          "label": "moderate (50–150)",
+          "minAbsGap": 50,
+          "maxAbsGap": 150,
+          "n": 24,
+          "meanAbsGap": 102.9,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.3995,
+              "actual": 0.2917
+            },
+            "pDraw": {
+              "predicted": 0.2575,
+              "actual": 0.2917
+            },
+            "pAway": {
+              "predicted": 0.343,
+              "actual": 0.4167
+            }
+          },
+          "over25": {
+            "predicted": 0.5064,
+            "actual": 0.7083
+          }
+        },
+        {
+          "label": "large (150–250)",
+          "minAbsGap": 150,
+          "maxAbsGap": 250,
+          "n": 11,
+          "meanAbsGap": 187,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.5697,
+              "actual": 0.4545
+            },
+            "pDraw": {
+              "predicted": 0.2161,
+              "actual": 0.1818
+            },
+            "pAway": {
+              "predicted": 0.2141,
+              "actual": 0.3636
+            }
+          },
+          "over25": {
+            "predicted": 0.5064,
+            "actual": 0.4545
+          }
+        },
+        {
+          "label": "mismatch (≥250)",
+          "minAbsGap": 250,
+          "maxAbsGap": null,
+          "n": 10,
+          "meanAbsGap": 325.6,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.582,
+              "actual": 0.7
+            },
+            "pDraw": {
+              "predicted": 0.1499,
+              "actual": 0.2
+            },
+            "pAway": {
+              "predicted": 0.2681,
+              "actual": 0.1
+            }
+          },
+          "over25": {
+            "predicted": 0.5064,
+            "actual": 0.6
+          }
+        }
+      ],
+      "fittedRecomputed": [
+        {
+          "label": "close (<50)",
+          "minAbsGap": 0,
+          "maxAbsGap": 50,
+          "n": 19,
+          "meanAbsGap": 28.1,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.2969,
+              "actual": 0.3158
+            },
+            "pDraw": {
+              "predicted": 0.2587,
+              "actual": 0.4737
+            },
+            "pAway": {
+              "predicted": 0.4444,
+              "actual": 0.2105
+            }
+          },
+          "over25": {
+            "predicted": 0.5307,
+            "actual": 0.4737
+          }
+        },
+        {
+          "label": "moderate (50–150)",
+          "minAbsGap": 50,
+          "maxAbsGap": 150,
+          "n": 24,
+          "meanAbsGap": 102.9,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.3604,
+              "actual": 0.2917
+            },
+            "pDraw": {
+              "predicted": 0.2415,
+              "actual": 0.2917
+            },
+            "pAway": {
+              "predicted": 0.3981,
+              "actual": 0.4167
+            }
+          },
+          "over25": {
+            "predicted": 0.5281,
+            "actual": 0.7083
+          }
+        },
+        {
+          "label": "large (150–250)",
+          "minAbsGap": 150,
+          "maxAbsGap": 250,
+          "n": 11,
+          "meanAbsGap": 187,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.538,
+              "actual": 0.4545
+            },
+            "pDraw": {
+              "predicted": 0.2125,
+              "actual": 0.1818
+            },
+            "pAway": {
+              "predicted": 0.2496,
+              "actual": 0.3636
+            }
+          },
+          "over25": {
+            "predicted": 0.5221,
+            "actual": 0.4545
+          }
+        },
+        {
+          "label": "mismatch (≥250)",
+          "minAbsGap": 250,
+          "maxAbsGap": null,
+          "n": 10,
+          "meanAbsGap": 325.6,
+          "oneXTwo": {
+            "pHome": {
+              "predicted": 0.5727,
+              "actual": 0.7
+            },
+            "pDraw": {
+              "predicted": 0.1406,
+              "actual": 0.2
+            },
+            "pAway": {
+              "predicted": 0.2867,
+              "actual": 0.1
+            }
+          },
+          "over25": {
+            "predicted": 0.5353,
+            "actual": 0.6
+          }
+        }
+      ]
+    }
+  },
+  "decision": {
+    "recommendProductionChange": false,
+    "changeShippedConstants": false,
+    "rebuildGoldenCutover": false,
+    "reasons": [
+      "Production dixon-coles.ts constants were not changed by this offline report.",
+      "Golden-cutover rebuild is reserved for a human decision after shipped constants move.",
+      "Fitted 1X2 Brier is not clearly better than shipped 1.35/42/−0.1.",
+      "Chronological PL holdout n=20; need 40.",
+      "Need at least 1000 paired bootstrap draws and 5 held-out UTC weeks; missing uncertainty cannot pass.",
+      "Held-out 1X2 Brier does not improve by more than 0.005.",
+      "Held-out paired bootstrap 10–90% interval on ΔBrier does not lie entirely below 0."
+    ]
+  },
+  "config": {
+    "schemaVersion": 1,
+    "productionAutoLoad": false,
+    "recommendedForProduction": false,
+    "methodId": "clubelo-fixed-total-dixon-coles-calibrated",
+    "mapping": "fixed-total-elo-odds-ratio",
+    "constants": {
+      "baseGoals": 1.41,
+      "homeAdvantageElo": 11,
+      "rho": -0.05,
+      "mismatchInflation": 0,
+      "baseGoalsByCompetition": {
+        "eng.1": 1.41,
+        "uefa.champions_qual": 1.35
+      }
+    },
+    "source": {
+      "officialN": 64,
+      "premierLeagueN": 50,
+      "uclQualN": 14,
+      "ledgerNote": "Official sealed rows from packages/api/data/research/champion-calibration/ledgers/production-2026-09-22.json. Production evidence is Railway PUNDIT_DATA_DIR=/data, not the in-repo seed."
+    },
+    "id": "champion-calibration@1:e6bd1e70df6b3d4bcaba3b7eb6016cb2b092219943aa90083ece40e6a600fe18",
+    "sha256": "e6bd1e70df6b3d4bcaba3b7eb6016cb2b092219943aa90083ece40e6a600fe18"
+  }
+}
