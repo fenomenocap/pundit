@@ -1,10 +1,11 @@
-// Answer inference. Search stays on its own provider chain.
+// Answer inference. Search is a separate provider and must not be attached
+// to this client: the answer model does not browse.
 //
 // OPENROUTER_API_KEY pins answers to one OpenRouter model through the existing
-// Anthropic-compatible client. There is no auto-router and no model-owned web
-// search. MiniMax remains the fallback only when that key is absent, so a
-// local checkout without OpenRouter still answers. Production sets the
-// OpenRouter key and leaves MINIMAX_INFERENCE_API_KEY unset.
+// Anthropic-compatible client. There is no auto-router. The same key also
+// funds search, which calls OpenRouter chat completions on its own and keeps
+// only the cited results. MiniMax remains the answer fallback only when the
+// OpenRouter key is absent. There is no dedicated MiniMax inference key.
 
 export const PINNED_OPENROUTER_MODEL = "deepseek/deepseek-v4-flash";
 const OPENROUTER_MESSAGES_BASE = "https://openrouter.ai/api";
@@ -14,7 +15,6 @@ const REJECTED_MODEL = /^(?:openrouter\/(?:auto|pareto)|~)|:online|,/i;
 
 export type InferenceKeySource =
   | "OPENROUTER_API_KEY"
-  | "MINIMAX_INFERENCE_API_KEY"
   | "MINIMAX_API_KEY"
   | "unset";
 
@@ -27,7 +27,7 @@ export interface ResolvedInference {
   provider: "openrouter" | "minimax";
 }
 
-function pinnedOpenRouterModel(): string {
+export function openRouterModelId(): string {
   const requested = process.env.OPENROUTER_MODEL?.trim() ?? "";
   if (!requested || REJECTED_MODEL.test(requested)) return PINNED_OPENROUTER_MODEL;
   return requested;
@@ -40,23 +40,22 @@ export function resolveInference(): ResolvedInference {
     return {
       apiKey: openRouterKey,
       baseURL: base.replace(/\/$/, ""),
-      model: pinnedOpenRouterModel(),
+      model: openRouterModelId(),
       keySource: "OPENROUTER_API_KEY",
-      dedicatedKey: true,
+      // Search uses this same key. The flag means a separate inference quota,
+      // which this deployment does not have.
+      dedicatedKey: false,
       provider: "openrouter",
     };
   }
 
-  const dedicated = process.env.MINIMAX_INFERENCE_API_KEY?.trim();
   const shared = process.env.MINIMAX_API_KEY?.trim();
   return {
-    apiKey: dedicated || shared || undefined,
-    baseURL: process.env.MINIMAX_INFERENCE_BASE_URL
-      ?? process.env.MINIMAX_BASE_URL
-      ?? MINIMAX_MESSAGES_BASE,
+    apiKey: shared || undefined,
+    baseURL: process.env.MINIMAX_BASE_URL?.trim() || MINIMAX_MESSAGES_BASE,
     model: process.env.MINIMAX_MODEL?.trim() || "MiniMax-M3",
-    keySource: dedicated ? "MINIMAX_INFERENCE_API_KEY" : shared ? "MINIMAX_API_KEY" : "unset",
-    dedicatedKey: Boolean(dedicated),
+    keySource: shared ? "MINIMAX_API_KEY" : "unset",
+    dedicatedKey: false,
     provider: "minimax",
   };
 }

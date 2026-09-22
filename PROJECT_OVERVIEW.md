@@ -90,7 +90,7 @@ Budgets: `PROVIDER_CALL_BUDGET = 10`, `MAX_CONTINUATIONS = 2`, 90-second shared 
 | **Stake / Kalshi / Polymarket** | `fixture-market-sources.ts`, `model-market-odds.ts` | Best-effort direct fetches, normalized to **no-vig** 1X2 every 30 min, scoped by market profile. Source failures stay isolated and are surfaced as `sourceWarnings`. |
 | **Web search** | `web-search.ts` | See §4. |
 | **Frozen WC evaluation** | `wc-evaluation.ts` | Read-only historical backtest. No cron, no live coupling. |
-| **MiniMax** | `ask.ts` | `MiniMax-M3` over MiniMax's Anthropic-compatible endpoint, via `@anthropic-ai/sdk` as the wire client. Runs on its **own credential** (`MINIMAX_INFERENCE_API_KEY`) so inference no longer shares a subscription quota with search. |
+| **Answer model** | `ask.ts` | `OPENROUTER_API_KEY` pins `deepseek/deepseek-v4-flash` through the Anthropic-compatible client. The same key funds search on a separate request. `MINIMAX_API_KEY` answers only when OpenRouter is unset and does not serve search. |
 
 ### Competition registry (`config/competitions.ts`)
 
@@ -104,15 +104,15 @@ Budgets: `PROVIDER_CALL_BUDGET = 10`, `MAX_CONTINUATIONS = 2`, 90-second shared 
 
 ## 4. Web search as a provider chain
 
-Search is an **adapter seam, not a vendor integration** — MiniMax has no hosted search equivalent, so Pundit executes it.
+Search is an **adapter seam**. The answer model does not browse.
 
-- Providers implement `SearchProvider` and register in `KNOWN_PROVIDERS`. Today: `minimax` (undocumented `/v1/coding_plan/search`, default primary) and `brave` (documented, contractual, own quota and status page).
-- `WEB_SEARCH_PROVIDER_ORDER` reorders the chain with no code change (`brave,minimax` promotes Brave). Unknown names are ignored; unnamed providers trail the chain.
-- `searchWeb` returns a typed `WebSearchOutcome`: `ok` / `empty` / `degraded` + reason. **`empty` means the web genuinely had nothing** — every other case carries a reason, so a failure can never reach a caller as zero results.
-- **Circuit breakers are per provider and per question**, not per search. One question fans out to ~6 searches; per-search accounting once let a single throttled question blank the next reader's evidence for 5 minutes. `withSearchQuestion()` scopes the accounting. Breaker opens after 3 consecutive failed *questions*, stays open 5 minutes.
-- Bounds: 10s timeout, 2 attempts per provider with exponential backoff (250ms base, 1.5s cap, `Retry-After` honoured), 256KB response cap, 6 results max, 256-char query, 200-char titles, 600-char snippets, 2048-char URLs.
-- `WEB_SEARCH_CONCURRENCY` (default 2, max 8) caps in-flight searches process-wide — a **load** control, deliberately independent of provider health.
-- Health is reported on `/ready` under `webSearch`, separately from `inference`, because the two used to share a key and "which quota ran out" must be answerable from that payload alone.
+- `KNOWN_PROVIDERS` is `openrouter`. It calls chat completions with the pinned DeepSeek model and `openrouter:web_search` (Exa), then keeps `url_citation` pages and discards the model's prose.
+- Unknown names in `WEB_SEARCH_PROVIDER_ORDER` are ignored. A known provider that was not named still trails the chain.
+- `searchWeb` returns a typed `WebSearchOutcome`: `ok` / `empty` / `degraded` + reason. **`empty` means the tool ran and cited nothing.** A reply that never searched is `degraded` / `malformed_response`.
+- **Circuit breakers are per provider and per question**, not per search. One question fans out to ~6 searches. `withSearchQuestion()` scopes the accounting. Breaker opens after 3 consecutive failed *questions*, stays open 5 minutes.
+- Bounds: 25s timeout, 2 attempts per provider with exponential backoff (250ms base, 1.5s cap, a long `Retry-After` is not waited out), 256KB response cap, 6 results max, 256-char query, 200-char titles, 600-char snippets, 2048-char URLs.
+- `WEB_SEARCH_CONCURRENCY` (default 4, max 8) caps in-flight searches process-wide — a **load** control, deliberately independent of provider health.
+- Health is reported on `/ready` under `webSearch`, separately from `inference`, so a search throttle is visible without reading the answer.
 
 ---
 
@@ -249,22 +249,17 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_USE_MOCK=true        # false hits the real API
 NEXT_PUBLIC_DOCS_URL=            # GitBook public URL; enables doc links
 
-# MiniMax — shared fallback
+# MiniMax — answer fallback only when OpenRouter is unset. Does not serve search.
 MINIMAX_API_KEY=
 MINIMAX_MODEL=MiniMax-M3
 MINIMAX_BASE_URL=https://api.minimax.io/anthropic   # region-scoped; CN keys use api.minimaxi.com
 
-# Dedicated inference credential (recommended in prod)
-MINIMAX_INFERENCE_API_KEY=
-MINIMAX_INFERENCE_BASE_URL=
-
-# Search providers
-MINIMAX_SEARCH_API_KEY=
-MINIMAX_SEARCH_URL=
-BRAVE_SEARCH_API_KEY=
-BRAVE_SEARCH_URL=
-WEB_SEARCH_PROVIDER_ORDER=       # default minimax,brave
-WEB_SEARCH_CONCURRENCY=2         # max 8
+# OpenRouter — answers and search
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=                # pin is deepseek/deepseek-v4-flash; auto and :online are ignored
+OPENROUTER_BASE_URL=https://openrouter.ai/api
+WEB_SEARCH_PROVIDER_ORDER=
+WEB_SEARCH_CONCURRENCY=4         # max 8
 
 # Rate limiting
 ASK_RATE_LIMIT_PER_MINUTE=10

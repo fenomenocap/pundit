@@ -2,7 +2,7 @@
 
 Chat-first analysis **desk** for the Premier League and UEFA Champions League qualifiers. Recognized, policy-eligible active fixtures are grounded in locally computed match probabilities; recognized non-priced fixtures retain context with an explicit capability reason and no Pundit probabilities. Competition questions use ESPN standings, and other football questions are clearly labelled general analysis. World Cup 2026 live pipelines are retired, with historical credibility retained in the frozen backtest at `/evaluation/wc-2026`. No blockchain, database, or trading. Paper / Draft / Vaults on the web app are a local simulator, not a book. The former platform is archived at `archive/onchain-trading-v1`.
 
-**Status:** Deployed (Vercel + Railway). `POST /api/ask` is live in production with the MiniMax key managed in Railway.
+**Status:** Deployed (Vercel + Railway). `POST /api/ask` is live in production with the OpenRouter key managed in Railway.
 
 ---
 
@@ -12,7 +12,7 @@ Chat-first analysis **desk** for the Premier League and UEFA Champions League qu
 |---|---|
 | Monorepo | pnpm workspaces (Node 22, pnpm 9.15.4), 2 packages: `api`, `web` |
 | Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui primitives (`components/ui/`) |
-| Backend | Express + TypeScript, `@anthropic-ai/sdk` (used as the wire client for MiniMax's Anthropic-compatible endpoint) |
+| Backend | Express + TypeScript, `@anthropic-ai/sdk` (wire client for the pinned OpenRouter model; MiniMax remains the answer fallback when that key is unset) |
 | Data | ESPN, Stake, Kalshi, and Polymarket public endpoints; pinned ClubElo-derived strength artifact; model computed locally |
 
 No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't reintroduce any of these without discussing it first — the whole point of the last pivot was to drop the trading platform.
@@ -29,9 +29,9 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 | **Local model** (`dixon-coles.ts`, `model-data.ts`) | `/api/model/active`, `/api/model/fixtures`, `/model`, match grounding | Computes 1X2, totals, BTTS and scoreline probabilities for the 21-day active club-fixture set, including home-field advantage where configured. |
 | **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Active match grounding | Direct best-effort fetches normalize complete active 1X2 markets to no-vig probabilities every 30 minutes. Source failures remain isolated. |
 | **Frozen WC evaluation** (`wc-evaluation.ts`) | `/api/evaluation/wc-2026`, `/evaluation/wc-2026` | Read-only historical backtest. It is not a live competition pipeline and has no cron. |
-| **Web search** (`web-search.ts`) | `POST /api/ask` | Pundit-executed search tool, since MiniMax has no hosted equivalent. A **provider chain**, not a vendor: MiniMax's undocumented `/v1/coding_plan/search` is an optional provider (default primary), with Brave Search as a documented second provider behind the same seam. Any provider-level failure — 429, 5xx, timeout, malformed body, open breaker — fails over to the next enabled provider and is never reported as zero results. `searchWeb` returns a typed `WebSearchOutcome` (`ok` / `empty` / `degraded` plus a reason), so callers degrade on purpose. Breakers are **per provider** and count **per question**, not per search. Health is reported on `/ready` under `webSearch`. |
+| **Web search** (`web-search.ts`) | `POST /api/ask` | Pundit-executed search. The provider calls OpenRouter chat completions with the pinned DeepSeek model and `openrouter:web_search` (Exa), then keeps only `url_citation` pages. The answer client never receives that tool. A provider failure — 429, 5xx, timeout, a reply that never searched — is a typed `degraded` outcome, never zero results. `empty` means the tool ran and cited nothing. Breakers are **per provider** and count **per question**, not per search. Health is reported on `/ready` under `webSearch`. |
 | **Grounded response layer** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | Deterministically renders every no-search response with complete match, non-priced fixture, competition, or season grounding. “Current” alone is not an external-search cue for owned table, model, or season facts. An all-zero table requested as the sole source refuses a ranking rather than leaking a ratings-and-schedule forecast. Non-priced capability and identity-not-established candidate notices remain deterministic even when a mandatory current cue requires bounded search; search cannot alter capability or promote identity. If market verification establishes no supported claim, the response discards generated prose and renders only complete structured markets already present in match grounding, with no citations. Complete identical season inputs use a stable replay seed rather than request-local randomness. |
-| **MiniMax API** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | `MiniMax-M3` over MiniMax's Anthropic-compatible endpoint, on its own credential (`MINIMAX_INFERENCE_API_KEY`) so inference no longer shares a subscription quota with search. Health is reported on `/ready` under `inference`. It is limited to supported evidence-required prose plus general/ungrounded open-ended analysis; it does not override the deterministic grounded facts above. Supports the existing shared 90-second deadline, grounding-first SSE, web search/verification, and client-sourced conversation history. |
+| **Answer model** (`packages/api/src/services/ask.ts`) | `POST /api/ask` | `OPENROUTER_API_KEY` pins `deepseek/deepseek-v4-flash` through the Anthropic-compatible client. The same key funds search on a separate request. `MINIMAX_API_KEY` answers only when OpenRouter is unset and does not serve search. Health is reported on `/ready` under `inference`. The model is limited to supported evidence-required prose plus general/ungrounded open-ended analysis; it does not override deterministic grounded facts. Supports the shared 90-second deadline, grounding-first SSE, web search/verification, and client-sourced conversation history. |
 
 ---
 
@@ -62,34 +62,24 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_USE_MOCK=true   # false hits the real API instead of mock-data.ts fallbacks
 NEXT_PUBLIC_DOCS_URL=         # optional GitBook public URL — enables "How it works" / "Learn more" links
 
-# ── MiniMax (required for POST /api/ask) ─────────────────────────────────────
-# Shared fallback for inference and search. Every override below is optional,
-# so a deployment that sets only this keeps its existing behaviour.
+# ── MiniMax answer fallback (only when OpenRouter is unset) ─────────────────
+# This key does not serve search.
 MINIMAX_API_KEY=
 # Optional overrides. The base URL is region-scoped: keys issued for mainland
 # China authenticate only against https://api.minimaxi.com/anthropic.
 MINIMAX_MODEL=MiniMax-M3
 MINIMAX_BASE_URL=https://api.minimax.io/anthropic
 
-# ── Inference credential (recommended in production) ─────────────────────────
-# An Open Platform pay-as-you-go key. Answering costs ~1-3 inference calls and
-# ~6 searches; sharing one coding-plan key meant retrieval spent the quota the
-# answer needed, and a Claude Code session on the same subscription spent it
-# too. Falls back to MINIMAX_API_KEY. /ready reports inference.dedicatedKey.
-MINIMAX_INFERENCE_API_KEY=
-MINIMAX_INFERENCE_BASE_URL=   # optional; falls back to MINIMAX_BASE_URL
+# ── OpenRouter (answers and search) ─────────────────────────────────────────
+# One key. Answers pin deepseek/deepseek-v4-flash. Search uses the same key
+# on its own request and keeps cited pages only. /ready reports inference.keySource.
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=             # optional; openrouter/auto and :online are ignored
+OPENROUTER_BASE_URL=https://openrouter.ai/api
 
-# ── Web search providers ─────────────────────────────────────────────────────
-# Search is a provider chain and MiniMax's endpoint is optional. Configure a
-# second provider in production: without one, a throttle at MiniMax leaves
-# answers with no evidence at all.
-MINIMAX_SEARCH_API_KEY=       # optional; falls back to MINIMAX_API_KEY
-MINIMAX_SEARCH_URL=           # optional override for the undocumented endpoint
-BRAVE_SEARCH_API_KEY=         # documented second provider; enables failover
-BRAVE_SEARCH_URL=
-# Chain order. `brave,minimax` promotes Brave to primary with no code change.
-# Unknown names are ignored; unnamed providers trail the chain.
-WEB_SEARCH_PROVIDER_ORDER=    # default: minimax,brave
+# ── Web search ───────────────────────────────────────────────────────────────
+# Enabled by OPENROUTER_API_KEY. Unknown names in the order are ignored.
+WEB_SEARCH_PROVIDER_ORDER=
 # Searches in flight process-wide. A load control, independent of provider
 # health. Default 4, max 8.
 WEB_SEARCH_CONCURRENCY=4
@@ -121,7 +111,7 @@ ANALYST_RESPONSE_V2=true
 - Mobile-first responsive.
 - `/model` is a native read-only reference over Pundit's active club-fixture `/api/model/*` cache. Keep it aligned with the existing API contract rather than introducing a second model path.
 - `/evaluation/wc-2026` is a frozen historical artifact. Do not reconnect it to live chat/model caches or cron.
-- Keep server-owned facts deterministic when the grounding contract is complete. MiniMax may handle evidence-required current turns and general/ungrounded open-ended analysis, but it must not restate a recognized fixture's capability reason as a guessed lineup, squad, venue, rating, or policy explanation.
+- Keep server-owned facts deterministic when the grounding contract is complete. The answer model may handle evidence-required current turns and general/ungrounded open-ended analysis, but it must not restate a recognized fixture's capability reason as a guessed lineup, squad, venue, rating, or policy explanation.
 - In V2 match answers, numeric facts are rendered by the server from typed fact slots. Generated prose may select and connect approved facts, but it cannot supply probabilities, fair odds, market gaps, source IDs, betting recommendations, or lineup effects itself. Narrow fact and capability questions settle without retrieval; current team news still requires verified evidence.
 - Search is an adapter seam, not a vendor integration. Add a provider by implementing `SearchProvider` in `web-search.ts` and registering it in `KNOWN_PROVIDERS`; never couple product behaviour to one provider's wire format.
 - Never let a search failure reach a caller as an empty result set. `searchWeb` returns a typed outcome, and `empty` means the web had nothing — every other case carries a reason.
@@ -136,7 +126,7 @@ ANALYST_RESPONSE_V2=true
 ## DO NOT
 
 - Reintroduce Prisma/Postgres, wagmi/viem/RainbowKit, or any onchain trading concept without discussing it first.
-- Read back, log, hardcode, or commit `MINIMAX_API_KEY`, `MINIMAX_INFERENCE_API_KEY`, `MINIMAX_SEARCH_API_KEY` or `BRAVE_SEARCH_API_KEY`; they are managed in Railway for production and in the gitignored repo-root `.env` locally. `/ready` reports which variable supplied a key and never the value.
+- Read back, log, hardcode, or commit `OPENROUTER_API_KEY` or `MINIMAX_API_KEY`; they are managed in Railway for production and in the gitignored repo-root `.env` locally. `/ready` reports which variable supplied a key and never the value.
 - Add a runtime dependency on the archived `worldcup-model` deployment or restore a live World Cup pipeline.
 - Treat the frozen WC evaluation as current forecasts or regenerate it from current club ratings.
 - Call `fetch()` raw in page components for matches/standings data — go through `lib/mock-data.ts`'s wrappers, which honour `NEXT_PUBLIC_USE_MOCK`.
