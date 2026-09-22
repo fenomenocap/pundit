@@ -21,7 +21,7 @@ Exceeding a limit returns an HTTP error with a JSON body like `{ "error": "Too m
 }
 ```
 
-`lastUpdated` is when the underlying cache was last refreshed (ESPN and active market odds every 30 minutes; active model hourly). Club strengths are a pinned local release artifact rather than a runtime vendor cache. `error` is non-null when the relevant refresh or artifact validation failed.
+`lastUpdated` is when the underlying cache was last refreshed. The quiet cadence is ESPN and market odds every 30 minutes and the active model every hour. A kickoff inside 24 hours shortens that to 10 minutes, 10 minutes, and 30 minutes. A match in play shortens it to 2 minutes, 5 minutes, and 15 minutes. Club strengths are a pinned local release artifact rather than a runtime vendor cache. `error` is non-null when the relevant refresh or artifact validation failed.
 
 **Endpoints:**
 
