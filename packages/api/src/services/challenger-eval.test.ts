@@ -10,7 +10,9 @@ import {
   challengerOutcomeMetrics,
   evaluatePairedRollingOrigin,
   evaluatePairedRollingOriginFromDataDir,
+  evaluateWeeklyExpandingWindow,
   promotionGateDecision,
+  weeklyExpandingWindowSplits,
   type ChallengerEvalRow,
   type OriginEval,
 } from "./challenger-eval";
@@ -99,10 +101,11 @@ function row(
 function improvingOrigin(origin: string, n = MIN_HOLDOUT_N_FOR_PROMOTION): OriginEval {
   return {
     origin,
-    training: { n: 100, through: "2024-12-01T00:00:00Z", paramsSha256: "a".repeat(64), converged: true },
+    training: { n: 100, through: "2024-12-01T00:00:00Z", paramsSha256: "a".repeat(64), converged: true, meanElo: 1700 },
     holdoutCount: n,
     scoredCount: n,
     uncoveredCount: 0,
+    priorOnlyCount: 0,
     champion: {
       n,
       brier: 0.5,
@@ -199,20 +202,66 @@ describe("paired champion/challenger rolling-origin eval", () => {
     });
   });
 
-  it("does not invent attack/defence for a club missing from the artifact", () => {
-    const result = evaluatePairedRollingOrigin({
+  it("covers zero-match clubs via dated ClubElo prior-only, and stays null without dated Elo", () => {
+    const withElo = evaluatePairedRollingOrigin({
       artifact: artifact(),
       rows: [row("early", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1),
-        row("late", "2025-08-16T14:00:00Z", "Arsenal", "Man United", 1, 0)],
+        row("late", "2025-08-16T14:00:00Z", "Arsenal", "Man United", 1, 0, 1850, 1884)],
     });
-    expect(result.status).toBe("evaluated");
-    expect(result.pairedForecasts[0]?.challenger).toBeNull();
-    expect(result.pairedForecasts[0]?.challengerReason).toBe("missing-club-params");
-    expect(result.origins[0]?.uncoveredCount).toBe(1);
-    expect(result.origins[0]?.challengerImproves).toBe(false);
+    expect(withElo.status).toBe("evaluated");
+    expect(withElo.pairedForecasts[0]?.challenger).not.toBeNull();
+    expect(withElo.pairedForecasts[0]?.priorOnly).toBe(true);
+    expect(withElo.origins[0]?.uncoveredCount).toBe(0);
+    expect(withElo.origins[0]?.priorOnlyCount).toBe(1);
     expect(forecastFittedDixonColes(artifact().params, "Arsenal", "Man United")).toBeNull();
+    expect(forecastFittedDixonColes(artifact().params, "Arsenal", "Man United", {
+      meanElo: 1700,
+      homeElo: null,
+      awayElo: 1884,
+    })).toBeNull();
+    expect(forecastFittedDixonColes(artifact().params, "Arsenal", "Man United", {
+      meanElo: 1700,
+      homeElo: 1850,
+      awayElo: 1884,
+    })?.priorOnly).toBe(true);
+
+    const missingElo = evaluatePairedRollingOrigin({
+      artifact: artifact(),
+      rows: [
+        row("early", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1),
+        { ...row("late", "2025-08-16T14:00:00Z", "Arsenal", "Man United", 1, 0), homeElo: Number.NaN },
+      ],
+    });
+    expect(missingElo.status).toBe("blocked");
+    expect(missingElo.reason).toBe("invalid-or-lookahead-row-date");
   });
 
+  it("builds weekly expanding-window splits that train only on earlier results", () => {
+    const rows = [
+      row("w1a", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1),
+      row("w1b", "2024-08-18T14:00:00Z", "Hull", "Man United", 0, 2),
+      ...Array.from({ length: 20 }, (_, i) => row(
+        `train-${i}`,
+        new Date(Date.UTC(2024, 7, 19 + i, 14)).toISOString(),
+        "Hull",
+        "Man United",
+        i % 2,
+        (i + 1) % 2
+      )),
+      row("hold", "2024-09-14T14:00:00Z", "Hull", "Man United", 2, 1),
+    ];
+    const splits = weeklyExpandingWindowSplits(rows, { minTrainN: 20 });
+    expect(splits.length).toBeGreaterThan(0);
+    const last = splits[splits.length - 1]!;
+    expect(last.holdoutEventIds).toContain("hold");
+    expect(last.trainEventIds).not.toContain("hold");
+    expect(last.trainEventIds.length).toBeGreaterThanOrEqual(20);
+    const weekly = evaluateWeeklyExpandingWindow({ artifact: artifact(), rows, minTrainN: 20 });
+    expect(weekly.status).toBe("evaluated");
+    expect(weekly.reason).toBe("refitted-weekly-expanding-window");
+    expect(weekly.origins.some((origin) => origin.uncoveredCount >= 0)).toBe(true);
+    expect(weekly.decision.activateProduction).toBe(false);
+  });
   it("reports unavailable metrics on an empty holdout instead of perfect zero loss", () => {
     const result = evaluatePairedRollingOrigin({
       artifact: artifact(),

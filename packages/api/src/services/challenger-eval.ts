@@ -38,6 +38,8 @@ import {
 export const CHALLENGER_EVAL_SCHEMA_VERSION = 2;
 export const MIN_HOLDOUT_N_FOR_PROMOTION = 40;
 export const MIN_SCORED_ORIGINS_FOR_PROMOTION = 2;
+export const MIN_WEEKLY_EXPANDING_TRAIN_N = 20;
+export const WEEKLY_RESULT_LAG_MS = 86_400_000;
 export const CHALLENGER_EVAL_NOT_ACTIVATED =
   "rolling-origin eval is offline only; production forecasts use ELO_CHAMPION";
 
@@ -64,6 +66,7 @@ export interface OneXTwoForecast {
   totalXg: number;
   pBttsYes: number;
   scoreProbability: number;
+  priorOnly?: boolean;
 }
 
 export interface PairedHoldoutForecast {
@@ -73,7 +76,8 @@ export interface PairedHoldoutForecast {
   kickoff: string;
   champion: OneXTwoForecast;
   challenger: OneXTwoForecast | null;
-  challengerReason?: "missing-club-params" | "invalid-score-grid";
+  challengerReason?: "missing-club-params" | "invalid-score-grid" | "missing-dated-elo";
+  priorOnly: boolean;
   result: "home" | "draw" | "away";
 }
 
@@ -101,11 +105,12 @@ export interface CalibrationBucket {
 
 export interface OriginEval {
   origin: string;
-  training?: { n: number; through: string; paramsSha256: string; converged: boolean };
+  training?: { n: number; through: string; paramsSha256: string; converged: boolean; meanElo: number };
   brierUncertainty?: PairedBootstrap | null;
   holdoutCount: number;
   scoredCount: number;
   uncoveredCount: number;
+  priorOnlyCount: number;
   champion: OriginMetrics;
   challenger: OriginMetrics;
   championCalibration: CalibrationBucket[];
@@ -387,16 +392,31 @@ export function promotionGateDecision(origins: readonly OriginEval[]): Challenge
 function pairHoldout(
   row: ChallengerEvalRow,
   origin: string,
-  artifact: FittedDixonColesArtifact
+  artifact: FittedDixonColesArtifact,
+  meanElo: number
 ): PairedHoldoutForecast {
+  const homeFitted = Number.isFinite(artifact.params.attack[row.homeCanonicalName])
+    && Number.isFinite(artifact.params.defence[row.homeCanonicalName]);
+  const awayFitted = Number.isFinite(artifact.params.attack[row.awayCanonicalName])
+    && Number.isFinite(artifact.params.defence[row.awayCanonicalName]);
+  const homeElo = Number.isFinite(row.homeElo) ? row.homeElo : null;
+  const awayElo = Number.isFinite(row.awayElo) ? row.awayElo : null;
   const challenger = forecastFittedDixonColes(
     artifact.params,
     row.homeCanonicalName,
-    row.awayCanonicalName
+    row.awayCanonicalName,
+    { meanElo, homeElo, awayElo }
   );
   const matrix = challenger ? scoreMatrix(challenger.lambdaHome, challenger.lambdaAway, artifact.params.rho) : null;
   const validGrid = matrix !== null && matrix.every((scores) => scores.every((p) => Number.isFinite(p) && p >= 0))
     && Math.abs(matrix.flat().reduce((sum, p) => sum + p, 0) - 1) < 1e-9;
+  let challengerReason: PairedHoldoutForecast["challengerReason"];
+  if (!challenger) {
+    const missingDatedElo = (!homeFitted && homeElo == null) || (!awayFitted && awayElo == null);
+    challengerReason = missingDatedElo ? "missing-dated-elo" : "missing-club-params";
+  } else if (!validGrid) {
+    challengerReason = "invalid-score-grid";
+  }
   return {
     sourceEventId: row.sourceEventId,
     origin,
@@ -412,10 +432,11 @@ function pairHoldout(
         totalXg: challenger.totalXg,
         pBttsYes: challenger.pBttsYes,
         scoreProbability: matrix![row.homeGoals]?.[row.awayGoals] ?? 0,
+        priorOnly: challenger.priorOnly,
       }
       : null,
-    ...(!challenger ? { challengerReason: "missing-club-params" as const }
-      : !validGrid ? { challengerReason: "invalid-score-grid" as const } : {}),
+    priorOnly: Boolean(challenger?.priorOnly && validGrid),
+    ...(challengerReason ? { challengerReason } : {}),
     result: winnerFromGoals(row.homeGoals, row.awayGoals),
   };
 }
@@ -423,12 +444,14 @@ function pairHoldout(
 function evaluateOrigin(
   origin: string,
   holdout: readonly ChallengerEvalRow[],
-  artifact: FittedDixonColesArtifact
+  artifact: FittedDixonColesArtifact,
+  meanElo: number
 ): { eval: OriginEval; pairs: PairedHoldoutForecast[] } {
   const byId = new Map(holdout.map((row) => [row.sourceEventId, row]));
-  const pairs = holdout.map((row) => pairHoldout(row, origin, artifact));
+  const pairs = holdout.map((row) => pairHoldout(row, origin, artifact, meanElo));
   const scored = pairs.filter((pair) => pair.challenger);
   const uncoveredCount = pairs.length - scored.length;
+  const priorOnlyCount = scored.filter((pair) => pair.priorOnly).length;
   const scoredSources = scored.map((pair) => {
     const source = byId.get(pair.sourceEventId);
     if (!source || !pair.challenger) {
@@ -469,7 +492,11 @@ function evaluateOrigin(
     reason = "empty-holdout";
   } else if (uncoveredCount > 0) {
     challengerImproves = false;
-    reason = pairs.some((pair) => pair.challengerReason === "invalid-score-grid") ? "invalid-score-grid" : "missing-club-params";
+    reason = pairs.some((pair) => pair.challengerReason === "invalid-score-grid")
+      ? "invalid-score-grid"
+      : pairs.some((pair) => pair.challengerReason === "missing-dated-elo")
+        ? "missing-dated-elo"
+        : "missing-club-params";
   } else if (deltas) {
     challengerImproves = deltas.brier < 0 && deltas.logLoss < 0 && deltas.calibrationMae < 0
       && challenger.metrics.reliabilityEce !== null && champion.metrics.reliabilityEce !== null
@@ -484,6 +511,7 @@ function evaluateOrigin(
       holdoutCount: pairs.length,
       scoredCount: scored.length,
       uncoveredCount,
+      priorOnlyCount,
       champion: champion.metrics,
       challenger: challenger.metrics,
       championCalibration: champion.buckets,
@@ -589,9 +617,10 @@ export function evaluatePairedRollingOrigin(input: {
       timeDecayXi: input.artifact.params.timeDecayXi,
       clubEloPriorStrength: input.artifact.params.clubEloPriorStrength,
     });
-    const evaluated = evaluateOrigin(split.origin, holdout, { ...input.artifact, params: fit.params });
+    const evaluated = evaluateOrigin(split.origin, holdout, { ...input.artifact, params: fit.params }, fit.meanElo);
     evaluated.eval.training = { n: train.length, through: train[train.length - 1].kickoff,
-      paramsSha256: createHash("sha256").update(JSON.stringify(fit.params)).digest("hex"), converged: fit.converged };
+      paramsSha256: createHash("sha256").update(JSON.stringify(fit.params)).digest("hex"),
+      converged: fit.converged, meanElo: fit.meanElo };
     if (!fit.converged && holdout.length > 0) {
       evaluated.eval.challengerImproves = false;
       evaluated.eval.reason = "origin-fit-not-converged";
@@ -611,6 +640,143 @@ export function evaluatePairedRollingOrigin(input: {
   return {
     status: "evaluated",
     reason: "refitted-paired-rolling-origin",
+    schemaVersion: CHALLENGER_EVAL_SCHEMA_VERSION,
+    artifactSha256: input.artifactSha256 ?? null,
+    champion: {
+      id: "clubelo",
+      methodId: "clubelo-elo-to-goals-dixon-coles",
+      constants: {
+        baseGoals: 1.35,
+        homeAdvantageElo: 42,
+        rho: -0.1,
+      },
+    },
+    challenger: {
+      id: FITTED_DIXON_COLES_CONTRIBUTOR_ID,
+      methodId: FITTED_DIXON_COLES_METHOD_ID,
+      version: input.artifactSha256 ?? "unpinned",
+    },
+    origins,
+    pairedForecasts,
+    decision: promotionGateDecision(origins),
+    registeredChallengers: REGISTERED_CHALLENGERS.length,
+    uniqueHoldoutCount: new Set(pairedForecasts.map((pair) => pair.sourceEventId)).size,
+  };
+}
+
+/**
+ * Predefined weekly expanding-window splits. Each origin is a UTC week start;
+ * training uses only results with kickoff at least 24h before that week.
+ * Does not require a complete partition of all rows.
+ */
+export function weeklyExpandingWindowSplits(
+  rows: readonly { sourceEventId: string; kickoff: string }[],
+  options: { minTrainN?: number; resultLagMs?: number } = {}
+): RollingOriginSplit[] {
+  const minTrainN = options.minTrainN ?? MIN_WEEKLY_EXPANDING_TRAIN_N;
+  const resultLagMs = options.resultLagMs ?? WEEKLY_RESULT_LAG_MS;
+  const weeks = [...new Set(rows.map((row) => utcWeekStart(row.kickoff)))].sort();
+  const splits: RollingOriginSplit[] = [];
+  for (const origin of weeks) {
+    const originMs = Date.parse(origin);
+    const cutoff = originMs - resultLagMs;
+    const trainEventIds = rows
+      .filter((row) => Date.parse(row.kickoff) <= cutoff)
+      .map((row) => row.sourceEventId);
+    const holdoutEventIds = rows
+      .filter((row) => utcWeekStart(row.kickoff) === origin)
+      .map((row) => row.sourceEventId);
+    if (trainEventIds.length < minTrainN || holdoutEventIds.length === 0) continue;
+    splits.push({ origin, trainEventIds, holdoutEventIds });
+  }
+  return splits;
+}
+
+/**
+ * Weekly expanding-window paired eval. Refits each week from earlier results only.
+ * Reports uncovered rows. Does not relax legacy MAE. Does not activate production.
+ */
+export function evaluateWeeklyExpandingWindow(input: {
+  artifact?: FittedDixonColesArtifact | null;
+  artifactSha256?: string | null;
+  rows?: readonly ChallengerEvalRow[];
+  minTrainN?: number;
+}): ChallengerEvalResult {
+  if (!input.artifact) {
+    return blockedResult("missing-fitted-artifact");
+  }
+  const rows = input.rows ?? [];
+  if (rows.length === 0) {
+    return blockedResult("no-holdout-rows", {
+      artifactSha256: input.artifactSha256 ?? null,
+      challenger: {
+        id: FITTED_DIXON_COLES_CONTRIBUTOR_ID,
+        methodId: FITTED_DIXON_COLES_METHOD_ID,
+        version: input.artifactSha256 ?? "unpinned",
+      },
+    });
+  }
+  const byId = new Map(rows.map((row) => [row.sourceEventId, row]));
+  if (byId.size !== rows.length) return blockedResult("duplicate-event-id", { artifactSha256: input.artifactSha256 ?? null });
+  for (const row of rows) {
+    const kickoff = Date.parse(row.kickoff);
+    const ranking = Date.parse(row.rankingDate);
+    const kickoffDay = Number.isFinite(kickoff) ? Date.parse(new Date(kickoff).toISOString().slice(0, 10)) : NaN;
+    if (!Number.isFinite(kickoff) || !Number.isFinite(ranking) || ranking > kickoffDay - 86400000
+      || row.competitionId !== "eng.1" || !Number.isFinite(row.homeElo) || !Number.isFinite(row.awayElo)
+      || !Number.isInteger(row.homeGoals) || row.homeGoals < 0 || !Number.isInteger(row.awayGoals) || row.awayGoals < 0) {
+      return blockedResult("invalid-or-lookahead-row-date", { artifactSha256: input.artifactSha256 ?? null });
+    }
+  }
+  const splits = weeklyExpandingWindowSplits(rows, { minTrainN: input.minTrainN });
+  if (splits.length === 0) {
+    return blockedResult("empty-weekly-window-splits", {
+      artifactSha256: input.artifactSha256 ?? null,
+      challenger: {
+        id: FITTED_DIXON_COLES_CONTRIBUTOR_ID,
+        methodId: FITTED_DIXON_COLES_METHOD_ID,
+        version: input.artifactSha256 ?? "unpinned",
+      },
+    });
+  }
+
+  const origins: OriginEval[] = [];
+  const pairedForecasts: PairedHoldoutForecast[] = [];
+  for (const split of splits) {
+    const train = split.trainEventIds.map((id) => byId.get(id)!)
+      .sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff));
+    const holdout = split.holdoutEventIds.map((id) => byId.get(id)!);
+    const fit = fitTimeDecayedDixonColes(train, {
+      timeDecayXi: input.artifact.params.timeDecayXi,
+      clubEloPriorStrength: input.artifact.params.clubEloPriorStrength,
+    });
+    const evaluated = evaluateOrigin(split.origin, holdout, { ...input.artifact, params: fit.params }, fit.meanElo);
+    evaluated.eval.training = {
+      n: train.length,
+      through: train[train.length - 1].kickoff,
+      paramsSha256: createHash("sha256").update(JSON.stringify(fit.params)).digest("hex"),
+      converged: fit.converged,
+      meanElo: fit.meanElo,
+    };
+    if (!fit.converged && holdout.length > 0) {
+      evaluated.eval.challengerImproves = false;
+      evaluated.eval.reason = "origin-fit-not-converged";
+    }
+    const brier = (p: OneXTwoForecast, result: PairedHoldoutForecast["result"]) => (
+      (p.pHome - Number(result === "home")) ** 2 + (p.pDraw - Number(result === "draw")) ** 2
+      + (p.pAway - Number(result === "away")) ** 2
+    );
+    evaluated.eval.brierUncertainty = pairedBootstrap(evaluated.pairs.filter((pair) => pair.challenger).map((pair) => ({
+      block: utcWeekStart(pair.kickoff), champion: brier(pair.champion, pair.result),
+      challenger: brier(pair.challenger!, pair.result),
+    })));
+    origins.push(evaluated.eval);
+    pairedForecasts.push(...evaluated.pairs);
+  }
+
+  return {
+    status: "evaluated",
+    reason: "refitted-weekly-expanding-window",
     schemaVersion: CHALLENGER_EVAL_SCHEMA_VERSION,
     artifactSha256: input.artifactSha256 ?? null,
     champion: {
@@ -680,6 +846,29 @@ export function evaluatePairedRollingOriginFromDataDir(dataDir: string): Challen
   const result = evaluateFromDataDir(dataDir);
   const reportPath = researchArtifactPath(dataDir, "dixon-coles-mle/eval-report.json");
   atomicWrite(reportPath, `${JSON.stringify(result, null, 2)}\n`);
+
+  // Weekly expanding-window companion report (same corpus/artifact; separate splits).
+  if (result.status === "evaluated" || result.artifactSha256) {
+    const loaded = loadValidatedDixonColesMleArtifact(dataDir);
+    const corpus = loadOfflineTrainingCorpus(dataDir);
+    if (loaded.ok && corpus.ok) {
+      const eligibility = resolveOfflineTrainingMode(corpus.corpus);
+      if (eligibility.ok
+        && loaded.artifact.training.clubHistoryDatasetSha256 === corpus.corpus.clubHistoryDatasetSha256
+        && loaded.artifact.training.preKickoffEloDatasetSha256 === corpus.corpus.preKickoffEloDatasetSha256) {
+        const rows = toEvalRows(joinTrainingRows(corpus.corpus.fixtures, corpus.corpus.preKickoffRows));
+        const weekly = evaluateWeeklyExpandingWindow({
+          artifact: loaded.artifact,
+          artifactSha256: loaded.artifactSha256,
+          rows,
+        });
+        atomicWrite(
+          researchArtifactPath(dataDir, "dixon-coles-mle/eval-report-weekly.json"),
+          `${JSON.stringify(weekly, null, 2)}\n`
+        );
+      }
+    }
+  }
   return result;
 }
 
