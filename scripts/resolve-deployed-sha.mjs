@@ -49,6 +49,15 @@ function gitOk(args, cwd) {
   }
 }
 
+/** Best-effort fetch so SHAs merged while Verify Production polls are reachable. */
+export function refreshDeployHistory(cwd = DEFAULT_CWD()) {
+  try {
+    git(["fetch", "--quiet", "origin", "main"], cwd);
+  } catch {
+    // Network or auth failures should not crash callers; unknown stays unknown.
+  }
+}
+
 /**
  * The branch the platforms deploy from. DEPLOY_REF overrides for one-off
  * checks; otherwise prefer main, then origin/main, then whatever is checked out.
@@ -122,6 +131,18 @@ export function classifyServedSha(floor, served, options = {}) {
   return gitOk(["merge-base", "--is-ancestor", floorSha, servedSha], cwd) ? "ahead" : "stale";
 }
 
+/**
+ * classifyServedSha plus one deploy-history refresh when the served commit is
+ * missing from this clone. Concurrent main merges routinely land while VP polls;
+ * production can serve a descendant the job never fetched at checkout.
+ */
+export function classifyServedShaWithRefresh(floor, served, options = {}) {
+  let state = classifyServedSha(floor, served, options);
+  if (state !== "unknown" || options.refreshAttempted) return state;
+  refreshDeployHistory(options.cwd ?? DEFAULT_CWD());
+  return classifyServedSha(floor, served, { ...options, refreshAttempted: true });
+}
+
 export function isAcceptableServedSha(state) {
   return state === "match" || state === "ahead";
 }
@@ -146,7 +167,7 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
     const floor = flag(argv, "--floor");
     const served = flag(argv, "--served");
     if (!floor) usage();
-    console.log(classifyServedSha(floor, served));
+    console.log(classifyServedShaWithRefresh(floor, served));
     process.exit(0);
   }
 

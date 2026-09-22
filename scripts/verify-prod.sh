@@ -43,16 +43,8 @@ sha_state() {
 sha_matches() {
   local state
   state=$(sha_state "$1" "${2:-$EXPECTED_API_SHA}")
-  # A commit this clone has never seen is usually a push that landed while the
-  # check was polling. Refresh history once before treating it as a fault.
-  if [[ "$state" == "unknown" && "$HISTORY_REFRESHED" == "0" ]]; then
-    HISTORY_REFRESHED=1
-    git fetch --quiet origin main >/dev/null 2>&1 || true
-    state=$(sha_state "$1" "${2:-$EXPECTED_API_SHA}")
-  fi
   [[ "$state" == "match" || "$state" == "ahead" ]]
 }
-HISTORY_REFRESHED=0
 
 echo "=== 1. Minimum deployed SHA (last commit that had to rebuild each target) ==="
 echo "API:        $EXPECTED_API_SHA"
