@@ -460,12 +460,12 @@ const WEB_SEARCH_TOOL = {
 };
 
 /**
- * Inference credentials, resolved separately from search.
+ * Inference credentials. Search uses the same OpenRouter key on its own
+ * request and never attaches a search tool to this client.
  *
- * OPENROUTER_API_KEY pins the answer model. MINIMAX_INFERENCE_API_KEY is the
- * older dedicated MiniMax quota and stays unused in production. The shared
- * MINIMAX_API_KEY fallback keeps a checkout without OpenRouter able to answer.
- * Search never reads this resolution.
+ * OPENROUTER_API_KEY pins the answer model. The shared MINIMAX_API_KEY
+ * fallback keeps a checkout without OpenRouter able to answer. There is no
+ * dedicated MiniMax inference key.
  */
 
 export interface InferenceStatus {

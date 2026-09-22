@@ -116,7 +116,7 @@ Not this merge. Do not start them as a workaround for calibration n.
 - `claim_id` + ESPN results + CLV.
 - Davidson / Sarmanov.
 - Lineup features in the numeric model.
-- Dedicated `MINIMAX_INFERENCE_API_KEY` (optional ops). Brave remains optional failover.
+- A second search vendor. Search and answers share `OPENROUTER_API_KEY`.
 - A Vercel redeploy solely to align web SHA with API SHA.
 
 ---

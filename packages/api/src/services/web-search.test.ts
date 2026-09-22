@@ -10,18 +10,11 @@ import {
 
 const NOW = new Date("2026-08-11T12:00:00Z");
 
-const MINIMAX_RESULT = {
+const RESULT = {
   title: "Arsenal team news",
   link: "https://example.com/a",
   snippet: "Timber returns",
   date: "12 Apr 2026",
-};
-
-const BRAVE_RESULT = {
-  title: "Brave: Arsenal team news",
-  url: "https://brave.example.com/a",
-  description: "Timber returns",
-  page_age: "2026-04-12T00:00:00Z",
 };
 
 /** A fetch Response stand-in, with the headers surface the code reads. */
@@ -33,16 +26,27 @@ function httpError(status: number, headers: Record<string, string> = {}) {
   return { ok: false, status, headers: new Headers(headers), text: async () => "" };
 }
 
-const minimaxBody = (results: Array<Record<string, unknown>>) => httpOk({ organic: results });
-const braveBody = (results: Array<Record<string, unknown>>) => httpOk({ web: { results } });
-
-/** Routes a mocked fetch by host, so a two-provider chain can be driven. */
-function routed(handlers: {
-  minimax: () => unknown;
-  brave: () => unknown;
-}) {
-  return (url: string) =>
-    String(url).includes("brave.com") ? handlers.brave() : handlers.minimax();
+function openRouterBody(
+  results: Array<Record<string, unknown>>,
+  searched = 1,
+) {
+  return httpOk({
+    choices: [{
+      message: {
+        content: "ignored prose that must not become evidence",
+        annotations: results.map((result) => ({
+          type: "url_citation",
+          url_citation: {
+            url: result.link,
+            title: result.title,
+            content: result.snippet,
+            date: result.date,
+          },
+        })),
+      },
+    }],
+    usage: { server_tool_use_details: { web_search_requests: searched } },
+  });
 }
 
 describe("normalizeSearchDate", () => {
@@ -86,11 +90,11 @@ describe("normalizeSearchDate", () => {
 /** Restores every environment variable the suite touches. */
 function withCleanEnv() {
   const keys = [
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_BASE_URL",
+    "OPENROUTER_MODEL",
     "MINIMAX_API_KEY",
-    "MINIMAX_SEARCH_API_KEY",
-    "MINIMAX_SEARCH_URL",
     "BRAVE_SEARCH_API_KEY",
-    "BRAVE_SEARCH_URL",
     "WEB_SEARCH_PROVIDER_ORDER",
     "WEB_SEARCH_CONCURRENCY",
   ];
@@ -112,7 +116,7 @@ describe("searchWeb result handling", () => {
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockReset();
     resetWebSearchStatus();
-    process.env.MINIMAX_API_KEY = "test-key";
+    process.env.OPENROUTER_API_KEY = "test-key";
     delete process.env.BRAVE_SEARCH_API_KEY;
     delete process.env.WEB_SEARCH_PROVIDER_ORDER;
   });
@@ -123,11 +127,11 @@ describe("searchWeb result handling", () => {
     restoreEnv();
   });
 
-  it("uses MiniMax first and reports it as the serving provider", async () => {
-    fetchMock.mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+  it("keeps cited pages and discards the model's prose", async () => {
+    fetchMock.mockResolvedValueOnce(openRouterBody([RESULT]));
     const outcome = await searchWeb("arsenal team news");
     expect(outcome.status).toBe("ok");
-    expect(outcome.provider).toBe("minimax");
+    expect(outcome.provider).toBe("openrouter");
     expect(outcome.usedFallback).toBe(false);
     expect(outcome.results).toEqual([{
       title: "Arsenal team news",
@@ -135,23 +139,41 @@ describe("searchWeb result handling", () => {
       snippet: "Timber returns",
       date: "2026-04-12",
     }]);
-    expect(getWebSearchStatus().lastGoodProvider).toBe("minimax");
+    expect(JSON.stringify(outcome.results)).not.toContain("ignored prose");
+    expect(getWebSearchStatus().lastGoodProvider).toBe("openrouter");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    const sent = JSON.parse(init.body) as {
+      model: string;
+      max_tool_calls: number;
+      tools: Array<{ type: string; parameters: { engine: string; mode: string; max_uses: number } }>;
+    };
+    expect(sent.model).toBe("deepseek/deepseek-v4-flash");
+    expect(sent.max_tool_calls).toBe(1);
+    expect(sent.tools[0].type).toBe("openrouter:web_search");
+    expect(sent.tools[0].parameters).toMatchObject({ engine: "exa", mode: "fast", max_uses: 1 });
+    expect(JSON.parse(init.body).reasoning).toEqual({ enabled: false });
+    expect(init.body).not.toContain(":online");
+    expect(init.body).not.toContain("openrouter/auto");
   });
 
-  it("drops entries missing a title or link", async () => {
-    fetchMock.mockResolvedValueOnce(minimaxBody([
+  it("drops a citation with no url and names a host when the title is missing", async () => {
+    fetchMock.mockResolvedValueOnce(openRouterBody([
       { title: "", link: "https://example.com/x", snippet: "s", date: "" },
       { title: "Real", link: "", snippet: "s", date: "" },
-      MINIMAX_RESULT,
+      RESULT,
     ]));
     const outcome = await searchWeb("arsenal");
-    expect(outcome.results).toHaveLength(1);
-    expect(outcome.results[0].title).toBe("Arsenal team news");
+    expect(outcome.results.map((result) => result.title)).toEqual([
+      "example.com",
+      "Arsenal team news",
+    ]);
   });
 
   it("caps results so a long payload cannot flood the turn", async () => {
-    fetchMock.mockResolvedValueOnce(minimaxBody(
+    fetchMock.mockResolvedValueOnce(openRouterBody(
       Array.from({ length: 20 }, (_, i) => ({
         title: `r${i}`, link: `https://example.com/${i}`, snippet: "s", date: "",
       }))
@@ -160,7 +182,7 @@ describe("searchWeb result handling", () => {
   });
 
   it("rejects unsafe URLs and bounds untrusted fields", async () => {
-    fetchMock.mockResolvedValueOnce(minimaxBody([
+    fetchMock.mockResolvedValueOnce(openRouterBody([
       { title: "unsafe", link: "javascript:alert(1)", snippet: "x", date: "" },
       { title: "t".repeat(300), link: "https://example.com/ok", snippet: "s".repeat(800), date: "" },
     ]));
@@ -171,7 +193,7 @@ describe("searchWeb result handling", () => {
   });
 
   it("coalesces concurrent searches and serves the cache", async () => {
-    fetchMock.mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+    fetchMock.mockResolvedValueOnce(openRouterBody([RESULT]));
     const [first, second] = await Promise.all([
       searchWeb("same query"),
       searchWeb("SAME QUERY"),
@@ -182,7 +204,7 @@ describe("searchWeb result handling", () => {
   });
 
   it("fresh searches skip the cache and do not write back", async () => {
-    fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
+    fetchMock.mockResolvedValue(openRouterBody([RESULT]));
     await searchWeb("arsenal current manager");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await searchWeb("arsenal current manager", undefined, { fresh: true });
@@ -197,7 +219,7 @@ describe("searchWeb result handling", () => {
   it("keeps a non-news search past the window a price search expires in", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
-    fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
+    fetchMock.mockResolvedValue(openRouterBody([RESULT]));
 
     await searchWeb("hull man united season preview");
     await searchWeb("hull man united betting odds over 2.5");
@@ -226,7 +248,7 @@ describe("genuine emptiness versus infrastructure failure", () => {
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockReset();
     resetWebSearchStatus();
-    process.env.MINIMAX_API_KEY = "test-key";
+    process.env.OPENROUTER_API_KEY = "test-key";
     delete process.env.BRAVE_SEARCH_API_KEY;
   });
 
@@ -236,13 +258,13 @@ describe("genuine emptiness versus infrastructure failure", () => {
   });
 
   it("reports a genuine zero-result search as empty, not degraded", async () => {
-    fetchMock.mockResolvedValueOnce(minimaxBody([]));
+    fetchMock.mockResolvedValueOnce(openRouterBody([]));
     const outcome = await searchWeb("a query nobody has written about");
     expect(outcome.status).toBe("empty");
     expect(outcome.reason).toBeNull();
     expect(outcome.results).toEqual([]);
     // A healthy provider that found nothing is healthy.
-    expect(getWebSearchStatus().providers.minimax.failures).toBe(0);
+    expect(getWebSearchStatus().providers.openrouter.failures).toBe(0);
     expect(getWebSearchStatus().degradedSearches).toBe(0);
   });
 
@@ -311,12 +333,30 @@ describe("genuine emptiness versus infrastructure failure", () => {
     expect(cancelled).toBe(true);
   });
 
-  it("treats a structurally valid but wrongly shaped payload as empty, not evidence", async () => {
-    // `organic: "nope"` parses; it just carries nothing usable.
-    fetchMock.mockResolvedValueOnce(httpOk({ organic: "nope" }));
+  it("reports a reply that never searched as malformed, not empty", async () => {
+    fetchMock.mockResolvedValueOnce(httpOk({
+      choices: [{ message: { content: "Timber is back, from memory" } }],
+    }));
     const outcome = await searchWeb("shape drift");
+    expect(outcome.status).toBe("degraded");
+    expect(outcome.reason).toBe("malformed_response");
     expect(outcome.results).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports an empty citation list as empty once the tool actually ran", async () => {
+    fetchMock.mockResolvedValueOnce(openRouterBody([], 1));
+    const outcome = await searchWeb("nothing cited");
     expect(outcome.status).toBe("empty");
+    expect(outcome.results).toEqual([]);
+  });
+
+  it("accepts the older usage field as proof the tool ran", async () => {
+    fetchMock.mockResolvedValueOnce(httpOk({
+      choices: [{ message: { annotations: [] } }],
+      usage: { server_tool_use: { web_search_requests: 1 } },
+    }));
+    expect((await searchWeb("legacy usage")).status).toBe("empty");
   });
 
   it("reports circuit_open once every enabled provider's breaker is open", async () => {
@@ -324,30 +364,27 @@ describe("genuine emptiness versus infrastructure failure", () => {
     for (const question of ["q1", "q2", "q3"]) {
       await withSearchQuestion(() => searchWeb(question));
     }
-    expect(getWebSearchStatus().providers.minimax.circuitOpen).toBe(true);
+    expect(getWebSearchStatus().providers.openrouter.circuitOpen).toBe(true);
     const outcome = await searchWeb("blocked while open");
     expect(outcome.status).toBe("degraded");
     expect(outcome.reason).toBe("circuit_open");
   });
 
   it("reports not_configured when no provider has a key at all", async () => {
-    delete process.env.MINIMAX_API_KEY;
-    delete process.env.MINIMAX_SEARCH_API_KEY;
-    delete process.env.BRAVE_SEARCH_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
     const outcome = await searchWeb("unconfigured");
     expect(outcome.status).toBe("degraded");
     expect(outcome.reason).toBe("not_configured");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("reports providers_exhausted when both configured providers fail", async () => {
-    process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+  it("reports the provider's own reason when the only provider fails", async () => {
     fetchMock.mockResolvedValue(httpError(404));
     const outcome = await searchWeb("everything is down");
     expect(outcome.status).toBe("degraded");
-    expect(outcome.reason).toBe("providers_exhausted");
-    expect(outcome.attempts.map((a) => a.provider)).toEqual(["minimax", "brave"]);
-    expect(outcome.attempts.every((a) => a.outcome === "failed")).toBe(true);
+    expect(outcome.reason).toBe("provider_unavailable");
+    expect(outcome.attempts.map((attempt) => attempt.provider)).toEqual(["openrouter"]);
+    expect(outcome.attempts.every((attempt) => attempt.outcome === "failed")).toBe(true);
   });
 
   it("does not report an empty query as an infrastructure failure", async () => {
@@ -358,7 +395,7 @@ describe("genuine emptiness versus infrastructure failure", () => {
   });
 });
 
-describe("provider failover", () => {
+describe("single provider retry", () => {
   const fetchMock = vi.fn();
   let restoreEnv: () => void;
 
@@ -367,8 +404,7 @@ describe("provider failover", () => {
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockReset();
     resetWebSearchStatus();
-    process.env.MINIMAX_API_KEY = "test-key";
-    process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+    process.env.OPENROUTER_API_KEY = "test-key";
     delete process.env.WEB_SEARCH_PROVIDER_ORDER;
   });
 
@@ -377,125 +413,43 @@ describe("provider failover", () => {
     restoreEnv();
   });
 
-  it("falls back to Brave when MiniMax is rate limited, and still delivers evidence", async () => {
-    fetchMock.mockImplementation(routed({
-      minimax: () => Promise.resolve(httpError(429)),
-      brave: () => Promise.resolve(braveBody([BRAVE_RESULT])),
-    }));
-    const outcome = await searchWeb("arsenal team news");
-    // The answer is not thin: a throttled primary cost nothing but a hop.
-    expect(outcome.status).toBe("ok");
-    expect(outcome.provider).toBe("brave");
-    expect(outcome.usedFallback).toBe(true);
-    expect(outcome.results[0]).toEqual({
-      title: "Brave: Arsenal team news",
-      link: "https://brave.example.com/a",
-      snippet: "Timber returns",
-      date: "2026-04-12",
-    });
-    const status = getWebSearchStatus();
-    expect(status.usingFallback).toBe(true);
-    expect(status.providers.minimax.lastThrottledAt).not.toBeNull();
-    expect(status.lastThrottledAt).not.toBeNull();
+  it("retries a throttle once, then degrades without a second provider", async () => {
+    fetchMock.mockResolvedValue(httpError(429));
+    const outcome = await searchWeb("retry budget");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(outcome.status).toBe("degraded");
+    expect(outcome.reason).toBe("rate_limited");
+    expect(outcome.usedFallback).toBe(false);
+    expect(getWebSearchStatus().providers.openrouter.lastThrottledAt).not.toBeNull();
+    expect(getWebSearchStatus().usingFallback).toBe(false);
   });
 
-  it.each([
-    ["a 5xx outage", () => httpError(500)],
-    ["a malformed payload", () => httpOk({ not: "a search response" })],
-    ["a rejected credential", () => httpError(401)],
-    ["a network error", () => Promise.reject(new Error("ECONNRESET"))],
-  ])("fails over to Brave on %s", async (_label, minimax) => {
-    fetchMock.mockImplementation(routed({
-      minimax: () => Promise.resolve(minimax()),
-      brave: () => Promise.resolve(braveBody([BRAVE_RESULT])),
-    }));
-    const outcome = await searchWeb("arsenal team news");
-    expect(outcome.status).toBe("ok");
-    expect(outcome.provider).toBe("brave");
+  it("does not wait out a long Retry-After", async () => {
+    const startedAt = Date.now();
+    fetchMock.mockResolvedValue(httpError(429, { "retry-after": "120" }));
+    const outcome = await searchWeb("long retry-after");
+    expect(outcome.reason).toBe("rate_limited");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
   });
 
-  it("falls through to Brave when MiniMax is merely empty, without blaming MiniMax", async () => {
-    fetchMock.mockImplementation(routed({
-      minimax: () => Promise.resolve(minimaxBody([])),
-      brave: () => Promise.resolve(braveBody([BRAVE_RESULT])),
-    }));
-    const outcome = await searchWeb("arsenal");
-    expect(outcome.provider).toBe("brave");
-    expect(getWebSearchStatus().providers.minimax.failures).toBe(0);
-  });
-
-  it("skips a provider whose own breaker is open and serves the healthy one", async () => {
-    fetchMock.mockImplementation(routed({
-      minimax: () => Promise.resolve(httpError(404)),
-      brave: () => Promise.resolve(braveBody([BRAVE_RESULT])),
-    }));
-    for (const question of ["q1", "q2", "q3"]) {
-      await withSearchQuestion(() => searchWeb(question));
-    }
-    const status = getWebSearchStatus();
-    expect(status.providers.minimax.circuitOpen).toBe(true);
-    // One provider being out is not an outage while another is serving.
-    expect(status.circuitOpen).toBe(false);
-    expect(status.providers.brave.circuitOpen).toBe(false);
-
-    fetchMock.mockClear();
-    const outcome = await searchWeb("still answerable");
-    expect(outcome.status).toBe("ok");
-    expect(outcome.provider).toBe("brave");
-    // MiniMax was not even called: an open breaker means no traffic.
-    expect(fetchMock.mock.calls.every(([url]) => String(url).includes("brave"))).toBe(true);
-  });
-
-  it("lets an operator promote the fallback to primary with no code change", async () => {
+  it("ignores removed provider names and still searches OpenRouter", async () => {
     process.env.WEB_SEARCH_PROVIDER_ORDER = "brave,minimax";
+    process.env.OPENROUTER_MODEL = "openrouter/auto";
+    process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api";
     resetWebSearchStatus();
-    fetchMock.mockImplementation(routed({
-      minimax: () => Promise.resolve(minimaxBody([MINIMAX_RESULT])),
-      brave: () => Promise.resolve(braveBody([BRAVE_RESULT])),
-    }));
-    const outcome = await searchWeb("who answers first");
-    expect(outcome.provider).toBe("brave");
-    // Serving from the configured primary is not "using fallback".
+    fetchMock.mockResolvedValue(openRouterBody([RESULT]));
+    const outcome = await searchWeb("who answers");
+    expect(outcome.provider).toBe("openrouter");
     expect(outcome.usedFallback).toBe(false);
     const status = getWebSearchStatus();
-    expect(status.primaryProvider).toBe("brave");
-    expect(status.usingFallback).toBe(false);
-    expect(status.enabledProviders).toEqual(["brave", "minimax"]);
-  });
-
-  it("runs MiniMax alone when no fallback key is configured", async () => {
-    delete process.env.BRAVE_SEARCH_API_KEY;
-    fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
-    expect((await searchWeb("solo")).provider).toBe("minimax");
-    const status = getWebSearchStatus();
-    expect(status.enabledProviders).toEqual(["minimax"]);
-    expect(status.configuredProviders).toEqual(["minimax"]);
+    expect(status.enabledProviders).toEqual(["openrouter"]);
+    expect(status.configuredProviders).toEqual(["openrouter"]);
     expect(status.providers.brave).toBeUndefined();
-  });
-
-  it("retries a throttled provider at most once before failing over", async () => {
-    let minimaxCalls = 0;
-    fetchMock.mockImplementation(routed({
-      minimax: () => {
-        minimaxCalls += 1;
-        return Promise.resolve(httpError(429));
-      },
-      brave: () => Promise.resolve(braveBody([BRAVE_RESULT])),
-    }));
-    await searchWeb("retry budget");
-    // Bounded: a throttled provider answers a retry storm with more throttling.
-    expect(minimaxCalls).toBe(2);
-  });
-
-  it("does not wait out a long Retry-After; it fails over instead", async () => {
-    const startedAt = Date.now();
-    fetchMock.mockImplementation(routed({
-      minimax: () => Promise.resolve(httpError(429, { "retry-after": "120" })),
-      brave: () => Promise.resolve(braveBody([BRAVE_RESULT])),
-    }));
-    const outcome = await searchWeb("long retry-after");
-    expect(outcome.provider).toBe("brave");
-    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(status.providers.minimax).toBeUndefined();
+    const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(JSON.parse(init.body).model).toBe("deepseek/deepseek-v4-flash");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/chat/completions");
   });
 });
 
@@ -514,7 +468,7 @@ describe("question-scoped breaker accounting", () => {
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockReset();
     resetWebSearchStatus();
-    process.env.MINIMAX_API_KEY = "test-key";
+    process.env.OPENROUTER_API_KEY = "test-key";
     delete process.env.BRAVE_SEARCH_API_KEY;
   });
 
@@ -528,8 +482,8 @@ describe("question-scoped breaker accounting", () => {
     fetchMock.mockResolvedValue(httpError(404));
     await searchWebBatch(["q1", "q2", "q3", "q4", "q5", "q6"]);
     const status = getWebSearchStatus();
-    expect(status.providers.minimax.consecutiveFailedQuestions).toBe(1);
-    expect(status.providers.minimax.circuitOpen).toBe(false);
+    expect(status.providers.openrouter.consecutiveFailedQuestions).toBe(1);
+    expect(status.providers.openrouter.circuitOpen).toBe(false);
     expect(status.circuitOpen).toBe(false);
   });
 
@@ -545,11 +499,11 @@ describe("question-scoped breaker accounting", () => {
     let call = 0;
     fetchMock.mockImplementation(() => {
       call += 1;
-      return Promise.resolve(call <= 4 ? httpError(404) : minimaxBody([MINIMAX_RESULT]));
+      return Promise.resolve(call <= 4 ? httpError(404) : openRouterBody([RESULT]));
     });
     const outcomes = await searchWebBatch(["q1", "q2", "q3", "q4", "q5", "q6"]);
     expect(outcomes.filter((outcome) => outcome.status === "ok")).toHaveLength(2);
-    expect(getWebSearchStatus().providers.minimax.consecutiveFailedQuestions).toBe(0);
+    expect(getWebSearchStatus().providers.openrouter.consecutiveFailedQuestions).toBe(0);
   });
 
   it("counts the model's own tool searches inside the same question, not as new ones", async () => {
@@ -562,7 +516,7 @@ describe("question-scoped breaker accounting", () => {
       await searchWeb("tool-3");
     });
     // Five failed searches, one failed question.
-    expect(getWebSearchStatus().providers.minimax.consecutiveFailedQuestions).toBe(1);
+    expect(getWebSearchStatus().providers.openrouter.consecutiveFailedQuestions).toBe(1);
     expect(getWebSearchStatus().circuitOpen).toBe(false);
   });
 
@@ -574,7 +528,7 @@ describe("question-scoped breaker accounting", () => {
       await searchWeb("t3");
     });
     fetchMock.mockClear();
-    fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
+    fetchMock.mockResolvedValue(openRouterBody([RESULT]));
     const outcome = await withSearchQuestion(() => searchWeb("the next reader's question"));
     expect(outcome.status).toBe("ok");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -584,19 +538,19 @@ describe("question-scoped breaker accounting", () => {
     fetchMock.mockResolvedValue(httpError(404));
     await searchWebBatch(["a", "b"]);
     await searchWebBatch(["c", "d"]);
-    expect(getWebSearchStatus().providers.minimax.circuitOpen).toBe(false);
+    expect(getWebSearchStatus().providers.openrouter.circuitOpen).toBe(false);
     await searchWebBatch(["e", "f"]);
-    expect(getWebSearchStatus().providers.minimax.circuitOpen).toBe(true);
+    expect(getWebSearchStatus().providers.openrouter.circuitOpen).toBe(true);
     expect(getWebSearchStatus().circuitOpen).toBe(true);
   });
 
   it("treats a question where any search worked as a healthy question", async () => {
     fetchMock
       .mockResolvedValueOnce(httpError(404))
-      .mockResolvedValueOnce(minimaxBody([MINIMAX_RESULT]));
+      .mockResolvedValueOnce(openRouterBody([RESULT]));
     const outcomes = await searchWebBatch(["fails", "works"]);
     expect(outcomes[1].results).toHaveLength(1);
-    expect(getWebSearchStatus().providers.minimax.consecutiveFailedQuestions).toBe(0);
+    expect(getWebSearchStatus().providers.openrouter.consecutiveFailedQuestions).toBe(0);
     expect(getWebSearchStatus().consecutiveFailures).toBe(0);
   });
 
@@ -609,10 +563,10 @@ describe("question-scoped breaker accounting", () => {
 
     vi.setSystemTime(new Date(NOW.getTime() + 5 * 60_000 + 1));
     fetchMock.mockReset();
-    fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
+    fetchMock.mockResolvedValue(openRouterBody([RESULT]));
     expect((await searchWeb("probe")).status).toBe("ok");
     expect((await searchWeb("after recovery")).status).toBe("ok");
-    expect(getWebSearchStatus().providers.minimax.circuitOpen).toBe(false);
+    expect(getWebSearchStatus().providers.openrouter.circuitOpen).toBe(false);
   });
 
   it("does not amplify a known outage into a retry storm", async () => {
@@ -634,7 +588,7 @@ describe("question-scoped breaker accounting", () => {
     let call = 0;
     fetchMock.mockImplementation(() => {
       call += 1;
-      return Promise.resolve(call === 1 ? httpError(503) : minimaxBody([MINIMAX_RESULT]));
+      return Promise.resolve(call === 1 ? httpError(503) : openRouterBody([RESULT]));
     });
     const outcomes = await searchWebBatch(["only"]);
     expect(outcomes[0].status).toBe("ok");
@@ -656,7 +610,7 @@ describe("question-scoped breaker accounting", () => {
     expect(probe.status).toBe("degraded");
     expect(fetchMock).toHaveBeenCalledTimes(1); // exactly one probe
 
-    expect(getWebSearchStatus().providers.minimax.circuitOpen).toBe(true);
+    expect(getWebSearchStatus().providers.openrouter.circuitOpen).toBe(true);
     fetchMock.mockClear();
     const blocked = await withSearchQuestion(() => searchWeb("after the failed probe"));
     expect(blocked.reason).toBe("circuit_open");
@@ -688,12 +642,12 @@ describe("question-scoped breaker accounting", () => {
       peak = Math.max(peak, inFlight);
       await new Promise((resolve) => setTimeout(resolve, 1));
       inFlight -= 1;
-      return minimaxBody([MINIMAX_RESULT]);
+      return openRouterBody([RESULT]);
     });
     await searchWebBatch(["a", "b", "c", "d", "e", "f"]);
     expect(peak).toBeLessThanOrEqual(2);
     // A throttled burst is a load condition, not a sick provider.
-    expect(getWebSearchStatus().providers.minimax.failures).toBe(0);
+    expect(getWebSearchStatus().providers.openrouter.failures).toBe(0);
   });
 
   it("still bounds concurrency after searches are cancelled mid-flight", async () => {
@@ -718,7 +672,7 @@ describe("question-scoped breaker accounting", () => {
       peak = Math.max(peak, inFlight);
       await new Promise((resolve) => setTimeout(resolve, 5));
       inFlight -= 1;
-      return minimaxBody([MINIMAX_RESULT]);
+      return openRouterBody([RESULT]);
     });
     // Driven as independent searches rather than one batch: a batch bounds
     // itself by worker count, so only concurrent requests -- the real shape of
@@ -739,8 +693,7 @@ describe("readiness reporting", () => {
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockReset();
     resetWebSearchStatus();
-    process.env.MINIMAX_API_KEY = "super-secret-minimax-key";
-    process.env.BRAVE_SEARCH_API_KEY = "super-secret-brave-key";
+    process.env.OPENROUTER_API_KEY = "super-secret-openrouter-key";
   });
 
   afterEach(() => {
@@ -748,19 +701,15 @@ describe("readiness reporting", () => {
     restoreEnv();
   });
 
-  it("reports a throttled primary with a healthy fallback as degraded but serving", async () => {
-    fetchMock.mockImplementation(routed({
-      minimax: () => Promise.resolve(httpError(429)),
-      brave: () => Promise.resolve(braveBody([BRAVE_RESULT])),
-    }));
+  it("reports a throttle on the only provider without claiming a fallback", async () => {
+    fetchMock.mockResolvedValue(httpError(429));
     await withSearchQuestion(() => searchWeb("arsenal"));
     const status = getWebSearchStatus();
     expect(status.circuitOpen).toBe(false);
-    expect(status.usingFallback).toBe(true);
-    expect(status.lastGoodProvider).toBe("brave");
-    expect(status.providers.minimax.lastThrottledAt).not.toBeNull();
-    expect(status.providers.minimax.lastFailureReason).toBe("rate_limited");
-    expect(status.providers.brave.successes).toBe(1);
+    expect(status.usingFallback).toBe(false);
+    expect(status.lastGoodProvider).toBeNull();
+    expect(status.providers.openrouter.lastThrottledAt).not.toBeNull();
+    expect(status.providers.openrouter.lastFailureReason).toBe("rate_limited");
   });
 
   it("reports a total search outage with the reason it gave up", async () => {
@@ -768,7 +717,7 @@ describe("readiness reporting", () => {
     await withSearchQuestion(() => searchWeb("everything down"));
     const status = getWebSearchStatus();
     expect(status.degradedSearches).toBe(1);
-    expect(status.lastDegradedReason).toBe("providers_exhausted");
+    expect(status.lastDegradedReason).toBe("provider_unavailable");
     expect(status.lastDegradedAt).not.toBeNull();
     expect(status.consecutiveFailures).toBe(1);
   });
@@ -779,17 +728,14 @@ describe("readiness reporting", () => {
     try {
       fetchMock.mockResolvedValue(httpError(429));
       await withSearchQuestion(() => searchWeb("secret leak check"));
-      fetchMock.mockResolvedValue(minimaxBody([MINIMAX_RESULT]));
+      fetchMock.mockResolvedValue(openRouterBody([RESULT]));
       await withSearchQuestion(() => searchWeb("secret leak check two"));
 
       const emitted = [...warn.mock.calls, ...log.mock.calls].map(String).join("\n");
       const readiness = JSON.stringify(getWebSearchStatus());
-      for (const secret of ["super-secret-minimax-key", "super-secret-brave-key"]) {
-        expect(readiness).not.toContain(secret);
-        expect(emitted).not.toContain(secret);
-      }
-      // Provider identity is reported; credentials are not.
-      expect(readiness).toContain("minimax");
+      expect(readiness).not.toContain("super-secret-openrouter-key");
+      expect(emitted).not.toContain("super-secret-openrouter-key");
+      expect(readiness).toContain("openrouter");
     } finally {
       warn.mockRestore();
       log.mockRestore();

@@ -4565,17 +4565,13 @@ describe("model-versus-market divergence", () => {
 });
 
 /**
- * Answering one question costs ~1-3 inference calls and ~6 searches. Running
- * both on one MiniMax coding-plan subscription meant retrieval spent the quota
- * the answer needed -- and a developer running Claude Code on the same
- * subscription spent it too. Inference now resolves its own credential.
+ * Answers and search share OPENROUTER_API_KEY. MiniMax is only the answer
+ * fallback when that key is absent, and it does not serve search.
  */
 describe("inference credential configuration", () => {
   const envKeys = [
     "MINIMAX_API_KEY",
-    "MINIMAX_INFERENCE_API_KEY",
     "MINIMAX_BASE_URL",
-    "MINIMAX_INFERENCE_BASE_URL",
     "MINIMAX_MODEL",
     "OPENROUTER_API_KEY",
     "OPENROUTER_MODEL",
@@ -4597,40 +4593,12 @@ describe("inference credential configuration", () => {
     }
   }
 
-  it("runs inference on a pay-as-you-go key with no subscription key present", () => {
-    withEnv({ MINIMAX_INFERENCE_API_KEY: "payg-open-platform-key" }, () => {
-      const prepared = prepareAsk("Who wins the Premier League?", []);
-      const client = prepared.client as unknown as { apiKey: string; baseURL: string };
-      expect(client.apiKey).toBe("payg-open-platform-key");
-      // The Anthropic-compatible interface and default host are unchanged: this
-      // is a credential swap, not a client rewrite.
-      expect(client.baseURL).toBe("https://api.minimax.io/anthropic");
-      expect(getInferenceStatus()).toMatchObject({
-        configured: true,
-        dedicatedKey: true,
-        keySource: "MINIMAX_INFERENCE_API_KEY",
-      });
-    });
-  });
-
-  it("prefers the inference key over the shared one when both are set", () => {
-    withEnv(
-      { MINIMAX_API_KEY: "shared-subscription-key", MINIMAX_INFERENCE_API_KEY: "payg-key" },
-      () => {
-        const client = prepareAsk("Who wins the Premier League?", []).client as unknown as
-          { apiKey: string };
-        expect(client.apiKey).toBe("payg-key");
-      }
-    );
-  });
-
   it("pins answers to one OpenRouter model and leaves the auto-router unused", () => {
     withEnv(
       {
         OPENROUTER_API_KEY: "openrouter-key",
         OPENROUTER_MODEL: "openrouter/auto",
         MINIMAX_API_KEY: "shared-subscription-key",
-        MINIMAX_INFERENCE_API_KEY: "payg-key",
       },
       () => {
         const client = prepareAsk("Who wins the Premier League?", []).client as unknown as
@@ -4639,7 +4607,7 @@ describe("inference credential configuration", () => {
         expect(client.baseURL).toBe("https://openrouter.ai/api");
         expect(getInferenceStatus()).toMatchObject({
           configured: true,
-          dedicatedKey: true,
+          dedicatedKey: false,
           keySource: "OPENROUTER_API_KEY",
           model: "deepseek/deepseek-v4-flash",
           endpointHost: "openrouter.ai",
@@ -4662,11 +4630,11 @@ describe("inference credential configuration", () => {
     });
   });
 
-  it("honours a region-scoped inference host without moving search", () => {
+  it("honours a region-scoped MiniMax host when OpenRouter is unset", () => {
     withEnv(
       {
-        MINIMAX_INFERENCE_API_KEY: "payg-key",
-        MINIMAX_INFERENCE_BASE_URL: "https://api.minimaxi.com/anthropic",
+        MINIMAX_API_KEY: "shared-subscription-key",
+        MINIMAX_BASE_URL: "https://api.minimaxi.com/anthropic",
       },
       () => {
         const client = prepareAsk("Who wins the Premier League?", []).client as unknown as
@@ -4686,8 +4654,8 @@ describe("inference credential configuration", () => {
   });
 
   it("never reports the key itself in inference status", () => {
-    withEnv({ MINIMAX_INFERENCE_API_KEY: "payg-open-platform-key" }, () => {
-      expect(JSON.stringify(getInferenceStatus())).not.toContain("payg-open-platform-key");
+    withEnv({ OPENROUTER_API_KEY: "openrouter-key-must-not-appear" }, () => {
+      expect(JSON.stringify(getInferenceStatus())).not.toContain("openrouter-key-must-not-appear");
     });
   });
 

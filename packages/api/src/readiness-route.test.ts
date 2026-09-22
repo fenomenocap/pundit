@@ -141,27 +141,25 @@ describe("GET /ready season schedule", () => {
 });
 
 /**
- * Search and inference share a vendor and, until this split, shared a key. An
- * operator reading Railway logs or /ready must be able to answer "which quota
- * ran out?" without reading answer text -- otherwise throttled retrieval is
- * indistinguishable from the model getting worse.
+ * Search and answers share OPENROUTER_API_KEY, but their health counters stay
+ * separate. An operator reading /ready can tell a search throttle from an
+ * inference failure without reading the answer.
  */
 describe("GET /ready provider observability", () => {
   const SEARCH_KEY = "search-key-must-not-appear";
-  const INFERENCE_KEY = "inference-key-must-not-appear";
   const envKeys = [
     "MINIMAX_API_KEY",
-    "MINIMAX_SEARCH_API_KEY",
-    "MINIMAX_INFERENCE_API_KEY",
-    "MINIMAX_INFERENCE_BASE_URL",
     "MINIMAX_BASE_URL",
-    "BRAVE_SEARCH_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_BASE_URL",
+    "OPENROUTER_MODEL",
     "WEB_SEARCH_PROVIDER_ORDER",
   ] as const;
   let saved: Record<string, string | undefined>;
 
   beforeEach(() => {
     saved = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+    for (const key of envKeys) delete process.env[key];
     resetWebSearchStatus();
     resetInferenceStatus();
   });
@@ -177,21 +175,27 @@ describe("GET /ready provider observability", () => {
   });
 
   it("reports search and inference health independently", async () => {
-    process.env.MINIMAX_SEARCH_API_KEY = SEARCH_KEY;
-    process.env.MINIMAX_INFERENCE_API_KEY = INFERENCE_KEY;
+    process.env.OPENROUTER_API_KEY = SEARCH_KEY;
     const { body } = await getJson("/ready");
-    expect(body.webSearch).toMatchObject({ primaryProvider: "minimax" });
+    expect(body.webSearch).toMatchObject({ primaryProvider: "openrouter" });
     expect(body.inference).toMatchObject({
       configured: true,
-      // The whole point of the split: inference is no longer on search's quota.
-      dedicatedKey: true,
-      keySource: "MINIMAX_INFERENCE_API_KEY",
-      model: expect.any(String),
+      dedicatedKey: false,
+      keySource: "OPENROUTER_API_KEY",
+      model: "deepseek/deepseek-v4-flash",
+      endpointHost: "openrouter.ai",
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: false, status: 429, headers: new Headers(), text: async () => "",
+    })));
+    await withSearchQuestion(() => searchWeb("ready independence"));
+    expect(getInferenceStatus().failures).toBe(0);
+    expect((await getJson("/ready")).body.webSearch).toMatchObject({
+      providers: { openrouter: { lastFailureReason: "rate_limited" } },
     });
   });
 
-  it("flags inference still sharing the search credential", async () => {
-    delete process.env.MINIMAX_INFERENCE_API_KEY;
+  it("keeps MiniMax as an answer fallback that does not serve search", async () => {
     process.env.MINIMAX_API_KEY = SEARCH_KEY;
     const { body } = await getJson("/ready");
     expect(body.inference).toMatchObject({
@@ -199,37 +203,30 @@ describe("GET /ready provider observability", () => {
       dedicatedKey: false,
       keySource: "MINIMAX_API_KEY",
     });
+    expect(body.webSearch).toMatchObject({
+      primaryProvider: null,
+      enabledProviders: [],
+    });
   });
 
-  it("accurately reports a throttled primary that is being covered by the fallback", async () => {
-    process.env.MINIMAX_API_KEY = SEARCH_KEY;
-    process.env.BRAVE_SEARCH_API_KEY = "brave-key-must-not-appear";
-    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
-      String(url).includes("brave.com")
-        ? {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          text: async () => JSON.stringify({
-            web: { results: [{ title: "t", url: "https://b.example/1", description: "s" }] },
-          }),
-        }
-        : { ok: false, status: 429, headers: new Headers(), text: async () => "" }));
+  it("records a search throttle on OpenRouter without a fallback provider", async () => {
+    process.env.OPENROUTER_API_KEY = SEARCH_KEY;
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: false, status: 429, headers: new Headers(), text: async () => "",
+    })));
 
     await withSearchQuestion(() => searchWeb("ready throttle check"));
     const { body } = await getJson("/ready");
     const webSearch = body.webSearch as Record<string, any>;
-    // Serving, but not from the primary, and the reason is on the record.
     expect(webSearch.circuitOpen).toBe(false);
-    expect(webSearch.usingFallback).toBe(true);
-    expect(webSearch.lastGoodProvider).toBe("brave");
-    expect(webSearch.providers.minimax.lastFailureReason).toBe("rate_limited");
-    expect(webSearch.providers.minimax.lastThrottledAt).not.toBeNull();
+    expect(webSearch.usingFallback).toBe(false);
+    expect(webSearch.lastGoodProvider).toBeNull();
+    expect(webSearch.providers.openrouter.lastFailureReason).toBe("rate_limited");
+    expect(webSearch.providers.openrouter.lastThrottledAt).not.toBeNull();
   });
 
   it("reports a total search outage as degraded without failing readiness", async () => {
-    process.env.MINIMAX_API_KEY = SEARCH_KEY;
-    delete process.env.BRAVE_SEARCH_API_KEY;
+    process.env.OPENROUTER_API_KEY = SEARCH_KEY;
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: false, status: 503, headers: new Headers(), text: async () => "",
     })));
@@ -250,16 +247,11 @@ describe("GET /ready provider observability", () => {
   });
 
   it("never puts a key in the readiness payload", async () => {
-    process.env.MINIMAX_SEARCH_API_KEY = SEARCH_KEY;
-    process.env.MINIMAX_INFERENCE_API_KEY = INFERENCE_KEY;
-    process.env.BRAVE_SEARCH_API_KEY = "brave-key-must-not-appear";
+    process.env.OPENROUTER_API_KEY = SEARCH_KEY;
     const { body } = await getJson("/ready");
     const serialized = JSON.stringify(body);
-    for (const secret of [SEARCH_KEY, INFERENCE_KEY, "brave-key-must-not-appear"]) {
-      expect(serialized).not.toContain(secret);
-    }
-    // Only the *name* of the variable and the host are reported.
-    expect(getInferenceStatus().keySource).toBe("MINIMAX_INFERENCE_API_KEY");
-    expect(serialized).toContain("MINIMAX_INFERENCE_API_KEY");
+    expect(serialized).not.toContain(SEARCH_KEY);
+    expect(getInferenceStatus().keySource).toBe("OPENROUTER_API_KEY");
+    expect(serialized).toContain("OPENROUTER_API_KEY");
   });
 });

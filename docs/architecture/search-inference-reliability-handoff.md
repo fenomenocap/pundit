@@ -218,6 +218,10 @@ throttling, rather than being misread as model regression.
 
 ## 7. Environment variables
 
+Operators: search and answers now use `OPENROUTER_API_KEY`. `MINIMAX_INFERENCE_*`,
+`MINIMAX_SEARCH_*`, and `BRAVE_SEARCH_*` are not read. The table below is the
+contract this handoff shipped.
+
 All are optional. A deployment setting only `MINIMAX_API_KEY` keeps its existing
 behaviour.
 
@@ -308,10 +312,15 @@ transport:
 
 ## 10. Deployment checklist
 
-Nothing has been deployed. Before deploying:
+Superseded. Do not set `BRAVE_SEARCH_API_KEY` or `MINIMAX_INFERENCE_API_KEY`.
+Current production uses `OPENROUTER_API_KEY` for answers and search. Confirm
+`/ready` shows `inference.model` `deepseek/deepseek-v4-flash`,
+`inference.keySource` `OPENROUTER_API_KEY`, and
+`webSearch.enabledProviders` `["openrouter"]`.
+
+Historical checklist this handoff shipped:
 
 1. Set `BRAVE_SEARCH_API_KEY` in Railway.
-   **Without this there is still no fallback and the core fix is inert.**
 2. Set `MINIMAX_INFERENCE_API_KEY` to a MiniMax Open Platform pay-as-you-go key.
 3. Deploy, then confirm on `/ready`:
    - `inference.dedicatedKey: true`
