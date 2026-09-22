@@ -879,10 +879,14 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       .filter((source) => typeof source?.source === "string"
         && validIsoDate(source?.observedAt)
         && [source?.pHome, source?.pDraw, source?.pAway].every(finiteProbability));
-    const comparisonClaim = /\b(?:market|kalshi|polymarket|stake|bookmakers?|bookies?|price|odds|gap|disagree|higher|lower)\b/i.test(text);
+    // Composer voice uses a curly apostrophe. The certainty check already
+    // folds those to ASCII; this assertion has to see the same letters or an
+    // honest "I don’t have a complete market" fails as an unnamed comparison.
+    const attributionText = text.replace(/[‘’]/g, "'");
+    const comparisonClaim = /\b(?:market|kalshi|polymarket|stake|bookmakers?|bookies?|price|odds|gap|disagree|higher|lower)\b/i.test(attributionText);
     const namesComparableSource = completeMarkets.some((source) =>
-      new RegExp(`\\b${String(source.source).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
-    const honestNoComparison = /\b(?:no|do not|don't|cannot|can't|without)\b[^.!?\n]{0,100}\b(?:comparable|complete|same[- ]source|market|price|odds|line)\b/i.test(text);
+      new RegExp(`\\b${String(source.source).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(attributionText));
+    const honestNoComparison = /\b(?:no|do not|don't|cannot|can't|without)\b[^.!?\n]{0,100}\b(?:comparable|complete|same[- ]source|market|price|odds|line)\b/i.test(attributionText);
     assertions.comparableMarketAttribution = comparisonClaim
       ? (namesComparableSource || (completeMarkets.length === 0 && honestNoComparison))
       : completeMarkets.length === 0 || honestNoComparison;

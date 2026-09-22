@@ -785,7 +785,25 @@ describe("V2 conversational architecture", () => {
     expect(previewCopy).toContain(SHARED_TOTAL_XG_SENTENCE);
     expect(previewCopy).toMatch(/market-implied probabilities/i);
     expect(previewCopy).toMatch(/percentage points/i);
+    expect(previewCopy).toMatch(/source named above/);
+    expect(previewCopy).not.toMatch(/market snapshot/);
     expect(previewCopy).not.toMatch(/Over 2\.5 is 58\.9%/);
+
+    const bare = { ...match, oddsSources: [], marketDivergence: [], consensus: undefined };
+    const emptyPreview = composeMatchResponse(
+      "Analyse Arsenal vs Chelsea.",
+      bare,
+      planResponse("Analyse Arsenal vs Chelsea.", { groundingKind: "match" })
+    );
+    expect(emptyPreview).toMatch(/likeliest outcome/);
+    expect(emptyPreview).not.toMatch(/\b(?:market|odds|price|gap)\b/i);
+    expect(emptyPreview).toMatch(/verified team news/);
+    const refusal = composeMatchResponse(
+      "Where do you disagree with the available 1X2 market?",
+      bare,
+      planResponse("Where do you disagree with the available 1X2 market?", { groundingKind: "match" })
+    );
+    expect(refusal).toMatch(/don’t have a complete, same-source/);
   });
 
   // Production regression (featured-totals-honesty / featured-o25-scoreline-follow-up):

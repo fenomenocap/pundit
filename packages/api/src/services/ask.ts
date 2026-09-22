@@ -1,8 +1,6 @@
-// Pundit's chat backend runs on MiniMax, not Anthropic. The Anthropic SDK is
-// retained deliberately as the wire client: MiniMax publishes an
-// Anthropic-compatible endpoint, so this keeps the message/stream/error types
-// and the retry classification below working unchanged. Do not "correct" this
-// to an Anthropic model or key -- see MINIMAX_BASE_URL.
+// The Anthropic SDK is the wire client for answer inference. Production pins
+// one OpenRouter model (see inference-config.ts). MiniMax remains the fallback
+// host when OPENROUTER_API_KEY is unset. Search does not use this client.
 import Anthropic from "@anthropic-ai/sdk";
 import {
   buildAgentFreshnessMetadata,
@@ -10,6 +8,7 @@ import {
 } from "../config/freshness-policy";
 import { getCompetitionById } from "../config/competitions";
 import { AppError } from "../middleware";
+import { resolveInference, type InferenceKeySource } from "./inference-config";
 import {
   getTeamNameAliases,
   normalizeTeamName,
@@ -460,39 +459,18 @@ const WEB_SEARCH_TOOL = {
   },
 };
 
-const MINIMAX_MODEL = process.env.MINIMAX_MODEL ?? "MiniMax-M3";
-
 /**
  * Inference credentials, resolved separately from search.
  *
- * Answering one question costs ~1-3 inference calls *and* ~6 searches. When
- * both ran on one coding-plan subscription key, the searches spent the quota
- * the answer needed -- and a developer running Claude Code on the same
- * subscription spent it too. MINIMAX_INFERENCE_API_KEY points inference at an
- * Open Platform pay-as-you-go key, whose quota nothing else touches.
- *
- * The fallback to MINIMAX_API_KEY is what keeps this a configuration change:
- * every existing deployment keeps working untouched, and the wire client,
- * model, and Anthropic-compatible request shape are all unchanged.
+ * OPENROUTER_API_KEY pins the answer model. MINIMAX_INFERENCE_API_KEY is the
+ * older dedicated MiniMax quota and stays unused in production. The shared
+ * MINIMAX_API_KEY fallback keeps a checkout without OpenRouter able to answer.
+ * Search never reads this resolution.
  */
-function inferenceApiKey(): string | undefined {
-  return process.env.MINIMAX_INFERENCE_API_KEY || process.env.MINIMAX_API_KEY;
-}
-
-// The international host. Keys are region-scoped: a key issued for mainland
-// China authenticates only against https://api.minimaxi.com/anthropic, so that
-// deployment overrides this rather than editing the default. Pay-as-you-go and
-// coding-plan keys can also live on different hosts, hence the inference-only
-// override ahead of the shared one.
-function inferenceBaseUrl(): string {
-  return process.env.MINIMAX_INFERENCE_BASE_URL
-    ?? process.env.MINIMAX_BASE_URL
-    ?? "https://api.minimax.io/anthropic";
-}
 
 export interface InferenceStatus {
   /** Which environment variable supplied the key -- never the key itself. */
-  keySource: "MINIMAX_INFERENCE_API_KEY" | "MINIMAX_API_KEY" | "unset";
+  keySource: InferenceKeySource;
   /** True when inference is on its own quota rather than sharing search's. */
   dedicatedKey: boolean;
   configured: boolean;
@@ -536,8 +514,8 @@ export function recordInferenceFailure(httpStatus: number | null): void {
     // used to share a key, so "which quota ran out" was unanswerable from logs.
     console.warn(JSON.stringify({
       event: "inference_rate_limited",
-      provider: "minimax",
-      dedicatedKey: Boolean(process.env.MINIMAX_INFERENCE_API_KEY),
+      provider: resolveInference().provider,
+      dedicatedKey: resolveInference().dedicatedKey,
       consecutiveFailures: inferenceHealth.consecutiveFailures,
     }));
   }
@@ -554,20 +532,18 @@ export function resetInferenceStatus(): void {
 }
 
 export function getInferenceStatus(): InferenceStatus {
-  const dedicated = Boolean(process.env.MINIMAX_INFERENCE_API_KEY);
+  const inference = resolveInference();
   let endpointHost: string | null = null;
   try {
-    endpointHost = new URL(inferenceBaseUrl()).host;
+    endpointHost = new URL(inference.baseURL).host;
   } catch {
     endpointHost = null;
   }
   return {
-    keySource: dedicated
-      ? "MINIMAX_INFERENCE_API_KEY"
-      : process.env.MINIMAX_API_KEY ? "MINIMAX_API_KEY" : "unset",
-    dedicatedKey: dedicated,
-    configured: Boolean(inferenceApiKey()),
-    model: MINIMAX_MODEL,
+    keySource: inference.keySource,
+    dedicatedKey: inference.dedicatedKey,
+    configured: Boolean(inference.apiKey),
+    model: inference.model,
     endpointHost,
     ...inferenceHealth,
   };
@@ -4017,7 +3993,7 @@ function analysisRequestParams(
   enableTools = true
 ) {
   return {
-    model: MINIMAX_MODEL,
+    model: resolveInference().model,
     max_tokens: MAX_TOKENS,
     // Anthropic's output_config/effort was dropped in the MiniMax migration: the
     // endpoint accepts the field without erroring but does not act on it, so
@@ -6666,15 +6642,15 @@ export function prepareAsk(
     currentMessage = `User question: ${question}`;
   }
 
-  const apiKey = inferenceApiKey();
-  if (!apiKey) throw new AppError(502, "Analysis service is temporarily unavailable.");
+  const inference = resolveInference();
+  if (!inference.apiKey) throw new AppError(502, "Analysis service is temporarily unavailable.");
 
   return {
     grounding,
     systemPrompt,
     messages: [...history, { role: "user", content: currentMessage }],
     tier: grounding?.kind === "fixture" ? "general" : grounding?.kind ?? "general",
-    client: new Anthropic({ apiKey, baseURL: inferenceBaseUrl(), maxRetries: 0 }),
+    client: new Anthropic({ apiKey: inference.apiKey, baseURL: inference.baseURL, maxRetries: 0 }),
     candidateUnrecognized: context.tier === "candidate",
   };
 }
@@ -7741,6 +7717,10 @@ export function closedGroundedAnswer(
       "totals",
       "btts",
       "pricing-desk",
+      // The long read is the server's 1X2, scorelines and market rows. Sending
+      // "Analyse" to the model spent the 90s deadline and returned 502 before
+      // this text could ship. Team news and tactical takes still generate.
+      "match-preview",
     ].includes(plan.mode);
     return settled
       ? composeMatchResponse(question, grounding, plan)
