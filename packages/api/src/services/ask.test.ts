@@ -4252,7 +4252,9 @@ describe("match-tier analytical priorities", () => {
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("Reason from the numbers rather than reciting them");
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("Lead with model-versus-market disagreement");
     expect(MATCH_ANALYSIS_PRIORITIES)
-      .toContain("how many percentage points it is, and which way it runs");
+      .toContain("via its fact slot");
+    expect(MATCH_ANALYSIS_PRIORITIES)
+      .toContain("never by typing a percentage or \"percentage points\" figure into the JSON text");
     // Agreement has to be reportable as a conclusion, or the prompt has just
     // taught the model to invent an edge on every efficiently priced fixture.
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("Agreement is a conclusion, not a hole to fill");
@@ -4277,6 +4279,7 @@ describe("match-tier analytical priorities", () => {
       .toContain("what would move it is incomplete, however correct its numbers");
     // The recital is replaced, not the numbers: no correctness regression.
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("Keep every grounded number you would have reported");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("by inserting its fact slot");
   });
 
   it("names the capabilities Pundit does not have so ambition cannot license invention", () => {
@@ -4300,7 +4303,8 @@ describe("match-tier analytical priorities", () => {
     expect(MATCH_CAPABILITY_BOUNDS).toContain("Quote market probabilities one source per sentence");
     expect(MATCH_CAPABILITY_BOUNDS)
       .toContain("put your interpretation of the gap in a separate sentence");
-    expect(MATCH_CAPABILITY_BOUNDS).toContain("percentage points");
+    expect(MATCH_CAPABILITY_BOUNDS).toContain("matching market fact slot");
+    expect(MATCH_CAPABILITY_BOUNDS).toContain("Never type percentage-point digits");
   });
 
   it("delivers a divergence-led answer through the real guard chain intact", () => {

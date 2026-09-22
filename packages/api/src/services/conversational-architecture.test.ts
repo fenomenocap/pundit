@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { sampleAgentFreshness } from "../config/freshness-policy";
-import { deliverAnswer, deterministicSearchQuery, planEvidenceQueries, type Grounding } from "./ask";
+import {
+  deliverAnswer,
+  deterministicSearchQuery,
+  MATCH_EXAMPLE,
+  MATCH_STRUCTURED_OUTPUT,
+  planEvidenceQueries,
+  type Grounding,
+} from "./ask";
 import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
 import { PLAYER_SCORER_ABSTENTION, TEAM_NEWS_COMPOSE_ABSTENTION } from "./player-evidence";
@@ -238,6 +245,21 @@ describe("V2 conversational architecture", () => {
       directAnswer: { text: "I make Arsenal 71.2%.", factIds: ["match.home"] },
       reasoning: [], citedClaims: [],
     }), grounding())).toEqual({ valid: false, reason: "untraceable-number" });
+    // Production c9990af tally (8 rejects): untraceable-number×3 dominant on match-preview.
+    // A MATCH_EXAMPLE-shaped free-text 1X2 lead-in still fails closed (guards stay strict).
+    expect(validateAnalystDraft(JSON.stringify({
+      directAnswer: {
+        text: "I make Riverton 48.2%, the draw 24.7% and Ashcombe 27.1%.",
+        factIds: ["match.home", "match.draw", "match.away"],
+      },
+      reasoning: [],
+      citedClaims: [],
+    }), grounding())).toEqual({ valid: false, reason: "untraceable-number" });
+    // Prompt/schema alignment: the worked example must teach slots, not free-text %.
+    expect(MATCH_EXAMPLE).toMatch(/\{\{(?:match\.(?:home|draw|away)|total\.|score\.|market\.)[^}]+\}\}/);
+    expect(MATCH_EXAMPLE).not.toMatch(/\d+(?:\.\d+)?\s*%/);
+    expect(MATCH_STRUCTURED_OUTPUT).toMatch(/Write no match number/);
+    expect(MATCH_STRUCTURED_OUTPUT).toMatch(/JSON arrays/);
     expect(validateAnalystDraft(JSON.stringify({
       directAnswer: { text: "I make {{match.home}}.", factIds: ["match.home"] },
       reasoning: [], citedClaims: [{ text: "Claim", factIds: [], sourceIds: ["S2"] }],
