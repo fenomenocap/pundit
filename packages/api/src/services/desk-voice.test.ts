@@ -15,8 +15,13 @@ import {
   shouldRestoreDeskFootballTake,
   stripDeskBoardRecitals,
 } from "./desk-voice";
+import { composeDeskTakeOutline } from "./response-composer";
+import { buildMatchPricing } from "./response-correctness";
 
 function match(over: Partial<Grounding> = {}): Grounding {
+  const pHome = 0.82;
+  const pDraw = 0.13;
+  const pAway = 0.05;
   return {
     kind: "match",
     fixtureId: "espn:eng.1:city",
@@ -27,9 +32,9 @@ function match(over: Partial<Grounding> = {}): Grounding {
     stage: "match",
     home: "Manchester City",
     away: "Sunderland",
-    pHome: 0.82,
-    pDraw: 0.13,
-    pAway: 0.05,
+    pHome,
+    pDraw,
+    pAway,
     pOver2_5: 0.51,
     pUnder2_5: 0.49,
     pBttsYes: 0.4,
@@ -40,11 +45,16 @@ function match(over: Partial<Grounding> = {}): Grounding {
     stakePDraw: null,
     stakePAway: null,
     oddsSources: [],
-    pricing: {
-      pHome: 0.82,
-      pDraw: 0.13,
-      pAway: 0.05,
-    } as unknown as Grounding["pricing"],
+    pricing: buildMatchPricing({
+      fixtureId: "espn:eng.1:city",
+      home: "Manchester City",
+      away: "Sunderland",
+      kickoff: "2026-09-13",
+      pricedAt: "2026-09-11T03:00:00.000Z",
+      pHome,
+      pDraw,
+      pAway,
+    }),
     marketDivergence: [],
     freshness: sampleAgentFreshness(),
     ...sampleMatchContextFields({
@@ -216,6 +226,49 @@ describe("desk football-take floor", () => {
     expect(stripSurplusCurrentNewsNotices(
       "Arsenal should control this at home. Current reports conflict on one or more requested facts, so I’ve left those claims out."
     )).toBe("Arsenal should control this at home.");
+  });
+});
+
+describe("desk take outline", () => {
+  it("orders labelled 1X2, optional wrinkle, then football sentences", () => {
+    const g = match();
+    const bare = composeDeskTakeOutline(g);
+    expect(bare).toMatch(/^My 1X2 is Manchester City .* \(fair /);
+    expect(bare).toMatch(/Manchester City should control this at home/);
+    expect(bare).not.toMatch(/unavailable|not priced into/i);
+    expect(bare).not.toMatch(/captured decimal|EV%|pass or play/i);
+
+    const withWrinkle = composeDeskTakeOutline(g, {
+      footballProse: "City win by controlling territory without overcommitting.",
+      playerEvidence: {
+        observations: [{
+          playerId: "haaland",
+          playerName: "Erling Haaland",
+          teamId: "Manchester City",
+          fixtureId: g.fixtureId,
+          evidenceType: "availability",
+          value: "out",
+          sourceId: "S1",
+          observedAt: "2026-09-09T12:00:00.000Z",
+          effectiveAt: "2026-09-09T12:00:00.000Z",
+        }],
+        markets: [],
+      },
+    });
+    expect(withWrinkle.indexOf("My 1X2")).toBeLessThan(withWrinkle.indexOf("Erling Haaland"));
+    expect(withWrinkle.indexOf("Erling Haaland")).toBeLessThan(
+      withWrinkle.indexOf("City win by controlling territory")
+    );
+    expect(withWrinkle).toMatch(/not priced into the 1X2 above/);
+    expect(withWrinkle).toMatch(/fair 1\.22/);
+  });
+
+  it("keeps real book decimals out of the outline and never invents them from no-vig", () => {
+    const outline = composeDeskTakeOutline(match());
+    expect(outline).toMatch(/fair 1\.22/);
+    // No-vig market legs must not be inverted into a fake sportsbook decimal.
+    expect(outline).not.toMatch(/Stake decimal|captured decimal|1\/0\.|book price/i);
+    expect(outline).not.toMatch(/\bEV%\b/);
   });
 });
 

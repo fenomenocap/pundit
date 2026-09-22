@@ -318,6 +318,55 @@ export function composeTeamNewsAnswer(
   return lines.join(" ");
 }
 
+/** Server-owned labelled 1X2 with fair `1/p`. Never invents a sportsbook decimal. */
+export function composeDeskLabelledOneXTwo(grounding: Grounding): string {
+  const model = grounding.pricing.model;
+  return `My 1X2 is ${grounding.home} ${pct(model.home.p)} (fair ${model.home.fairOdds.toFixed(2)}), `
+    + `draw ${pct(model.draw.p)} (fair ${model.draw.fairOdds.toFixed(2)}) and `
+    + `${grounding.away} ${pct(model.away.p)} (fair ${model.away.fairOdds.toFixed(2)}).`;
+}
+
+/**
+ * One sourced availability wrinkle when this turn already extracted it.
+ * Omitted when evidence is empty or conflicting — schematic takes do not
+ * re-search injuries just to fill this slot.
+ */
+export function composeDeskSourcedWrinkle(
+  evidence: PlayerEvidenceBundle | null
+): string | null {
+  if (!evidence || !hasTeamNewsEvidence(evidence)) return null;
+  const row = evidence.observations.find((candidate): candidate is typeof candidate & { observedAt: string } =>
+    Boolean(candidate.observedAt)
+  );
+  if (!row) return null;
+  const date = dateLabel(row.observedAt);
+  const team = row.teamId ? ` (${row.teamId})` : "";
+  const claim = row.evidenceType === "availability"
+    ? `${row.playerName}${team} is listed as unavailable according to a source [[${row.sourceId}]] (${date}).`
+    : `${row.playerName}${team} is ${row.evidenceType === "confirmed-lineup" ? "confirmed" : "expected"} to start according to a source [[${row.sourceId}]] (${date}).`;
+  return `${claim} That availability is not priced into the 1X2 above.`;
+}
+
+/**
+ * Desk take outline: labelled 1X2 → optional sourced wrinkle → football sentences.
+ * Board numbers stay on the UI board; this lead is the short composer copy.
+ * MiniMax may supply only the football layer via `footballProse`.
+ */
+export function composeDeskTakeOutline(
+  grounding: Grounding,
+  options?: {
+    footballProse?: string | null;
+    playerEvidence?: PlayerEvidenceBundle | null;
+    leadWithAnalystVoice?: boolean;
+  }
+): string {
+  const oneXTwo = composeDeskLabelledOneXTwo(grounding);
+  const wrinkle = composeDeskSourcedWrinkle(options?.playerEvidence ?? null);
+  const football = (options?.footballProse ?? "").trim()
+    || composeDeskFootballTake(grounding, { leadWithAnalystVoice: options?.leadWithAnalystVoice });
+  return [oneXTwo, wrinkle, football].filter(Boolean).join(" ");
+}
+
 export function composeMatchResponse(
   question: string,
   grounding: Grounding,
@@ -394,7 +443,10 @@ export function composeMatchResponse(
       return `I have ${favourite.label} as the stronger case at ${pct(favourite.p)}. That is the direct matchup read; I can’t honestly decompose the edge into an exact contribution from each input.`;
     }
     if (asksTacticalTake(question)) {
-      return composeDeskFootballTake(grounding, { leadWithAnalystVoice: true });
+      return composeDeskTakeOutline(grounding, {
+        playerEvidence,
+        leadWithAnalystVoice: true,
+      });
     }
     return `My short answer is ${favourite.label} at ${pct(favourite.p)}. The main constraint is that this is a team-strength view; it does not include a confirmed lineup.`;
   }
