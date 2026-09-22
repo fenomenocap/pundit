@@ -1,4 +1,5 @@
 import type { Grounding } from "./ask";
+import { composeDeskFootballTake } from "./desk-voice";
 import { PUNDIT_CONSENSUS_LABEL, PUNDIT_FUNDAMENTAL_LABEL } from "./pundit-consensus";
 import type { OneXTwoOutcome } from "./response-correctness";
 import { parseScoreline } from "./response-correctness";
@@ -15,6 +16,7 @@ import { buildResponseFacts, factById } from "./response-facts";
 import {
   asksOver25Only,
   asksScorelineBoard,
+  asksTacticalTake,
   asksUnder25Only,
   asksUnpricedMarket,
   planResponse,
@@ -373,6 +375,9 @@ export function composeMatchResponse(
     }
     if (/\b(?:which side|who)\b.{0,50}\b(?:stronger|strongest|better case|edge)\b|\bstronger\b.{0,20}\b(?:case|side)\b/i.test(question)) {
       return `I have ${favourite.label} as the stronger case at ${pct(favourite.p)}. That is the direct matchup read; I can’t honestly decompose the edge into an exact contribution from each input.`;
+    }
+    if (asksTacticalTake(question)) {
+      return composeDeskFootballTake(grounding, { leadWithAnalystVoice: true });
     }
     return `My short answer is ${favourite.label} at ${pct(favourite.p)}. The main constraint is that this is a team-strength view; it does not include a confirmed lineup.`;
   }

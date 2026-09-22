@@ -1558,6 +1558,14 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     { expectNoUnsupportedScorerInference: true }
   ).passed, true);
   assert.equal(validateAnalystExpression("Over 2.5 is 50.6% for this open game.", { expectTotalsHonesty: true }).passed, false);
+  assert.equal(validateAnalystExpression(
+    "My short answer is Arsenal at 75.9%. The main constraint is that this is a team-strength view; it does not include a confirmed lineup.",
+    { expectAnalystVoice: true, expectDirectAnswer: true }
+  ).passed, false);
+  assert.equal(validateAnalystExpression(
+    "I lean to Arsenal at home — the gap is real, not a coin flip. Leeds United only get a result if they stretch the game and force chaos; a controlled night plays to Arsenal. This is a team-strength view, not a confirmed lineup. I would only change the shape after verified team news.",
+    { expectAnalystVoice: true, expectDirectAnswer: true }
+  ).passed, true);
   assert.equal(validateAnswerStructure("I make it close [[S?]].").assertions.noUnresolvedMarker, false);
   assert.equal(validateAnswerStructure('I favour {{match.home}}.').passed, false);
   assert.equal(validateAnswerStructure('{"directAnswer":{"text":"I favour Arsenal.","factIds":[]}}').passed, false);

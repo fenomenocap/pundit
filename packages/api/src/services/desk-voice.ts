@@ -79,7 +79,10 @@ export function deskProseIsCurrentNewsRemainder(text: string): boolean {
  * Server-owned football take for briefing / tactical chips. No percents, no
  * EV, no injuries, no managers — those are the facts verification wipes.
  */
-export function composeDeskFootballTake(g: Grounding): string {
+export function composeDeskFootballTake(
+  g: Grounding,
+  options?: { leadWithAnalystVoice?: boolean }
+): string {
   const sides = [
     { label: g.home, p: g.pHome, role: "home" as const },
     { label: "the draw", p: g.pDraw, role: "draw" as const },
@@ -88,10 +91,16 @@ export function composeDeskFootballTake(g: Grounding): string {
   const favourite = sides[0];
   const mismatch = Math.abs(g.pHome - g.pAway) >= 0.35;
   const lean = favourite.role === "home"
-    ? `${g.home} should control this at home — the lean is a gap, not a coin flip.`
+    ? options?.leadWithAnalystVoice
+      ? `I lean to ${g.home} at home — the gap is real, not a coin flip.`
+      : `${g.home} should control this at home — the lean is a gap, not a coin flip.`
     : favourite.role === "away"
-      ? `${g.away} are the lean even away from home.`
-      : "This looks like a tight night rather than a one-side walkover.";
+      ? options?.leadWithAnalystVoice
+        ? `I lean to ${g.away} even away from home.`
+        : `${g.away} are the lean even away from home.`
+      : options?.leadWithAnalystVoice
+        ? "I lean to a tight night rather than a one-side walkover."
+        : "This looks like a tight night rather than a one-side walkover.";
   const underdog = favourite.role === "home" ? g.away : favourite.role === "away" ? g.home : null;
   const decide = !underdog
     ? `Who decides it is whether either side can break a midfield stalemate without giving the other a clean run.`
