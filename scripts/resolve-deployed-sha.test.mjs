@@ -6,6 +6,10 @@ import path from "node:path";
 import test from "node:test";
 
 import { shouldBuildWeb } from "./deploy-build-paths.mjs";
+import {
+  classifyServedSha,
+  classifyServedShaWithRefresh,
+} from "./resolve-deployed-sha.mjs";
 
 const helper = path.resolve("scripts/resolve-deployed-sha.sh");
 
@@ -219,6 +223,76 @@ test("a later skipped commit served by the frontend is ahead, not stale", () => 
     assert.equal(compare(cwd, floor, ""), "missing");
     assert.equal(compare(cwd, floor, "unknown"), "missing");
     assert.equal(compare(cwd, floor, "0".repeat(40)), "unknown");
+  });
+});
+
+test("a descendant served SHA is unknown until deploy history is refreshed", () => {
+  withRepo((root) => {
+    const bare = path.join(root, "remote.git");
+    git(root, "init", "--bare", "-q", bare);
+
+    const publisher = path.join(root, "publisher");
+    fs.mkdirSync(publisher);
+    initRepo(publisher);
+    write(publisher, "packages/api/src.ts", "api-1");
+    git(publisher, "add", ".");
+    git(publisher, "commit", "-qm", "floor deploy");
+    const floor = git(publisher, "rev-parse", "HEAD");
+
+    write(publisher, "packages/api/src.ts", "api-2");
+    git(publisher, "add", "packages/api/src.ts");
+    git(publisher, "commit", "-qm", "later deploy");
+    const served = git(publisher, "rev-parse", "HEAD");
+
+    git(publisher, "remote", "add", "origin", bare);
+    git(publisher, "push", "-q", "origin", "main");
+
+    const consumer = path.join(root, "consumer");
+    fs.mkdirSync(consumer);
+    git(consumer, "init", "-q", "-b", "main");
+    git(consumer, "remote", "add", "origin", bare);
+    git(consumer, "fetch", "--depth", "1", "--quiet", "origin", floor);
+    git(consumer, "checkout", "-q", "--detach", floor);
+
+    assert.equal(classifyServedSha(floor, served, { cwd: consumer }), "unknown");
+    assert.equal(classifyServedShaWithRefresh(floor, served, { cwd: consumer }), "ahead");
+    assert.equal(compare(consumer, floor, served), "ahead");
+  });
+});
+
+test("refresh leaves unrelated missing SHAs unknown", () => {
+  withRepo((root) => {
+    const bare = path.join(root, "remote.git");
+    git(root, "init", "--bare", "-q", bare);
+
+    const publisher = path.join(root, "publisher");
+    fs.mkdirSync(publisher);
+    initRepo(publisher);
+    write(publisher, "packages/api/src.ts", "api-1");
+    git(publisher, "add", ".");
+    git(publisher, "commit", "-qm", "floor deploy");
+    const floor = git(publisher, "rev-parse", "HEAD");
+    git(publisher, "remote", "add", "origin", bare);
+    git(publisher, "push", "-q", "origin", "main");
+
+    const consumer = path.join(root, "consumer");
+    fs.mkdirSync(consumer);
+    git(consumer, "init", "-q", "-b", "main");
+    git(consumer, "remote", "add", "origin", bare);
+    git(consumer, "fetch", "--depth", "1", "--quiet", "origin", floor);
+    git(consumer, "checkout", "-q", "--detach", floor);
+
+    const unrelated = "0".repeat(40);
+    assert.equal(classifyServedShaWithRefresh(floor, unrelated, { cwd: consumer }), "unknown");
+  });
+});
+
+test("refresh still rejects a stale served SHA that exists locally", () => {
+  withRepo((cwd) => {
+    seedRepo(cwd);
+    const stale = commitFiles(cwd, "api only", { "packages/api/src.ts": "api-1" });
+    const floor = commitFiles(cwd, "api later", { "packages/api/src.ts": "api-2" });
+    assert.equal(classifyServedShaWithRefresh(floor, stale, { cwd }), "stale");
   });
 });
 

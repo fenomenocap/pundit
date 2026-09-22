@@ -1,4 +1,7 @@
-import { classifyServedSha, isAcceptableServedSha } from "./resolve-deployed-sha.mjs";
+import {
+  classifyServedShaWithRefresh,
+  isAcceptableServedSha,
+} from "./resolve-deployed-sha.mjs";
 
 /**
  * Decide whether the API startup poll in verify-prod.sh can stop.
@@ -15,7 +18,9 @@ export function apiStartupPollPassed({
   floorSha,
   cwd = process.cwd(),
 }) {
-  const shaState = floorSha ? classifyServedSha(floorSha, servedSha, { cwd }) : "missing";
+  const shaState = floorSha
+    ? classifyServedShaWithRefresh(floorSha, servedSha, { cwd })
+    : "missing";
   const shaOk = isAcceptableServedSha(shaState);
 
   if (!shaOk) {
