@@ -2,10 +2,28 @@
 
 > **Canonical performance evidence:** [prediction-model-review-2026-09-15.md](./prediction-model-review-2026-09-15.md). Do not use earlier rolling-origin Brier headlines as promotion evidence. Those reused full-corpus fitted parameters on holdouts.
 
-**Handoff date:** 2026-09-15  
-**Production API SHA:** `4784eef` (Railway, PR #186, observed 2026-09-15)  
-**Production web SHA:** `0224c95` (Vercel; unchanged by the API-only evaluator merge)  
+**Handoff date:** 2026-09-22  
+**Production API SHA:** `c9990af` (Railway, observed 2026-09-22)  
+**Production web SHA:** `4dbf0f4` (Vercel; behind API-only merges that did not touch `packages/web`)  
 **Purpose:** Operating plan after the completed review **and** the merged evaluator. Not a new diagnosis. Not permission to promote.
+
+### 2026-09-22 champion calibration (research only — do not ship)
+
+Offline `calibrate:champion` on the live Railway ledger export `production-2026-09-22.json`:
+
+| | Value |
+|---|---|
+| Official with result | **64** (PL **50**, UCL quals 14); 8 legacy excluded |
+| Shipped constants | **1.35 / 42 / −0.1** (unchanged) |
+| Fitted (research) | 1.41 / 11 / −0.05 |
+| Full-sample 1X2 Brier | shipped recomputed **0.6572** vs fitted **0.6620** (fitted is worse) |
+| Chronological PL holdout | n=20 (need 40); folds=2 (need 5 weeks) |
+| Holdout Brier | shipped 0.6827 vs fitted 0.7024 |
+| Bootstrap ΔBrier 10–90% | **+0.015 to +0.023** (entirely above 0 — fails) |
+| `recommendProductionChange` | **false** |
+| `productionAutoLoad` | **false** |
+
+**Decision: do not ship.** Gates failed (Brier, bootstrap, holdout n/weeks). Report: `packages/api/data/research/champion-calibration/reports/2026-09-22/` (force-added research artifact; ledger JSON stays gitignored). Do not overwrite Railway `/data`.
 
 Related: [`prediction-model-improvement-brief.md`](./prediction-model-improvement-brief.md) · [`prediction-model-review-2026-09-15.md`](./prediction-model-review-2026-09-15.md) · [`pre-next-phase-qa-2026-09-15.md`](./pre-next-phase-qa-2026-09-15.md) · [`.cursor/rules/prediction-model-improvement.mdc`](../../.cursor/rules/prediction-model-improvement.mdc)
 
@@ -14,8 +32,8 @@ Related: [`prediction-model-improvement-brief.md`](./prediction-model-improvemen
 ## Already true — do not undo
 
 - **Phase 0 shipped.** `eloToLambdas` is fixed total `2 * BASE_GOALS` (2.70) split by Elo odds ratio. Do **not** remake it. Do **not** restore geometric-mean λ. Hull vs Man United (`401879322`) is the regression story for why. Live active fixtures share Over 2.5 ≈ 50.64% because the total is shared.
-- **Shipped constants stay 1.35 / 42 / −0.1** until a better official-ledger fit *and* a human copy. `productionAutoLoad: false`. Do **not** ship HFA=0.
-- **Ledger seals.** Policy `pre-kickoff-90m-v1` keeps the first eligible forecast. 15-minute checkpoint + football-cadence tick. Railway `/data` is production truth. In-repo `packages/api/data/evaluation/club-season.json` stays an empty seed — never overwrite `/data` with it.
+- **Shipped constants stay 1.35 / 42 / −0.1** until a better official-ledger fit *and* a human copy. 2026-09-22 offline fit failed every ship gate; `productionAutoLoad: false`. Do **not** ship HFA=0 (or the fitted HFA=11).
+- **Ledger seals.** Policy `pre-kickoff-90m-v1` keeps the first eligible forecast. 15-minute checkpoint + football-cadence tick. Railway `/data` is production truth (**64** official completed seals as of 2026-09-22 export). In-repo `packages/api/data/evaluation/club-season.json` stays an empty seed — never overwrite `/data` with it.
 - **Phase 2 registered, not activated.** `REGISTERED_CHALLENGERS` has `dixon-coles-mle@4cfcbe57…`. `forecast` / `sampleScore` throw. `model-data.ts` still calls `ELO_CHAMPION` only. Chat still says Pundit Fundamental.
 - **Phase 3 shipped, not the headline.** Labelled **Pundit Consensus** shrinks 1X2 halfway toward one complete same-source no-vig market, then `refitLambdasToTarget1x2`. Never present Consensus as Fundamental.
 - **Leftovers shipped.** Season sim samples the Dixon–Coles score grid (ρ included). `PUNDIT_FUNDAMENTAL_MODEL_VERSION = "2"`. Desk uses server `pOver2_5`. Live pin `clubelo@1:1da9aa95…` (ranking date 2026-09-13). MiniMax never authors 1X2.
@@ -26,7 +44,7 @@ Promote the MLE challenger **only** if a corrected rolling-origin gate says yes 
 
 ## What the 2026-09-15 review actually showed
 
-- Champion full-sample fit 1.40 / 0 / −0.115 does **not** beat shipped 1.35 / 42 / −0.1 on the official ledger (Brier 0.666 vs 0.668; PL n below a 40-holdout bar; chronological holdout worse).
+- Champion full-sample fit 1.40 / 0 / −0.115 (2026-09-15) and 1.41 / 11 / −0.05 (2026-09-22) do **not** beat shipped 1.35 / 42 / −0.1. Latest: full-sample Brier 0.662 vs shipped 0.657; PL holdout n=20 below the 40 bar; bootstrap ΔBrier 10–90% entirely above 0.
 - Corrected challenger eval **refits each origin**. It does **not** support promotion. First two origins uncover clubs; third improves 1X2 Brier but Over 2.5 Brier and legacy outcome MAE worsen. Overlapping holdouts: 1,146 attempted pairs, **572 unique fixtures**.
 - First Fundamental `"2"` seal: Leeds–Newcastle (`401879280`), 2026-09-14T17:31:15Z, `pre-kickoff-90m-v1` / `scheduled_window`. Do not count a pending seal as calibration n.
 
@@ -52,7 +70,7 @@ pnpm --filter @sports-predict/api calibrate:champion -- \
   packages/api/data/research/champion-calibration/ledgers/production-YYYY-MM-DD.json
 ```
 
-**Ship new 1.35 / 42 / −0.1 replacements only if** 1X2 Brier is clearly better (fitted + 0.005 < shipped) **and** bootstrap ΔBrier 10–90% lies entirely below 0 **and** chronological PL holdout n and week-count gates pass. Last valid run: do not ship.
+**Ship new 1.35 / 42 / −0.1 replacements only if** 1X2 Brier is clearly better (fitted + 0.005 < shipped) **and** bootstrap ΔBrier 10–90% lies entirely below 0 **and** chronological PL holdout n and week-count gates pass. **2026-09-22 run: do not ship** (see handoff summary above).
 
 ### 2. Refresh the ClubElo pin after each PL weekend
 
