@@ -1,0 +1,18 @@
+{
+  "runId": "2026-09-24T17-09-03-942Z",
+  "overall": "ISSUES FOUND",
+  "requests": 56,
+  "featured": {
+    "homeTeam": "Arsenal",
+    "awayTeam": "Leeds",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "utcDate": "2026-10-10T11:30Z",
+    "stage": "2026_27_english_premier_league",
+    "recognizedFixtureId": "espn:eng.1:401879268"
+  },
+  "report": {
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/2026-09-24T17-09-03-942Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/2026-09-24T17-09-03-942Z.md"
+  }
+}

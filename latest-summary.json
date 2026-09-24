@@ -1,0 +1,79 @@
+{
+  "date": "2026-09-24",
+  "runId": "2026-09-24T17-09-03-942Z",
+  "status": "attention",
+  "overall": "ISSUES FOUND",
+  "progress": "complete",
+  "scenariosRun": 61,
+  "passed": 57,
+  "inconclusive": 4,
+  "failed": 0,
+  "turns": 53,
+  "answeredTurns": 53,
+  "turnsWithCitations": 0,
+  "medianLatencyMs": 85,
+  "repeatedSentences": 17,
+  "nearDuplicatePairs": 40,
+  "uncitedCurrentNews": 4,
+  "findings": [
+    {
+      "scenario": "repetition",
+      "summary": "Same sentence in 11 scenarios: \"The leading scorelines are 2-0 (16.3%), 1-0 (14.1%), 3-0 (11.9%).\""
+    },
+    {
+      "scenario": "repetition",
+      "summary": "Same sentence in 11 scenarios: \"I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.\""
+    },
+    {
+      "scenario": "repetition",
+      "summary": "Same sentence in 9 scenarios: \"I make Arsenal the likeliest outcome at 75.9%.\""
+    },
+    {
+      "scenario": "repetition",
+      "summary": "Same sentence in 9 scenarios: \"For 10 October 2026, my full 1X2 is Arsenal 75.9%, draw 17.9% and Leeds 6.2%.\""
+    },
+    {
+      "scenario": "repetition",
+      "summary": "Same sentence in 9 scenarios: \"I would revisit the read only after verified team news; I can’t assign a lineup effect from these facts alone.\""
+    },
+    {
+      "scenario": "near-duplicate",
+      "summary": "100% overlap between answers to \"What does Pundit's model say about Arsenal vs Leeds?\" and \"Arsenal vs Leeds · PL · Sat\""
+    },
+    {
+      "scenario": "near-duplicate",
+      "summary": "100% overlap between answers to \"What does Pundit's model say about Arsenal vs Leeds?\" and \"Compare Arsenal and Leeds.\""
+    },
+    {
+      "scenario": "near-duplicate",
+      "summary": "100% overlap between answers to \"What does Pundit's model say about Arsenal vs Leeds?\" and \"What about Arsenal vs Leeds?\""
+    },
+    {
+      "scenario": "near-duplicate",
+      "summary": "100% overlap between answers to \"What does Pundit's model say about Arsenal vs Leeds?\" and \"What about Arsenal vs Leeds?\""
+    },
+    {
+      "scenario": "near-duplicate",
+      "summary": "100% overlap between answers to \"Analyse Arsenal vs Leeds.\" and \"Give me your full preview of Arsenal vs Leeds, including the 1X2, likely scorelines and any comparable market disagreement.\""
+    },
+    {
+      "scenario": "analyst-conversation-golden-path",
+      "summary": "Current-news question answered with no citations: \"If the home striker is ruled out, exactly how many percentage points would you take off the home win?\""
+    },
+    {
+      "scenario": "analyst-conversation-golden-path",
+      "summary": "Current-news question answered with no citations: \"Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?\""
+    },
+    {
+      "scenario": "replacing-is-not-epl",
+      "summary": "Current-news question answered with no citations: \"Who is replacing the injured manager?\""
+    },
+    {
+      "scenario": "team-news-sourcing",
+      "summary": "Current-news question answered with no citations: \"Any injury or lineup news for Arsenal vs Leeds?\""
+    }
+  ],
+  "sourceCommit": "c941a9b",
+  "apiSha": "c941a9b",
+  "ranAt": "2026-09-24T17:09:03.942Z"
+}
