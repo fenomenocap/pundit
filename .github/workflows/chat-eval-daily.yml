@@ -10,14 +10,12 @@ name: Daily Chat Eval
 # process-wide bucket shared with real readers, so the schedule sits in the
 # European early morning.
 
+# No push trigger: a sweep grades production, not the pushed diff, so a push
+# run would put production's findings on an unrelated pull request's checks.
 on:
   schedule:
     - cron: "17 4 * * *"
   workflow_dispatch:
-  push:
-    paths:
-      - .github/workflows/chat-eval-daily.yml
-      - scripts/render-chat-transcript.mjs
 
 permissions:
   contents: write
