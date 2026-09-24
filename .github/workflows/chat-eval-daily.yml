@@ -1,0 +1,161 @@
+name: Daily Chat Eval
+
+# Runs the production chat battle test once a day and keeps every transcript on
+# the chat-eval-data branch. The runner has the network access to reach the
+# deployed API and web app that sandboxed agent sessions do not, and the data
+# branch carries latest.json forward so each run is graded against the last.
+#
+# Production traffic: roughly 60-80 /api/ask requests paced at the harness's
+# 13 s minimum. That is under half of ASK_RATE_LIMIT_PER_MINUTE, which is one
+# process-wide bucket shared with real readers, so the schedule sits in the
+# European early morning.
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/chat-eval-daily.yml
+      - scripts/render-chat-transcript.mjs
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chat-eval-daily
+  cancel-in-progress: false
+
+env:
+  DATA_BRANCH: chat-eval-data
+  EVAL_DIR: artifacts/chat-evals
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore previous run for regression comparison
+        run: |
+          mkdir -p "$EVAL_DIR"
+          if git fetch origin "$DATA_BRANCH" 2>/dev/null; then
+            git show "origin/$DATA_BRANCH:latest.json" > "$EVAL_DIR/latest.json" 2>/dev/null \
+              || rm -f "$EVAL_DIR/latest.json"
+          fi
+          ls -la "$EVAL_DIR"
+
+      # The deployed code comes from main, so main is the SHA floor even when
+      # this workflow runs from another branch.
+      - name: Resolve deployed source SHA
+        id: sha
+        run: |
+          git fetch origin main
+          echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+
+      - name: Run production chat battle test
+        id: sweep
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" 2>&1 | tee sweep.log
+
+      - name: Render transcript and summary
+        id: render
+        run: |
+          RUN_DATE=$(date -u +%F)
+          echo "date=$RUN_DATE" >> "$GITHUB_OUTPUT"
+          if [ -f "$EVAL_DIR/latest-run.json" ]; then
+            node scripts/render-chat-transcript.mjs "$EVAL_DIR/latest-run.json" transcript.md summary.json "$RUN_DATE"
+          else
+            # The harness aborts before any scenario when preflight fails
+            # (health, readiness, version). That is itself the finding.
+            REASON=$(grep -m1 "chat battle test failed" sweep.log || tail -n 1 sweep.log)
+            node -e '
+              const [date, reason] = process.argv.slice(1);
+              const summary = { date, status: "attention", progress: "preflight-failed", scenariosRun: 0,
+                passed: 0, failed: 0, findings: [{ scenario: "preflight", summary: reason }] };
+              require("fs").writeFileSync("summary.json", JSON.stringify(summary, null, 2) + "\n");
+              require("fs").writeFileSync("transcript.md", `# Pundit chat transcript — ${date}\n\nPreflight failed before any scenario ran:\n\n> ${reason}\n`);
+            ' "$RUN_DATE" "$REASON"
+          fi
+          head -n 12 transcript.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload full report
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-eval-${{ steps.render.outputs.date }}-${{ github.run_id }}
+          path: |
+            ${{ env.EVAL_DIR }}/*.json
+            ${{ env.EVAL_DIR }}/*.md
+            sweep.log
+            transcript.md
+            summary.json
+          retention-days: 90
+
+      - name: Commit transcript to data branch
+        env:
+          RUN_DATE: ${{ steps.render.outputs.date }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          WORKTREE=$(mktemp -d)
+          if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null; then
+            git fetch origin "$DATA_BRANCH"
+            git worktree add "$WORKTREE" "origin/$DATA_BRANCH"
+            git -C "$WORKTREE" checkout -B "$DATA_BRANCH"
+          else
+            git worktree add --detach "$WORKTREE"
+            git -C "$WORKTREE" checkout --orphan "$DATA_BRANCH"
+            git -C "$WORKTREE" rm -rf --quiet .
+            printf '# Pundit daily chat eval data\n\nWritten by `.github/workflows/chat-eval-daily.yml`. One folder per UTC day under `runs/`.\n\n' > "$WORKTREE/README.md"
+          fi
+          DEST="$WORKTREE/runs/$RUN_DATE"
+          mkdir -p "$DEST"
+          cp transcript.md summary.json sweep.log "$DEST/"
+          # Only a complete run becomes tomorrow's baseline; a run that stopped
+          # early would grade every unreached scenario as newly passing.
+          if [ "$(node -p 'require("./summary.json").progress')" = "complete" ]; then
+            cp "$EVAL_DIR/latest.json" "$WORKTREE/latest.json"
+            cp "$EVAL_DIR/latest.md" "$DEST/report.md"
+          fi
+          cp summary.json "$WORKTREE/latest-summary.json"
+          cd "$WORKTREE"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit."
+            exit 0
+          fi
+          git commit -m "chat eval $RUN_DATE ($(node -p 'require("./latest-summary.json").status'))"
+          for attempt in 1 2 3 4; do
+            git push origin "$DATA_BRANCH" && exit 0
+            sleep $((2 ** attempt))
+            git pull --rebase origin "$DATA_BRANCH" || true
+          done
+          exit 1
+
+      # A completed harness run exits 0 whatever it graded, so the summary is
+      # what decides. Red here is how a finding reaches the repo's notifications.
+      - name: Fail the job when the sweep needs attention
+        run: |
+          STATUS=$(node -p 'require("./summary.json").status')
+          echo "Sweep status: $STATUS (harness step: ${{ steps.sweep.outcome }})"
+          if [ "$STATUS" != "clean" ] || [ "${{ steps.sweep.outcome }}" = "failure" ]; then
+            echo "Transcript: $DATA_BRANCH:runs/${{ steps.render.outputs.date }}/transcript.md"
+            exit 1
+          fi

@@ -7,7 +7,7 @@
     "build": "pnpm --filter @sports-predict/api build && pnpm --filter @sports-predict/web build",
     "test": "pnpm -r test",
     "chat-eval:dry-run": "node scripts/chat-battle-test.mjs --dry-run",
-    "chat-eval:test": "node --test scripts/chat-battle-test.test.mjs scripts/capture-chat-eval-browser.test.mjs",
+    "chat-eval:test": "node --test scripts/chat-battle-test.test.mjs scripts/capture-chat-eval-browser.test.mjs scripts/render-chat-transcript.test.mjs",
     "chat-eval:production": "node scripts/chat-battle-test.mjs",
     "chat-eval:browser": "node scripts/capture-chat-eval-browser.mjs",
     "chat-eval:finalize": "node scripts/finalize-chat-report.mjs",
