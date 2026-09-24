@@ -119,9 +119,12 @@ import {
 import { validateAnalystDraft, salvageCitedClaimProse, containsAnalystDraftSyntax } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
+  asksTacticalTake,
+  asksUnpricedMarket,
   DESK_COMPOSER_MODES,
   isSchematicMatchTake,
   planResponse,
+  pricedGridMarketsAsked,
   responsePresentation,
   type ResponsePresentation,
 } from "./response-plan";
@@ -6692,7 +6695,8 @@ function isCancellation(error: unknown, signal?: AbortSignal): boolean {
 function mapAnalysisError(err: unknown): never {
   if (err instanceof AppError) throw err;
   const message = err instanceof Error ? err.message : String(err);
-  if (/timed?\s*out|timeout/i.test(message)) {
+  if (/timed?\s*out|timeout|deadline exceeded/i.test(message)
+    || (err instanceof Error && err.name === "AbortError")) {
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
   if (err instanceof Anthropic.APIError && err.status === 429) {
@@ -7690,6 +7694,26 @@ function verificationForSettledEvidence(
  * question about the match and has to be generated, where the guard chain and
  * the grounded fallback already own correctness.
  */
+/**
+ * Match-follow-up turns that `composeMatchResponse` can answer from typed facts
+ * alone. Generic follow-ups ("Why?", idioms) still reach generation; tactical
+ * takes use the desk outline path and also generate.
+ */
+function matchFollowUpSettlesWithoutGeneration(question: string): boolean {
+  if (asksTacticalTake(question)) return false;
+  const priced = pricedGridMarketsAsked(question);
+  if (priced.some((market) => market !== "1x2")) return true;
+  if (asksUnpricedMarket(question)) return true;
+  if (/\b1x2\b/i.test(question)) return true;
+  if (/\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(question)) {
+    return true;
+  }
+  if (/\b(?:which side|who)\b.{0,50}\b(?:stronger|strongest|better case|edge)\b|\bstronger\b.{0,20}\b(?:case|side)\b/i.test(question)) {
+    return true;
+  }
+  return false;
+}
+
 export function closedGroundedAnswer(
   question: string,
   grounding: AskGrounding,
@@ -7707,21 +7731,25 @@ export function closedGroundedAnswer(
     // These modes are fully settled by typed server facts or a typed
     // limitation. They must not spend a search/model call or broaden into a
     // report. Team news and qualitative reads still reach evidence/expression.
-    const settled = !plan.evidenceRequired && [
-      "exact-score",
-      "fair-price",
-      "market-comparison",
-      "user-line",
-      "stake-refusal",
-      "lineup-counterfactual",
-      "totals",
-      "btts",
-      "pricing-desk",
-      // The long read is the server's 1X2, scorelines and market rows. Sending
-      // "Analyse" to the model spent the 90s deadline and returned 502 before
-      // this text could ship. Team news and tactical takes still generate.
-      "match-preview",
-    ].includes(plan.mode);
+    const settledMatchFollowUp = plan.mode === "match-follow-up"
+      && matchFollowUpSettlesWithoutGeneration(question);
+    const settled = !plan.evidenceRequired && (
+      settledMatchFollowUp || [
+        "exact-score",
+        "fair-price",
+        "market-comparison",
+        "user-line",
+        "stake-refusal",
+        "lineup-counterfactual",
+        "totals",
+        "btts",
+        "pricing-desk",
+        // The long read is the server's 1X2, scorelines and market rows. Sending
+        // "Analyse" to the model spent the 90s deadline and returned 502 before
+        // this text could ship. Team news and tactical takes still generate.
+        "match-preview",
+      ].includes(plan.mode)
+    );
     return settled
       ? composeMatchResponse(question, grounding, plan)
       : null;

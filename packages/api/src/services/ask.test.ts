@@ -1401,6 +1401,9 @@ describe("current-news evidence hardening", () => {
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
         .toMatch(/I am at .*Kalshi is at .*percentage points/i);
+      expect(closedGroundedAnswer("What will the 1X2 be?", model(), true))
+        .toMatch(/My 1X2 is Arsenal 97\.3%.*draw.*Coventry/i);
+      expect(closedGroundedAnswer("Tactical matchup", model(), true)).toBeNull();
     });
 
     it("still settles the match questions the payload fully answers", () => {
