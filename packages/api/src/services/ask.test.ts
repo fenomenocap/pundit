@@ -2831,6 +2831,58 @@ describe("resolveAskContext", () => {
     )).toMatchObject({ tier: "fixture", fixture: { fixtureId: friendly.fixtureId } });
   });
 
+  it("routes table-route-preserves-match through competition and back to the retained priced fixture", () => {
+    const priced = fixture("Arsenal", "Leeds", { fixtureId: 401879268 });
+    const standings = [standing("eng.1", "Arsenal"), standing("eng.1", "Leeds")];
+    const routing = {
+      fixtureContext: { fixtureId: espnFixtureIdentity(priced) },
+      modelInitialized: true,
+      ratingsAvailable: true,
+    };
+    expect(resolveAskContext(
+      "Analyse Arsenal vs Leeds.",
+      [],
+      ["Arsenal", "Leeds"],
+      [priced],
+      standings,
+      [],
+      routing
+    )).toMatchObject({ tier: "match", fixture: { fixtureId: 401879268 } });
+    const tableHistory = [
+      { role: "user" as const, content: "Analyse Arsenal vs Leeds." },
+      { role: "assistant" as const, content: "My 1X2 is Arsenal 75.9%, draw 17.9% and Leeds 6.2%." },
+    ];
+    expect(resolveAskContext(
+      "What does the current Premier League table show?",
+      tableHistory,
+      ["Arsenal", "Leeds"],
+      [priced],
+      standings,
+      [],
+      routing
+    )).toEqual({ tier: "competition", competitionId: "eng.1" });
+    const returnHistory = [
+      ...tableHistory,
+      { role: "user" as const, content: "What does the current Premier League table show?" },
+      { role: "assistant" as const, content: "Arsenal lead on 16 points from six games." },
+    ];
+    expect(resolveAskContext(
+      "Back to that match: what will the 1X2 be?",
+      returnHistory,
+      ["Arsenal", "Leeds"],
+      [priced],
+      standings,
+      [],
+      routing
+    )).toMatchObject({ tier: "match", fixture: { fixtureId: 401879268 } });
+    const matchGrounding = buildGrounding(priced);
+    expect(closedGroundedAnswer(
+      "Back to that match: what will the 1X2 be?",
+      matchGrounding,
+      true
+    )).toMatch(/My 1X2 is Arsenal 40\.0%/);
+  });
+
   it("does not match the epl token inside replacing", () => {
     expect(isCompetitionQuestion("Who is replacing the injured manager?")).toBe(false);
     expect(deterministicUngroundedClarification(

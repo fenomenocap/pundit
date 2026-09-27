@@ -119,6 +119,15 @@ export function loadApiRuntimeRoutingHelpers(repoRoot = path.resolve(import.meta
 export const EVAL_SCHEMA_VERSION = 17;
 export const MIN_REQUEST_INTERVAL_MS = 13_000;
 export const PACING_SAFETY_MARGIN_MS = 25;
+/** One retry after a Railway edge 502 when the app never answered (~15s proxy window). */
+export const GATEWAY_502_RETRY_DELAY_MS = 2_000;
+
+/** Railway proxy JSON when the container did not respond in time — not an AppError body. */
+export function isRailwayGatewayUnavailable502(status, body) {
+  if (status !== 502) return false;
+  const text = typeof body === "string" ? body : JSON.stringify(body ?? {});
+  return /application failed to respond/i.test(text);
+}
 
 export function executeRuntimeHelperScenario(scenario, repoRoot = path.resolve(import.meta.dirname, "..")) {
   const correctnessHelpers = loadApiRuntimeCorrectnessHelpers(repoRoot);
@@ -1836,6 +1845,11 @@ export function classifyResult(current, previous, comparable = true) {
   }
   if (current.passed) {
     return previous && comparable && previous.passed === false ? "INTERMITTENT" : "PASS";
+  }
+  if (current.gateway502) {
+    if (!previous || !comparable) return "FAIL";
+    if (previous.passed || previous.classification === "PASS") return "INTERMITTENT";
+    return "EXISTING ISSUE";
   }
   if (!previous || !comparable) return "FAIL";
   if (previous.passed) return "REGRESSION";

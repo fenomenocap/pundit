@@ -270,6 +270,51 @@
       ]
     },
     {
+      "id": "table-route-preserves-match-routing",
+      "description": "The built routing path keeps a priced fixture through a Premier League table detour and restores match grounding for an explicit 1X2 return.",
+      "kind": "runtime-helper",
+      "helper": "resolveFixtureRoutingSequence",
+      "args": {
+        "recognizedFixtures": [
+          {"fixtureId":"espn:eng.1:401879268","primarySource":"espn","primarySourceFixtureId":"401879268","homeTeam":{"id":"arsenal","name":"Arsenal"},"awayTeam":{"id":"leeds","name":"Leeds"},"kickoff":"2026-09-27T15:00:00Z","venue":"Emirates Stadium","neutralVenue":false,"competition":{"id":"eng.1","name":"Premier League","category":"domestic-league"},"status":"scheduled","recognition":"authoritative","observedSources":[{"source":"espn","sourceFixtureId":"401879268","authority":"authoritative","observedAt":"2026-09-26T10:00:00Z"}],"observationHistory":[{"source":"espn","sourceFixtureId":"401879268","observedAt":"2026-09-26T10:00:00Z","kickoff":"2026-09-27T15:00:00Z","venue":"Emirates Stadium","neutralVenue":false,"status":"scheduled"}]}
+        ],
+        "modelFixtures": [
+          {"competitionId":"eng.1","competition":"Premier League","fixtureId":401879268,"utcDate":"2026-09-27T15:00:00Z","date":"2026-09-27","group":null,"stage":"match","home":"Arsenal","away":"Leeds","homeElo":1900,"awayElo":1600,"pHome":0.759,"pDraw":0.179,"pAway":0.062,"pOver2_5":0.55,"pUnder2_5":0.45,"pBttsYes":0.4,"pBttsNo":0.6,"topScores":[{"score":"2-0","probability":0.163}],"scorelines":[{"score":"2-0","probability":0.163},{"score":"1-0","probability":0.141}],"stakePHome":null,"stakePDraw":null,"stakePAway":null,"result":null}
+        ],
+        "standings": [
+          {"competitionId":"eng.1","team":"Arsenal","position":1,"played":6,"won":5,"drawn":1,"lost":0,"goalsFor":14,"goalsAgainst":3,"goalDifference":11,"points":16},
+          {"competitionId":"eng.1","team":"Leeds","position":15,"played":6,"won":2,"drawn":1,"lost":3,"goalsFor":7,"goalsAgainst":10,"goalDifference":-3,"points":7}
+        ],
+        "routingState": {"modelInitialized":true,"ratingsAvailable":true},
+        "steps": [
+          {"question":"Analyse Arsenal vs Leeds.","fixtureContext":{"fixtureId":"espn:eng.1:401879268"}},
+          {
+            "question":"What does the current Premier League table show?",
+            "fixtureContext":{"fixtureId":"espn:eng.1:401879268"},
+            "history":[
+              {"role":"user","content":"Analyse Arsenal vs Leeds."},
+              {"role":"assistant","content":"My 1X2 is Arsenal 75.9%, draw 17.9% and Leeds 6.2%."}
+            ]
+          },
+          {
+            "question":"Back to that match: what will the 1X2 be?",
+            "fixtureContext":{"fixtureId":"espn:eng.1:401879268"},
+            "history":[
+              {"role":"user","content":"Analyse Arsenal vs Leeds."},
+              {"role":"assistant","content":"My 1X2 is Arsenal 75.9%, draw 17.9% and Leeds 6.2%."},
+              {"role":"user","content":"What does the current Premier League table show?"},
+              {"role":"assistant","content":"Arsenal lead on 16 points from six games."}
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {"tier":"match","fixtureId":"eng.1:401879268","capability":null},
+        {"tier":"competition","fixtureId":null,"capability":null},
+        {"tier":"match","fixtureId":"eng.1:401879268","capability":null}
+      ]
+    },
+    {
       "id": "observational-live-friendly",
       "description": "Observational production discovery for an exact authoritative friendly; absence never substitutes another fixture.",
       "kind": "recognized",
