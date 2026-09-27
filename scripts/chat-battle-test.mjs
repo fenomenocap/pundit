@@ -15,8 +15,10 @@ import {
   executeRuntimeHelperScenario,
   fetchWithTimeout,
   finalizeClassifications,
+  GATEWAY_502_RETRY_DELAY_MS,
   generateAdversarialScenarios,
   gradeDeploymentShas,
+  isRailwayGatewayUnavailable502,
   loadPreviousReport,
   parseSse,
   qualitativeScores,
@@ -264,12 +266,25 @@ async function jsonTurn(
     startedAt: start,
     reproduction: { method: "POST", path: "/api/ask", body: requestBody },
   });
-  const response = await fetchJson(`${options.apiUrl}/api/ask`, {
+  let response = await fetchJson(`${options.apiUrl}/api/ask`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(requestBody)
   }, options.timeoutMs);
-  return { ...response, start, requestBody };
+  let gateway502Retried = false;
+  if (isRailwayGatewayUnavailable502(response.status, response.body)) {
+    await new Promise((resolve) => setTimeout(resolve, GATEWAY_502_RETRY_DELAY_MS));
+    await pacer.beforeRequest();
+    const retryStart = pacer.starts.at(-1);
+    response = await fetchJson(`${options.apiUrl}/api/ask`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(requestBody)
+    }, options.timeoutMs);
+    gateway502Retried = true;
+    return { ...response, start: retryStart ?? start, requestBody, gateway502Retried };
+  }
+  return { ...response, start, requestBody, gateway502Retried };
 }
 
 async function runJsonScenario(scenario, options, pacer, onRequestStart) {
@@ -301,7 +316,10 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     result.status = response.status;
     result.latencyMs = (result.latencyMs ?? 0) + response.latencyMs;
     if (!response.ok) {
-      result.evidence = `HTTP ${response.status}: ${sanitizeEvidence(response.body)}`;
+      result.gateway502 = isRailwayGatewayUnavailable502(response.status, response.body);
+      result.gateway502Retried = response.gateway502Retried === true;
+      const retryNote = result.gateway502Retried ? " (retried once after Railway gateway 502)" : "";
+      result.evidence = `HTTP ${response.status}: ${sanitizeEvidence(response.body)}${retryNote}`;
       return result;
     }
     const grounding = response.body?.grounding ?? null;

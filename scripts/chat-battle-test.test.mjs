@@ -15,6 +15,7 @@ import {
   executeRuntimeHelperScenario,
   fetchWithTimeout,
   finalizeClassifications,
+  isRailwayGatewayUnavailable502,
   generateAdversarialScenarios,
   gradeDeploymentShas,
   describeDeploymentShas,
@@ -791,6 +792,47 @@ test("same-schema deployment failures classify against the prior complete report
   finalizeClassifications(current, previous);
   assert.equal(current.scenarios[0].classification, "REGRESSION");
   assert.equal(current.comparison.comparable, true);
+});
+
+test("Railway gateway 502 is distinguishable from an application AppError body", () => {
+  assert.equal(isRailwayGatewayUnavailable502(502, {
+    status: "error",
+    code: 502,
+    message: "Application failed to respond",
+  }), true);
+  assert.equal(isRailwayGatewayUnavailable502(502, { error: "Analysis generation failed." }), false);
+  assert.equal(isRailwayGatewayUnavailable502(504, {
+    status: "error",
+    code: 502,
+    message: "Application failed to respond",
+  }), false);
+});
+
+test("preserved comparator classifies a Railway gateway 502 as intermittent, not regression", () => {
+  const current = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "current",
+    deployment: { id: "deploy-b" },
+    scenarios: [{
+      id: "table-route-preserves-match",
+      passed: false,
+      outcome: "FAIL",
+      gateway502: true,
+    }],
+  };
+  const previous = {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "previous",
+    deployment: { id: "deploy-a" },
+    scenarios: [{
+      id: "table-route-preserves-match",
+      passed: true,
+      outcome: "PASS",
+      classification: "PASS",
+    }],
+  };
+  finalizeClassifications(current, previous);
+  assert.equal(current.scenarios[0].classification, "INTERMITTENT");
 });
 
 test("comparison baseline preserves only immutable fields needed by the finalizer", () => {
@@ -2149,6 +2191,7 @@ test("runtime-helper scenarios execute the current API correctness module, not c
     "recognized-friendly-outside-coverage",
     "temporary-fixture-unavailability",
     "unsupported-followup-and-matchup-replacement",
+    "table-route-preserves-match-routing",
     "neutral-venue-missing-input",
     "friendly-capability-runtime-contract",
     "temporary-capability-runtime-contract",
@@ -2203,6 +2246,7 @@ test("runtime-helper scenarios execute the current API correctness module, not c
     "recognized-friendly-outside-coverage",
     "temporary-fixture-unavailability",
     "unsupported-followup-and-matchup-replacement",
+    "table-route-preserves-match-routing",
     "neutral-venue-missing-input",
     // Both legs of a tie carry the same two clubs. Asking for one used to
     // resolve to nothing at all, and no scenario here could see it because
@@ -2981,6 +3025,7 @@ test("schema-17 permanent certification matrix names every authorized regression
     "recognized-friendly-outside-coverage",
     "candidate-never-becomes-fixture",
     "unsupported-followup-and-matchup-replacement",
+    "table-route-preserves-match-routing",
     "table-route-preserves-match",
     "replacing-is-not-epl",
     "priced-fixture-retains-1x2-context",
@@ -3012,6 +3057,7 @@ test("schema-17 permanent certification matrix names every authorized regression
     "recognized-friendly-outside-coverage",
     "temporary-fixture-unavailability",
     "unsupported-followup-and-matchup-replacement",
+    "table-route-preserves-match-routing",
     "neutral-venue-missing-input",
     "two-legged-tie-resolves-to-a-real-leg",
     "suggestion-chip-identity-selects-its-leg",
