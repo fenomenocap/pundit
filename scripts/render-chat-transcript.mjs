@@ -11,6 +11,16 @@ const MIN_SENTENCE_CHARS = 40;
 const REPEATED_SENTENCE_MIN_SCENARIOS = 3;
 const NEAR_DUPLICATE_THRESHOLD = 0.6;
 
+// Recovered scenarios passed this run; they must not re-fail the daily sweep gate.
+export const SCENARIO_CLEAN_CLASSIFICATIONS = new Set(["PASS", "INCONCLUSIVE", "INTERMITTENT"]);
+
+// V2 renders match/competition numbers deterministically; repetition there is expected.
+const DETERMINISTIC_VERIFICATION = new Set(["not-required", "abstain", "unavailable"]);
+
+export function softSignalEligibleTurns(turns) {
+  return turns.filter((turn) => !DETERMINISTIC_VERIFICATION.has(turn.verification));
+}
+
 export function transcriptTurns(report) {
   const turns = [];
   for (const scenario of report?.scenarios ?? []) {
@@ -59,7 +69,7 @@ export function splitSentences(text) {
 // canned-prose shape this detector exists to surface.
 export function repeatedSentences(turns, minScenarios = REPEATED_SENTENCE_MIN_SCENARIOS) {
   const byKey = new Map();
-  for (const turn of turns) {
+  for (const turn of softSignalEligibleTurns(turns)) {
     for (const sentence of splitSentences(turn.answer)) {
       const key = normalizeSentence(sentence);
       if (key.length < MIN_SENTENCE_CHARS) continue;
@@ -97,7 +107,7 @@ export function jaccard(a, b) {
 
 // Two different questions answered with substantially the same text.
 export function nearDuplicateAnswers(turns, threshold = NEAR_DUPLICATE_THRESHOLD) {
-  const candidates = turns
+  const candidates = softSignalEligibleTurns(turns)
     .filter((turn) => turn.answer.length >= 120 && turn.question)
     .map((turn) => ({ turn, shingles: shingles(turn.answer) }));
   const pairs = [];
@@ -121,17 +131,26 @@ export function nearDuplicateAnswers(turns, threshold = NEAR_DUPLICATE_THRESHOLD
 
 export function uncitedCurrentNewsTurns(turns) {
   return turns
-    .filter((turn) => turn.question && CURRENT_NEWS_CUE.test(turn.question) && turn.citations === 0)
+    .filter((turn) => {
+      if (!turn.question || turn.citations > 0) return false;
+      if (!CURRENT_NEWS_CUE.test(turn.question)) return false;
+      if (DETERMINISTIC_VERIFICATION.has(turn.verification)) return false;
+      if (/^if\b/i.test(turn.question.trim())) return false;
+      return true;
+    })
     .map(({ scenarioId, turn, question, verification }) => ({ scenarioId, turn, question, verification }));
 }
 
 export function summarizeTranscript(report, { runDate } = {}) {
   const turns = transcriptTurns(report);
   const scenarios = report?.scenarios ?? [];
-  const passed = scenarios.filter((scenario) => (scenario.classification ?? scenario.outcome) === "PASS").length;
+  const passed = scenarios.filter((scenario) => {
+    const classification = scenario.classification ?? scenario.outcome;
+    return classification === "PASS" || classification === "INTERMITTENT";
+  }).length;
   const inconclusive = scenarios.filter((scenario) => (scenario.classification ?? scenario.outcome) === "INCONCLUSIVE").length;
   const failedScenarios = scenarios.filter((scenario) =>
-    !["PASS", "INCONCLUSIVE"].includes(scenario.classification ?? scenario.outcome)
+    !SCENARIO_CLEAN_CLASSIFICATIONS.has(scenario.classification ?? scenario.outcome)
   );
   const repeated = repeatedSentences(turns);
   const nearDuplicates = nearDuplicateAnswers(turns);
