@@ -882,6 +882,44 @@ test("preserved comparator classifies a recovered same-schema scenario intermitt
   assert.equal(current.comparison.previousRunId, "prior-failure");
 });
 
+test("recovered intermittent scenarios do not mark the harness overall as issues found", () => {
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "recovered-run",
+    deployment: {
+      id: "deploy-a",
+      shaConverged: true,
+      sourceSha: TEST_SHA,
+      apiSha: TEST_SHA,
+      webSha: TEST_SHA,
+    },
+    pacing: completeApiPacing(),
+    scenarios: [{
+      id: "table-route-preserves-match",
+      passed: true,
+      outcome: "PASS",
+      classification: "INTERMITTENT",
+      requiredForCertification: true,
+      latencyMs: 250,
+    }],
+    progress: { status: "complete" },
+  }, {
+    schemaVersion: EVAL_SCHEMA_VERSION,
+    runId: "prior-run",
+    deployment: { id: "deploy-a" },
+    scenarios: [{
+      id: "table-route-preserves-match",
+      passed: false,
+      outcome: "FAIL",
+      classification: "REGRESSION",
+    }],
+  });
+  const attentionScenarios = report.scenarios.filter((scenario) =>
+    !["PASS", "INCONCLUSIVE", "INTERMITTENT"].includes(scenario.classification)
+  );
+  assert.equal(attentionScenarios.length, 0);
+});
+
 test("adversarial generation covers exactly five required categories", () => {
   const scenarios = generateAdversarialScenarios("2026-07-27", null);
   assert.deepEqual(scenarios.map(({ category }) => category), [

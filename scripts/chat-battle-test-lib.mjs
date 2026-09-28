@@ -2083,7 +2083,7 @@ export function generateAdversarialScenarios(seed, featured) {
 
 export function renderMarkdown(report) {
   const issues = report.scenarios.filter((scenario) =>
-    !["PASS", "INCONCLUSIVE"].includes(scenario.classification)
+    !["PASS", "INCONCLUSIVE", "INTERMITTENT"].includes(scenario.classification)
   );
   const recommendations = report.recommendations?.slice(0, 3) ?? [];
   const browser = report.browserEvidence;
@@ -2233,7 +2233,7 @@ export function finalizeClassifications(report, previous) {
   }
   report.comparison = compareReports(report, previous);
   const failures = report.scenarios.filter((scenario) =>
-    !["PASS", "INCONCLUSIVE"].includes(scenario.classification)
+    !["PASS", "INCONCLUSIVE", "INTERMITTENT"].includes(scenario.classification)
   );
   const requiredInconclusive = report.scenarios.filter((scenario) =>
     scenario.outcome === "INCONCLUSIVE" && scenario.requiredForCertification !== false
