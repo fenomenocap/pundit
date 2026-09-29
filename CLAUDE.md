@@ -58,6 +58,9 @@ FRIENDLY_SHADOW_ENABLED=false
 ALLOWED_ORIGINS=http://localhost:3000
 
 # ── Frontend (Next.js) ────────────────────────────────────────────────────────
+# Locally these live in the same repo-root .env as the API's values:
+# packages/web/next.config.mjs copies in only NEXT_PUBLIC_* keys, and shell,
+# Vercel and packages/web/.env* values take precedence.
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_USE_MOCK=true   # false hits the real API instead of mock-data.ts fallbacks
 NEXT_PUBLIC_DOCS_URL=         # optional GitBook public URL — enables "How it works" / "Learn more" links
