@@ -8,7 +8,7 @@ import {
   planEvidenceQueries,
   type Grounding,
 } from "./ask";
-import { validateAnalystDraft, salvageCitedClaimProse } from "./analyst-draft";
+import { validateAnalystDraft, salvageCitedClaimProse, describeRejectedDraftShape } from "./analyst-draft";
 import { stripUnresolvedResponseMarkers } from "./answer-provenance";
 import { PLAYER_SCORER_ABSTENTION, TEAM_NEWS_COMPOSE_ABSTENTION } from "./player-evidence";
 import { composeMatchResponse, SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
@@ -226,6 +226,61 @@ describe("V2 conversational architecture", () => {
       .toContain("recommend-wager");
     expect(facts.find((fact) => fact.id === "pricing.market.kalshi.home")).toBeUndefined();
     expect(facts.find((fact) => fact.id === "limit.player-pricing")?.provenance).toBe("abstention");
+  });
+
+  describe("a draft wrapped in prose or a fence", () => {
+    const draft = {
+      directAnswer: { text: "I make {{match.home}} the likelier outcome.", factIds: ["match.home"] },
+      reasoning: [],
+      citedClaims: [],
+    };
+    const json = JSON.stringify(draft);
+
+    it.each([
+      ["a leading sentence", `**Why I pr**efer this shape:\n\n${json}`],
+      ["a trailing sentence", `${json}\n\nHope that helps.`],
+      ["a mid-text fence", `Here is the draft:\n\n\`\`\`json\n${json}\n\`\`\`\nDone.`],
+    ])("extracts the object from %s and drops the prose", (_label, raw) => {
+      const result = validateAnalystDraft(raw, grounding());
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.answer).not.toMatch(/Why I pr|Hope that helps|Here is the draft/);
+      }
+    });
+
+    it("still applies every semantic check to an extracted object", () => {
+      const bad = JSON.stringify({
+        ...draft,
+        directAnswer: { text: "I make Arsenal 71.2%.", factIds: ["match.home"] },
+      });
+      expect(validateAnalystDraft(`Sure:\n${bad}`, grounding()))
+        .toEqual({ valid: false, reason: "untraceable-number" });
+      const badSource = JSON.stringify({
+        ...draft,
+        citedClaims: [{ text: "Saka trained", factIds: [], sourceIds: ["S9"] }],
+      });
+      expect(validateAnalystDraft(`Sure:\n${badSource}`, grounding(), { sourceIds: ["S1"] }))
+        .toEqual({ valid: false, reason: "invalid-source-ids" });
+    });
+
+    it("still rejects prose with no object, and unbalanced JSON", () => {
+      expect(validateAnalystDraft("**Why I prefer the home side** because of form.", grounding()))
+        .toEqual({ valid: false, reason: "invalid-json" });
+      expect(validateAnalystDraft(`Sure: ${json.slice(0, -5)}`, grounding()))
+        .toEqual({ valid: false, reason: "invalid-json" });
+    });
+
+    it("describes a rejected draft without reproducing it", () => {
+      const prose = describeRejectedDraftShape("**Why I prefer the home side** because of a long tail of text.");
+      expect(prose).toMatchObject({ hasBraces: false });
+      expect(String(prose.startsWith).length).toBeLessThanOrEqual(24);
+      const shaped = describeRejectedDraftShape(JSON.stringify({
+        ...draft,
+        citedClaims: [{ text: "x", factIds: [], sourceIds: ["S9"] }],
+      }), ["S1"]);
+      expect(shaped).toMatchObject({ citedSourceIds: ["S9"], knownSourceIds: ["S1"] });
+      expect(JSON.stringify(shaped)).not.toContain("likelier");
+    });
   });
 
   it("accepts only structured drafts whose fact and source IDs validate", () => {

@@ -116,7 +116,12 @@ import {
   stripDeskBoardRecitals,
   writeDeskProse,
 } from "./desk-voice";
-import { validateAnalystDraft, salvageCitedClaimProse, containsAnalystDraftSyntax } from "./analyst-draft";
+import {
+  validateAnalystDraft,
+  salvageCitedClaimProse,
+  containsAnalystDraftSyntax,
+  describeRejectedDraftShape,
+} from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
   asksTacticalTake,
@@ -8530,6 +8535,7 @@ export async function deliverAnswer(args: {
         event: "analyst_draft_rejected",
         reason: validatedDraft.reason,
         responseMode: mode,
+        shape: describeRejectedDraftShape(rawAnswer, bundle.results.map((source) => source.id)),
         reasonHistogram: { ...analystResponseMetrics.rejectReasons },
       }));
       const sourceIds = bundle.results.map((source) => source.id);
