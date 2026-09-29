@@ -1337,11 +1337,17 @@ describe("current-news evidence hardening", () => {
       await expect(generateOrDegradeToGrounding(match, controller.signal, Date.now(), async () => { throw empty; })).rejects.toBe(empty);
     });
 
-    it("counts the budget down from the request start and never below the floor", () => {
+    it("counts the budget down from the request start and never below zero", () => {
       const start = 1_000_000;
       expect(matchGenerationBudgetMs(start, start)).toBe(60_000);
       expect(matchGenerationBudgetMs(start, start + 45_000)).toBe(33_000);
-      expect(matchGenerationBudgetMs(start, start + 85_000)).toBe(5_000);
+      expect(matchGenerationBudgetMs(start, start + 85_000)).toBe(0);
+    });
+
+    it("skips generation when the reserve is already spent", async () => {
+      const generate = vi.fn(async () => "draft");
+      await expect(generateOrDegradeToGrounding(match, undefined, Date.now() - 80_000, generate)).resolves.toBe("");
+      expect(generate).not.toHaveBeenCalled();
     });
 
     it("passes a generated answer through untouched", async () => {

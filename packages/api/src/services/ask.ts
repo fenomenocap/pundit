@@ -6708,16 +6708,16 @@ const MATCH_GENERATION_BUDGET_MS = 60_000;
 /** The route aborts a request at 90s; the fallback needs headroom before then. */
 const REQUEST_DEADLINE_MS = 90_000;
 const FALLBACK_RESERVE_MS = 12_000;
-const MIN_GENERATION_BUDGET_MS = 5_000;
 
 /**
  * The generation budget counts down from the request start, not from the
  * moment generation begins: a search-backed turn can spend 30s+ on evidence,
  * and a flat 60s from there would land on or after the route's hard abort.
+ * Zero means the reserve is already spent: generation is skipped outright.
  */
 export function matchGenerationBudgetMs(requestStartedAt: number, now: number = Date.now()): number {
   const remaining = REQUEST_DEADLINE_MS - FALLBACK_RESERVE_MS - (now - requestStartedAt);
-  return Math.max(MIN_GENERATION_BUDGET_MS, Math.min(MATCH_GENERATION_BUDGET_MS, remaining));
+  return Math.max(0, Math.min(MATCH_GENERATION_BUDGET_MS, remaining));
 }
 
 /**
@@ -6734,6 +6734,11 @@ export async function generateOrDegradeToGrounding(
   generate: (signal: AbortSignal | undefined) => Promise<string>
 ): Promise<string> {
   if (grounding?.kind !== "match") return generate(signal);
+  const budgetMs = matchGenerationBudgetMs(requestStartedAt);
+  if (budgetMs <= 0 && signal?.aborted !== true) {
+    console.warn(JSON.stringify({ event: "generation_degraded_to_grounding", reason: "no_budget_left" }));
+    return "";
+  }
   const budget = new AbortController();
   const onParentAbort = () => budget.abort(signal?.reason);
   if (signal?.aborted) budget.abort(signal.reason);
@@ -6742,7 +6747,7 @@ export async function generateOrDegradeToGrounding(
   const timer = setTimeout(() => {
     budgetSpent = true;
     budget.abort(new Error("match generation budget exceeded"));
-  }, matchGenerationBudgetMs(requestStartedAt));
+  }, budgetMs);
   try {
     return await generate(budget.signal);
   } catch (error) {
