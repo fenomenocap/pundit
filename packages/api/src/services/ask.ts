@@ -1306,7 +1306,13 @@ export function sanitizeFixtureCoverageAnswer(answer: string, grounding: Fixture
     return `${explanation} I can’t give probabilities for this fixture yet.`;
   }
   if (reason === "required-context-missing") {
-    return "I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities.";
+    const base = "I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities.";
+    // A played match is never going to be priced, so "yet" alone reads as a
+    // pending gap. The typed reason is unchanged; the server-owned status is
+    // added so the reader learns the fixture is already over.
+    return grounding.fixture.status === "completed"
+      ? `${base} That match has already been played, so there is nothing left to forecast.`
+      : base;
   }
   const explanation = reason === "ratings-unavailable"
     ? "I don't have a required team-strength rating."
@@ -6692,6 +6698,57 @@ function isCancellation(error: unknown, signal?: AbortSignal): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+/**
+ * Soft budget for the generation stage of a grounded match answer. The route's
+ * 90s deadline is a hard wall that can only produce a 504, yet a match answer
+ * needs no generation at all: the server owns every number in it. Spending
+ * the budget first leaves time for the deterministic fallback in deliverAnswer.
+ */
+const MATCH_GENERATION_BUDGET_MS = 60_000;
+
+/**
+ * Runs a generation and, for a match-grounded turn only, turns an empty,
+ * truncated or over-budget generation into "" so deliverAnswer renders the
+ * server-owned fallback rather than surfacing a 502/504 for a question Pundit
+ * can answer from its own grounding. Client cancellation and the hard request
+ * deadline still propagate, and non-match tiers keep failing loudly.
+ */
+export async function generateOrDegradeToGrounding(
+  grounding: AskGrounding,
+  signal: AbortSignal | undefined,
+  generate: (signal: AbortSignal | undefined) => Promise<string>
+): Promise<string> {
+  if (grounding?.kind !== "match") return generate(signal);
+  const budget = new AbortController();
+  const onParentAbort = () => budget.abort(signal?.reason);
+  if (signal?.aborted) budget.abort(signal.reason);
+  else signal?.addEventListener("abort", onParentAbort, { once: true });
+  let budgetSpent = false;
+  const timer = setTimeout(() => {
+    budgetSpent = true;
+    budget.abort(new Error("match generation budget exceeded"));
+  }, MATCH_GENERATION_BUDGET_MS);
+  try {
+    return await generate(budget.signal);
+  } catch (error) {
+    const parentAborted = signal?.aborted === true;
+    const emptyOrTruncated = error instanceof AppError
+      && error.statusCode === 502
+      && /empty response|truncated/i.test(error.message);
+    if (!parentAborted && (budgetSpent || emptyOrTruncated || (error instanceof AppError && error.statusCode === 504))) {
+      console.warn(JSON.stringify({
+        event: "generation_degraded_to_grounding",
+        reason: budgetSpent ? "budget_exceeded" : emptyOrTruncated ? "empty_or_truncated" : "timeout",
+      }));
+      return "";
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onParentAbort);
+  }
+}
+
 function mapAnalysisError(err: unknown): never {
   if (err instanceof AppError) throw err;
   const message = err instanceof Error ? err.message : String(err);
@@ -8590,16 +8647,18 @@ async function answerQuestionScoped(
       };
     }
     const preparedMessages = attachEvidence(messages, bundle);
-    const rawAnswer = await generateAnalysis(
-      client,
-      systemPrompt,
-      preparedMessages,
-      tier,
-      grounding,
-      bundle,
-      signal,
-      allowAmbiguousFallback(question),
-      ANALYST_RESPONSE_V2 && grounding?.kind === "match"
+    const rawAnswer = await generateOrDegradeToGrounding(grounding, signal, (generationSignal) =>
+      generateAnalysis(
+        client,
+        systemPrompt,
+        preparedMessages,
+        tier,
+        grounding,
+        bundle,
+        generationSignal,
+        allowAmbiguousFallback(question),
+        ANALYST_RESPONSE_V2 && grounding?.kind === "match"
+      )
     );
     const delivered = await deliverAnswer({
       answer: rawAnswer,
@@ -8766,17 +8825,18 @@ async function answerQuestionStreamScoped(
     const holdForCoverageGuard = shouldHoldCoverageDeltas(grounding, candidateUnrecognized);
     const holdForRequestFidelity = shouldHoldRequestFidelity(question, history.length > 0);
     const rawAnswer = ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity
-      ? await generateAnalysis(
-        client,
-        systemPrompt,
-        preparedMessages,
-        tier,
-        grounding,
-        bundle,
-        handlers.signal,
-        ambiguousFallback,
-        ANALYST_RESPONSE_V2 && grounding?.kind === "match"
-      )
+      ? await generateOrDegradeToGrounding(grounding, handlers.signal, (generationSignal) =>
+        generateAnalysis(
+          client,
+          systemPrompt,
+          preparedMessages,
+          tier,
+          grounding,
+          bundle,
+          generationSignal,
+          ambiguousFallback,
+          ANALYST_RESPONSE_V2 && grounding?.kind === "match"
+        ))
       : await generateAnalysisStream(
         client,
         systemPrompt,
