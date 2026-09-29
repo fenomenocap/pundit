@@ -40,16 +40,27 @@ function messageText(response: Anthropic.Message): string {
     .trim();
 }
 
-function jsonObject(raw: string): Record<string, unknown> | null {
-  const unfenced = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+function parseObject(raw: string): Record<string, unknown> | null {
   try {
-    const parsed = JSON.parse(unfenced);
+    const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? parsed as Record<string, unknown>
       : null;
   } catch {
     return null;
   }
+}
+
+function jsonObject(raw: string): Record<string, unknown> | null {
+  const unfenced = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const direct = parseObject(unfenced);
+  if (direct) return direct;
+  // Reasoning-capable models often wrap the object in a sentence or a fence
+  // mid-text. Strict parsing turned that into "verification unavailable" and
+  // discarded every claim; the outermost braces are still the model's object.
+  const start = unfenced.indexOf("{");
+  const end = unfenced.lastIndexOf("}");
+  return start >= 0 && end > start ? parseObject(unfenced.slice(start, end + 1)) : null;
 }
 
 function fallbackDecisions(claims: readonly VerifiableClaim[]): ClaimDecision[] {
@@ -198,6 +209,13 @@ export async function verifyClaimsOnce(
   }
   const parsed = jsonObject(messageText(response));
   if (!parsed) {
+    console.warn(JSON.stringify({
+      event: "claim_verifier_unavailable",
+      reason: "invalid_output",
+      stopReason: response.stop_reason,
+      textChars: messageText(response).length,
+      dedicatedKey: resolveInference().dedicatedKey,
+    }));
     return {
       status: "unavailable",
       decisions: fallbackDecisions(input.claims),
