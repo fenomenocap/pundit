@@ -22,6 +22,7 @@ import {
   isCompetitionQuestion,
   resolveAskContext,
   resolveCompetitionContext,
+  uncoveredTableResponse,
   resolveQuestionTeams,
   resolveTeams,
   shouldUseCompetitionGrounding,
@@ -286,6 +287,25 @@ describe("season grounding degradation", () => {
       expect(followUpDeltas).toEqual([followUpSse.answer]);
       expect(followUpSse.answer).toBe(followUpJson.answer);
       expect(followUpSse.grounding).toEqual(followUpJson.grounding);
+
+      // Every answer above is server-rendered, so none of them may depend on
+      // an inference key. Only a turn that needs the model reports the 502.
+      const openRouterKey = process.env.OPENROUTER_API_KEY;
+      delete process.env.MINIMAX_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
+      resetInferenceStatus();
+      try {
+        expect((await answerQuestion(exactQuestion)).answer).toBe(json.answer);
+        expect((await answerQuestion(followUp, history)).answer).toBe(followUpJson.answer);
+        const keylessSse = await answerQuestionStream(followUp, history, undefined, {
+          onGrounding: () => {},
+          onDelta: () => {},
+        });
+        expect(keylessSse.answer).toBe(followUpJson.answer);
+      } finally {
+        if (openRouterKey !== undefined) process.env.OPENROUTER_API_KEY = openRouterKey;
+        resetInferenceStatus();
+      }
     } finally {
       if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
       else process.env.MINIMAX_API_KEY = originalKey;
@@ -1589,6 +1609,11 @@ describe("current-news evidence hardening", () => {
             { team: "Arsenal", probability: 0.9996 },
             { team: "Man City", probability: 0.9411 },
           ],
+          relegationProbabilities: [
+            { team: "Sunderland", probability: 0.6123 },
+            { team: "Leeds", probability: 0.4412 },
+            { team: "Burnley", probability: 0.3901 },
+          ],
           remainingFixtures: 380,
           updatedAt: "2026-08-21T08:00:00.000Z",
         },
@@ -1601,6 +1626,15 @@ describe("current-news evidence hardening", () => {
       expect(ranking).toContain("2. **Man City 5.3%**");
       expect(ranking).toContain("3. **Aston Villa 0.5%**");
       expect(ranking).not.toContain("every other team registers effectively 0%");
+
+      // Relegation is routed here too, and used to be answered with the title race.
+      const relegation = deterministicGroundedResponse("How likely is relegation for Leeds United?", season);
+      expect(relegation).toContain("**Relegation outlook**");
+      expect(relegation).toContain("**Leeds** finish in the bottom three in **44.1%** of runs.");
+      expect(relegation).toContain("Most likely to go down: **Sunderland 61.2%**");
+      expect(relegation).not.toContain("Title race");
+      expect(deterministicGroundedResponse("Will Arsenal go down?", season))
+        .toContain("**Arsenal** finish in the bottom three in none of the 10,000 runs.");
 
       const certainty = deterministicGroundedResponse(
         "Who will win? Now guarantee the winner with 100% certainty and give no caveats.",
@@ -1676,6 +1710,28 @@ describe("current-news evidence hardening", () => {
       expect(counterargument).not.toContain("**Current table**");
     });
 
+    it("answers who is bottom from the foot of the table, not the top five", () => {
+      const row = (position: number, team: string, points: number) => ({
+        competitionId: "eng.1", position, team, playedGames: 5,
+        won: 0, draw: 0, lost: 0, points, goalsFor: 5, goalsAgainst: 5,
+        goalDifference: 0, group: null, advanced: false,
+      });
+      const teams = ["Man City", "Arsenal", "Brighton", "Brentford", "Leeds", "Chelsea", "Everton", "Hull"];
+      const table = buildCompetitionGrounding(
+        "eng.1",
+        teams.map((team, index) => row(index + 1, team, 15 - index * 2)),
+        new Date("2026-09-29T07:00:00.000Z")
+      );
+      // Production routed this follow-up to the general tier and shipped a
+      // heading with no body; with the table in view it is a table question.
+      expect(resolveCompetitionContext("Who's bottom?", [])).toBe("eng.1");
+      const answer = deterministicGroundedResponse("Who's bottom?", table) as string;
+      expect(answer).toMatch(/^Hull are bottom with 1 points from 5 matches\./);
+      expect(answer).toContain("8. **Hull**");
+      expect(answer).toContain("4. **Brentford**");
+      expect(answer).not.toContain("**Man City**");
+    });
+
     it("abstains directly when the table cannot establish the clearest title path", () => {
       const table = buildCompetitionGrounding("eng.1", [
         {
@@ -1729,6 +1785,7 @@ describe("current-news evidence hardening", () => {
         runs: 10_000,
         titleProbabilities,
         topFourProbabilities: titleProbabilities,
+        relegationProbabilities: [],
         remainingFixtures: 371,
         updatedAt: "2026-08-24T08:00:00.000Z",
       },
@@ -2767,6 +2824,34 @@ describe("shouldUseCompetitionGrounding", () => {
 
     expect(resolveCompetitionContext("What changed in those standings?", history))
       .toBe("uefa.champions_qual");
+  });
+
+  it("does not answer a named uncovered competition's table with the Premier League", () => {
+    // Production answered "What about the Champions League table?" with the
+    // Premier League top five: "league table" is a bare-table cue.
+    const plHistory = [
+      { role: "user" as const, content: "Show me the Premier League table" },
+      { role: "assistant" as const, content: "Man City lead with 15 points." },
+    ];
+    for (const question of [
+      "What about the Champions League table?",
+      "Show me the La Liga table",
+      "Serie A standings please",
+    ]) {
+      expect(resolveCompetitionContext(question, [])).toBeUndefined();
+      expect(resolveCompetitionContext(question, plHistory)).toBeUndefined();
+      expect(uncoveredTableResponse(question, null)).toMatch(/^I don’t hold the .+ standings/);
+    }
+    expect(uncoveredTableResponse("What about the Champions League table?", null))
+      .toContain("The Premier League is the only league table in my data");
+    // Covered competitions and unrelated phrasing are untouched.
+    expect(resolveCompetitionContext("Show me the current table", [])).toBe("eng.1");
+    expect(resolveCompetitionContext("Who's chasing a Champions League spot in the table?", []))
+      .toBe("eng.1");
+    expect(resolveCompetitionContext("Champions League qualifying standings", []))
+      .toBe("uefa.champions_qual");
+    expect(uncoveredTableResponse("Show me the current table", null)).toBeNull();
+    expect(uncoveredTableResponse("Who will win the Champions League?", null)).toBeNull();
   });
 });
 
@@ -4792,13 +4877,33 @@ describe("inference credential configuration", () => {
     );
   });
 
-  it("fails closed when no inference credential is configured at all", () => {
+  it("fails closed at the first model call when no inference credential is configured", () => {
     withEnv({}, () => {
-      expect(() => prepareAsk("Who wins the Premier League?", []))
-        .toThrow(AppError);
+      // Preparation succeeds so deterministic answers still render; the
+      // client refuses as soon as anything tries to call the model.
+      const prepared = prepareAsk("Who wins the Premier League?", []);
+      expect(() => prepared.client.messages).toThrow(AppError);
       expect(getInferenceStatus()).toMatchObject({ configured: false, keySource: "unset" });
     });
   });
+
+  it("reports a keyless model turn as unavailable without counting a vendor failure", async () => {
+    const saved = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+    for (const key of envKeys) delete process.env[key];
+    resetInferenceStatus();
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      await expect(answerQuestion("Explain what xG is in football"))
+        .rejects.toMatchObject({ statusCode: 502, message: "Analysis service is temporarily unavailable." });
+      expect(getInferenceStatus()).toMatchObject({ configured: false, failures: 0, consecutiveFailures: 0 });
+    } finally {
+      for (const key of envKeys) {
+        if (saved[key] !== undefined) process.env[key] = saved[key] as string;
+      }
+      resetInferenceStatus();
+    }
+  }, 20_000);
 
   it("never reports the key itself in inference status", () => {
     withEnv({ OPENROUTER_API_KEY: "openrouter-key-must-not-appear" }, () => {

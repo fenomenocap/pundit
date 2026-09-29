@@ -562,9 +562,14 @@ export function getInferenceStatus(): InferenceStatus {
 // with room to reason, and a retry. The old ceilings were built around one
 // lookup and one short reply, which capped how good an answer could get.
 const MAX_TOKENS = 8_192;
-const REQUEST_TIMEOUT_MS = 120_000;
+// Generation budgets sit inside the route's shared 90-second request deadline,
+// leaving room for the planned searches before generation and for delivery
+// after it. At 120s/150s they could never fire: the route aborted first, so a
+// slow turn plus a leak recovery became a 504 even on a priced match whose
+// grounded answer the server already owned.
+const REQUEST_TIMEOUT_MS = 60_000;
 export const MAX_CONTINUATIONS = 2;
-const OVERALL_DEADLINE_MS = 150_000;
+const OVERALL_DEADLINE_MS = 60_000;
 // Most of one match answer's retrieval: the planned queries below, plus the
 // synthesis turn and a retry.
 const MAX_EVIDENCE_QUERIES = 6;
@@ -3204,6 +3209,11 @@ const LEAGUE_TABLE_CUES = [
   "who's top",
   "whos top",
   "who is top",
+  "bottom of the table",
+  "bottom of the league",
+  "who's bottom",
+  "whos bottom",
+  "who is bottom",
 ];
 
 const COMPETITION_FOLLOW_UP_CUES = [
@@ -3230,13 +3240,41 @@ function hasLeagueTableCue(question: string): boolean {
   return LEAGUE_TABLE_CUES.some((cue) => normalized.includes(cue));
 }
 
+/**
+ * Competitions a reader can name that Pundit holds no table for. Checked only
+ * after the covered competitions resolve, so "Champions League qualifiers" and
+ * "a Champions League spot" still reach their own grounding.
+ */
+const UNCOVERED_COMPETITION =
+  /\b(?:(?:uefa\s+)?champions league|ucl|europa(?: conference)? league|conference league|la ?liga|serie a|bundesliga|ligue 1|eredivisie|primeira liga|scottish premiership|spl|mls|saudi pro league|efl championship|the championship|league one|league two|fa cup|carabao cup|efl cup|world cup|euros?|nations league)\b/i;
+
+function uncoveredCompetitionName(question: string): string | null {
+  if (resolveCompetitionQuestion(question)) return null;
+  return UNCOVERED_COMPETITION.exec(question)?.[0].trim() ?? null;
+}
+
+/**
+ * A table asked for by name in a competition Pundit has no standings for. The
+ * "league table" cue inside "Champions League table" used to fall back to the
+ * Premier League and print its standings as the answer.
+ */
+export function uncoveredTableResponse(question: string, grounding: AskGrounding): string | null {
+  if (grounding !== null || !/\b(?:table|standings)\b/i.test(question)) return null;
+  const named = uncoveredCompetitionName(question);
+  if (!named) return null;
+  return `I don’t hold ${/^the\b/i.test(named) ? named : `the ${named}`} standings, so I can’t show that table. `
+    + "The Premier League is the only league table in my data; ask for the current table to see it.";
+}
+
 export function resolveCompetitionContext(
   question: string,
   history: ConversationTurn[]
 ): string | undefined {
   const explicitCompetitionId = resolveCompetitionQuestion(question);
   if (explicitCompetitionId) return explicitCompetitionId;
-  if (!hasCompetitionFollowUpCue(question)) return undefined;
+  // Naming another competition moves off the one in view: "What about the
+  // Champions League table?" is not a follow-up on the Premier League table.
+  if (!hasCompetitionFollowUpCue(question) || uncoveredCompetitionName(question)) return undefined;
 
   const historyCompetitionId = history
     .filter(({ role }) => role === "user")
@@ -5002,6 +5040,47 @@ const BRACKETED_TOOL_DIRECTIVE = new RegExp(
 );
 
 /**
+ * One line that is nothing but a search call in function syntax, e.g.
+ * `search_web("Liverpool vs Man City team news")`. A quoted argument is
+ * required, so prose such as "a search (for a striker)" never matches.
+ */
+const SEARCH_CALL_LINE = new RegExp(
+  `^[ \\t]*(?:${SEARCH_TOOL_NAME})[ \\t]*\\([ \\t]*(?:\\w+[ \\t]*=[ \\t]*)?["'][^\\n]*\\)[ \\t]*;?[ \\t]*$`,
+  "i"
+);
+
+/**
+ * The same call outside a fence. Only the unambiguous tool names qualify here,
+ * because a bare `search("x")` line can be legitimate code the user asked for.
+ */
+const BARE_SEARCH_CALL_LINE = new RegExp(
+  `^[ \\t]*(?:web_search|websearch|search_web|web-search|google_search|bing_search)`
+    + `[ \\t]*\\([ \\t]*(?:\\w+[ \\t]*=[ \\t]*)?["'][^\\n]*\\)[ \\t]*;?[ \\t]*$`,
+  "gim"
+);
+
+/** A fenced code block, tolerating a missing closing fence (a truncated leak). */
+const FENCED_BLOCK = /(^|\n)[ \t]*```[ \t]*([\w.:-]*)[ \t]*\n([\s\S]*?)(?:\n[ \t]*```[ \t]*(?=\n|$)|$)/g;
+
+/**
+ * The fourth member of the class: the pinned DeepSeek model writes its search
+ * request as a fenced block of function calls (```tool_call, then
+ * `search_web("...")`). A fence goes when its info string names a tool region,
+ * or when every line in it is a search call; any other fence is user-facing
+ * code and stays.
+ */
+function stripFencedToolCalls(answer: string): string {
+  return answer
+    .replace(FENCED_BLOCK, (block, lead: string, info: string, body: string) => {
+      const lines = body.split("\n").filter((line) => line.trim());
+      const toolFence = TOOL_REGION_TAGS.has(normalizeTagName(info || "x"))
+        || (lines.length > 0 && lines.every((line) => SEARCH_CALL_LINE.test(line)));
+      return toolFence ? lead : block;
+    })
+    .replace(BARE_SEARCH_CALL_LINE, "");
+}
+
+/**
  * A tool-invocation element name, written as its words.
  *
  * The vocabulary is spelled out in words rather than in one fixed spelling
@@ -5267,7 +5346,7 @@ interface ToolMarkupStrip {
 
 function stripToolCallMarkupDetailed(answer: string): ToolMarkupStrip {
   const stripped = stripEmbeddedToolJson(stripLeadingToolJson(
-    stripToolRegions(answer
+    stripToolRegions(stripFencedToolCalls(answer)
       .replace(CONTROL_TOKEN_FRAGMENT, "")
       .replace(BRACKETED_TOOL_DIRECTIVE, ""))
   ));
@@ -5367,6 +5446,10 @@ const LEAKED_QUERY_PATTERNS = [
   /<\s*(?:antml:)?parameter\s+name\s*=\s*"query"\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
   /"(?:search_query|query)"\s*:\s*"((?:[^"\\]|\\.)*)"/gi,
   BRACKETED_TOOL_DIRECTIVE,
+  new RegExp(
+    `(?:^|[^\\w])(?:${SEARCH_TOOL_NAME})[ \\t]*\\([ \\t]*(?:\\w+[ \\t]*=[ \\t]*)?["']([^"'\\n]{3,256})["']`,
+    "gi"
+  ),
 ];
 
 const LEAKED_QUERY_ARRAY = /"(?:search_queries|queries)"\s*:\s*\[([\s\S]*?)(?:\]|$)/i;
@@ -5607,6 +5690,36 @@ export function nameMarkerLinks(answer: string, bundle?: EvidenceBundle): string
   return answer.replace(/\[(S\d+)\]\((https?:\/\/[^\s)]+)\)/gi, (match, id: string, url: string) => {
     const source = byId.get(id.toLocaleUpperCase());
     return source?.title ? `[${source.title.replace(/[\[\]]/g, "")}](${url})` : match;
+  });
+}
+
+const MARKDOWN_LINK = /\[[^\]\n]*\]\((https?:\/\/[^\s)]+)\)/gi;
+
+function comparableUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname.toLowerCase().replace(/^www\./, "")}`
+      + `${parsed.pathname.replace(/\/+$/, "")}${parsed.search}`;
+  } catch {
+    return url.trim().toLowerCase();
+  }
+}
+
+/**
+ * A link in an answer reads as a citation, so it may only point at a page this
+ * question's evidence bundle actually holds. Server-rendered citations always
+ * do. The model can also write a link itself, and production shipped invented
+ * form claims "sourced" to `[BBC Sport](https://www.bbc.com/sport), 12 Sep
+ * 2026` with no evidence behind them. The sentence goes with the link: keeping
+ * the claim and dropping only its fake source would still ship the invention.
+ */
+export function dropUnbackedCitations(answer: string, bundle?: EvidenceBundle): string {
+  const backed = new Set((bundle?.results ?? []).map((source) => comparableUrl(source.url)));
+  return reviseAnswerSentences(answer, (sentence) => {
+    for (const [, url] of sentence.matchAll(MARKDOWN_LINK)) {
+      if (!backed.has(comparableUrl(url))) return "";
+    }
+    return sentence;
   });
 }
 
@@ -6546,9 +6659,26 @@ interface PreparedAsk {
   systemPrompt: string;
   messages: ConversationTurn[];
   tier: AnalysisTier;
-  client: Anthropic;
+  client: Pick<Anthropic, "messages">;
   candidateUnrecognized: boolean;
 }
+
+/** No inference credential is configured, so no model call can be attempted. */
+class InferenceUnconfiguredError extends AppError {
+  constructor() {
+    super(502, "Analysis service is temporarily unavailable.");
+  }
+}
+
+// Stands in for the answer client when no key is set. Deterministic paths --
+// closed grounded answers, capability notices, clarifications -- never touch
+// the client, so they still answer; the first model call fails with the same
+// 502 that preparation used to throw up front for every question.
+const unconfiguredInferenceClient: Pick<Anthropic, "messages"> = {
+  get messages(): Anthropic["messages"] {
+    throw new InferenceUnconfiguredError();
+  },
+};
 
 export function prepareAsk(
   question: string,
@@ -6652,14 +6782,15 @@ export function prepareAsk(
   }
 
   const inference = resolveInference();
-  if (!inference.apiKey) throw new AppError(502, "Analysis service is temporarily unavailable.");
 
   return {
     grounding,
     systemPrompt,
     messages: [...history, { role: "user", content: currentMessage }],
     tier: grounding?.kind === "fixture" ? "general" : grounding?.kind ?? "general",
-    client: new Anthropic({ apiKey: inference.apiKey, baseURL: inference.baseURL, maxRetries: 0 }),
+    client: inference.apiKey
+      ? new Anthropic({ apiKey: inference.apiKey, baseURL: inference.baseURL, maxRetries: 0 })
+      : unconfiguredInferenceClient,
     candidateUnrecognized: context.tier === "candidate",
   };
 }
@@ -6685,7 +6816,9 @@ export async function trackedInference<T>(
     // permanently pointing at a vendor that is fine. Abandoned attempts are
     // recorded nowhere rather than as a success, since nothing was learned
     // about the vendor either way.
-    if (isCancellation(error, signal)) throw error;
+    // An unset key is a configuration state /ready already reports as
+    // `configured: false`, not a vendor failure.
+    if (isCancellation(error, signal) || error instanceof InferenceUnconfiguredError) throw error;
     recordInferenceFailure(error instanceof Anthropic.APIError ? error.status ?? null : null);
     throw error;
   }
@@ -7445,6 +7578,49 @@ function renderGroundedMatchAnswer(grounding: Grounding): string {
   return sections.join("\n");
 }
 
+const RELEGATION_QUESTION =
+  /\brelegat\w*|\b(?:go|goes|going|drop|drops|dropping) down\b|\bstay(?:s|ing)? up\b|\bsurviv\w*|\bbottom (?:three|3)\b|\bdrop zone\b/i;
+
+/**
+ * "How likely is relegation for Leeds?" is routed to the season outlook, which
+ * used to answer it with the title race. The simulator counts bottom-three
+ * finishes in the same runs, so the question gets its own figures, led by any
+ * club it names.
+ */
+function renderRelegationOutlook(question: string, grounding: SeasonGrounding): string {
+  const { runs, remainingFixtures, relegationProbabilities } = grounding.seasonOutlook;
+  const byTeam = new Map(relegationProbabilities.map((row) => [row.team, row.probability]));
+  const teams = new Set([
+    ...grounding.standings.map((row) => row.team),
+    ...relegationProbabilities.map((row) => row.team),
+    ...grounding.seasonOutlook.titleProbabilities.map((row) => row.team),
+  ]);
+  const named = [...mentionedTeamPositions(
+    question,
+    [...teams].map((team) => ({ home: team, away: team }))
+  ).entries()]
+    .sort(([, a], [, b]) => a - b)
+    .map(([team]) => team);
+  const namedLines = named.map((team) => {
+    const probability = byTeam.get(team) ?? 0;
+    return probability > 0
+      ? `**${team}** finish in the bottom three in **${asPercent(probability)}** of runs.`
+      : `**${team}** finish in the bottom three in none of the ${runs.toLocaleString("en-US")} runs.`;
+  });
+  const likeliest = relegationProbabilities.slice(0, 5);
+  return [
+    "**Relegation outlook**",
+    ...(namedLines.length ? [namedLines.join("\n"), ""] : []),
+    likeliest.length
+      ? `Most likely to go down: ${likeliest.map((row) => `**${row.team} ${asPercent(row.probability)}**`).join(", ")}.`
+      : "No club finished in the bottom three often enough to rank.",
+    "",
+    "**Context**",
+    `These are ${runs.toLocaleString("en-US")} simulation results across ${remainingFixtures} `
+      + "remaining fixtures, counting bottom-three finishes, not guarantees.",
+  ].join("\n");
+}
+
 function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding): string {
   const title = [...grounding.seasonOutlook.titleProbabilities]
     .sort((a, b) => b.probability - a.probability)
@@ -7504,6 +7680,7 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
         + "This snapshot does not quantify the swing from any one result, injury or lineup change.",
     ].join("\n\n");
   }
+  if (RELEGATION_QUESTION.test(question)) return renderRelegationOutlook(question, grounding);
   return [
     "**Title race**",
     title.map((row, index) => `${index + 1}. **${row.team} ${asPercent(row.probability)}**`).join("\n"),
@@ -7585,6 +7762,25 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
       + "The points and goal differences are exact as supplied, but they do not "
       + "support a title-race ranking"
       + (played < 6 ? " at this stage of the season" : "") + ".";
+  }
+
+  // "Who's bottom?" was answered with the top five.
+  if (/\b(?:bottom|foot of the (?:table|league)|propping up)\b/i.test(question)) {
+    const last = rows.at(-1)!;
+    const bottomRows = rows.slice(-5).map((row) =>
+      `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} `
+      + `${row.playedGames === 1 ? "match" : "matches"}, goal difference `
+      + `${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
+    );
+    return [
+      `${last.team} are bottom with ${last.points} points from ${last.playedGames} `
+        + `${last.playedGames === 1 ? "match" : "matches"}. The current bottom five are:`,
+      // A list that starts at 16 cannot interrupt a paragraph in markdown.
+      "",
+      ...bottomRows,
+      "",
+      "That is the table as it stands; it does not imply a relegation probability.",
+    ].join("\n");
   }
 
   const leader = rows[0];
@@ -8233,10 +8429,17 @@ export async function deliverAnswer(args: {
   // emphasis they emptied, which the label sweep does not look at.
   const settledAnswer = dropEmptyEmphasis(
     dropOrphanedSectionLabels(
-      dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, bundle)))
+      dropDanglingSectionOpeners(decimalisePrices(
+        dropUnbackedCitations(nameMarkerLinks(rendered.answer, bundle), bundle)
+      ))
     )
   );
-  const readable = hasMeaningfulProse(settledAnswer);
+  // The general-tier label is appended by the server, so it proves nothing
+  // about whether the model answered: a lone heading plus the label shipped as
+  // a whole answer to "Who's bottom?".
+  const readable = hasMeaningfulProse(
+    tier === "general" ? settledAnswer.replace(GENERAL_DISCLAIMER, "") : settledAnswer
+  );
   // The structural gate is scoped to the match tier on purpose. It asks for a
   // label or a percentage, and only match grounding actually supplies the
   // numbers that make a percentage mandatory -- a general-tier answer ("a
@@ -8248,16 +8451,20 @@ export async function deliverAnswer(args: {
     const completeAnswer = useV2
       ? settledAnswer
       : guaranteeMatchReadCompleteness(settledAnswer, tier, grounding, asksRead);
+    // Completeness may deterministically add a market comparison from the
+    // grounding. Request fidelity therefore gets the actual last word: an
+    // explicit model-only request must not receive a market section merely
+    // because the server can derive one.
+    const delivered = finalizeDeliveredText(
+      sanitizeRequestFidelity(completeAnswer, question, hasHistory),
+      grounding,
+      useV2
+    );
     return {
-      // Completeness may deterministically add a market comparison from the
-      // grounding. Request fidelity therefore gets the actual last word: an
-      // explicit model-only request must not receive a market section merely
-      // because the server can derive one.
-      answer: finalizeDeliveredText(
-        sanitizeRequestFidelity(completeAnswer, question, hasHistory),
-        grounding,
-        useV2
-      ),
+      // The general-tier label is added during generation, and every guard
+      // since then may have cut the sentence that carried it, so it is
+      // asserted once more on the text that actually ships.
+      answer: tier === "general" ? ensureGeneralDisclaimer(delivered) : delivered,
       citations: rendered.citations,
       verification: checked.verification,
     };
@@ -8277,29 +8484,8 @@ export async function deliverAnswer(args: {
       // unrecognisable one is the model never having written an answer at all.
       reason: readable ? "answer_not_shaped_like_an_answer" : "guard_chain_left_no_prose",
     }));
-    const modeFallback = useV2
-      ? composeMatchResponse(
-        question,
-        grounding,
-        planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
-      )
-      : renderGroundedMatchFallback(grounding);
-    const completeFallback = useV2
-      ? modeFallback
-      : guaranteeMatchReadCompleteness(
-        modeFallback,
-        tier,
-        grounding,
-        asksForMatchRead(question, hasHistory)
-      );
     return {
-      // The fallback answers from the grounding, so it owes the reader the
-      // divergence for exactly the reason a generated answer does.
-      answer: finalizeDeliveredText(
-        sanitizeRequestFidelity(completeFallback, question, hasHistory),
-        grounding,
-        useV2
-      ),
+      answer: groundedMatchFallback(question, grounding, tier, hasHistory, useV2),
       citations: [],
       verification: checked.verification,
     };
@@ -8322,6 +8508,35 @@ export async function deliverAnswer(args: {
     };
   }
   throw new AppError(502, "Analysis service returned an empty response.");
+}
+
+/**
+ * The match answer written from the grounding alone, for when the model's
+ * text cannot be used. It answers from the grounding, so it owes the reader
+ * the divergence for exactly the reason a generated answer does.
+ */
+function groundedMatchFallback(
+  question: string,
+  grounding: Grounding,
+  tier: AnalysisTier,
+  hasHistory: boolean,
+  useV2: boolean
+): string {
+  const modeFallback = useV2
+    ? composeMatchResponse(
+      question,
+      grounding,
+      planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
+    )
+    : renderGroundedMatchFallback(grounding);
+  const completeFallback = useV2
+    ? modeFallback
+    : guaranteeMatchReadCompleteness(modeFallback, tier, grounding, asksForMatchRead(question, hasHistory));
+  return finalizeDeliveredText(
+    sanitizeRequestFidelity(completeFallback, question, hasHistory),
+    grounding,
+    useV2
+  );
 }
 
 /** "2026-08-02" as "2 August 2026". Fixed English, no locale dependency. */
@@ -8558,7 +8773,8 @@ async function answerQuestionScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
-    const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding);
+    const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding)
+      ?? uncoveredTableResponse(question, grounding);
     if (deterministicAnalysis) {
       return {
         answer: deterministicAnalysis,
@@ -8773,7 +8989,8 @@ async function answerQuestionStreamScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
-    const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding);
+    const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding)
+      ?? uncoveredTableResponse(question, grounding);
     if (deterministicAnalysis) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(deterministicAnalysis);
       return {
@@ -8846,7 +9063,8 @@ async function answerQuestionStreamScoped(
     // reach the browser, including transient SSE deltas.
     const holdForCoverageGuard = shouldHoldCoverageDeltas(grounding, candidateUnrecognized);
     const holdForRequestFidelity = shouldHoldRequestFidelity(question, history.length > 0);
-    const rawAnswer = ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity
+    const held = ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity;
+    const rawAnswer = held
       ? await generateOrDegradeToGrounding(grounding, handlers.signal, requestStartedAt, (generationSignal) =>
         generateAnalysis(
           client,
@@ -8886,7 +9104,7 @@ async function answerQuestionStreamScoped(
     });
     // The held delta and the done payload carry the same settled text.
     const settledAnswer = delivered.answer;
-    if ((ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity)
+    if (held
       && settledAnswer
       && (handlers.shouldContinue ?? (() => true))()) {
       handlers.onDelta(settledAnswer);

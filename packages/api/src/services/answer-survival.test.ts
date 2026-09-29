@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AppError } from "../middleware";
 import {
   buildGrounding,
   computeMarketDivergence,
@@ -335,7 +336,10 @@ describe("V2 deterministic fact delivery", () => {
       candidateUnrecognized: false,
       hasHistory: false,
     });
-    expect(delivered.answer).toBe("I need to know which side and fixture you mean.");
+    expect(delivered.answer).toBe(
+      "I need to know which side and fixture you mean.\n\n"
+      + "This is general football analysis, not based on my match forecasts."
+    );
     expect(delivered.answer).not.toMatch(/earlier claim|earlier sentence/i);
   });
 });
@@ -741,7 +745,19 @@ describe("the final safety gate", () => {
           answer,
           tier: "match",
           grounding: matchGrounding,
-          bundle: emptyBundle(),
+          // A cited link only ever reaches delivery from a page the evidence
+          // bundle holds, so the bundle carries it.
+          bundle: {
+            ...emptyBundle(),
+            results: [{
+              id: "S1",
+              title: "Coventry City team news",
+              url: "https://example.com/coventry-team-news",
+              date: "2026-08-01",
+              snippet: "The first-choice keeper is suspended.",
+              tier: "official",
+            }],
+          },
           client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
           question: "Why?",
           evidenceRequired: false,
@@ -843,6 +859,7 @@ describe("the other tiers keep their answers too", () => {
         { team: "Arsenal", probability: 0.88 },
         { team: "Chelsea", probability: 0.79 },
       ],
+      relegationProbabilities: [],
       remainingFixtures: 291,
       updatedAt: "2026-08-02T00:00:00.000Z",
     },
@@ -1432,5 +1449,73 @@ describe("the verdict and the close a match answer must carry", () => {
     expect(sanitizeDeliveredAnswer(delivered.answer, "match", priced))
       .toBe(delivered.answer);
     warn.mockRestore();
+  });
+});
+
+describe("general-tier delivery", () => {
+  const client = clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">;
+  const general = (answer: string) => deliverAnswer({
+    answer,
+    tier: "general",
+    grounding: null,
+    bundle: emptyBundle(),
+    client,
+    question: "Who is the best striker in the world?",
+    evidenceRequired: false,
+    candidateUnrecognized: false,
+  });
+
+  it("labels the text that ships even when the label did not survive generation", async () => {
+    const delivered = await general(
+      "**My view**\nHaaland is the most prolific out-and-out centre-forward of the era."
+    );
+    expect(delivered.answer).toMatch(/Haaland is the most prolific/);
+    expect(delivered.answer.trimEnd())
+      .toMatch(/This is general football analysis, not based on my match forecasts\.$/);
+  });
+
+  it("does not count the server's own label as the model's answer", async () => {
+    // Production shipped exactly this as the whole reply to "Who's bottom?".
+    await expect(general(
+      "**Bottom of the table**\n\nThis is general football analysis, not based on my match forecasts."
+    )).rejects.toMatchObject({ statusCode: 502 });
+  });
+});
+
+describe("model-written citations", () => {
+  const client = clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">;
+  const bundle: EvidenceBundle = {
+    queries: ["Man United form"],
+    results: [{
+      id: "S1",
+      title: "United beat Burnley",
+      url: "https://www.bbc.co.uk/sport/football/articles/abc",
+      date: "2026-09-20",
+      snippet: "United beat Burnley 2-0.",
+      tier: "news",
+    }],
+  };
+  const deliver = (answer: string) => deliverAnswer({
+    answer,
+    tier: "general",
+    grounding: null,
+    bundle,
+    client,
+    question: "How have Man United been playing lately?",
+    evidenceRequired: false,
+    candidateUnrecognized: false,
+  });
+
+  it("drops a claim whose link points at a page the evidence never held", async () => {
+    // Verbatim shape from production: a homepage "source" for invented form.
+    const delivered = await deliver(
+      "**Recent form**\nUnited have won four straight in the league ([BBC Sport](https://www.bbc.com/sport), 12 Sep 2026). "
+      + "They beat Burnley 2-0 last time out ([BBC](https://bbc.co.uk/sport/football/articles/abc/), 20 Sep 2026). "
+      + "Their pressing has looked sharper."
+    );
+    expect(delivered.answer).not.toContain("four straight");
+    expect(delivered.answer).not.toContain("bbc.com/sport)");
+    expect(delivered.answer).toContain("They beat Burnley 2-0");
+    expect(delivered.answer).toContain("Their pressing has looked sharper.");
   });
 });
