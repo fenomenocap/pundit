@@ -6705,6 +6705,20 @@ function isCancellation(error: unknown, signal?: AbortSignal): boolean {
  * the budget first leaves time for the deterministic fallback in deliverAnswer.
  */
 const MATCH_GENERATION_BUDGET_MS = 60_000;
+/** The route aborts a request at 90s; the fallback needs headroom before then. */
+const REQUEST_DEADLINE_MS = 90_000;
+const FALLBACK_RESERVE_MS = 12_000;
+const MIN_GENERATION_BUDGET_MS = 5_000;
+
+/**
+ * The generation budget counts down from the request start, not from the
+ * moment generation begins: a search-backed turn can spend 30s+ on evidence,
+ * and a flat 60s from there would land on or after the route's hard abort.
+ */
+export function matchGenerationBudgetMs(requestStartedAt: number, now: number = Date.now()): number {
+  const remaining = REQUEST_DEADLINE_MS - FALLBACK_RESERVE_MS - (now - requestStartedAt);
+  return Math.max(MIN_GENERATION_BUDGET_MS, Math.min(MATCH_GENERATION_BUDGET_MS, remaining));
+}
 
 /**
  * Runs a generation and, for a match-grounded turn only, turns an empty,
@@ -6716,6 +6730,7 @@ const MATCH_GENERATION_BUDGET_MS = 60_000;
 export async function generateOrDegradeToGrounding(
   grounding: AskGrounding,
   signal: AbortSignal | undefined,
+  requestStartedAt: number,
   generate: (signal: AbortSignal | undefined) => Promise<string>
 ): Promise<string> {
   if (grounding?.kind !== "match") return generate(signal);
@@ -6727,7 +6742,7 @@ export async function generateOrDegradeToGrounding(
   const timer = setTimeout(() => {
     budgetSpent = true;
     budget.abort(new Error("match generation budget exceeded"));
-  }, MATCH_GENERATION_BUDGET_MS);
+  }, matchGenerationBudgetMs(requestStartedAt));
   try {
     return await generate(budget.signal);
   } catch (error) {
@@ -8520,6 +8535,7 @@ async function answerQuestionScoped(
   citations?: AskCitation[];
   verification: AskVerification;
 }> {
+  const requestStartedAt = Date.now();
   const prepared = prepareAsk(
     question,
     history,
@@ -8647,7 +8663,7 @@ async function answerQuestionScoped(
       };
     }
     const preparedMessages = attachEvidence(messages, bundle);
-    const rawAnswer = await generateOrDegradeToGrounding(grounding, signal, (generationSignal) =>
+    const rawAnswer = await generateOrDegradeToGrounding(grounding, signal, requestStartedAt, (generationSignal) =>
       generateAnalysis(
         client,
         systemPrompt,
@@ -8732,6 +8748,7 @@ async function answerQuestionStreamScoped(
   citations?: AskCitation[];
   verification: AskVerification;
 }> {
+  const requestStartedAt = Date.now();
   const prepared = prepareAsk(
     question,
     history,
@@ -8825,7 +8842,7 @@ async function answerQuestionStreamScoped(
     const holdForCoverageGuard = shouldHoldCoverageDeltas(grounding, candidateUnrecognized);
     const holdForRequestFidelity = shouldHoldRequestFidelity(question, history.length > 0);
     const rawAnswer = ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity
-      ? await generateOrDegradeToGrounding(grounding, handlers.signal, (generationSignal) =>
+      ? await generateOrDegradeToGrounding(grounding, handlers.signal, requestStartedAt, (generationSignal) =>
         generateAnalysis(
           client,
           systemPrompt,

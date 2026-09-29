@@ -38,6 +38,7 @@ import {
   sanitizeRequestFidelity,
   sanitizeFixtureCoverageAnswer,
   generateOrDegradeToGrounding,
+  matchGenerationBudgetMs,
   sanitizeFootballGeometry,
   sanitizeGroundedMatchNarrative,
   sanitizeContradictoryRationales,
@@ -1321,23 +1322,30 @@ describe("current-news evidence hardening", () => {
         new AppError(502, "Analysis response was truncated. Please try again."),
         new AppError(504, "Analysis service timed out. Please try again."),
       ]) {
-        await expect(generateOrDegradeToGrounding(match, undefined, async () => { throw failure; }))
+        await expect(generateOrDegradeToGrounding(match, undefined, Date.now(), async () => { throw failure; }))
           .resolves.toBe("");
       }
     });
 
     it("keeps failing loudly for non-match tiers, other errors and cancellation", async () => {
       const empty = new AppError(502, "Analysis service returned an empty response.");
-      await expect(generateOrDegradeToGrounding(null, undefined, async () => { throw empty; })).rejects.toBe(empty);
+      await expect(generateOrDegradeToGrounding(null, undefined, Date.now(), async () => { throw empty; })).rejects.toBe(empty);
       const other = new AppError(429, "busy");
-      await expect(generateOrDegradeToGrounding(match, undefined, async () => { throw other; })).rejects.toBe(other);
+      await expect(generateOrDegradeToGrounding(match, undefined, Date.now(), async () => { throw other; })).rejects.toBe(other);
       const controller = new AbortController();
       controller.abort();
-      await expect(generateOrDegradeToGrounding(match, controller.signal, async () => { throw empty; })).rejects.toBe(empty);
+      await expect(generateOrDegradeToGrounding(match, controller.signal, Date.now(), async () => { throw empty; })).rejects.toBe(empty);
+    });
+
+    it("counts the budget down from the request start and never below the floor", () => {
+      const start = 1_000_000;
+      expect(matchGenerationBudgetMs(start, start)).toBe(60_000);
+      expect(matchGenerationBudgetMs(start, start + 45_000)).toBe(33_000);
+      expect(matchGenerationBudgetMs(start, start + 85_000)).toBe(5_000);
     });
 
     it("passes a generated answer through untouched", async () => {
-      await expect(generateOrDegradeToGrounding(match, undefined, async () => "draft")).resolves.toBe("draft");
+      await expect(generateOrDegradeToGrounding(match, undefined, Date.now(), async () => "draft")).resolves.toBe("draft");
     });
   });
 
