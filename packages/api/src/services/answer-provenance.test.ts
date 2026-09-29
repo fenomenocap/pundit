@@ -5,6 +5,7 @@ import {
   splitAnswerSentences,
   splitPriceSafeSentences,
   TEAM_NEWS_CLAIM,
+  assertsSquadAvailability,
 } from "./answer-provenance";
 
 describe("splitPriceSafeSentences", () => {
@@ -179,5 +180,29 @@ describe("mapEvidenceRegions", () => {
   it("cannot touch model prose even when the map deletes everything", () => {
     const answer = "Pundit's model gives Arsenal 56.3%, the draw 24.1% and Chelsea 19.6%.";
     expect(mapEvidenceRegions(answer, () => "")).toBe(answer);
+  });
+});
+
+describe("return and recovery timing is a squad claim", () => {
+  it.each([
+    "Haaland is expected to return against Arsenal on 12 October.",
+    "He should be back in three weeks.",
+    "The striker is out until November.",
+    "City have not given a return date.",
+    "He is set to return before the international break.",
+    "Rodri is sidelined for the next six weeks.",
+  ])("recognises %s", (sentence) => {
+    expect(assertsSquadAvailability(sentence)).toBe(true);
+    expect(TEAM_NEWS_CLAIM.test(sentence)).toBe(true);
+    expect(segmentAnswer(sentence)[0].provenance).toBe("evidence");
+  });
+
+  it.each([
+    "City return to form with a 3-0 win.",
+    "Arsenal are back in the title race.",
+    "The model returns a 41.2% home win.",
+    "Leeds have been out of form for weeks.",
+  ])("leaves ordinary prose alone: %s", (sentence) => {
+    expect(assertsSquadAvailability(sentence)).toBe(false);
   });
 });

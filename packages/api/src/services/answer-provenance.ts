@@ -95,6 +95,15 @@ export function splitAnswerSentences(line: string): string[] {
 }
 
 /**
+ * Return and recovery timing -- "back in three weeks", "expected to return
+ * against Arsenal", "out until November", "return date". A squad claim as much
+ * as "ruled out": Pundit's grounding holds no fitness data, so a date needs a
+ * source. Kept to timing phrasings; a bare "returns" or "back" is ordinary prose.
+ */
+export const RETURN_TIMING_CLAIM =
+  /\bback in (?:about |around |roughly |just )?(?:\d+|an?|one|two|three|four|five|six|several|a few|a couple of) (?:days?|weeks?|months?)\b|\b(?:expected|set|due|likely|slated|scheduled|hoped|hoping|aiming|tipped) to (?:return|be back)\b|\bdue back\b|\breturn(?:s|ing)? (?:on|against|in \d+|to (?:action|training|the (?:squad|side|team|xi|lineup|line-up)))\b|\breturn dates?\b|\b(?:out|sidelined|absent|unavailable) (?:until|till|for (?:the (?:next |rest of )?|another |at least )?(?:\d+|an?|one|two|three|four|five|six|several|a few|a couple of) (?:days?|weeks?|months?|games?|matches?))\b/i;
+
+/**
  * A squad-availability claim -- the narrow class of statement that genuinely
  * needs an outside source, because Pundit's own grounding says nothing about
  * who is fit. Kept deliberately narrow: the point of this module is that a
@@ -105,8 +114,10 @@ export function splitAnswerSentences(line: string): string[] {
  * because it is plain ESM and cannot import this TypeScript module; keep the two
  * in step.
  */
-export const TEAM_NEWS_CLAIM =
-  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock|miss(?:es|ed|ing)?|absence|absent)\b/i;
+export const TEAM_NEWS_CLAIM = new RegExp(
+  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock|miss(?:es|ed|ing)?|absence|absent)\b/.source + "|" + RETURN_TIMING_CLAIM.source,
+  "i"
+);
 
 /**
  * "Missing" and "absent" are the two words in `TEAM_NEWS_CLAIM` that are not
@@ -134,6 +145,11 @@ export const NON_SQUAD_ABSENCE =
 export const DENIES_OWN_CAPABILITY =
   /\b(?:does not|doesn['’]t|do not|don['’]t|cannot|can['’]t|will not|won['’]t|is not able to|are not able to)\s+(?:\w+\s+){0,3}(?:quantify|ingest|expose|determine|establish|decompose|explain|infer|predict|model)\b/i;
 
+/** The alternatives of `TEAM_NEWS_CLAIM` that are unambiguously about people. */
+const ABSENCE_ONLY = new RegExp(
+    /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/.source
+    + "|" + RETURN_TIMING_CLAIM.source, "i");
+
 /**
  * The squad-availability half of `TEAM_NEWS_CLAIM`: everything except a bare
  * "missing"/"absent" whose object is one of Pundit's own inputs, and never a
@@ -142,8 +158,7 @@ export const DENIES_OWN_CAPABILITY =
 export function assertsSquadAvailability(sentence: string): boolean {
   if (DENIES_OWN_CAPABILITY.test(sentence)) return false;
   if (!TEAM_NEWS_CLAIM.test(sentence)) return false;
-  const absenceOnly = /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
-  if (absenceOnly.test(sentence)) return true;
+  if (ABSENCE_ONLY.test(sentence)) return true;
   return !NON_SQUAD_ABSENCE.test(sentence);
 }
 

@@ -1520,6 +1520,60 @@ describe("model-written citations", () => {
   });
 });
 
+describe("uncited squad-timing and price claims on the general tier", () => {
+  const client = clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">;
+  const deliver = (answer: string, verification: "unavailable" | "abstain" = "unavailable") => deliverAnswer({
+    answer,
+    tier: "general",
+    grounding: null,
+    bundle: { ...emptyBundle(), queries: ["Haaland return date"] },
+    client,
+    question: "When is Haaland back and what are City's odds?",
+    evidenceRequired: true,
+    candidateUnrecognized: false,
+  }).then((delivered) => ({ delivered, verification }));
+
+  it("does not ship a return date or a price nobody cited", async () => {
+    const { delivered } = await deliver(
+      "Erling Haaland is expected to return against Arsenal in about three weeks. "
+      + "City are priced at 1.85 to win at home. "
+      + "Their pressing structure makes them hard to play through."
+    );
+    expect(delivered.answer).not.toMatch(/expected to return|three weeks|priced at|1\.85/);
+    expect(delivered.answer).toContain("Their pressing structure");
+  });
+
+  it("removes fractional and decimal odds that name no source", async () => {
+    const { delivered } = await deliver(
+      "Bookmakers have City at 4/6 to win the league. The odds of 2.10 for Arsenal look short. "
+      + "City average 2.4 goals a game."
+    );
+    expect(delivered.answer).not.toMatch(/4\/6|2\.10/);
+    expect(delivered.answer).toContain("City average 2.4 goals a game.");
+  });
+
+  it("keeps a price the evidence cites", async () => {
+    const delivered = await deliverAnswer({
+      answer: "City are priced at 1.85 to win [[S1]]. Arsenal are 4.20 [[S1]].",
+      tier: "general",
+      grounding: null,
+      bundle: {
+        ...emptyBundle(),
+        queries: ["City odds"],
+        results: [{
+          id: "S1", title: "Odds", url: "https://www.bbc.co.uk/sport/odds",
+          date: "2026-09-28", snippet: "City 1.85", tier: "news",
+        }],
+      },
+      client,
+      question: "What are City's odds?",
+      evidenceRequired: true,
+      candidateUnrecognized: false,
+    });
+    expect(delivered.answer).toMatch(/1\.85/);
+  });
+});
+
 describe("uncited result claims on the general tier", () => {
   const client = clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">;
   const deliver = (answer: string, bundle = emptyBundle()) => deliverAnswer({

@@ -631,6 +631,18 @@ const RESULT_CLAIM = new RegExp([
   /\b(?:finished|ended|finishing)\b[^.!?\n]{0,40}\b(?:\d{1,3} points|first|second|third|top|bottom|champions?|runners?-up)\b/.source,
   /\b(?:beat|beaten|defeated|thrashed|lost|drew|won)\b[^.!?\n]{0,40}\b\d{1,2}\s?[-–]\s?\d{1,2}\b/.source,
 ].join("|"), "i");
+const ODDS_CLAIM_ABSTENTION =
+  "I couldn’t verify current prices from a dated source, so I won’t quote them.";
+// A sentence quoting a price. Wording that itself introduces a price, or a
+// decimal/fractional figure in a sentence about odds. "2.5 goals" alone is not
+// one, and neither is "the odds are hard to read".
+const ODDS_PRICE_WORDING =
+  /\b(?:priced at|odds of|odds (?:at|are|were) (?:around |about |roughly )?\d|quoted at|(?:trading|offered|available) at \d|(?:bookmakers?|bookies|sportsbooks?) (?:have|has|make|offer|price)\b[^.!?\n]{0,50}\d)/i;
+const ODDS_CONTEXT = /\b(?:odds|priced|prices?|bookmakers?|bookies|sportsbooks?|moneyline|to win outright)\b/i;
+const ODDS_FIGURE = /\b\d{1,2}\.\d{1,2}\b|(?<![\d/])\d{1,3}\/\d{1,3}(?![\d/])/;
+function quotesPrice(sentence: string): boolean {
+  return ODDS_PRICE_WORDING.test(sentence) || (ODDS_CONTEXT.test(sentence) && ODDS_FIGURE.test(sentence));
+}
 const SEASON_STATS_LINE =
   /\b(?:\d+\s*(?:goals?|assists?|appearances?|starts?|caps?)|\d+\s*mins?(?:utes)?|fotmob rating|\bxg\b)/i;
 
@@ -2667,6 +2679,29 @@ export function stripUncitedResultClaims(answer: string): string {
     : RESULT_CLAIM_ABSTENTION;
 }
 
+/**
+ * Removes price statements that carry no citation from a general-tier answer
+ * that owed evidence. Pundit holds no odds for an ungrounded question, and a
+ * bookmaker figure with no source cannot have come from anywhere; it shipped
+ * beside a verification of `unavailable`. A cited price is left to the verifier.
+ */
+export function stripUncitedOddsClaims(answer: string): string {
+  let removed = false;
+  const revised = reviseAnswerSentences(answer, (sentence) => {
+    if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
+    if (ABSTENTION.test(sentence) || !quotesPrice(sentence)) return sentence;
+    removed = true;
+    return "";
+  });
+  if (!removed) return answer;
+  const cleaned = dropOrphanedSectionLabels(
+    revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim()
+  );
+  return hasMeaningfulProse(cleaned.replace(GENERAL_DISCLAIMER, ""))
+    ? `${cleaned}\n\n${ODDS_CLAIM_ABSTENTION}`
+    : ODDS_CLAIM_ABSTENTION;
+}
+
 export function failClosedEmptyCurrentVerification(
   answer: string,
   verification: AskVerification,
@@ -4167,8 +4202,16 @@ export function resolveAskContext(
   return { tier: "general" };
 }
 
-function todayPreamble(): string {
-  return `Today's date is ${new Date().toISOString().slice(0, 10)}. Your own knowledge of squads, `
+/**
+ * The date and the European season it falls in. The model's own sense of "the
+ * current season" is a year stale: Serie A answers called 2026-27 "2025-26".
+ * European seasons start in August.
+ */
+export function todayPreamble(now: Date = new Date()): string {
+  const season = currentFootballSeasonLabel(now).replace("/", "-");
+  return `Today's date is ${now.toISOString().slice(0, 10)}, in the ${season} European football season `
+    + `(August to May); "this season" and "the current season" mean ${season}, and the season before it is over. `
+    + "Your own knowledge of squads, "
     + "transfers, injuries, managers and league positions is out of date -- defer to the grounding "
     + "data and to web_search results, and judge whether a search result is current by comparing its "
     + "date to today's.";
@@ -8605,9 +8648,9 @@ export async function deliverAnswer(args: {
     };
   }
   const evidenceSafeAnswer = grounding === null && evidenceRequired
-    ? stripUncitedResultClaims(
+    ? stripUncitedOddsClaims(stripUncitedResultClaims(
       failClosedEmptyCurrentVerification(checked.answer, checked.verification, evidenceRequired)
-    )
+    ))
     : failClosedEmptyCurrentVerification(
       checked.answer,
       checked.verification,

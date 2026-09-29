@@ -82,6 +82,7 @@ import {
   type Grounding,
   type MarketDivergence,
   type SeasonGrounding,
+  todayPreamble,
 } from "./ask";
 import {
   premierLeagueSeasonWindow,
@@ -5090,4 +5091,20 @@ it("keeps scorer evidence follow-ups concise and distinct from projections", () 
 
 it.each(["What about Injuries?", "What about The weather?", "What about Pressing?"])("does not mistake a conceptual follow-up for a club: %s", (question) => {
   expect(deterministicUngroundedClarification(question, buildGrounding(fixture("Arsenal", "Chelsea")))).toBeNull();
+});
+
+describe("todayPreamble", () => {
+  it("names the 2026-27 season from August 2026, not the season before it", () => {
+    const text = todayPreamble(new Date("2026-09-29T12:00:00Z"));
+    expect(text).toContain("Today's date is 2026-09-29");
+    expect(text).toContain("2026-27");
+    expect(text).not.toContain("2025-26");
+  });
+
+  it("keeps the previous season until July ends, and rolls over on 1 August", () => {
+    expect(todayPreamble(new Date("2026-03-01T00:00:00Z"))).toContain("2025-26");
+    expect(todayPreamble(new Date("2026-07-31T23:59:00Z"))).toContain("2025-26");
+    expect(todayPreamble(new Date("2026-08-01T00:00:00Z"))).toContain("2026-27");
+    expect(todayPreamble(new Date("2027-01-15T00:00:00Z"))).toContain("2026-27");
+  });
 });
