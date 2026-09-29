@@ -9,6 +9,7 @@ import {
   dropEmptyEmphasis,
   attachEvidence,
   generateAnalysis,
+  withInferenceDeadline,
   renderEvidenceCitations,
   MAX_CONTINUATIONS,
   PROVIDER_CALL_BUDGET,
@@ -2138,5 +2139,31 @@ describe("the bare <tool> element leak", () => {
     ]) {
       expect(stripToolCallMarkup(prose)).toBe(prose);
     }
+  });
+});
+
+describe("inference deadlines", () => {
+  // OpenRouter ignored the SDK's `timeout`: a 3s timeout still completed after
+  // 45s. This provider likewise ignores everything except its abort signal.
+  const hangsUntilAborted = (signal: AbortSignal) => new Promise<never>((_, reject) => {
+    signal.addEventListener("abort", () => reject(new Error("Request was aborted.")));
+  });
+
+  it("aborts a call that ignores its timeout and reports a 504", async () => {
+    const started = Date.now();
+    await expect(withInferenceDeadline(50, undefined, hangsUntilAborted))
+      .rejects.toMatchObject({ statusCode: 504, message: "Analysis service timed out. Please try again." });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("leaves a reader's own cancellation as a cancellation", async () => {
+    const reader = new AbortController();
+    const pending = withInferenceDeadline(60_000, reader.signal, hangsUntilAborted);
+    reader.abort();
+    await expect(pending).rejects.toThrow("Request was aborted.");
+  });
+
+  it("returns a call that finishes in time", async () => {
+    await expect(withInferenceDeadline(1_000, undefined, async () => "done")).resolves.toBe("done");
   });
 });

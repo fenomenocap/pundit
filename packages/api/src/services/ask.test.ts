@@ -2997,11 +2997,24 @@ describe("resolveAskContext", () => {
     expect(worldCupRetiredResponse("Arsenal vs Leeds", null, now)).toBeNull();
   });
 
+  it("treats two known clubs with no fixture between them as an unconfirmed matchup", () => {
+    const fixtures = [fixture("Liverpool", "Man City"), fixture("Arsenal", "Fulham", { fixtureId: 2 })];
+    expect(resolveAskContext("Liverpool vs Fulham", [], undefined, fixtures, [], []))
+      .toEqual({ tier: "candidate" });
+    // A real fixture, and a question that is not shaped like a matchup, are unchanged.
+    expect(resolveAskContext("Liverpool vs Man City", [], undefined, fixtures, [], []))
+      .toMatchObject({ tier: "match" });
+    expect(resolveAskContext("Who has the better attack, Liverpool or Fulham?", [], undefined, fixtures, [], []))
+      .toMatchObject({ tier: "general" });
+  });
+
   it("owes a search for a result question", () => {
     expect(deterministicSearchQuery("Who went through in Celtic's Champions League qualifier tie on aggregate?"))
       .not.toBeNull();
     expect(deterministicSearchQuery("Who will win Serie A?")).not.toBeNull();
     expect(deterministicSearchQuery("How does a high press work?")).toBeNull();
+    // "Right now" asks about the present like "current" does.
+    expect(deterministicSearchQuery("Who is the best striker in the world right now?")).not.toBeNull();
   });
 
   it("lets a new recognized matchup replace retained fixture context", () => {

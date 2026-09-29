@@ -28,6 +28,14 @@ export function splitPriceSafeSentences(line: string): string[] {
     if (line[index] === "."
       && /\d/.test(line[index - 1] ?? "")
       && /\d/.test(line[index + 1] ?? "")) continue;
+    // An abbreviation's point is not a full stop: "Kane as No. 1" was split
+    // after "No." and a guard then removed the rest, shipping "as **No.".
+    if (line[index] === ".") {
+      const before = line.slice(start, index);
+      const next = /\S/.exec(line.slice(index + 1))?.[0] ?? "";
+      if (/(?:^|[\s(*])(?:No|Nos|no|nos)$/.test(before) && /\d/.test(next)) continue;
+      if (/(?:^|[\s(*])(?:vs|St|Mr|Mrs|Ms|Dr|Jr|approx|e\.g|i\.e)$/i.test(before)) continue;
+    }
     let end = index + 1;
     while (end < line.length && /[.!?]/.test(line[end])) end += 1;
     if (end < line.length && !/\s/.test(line[end])) continue;

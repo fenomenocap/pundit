@@ -575,7 +575,7 @@ const OVERALL_DEADLINE_MS = 60_000;
 const MAX_EVIDENCE_QUERIES = 6;
 const MAX_EVIDENCE_RESULTS = 30;
 
-const CURRENT_NEWS_QUESTION = /\b(latest|current|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
+const CURRENT_NEWS_QUESTION = /\b(latest|current|currently|right now|at the moment|these days|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
 // A question about a result -- who won, who went through -- is a question
 // about the outside world. Production answered "Who went through in Celtic's
 // qualifier on aggregate?" with "Celtic advanced" and no search at all.
@@ -4149,7 +4149,14 @@ export function resolveAskContext(
     }
   }
 
-  if (!teams && hasUnresolvedFixtureShape(question)) return { tier: "candidate" };
+  // Two known clubs that form no fixture Pundit holds are as unconfirmed as two
+  // unknown ones. They used to fall through to the general model, which wrote
+  // "I make the visitors a 41% win chance" and invented scorelines for
+  // Liverpool vs Fulham, a pairing outside every fixture window.
+  if (hasUnresolvedFixtureShape(question)
+    && (!teams || (!explicitFixture && recognizedMatches.length === 0))) {
+    return { tier: "candidate" };
+  }
 
   // A competition token with no retained fixture still reaches its table even
   // if the wording mentions an outcome (for example, "who wins the league?").
@@ -6547,6 +6554,30 @@ async function recoverUndeliverableTurn(
 }
 
 /**
+ * The SDK's `timeout` option does not bound an OpenRouter call: with a 3s
+ * timeout, a long generation still completed after 45s, because the provider
+ * holds the connection open. Every generation budget in this file was
+ * therefore decorative, and slow turns ran into the route's 90s deadline as a
+ * 504. The deadline is enforced by aborting the request here, and reported as
+ * the timeout it is so the grounded match fallback can answer.
+ */
+export async function withInferenceDeadline<T>(
+  ms: number,
+  signal: AbortSignal | undefined,
+  run: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const deadline = AbortSignal.timeout(Math.max(1, ms));
+  try {
+    return await run(signal ? AbortSignal.any([signal, deadline]) : deadline);
+  } catch (error) {
+    if (deadline.aborted && !signal?.aborted) {
+      throw new AppError(504, "Analysis service timed out. Please try again.");
+    }
+    throw error;
+  }
+}
+
+/**
  * The turn taken when the model never stopped asking for tools.
  *
  * The loop ended holding a tool request it could not run -- the search cap
@@ -6568,7 +6599,8 @@ async function finalProseTurn(
   if (providerCallsLeft(bundle) < 1 || !reserveProviderCall(bundle)) return null;
   console.warn(JSON.stringify({ event: "tool_loop_exhausted_prose_retry" }));
   try {
-    return await trackedInference(() => client.messages.create(
+    const remainingMs = Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt));
+    return await trackedInference(() => withInferenceDeadline(remainingMs, signal, (bounded) => client.messages.create(
       analysisRequestParams(systemPrompt, [
         ...convo,
         {
@@ -6580,8 +6612,8 @@ async function finalProseTurn(
               + "request another tool.",
         },
       ], false),
-      { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
-    ), signal);
+      { timeout: remainingMs, signal: bounded }
+    )), signal);
   } catch {
     return null;
   }
@@ -6614,10 +6646,12 @@ export async function generateAnalysis(
         if (!reserveProviderCall(bundle)) {
           throw new AppError(504, "Analysis request exhausted its provider-call budget.");
         }
-        response = await trackedInference(() => client.messages.create(
-          analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
-          { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
-        ), signal);
+        const remainingMs = Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt));
+        response = await trackedInference(() => withInferenceDeadline(remainingMs, signal, (bounded) =>
+          client.messages.create(
+            analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
+            { timeout: remainingMs, signal: bounded }
+          )), signal);
       } catch (error) {
         if (signal?.aborted || retried || !isRetryableStreamError(error)
           || Date.now() - startedAt >= OVERALL_DEADLINE_MS) {
@@ -6732,22 +6766,24 @@ export async function generateAnalysisStream(
         if (!reserveProviderCall(bundle)) {
           throw new AppError(504, "Analysis request exhausted its provider-call budget.");
         }
-        const stream = client.messages.stream(
-          analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
-          { timeout: REQUEST_TIMEOUT_MS, signal }
-        );
-        stream.on("text", (text) => {
-          if (!shouldContinue()) {
-            abort.abort();
-            return;
-          }
-          deltaSeen = true;
-          anyDeltaSeen = true;
-          // Retries are already gated on `anyDeltaSeen`, so nothing buffered
-          // here can be replayed by a second attempt and duplicated.
-          flusher.push(text);
-        });
-        response = await trackedInference(() => stream.finalMessage(), signal);
+        response = await trackedInference(() => withInferenceDeadline(REQUEST_TIMEOUT_MS, signal, (bounded) => {
+          const stream = client.messages.stream(
+            analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
+            { timeout: REQUEST_TIMEOUT_MS, signal: bounded }
+          );
+          stream.on("text", (text) => {
+            if (!shouldContinue()) {
+              abort.abort();
+              return;
+            }
+            deltaSeen = true;
+            anyDeltaSeen = true;
+            // Retries are already gated on `anyDeltaSeen`, so nothing buffered
+            // here can be replayed by a second attempt and duplicated.
+            flusher.push(text);
+          });
+          return stream.finalMessage();
+        }), signal);
       } catch (error) {
         if (!shouldContinue()) throw new AppError(499, "Client disconnected.");
         if (deltaSeen || anyDeltaSeen || retried || !isRetryableStreamError(error)) {
@@ -8115,6 +8151,11 @@ function matchFollowUpSettlesWithoutGeneration(question: string): boolean {
     return true;
   }
   if (/\b(?:which side|who)\b.{0,50}\b(?:stronger|strongest|better case|edge)\b|\bstronger\b.{0,20}\b(?:case|side)\b/i.test(question)) {
+    return true;
+  }
+  // The reason is the ratings and the venue, both server-owned; generating and
+  // verifying for 70s only to discard it for the composed reason helped no one.
+  if (/\bwhy\b[^?\n]{0,40}\b(?:favou?r|back|lean|prefer|like|rate|pick|fancy)\b|\bhow come\b|\bwhat makes you\b/i.test(question)) {
     return true;
   }
   return false;

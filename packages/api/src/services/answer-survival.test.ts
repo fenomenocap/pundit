@@ -1561,3 +1561,20 @@ describe("uncited result claims on the general tier", () => {
     expect(delivered.answer).toContain("Their pressing structure");
   });
 });
+
+describe("why the model favours a side", () => {
+  it("gives the reason the forecast is built on, not a bare percentage", async () => {
+    const { composeMatchResponse } = await import("./response-composer");
+    const { planResponse } = await import("./response-plan");
+    const grounding = buildGrounding(fixture("Liverpool", "Man City", {
+      homeElo: 1900, awayElo: 1990, pHome: 0.275, pDraw: 0.277, pAway: 0.449,
+    }));
+    const question = "Why do you favour City?";
+    const plan = planResponse(question, { groundingKind: "match", hasHistory: true });
+    expect(plan.mode).toBe("match-follow-up");
+    const answer = composeMatchResponse(question, { ...grounding, homeFieldAdvantage: true }, plan);
+    expect(answer).toMatch(/^I favour Man City because the reviewed strength ratings put Man City clearly ahead of Liverpool, enough to outweigh Liverpool’s home-field adjustment\./);
+    expect(answer).toContain("44.9%");
+    expect(answer).not.toMatch(/\b1990\b|\b1900\b|lineup|team news/i);
+  });
+});

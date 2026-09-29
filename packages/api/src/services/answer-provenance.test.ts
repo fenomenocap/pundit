@@ -8,6 +8,18 @@ import {
 } from "./answer-provenance";
 
 describe("splitPriceSafeSentences", () => {
+  it("does not end a sentence at an abbreviation", () => {
+    // Production shipped "Flashscore's rankings list Kane as **No." after a
+    // guard removed everything past the abbreviation.
+    expect(splitPriceSafeSentences("Rankings list Kane as No. 1 this week. Haaland is second."))
+      .toEqual(["Rankings list Kane as No. 1 this week. ", "Haaland is second."]);
+    expect(splitPriceSafeSentences("Arsenal vs. Leeds is on Saturday. It kicks off at noon."))
+      .toEqual(["Arsenal vs. Leeds is on Saturday. ", "It kicks off at noon."]);
+    // "No." with no number after it is still the end of a sentence.
+    expect(splitPriceSafeSentences("The answer is no. Leeds are not favoured."))
+      .toEqual(["The answer is no. ", "Leeds are not favoured."]);
+  });
+
   it("does not split a decimal price", () => {
     expect(splitPriceSafeSentences("The home win is 3.40 and the away win 3.60."))
       .toEqual(["The home win is 3.40 and the away win 3.60."]);

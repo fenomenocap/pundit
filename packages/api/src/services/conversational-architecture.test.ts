@@ -349,7 +349,9 @@ describe("V2 conversational architecture", () => {
         reasoning: [], citedClaims: [],
       }),
     });
-    expect(rejected.answer).toMatch(/My short answer is Arsenal at 56\.3%/);
+    // The fallback states the server-owned reason, with the server's figure.
+    expect(rejected.answer).toMatch(/^I favour Arsenal because the reviewed strength ratings/);
+    expect(rejected.answer).toContain("56.3%");
     expect(rejected.answer).not.toContain("71.2%");
     expect(match.pricing.model.home.fairOdds).toBeCloseTo(1 / match.pHome);
     expect(match.pricing.markets[0].legs.home.evPct).toBeNull();
