@@ -1519,3 +1519,45 @@ describe("model-written citations", () => {
     expect(delivered.answer).toContain("Their pressing has looked sharper.");
   });
 });
+
+describe("uncited result claims on the general tier", () => {
+  const client = clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">;
+  const deliver = (answer: string, bundle = emptyBundle()) => deliverAnswer({
+    answer,
+    tier: "general",
+    grounding: null,
+    bundle: { ...bundle, queries: ["Serie A winner"] },
+    client,
+    question: "Who will win Serie A?",
+    evidenceRequired: true,
+    candidateUnrecognized: false,
+  });
+
+  it("does not state an unverified result", async () => {
+    // Verbatim from production, shipped with verification "unavailable".
+    const delivered = await deliver(
+      "The 2025-26 Serie A season is already complete, based on multiple published final standings. "
+      + "**Inter Milan won the title** with 87 points, finishing 11 points clear of second-placed Napoli."
+    );
+    expect(delivered.answer).not.toMatch(/Inter Milan won|87 points|11 points clear/);
+    expect(delivered.answer).toContain("I couldn’t verify that result from a dated source");
+  });
+
+  it("keeps analysis around a removed result, and a result the evidence cites", async () => {
+    const bundle: EvidenceBundle = {
+      ...emptyBundle(),
+      results: [{
+        id: "S1", title: "Celtic through", url: "https://www.bbc.co.uk/sport/football/celtic",
+        date: "2026-08-27", snippet: "Celtic went through 3-1 on aggregate.", tier: "news",
+      }],
+    };
+    const delivered = await deliver(
+      "Celtic went through 3-1 on aggregate [[S1]]. "
+      + "Napoli finished second on 76 points. "
+      + "Their pressing structure makes them hard to play through.",
+      bundle
+    );
+    expect(delivered.answer).not.toContain("Napoli finished second");
+    expect(delivered.answer).toContain("Their pressing structure");
+  });
+});

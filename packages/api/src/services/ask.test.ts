@@ -23,6 +23,7 @@ import {
   resolveAskContext,
   resolveCompetitionContext,
   uncoveredTableResponse,
+  worldCupRetiredResponse,
   resolveQuestionTeams,
   resolveTeams,
   shouldUseCompetitionGrounding,
@@ -2926,6 +2927,81 @@ describe("resolveAskContext", () => {
         fixtureContext: { fixtureId: friendly.fixtureId },
       }
     )).toMatchObject({ tier: "fixture", fixture: { fixtureId: friendly.fixtureId } });
+  });
+
+  it("follows the matchup an earlier turn named when the client sends no context", () => {
+    const liverpoolCity = fixture("Liverpool", "Man City");
+    const arsenalLeeds = fixture("Arsenal", "Leeds", { fixtureId: 2 });
+    const fixtures = [liverpoolCity, arsenalLeeds];
+    const history = [
+      { role: "user" as const, content: "Liverpool v Man City — who wins?" },
+      { role: "assistant" as const, content: "Man City 44.9%." },
+    ];
+    const resolve = (question: string, turns = history) =>
+      resolveAskContext(question, turns, undefined, fixtures, [], []);
+    for (const question of ["What about over 2.5 goals?", "And BTTS for them?", "What's the most likely score?"]) {
+      expect(resolve(question)).toMatchObject({ tier: "match", fixture: { home: "Liverpool", away: "Man City" } });
+    }
+    // A table detour does not clear it, and a newer matchup replaces it.
+    expect(resolve("What about over 2.5 goals?", [
+      ...history,
+      { role: "user", content: "Show me the current table" },
+      { role: "assistant", content: "Man City lead." },
+    ])).toMatchObject({ tier: "match", fixture: { home: "Liverpool" } });
+    expect(resolve("What about over 2.5 goals?", [
+      ...history,
+      { role: "user", content: "Arsenal vs Leeds prediction" },
+      { role: "assistant", content: "Arsenal 76.7%." },
+    ])).toMatchObject({ tier: "match", fixture: { home: "Arsenal" } });
+    // Leaving the match, or no matchup ever named, stays general.
+    expect(resolve("Who is the best striker in the world right now?")).toMatchObject({ tier: "general" });
+    expect(resolve("What about over 2.5 goals?", [
+      { role: "user", content: "Explain xG" },
+      { role: "assistant", content: "xG measures chance quality." },
+    ])).toMatchObject({ tier: "general" });
+  });
+
+  it("resolves a typo'd matchup only when it completes one real fixture", () => {
+    const fixtures = [
+      fixture("Arsenal", "Leeds"),
+      fixture("Liverpool", "Man City", { fixtureId: 2 }),
+      fixture("Chelsea", "Tottenham", { fixtureId: 3 }),
+    ];
+    // Both production misses.
+    expect(resolveQuestionTeams("arsnal vs leds whos gonna win", fixtures)).toEqual(["Arsenal", "Leeds"]);
+    expect(resolveQuestionTeams("liverpol man citty prediction", fixtures)).toEqual(["Liverpool", "Man City"]);
+    expect(resolveAskContext("arsnal vs leds whos gonna win", [], undefined, fixtures, [], []))
+      .toMatchObject({ tier: "match", fixture: { home: "Arsenal", away: "Leeds" } });
+    // A real word one edit from a club, or a near-miss that forms no fixture,
+    // never manufactures a matchup.
+    expect(resolveQuestionTeams("Arsenal leads the league on goal difference", fixtures)).toBeUndefined();
+    expect(resolveQuestionTeams("arsnal vs chelsee", fixtures)).toBeUndefined();
+    expect(resolveQuestionTeams("Explain what xG is", fixtures)).toBeUndefined();
+    // Exact names still win and are unaffected.
+    expect(resolveQuestionTeams("Chelsea vs Tottenham", fixtures)).toEqual(["Chelsea", "Tottenham"]);
+  });
+
+  it("answers World Cup 2026 questions with the retired pipeline, not a preview", () => {
+    const now = new Date("2026-09-29T00:00:00Z");
+    for (const question of [
+      "Who will win the 2026 World Cup?",
+      "Give me probabilities for England vs France at the World Cup",
+    ]) {
+      const answer = worldCupRetiredResponse(question, null, now);
+      expect(answer).toMatch(/^The 2026 World Cup has already been played/);
+      expect(answer).toContain("/evaluation/wc-2026");
+      expect(answer).not.toMatch(/\d+(?:\.\d+)?%/);
+    }
+    expect(worldCupRetiredResponse("Who won the 2022 World Cup?", null, now)).toBeNull();
+    expect(worldCupRetiredResponse("Who will win the Club World Cup?", null, now)).toBeNull();
+    expect(worldCupRetiredResponse("Arsenal vs Leeds", null, now)).toBeNull();
+  });
+
+  it("owes a search for a result question", () => {
+    expect(deterministicSearchQuery("Who went through in Celtic's Champions League qualifier tie on aggregate?"))
+      .not.toBeNull();
+    expect(deterministicSearchQuery("Who will win Serie A?")).not.toBeNull();
+    expect(deterministicSearchQuery("How does a high press work?")).toBeNull();
   });
 
   it("lets a new recognized matchup replace retained fixture context", () => {

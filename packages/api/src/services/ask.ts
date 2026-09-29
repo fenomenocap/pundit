@@ -576,6 +576,10 @@ const MAX_EVIDENCE_QUERIES = 6;
 const MAX_EVIDENCE_RESULTS = 30;
 
 const CURRENT_NEWS_QUESTION = /\b(latest|current|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
+// A question about a result -- who won, who went through -- is a question
+// about the outside world. Production answered "Who went through in Celtic's
+// qualifier on aggregate?" with "Celtic advanced" and no search at all.
+const RESULT_QUESTION = /\b(?:who (?:won|went through|qualified|progressed|advanced|was (?:eliminated|knocked out))|went through|go(?:es)? through|on aggregate|aggregate (?:score|win)|final score|result (?:of|in|from)|who (?:beat|lost to|drew with)|(?:won|win|wins|winning) (?:serie a|la ?liga|the bundesliga|bundesliga|ligue 1|the eredivisie|the champions league|the europa league|the fa cup))\b/i;
 const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it))\b/i;
 const STATS_QUESTION = /\b(stats?|statistics|statistically|xg|assists?|appearances?)\b/i;
 // `unknown` and `unconfirmed` used to match as bare words, which handed any
@@ -616,6 +620,17 @@ const TEAM_NEWS_ABSTENTION_UNAVAILABLE =
   "No verified, dated team-news update was established, because verification was unavailable.";
 const CURRENT_CLAIM_ABSTENTION =
   "No verified current source in this conversation supports that claim.";
+const RESULT_CLAIM_ABSTENTION =
+  "I couldn’t verify that result from a dated source, so I won’t state it.";
+// A sentence that states how a match, tie or season turned out.
+const RESULT_CLAIM = new RegExp([
+  /\b(?:won|wins|clinched|lifted|claimed|retained)\b[^.!?\n]{0,50}\b(?:title|league|cup|trophy|championship|scudetto|final|double|treble|shield)\b/.source,
+  /\b(?:went through|progressed|advanced|qualified for|were eliminated|was eliminated|knocked out|crashed out|go through|goes through)\b/.source,
+  /\bon aggregate\b/.source,
+  /\b\d{1,3} points? (?:clear|ahead|behind)\b/.source,
+  /\b(?:finished|ended|finishing)\b[^.!?\n]{0,40}\b(?:\d{1,3} points|first|second|third|top|bottom|champions?|runners?-up)\b/.source,
+  /\b(?:beat|beaten|defeated|thrashed|lost|drew|won)\b[^.!?\n]{0,40}\b\d{1,2}\s?[-–]\s?\d{1,2}\b/.source,
+].join("|"), "i");
 const SEASON_STATS_LINE =
   /\b(?:\d+\s*(?:goals?|assists?|appearances?|starts?|caps?)|\d+\s*mins?(?:utes)?|fotmob rating|\bxg\b)/i;
 
@@ -820,9 +835,11 @@ export function deterministicSearchQuery(
   const asksStats = asksStatisticalQuestion(question);
   if (!CURRENT_NEWS_QUESTION.test(question)
     && !AMBIGUOUS_CURRENT_QUESTION.test(question)
+    && !RESULT_QUESTION.test(question)
     && !containsCorrectionCue(question)
     && !asksStats) return null;
   const mandatoryExternal = /\b(?:latest|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i.test(question)
+    || RESULT_QUESTION.test(question)
     || containsCorrectionCue(question);
   const asksOwnedMatchFact = grounding?.kind === "match"
     && /\b(?:pundit(?:'s)?|model|1x2|win (?:chance|probability)|draw (?:chance|probability)|scorelines?|btts|over 2\.5|under 2\.5)\b/i.test(question);
@@ -2626,6 +2643,30 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
   });
 }
 
+/**
+ * Removes result statements that carry no citation from a general-tier answer
+ * that owed evidence. Verification only checks cited sentences, so "Inter won
+ * the title with 87 points" shipped with verification `unavailable` simply by
+ * citing nothing. A cited result keeps its marker and survives; when nothing
+ * readable is left, the reader gets the abstention instead of a fragment.
+ */
+export function stripUncitedResultClaims(answer: string): string {
+  let removed = false;
+  const revised = reviseAnswerSentences(answer, (sentence) => {
+    if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
+    if (ABSTENTION.test(sentence) || !RESULT_CLAIM.test(sentence)) return sentence;
+    removed = true;
+    return "";
+  });
+  if (!removed) return answer;
+  const cleaned = dropOrphanedSectionLabels(
+    revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim()
+  );
+  return hasMeaningfulProse(cleaned.replace(GENERAL_DISCLAIMER, ""))
+    ? `${cleaned}\n\n${RESULT_CLAIM_ABSTENTION}`
+    : RESULT_CLAIM_ABSTENTION;
+}
+
 export function failClosedEmptyCurrentVerification(
   answer: string,
   verification: AskVerification,
@@ -3481,6 +3522,20 @@ function mentionedTeamPositions(
 ): Map<string, number> {
   const normalizedQuestion = normalizeTeamText(question);
   const teamPositions = new Map<string, number>();
+  const termsByLength = teamSearchTerms(fixtures);
+
+  for (const [term, team] of termsByLength) {
+    const position = normalizedQuestion.indexOf(term);
+    if (position === -1) continue;
+    const previous = teamPositions.get(team);
+    if (previous === undefined || position < previous) teamPositions.set(team, position);
+  }
+
+  return teamPositions;
+}
+
+/** Every spelling that names a team -- its name, canonical form and aliases -- longest first. */
+function teamSearchTerms(fixtures: TeamFixture[]): Array<[string, string]> {
   const teams = new Set<string>();
 
   for (const fixture of fixtures) {
@@ -3501,18 +3556,61 @@ function mentionedTeamPositions(
     }
   }
 
-  const termsByLength = [...searchTerms.entries()].sort(
+  return [...searchTerms.entries()].sort(
     ([termA], [termB]) => termB.length - termA.length
   );
+}
 
-  for (const [term, team] of termsByLength) {
-    const position = normalizedQuestion.indexOf(term);
-    if (position === -1) continue;
-    const previous = teamPositions.get(team);
-    if (previous === undefined || position < previous) teamPositions.set(team, position);
+/** Edit distance counting a swap of two neighbouring letters as one edit. */
+function typoDistance(a: string, b: string): number {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        rows[i][j] = Math.min(rows[i][j], rows[i - 2][j - 2] + 1);
+      }
+    }
   }
+  return rows[a.length][b.length];
+}
 
-  return teamPositions;
+// Real words one edit from a club name. "Arsenal leads the league" must not
+// become Arsenal v Leeds.
+const TYPO_STOPWORDS = new Set([
+  "leads", "lead", "needs", "reads", "feeds", "seeds", "weeds", "deeds",
+  "fulls", "hills", "hulls", "villas", "chelsea's", "evening", "every", "event",
+]);
+
+/**
+ * Teams a question names with a typo ("arsnal", "leds", "man citty"). Words
+ * are compared against every spelling of a team, whole terms at a time, and
+ * must share the term's first letter; the allowance is one edit, or two for a
+ * term of eight or more letters.
+ */
+function typoTeamPositions(question: string, fixtures: TeamFixture[]): Map<string, number> {
+  const normalized = normalizeTeamText(question);
+  const words = [...normalized.matchAll(/[\p{L}\p{N}'’]+/gu)]
+    .map((match) => ({ text: match[0], index: match.index ?? 0 }));
+  const found = new Map<string, number>();
+  for (const [term, team] of teamSearchTerms(fixtures)) {
+    const termWords = term.split(/\s+/);
+    if (term.replace(/\s+/g, "").length < 5) continue;
+    const allowance = term.length >= 8 ? 2 : 1;
+    for (let start = 0; start + termWords.length <= words.length; start += 1) {
+      const window = words.slice(start, start + termWords.length);
+      const candidate = window.map((word) => word.text).join(" ");
+      if (candidate === term || candidate[0] !== term[0]) continue;
+      if (candidate.replace(/\s+/g, "").length < 4
+        || window.some((word) => TYPO_STOPWORDS.has(word.text))) continue;
+      if (typoDistance(candidate, term) > allowance) continue;
+      const previous = found.get(team);
+      if (previous === undefined || window[0].index < previous) found.set(team, window[0].index);
+    }
+  }
+  return found;
 }
 
 // Error codes for the two ways team resolution fails. The frontend collapses
@@ -3571,6 +3669,14 @@ export function resolveTeams(question: string, fixtures: TeamFixture[]): [string
   }
 
   if (orderedTeams.length < 2) {
+    // Typos are a fallback only, and only when they complete one real fixture:
+    // a near-miss that names a third club or no fixture is ignored.
+    const merged = new Map(typoTeamPositions(question, fixtures));
+    for (const [team, position] of mentionedTeamPositions(question, fixtures)) merged.set(team, position);
+    const typoTeams = [...merged.entries()].sort(([, a], [, b]) => a - b).map(([team]) => team);
+    if (typoTeams.length === 2 && findFixture(typoTeams[0], typoTeams[1], fixtures)) {
+      return [typoTeams[0], typoTeams[1]];
+    }
     throw new AppError(
       400,
       "Could not identify two teams in your question. Try naming both teams, e.g. 'Arsenal vs Liverpool'.",
@@ -3886,6 +3992,27 @@ export function seasonOrCompetitionGrounding(
   return season ?? competition;
 }
 
+/**
+ * The matchup the most recent user turn named, the same pair the web UI would
+ * have sent back as teamContext. Later turns about a table or another topic do
+ * not clear it, exactly as they do not in the UI.
+ */
+export function teamsFromHistory(
+  history: ConversationTurn[],
+  fixtures: TeamFixture[]
+): TeamContext | undefined {
+  for (const turn of [...history].reverse()) {
+    if (turn.role !== "user") continue;
+    try {
+      const teams = resolveQuestionTeams(turn.content, fixtures);
+      if (teams && findFixture(teams[0], teams[1], fixtures)) return teams;
+    } catch {
+      // A turn that named too many clubs identified no single matchup.
+    }
+  }
+  return undefined;
+}
+
 export function resolveAskContext(
   question: string,
   history: ConversationTurn[],
@@ -4000,17 +4127,23 @@ export function resolveAskContext(
     }
   }
 
+  // A client that sends neither context -- any API caller other than the web
+  // UI -- still followed a match when its earlier turn named one. Without
+  // this, "What about over 2.5 goals?" after "Liverpool v Man City" lost the
+  // fixture and the general model invented form and injury claims.
+  const retainedTeams = teamContext
+    ?? (routing.fixtureContext ? undefined : teamsFromHistory(history, [...fixtures, ...activeFixtures]));
   if (
     !teams
     && !competitionId
     && !routing.fixtureContext
-    && teamContext
-    && (!leavesMatchContext(question, teamContext, [...fixtures, ...activeFixtures])
-      || unresolvedSwitchClub(question, teamContext) !== null)
+    && retainedTeams
+    && (!leavesMatchContext(question, retainedTeams, [...fixtures, ...activeFixtures])
+      || unresolvedSwitchClub(question, retainedTeams) !== null)
   ) {
-    const contextualFixture = findFixture(teamContext[0], teamContext[1], fixtures);
+    const contextualFixture = findFixture(retainedTeams[0], retainedTeams[1], fixtures);
     if (contextualFixture) return { tier: "match", fixture: contextualFixture };
-    const activeFixture = findFixture(teamContext[0], teamContext[1], activeFixtures);
+    const activeFixture = findFixture(retainedTeams[0], retainedTeams[1], activeFixtures);
     if (activeFixture) {
       return { tier: "model-unavailable", teams: [activeFixture.home, activeFixture.away] };
     }
@@ -8084,6 +8217,36 @@ export function deterministicUngroundedAnalysis(
   ].join("\n\n");
 }
 
+/**
+ * World Cup 2026 is over and Pundit's live pipeline for it is retired. The
+ * model treated "Who will win the 2026 World Cup?" as an upcoming tournament,
+ * and "England vs France at the World Cup" fell to the unconfirmed-matchup
+ * notice. Both get the state of the product instead. The frozen backtest is
+ * pointed to, not read: it stays disconnected from chat.
+ */
+export function worldCupRetiredResponse(
+  question: string,
+  grounding: AskGrounding,
+  now = new Date()
+): string | null {
+  if (grounding !== null || !/\bworld cup\b/i.test(question)) return null;
+  // Another edition (2022, 2030, a club or women's World Cup) is a different question.
+  const years = [...question.matchAll(/\b(?:19|20)\d{2}\b/g)].map(([year]) => year);
+  if (years.some((year) => year !== "2026")) return null;
+  if (/\b(?:club|women'?s|u-?\d{2}|under-?\d{2})\b/i.test(question)) return null;
+  const range = getCompetitionById("fifa.world")?.seasonDateRange;
+  const end = range ? /-(\d{4})(\d{2})(\d{2})$/.exec(range) : null;
+  const finished = end ? now > new Date(`${end[1]}-${end[2]}-${end[3]}T23:59:59Z`) : true;
+  return [
+    finished
+      ? "The 2026 World Cup has already been played; it finished in July 2026."
+      : "Pundit is not forecasting the 2026 World Cup.",
+    "My live World Cup forecasts are retired, so I don’t give World Cup probabilities or match prices.",
+    "How the model’s forecasts held up is in the frozen backtest at /evaluation/wc-2026.",
+    "For current matches I cover the Premier League and Champions League qualifiers.",
+  ].join(" ");
+}
+
 export function deterministicUngroundedEvidenceFollowUp(
   question: string,
   history: ConversationTurn[],
@@ -8400,11 +8563,15 @@ export async function deliverAnswer(args: {
       verification: checked.verification,
     };
   }
-  const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
-    checked.answer,
-    checked.verification,
-    evidenceRequired
-  );
+  const evidenceSafeAnswer = grounding === null && evidenceRequired
+    ? stripUncitedResultClaims(
+      failClosedEmptyCurrentVerification(checked.answer, checked.verification, evidenceRequired)
+    )
+    : failClosedEmptyCurrentVerification(
+      checked.answer,
+      checked.verification,
+      evidenceRequired
+    );
   // V2 match numbers come from validated server-rendered slots or the
   // deterministic composer. The legacy market parser cannot infer that trust
   // boundary: it mistakes fair odds for bookmaker quotes and complete mixed
@@ -8765,7 +8932,8 @@ async function answerQuestionScoped(
   const grounding = withOptionalUserLine(prepared.grounding, userLine);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   try {
-    const evidenceFollowUp = deterministicUngroundedEvidenceFollowUp(question, history, grounding);
+    const evidenceFollowUp = worldCupRetiredResponse(question, grounding)
+      ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
       return {
         answer: evidenceFollowUp,
@@ -8980,7 +9148,8 @@ async function answerQuestionStreamScoped(
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   handlers.onGrounding(grounding);
   try {
-    const evidenceFollowUp = deterministicUngroundedEvidenceFollowUp(question, history, grounding);
+    const evidenceFollowUp = worldCupRetiredResponse(question, grounding)
+      ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(evidenceFollowUp);
       return {

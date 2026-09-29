@@ -122,6 +122,9 @@ ANALYST_RESPONSE_V2=true
 - Do not treat the word `current` by itself as requiring external search when the question asks for a complete server-owned table, model, or season-outlook fact. Manager, injury, lineup, transfer, odds and other external-current cues retain mandatory search.
 - Preserve source fidelity: an all-zero table explicitly requested as the only evidence establishes no on-field ranking. Do not answer that request with season probabilities derived from ratings and the remaining schedule.
 - Treat `current table` and `current standings` as explicit table references. Retain the most recent competition explicitly named in prior user turns; with no competition in view, use the Premier League as the only supported league-style table. Do not extend this retention to arbitrary pronouns.
+- Result questions (who won, who went through, aggregate scores, winning a named league) owe a search. On the general tier, a result sentence with no verified citation is removed rather than shipped.
+- A client that sends no `teamContext`/`fixtureContext` still follows the matchup its most recent user turn named, exactly as the web UI does. Typo-tolerant team matching is a fallback that must complete one real fixture.
+- World Cup 2026 questions get the retired-pipeline notice pointing at `/evaluation/wc-2026`; chat never reads the frozen artifact.
 - Preserve exact typed capability reasons in public copy: `friendly-policy-disabled`, `unsupported-competition`, `model-policy-disabled`, `model-initializing`, `ratings-refreshing`, `ratings-unavailable`, `neutral-venue-unknown`, or `required-context-missing`.
 
 ---
