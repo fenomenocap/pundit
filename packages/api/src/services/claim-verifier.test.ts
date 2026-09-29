@@ -83,6 +83,16 @@ describe("one-call claim verifier", () => {
     });
   });
 
+  it("recovers the verdict object from surrounding prose", async () => {
+    const body = JSON.stringify({
+      decisions: claims.map((claim) => ({ claimId: claim.id, outcome: "unsupported", evidenceIds: [] })),
+      summary: "ok",
+    });
+    const wrapped = clientReturning(`Here is my verdict:\n${body}\nDone.`);
+    const result = await verifyClaimsOnce(wrapped.client, claims, pages);
+    expect(result.status).not.toBe("unavailable");
+  });
+
   it("fails closed on invalid provider output or provider failure", async () => {
     const invalid = clientReturning("not json");
     const invalidResult = await verifyClaimsOnce(invalid.client, claims, pages);

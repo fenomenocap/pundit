@@ -37,6 +37,8 @@ import {
   type EvidenceBundle,
   sanitizeRequestFidelity,
   sanitizeFixtureCoverageAnswer,
+  generateOrDegradeToGrounding,
+  matchGenerationBudgetMs,
   sanitizeFootballGeometry,
   sanitizeGroundedMatchNarrative,
   sanitizeContradictoryRationales,
@@ -54,6 +56,7 @@ import {
   verifiableCurrentClaims,
   verifyCurrentClaims,
   type FixtureGrounding,
+  type AskGrounding,
   shouldHoldCoverageDeltas,
   shouldHoldRequestFidelity,
   stripUnvalidatedExternalMarketClaims,
@@ -1280,6 +1283,76 @@ describe("current-news evidence hardening", () => {
     expect(safe).toContain("I don’t publish forecasts for friendlies");
     expect(safe).not.toMatch(/48%|2-1/);
     expect(safe).not.toContain("The fixture is on Thursday");
+  });
+
+  it("says a completed fixture has already been played instead of implying pending inputs", () => {
+    const fixture = recognizeEspnFixture({
+      id: 901,
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeTeam: "Arsenal",
+      awayTeam: "Chelsea",
+      utcDate: "2026-09-06T15:30:00.000Z",
+      status: "FINISHED",
+      stage: null,
+      matchday: null,
+      group: null,
+      score: null,
+    });
+    fixture.status = "completed";
+    const grounding: FixtureGrounding = {
+      kind: "fixture",
+      fixture,
+      capability: { status: "insufficient-model-input", reason: "required-context-missing" },
+    };
+    const safe = sanitizeFixtureCoverageAnswer("Arsenal 50%.", grounding);
+    expect(safe).toContain("required pricing inputs");
+    expect(safe).toContain("already been played");
+    expect(safe).not.toMatch(/50%/);
+    fixture.status = "scheduled";
+    expect(sanitizeFixtureCoverageAnswer("x", grounding)).not.toContain("already been played");
+  });
+
+  describe("generateOrDegradeToGrounding", () => {
+    const match = { kind: "match" } as unknown as AskGrounding;
+
+    it("returns an empty draft for a match turn whose generation was empty, truncated or timed out", async () => {
+      for (const failure of [
+        new AppError(502, "Analysis service returned an empty response."),
+        new AppError(502, "Analysis response was truncated. Please try again."),
+        new AppError(504, "Analysis service timed out. Please try again."),
+      ]) {
+        await expect(generateOrDegradeToGrounding(match, undefined, Date.now(), async () => { throw failure; }))
+          .resolves.toBe("");
+      }
+    });
+
+    it("keeps failing loudly for non-match tiers, other errors and cancellation", async () => {
+      const empty = new AppError(502, "Analysis service returned an empty response.");
+      await expect(generateOrDegradeToGrounding(null, undefined, Date.now(), async () => { throw empty; })).rejects.toBe(empty);
+      const other = new AppError(429, "busy");
+      await expect(generateOrDegradeToGrounding(match, undefined, Date.now(), async () => { throw other; })).rejects.toBe(other);
+      const controller = new AbortController();
+      controller.abort();
+      await expect(generateOrDegradeToGrounding(match, controller.signal, Date.now(), async () => { throw empty; })).rejects.toBe(empty);
+    });
+
+    it("counts the budget down from the request start and never below zero", () => {
+      const start = 1_000_000;
+      expect(matchGenerationBudgetMs(start, start)).toBe(60_000);
+      expect(matchGenerationBudgetMs(start, start + 45_000)).toBe(33_000);
+      expect(matchGenerationBudgetMs(start, start + 85_000)).toBe(0);
+    });
+
+    it("skips generation when the reserve is already spent", async () => {
+      const generate = vi.fn(async () => "draft");
+      await expect(generateOrDegradeToGrounding(match, undefined, Date.now() - 80_000, generate)).resolves.toBe("");
+      expect(generate).not.toHaveBeenCalled();
+    });
+
+    it("passes a generated answer through untouched", async () => {
+      await expect(generateOrDegradeToGrounding(match, undefined, Date.now(), async () => "draft")).resolves.toBe("draft");
+    });
   });
 
   it("keeps an unrecognized matchup candidate ungrounded and strips invented output", () => {
