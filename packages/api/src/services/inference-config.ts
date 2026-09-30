@@ -68,5 +68,7 @@ export function resolveInference(): ResolvedInference {
  * since it is not known to accept it.
  */
 export function reasoningOff(): { thinking?: { type: "disabled" } } {
+  // PUNDIT_REASONING=on restores the model's default reasoning without a deploy.
+  if (process.env.PUNDIT_REASONING?.trim().toLowerCase() === "on") return {};
   return resolveInference().provider === "openrouter" ? { thinking: { type: "disabled" } } : {};
 }

@@ -847,7 +847,8 @@ function asksStatisticalQuestion(question: string, now = new Date()): boolean {
 export function deterministicSearchQuery(
   question: string,
   correctionContext = "",
-  grounding?: AskGrounding
+  grounding?: AskGrounding,
+  now = new Date()
 ): string | null {
   const asksStats = asksStatisticalQuestion(question);
   if (!CURRENT_NEWS_QUESTION.test(question)
@@ -875,7 +876,10 @@ export function deterministicSearchQuery(
   const challengedContext = containsCorrectionCue(question) && correctionContext.trim()
     ? ` ${correctionContext.replace(/\s+/g, " ").slice(0, 220)}`
     : "";
-  return `${question.slice(0, 220)}${challengedContext} football latest`;
+  // Without a season the search engine answers with whichever season it
+  // indexed most: "Who will win Serie A?" came back entirely 2024-25.
+  const season = /\b20\d{2}\b/.test(question) ? "" : ` ${currentFootballSeasonLabel(now).replace("/", "-")}`;
+  return `${question.slice(0, 220)}${challengedContext} football latest${season}`;
 }
 
 function correctionSearchContext(history: ConversationTurn[], grounding: AskGrounding): string {
@@ -3075,6 +3079,14 @@ export const MATCH_EXAMPLE = `For a full preview, write in first person and lead
 export const MATCH_STRUCTURED_OUTPUT = `Return only one JSON object with this exact shape, with no Markdown fence or prose outside it:
 {"directAnswer":{"text":"I prefer {{match.home}}.","factIds":["match.home"]},"reasoning":[{"text":"The goals lean is {{total.over-2.5}}.","factIds":["total.over-2.5"]}],"uncertainty":{"text":"I cannot quantify a lineup change.","factIds":["limit.lineup-counterfactual"]},"citedClaims":[{"text":"A dated team-news claim","factIds":[],"sourceIds":["S1"]}]}
 Write no match number, percentage, gap or fair price directly in text. Insert a fact slot such as {{match.home}}, {{score.2-1}} or {{market.kalshi.home}} instead; the server renders its canonical subject and values. Every numeric factId must actually appear as its matching slot in the same text part. Every current external claim belongs in citedClaims and must reference source IDs from the evidence bundle. reasoning and citedClaims must be JSON arrays (use [] when empty), never a bare string. Do not invent an ID or a slot.`;
+
+// The system prompt's formatting rules describe bold-label markdown sections,
+// and its JSON contract is one paragraph at the very end. Measured on the pinned
+// model with no evidence attached, every draft came back as markdown prose with
+// slots in it. The instruction that must win goes last, in the user turn.
+export const MATCH_JSON_REMINDER =
+  "Reply with only the JSON object from the JSON contract: no bold labels, no Markdown, no prose outside "
+  + "the object. Write every match number as a {{fact slot}} and use only fact IDs from the Response-facts contract.";
 
 const MATCH_SYSTEM_PROMPT = `You are Pundit: one coherent, first-person expert football analyst. Never
 refer to "Pundit's model", "the model", "the payload" or "the retrieved sources" in reader-facing
@@ -5533,13 +5545,23 @@ interface ToolMarkupStrip {
   removed: boolean;
 }
 
-function stripToolCallMarkupDetailed(answer: string): ToolMarkupStrip {
+/**
+ * DeepSeek writes its tool call in a namespaced dialect: `<｜DSML｜tool_calls>`,
+ * with a fullwidth bar the tag scanner cannot read as a name. Dropping the
+ * namespace turns it into the tag vocabulary the stripper already knows.
+ */
+export function normalizeDsmlTags(text: string): string {
+  return text.replace(/<(\/?)\s*[｜|]\s*DSML\s*[｜|]\s*/gi, "<$1");
+}
+
+function stripToolCallMarkupDetailed(rawAnswer: string): ToolMarkupStrip {
+  const answer = normalizeDsmlTags(rawAnswer);
   const stripped = stripEmbeddedToolJson(stripLeadingToolJson(
     stripToolRegions(stripFencedToolCalls(answer)
       .replace(CONTROL_TOKEN_FRAGMENT, "")
       .replace(BRACKETED_TOOL_DIRECTIVE, ""))
   ));
-  if (stripped === answer) return { text: answer, removed: false };
+  if (stripped === answer) return { text: rawAnswer, removed: false };
   return {
     text: stripped.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(),
     removed: true,
@@ -5632,7 +5654,7 @@ export function hasGroundedAnswerShape(answer: string): boolean {
 
 const LEAKED_QUERY_PATTERNS = [
   /<\s*(?:antml:)?query\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
-  /<\s*(?:antml:)?parameter\s+name\s*=\s*"query"\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
+  /<\s*(?:antml:)?parameter\s+name\s*=\s*"query"[^>]*>([\s\S]*?)(?:<\s*\/|$)/gi,
   /"(?:search_query|query)"\s*:\s*"((?:[^"\\]|\\.)*)"/gi,
   BRACKETED_TOOL_DIRECTIVE,
   new RegExp(
@@ -5651,7 +5673,8 @@ const LEAKED_QUERY_PARAMETER = /<parameter\s+name="(?:search_queries|queries|que
  * request can be recovered by actually running them rather than by discarding
  * the turn. Deliberately tolerant of truncation: the live leaks were unclosed.
  */
-export function extractLeakedSearchQueries(text: string): string[] {
+export function extractLeakedSearchQueries(rawText: string): string[] {
+  const text = normalizeDsmlTags(rawText);
   const found: string[] = [];
   for (const pattern of LEAKED_QUERY_PATTERNS) {
     pattern.lastIndex = 0;
@@ -6007,9 +6030,11 @@ const HAS_GENERAL_DISCLAIMER =
 
 export function ensureGeneralDisclaimer(answer: string): string {
   if (!answer.trim()) return answer;
+  // The matched sentence carries the space that followed the previous one, so
+  // the replacement keeps it: "...title race.This is general..." otherwise.
   const naturalized = answer.replace(
     /[^.!?\n]*\bPundit(?:'s)? model\b[^.!?\n]*(?:[.!?]+|$)/gi,
-    GENERAL_DISCLAIMER
+    (match) => `${/^[ \t]*/.exec(match)?.[0] ?? ""}${GENERAL_DISCLAIMER}`
   );
   return HAS_GENERAL_DISCLAIMER.test(naturalized)
     ? naturalized
@@ -6986,7 +7011,8 @@ export function prepareAsk(
     systemPrompt = MATCH_SYSTEM_PROMPT;
     currentMessage = `Authoritative match facts: ${JSON.stringify(grounding)}\n`
       + `Response-facts contract: ${JSON.stringify(buildResponseFacts(grounding).facts)}\n`
-      + `User question: ${question}`;
+      + `User question: ${question}\n`
+      + MATCH_JSON_REMINDER;
   } else if (context.tier === "candidate") {
     grounding = null;
     systemPrompt = GENERAL_SYSTEM_PROMPT;
@@ -8518,6 +8544,7 @@ export async function deliverAnswer(args: {
       analystResponseMetrics.acceptedDrafts += 1;
       console.log(JSON.stringify({
         event: "analyst_draft_accepted",
+        droppedParts: validatedDraft.dropped,
         responseMode: planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null }).mode,
         factReferences: [
           validatedDraft.draft.directAnswer,

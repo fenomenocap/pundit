@@ -80,6 +80,11 @@ OPENROUTER_API_KEY=
 OPENROUTER_MODEL=             # optional; openrouter/auto and :online are ignored
 OPENROUTER_BASE_URL=https://openrouter.ai/api
 
+# Reasoning is switched off for OpenRouter answers and the claim verifier
+# (measured 18-24s vs ~5s on a verifier call). Set "on" to restore the model's
+# default reasoning without a deploy.
+PUNDIT_REASONING=
+
 # ── Web search ───────────────────────────────────────────────────────────────
 # Enabled by OPENROUTER_API_KEY. Unknown names in the order are ignored.
 WEB_SEARCH_PROVIDER_ORDER=

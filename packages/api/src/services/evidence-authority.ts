@@ -8,6 +8,12 @@ export const OFFICIAL_EVIDENCE_DOMAINS = [
   "fifa.com",
   "thefa.com",
   "englandfootball.com",
+  // Other top-flight leagues. General football questions reach beyond the
+  // Premier League, and an official league site is a first-party source.
+  "legaseriea.it",
+  "laliga.com",
+  "bundesliga.com",
+  "ligue1.com",
   // Supported-club first-party domains. Unknown hosts deliberately remain
   // `other`; a search result does not become reputable merely by existing.
   "arsenal.com",
@@ -66,6 +72,12 @@ export const REPUTABLE_EVIDENCE_DOMAINS = [
   // Football specialists.
   "goal.com", "90min.com", "football365.com", "sportsmole.co.uk", "fourfourtwo.com",
   "premierinjuries.com", "physioroom.com",
+  // Established national sports press for the other top leagues, and the
+  // English-language services that cover them with a masthead and corrections
+  // policy. Fan blogs, betting affiliates and aggregators stay `other`.
+  "football-italia.net", "gazzetta.it", "corrieredellosport.it", "tuttosport.com",
+  "marca.com", "as.com", "mundodeportivo.com", "lequipe.fr", "kicker.de",
+  "eurosport.com", "onefootball.com", "sports.yahoo.com", "si.com", "foxsports.com",
   // Local beats, which carry a club's lineup news first.
   "football.london", "manchestereveningnews.co.uk", "liverpoolecho.co.uk",
   "birminghammail.co.uk", "chroniclelive.co.uk", "hulldailymail.co.uk",
