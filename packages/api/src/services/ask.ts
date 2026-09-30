@@ -580,7 +580,7 @@ const OVERALL_DEADLINE_MS = 60_000;
 const MAX_EVIDENCE_QUERIES = 6;
 const MAX_EVIDENCE_RESULTS = 30;
 
-const CURRENT_NEWS_QUESTION = /\b(latest|current|currently|right now|at the moment|these days|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
+const CURRENT_NEWS_QUESTION = /\b(latest|current|currently|this season|season so far|so far this season|right now|at the moment|these days|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
 // A question about a result -- who won, who went through -- is a question
 // about the outside world. Production answered "Who went through in Celtic's
 // qualifier on aggregate?" with "Celtic advanced" and no search at all.
@@ -8537,8 +8537,20 @@ export async function deliverAnswer(args: {
   const useV2 = ANALYST_RESPONSE_V2 && structuredDraftExpected;
   let expressionAnswer = rawAnswer;
   if (useV2 && grounding?.kind === "match") {
+    const draftPlan = planResponse(question, {
+      groundingKind: "match",
+      hasHistory,
+      hasUserLine: grounding.pricing.userLine != null,
+    });
+    // A short follow-up can be led by the server's own answer when the model's
+    // direct answer breaks a rule. Full previews and team-news turns cannot:
+    // their server answer is the whole card, not a lead-in.
+    const serverLead = draftPlan.mode === "match-follow-up" || draftPlan.mode === "market-comparison"
+      ? composeMatchResponse(question, grounding, draftPlan)
+      : "";
     const validatedDraft = validateAnalystDraft(rawAnswer, grounding, {
       sourceIds: bundle.results.map((source) => source.id),
+      ...(serverLead && serverLead.length <= 500 ? { serverDirectAnswer: serverLead } : {}),
     });
     if (validatedDraft.valid) {
       analystResponseMetrics.acceptedDrafts += 1;
