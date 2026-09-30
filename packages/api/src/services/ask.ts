@@ -571,7 +571,9 @@ const MAX_EVIDENCE_QUERIES = 6;
 const MAX_EVIDENCE_RESULTS = 30;
 
 const CURRENT_NEWS_QUESTION = /\b(latest|current|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
-const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it))\b/i;
+// Tournament outcomes and "right now" phrasing are external facts Pundit does not own
+// (the World Cup pipeline is retired), so they owe a search rather than model memory.
+const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it)|right now|at the moment|currently|world cup|euro 20\d\d|copa am[eé]rica|ballon d'or)\b/i;
 const STATS_QUESTION = /\b(stats?|statistics|statistically|xg|assists?|appearances?)\b/i;
 // `unknown` and `unconfirmed` used to match as bare words, which handed any
 // sentence a way out of the squad-claim guard: an answer wrote "Beer-Sheva's

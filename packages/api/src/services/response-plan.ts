@@ -244,11 +244,18 @@ export function resolveRequestedScoreline(
   if (!score) return null;
   const [first, second] = score.split("-").map(Number);
   const lower = question.toLocaleLowerCase();
-  const homeNamed = lower.includes(fixture.home.toLocaleLowerCase());
-  const awayNamed = lower.includes(fixture.away.toLocaleLowerCase());
+  const homeIndex = lower.indexOf(fixture.home.toLocaleLowerCase());
+  const awayIndex = lower.indexOf(fixture.away.toLocaleLowerCase());
+  const homeNamed = homeIndex >= 0;
+  const awayNamed = awayIndex >= 0;
+  // "Man City beat Liverpool 5-0": the first-mentioned team takes the first number.
+  if (homeNamed && awayNamed && awayIndex < homeIndex) {
+    return { score: `${second}-${first}`, orientation: "named-away" };
+  }
   if (awayNamed && !homeNamed) {
     return { score: `${second}-${first}`, orientation: "named-away" };
   }
-  if (homeNamed && !awayNamed) return { score, orientation: "named-home" };
+  if (homeNamed && awayNamed) return { score, orientation: "named-home" };
+  if (homeNamed) return { score, orientation: "named-home" };
   return { score, orientation: "home-away-default" };
 }

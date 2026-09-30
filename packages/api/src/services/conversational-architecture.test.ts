@@ -672,6 +672,12 @@ describe("V2 conversational architecture", () => {
     expect(resolveRequestedScoreline("Chelsea to win 2-0", match)).toEqual({
       score: "0-2", orientation: "named-away",
     });
+    expect(resolveRequestedScoreline("Chelsea beat Arsenal 2-0?", match)).toEqual({
+      score: "0-2", orientation: "named-away",
+    });
+    expect(resolveRequestedScoreline("Arsenal beat Chelsea 2-0?", match)).toEqual({
+      score: "2-0", orientation: "named-home",
+    });
     const awayScore = composeMatchResponse("Fair odds for Chelsea to win 2-0?", match,
       planResponse("Fair odds for Chelsea to win 2-0?", { groundingKind: "match", hasHistory: true }));
     expect(awayScore).toMatch(/Arsenal 0-2 Chelsea.*7\.1%.*14\.08/);
