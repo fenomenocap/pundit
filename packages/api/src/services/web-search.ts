@@ -382,54 +382,74 @@ const openRouterProvider: SearchProvider = {
   name: "openrouter",
   enabled: () => Boolean(process.env.OPENROUTER_API_KEY?.trim()),
   async run(query, requestSignal) {
-    const key = process.env.OPENROUTER_API_KEY?.trim();
-    const response = await fetch(openRouterChatUrl(), {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${key}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: openRouterModelId(),
-        messages: [
-          {
-            role: "system",
-            content: "Call the web search tool exactly once. Do not call it again. Do not answer from memory.",
-          },
-          { role: "user", content: query },
-        ],
-        tools: [{
-          type: "openrouter:web_search",
-          parameters: {
-            engine: "exa",
-            mode: "fast",
-            max_results: MAX_RESULTS,
-            max_uses: 1,
-            max_characters: MAX_SNIPPET_LENGTH,
-          },
-        }],
-        max_tool_calls: 1,
-        temperature: 0,
-        // A reasoning trace doubled the tool call and spent most of the budget
-        // before Exa returned. The citations are the product, not the trace.
-        reasoning: { enabled: false },
-      }),
-      signal: requestSignalFor(requestSignal),
-    });
-    if (!response.ok) throw classifyHttpStatus(response.status, retryAfterMs(response));
-    const body = await readBoundedJson(response);
-    const citations = citationRecords(body);
-    if (citations.length === 0 && searchRequestCount(body) === 0) {
-      throw new ProviderError("malformed_response", "search tool did not run");
+    try {
+      return await runOpenRouterSearch(query, requestSignal);
+    } catch (error) {
+      // About one search in twenty comes back having never called the tool: a
+      // reply from memory, with no citations and no search count. The next
+      // request is an ordinary search. The retry lives here, inside the
+      // provider, so the caller sees one attempt: a recovered search is a
+      // success, not a failure that the breaker and the counters remember.
+      if (!(error instanceof ProviderError) || error.message !== SEARCH_TOOL_DID_NOT_RUN
+        || requestSignal?.aborted) {
+        throw error;
+      }
+      console.warn(JSON.stringify({ event: "web_search_tool_did_not_run_retry", provider: "openrouter" }));
+      return runOpenRouterSearch(query, requestSignal);
     }
-    return normalizeResults(citations, (entry) => ({
-      title: asString(entry.title) || hostnameOf(asString(entry.link)),
-      link: asString(entry.link),
-      snippet: asString(entry.snippet),
-      date: asString(entry.date),
-    }));
   },
 };
+
+const SEARCH_TOOL_DID_NOT_RUN = "search tool did not run";
+
+async function runOpenRouterSearch(query: string, requestSignal?: AbortSignal): Promise<WebSearchResult[]> {
+  const key = process.env.OPENROUTER_API_KEY?.trim();
+  const response = await fetch(openRouterChatUrl(), {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${key}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: openRouterModelId(),
+      messages: [
+        {
+          role: "system",
+          content: "Call the web search tool exactly once. Do not call it again. Do not answer from memory.",
+        },
+        { role: "user", content: query },
+      ],
+      tools: [{
+        type: "openrouter:web_search",
+        parameters: {
+          engine: "exa",
+          mode: "fast",
+          max_results: MAX_RESULTS,
+          max_uses: 1,
+          max_characters: MAX_SNIPPET_LENGTH,
+        },
+      }],
+      max_tool_calls: 1,
+      temperature: 0,
+      // A reasoning trace doubled the tool call and spent most of the budget
+      // before Exa returned. The citations are the product, not the trace.
+      reasoning: { enabled: false },
+    }),
+    signal: requestSignalFor(requestSignal),
+  });
+  if (!response.ok) throw classifyHttpStatus(response.status, retryAfterMs(response));
+  const body = await readBoundedJson(response);
+  const citations = citationRecords(body);
+  if (citations.length === 0 && searchRequestCount(body) === 0) {
+    throw new ProviderError("malformed_response", SEARCH_TOOL_DID_NOT_RUN);
+  }
+  return normalizeResults(citations, (entry) => ({
+    title: asString(entry.title) || hostnameOf(asString(entry.link)),
+    link: asString(entry.link),
+    snippet: asString(entry.snippet),
+    date: asString(entry.date),
+  }));
+}
 
 function openRouterChatUrl(): string {
   const base = (process.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api").replace(/\/$/, "");

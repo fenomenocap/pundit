@@ -5,9 +5,22 @@ import {
   splitAnswerSentences,
   splitPriceSafeSentences,
   TEAM_NEWS_CLAIM,
+  assertsSquadAvailability,
 } from "./answer-provenance";
 
 describe("splitPriceSafeSentences", () => {
+  it("does not end a sentence at an abbreviation", () => {
+    // Production shipped "Flashscore's rankings list Kane as **No." after a
+    // guard removed everything past the abbreviation.
+    expect(splitPriceSafeSentences("Rankings list Kane as No. 1 this week. Haaland is second."))
+      .toEqual(["Rankings list Kane as No. 1 this week. ", "Haaland is second."]);
+    expect(splitPriceSafeSentences("Arsenal vs. Leeds is on Saturday. It kicks off at noon."))
+      .toEqual(["Arsenal vs. Leeds is on Saturday. ", "It kicks off at noon."]);
+    // "No." with no number after it is still the end of a sentence.
+    expect(splitPriceSafeSentences("The answer is no. Leeds are not favoured."))
+      .toEqual(["The answer is no. ", "Leeds are not favoured."]);
+  });
+
   it("does not split a decimal price", () => {
     expect(splitPriceSafeSentences("The home win is 3.40 and the away win 3.60."))
       .toEqual(["The home win is 3.40 and the away win 3.60."]);
@@ -167,5 +180,29 @@ describe("mapEvidenceRegions", () => {
   it("cannot touch model prose even when the map deletes everything", () => {
     const answer = "Pundit's model gives Arsenal 56.3%, the draw 24.1% and Chelsea 19.6%.";
     expect(mapEvidenceRegions(answer, () => "")).toBe(answer);
+  });
+});
+
+describe("return and recovery timing is a squad claim", () => {
+  it.each([
+    "Haaland is expected to return against Arsenal on 12 October.",
+    "He should be back in three weeks.",
+    "The striker is out until November.",
+    "City have not given a return date.",
+    "He is set to return before the international break.",
+    "Rodri is sidelined for the next six weeks.",
+  ])("recognises %s", (sentence) => {
+    expect(assertsSquadAvailability(sentence)).toBe(true);
+    expect(TEAM_NEWS_CLAIM.test(sentence)).toBe(true);
+    expect(segmentAnswer(sentence)[0].provenance).toBe("evidence");
+  });
+
+  it.each([
+    "City return to form with a 3-0 win.",
+    "Arsenal are back in the title race.",
+    "The model returns a 41.2% home win.",
+    "Leeds have been out of form for weeks.",
+  ])("leaves ordinary prose alone: %s", (sentence) => {
+    expect(assertsSquadAvailability(sentence)).toBe(false);
   });
 });

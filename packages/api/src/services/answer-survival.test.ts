@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AppError } from "../middleware";
 import {
   buildGrounding,
   computeMarketDivergence,
@@ -335,7 +336,10 @@ describe("V2 deterministic fact delivery", () => {
       candidateUnrecognized: false,
       hasHistory: false,
     });
-    expect(delivered.answer).toBe("I need to know which side and fixture you mean.");
+    expect(delivered.answer).toBe(
+      "I need to know which side and fixture you mean.\n\n"
+      + "This is general football analysis, not based on my match forecasts."
+    );
     expect(delivered.answer).not.toMatch(/earlier claim|earlier sentence/i);
   });
 });
@@ -741,7 +745,19 @@ describe("the final safety gate", () => {
           answer,
           tier: "match",
           grounding: matchGrounding,
-          bundle: emptyBundle(),
+          // A cited link only ever reaches delivery from a page the evidence
+          // bundle holds, so the bundle carries it.
+          bundle: {
+            ...emptyBundle(),
+            results: [{
+              id: "S1",
+              title: "Coventry City team news",
+              url: "https://example.com/coventry-team-news",
+              date: "2026-08-01",
+              snippet: "The first-choice keeper is suspended.",
+              tier: "official",
+            }],
+          },
           client: clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">,
           question: "Why?",
           evidenceRequired: false,
@@ -843,6 +859,7 @@ describe("the other tiers keep their answers too", () => {
         { team: "Arsenal", probability: 0.88 },
         { team: "Chelsea", probability: 0.79 },
       ],
+      relegationProbabilities: [],
       remainingFixtures: 291,
       updatedAt: "2026-08-02T00:00:00.000Z",
     },
@@ -1432,5 +1449,186 @@ describe("the verdict and the close a match answer must carry", () => {
     expect(sanitizeDeliveredAnswer(delivered.answer, "match", priced))
       .toBe(delivered.answer);
     warn.mockRestore();
+  });
+});
+
+describe("general-tier delivery", () => {
+  const client = clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">;
+  const general = (answer: string) => deliverAnswer({
+    answer,
+    tier: "general",
+    grounding: null,
+    bundle: emptyBundle(),
+    client,
+    question: "Who is the best striker in the world?",
+    evidenceRequired: false,
+    candidateUnrecognized: false,
+  });
+
+  it("labels the text that ships even when the label did not survive generation", async () => {
+    const delivered = await general(
+      "**My view**\nHaaland is the most prolific out-and-out centre-forward of the era."
+    );
+    expect(delivered.answer).toMatch(/Haaland is the most prolific/);
+    expect(delivered.answer.trimEnd())
+      .toMatch(/This is general football analysis, not based on my match forecasts\.$/);
+  });
+
+  it("does not count the server's own label as the model's answer", async () => {
+    // Production shipped exactly this as the whole reply to "Who's bottom?".
+    await expect(general(
+      "**Bottom of the table**\n\nThis is general football analysis, not based on my match forecasts."
+    )).rejects.toMatchObject({ statusCode: 502 });
+  });
+});
+
+describe("model-written citations", () => {
+  const client = clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">;
+  const bundle: EvidenceBundle = {
+    queries: ["Man United form"],
+    results: [{
+      id: "S1",
+      title: "United beat Burnley",
+      url: "https://www.bbc.co.uk/sport/football/articles/abc",
+      date: "2026-09-20",
+      snippet: "United beat Burnley 2-0.",
+      tier: "news",
+    }],
+  };
+  const deliver = (answer: string) => deliverAnswer({
+    answer,
+    tier: "general",
+    grounding: null,
+    bundle,
+    client,
+    question: "How have Man United been playing lately?",
+    evidenceRequired: false,
+    candidateUnrecognized: false,
+  });
+
+  it("drops a claim whose link points at a page the evidence never held", async () => {
+    // Verbatim shape from production: a homepage "source" for invented form.
+    const delivered = await deliver(
+      "**Recent form**\nUnited have won four straight in the league ([BBC Sport](https://www.bbc.com/sport), 12 Sep 2026). "
+      + "They beat Burnley 2-0 last time out ([BBC](https://bbc.co.uk/sport/football/articles/abc/), 20 Sep 2026). "
+      + "Their pressing has looked sharper."
+    );
+    expect(delivered.answer).not.toContain("four straight");
+    expect(delivered.answer).not.toContain("bbc.com/sport)");
+    expect(delivered.answer).toContain("They beat Burnley 2-0");
+    expect(delivered.answer).toContain("Their pressing has looked sharper.");
+  });
+});
+
+describe("uncited squad-timing and price claims on the general tier", () => {
+  const client = clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">;
+  const deliver = (answer: string, verification: "unavailable" | "abstain" = "unavailable") => deliverAnswer({
+    answer,
+    tier: "general",
+    grounding: null,
+    bundle: { ...emptyBundle(), queries: ["Haaland return date"] },
+    client,
+    question: "When is Haaland back and what are City's odds?",
+    evidenceRequired: true,
+    candidateUnrecognized: false,
+  }).then((delivered) => ({ delivered, verification }));
+
+  it("does not ship a return date or a price nobody cited", async () => {
+    const { delivered } = await deliver(
+      "Erling Haaland is expected to return against Arsenal in about three weeks. "
+      + "City are priced at 1.85 to win at home. "
+      + "Their pressing structure makes them hard to play through."
+    );
+    expect(delivered.answer).not.toMatch(/expected to return|three weeks|priced at|1\.85/);
+    expect(delivered.answer).toContain("Their pressing structure");
+  });
+
+  it("removes fractional and decimal odds that name no source", async () => {
+    const { delivered } = await deliver(
+      "Bookmakers have City at 4/6 to win the league. The odds of 2.10 for Arsenal look short. "
+      + "City average 2.4 goals a game."
+    );
+    expect(delivered.answer).not.toMatch(/4\/6|2\.10/);
+    expect(delivered.answer).toContain("City average 2.4 goals a game.");
+  });
+
+  it("keeps a price the evidence cites", async () => {
+    const delivered = await deliverAnswer({
+      answer: "City are priced at 1.85 to win [[S1]]. Arsenal are 4.20 [[S1]].",
+      tier: "general",
+      grounding: null,
+      bundle: {
+        ...emptyBundle(),
+        queries: ["City odds"],
+        results: [{
+          id: "S1", title: "Odds", url: "https://www.bbc.co.uk/sport/odds",
+          date: "2026-09-28", snippet: "City 1.85", tier: "news",
+        }],
+      },
+      client,
+      question: "What are City's odds?",
+      evidenceRequired: true,
+      candidateUnrecognized: false,
+    });
+    expect(delivered.answer).toMatch(/1\.85/);
+  });
+});
+
+describe("uncited result claims on the general tier", () => {
+  const client = clientWith(message("unused", "end_turn")) as Pick<Anthropic, "messages">;
+  const deliver = (answer: string, bundle = emptyBundle()) => deliverAnswer({
+    answer,
+    tier: "general",
+    grounding: null,
+    bundle: { ...bundle, queries: ["Serie A winner"] },
+    client,
+    question: "Who will win Serie A?",
+    evidenceRequired: true,
+    candidateUnrecognized: false,
+  });
+
+  it("does not state an unverified result", async () => {
+    // Verbatim from production, shipped with verification "unavailable".
+    const delivered = await deliver(
+      "The 2025-26 Serie A season is already complete, based on multiple published final standings. "
+      + "**Inter Milan won the title** with 87 points, finishing 11 points clear of second-placed Napoli."
+    );
+    expect(delivered.answer).not.toMatch(/Inter Milan won|87 points|11 points clear/);
+    expect(delivered.answer).toContain("I couldn’t verify that result from a dated source");
+  });
+
+  it("keeps analysis around a removed result, and a result the evidence cites", async () => {
+    const bundle: EvidenceBundle = {
+      ...emptyBundle(),
+      results: [{
+        id: "S1", title: "Celtic through", url: "https://www.bbc.co.uk/sport/football/celtic",
+        date: "2026-08-27", snippet: "Celtic went through 3-1 on aggregate.", tier: "news",
+      }],
+    };
+    const delivered = await deliver(
+      "Celtic went through 3-1 on aggregate [[S1]]. "
+      + "Napoli finished second on 76 points. "
+      + "Their pressing structure makes them hard to play through.",
+      bundle
+    );
+    expect(delivered.answer).not.toContain("Napoli finished second");
+    expect(delivered.answer).toContain("Their pressing structure");
+  });
+});
+
+describe("why the model favours a side", () => {
+  it("gives the reason the forecast is built on, not a bare percentage", async () => {
+    const { composeMatchResponse } = await import("./response-composer");
+    const { planResponse } = await import("./response-plan");
+    const grounding = buildGrounding(fixture("Liverpool", "Man City", {
+      homeElo: 1900, awayElo: 1990, pHome: 0.275, pDraw: 0.277, pAway: 0.449,
+    }));
+    const question = "Why do you favour City?";
+    const plan = planResponse(question, { groundingKind: "match", hasHistory: true });
+    expect(plan.mode).toBe("match-follow-up");
+    const answer = composeMatchResponse(question, { ...grounding, homeFieldAdvantage: true }, plan);
+    expect(answer).toMatch(/^I favour Man City because the reviewed strength ratings put Man City clearly ahead of Liverpool, enough to outweigh Liverpool’s home-field adjustment\./);
+    expect(answer).toContain("44.9%");
+    expect(answer).not.toMatch(/\b1990\b|\b1900\b|lineup|team news/i);
   });
 });

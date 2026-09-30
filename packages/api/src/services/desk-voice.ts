@@ -526,7 +526,11 @@ export async function writeDeskProse(
         system: DESK_SYSTEM,
         messages: convo,
       },
-      { timeout: 45_000, signal }
+      // The SDK timeout alone does not bound an OpenRouter call; the signal does.
+      {
+        timeout: 45_000,
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
+      }
     );
     const text = msg.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")

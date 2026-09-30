@@ -116,7 +116,12 @@ import {
   stripDeskBoardRecitals,
   writeDeskProse,
 } from "./desk-voice";
-import { validateAnalystDraft, salvageCitedClaimProse, containsAnalystDraftSyntax } from "./analyst-draft";
+import {
+  validateAnalystDraft,
+  salvageCitedClaimProse,
+  containsAnalystDraftSyntax,
+  describeRejectedDraftShape,
+} from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
   asksTacticalTake,
@@ -562,15 +567,24 @@ export function getInferenceStatus(): InferenceStatus {
 // with room to reason, and a retry. The old ceilings were built around one
 // lookup and one short reply, which capped how good an answer could get.
 const MAX_TOKENS = 8_192;
-const REQUEST_TIMEOUT_MS = 120_000;
+// Generation budgets sit inside the route's shared 90-second request deadline,
+// leaving room for the planned searches before generation and for delivery
+// after it. At 120s/150s they could never fire: the route aborted first, so a
+// slow turn plus a leak recovery became a 504 even on a priced match whose
+// grounded answer the server already owned.
+const REQUEST_TIMEOUT_MS = 60_000;
 export const MAX_CONTINUATIONS = 2;
-const OVERALL_DEADLINE_MS = 150_000;
+const OVERALL_DEADLINE_MS = 60_000;
 // Most of one match answer's retrieval: the planned queries below, plus the
 // synthesis turn and a retry.
 const MAX_EVIDENCE_QUERIES = 6;
 const MAX_EVIDENCE_RESULTS = 30;
 
-const CURRENT_NEWS_QUESTION = /\b(latest|current|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
+const CURRENT_NEWS_QUESTION = /\b(latest|current|currently|right now|at the moment|these days|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
+// A question about a result -- who won, who went through -- is a question
+// about the outside world. Production answered "Who went through in Celtic's
+// qualifier on aggregate?" with "Celtic advanced" and no search at all.
+const RESULT_QUESTION = /\b(?:who (?:won|went through|qualified|progressed|advanced|was (?:eliminated|knocked out))|went through|go(?:es)? through|on aggregate|aggregate (?:score|win)|final score|result (?:of|in|from)|who (?:beat|lost to|drew with)|(?:won|win|wins|winning) (?:serie a|la ?liga|the bundesliga|bundesliga|ligue 1|the eredivisie|the champions league|the europa league|the fa cup))\b/i;
 const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it))\b/i;
 const STATS_QUESTION = /\b(stats?|statistics|statistically|xg|assists?|appearances?)\b/i;
 // `unknown` and `unconfirmed` used to match as bare words, which handed any
@@ -611,6 +625,29 @@ const TEAM_NEWS_ABSTENTION_UNAVAILABLE =
   "No verified, dated team-news update was established, because verification was unavailable.";
 const CURRENT_CLAIM_ABSTENTION =
   "No verified current source in this conversation supports that claim.";
+const RESULT_CLAIM_ABSTENTION =
+  "I couldn’t verify that result from a dated source, so I won’t state it.";
+// A sentence that states how a match, tie or season turned out.
+const RESULT_CLAIM = new RegExp([
+  /\b(?:won|wins|clinched|lifted|claimed|retained)\b[^.!?\n]{0,50}\b(?:title|league|cup|trophy|championship|scudetto|final|double|treble|shield)\b/.source,
+  /\b(?:went through|progressed|advanced|qualified for|were eliminated|was eliminated|knocked out|crashed out|go through|goes through)\b/.source,
+  /\bon aggregate\b/.source,
+  /\b\d{1,3} points? (?:clear|ahead|behind)\b/.source,
+  /\b(?:finished|ended|finishing)\b[^.!?\n]{0,40}\b(?:\d{1,3} points|first|second|third|top|bottom|champions?|runners?-up)\b/.source,
+  /\b(?:beat|beaten|defeated|thrashed|lost|drew|won)\b[^.!?\n]{0,40}\b\d{1,2}\s?[-–]\s?\d{1,2}\b/.source,
+].join("|"), "i");
+const ODDS_CLAIM_ABSTENTION =
+  "I couldn’t verify current prices from a dated source, so I won’t quote them.";
+// A sentence quoting a price. Wording that itself introduces a price, or a
+// decimal/fractional figure in a sentence about odds. "2.5 goals" alone is not
+// one, and neither is "the odds are hard to read".
+const ODDS_PRICE_WORDING =
+  /\b(?:priced at|odds of|odds (?:at|are|were) (?:around |about |roughly )?\d|quoted at|(?:trading|offered|available) at \d|(?:bookmakers?|bookies|sportsbooks?) (?:have|has|make|offer|price)\b[^.!?\n]{0,50}\d)/i;
+const ODDS_CONTEXT = /\b(?:odds|priced|prices?|bookmakers?|bookies|sportsbooks?|moneyline|to win outright)\b/i;
+const ODDS_FIGURE = /\b\d{1,2}\.\d{1,2}\b|(?<![\d/])\d{1,3}\/\d{1,3}(?![\d/])/;
+function quotesPrice(sentence: string): boolean {
+  return ODDS_PRICE_WORDING.test(sentence) || (ODDS_CONTEXT.test(sentence) && ODDS_FIGURE.test(sentence));
+}
 const SEASON_STATS_LINE =
   /\b(?:\d+\s*(?:goals?|assists?|appearances?|starts?|caps?)|\d+\s*mins?(?:utes)?|fotmob rating|\bxg\b)/i;
 
@@ -815,9 +852,11 @@ export function deterministicSearchQuery(
   const asksStats = asksStatisticalQuestion(question);
   if (!CURRENT_NEWS_QUESTION.test(question)
     && !AMBIGUOUS_CURRENT_QUESTION.test(question)
+    && !RESULT_QUESTION.test(question)
     && !containsCorrectionCue(question)
     && !asksStats) return null;
   const mandatoryExternal = /\b(?:latest|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i.test(question)
+    || RESULT_QUESTION.test(question)
     || containsCorrectionCue(question);
   const asksOwnedMatchFact = grounding?.kind === "match"
     && /\b(?:pundit(?:'s)?|model|1x2|win (?:chance|probability)|draw (?:chance|probability)|scorelines?|btts|over 2\.5|under 2\.5)\b/i.test(question);
@@ -2621,6 +2660,53 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
   });
 }
 
+/**
+ * Removes result statements that carry no citation from a general-tier answer
+ * that owed evidence. Verification only checks cited sentences, so "Inter won
+ * the title with 87 points" shipped with verification `unavailable` simply by
+ * citing nothing. A cited result keeps its marker and survives; when nothing
+ * readable is left, the reader gets the abstention instead of a fragment.
+ */
+export function stripUncitedResultClaims(answer: string): string {
+  let removed = false;
+  const revised = reviseAnswerSentences(answer, (sentence) => {
+    if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
+    if (ABSTENTION.test(sentence) || !RESULT_CLAIM.test(sentence)) return sentence;
+    removed = true;
+    return "";
+  });
+  if (!removed) return answer;
+  const cleaned = dropOrphanedSectionLabels(
+    revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim()
+  );
+  return hasMeaningfulProse(cleaned.replace(GENERAL_DISCLAIMER, ""))
+    ? `${cleaned}\n\n${RESULT_CLAIM_ABSTENTION}`
+    : RESULT_CLAIM_ABSTENTION;
+}
+
+/**
+ * Removes price statements that carry no citation from a general-tier answer
+ * that owed evidence. Pundit holds no odds for an ungrounded question, and a
+ * bookmaker figure with no source cannot have come from anywhere; it shipped
+ * beside a verification of `unavailable`. A cited price is left to the verifier.
+ */
+export function stripUncitedOddsClaims(answer: string): string {
+  let removed = false;
+  const revised = reviseAnswerSentences(answer, (sentence) => {
+    if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
+    if (ABSTENTION.test(sentence) || !quotesPrice(sentence)) return sentence;
+    removed = true;
+    return "";
+  });
+  if (!removed) return answer;
+  const cleaned = dropOrphanedSectionLabels(
+    revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim()
+  );
+  return hasMeaningfulProse(cleaned.replace(GENERAL_DISCLAIMER, ""))
+    ? `${cleaned}\n\n${ODDS_CLAIM_ABSTENTION}`
+    : ODDS_CLAIM_ABSTENTION;
+}
+
 export function failClosedEmptyCurrentVerification(
   answer: string,
   verification: AskVerification,
@@ -3204,6 +3290,11 @@ const LEAGUE_TABLE_CUES = [
   "who's top",
   "whos top",
   "who is top",
+  "bottom of the table",
+  "bottom of the league",
+  "who's bottom",
+  "whos bottom",
+  "who is bottom",
 ];
 
 const COMPETITION_FOLLOW_UP_CUES = [
@@ -3230,13 +3321,41 @@ function hasLeagueTableCue(question: string): boolean {
   return LEAGUE_TABLE_CUES.some((cue) => normalized.includes(cue));
 }
 
+/**
+ * Competitions a reader can name that Pundit holds no table for. Checked only
+ * after the covered competitions resolve, so "Champions League qualifiers" and
+ * "a Champions League spot" still reach their own grounding.
+ */
+const UNCOVERED_COMPETITION =
+  /\b(?:(?:uefa\s+)?champions league|ucl|europa(?: conference)? league|conference league|la ?liga|serie a|bundesliga|ligue 1|eredivisie|primeira liga|scottish premiership|spl|mls|saudi pro league|efl championship|the championship|league one|league two|fa cup|carabao cup|efl cup|world cup|euros?|nations league)\b/i;
+
+function uncoveredCompetitionName(question: string): string | null {
+  if (resolveCompetitionQuestion(question)) return null;
+  return UNCOVERED_COMPETITION.exec(question)?.[0].trim() ?? null;
+}
+
+/**
+ * A table asked for by name in a competition Pundit has no standings for. The
+ * "league table" cue inside "Champions League table" used to fall back to the
+ * Premier League and print its standings as the answer.
+ */
+export function uncoveredTableResponse(question: string, grounding: AskGrounding): string | null {
+  if (grounding !== null || !/\b(?:table|standings)\b/i.test(question)) return null;
+  const named = uncoveredCompetitionName(question);
+  if (!named) return null;
+  return `I don’t hold ${/^the\b/i.test(named) ? named : `the ${named}`} standings, so I can’t show that table. `
+    + "The Premier League is the only league table in my data; ask for the current table to see it.";
+}
+
 export function resolveCompetitionContext(
   question: string,
   history: ConversationTurn[]
 ): string | undefined {
   const explicitCompetitionId = resolveCompetitionQuestion(question);
   if (explicitCompetitionId) return explicitCompetitionId;
-  if (!hasCompetitionFollowUpCue(question)) return undefined;
+  // Naming another competition moves off the one in view: "What about the
+  // Champions League table?" is not a follow-up on the Premier League table.
+  if (!hasCompetitionFollowUpCue(question) || uncoveredCompetitionName(question)) return undefined;
 
   const historyCompetitionId = history
     .filter(({ role }) => role === "user")
@@ -3443,6 +3562,20 @@ function mentionedTeamPositions(
 ): Map<string, number> {
   const normalizedQuestion = normalizeTeamText(question);
   const teamPositions = new Map<string, number>();
+  const termsByLength = teamSearchTerms(fixtures);
+
+  for (const [term, team] of termsByLength) {
+    const position = normalizedQuestion.indexOf(term);
+    if (position === -1) continue;
+    const previous = teamPositions.get(team);
+    if (previous === undefined || position < previous) teamPositions.set(team, position);
+  }
+
+  return teamPositions;
+}
+
+/** Every spelling that names a team -- its name, canonical form and aliases -- longest first. */
+function teamSearchTerms(fixtures: TeamFixture[]): Array<[string, string]> {
   const teams = new Set<string>();
 
   for (const fixture of fixtures) {
@@ -3463,18 +3596,61 @@ function mentionedTeamPositions(
     }
   }
 
-  const termsByLength = [...searchTerms.entries()].sort(
+  return [...searchTerms.entries()].sort(
     ([termA], [termB]) => termB.length - termA.length
   );
+}
 
-  for (const [term, team] of termsByLength) {
-    const position = normalizedQuestion.indexOf(term);
-    if (position === -1) continue;
-    const previous = teamPositions.get(team);
-    if (previous === undefined || position < previous) teamPositions.set(team, position);
+/** Edit distance counting a swap of two neighbouring letters as one edit. */
+function typoDistance(a: string, b: string): number {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        rows[i][j] = Math.min(rows[i][j], rows[i - 2][j - 2] + 1);
+      }
+    }
   }
+  return rows[a.length][b.length];
+}
 
-  return teamPositions;
+// Real words one edit from a club name. "Arsenal leads the league" must not
+// become Arsenal v Leeds.
+const TYPO_STOPWORDS = new Set([
+  "leads", "lead", "needs", "reads", "feeds", "seeds", "weeds", "deeds",
+  "fulls", "hills", "hulls", "villas", "chelsea's", "evening", "every", "event",
+]);
+
+/**
+ * Teams a question names with a typo ("arsnal", "leds", "man citty"). Words
+ * are compared against every spelling of a team, whole terms at a time, and
+ * must share the term's first letter; the allowance is one edit, or two for a
+ * term of eight or more letters.
+ */
+function typoTeamPositions(question: string, fixtures: TeamFixture[]): Map<string, number> {
+  const normalized = normalizeTeamText(question);
+  const words = [...normalized.matchAll(/[\p{L}\p{N}'’]+/gu)]
+    .map((match) => ({ text: match[0], index: match.index ?? 0 }));
+  const found = new Map<string, number>();
+  for (const [term, team] of teamSearchTerms(fixtures)) {
+    const termWords = term.split(/\s+/);
+    if (term.replace(/\s+/g, "").length < 5) continue;
+    const allowance = term.length >= 8 ? 2 : 1;
+    for (let start = 0; start + termWords.length <= words.length; start += 1) {
+      const window = words.slice(start, start + termWords.length);
+      const candidate = window.map((word) => word.text).join(" ");
+      if (candidate === term || candidate[0] !== term[0]) continue;
+      if (candidate.replace(/\s+/g, "").length < 4
+        || window.some((word) => TYPO_STOPWORDS.has(word.text))) continue;
+      if (typoDistance(candidate, term) > allowance) continue;
+      const previous = found.get(team);
+      if (previous === undefined || window[0].index < previous) found.set(team, window[0].index);
+    }
+  }
+  return found;
 }
 
 // Error codes for the two ways team resolution fails. The frontend collapses
@@ -3533,6 +3709,14 @@ export function resolveTeams(question: string, fixtures: TeamFixture[]): [string
   }
 
   if (orderedTeams.length < 2) {
+    // Typos are a fallback only, and only when they complete one real fixture:
+    // a near-miss that names a third club or no fixture is ignored.
+    const merged = new Map(typoTeamPositions(question, fixtures));
+    for (const [team, position] of mentionedTeamPositions(question, fixtures)) merged.set(team, position);
+    const typoTeams = [...merged.entries()].sort(([, a], [, b]) => a - b).map(([team]) => team);
+    if (typoTeams.length === 2 && findFixture(typoTeams[0], typoTeams[1], fixtures)) {
+      return [typoTeams[0], typoTeams[1]];
+    }
     throw new AppError(
       400,
       "Could not identify two teams in your question. Try naming both teams, e.g. 'Arsenal vs Liverpool'.",
@@ -3848,6 +4032,27 @@ export function seasonOrCompetitionGrounding(
   return season ?? competition;
 }
 
+/**
+ * The matchup the most recent user turn named, the same pair the web UI would
+ * have sent back as teamContext. Later turns about a table or another topic do
+ * not clear it, exactly as they do not in the UI.
+ */
+export function teamsFromHistory(
+  history: ConversationTurn[],
+  fixtures: TeamFixture[]
+): TeamContext | undefined {
+  for (const turn of [...history].reverse()) {
+    if (turn.role !== "user") continue;
+    try {
+      const teams = resolveQuestionTeams(turn.content, fixtures);
+      if (teams && findFixture(teams[0], teams[1], fixtures)) return teams;
+    } catch {
+      // A turn that named too many clubs identified no single matchup.
+    }
+  }
+  return undefined;
+}
+
 export function resolveAskContext(
   question: string,
   history: ConversationTurn[],
@@ -3962,23 +4167,36 @@ export function resolveAskContext(
     }
   }
 
+  // A client that sends neither context -- any API caller other than the web
+  // UI -- still followed a match when its earlier turn named one. Without
+  // this, "What about over 2.5 goals?" after "Liverpool v Man City" lost the
+  // fixture and the general model invented form and injury claims.
+  const retainedTeams = teamContext
+    ?? (routing.fixtureContext ? undefined : teamsFromHistory(history, [...fixtures, ...activeFixtures]));
   if (
     !teams
     && !competitionId
     && !routing.fixtureContext
-    && teamContext
-    && (!leavesMatchContext(question, teamContext, [...fixtures, ...activeFixtures])
-      || unresolvedSwitchClub(question, teamContext) !== null)
+    && retainedTeams
+    && (!leavesMatchContext(question, retainedTeams, [...fixtures, ...activeFixtures])
+      || unresolvedSwitchClub(question, retainedTeams) !== null)
   ) {
-    const contextualFixture = findFixture(teamContext[0], teamContext[1], fixtures);
+    const contextualFixture = findFixture(retainedTeams[0], retainedTeams[1], fixtures);
     if (contextualFixture) return { tier: "match", fixture: contextualFixture };
-    const activeFixture = findFixture(teamContext[0], teamContext[1], activeFixtures);
+    const activeFixture = findFixture(retainedTeams[0], retainedTeams[1], activeFixtures);
     if (activeFixture) {
       return { tier: "model-unavailable", teams: [activeFixture.home, activeFixture.away] };
     }
   }
 
-  if (!teams && hasUnresolvedFixtureShape(question)) return { tier: "candidate" };
+  // Two known clubs that form no fixture Pundit holds are as unconfirmed as two
+  // unknown ones. They used to fall through to the general model, which wrote
+  // "I make the visitors a 41% win chance" and invented scorelines for
+  // Liverpool vs Fulham, a pairing outside every fixture window.
+  if (hasUnresolvedFixtureShape(question)
+    && (!teams || (!explicitFixture && recognizedMatches.length === 0))) {
+    return { tier: "candidate" };
+  }
 
   // A competition token with no retained fixture still reaches its table even
   // if the wording mentions an outcome (for example, "who wins the league?").
@@ -3989,8 +4207,16 @@ export function resolveAskContext(
   return { tier: "general" };
 }
 
-function todayPreamble(): string {
-  return `Today's date is ${new Date().toISOString().slice(0, 10)}. Your own knowledge of squads, `
+/**
+ * The date and the European season it falls in. The model's own sense of "the
+ * current season" is a year stale: Serie A answers called 2026-27 "2025-26".
+ * European seasons start in August.
+ */
+export function todayPreamble(now: Date = new Date()): string {
+  const season = currentFootballSeasonLabel(now).replace("/", "-");
+  return `Today's date is ${now.toISOString().slice(0, 10)}, in the ${season} European football season `
+    + `(August to May); "this season" and "the current season" mean ${season}, and the season before it is over. `
+    + "Your own knowledge of squads, "
     + "transfers, injuries, managers and league positions is out of date -- defer to the grounding "
     + "data and to web_search results, and judge whether a search result is current by comparing its "
     + "date to today's.";
@@ -5002,6 +5228,47 @@ const BRACKETED_TOOL_DIRECTIVE = new RegExp(
 );
 
 /**
+ * One line that is nothing but a search call in function syntax, e.g.
+ * `search_web("Liverpool vs Man City team news")`. A quoted argument is
+ * required, so prose such as "a search (for a striker)" never matches.
+ */
+const SEARCH_CALL_LINE = new RegExp(
+  `^[ \\t]*(?:${SEARCH_TOOL_NAME})[ \\t]*\\([ \\t]*(?:\\w+[ \\t]*=[ \\t]*)?["'][^\\n]*\\)[ \\t]*;?[ \\t]*$`,
+  "i"
+);
+
+/**
+ * The same call outside a fence. Only the unambiguous tool names qualify here,
+ * because a bare `search("x")` line can be legitimate code the user asked for.
+ */
+const BARE_SEARCH_CALL_LINE = new RegExp(
+  `^[ \\t]*(?:web_search|websearch|search_web|web-search|google_search|bing_search)`
+    + `[ \\t]*\\([ \\t]*(?:\\w+[ \\t]*=[ \\t]*)?["'][^\\n]*\\)[ \\t]*;?[ \\t]*$`,
+  "gim"
+);
+
+/** A fenced code block, tolerating a missing closing fence (a truncated leak). */
+const FENCED_BLOCK = /(^|\n)[ \t]*```[ \t]*([\w.:-]*)[ \t]*\n([\s\S]*?)(?:\n[ \t]*```[ \t]*(?=\n|$)|$)/g;
+
+/**
+ * The fourth member of the class: the pinned DeepSeek model writes its search
+ * request as a fenced block of function calls (```tool_call, then
+ * `search_web("...")`). A fence goes when its info string names a tool region,
+ * or when every line in it is a search call; any other fence is user-facing
+ * code and stays.
+ */
+function stripFencedToolCalls(answer: string): string {
+  return answer
+    .replace(FENCED_BLOCK, (block, lead: string, info: string, body: string) => {
+      const lines = body.split("\n").filter((line) => line.trim());
+      const toolFence = TOOL_REGION_TAGS.has(normalizeTagName(info || "x"))
+        || (lines.length > 0 && lines.every((line) => SEARCH_CALL_LINE.test(line)));
+      return toolFence ? lead : block;
+    })
+    .replace(BARE_SEARCH_CALL_LINE, "");
+}
+
+/**
  * A tool-invocation element name, written as its words.
  *
  * The vocabulary is spelled out in words rather than in one fixed spelling
@@ -5267,7 +5534,7 @@ interface ToolMarkupStrip {
 
 function stripToolCallMarkupDetailed(answer: string): ToolMarkupStrip {
   const stripped = stripEmbeddedToolJson(stripLeadingToolJson(
-    stripToolRegions(answer
+    stripToolRegions(stripFencedToolCalls(answer)
       .replace(CONTROL_TOKEN_FRAGMENT, "")
       .replace(BRACKETED_TOOL_DIRECTIVE, ""))
   ));
@@ -5367,6 +5634,10 @@ const LEAKED_QUERY_PATTERNS = [
   /<\s*(?:antml:)?parameter\s+name\s*=\s*"query"\s*>([\s\S]*?)(?:<\s*\/|$)/gi,
   /"(?:search_query|query)"\s*:\s*"((?:[^"\\]|\\.)*)"/gi,
   BRACKETED_TOOL_DIRECTIVE,
+  new RegExp(
+    `(?:^|[^\\w])(?:${SEARCH_TOOL_NAME})[ \\t]*\\([ \\t]*(?:\\w+[ \\t]*=[ \\t]*)?["']([^"'\\n]{3,256})["']`,
+    "gi"
+  ),
 ];
 
 const LEAKED_QUERY_ARRAY = /"(?:search_queries|queries)"\s*:\s*\[([\s\S]*?)(?:\]|$)/i;
@@ -5607,6 +5878,36 @@ export function nameMarkerLinks(answer: string, bundle?: EvidenceBundle): string
   return answer.replace(/\[(S\d+)\]\((https?:\/\/[^\s)]+)\)/gi, (match, id: string, url: string) => {
     const source = byId.get(id.toLocaleUpperCase());
     return source?.title ? `[${source.title.replace(/[\[\]]/g, "")}](${url})` : match;
+  });
+}
+
+const MARKDOWN_LINK = /\[[^\]\n]*\]\((https?:\/\/[^\s)]+)\)/gi;
+
+function comparableUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname.toLowerCase().replace(/^www\./, "")}`
+      + `${parsed.pathname.replace(/\/+$/, "")}${parsed.search}`;
+  } catch {
+    return url.trim().toLowerCase();
+  }
+}
+
+/**
+ * A link in an answer reads as a citation, so it may only point at a page this
+ * question's evidence bundle actually holds. Server-rendered citations always
+ * do. The model can also write a link itself, and production shipped invented
+ * form claims "sourced" to `[BBC Sport](https://www.bbc.com/sport), 12 Sep
+ * 2026` with no evidence behind them. The sentence goes with the link: keeping
+ * the claim and dropping only its fake source would still ship the invention.
+ */
+export function dropUnbackedCitations(answer: string, bundle?: EvidenceBundle): string {
+  const backed = new Set((bundle?.results ?? []).map((source) => comparableUrl(source.url)));
+  return reviseAnswerSentences(answer, (sentence) => {
+    for (const [, url] of sentence.matchAll(MARKDOWN_LINK)) {
+      if (!backed.has(comparableUrl(url))) return "";
+    }
+    return sentence;
   });
 }
 
@@ -6301,6 +6602,30 @@ async function recoverUndeliverableTurn(
 }
 
 /**
+ * The SDK's `timeout` option does not bound an OpenRouter call: with a 3s
+ * timeout, a long generation still completed after 45s, because the provider
+ * holds the connection open. Every generation budget in this file was
+ * therefore decorative, and slow turns ran into the route's 90s deadline as a
+ * 504. The deadline is enforced by aborting the request here, and reported as
+ * the timeout it is so the grounded match fallback can answer.
+ */
+export async function withInferenceDeadline<T>(
+  ms: number,
+  signal: AbortSignal | undefined,
+  run: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const deadline = AbortSignal.timeout(Math.max(1, ms));
+  try {
+    return await run(signal ? AbortSignal.any([signal, deadline]) : deadline);
+  } catch (error) {
+    if (deadline.aborted && !signal?.aborted) {
+      throw new AppError(504, "Analysis service timed out. Please try again.");
+    }
+    throw error;
+  }
+}
+
+/**
  * The turn taken when the model never stopped asking for tools.
  *
  * The loop ended holding a tool request it could not run -- the search cap
@@ -6322,7 +6647,8 @@ async function finalProseTurn(
   if (providerCallsLeft(bundle) < 1 || !reserveProviderCall(bundle)) return null;
   console.warn(JSON.stringify({ event: "tool_loop_exhausted_prose_retry" }));
   try {
-    return await trackedInference(() => client.messages.create(
+    const remainingMs = Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt));
+    return await trackedInference(() => withInferenceDeadline(remainingMs, signal, (bounded) => client.messages.create(
       analysisRequestParams(systemPrompt, [
         ...convo,
         {
@@ -6334,8 +6660,8 @@ async function finalProseTurn(
               + "request another tool.",
         },
       ], false),
-      { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
-    ), signal);
+      { timeout: remainingMs, signal: bounded }
+    )), signal);
   } catch {
     return null;
   }
@@ -6368,10 +6694,12 @@ export async function generateAnalysis(
         if (!reserveProviderCall(bundle)) {
           throw new AppError(504, "Analysis request exhausted its provider-call budget.");
         }
-        response = await trackedInference(() => client.messages.create(
-          analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
-          { timeout: Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt)), signal }
-        ), signal);
+        const remainingMs = Math.max(1, REQUEST_TIMEOUT_MS - (Date.now() - startedAt));
+        response = await trackedInference(() => withInferenceDeadline(remainingMs, signal, (bounded) =>
+          client.messages.create(
+            analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
+            { timeout: remainingMs, signal: bounded }
+          )), signal);
       } catch (error) {
         if (signal?.aborted || retried || !isRetryableStreamError(error)
           || Date.now() - startedAt >= OVERALL_DEADLINE_MS) {
@@ -6486,22 +6814,24 @@ export async function generateAnalysisStream(
         if (!reserveProviderCall(bundle)) {
           throw new AppError(504, "Analysis request exhausted its provider-call budget.");
         }
-        const stream = client.messages.stream(
-          analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
-          { timeout: REQUEST_TIMEOUT_MS, signal }
-        );
-        stream.on("text", (text) => {
-          if (!shouldContinue()) {
-            abort.abort();
-            return;
-          }
-          deltaSeen = true;
-          anyDeltaSeen = true;
-          // Retries are already gated on `anyDeltaSeen`, so nothing buffered
-          // here can be replayed by a second attempt and duplicated.
-          flusher.push(text);
-        });
-        response = await trackedInference(() => stream.finalMessage(), signal);
+        response = await trackedInference(() => withInferenceDeadline(REQUEST_TIMEOUT_MS, signal, (bounded) => {
+          const stream = client.messages.stream(
+            analysisRequestParams(systemPrompt, convo, toolsAllowed && !bundle?.queries.length),
+            { timeout: REQUEST_TIMEOUT_MS, signal: bounded }
+          );
+          stream.on("text", (text) => {
+            if (!shouldContinue()) {
+              abort.abort();
+              return;
+            }
+            deltaSeen = true;
+            anyDeltaSeen = true;
+            // Retries are already gated on `anyDeltaSeen`, so nothing buffered
+            // here can be replayed by a second attempt and duplicated.
+            flusher.push(text);
+          });
+          return stream.finalMessage();
+        }), signal);
       } catch (error) {
         if (!shouldContinue()) throw new AppError(499, "Client disconnected.");
         if (deltaSeen || anyDeltaSeen || retried || !isRetryableStreamError(error)) {
@@ -6546,9 +6876,26 @@ interface PreparedAsk {
   systemPrompt: string;
   messages: ConversationTurn[];
   tier: AnalysisTier;
-  client: Anthropic;
+  client: Pick<Anthropic, "messages">;
   candidateUnrecognized: boolean;
 }
+
+/** No inference credential is configured, so no model call can be attempted. */
+class InferenceUnconfiguredError extends AppError {
+  constructor() {
+    super(502, "Analysis service is temporarily unavailable.");
+  }
+}
+
+// Stands in for the answer client when no key is set. Deterministic paths --
+// closed grounded answers, capability notices, clarifications -- never touch
+// the client, so they still answer; the first model call fails with the same
+// 502 that preparation used to throw up front for every question.
+const unconfiguredInferenceClient: Pick<Anthropic, "messages"> = {
+  get messages(): Anthropic["messages"] {
+    throw new InferenceUnconfiguredError();
+  },
+};
 
 export function prepareAsk(
   question: string,
@@ -6652,14 +6999,15 @@ export function prepareAsk(
   }
 
   const inference = resolveInference();
-  if (!inference.apiKey) throw new AppError(502, "Analysis service is temporarily unavailable.");
 
   return {
     grounding,
     systemPrompt,
     messages: [...history, { role: "user", content: currentMessage }],
     tier: grounding?.kind === "fixture" ? "general" : grounding?.kind ?? "general",
-    client: new Anthropic({ apiKey: inference.apiKey, baseURL: inference.baseURL, maxRetries: 0 }),
+    client: inference.apiKey
+      ? new Anthropic({ apiKey: inference.apiKey, baseURL: inference.baseURL, maxRetries: 0 })
+      : unconfiguredInferenceClient,
     candidateUnrecognized: context.tier === "candidate",
   };
 }
@@ -6685,7 +7033,9 @@ export async function trackedInference<T>(
     // permanently pointing at a vendor that is fine. Abandoned attempts are
     // recorded nowhere rather than as a success, since nothing was learned
     // about the vendor either way.
-    if (isCancellation(error, signal)) throw error;
+    // An unset key is a configuration state /ready already reports as
+    // `configured: false`, not a vendor failure.
+    if (isCancellation(error, signal) || error instanceof InferenceUnconfiguredError) throw error;
     recordInferenceFailure(error instanceof Anthropic.APIError ? error.status ?? null : null);
     throw error;
   }
@@ -7445,6 +7795,49 @@ function renderGroundedMatchAnswer(grounding: Grounding): string {
   return sections.join("\n");
 }
 
+const RELEGATION_QUESTION =
+  /\brelegat\w*|\b(?:go|goes|going|drop|drops|dropping) down\b|\bstay(?:s|ing)? up\b|\bsurviv\w*|\bbottom (?:three|3)\b|\bdrop zone\b/i;
+
+/**
+ * "How likely is relegation for Leeds?" is routed to the season outlook, which
+ * used to answer it with the title race. The simulator counts bottom-three
+ * finishes in the same runs, so the question gets its own figures, led by any
+ * club it names.
+ */
+function renderRelegationOutlook(question: string, grounding: SeasonGrounding): string {
+  const { runs, remainingFixtures, relegationProbabilities } = grounding.seasonOutlook;
+  const byTeam = new Map(relegationProbabilities.map((row) => [row.team, row.probability]));
+  const teams = new Set([
+    ...grounding.standings.map((row) => row.team),
+    ...relegationProbabilities.map((row) => row.team),
+    ...grounding.seasonOutlook.titleProbabilities.map((row) => row.team),
+  ]);
+  const named = [...mentionedTeamPositions(
+    question,
+    [...teams].map((team) => ({ home: team, away: team }))
+  ).entries()]
+    .sort(([, a], [, b]) => a - b)
+    .map(([team]) => team);
+  const namedLines = named.map((team) => {
+    const probability = byTeam.get(team) ?? 0;
+    return probability > 0
+      ? `**${team}** finish in the bottom three in **${asPercent(probability)}** of runs.`
+      : `**${team}** finish in the bottom three in none of the ${runs.toLocaleString("en-US")} runs.`;
+  });
+  const likeliest = relegationProbabilities.slice(0, 5);
+  return [
+    "**Relegation outlook**",
+    ...(namedLines.length ? [namedLines.join("\n"), ""] : []),
+    likeliest.length
+      ? `Most likely to go down: ${likeliest.map((row) => `**${row.team} ${asPercent(row.probability)}**`).join(", ")}.`
+      : "No club finished in the bottom three often enough to rank.",
+    "",
+    "**Context**",
+    `These are ${runs.toLocaleString("en-US")} simulation results across ${remainingFixtures} `
+      + "remaining fixtures, counting bottom-three finishes, not guarantees.",
+  ].join("\n");
+}
+
 function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding): string {
   const title = [...grounding.seasonOutlook.titleProbabilities]
     .sort((a, b) => b.probability - a.probability)
@@ -7504,6 +7897,7 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
         + "This snapshot does not quantify the swing from any one result, injury or lineup change.",
     ].join("\n\n");
   }
+  if (RELEGATION_QUESTION.test(question)) return renderRelegationOutlook(question, grounding);
   return [
     "**Title race**",
     title.map((row, index) => `${index + 1}. **${row.team} ${asPercent(row.probability)}**`).join("\n"),
@@ -7585,6 +7979,25 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
       + "The points and goal differences are exact as supplied, but they do not "
       + "support a title-race ranking"
       + (played < 6 ? " at this stage of the season" : "") + ".";
+  }
+
+  // "Who's bottom?" was answered with the top five.
+  if (/\b(?:bottom|foot of the (?:table|league)|propping up)\b/i.test(question)) {
+    const last = rows.at(-1)!;
+    const bottomRows = rows.slice(-5).map((row) =>
+      `${row.position}. **${row.team}** — ${row.points} points from ${row.playedGames} `
+      + `${row.playedGames === 1 ? "match" : "matches"}, goal difference `
+      + `${row.goalDifference >= 0 ? "+" : ""}${row.goalDifference}.`
+    );
+    return [
+      `${last.team} are bottom with ${last.points} points from ${last.playedGames} `
+        + `${last.playedGames === 1 ? "match" : "matches"}. The current bottom five are:`,
+      // A list that starts at 16 cannot interrupt a paragraph in markdown.
+      "",
+      ...bottomRows,
+      "",
+      "That is the table as it stands; it does not imply a relegation probability.",
+    ].join("\n");
   }
 
   const leader = rows[0];
@@ -7788,6 +8201,11 @@ function matchFollowUpSettlesWithoutGeneration(question: string): boolean {
   if (/\b(?:which side|who)\b.{0,50}\b(?:stronger|strongest|better case|edge)\b|\bstronger\b.{0,20}\b(?:case|side)\b/i.test(question)) {
     return true;
   }
+  // The reason is the ratings and the venue, both server-owned; generating and
+  // verifying for 70s only to discard it for the composed reason helped no one.
+  if (/\bwhy\b[^?\n]{0,40}\b(?:favou?r|back|lean|prefer|like|rate|pick|fancy)\b|\bhow come\b|\bwhat makes you\b/i.test(question)) {
+    return true;
+  }
   return false;
 }
 
@@ -7886,6 +8304,36 @@ export function deterministicUngroundedAnalysis(
     "That compactness helps the first press because the forwards, midfield and back line are closer together. If the press is beaten, though, one pass in behind can turn into a footrace or a one-on-one with the goalkeeper.",
     "The approach therefore depends on coordinated pressing triggers, quick centre-backs and an aggressive sweeper-keeper. It raises the cost of a broken press; it does not guarantee either better defending or more goals conceded.",
   ].join("\n\n");
+}
+
+/**
+ * World Cup 2026 is over and Pundit's live pipeline for it is retired. The
+ * model treated "Who will win the 2026 World Cup?" as an upcoming tournament,
+ * and "England vs France at the World Cup" fell to the unconfirmed-matchup
+ * notice. Both get the state of the product instead. The frozen backtest is
+ * pointed to, not read: it stays disconnected from chat.
+ */
+export function worldCupRetiredResponse(
+  question: string,
+  grounding: AskGrounding,
+  now = new Date()
+): string | null {
+  if (grounding !== null || !/\bworld cup\b/i.test(question)) return null;
+  // Another edition (2022, 2030, a club or women's World Cup) is a different question.
+  const years = [...question.matchAll(/\b(?:19|20)\d{2}\b/g)].map(([year]) => year);
+  if (years.some((year) => year !== "2026")) return null;
+  if (/\b(?:club|women'?s|u-?\d{2}|under-?\d{2})\b/i.test(question)) return null;
+  const range = getCompetitionById("fifa.world")?.seasonDateRange;
+  const end = range ? /-(\d{4})(\d{2})(\d{2})$/.exec(range) : null;
+  const finished = end ? now > new Date(`${end[1]}-${end[2]}-${end[3]}T23:59:59Z`) : true;
+  return [
+    finished
+      ? "The 2026 World Cup has already been played; it finished in July 2026."
+      : "Pundit is not forecasting the 2026 World Cup.",
+    "My live World Cup forecasts are retired, so I don’t give World Cup probabilities or match prices.",
+    "How the model’s forecasts held up is in the frozen backtest at /evaluation/wc-2026.",
+    "For current matches I cover the Premier League and Champions League qualifiers.",
+  ].join(" ");
 }
 
 export function deterministicUngroundedEvidenceFollowUp(
@@ -8087,6 +8535,7 @@ export async function deliverAnswer(args: {
         event: "analyst_draft_rejected",
         reason: validatedDraft.reason,
         responseMode: mode,
+        shape: describeRejectedDraftShape(rawAnswer, bundle.results.map((source) => source.id)),
         reasonHistogram: { ...analystResponseMetrics.rejectReasons },
       }));
       const sourceIds = bundle.results.map((source) => source.id);
@@ -8204,11 +8653,15 @@ export async function deliverAnswer(args: {
       verification: checked.verification,
     };
   }
-  const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
-    checked.answer,
-    checked.verification,
-    evidenceRequired
-  );
+  const evidenceSafeAnswer = grounding === null && evidenceRequired
+    ? stripUncitedOddsClaims(stripUncitedResultClaims(
+      failClosedEmptyCurrentVerification(checked.answer, checked.verification, evidenceRequired)
+    ))
+    : failClosedEmptyCurrentVerification(
+      checked.answer,
+      checked.verification,
+      evidenceRequired
+    );
   // V2 match numbers come from validated server-rendered slots or the
   // deterministic composer. The legacy market parser cannot infer that trust
   // boundary: it mistakes fair odds for bookmaker quotes and complete mixed
@@ -8233,10 +8686,17 @@ export async function deliverAnswer(args: {
   // emphasis they emptied, which the label sweep does not look at.
   const settledAnswer = dropEmptyEmphasis(
     dropOrphanedSectionLabels(
-      dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, bundle)))
+      dropDanglingSectionOpeners(decimalisePrices(
+        dropUnbackedCitations(nameMarkerLinks(rendered.answer, bundle), bundle)
+      ))
     )
   );
-  const readable = hasMeaningfulProse(settledAnswer);
+  // The general-tier label is appended by the server, so it proves nothing
+  // about whether the model answered: a lone heading plus the label shipped as
+  // a whole answer to "Who's bottom?".
+  const readable = hasMeaningfulProse(
+    tier === "general" ? settledAnswer.replace(GENERAL_DISCLAIMER, "") : settledAnswer
+  );
   // The structural gate is scoped to the match tier on purpose. It asks for a
   // label or a percentage, and only match grounding actually supplies the
   // numbers that make a percentage mandatory -- a general-tier answer ("a
@@ -8248,16 +8708,20 @@ export async function deliverAnswer(args: {
     const completeAnswer = useV2
       ? settledAnswer
       : guaranteeMatchReadCompleteness(settledAnswer, tier, grounding, asksRead);
+    // Completeness may deterministically add a market comparison from the
+    // grounding. Request fidelity therefore gets the actual last word: an
+    // explicit model-only request must not receive a market section merely
+    // because the server can derive one.
+    const delivered = finalizeDeliveredText(
+      sanitizeRequestFidelity(completeAnswer, question, hasHistory),
+      grounding,
+      useV2
+    );
     return {
-      // Completeness may deterministically add a market comparison from the
-      // grounding. Request fidelity therefore gets the actual last word: an
-      // explicit model-only request must not receive a market section merely
-      // because the server can derive one.
-      answer: finalizeDeliveredText(
-        sanitizeRequestFidelity(completeAnswer, question, hasHistory),
-        grounding,
-        useV2
-      ),
+      // The general-tier label is added during generation, and every guard
+      // since then may have cut the sentence that carried it, so it is
+      // asserted once more on the text that actually ships.
+      answer: tier === "general" ? ensureGeneralDisclaimer(delivered) : delivered,
       citations: rendered.citations,
       verification: checked.verification,
     };
@@ -8277,29 +8741,8 @@ export async function deliverAnswer(args: {
       // unrecognisable one is the model never having written an answer at all.
       reason: readable ? "answer_not_shaped_like_an_answer" : "guard_chain_left_no_prose",
     }));
-    const modeFallback = useV2
-      ? composeMatchResponse(
-        question,
-        grounding,
-        planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
-      )
-      : renderGroundedMatchFallback(grounding);
-    const completeFallback = useV2
-      ? modeFallback
-      : guaranteeMatchReadCompleteness(
-        modeFallback,
-        tier,
-        grounding,
-        asksForMatchRead(question, hasHistory)
-      );
     return {
-      // The fallback answers from the grounding, so it owes the reader the
-      // divergence for exactly the reason a generated answer does.
-      answer: finalizeDeliveredText(
-        sanitizeRequestFidelity(completeFallback, question, hasHistory),
-        grounding,
-        useV2
-      ),
+      answer: groundedMatchFallback(question, grounding, tier, hasHistory, useV2),
       citations: [],
       verification: checked.verification,
     };
@@ -8322,6 +8765,35 @@ export async function deliverAnswer(args: {
     };
   }
   throw new AppError(502, "Analysis service returned an empty response.");
+}
+
+/**
+ * The match answer written from the grounding alone, for when the model's
+ * text cannot be used. It answers from the grounding, so it owes the reader
+ * the divergence for exactly the reason a generated answer does.
+ */
+function groundedMatchFallback(
+  question: string,
+  grounding: Grounding,
+  tier: AnalysisTier,
+  hasHistory: boolean,
+  useV2: boolean
+): string {
+  const modeFallback = useV2
+    ? composeMatchResponse(
+      question,
+      grounding,
+      planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
+    )
+    : renderGroundedMatchFallback(grounding);
+  const completeFallback = useV2
+    ? modeFallback
+    : guaranteeMatchReadCompleteness(modeFallback, tier, grounding, asksForMatchRead(question, hasHistory));
+  return finalizeDeliveredText(
+    sanitizeRequestFidelity(completeFallback, question, hasHistory),
+    grounding,
+    useV2
+  );
 }
 
 /** "2026-08-02" as "2 August 2026". Fixed English, no locale dependency. */
@@ -8550,7 +9022,8 @@ async function answerQuestionScoped(
   const grounding = withOptionalUserLine(prepared.grounding, userLine);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   try {
-    const evidenceFollowUp = deterministicUngroundedEvidenceFollowUp(question, history, grounding);
+    const evidenceFollowUp = worldCupRetiredResponse(question, grounding)
+      ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
       return {
         answer: evidenceFollowUp,
@@ -8558,7 +9031,8 @@ async function answerQuestionScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
-    const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding);
+    const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding)
+      ?? uncoveredTableResponse(question, grounding);
     if (deterministicAnalysis) {
       return {
         answer: deterministicAnalysis,
@@ -8764,7 +9238,8 @@ async function answerQuestionStreamScoped(
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   handlers.onGrounding(grounding);
   try {
-    const evidenceFollowUp = deterministicUngroundedEvidenceFollowUp(question, history, grounding);
+    const evidenceFollowUp = worldCupRetiredResponse(question, grounding)
+      ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(evidenceFollowUp);
       return {
@@ -8773,7 +9248,8 @@ async function answerQuestionStreamScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
-    const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding);
+    const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding)
+      ?? uncoveredTableResponse(question, grounding);
     if (deterministicAnalysis) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(deterministicAnalysis);
       return {
@@ -8846,7 +9322,8 @@ async function answerQuestionStreamScoped(
     // reach the browser, including transient SSE deltas.
     const holdForCoverageGuard = shouldHoldCoverageDeltas(grounding, candidateUnrecognized);
     const holdForRequestFidelity = shouldHoldRequestFidelity(question, history.length > 0);
-    const rawAnswer = ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity
+    const held = ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity;
+    const rawAnswer = held
       ? await generateOrDegradeToGrounding(grounding, handlers.signal, requestStartedAt, (generationSignal) =>
         generateAnalysis(
           client,
@@ -8886,7 +9363,7 @@ async function answerQuestionStreamScoped(
     });
     // The held delta and the done payload carry the same settled text.
     const settledAnswer = delivered.answer;
-    if ((ANALYST_RESPONSE_V2 || query || ambiguousFallback || holdForCoverageGuard || holdForRequestFidelity)
+    if (held
       && settledAnswer
       && (handlers.shouldContinue ?? (() => true))()) {
       handlers.onDelta(settledAnswer);

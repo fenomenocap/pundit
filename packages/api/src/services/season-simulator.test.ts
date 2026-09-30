@@ -261,6 +261,9 @@ describe("season simulator", () => {
     expect(titleSum).toBeGreaterThan(0.95);
     expect(titleSum).toBeLessThanOrEqual(1.01);
     expect(outlook!.titleProbabilities[0].team).toMatch(/Arsenal|Liverpool/);
+    // Exactly three clubs go down in every run.
+    const relegationSum = outlook!.relegationProbabilities.reduce((sum, row) => sum + row.probability, 0);
+    expect(relegationSum).toBeCloseTo(Math.min(3, standings.length), 2);
   });
 
   it("replays identical grounded season inputs deterministically by default", () => {

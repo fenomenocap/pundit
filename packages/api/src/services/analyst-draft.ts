@@ -188,19 +188,71 @@ function partViolatesProhibitions(part: AnalystDraftPart, factsById: Map<string,
   return false;
 }
 
-/** Strict JSON-only parse. Text outside the object is rejected, not repaired. */
+function stripFence(raw: string): string {
+  return raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The model's JSON object, wherever it sits. DeepSeek often wraps the draft in
+ * a sentence or a mid-text fence ("**Why I pr..." then the object); a strict
+ * parse turned each of those into an `invalid-json` rejection and a fallback.
+ * Only the container is located here. Every field, fact ID, source ID and
+ * numeric check still runs on what comes out, and the surrounding prose is
+ * dropped, never published.
+ */
+function extractDraftObject(raw: string): unknown {
+  const unfenced = stripFence(raw);
+  const direct = parseJson(unfenced);
+  if (direct !== undefined) return direct;
+  // The outermost braces from the first `{"` to the last `}`.
+  const start = unfenced.search(/\{\s*"/);
+  const end = unfenced.lastIndexOf("}");
+  return start >= 0 && end > start ? parseJson(unfenced.slice(start, end + 1)) : undefined;
+}
+
+/**
+ * What a rejected draft looked like, for the log: enough to tell prose from
+ * near-miss JSON, never enough to reconstruct an answer. Bounded, and it holds
+ * no credential -- only the model's own output shape.
+ */
+export function describeRejectedDraftShape(raw: string, sourceIds: readonly string[] = []): Record<string, unknown> {
+  const value = extractDraftObject(raw);
+  const shape: Record<string, unknown> = { length: raw.length };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    shape.startsWith = raw.trim().slice(0, 24).replace(/\s+/g, " ");
+    shape.hasBraces = raw.includes("{") && raw.includes("}");
+    return shape;
+  }
+  const record = value as Record<string, unknown>;
+  shape.keys = Object.keys(record).slice(0, 8);
+  const claims = Array.isArray(record.citedClaims) ? record.citedClaims : [];
+  const claimed = claims.flatMap((claim) => {
+    const ids = (claim as { sourceIds?: unknown } | null)?.sourceIds;
+    return Array.isArray(ids) ? ids : [];
+  }).map((id) => String(id).slice(0, 12)).slice(0, 8);
+  if (claimed.length) {
+    shape.citedSourceIds = claimed;
+    shape.knownSourceIds = sourceIds.slice(0, 8);
+  }
+  return shape;
+}
+
+/** JSON-only parse. Prose around the object is dropped, not published or repaired. */
 export function validateAnalystDraft(
   raw: string,
   grounding: Grounding,
   context: AnalystDraftValidationContext = {}
 ): AnalystDraftValidation {
-  const trimmed = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  let value: unknown;
-  try {
-    value = JSON.parse(trimmed);
-  } catch {
-    return { valid: false, reason: "invalid-json" };
-  }
+  const value = extractDraftObject(raw);
+  if (value === undefined) return { valid: false, reason: "invalid-json" };
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { valid: false, reason: "invalid-root" };
   }
@@ -295,13 +347,7 @@ export function salvageCitedClaimProse(
   raw: string,
   sourceIds: readonly string[] = []
 ): string | null {
-  const trimmed = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  let value: unknown;
-  try {
-    value = JSON.parse(trimmed);
-  } catch {
-    return null;
-  }
+  const value = extractDraftObject(raw);
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const claims = (value as { citedClaims?: unknown }).citedClaims;
   if (!Array.isArray(claims) || claims.length === 0) return null;

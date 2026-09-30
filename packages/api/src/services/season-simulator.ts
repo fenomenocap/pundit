@@ -26,6 +26,8 @@ export interface SeasonOutlook {
   runs: number;
   titleProbabilities: SeasonProbability[];
   topFourProbabilities: SeasonProbability[];
+  /** Share of runs finishing in the bottom three (Premier League relegation). */
+  relegationProbabilities: SeasonProbability[];
   remainingFixtures: number;
   updatedAt: string;
 }
@@ -141,6 +143,9 @@ function rankTeams(state: Map<string, TeamStandingState>): string[] {
     )
     .map((row) => row.team);
 }
+
+/** The only supported league table is the Premier League, which relegates three. */
+const RELEGATION_PLACES = 3;
 
 export const SEASON_OUTLOOK_UNAVAILABLE =
   "The season outlook is temporarily unavailable, so I cannot rank the title race from the current table alone.";
@@ -283,6 +288,7 @@ export function simulateSeasonOutlook(
 
   const titleCounts = new Map<string, number>();
   const topFourCounts = new Map<string, number>();
+  const relegationCounts = new Map<string, number>();
 
   for (let run = 0; run < runs; run += 1) {
     const state = cloneState(baseState);
@@ -301,6 +307,9 @@ export function simulateSeasonOutlook(
     for (const team of ranked.slice(0, 4)) {
       topFourCounts.set(team, (topFourCounts.get(team) ?? 0) + 1);
     }
+    for (const team of ranked.slice(-RELEGATION_PLACES)) {
+      relegationCounts.set(team, (relegationCounts.get(team) ?? 0) + 1);
+    }
   }
 
   const toProbabilities = (counts: Map<string, number>): SeasonProbability[] =>
@@ -314,6 +323,7 @@ export function simulateSeasonOutlook(
     runs,
     titleProbabilities: toProbabilities(titleCounts),
     topFourProbabilities: toProbabilities(topFourCounts),
+    relegationProbabilities: toProbabilities(relegationCounts),
     remainingFixtures: fixtures.length,
     updatedAt: new Date().toISOString(),
   };
