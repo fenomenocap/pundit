@@ -367,6 +367,36 @@ export function composeDeskTakeOutline(
   return [oneXTwo, wrinkle, football].filter(Boolean).join(" ");
 }
 
+/**
+ * "Why do you favour City?" answered from what the forecast is actually built
+ * on: the reviewed strength ratings and the home-field setting. It fell to the
+ * generic short answer, whose lineup caveat the team-news guard then swapped
+ * for an abstention, so the reader got a percentage and no reason. Ratings are
+ * described, not printed: raw ratings are not publishable fact slots.
+ */
+function composeFavouriteReason(
+  grounding: Grounding,
+  favourite: { label: string; p: number }
+): string {
+  const gap = Math.abs(grounding.homeElo - grounding.awayElo);
+  const stronger = grounding.homeElo >= grounding.awayElo ? grounding.home : grounding.away;
+  const weaker = stronger === grounding.home ? grounding.away : grounding.home;
+  if (favourite.label === "the draw" || gap < 15) {
+    return `I don’t strongly favour either side. The reviewed strength ratings have ${grounding.home} and `
+      + `${grounding.away} close together, so my 1X2 stays tight: ${grounding.home} ${pct(grounding.pHome)}, `
+      + `draw ${pct(grounding.pDraw)}, ${grounding.away} ${pct(grounding.pAway)}.`;
+  }
+  const degree = gap < 50 ? "slightly" : gap < 120 ? "clearly" : "well";
+  const venue = !grounding.homeFieldAdvantage
+    ? ""
+    : stronger === grounding.home
+      ? `, and ${grounding.home} also get the home-field adjustment`
+      : `, enough to outweigh ${grounding.home}’s home-field adjustment`;
+  return `I favour ${favourite.label} because the reviewed strength ratings put ${stronger} ${degree} `
+    + `ahead of ${weaker}${venue}. That makes ${favourite.label} ${pct(favourite.p)} in my 1X2. `
+    + "It is a view of team strength and venue, not of this week’s selection.";
+}
+
 export function composeMatchResponse(
   question: string,
   grounding: Grounding,
@@ -441,6 +471,9 @@ export function composeMatchResponse(
     }
     if (/\b(?:which side|who)\b.{0,50}\b(?:stronger|strongest|better case|edge)\b|\bstronger\b.{0,20}\b(?:case|side)\b/i.test(question)) {
       return `I have ${favourite.label} as the stronger case at ${pct(favourite.p)}. That is the direct matchup read; I can’t honestly decompose the edge into an exact contribution from each input.`;
+    }
+    if (/\bwhy\b[^?\n]{0,40}\b(?:favou?r|back|lean|prefer|like|rate|pick|fancy)\b|\bhow come\b|\bwhat makes you\b/i.test(question)) {
+      return composeFavouriteReason(grounding, favourite);
     }
     if (asksTacticalTake(question)) {
       return composeDeskTakeOutline(grounding, {

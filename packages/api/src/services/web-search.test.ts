@@ -333,14 +333,44 @@ describe("genuine emptiness versus infrastructure failure", () => {
     expect(cancelled).toBe(true);
   });
 
-  it("reports a reply that never searched as malformed, not empty", async () => {
-    fetchMock.mockResolvedValueOnce(httpOk({
-      choices: [{ message: { content: "Timber is back, from memory" } }],
-    }));
+  const neverSearched = () => httpOk({
+    choices: [{ message: { content: "Timber is back, from memory" } }],
+  });
+
+  it("reports a reply that never searched as malformed, not empty, after one retry", async () => {
+    fetchMock.mockResolvedValue(neverSearched());
     const outcome = await searchWeb("shape drift");
     expect(outcome.status).toBe("degraded");
     expect(outcome.reason).toBe("malformed_response");
     expect(outcome.results).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The retry is inside the provider: one failed search, not two.
+    expect(getWebSearchStatus().providers.openrouter.failures).toBe(1);
+  });
+
+  it("retries a reply that never searched, and counts the recovery as a success", async () => {
+    fetchMock
+      .mockResolvedValueOnce(neverSearched())
+      .mockResolvedValueOnce(openRouterBody([RESULT]));
+    const outcome = await withSearchQuestion(() => searchWeb("flaky first call"));
+    expect(outcome.status).toBe("ok");
+    expect(outcome.results).toHaveLength(1);
+    expect(outcome.attempts).toEqual([{ provider: "openrouter", outcome: "ok", reason: null, attempts: 1 }]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const health = getWebSearchStatus();
+    expect(health.providers.openrouter.failures).toBe(0);
+    expect(health.providers.openrouter.lastFailureReason).toBeNull();
+    expect(health.providers.openrouter.consecutiveFailedQuestions).toBe(0);
+    expect(health.degradedSearches).toBe(0);
+  });
+
+  it("does not retry a reply that never searched once the request is cancelled", async () => {
+    const controller = new AbortController();
+    fetchMock.mockImplementationOnce(async () => {
+      controller.abort();
+      return neverSearched();
+    });
+    await expect(searchWeb("cancelled", controller.signal)).rejects.toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

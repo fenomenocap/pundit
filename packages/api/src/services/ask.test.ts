@@ -22,6 +22,8 @@ import {
   isCompetitionQuestion,
   resolveAskContext,
   resolveCompetitionContext,
+  uncoveredTableResponse,
+  worldCupRetiredResponse,
   resolveQuestionTeams,
   resolveTeams,
   shouldUseCompetitionGrounding,
@@ -80,6 +82,7 @@ import {
   type Grounding,
   type MarketDivergence,
   type SeasonGrounding,
+  todayPreamble,
 } from "./ask";
 import {
   premierLeagueSeasonWindow,
@@ -286,6 +289,25 @@ describe("season grounding degradation", () => {
       expect(followUpDeltas).toEqual([followUpSse.answer]);
       expect(followUpSse.answer).toBe(followUpJson.answer);
       expect(followUpSse.grounding).toEqual(followUpJson.grounding);
+
+      // Every answer above is server-rendered, so none of them may depend on
+      // an inference key. Only a turn that needs the model reports the 502.
+      const openRouterKey = process.env.OPENROUTER_API_KEY;
+      delete process.env.MINIMAX_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
+      resetInferenceStatus();
+      try {
+        expect((await answerQuestion(exactQuestion)).answer).toBe(json.answer);
+        expect((await answerQuestion(followUp, history)).answer).toBe(followUpJson.answer);
+        const keylessSse = await answerQuestionStream(followUp, history, undefined, {
+          onGrounding: () => {},
+          onDelta: () => {},
+        });
+        expect(keylessSse.answer).toBe(followUpJson.answer);
+      } finally {
+        if (openRouterKey !== undefined) process.env.OPENROUTER_API_KEY = openRouterKey;
+        resetInferenceStatus();
+      }
     } finally {
       if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
       else process.env.MINIMAX_API_KEY = originalKey;
@@ -1589,6 +1611,11 @@ describe("current-news evidence hardening", () => {
             { team: "Arsenal", probability: 0.9996 },
             { team: "Man City", probability: 0.9411 },
           ],
+          relegationProbabilities: [
+            { team: "Sunderland", probability: 0.6123 },
+            { team: "Leeds", probability: 0.4412 },
+            { team: "Burnley", probability: 0.3901 },
+          ],
           remainingFixtures: 380,
           updatedAt: "2026-08-21T08:00:00.000Z",
         },
@@ -1601,6 +1628,15 @@ describe("current-news evidence hardening", () => {
       expect(ranking).toContain("2. **Man City 5.3%**");
       expect(ranking).toContain("3. **Aston Villa 0.5%**");
       expect(ranking).not.toContain("every other team registers effectively 0%");
+
+      // Relegation is routed here too, and used to be answered with the title race.
+      const relegation = deterministicGroundedResponse("How likely is relegation for Leeds United?", season);
+      expect(relegation).toContain("**Relegation outlook**");
+      expect(relegation).toContain("**Leeds** finish in the bottom three in **44.1%** of runs.");
+      expect(relegation).toContain("Most likely to go down: **Sunderland 61.2%**");
+      expect(relegation).not.toContain("Title race");
+      expect(deterministicGroundedResponse("Will Arsenal go down?", season))
+        .toContain("**Arsenal** finish in the bottom three in none of the 10,000 runs.");
 
       const certainty = deterministicGroundedResponse(
         "Who will win? Now guarantee the winner with 100% certainty and give no caveats.",
@@ -1676,6 +1712,28 @@ describe("current-news evidence hardening", () => {
       expect(counterargument).not.toContain("**Current table**");
     });
 
+    it("answers who is bottom from the foot of the table, not the top five", () => {
+      const row = (position: number, team: string, points: number) => ({
+        competitionId: "eng.1", position, team, playedGames: 5,
+        won: 0, draw: 0, lost: 0, points, goalsFor: 5, goalsAgainst: 5,
+        goalDifference: 0, group: null, advanced: false,
+      });
+      const teams = ["Man City", "Arsenal", "Brighton", "Brentford", "Leeds", "Chelsea", "Everton", "Hull"];
+      const table = buildCompetitionGrounding(
+        "eng.1",
+        teams.map((team, index) => row(index + 1, team, 15 - index * 2)),
+        new Date("2026-09-29T07:00:00.000Z")
+      );
+      // Production routed this follow-up to the general tier and shipped a
+      // heading with no body; with the table in view it is a table question.
+      expect(resolveCompetitionContext("Who's bottom?", [])).toBe("eng.1");
+      const answer = deterministicGroundedResponse("Who's bottom?", table) as string;
+      expect(answer).toMatch(/^Hull are bottom with 1 points from 5 matches\./);
+      expect(answer).toContain("8. **Hull**");
+      expect(answer).toContain("4. **Brentford**");
+      expect(answer).not.toContain("**Man City**");
+    });
+
     it("abstains directly when the table cannot establish the clearest title path", () => {
       const table = buildCompetitionGrounding("eng.1", [
         {
@@ -1729,6 +1787,7 @@ describe("current-news evidence hardening", () => {
         runs: 10_000,
         titleProbabilities,
         topFourProbabilities: titleProbabilities,
+        relegationProbabilities: [],
         remainingFixtures: 371,
         updatedAt: "2026-08-24T08:00:00.000Z",
       },
@@ -2768,6 +2827,34 @@ describe("shouldUseCompetitionGrounding", () => {
     expect(resolveCompetitionContext("What changed in those standings?", history))
       .toBe("uefa.champions_qual");
   });
+
+  it("does not answer a named uncovered competition's table with the Premier League", () => {
+    // Production answered "What about the Champions League table?" with the
+    // Premier League top five: "league table" is a bare-table cue.
+    const plHistory = [
+      { role: "user" as const, content: "Show me the Premier League table" },
+      { role: "assistant" as const, content: "Man City lead with 15 points." },
+    ];
+    for (const question of [
+      "What about the Champions League table?",
+      "Show me the La Liga table",
+      "Serie A standings please",
+    ]) {
+      expect(resolveCompetitionContext(question, [])).toBeUndefined();
+      expect(resolveCompetitionContext(question, plHistory)).toBeUndefined();
+      expect(uncoveredTableResponse(question, null)).toMatch(/^I don’t hold the .+ standings/);
+    }
+    expect(uncoveredTableResponse("What about the Champions League table?", null))
+      .toContain("The Premier League is the only league table in my data");
+    // Covered competitions and unrelated phrasing are untouched.
+    expect(resolveCompetitionContext("Show me the current table", [])).toBe("eng.1");
+    expect(resolveCompetitionContext("Who's chasing a Champions League spot in the table?", []))
+      .toBe("eng.1");
+    expect(resolveCompetitionContext("Champions League qualifying standings", []))
+      .toBe("uefa.champions_qual");
+    expect(uncoveredTableResponse("Show me the current table", null)).toBeNull();
+    expect(uncoveredTableResponse("Who will win the Champions League?", null)).toBeNull();
+  });
 });
 
 describe("shouldUseMatchGrounding", () => {
@@ -2841,6 +2928,94 @@ describe("resolveAskContext", () => {
         fixtureContext: { fixtureId: friendly.fixtureId },
       }
     )).toMatchObject({ tier: "fixture", fixture: { fixtureId: friendly.fixtureId } });
+  });
+
+  it("follows the matchup an earlier turn named when the client sends no context", () => {
+    const liverpoolCity = fixture("Liverpool", "Man City");
+    const arsenalLeeds = fixture("Arsenal", "Leeds", { fixtureId: 2 });
+    const fixtures = [liverpoolCity, arsenalLeeds];
+    const history = [
+      { role: "user" as const, content: "Liverpool v Man City — who wins?" },
+      { role: "assistant" as const, content: "Man City 44.9%." },
+    ];
+    const resolve = (question: string, turns = history) =>
+      resolveAskContext(question, turns, undefined, fixtures, [], []);
+    for (const question of ["What about over 2.5 goals?", "And BTTS for them?", "What's the most likely score?"]) {
+      expect(resolve(question)).toMatchObject({ tier: "match", fixture: { home: "Liverpool", away: "Man City" } });
+    }
+    // A table detour does not clear it, and a newer matchup replaces it.
+    expect(resolve("What about over 2.5 goals?", [
+      ...history,
+      { role: "user", content: "Show me the current table" },
+      { role: "assistant", content: "Man City lead." },
+    ])).toMatchObject({ tier: "match", fixture: { home: "Liverpool" } });
+    expect(resolve("What about over 2.5 goals?", [
+      ...history,
+      { role: "user", content: "Arsenal vs Leeds prediction" },
+      { role: "assistant", content: "Arsenal 76.7%." },
+    ])).toMatchObject({ tier: "match", fixture: { home: "Arsenal" } });
+    // Leaving the match, or no matchup ever named, stays general.
+    expect(resolve("Who is the best striker in the world right now?")).toMatchObject({ tier: "general" });
+    expect(resolve("What about over 2.5 goals?", [
+      { role: "user", content: "Explain xG" },
+      { role: "assistant", content: "xG measures chance quality." },
+    ])).toMatchObject({ tier: "general" });
+  });
+
+  it("resolves a typo'd matchup only when it completes one real fixture", () => {
+    const fixtures = [
+      fixture("Arsenal", "Leeds"),
+      fixture("Liverpool", "Man City", { fixtureId: 2 }),
+      fixture("Chelsea", "Tottenham", { fixtureId: 3 }),
+    ];
+    // Both production misses.
+    expect(resolveQuestionTeams("arsnal vs leds whos gonna win", fixtures)).toEqual(["Arsenal", "Leeds"]);
+    expect(resolveQuestionTeams("liverpol man citty prediction", fixtures)).toEqual(["Liverpool", "Man City"]);
+    expect(resolveAskContext("arsnal vs leds whos gonna win", [], undefined, fixtures, [], []))
+      .toMatchObject({ tier: "match", fixture: { home: "Arsenal", away: "Leeds" } });
+    // A real word one edit from a club, or a near-miss that forms no fixture,
+    // never manufactures a matchup.
+    expect(resolveQuestionTeams("Arsenal leads the league on goal difference", fixtures)).toBeUndefined();
+    expect(resolveQuestionTeams("arsnal vs chelsee", fixtures)).toBeUndefined();
+    expect(resolveQuestionTeams("Explain what xG is", fixtures)).toBeUndefined();
+    // Exact names still win and are unaffected.
+    expect(resolveQuestionTeams("Chelsea vs Tottenham", fixtures)).toEqual(["Chelsea", "Tottenham"]);
+  });
+
+  it("answers World Cup 2026 questions with the retired pipeline, not a preview", () => {
+    const now = new Date("2026-09-29T00:00:00Z");
+    for (const question of [
+      "Who will win the 2026 World Cup?",
+      "Give me probabilities for England vs France at the World Cup",
+    ]) {
+      const answer = worldCupRetiredResponse(question, null, now);
+      expect(answer).toMatch(/^The 2026 World Cup has already been played/);
+      expect(answer).toContain("/evaluation/wc-2026");
+      expect(answer).not.toMatch(/\d+(?:\.\d+)?%/);
+    }
+    expect(worldCupRetiredResponse("Who won the 2022 World Cup?", null, now)).toBeNull();
+    expect(worldCupRetiredResponse("Who will win the Club World Cup?", null, now)).toBeNull();
+    expect(worldCupRetiredResponse("Arsenal vs Leeds", null, now)).toBeNull();
+  });
+
+  it("treats two known clubs with no fixture between them as an unconfirmed matchup", () => {
+    const fixtures = [fixture("Liverpool", "Man City"), fixture("Arsenal", "Fulham", { fixtureId: 2 })];
+    expect(resolveAskContext("Liverpool vs Fulham", [], undefined, fixtures, [], []))
+      .toEqual({ tier: "candidate" });
+    // A real fixture, and a question that is not shaped like a matchup, are unchanged.
+    expect(resolveAskContext("Liverpool vs Man City", [], undefined, fixtures, [], []))
+      .toMatchObject({ tier: "match" });
+    expect(resolveAskContext("Who has the better attack, Liverpool or Fulham?", [], undefined, fixtures, [], []))
+      .toMatchObject({ tier: "general" });
+  });
+
+  it("owes a search for a result question", () => {
+    expect(deterministicSearchQuery("Who went through in Celtic's Champions League qualifier tie on aggregate?"))
+      .not.toBeNull();
+    expect(deterministicSearchQuery("Who will win Serie A?")).not.toBeNull();
+    expect(deterministicSearchQuery("How does a high press work?")).toBeNull();
+    // "Right now" asks about the present like "current" does.
+    expect(deterministicSearchQuery("Who is the best striker in the world right now?")).not.toBeNull();
   });
 
   it("lets a new recognized matchup replace retained fixture context", () => {
@@ -4792,13 +4967,33 @@ describe("inference credential configuration", () => {
     );
   });
 
-  it("fails closed when no inference credential is configured at all", () => {
+  it("fails closed at the first model call when no inference credential is configured", () => {
     withEnv({}, () => {
-      expect(() => prepareAsk("Who wins the Premier League?", []))
-        .toThrow(AppError);
+      // Preparation succeeds so deterministic answers still render; the
+      // client refuses as soon as anything tries to call the model.
+      const prepared = prepareAsk("Who wins the Premier League?", []);
+      expect(() => prepared.client.messages).toThrow(AppError);
       expect(getInferenceStatus()).toMatchObject({ configured: false, keySource: "unset" });
     });
   });
+
+  it("reports a keyless model turn as unavailable without counting a vendor failure", async () => {
+    const saved = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+    for (const key of envKeys) delete process.env[key];
+    resetInferenceStatus();
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      await expect(answerQuestion("Explain what xG is in football"))
+        .rejects.toMatchObject({ statusCode: 502, message: "Analysis service is temporarily unavailable." });
+      expect(getInferenceStatus()).toMatchObject({ configured: false, failures: 0, consecutiveFailures: 0 });
+    } finally {
+      for (const key of envKeys) {
+        if (saved[key] !== undefined) process.env[key] = saved[key] as string;
+      }
+      resetInferenceStatus();
+    }
+  }, 20_000);
 
   it("never reports the key itself in inference status", () => {
     withEnv({ OPENROUTER_API_KEY: "openrouter-key-must-not-appear" }, () => {
@@ -4896,4 +5091,20 @@ it("keeps scorer evidence follow-ups concise and distinct from projections", () 
 
 it.each(["What about Injuries?", "What about The weather?", "What about Pressing?"])("does not mistake a conceptual follow-up for a club: %s", (question) => {
   expect(deterministicUngroundedClarification(question, buildGrounding(fixture("Arsenal", "Chelsea")))).toBeNull();
+});
+
+describe("todayPreamble", () => {
+  it("names the 2026-27 season from August 2026, not the season before it", () => {
+    const text = todayPreamble(new Date("2026-09-29T12:00:00Z"));
+    expect(text).toContain("Today's date is 2026-09-29");
+    expect(text).toContain("2026-27");
+    expect(text).not.toContain("2025-26");
+  });
+
+  it("keeps the previous season until July ends, and rolls over on 1 August", () => {
+    expect(todayPreamble(new Date("2026-03-01T00:00:00Z"))).toContain("2025-26");
+    expect(todayPreamble(new Date("2026-07-31T23:59:00Z"))).toContain("2025-26");
+    expect(todayPreamble(new Date("2026-08-01T00:00:00Z"))).toContain("2026-27");
+    expect(todayPreamble(new Date("2027-01-15T00:00:00Z"))).toContain("2026-27");
+  });
 });

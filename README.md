@@ -49,18 +49,18 @@ packages/
 
 ## Quick Start
 
-Most env vars have safe local defaults (see `.env.example`). The API loads the
-gitignored repository-root `.env` for local development; exported shell values
-remain valid and Railway injects production values directly. Chat still needs a
-local `MINIMAX_API_KEY`.
+Most env vars have safe local defaults (see `.env.example`). Local development
+reads one gitignored repository-root `.env`: the API loads the whole file, and
+`packages/web/next.config.mjs` copies in only its `NEXT_PUBLIC_*` values, so no
+API secret enters the web process. Exported shell values, Vercel project env and
+any `packages/web/.env*` file win over the root file. Railway and Vercel inject
+production values directly.
 
 ```bash
-pnpm install
-
-export NEXT_PUBLIC_USE_MOCK=false
-export NEXT_PUBLIC_API_URL=http://localhost:3001
-export ALLOWED_ORIGINS=http://localhost:3000
-export MINIMAX_API_KEY=sk-cp-...  # required for /api/ask
+pnpm install --frozen-lockfile
+cp .env.example .env
+# In .env: set NEXT_PUBLIC_USE_MOCK=false to hit the local API, and paste your
+# own OPENROUTER_API_KEY (answers and search). Never commit it.
 
 # Terminal 1 — API
 cd packages/api && pnpm dev
@@ -73,7 +73,10 @@ cd packages/web && pnpm dev
 
 `NEXT_PUBLIC_USE_MOCK=true` (the default) uses small hardcoded fixtures for `/fixtures` — no API needed to browse the frontend. Set it to `false` to hit the real API.
 
-Chat requires `MINIMAX_API_KEY` in the API environment. It is configured in Railway production; local development must export its own key.
+Without `OPENROUTER_API_KEY` (or the `MINIMAX_API_KEY` answer fallback) the API
+still serves every server-rendered answer — priced match cards, tables, season
+outlooks, capability notices — and returns 502 only for turns that need the
+answer model. Search needs `OPENROUTER_API_KEY`. Production keys live in Railway.
 
 Local smoke checks (API must be running):
 
@@ -160,7 +163,7 @@ cd packages/web && vercel --prod
 
 **GitBook:** connect the repo `docs/` folder (GitHub sync), publish, then set `NEXT_PUBLIC_DOCS_URL` in Vercel to the public space URL.
 
-Required env vars for local dev are listed in `.env.example`. Never commit `MINIMAX_API_KEY`.
+Required env vars for local dev are listed in `.env.example`. Never commit `OPENROUTER_API_KEY` or `MINIMAX_API_KEY`.
 
 ## Backtesting note
 

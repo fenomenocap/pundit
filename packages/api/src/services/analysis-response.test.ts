@@ -9,6 +9,7 @@ import {
   dropEmptyEmphasis,
   attachEvidence,
   generateAnalysis,
+  withInferenceDeadline,
   renderEvidenceCitations,
   MAX_CONTINUATIONS,
   PROVIDER_CALL_BUDGET,
@@ -68,6 +69,15 @@ const BRACKETED_JSON_LEAK = '[[{"id":"google_search","params":{"query":"Arsenal 
 const BRACKETED_DIRECTIVE_LEAK =
   "[web_search:Celtic LASK Champions League playoff 2026 team news injuries]\n"
   + "[web_search:Celtic lineup news August 2026]";
+
+// Verbatim from production (2026-09-29, the pinned DeepSeek model): the whole
+// answer to "And BTTS for them?" was two fenced blocks of Python-style calls.
+// No tag, JSON key or bracket, so every stripper passed it to the user.
+const FENCED_CALL_LEAK = "```tool_call\n"
+  + 'search_web("Liverpool vs Manchester City team news injuries September 2026")\n'
+  + "```\n\n```tool_call\n"
+  + 'search_web("Liverpool vs Manchester City BTTS odds over under 2.5 goals")\n'
+  + "```";
 
 const PRODUCTION_SEARCH_QUERY_LEAK =
   "I can't answer that question.\n\n[[search_query:Premier League 2026-27 season start date fixtures]]";
@@ -1922,6 +1932,53 @@ describe("the bracketed directive leak", () => {
   });
 });
 
+describe("the fenced function-call leak", () => {
+  it("strips the production form and recovers its queries", () => {
+    expect(stripToolCallMarkup(FENCED_CALL_LEAK)).toBe("");
+    expect(extractLeakedSearchQueries(FENCED_CALL_LEAK)).toEqual([
+      "Liverpool vs Manchester City team news injuries September 2026",
+      "Liverpool vs Manchester City BTTS odds over under 2.5 goals",
+    ]);
+  });
+
+  it("strips an unlabelled fence or a bare call line riding along with an answer", () => {
+    expect(stripToolCallMarkup(
+      "```\nweb_search(query=\"Arsenal injuries\")\n```\n\n**Verdict**\nArsenal are favoured."
+    )).toBe("**Verdict**\nArsenal are favoured.");
+    expect(stripToolCallMarkup(
+      "search_web('Arsenal injuries')\n**Verdict**\nArsenal are favoured."
+    )).toBe("**Verdict**\nArsenal are favoured.");
+  });
+
+  it("leaves ordinary code fences and prose that mentions searching alone", () => {
+    for (const prose of [
+      "```python\ndef reverse(s):\n    return s[::-1]\n```",
+      "```\nsearch(\"x\")\nprint(1)\n```",
+      "I didn't search the web for this; it is general analysis.",
+      "A search (for the right striker) is the club's priority.",
+    ]) {
+      expect(stripToolCallMarkup(prose)).toBe(prose);
+    }
+  });
+
+  it("runs the leaked search and answers from the retry turn on the general tier", async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(message(FENCED_CALL_LEAK, "end_turn"))
+      .mockResolvedValueOnce(message(
+        "**Both teams to score**\nBoth sides have scored in most recent meetings.", "end_turn"
+      ));
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const bundle = { queries: [] as string[], results: [], providerCalls: 0 };
+    const answer = await generateAnalysis(client, "system", [], "general", undefined, bundle);
+    expect(answer).toContain("Both sides have scored");
+    expect(answer).not.toMatch(/tool_call|search_web|```/);
+    expect(searchWeb).toHaveBeenCalledTimes(1);
+    expect(searchWeb.mock.calls[0][0])
+      .toBe("Liverpool vs Manchester City team news injuries September 2026");
+    expect(create.mock.calls[1][0].tools).toBeUndefined();
+  });
+});
+
 describe("text-form tool call recovery", () => {
   it("runs the leaked searches and answers from the retry turn", async () => {
     const create = vi.fn()
@@ -2082,5 +2139,31 @@ describe("the bare <tool> element leak", () => {
     ]) {
       expect(stripToolCallMarkup(prose)).toBe(prose);
     }
+  });
+});
+
+describe("inference deadlines", () => {
+  // OpenRouter ignored the SDK's `timeout`: a 3s timeout still completed after
+  // 45s. This provider likewise ignores everything except its abort signal.
+  const hangsUntilAborted = (signal: AbortSignal) => new Promise<never>((_, reject) => {
+    signal.addEventListener("abort", () => reject(new Error("Request was aborted.")));
+  });
+
+  it("aborts a call that ignores its timeout and reports a 504", async () => {
+    const started = Date.now();
+    await expect(withInferenceDeadline(50, undefined, hangsUntilAborted))
+      .rejects.toMatchObject({ statusCode: 504, message: "Analysis service timed out. Please try again." });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("leaves a reader's own cancellation as a cancellation", async () => {
+    const reader = new AbortController();
+    const pending = withInferenceDeadline(60_000, reader.signal, hangsUntilAborted);
+    reader.abort();
+    await expect(pending).rejects.toThrow("Request was aborted.");
+  });
+
+  it("returns a call that finishes in time", async () => {
+    await expect(withInferenceDeadline(1_000, undefined, async () => "done")).resolves.toBe("done");
   });
 });

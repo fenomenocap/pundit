@@ -1694,8 +1694,13 @@ export function validateNoDraftLeak(answer) {
  * Deliberately narrow: only wording that asserts squad availability, not a
  * general mention of the word "news".
  */
-const TEAM_NEWS_CLAIM =
-  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock|miss(?:es|ed|ing)?|absence|absent)\b/i;
+const RETURN_TIMING_CLAIM =
+  /\bback in (?:about |around |roughly |just )?(?:\d+|an?|one|two|three|four|five|six|several|a few|a couple of) (?:days?|weeks?|months?)\b|\b(?:expected|set|due|likely|slated|scheduled|hoped|hoping|aiming|tipped) to (?:return|be back)\b|\bdue back\b|\breturn(?:s|ing)? (?:on|against|in \d+|to (?:action|training|the (?:squad|side|team|xi|lineup|line-up)))\b|\breturn dates?\b|\b(?:out|sidelined|absent|unavailable) (?:until|till|for (?:the (?:next |rest of )?|another |at least )?(?:\d+|an?|one|two|three|four|five|six|several|a few|a couple of) (?:days?|weeks?|months?|games?|matches?))\b/i;
+
+const TEAM_NEWS_CLAIM = new RegExp(
+  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock|miss(?:es|ed|ing)?|absence|absent)\b/.source + "|" + RETURN_TIMING_CLAIM.source,
+  "i"
+);
 
 /**
  * "Missing" and "absent" are the only two alternatives above that are not
@@ -1706,8 +1711,9 @@ const TEAM_NEWS_CLAIM =
 const NON_SQUAD_ABSENCE =
   /\b(?:miss(?:es|ed|ing)?|absent|absence)\b[^.!?\n]{0,40}\b(?:model|input|context|data|coverage|market|source|price|line|probabilit\w*|fixture|rating|evidence|citation)s?\b|\b(?:model|input|context|data|coverage|market|source|price|probabilit\w*|fixture|rating|evidence|citation)s?\b[^.!?\n]{0,40}\b(?:is|are|was|were)\s+(?:miss(?:ing)?|absent)\b/i;
 
-const SQUAD_AVAILABILITY_CLAIM =
-  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/i;
+const SQUAD_AVAILABILITY_CLAIM = new RegExp(
+  /\b(?:injur\w*|suspend\w*|suspension|doubtful|ruled out|sidelined|unavailable for selection|starting (?:xi|eleven)|lineup|line-up|returns? from|fit again|knock)\b/.source
+  + "|" + RETURN_TIMING_CLAIM.source, "i");
 
 /**
  * Pundit saying what it does *not* do. Its own closing sentence -- "this
