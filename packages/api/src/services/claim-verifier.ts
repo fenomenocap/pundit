@@ -6,13 +6,13 @@ import { RetrievedEvidencePage } from "./evidence-page-retrieval";
 // Measured on the pinned model with reasoning off: a check takes 3-11s, and an
 // occasional call stalls for 20s+ upstream. One stall no longer fails the
 // question: a retry usually lands in the fast half.
-const DEFAULT_TIMEOUT_MS = 12_000;
+const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_ATTEMPTS = 2;
 const MAX_CLAIMS = 24;
 const MAX_CLAIM_CHARS = 1_000;
 const MAX_PAGES = 6;
-const MAX_PAGE_CHARS = 16_000;
-const MAX_TOTAL_EVIDENCE_CHARS = 36_000;
+const MAX_PAGE_CHARS = 8_000;
+const MAX_TOTAL_EVIDENCE_CHARS = 24_000;
 const MAX_CURRENT_EVIDENCE_AGE_MS = 62 * 24 * 60 * 60 * 1_000;
 
 export interface ClaimVerificationResult {

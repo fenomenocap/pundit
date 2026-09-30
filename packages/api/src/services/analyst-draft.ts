@@ -22,6 +22,12 @@ const SOURCE_ID = /^S\d{1,3}$/;
 export interface AnalystDraftValidationContext {
   /** The evidence bundle's actual IDs for this request. */
   sourceIds?: readonly string[];
+  /**
+   * The server's own direct answer. When the model's direct answer fails a
+   * check, this stands in for it and the draft is kept if at least one other
+   * part survives; without it a bad direct answer rejects the draft.
+   */
+  serverDirectAnswer?: string;
 }
 
 function cleanText(value: unknown, max: number): string | null {
@@ -259,8 +265,9 @@ export function validateAnalystDraft(
   const record = value as Record<string, unknown>;
   const factsById = new Map(buildResponseFacts(grounding).facts.map((fact) => [fact.id, fact]));
   const factIds = new Set(factsById.keys());
-  const directAnswer = parsePart(record.directAnswer, factIds);
-  if (!directAnswer || directAnswer.factIds.length === 0) {
+  const parsedDirect = parsePart(record.directAnswer, factIds);
+  const directParsed = parsedDirect && parsedDirect.factIds.length > 0 ? parsedDirect : null;
+  if (!directParsed && !context.serverDirectAnswer) {
     return { valid: false, reason: "invalid-direct-answer" };
   }
   if (!Array.isArray(record.reasoning)) return { valid: false, reason: "invalid-reasoning" };
@@ -282,9 +289,24 @@ export function validateAnalystDraft(
   };
 
   const rendered = new Map<AnalystDraftPart, string>();
-  const directChecked = checkPart(directAnswer);
-  if (!directChecked.ok) return { valid: false, reason: directChecked.reason };
-  rendered.set(directAnswer, directChecked.text);
+  const directChecked = directParsed
+    ? checkPart(directParsed)
+    : { ok: false as const, reason: "invalid-direct-answer" };
+  let directAnswer: AnalystDraftPart;
+  let directReplaced = false;
+  if (directParsed && directChecked.ok) {
+    directAnswer = directParsed;
+    rendered.set(directAnswer, directChecked.text);
+  } else if (context.serverDirectAnswer) {
+    // The server states the direct answer; only model parts that pass every
+    // check are appended to it.
+    directAnswer = { text: context.serverDirectAnswer, factIds: [] };
+    rendered.set(directAnswer, context.serverDirectAnswer);
+    dropped.push(`direct-answer:${directChecked.ok ? "invalid" : directChecked.reason}`);
+    directReplaced = true;
+  } else {
+    return { valid: false, reason: directChecked.ok ? "invalid-direct-answer" : directChecked.reason };
+  }
 
   const reasoning: AnalystDraftPart[] = [];
   record.reasoning.slice(0, 4).forEach((candidate) => {
@@ -292,13 +314,24 @@ export function validateAnalystDraft(
     if (!part) { dropped.push("invalid-reasoning"); return; }
     const checked = checkPart(part);
     if (!checked.ok) { dropped.push(checked.reason); return; }
+    // Beside a server-written lead, a reasoning line must carry a server
+    // number itself. One without a fact slot is the model's own narrative.
+    if (directReplaced && !new RegExp(FACT_SLOT.source, "i").test(part.text)) {
+      dropped.push("ungrounded-reasoning");
+      return;
+    }
     rendered.set(part, checked.text);
     reasoning.push(part);
   });
   if (record.reasoning.length > 4) dropped.push("invalid-reasoning");
 
   let uncertainty: AnalystDraftPart | undefined;
-  if (record.uncertainty !== undefined && record.uncertainty !== null) {
+  if (directReplaced && record.uncertainty) {
+    // The uncertainty line is free narrative ("if X is rested, the draw
+    // climbs"), which the model keeps inventing. The server lead already
+    // states the lineup limit.
+    dropped.push("uncertainty-not-kept");
+  } else if (record.uncertainty !== undefined && record.uncertainty !== null) {
     const part = parsePart(record.uncertainty, factIds);
     const checked = part ? checkPart(part) : null;
     if (part && checked?.ok) {
@@ -328,6 +361,12 @@ export function validateAnalystDraft(
     citedClaims.push(claim);
   });
   if (record.citedClaims.length > 6) dropped.push("invalid-cited-claims");
+
+  // Nothing of the model's survived: that is the server answer alone, which the
+  // caller already has, not an accepted draft.
+  if (directReplaced && !reasoning.length && !citedClaims.length && !uncertainty) {
+    return { valid: false, reason: dropped[0].replace("direct-answer:", "") };
+  }
 
   const draft: AnalystDraft = {
     directAnswer,

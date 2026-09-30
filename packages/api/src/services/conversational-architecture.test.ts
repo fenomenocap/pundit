@@ -251,6 +251,49 @@ describe("V2 conversational architecture", () => {
       expect(result.answer).not.toMatch(/invented|71\.2|injuries|Nothing to add/);
     });
 
+    it("leads with the server's answer when the model's direct answer breaks a rule and other parts pass", () => {
+      const lead = "My short answer is Arsenal at 56.3%.";
+      const result = validateAnalystDraft(JSON.stringify({
+        directAnswer: { text: "Arsenal look 71.2% likely to win.", factIds: ["match.home"] },
+        reasoning: [{ text: "Goals lean {{total.over-2.5}}.", factIds: ["total.over-2.5"] }],
+        citedClaims: [],
+      }), grounding(), { serverDirectAnswer: lead });
+      expect(result.valid).toBe(true);
+      if (!result.valid) return;
+      expect(result.answer.startsWith(lead)).toBe(true);
+      expect(result.answer).toContain("Goals lean");
+      expect(result.answer).not.toContain("71.2");
+      expect(result.dropped).toEqual(["direct-answer:untraceable-number"]);
+    });
+
+    it("keeps only slot-grounded reasoning beside the server lead, and no free uncertainty", () => {
+      const result = validateAnalystDraft(JSON.stringify({
+        directAnswer: { text: "Arsenal look 71.2% likely to win.", factIds: ["match.home"] },
+        reasoning: [
+          { text: "Goals lean {{total.over-2.5}}.", factIds: ["total.over-2.5"] },
+          { text: "They simply look sharper at home.", factIds: [] },
+        ],
+        uncertainty: { text: "If the attackers are rested the draw climbs.", factIds: [] },
+        citedClaims: [],
+      }), grounding(), { serverDirectAnswer: "My short answer is Arsenal." });
+      expect(result.valid).toBe(true);
+      if (!result.valid) return;
+      expect(result.answer).toContain("Goals lean");
+      expect(result.answer).not.toMatch(/sharper|rested|climbs/);
+      expect(result.dropped).toEqual([
+        "direct-answer:untraceable-number", "ungrounded-reasoning", "uncertainty-not-kept",
+      ]);
+    });
+
+    it("is not an accepted draft when nothing of the model's survives", () => {
+      expect(validateAnalystDraft(JSON.stringify({
+        directAnswer: { text: "Arsenal look 71.2% likely to win.", factIds: ["match.home"] },
+        reasoning: [{ text: "Uses {{pHome}}.", factIds: ["pHome"] }],
+        citedClaims: [],
+      }), grounding(), { serverDirectAnswer: "My short answer is Arsenal." }))
+        .toEqual({ valid: false, reason: "untraceable-number" });
+    });
+
     it("still rejects the whole draft when the direct answer itself fails", () => {
       const result = validateAnalystDraft(JSON.stringify({
         directAnswer: { text: "I make Arsenal 71.2% the likelier outcome.", factIds: ["match.home"] },

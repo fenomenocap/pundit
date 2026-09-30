@@ -434,6 +434,13 @@ describe("current-news evidence hardening", () => {
       .some((query) => /\bstats\b/.test(query))).toBe(false);
   });
 
+  it("searches a question about how a club is doing this season instead of answering from memory", () => {
+    const now = new Date("2026-09-29T12:00:00Z");
+    expect(deterministicSearchQuery("How are Chelsea doing this season?", "", null, now))
+      .toBe("How are Chelsea doing this season? football latest 2026-27");
+    expect(deterministicSearchQuery("Explain the offside rule", "", null, now)).toBeNull();
+  });
+
   it("pins the base search query to the current season unless the question names a year", () => {
     const now = new Date("2026-09-29T12:00:00Z");
     expect(deterministicSearchQuery("Who will win Serie A?", "", null, now))
