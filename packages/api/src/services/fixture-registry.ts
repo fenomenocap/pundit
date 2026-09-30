@@ -120,6 +120,14 @@ let lastError: string | null = null;
 let storageBlocked = false;
 
 const ROUTING_PAST_HORIZON_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * A scheduled or in-play fixture the feed no longer reports, well past its
+ * kickoff, can never be confirmed as finished: ESPN's recent window moved on
+ * while the API was down or the result was missed. It would otherwise sit as
+ * "scheduled" for the whole past horizon, and a real later meeting of the same
+ * two clubs would match it too and resolve as ambiguous.
+ */
+const UNCONFIRMED_PAST_GRACE_MS = 12 * 60 * 60 * 1000;
 const ROUTING_FUTURE_HORIZON_MS = 400 * 24 * 60 * 60 * 1000;
 
 export function fixtureRegistryExpansionEnabled(): boolean {
@@ -394,8 +402,11 @@ export function refreshFixtureRegistryFromEspn(
   for (const [fixtureId, fixture] of registry) {
     const kickoff = new Date(fixture.kickoff).getTime();
     if (bundledIds.has(fixtureId)) continue;
+    const unconfirmedPast = Number.isFinite(kickoff)
+      && kickoff < now.getTime() - UNCONFIRMED_PAST_GRACE_MS
+      && (fixture.status === "scheduled" || fixture.status === "in-play");
     if (!observedIds.has(fixtureId)
-      && (!Number.isFinite(kickoff) || kickoff < oldest || kickoff > newest)) {
+      && (unconfirmedPast || !Number.isFinite(kickoff) || kickoff < oldest || kickoff > newest)) {
       registry.delete(fixtureId);
     }
   }

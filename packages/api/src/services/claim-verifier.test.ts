@@ -50,6 +50,29 @@ describe("one-call claim verifier", () => {
     });
   });
 
+  it("switches reasoning off on OpenRouter so the check fits its 12s budget, and only there", async () => {
+    // Measured live: 18-24s with reasoning on, ~5s off, against a 12s timeout.
+    const body = JSON.stringify({ decisions: [], summary: "ok" });
+    const previous = { key: process.env.OPENROUTER_API_KEY, mm: process.env.MINIMAX_API_KEY };
+    try {
+      process.env.OPENROUTER_API_KEY = "test-key";
+      const openRouter = clientReturning(body);
+      await verifyClaimsOnce(openRouter.client, claims, pages);
+      expect(openRouter.create.mock.calls[0][0]).toMatchObject({ thinking: { type: "disabled" } });
+
+      delete process.env.OPENROUTER_API_KEY;
+      process.env.MINIMAX_API_KEY = "test-key";
+      const miniMax = clientReturning(body);
+      await verifyClaimsOnce(miniMax.client, claims, pages);
+      expect(miniMax.create.mock.calls[0][0]).not.toHaveProperty("thinking");
+    } finally {
+      for (const [name, value] of [["OPENROUTER_API_KEY", previous.key], ["MINIMAX_API_KEY", previous.mm]] as const) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
   it("preserves conflict outcomes rather than silently selecting a source", async () => {
     const { client } = clientReturning(JSON.stringify({
       decisions: [
@@ -105,6 +128,37 @@ describe("one-call claim verifier", () => {
     expect(await verifyClaimsOnce(client, claims, pages)).toMatchObject({ status: "unavailable" });
     expect(create).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("claim_verifier_unavailable"));
+    warn.mockRestore();
+  });
+
+  it("retries once after a stall and accepts the answer that lands", async () => {
+    const stall = Object.assign(new Error("Request timed out"), { name: "TimeoutError" });
+    const body = JSON.stringify({
+      decisions: [{ claimId: "C1", outcome: "supported", evidenceIds: ["S1"] }], summary: "ok",
+    });
+    const create = vi.fn()
+      .mockRejectedValueOnce(stall)
+      .mockResolvedValueOnce({ content: [{ type: "text", text: body, citations: [] }], stop_reason: "end_turn" });
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const result = await verifyClaimsOnce(client, [claims[0]], pages);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(result.status).toBe("verified");
+    warn.mockRestore();
+  });
+
+  it("gives up after two stalls, and never retries a non-stall failure", async () => {
+    const stall = Object.assign(new Error("Request timed out"), { name: "TimeoutError" });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const stalled = vi.fn().mockRejectedValue(stall);
+    expect((await verifyClaimsOnce({ messages: { create: stalled } } as unknown as Pick<Anthropic, "messages">, claims, pages)).status)
+      .toBe("unavailable");
+    expect(stalled).toHaveBeenCalledTimes(2);
+    const throttled = vi.fn().mockRejectedValue(
+      new Anthropic.APIError(429, { error: { message: "slow down" } }, "rate limited", new Headers())
+    );
+    await verifyClaimsOnce({ messages: { create: throttled } } as unknown as Pick<Anthropic, "messages">, claims, pages);
+    expect(throttled).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   });
 

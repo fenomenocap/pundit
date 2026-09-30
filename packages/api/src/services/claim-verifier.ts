@@ -1,9 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { resolveInference } from "./inference-config";
+import { reasoningOff, resolveInference } from "./inference-config";
 import { ClaimDecision, VerifiableClaim } from "./response-correctness";
 import { RetrievedEvidencePage } from "./evidence-page-retrieval";
 
+// Measured on the pinned model with reasoning off: a check takes 3-11s, and an
+// occasional call stalls for 20s+ upstream. One stall no longer fails the
+// question: a retry usually lands in the fast half.
 const DEFAULT_TIMEOUT_MS = 12_000;
+const MAX_ATTEMPTS = 2;
 const MAX_CLAIMS = 24;
 const MAX_CLAIM_CHARS = 1_000;
 const MAX_PAGES = 6;
@@ -29,8 +33,8 @@ Use outcome "supported" only when at least one supplied evidence ID directly sup
 Use "conflict" when supplied evidence materially disagrees; do not choose a side silently.
 Use "unsupported" for absent, ambiguous, stale, unrelated, undated-current, or merely inferred support.
 Return JSON only in this exact shape:
-{"decisions":[{"claimId":"C1","outcome":"supported|unsupported|conflict","evidenceIds":["S1"],"explanation":"brief"}],"summary":"brief"}
-Never invent claim IDs or evidence IDs.`;
+{"decisions":[{"claimId":"C1","outcome":"supported|unsupported|conflict","evidenceIds":["S1"],"explanation":"at most 8 words"}],"summary":"at most 12 words"}
+Never invent claim IDs or evidence IDs. Keep every explanation and the summary very short: output length is the main cost.`;
 
 function messageText(response: Anthropic.Message): string {
   return response.content
@@ -154,7 +158,7 @@ function boundedInput(claims: readonly VerifiableClaim[], pages: readonly Retrie
 }
 
 /**
- * Makes exactly one provider call. There are no retries or tool loops here;
+ * Makes one provider call, retried once only when it stalls. There are no tool loops here;
  * the caller passes the API request's existing AbortSignal so the verifier is
  * bounded by, and cannot extend, the shared 90-second deadline.
  */
@@ -175,35 +179,50 @@ export async function verifyClaimsOnce(
   }
   if (signal?.aborted) throw signal.reason;
   const timeoutMs = Math.max(1, Math.min(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS));
-  const timeout = AbortSignal.timeout(timeoutMs);
-  const callSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  let response: Anthropic.Message;
-  try {
-    response = await client.messages.create({
-      model: options.model ?? resolveInference().model,
-      max_tokens: 1_200,
-      temperature: 0,
-      system: SYSTEM_PROMPT,
-      messages: [{
-        role: "user",
-        content: `Verify these claims against these pages: ${JSON.stringify(input)}`,
-      }],
-    }, { timeout: timeoutMs, signal: callSignal });
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    const status = error instanceof Anthropic.APIError ? error.status ?? null : null;
-    const timedOut = error instanceof Error
-      && (error.name === "TimeoutError" || /timeout|aborted/i.test(error.message));
-    console.warn(JSON.stringify({
-      event: "claim_verifier_unavailable",
-      reason: status === 429 ? "rate_limited" : status ? "http_error" : timedOut ? "timeout" : "provider_error",
-      status,
-      dedicatedKey: resolveInference().dedicatedKey,
-    }));
-    const decisions = fallbackDecisions(input.claims);
+  let response: Anthropic.Message | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS && !response; attempt += 1) {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const callSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    try {
+      response = await client.messages.create({
+        model: options.model ?? resolveInference().model,
+        max_tokens: 1_200,
+        temperature: 0,
+        ...reasoningOff(),
+        system: SYSTEM_PROMPT,
+        messages: [{
+          role: "user",
+          content: `Verify these claims against these pages: ${JSON.stringify(input)}`,
+        }],
+      }, { timeout: timeoutMs, signal: callSignal });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const status = error instanceof Anthropic.APIError ? error.status ?? null : null;
+      const timedOut = error instanceof Error
+        && (error.name === "TimeoutError" || /timeout|aborted/i.test(error.message));
+      // Only a stall is worth another try. A refusal, a throttle or a bad key
+      // answers the same way twice.
+      const willRetry = timedOut && !status && attempt < MAX_ATTEMPTS;
+      console.warn(JSON.stringify({
+        event: "claim_verifier_unavailable",
+        reason: status === 429 ? "rate_limited" : status ? "http_error" : timedOut ? "timeout" : "provider_error",
+        status,
+        attempt,
+        willRetry,
+        dedicatedKey: resolveInference().dedicatedKey,
+      }));
+      if (willRetry) continue;
+      return {
+        status: "unavailable",
+        decisions: fallbackDecisions(input.claims),
+        summary: "Claim verification was unavailable; no claim was accepted without verification.",
+      };
+    }
+  }
+  if (!response) {
     return {
       status: "unavailable",
-      decisions,
+      decisions: fallbackDecisions(input.claims),
       summary: "Claim verification was unavailable; no claim was accepted without verification.",
     };
   }
