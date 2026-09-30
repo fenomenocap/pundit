@@ -228,6 +228,46 @@ describe("V2 conversational architecture", () => {
     expect(facts.find((fact) => fact.id === "limit.player-pricing")?.provenance).toBe("abstention");
   });
 
+  describe("a draft with some invalid parts", () => {
+    const direct = { text: "I make {{match.home}} the likelier outcome.", factIds: ["match.home"] };
+
+    it("keeps the valid parts and drops each invalid one, never publishing it", () => {
+      const result = validateAnalystDraft(JSON.stringify({
+        directAnswer: direct,
+        reasoning: [
+          { text: "Goals lean {{total.over-2.5}}.", factIds: ["total.over-2.5"] },
+          { text: "Uses an invented fact {{pHome}}.", factIds: ["pHome"] },
+          { text: "Arsenal look stronger at 71.2% overall.", factIds: ["match.home"] },
+          { text: "They win because of injuries to the visitors.", factIds: ["match.home"] },
+        ],
+        uncertainty: { text: "Nothing to add.", factIds: ["not.a.fact"] },
+        citedClaims: [],
+      }), grounding());
+      expect(result.valid).toBe(true);
+      if (!result.valid) return;
+      expect(result.dropped).toEqual(["invalid-reasoning", "untraceable-number", "unbound-numeric-fact", "invalid-uncertainty"]);
+      expect(result.answer).toContain("likelier outcome");
+      expect(result.answer).toContain("Goals lean");
+      expect(result.answer).not.toMatch(/invented|71\.2|injuries|Nothing to add/);
+    });
+
+    it("still rejects the whole draft when the direct answer itself fails", () => {
+      const result = validateAnalystDraft(JSON.stringify({
+        directAnswer: { text: "I make Arsenal 71.2% the likelier outcome.", factIds: ["match.home"] },
+        reasoning: [{ text: "Goals lean {{total.over-2.5}}.", factIds: ["total.over-2.5"] }],
+        citedClaims: [],
+      }), grounding());
+      expect(result).toEqual({ valid: false, reason: "untraceable-number" });
+    });
+
+    it("still requires the reasoning and cited-claim envelopes to be arrays", () => {
+      expect(validateAnalystDraft(JSON.stringify({ directAnswer: direct, reasoning: "because", citedClaims: [] }), grounding()))
+        .toEqual({ valid: false, reason: "invalid-reasoning" });
+      expect(validateAnalystDraft(JSON.stringify({ directAnswer: direct, reasoning: [], citedClaims: "none" }), grounding()))
+        .toEqual({ valid: false, reason: "invalid-cited-claims" });
+    });
+  });
+
   describe("a draft wrapped in prose or a fence", () => {
     const draft = {
       directAnswer: { text: "I make {{match.home}} the likelier outcome.", factIds: ["match.home"] },
@@ -259,8 +299,9 @@ describe("V2 conversational architecture", () => {
         ...draft,
         citedClaims: [{ text: "Saka trained", factIds: [], sourceIds: ["S9"] }],
       });
-      expect(validateAnalystDraft(`Sure:\n${badSource}`, grounding(), { sourceIds: ["S1"] }))
-        .toEqual({ valid: false, reason: "invalid-source-ids" });
+      const salvaged = validateAnalystDraft(`Sure:\n${badSource}`, grounding(), { sourceIds: ["S1"] });
+      expect(salvaged).toMatchObject({ valid: true, dropped: ["invalid-source-ids"] });
+      if (salvaged.valid) expect(salvaged.answer).not.toContain("Saka");
     });
 
     it("still rejects prose with no object, and unbalanced JSON", () => {
@@ -318,7 +359,7 @@ describe("V2 conversational architecture", () => {
     expect(validateAnalystDraft(JSON.stringify({
       directAnswer: { text: "I make {{match.home}}.", factIds: ["match.home"] },
       reasoning: [], citedClaims: [{ text: "Claim", factIds: [], sourceIds: ["S2"] }],
-    }), grounding(), { sourceIds: ["S1"] })).toEqual({ valid: false, reason: "invalid-source-ids" });
+    }), grounding(), { sourceIds: ["S1"] })).toMatchObject({ valid: true, dropped: ["invalid-source-ids"] });
     expect(validateAnalystDraft(JSON.stringify({
       directAnswer: {
         text: "Kalshi is lower because Chelsea are missing players.",

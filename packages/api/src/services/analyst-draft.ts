@@ -14,7 +14,7 @@ export interface AnalystDraft {
 }
 
 export type AnalystDraftValidation =
-  | { valid: true; draft: AnalystDraft; answer: string }
+  | { valid: true; draft: AnalystDraft; answer: string; dropped: string[] }
   | { valid: false; reason: string };
 
 const SOURCE_ID = /^S\d{1,3}$/;
@@ -263,75 +263,92 @@ export function validateAnalystDraft(
   if (!directAnswer || directAnswer.factIds.length === 0) {
     return { valid: false, reason: "invalid-direct-answer" };
   }
-  if (!Array.isArray(record.reasoning) || record.reasoning.length > 4) {
-    return { valid: false, reason: "invalid-reasoning" };
-  }
-  const reasoning = record.reasoning.map((part) => parsePart(part, factIds));
-  if (reasoning.some((part) => part === null)) return { valid: false, reason: "invalid-reasoning" };
+  if (!Array.isArray(record.reasoning)) return { valid: false, reason: "invalid-reasoning" };
+  if (!Array.isArray(record.citedClaims)) return { valid: false, reason: "invalid-cited-claims" };
+
+  // Every part is checked on its own, with the same checks as before. A part
+  // that fails any of them is dropped and never published; the rest stand. The
+  // direct answer is the one part the reader cannot be given without, so its
+  // failure still rejects the draft. Rejecting the whole draft for one bad
+  // reasoning line sent a reader who had a perfectly good direct answer to the
+  // server fallback, and no model measured so far clears every part on every
+  // turn.
+  const dropped: string[] = [];
+  const checkPart = (part: AnalystDraftPart): { ok: true; text: string } | { ok: false; reason: string } => {
+    if (!partNumbersTrace(part, factsById)) return { ok: false, reason: "untraceable-number" };
+    if (partViolatesProhibitions(part, factsById)) return { ok: false, reason: "prohibited-claim" };
+    const bound = bindFactSlots(part, factsById, grounding);
+    return bound.valid ? { ok: true, text: bound.text } : { ok: false, reason: bound.reason };
+  };
+
+  const rendered = new Map<AnalystDraftPart, string>();
+  const directChecked = checkPart(directAnswer);
+  if (!directChecked.ok) return { valid: false, reason: directChecked.reason };
+  rendered.set(directAnswer, directChecked.text);
+
+  const reasoning: AnalystDraftPart[] = [];
+  record.reasoning.slice(0, 4).forEach((candidate) => {
+    const part = parsePart(candidate, factIds);
+    if (!part) { dropped.push("invalid-reasoning"); return; }
+    const checked = checkPart(part);
+    if (!checked.ok) { dropped.push(checked.reason); return; }
+    rendered.set(part, checked.text);
+    reasoning.push(part);
+  });
+  if (record.reasoning.length > 4) dropped.push("invalid-reasoning");
 
   let uncertainty: AnalystDraftPart | undefined;
   if (record.uncertainty !== undefined && record.uncertainty !== null) {
-    uncertainty = parsePart(record.uncertainty, factIds) ?? undefined;
-    if (!uncertainty) return { valid: false, reason: "invalid-uncertainty" };
+    const part = parsePart(record.uncertainty, factIds);
+    const checked = part ? checkPart(part) : null;
+    if (part && checked?.ok) {
+      uncertainty = part;
+      rendered.set(part, checked.text);
+    } else {
+      dropped.push(checked && !checked.ok ? checked.reason : "invalid-uncertainty");
+    }
   }
 
-  if (!Array.isArray(record.citedClaims) || record.citedClaims.length > 6) {
-    return { valid: false, reason: "invalid-cited-claims" };
-  }
   const citedClaims: AnalystDraft["citedClaims"] = [];
   const availableSourceIds = context.sourceIds ? new Set(context.sourceIds) : null;
-  for (const candidate of record.citedClaims) {
+  record.citedClaims.slice(0, 6).forEach((candidate) => {
     const part = parsePart(candidate, factIds);
-    if (!part || !candidate || typeof candidate !== "object") {
-      return { valid: false, reason: "invalid-cited-claim" };
-    }
+    if (!part || !candidate || typeof candidate !== "object") { dropped.push("invalid-cited-claim"); return; }
     const sourceIds = (candidate as Record<string, unknown>).sourceIds;
     if (!Array.isArray(sourceIds) || sourceIds.length === 0 || sourceIds.length > 3
       || sourceIds.some((id) => typeof id !== "string" || !SOURCE_ID.test(id)
         || (availableSourceIds !== null && !availableSourceIds.has(id)))) {
-      return { valid: false, reason: "invalid-source-ids" };
+      dropped.push("invalid-source-ids");
+      return;
     }
-    citedClaims.push({ ...part, sourceIds: sourceIds as string[] });
-  }
+    const checked = checkPart(part);
+    if (!checked.ok) { dropped.push(checked.reason); return; }
+    const claim = { ...part, sourceIds: sourceIds as string[] };
+    rendered.set(claim, checked.text);
+    citedClaims.push(claim);
+  });
+  if (record.citedClaims.length > 6) dropped.push("invalid-cited-claims");
 
   const draft: AnalystDraft = {
     directAnswer,
-    reasoning: reasoning as AnalystDraftPart[],
+    reasoning,
     ...(uncertainty ? { uncertainty } : {}),
     citedClaims,
   };
-  const allParts: AnalystDraftPart[] = [directAnswer, ...(reasoning as AnalystDraftPart[]), ...citedClaims];
-  if (uncertainty) allParts.push(uncertainty);
-  if (allParts.some((part) => !partNumbersTrace(part, factsById))) {
-    return { valid: false, reason: "untraceable-number" };
-  }
-  if (allParts.some((part) => partViolatesProhibitions(part, factsById))) {
-    return { valid: false, reason: "prohibited-claim" };
-  }
-  const boundParts = allParts.map((part) => bindFactSlots(part, factsById, grounding));
-  const invalidBoundPart = boundParts.find((part) => !part.valid);
-  if (invalidBoundPart && !invalidBoundPart.valid) {
-    return { valid: false, reason: invalidBoundPart.reason };
-  }
-  const renderedByPart = new Map(allParts.map((part, index) => {
-    const bound = boundParts[index];
-    if (!bound.valid) throw new Error("unreachable invalid fact slot");
-    return [part, bound.text] as const;
-  }));
   const markedClaims = citedClaims.map((claim) => {
     const markers = claim.sourceIds.map((id) => `[[${id}]]`).join(" ");
-    const text = renderedByPart.get(claim) ?? claim.text;
+    const text = rendered.get(claim) ?? claim.text;
     return /[.!?]$/.test(text)
       ? text.replace(/([.!?])$/, ` ${markers}$1`)
       : `${text} ${markers}.`;
   });
   const answer = [
-    renderedByPart.get(draft.directAnswer) ?? draft.directAnswer.text,
-    ...draft.reasoning.map((part) => renderedByPart.get(part) ?? part.text),
+    rendered.get(directAnswer),
+    ...reasoning.map((part) => rendered.get(part)),
     ...markedClaims,
-    draft.uncertainty ? renderedByPart.get(draft.uncertainty) ?? draft.uncertainty.text : undefined,
+    uncertainty ? rendered.get(uncertainty) : undefined,
   ].filter((part): part is string => Boolean(part)).join("\n\n");
-  return { valid: true, draft, answer };
+  return { valid: true, draft, answer, dropped };
 }
 
 /** Malformed draft envelopes and fact slots are never publishable prose. */

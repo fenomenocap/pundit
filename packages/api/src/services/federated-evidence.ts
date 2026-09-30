@@ -9,6 +9,8 @@ export const MAX_FEDERATED_QUERIES = 6;
 const CURRENT_NEWS_QUESTION =
   /\b(latest|current|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
 
+const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about)\b/i;
+
 const STATS_QUESTION = /\b(stats?|statistics|statistically|xg|assists?|appearances?)\b/i;
 
 const PLAYER_MARKET_QUESTION =
@@ -139,6 +141,12 @@ function newsFanOutQueries(
   } else if (isSchematicMatchTake(question)) {
     // Strength-and-shape take from the match card. Form/news packets collide
     // and append a conflict notice onto an otherwise complete briefing.
+  } else if (mode === "match-follow-up"
+    && !CURRENT_NEWS_QUESTION.test(question)
+    && !AMBIGUOUS_CURRENT_QUESTION.test(question)) {
+    // "Why is the draw so likely?" asks about the numbers already on the card.
+    // A team-news search for it fetched nothing that answered it, cost 20-40s,
+    // and left a "no verified team news" line on an answer that never asked.
   } else {
     planned.push(`${fixture} team news injuries suspensions predicted lineup`);
     if (!skipForm) {
