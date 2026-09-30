@@ -8,7 +8,7 @@ import {
 } from "../config/freshness-policy";
 import { getCompetitionById } from "../config/competitions";
 import { AppError } from "../middleware";
-import { resolveInference, type InferenceKeySource } from "./inference-config";
+import { reasoningOff, resolveInference, type InferenceKeySource } from "./inference-config";
 import {
   getTeamNameAliases,
   normalizeTeamName,
@@ -4230,6 +4230,7 @@ function analysisRequestParams(
   return {
     model: resolveInference().model,
     max_tokens: MAX_TOKENS,
+    ...reasoningOff(),
     // Anthropic's output_config/effort was dropped in the MiniMax migration: the
     // endpoint accepts the field without erroring but does not act on it, so
     // keeping it would read as a live control that does nothing. MiniMax's own

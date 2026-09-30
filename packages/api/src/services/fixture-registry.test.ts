@@ -310,4 +310,40 @@ describe("fixture registry", () => {
       ]);
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  describe("a fixture that left the feed before it was seen finishing", () => {
+    const stale = () => footballFixture({
+      id: 402, homeTeam: "Liverpool", awayTeam: "Fulham", utcDate: "2026-09-12T14:00:00.000Z",
+    });
+    const upcoming = () => footballFixture({ utcDate: "2026-10-10T11:30:00.000Z" });
+
+    it("is dropped once its kickoff is long past, instead of staying scheduled", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-stale-"));
+      process.env.PUNDIT_DATA_DIR = dir;
+      // Observed scheduled on 9 Sep; the API then stayed down past the match.
+      refreshFixtureRegistryFromEspn([stale()], new Date("2026-09-09T18:00:00.000Z"));
+      expect(getRecognizedFixtures()[0].status).toBe("scheduled");
+      refreshFixtureRegistryFromEspn([upcoming()], new Date("2026-09-29T10:00:00.000Z"));
+      expect(getRecognizedFixtures().map((fixture) => fixture.homeTeam.name)).toEqual(["Arsenal"]);
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("stays while the match could still be in play or the feed is lagging", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-lag-"));
+      process.env.PUNDIT_DATA_DIR = dir;
+      refreshFixtureRegistryFromEspn([stale()], new Date("2026-09-12T10:00:00.000Z"));
+      refreshFixtureRegistryFromEspn([upcoming()], new Date("2026-09-12T17:00:00.000Z"));
+      expect(getRecognizedFixtures().map((fixture) => fixture.homeTeam.name)).toContain("Liverpool");
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("keeps a completed fixture for the usual horizon", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-registry-done-"));
+      process.env.PUNDIT_DATA_DIR = dir;
+      refreshFixtureRegistryFromEspn([{ ...stale(), status: "FINISHED" }], new Date("2026-09-12T17:00:00.000Z"));
+      refreshFixtureRegistryFromEspn([upcoming()], new Date("2026-09-29T10:00:00.000Z"));
+      expect(getRecognizedFixtures().map((fixture) => fixture.homeTeam.name)).toContain("Liverpool");
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+  });
 });

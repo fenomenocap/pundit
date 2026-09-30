@@ -59,3 +59,14 @@ export function resolveInference(): ResolvedInference {
     provider: "minimax",
   };
 }
+
+/**
+ * Request fields that switch the pinned model's reasoning off. DeepSeek reasons
+ * by default, and a 36k-character claim check measured 18-24s with it on and
+ * ~5s with it off -- against a 12s verifier timeout, so verification could not
+ * finish. OpenRouter maps the Anthropic `thinking` field; MiniMax gets nothing,
+ * since it is not known to accept it.
+ */
+export function reasoningOff(): { thinking?: { type: "disabled" } } {
+  return resolveInference().provider === "openrouter" ? { thinking: { type: "disabled" } } : {};
+}
