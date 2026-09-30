@@ -131,6 +131,37 @@ describe("one-call claim verifier", () => {
     warn.mockRestore();
   });
 
+  it("retries once after a stall and accepts the answer that lands", async () => {
+    const stall = Object.assign(new Error("Request timed out"), { name: "TimeoutError" });
+    const body = JSON.stringify({
+      decisions: [{ claimId: "C1", outcome: "supported", evidenceIds: ["S1"] }], summary: "ok",
+    });
+    const create = vi.fn()
+      .mockRejectedValueOnce(stall)
+      .mockResolvedValueOnce({ content: [{ type: "text", text: body, citations: [] }], stop_reason: "end_turn" });
+    const client = { messages: { create } } as unknown as Pick<Anthropic, "messages">;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const result = await verifyClaimsOnce(client, [claims[0]], pages);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(result.status).toBe("verified");
+    warn.mockRestore();
+  });
+
+  it("gives up after two stalls, and never retries a non-stall failure", async () => {
+    const stall = Object.assign(new Error("Request timed out"), { name: "TimeoutError" });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const stalled = vi.fn().mockRejectedValue(stall);
+    expect((await verifyClaimsOnce({ messages: { create: stalled } } as unknown as Pick<Anthropic, "messages">, claims, pages)).status)
+      .toBe("unavailable");
+    expect(stalled).toHaveBeenCalledTimes(2);
+    const throttled = vi.fn().mockRejectedValue(
+      new Anthropic.APIError(429, { error: { message: "slow down" } }, "rate limited", new Headers())
+    );
+    await verifyClaimsOnce({ messages: { create: throttled } } as unknown as Pick<Anthropic, "messages">, claims, pages);
+    expect(throttled).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
   it("never promotes word overlap to verification after a timeout", async () => {
     const timeout = Object.assign(new Error("Request timed out"), { name: "TimeoutError" });
     const create = vi.fn().mockRejectedValue(timeout);
