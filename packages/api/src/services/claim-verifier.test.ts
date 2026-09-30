@@ -50,6 +50,29 @@ describe("one-call claim verifier", () => {
     });
   });
 
+  it("switches reasoning off on OpenRouter so the check fits its 12s budget, and only there", async () => {
+    // Measured live: 18-24s with reasoning on, ~5s off, against a 12s timeout.
+    const body = JSON.stringify({ decisions: [], summary: "ok" });
+    const previous = { key: process.env.OPENROUTER_API_KEY, mm: process.env.MINIMAX_API_KEY };
+    try {
+      process.env.OPENROUTER_API_KEY = "test-key";
+      const openRouter = clientReturning(body);
+      await verifyClaimsOnce(openRouter.client, claims, pages);
+      expect(openRouter.create.mock.calls[0][0]).toMatchObject({ thinking: { type: "disabled" } });
+
+      delete process.env.OPENROUTER_API_KEY;
+      process.env.MINIMAX_API_KEY = "test-key";
+      const miniMax = clientReturning(body);
+      await verifyClaimsOnce(miniMax.client, claims, pages);
+      expect(miniMax.create.mock.calls[0][0]).not.toHaveProperty("thinking");
+    } finally {
+      for (const [name, value] of [["OPENROUTER_API_KEY", previous.key], ["MINIMAX_API_KEY", previous.mm]] as const) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
   it("preserves conflict outcomes rather than silently selecting a source", async () => {
     const { client } = clientReturning(JSON.stringify({
       decisions: [

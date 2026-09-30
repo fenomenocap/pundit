@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { resolveInference } from "./inference-config";
+import { reasoningOff, resolveInference } from "./inference-config";
 import { ClaimDecision, VerifiableClaim } from "./response-correctness";
 import { RetrievedEvidencePage } from "./evidence-page-retrieval";
 
@@ -183,6 +183,7 @@ export async function verifyClaimsOnce(
       model: options.model ?? resolveInference().model,
       max_tokens: 1_200,
       temperature: 0,
+      ...reasoningOff(),
       system: SYSTEM_PROMPT,
       messages: [{
         role: "user",
