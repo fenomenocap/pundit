@@ -992,6 +992,11 @@ describe("sanitizeCompetitionAnswer fabricated model odds", () => {
 });
 
 describe("ensureGeneralDisclaimer", () => {
+  it("keeps the space before a sentence it replaces", () => {
+    expect(ensureGeneralDisclaimer("Nobody can say yet. Pundit's model does not cover this league."))
+      .toBe("Nobody can say yet. This is general football analysis, not based on my match forecasts.");
+  });
+
   it("appends the disclaimer when the answer does not distance itself from the model", () => {
     expect(ensureGeneralDisclaimer("The inverted full-back creates central overloads."))
       .toBe(
@@ -1783,6 +1788,31 @@ describe("generateAnalysisStream", () => {
     await expect(generateAnalysisStream(client, "system", [], "match", () => {}))
       .rejects.toThrow();
     expect(stream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DeepSeek's namespaced tool-call dialect", () => {
+  // Verbatim from a live "Who will win Serie A?" turn.
+  const DSML_LEAK = [
+    "<｜DSML｜tool_calls>",
+    '<｜DSML｜invoke name="web_search">',
+    '<｜DSML｜parameter name="query" string="true">Serie A title odds 2026-27 season Inter Napoli Juventus favorites</｜DSML｜parameter>',
+    "</｜DSML｜invoke>",
+    "</｜DSML｜tool_calls>",
+  ].join("\n");
+
+  it("strips the call entirely, so a bare leak is not shipped as the answer", () => {
+    expect(stripToolCallMarkup(DSML_LEAK)).toBe("");
+  });
+
+  it("keeps the prose around the call", () => {
+    expect(stripToolCallMarkup(`**Serie A**\nInter lead the table.\n\n${DSML_LEAK}`))
+      .toBe("**Serie A**\nInter lead the table.");
+  });
+
+  it("recovers the query the model asked for", () => {
+    expect(extractLeakedSearchQueries(DSML_LEAK))
+      .toEqual(["Serie A title odds 2026-27 season Inter Napoli Juventus favorites"]);
   });
 });
 

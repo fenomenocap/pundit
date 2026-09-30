@@ -434,6 +434,29 @@ describe("current-news evidence hardening", () => {
       .some((query) => /\bstats\b/.test(query))).toBe(false);
   });
 
+  it("pins the base search query to the current season unless the question names a year", () => {
+    const now = new Date("2026-09-29T12:00:00Z");
+    expect(deterministicSearchQuery("Who will win Serie A?", "", null, now))
+      .toBe("Who will win Serie A? football latest 2026-27");
+    expect(deterministicSearchQuery("Who won Serie A in 2024?", "", null, now))
+      .toBe("Who won Serie A in 2024? football latest");
+  });
+
+  it("plans no search for a follow-up about the numbers, and keeps it for a news cue", () => {
+    const match = buildGrounding(fixture("Arsenal", "Leeds"));
+    for (const question of [
+      "Why do you think the draw is so likely?",
+      "Where is the model most confident here and why?",
+      "Is the home side a real favourite or just marginal?",
+    ]) {
+      expect(planEvidenceQueries(question, match, deterministicSearchQuery(question, "", match)), question)
+        .toEqual([]);
+    }
+    const news = "Any injury concerns that change the read?";
+    expect(planEvidenceQueries(news, match, deterministicSearchQuery(news, "", match)).length)
+      .toBeGreaterThan(0);
+  });
+
   it("holds model-only and history-bearing SSE turns until request-fidelity guards settle", () => {
     expect(shouldHoldRequestFidelity("Which side has the stronger model case, and why?", false))
       .toBe(true);
@@ -445,6 +468,14 @@ describe("current-news evidence hardening", () => {
     expect(evidenceAuthority("https://www.uefa.com/story")).toBe("official");
     expect(evidenceAuthority("https://www.arsenal.com/news/team-update")).toBe("official");
     expect(evidenceAuthority("https://www.reuters.com/story")).toBe("reputable");
+    // Other top leagues: first-party league sites and national sports press.
+    expect(evidenceAuthority("https://www.legaseriea.it/en/news")).toBe("official");
+    expect(evidenceAuthority("https://www.football-italia.net/story")).toBe("reputable");
+    expect(evidenceAuthority("https://sports.yahoo.com/soccer/story")).toBe("reputable");
+    // Fan sites, betting affiliates and lookalike hosts stay closed.
+    expect(evidenceAuthority("https://sempremilan.com/story")).toBe("other");
+    expect(evidenceAuthority("https://www.bitsler.com/odds")).toBe("other");
+    expect(evidenceAuthority("https://gazzetta.it.evil.example/story")).toBe("other");
     expect(evidenceAuthority("https://football-rumours.example/story")).toBe("other");
   });
 
