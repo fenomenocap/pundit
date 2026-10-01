@@ -2711,6 +2711,23 @@ export function stripUncitedOddsClaims(answer: string): string {
     : ODDS_CLAIM_ABSTENTION;
 }
 
+/**
+ * Removes sentences that cite a reserved placeholder host (example.com and
+ * friends). No search can return one, so such a link was copied from a prompt
+ * example or invented; the sentence it supports is unsourced by construction.
+ */
+const PLACEHOLDER_LINK = /\]\(\s*<?https?:\/\/(?:[\w-]+\.)*(?:example\.(?:com|org|net)|[\w-]+\.(?:invalid|test|example))(?:[\/:?#)\s>,]|$)/i;
+export function stripPlaceholderCitations(answer: string): string {
+  if (!PLACEHOLDER_LINK.test(answer)) return answer;
+  const revised = reviseAnswerSentences(answer, (sentence) => PLACEHOLDER_LINK.test(sentence) ? "" : sentence);
+  const cleaned = dropOrphanedSectionLabels(
+    revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim()
+  );
+  return hasMeaningfulProse(cleaned.replace(GENERAL_DISCLAIMER, ""))
+    ? cleaned
+    : CURRENT_CLAIM_ABSTENTION;
+}
+
 /** Collapses a notice the pipeline stacked more than once into a single copy. */
 function dedupeRepeatedNotices(text: string): string {
   const seen = new Set<string>();
@@ -3214,7 +3231,8 @@ ${LENGTH_BUDGET}`;
 // search-backed team-news question, the shape most prone to sprawl, and shows
 // that two linked citations carry more weight than a page of hedging.
 const GENERAL_EXAMPLE = `A well-judged answer for a general question looks like this, in length
-and density as much as shape:
+and density as much as shape. Every club, player, date and link below is invented for
+illustration: never copy any of them, and cite only pages your own search returned:
 
 **Latest team news**
 Riverton are without **Dale Okonkwo** (hamstring), out until early September per
@@ -5743,7 +5761,7 @@ const NARRATION_VERBS =
 
 const PROCESS_NARRATION = new RegExp(
   "(^|\\n|(?<=[.!?])[ \\t]|[,;][ \\t]*(?:so|then|and)?[ \\t]*)"
-  + "(?:let me|let'?s|i'?ll|i will|i'?m going to|i am going to|i need to|now i'?ll"
+  + "(?:let me|let['\u2019]?s|i['\u2019]?ll|i will|i['\u2019]?m going to|i am going to|i need to|now i['\u2019]?ll"
   + "|first,?[ \\t]+let me)\\b"
   + `[^.!?\\n]*?\\b(?:${NARRATION_VERBS})\\w*\\b`
   + "[^.!?\\n]*[.!?]*[ \\t]*",
@@ -8714,10 +8732,10 @@ export async function deliverAnswer(args: {
   }
   const evidenceSafeAnswer = grounding === null && evidenceRequired
     ? stripUncitedOddsClaims(stripUncitedResultClaims(
-      failClosedEmptyCurrentVerification(checked.answer, checked.verification, evidenceRequired, question)
+      failClosedEmptyCurrentVerification(stripPlaceholderCitations(checked.answer), checked.verification, evidenceRequired, question)
     ))
     : failClosedEmptyCurrentVerification(
-      checked.answer,
+      grounding === null ? stripPlaceholderCitations(checked.answer) : checked.answer,
       checked.verification,
       evidenceRequired,
       question

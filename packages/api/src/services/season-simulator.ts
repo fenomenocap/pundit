@@ -359,6 +359,8 @@ export const SEASON_QUESTION_PATTERNS: RegExp[] = [
   /\b(?:who|which (?:teams?|clubs?|sides?))\b[^?.!]*\b(?:stay|stays|staying) up\b/,
   /\bfinish(?:es|ing)? (?:first|top|1st|in the top)\b/,
   /\b(?:win|wins|winning|take|takes) the title\b/,
+  /\btitle (?:chances?|hopes|favou?rites?|probabilit(?:y|ies)|contenders?)\b/,
+  /\b(?:chances?|probabilit(?:y|ies)) of (?:winning|lifting|claiming) the (?:league|title|premier league)\b/,
 ];
 
 export function isSeasonOutlookQuestion(question: string): boolean {

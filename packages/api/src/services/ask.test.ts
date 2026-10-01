@@ -32,6 +32,7 @@ import {
   planEvidenceQueries,
   evidenceAuthority,
   failClosedEmptyCurrentVerification,
+  stripPlaceholderCitations,
   dropMisbucketedTotalsScorelines,
   renderEvidenceCitations,
   repairTruncatedLists,
@@ -995,6 +996,14 @@ describe("current-news evidence hardening", () => {
     const out = failClosedEmptyCurrentVerification("", v, true, "Who won the Champions League final in 2025?");
     expect(out).toContain("couldn’t verify that result");
     expect(out).not.toMatch(/team-news/);
+  });
+
+  it("drops a sentence that cites a placeholder host", () => {
+    const out = stripPlaceholderCitations(
+      "**Team news**\nNo injuries per [Club statement](https://example.com, 12 Aug 2026).\n\nCity play on Saturday ([BBC](https://www.bbc.co.uk/sport/x))."
+    );
+    expect(out).not.toMatch(/example\.com|No injuries/);
+    expect(out).toContain("bbc.co.uk");
   });
 
   it("does not print the same abstention twice", () => {
