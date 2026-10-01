@@ -21,6 +21,7 @@ import {
   sanitizeUnsupportedTeamNews,
   stripProcessNarration,
   ensureGeneralDisclaimer,
+  sanitizeRuntimeResponseCorrectness,
   normalizeSectionBreaks,
   dropMisbucketedTotalsScorelines,
   sanitizeGeneralAnswer,
@@ -988,6 +989,16 @@ describe("sanitizeCompetitionAnswer fabricated model odds", () => {
   it("does not strip the season tier's legitimate simulated probabilities", () => {
     const answer = "Pundit's model gives Arsenal a 45.4% title chance.";
     expect(sanitizeSeasonAnswer(answer)).toBe(answer);
+  });
+});
+
+describe("an unverified outright price", () => {
+  it("is removed without a 1X2 apology, while a 1X2 market still gets one", () => {
+    const outright = sanitizeRuntimeResponseCorrectness("Inter are 2.50 with Kalshi to win Serie A.\nNapoli are the main rival.");
+    expect(outright).toContain("Napoli are the main rival.");
+    expect(outright).not.toMatch(/1X2|2\.50/);
+    expect(sanitizeRuntimeResponseCorrectness("Stake market: home 99%, draw 0.5%, away 0.5%.\nIt stays close."))
+      .toContain("1X2 market");
   });
 });
 

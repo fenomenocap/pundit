@@ -1552,6 +1552,16 @@ describe("uncited squad-timing and price claims on the general tier", () => {
     expect(delivered.answer).toContain("City average 2.4 goals a game.");
   });
 
+  it("removes an uncited fractional price inside a betting recommendation", async () => {
+    // Verbatim shape from a live Serie A answer.
+    const { delivered } = await deliver(
+      "Roma currently lack European football to distract them. "
+      + "For now, Inter are the rightful favourites, but Roma at 9/1 is the most interesting bet in the market."
+    );
+    expect(delivered.answer).not.toMatch(/9\/1|interesting bet/);
+    expect(delivered.answer).toContain("Roma currently lack European football");
+  });
+
   it("keeps a price the evidence cites", async () => {
     const delivered = await deliverAnswer({
       answer: "City are priced at 1.85 to win [[S1]]. Arsenal are 4.20 [[S1]].",

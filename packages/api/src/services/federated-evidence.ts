@@ -110,6 +110,22 @@ function analyticsFanOutQueries(
   return [];
 }
 
+const LEAGUE_NAME =
+  /\b(serie a|la ?liga|bundesliga|ligue 1|eredivisie|primeira liga|premier league|championship|champions league|europa league)\b/i;
+const WINNER_QUESTION = /\b(?:who(?:'s| is| will| would| could)?\b[^?]{0,30}\bwin|title race|title odds|champions?|favou?rites?|outright)\b/i;
+
+/**
+ * "Who will win Serie A?" is answered by a table and an outright board, and the
+ * single "<question> football latest" lookup finds neither. Two season-pinned
+ * searches target them.
+ */
+function leagueWinnerQueries(question: string, season: string): string[] {
+  const league = LEAGUE_NAME.exec(question)?.[1];
+  if (!league || !WINNER_QUESTION.test(question)) return [];
+  const label = season.replace("/", "-");
+  return [`${league} ${label} standings table points`, `${league} ${label} title odds favourites`];
+}
+
 function newsFanOutQueries(
   question: string,
   grounding: FederatedGrounding,
@@ -183,6 +199,7 @@ export function planFederatedQueries(
   }
   planned.push(...analyticsFanOutQueries(question, grounding, slice, season));
   planned.push(...newsFanOutQueries(question, grounding, slice, season));
+  if (!isMatchGrounding(grounding)) planned.push(...leagueWinnerQueries(question, season));
 
   const unique = new Map<string, string>();
   for (const entry of planned) {
