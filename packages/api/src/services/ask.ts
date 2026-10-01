@@ -8592,6 +8592,8 @@ export async function deliverAnswer(args: {
       console.warn(JSON.stringify({
         event: "analyst_draft_rejected",
         reason: validatedDraft.reason,
+        ...(validatedDraft.dropped ? { droppedParts: validatedDraft.dropped } : {}),
+        hybridLead: Boolean(serverLead && serverLead.length <= 500),
         responseMode: mode,
         shape: describeRejectedDraftShape(rawAnswer, bundle.results.map((source) => source.id)),
         reasonHistogram: { ...analystResponseMetrics.rejectReasons },
@@ -8947,6 +8949,10 @@ export function normalizeAnalystIdentity(answer: string): string {
     .replace(/\bI reads\b/g, "I read")
     .replace(/outside Pundit['’]s model coverage/gi, "outside my forecasting coverage")
     .replace(/Pundit probabilities/gi, "my probabilities")
+    // "I" only fits where the model is a subject. As an object or a modifier it
+    // produced "against I." and "I-based forecasts".
+    .replace(/\b(against|versus|than|with|to|from|on|of|beat|beats|about|for|by|at) (?:the model|Pundit['’]s model)(?=\s*(?:[.,;:!?)]|$)|\s+(?:and|or|but)\b)/gi, "$1 my model")
+    .replace(/\b(?:the model|Pundit['’]s model)(?=-\w)/gi, "my model")
     .replace(/Pundit['’]s model at\s+(.{1,40}?)\s+is\b/gi, "my $1 estimate is")
     .replace(/Pundit['’]s model makes/gi, "I make")
     .replace(/Pundit['’]s model gives/gi, "I make")
