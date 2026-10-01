@@ -291,7 +291,11 @@ describe("V2 conversational architecture", () => {
         reasoning: [{ text: "Uses {{pHome}}.", factIds: ["pHome"] }],
         citedClaims: [],
       }), grounding(), { serverDirectAnswer: "My short answer is Arsenal." }))
-        .toEqual({ valid: false, reason: "untraceable-number" });
+        .toEqual({
+          valid: false,
+          reason: "untraceable-number",
+          dropped: ["direct-answer:untraceable-number", "invalid-reasoning"],
+        });
     });
 
     it("still rejects the whole draft when the direct answer itself fails", () => {

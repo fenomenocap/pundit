@@ -21,6 +21,7 @@ import {
   sanitizeUnsupportedTeamNews,
   stripProcessNarration,
   ensureGeneralDisclaimer,
+  normalizeAnalystIdentity,
   sanitizeRuntimeResponseCorrectness,
   normalizeSectionBreaks,
   dropMisbucketedTotalsScorelines,
@@ -999,6 +1000,17 @@ describe("an unverified outright price", () => {
     expect(outright).not.toMatch(/1X2|2\.50/);
     expect(sanitizeRuntimeResponseCorrectness("Stake market: home 99%, draw 0.5%, away 0.5%.\nIt stays close."))
       .toContain("1X2 market");
+  });
+});
+
+describe("normalizeAnalystIdentity", () => {
+  it("does not turn the model into a bare 'I' where it is an object or a modifier", () => {
+    expect(normalizeAnalystIdentity("Weigh the numbers against the model."))
+      .toBe("Weigh the numbers against my model.");
+    expect(normalizeAnalystIdentity("Early form should not override model-based forecasts, or the model-based view."))
+      .not.toMatch(/\bI-based|\bI\b/);
+    expect(normalizeAnalystIdentity("Pundit's model gives Arsenal the edge. The model is cautious."))
+      .toBe("I make Arsenal the edge. I am cautious.");
   });
 });
 

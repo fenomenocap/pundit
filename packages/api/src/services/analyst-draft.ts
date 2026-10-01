@@ -15,7 +15,7 @@ export interface AnalystDraft {
 
 export type AnalystDraftValidation =
   | { valid: true; draft: AnalystDraft; answer: string; dropped: string[] }
-  | { valid: false; reason: string };
+  | { valid: false; reason: string; dropped?: string[] };
 
 const SOURCE_ID = /^S\d{1,3}$/;
 
@@ -365,7 +365,7 @@ export function validateAnalystDraft(
   // Nothing of the model's survived: that is the server answer alone, which the
   // caller already has, not an accepted draft.
   if (directReplaced && !reasoning.length && !citedClaims.length && !uncertainty) {
-    return { valid: false, reason: dropped[0].replace("direct-answer:", "") };
+    return { valid: false, reason: dropped[0].replace("direct-answer:", ""), dropped };
   }
 
   const draft: AnalystDraft = {
