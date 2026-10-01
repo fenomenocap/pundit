@@ -30,6 +30,8 @@ import {
   shouldUseMatchGrounding,
   deterministicSearchQuery,
   planEvidenceQueries,
+  attachEvidence,
+  MATCH_JSON_REMINDER,
   evidenceAuthority,
   failClosedEmptyCurrentVerification,
   dropMisbucketedTotalsScorelines,
@@ -5144,5 +5146,16 @@ describe("todayPreamble", () => {
     expect(todayPreamble(new Date("2026-07-31T23:59:00Z"))).toContain("2025-26");
     expect(todayPreamble(new Date("2026-08-01T00:00:00Z"))).toContain("2026-27");
     expect(todayPreamble(new Date("2027-01-15T00:00:00Z"))).toContain("2026-27");
+  });
+});
+
+describe("evidence attached to a match turn", () => {
+  it("goes in front of the JSON reminder, which stays last", () => {
+    const bundle = {
+      queries: ["q"], results: [{ id: "S1", title: "T", url: "https://www.bbc.co.uk/x", date: "2026-09-28", snippet: "s", tier: "news" }],
+    } as unknown as Parameters<typeof attachEvidence>[1];
+    const [turn] = attachEvidence([{ role: "user", content: `User question: hi\n${MATCH_JSON_REMINDER}` }], bundle);
+    expect(turn.content.endsWith(MATCH_JSON_REMINDER)).toBe(true);
+    expect(turn.content.indexOf("S1")).toBeLessThan(turn.content.lastIndexOf(MATCH_JSON_REMINDER));
   });
 });

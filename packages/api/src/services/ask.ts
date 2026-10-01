@@ -645,8 +645,14 @@ const ODDS_PRICE_WORDING =
   /\b(?:priced at|odds of|odds (?:at|are|were) (?:around |about |roughly )?\d|quoted at|(?:trading|offered|available) at \d|(?:bookmakers?|bookies|sportsbooks?) (?:have|has|make|offer|price)\b[^.!?\n]{0,50}\d)/i;
 const ODDS_CONTEXT = /\b(?:odds|priced|prices?|bookmakers?|bookies|sportsbooks?|moneyline|to win outright)\b/i;
 const ODDS_FIGURE = /\b\d{1,2}\.\d{1,2}\b|(?<![\d/])\d{1,3}\/\d{1,3}(?![\d/])/;
+// A fraction is almost always a price in a betting sentence ("Roma at 9/1 is
+// the most interesting bet in the market"), where a decimal is often a count.
+const ODDS_FRACTION = /(?<![\d/])\d{1,3}\/\d{1,3}(?![\d/])/;
+const BETTING_CONTEXT = /\b(?:bets?|betting|market|favou?rites?|outsiders?|shorten\w*|drift\w*|backing|punters?)\b/i;
 function quotesPrice(sentence: string): boolean {
-  return ODDS_PRICE_WORDING.test(sentence) || (ODDS_CONTEXT.test(sentence) && ODDS_FIGURE.test(sentence));
+  return ODDS_PRICE_WORDING.test(sentence)
+    || (ODDS_CONTEXT.test(sentence) && ODDS_FIGURE.test(sentence))
+    || (ODDS_FRACTION.test(sentence) && BETTING_CONTEXT.test(sentence));
 }
 const SEASON_STATS_LINE =
   /\b(?:\d+\s*(?:goals?|assists?|appearances?|starts?|caps?)|\d+\s*mins?(?:utes)?|fotmob rating|\bxg\b)/i;
@@ -911,9 +917,15 @@ export function attachEvidence(
   bundle: EvidenceBundle
 ): ConversationTurn[] {
   if (!bundle.results.length) return messages;
-  return messages.map((message, index) => index === messages.length - 1
-    ? { ...message, content: `${message.content}\n\n${evidenceMessage(bundle)}` }
-    : message);
+  return messages.map((message, index) => {
+    if (index !== messages.length - 1) return message;
+    // The JSON reminder has to stay the last thing the model reads, so the
+    // evidence goes in front of it rather than after it.
+    const at = message.content.lastIndexOf(MATCH_JSON_REMINDER);
+    return at >= 0
+      ? { ...message, content: `${message.content.slice(0, at).trimEnd()}\n\n${evidenceMessage(bundle)}\n\n${MATCH_JSON_REMINDER}` }
+      : { ...message, content: `${message.content}\n\n${evidenceMessage(bundle)}` };
+  });
 }
 
 function formatEvidenceTierSection(label: string, results: EvidenceSource[]): string {
@@ -1883,6 +1895,7 @@ export function stripUnvalidatedExternalMarketClaims(
   const lines = answer.split("\n");
   const removedLines = new Set<number>();
   let removed = false;
+  let removedOneXTwo = false;
   let corrected = false;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -1908,6 +1921,7 @@ export function stripUnvalidatedExternalMarketClaims(
       continue;
     }
     removed = true;
+    if (legLines.length || /\b(?:home|draw|away)\b|\b1x2\b/i.test(line)) removedOneXTwo = true;
     legLines.forEach((legIndex) => removedLines.add(legIndex));
     const matching = validated.find(({ source }) =>
       source && line.toLocaleLowerCase().includes(source)
@@ -1933,6 +1947,10 @@ export function stripUnvalidatedExternalMarketClaims(
   // and the repaired form keeps the answer's own leading and trailing shape.
   if (!removed) return corrected ? lines.join("\n") : answer;
   if (emittedSources.size > 0) return retained;
+  // The notice is about a 1X2 market. A removed outright or title price
+  // ("Inter are 2.50 to win Serie A") is not one, and the apology read as
+  // unrelated beside it.
+  if (!removedOneXTwo && retained) return retained;
   const notice = "I could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers.";
   return retained ? `${retained}\n\n${notice}` : notice;
 }
