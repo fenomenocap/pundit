@@ -52,6 +52,13 @@ describe("planFederatedQueries", () => {
     expect(planned.some((query) => isRecentFormQuery(query))).toBe(false);
   });
 
+  it("plans a standings and an outright search for a league-winner question", () => {
+    const planned = planFederatedQueries("Who will win Serie A?", null, "Who will win Serie A? football latest 2026-27", new Date("2026-09-29T00:00:00Z"));
+    expect(planned).toContain("Serie A 2026-27 standings table points");
+    expect(planned).toContain("Serie A 2026-27 title odds favourites");
+    expect(planFederatedQueries("Explain the offside rule", null, null)).toEqual([]);
+  });
+
   it("still plans recent-form searches when freshness is normal", () => {
     const grounding = matchGrounding({
       freshness: sampleAgentFreshness({ tier: "normal", reason: "no imminent fixtures" }),
