@@ -990,6 +990,24 @@ describe("current-news evidence hardening", () => {
     }, false)).toBe(unsafe);
   });
 
+  it("uses the result abstention, not the team-news one, for a result question", () => {
+    const v = { status: "unavailable" as const, supportedClaimCount: 0, removedClaimCount: 2 };
+    const out = failClosedEmptyCurrentVerification("", v, true, "Who won the Champions League final in 2025?");
+    expect(out).toContain("couldn’t verify that result");
+    expect(out).not.toMatch(/team-news/);
+  });
+
+  it("does not print the same abstention twice", () => {
+    const n = "No verified, dated team-news update was established.";
+    const out = failClosedEmptyCurrentVerification(
+      `${n}\n\nHe has been linked with a move.\n\n${n}`,
+      { status: "abstain", supportedClaimCount: 0, removedClaimCount: 1 },
+      true,
+      "Is Haaland injured?"
+    );
+    expect(out.split(n).length - 1).toBe(1);
+  });
+
   it("abstains instead of emptying a researched answer whose claims were all removed", () => {
     expect(failClosedEmptyCurrentVerification("", {
       status: "abstain",

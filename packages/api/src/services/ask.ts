@@ -2711,29 +2711,48 @@ export function stripUncitedOddsClaims(answer: string): string {
     : ODDS_CLAIM_ABSTENTION;
 }
 
+/** Collapses a notice the pipeline stacked more than once into a single copy. */
+function dedupeRepeatedNotices(text: string): string {
+  const seen = new Set<string>();
+  return text.split(/\n{2,}/).filter((paragraph) => {
+    const key = paragraph.trim();
+    if (!key || !ABSTENTION.test(key)) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).join("\n\n");
+}
+
 export function failClosedEmptyCurrentVerification(
   answer: string,
   verification: AskVerification,
-  evidenceRequired: boolean
+  evidenceRequired: boolean,
+  question?: string
 ): string {
   if (!evidenceRequired || verification.supportedClaimCount > 0
     || (verification.status !== "abstain" && verification.status !== "unavailable")) {
     return answer;
   }
-  const abstention = verification.status === "unavailable"
-    ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
-    : TEAM_NEWS_ABSTENTION;
+  // A result question ("who won the final") is not a team-news question; the
+  // squad-availability notice read as a non sequitur there.
+  const resultQuestion = question !== undefined && RESULT_QUESTION.test(question);
+  const abstention = resultQuestion
+    ? RESULT_CLAIM_ABSTENTION
+    : verification.status === "unavailable"
+      ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
+      : TEAM_NEWS_ABSTENTION;
   // Scoped to the evidence regions. The previous form kept a hand-maintained
   // allowlist of server-authored notices and discarded literally everything
   // else -- so a verification that supported no *team-news* claim also deleted
   // the model's probabilities, which had never been up for verification.
   // Keeping model content is not a loosening: an unsupported squad claim is
   // still replaced by the abstention, wherever in the answer it was written.
-  const revised = abstainEvidenceClaims(answer, abstention);
+  const revised = dedupeRepeatedNotices(abstainEvidenceClaims(answer, abstention));
   if (hasMeaningfulProse(revised)) return revised;
   // Verification removed every current claim and left no model prose behind.
   // Returning empty here used to 502 a researched stats answer; the honest
   // remainder is the abstention, not a blank generation failure.
+  if (resultQuestion) return RESULT_CLAIM_ABSTENTION;
   return verification.status === "unavailable"
     ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
     : CURRENT_CLAIM_ABSTENTION;
@@ -8695,12 +8714,13 @@ export async function deliverAnswer(args: {
   }
   const evidenceSafeAnswer = grounding === null && evidenceRequired
     ? stripUncitedOddsClaims(stripUncitedResultClaims(
-      failClosedEmptyCurrentVerification(checked.answer, checked.verification, evidenceRequired)
+      failClosedEmptyCurrentVerification(checked.answer, checked.verification, evidenceRequired, question)
     ))
     : failClosedEmptyCurrentVerification(
       checked.answer,
       checked.verification,
-      evidenceRequired
+      evidenceRequired,
+      question
     );
   // V2 match numbers come from validated server-rendered slots or the
   // deterministic composer. The legacy market parser cannot infer that trust
@@ -8797,9 +8817,11 @@ export async function deliverAnswer(args: {
       || checked.verification.status === "conflict")
     && checked.verification.supportedClaimCount === 0) {
     return {
-      answer: checked.verification.status === "unavailable"
-        ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
-        : CURRENT_CLAIM_ABSTENTION,
+      answer: RESULT_QUESTION.test(question)
+        ? RESULT_CLAIM_ABSTENTION
+        : checked.verification.status === "unavailable"
+          ? TEAM_NEWS_ABSTENTION_UNAVAILABLE
+          : CURRENT_CLAIM_ABSTENTION,
       citations: [],
       verification: checked.verification,
     };
