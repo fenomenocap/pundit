@@ -26,7 +26,7 @@ const ASKS_TOTALS =
 const ASKS_OVER_25 = /\bover\s*2\.5\b|\bo\s*2\.5\b/i;
 const ASKS_UNDER_25 = /\bunder\s*2\.5\b|\bu\s*2\.5\b/i;
 const ASKS_SCORELINE_BOARD =
-  /\b(?:possible|likely|top|correct)\s+(?:scores?|scorelines?)\b|\bscorelines?\b/i;
+  /\b(?:possible|likely|top|correct|exact)\s+(?:scores?|scorelines?)\b|\bscorelines?\b|\bscore\s+probabilit/i;
 const ASKS_BTTS = /\bbtts\b|both teams to score/i;
 const ASKS_PROJECTED_SCORE =
   /\b(?:projected|likely|correct|most likely)\s+score\b|\bcorrect score\b/i;
@@ -36,6 +36,7 @@ const ASKS_ODDS_BOARD =
   /\bwhat(?:'s| is| are) (?:the )?(?:odds|line)\b|\bshow me the board\b|\bthe board\b|\bmatch odds\b/i;
 const ASKS_EXPECTED_VALUE =
   /\+ev\b|\bev%\b|\bexpected value\b|\bplus[\s-]?ev\b|\ba \+ev bet\b|\bedge vs(?:\s+the)?\s+(?:book|market|line)\b/i;
+const ASKS_RESULT_CUE = /\b(?:win|wins|beat|beats|winner|to win)\b/i;
 const ASKS_1X2 = /\b1x2\b|\bmatch odds\b/i;
 const ASKS_UNPRICED_MARKET =
   /\b(?:draw no bet|\bdnb\b|asian(?:\s+handicap)?|\bhandicap\b|\bcorners?\b|next goal|first goal|clean sheet)\b/i;
@@ -86,9 +87,12 @@ export type PricedGridMarket = "1x2" | "totals" | "btts" | "scorelines";
 /** Markets this fixture already prices. A named market not in this set must abstain, not dump 1X2. */
 export function pricedGridMarketsAsked(question: string): PricedGridMarket[] {
   const asked: PricedGridMarket[] = [];
-  if (ASKS_1X2.test(question)) asked.push("1x2");
-  if (asksTotalsQuestion(question)) asked.push("totals");
-  if (asksBttsQuestion(question)) asked.push("btts");
+  const totals = asksTotalsQuestion(question);
+  const btts = asksBttsQuestion(question);
+  // A compound ask ("will X beat Y, and over 2.5?") owes the result market too.
+  if (ASKS_1X2.test(question) || ((totals || btts) && ASKS_RESULT_CUE.test(question))) asked.push("1x2");
+  if (totals) asked.push("totals");
+  if (btts) asked.push("btts");
   if (asksScorelineBoard(question)) asked.push("scorelines");
   return asked;
 }
