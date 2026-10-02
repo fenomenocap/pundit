@@ -8983,6 +8983,18 @@ export function normalizeAnalystIdentity(answer: string): string {
     .replace(/\bthe payload\b/gi, "the supplied evidence");
 }
 
+/** Server notices (e.g. the team-news abstention) can be stacked by independent passes; say each once. */
+export function dropRepeatedParagraphs(text: string): string {
+  const seen = new Set<string>();
+  return text.split(/\n{2,}/).filter((paragraph) => {
+    const key = paragraph.trim().toLowerCase();
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).join("\n\n");
+}
+
 function finalizeDeliveredText(
   answer: string,
   grounding?: AskGrounding,
@@ -9000,7 +9012,7 @@ function finalizeDeliveredText(
     analystResponseMetrics.numericGuardInterventions += 1;
     console.warn(JSON.stringify({ event: "analyst_numeric_guard_intervened" }));
   }
-  return stripUnresolvedResponseMarkers(traced);
+  return dropRepeatedParagraphs(stripUnresolvedResponseMarkers(traced));
 }
 
 /**

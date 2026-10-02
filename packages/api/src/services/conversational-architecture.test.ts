@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import {
   deliverAnswer,
+  dropRepeatedParagraphs,
   deterministicSearchQuery,
   MATCH_EXAMPLE,
   MATCH_STRUCTURED_OUTPUT,
@@ -795,6 +796,23 @@ describe("V2 conversational architecture", () => {
     expect(briefingWithWrinkle.answer).toMatch(/example\.com\/news/);
     expect(briefingWithWrinkle.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(briefingWithWrinkle.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
+  });
+
+  it("says a repeated server notice once", () => {
+    const notice = "No verified, dated team-news update was established.";
+    expect(dropRepeatedParagraphs(`${notice}\n\n${notice}\n\nOther.`)).toBe(`${notice}\n\nOther.`);
+  });
+
+  it("answers a draw follow-up, compound result+totals asks, exact-score asks and typed prices", () => {
+    const match = grounding();
+    const ask = (q: string, hasHistory: boolean) =>
+      composeMatchResponse(q, match, planResponse(q, { groundingKind: "match", hasHistory }));
+    expect(ask("And what about draw chance?", true)).toMatch(/draw at 23\.4%/);
+    const compound = ask("Is Arsenal likely to beat Chelsea? over 2.5 goals?", false);
+    expect(compound).toMatch(/1X2 is Arsenal 56\.3%/);
+    expect(compound).toMatch(/over 2\.5/i);
+    expect(ask("Arsenal vs Chelsea exact score probabilities", false)).toMatch(/2-1/);
+    expect(ask("Best bet at odds of 2.10 on Arsenal?", false)).toMatch(/line field/);
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {

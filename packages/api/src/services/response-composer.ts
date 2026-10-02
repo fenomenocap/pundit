@@ -153,7 +153,9 @@ function fattestCapturedEv(grounding: Grounding): {
   return best;
 }
 
-function composePricingDeskAnswer(grounding: Grounding): string {
+const TYPED_DECIMAL_PRICE = /\b(?:odds|price|line|at|@)\s*(?:of\s*)?(\d{1,2}\.\d{1,2})\b/i;
+
+function composePricingDeskAnswer(grounding: Grounding, question = ""): string {
   const model = grounding.pricing.model;
   const oneXTwo = `My 1X2 is ${grounding.home} ${pct(model.home.p)} (fair ${model.home.fairOdds.toFixed(2)}), `
     + `draw ${pct(model.draw.p)} (fair ${model.draw.fairOdds.toFixed(2)}) and `
@@ -168,6 +170,9 @@ function composePricingDeskAnswer(grounding: Grounding): string {
     const band = captured.edgeBand ? ` (${explainEdgeBand(captured.edgeBand)})` : "";
     return `${oneXTwo} Against the captured ${source} decimal of ${captured.decimalOdds.toFixed(2)} on ${subject}, `
       + `EV is ${signedEvPct(captured.evPct)}${band}.`;
+  }
+  if (TYPED_DECIMAL_PRICE.test(question)) {
+    return `${oneXTwo} I only price a line you enter in the line field, not one typed into the question, so add it there and I will print EV% and pass or play.`;
   }
   return `${oneXTwo} I need a captured decimal line before I can print EV% or pass or play.`;
 }
@@ -407,7 +412,7 @@ export function composeMatchResponse(
     return composePricedGridAnswer(question, grounding);
   }
   if (plan.mode === "pricing-desk") {
-    return composePricingDeskAnswer(grounding);
+    return composePricingDeskAnswer(grounding, question);
   }
   if (plan.mode === "player-or-scorer") {
     return composePlayerScorerAnswer(grounding, playerEvidence);
@@ -457,6 +462,9 @@ export function composeMatchResponse(
     }
     if (asksUnpricedMarket(question)) {
       return "I don’t have a line for that market on this fixture. I can price 1X2, over/under 2.5, BTTS, and scorelines.";
+    }
+    if (/\bdraw\b/i.test(question) && !/\bno bet\b/i.test(question)) {
+      return `I have the draw at ${pct(grounding.pDraw)} (fair ${fairDecimal(grounding.pDraw)}) in ${grounding.home} v ${grounding.away}.`;
     }
     const favourite = [
       { label: grounding.home, p: grounding.pHome },
