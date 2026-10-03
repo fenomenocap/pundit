@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import {
   deliverAnswer,
@@ -90,6 +90,15 @@ const grounding = (): Grounding => {
     ...sampleMatchContextFields(),
   };
 };
+
+// Fixture dates are hard-coded, so pin the clock they were written against
+// rather than letting the freshness window age the tests out.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-09-12T12:00:00Z") });
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe("V2 conversational architecture", () => {
   it("classifies narrow turns without requesting another full card", () => {

@@ -2691,6 +2691,7 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
  */
 export function stripUncitedResultClaims(answer: string): string {
   let removed = false;
+  let citedSurvivor = false;
   const revised = reviseAnswerSentences(answer, (sentence) => {
     if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
     if (ABSTENTION.test(sentence) || !RESULT_CLAIM.test(sentence)) return sentence;
@@ -2701,9 +2702,17 @@ export function stripUncitedResultClaims(answer: string): string {
   const cleaned = dropOrphanedSectionLabels(
     revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim()
   );
-  return hasMeaningfulProse(cleaned.replace(GENERAL_DISCLAIMER, ""))
-    ? `${cleaned}\n\n${RESULT_CLAIM_ABSTENTION}`
-    : RESULT_CLAIM_ABSTENTION;
+  if (!hasMeaningfulProse(cleaned.replace(GENERAL_DISCLAIMER, ""))) return RESULT_CLAIM_ABSTENTION;
+  // A cited result sentence survived, so the dropped one was an uncited
+  // restatement of it; disclaiming the result would contradict the answer.
+  const citedResultSurvives = reviseAnswerSentences(cleaned, (sentence) => {
+    if (RESULT_CLAIM.test(sentence)
+      && (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence))) {
+      citedSurvivor = true;
+    }
+    return sentence;
+  }) && citedSurvivor;
+  return citedResultSurvives ? cleaned : `${cleaned}\n\n${RESULT_CLAIM_ABSTENTION}`;
 }
 
 /**
@@ -8823,6 +8832,19 @@ export async function deliverAnswer(args: {
       citations: [],
       verification: checked.verification,
     };
+  }
+  // A short, correct general answer ("Paris.") is real prose that the length
+  // floor rejects. With no evidence owed and no server payload to rebuild from,
+  // ship what the model said rather than fail a question it answered.
+  if (tier === "general" && !evidenceRequired) {
+    const brief = settledAnswer.replace(GENERAL_DISCLAIMER, "").trim();
+    if ((brief.match(/\p{L}/gu)?.length ?? 0) >= 2 && !/^[\s{}[\]<>`*_#-]*$/.test(brief)) {
+      return {
+        answer: ensureGeneralDisclaimer(brief),
+        citations: rendered.citations,
+        verification: checked.verification,
+      };
+    }
   }
   throw new AppError(502, "Analysis service returned an empty response.");
 }
