@@ -131,3 +131,21 @@ late replies after cancellation or unmount. A successful but empty response
 raises a retryable error rather than echoing the user's question as an answer.
 Playwright covers cancellation on phone and desktop, late replies, deadline
 recovery, empty answers, and retries without dangling history.
+
+The repaired application deployed as `f440a3a7a07000fe1ba3591aeffce68d93d2de07`;
+Railway `13409c91-763d-445a-821d-f64b9cf9d97c` reached SUCCESS and Vercel
+`dpl_Cy8o5dQgimeN8KQJf3UXfyokjVbw` reached Ready. Both public versions matched,
+and production verification passed. Run `2026-10-04T17-16-34-156Z` passed the
+required API scenarios, all 55 reviewed successful answers and all 11 browser
+product contracts, but strict certification still failed: a wall-clock interval
+was 12,927 ms while its monotonic interval was 13,026 ms. Original timestamps
+and captured evidence were retained; a separate reviewed copy corrected the
+capture's erroneous pacing PASS flag, and the report was finalized as
+`ISSUES FOUND`. This is a QA tooling defect, not evidence of a failed fixture
+retention or model-output contract.
+
+The browser pacer now enforces both clock intervals and records the exact samples
+it checked. Forward clock jumps cannot bypass monotonic spacing, and backward
+corrections cannot bypass wall-clock spacing. Neither the 13-second minimum nor
+the finalizer's strict checks are weakened. A new evaluation is required after
+this repair; the prior reports remain preserved.
