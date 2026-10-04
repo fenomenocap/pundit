@@ -837,6 +837,16 @@ describe("V2 conversational architecture", () => {
     expect(briefingWithWrinkle.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
   });
 
+  it("explains complementary half-goal probabilities without changing the forecast", () => {
+    const question = "What about over and under 2.5? Why do they add to 100%?";
+    const answer = composeMatchResponse(question, grounding(), planResponse(question, { groundingKind: "match" }));
+    expect(answer).toContain("over 2.5 at 58.9%");
+    expect(answer).toContain("under 2.5 is 41.1%");
+    expect(answer).toContain("There is no push at a half-goal line, so their probabilities sum to one.");
+    expect(answer).toContain("Decimal odds are the reciprocals");
+    expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
+  });
+
   it("composes direct fair-price, scorer, lineup and market answers", () => {
     const match = grounding();
     const fair = composeMatchResponse("Fair odds for 2-1?", match,
