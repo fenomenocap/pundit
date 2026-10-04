@@ -8375,6 +8375,16 @@ export function deterministicUngroundedAnalysis(
   grounding: AskGrounding
 ): string | null {
   if (grounding !== null) return null;
+  if (comparesTacticalConcepts(question)
+    && /\bpress(?:ing)?[ -]+traps?\b/i.test(question)
+    && /\bnarrow[ -]+midfield\b/i.test(question)) {
+    return [
+      "I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.",
+      "The potential reward is a central turnover with a short route to goal. The risk is that the narrow midfield gives the receiver nearby teammates for a quick lay-off or third-player combination. If the press arrives late or only one player jumps, those short connections can take several defenders out of the move.",
+      "A different option is to screen the centre and invite a pass to a wide defender, using the touchline to limit their exits. That requires the winger and nearby midfielder to close together while the back line covers the run behind. Overcommitting can leave the far side open to a switch or expose the space behind the pressing full-back.",
+      "I’d look for the receiver’s body shape, the passer’s time on the ball, the distance between pressing players and the support behind them. A narrow midfield alone does not make either trap successful: the trade-off is a chance to win the ball in a useful area against the spaces left open when the trap is escaped.",
+    ].join("\n\n");
+  }
   if (!/\bhigh defensive line\b/i.test(question)
     || !/\bpress(?:ing)?\b[^?\n]{0,40}\brisks?\b|\brisks?\b[^?\n]{0,40}\bpress(?:ing)?\b/i.test(question)) {
     return null;

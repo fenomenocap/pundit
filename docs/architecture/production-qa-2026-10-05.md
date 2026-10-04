@@ -229,3 +229,18 @@ matchup. Eleven API synthetic regressions cover exact kickoff with a lagging
 status feed, independent cache/status transitions, retained identity, market
 suppression and actual home advantage. Historical seal tests explicitly freeze
 their replay clock; production kickoff guards were not weakened.
+
+## Semantic follow-up after deployed routing repair
+
+PR #227 deployed as `8aeb3b89c0b394b5aead4578c389b88b69d40ca9` on both
+public targets, with production verification PASS. The exact tactical prompt
+then reached general analysis, but independent semantic review rejected its
+incomplete pressing-trap mechanism, irrelevant team-news abstention and
+unsupported effectiveness claim. The manual delivered-output screenshot is
+preserved under `artifacts/chat-evals/production-tactical-copy-review-8aeb3b8.jpg`.
+This is not a production certification PASS.
+
+The foundational generic comparison now has a complete deterministic explanation
+of the invited pass, trigger, covered outlets, short combinations and wide
+escape risks. The bounded parser still excludes club-specific or pricing
+questions. A fresh deployment and full output certification are required.
