@@ -161,6 +161,7 @@ test("browser request pacer preserves the safety interval across one shared cloc
   const waits = [];
   const pacer = createRequestStartPacer({
     now: () => clock,
+    wallNow: () => clock,
     wait: async (ms) => {
       waits.push(ms);
       clock += waits.length === 1 ? ms - 5 : ms;
@@ -176,6 +177,40 @@ test("browser request pacer preserves the safety interval across one shared cloc
   assert.ok(pacer.starts.slice(1).every((start, index) =>
     start - pacer.starts[index] >= MIN_BROWSER_REQUEST_INTERVAL_MS
   ));
+});
+
+test("browser pacer preserves both intervals after a backward wall-clock correction", async () => {
+  let monotonicClock = 1_000;
+  let wallClock = Date.parse("2026-10-04T17:30:00.000Z");
+  const waits = [];
+  const pacer = createRequestStartPacer({
+    now: () => monotonicClock,
+    wallNow: () => wallClock,
+    wait: async (ms) => { waits.push(ms); monotonicClock += ms; wallClock += ms; },
+  });
+  await pacer.beforeRequest();
+  monotonicClock += 13_025;
+  wallClock += 12_925;
+  await pacer.beforeRequest();
+  assert.deepEqual(waits, [100]);
+  assert.equal(pacer.starts[1] - pacer.starts[0], 13_125);
+  assert.equal(Date.parse(pacer.wallStarts[1]) - Date.parse(pacer.wallStarts[0]), 13_025);
+});
+
+test("a forward wall-clock jump cannot bypass the monotonic browser interval", async () => {
+  let monotonicClock = 1_000;
+  let wallClock = Date.parse("2026-10-04T17:30:00.000Z");
+  const pacer = createRequestStartPacer({
+    now: () => monotonicClock,
+    wallNow: () => wallClock,
+    wait: async (ms) => { monotonicClock += ms; wallClock += ms; },
+  });
+  await pacer.beforeRequest();
+  monotonicClock += 1_000;
+  wallClock += 20_000;
+  await pacer.beforeRequest();
+  assert.equal(pacer.starts[1] - pacer.starts[0], 13_025);
+  assert.equal(Date.parse(pacer.wallStarts[1]) - Date.parse(pacer.wallStarts[0]), 32_025);
 });
 
 test("browser request pacer and CLI reject intervals below the 25ms safety floor", () => {
