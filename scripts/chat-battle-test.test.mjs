@@ -1793,23 +1793,43 @@ test("in-play observation becomes required only when its exact capability is rou
 
 test("tactical comparison guard requires football analysis rather than an unconfirmed fixture notice", () => {
   const expectation = { expectTacticalComparisonAnswer: true };
-  const answer = "Pressing traps can channel the ball toward a touchline, where the press restricts the receiver's options. Against a narrow midfield, that can expose the flanks, but committing extra players creates an escape route if the opposition switches play quickly.";
-  assert.equal(validateAnswerStructure(answer, expectation).passed, true);
+  const answer = "Pressing traps invite a pass to an apparently free receiver against a narrow midfield. Jump as the pass travels, with a teammate covering the return lane and the next outlet. The risk is a quick lay-off or a switch of play if the press arrives late.";
+  const naturalVariant = "A pressing trap can bait the ball toward a wide defender. When the ball is moving, the winger closes while a midfielder blocks the central outlet. A narrow midfield can escape through a short lay-off or switch toward the far flank.";
+  for (const accepted of [answer, naturalVariant]) {
+    assert.equal(validateAnswerStructure(accepted, expectation).passed, true, accepted);
+  }
   const refusal = "I couldn't confirm that matchup. Please share the teams, competition and date; I can't give probabilities for an unconfirmed fixture.";
   for (const rejected of [
     refusal,
     `Pressing traps and a narrow midfield: ${refusal}`,
     "Pressing traps against a narrow midfield: I cannot confirm this matchup.",
     "A low defensive line reduces the room behind the defenders.",
+    "Pressing traps can compress a narrow midfield, but leave the flanks exposed.",
+    `${answer} No verified, dated team-news update was established from retrievable sources.`,
     "",
   ]) {
     const result = validateAnswerStructure(rejected, expectation);
     assert.equal(result.passed, false, rejected);
     assert.equal(result.assertions.tacticalComparisonAnswered, false, rejected);
     assert.ok(result.failures.includes(
-      "tactical comparison is unanswered or was mistaken for an unconfirmed fixture"
+      "tactical comparison does not supply a complete, relevant pressing-trap explanation"
     ));
   }
+});
+
+test("tactical mechanism guard rejects the delivered 8aeb3b8 answer and accepts the deterministic repair", () => {
+  const actual = "**Pressing traps vs a narrow midfield** When a team sets pressing traps against a narrow midfield, the core trade-off is **central compression vs wide exposure**. No verified, dated team-news update was established from retrievable sources. Against a narrow midfield (e.g., a diamond or 4-4-2), that bait is doubly effective because the opposition already packs the middle, so the trap can trigger repeatedly in the same area. The risk is that narrowing the press to overload the centre leaves the **full-backs isolated** in wide areas. A narrow opponent often uses its full-backs as the primary escape valve, pushing high and wide to receive switched passes. **The bottom line** Against a disciplined narrow midfield, successful pressing traps produce high-value central turnovers but demand perfect coordination on the second and third passes. This is general football analysis, not based on my match forecasts.";
+  const expectation = { expectTacticalComparisonAnswer: true };
+  const rejected = validateAnswerStructure(actual, expectation);
+  assert.equal(rejected.passed, false);
+  assert.equal(rejected.assertions.tacticalInvitationExplained, false);
+  assert.equal(rejected.assertions.tacticalPressTriggerExplained, false);
+  assert.equal(rejected.assertions.tacticalOutletCoverageExplained, false);
+  assert.equal(rejected.assertions.noIrrelevantTeamNewsAbstention, false);
+  const repaired = loadApiRuntimeRoutingHelpers().deterministicUngroundedAnalysis(
+    "Explain the trade-offs of pressing traps against a narrow midfield in detail.", null
+  );
+  assert.equal(validateAnswerStructure(repaired, expectation).passed, true);
 });
 
 test("answer structure guard catches an emptied section and a missing headline 1X2", () => {

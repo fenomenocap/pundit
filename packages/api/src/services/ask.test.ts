@@ -3250,6 +3250,19 @@ describe("resolveAskContext", () => {
     )).toBeNull();
   });
 
+  it("explains the trap mechanism without team-news claims or exempting unknown clubs", () => {
+    const question = "Explain the trade-offs of pressing traps against a narrow midfield in detail.";
+    const answer = deterministicUngroundedAnalysis(question, null);
+    expect(answer).toContain("press as the pass travels");
+    expect(answer).toContain("blocks the return pass");
+    expect(answer).toContain("third-player combination");
+    expect(answer).toContain("far side open to a switch");
+    expect(answer).toContain("does not make either trap successful");
+    expect(answer).not.toMatch(/team-news|4-4-2|doubly effective|verified|\d+(?:\.\d+)?%/);
+    expect(deterministicUngroundedAnalysis(question, buildGrounding(fixtures[0]))).toBeNull();
+    expect(deterministicUngroundedAnalysis("Explain Northbridge pressing traps against Southbank narrow midfield.", null)).toBeNull();
+  });
+
   it("settles evidence follow-ups after an unidentified match without market-flow claims", () => {
     const answer = deterministicUngroundedEvidenceFollowUp(
       "What evidence would change that answer?",
