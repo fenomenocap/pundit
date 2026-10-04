@@ -5159,3 +5159,15 @@ describe("evidence attached to a match turn", () => {
     expect(turn.content.indexOf("S1")).toBeLessThan(turn.content.lastIndexOf(MATCH_JSON_REMINDER));
   });
 });
+
+describe("stripUncitedAvailabilityClaims", () => {
+  it("drops an uncited availability sentence and keeps a cited one", async () => {
+    const { stripUncitedAvailabilityClaims } = await import("./ask");
+    const out = stripUncitedAvailabilityClaims(
+      "Arteta faces fitness concerns. Since then, he has returned to action. Saka is out for a month ([Club](https://example.com/a), 2026-10-01)."
+    );
+    expect(out).not.toContain("returned to action");
+    expect(out).toContain("Arteta faces fitness concerns.");
+    expect(out).toContain("Saka is out");
+  });
+});

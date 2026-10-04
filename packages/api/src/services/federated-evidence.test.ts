@@ -59,6 +59,12 @@ describe("planFederatedQueries", () => {
     expect(planFederatedQueries("Explain the offside rule", null, null)).toEqual([]);
   });
 
+  it("pins a past-season winner question to the previous season", () => {
+    const planned = planFederatedQueries("Who won the Premier League last season?", null, null, new Date("2026-10-04T00:00:00Z"));
+    expect(planned).toContain("Premier League 2025-26 final table champions");
+    expect(planned.some((query) => query.includes("2026-27"))).toBe(false);
+  });
+
   it("still plans recent-form searches when freshness is normal", () => {
     const grounding = matchGrounding({
       freshness: sampleAgentFreshness({ tier: "normal", reason: "no imminent fixtures" }),

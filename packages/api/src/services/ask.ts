@@ -2706,6 +2706,26 @@ export function stripUncitedResultClaims(answer: string): string {
     : RESULT_CLAIM_ABSTENTION;
 }
 
+const AVAILABILITY_CLAIM =
+  /\b(?:has|have|had|is|are|was)?\s*(?:returned to (?:action|training|the squad|fitness)|back (?:in|to) (?:training|action|fitness)|ruled out|sidelined|(?:is|are|will be) (?:fit|available|unavailable)|will miss|(?:is|are) (?:a )?doubt)\b/i;
+
+/**
+ * Removes player-availability statements that carry no citation from a
+ * general-tier answer that owed evidence. "Since then, he has returned to
+ * action" shipped as an orphan sentence next to a source that never said it.
+ * A cited availability line keeps its marker and is left to the verifier.
+ */
+export function stripUncitedAvailabilityClaims(answer: string): string {
+  const revised = reviseAnswerSentences(answer, (sentence) => {
+    if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
+    if (ABSTENTION.test(sentence) || !AVAILABILITY_CLAIM.test(sentence)) return sentence;
+    return "";
+  });
+  return revised === answer
+    ? answer
+    : revised.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /**
  * Removes price statements that carry no citation from a general-tier answer
  * that owed evidence. Pundit holds no odds for an ungrounded question, and a
@@ -8714,9 +8734,9 @@ export async function deliverAnswer(args: {
     };
   }
   const evidenceSafeAnswer = grounding === null && evidenceRequired
-    ? stripUncitedOddsClaims(stripUncitedResultClaims(
+    ? stripUncitedOddsClaims(stripUncitedResultClaims(stripUncitedAvailabilityClaims(
       failClosedEmptyCurrentVerification(checked.answer, checked.verification, evidenceRequired)
-    ))
+    )))
     : failClosedEmptyCurrentVerification(
       checked.answer,
       checked.verification,

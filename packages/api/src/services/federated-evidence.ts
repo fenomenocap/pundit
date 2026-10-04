@@ -112,16 +112,23 @@ function analyticsFanOutQueries(
 
 const LEAGUE_NAME =
   /\b(serie a|la ?liga|bundesliga|ligue 1|eredivisie|primeira liga|premier league|championship|champions league|europa league)\b/i;
-const WINNER_QUESTION = /\b(?:who(?:'s| is| will| would| could)?\b[^?]{0,30}\bwin|title race|title odds|champions?|favou?rites?|outright)\b/i;
+const WINNER_QUESTION = /\b(?:who(?:'s| is| will| would| could)?\b[^?]{0,30}\b(?:win|won)|title race|title odds|champions?|favou?rites?|outright)\b/i;
 
 /**
  * "Who will win Serie A?" is answered by a table and an outright board, and the
  * single "<question> football latest" lookup finds neither. Two season-pinned
  * searches target them.
  */
+const PAST_SEASON = /\b(?:last|previous|prior) (?:season|campaign)\b/i;
+
 function leagueWinnerQueries(question: string, season: string): string[] {
   const league = LEAGUE_NAME.exec(question)?.[1];
   if (!league || !WINNER_QUESTION.test(question)) return [];
+  if (PAST_SEASON.test(question)) {
+    const [start] = season.split("/").map(Number);
+    const previous = `${start - 1}-${String(start % 100).padStart(2, "0")}`;
+    return [`${league} ${previous} final table champions`, `${league} ${previous} winners title`];
+  }
   const label = season.replace("/", "-");
   return [`${league} ${label} standings table points`, `${league} ${label} title odds favourites`];
 }
