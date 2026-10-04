@@ -99,26 +99,33 @@ function createRequestStartPacer({
   const starts = [];
   const wallStarts = [];
   let lastStart = null;
+  let lastWallStart = null;
   return {
     starts,
     wallStarts,
     intervalMs,
     async beforeRequest() {
-      while (starts.length === 0 && Number.isFinite(firstRequestNotBeforeEpochMs)) {
-        const remaining = firstRequestNotBeforeEpochMs - wallNow();
-        if (remaining <= 0) break;
-        await wait(remaining);
+      while (true) {
+        // Check and preserve the same clock samples. A backward wall-clock
+        // correction must not invalidate otherwise sound monotonic spacing.
+        const startedAt = now();
+        const wallStartedAt = wallNow();
+        const remaining = Math.max(
+          lastStart === null ? 0 : intervalMs - (startedAt - lastStart),
+          lastWallStart === null ? 0 : intervalMs - (wallStartedAt - lastWallStart),
+          starts.length === 0 && Number.isFinite(firstRequestNotBeforeEpochMs)
+            ? firstRequestNotBeforeEpochMs - wallStartedAt : 0
+        );
+        if (remaining > 0) {
+          await wait(remaining);
+          continue;
+        }
+        starts.push(startedAt);
+        wallStarts.push(new Date(wallStartedAt).toISOString());
+        lastStart = startedAt;
+        lastWallStart = wallStartedAt;
+        return startedAt;
       }
-      while (lastStart != null) {
-        const remaining = intervalMs - (now() - lastStart);
-        if (remaining <= 0) break;
-        await wait(remaining);
-      }
-      const startedAt = now();
-      starts.push(startedAt);
-      wallStarts.push(new Date(wallNow()).toISOString());
-      lastStart = startedAt;
-      return startedAt;
     },
   };
 }
@@ -932,6 +939,7 @@ async function captureLive(options, report, dependencies = {}) {
     const apiVersionAfter = await captureApi(report.apiUrl);
     const requestStartOffsetsMs = pacer.starts.map((start) => start - pacer.starts[0]);
     const observedGapsMs = pacer.starts.slice(1).map((start, index) => start - pacer.starts[index]);
+    const wallGapsMs = pacer.wallStarts.slice(1).map((start, index) => Date.parse(start) - Date.parse(pacer.wallStarts[index]));
     const firstBrowserRequestStart = pacer.wallStarts[0] ?? null;
     const cooldownObservedMs = firstBrowserRequestStart
       ? Date.parse(firstBrowserRequestStart) - cooldownAnchor.epochMs
@@ -953,6 +961,7 @@ async function captureLive(options, report, dependencies = {}) {
         && traffic.apiAskRequestCount === pacer.starts.length
         && observedGapsMs.length === Math.max(0, pacer.starts.length - 1)
         && observedGapsMs.every((gap) => gap >= MIN_BROWSER_REQUEST_INTERVAL_MS)
+        && wallGapsMs.every((gap) => gap >= MIN_REQUEST_INTERVAL_MS)
         && Number.isFinite(cooldownObservedMs)
         && cooldownObservedMs >= BROWSER_COOLDOWN_MS,
     };
