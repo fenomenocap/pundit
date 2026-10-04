@@ -59,7 +59,7 @@ export function PageHeader({
   if (!sticky) return header;
 
   return (
-    <div className="sticky top-11 z-30 -mx-4 border-b border-card-rim bg-background/85 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/65 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    <div className="sticky top-12 z-30 -mx-4 border-b border-card-rim bg-background/85 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/65 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       {header}
     </div>
   );

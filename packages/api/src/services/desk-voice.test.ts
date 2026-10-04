@@ -12,6 +12,7 @@ import {
   formatSearchEvidence,
   humaniseDeskCitationDates,
   sanitizeDeskModelProse,
+  sanitizeDeskFootballHypotheses,
   shouldRestoreDeskFootballTake,
   stripDeskBoardRecitals,
 } from "./desk-voice";
@@ -205,9 +206,9 @@ describe("formatSearchEvidence dates", () => {
 describe("desk football-take floor", () => {
   it("writes a schematic take without board numbers or current-news claims", () => {
     const take = composeDeskFootballTake(match());
-    expect(take).toMatch(/Manchester City should control this at home/);
-    expect(take).toMatch(/Sunderland only get a result/);
-    expect(take).toMatch(/team-strength view/);
+    expect(take).toMatch(/I lean to Manchester City at home/);
+    expect(take).toMatch(/If Manchester City can sustain pressure/);
+    expect(take).toMatch(/tactical possibilities/);
     expect(take).not.toMatch(/\d+(?:\.\d+)?\s*%/);
     expect(take).not.toMatch(/EV%|captured decimal|2\.70|Etihad|injured|manager/i);
     expect(stripDeskBoardRecitals(take)).toBe(take);
@@ -234,12 +235,12 @@ describe("desk take outline", () => {
     const g = match();
     const bare = composeDeskTakeOutline(g);
     expect(bare).toMatch(/^My 1X2 is Manchester City .* \(fair /);
-    expect(bare).toMatch(/Manchester City should control this at home/);
+    expect(bare).toMatch(/I lean to Manchester City at home/);
     expect(bare).not.toMatch(/unavailable|not priced into/i);
     expect(bare).not.toMatch(/captured decimal|EV%|pass or play/i);
 
     const withWrinkle = composeDeskTakeOutline(g, {
-      footballProse: "City win by controlling territory without overcommitting.",
+      footballProse: "If Manchester City can control territory, they could create chances without overcommitting.",
       playerEvidence: {
         observations: [{
           playerId: "haaland",
@@ -257,7 +258,7 @@ describe("desk take outline", () => {
     });
     expect(withWrinkle.indexOf("My 1X2")).toBeLessThan(withWrinkle.indexOf("Erling Haaland"));
     expect(withWrinkle.indexOf("Erling Haaland")).toBeLessThan(
-      withWrinkle.indexOf("City win by controlling territory")
+      withWrinkle.indexOf("If Manchester City can control territory")
     );
     expect(withWrinkle).toMatch(/not priced into the 1X2 above/);
     expect(withWrinkle).toMatch(/fair 1\.22/);
@@ -301,5 +302,38 @@ describe("desk qualitative voice", () => {
     expect(clean).not.toMatch(/\d+(?:\.\d+)?\s*%/);
     expect(clean).not.toMatch(/Etihad|2\.70|the engine|1x2|BTTS|modal/i);
     expect(clean).not.toMatch(/\b21\s*\/\s*26\s*\/\s*53\b/);
+  });
+});
+
+
+describe("conditional desk tactics", () => {
+  it("drops invented player roles, asserted game flow and time-of-day claims", () => {
+    const g = match({ home: "Arsenal", away: "Leeds United" });
+    const bad = "Arsenal control the tempo from the first whistle. Saka and Ødegaard pull Leeds out of shape. It's a low-event night because Leeds lack midfield legs.";
+    expect(sanitizeDeskFootballHypotheses(bad, g)).toBe("");
+    const outline = composeDeskTakeOutline(g, { footballProse: bad });
+    expect(outline).toMatch(/My 1X2/);
+    expect(outline).toMatch(/If Arsenal can sustain pressure/);
+    expect(outline).not.toMatch(/Saka|Ødegaard|night|lack midfield legs/);
+  });
+
+  it("keeps tactical possibilities but refuses uncited named players and numerical effects", () => {
+    const g = match({ home: "Arsenal", away: "Leeds United" });
+    const valid = "If Arsenal press high, Leeds could attack the space behind. I would look for whether the home side can protect against transitions.";
+    expect(sanitizeDeskFootballHypotheses(valid, g)).toBe(valid);
+    for (const text of [
+      "If Saka plays, Arsenal could control the game.",
+      "If saka plays, Arsenal could control the game.",
+      "If Ødegaard presses, Arsenal could control the game.",
+      "If Arsenal press, Leeds could have a 30% chance.",
+      "If Arsenal press tonight, Leeds could struggle.",
+    ]) expect(sanitizeDeskFootballHypotheses(text, g)).toBe("");
+  });
+
+  it("does not convert a draw lean into a predicted stalemate or low goal count", () => {
+    const take = composeDeskFootballTake(match({ pHome: 0.3, pDraw: 0.4, pAway: 0.3 }));
+    expect(take).toMatch(/draw as the likeliest single outcome/);
+    expect(take).toMatch(/does not establish a low-scoring game/);
+    expect(take).not.toMatch(/midfield stalemate|tight night/);
   });
 });

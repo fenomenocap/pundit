@@ -122,6 +122,7 @@ export function AgentPane() {
         text: res.text || opening,
         fixtureId: resolvedFixtureId || fixtureId || undefined,
         grounding: res.grounding,
+        presentation: res.presentation,
         at: Date.now(),
       });
     } catch (e) {
@@ -418,7 +419,15 @@ function Bubble({ msg }: { msg: ChatMsg }) {
           linkClassName="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
         />
       </div>
-      {msg.grounding ? <DeskBoard grounding={msg.grounding} /> : null}
+      {msg.grounding?.kind === "match" && msg.presentation?.fixtureCard === "compact" ? (
+        <details data-testid="desk-compact-match-context" className="mt-3 rounded-md border border-border px-3 py-2">
+          <summary className="cursor-pointer text-xs text-quiet">
+            {msg.grounding.home} vs {msg.grounding.away} · Match context
+          </summary>
+          <DeskBoard grounding={msg.grounding} />
+        </details>
+      ) : msg.grounding?.kind === "match" && msg.presentation?.fixtureCard === "none" ? null
+        : msg.grounding ? <DeskBoard grounding={msg.grounding} /> : null}
     </div>
   );
 }

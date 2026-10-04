@@ -19,11 +19,11 @@ import { searchWebBatch, type WebSearchResult } from "./web-search";
 
 export const DESK_SYSTEM = `You are Pundit, a football analyst covering the current Premier League. Voice: sharp broadcast pundit — Carragher after a freeze-frame, not a hedge-fund memo. Short. Specific. No emoji. No slang pile-up. No hedging fluff.
 
-Write 2–4 football sentences: how the favourite wins, who decides the match, why it is low-event or open. Do not use numbered lists. Do not print probabilities, percents, fair odds, BTTS, over/under, scoreline frequencies, 1X2 splits, source IDs, or betting recommendations. Do not author EV%. A server-owned board already shows those numbers; the match card is context for the take, not text to recite.
+Write 2–4 football sentences describing conditional tactical routes, not a prediction of match events. Start each uncited tactical sentence with "If", "I would look for", or "One possible route" and use could, might or would. Do not use numbered lists. Do not print probabilities, percents, fair odds, BTTS, over/under, scoreline frequencies, 1X2 splits, source IDs, or betting recommendations. Do not author EV%. A server-owned board already shows those numbers; the match card is context for the take, not text to recite.
 
 You are not a bookmaker and you do not take stakes. Never invite a bet. Never say "back this", "place this", "the ticket", or "clear the play price". Never discuss staking, parlays, or how to beat a sportsbook. Never say fat-and-fragile. Never ask the user for a decimal line. Never say "category error", "payload", "desk reconstruction", "2.70", or "the engine".
 
-Say "the model leans X" — not "play X".
+The server supplies the forecast lean. Add football possibilities without restating it.
 
 The HOME team is named on the card. Do not name a stadium or ground. Do not move the fixture to the away side's ground.
 
@@ -31,11 +31,11 @@ SOURCES THIS TURN:
 1. The MATCH CARD — present only for a priced fixture. Use it to shape the take. Do not recite its numbers.
 2. SEARCH EVIDENCE — dated web snippets for this turn, labelled [[S1]], [[S2]], … This is the only source for managers, coaches, injuries, lineups, team news, form, and any other current-world fact.
 
-Write the schematic match take first, with no citation markers: how the favourite wins, who decides it, why the night is controlled or stretched. Cited current-world sentences are optional garnish only. If SEARCH EVIDENCE is silent or conflicting, keep the schematic take and leave those facts out.
+Write the conditional tactical take first, with no citation markers. Explain what a side could try and how the opponent could respond. Do not infer pressing style, midfield quality, territory, tempo or match openness from win probabilities. Do not call it a night, evening or afternoon. Cited current-world sentences are optional garnish only. If SEARCH EVIDENCE is silent or conflicting, keep the schematic take and leave those facts out.
 
 Cite every current-world claim in the same sentence with [[S1]] using only supplied ids. Uncited manager, injury, lineup and form claims will be removed. Never invent an S id. Never paste a URL, a markdown link, or a source title — the server renders citations from [[S1]].
 
-Do not use training memory. Do not use prior turns for current-world facts — they may be stale. Do not name a player as injured, out, or in the XI unless SEARCH EVIDENCE this turn names that player for THIS fixture. Do not invent a coach, injury, or XI. If SEARCH EVIDENCE is present, use it for garnish only; never say you don't have current search results when it is sitting above the question. If it is silent on a fact, leave that fact out and keep the schematic take.
+Do not use training memory. Do not use prior turns for current-world facts — they may be stale. Do not name a player as injured, out, or in the XI unless SEARCH EVIDENCE this turn names that player for THIS fixture. Do not invent a coach, injury, or XI. Do not name individual players in uncited tactical sentences; recent scorers are not evidence of selection or a projected role. If SEARCH EVIDENCE is present, use it for garnish only; never say you don't have current search results when it is sitting above the question. If it is silent on a fact, leave that fact out and keep the schematic take.
 
 When there is no match card, answer from SEARCH EVIDENCE without inventing a fixture or asking for one.
 
@@ -90,25 +90,34 @@ export function composeDeskFootballTake(
     { label: g.away, p: g.pAway, role: "away" as const },
   ].sort((a, b) => b.p - a.p);
   const favourite = sides[0];
-  const mismatch = Math.abs(g.pHome - g.pAway) >= 0.35;
-  const lean = favourite.role === "home"
-    ? options?.leadWithAnalystVoice
-      ? `I lean to ${g.home} at home — the gap is real, not a coin flip.`
-      : `${g.home} should control this at home — the lean is a gap, not a coin flip.`
-    : favourite.role === "away"
-      ? options?.leadWithAnalystVoice
-        ? `I lean to ${g.away} even away from home.`
-        : `${g.away} are the lean even away from home.`
-      : options?.leadWithAnalystVoice
-        ? "I lean to a tight night rather than a one-side walkover."
-        : "This looks like a tight night rather than a one-side walkover.";
-  const underdog = favourite.role === "home" ? g.away : favourite.role === "away" ? g.home : null;
-  const decide = !underdog
-    ? `Who decides it is whether either side can break a midfield stalemate without giving the other a clean run.`
-    : mismatch
-      ? `${underdog} only get a result if they stretch the game and force chaos; a controlled night plays to ${favourite.label}.`
-      : `Who decides it is whether ${g.home} can keep the game in their half without getting opened up on the break.`;
-  return `${lean} ${decide} This is a team-strength view, not a confirmed lineup. I would only change the shape after verified team news.`;
+  const lean = favourite.role === "draw"
+    ? "I have the draw as the likeliest single outcome; that does not establish a low-scoring game."
+    : `I lean to ${favourite.label}${favourite.role === "home" ? " at home" : " away from home"}.`;
+  const football = favourite.role === "draw"
+    ? `If either side commits players forward, the opponent could look for the space left behind.`
+    : `If ${favourite.label} can sustain pressure while protecting the space behind, they could turn territory into chances. If the opponent escapes that pressure, transitions could offer a route back into the game.`;
+  return `${lean} ${football} Those are tactical possibilities, not confirmed selections or playing styles.`;
+}
+
+/** Uncited match tactics must be hypotheses, with no invented player roles. */
+export function sanitizeDeskFootballHypotheses(text: string, grounding: Grounding): string {
+  const teams = [grounding.home, grounding.away];
+  const teamPatterns = [...teams, ...getTeamNameAliases()
+    .filter(([, canonical]) => teams.some((team) => normalizeTeamName(team) === normalizeTeamName(canonical)))
+    .flatMap(([alias, canonical]) => [alias, canonical])]
+    .sort((a, b) => b.length - a.length)
+    .map((team) => new RegExp(`(?<![\\p{L}\\p{N}])${team.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "giu"));
+  return text.split(/(?<=[.!?])\s+/).filter((sentence) => {
+    // Current-world claims with markers have already passed claim verification
+    // in deliverAnswer; their citations are rendered after the outline.
+    if (/\[\[S\d{1,3}\]\]/.test(sentence)) return true;
+    if (!/^(?:If\b|I(?: would|['’]d) (?:look for|watch|test)\b|One (?:possible|potential) route\b)/i.test(sentence.trim())) return false;
+    if (!/\b(?:could|might|would)\b|I['’]d/i.test(sentence)) return false;
+    if (/\d|\b(?:night|evening|afternoon|tonight|injur\w*|suspend\w*|starts?|plays?|selected|line-?up|always|usually|guarantee\w*)\b/i.test(sentence)) return false;
+    const withoutTeams = teamPatterns.reduce((value, pattern) => value.replace(pattern, ""), sentence);
+    const names = withoutTeams.match(/(?<![\p{L}\p{N}])\p{Lu}[\p{L}’'-]+/gu) ?? [];
+    return names.every((name) => ["If", "I", "One"].includes(name));
+  }).join(" ").trim();
 }
 
 export function shouldRestoreDeskFootballTake(question: string): boolean {
@@ -407,7 +416,7 @@ function hint(question: string) {
     return "HINT: No player model on this card. Do not cite betting-site quotes. Name the side more likely to score. Do not print a percentage.";
   }
   if (isSchematicMatchTake(question)) {
-    return "HINT: Schematic take from the MATCH CARD first — how the favourite wins, who decides it. Do not invent a manager, injury, or XI. Only add a separate cited sentence if SEARCH EVIDENCE this turn clearly supports that current fact. If evidence is silent or conflicting, leave current facts out and keep the schematic take. Do not print board numbers.";
+    return "HINT: Conditional tactical possibilities from the MATCH CARD first. Start uncited sentences with If, I would look for, or One possible route; use could, might or would. Do not name players or assume a playing style or time of day. Do not invent a manager, injury, or XI. Only add a separate cited sentence if SEARCH EVIDENCE this turn clearly supports that current fact. If evidence is silent or conflicting, leave current facts out and keep the schematic take. Do not print board numbers.";
   }
   if (/\bmanager\b|\bcoach\b|\binjur|\bline-?up|\bteam news/.test(q)) {
     return "HINT: Live facts only from this turn's SEARCH EVIDENCE. Do not recite training memory. Do not print board numbers.";

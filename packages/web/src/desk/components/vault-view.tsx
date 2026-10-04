@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Line, LineChart, ResponsiveContainer, YAxis } from "recharts";
-import { VAULTS, type Vault, type VaultId } from "@/desk/lib/data/vaults";
-import { fmtEdge, fmtMoney, fmtPct } from "@/desk/lib/format";
+import { VAULTS, type Vault } from "@/desk/lib/data/vaults";
+import { fmtMoney } from "@/desk/lib/format";
 import { useDesk } from "@/desk/lib/store";
-import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 
 export function VaultView() {
@@ -14,18 +12,18 @@ export function VaultView() {
   const total = alloc.alpha + alloc.neutral + alloc.yield;
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:py-10">
-      <p className="eyebrow">Paper lab · not a fund</p>
+      <p className="eyebrow">Local practice · illustrative books</p>
       <h1 className="font-display text-5xl sm:text-6xl tracking-wide uppercase mt-2">
         Model books
       </h1>
       <p className="mt-3 max-w-xl text-quiet leading-relaxed">
-        Three ways the model reads a gameweek. Paper-track them against the current slate. Same engine
-        as the desk. Not a deposit, not a bookmaker.
+        Reserve practice credits in three illustrative buckets. These books do not place positions,
+        track the live slate or earn returns. Credits and reservations stay in this browser.
       </p>
       <div className="mt-6 flex flex-wrap gap-6 text-sm">
         <Stat k="Free credit" v={fmtMoney(cash)} />
-        <Stat k="In vaults" v={fmtMoney(total)} />
-        <Stat k="Paper book" v="Sim" />
+        <Stat k="Reserved credit" v={fmtMoney(total)} />
+        <Stat k="Performance" v="Not tracked" />
       </div>
       <div className="mt-8 grid gap-4 md:grid-cols-3">
         {VAULTS.map((v) => (
@@ -51,8 +49,6 @@ function VaultCard({ vault, allocated }: { vault: Vault; allocated: number }) {
   const cash = useDesk((s) => s.cash);
   const [amt, setAmt] = useState(vault.min);
   const [err, setErr] = useState<string | null>(null);
-  const data = vault.nav.map((n, i) => ({ i, n }));
-  const up = vault.ytd >= 0;
 
   return (
     <article className="rounded-lg border border-border bg-surface p-4 flex flex-col">
@@ -63,50 +59,19 @@ function VaultCard({ vault, allocated }: { vault: Vault; allocated: number }) {
           </div>
           <h2 className="font-display text-3xl tracking-tight mt-1">{vault.name}</h2>
         </div>
-        <div className={cn("font-mono text-sm tabular-nums", up ? "text-up" : "text-down")}>
-          {up ? "+" : ""}
-          {fmtPct(vault.ytd, 1)}
-        </div>
       </div>
       <p className="mt-2 text-sm text-quiet leading-relaxed flex-1">{vault.blurb}</p>
-      <div className="h-16 mt-3 -mx-1">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
-            <Line type="monotone" dataKey="n" stroke="var(--color-accent)" strokeWidth={1.5} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-      <dl className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
-        <div>
-          <dt className="text-quiet uppercase tracking-wider">Vol</dt>
-          <dd className="font-mono tabular-nums">{fmtPct(vault.vol)}</dd>
-        </div>
-        <div>
-          <dt className="text-quiet uppercase tracking-wider">Max DD</dt>
-          <dd className="font-mono tabular-nums">{fmtPct(vault.maxdd)}</dd>
-        </div>
-        <div>
-          <dt className="text-quiet uppercase tracking-wider">Sharpe</dt>
-          <dd className="font-mono tabular-nums">{vault.sharpe.toFixed(2)}</dd>
-        </div>
-      </dl>
-      <ul className="mt-3 space-y-1.5">
-        {vault.holdings.map((h) => (
-          <li key={h.label} className="flex items-center gap-2 text-xs">
-            <span className="truncate text-quiet">{h.label}</span>
-            <span className="ml-auto font-mono tabular-nums text-subtle">{Math.round(h.weight * 100)}%</span>
-            <span className="font-mono tabular-nums text-up w-14 text-right">{fmtEdge(h.edge)}</span>
-          </li>
-        ))}
-      </ul>
+      <p className="mt-4 rounded-md border border-border p-3 text-xs text-quiet">
+        No measured performance or holdings. Reserved credits retain their nominal value.
+      </p>
       <div className="mt-4 pt-3 border-t border-border">
         <div className="flex justify-between text-xs">
-          <span className="text-quiet">Your allocation</span>
+          <span className="text-quiet">Your reserved credits</span>
           <span className="font-mono tabular-nums">{fmtMoney(allocated)}</span>
         </div>
         <div className="mt-2 flex gap-2">
           <input
+            aria-label={`${vault.name} practice credits`}
             type="number"
             min={vault.min}
             max={cash}
@@ -118,14 +83,14 @@ function VaultCard({ vault, allocated }: { vault: Vault; allocated: number }) {
             size="md"
             variant="primary"
             className="flex-1"
-            onClick={() => setErr(allocate(vault.id as VaultId, amt))}
+            onClick={() => setErr(allocate(vault.id, amt))}
           >
-            Allocate
+            Reserve credits
           </Button>
         </div>
         {allocated > 0 ? (
           <Button size="sm" variant="ghost" className="w-full mt-2" onClick={() => withdraw(vault.id)}>
-            Withdraw
+            Return credits
           </Button>
         ) : null}
         {err ? <p className="mt-2 text-xs text-down">{err}</p> : null}
