@@ -26,6 +26,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
+
+      - name: Audit critical development dependencies
+        run: pnpm audit --audit-level critical
+
       - name: Type-check API
         working-directory: packages/api
         run: npx tsc --noEmit

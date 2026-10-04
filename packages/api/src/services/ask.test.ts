@@ -8,6 +8,7 @@ import { fixture } from "./__fixtures__/model-fixture";
 import { attachUserLine, buildMatchPricing } from "./response-correctness";
 import { SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
 import { SEASON_OUTLOOK_UNAVAILABLE } from "./season-simulator";
+import * as seasonSimulator from "./season-simulator";
 import {
   espnFixtureIdentity,
   recognizeEspnFixture,
@@ -210,6 +211,13 @@ describe("season grounding degradation", () => {
     const schedule = completePremierLeagueSchedule();
     replaceFootballDataForTests({ standings, upcoming: [], recent: [], lastUpdated: now, error: null });
     await refreshClubRatings(now);
+    // Routing and source fidelity do not need 10,000 full-season draws for
+    // every JSON/SSE turn. Keep the real simulator with a small test sample.
+    const simulate = seasonSimulator.simulateSeasonOutlook;
+    const simulation = vi.spyOn(seasonSimulator, "simulateSeasonOutlook")
+      .mockImplementation((competitionId, table, fixtures, ratings, _runs, random, contributor) =>
+        simulate(competitionId, table, fixtures, ratings, 100, random, contributor)
+      );
     try {
       for (const unavailable of [
         { seasonId: premierLeagueSeasonWindow(now).seasonId, lastUpdated: now, error: "upstream timeout", servingLastGood: true },
@@ -225,6 +233,7 @@ describe("season grounding degradation", () => {
         expect(prepared.tier).toBe("competition");
         expect(prepared.grounding).toMatchObject({ kind: "competition", competitionId: "eng.1" });
         expect(prepared.grounding).not.toHaveProperty("seasonOutlook");
+        expect(simulation).not.toHaveBeenCalled();
       }
 
       replaceSeasonScheduleForTests({
@@ -239,6 +248,7 @@ describe("season grounding degradation", () => {
       expect(fresh.tier).toBe("season");
       expect(fresh.grounding).toMatchObject({ kind: "season", competitionId: "eng.1" });
       expect(fresh.grounding).toHaveProperty("seasonOutlook.titleProbabilities");
+      expect(simulation).toHaveBeenCalledOnce();
 
       const exactQuestion = "Who is most likely to win the Premier League based on the current table?";
       searchWeb.mockReset();
@@ -311,6 +321,7 @@ describe("season grounding degradation", () => {
         resetInferenceStatus();
       }
     } finally {
+      simulation.mockRestore();
       if (originalKey === undefined) delete process.env.MINIMAX_API_KEY;
       else process.env.MINIMAX_API_KEY = originalKey;
       replaceFootballDataForTests({ standings: [], upcoming: [], recent: [], lastUpdated: null, error: null });
