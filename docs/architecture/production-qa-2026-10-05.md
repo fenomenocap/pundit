@@ -64,6 +64,8 @@ matched-horizon trading backtest or proof of profitability.
 - Preserve `voice: "desk"` in production evaluation requests and add a required
   homepage briefing/follow-up scenario. The previous harness did not exercise
   the actual homepage voice. Existing standard-path scenarios remain intact.
+- Keep the conditional football fallback when the prose provider returns no
+  text; previously this fell through to a generic numeric draft.
 
 Local source evidence is retained in the ignored directory
 `packages/api/data/research/qa-20261005/`, including public API exports,
@@ -82,6 +84,11 @@ January 2026 origin, improved 1X2 Brier accompanies worse totals Brier
 
 The weekly replay has 69 origins, 730 unique holdout fixtures, 725 scored pairs,
 five invalid/uncovered pairs and four prior-only pairs. It also remains blocked.
+Seven weekly fits did not converge. Across the 725 scored pairs, sample-weighted
+1X2 Brier improves from 0.62844 to 0.62048, but totals Brier worsens from 0.24928
+to 0.25791; BTTS improves from 0.25779 to 0.25058. These pooled descriptions
+include the unconverged weeks and exclude the five invalid pairs, so they are
+diagnostics, not validated production-performance estimates.
 Its gate requires two origins with at least 40 scored matches; a football week
 usually has far fewer matches. This gate is unsuitable for interpreting pooled
 weekly evidence and should be redesigned explicitly before a new selection

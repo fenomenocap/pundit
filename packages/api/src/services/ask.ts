@@ -8487,7 +8487,10 @@ export async function deliverAnswer(args: {
     const prepared = sanitizeDeskModelProse(rawAnswer, evidenceBundle.results);
     const prose = salvaged
       || (!rawLooksLikeDraft && prepared ? prepared : "")
-      || await writeDeskProse(question, grounding, history, signal, evidenceBundle);
+      || await writeDeskProse(question, grounding, history, signal, evidenceBundle)
+      || (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)
+        ? composeDeskFootballTake(grounding)
+        : "");
     if (prose) {
       const deskPlan = planResponse(question, {
         groundingKind: grounding?.kind ?? null,
