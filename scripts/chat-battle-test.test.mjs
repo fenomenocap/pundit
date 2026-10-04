@@ -2681,6 +2681,14 @@ test("schema-17 rejects certainty, scoreline universals, counts and draw-mass co
   ).assertions.noCertaintyContradiction, false, contradiction);
 });
 
+test("schema-17 rejects unsupported live-forecast seal provenance", () => {
+  const match = { kind: "match", home: "Arsenal", away: "Leeds" };
+  for (const unsafe of ["Pundit Fundamental is the sealed 1X2 above.", "This is an immutable forecast.", "Not the sealed Fundamental forecast."]) {
+    assert.equal(validateResponseCorrectness(unsafe, [], match).assertions.noUnsupportedSealClaim, false, unsafe);
+  }
+  assert.equal(validateResponseCorrectness("The model-only 1X2 is separate from the market-adjusted Consensus view.", [], match).assertions.noUnsupportedSealClaim, true);
+});
+
 test("schema-17 rejects unsupported competition, fixture-status and capability-reason claims", () => {
   assert.equal(validateResponseCorrectness(
     "All teams have zero games, so the supplied ordering is not an on-field ranking.", [],
