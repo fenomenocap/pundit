@@ -20,10 +20,10 @@ import { Button } from "@/desk/components/ui/button";
 import { useLiveSlate } from "@/desk/components/use-live-slate";
 
 const SLATE_CHIPS = [
-  "Walk the slate",
-  "Banker of the weekend",
-  "The derby",
-        "Who scored recently?",
+  { label: "Reading a slate", question: "In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?" },
+  { label: "No bankers", question: "In general, why should a strong favourite never be treated as a guaranteed win?" },
+  { label: "Derby dynamics", question: "In general, how can a derby change the tactical trade-offs and game management?" },
+  { label: "Scoring chances", question: "In general, what makes a good chance for a striker, beyond past goal totals?" },
 ];
 
 export function AgentPane() {
@@ -95,10 +95,10 @@ export function AgentPane() {
         "BTTS?",
         "Over 2.5?",
         "+EV",
-      ]
+      ].map((question) => ({ label: question, question }))
     : SLATE_CHIPS;
 
-  async function send(text: string, fixtureId = selectedId) {
+  async function send(text: string, fixtureId = selectedId, standalone = false) {
     const q = text.trim();
     if (!q || busy || activeRequest.current) return;
     if (q.length > 500) {
@@ -107,7 +107,8 @@ export function AgentPane() {
     }
     setErr(null);
     setDraft("");
-    const history = completedDeskHistory(useDesk.getState().messages);
+    // Standalone explainers omit history so the server cannot inherit a followed match.
+    const history = standalone ? [] : completedDeskHistory(useDesk.getState().messages);
     const userMsg: ChatMsg = {
       id: `u-${Date.now()}`,
       role: "user",
@@ -126,7 +127,7 @@ export function AgentPane() {
           question: q,
           history,
           fixtureId: fixtureId || undefined,
-          userLine: lineFixtureId === fixtureId
+          userLine: !standalone && lineFixtureId === fixtureId
             ? userLinePayloadForAsk(q, lineOutcome, lineDecimal)
             : undefined,
         },
@@ -276,13 +277,13 @@ export function AgentPane() {
         <div className="flex flex-wrap gap-1.5 mb-2.5">
           {matchChips.map((chip) => (
             <button
-              key={chip}
+              key={chip.label}
               type="button"
               disabled={busy}
-              onClick={() => void send(chip)}
+              onClick={() => void send(chip.question, liveFixture?.id ?? "", !liveFixture)}
               className="h-8 rounded-full border border-border px-3 text-2xs uppercase tracking-wide text-quiet hover:text-fg hover:border-border-strong transition-colors duration-150 disabled:opacity-40"
             >
-              {chip}
+              {chip.label}
             </button>
           ))}
         </div>

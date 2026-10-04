@@ -318,6 +318,78 @@ async function waitForAnswer(page, previousBubbleCount) {
   return result.jsonValue();
 }
 
+function attachAskDiagnostics(page, viewport, progress) {
+  const requests = new Map();
+  const records = progress.collected.askRequests ??= [];
+  page.on("request", (request) => {
+    if (request.method() !== "POST" || !new URL(request.url()).pathname.endsWith("/api/ask")) return;
+    let body;
+    try { body = request.postDataJSON(); } catch { body = null; }
+    progress.collected.currentPrompt = typeof body?.question === "string" ? body.question.slice(0, 501) : null;
+    const record = {
+      requestedAt: new Date().toISOString(), viewport, url: request.url(),
+      question: progress.collected.currentPrompt, fixtureId: requestFixtureIdentity(body),
+      status: null, requestFailed: null,
+    };
+    records.push(record);
+    if (records.length > 50) records.shift();
+    requests.set(request, record);
+  });
+  page.on("response", (response) => {
+    const record = requests.get(response.request());
+    if (record) record.status = response.status();
+  });
+  page.on("requestfailed", (request) => {
+    const record = requests.get(request);
+    if (record) record.requestFailed = String(request.failure()?.errorText ?? "Unknown request failure").slice(0, 1_000);
+    requests.delete(request);
+  });
+  page.on("requestfinished", (request) => requests.delete(request));
+}
+
+async function captureFailureDiagnostics(page, viewport, options, identity, progress) {
+  const diagnostics = {
+    capturedAt: new Date().toISOString(), viewport,
+    currentPrompt: progress.collected.currentPrompt ?? null, errors: [],
+  };
+  let timer;
+  try {
+    diagnostics.page = await Promise.race([
+      page.evaluate(() => {
+        const input = document.querySelector('textarea[aria-label="Ask a question"]');
+        const main = document.querySelector("main");
+        return {
+          url: location.href, title: document.title,
+          viewport: { width: innerWidth, height: innerHeight, documentWidth: document.documentElement.scrollWidth },
+          composer: input ? { value: input.value.slice(0, 501), disabled: input.disabled } : null,
+          buttons: [...document.querySelectorAll("button")].slice(-20).map((button) => ({
+            label: (button.getAttribute("aria-label") || button.textContent || "").trim().slice(0, 200),
+            disabled: button.disabled,
+          })),
+          alerts: [...document.querySelectorAll('[role="alert"]')].slice(0, 10).map((alert) => alert.textContent.trim().slice(0, 1_000)),
+          bodyText: (document.body?.innerText ?? "").slice(0, 12_000),
+          dom: (main?.outerHTML ?? "").slice(0, 24_000),
+        };
+      }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Page diagnostics timed out after 5000ms")), 5_000); }),
+    ]);
+  } catch (error) {
+    diagnostics.errors.push(`Page snapshot: ${error.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
+  try {
+    const outputDir = options.output ? path.dirname(options.output) : options.outputDir;
+    await mkdir(outputDir, { recursive: true });
+    const screenshotPath = path.join(outputDir, `${identity.runId}.failure-${viewport.width}x${viewport.height}-${Date.now()}.png`);
+    await page.screenshot({ path: screenshotPath, type: "png", fullPage: false, timeout: 5_000 });
+    diagnostics.screenshotPath = screenshotPath;
+  } catch (error) {
+    diagnostics.errors.push(`Screenshot: ${error.message}`);
+  }
+  return diagnostics;
+}
+
 async function ask(page, question, pacer) {
   const input = page.getByRole("textbox", { name: "Ask a question" });
   const previousBubbleCount = await page.getByTestId("desk-pundit-bubble").count();
@@ -917,18 +989,32 @@ async function captureLive(options, report, dependencies = {}) {
         const context = await browser.newContext({ viewport });
         const page = await context.newPage();
         attachConsole(page, consoleEvidence);
-        const observed = await runChecks(
-          page,
-          options.webUrl,
-          viewport,
-          pacer,
-          report,
-          canonical,
-          traffic,
-          progress
-        );
-        checks = checks.length === 0 ? observed : mergeChecks(checks, observed);
-        await context.close();
+        attachAskDiagnostics(page, viewport, progress);
+        progress.collected.currentViewport = viewport;
+        progress.collected.currentPrompt = null;
+        let failed = false;
+        try {
+          const observed = await runChecks(
+            page,
+            options.webUrl,
+            viewport,
+            pacer,
+            report,
+            canonical,
+            traffic,
+            progress
+          );
+          checks = checks.length === 0 ? observed : mergeChecks(checks, observed);
+        } catch (error) {
+          failed = true;
+          progress.collected.failureDiagnostics = await captureFailureDiagnostics(page, viewport, options, identity, progress);
+          throw error;
+        } finally {
+          try { await context.close(); } catch (error) {
+            if (!failed) throw error;
+            progress.collected.failureDiagnostics.errors.push(`Context close: ${error.message}`);
+          }
+        }
       }
     } finally {
       await browser.close();
@@ -1079,6 +1165,8 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 export {
+  attachAskDiagnostics,
+  captureFailureDiagnostics,
   runViewportChecks,
   latestBoardIdentity,
   requestFixtureIdentity,

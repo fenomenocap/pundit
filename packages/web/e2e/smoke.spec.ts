@@ -1,6 +1,64 @@
 import { test, expect, type Page } from "@playwright/test";
 
 test.describe("QA regressions", () => {
+  for (const width of [390, 1440]) {
+    test(`general explainer chips leave an unpriced pin for one turn and preserve its return at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await routeTwoFixtureDeskSlate(page);
+      await page.route("**/api/model/active", (route) => route.fulfill({
+        status: 200, contentType: "application/json", body: JSON.stringify({ fixtures: [] }),
+      }));
+      const fixture = {
+        fixtureId: "espn:eng.1:901", primarySource: "espn", primarySourceFixtureId: "901",
+        homeTeam: { id: "arsenal", name: "Arsenal" }, awayTeam: { id: "chelsea", name: "Chelsea" },
+        kickoff: "2026-10-04T19:00:00.000Z", venue: "Emirates Stadium", neutralVenue: false,
+        competition: { id: "eng.1", name: "Premier League", category: "domestic-league" },
+        status: "in-play", recognition: "authoritative",
+      };
+      const explainers = [
+        ["Reading a slate", "In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?", "Compare the ways teams create chances and defend space across a slate; an outcome is never guaranteed."],
+        ["No bankers", "In general, why should a strong favourite never be treated as a guaranteed win?", "A strong favourite can still lose through poor finishing or a defensive mistake."],
+        ["Derby dynamics", "In general, how can a derby change the tactical trade-offs and game management?", "In a derby, discipline and the timing of pressure can matter as much as possession."],
+        ["Scoring chances", "In general, what makes a good chance for a striker, beyond past goal totals?", "A striker benefits from receiving close to goal with room to shoot; past totals alone cannot describe the chance."],
+      ];
+      const requests: Array<Record<string, unknown>> = [];
+      await page.route("**/api/ask", (route) => {
+        const request = route.request().postDataJSON();
+        requests.push(request);
+        const explainer = explainers.find(([, question]) => question === request.question);
+        const generalScope = explainer && !request.fixtureContext && request.history.length === 0 && !request.userLine;
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          answer: generalScope ? explainer[2] : "This match is underway; I have no live forecast.",
+          grounding: generalScope ? null : { kind: "fixture", fixture,
+            capability: { status: "outside-coverage", reason: "in-play-model-unavailable" } },
+        }) });
+      });
+      await page.goto("/");
+      const input = page.getByRole("textbox", { name: "Ask a question" });
+      await input.fill("Arsenal vs Chelsea live odds?");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByTestId("desk-unpriced-notice")).toBeVisible();
+      for (const [index, [label, question, answer]] of explainers.entries()) {
+        await page.getByRole("button", { name: label, exact: true }).click();
+        await expect(page.getByTestId("desk-pundit-bubble").last()).toContainText(answer);
+        await expect(page.getByTestId("desk-grounding-label").last()).toHaveText("General analysis");
+        await expect(page.getByTestId("desk-pundit-bubble").last().getByTestId("desk-unpriced-notice")).toHaveCount(0);
+        expect(requests[index + 1]).toMatchObject({ question, history: [], voice: "desk", stream: false });
+        expect(requests[index + 1]).not.toHaveProperty("fixtureContext");
+        expect(requests[index + 1]).not.toHaveProperty("userLine");
+        await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.selectedId)).toBe(fixture.fixtureId);
+      }
+      await expect(page.getByTestId("desk-match-board")).toHaveCount(0);
+      await expect(page.getByTestId("desk-user-bubble")).toHaveCount(5);
+      await input.fill("Back to that match: what about its odds?");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByTestId("desk-unpriced-notice")).toHaveCount(2);
+      expect(requests[5].fixtureContext).toEqual({ fixtureId: fixture.fixtureId });
+      expect(requests[5].history).toHaveLength(10);
+      await expect(page.getByTestId("desk-match-board")).toHaveCount(0);
+    });
+  }
+
   for (const path of ["/", "/legacy"]) {
     test(`recognized in-play fixture shows no live forecast or market gap at ${path}`, async ({ page }) => {
       const fixture = {
