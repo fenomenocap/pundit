@@ -86,7 +86,7 @@ export type FixtureCapability =
     }
   | {
       status: "outside-coverage";
-      reason: "unsupported-competition" | "friendly-policy-disabled" | "model-policy-disabled";
+      reason: "unsupported-competition" | "friendly-policy-disabled" | "model-policy-disabled" | "in-play-model-unavailable";
     }
   | {
       status: "insufficient-model-input";
@@ -453,7 +453,8 @@ export function isModelPolicyEligible(fixture: RecognizedFixture): boolean {
     && fixture.competition.category !== "club-friendly"
     && fixture.competition.category !== "international-friendly"
     && fixture.status !== "cancelled"
-    && fixture.status !== "postponed";
+    && fixture.status !== "postponed"
+    && fixture.status !== "in-play";
 }
 
 export function modelFixtureId(fixture: Pick<ModelFixture, "competitionId" | "fixtureId">): string {
@@ -477,6 +478,8 @@ export interface CapabilityState {
   modelInitialized: boolean;
   modelRefreshing?: boolean;
   ratingsAvailable: boolean;
+  /** Current serving time; omit for an explicit historical capability replay. */
+  now?: number;
 }
 
 export function evaluateFixtureCapability(
@@ -489,6 +492,11 @@ export function evaluateFixtureCapability(
   }
   if (!getCompetitionById(fixture.competition.id)) {
     return { status: "outside-coverage", reason: "unsupported-competition" };
+  }
+  if (fixture.status === "in-play"
+    || (fixture.status === "scheduled" && state.now !== undefined
+      && Date.parse(fixture.kickoff) <= state.now)) {
+    return { status: "outside-coverage", reason: "in-play-model-unavailable" };
   }
   if (!isModelPolicyEligible(fixture)) {
     return { status: "outside-coverage", reason: "model-policy-disabled" };
@@ -531,6 +539,7 @@ export function getRecognizedFixtureSnapshot(state: {
   modelRefreshing?: boolean;
   ratingsAvailable: boolean;
   missingRatingTeamIds?: ReadonlySet<string>;
+  now?: number;
 }) {
   return {
     registry: getFixtureRegistryStatus(),
@@ -539,6 +548,7 @@ export function getRecognizedFixtureSnapshot(state: {
       .map((fixture) => ({
         fixture,
         capability: evaluateFixtureCapability(fixture, {
+          now: state.now ?? Date.now(),
           modelFixture: state.modelFixtures.find((model) =>
             model.competitionId === fixture.competition.id
             && String(model.fixtureId) === fixture.primarySourceFixtureId

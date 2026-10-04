@@ -9,7 +9,7 @@ import { completedDeskHistory } from "@/desk/lib/chat-history";
 import { askPundit } from "@/desk/lib/pundit";
 import { useDesk, type ChatMsg } from "@/desk/lib/store";
 import type { OneXTwoOutcome } from "@/lib/api";
-import { userLinePayloadForAsk } from "@/lib/fixture-presentation";
+import { capabilityLabel, userLinePayloadForAsk } from "@/lib/fixture-presentation";
 import { SafeMarkdown } from "@/lib/safe-markdown";
 import { cn } from "@/lib/utils";
 import { humaniseDeskCitationDates } from "@/desk/lib/prose";
@@ -98,7 +98,7 @@ export function AgentPane() {
       ]
     : SLATE_CHIPS;
 
-  async function send(text: string, fixtureId = liveFixture?.id ?? "") {
+  async function send(text: string, fixtureId = selectedId) {
     const q = text.trim();
     if (!q || busy || activeRequest.current) return;
     if (q.length > 500) {
@@ -424,7 +424,7 @@ function Bubble({ msg }: { msg: ChatMsg }) {
     : msg.grounding?.kind === "season" ? `Season outlook · ${msg.grounding.competition}`
       : msg.grounding?.kind === "competition" ? `Current table · ${msg.grounding.competition}`
         : msg.grounding?.kind === "match" ? "Match forecast"
-          : msg.grounding?.kind === "fixture" ? "Fixture context"
+          : msg.grounding?.kind === "fixture" ? `${msg.grounding.fixture.competition.name} · ${capabilityLabel(msg.grounding.capability)}`
             : "General analysis";
   if (msg.role === "user") {
     return (

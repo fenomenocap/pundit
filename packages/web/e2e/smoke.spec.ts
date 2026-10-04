@@ -1,6 +1,113 @@
 import { test, expect, type Page } from "@playwright/test";
 
 test.describe("QA regressions", () => {
+  for (const path of ["/", "/legacy"]) {
+    test(`recognized in-play fixture shows no live forecast or market gap at ${path}`, async ({ page }) => {
+      const fixture = {
+        fixtureId: "espn:eng.1:901", primarySource: "espn", primarySourceFixtureId: "901",
+        homeTeam: { id: "arsenal", name: "Arsenal" }, awayTeam: { id: "chelsea", name: "Chelsea" },
+        kickoff: "2026-10-04T19:00:00.000Z", venue: "Emirates Stadium", neutralVenue: false,
+        competition: { id: "eng.1", name: "Premier League", category: "domestic-league" },
+        status: "in-play", recognition: "authoritative",
+      };
+      await routeTwoFixtureDeskSlate(page);
+      await page.route("**/api/model/active", (route) => route.fulfill({
+        status: 200, contentType: "application/json", body: JSON.stringify({ fixtures: [] }),
+      }));
+      const received: Array<Record<string, unknown>> = [];
+      let reportedFixture = fixture;
+      await page.route("**/api/ask", (route) => {
+        received.push(route.request().postDataJSON());
+        if (received.at(-1)!.question === "Actually switch to Liverpool vs Fulham") {
+          reportedFixture = { ...fixture, fixtureId: "espn:eng.1:902", primarySourceFixtureId: "902",
+            homeTeam: { id: "liverpool", name: "Liverpool" }, awayTeam: { id: "fulham", name: "Fulham" } };
+        }
+        const response = {
+          answer: "This fixture is already underway. I have no live forecast or model-to-market comparison.",
+          grounding: { kind: "fixture", fixture: reportedFixture,
+            capability: { status: "outside-coverage", reason: "in-play-model-unavailable" } },
+        };
+        return route.fulfill(path === "/legacy"
+          ? { status: 200, contentType: "text/event-stream", body: [
+            `event: grounding\ndata: ${JSON.stringify({ grounding: response.grounding })}`,
+            `event: done\ndata: ${JSON.stringify(response)}`, "",
+          ].join("\n\n") }
+          : { status: 200, contentType: "application/json", body: JSON.stringify(response) });
+      });
+      await page.goto(path);
+      const input = page.getByRole("textbox", { name: "Ask a question" });
+      await input.fill("What are the odds for Arsenal vs Chelsea right now?");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByText(/Premier League · Live forecast unavailable/, { exact: false })).toBeVisible();
+      for (const testId of ["desk-match-board", "desk-compact-match-context", "match-fixture-card", "compact-match-context"]) {
+        await expect(page.getByTestId(testId)).toHaveCount(0);
+      }
+      const output = path === "/" ? page.getByTestId("desk-pundit-bubble") : page.locator('[aria-live="polite"][aria-relevant="additions text"]');
+      await expect(output).not.toContainText(/\d+(?:\.\d+)?\s*%|Fair decimal odds|Model probabilities|percentage points/i);
+      if (path === "/") {
+        await expect(page.getByTestId("desk-unpriced-notice")).toBeVisible();
+        await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.selectedId))
+          .toBe(fixture.fixtureId);
+      }
+      await input.fill("What about that match?");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect.poll(() => received.length).toBe(2);
+      await expect(page.getByText(/Premier League · Live forecast unavailable/, { exact: false })).toHaveCount(2);
+      await expect(page.getByTestId("desk-match-board")).toHaveCount(0);
+      await expect(page.getByTestId("match-fixture-card")).toHaveCount(0);
+      await expect(page.locator('[data-testid^="market-ev-"]')).toHaveCount(0);
+      expect(received[1].fixtureContext).toEqual({ fixtureId: fixture.fixtureId });
+      expect(received[1].history).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: "What are the odds for Arsenal vs Chelsea right now?" }),
+      ]));
+      await input.fill("Actually switch to Liverpool vs Fulham");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByText(/Premier League · Live forecast unavailable/, { exact: false })).toHaveCount(3);
+      await input.fill("What about that match now?");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect.poll(() => received.length).toBe(4);
+      expect(received[3].fixtureContext).toEqual({ fixtureId: "espn:eng.1:902" });
+      await expect(page.getByTestId("desk-match-board")).toHaveCount(0);
+      await expect(page.getByTestId("match-fixture-card")).toHaveCount(0);
+    });
+  }
+
+  for (const key of ["Enter", "Space"]) {
+    test(`paper fixture selection works with ${key}`, async ({ page }) => {
+      await routeTwoFixtureDeskSlate(page);
+      await page.goto("/board");
+      for (const [name, id] of [["Arsenal vs Chelsea", "901"], ["Liverpool vs Fulham", "902"]]) {
+        const select = page.getByRole("button", { name: `Select ${name}`, exact: true });
+        await expect(select).toBeVisible();
+        expect(await select.evaluate((element) => element.tabIndex)).toBe(0);
+        await select.focus();
+        await page.keyboard.press(key);
+        await expect(select).toHaveAttribute("aria-pressed", "true");
+        await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.selectedId))
+          .toBe(`espn:eng.1:${id}`);
+      }
+      await expect(page.getByRole("button", { name: "Select Arsenal vs Chelsea", exact: true }))
+        .toHaveAttribute("aria-pressed", "false");
+    });
+
+    test(`draft player selection works with ${key} and unavailable players stay disabled`, async ({ page }) => {
+      await page.clock.install();
+      await page.goto("/draft");
+      await page.getByRole("button", { name: "Start practice draft" }).click();
+      await page.clock.runFor(2_401);
+      await expect(page.getByText("You are on the clock", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Draft Haaland", exact: true })).toBeDisabled();
+      const saka = page.getByRole("button", { name: "Draft Saka", exact: true });
+      await expect(saka).toBeEnabled();
+      await saka.focus();
+      await page.keyboard.press(key);
+      await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
+      await expect(saka).toBeDisabled();
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.draftTeams[3].picks))
+        .toEqual(["saka"]);
+    });
+  }
+
   for (const width of [390, 1440]) {
     test(`desk Stop restores the prompt and excludes a late reply at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });

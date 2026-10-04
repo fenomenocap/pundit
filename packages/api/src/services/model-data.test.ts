@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { ActiveFixture } from "./active-fixtures";
 import { backfillMissingClubRatings, getCachedClubRatings } from "./club-ratings";
@@ -57,11 +57,15 @@ const ratings = {
 
 describe("active club model", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-01T00:00:00Z"));
     vi.mocked(getCachedClubRatings).mockReset();
     // Recovers nothing by default, so these cases exercise the unrated path
     // rather than reaching ClubElo's per-club feeds over the network.
     vi.mocked(backfillMissingClubRatings).mockReset().mockResolvedValue([]);
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it("builds Dixon-Coles probabilities for an active fixture", () => {
     const model = buildModelFixtureFromActive(activeFixture(), ratings);
