@@ -28,6 +28,7 @@ import {
   finalApiRequestStart,
   identityFromReport,
   latestRunPath,
+  latestBoardIdentity,
   oversizedPromptCheckPasses,
   parseBacktestCounts,
   percentageTriplet,
@@ -36,6 +37,27 @@ import {
   requiredCheckIds,
   tripletsAgree,
 } from "./capture-chat-eval-browser.mjs";
+
+test("compact follow-up context must reveal the actual board and retain its identity and probabilities", async () => {
+  let visible = false;
+  let clicked = 0;
+  const attributes = { "data-fixture-id": "espn:eng.1:901", "data-p-home": "0.6", "data-p-draw": "0.25", "data-p-away": "0.15" };
+  const board = {
+    isVisible: async () => visible,
+    getAttribute: async (name) => attributes[name] ?? null,
+    locator: () => ({ count: async () => 2 }),
+  };
+  const compact = { isVisible: async () => true, locator: () => ({ click: async () => { visible = true; clicked++; } }) };
+  const bubble = { getByTestId: (id) => id === "desk-match-board" ? board : compact };
+  const page = { getByTestId: () => ({ last: () => bubble }) };
+  assert.equal((await latestBoardIdentity(page, "espn:eng.1:901")).boardVisible, false);
+  const revealed = await latestBoardIdentity(page, "espn:eng.1:901", true);
+  assert.equal(revealed.boardVisible, true);
+  assert.equal(revealed.identityMatches, true);
+  assert.deepEqual(revealed.probabilities, [0.6, 0.25, 0.15]);
+  assert.equal((await latestBoardIdentity(page, "espn:eng.1:902", true)).identityMatches, false);
+  assert.equal(clicked, 1);
+});
 
 test("request identity reads the API fixtureContext contract without promoting unrelated IDs", () => {
   assert.equal(requestFixtureIdentity({ fixtureContext: { fixtureId: "espn:eng.1:401879280" } }), "espn:eng.1:401879280");

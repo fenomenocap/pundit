@@ -109,7 +109,7 @@ describe("labelled Pundit Consensus", () => {
     expect(probabilityAttributionLabel(fundamentalOrigin)).toBe(PUNDIT_FUNDAMENTAL_LABEL);
     expect(probabilityAttributionLabel(consensusOrigin)).toContain(PUNDIT_CONSENSUS_LABEL);
     expect(probabilityAttributionLabel(consensusOrigin)).toContain("Kalshi");
-    expect(probabilityAttributionLabel(consensusOrigin)).not.toMatch(/sealed Pundit Fundamental/i);
+    expect(probabilityAttributionLabel(consensusOrigin)).not.toMatch(/sealed|immutable/i);
     expect(probabilityAttributionLabel(marketOrigin)).toContain("not a Pundit");
     expect(hasValidProbabilityAttribution(probabilityAttributionLabel(fundamentalOrigin), fundamentalOrigin)).toBe(true);
     expect(hasValidProbabilityAttribution(probabilityAttributionLabel(consensusOrigin), consensusOrigin)).toBe(true);
