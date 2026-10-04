@@ -244,3 +244,61 @@ The foundational generic comparison now has a complete deterministic explanation
 of the invited pass, trigger, covered outlets, short combinations and wide
 escape risks. The bounded parser still excludes club-specific or pricing
 questions. A fresh deployment and full output certification are required.
+
+## Latest certification and bounded follow-up
+
+PR #228 merged as `3d0352899e1213d592337524a3c8106fa3d896f9` and
+Railway deployment `13eff73a-ea0e-4cd6-a8fc-d368cfc179f8` reached SUCCESS.
+The API served that SHA; the unchanged web served its build floor
+`8aeb3b89c0b394b5aead4578c389b88b69d40ca9`. Production verification passed.
+
+Run `2026-10-04T20-43-02-953Z` completed 65 scenarios: 60 passed and five
+absence-only observations were safely inconclusive. All 56 successful delivered
+answer turns passed independent semantic review. The required-traffic p90 was
+6,802 ms and the 59 API requests preserved at least 13,025 ms between starts.
+This is not a complete release certificate: desktop browser capture timed out
+on “Back to that match: what will the 1X2 be?”. Mobile retention had completed.
+The server recorded HTTP 200 in 19,353 ms for the desktop return request.
+Long browser timing gaps suggest suspension, but no timeout DOM/network snapshot
+was preserved, so the root cause remains unresolved. The original failed browser
+artifact is retained, and the finalizer rejected its missing postflight version
+and timing evidence. The report remains `ISSUES FOUND`.
+
+The capture harness now preserves bounded request outcomes, prompt, viewport,
+composer/alerts/DOM and a screenshot before closing a failed browser context.
+Timeouts, pacing, deployment checks and acceptance criteria are unchanged.
+Independent review also qualified the early-table caveat: a table alone does
+not establish fixture-order causality or how many places one result will move
+a club. Wide-point-gap and completed-season regressions guard this wording.
+A fresh API/browser/critic cycle is required after this follow-up release.
+
+Settled mobile and tablet images were recaptured after the viewport transition;
+the earlier immediate-resize images are invalid visual evidence and are retained
+only as such. The settled images show readable wrapping with no document overflow.
+
+## Next model experiment
+
+Repair the five invalid weekly grids and seven unconverged fits before assessing
+performance: validate all four corrected low-score cells, not just the observed
+training result, and retain every failure in the coverage denominator. Freeze
+a dated, prior-only experiment manifest and choose parameters inside earlier
+windows. Compare 1X2 Brier/log loss, totals Brier, BTTS Brier and scoreline log loss
+on the same unique held-out fixtures, with paired week-level uncertainty and
+coverage strata. Overlapping origin forecasts are not independent matches.
+
+Predeclare cadence-appropriate multi-market acceptance rules and any justified
+noninferiority margins before observing a new holdout. Derive data requirements
+from earlier-window uncertainty; do not invent thresholds or retrospectively
+relax the existing gates. A qualifying candidate must then be frozen for
+prospective pre-kickoff seals and a separate promotion decision. Season
+calibration across historical seasons and fixed-strength sensitivity remain
+separate research work. Asynchronous market snapshots do not prove tradable edge.
+
+The completed independent PR #227 review found two additional medium issues.
+The tactical framing allowlist now accepts natural “what” and “why” questions,
+while whole-side consumption continues to reject unknown clubs dressed in
+tactical terms. The required live tactical scenario now includes both variants.
+Fallback desk chips become explicit general-football explainers, with standalone
+history and no fixture/line attachment. They no longer promise an unavailable
+slate aggregation or inherit an unpriced pin. The transcript and pin are retained
+for a subsequent typed match follow-up; priced match chips remain scoped.
