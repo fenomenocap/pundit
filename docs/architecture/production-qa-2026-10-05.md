@@ -8,7 +8,7 @@ version endpoints served that exact SHA and `pnpm verify:prod <sha> <sha>` passe
 ## Model mathematics and limitations
 
 An independent Python implementation, using factorial Poisson probabilities and
-the exact pinned input ratings, reproduced all 29 active fixtures' 1X2, O/U 2.5,
+the exact pinned input ratings, reproduced all 30 active fixtures' 1X2, O/U 2.5,
 BTTS and top-five scoreline ranks within the four-decimal output tolerance.
 Maximum probability difference was 0.000049895. Maximum omitted grid mass before
 normalization was 0.000046685 (0.00467%). Using the displayed one-decimal ratings
@@ -149,3 +149,40 @@ it checked. Forward clock jumps cannot bypass monotonic spacing, and backward
 corrections cannot bypass wall-clock spacing. Neither the 13-second minimum nor
 the finalizer's strict checks are weakened. A new evaluation is required after
 this repair; the prior reports remain preserved.
+
+## Runtime dependency security repair
+
+The production-only pnpm audit reported 95 advisories (2 critical, 40 high,
+45 moderate, 8 low) on the previous lockfile. This is a dependency finding,
+not evidence that every advisory was exploitable in this deployment. The
+Windows-specific Next.js critical path does not match the Linux production
+host; image-optimization issues also depend on enabled features.
+
+Upgrade Next.js 14.2.35 to supported Maintenance LTS 15.5.27, with React 19
+and matching React types and eslint-config-next. The official
+`next-async-request-api` codemod inspected 73 files and required no edits.
+Patch Express to 4.22.3 and express-rate-limit to 8.7.0. Remove the unused
+shadcn scaffolding CLI dependency; generated UI components remain local.
+Next.js still pins PostCSS 8.4.31, so the root pnpm override selects the patched
+same-major PostCSS 8.5.28. The isolated upgraded production dependency audit
+reports zero advisories across 280 dependencies. CI now checks high/critical
+production dependency advisories before type checks.
+
+Primary references: [Next.js September security release](https://nextjs.org/blog/september-2026-security-release),
+[Next.js support policy](https://nextjs.org/support-policy),
+[version 15 migration guide](https://nextjs.org/docs/app/guides/upgrading/version-15).
+Release acceptance also requires full API and web regressions, exact deployed
+SHA verification and a fresh paced API/browser/critic certification on the new
+deployment. Earlier output certification does not certify this dependency upgrade.
+
+The full development-and-production audit was then reduced from 48 remaining
+advisories to one high advisory by updating Vitest to 4.1.11 with a supported
+Vite 8 peer and applying same-major patched overrides to vulnerable transitive
+parsers/glob utilities. Source test discovery is explicit under Vitest 4, so
+compiled `dist` copies are not accidentally rerun. The sole remaining finding
+is [braces GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm):
+upstream lists no patched version as of this audit. It appears only in trusted
+repository development/build glob processing, not the production dependency
+tree. Do not feed untrusted brace patterns into these tools. The advisory is
+retained in the full audit, without an ignore or a false claim of remediation.
+CI separately rejects critical advisories across development dependencies.
