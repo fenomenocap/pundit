@@ -1,5 +1,5 @@
 import type { Grounding } from "./ask";
-import { composeDeskFootballTake } from "./desk-voice";
+import { sanitizeDeskFootballHypotheses, composeDeskFootballTake } from "./desk-voice";
 import { PUNDIT_CONSENSUS_LABEL, PUNDIT_FUNDAMENTAL_LABEL } from "./pundit-consensus";
 import type { OneXTwoOutcome } from "./response-correctness";
 import { parseScoreline } from "./response-correctness";
@@ -362,8 +362,9 @@ export function composeDeskTakeOutline(
 ): string {
   const oneXTwo = composeDeskLabelledOneXTwo(grounding);
   const wrinkle = composeDeskSourcedWrinkle(options?.playerEvidence ?? null);
-  const football = (options?.footballProse ?? "").trim()
-    || composeDeskFootballTake(grounding, { leadWithAnalystVoice: options?.leadWithAnalystVoice });
+  const fallback = composeDeskFootballTake(grounding, { leadWithAnalystVoice: options?.leadWithAnalystVoice });
+  const football = options?.footballProse === fallback ? fallback
+    : sanitizeDeskFootballHypotheses(options?.footballProse ?? "", grounding) || fallback;
   return [oneXTwo, wrinkle, football].filter(Boolean).join(" ");
 }
 

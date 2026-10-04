@@ -15,6 +15,9 @@ import { ProbabilityBar } from "@/components/probability-bar";
 import {
   espnStatusByIdentity,
   formatObservedAt,
+  formatKickoffTime,
+  formatKickoffDay,
+  KICKOFF_TIME_NOTE,
   formatPercent as percent,
   marketRowsFromModel,
   modelFixtureStatusLabel,
@@ -30,18 +33,11 @@ function fixtureRowKey(fixture: ModelFixtureResponse): string {
 }
 
 function kickoffTime(utcDate: string): string {
-  return new Date(utcDate).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  return formatKickoffTime(utcDate);
 }
 
 function kickoffDay(utcDate: string): string {
-  return new Date(utcDate).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+  return formatKickoffDay(utcDate);
 }
 
 export default function ModelPage() {
@@ -112,7 +108,7 @@ export default function ModelPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-6">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
       <PageHeader
         title="Club season model"
         eyebrow="Predictions · Active fixtures"
@@ -127,8 +123,9 @@ export default function ModelPage() {
         )}
       />
 
-      <p className="-mt-4 mb-6 text-xs text-muted-foreground">
+      <p className="my-4 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <Disclaimer />
+        <span className="text-xs text-muted-foreground">{KICKOFF_TIME_NOTE}</span>
         {modelReady !== null && (
           <span className="ml-2 text-muted-foreground/80">
             · Model cache {modelReady ? "ready" : "loading"}

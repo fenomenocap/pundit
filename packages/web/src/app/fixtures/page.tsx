@@ -30,6 +30,9 @@ import {
   capabilityLabel,
   capabilityTone,
   formatObservedAt,
+  formatKickoffTime,
+  formatKickoffDay,
+  KICKOFF_TIME_NOTE,
   formatPercent,
   marketRowsFromModel,
   recognizedFixtureMap,
@@ -122,14 +125,6 @@ function useFixturesData(selectedCompetition: string) {
   };
 }
 
-function formatKickoffTime(utcDate: string): string {
-  return new Date(utcDate).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
 function isAskable(match: MatchResponse): boolean {
   return (match.status === "SCHEDULED" || match.status === "IN_PLAY")
     && Boolean(match.homeTeam)
@@ -209,10 +204,7 @@ function MatchRow({
               {formatKickoffTime(match.utcDate)}
             </span>
             <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-              {new Date(match.utcDate).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
+              {formatKickoffDay(match.utcDate)}
             </span>
           </div>
         </div>
@@ -505,8 +497,9 @@ export default function FixturesPage() {
         )}
       />
 
-      <p className="-mt-4 mb-6 text-xs text-muted-foreground">
+      <p className="my-4 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <Disclaimer />
+        <span className="text-xs text-muted-foreground">{KICKOFF_TIME_NOTE}</span>
       </p>
 
       <div className="mb-6 flex flex-wrap gap-2">

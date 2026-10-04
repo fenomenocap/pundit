@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LeagueMark } from "@/desk/components/kit";
@@ -54,7 +54,7 @@ export function Navbar() {
 
         <nav
           aria-label="Main navigation"
-          className="hidden md:flex items-center gap-0.5 ml-3"
+          className="hidden xl:flex items-center gap-0.5 ml-3 shrink-0"
         >
           {PRIMARY.map((n) => {
             const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
@@ -96,7 +96,10 @@ export function Navbar() {
             href={getDocsUrl()}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs font-semibold uppercase tracking-wider text-subtle transition-colors duration-150 hover:text-fg"
+            className={cn(
+              "shrink-0 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-subtle transition-colors duration-150 hover:text-fg",
+              lab && "hidden sm:inline-flex",
+            )}
           >
             How it works
           </a>
@@ -107,7 +110,7 @@ export function Navbar() {
               LIVE
             </span>
             <span className="text-border-strong">/</span>
-            <span>ClubElo</span>
+            <span>Club season</span>
           </div>
           {lab ? (
             <div className="flex items-baseline gap-2 tabular-nums">
@@ -123,18 +126,38 @@ export function Navbar() {
 
 export function MobileDock() {
   const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => setMoreOpen(false), [pathname]);
   return (
     <nav
       aria-label="Mobile"
-      className="md:hidden sticky bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]"
+      className="xl:hidden sticky bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]"
     >
-      <ul className="grid grid-cols-4">
+      {moreOpen ? (
+        <ul id="mobile-more-navigation" className="grid grid-cols-3 border-b border-border">
+          {SECONDARY.map((n) => (
+            <li key={n.href}>
+              <Link
+                href={n.href}
+                onClick={() => setMoreOpen(false)}
+                aria-current={pathname.startsWith(n.href) ? "page" : undefined}
+                className="flex h-12 items-center justify-center text-xs font-semibold uppercase tracking-wider text-fg"
+              >
+                {n.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <ul className="grid grid-cols-5">
         {PRIMARY.map((n) => {
           const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
           return (
             <li key={n.href}>
               <Link
                 href={n.href}
+                onClick={() => setMoreOpen(false)}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex h-12 items-center justify-center text-2xs font-semibold uppercase tracking-wider",
                   active ? "text-accent" : "text-quiet",
@@ -145,6 +168,20 @@ export function MobileDock() {
             </li>
           );
         })}
+        <li>
+          <button
+            type="button"
+            aria-expanded={moreOpen}
+            aria-controls="mobile-more-navigation"
+            onClick={() => setMoreOpen((open) => !open)}
+            className={cn(
+              "flex h-12 w-full items-center justify-center text-2xs font-semibold uppercase tracking-wider",
+              moreOpen || SECONDARY.some((n) => pathname.startsWith(n.href)) ? "text-accent" : "text-quiet",
+            )}
+          >
+            More
+          </button>
+        </li>
       </ul>
     </nav>
   );

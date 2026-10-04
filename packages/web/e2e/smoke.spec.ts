@@ -1,5 +1,145 @@
 import { test, expect, type Page } from "@playwright/test";
 
+test.describe("QA regressions", () => {
+  test("a totals follow-up keeps a compact, expandable match reference", async ({ page }) => {
+    await routeTwoFixtureDeskSlate(page);
+    let turn = 0;
+    await page.route("**/api/ask", (route) => route.fulfill({
+      status: 200, contentType: "application/json", body: JSON.stringify({
+        answer: ++turn === 1 ? "Here is the match briefing." : "Over 2.5 is 52.0%; this uses a fixed total-goals assumption.",
+        grounding: deskMatchGrounding("espn:eng.1:901", "Arsenal", "Chelsea"),
+        presentation: { responseMode: turn === 1 ? "match-preview" : "totals", fixtureCard: turn === 1 ? "expanded" : "compact" },
+      }),
+    }));
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await input.fill("Give me the Arsenal vs Chelsea briefing");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByTestId("desk-match-board")).toBeVisible();
+    await input.fill("What about over 2.5?");
+    await page.getByRole("button", { name: "Send" }).click();
+    const compact = page.getByTestId("desk-compact-match-context");
+    await expect(compact).toBeVisible();
+    await expect(compact.getByTestId("desk-match-board")).not.toBeVisible();
+    await compact.getByText("Arsenal vs Chelsea · Match context", { exact: true }).click();
+    await expect(compact.getByTestId("desk-match-board")).toBeVisible();
+    await page.reload();
+    await expect(compact).toBeVisible();
+    await expect(compact.getByTestId("desk-match-board")).not.toBeVisible();
+  });
+
+  test("all main routes fit a narrow phone and tablet", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await routeTwoFixtureDeskSlate(page);
+    for (const width of [320, 820]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const path of ["/", "/board", "/draft", "/vault", "/fixtures", "/model", "/evaluation/club-season", "/evaluation/wc-2026"]) {
+        await page.goto(path);
+        await expect(page.getByRole("heading").first()).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${path} at ${width}px`).toBe(true);
+      }
+    }
+    expect(errors).toEqual([]);
+  });
+
+  for (const width of [390, 820, 1024, 1440]) {
+    test(`all sections are reachable without header overflow at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/model");
+      await expect(page.getByRole("heading", { name: "Club season model" })).toBeVisible();
+      expect(await page.locator("header").evaluate((header) => header.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const note = page.getByText("Kickoffs shown in UK time (GMT/BST).", { exact: true });
+      const noteBox = await note.boundingBox();
+      const titleBox = await page.getByRole("heading", { name: "Club season model" }).boundingBox();
+      expect(noteBox!.y).toBeGreaterThan(titleBox!.y + titleBox!.height);
+      expect(await note.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const visible = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return visible === element || element.contains(visible);
+      })).toBe(true);
+      await expect(page.getByRole("img", { name: /Arsenal.*Draw/ }).first()).toHaveText("");
+      const navigation = page.getByRole("navigation", { name: width < 1280 ? "Mobile" : "Main navigation", exact: true });
+      if (width < 1280) {
+        const more = navigation.getByRole("button", { name: "More", exact: true });
+        await more.click();
+        await expect(more).toHaveAttribute("aria-expanded", "true");
+      }
+      for (const name of ["Fixtures", "Model", "Ledger"]) {
+        await expect(navigation.getByRole("link", { name, exact: true })).toBeVisible();
+      }
+      await page.screenshot({ path: testInfo.outputPath(`model-${width}.png`), fullPage: true });
+      await navigation.getByRole("link", { name: "Ledger", exact: true }).click();
+      await expect(page).toHaveURL(/evaluation\/club-season/);
+      if (width < 1280) await expect(navigation.getByRole("button", { name: "More" })).toHaveAttribute("aria-expanded", "false");
+    });
+  }
+
+  test("practice books have no fabricated performance and preserve credits", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/vault");
+    const main = page.getByRole("main");
+    await expect(main.getByText("Not tracked", { exact: true })).toBeVisible();
+    await expect(main.getByText(/do not place positions, track the live slate or earn returns/)).toBeVisible();
+    await expect(main).not.toContainText(/Sharpe|18\.6%|9\.4%|6\.1%|NAV|Annualized/);
+    const alpha = main.getByRole("article").filter({ has: page.getByRole("heading", { name: "Alpha", exact: true }) });
+    const credits = alpha.getByRole("spinbutton", { name: "Alpha practice credits" });
+    await credits.fill("1");
+    await alpha.getByRole("button", { name: "Reserve credits" }).click();
+    await expect(alpha.getByText("Minimum 250 credits.", { exact: true })).toBeVisible();
+    await credits.fill("250");
+    await alpha.getByRole("button", { name: "Reserve credits" }).click();
+    await expect(main.getByText("9,750", { exact: true })).toBeVisible();
+    await expect(alpha.getByText("250", { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(main.getByText("9,750", { exact: true })).toBeVisible();
+    await alpha.getByRole("button", { name: "Return credits" }).click();
+    await expect(main.getByText("10,000", { exact: true })).toBeVisible();
+    await expect(alpha.getByRole("button", { name: "Return credits" })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("vault-mobile.png"), fullPage: true });
+  });
+
+  test("draft identifies computer opponents before and during play", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/draft");
+    await expect(page.getByText(/Practice against seven computer-controlled teams/)).toBeVisible();
+    await expect(page.getByText(/Player scores are demo inputs, not current-season statistics/)).toBeVisible();
+    await page.getByRole("button", { name: "Start practice draft" }).click();
+    await expect(page.getByText("Local practice · seven computer-controlled teams · illustrative player scores", { exact: true })).toBeVisible();
+    await expect(page.getByText("You are on the clock", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("row").filter({ hasText: "Saka" }).click();
+    await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("draft-mobile.png"), fullPage: true });
+    await page.reload();
+    await expect(page.getByText("Local practice · seven computer-controlled teams · illustrative player scores", { exact: true })).toBeVisible();
+    await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Leave room" }).click();
+    await expect(page.getByRole("button", { name: "Start practice draft" })).toBeVisible();
+  });
+
+  for (const timezoneId of ["Asia/Singapore", "America/New_York"]) {
+    test.describe(timezoneId, () => {
+      test.use({ timezoneId });
+      test("kickoff labels agree across fixture, model and desk views", async ({ page }) => {
+        await page.clock.setFixedTime(new Date("2026-10-04T11:30:00Z"));
+        const fixtureId = "espn:eng.1:1";
+        for (const [path, testId] of [["/fixtures", "fixture-row"], ["/model", "model-fixture-row"]]) {
+          await page.goto(path);
+          await expect(page.getByText("Kickoffs shown in UK time (GMT/BST).", { exact: true })).toBeVisible();
+          const row = page.locator(`[data-testid="${testId}"][data-fixture-id="${fixtureId}"]`);
+          await expect(row).toContainText("12:30");
+          await expect(row).toContainText("6 Oct");
+        }
+        await routeTwoFixtureDeskSlate(page);
+        await page.goto("/");
+        await expect(page.getByText("Kickoffs shown in UK time (GMT/BST).", { exact: true })).toBeVisible();
+        await expect(page.getByText(/20 Sep.*20:00 BST/).first()).toBeVisible();
+      });
+    });
+  }
+});
+
 async function routeTwoFixtureDeskSlate(page: Page) {
   const fixtures = [
     { fixtureId: 901, home: "Arsenal", away: "Chelsea", pHome: 0.5, pDraw: 0.25, pAway: 0.25 },

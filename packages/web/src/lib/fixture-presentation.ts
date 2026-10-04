@@ -24,6 +24,22 @@ export function formatPercent(value: number | null): string {
   return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
 }
 
+/** All fixture surfaces share one explicitly labelled clock, including DST. */
+export const KICKOFF_TIME_ZONE = "Europe/London";
+export const KICKOFF_TIME_NOTE = "Kickoffs shown in UK time (GMT/BST).";
+
+export function formatKickoffTime(utcDate: string): string {
+  return new Date(utcDate).toLocaleTimeString("en-GB", {
+    hour: "2-digit", minute: "2-digit", hour12: false, timeZone: KICKOFF_TIME_ZONE,
+  });
+}
+
+export function formatKickoffDay(utcDate: string): string {
+  return new Date(utcDate).toLocaleDateString("en-GB", {
+    month: "short", day: "numeric", timeZone: KICKOFF_TIME_ZONE,
+  });
+}
+
 /** Server `evPct` is a fraction. Format only — never recompute EV in the client. */
 export function formatSignedEvPct(evPct: number): string {
   const pct = evPct * 100;
