@@ -185,6 +185,7 @@ describe("fixture registry", () => {
   it("exposes only recognized identities with deterministic capabilities", () => {
     replaceFixtureRegistryForTests([friendly()]);
     const snapshot = getRecognizedFixtureSnapshot({
+      now: Date.parse("2026-08-21T00:00:00Z"),
       modelFixtures: [],
       modelInitialized: true,
       ratingsAvailable: true,
@@ -201,6 +202,7 @@ describe("fixture registry", () => {
   it("classifies per-fixture missing ratings as insufficient input, not refreshing", () => {
     replaceFixtureRegistryForTests([recognizeEspnFixture(footballFixture())]);
     const snapshot = getRecognizedFixtureSnapshot({
+      now: Date.parse("2026-08-21T00:00:00Z"),
       modelFixtures: [],
       modelInitialized: true,
       modelRefreshing: false,

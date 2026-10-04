@@ -463,20 +463,26 @@ describe("club-season snapshots", () => {
   it("seals from the football-cadence checkpoint tick while the fixture is still scheduled", async () => {
     useTempDataDir();
     const now = new Date("2026-08-15T13:15:00.000Z");
-    replaceFootballDataForTests({
-      upcoming: [sampleMatch()],
-      recent: [],
-      lastUpdated: now,
-      error: null,
-    });
-    replaceModelDataForTests({
-      fixtures: [sampleModelFixture()],
-      lastUpdated: now,
-      error: null,
-    });
-    const artifact = await runClubSeasonCheckpointTick(now);
-    expect(artifact?.fixtures).toHaveLength(1);
-    expect(artifact?.fixtures[0].checkpointReason).toBe("scheduled_window");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    try {
+      replaceFootballDataForTests({
+        upcoming: [sampleMatch()],
+        recent: [],
+        lastUpdated: now,
+        error: null,
+      });
+      replaceModelDataForTests({
+        fixtures: [sampleModelFixture()],
+        lastUpdated: now,
+        error: null,
+      });
+      const artifact = await runClubSeasonCheckpointTick(now);
+      expect(artifact?.fixtures).toHaveLength(1);
+      expect(artifact?.fixtures[0].checkpointReason).toBe("scheduled_window");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("still seals a scheduled window when market odds refresh fails", async () => {

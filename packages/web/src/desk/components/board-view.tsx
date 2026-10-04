@@ -131,16 +131,25 @@ function MarketList() {
                   </span>
                 </div>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label={`Select ${TEAMS[f.home].name} vs ${TEAMS[f.away].name}`}
+                    aria-pressed={active}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      select(f.id);
+                    }}
+                    className="min-w-0 flex-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    <span className="flex items-center gap-2">
                       <KitPip team={f.home} />
                       <span className="font-medium truncate">{TEAMS[f.home].name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
+                    </span>
+                    <span className="flex items-center gap-2 mt-1">
                       <KitPip team={f.away} />
                       <span className="font-medium truncate">{TEAMS[f.away].name}</span>
-                    </div>
-                  </div>
+                    </span>
+                  </button>
                   {score ? (
                     <div className="font-display text-2xl tabular-nums px-2">
                       {score[0]}–{score[1]}

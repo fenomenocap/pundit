@@ -567,7 +567,7 @@ const MODEL_PROBABILITY_FIELDS = [
 const FIXTURE_CAPABILITIES = {
   "temporarily-unpriced": new Set(["model-initializing", "ratings-refreshing"]),
   "outside-coverage": new Set([
-    "unsupported-competition", "friendly-policy-disabled", "model-policy-disabled",
+    "unsupported-competition", "friendly-policy-disabled", "model-policy-disabled", "in-play-model-unavailable",
   ]),
   "insufficient-model-input": new Set([
     "ratings-unavailable", "neutral-venue-unknown", "required-context-missing",
@@ -615,6 +615,20 @@ export function routableRecognizedEntries(entries, { registryEnabled = false, en
   if (registryEnabled) return current;
   const enabled = new Set(enabledCompetitionIds);
   return current.filter((entry) => enabled.has(entry?.fixture?.competition?.id));
+}
+
+export function selectRecognizedScenarioEntry(scenario, entries) {
+  return entries.find(({ fixture, capability }) =>
+    (!scenario.capabilityStatus || capability?.status === scenario.capabilityStatus)
+    && (!scenario.capabilityReason || capability?.reason === scenario.capabilityReason)
+    && (!scenario.competitionCategory || fixture?.competition?.category === scenario.competitionCategory)
+  );
+}
+
+export function requireAvailableRecognizedScenarios(scenarios, entries) {
+  return scenarios.map((scenario) => scenario.kind === "recognized" && scenario.requiredIfAvailable === true
+    ? { ...scenario, requiredForCertification: Boolean(selectRecognizedScenarioEntry(scenario, entries)) }
+    : scenario);
 }
 
 /** Competitions whose ESPN windows the deployment is actually refreshing. */
@@ -1100,6 +1114,7 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
       "unsupported-competition": /\b(?:outside|unsupported)\b[^.!?\n]{0,40}\b(?:coverage|competition)\b|\bI don['’]t cover this competition\b/i,
       "friendly-policy-disabled": /\b(?:friendly|outside)\b[^.!?\n]{0,50}\b(?:coverage|polic|disabled)\b|\bI don['’]t publish forecasts for friendlies\b/i,
       "model-policy-disabled": /\b(?:model|pricing)\b[^.!?\n]{0,50}\b(?:polic|disabled|outside coverage)\b|\bI exclude this fixture under my forecasting policy\b/i,
+      "in-play-model-unavailable": /\b(?:underway|in[- ]play|scheduled kickoff has arrived)\b[\s\S]*\b(?:don['’]t|do not|can['’]t|cannot)\b[^.!?\n]{0,80}\blive (?:match )?forecast\b/i,
     }[reason];
     const inventsDifferentReason = reason === "required-context-missing"
       && /\b(?:confirmed squad|injur(?:y|ies)|lineups?|availability data)\b[^.!?\n]{0,100}\b(?:require|required|unblock|coverage)\b|\b(?:require|required|unblock|coverage)\b[^.!?\n]{0,100}\b(?:confirmed squad|injur(?:y|ies)|lineups?|availability data)\b/i.test(text);
@@ -1292,6 +1307,12 @@ export function validateGrounding(grounding, expectation) {
       grounding?.pBttsYes,
       grounding?.pBttsNo,
     ].every(finiteProbability);
+    assertions.totalsComplement = [grounding?.pOver2_5, grounding?.pUnder2_5]
+      .every(finiteProbability)
+      && Math.abs(grounding.pOver2_5 + grounding.pUnder2_5 - 1) <= 0.001 + Number.EPSILON;
+    assertions.bttsComplement = [grounding?.pBttsYes, grounding?.pBttsNo]
+      .every(finiteProbability)
+      && Math.abs(grounding.pBttsYes + grounding.pBttsNo - 1) <= 0.001 + Number.EPSILON;
     assertions.scorelinesPresent = Array.isArray(grounding?.topScores)
       && grounding.topScores.length > 0
       && Array.isArray(grounding?.scorelines)
@@ -1561,6 +1582,11 @@ export function validateAnswerStructure(answer, expectation = {}) {
     noUnresolvedMarker: !/\[\[|\]\]|\{\{|\}\}/.test(typeof answer === "string" ? answer : ""),
     noStructuredDraft: !/"(?:directAnswer|factIds|citedClaims)"\s*:/.test(typeof answer === "string" ? answer : ""),
   };
+  if (expectation.expectTacticalComparisonAnswer) {
+    assertions.tacticalComparisonAnswered = /\bpress(?:ing)?\b/i.test(answer)
+      && /\b(?:traps?|midfield)\b/i.test(answer)
+      && !/\b(?:couldn['’]?t|could not|can['’]?t|cannot) confirm[^.!?]*(?:matchup|fixture)|unconfirmed fixture|share the teams, competition/i.test(answer);
+  }
   if (expectation.expectHeadlineOneXTwo) {
     assertions.headlineOneXTwoPresent = lines.some((line) =>
       (line.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(line)
@@ -1594,6 +1620,8 @@ export function validateAnswerStructure(answer, expectation = {}) {
         ? "answer begins with a malformed closing fragment"
       : name === "headlineOneXTwoPresent"
         ? "match answer is missing its headline win/draw/win line"
+      : name === "tacticalComparisonAnswered"
+        ? "tactical comparison is unanswered or was mistaken for an unconfirmed fixture"
         : "answer ends with a structurally incomplete fragment");
   return { passed: failures.length === 0, assertions, failures };
 }

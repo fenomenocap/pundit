@@ -1,6 +1,6 @@
 import { buildFreshnessSnapshot } from "../config/freshness-policy";
 import { footballMatchesForFreshness } from "./football-data";
-import { getCachedModelData, getModelFixtureKey, ModelFixture } from "./model-data";
+import { getCachedModelData, getModelFixtureKey, isCurrentPreMatchModelFixture, ModelFixture } from "./model-data";
 import {
   disabledSourceReason,
   fetchAllMarketOdds,
@@ -60,6 +60,7 @@ export function marketOddsFixtureKey(fixture: ModelFixture): string {
 }
 
 export function getCachedFixtureMarketOdds(fixture: ModelFixture): TimestampedFixtureMarketOdds | null {
+  if (!isCurrentPreMatchModelFixture(fixture)) return null;
   return cache.byFixture.get(getModelFixtureKey(fixture)) ?? null;
 }
 
@@ -120,7 +121,7 @@ export function publicModelFixture(
 }
 
 export function publicModelFixtures(fixtures: ModelFixture[]): PublicModelFixture[] {
-  return fixtures.map((fixture) =>
+  return fixtures.filter((fixture) => isCurrentPreMatchModelFixture(fixture)).map((fixture) =>
     publicModelFixture(fixture, getCachedFixtureMarketOdds(fixture))
   );
 }

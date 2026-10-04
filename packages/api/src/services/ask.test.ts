@@ -3060,6 +3060,50 @@ describe("resolveAskContext", () => {
       .toMatchObject({ tier: "general" });
   });
 
+  it.each([
+    "Explain the trade-offs of pressing traps against a narrow midfield in detail.",
+    "Explain a high press against a low block.",
+    "Compare a high press vs a low block in the Premier League.",
+    "Compare a high defensive line vs a deep block.",
+    "Compare 4-3-3 vs 4-4-2.",
+    "Compare 4-2-3-1 versus 3-4-2-1.",
+    "Explain counter-pressing vs a low-block.",
+    "Which is more effective: man-marking vs zonal-marking?",
+  ])("keeps tactical concepts general: %s", (question) => {
+    expect(resolveAskContext(question, [], undefined, [], [], []))
+      .toEqual({ tier: "general" });
+  });
+
+  it.each([
+    "Explain Northbridge Athletic vs Southbank Rovers pressing traps.",
+    "Explain Northbridge Athletic high press vs Southbank Rovers low block.",
+    "Explain Northbridge’s high press vs Southbank’s low block.",
+    "Explain Northbridge Athletic high press vs Southbank Rovers low block in the Premier League.",
+    "Give match odds for a high press vs a low block.",
+    "Give probabilities for a high press vs a low block.",
+    "Give odds for a high press vs a low block.",
+    "Explain Liverpool's high press vs Fulham's low block.",
+  ])("does not exempt clubs or pricing requests: %s", (question) => {
+    const fixtures = [fixture("Liverpool", "Man City"), fixture("Arsenal", "Fulham", { fixtureId: 2 })];
+    expect(resolveAskContext(question, [], undefined, fixtures, [standing()], []))
+      .toEqual({ tier: "candidate" });
+  });
+
+  it.each(["team", "history", "identity"])("classifies a new comparison before %s retention", (contextKind) => {
+    const priced = fixture("Liverpool", "Man City");
+    const history = contextKind === "history"
+      ? [{ role: "user" as const, content: "Liverpool vs Man City" }]
+      : [];
+    const teams: [string, string] | undefined = contextKind === "team" ? ["Liverpool", "Man City"] : undefined;
+    const routing = contextKind === "identity"
+      ? { fixtureContext: { fixtureId: espnFixtureIdentity(priced) } }
+      : {};
+    expect(resolveAskContext("Explain the trade-offs of pressing traps against a narrow midfield in detail.", history, teams, [priced], [], [], routing))
+      .toEqual({ tier: "general" });
+    expect(resolveAskContext("Explain Northbridge Athletic high press vs Southbank Rovers low block.", history, teams, [priced], [], [], routing))
+      .toEqual({ tier: "candidate" });
+  });
+
   it("owes a search for a result question", () => {
     expect(deterministicSearchQuery("Who went through in Celtic's Champions League qualifier tie on aggregate?"))
       .not.toBeNull();

@@ -23,11 +23,12 @@ export function isActiveFootballMatch(
   now = Date.now(),
   horizonMs = ACTIVE_FIXTURE_HORIZON_MS
 ): boolean {
-  if (match.status !== "SCHEDULED" && match.status !== "IN_PLAY") return false;
+  // The champion is a pre-match forecast: it does not condition on live goals
+  // or elapsed time. Live fixtures remain in ESPN/recognition, not pricing.
+  if (match.status !== "SCHEDULED") return false;
   if (!isKnownTeam(match.homeTeam) || !isKnownTeam(match.awayTeam)) return false;
-  if (match.status === "IN_PLAY") return true;
   const kickoff = new Date(match.utcDate).getTime();
-  return kickoff >= now - 60 * 60 * 1000 && kickoff <= now + horizonMs;
+  return kickoff > now && kickoff <= now + horizonMs;
 }
 
 export function selectActiveFixtures(

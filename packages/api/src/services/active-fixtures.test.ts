@@ -50,14 +50,21 @@ describe("active fixtures", () => {
     )).toBe(false);
   });
 
-  it("keeps in-play fixtures even when kickoff is in the past", () => {
+  it("excludes in-play fixtures from pre-match pricing even while ESPN retains the match", () => {
     const now = Date.parse("2026-07-28T12:00:00.000Z");
     const match = baseMatch({
       status: "IN_PLAY",
       utcDate: "2026-07-28T11:00:00.000Z",
       score: { home: 1, away: 0 },
     });
-    expect(isActiveFootballMatch(match, now)).toBe(true);
+    expect(isActiveFootballMatch(match, now)).toBe(false);
+  });
+
+  it("withholds pre-match pricing at kickoff even when the feed still says scheduled", () => {
+    const match = baseMatch({ utcDate: "2026-10-10T11:30:00Z" });
+    expect(isActiveFootballMatch(match, Date.parse(match.utcDate) - 1)).toBe(true);
+    expect(isActiveFootballMatch(match, Date.parse(match.utcDate))).toBe(false);
+    expect(isActiveFootballMatch(match, Date.parse(match.utcDate) + 30 * 60 * 1000)).toBe(false);
   });
 
   it("filters to enabled competitions and sorts by kickoff", () => {

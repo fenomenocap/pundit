@@ -29,6 +29,8 @@ import {
   regradeRecordedRuntimeHelpers,
   readinessFailures,
   routableRecognizedEntries,
+  requireAvailableRecognizedScenarios,
+  selectRecognizedScenarioEntry,
   enabledCompetitionIds,
   describeRecognizedRoutability,
   selectFeaturedMatch,
@@ -560,6 +562,34 @@ test("grounding validation checks tier-specific payload fidelity", () => {
     expectGrounding: "competition",
     expectCompetitionId: "eng.1",
   }).passed, false);
+});
+
+test("match grounding rejects corrupted or missing totals and BTTS complements", () => {
+  const grounding = {
+    kind: "match",
+    pHome: 0.4, pDraw: 0.3, pAway: 0.3,
+    pOver2_5: 0.52, pUnder2_5: 0.48,
+    pBttsYes: 0.55, pBttsNo: 0.45,
+    topScores: [{ score: "1-1", probability: 0.12 }],
+    scorelines: [{ score: "1-1", probability: 0.12 }],
+    oddsSources: [],
+  };
+  const expectation = { expectGrounding: "match" };
+  assert.equal(validateGrounding(grounding, expectation).passed, true);
+  assert.equal(validateGrounding({ ...grounding, pUnder2_5: 0.4809 }, expectation).passed, true);
+  assert.equal(validateGrounding({ ...grounding, pBttsNo: 0.4491 }, expectation).passed, true);
+  assert.equal(validateGrounding({ ...grounding, pUnder2_5: 0.4811 }, expectation).passed, false);
+  assert.equal(validateGrounding({ ...grounding, pBttsNo: 0.4489 }, expectation).passed, false);
+  for (const [field, assertion] of [
+    ["pOver2_5", "totalsComplement"], ["pUnder2_5", "totalsComplement"],
+    ["pBttsYes", "bttsComplement"], ["pBttsNo", "bttsComplement"],
+  ]) {
+    for (const value of [0.1, undefined]) {
+      const result = validateGrounding({ ...grounding, [field]: value }, expectation);
+      assert.equal(result.passed, false, `${field}=${value}`);
+      assert.equal(result.assertions[assertion], false, `${field}=${value}`);
+    }
+  }
 });
 
 test("classification distinguishes baseline, regression, pass, and inconclusive", () => {
@@ -1738,6 +1768,50 @@ test("golden conversation guards trace exact-score prices and table-wide counts"
   ).passed, false);
 });
 
+test("in-play observation becomes required only when its exact capability is routable", () => {
+  const scenario = {
+    id: "observational-live-in-play", kind: "recognized",
+    capabilityStatus: "outside-coverage", capabilityReason: "in-play-model-unavailable",
+    requiredForCertification: false, requiredIfAvailable: true,
+  };
+  const entry = {
+    fixture: { status: "in-play", competition: { id: "eng.1", category: "domestic-league" } },
+    capability: { status: "outside-coverage", reason: "in-play-model-unavailable" },
+  };
+  assert.equal(selectRecognizedScenarioEntry(scenario, [entry]), entry);
+  const [required] = requireAvailableRecognizedScenarios([scenario], [entry]);
+  assert.equal(required.requiredForCertification, true);
+  assert.equal(scenario.requiredForCertification, false);
+  const otherCapability = { ...entry, capability: { status: "outside-coverage", reason: "friendly-policy-disabled" } };
+  assert.equal(requireAvailableRecognizedScenarios([scenario], [otherCapability])[0].requiredForCertification, false);
+  assert.equal(requireAvailableRecognizedScenarios([scenario], [])[0].requiredForCertification, false);
+  const unroutable = routableRecognizedEntries([entry], { enabledCompetitionIds: ["uefa.champions_qual"] });
+  assert.equal(requireAvailableRecognizedScenarios([scenario], unroutable)[0].requiredForCertification, false);
+  const ordinary = { ...scenario, id: "ordinary", requiredIfAvailable: false, requiredForCertification: true };
+  assert.equal(requireAvailableRecognizedScenarios([ordinary], [])[0], ordinary);
+});
+
+test("tactical comparison guard requires football analysis rather than an unconfirmed fixture notice", () => {
+  const expectation = { expectTacticalComparisonAnswer: true };
+  const answer = "Pressing traps can channel the ball toward a touchline, where the press restricts the receiver's options. Against a narrow midfield, that can expose the flanks, but committing extra players creates an escape route if the opposition switches play quickly.";
+  assert.equal(validateAnswerStructure(answer, expectation).passed, true);
+  const refusal = "I couldn't confirm that matchup. Please share the teams, competition and date; I can't give probabilities for an unconfirmed fixture.";
+  for (const rejected of [
+    refusal,
+    `Pressing traps and a narrow midfield: ${refusal}`,
+    "Pressing traps against a narrow midfield: I cannot confirm this matchup.",
+    "A low defensive line reduces the room behind the defenders.",
+    "",
+  ]) {
+    const result = validateAnswerStructure(rejected, expectation);
+    assert.equal(result.passed, false, rejected);
+    assert.equal(result.assertions.tacticalComparisonAnswered, false, rejected);
+    assert.ok(result.failures.includes(
+      "tactical comparison is unanswered or was mistaken for an unconfirmed fixture"
+    ));
+  }
+});
+
 test("answer structure guard catches an emptied section and a missing headline 1X2", () => {
   // The shape production actually served: a bold label over nothing.
   assert.equal(validateAnswerStructure("**Verdict**").passed, false);
@@ -2183,6 +2257,13 @@ test("schema-17 fixture grounding distinguishes capability without leaking model
     fixture,
     capability: { status: "outside-coverage", reason: "ratings-unavailable" },
   }).passed, false);
+  const inPlay = {
+    kind: "fixture",
+    fixture: { ...fixture, status: "in-play", competition: { id: "eng.1", name: "Premier League", category: "domestic-league" } },
+    capability: { status: "outside-coverage", reason: "in-play-model-unavailable" },
+  };
+  assert.equal(validateFixtureGrounding(inPlay).passed, true);
+  assert.equal(validateFixtureGrounding({ ...inPlay, pHome: 0.5 }).passed, false);
 });
 
 test("schema-17 verification contract enforces shape, counts, and abstention semantics", () => {
@@ -3451,6 +3532,7 @@ test("plain capability notices preserve the typed reason without internal termin
     ["ratings-unavailable", "I don't have a required team-strength rating. I can't estimate probabilities until I have that information."],
     ["neutral-venue-unknown", "I haven't confirmed whether this is at a neutral venue. I can't estimate probabilities until I have that information."],
     ["required-context-missing", "I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities."],
+    ["in-play-model-unavailable", "This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices."],
   ];
   for (const [reason, answer] of cases) {
     assert.equal(validateResponseCorrectness(answer, [], { kind: "fixture", capability: { reason } }, {}).assertions.capabilityReasonFidelity, true, reason);
@@ -3462,4 +3544,12 @@ test("plain capability notices preserve the typed reason without internal termin
   ).assertions.capabilityReasonFidelity, false);
   assert.equal(validateResponseCorrectness(cases[0][1], [], { kind: "fixture", capability: { reason: "required-context-missing" } }, {}).assertions.capabilityReasonFidelity, false);
   assert.equal(validateResponseCorrectness(`${cases[7][1]} Confirmed squad and lineups are required to unlock coverage.`, [], { kind: "fixture", capability: { reason: "required-context-missing" } }, {}).assertions.capabilityReasonFidelity, false);
+  assert.equal(validateResponseCorrectness(
+    "I exclude this fixture under my forecasting policy.", [],
+    { kind: "fixture", capability: { reason: "in-play-model-unavailable" } }, {}
+  ).assertions.capabilityReasonFidelity, false);
+  assert.equal(validateResponseCorrectness(
+    "Scheduled kickoff has arrived. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.", [],
+    { kind: "fixture", capability: { reason: "in-play-model-unavailable" } }, {}
+  ).assertions.capabilityReasonFidelity, true);
 });

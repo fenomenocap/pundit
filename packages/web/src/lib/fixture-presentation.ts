@@ -402,6 +402,7 @@ export function capabilityLabel(capability: FixtureCapability): string {
         ? "Forecast ratings refreshing"
         : "Forecast loading";
     case "outside-coverage":
+      if (capability.reason === "in-play-model-unavailable") return "Live forecast unavailable";
       if (capability.reason === "friendly-policy-disabled") return "Outside forecast coverage · friendly policy";
       if (capability.reason === "unsupported-competition") return "Competition · outside forecast coverage";
       return "Outside forecast coverage";
