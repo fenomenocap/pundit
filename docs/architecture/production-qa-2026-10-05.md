@@ -70,16 +70,29 @@ Local source evidence is retained in the ignored directory
 independent calculation and calibration report. These are research copies;
 Railway `/data` remains production truth.
 
-## Next model experiment
+## Challenger replay and remaining model work
 
-Define a match-specific attack/defence model with dated priors for newly promoted
-or unseen clubs and a predefined weekly expanding-window retraining cadence.
-Use only results available before each forecast, retain coverage failures, and
-compare 1X2, totals, BTTS and scoreline losses on the same held-out fixtures.
-Keep parameter selection inside earlier windows. Establish multi-market criteria
-before selecting a candidate, then freeze it for prospective validation. The
-previous historical challenger has coverage and multi-market failures; do not
-promote it to resolve the fixed-total limitation without fresh evidence.
+Rerunning the current evaluator confirms that dated prior-only coverage and
+weekly expanding-window attack/defence fitting already exist in research.
+The three fixed-origin runs score 1,146 pairs over 572 unique fixtures, including
+216 prior-only pairs, with no coverage exclusion. The challenger still fails
+promotion: it does not beat the champion across the required origins. In the
+January 2026 origin, improved 1X2 Brier accompanies worse totals Brier
+(0.249581 versus 0.267131).
+
+The weekly replay has 69 origins, 730 unique holdout fixtures, 725 scored pairs,
+five invalid/uncovered pairs and four prior-only pairs. It also remains blocked.
+Its gate requires two origins with at least 40 scored matches; a football week
+usually has far fewer matches. This gate is unsuitable for interpreting pooled
+weekly evidence and should be redesigned explicitly before a new selection
+experiment, rather than relaxed until the candidate passes. Coverage and
+nonconvergence must still block any production recommendation.
+
+Use only results available before each forecast, compare all markets on the same
+held-out fixtures and keep parameter selection inside earlier windows. Establish
+cadence-appropriate multi-market criteria, resolve invalid grids/nonconvergence,
+then freeze a candidate for prospective validation. Existing research models
+must not be promoted merely to remove the fixed-total limitation.
 
 Live output certification is separate from these mathematical and research
 checks. A final Schema-17 PASS must bind fresh answers, browser evidence and
