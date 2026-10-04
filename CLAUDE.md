@@ -11,7 +11,7 @@ Chat-first analysis **desk** for the Premier League and UEFA Champions League qu
 | Layer | Technology |
 |---|---|
 | Monorepo | pnpm workspaces (Node 22, pnpm 9.15.4), 2 packages: `api`, `web` |
-| Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui primitives (`components/ui/`) |
+| Frontend | Next.js 15 App Router, React 19, TypeScript, TailwindCSS, shadcn/ui primitives (`components/ui/`) |
 | Backend | Express + TypeScript, `@anthropic-ai/sdk` (wire client for the pinned OpenRouter model; MiniMax remains the answer fallback when that key is unset) |
 | Data | ESPN, Stake, Kalshi, and Polymarket public endpoints; pinned ClubElo-derived strength artifact; model computed locally |
 
