@@ -5,7 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { apiStartupPollPassed } from "./verify-prod-lib.mjs";
+import {
+  apiStartupPollPassed,
+  attemptVercelBundleCheck,
+  extractHomepageJsChunks,
+  inspectChunkBodies,
+  isTransientDeployHttp,
+  pollVercelBundleCheck,
+} from "./verify-prod-lib.mjs";
 
 const FLOOR = "c56c1e3f187161f572f32cdde27a88786d01dd2f";
 
@@ -79,6 +86,96 @@ function write(cwd, relative, content) {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, content);
 }
+
+test("extractHomepageJsChunks deduplicates script references", () => {
+  const html = `
+    <script src="/_next/static/chunks/app/page-abc.js"></script>
+    <script src="/_next/static/chunks/webpack-def.js"></script>
+    <script src="/_next/static/chunks/app/page-abc.js"></script>
+  `;
+  assert.deepEqual(extractHomepageJsChunks(html), [
+    "/_next/static/chunks/app/page-abc.js",
+    "/_next/static/chunks/webpack-def.js",
+  ]);
+});
+
+test("isTransientDeployHttp treats 404 as retryable propagation", () => {
+  assert.equal(isTransientDeployHttp(404), true);
+  assert.equal(isTransientDeployHttp(500), false);
+});
+
+test("attemptVercelBundleCheck finds API host in a fetched chunk", async () => {
+  const html = '<script src="/_next/static/chunks/app/page-1.js"></script>';
+  const fetchImpl = async (url) => {
+    if (url === "https://web.example/") {
+      return { ok: true, status: 200, text: async () => html };
+    }
+    if (url === "https://web.example/_next/static/chunks/app/page-1.js") {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => "const API='thepundit.up.railway.app';",
+      };
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+
+  const result = await attemptVercelBundleCheck({
+    webUrl: "https://web.example",
+    expectedApiHost: "thepundit.up.railway.app",
+    fetchImpl,
+  });
+  assert.equal(result.pass, true);
+  assert.equal(result.chunkCount, 1);
+});
+
+test("pollVercelBundleCheck retries transient chunk 404 then passes", async () => {
+  const html = '<script src="/_next/static/chunks/app/page-1.js"></script>';
+  let chunkCalls = 0;
+  const fetchImpl = async (url) => {
+    if (url === "https://web.example/") {
+      return { ok: true, status: 200, text: async () => html };
+    }
+    if (url === "https://web.example/_next/static/chunks/app/page-1.js") {
+      chunkCalls += 1;
+      if (chunkCalls === 1) {
+        return { ok: false, status: 404, text: async () => "" };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => "thepundit.up.railway.app",
+      };
+    }
+    throw new Error(`unexpected url ${url}`);
+  };
+
+  let sleeps = 0;
+  const result = await pollVercelBundleCheck({
+    webUrl: "https://web.example",
+    expectedApiHost: "thepundit.up.railway.app",
+    maxAttempts: 3,
+    intervalMs: 1,
+    fetchImpl,
+    sleepImpl: async () => { sleeps += 1; },
+  });
+  assert.equal(result.pass, true);
+  assert.equal(result.attempts, 2);
+  assert.equal(sleeps, 1);
+  assert.equal(chunkCalls, 2);
+});
+
+test("inspectChunkBodies flags localhost leak", () => {
+  const chunks = ["/a.js"];
+  const bodies = new Map([["/a.js", "fetch('http://localhost:3001/api')"]]);
+  const { foundHost, foundLocalhost } = inspectChunkBodies(
+    chunks,
+    bodies,
+    "thepundit.up.railway.app",
+  );
+  assert.equal(foundHost, false);
+  assert.equal(foundLocalhost, true);
+});
 
 test("startup poll accepts a descendant served SHA after deploy history refresh", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-verify-prod-"));
