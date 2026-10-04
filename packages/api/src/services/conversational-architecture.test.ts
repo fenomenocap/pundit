@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sampleAgentFreshness } from "../config/freshness-policy";
+import * as deskVoice from "./desk-voice";
 import {
   deliverAnswer,
   deterministicSearchQuery,
@@ -835,6 +836,40 @@ describe("V2 conversational architecture", () => {
     expect(briefingWithWrinkle.answer).toMatch(/example\.com\/news/);
     expect(briefingWithWrinkle.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(briefingWithWrinkle.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
+  });
+
+  it("retains a conditional desk take when the prose provider returns no text", async () => {
+    const writer = vi.spyOn(deskVoice, "writeDeskProse").mockResolvedValueOnce(null);
+    try {
+      const delivered = await deliverAnswer({
+        answer: JSON.stringify({ directAnswer: { text: "I prefer {{match.pHome}}.", factIds: ["match.pHome"] }, reasoning: [], citedClaims: [] }),
+        tier: "match",
+        grounding: grounding(),
+        bundle: { queries: [], providerCalls: 0, results: [] },
+        client: { messages: { create: vi.fn() } } as any,
+        question: "Give me the match briefing for Arsenal vs Chelsea. Tactics, who decides it, and the model lean.",
+        evidenceRequired: false,
+        candidateUnrecognized: false,
+        structuredDraftExpected: true,
+        voice: "desk",
+      });
+      expect(delivered.answer).toContain("My 1X2 is Arsenal 56.3%");
+      expect(delivered.answer).toContain("If Arsenal can sustain pressure");
+      expect(delivered.answer).toContain("tactical possibilities, not confirmed selections or playing styles");
+      expect(delivered.answer).not.toContain("directAnswer");
+    } finally {
+      writer.mockRestore();
+    }
+  });
+
+  it("explains complementary half-goal probabilities without changing the forecast", () => {
+    const question = "What about over and under 2.5? Why do they add to 100%?";
+    const answer = composeMatchResponse(question, grounding(), planResponse(question, { groundingKind: "match" }));
+    expect(answer).toContain("over 2.5 at 58.9%");
+    expect(answer).toContain("under 2.5 is 41.1%");
+    expect(answer).toContain("There is no push at a half-goal line, so their probabilities sum to one.");
+    expect(answer).toContain("Decimal odds are the reciprocals");
+    expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {

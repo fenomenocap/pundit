@@ -256,6 +256,7 @@ async function jsonTurn(
     teamContext,
     fixtureContext,
     userLine: turn.userLine,
+    voice: turn.voice ?? scenario.voice,
   });
   await onRequestStart({
     scenarioId: scenario.id,

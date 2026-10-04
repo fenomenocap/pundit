@@ -11,6 +11,7 @@ import { KitPip } from "@/desk/components/kit";
 import { ProbBar } from "@/desk/components/prob-bar";
 import { Button } from "@/desk/components/ui/button";
 import { useLiveSlate } from "@/desk/components/use-live-slate";
+import { SHARED_TOTAL_XG_SENTENCE } from "@/lib/fixture-presentation";
 
 export function MatchIntel() {
   const selectedId = useDesk((s) => s.selectedId);
@@ -90,6 +91,7 @@ export function MatchIntel() {
               <Stat k="O2.5" v={fmtPct(f.model.over25)} />
               <Stat k="BTTS" v={fmtPct(f.model.btts)} />
             </dl>
+            <p className="mt-2 text-2xs leading-5 text-quiet">{SHARED_TOTAL_XG_SENTENCE}</p>
             <p className="mt-4 text-sm leading-relaxed text-quiet">
               {f.status === "ft" ? "Pre-kickoff lean" : "Model lean"}{" "}
               <span className="text-fg font-medium">{selectionLabel(f, f.modelPick)}</span> at{" "}

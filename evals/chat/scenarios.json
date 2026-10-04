@@ -2,6 +2,27 @@
   "schemaVersion": 17,
   "fixed": [
     {
+      "id": "homepage-desk-output",
+      "description": "The actual homepage voice handles a tactical briefing and compact totals follow-up using supplied fixture facts. Agent critic must reject invented lineups, settled playing styles or time-of-day claims.",
+      "kind": "featured-turns",
+      "voice": "desk",
+      "turns": [
+        {
+          "questionTemplate": "Give me the match briefing for {home} vs {away}. Tactics, who decides it, and the model lean.",
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectNoUnsupportedLineupEffect": true
+        },
+        {
+          "question": "What about over and under 2.5? Why do they add to 100%?",
+          "expectGrounding": "match",
+          "expectAnalystVoice": true,
+          "expectDirectAnswer": true,
+          "expectNarrowFollowup": true
+        }
+      ]
+    },
+    {
       "id": "active-match-grounding",
       "description": "A model-backed active club fixture receives match grounding and delivers a complete headline win/draw/win line under a section label that is not left empty. A provider-labelled normal end_turn still fails if the answer ends in a numeric or Markdown fragment.",
       "kind": "featured",

@@ -597,6 +597,12 @@ test("fetch timeout keeps explicit attributable evidence", async () => {
   );
 });
 
+test("request evidence preserves the actual homepage voice only when selected", () => {
+  assert.equal(snapshotAskRequest({ question: "Briefing", history: [], voice: "desk" }).voice, "desk");
+  assert.equal("voice" in snapshotAskRequest({ question: "Briefing", history: [] }), false);
+  assert.equal("voice" in snapshotAskRequest({ question: "Briefing", history: [], voice: "invalid" }), false);
+});
+
 test("request evidence snapshots do not gain later conversation turns", () => {
   const history = [];
   const turn1 = snapshotAskRequest({

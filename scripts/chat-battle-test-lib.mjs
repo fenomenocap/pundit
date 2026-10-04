@@ -337,7 +337,7 @@ export function regradeRecordedRuntimeHelpers(
 }
 
 /** Capture request evidence by value so later conversation turns cannot mutate it. */
-export function snapshotAskRequest({ question, history, teamContext, fixtureContext, userLine }) {
+export function snapshotAskRequest({ question, history, teamContext, fixtureContext, userLine, voice }) {
   const body = {
     question,
     history: Array.isArray(history) ? history.map((turn) => ({ ...turn })) : history,
@@ -349,6 +349,7 @@ export function snapshotAskRequest({ question, history, teamContext, fixtureCont
   if (userLine && typeof userLine === "object") {
     body.userLine = { ...userLine };
   }
+  if (voice === "desk") body.voice = voice;
   return body;
 }
 
