@@ -175,11 +175,20 @@ export function DraftView() {
                     >
                       <td className="px-3 py-2 font-mono text-xs tabular-nums text-quiet">{p.adp.toFixed(1)}</td>
                       <td className="px-2 py-2">
-                        <span className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label={`Draft ${p.name}`}
+                          disabled={!can}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            makePick(p.id);
+                          }}
+                          className="inline-flex items-center gap-2 text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
                           <KitPip team={p.team} size="sm" />
                           <span className="font-medium">{p.name}</span>
                           <span className="text-[11px] text-subtle">{TEAMS[p.team].short}</span>
-                        </span>
+                        </button>
                       </td>
                       <td className="px-2 py-2 text-xs text-quiet">{p.pos}</td>
                       {p.heat.map((h, i) => (

@@ -438,7 +438,7 @@ export interface MatchGrounding {
 export type FixtureCapability =
   | { status: "priced"; modelFixtureId: string }
   | { status: "temporarily-unpriced"; reason: "model-initializing" | "ratings-refreshing" }
-  | { status: "outside-coverage"; reason: "unsupported-competition" | "friendly-policy-disabled" | "model-policy-disabled" }
+  | { status: "outside-coverage"; reason: "unsupported-competition" | "friendly-policy-disabled" | "model-policy-disabled" | "in-play-model-unavailable" }
   | { status: "insufficient-model-input"; reason: "ratings-unavailable" | "neutral-venue-unknown" | "required-context-missing" };
 
 export interface RecognizedFixture {

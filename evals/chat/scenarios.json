@@ -349,6 +349,19 @@
       ]
     },
     {
+      "id": "observational-live-in-play",
+      "description": "An exact in-play fixture must withhold pre-match probabilities and live market comparisons; absence remains observational, availability makes this required.",
+      "kind": "recognized",
+      "capabilityStatus": "outside-coverage",
+      "capabilityReason": "in-play-model-unavailable",
+      "requiredForCertification": false,
+      "requiredIfAvailable": true,
+      "turns": [
+        {"questionTemplate":"What are the current probabilities for {home} vs {away}?"},
+        {"questionTemplate":"Compare those probabilities with the live market odds."}
+      ]
+    },
+    {
       "id": "observational-live-temporary",
       "description": "Observational production discovery for a temporarily unpriced recognized fixture.",
       "kind": "recognized",
@@ -792,6 +805,19 @@
           "expectCorrectHighLineGeometry": true,
           "expectAccurateProductScope": true,
           "expectNoCategoricalSourceNonexistence": true
+        }
+      ]
+    },
+    {
+      "id": "tactical-comparison-not-fixture",
+      "description": "General tactical concepts joined by against receive football analysis, not an unconfirmed-fixture notice.",
+      "kind": "json",
+      "voice": "desk",
+      "turns": [
+        {
+          "question": "Explain the trade-offs of pressing traps against a narrow midfield in detail.",
+          "expectGrounding": null,
+          "expectTacticalComparisonAnswer": true
         }
       ]
     },

@@ -22,6 +22,7 @@ if (existsSync(rootEnvPath)) {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
   // Vercel exposes its Git SHA during the build. Embedding it here keeps the
   // version route reliable even when system Git variables are not forwarded
   // to the deployed function runtime.
