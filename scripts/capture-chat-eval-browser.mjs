@@ -373,13 +373,18 @@ async function clickFeaturedFixture(page, fixture, pacer) {
   return { ...(await waitForAnswer(page, previousBubbleCount)), loadingObserved };
 }
 
-async function latestBoardIdentity(page, fixtureId) {
+async function latestBoardIdentity(page, fixtureId, revealCompact = false) {
   const bubble = page.getByTestId("desk-pundit-bubble").last();
   const board = bubble.getByTestId("desk-match-board");
+  if (revealCompact && !await board.isVisible().catch(() => false)) {
+    const compact = bubble.getByTestId("desk-compact-match-context");
+    if (await compact.isVisible().catch(() => false)) await compact.locator("summary").click();
+  }
   return {
     boardVisible: await board.isVisible().catch(() => false),
     identityMatches: await board.getAttribute("data-fixture-id").catch(() => null) === fixtureId,
     oddsRows: await board.locator('[data-testid="desk-board-markets"] li').count().catch(() => 0),
+    probabilities: await structuredProbabilities(board).catch(() => null),
   };
 }
 
@@ -584,7 +589,7 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     const pinnedAfterReturn = await page.getByText(/^Pinned ·/).first()
       .isVisible()
       .catch(() => false);
-    const returnGrounding = await latestBoardIdentity(page, canonical.fixtureId);
+    const returnGrounding = await latestBoardIdentity(page, canonical.fixtureId, true);
     checks["fixture-context-retention"] = recordViewport(
       checks["fixture-context-retention"],
       viewport,
@@ -592,8 +597,9 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
         passed: openingResult.answered && tableResult.answered && returnResult.answered
           && pinnedAfterOpen && pinnedAfterTable && pinnedAfterReturn
           && openingGrounding.boardVisible && openingGrounding.identityMatches
-          && returnGrounding.boardVisible && returnGrounding.identityMatches,
-        evidence: `Pinned after open=${pinnedAfterOpen}, table=${pinnedAfterTable}, return=${pinnedAfterReturn}; opening board=${openingGrounding.boardVisible}/${openingGrounding.identityMatches}, return board=${returnGrounding.boardVisible}/${returnGrounding.identityMatches}.`,
+          && returnGrounding.boardVisible && returnGrounding.identityMatches
+          && tripletsAgree(returnGrounding.probabilities, canonical.probabilities),
+        evidence: `Pinned after open=${pinnedAfterOpen}, table=${pinnedAfterTable}, return=${pinnedAfterReturn}; opening board=${openingGrounding.boardVisible}/${openingGrounding.identityMatches}, return board after opening compact context=${returnGrounding.boardVisible}/${returnGrounding.identityMatches}; return probabilities=${JSON.stringify(returnGrounding.probabilities)}.`,
         reproduction: reproduction.retention,
       }
     );
@@ -1065,6 +1071,7 @@ async function main(argv = process.argv.slice(2)) {
 
 export {
   runViewportChecks,
+  latestBoardIdentity,
   requestFixtureIdentity,
   waitForAnswer,
   captureAndPersist,

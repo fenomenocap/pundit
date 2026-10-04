@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Plus } from "lucide-react";
+import { ArrowUp, Plus, Square } from "lucide-react";
 import { rankedOpen, weekendNote } from "@/desk/lib/brief";
 import { getFixture, isLivePricedFixture } from "@/desk/lib/data/fixtures";
 import { TEAMS } from "@/desk/lib/data/teams";
@@ -46,6 +46,26 @@ export function AgentPane() {
   const [err, setErr] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const activeRequest = useRef<{ controller: AbortController; userId: string; prompt: string } | null>(null);
+
+  useEffect(() => () => {
+    const request = activeRequest.current;
+    activeRequest.current = null;
+    request?.controller.abort();
+    if (request) useDesk.getState().removeChat(request.userId);
+  }, []);
+
+  function stop() {
+    const request = activeRequest.current;
+    if (!request) return;
+    activeRequest.current = null;
+    request.controller.abort();
+    removeChat(request.userId);
+    setDraft(request.prompt);
+    setBusy(false);
+    setErr(null);
+    box.current?.focus();
+  }
 
   const opening = (() => {
     if (source === "pending") return "Loading the live fixture slate…";
@@ -80,7 +100,7 @@ export function AgentPane() {
 
   async function send(text: string, fixtureId = liveFixture?.id ?? "") {
     const q = text.trim();
-    if (!q || busy) return;
+    if (!q || busy || activeRequest.current) return;
     if (q.length > 500) {
       setErr("Questions must be 500 characters or fewer.");
       return;
@@ -96,9 +116,12 @@ export function AgentPane() {
       at: Date.now(),
     };
     push(userMsg);
+    const request = { controller: new AbortController(), userId: userMsg.id, prompt: q };
+    activeRequest.current = request;
     setBusy(true);
     try {
       const res = await askPundit({
+        signal: request.controller.signal,
         data: {
           question: q,
           history,
@@ -108,6 +131,7 @@ export function AgentPane() {
             : undefined,
         },
       });
+      if (activeRequest.current !== request) return;
       // Only a resolved server identity replaces the pin. A clarification or
       // general answer keeps it, and an in-flight reply cannot undo a newer click.
       const resolvedFixtureId = res.grounding?.kind === "match"
@@ -126,11 +150,16 @@ export function AgentPane() {
         at: Date.now(),
       });
     } catch (e) {
+      if (activeRequest.current !== request) return;
       removeChat(userMsg.id);
+      setDraft(q);
       setErr(e instanceof Error && e.message ? e.message : "Pundit is quiet. Try again.");
     } finally {
-      setBusy(false);
-      box.current?.focus();
+      if (activeRequest.current === request) {
+        activeRequest.current = null;
+        setBusy(false);
+        box.current?.focus();
+      }
     }
   }
 
@@ -352,7 +381,20 @@ export function AgentPane() {
             aria-label="Ask a question"
             className="min-h-11 max-h-32 flex-1 rounded-sm border border-border bg-elevated px-3 py-2.5 text-sm text-fg placeholder:text-subtle focus:outline-none focus:ring-2 focus:ring-accent/40"
           />
-          <Button
+          {busy ? <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            aria-label="Stop generating"
+            onClick={(event) => {
+              // Stop becomes Send on this render; prevent that same click
+              // from submitting the restored prompt through the form.
+              event.preventDefault();
+              stop();
+            }}
+          >
+            <Square className="size-4" />
+          </Button> : <Button
             type="submit"
             size="icon"
             variant="accent"
@@ -360,7 +402,7 @@ export function AgentPane() {
             aria-label="Send"
           >
             <ArrowUp className="size-4" />
-          </Button>
+          </Button>}
         </form>
         {liveFixture ? (
           <div className="mt-2 flex items-center gap-2 text-2xs text-quiet">

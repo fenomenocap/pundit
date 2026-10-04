@@ -400,7 +400,7 @@ export function probabilityAttributionLabel(origin: ProbabilityOrigin): string {
   if (origin.kind === "pundit-fundamental") return "Pundit Fundamental";
   if (origin.kind === "pundit-consensus") {
     const source = origin.marketSource.trim() || "market";
-    return `Pundit Consensus (shrunk toward ${source} no-vig; not the sealed Fundamental forecast)`;
+    return `Pundit Consensus (a separate view shrunk toward ${source} no-vig)`;
   }
   const source = origin.source.trim();
   return `${source || "Third-party"} market-implied probabilities (third-party data, not a Pundit forecast)`;

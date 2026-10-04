@@ -1,6 +1,84 @@
 import { test, expect, type Page } from "@playwright/test";
 
 test.describe("QA regressions", () => {
+  for (const width of [390, 1440]) {
+    test(`desk Stop restores the prompt and excludes a late reply at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await routeTwoFixtureDeskSlate(page);
+      const requests: Array<Record<string, unknown>> = [];
+      let release = () => {};
+      await page.route("**/api/ask", async (route) => {
+        requests.push(route.request().postDataJSON());
+        if (requests.length === 1) {
+          await new Promise<void>((resolve) => { release = resolve; });
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ answer: "Late cancelled answer.", grounding: null }) }).catch(() => {});
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ answer: "The retry completed.", grounding: null }) });
+      });
+      await page.goto("/");
+      const input = page.getByRole("textbox", { name: "Ask a question" });
+      await input.fill("Explain a high defensive line");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect.poll(() => requests.length).toBe(1);
+      await page.getByRole("button", { name: "Stop generating" }).click();
+      await expect(input).toBeEnabled();
+      await expect(input).toHaveValue("Explain a high defensive line");
+      await expect(page.getByTestId("desk-user-bubble")).toHaveCount(0);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByText("The retry completed.", { exact: true })).toBeVisible();
+      release();
+      await expect(page.getByTestId("desk-pundit-bubble")).toHaveCount(1);
+      await expect(page.getByText("Late cancelled answer.", { exact: true })).toHaveCount(0);
+      expect(requests[1].history).toEqual([]);
+    });
+  }
+
+  test("desk times out an unanswered request and keeps it ready to retry", async ({ page }) => {
+    await routeTwoFixtureDeskSlate(page);
+    await page.clock.install();
+    let release = () => {};
+    let calls = 0;
+    await page.route("**/api/ask", async (route) => {
+      if (++calls === 1) {
+        await new Promise<void>((resolve) => { release = resolve; });
+        await route.abort().catch(() => {});
+        return;
+      }
+      expect(route.request().postDataJSON().history).toEqual([]);
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ answer: "The retry completed.", grounding: null }) });
+    });
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await input.fill("Explain a high defensive line");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => calls).toBe(1);
+    await page.clock.fastForward(95_001);
+    await expect(page.getByText("Pundit took too long to answer. Your question is ready to retry.", { exact: true })).toBeVisible();
+    await expect(input).toBeEnabled();
+    await expect(input).toHaveValue("Explain a high defensive line");
+    await expect(page.getByTestId("desk-user-bubble")).toHaveCount(0);
+    release();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("The retry completed.", { exact: true })).toBeVisible();
+  });
+
+  test("desk rejects an empty successful answer without echoing the question", async ({ page }) => {
+    await routeTwoFixtureDeskSlate(page);
+    let calls = 0;
+    await page.route("**/api/ask", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ answer: ++calls === 1 ? "  " : "The retry completed.", grounding: null }) }));
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await input.fill("Explain a high defensive line");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("Pundit returned an empty answer. Try again.", { exact: true })).toBeVisible();
+    await expect(input).toHaveValue("Explain a high defensive line");
+    await expect(page.getByTestId("desk-pundit-bubble")).toHaveCount(0);
+    await expect(page.getByTestId("desk-user-bubble")).toHaveCount(0);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("The retry completed.", { exact: true })).toBeVisible();
+  });
+
   test("a totals follow-up keeps a compact, expandable match reference", async ({ page }) => {
     await routeTwoFixtureDeskSlate(page);
     let turn = 0;
