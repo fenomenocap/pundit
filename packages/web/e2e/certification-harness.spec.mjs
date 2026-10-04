@@ -1,5 +1,31 @@
 import { test, expect } from "@playwright/test";
-import { runViewportChecks } from "../../../scripts/capture-chat-eval-browser.mjs";
+import { createRequestStartPacer, runViewportChecks, waitForAnswer } from "../../../scripts/capture-chat-eval-browser.mjs";
+
+test("answer completion observes settled DOM when animation frames stop", async ({ page }) => {
+  await page.route("**/*", (route) => route.abort());
+  await page.setContent('<div data-testid="desk-pundit-bubble">Prior one</div><div data-testid="desk-pundit-bubble">Prior two</div><textarea aria-label="Ask a question" disabled></textarea>');
+  await page.evaluate(() => {
+    window.requestAnimationFrame = () => 0;
+    window.rafPredicateEvaluations = 0;
+  });
+  // Establish the prior failure mode: a default RAF poll cannot see later completion.
+  const frameWait = page.waitForFunction(() => {
+    window.rafPredicateEvaluations += 1;
+    return !document.querySelector("textarea").disabled;
+  }, null, { timeout: 1_000 }).then(() => false, () => true);
+  await page.waitForFunction(() => window.rafPredicateEvaluations > 0, null, { polling: 20 });
+  const completion = waitForAnswer(page, 2);
+  await page.evaluate(() => {
+    const bubble = document.createElement("div");
+    bubble.dataset.testid = "desk-pundit-bubble";
+    bubble.textContent = "Completed answer";
+    document.body.append(bubble);
+    document.querySelector("textarea").disabled = false;
+  });
+  expect(await completion).toEqual({ answered: true, error: "" });
+  expect(await frameWait).toBe(true);
+  expect(await page.getByTestId("desk-pundit-bubble").count()).toBe(3);
+});
 
 const fixtureId = "espn:eng.1:1";
 const now = "2026-09-15T00:00:00.000Z";
@@ -66,9 +92,11 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
       }
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     });
-    // This local-only pacer is injected into the shared checks. Production's
-    // mandatory timing and deployment gates are unchanged.
-    const pacer = { starts: [], beforeRequest: async () => { pacer.starts.push(Date.now()); } };
+    // Advance test clocks to exercise actual request-event mapping quickly.
+    // Production uses real clocks and preserves the mandatory interval.
+    let clock = Date.now();
+    const pacer = createRequestStartPacer({ now: () => clock, wallNow: () => clock,
+      wait: async (ms) => { clock += ms; } });
     const traffic = { apiAskRequestCount: 0, lastFixtureId: null };
     const progress = { phase: "local", checks: {}, collected: {} };
     const checks = await runViewportChecks(page, baseURL, viewport, pacer, { scenarios: [] }, {
@@ -84,6 +112,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
       .toContain("0 finished fixtures and 0 calibration forecasts");
     expect(checks).toHaveLength(11);
     expect(asks).toHaveLength(10);
+    pacer.assertComplete();
+    expect(pacer.starts).toHaveLength(10);
+    expect(traffic.apiAskRequestCount).toBe(10);
+    expect(pacer.starts.slice(1).every((start, index) => start - pacer.starts[index] >= 13_025)).toBe(true);
     expect(asks[0].fixtureContext).toEqual({ fixtureId });
     expect(asks.at(-1)).not.toHaveProperty("fixtureContext");
   });

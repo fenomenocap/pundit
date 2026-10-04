@@ -477,7 +477,7 @@ describe("V2 conversational architecture", () => {
       evidenceRequired: false, candidateUnrecognized: false, voice: "desk",
     });
     expect(delivered.answer).toMatch(/My 1X2 is Arsenal 56\.3%/);
-    expect(delivered.answer).toMatch(/If Arsenal can sustain pressure/);
+    expect(delivered.answer).toMatch(/If Arsenal draw Chelsea's first press.*supporting receiver/);
     expect(delivered.answer).toMatch(/tactical possibilities, not confirmed selections or playing styles/);
     expect(delivered.answer).not.toMatch(/Saka|Ødegaard|low-event|night|lack midfield legs|snuffs/);
     expect(delivered.citations).toEqual([]);
@@ -782,7 +782,7 @@ describe("V2 conversational architecture", () => {
     });
     expect(briefingWipe.answer).toMatch(/My 1X2 is Arsenal 56\.3% \(fair 1\.78\)/);
     expect(briefingWipe.answer).toMatch(/I lean to Arsenal at home/);
-    expect(briefingWipe.answer).toMatch(/If Arsenal can sustain pressure/);
+    expect(briefingWipe.answer).toMatch(/If Arsenal draw Chelsea's first press.*supporting receiver/);
     expect(briefingWipe.answer).not.toMatch(/conflict on one or more requested facts/i);
     expect(briefingWipe.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
 
@@ -856,7 +856,7 @@ describe("V2 conversational architecture", () => {
         voice: "desk",
       });
       expect(delivered.answer).toContain("My 1X2 is Arsenal 56.3%");
-      expect(delivered.answer).toContain("If Arsenal can sustain pressure");
+      expect(delivered.answer).toContain("supporting receiver could become free");
       expect(delivered.answer).toContain("tactical possibilities, not confirmed selections or playing styles");
       expect(delivered.answer).not.toContain("directAnswer");
     } finally {
@@ -1017,7 +1017,7 @@ describe("V2 conversational architecture", () => {
       expect(tactical).toMatch(/draw 23\.4% \(fair 4\.27\)/);
       expect(tactical).toMatch(/Chelsea 20\.3% \(fair 4\.93\)/);
       expect(tactical).toMatch(/I lean to Arsenal at home/);
-      expect(tactical).toMatch(/If Arsenal can sustain pressure|transitions could/i);
+      expect(tactical).toMatch(/If Arsenal draw Chelsea's first press.*supporting receiver/i);
       expect(tactical).toMatch(/tactical possibilities/);
       expect(tactical).not.toMatch(/My short answer is/i);
       expect(tactical).not.toMatch(/captured decimal|EV%|pass or play/i);

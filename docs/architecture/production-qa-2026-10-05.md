@@ -302,3 +302,53 @@ Fallback desk chips become explicit general-football explainers, with standalone
 history and no fixture/line attachment. They no longer promise an unavailable
 slate aggregation or inherit an unpriced pin. The transcript and pin are retained
 for a subsequent typed match follow-up; priced match chips remain scoped.
+
+## Delivered-answer failures after PR #229
+
+PR #229 merged as `d93af6f59cf16ebc28831a9bf52548c723ee1272`,
+with matching ready Vercel and successful Railway deployments. Required CI and
+production verification passed. Run `2026-10-04T22-15-04-325Z` completed
+66 scenarios, with no automated required failures, but independent review of
+all 62 successful answer turns rejected five materially incomplete or unsupported
+answers. The four general desk explainers leaked example percentages, made
+unqualified derby claims or lost their explanation after claim pruning. The
+match-scoped “Tactical matchup” answer supplied probabilities and a lineup caveat
+without a tactical mechanism. The failed answers are retained as regression
+fixtures; this release is not certified.
+
+The browser wait also timed out despite saved HTTP 200, a complete scorer
+abstention, three assistant bubbles and an enabled composer. A local Chromium
+reproduction proves that default animation-frame polling can miss a completed
+answer when animation frames stop. It does not establish why frames or timing
+stalled in production. The finalizer rejected incomplete browser evidence;
+original run, screenshots, critic and rejection artifacts remain intact.
+
+The bounded follow-up makes the four general educational requests complete
+server-authored answers, removes irrelevant latest-news searching from pure
+concept questions, and requires a conditional football mechanism for the
+match-scoped tactical request. Live evaluator scenarios match the UI's standalone
+requests, and semantic assertions reject the five actual failures. Browser
+completion uses interval polling with the same timeout, DOM conditions, pacing
+and certification requirements. No model constants or promotion gates change.
+
+Independent inspection of the failed browser's POST request-event diagnostics
+also found an actual start gap of 12,861 ms despite click-intent pacing above
+13,025 ms. Different click-to-network dispatch delays caused the discrepancy.
+The follow-up records and anchors pacing to actual POST request events using
+both monotonic and wall clocks; the mandatory 13-second traffic requirement
+and cooldown remain unchanged. This is another reason the failed run cannot
+certify the release.
+
+Adversarial current-fact tests also reproduced uncited manager identities and
+recent results surviving desk delivery after an empty mandatory search. The
+repair preserves current evidence requirements and reuses bounded result/price
+guards, adding manager identity protection. Separate conditional or refusal
+clauses cannot shelter an affirmative unsupported fact; owned structured match
+and table numbers retain their existing deterministic path.
+
+The final answer/capture repair passed 1,186 API tests across 59 files twice,
+154 evaluator-harness tests twice and 63 mocked Chromium scenarios twice.
+API build and pinned artifact verification passed with all 18 golden fixtures
+unchanged. Independent source and semantic review accepted the repairs,
+including current-claim clause controls and actual-network pacing. These are
+local checks; a fresh production certificate remains required.
