@@ -16,6 +16,12 @@ test.describe("QA regressions", () => {
     await input.fill("Give me the Arsenal vs Chelsea briefing");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByTestId("desk-match-board")).toBeVisible();
+    await expect(page.getByTestId("desk-match-board")).toContainText("Model probabilities · fair decimal odds");
+    await expect(page.getByTestId("desk-totals-honesty")).toContainText("fixed total-goals assumption");
+    await expect(page.getByTestId("desk-match-board")).toContainText("sum to 100%");
+    const league = page.getByRole("img", { name: "Premier League", exact: true });
+    await expect(league).toHaveAttribute("src", "/crests/PL.svg");
+    expect(await league.evaluate((element) => getComputedStyle(element).objectFit)).toBe("contain");
     await input.fill("What about over 2.5?");
     await page.getByRole("button", { name: "Send" }).click();
     const compact = page.getByTestId("desk-compact-match-context");

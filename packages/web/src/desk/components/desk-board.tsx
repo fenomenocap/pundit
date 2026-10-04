@@ -50,17 +50,20 @@ export function DeskBoard({ grounding }: { grounding?: AskGrounding }) {
       className="mt-4 rounded-md border border-border bg-elevated/40 px-3 py-3"
     >
       <div className="eyebrow text-quiet mb-2">Model board</div>
+      <p className="mb-2 text-2xs text-quiet">Model probabilities · fair decimal odds</p>
       <ProbBar home={oneXTwo.pHome} draw={oneXTwo.pDraw} away={oneXTwo.pAway} />
       <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
         <Stat k={oneXTwo.home} v={`${fmtPct(oneXTwo.pHome)} · ${formatFairOdds(oneXTwo.fairHome)}`} />
         <Stat k="Draw" v={`${fmtPct(oneXTwo.pDraw)} · ${formatFairOdds(oneXTwo.fairDraw)}`} />
         <Stat k={oneXTwo.away} v={`${fmtPct(oneXTwo.pAway)} · ${formatFairOdds(oneXTwo.fairAway)}`} />
       </dl>
-      <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
-        <Stat k="O2.5" v={fmtPct(board.over25)} />
-        <Stat k="U2.5" v={fmtPct(board.under25)} />
-        <Stat k="BTTS" v={fmtPct(board.bttsYes)} />
+      <p data-testid="desk-totals-honesty" className="mt-3 text-2xs leading-5 text-quiet">{board.totalsHonesty}</p>
+      <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
+        <Stat k="Over 2.5" v={fmtPct(board.over25, 1)} />
+        <Stat k="Under 2.5" v={fmtPct(board.under25, 1)} />
+        <Stat k="BTTS Yes" v={fmtPct(board.bttsYes, 1)} />
       </dl>
+      <p className="mt-2 text-2xs text-quiet">Over and under 2.5 are complementary probabilities and sum to 100%.</p>
       {board.topScores.length > 0 ? (
         <p className="mt-3 text-2xs text-quiet">
           Leading scores{" "}
@@ -94,7 +97,6 @@ export function DeskBoard({ grounding }: { grounding?: AskGrounding }) {
           </ul>
         )}
       </div>
-      <p className="mt-2 text-2xs leading-5 text-quiet">{board.totalsHonesty}</p>
     </div>
   );
 }
