@@ -4633,11 +4633,12 @@ describe("match-tier analytical priorities", () => {
       .toContain("Never phrase a gap as value, an edge, a play, or a side worth backing");
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("inside the agreement band");
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("the model and the market agree here");
-    // The close half, stated as a completeness rule rather than a preference.
+    // The close names the evidence needed for reassessment without inventing an effect.
     expect(MATCH_ANALYSIS_PRIORITIES)
       .toContain("Close on what would change the read, and make it conditional");
     expect(MATCH_ANALYSIS_PRIORITIES)
-      .toContain("what would move it is incomplete, however correct its numbers");
+      .toContain("what evidence would let me reassess");
+    expect(MATCH_ANALYSIS_PRIORITIES).toContain("Never say a missing player shrinks an edge");
     // The recital is replaced, not the numbers: no correctness regression.
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("Keep every grounded number you would have reported");
     expect(MATCH_ANALYSIS_PRIORITIES).toContain("by inserting its fact slot");
@@ -5098,6 +5099,25 @@ describe("inference credential configuration", () => {
 });
 
 describe("deterministic fixture clarification", () => {
+  it("preserves compact presentation for a desk totals follow-up", async () => {
+    await refreshClubRatings(new Date());
+    const kickoff = new Date(Date.now() + 86_400_000).toISOString();
+    const model = fixture("Arsenal", "Chelsea", { utcDate: kickoff, date: kickoff.slice(0, 10) });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    try {
+      const result = await answerQuestion("What about over 2.5?", [
+        { role: "user", content: "Arsenal vs Chelsea" },
+        { role: "assistant", content: "I have Arsenal vs Chelsea in view." },
+      ], undefined, undefined, { fixtureId: espnFixtureIdentity(model) }, undefined, "desk");
+      expect(result.grounding?.kind).toBe("match");
+      expect(result.presentation).toEqual({ responseMode: "totals", fixtureCard: "compact" });
+      expect(result.answer).toMatch(/over 2\.5.*55\.0%/i);
+      expect(result.answer).not.toMatch(/My 1X2/);
+    } finally {
+      cached.mockRestore();
+    }
+  });
+
   it("settles identity-free ambiguity in first person without internal terminology", () => {
     const answer = deterministicUngroundedClarification("Which side should I trust more here?", null);
     expect(answer).toMatch(/^I need/);

@@ -1,4 +1,4 @@
-import type { AskGrounding, AskResult, UserLine } from "@/lib/api";
+import type { AskGrounding, AskPresentation, AskResult, UserLine } from "@/lib/api";
 import type { DeskChatTurn } from "./chat-history";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://thepundit.up.railway.app";
@@ -14,7 +14,7 @@ export async function askPundit({
     fixtureId?: string;
     userLine?: UserLine;
   };
-}): Promise<{ ok: true; text: string; grounding: AskGrounding }> {
+}): Promise<{ ok: true; text: string; grounding: AskGrounding; presentation?: AskPresentation }> {
   const question = data.question.trim() || "Give me the weekend briefing.";
   if (question.length > 500) throw new Error("Questions must be 500 characters or fewer.");
   const history = data.history ?? [];
@@ -39,5 +39,6 @@ export async function askPundit({
     ok: true,
     text: body.answer?.trim() || question,
     grounding: body.grounding ?? null,
+    presentation: body.presentation,
   };
 }

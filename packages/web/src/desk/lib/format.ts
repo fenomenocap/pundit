@@ -1,3 +1,5 @@
+import { KICKOFF_TIME_ZONE } from "../../lib/fixture-presentation";
+
 export function fmtOdds(n: number) {
   return n >= 10 ? n.toFixed(1) : n.toFixed(2);
 }
@@ -29,7 +31,8 @@ export function fmtKickoff(iso: string) {
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/London",
+    timeZone: KICKOFF_TIME_ZONE,
+    timeZoneName: "short",
   });
 }
 
@@ -37,9 +40,12 @@ export function fmtKickoffShort(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString("en-GB", {
     weekday: "short",
+    day: "numeric",
+    month: "short",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/London",
+    timeZone: KICKOFF_TIME_ZONE,
+    timeZoneName: "short",
   });
 }
 

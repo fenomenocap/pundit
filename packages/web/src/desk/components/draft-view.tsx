@@ -51,14 +51,15 @@ export function DraftView() {
   if (phase === "idle") {
     return (
       <div className="mx-auto max-w-xl px-4 py-16 text-center">
-        <p className="eyebrow">FPL-style · 8 managers · snake</p>
+        <p className="eyebrow">Local practice · snake draft</p>
         <h1 className="font-display text-5xl mt-3 tracking-wide uppercase">Draftroom</h1>
         <p className="mt-4 text-quiet leading-relaxed">
           Eleven rounds. One keeper, three at the back, three in midfield, one up top — the rest is
-          yours. Heat is goals, assists, xG, minutes, clean sheets, bonus. Beat seven other managers.
+          yours. Practice against seven computer-controlled teams using an illustrative player board.
+          Player scores are demo inputs, not current-season statistics. Progress is saved in this browser.
         </p>
         <Button className="mt-8" size="lg" variant="primary" onClick={start}>
-          Enter public draft
+          Start practice draft
         </Button>
       </div>
     );
@@ -66,6 +67,7 @@ export function DraftView() {
 
   return (
     <div className="flex flex-col min-h-0">
+      <p className="border-b border-border px-3 sm:px-4 py-2 text-xs text-quiet">Local practice · seven computer-controlled teams · illustrative player scores</p>
       <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-3 sm:px-4 py-2">
         <div className="font-mono text-2xl tabular-nums tracking-tight">
           {phase === "done" ? "00:00" : formatMs(remaining)}

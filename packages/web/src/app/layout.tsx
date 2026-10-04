@@ -54,7 +54,7 @@ export default function RootLayout({
         </a>
         <div className="flex min-h-dvh flex-col bg-bg text-fg">
           <Navbar />
-          <main id="main-content" className="flex-1 min-h-0 bg-bg pb-14 md:pb-0">
+          <main id="main-content" className="flex-1 min-h-0 bg-bg pb-14 xl:pb-0">
             {children}
           </main>
           <Footer />

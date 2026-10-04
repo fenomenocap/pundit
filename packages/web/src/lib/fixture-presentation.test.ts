@@ -9,6 +9,8 @@ import {
   fixtureChipCopy,
   formatEdgeBand,
   formatFairOdds,
+  formatKickoffTime,
+  formatKickoffDay,
   formatSignedEvPct,
   isFutureScheduledFixture,
   marketEvFromPricing,
@@ -260,5 +262,15 @@ describe("desk board presentation", () => {
     assert.equal(board.userLine?.decimalOdds, 2.1);
     assert.equal(board.userLine?.evPct, 0.1 * 2.1 - 1);
     assert.equal(formatSignedEvPct(board.userLine!.evPct), "-79.0%");
+  });
+});
+
+
+describe("UK kickoff clock", () => {
+  it("uses the same competition date and time across DST boundaries and reader timezones", () => {
+    assert.equal(formatKickoffTime("2026-10-10T11:30:00Z"), "12:30");
+    assert.equal(formatKickoffDay("2026-10-10T11:30:00Z"), "10 Oct");
+    assert.equal(formatKickoffTime("2026-12-10T12:30:00Z"), "12:30");
+    assert.equal(formatKickoffDay("2026-08-01T23:30:00Z"), "2 Aug");
   });
 });

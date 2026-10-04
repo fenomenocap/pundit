@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import {
   deliverAnswer,
@@ -92,6 +92,12 @@ const grounding = (): Grounding => {
 };
 
 describe("V2 conversational architecture", () => {
+  beforeEach(() => {
+    // Dated evidence below is relative to this fixture, not the machine clock.
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-12T12:00:00Z"));
+  });
+  afterEach(() => vi.restoreAllMocks());
+
   it("classifies narrow turns without requesting another full card", () => {
     const preview = planResponse("Preview Arsenal v Chelsea", { groundingKind: "match" });
     expect(responsePresentation(preview)).toEqual({ responseMode: "match-preview", fixtureCard: "expanded" });
@@ -460,6 +466,40 @@ describe("V2 conversational architecture", () => {
     }), ["S1"])).not.toMatch(/\{\{/);
   });
 
+  it("removes invented player roles and match flow at the real desk delivery boundary", async () => {
+    const delivered = await deliverAnswer({
+      answer: "Arsenal control the tempo from the first whistle — Saka and Ødegaard pull Chelsea out of shape. Chelsea sit deep, but Arsenal's press snuffs their transitions early. It's a low-event night because Chelsea lack midfield legs.",
+      tier: "match", grounding: grounding(),
+      bundle: { queries: [], providerCalls: 0, results: [] },
+      client: {} as Parameters<typeof deliverAnswer>[0]["client"],
+      question: "Give me the match briefing for Arsenal vs Chelsea.",
+      evidenceRequired: false, candidateUnrecognized: false, voice: "desk",
+    });
+    expect(delivered.answer).toMatch(/My 1X2 is Arsenal 56\.3%/);
+    expect(delivered.answer).toMatch(/If Arsenal can sustain pressure/);
+    expect(delivered.answer).toMatch(/tactical possibilities, not confirmed selections or playing styles/);
+    expect(delivered.answer).not.toMatch(/Saka|Ødegaard|low-event|night|lack midfield legs|snuffs/);
+    expect(delivered.citations).toEqual([]);
+  });
+
+  it("abstains on stale desk team news even when the generated answer cites it", async () => {
+    vi.mocked(Date.now).mockReturnValue(Date.parse("2026-10-04T12:00:00Z"));
+    const delivered = await deliverAnswer({
+      answer: "Cole Palmer is ruled out for Chelsea [[S1]].",
+      tier: "match", grounding: grounding(),
+      bundle: { queries: [], providerCalls: 1, results: [{
+        id: "S1", title: "Arsenal vs Chelsea injury update", url: "https://example.com/news",
+        date: "2026-09-11T08:00:00Z", snippet: "Cole Palmer ruled out for Chelsea.", tier: "news",
+      }] },
+      client: {} as Parameters<typeof deliverAnswer>[0]["client"],
+      question: "What is the latest team news?", evidenceRequired: true,
+      candidateUnrecognized: false, voice: "desk",
+    });
+    expect(delivered.answer).toBe(TEAM_NEWS_COMPOSE_ABSTENTION);
+    expect(delivered.citations).toEqual([]);
+    expect(delivered.verification.status).toBe("abstain");
+  });
+
   it("uses the structured draft contract in the real delivery boundary and fails closed", async () => {
     const match = grounding();
     const client = {} as Parameters<typeof deliverAnswer>[0]["client"];
@@ -738,8 +778,8 @@ describe("V2 conversational architecture", () => {
       answer: "Current reports conflict on one or more requested facts, so I’ve left those claims out.",
     });
     expect(briefingWipe.answer).toMatch(/My 1X2 is Arsenal 56\.3% \(fair 1\.78\)/);
-    expect(briefingWipe.answer).toMatch(/Arsenal should control this at home/);
-    expect(briefingWipe.answer).toMatch(/Chelsea only get a result|Who decides it/);
+    expect(briefingWipe.answer).toMatch(/I lean to Arsenal at home/);
+    expect(briefingWipe.answer).toMatch(/If Arsenal can sustain pressure/);
     expect(briefingWipe.answer).not.toMatch(/conflict on one or more requested facts/i);
     expect(briefingWipe.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
 
@@ -752,7 +792,7 @@ describe("V2 conversational architecture", () => {
       answer: "Current reports conflict on one or more requested facts, so I’ve left those claims out.",
     });
     expect(tacticalWipe.answer).toMatch(/My 1X2 is Arsenal 56\.3%/);
-    expect(tacticalWipe.answer).toMatch(/Arsenal should control this at home/);
+    expect(tacticalWipe.answer).toMatch(/I lean to Arsenal at home/);
     expect(tacticalWipe.answer).not.toMatch(/conflict on one or more requested facts/i);
     expect(tacticalWipe.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
 
@@ -765,7 +805,7 @@ describe("V2 conversational architecture", () => {
       answer: "Arsenal should control this at home through territory. Current reports conflict on one or more requested facts, so I’ve left those claims out.",
     });
     expect(briefingKeep.answer).toMatch(/My 1X2 is Arsenal 56\.3%/);
-    expect(briefingKeep.answer).toMatch(/Arsenal should control this at home/);
+    expect(briefingKeep.answer).toMatch(/I lean to Arsenal at home/);
     expect(briefingKeep.answer).not.toMatch(/conflict on one or more requested facts/i);
 
     const briefingWithWrinkle = await deliverAnswer({
@@ -791,7 +831,7 @@ describe("V2 conversational architecture", () => {
     expect(briefingWithWrinkle.answer).toMatch(/My 1X2 is Arsenal 56\.3%/);
     expect(briefingWithWrinkle.answer).toMatch(/Cole Palmer/);
     expect(briefingWithWrinkle.answer).toMatch(/not priced into the 1X2 above/i);
-    expect(briefingWithWrinkle.answer).toMatch(/Arsenal should control this at home/);
+    expect(briefingWithWrinkle.answer).toMatch(/I lean to Arsenal at home/);
     expect(briefingWithWrinkle.answer).toMatch(/example\.com\/news/);
     expect(briefingWithWrinkle.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(briefingWithWrinkle.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
@@ -940,8 +980,8 @@ describe("V2 conversational architecture", () => {
       expect(tactical).toMatch(/draw 23\.4% \(fair 4\.27\)/);
       expect(tactical).toMatch(/Chelsea 20\.3% \(fair 4\.93\)/);
       expect(tactical).toMatch(/I lean to Arsenal at home/);
-      expect(tactical).toMatch(/Who decides it|only get a result if they stretch|keep the game in their half/i);
-      expect(tactical).toMatch(/team-strength view/);
+      expect(tactical).toMatch(/If Arsenal can sustain pressure|transitions could/i);
+      expect(tactical).toMatch(/tactical possibilities/);
       expect(tactical).not.toMatch(/My short answer is/i);
       expect(tactical).not.toMatch(/captured decimal|EV%|pass or play/i);
     }

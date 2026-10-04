@@ -3045,11 +3045,11 @@ Never phrase a gap as value, an edge, a play, or a side worth backing. Pundit pr
 no execution price and carries no bankroll, so it is not in a position to tell anyone what to do with
 a probability difference -- only what the difference is and which way it runs.
 Close on what would change the read, and make it conditional. Most often the unknown is unverified
-team news. Say what you would need to confirm and what it would change -- "if the first-choice back
-line starts, the low-scoring lines hold up; if two of them are missing, the model's edge on the
-favourite is the first thing to shrink" -- rather than "team news unconfirmed". An abstention follows
-the same shape: what to check, and how the read moves either way. An answer that ends without saying
-what would move it is incomplete, however correct its numbers. A dead end helps nobody.
+team news. Say what you would need to confirm and what it would change -- "I would verify the starters before reassessing this view" -- rather than inventing a direction
+or size for a lineup effect. Never say a missing player shrinks an edge or raises the draw without
+a revised forecast. An abstention follows
+the same shape: what to check, and what evidence would let me reassess. Do not imply that an
+unverified tactical or lineup change has already changed the forecast.
 Keep every grounded number you would have reported anyway by inserting its fact slot: the 1X2
 probabilities, over/under 2.5, both teams to score, the leading scorelines, and the fixture date.
 Interpretation replaces the recital around those numbers, never the numbers themselves, and never
@@ -3096,7 +3096,7 @@ export const MATCH_EXAMPLE = `For a full preview, write in first person and lead
 
 export const MATCH_STRUCTURED_OUTPUT = `Return only one JSON object with this exact shape, with no Markdown fence or prose outside it:
 {"directAnswer":{"text":"I prefer {{match.home}}.","factIds":["match.home"]},"reasoning":[{"text":"The goals lean is {{total.over-2.5}}.","factIds":["total.over-2.5"]}],"uncertainty":{"text":"I cannot quantify a lineup change.","factIds":["limit.lineup-counterfactual"]},"citedClaims":[{"text":"A dated team-news claim","factIds":[],"sourceIds":["S1"]}]}
-Write no match number, percentage, gap or fair price directly in text. Insert a fact slot such as {{match.home}}, {{score.2-1}} or {{market.kalshi.home}} instead; the server renders its canonical subject and values. Every numeric factId must actually appear as its matching slot in the same text part. Every current external claim belongs in citedClaims and must reference source IDs from the evidence bundle. reasoning and citedClaims must be JSON arrays (use [] when empty), never a bare string. Do not invent an ID or a slot.`;
+Write no match number, percentage, gap or fair price directly in text. Insert a fact slot such as {{match.home}}, {{score.2-1}} or {{market.kalshi.home}} instead; the server renders its canonical subject and values. Every numeric factId must actually appear as its matching slot in the same text part. A slot already renders the team name and value: write "I make {{match.home}}", never "Arsenal {{match.home}}". Do not list unused numeric fact IDs. Every current external claim belongs in citedClaims and must reference source IDs from the evidence bundle. reasoning and citedClaims must be JSON arrays (use [] when empty), never a bare string. Do not invent an ID or a slot.`;
 
 // The system prompt's formatting rules describe bold-label markdown sections,
 // and its JSON contract is one paragraph at the very end. Measured on the pinned
@@ -9054,10 +9054,6 @@ export async function answerQuestion(
   const presented = withPresentation(question, history.length > 0, result);
   if (voice === "desk") {
     presented.answer = humaniseDeskCitationDates(presented.answer);
-    presented.presentation = {
-      responseMode: presented.grounding?.kind === "match" ? "match-preview" : presented.presentation.responseMode,
-      fixtureCard: presented.grounding?.kind === "match" ? "expanded" : presented.presentation.fixtureCard,
-    };
   }
   return presented;
 }

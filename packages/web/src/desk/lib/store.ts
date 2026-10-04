@@ -14,8 +14,8 @@ import {
 } from "./data/fixtures";
 import { PLAYERS_BY_ADP, getPlayer, type Pos } from "./data/players";
 import { poisson } from "./format";
-import type { AskGrounding } from "@/lib/api";
-import type { VaultId } from "./data/vaults";
+import type { AskGrounding, AskPresentation } from "@/lib/api";
+import { VAULTS, type VaultId } from "./data/vaults";
 import { reconcileHydratedPaperState, resolveHydratedSelection } from "./slate-selection";
 import { applyScores } from "./paper-settlement";
 
@@ -56,6 +56,7 @@ export type ChatMsg = {
   text: string;
   fixtureId?: string;
   grounding?: AskGrounding;
+  presentation?: AskPresentation;
   at: number;
 };
 
@@ -249,7 +250,9 @@ export const useDesk = create<State>()(
 
       allocate: (id, amount) => {
         const s = get();
-        if (amount < 10) return "Minimum 10 credits.";
+        if (!Number.isFinite(amount)) return "Enter a finite credit amount.";
+        const minimum = VAULTS.find((vault) => vault.id === id)!.min;
+        if (amount < minimum) return `Minimum ${minimum} credits.`;
         if (amount > s.cash) return "Not enough credit.";
         set({
           cash: s.cash - amount,
@@ -384,6 +387,10 @@ export const useDesk = create<State>()(
         scores: s.scores,
         vaultAlloc: s.vaultAlloc,
         messages: s.messages,
+        draftPhase: s.draftPhase,
+        draftPick: s.draftPick,
+        draftTeams: s.draftTeams,
+        draftTimerEnds: s.draftTimerEnds,
       }),
     },
   ),

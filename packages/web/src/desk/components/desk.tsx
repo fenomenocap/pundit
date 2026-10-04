@@ -11,6 +11,7 @@ import { MatchIntel } from "@/desk/components/match-intel";
 import { SlateChips, SlateRail } from "@/desk/components/slate-rail";
 import { Ticker } from "@/desk/components/ticker";
 import { useLiveSlate } from "@/desk/components/use-live-slate";
+import { KICKOFF_TIME_NOTE } from "@/lib/fixture-presentation";
 
 export function Desk() {
   const rec = gw3Record();
@@ -62,9 +63,10 @@ export function Desk() {
         <span className="hidden sm:inline text-quiet">
           Analysis only — not betting advice.
         </span>
+        <span className="text-quiet">{KICKOFF_TIME_NOTE}</span>
       </div>
       <SlateChips />
-      <div className="grid lg:grid-cols-[minmax(240px,300px)_minmax(0,1.2fr)_minmax(280px,340px)] min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,300px)_minmax(0,1.2fr)_minmax(280px,340px)] min-h-0">
         <SlateRail />
         <AgentPane />
         <MatchIntel />
