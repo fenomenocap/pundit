@@ -333,42 +333,61 @@ fi
 echo "OK"
 
 echo "=== 9. Vercel bundle ==="
-HTML=$(curl -fsS "$WEB_URL/")
-# Collect every JS chunk the homepage loads (page chunk + layout chunk +
-# shared/vendor chunks). API host constants live in lib/api.ts and may
-# be tree-shaken into any of them depending on the build.
-CHUNKS=$(echo "$HTML" | grep -oE '/_next/static/[^"]+\.js' | sort -u || true)
-if [[ -z "$CHUNKS" ]]; then
-  echo "FAIL: could not extract any JS chunk from homepage"
-  exit 1
+set +e
+BUNDLE_JSON=$(node "$SCRIPT_DIR/verify-prod-lib.mjs" bundle-check \
+  --web "$WEB_URL" \
+  --host "$EXPECTED_API_HOST" \
+  --attempts "$POLL_ATTEMPTS" \
+  --interval "$POLL_INTERVAL_SECONDS")
+BUNDLE_EXIT=$?
+set -e
+if [[ "$BUNDLE_EXIT" -ne 0 ]]; then
+  python3 - "$BUNDLE_JSON" "$EXPECTED_API_HOST" <<'PY'
+import json, sys
+
+raw = sys.argv[1].strip()
+host = sys.argv[2]
+try:
+    result = json.loads(raw) if raw else {}
+except json.JSONDecodeError:
+    result = {}
+
+reason = result.get("reason", "unknown")
+if reason == "no-chunks":
+    print("FAIL: could not extract any JS chunk from homepage")
+elif reason == "host-not-found":
+    inspected = result.get("inspected") or []
+    print(f"FAIL: no homepage chunk contains expected API host ({host})")
+    print(f"      inspected: {' '.join(inspected)}")
+elif reason == "localhost-leak":
+    inspected = result.get("inspected") or []
+    print("FAIL: a homepage chunk still contains localhost:3001 API fallback")
+    print(f"      inspected: {' '.join(inspected)}")
+elif reason in ("chunk-transient", "homepage-transient"):
+    chunk = result.get("failedChunk") or "(homepage)"
+    print(
+        f"FAIL: Vercel static assets did not converge after {result.get('attempts', '?')} attempts"
+    )
+    print(
+        f"      last HTTP {result.get('httpStatus')} on {chunk} "
+        "(transient CDN/deploy propagation or real missing asset)"
+    )
+else:
+    chunk = result.get("failedChunk")
+    detail = f" on {chunk}" if chunk else ""
+    print(
+        f"FAIL: Vercel bundle check ({reason}) HTTP {result.get('httpStatus', '?')}{detail}"
+    )
+sys.exit(1)
+PY
 fi
-FOUND_HOST=0
-FOUND_LOCALHOST=0
-INSPECTED=""
-CHUNK_COUNT=0
-while IFS= read -r CHUNK; do
-  [[ -z "$CHUNK" ]] && continue
-  CHUNK_BODY=$(curl -fsS "$WEB_URL$CHUNK")
-  CHUNK_COUNT=$((CHUNK_COUNT + 1))
-  INSPECTED="$INSPECTED $CHUNK"
-  if echo "$CHUNK_BODY" | grep -Fq "$EXPECTED_API_HOST"; then
-    FOUND_HOST=1
-  fi
-  if echo "$CHUNK_BODY" | grep -Fq "localhost:3001"; then
-    FOUND_LOCALHOST=1
-  fi
-done <<< "$CHUNKS"
-if [[ "$FOUND_HOST" -ne 1 ]]; then
-  echo "FAIL: no homepage chunk contains expected API host ($EXPECTED_API_HOST)"
-  echo "      inspected:$INSPECTED"
-  exit 1
+BUNDLE_CHUNK_COUNT=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("chunkCount", 0))' <<<"$BUNDLE_JSON")
+BUNDLE_ATTEMPTS=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("attempts", 1))' <<<"$BUNDLE_JSON")
+if [[ "$BUNDLE_ATTEMPTS" -gt 1 ]]; then
+  echo "OK (chunks: $BUNDLE_CHUNK_COUNT inspected after $BUNDLE_ATTEMPTS attempts)"
+else
+  echo "OK (chunks: $BUNDLE_CHUNK_COUNT inspected)"
 fi
-if [[ "$FOUND_LOCALHOST" -ne 0 ]]; then
-  echo "FAIL: a homepage chunk still contains localhost:3001 API fallback"
-  echo "      inspected:$INSPECTED"
-  exit 1
-fi
-echo "OK (chunks: $CHUNK_COUNT inspected)"
 
 echo ""
 echo "PASS: production verification OK"
