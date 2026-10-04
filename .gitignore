@@ -64,3 +64,4 @@ packages/api/data/research/dixon-coles-mle/
 # calibration output back to PUNDIT_DATA_DIR=/data.
 packages/api/data/research/champion-calibration/ledgers/
 packages/api/data/research/champion-calibration/reports/
+packages/api/data/research/qa-20261005/

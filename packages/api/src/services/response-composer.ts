@@ -93,7 +93,10 @@ function composeTotalsLead(question: string, grounding: Grounding): string {
   const lead = asksUnder25Only(question)
     ? `I have under 2.5 at ${under}; over 2.5 is ${over}.`
     : `I have over 2.5 at ${over}; under 2.5 is ${under}.`;
-  return `${lead} ${SHARED_TOTAL_XG_SENTENCE}`;
+  const complement = /\b(?:sum|add|complementary|complement)\b/i.test(question)
+    ? " Under covers fewer than three goals; over covers three or more. There is no push at a half-goal line, so their probabilities sum to one. Decimal odds are the reciprocals of those probabilities."
+    : "";
+  return `${lead}${complement} ${SHARED_TOTAL_XG_SENTENCE}`;
 }
 
 function composeBttsLead(question: string, grounding: Grounding): string {

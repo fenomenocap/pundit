@@ -53,10 +53,10 @@ export function LeagueMark({ className }: { className?: string }) {
     <img
       src="/crests/PL.svg"
       alt="Premier League"
-      width={28}
+      width={66}
       height={28}
       draggable={false}
-      className={cn("size-7 object-cover object-[0_center] shrink-0", className)}
+      className={cn("h-7 w-[66px] object-contain shrink-0", className)}
     />
   );
 }
