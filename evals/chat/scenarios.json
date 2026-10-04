@@ -818,6 +818,42 @@
           "question": "Explain the trade-offs of pressing traps against a narrow midfield in detail.",
           "expectGrounding": null,
           "expectTacticalComparisonAnswer": true
+        },
+        {
+          "question": "What are the trade-offs of pressing traps against a narrow midfield?",
+          "expectGrounding": null,
+          "expectTacticalComparisonAnswer": true
+        },
+        {
+          "question": "Why are pressing traps against a narrow midfield more effective?",
+          "expectGrounding": null,
+          "expectTacticalComparisonAnswer": true
+        }
+      ]
+    },
+    {
+      "id": "standalone-football-explainers",
+      "description": "Fallback desk chips answer explicit general football questions without manufacturing fixture, probability or guarantee claims.",
+      "kind": "json",
+      "voice": "desk",
+      "turns": [
+        {
+          "question": "In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?",
+          "expectGrounding": null,
+          "expectNoCertaintyContradiction": true
+        },
+        {
+          "question": "In general, why should a strong favourite never be treated as a guaranteed win?",
+          "expectGrounding": null,
+          "expectNoCertaintyContradiction": true
+        },
+        {
+          "question": "In general, how can a derby change the tactical trade-offs and game management?",
+          "expectGrounding": null
+        },
+        {
+          "question": "In general, what makes a good chance for a striker, beyond past goal totals?",
+          "expectGrounding": null
         }
       ]
     },

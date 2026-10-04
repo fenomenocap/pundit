@@ -1715,6 +1715,11 @@ describe("current-news evidence hardening", () => {
       expect(tableOnly).toContain("current table alone does not establish an on-field ranking");
       expect(tableOnly).toContain("goes beyond the requested table-only evidence");
       expect(tableOnly).not.toMatch(/Arsenal 93\.5%|Man City 5\.3%|most likely champion at/i);
+      for (const answer of [ranking, relegation, certainty, changeFollowUp]) {
+        expect(answer).toContain("These simulations keep team strengths unchanged for the remaining fixtures");
+        expect(answer).toContain("they do not model future injuries, transfers or changes in form");
+      }
+      expect(tableOnly).not.toContain("These simulations");
       expect(deterministicSearchQuery(
         "Who is most likely to win the Premier League based on the current table?",
         "",
@@ -1751,7 +1756,8 @@ describe("current-news evidence hardening", () => {
       // The specific weakness of this table, not a generic hedge.
       expect(answer).toContain("level on points and separated only by goal difference");
       expect(answer).toContain("do not support");
-      expect(answer).toMatch(/may look very different/i);
+      expect(answer).toContain("Later results may change the ordering");
+      expect(answer).toContain("does not establish how far any club would move");
       expect(answer).not.toMatch(/will bear little resemblance/i);
 
       const counterargument = deterministicGroundedResponse(
@@ -1868,8 +1874,41 @@ describe("current-news evidence hardening", () => {
       // The substitution being prevented: the season simulation's numbers.
       expect(answer).not.toMatch(/92\.2%|7\.2%/);
       expect(answer).toContain("Title probabilities are not inferred from it");
+      expect(answer).not.toContain("These simulations");
       // A one-match table is stated as the weak evidence it is.
-      expect(answer).toContain("far too small a sample");
+      expect(answer).toContain("a small sample");
+    });
+
+    it("qualifies early-table caveats when point gaps prevent several-place movement", () => {
+      // With 15, 6 and 0 points, one result cannot move any club past both
+      // others. The standings also do not identify fixture order as a cause.
+      const standings = [
+        { position: 1, team: "Arsenal", won: 5, points: 15 },
+        { position: 2, team: "Man City", won: 2, points: 6 },
+        { position: 3, team: "Hull", won: 0, points: 0 },
+      ].map((row) => ({
+        ...row, competitionId: "eng.1", playedGames: 5, draw: 0,
+        lost: 5 - row.won, goalsFor: row.won, goalsAgainst: 5 - row.won,
+        goalDifference: row.won * 2 - 5, group: null, advanced: false,
+      }));
+      const table = buildCompetitionGrounding("eng.1", standings, new Date("2026-09-28T07:00:00.000Z"));
+      const season = seasonGroundingWith(table.standings, [
+        { team: "Arsenal", probability: 0.935 },
+        { team: "Man City", probability: 0.053 },
+      ]);
+      const tableOnly = deterministicGroundedResponse(
+        "Who is most likely to win the Premier League using the current table only?", season
+      ) as string;
+      expect(tableOnly).toContain("1. **Arsenal** — 15 points from 5 matches");
+      expect(tableOnly).toContain("standings alone cannot identify the most likely champion");
+      expect(tableOnly).toContain("Title probabilities are not inferred from it");
+      const caveat = deterministicGroundedResponse("What is the strongest caveat to that ranking?", table) as string;
+      expect(caveat).toContain("Every club has played 5 matches");
+      expect(caveat).toContain("does not establish how far any club would move");
+      for (const answer of [tableOnly, caveat]) {
+        expect(answer).toContain("Later results may change the ordering");
+        expect(answer).not.toMatch(/mostly reflects fixture order|one result moves a club (?:many|several) places|93\.5%|5\.3%/i);
+      }
     });
 
     it("ranks a settled table without the small-sample caveat", () => {
@@ -1888,8 +1927,62 @@ describe("current-news evidence hardening", () => {
         season
       ) as string;
       expect(answer).toContain("**Arsenal**");
-      expect(answer).not.toContain("far too small a sample");
+      expect(answer).not.toContain("a small sample");
       expect(answer).not.toMatch(/81\.0%|18\.0%/);
+    });
+
+    it("reports a completed Premier League table as final results rather than a small sample", () => {
+      const standings = Array.from({ length: 20 }, (_, index) => {
+        const points = index === 0 ? 90 : index === 1 ? 84 : 59 - index;
+        const won = Math.floor(points / 3);
+        const draw = points % 3;
+        const lost = 38 - won - draw;
+        return {
+          competitionId: "eng.1", position: index + 1,
+          team: index === 0 ? "Arsenal" : index === 1 ? "Man City" : `Club ${index + 1}`,
+          playedGames: 38, won, draw, lost, points,
+          goalsFor: won * 2 + draw, goalsAgainst: lost,
+          goalDifference: won * 2 + draw - lost, group: null, advanced: false,
+        };
+      });
+      const table = buildCompetitionGrounding("eng.1", standings, new Date("2027-05-24T07:00:00.000Z"));
+      const answer = deterministicGroundedResponse("What is the strongest caveat to that ranking?", table) as string;
+      expect(answer).toContain("Every club in the supplied Premier League table has completed 38 matches");
+      expect(answer).toContain("Arsenal finished first with 90 points");
+      expect(answer).toContain("establishes the final league ranking");
+      expect(answer).toContain("does not forecast another season");
+      expect(answer).not.toMatch(/sample size|small fraction|do not support|later results|while fixtures remain|%/i);
+
+      // Completion requires every club, not merely a leader on 38 games.
+      standings[19] = { ...standings[19], playedGames: 37, lost: standings[19].lost - 1 };
+      const unfinished = deterministicGroundedResponse(
+        "What is the strongest caveat to that ranking?",
+        buildCompetitionGrounding("eng.1", standings, new Date("2027-05-24T07:00:00.000Z"))
+      ) as string;
+      expect(unfinished).toContain("between 37 and 38 matches");
+      expect(unfinished).toContain("current standings, not title probabilities");
+      expect(unfinished).not.toMatch(/finished first|final league ranking|small fraction|sample size/i);
+    });
+
+    it("distinguishes later-season standings from a title forecast without early-sample language", () => {
+      const table = buildCompetitionGrounding("eng.1", [
+        {
+          competitionId: "eng.1", position: 1, team: "Arsenal", playedGames: 30,
+          won: 22, draw: 4, lost: 4, points: 70, goalsFor: 60, goalsAgainst: 20,
+          goalDifference: 40, group: null, advanced: false,
+        },
+        {
+          competitionId: "eng.1", position: 2, team: "Man City", playedGames: 30,
+          won: 20, draw: 6, lost: 4, points: 66, goalsFor: 55, goalsAgainst: 20,
+          goalDifference: 35, group: null, advanced: false,
+        },
+      ], new Date("2027-04-05T07:00:00.000Z"));
+      const answer = deterministicGroundedResponse("How reliable is that ranking?", table) as string;
+      expect(answer).toContain("Arsenal are first in the supplied table with 70 points");
+      expect(answer).toContain("Every listed club has played 30 matches");
+      expect(answer).toContain("current standings, not title probabilities");
+      expect(answer).toContain("not a guarantee of the final positions");
+      expect(answer).not.toMatch(/sample size|small fraction|do not support|finished first|%/i);
     });
 
     it("states all-zero table provenance and declines standings-only upset sensitivity", () => {
@@ -3062,6 +3155,9 @@ describe("resolveAskContext", () => {
 
   it.each([
     "Explain the trade-offs of pressing traps against a narrow midfield in detail.",
+    "What are the trade-offs of pressing traps against a narrow midfield?",
+    "Why are pressing traps effective against a narrow midfield?",
+    "Why do pressing traps work against a narrow midfield?",
     "Explain a high press against a low block.",
     "Compare a high press vs a low block in the Premier League.",
     "Compare a high defensive line vs a deep block.",
@@ -3076,6 +3172,8 @@ describe("resolveAskContext", () => {
 
   it.each([
     "Explain Northbridge Athletic vs Southbank Rovers pressing traps.",
+    "What are the trade-offs of Northbridge Athletic pressing traps against Southbank Rovers narrow midfield?",
+    "Why are Northbridge’s pressing traps effective against Southbank’s narrow midfield?",
     "Explain Northbridge Athletic high press vs Southbank Rovers low block.",
     "Explain Northbridge’s high press vs Southbank’s low block.",
     "Explain Northbridge Athletic high press vs Southbank Rovers low block in the Premier League.",
@@ -3098,10 +3196,40 @@ describe("resolveAskContext", () => {
     const routing = contextKind === "identity"
       ? { fixtureContext: { fixtureId: espnFixtureIdentity(priced) } }
       : {};
-    expect(resolveAskContext("Explain the trade-offs of pressing traps against a narrow midfield in detail.", history, teams, [priced], [], [], routing))
-      .toEqual({ tier: "general" });
-    expect(resolveAskContext("Explain Northbridge Athletic high press vs Southbank Rovers low block.", history, teams, [priced], [], [], routing))
-      .toEqual({ tier: "candidate" });
+    for (const question of [
+      "Explain the trade-offs of pressing traps against a narrow midfield in detail.",
+      "What are the trade-offs of pressing traps against a narrow midfield?",
+      "Why do pressing traps work against a narrow midfield?",
+    ]) {
+      expect(resolveAskContext(question, history, teams, [priced], [], [], routing))
+        .toEqual({ tier: "general" });
+    }
+    for (const question of [
+      "Explain Northbridge Athletic high press vs Southbank Rovers low block.",
+      "What are the trade-offs of Northbridge Athletic pressing traps against Southbank Rovers narrow midfield?",
+      "Why are Northbridge’s pressing traps effective against Southbank’s narrow midfield?",
+    ]) {
+      expect(resolveAskContext(question, history, teams, [priced], [], [], routing))
+        .toEqual({ tier: "candidate" });
+    }
+  });
+
+  it.each([
+    "In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?",
+    "In general, why should a strong favourite never be treated as a guaranteed win?",
+    "In general, how can a derby change the tactical trade-offs and game management?",
+    "In general, what makes a good chance for a striker, beyond past goal totals?",
+  ])("keeps a standalone desk slate prompt general without losing a later exact-ID return: %s", (question) => {
+    const retained = recognizedFriendly(800, "Arsenal", "Liverpool");
+    // Slate chips omit history and fixture context; the client keeps its pin
+    // separately so a later typed match follow-up can send the exact identity.
+    expect(resolveAskContext(question, [], undefined, [], [], [], {
+      recognizedFixtures: [retained],
+    })).toEqual({ tier: "general" });
+    expect(resolveAskContext("Back to that match: what is the forecast coverage?", [], undefined, [], [], [], {
+      recognizedFixtures: [retained],
+      fixtureContext: { fixtureId: retained.fixtureId },
+    })).toMatchObject({ tier: "fixture", fixture: { fixtureId: retained.fixtureId } });
   });
 
   it("owes a search for a result question", () => {
@@ -3250,8 +3378,12 @@ describe("resolveAskContext", () => {
     )).toBeNull();
   });
 
-  it("explains the trap mechanism without team-news claims or exempting unknown clubs", () => {
-    const question = "Explain the trade-offs of pressing traps against a narrow midfield in detail.";
+  it.each([
+    "Explain the trade-offs of pressing traps against a narrow midfield in detail.",
+    "What are the trade-offs of pressing traps against a narrow midfield?",
+    "Why are pressing traps effective against a narrow midfield?",
+    "Why do pressing traps work against a narrow midfield?",
+  ])("explains the trap mechanism without team-news claims or exempting unknown clubs: %s", (question) => {
     const answer = deterministicUngroundedAnalysis(question, null);
     expect(answer).toContain("press as the pass travels");
     expect(answer).toContain("blocks the return pass");
@@ -3261,6 +3393,8 @@ describe("resolveAskContext", () => {
     expect(answer).not.toMatch(/team-news|4-4-2|doubly effective|verified|\d+(?:\.\d+)?%/);
     expect(deterministicUngroundedAnalysis(question, buildGrounding(fixtures[0]))).toBeNull();
     expect(deterministicUngroundedAnalysis("Explain Northbridge pressing traps against Southbank narrow midfield.", null)).toBeNull();
+    expect(deterministicUngroundedAnalysis("What are the trade-offs of Northbridge pressing traps against Southbank narrow midfield?", null)).toBeNull();
+    expect(deterministicUngroundedAnalysis("Why are Northbridge’s pressing traps effective against Southbank’s narrow midfield?", null)).toBeNull();
   });
 
   it("settles evidence follow-ups after an unidentified match without market-flow claims", () => {

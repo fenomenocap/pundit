@@ -3452,7 +3452,7 @@ function comparesTacticalConcepts(question: string): boolean {
   const sides = question.split(/\b(?:vs?\.?|versus|against)\b/i);
   if (sides.length !== 2) return false;
   const concept = /\b(?:(?:high|low|mid|deep)[ -]+(?:defensive[ -]+)?(?:line|block|press)|press(?:ing)?[ -]+traps?|(?:narrow|wide|diamond|box|compact)[ -]+midfield|(?:man|zonal)[ -]marking|counter[ -]press(?:ing)?)\b|\b\d(?:[-–]\d){2,3}\b/gi;
-  const framing = new Set("explain compare comparing how does do work works which is are more less effective trade offs of the a an in detail risks benefits advantages disadvantages and their between system systems shape shapes formation formations football tactical tactic tactics using tell me about discuss differences".split(" "));
+  const framing = new Set("explain compare comparing what why how does do work works which is are more less effective trade offs of the a an in detail risks benefits advantages disadvantages and their between system systems shape shapes formation formations football tactical tactic tactics using tell me about discuss differences".split(" "));
   return sides.every((side) => {
     if (!side.match(concept)) return false;
     // Consume the whole side: an unknown club decorated with tactical terms
@@ -7877,6 +7877,8 @@ function renderGroundedMatchAnswer(grounding: Grounding): string {
 
 const RELEGATION_QUESTION =
   /\brelegat\w*|\b(?:go|goes|going|drop|drops|dropping) down\b|\bstay(?:s|ing)? up\b|\bsurviv\w*|\bbottom (?:three|3)\b|\bdrop zone\b/i;
+const SEASON_STRENGTH_ASSUMPTION =
+  "These simulations keep team strengths unchanged for the remaining fixtures; they do not model future injuries, transfers or changes in form.";
 
 /**
  * "How likely is relegation for Leeds?" is routed to the season outlook, which
@@ -7915,6 +7917,7 @@ function renderRelegationOutlook(question: string, grounding: SeasonGrounding): 
     "**Context**",
     `These are ${runs.toLocaleString("en-US")} simulation results across ${remainingFixtures} `
       + "remaining fixtures, counting bottom-three finishes, not guarantees.",
+    SEASON_STRENGTH_ASSUMPTION,
   ].join("\n");
 }
 
@@ -7960,7 +7963,7 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
       `This ordering is the standings as supplied, after ${played} `
         + `${played === 1 ? "match" : "matches"}. `
         + `${played < 6
-          ? "That is far too small a sample to rank title contenders: at this stage the table mostly reflects fixture order, and one result moves a club many places. "
+          ? "That is a small sample, so the standings alone cannot identify the most likely champion. Later results may change the ordering, but this table does not quantify the movement. "
           : ""}`
         + "Title probabilities are not inferred from it — those would use club-strength ratings and the remaining fixture schedule, which is evidence beyond the table you asked me to use.",
     ].join("\n");
@@ -7975,6 +7978,7 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
       `There are ${grounding.seasonOutlook.remainingFixtures} fixtures still to play. `
         + "New results change the standings and the remaining schedule, so I’d refresh the outlook as they come in. "
         + "This snapshot does not quantify the swing from any one result, injury or lineup change.",
+      SEASON_STRENGTH_ASSUMPTION,
     ].join("\n\n");
   }
   if (RELEGATION_QUESTION.test(question)) return renderRelegationOutlook(question, grounding);
@@ -7995,6 +7999,7 @@ function renderGroundedSeasonAnswer(question: string, grounding: SeasonGrounding
         : "The current standings are included in the simulation. "}`
         + `These are ${grounding.seasonOutlook.runs.toLocaleString("en-US")} simulation results across `
         + `${grounding.seasonOutlook.remainingFixtures} remaining fixtures, not guarantees.`,
+    SEASON_STRENGTH_ASSUMPTION,
   ].join("\n");
 }
 
@@ -8037,6 +8042,24 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
   // question nobody asked and left the actual one unanswered -- and the caveat
   // is a property of the payload, so the server can state it exactly.
   if (/\bcaveat|counter[- ]?argument|limitation|how (?:reliable|meaningful|strong)|weak(?:ness|est)?\b|why (?:might|would).{0,30}\bwrong\b/i.test(question)) {
+    if (grounding.competitionId === "eng.1" && rows.length === 20
+      && rows.every((row) => row.playedGames === 38)) {
+      const winner = rows.find((row) => row.position === 1);
+      return "Every club in the supplied Premier League table has completed 38 matches. "
+        + (winner ? `${winner.team} finished first with ${winner.points} points. ` : "")
+        + "This table establishes the final league ranking; it does not forecast another season.";
+    }
+    if (played >= 6) {
+      const leader = rows[0];
+      const matchesPlayed = playedCounts.length === 1
+        ? `Every listed club has played ${played} matches. `
+        : `Listed clubs have played between ${playedCounts[0]} and ${playedCounts.at(-1)} matches. `;
+      return `${leader.team} are first in the supplied table with ${leader.points} points. `
+        + matchesPlayed
+        + "That establishes the current standings, not title probabilities. While fixtures remain, "
+        + "the current ordering is not a guarantee of the final positions; a forecast would also need "
+        + "club strengths and the remaining fixture schedule.";
+    }
     const leaders = rows.slice(0, 2);
     const tiedOnPoints = leaders.length === 2 && leaders[0].points === leaders[1].points;
     const matchWord = played === 1 ? "match" : "matches";
@@ -8050,10 +8073,10 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
         + (played < 4 ? "almost nothing about relative strength" : "a small fraction of the season")
         + ". "
         + (tiedOnPoints
-          ? "The top clubs are level on points and separated only by goal difference, so "
-          : "So ")
-        + "one result moves a club several places, and this ordering may look "
-        + "very different by the end of the season.";
+          ? "The top clubs are level on points and separated only by goal difference. "
+          : "")
+        + "Later results may change the ordering, but this table alone does not "
+        + "establish how far any club would move.";
     return "The table's strongest caveat is sample size. "
       + caveat.replace(/^Sample size\.\s*/, "") + " "
       + "The points and goal differences are exact as supplied, but they do not "

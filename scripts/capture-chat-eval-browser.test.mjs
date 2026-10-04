@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { EVAL_SCHEMA_VERSION } from "./chat-battle-test-lib.mjs";
@@ -12,6 +12,8 @@ import {
   waitForAnswer,
   captureAndPersist,
   captureLive,
+  attachAskDiagnostics,
+  captureFailureDiagnostics,
   collectFeaturedFixture,
   fixtureLocator,
   structuredProbabilities,
@@ -408,17 +410,24 @@ test("a viewport timeout saves report-bound partial evidence before rethrowing w
   const options = { outputDir, webUrl: "http://localhost:3000", intervalMs: MIN_BROWSER_REQUEST_INTERVAL_MS };
   let calls = 0;
   let closed = false;
+  const order = [];
+  const page = {
+    on: () => {},
+    evaluate: async () => { order.push("page snapshot"); return { composer: { value: "Retry me", disabled: false }, alerts: ["Request failed"] }; },
+    screenshot: async (options) => { order.push("screenshot"); await writeFile(options.path, "captured-pixels"); },
+  };
   const dependencies = {
     captureWebVersion: async () => ({ sha: "abc1234" }),
     captureApiVersion: async () => ({ sha: "abc1234" }),
     canonicalFixtureSnapshot: async () => ({ fixtureId: "espn:eng.1:123", reportMatches: true }),
     loadPlaywright: () => ({ chromium: { launch: async () => ({
-      newContext: async () => ({ newPage: async () => ({ on: () => {} }) }),
-      close: async () => { closed = true; },
+      newContext: async () => ({ newPage: async () => page, close: async () => { order.push("context close"); } }),
+      close: async () => { closed = true; order.push("browser close"); },
     }) } }),
     runViewportChecks: async (_page, _url, viewport, _pacer, _report, _canonical, _traffic, progress) => {
       calls += 1;
       progress.phase = "fixtures-parity";
+      progress.collected.currentPrompt = "What will the 1X2 be?";
       progress.collected.fixtures = { fixtureId: "espn:eng.1:123", probabilities: [0.5, 0.3, 0.2] };
       progress.checks = { "frozen-backtest-rendering": {
         id: "frozen-backtest-rendering", passed: true, evidence: "Already observed frozen artifact",
@@ -441,9 +450,70 @@ test("a viewport timeout saves report-bound partial evidence before rethrowing w
     assert.ok(requiredCheckIds().every((id) => evidence.checks.some((check) => check.id === id)));
     assert.equal(calls, 1);
     assert.equal(closed, true);
+    assert.deepEqual(order, ["page snapshot", "screenshot", "context close", "browser close"]);
+    assert.equal(evidence.collected.failureDiagnostics.currentPrompt, "What will the 1X2 be?");
+    assert.deepEqual(evidence.collected.failureDiagnostics.viewport, MOBILE_VIEWPORT);
+    assert.deepEqual(evidence.collected.failureDiagnostics.page.alerts, ["Request failed"]);
+    assert.equal(await readFile(evidence.collected.failureDiagnostics.screenshotPath, "utf8"), "captured-pixels");
   } finally {
     await rm(outputDir, { recursive: true, force: true });
   }
+});
+
+test("ask diagnostics retain actual response status and transport failure without secrets or unrelated requests", () => {
+  const events = {};
+  const page = { on: (event, listener) => { events[event] = listener; } };
+  const progress = { collected: {} };
+  attachAskDiagnostics(page, DESKTOP_VIEWPORT, progress);
+  const request = (question, errorText = null) => ({
+    method: () => "POST", url: () => "https://api.example.test/api/ask",
+    postDataJSON: () => ({ question, fixtureContext: { fixtureId: "espn:eng.1:901" }, secret: "must-not-be-copied" }),
+    failure: () => errorText ? { errorText } : null,
+  });
+  events.request({ method: () => "GET", url: () => "https://api.example.test/ready" });
+  const rejected = request("What are the odds?");
+  events.request(rejected);
+  events.response({ request: () => rejected, status: () => 429 });
+  events.requestfinished(rejected);
+  const aborted = request("Back to that match", "net::ERR_ABORTED");
+  events.request(aborted);
+  events.requestfailed(aborted);
+  assert.equal(progress.collected.askRequests.length, 2);
+  assert.equal(progress.collected.askRequests[0].status, 429);
+  assert.equal(progress.collected.askRequests[1].requestFailed, "net::ERR_ABORTED");
+  assert.equal(progress.collected.askRequests[1].url, "https://api.example.test/api/ask");
+  assert.equal(progress.collected.currentPrompt, "Back to that match");
+  assert.equal(JSON.stringify(progress).includes("must-not-be-copied"), false);
+  for (let index = 0; index < 55; index++) { const item = request("x".repeat(1_000)); events.request(item); events.requestfinished(item); }
+  assert.equal(progress.collected.askRequests.length, 50);
+  assert.equal(progress.collected.currentPrompt.length, 501);
+});
+
+test("failure page snapshots are bounded and include the restored composer and all alerts", async () => {
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), "pundit-browser-diagnostic-"));
+  const input = { value: "x".repeat(1_000), disabled: false };
+  const document = {
+    title: "Pundit", documentElement: { scrollWidth: 390 }, body: { innerText: "b".repeat(20_000) },
+    querySelector: (selector) => selector.startsWith("textarea") ? input : { outerHTML: "d".repeat(30_000) },
+    querySelectorAll: (selector) => selector === "button" ? [{ getAttribute: () => "Send", disabled: true }]
+      : [{ textContent: "" }, { textContent: "Actual error" }],
+  };
+  const page = {
+    evaluate: async (predicate) => runInNewContext(`(${predicate.toString()})()`, {
+      document, location: { href: "https://web.example.test/" }, innerWidth: 390, innerHeight: 844,
+    }),
+    screenshot: async () => { throw new Error("Renderer unavailable"); },
+  };
+  try {
+    const evidence = await captureFailureDiagnostics(page, MOBILE_VIEWPORT, { outputDir }, { runId: "diagnostic-run" }, { collected: { currentPrompt: "Original submitted question" } });
+    assert.equal(evidence.page.composer.value.length, 501);
+    assert.equal(evidence.page.bodyText.length, 12_000);
+    assert.equal(evidence.page.dom.length, 24_000);
+    assert.deepEqual(Array.from(evidence.page.alerts), ["", "Actual error"]);
+    assert.equal(evidence.currentPrompt, "Original submitted question");
+    assert.match(evidence.errors[0], /Renderer unavailable/);
+    assert.equal(evidence.screenshotPath, undefined);
+  } finally { await rm(outputDir, { recursive: true, force: true }); }
 });
 
 test("a run with no priced fixture still captures both viewports as incomplete evidence", async () => {
