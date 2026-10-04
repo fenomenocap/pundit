@@ -105,3 +105,29 @@ Live output certification is separate from these mathematical and research
 checks. A final Schema-17 PASS must bind fresh answers, browser evidence and
 agent critic review to the evaluated deployment; this document alone does not
 certify the delivered prose or investment usefulness.
+
+## First live output review and follow-up repair
+
+PR #222 merged as `f3a2ec873352ad8ed1a6c8387bf9b7e5cd9e61c2` and both
+production targets served that SHA. The fresh run `2026-10-04T16-42-07-476Z`
+completed 63 scenarios and 55 successful HTTP-200 answer turns. Its first
+complete browser and critic artifacts were retained and finalized as
+`ISSUES FOUND`, rather than overwritten or treated as a release certificate.
+
+Semantic review found that broad previews called a live, upcoming forecast
+"sealed" without an immutable pre-kickoff ledger seal. Live previews and
+Consensus attribution now describe model-only versus market-adjusted views;
+the evaluator rejects unsupported seal claims in active-match answers.
+
+Browser fixture retention preserved the correct identity, but its check still
+expected an expanded card on every follow-up. It now opens the compact context
+disclosure and checks the revealed fixture identity and canonical probabilities.
+The opening board and all other retention checks remain required.
+
+The homepage also lacked cancellation and a client deadline. It now has Stop,
+a 95-second client deadline around the complete fetch/JSON operation (the server
+deadline is 90 seconds), prompt restoration on failure, and protection against
+late replies after cancellation or unmount. A successful but empty response
+raises a retryable error rather than echoing the user's question as an answer.
+Playwright covers cancellation on phone and desktop, late replies, deadline
+recovery, empty answers, and retries without dangling history.

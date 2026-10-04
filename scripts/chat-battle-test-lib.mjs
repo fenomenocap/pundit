@@ -1086,6 +1086,8 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   }
   if (grounding?.kind === "match") {
     assertions.fixtureStatusGrounded = !/\b(?:result is (?:already )?on (?:the )?record|match (?:has )?(?:already )?been played|future replay|played match)\b/i.test(text);
+    // Active match grounding carries a forecast, not an immutable ledger seal.
+    assertions.noUnsupportedSealClaim = !/\b(?:sealed|immutable)\s+(?:(?:pundit|fundamental|model)\s+)*(?:1x2|forecast|probabilities)\b/i.test(text);
   }
   if (grounding?.kind === "fixture") {
     const reason = grounding.capability?.reason;

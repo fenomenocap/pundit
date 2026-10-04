@@ -605,6 +605,8 @@ describe("V2 conversational architecture", () => {
     expect(preview.answer).toMatch(/Kalshi market-implied probabilities/i);
     expect(preview.answer).toMatch(/6\.2 percentage points/i);
     expect(preview.answer).toContain("Pundit Consensus");
+    expect(preview.answer).toContain("model-only 1X2");
+    expect(preview.answer).not.toMatch(/sealed|immutable/i);
     expect(preview.answer).toMatch(new RegExp(`${(match.consensus!.pHome * 100).toFixed(1)}%`));
 
     const teamNewsEmpty = await deliverAnswer({

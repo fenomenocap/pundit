@@ -504,7 +504,7 @@ export function composeMatchResponse(
     { label: grounding.away, p: grounding.pAway },
   ].sort((a, b) => b.p - a.p);
   const consensus = grounding.consensus
-    ? `${PUNDIT_FUNDAMENTAL_LABEL} is the sealed 1X2 above. ${PUNDIT_CONSENSUS_LABEL} (shrunk toward ${grounding.consensus.marketLabel}; not the sealed Fundamental forecast) is ${grounding.home} ${pct(grounding.consensus.pHome)}, draw ${pct(grounding.consensus.pDraw)} and ${grounding.away} ${pct(grounding.consensus.pAway)}.`
+    ? `${PUNDIT_FUNDAMENTAL_LABEL} is the model-only 1X2 above. ${PUNDIT_CONSENSUS_LABEL}, a separate view shrunk toward ${grounding.consensus.marketLabel}, is ${grounding.home} ${pct(grounding.consensus.pHome)}, draw ${pct(grounding.consensus.pDraw)} and ${grounding.away} ${pct(grounding.consensus.pAway)}.`
     : "";
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
