@@ -69,6 +69,7 @@ test.describe("QA regressions", () => {
       for (const name of ["Fixtures", "Model", "Ledger"]) {
         await expect(navigation.getByRole("link", { name, exact: true })).toBeVisible();
       }
+      if (width < 1280) await expect(navigation.getByRole("link", { name: "How it works", exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`model-${width}.png`), fullPage: true });
       await navigation.getByRole("link", { name: "Ledger", exact: true }).click();
       await expect(page).toHaveURL(/evaluation\/club-season/);

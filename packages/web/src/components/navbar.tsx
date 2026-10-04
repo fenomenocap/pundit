@@ -134,7 +134,7 @@ export function MobileDock() {
       className="xl:hidden sticky bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]"
     >
       {moreOpen ? (
-        <ul id="mobile-more-navigation" className="grid grid-cols-3 border-b border-border">
+        <ul id="mobile-more-navigation" className="grid grid-cols-2 sm:grid-cols-4 border-b border-border">
           {SECONDARY.map((n) => (
             <li key={n.href}>
               <Link
@@ -147,6 +147,16 @@ export function MobileDock() {
               </Link>
             </li>
           ))}
+          <li>
+            <a
+              href={getDocsUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-12 items-center justify-center text-xs font-semibold uppercase tracking-wider text-fg"
+            >
+              How it works
+            </a>
+          </li>
         </ul>
       ) : null}
       <ul className="grid grid-cols-5">
