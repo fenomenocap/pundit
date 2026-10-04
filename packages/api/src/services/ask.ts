@@ -406,6 +406,7 @@ export interface FixtureRoutingState {
   modelRefreshing?: boolean;
   ratingsAvailable?: boolean;
   missingRatingTeamIds?: ReadonlySet<string>;
+  now?: number;
 }
 
 function capabilityForFixture(
@@ -418,6 +419,7 @@ function capabilityForFixture(
     && !missing?.has(fixture.homeTeam.id)
     && !missing?.has(fixture.awayTeam.id);
   return evaluateFixtureCapability(fixture, {
+    now: routing.now,
     // A cached model row is not priceable after its immutable rating artifact
     // expires or otherwise becomes invalid.
     modelFixture: fixtureRatingsAvailable ? modelFixture : undefined,
@@ -1346,6 +1348,12 @@ export function sanitizeFixtureCoverageAnswer(answer: string, grounding: Fixture
   // so non-priced fixtures use this deterministic rendering and nothing from
   // the model's speculative tail.
   const reason = grounding.capability.reason;
+  if (reason === "in-play-model-unavailable") {
+    const status = grounding.fixture.status === "in-play"
+      ? "This match is underway."
+      : "Scheduled kickoff has arrived.";
+    return `${status} I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.`;
+  }
   if (grounding.capability.status === "outside-coverage") {
     const explanation = reason === "friendly-policy-disabled"
       ? "I don’t publish forecasts for friendlies."
@@ -3436,8 +3444,24 @@ function hasExplicitMatchupCue(question: string): boolean {
 }
 
 function hasUnresolvedFixtureShape(question: string): boolean {
-  return /\b[\p{L}\p{N}][\p{L}\p{N} .'-]{1,60}\s+(?:vs?\.?|against)\s+[\p{L}\p{N}][\p{L}\p{N} .'-]{1,60}(?:[?!.,]|$)/iu
+  return /\b[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}\s+(?:vs?\.?|versus|against)\s+[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}(?:[?!.,]|$)/iu
     .test(question);
+}
+
+function comparesTacticalConcepts(question: string): boolean {
+  const sides = question.split(/\b(?:vs?\.?|versus|against)\b/i);
+  if (sides.length !== 2) return false;
+  const concept = /\b(?:(?:high|low|mid|deep)[ -]+(?:defensive[ -]+)?(?:line|block|press)|press(?:ing)?[ -]+traps?|(?:narrow|wide|diamond|box|compact)[ -]+midfield|(?:man|zonal)[ -]marking|counter[ -]press(?:ing)?)\b|\b\d(?:[-–]\d){2,3}\b/gi;
+  const framing = new Set("explain compare comparing how does do work works which is are more less effective trade offs of the a an in detail risks benefits advantages disadvantages and their between system systems shape shapes formation formations football tactical tactic tactics using tell me about discuss differences".split(" "));
+  return sides.every((side) => {
+    if (!side.match(concept)) return false;
+    // Consume the whole side: an unknown club decorated with tactical terms
+    // must not become general analysis or inherit a previous fixture.
+    const remaining = side.replace(concept, " ")
+      .replace(/\b(?:premier league|epl|champions league|ucl)\b/gi, " ")
+      .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    return !remaining || remaining.split(/\s+/).every((word) => framing.has(word));
+  });
 }
 
 const MATCH_FOLLOW_UP_CUES = [
@@ -3907,7 +3931,9 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     fixtureId,
     competitionId: fixture.competitionId,
     competition: fixture.competition,
-    homeFieldAdvantage: competition?.homeFieldAdvantage ?? false,
+    homeFieldAdvantage: fixture.forecastProvenance
+      ? fixture.forecastProvenance.homeAdvantageElo > 0
+      : competition?.homeFieldAdvantage ?? false,
     date: fixture.date,
     stage: fixture.stage,
     home: fixture.home,
@@ -4162,6 +4188,28 @@ export function resolveAskContext(
     return { tier: "match", fixture: explicitFixture };
   }
 
+  if (!competitionId) {
+    const activeTeams = resolveQuestionTeams(question, activeFixtures);
+    const activeFixture = activeTeams
+      ? findFixture(activeTeams[0], activeTeams[1], activeFixtures)
+      : undefined;
+    if (activeFixture) {
+      return { tier: "model-unavailable", teams: [activeFixture.home, activeFixture.away] };
+    }
+  }
+
+  // An explicit replacement must be classified before table or match
+  // retention. Only complete generic tactical comparisons bypass discovery.
+  if (hasUnresolvedFixtureShape(question)
+    && (!teams || (!explicitFixture && recognizedMatches.length === 0))) {
+    if (comparesTacticalConcepts(question)
+      && !hasMatchOutcomeIntent(question)
+      && mentionedTeamPositions(question, searchableFixtures).size === 0) {
+      return { tier: "general" };
+    }
+    return { tier: "candidate" };
+  }
+
   if (
     competitionId === "eng.1"
     && (isSeasonOutlookQuestion(question) || seasonContinuation)
@@ -4174,16 +4222,6 @@ export function resolveAskContext(
     && !hasMatchOutcomeIntent(question)
     && standings.some((row) => row.competitionId === competitionId)) {
     return { tier: "competition", competitionId };
-  }
-
-  if (!competitionId) {
-    const activeTeams = resolveQuestionTeams(question, activeFixtures);
-    const activeFixture = activeTeams
-      ? findFixture(activeTeams[0], activeTeams[1], activeFixtures)
-      : undefined;
-    if (activeFixture) {
-      return { tier: "model-unavailable", teams: [activeFixture.home, activeFixture.away] };
-    }
   }
 
   // fixtureContext is server-owned identity returned by a previous grounding.
@@ -4217,15 +4255,6 @@ export function resolveAskContext(
     if (activeFixture) {
       return { tier: "model-unavailable", teams: [activeFixture.home, activeFixture.away] };
     }
-  }
-
-  // Two known clubs that form no fixture Pundit holds are as unconfirmed as two
-  // unknown ones. They used to fall through to the general model, which wrote
-  // "I make the visitors a 41% win chance" and invented scorelines for
-  // Liverpool vs Fulham, a pairing outside every fixture window.
-  if (hasUnresolvedFixtureShape(question)
-    && (!teams || (!explicitFixture && recognizedMatches.length === 0))) {
-    return { tier: "candidate" };
   }
 
   // A competition token with no retained fixture still reaches its table even
@@ -6960,7 +6989,12 @@ export function prepareAsk(
   const authoritativeEspnFixtures = [...football.upcoming, ...football.recent]
     .map((fixture) => recognizeEspnFixture(fixture));
   const recognizedFixtures = fixtureRegistryExpansionEnabled()
-    ? getRecognizedFixtures()
+    ? getRecognizedFixtures().map((fixture) => {
+        // Status observations can advance before the atomic registry refresh;
+        // only update an already-recognized identity, never promote candidates.
+        const current = authoritativeEspnFixtures.find((observed) => observed.fixtureId === fixture.fixtureId);
+        return current ? { ...fixture, status: current.status, kickoff: current.kickoff } : fixture;
+      })
     : authoritativeEspnFixtures;
   const context = resolveAskContext(
     question,
@@ -6972,6 +7006,7 @@ export function prepareAsk(
     {
       recognizedFixtures,
       fixtureContext,
+      now: Date.now(),
       modelInitialized: modelData.lastUpdated !== null,
       modelRefreshing: modelRefresh.refreshing,
       ratingsAvailable,

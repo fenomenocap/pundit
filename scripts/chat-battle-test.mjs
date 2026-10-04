@@ -33,6 +33,8 @@ import {
   summarizeWebSearchTelemetry,
   readinessFailures,
   routableRecognizedEntries,
+  requireAvailableRecognizedScenarios,
+  selectRecognizedScenarioEntry,
   validateGrounding,
   validateSse,
   validateAnswerCopy,
@@ -765,11 +767,7 @@ async function runScenario(
     };
   }
   if (scenario.kind === "recognized") {
-    const entry = recognized.find(({ fixture, capability }) =>
-      (!scenario.capabilityStatus || capability?.status === scenario.capabilityStatus)
-      && (!scenario.capabilityReason || capability?.reason === scenario.capabilityReason)
-      && (!scenario.competitionCategory || fixture?.competition?.category === scenario.competitionCategory)
-    );
+    const entry = selectRecognizedScenarioEntry(scenario, recognized);
     if (!entry) {
       return {
         ...baseResult(scenario),
@@ -1064,7 +1062,7 @@ async function main() {
   const seed = runId.slice(0, 10);
   const adversarial = generateAdversarialScenarios(seed, exactFeatured)
     .map((scenario) => ({ ...scenario, requiredForCertification: false }));
-  const scenarios = [...scenarioConfig.fixed, ...adversarial];
+  const scenarios = requireAvailableRecognizedScenarios([...scenarioConfig.fixed, ...adversarial], routableRecognized);
   const pacer = createPacer(options.intervalMs);
   const deploymentFromVersion = typeof preflightResult.apiVersion.body?.deploymentId === "string"
     ? preflightResult.apiVersion.body.deploymentId.trim()

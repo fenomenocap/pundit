@@ -186,3 +186,46 @@ repository development/build glob processing, not the production dependency
 tree. Do not feed untrusted brace patterns into these tools. The advisory is
 retained in the full audit, without an ignore or a false claim of remediation.
 CI separately rejects critical advisories across development dependencies.
+
+## Independent scenario review and immediate repairs
+
+Three QA agents independently reviewed API routing/output, browser journeys and
+quant mathematics. The browser suite now includes keyboard Enter/Space selection
+for paper fixtures and draft players. Complete 88-pick draft legality, reload
+persistence, paper credit accounting, settlement and reset were exercised twice
+with mocked APIs; these checks do not establish live provider quality. Next.js
+file tracing is pinned to the repository rather than an unrelated parent lockfile.
+
+A live generic question about pressing traps against a narrow midfield was
+incorrectly classified as an unidentified fixture. Generic tactical comparisons
+now consume only bounded concepts and framing; unknown clubs decorated with
+those concepts still fail closed, including after retained fixture context. The
+production evaluation includes the exact failed question and rejects a fixture
+refusal. Grounding validation now checks both totals and BTTS complements.
+
+Independent synthetic quant reproduction exposed pre-match forecasts on an
+in-play Arsenal–Leeds fixture at 0–4: Under 2.5 still showed 49.36%. The champion
+does not condition on elapsed time or live score. Public pre-match pricing and
+market comparison therefore exclude underway fixtures and expire at scheduled
+kickoff, including stale cached rows before ESPN updates its status. Recognized fixtures retain an explicit live-forecast-unavailable
+capability. Neutral-venue narrative grounding now derives home advantage from
+the actual forecast provenance, matching the zero-HFA calculation.
+
+A separate numerical grid exercise passed 13,164 invariants covering
+normalization, orientation/symmetry, complements, reciprocal fair odds, rating
+extremes and zero goal means. Mathematical correctness does not establish
+forecast quality. Fixed total expected goals remain a substantive limitation.
+The chronological challengers remain unpromoted; their totals performance
+deteriorates despite some 1X2 improvements. Before future model promotion, the
+research gate must evaluate totals, BTTS, scoreline loss and uncertainty as well
+as its existing 1X2 measures. Existing thresholds were not relaxed and production
+constants were not changed.
+
+The final mocked browser suite passed all 60 scenarios twice after the last
+component change. Two in-play scenarios cover both desk JSON and legacy SSE:
+no probability board or live-market gap, visible capability reason, retained
+recognized fixture ID on follow-up, and replacement when the user names a new
+matchup. Eleven API synthetic regressions cover exact kickoff with a lagging
+status feed, independent cache/status transitions, retained identity, market
+suppression and actual home advantage. Historical seal tests explicitly freeze
+their replay clock; production kickoff guards were not weakened.

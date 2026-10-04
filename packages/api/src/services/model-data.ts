@@ -20,7 +20,7 @@ import {
   PUNDIT_FUNDAMENTAL_MODEL_ID,
   PUNDIT_FUNDAMENTAL_MODEL_VERSION,
 } from "./model-contributors";
-import { isModelPolicyEligible, recognizeEspnFixture } from "./fixture-registry";
+import { espnFixtureIdentity, getRecognizedFixture, isModelPolicyEligible, recognizeEspnFixture } from "./fixture-registry";
 
 export interface ModelScoreline {
   score: string;
@@ -102,7 +102,21 @@ let refreshInProgress = false;
 let missingRatingTeamIds = new Set<string>();
 
 export function getCachedModelData(): ModelDataCache {
-  return { ...cache };
+  return { ...cache, fixtures: cache.fixtures.filter((fixture) => isCurrentPreMatchModelFixture(fixture)) };
+}
+
+/** ESPN can advance before the hourly model refresh. Never publish the old
+ * pre-match grid against an underway or settled match's current prices. */
+export function isCurrentPreMatchModelFixture(fixture: ModelFixture, now = Date.now()): boolean {
+  const kickoff = Date.parse(fixture.utcDate);
+  if (!Number.isFinite(kickoff) || kickoff <= now) return false;
+  const football = getCachedMatches();
+  const observed = [...football.upcoming, ...football.recent].filter((match) =>
+    match.competitionId === fixture.competitionId && match.id === fixture.fixtureId
+  );
+  if (observed.some((match) => match.status !== "SCHEDULED")) return false;
+  const recognized = getRecognizedFixture(espnFixtureIdentity(fixture));
+  return !recognized || recognized.status === "scheduled";
 }
 
 export function replaceModelDataForTests(state: Partial<ModelDataCache>): void {
@@ -245,7 +259,7 @@ export function buildActiveModelFixtures(
 export function findModelFixtureByTeams(
   teamA: string,
   teamB: string,
-  fixtures: ModelFixture[] = cache.fixtures
+  fixtures: ModelFixture[] = getCachedModelData().fixtures
 ): ModelFixture | undefined {
   const pair = new Set([teamA, teamB]);
   return fixtures.find((fixture) =>
@@ -274,7 +288,7 @@ export function modelDataCoversActiveFixtures(
   activeFixtures: ActiveFixture[]
 ): boolean {
   if (model.lastUpdated === null) return false;
-  const activeKeys = new Set(activeFixtures.map(activeFixtureIdentity));
+  const activeKeys = new Set(activeFixtures.filter((fixture) => fixture.status !== "IN_PLAY").map(activeFixtureIdentity));
   const modelKeys = new Set(model.fixtures.map(cachedFixtureIdentity));
   return activeKeys.size === modelKeys.size
     && [...activeKeys].every((key) => modelKeys.has(key));
@@ -290,7 +304,7 @@ export function modelDataIsCurrentSubset(
   activeFixtures: ActiveFixture[]
 ): boolean {
   if (model.lastUpdated === null) return false;
-  const activeKeys = new Set(activeFixtures.map(activeFixtureIdentity));
+  const activeKeys = new Set(activeFixtures.filter((fixture) => fixture.status !== "IN_PLAY").map(activeFixtureIdentity));
   return model.fixtures.every((fixture) => activeKeys.has(cachedFixtureIdentity(fixture)));
 }
 
