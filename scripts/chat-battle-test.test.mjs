@@ -3573,3 +3573,117 @@ test("plain capability notices preserve the typed reason without internal termin
     { kind: "fixture", capability: { reason: "in-play-model-unavailable" } }, {}
   ).assertions.capabilityReasonFidelity, true);
 });
+
+const topics = ["slate", "favourite", "derby", "chance"];
+const pass = (answer, topic) => validateResponseCorrectness(answer, [], null, { expectGeneralEducationTopic: topic }).passed;
+// Exact delivered failures from production run 2026-10-04T22-15-04-325Z.
+const observedEducationAnswers = [
+  "**Thinking in probabilities** The core principle is that no single outcome is ever guaranteed in football. No verified, dated team-news update was established from retrievable sources. That distribution shows, for example, that a 70.6% home win (1.42 decimal) still leaves a 29.4% chance of a draw or away win \u2014 roughly three-in-ten. Treating every fixture this way prevents the cognitive error of rounding a heavy favourite up to \"certain\". **Where the edge comes from** I make a baseline probability, but the market often disagrees. If they don't, my number becomes a potential edge. **Practical application** On a typical 10-match slate, I would expect 2-3 results to fall outside the market's implied favourites. The disciplined approach is to bet only where the gap between my view and the market is wide enough to absorb that variance, and to size stakes accordingly. Without that, the slate is assessed on the underlying strength numbers and venue adjustments alone. No such reports were found in the current search results for any specific fixture. I could not establish a complete same-source, same-time bookmaker 1X2 market from server-owned evidence, so I have omitted those numbers. This is general football analysis, not based on my match forecasts.",
+  "I would look for the tactical contests that let a favourite control a game \u2014 recovery after losing the ball, width to stretch a low block, and set-piece structure \u2014 because those are more stable signals than any pre-match assumption. No verified, dated team-news update was established from retrievable sources.",
+  "**Emotion recalibrates risk**\nA derby is a fixture where consequence overrides structure. That changes game management in material ways\u2014teams become more willing to take a booking to stop a counter, less willing to commit numbers to attacks late in halves, and managers often hold substitutions later to avoid disrupting defensive shape under high emotion. **What the derby does to the sheet**\nBecause pressing intensity and defensive concentration both rise, the underlying statistical expectation often overstates what happens in a derby. The advantage compresses: a side that would control 58-60 percent of possession in a normal game might drop to 52-55 percent as the opponent shortens the pitch and plays through central overloads less ambitiously. That tactical trade-off matters most for the favourite, whose path to scoring narrows from controlled build-up play to set pieces or individual errors\u2014both inherently more volatile channels. This is general football analysis, not based on my match forecasts. No verified, dated team-news update was established.",
+  "**Chance quality over quantity**\nPast goal totals can mislead because they mix a striker's own work with the team's creative output. **Shot location and pressure**\nNot all shots are equal. **Off-ball movement and repeatability**\n These behaviours generate the high xG totals that make goal-scoring repeatable. A player whose past goals come from long-range screamers or defensive errors is less likely to repeat them than one whose shots come from the same dangerous spots week after week. This is general football analysis, not based on my match forecasts. No verified, dated team-news update was established."
+];
+test("four exact delivered bad answers fail semantic education guard", () => {
+  observedEducationAnswers.forEach((answer, index) => {
+    assert.equal(pass(answer, topics[index]), false, topics[index]);
+  });
+});
+
+const good = {
+  slate: [
+    "I compare each team's underlying strength with its opponent, then consider venue and rest because recovery can change the contest. A low block can deny space to a stronger side. Those factors may point in different directions; they do not guarantee a result.",
+    "I assess a slate one fixture at a time: compare team quality and account for home advantage. Travel and rest affect recovery, while pressing matchups can expose space after a turnover. A stronger side can still lose; I would not turn this into a guaranteed slate pick.",
+  ],
+  favourite: [
+    "The stronger team can still lose because football has few goals and a missed chance or red card can swing the result. Better players improve the prospects, but no favourite is a guaranteed winner.",
+    "I favour the better side without treating it as certainty. A deflection can change a close game, and a strong favourite may drop points despite creating more chances. No guarantee follows from relative strength.",
+  ],
+  derby: [
+    "Rivalry can raise emotion and make pressing decisions less disciplined. A rushed press may expose space for a counter, while a booking changes how a defender can contest the next duel. I would manage tempo and substitutions to protect shape; it depends on how the teams react, rather than derby status guaranteeing a pattern.",
+    "Crowd pressure may speed up decisions and increase foul risk. Protecting a booked player can reduce pressing aggression, but leaving the opponent time invites attacks. The trade-off is conditional: not every derby has the same intensity or tactical shape.",
+  ],
+  chance: [
+    "A shot closer to goal from a central angle usually offers a clearer route to the target. Less defender pressure and a settled first touch give the striker time to finish cleanly. Good service may create repeatable chances, but a good chance does not guarantee a goal or make past totals a complete guide.",
+    "I look at distance and angle to goal, then whether the striker can shoot in balance with space away from a defender. A difficult pass can force a rushed shot even in a good position. Past goals may reflect service and finishing swings, so chance quality is useful without guaranteeing the next finish.",
+  ],
+};
+for (const topic of topics) test(`${topic}: natural good variants pass`, () => {
+  for (const answer of good[topic]) assert.equal(pass(answer, topic), true, JSON.stringify(validateResponseCorrectness(answer, [], null, { expectGeneralEducationTopic: topic })));
+});
+
+test("numbers and advice cannot hide inside otherwise sound educational prose", () => {
+  for (const unsafe of ["It wins 76.7% of the time.", "Possession falls to 52-55 percent.", "It is seventy percent likely.", "That is three-in-ten.", "The fair price is 1.42 decimal.", "Take odds of 2/1.", "EV is +12.", "Bet only when the market disagrees.", "Size stakes accordingly."]) {
+    assert.equal(pass(`${good.slate[0]} ${unsafe}`, "slate"), false, unsafe);
+  }
+});
+test("topic keywords and headings do not establish a causal explanation", () => {
+  assert.equal(pass("**Shot location and pressure**\nNot all shots are equal. Past goals can mislead.", "chance"), false);
+  assert.equal(pass("**Emotion, pressing, foul risk**\nA derby might be different.", "derby"), false);
+  assert.equal(pass("I compare team strength. It may differ.", "slate"), false);
+  assert.equal(pass("A favourite controls width and transitions because those are stable signals.", "favourite"), false);
+  assert.equal(pass(good.chance[0], "derby"), false);
+  assert.equal(pass(good.derby[0], "chance"), false);
+});
+test("irrelevant verification chatter fails while useful lineup considerations pass", () => {
+  assert.equal(pass(`${good.slate[0]} No verified, dated team-news update was established.`, "slate"), false);
+  assert.equal(pass(`${good.slate[0]} No such reports were found in current search results.`, "slate"), false);
+  assert.equal(pass(`${good.slate[0]} I would check confirmed lineups before applying this to a particular match.`, "slate"), true);
+});
+
+test("education guards reject unsupported slate counts and universal derby effects", () => {
+  for (const claim of [
+    "On a 10-match slate I would expect 2–3 upsets.",
+    "I predict three results outside the favourites.",
+    "Two wins for the underdogs are expected.",
+  ]) assert.equal(pass(`${good.slate[0]} ${claim}`, "slate"), false, claim);
+  for (const claim of [
+    "Derbies always increase pressing intensity. I can assess the result later.",
+    "Every derby compresses the favourite's advantage. It may need more observation.",
+    "A derby inevitably creates more bookings. I can watch the shape.",
+  ]) assert.equal(pass(`${good.derby[0]} ${claim}`, "derby"), false, claim);
+  assert.equal(pass(`${good.slate[0]} A 4-4-2 can defend in two compact lines.`, "slate"), true);
+  assert.equal(pass(good.chance[0].replace("closer to goal", "**closer to goal**"), "chance"), true);
+  assert.equal(pass(`${good.derby[0]} I would watch these decisions rather than assume every derby is faster.`, "derby"), true);
+  assert.equal(pass(`${good.derby[0]} I cannot assume all derbies are physical; but derbies always increase pressing intensity.`, "derby"), false);
+});
+
+test("standalone education scenarios match the UI's independent empty-history turns", async () => {
+  const config = JSON.parse(await readFile(path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"), "utf8"));
+  const ids = ["standalone-football-explainers", "standalone-football-explainer-favourite",
+    "standalone-football-explainer-derby", "standalone-football-explainer-chance"];
+  for (const [index, id] of ids.entries()) {
+    const scenario = config.fixed.find((entry) => entry.id === id);
+    assert.equal(scenario.kind, "json");
+    assert.equal(scenario.requiredForCertification, true);
+    assert.equal(scenario.voice, "desk");
+    assert.equal(scenario.turns.length, 1);
+    assert.equal(scenario.turns[0].expectGeneralEducationTopic, topics[index]);
+    assert.equal(scenario.turns[0].expectGrounding, null);
+    assert.equal(scenario.fixtureContext, undefined);
+  }
+  const tactical = config.fixed.find((entry) => entry.id === "featured-tactical-matchup-keeps-a-take");
+  assert.equal(tactical.expectFootballTake, true);
+  assert.equal(tactical.expectConditionalTactics, true);
+});
+
+test("exact delivered tactical 1X2 plus injury disclaimer fails", () => {
+  const answer = "I prefer Arsenal 76.7% over the draw 17.5% and Leeds 5.8%.\n\nI would verify the starters before reassessing; any injury to Bukayo Saka or Kai Havertz\u2014Arsenal's top two scorers so far\u2014would change the attack projection, but I cannot quantify that shift without a revised forecast.";
+  assert.equal(validateResponseCorrectness(answer, [], null, { expectFootballTake: true, expectConditionalTactics: true }).passed, false);
+  assert.equal(validateResponseCorrectness(answer, [], null, { expectFootballTake: true, expectConditionalTactics: true }).assertions.footballTakeMechanism, false);
+});
+test("natural conditional tactical takes explain mechanism and escape risk", () => {
+  for (const answer of [
+    "I prefer Arsenal on strength. If Arsenal press high, Leeds could target space behind the defence with a direct pass. A compact block can deny central passes, but risks leaving the wings free. This is a conditional route to watch until the starting shapes are confirmed.",
+    "I would watch width first: if the favourite uses wide overloads, it can stretch the defence to create space for a runner. The cost is space for a counter if the ball is lost. I cannot claim that either team will use that shape before the lineups are established.",
+    "If the underdog defends in a narrow block, that can force the ball toward the wings and limit central chances. However, switches of play may expose space on the far flank. I would judge the press and recovery distances once the match begins.",
+    "If the home side uses width to pull a defender out, it could find a cut-back for a runner. The risk is less cover against a counterattack when both full-backs advance. Those are possible routes rather than confirmed playing styles.",
+  ]) assert.equal(validateResponseCorrectness(answer, [], null, { expectFootballTake: true, expectConditionalTactics: true }).passed, true, JSON.stringify(validateResponseCorrectness(answer, [], null, { expectFootballTake: true, expectConditionalTactics: true })));
+});
+test("tactical headings, keyword lists and unsupported certainty do not fake a take", () => {
+  for (const answer of [
+    "**Press to create space. Risk: counter attacks. If a narrow block.**\nI prefer Arsenal 76.7%.",
+    "Pressing, width, transitions, space, counter-attacks. It could go either way.",
+    "Arsenal are stronger. If a striker is injured, their forecast changes.",
+    "Arsenal press high and expose space behind the defence. The cost is space for a counter.",
+  ]) assert.equal(validateResponseCorrectness(answer, [], null, { expectFootballTake: true, expectConditionalTactics: true }).passed, false, answer);
+});

@@ -4,6 +4,7 @@ import type { Grounding } from "./ask";
 import { sampleMatchContextFields } from "./match-context";
 import {
   DESK_SYSTEM,
+  DESK_GENERAL_CONCEPT_SYSTEM,
   card,
   composeDeskFootballTake,
   deskProseIsCurrentNewsRemainder,
@@ -207,7 +208,7 @@ describe("desk football-take floor", () => {
   it("writes a schematic take without board numbers or current-news claims", () => {
     const take = composeDeskFootballTake(match());
     expect(take).toMatch(/I lean to Manchester City at home/);
-    expect(take).toMatch(/If Manchester City can sustain pressure/);
+    expect(take).toMatch(/If Manchester City draw Sunderland's first press/);
     expect(take).toMatch(/tactical possibilities/);
     expect(take).not.toMatch(/\d+(?:\.\d+)?\s*%/);
     expect(take).not.toMatch(/EV%|captured decimal|2\.70|Etihad|injured|manager/i);
@@ -313,7 +314,7 @@ describe("conditional desk tactics", () => {
     expect(sanitizeDeskFootballHypotheses(bad, g)).toBe("");
     const outline = composeDeskTakeOutline(g, { footballProse: bad });
     expect(outline).toMatch(/My 1X2/);
-    expect(outline).toMatch(/If Arsenal can sustain pressure/);
+    expect(outline).toMatch(/If Arsenal draw Leeds United's first press/);
     expect(outline).not.toMatch(/Saka|Ødegaard|night|lack midfield legs/);
   });
 
@@ -335,5 +336,16 @@ describe("conditional desk tactics", () => {
     expect(take).toMatch(/draw as the likeliest single outcome/);
     expect(take).toMatch(/does not establish a low-scoring game/);
     expect(take).not.toMatch(/midfield stalemate|tight night/);
+  });
+
+  it("explains conditional build-up, width and counter-cover without a venue claim on neutral ground", () => {
+    const take = composeDeskFootballTake(match({ homeFieldAdvantage: false }));
+    expect(take).toContain("supporting receiver could become free");
+    expect(take).toContain("central passing lanes");
+    expect(take).toContain("cut-back");
+    expect(take).toContain("less cover against a counterattack");
+    expect(take).toContain("players who stayed back would need to cover");
+    expect(take).not.toMatch(/at home|away from home|injur|Saka|\d+%/i);
+    expect(DESK_GENERAL_CONCEPT_SYSTEM).toContain("Stable football concepts do not require a current-news source");
   });
 });

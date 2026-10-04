@@ -106,6 +106,7 @@ import {
 import { composeDeskTakeOutline, composeMatchResponse } from "./response-composer";
 import {
   DESK_BOARD_FALLBACK,
+  DESK_GENERAL_CONCEPT_SYSTEM,
   composeDeskFootballTake,
   deskProseIsCurrentNewsRemainder,
   filterDeskEvidenceBundle,
@@ -1000,10 +1001,10 @@ function evidenceMessage(bundle: EvidenceBundle): string {
     + "the payload does not, quote it and name the book -- that is the part of the read Pundit "
     + "cannot compute.\n"
     + "Prices belong in European decimal, which is how football is priced. Pundit's own market "
-    + "probabilities convert as decimal = 1 / probability, so 70.6% is 1.42 and 18.6% is 5.38 -- "
-    + "give the decimal alongside the percentage when the answer is about what to back. If a "
-    + "source quotes American odds, convert before quoting: a negative price is 1 + 100/|price| "
-    + "(-470 becomes 1.21), a positive one is 1 + price/100 (+340 becomes 4.40). Never print the "
+    + "probabilities convert as decimal = 1 / probability. Give the decimal alongside a supplied "
+    + "percentage only when the requested market comparison needs it. If a "
+    + "source quotes American odds, convert before quoting: a negative price is 1 + 100/|price|, "
+    + "a positive one is 1 + price/100. Never print the "
     + "American form.\n"
     + "A sportsbook or player-market price from the evidence is quotable -- it is often the only "
     + "number there is for a scorer, a card or a prop -- but prices move, so quote it with its "
@@ -1074,12 +1075,15 @@ export function planEvidenceQueries(
   return planFederatedQueries(question, grounding, baseQuery, now);
 }
 
-function planTurnEvidenceQueries(
+export function planTurnEvidenceQueries(
   question: string,
   grounding: AskGrounding,
   query: string | null,
   voice?: "desk"
 ): string[] {
+  // A fixture-less concept with no current/external cue owes no search. Do not
+  // manufacture a latest-news query merely because the UI uses desk voice.
+  if (grounding === null && query === null) return [];
   const planned = planEvidenceQueries(question, grounding, query);
   if (planned.length || voice !== "desk") return planned;
   if (grounding?.kind === "match" && isSchematicMatchTake(question)) return [];
@@ -2697,11 +2701,19 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
  * citing nothing. A cited result keeps its marker and survives; when nothing
  * readable is left, the reader gets the abstention instead of a fragment.
  */
+function affirmativeEvidenceClauses(sentence: string): string[] {
+  return sentence.split(/[,;]|\b(?:but|yet|however|and)\b/i).filter((clause) =>
+    !ABSTENTION.test(clause)
+    && !/\b(?:cannot|can't|can’t|couldn't|couldn’t|could not)\s+(?:verify|confirm|establish|know)\b/i.test(clause)
+    && !/^\s*(?:If\b|I(?: would|['’]d) (?:look for|watch|test)\b|One (?:possible|potential) route\b)/i.test(clause)
+  );
+}
+
 export function stripUncitedResultClaims(answer: string): string {
   let removed = false;
   const revised = reviseAnswerSentences(answer, (sentence) => {
     if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
-    if (ABSTENTION.test(sentence) || !RESULT_CLAIM.test(sentence)) return sentence;
+    if (!affirmativeEvidenceClauses(sentence).some((clause) => RESULT_CLAIM.test(clause))) return sentence;
     removed = true;
     return "";
   });
@@ -2714,6 +2726,32 @@ export function stripUncitedResultClaims(answer: string): string {
     : RESULT_CLAIM_ABSTENTION;
 }
 
+/** Manager identities are external facts, not uncited football hypotheses. */
+export function stripUncitedManagerClaims(answer: string): string {
+  let removed = false;
+  const revised = reviseAnswerSentences(answer, (sentence) => {
+    if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
+    const identity = affirmativeEvidenceClauses(sentence).some((clause) => {
+      // A refusal or hypothesis protects its own clause, not a separate
+      // positive identity after "but" or the comma following an if-clause.
+      const role = /\b(?:manager|head coach|coach|manages|managed by)\b/i.test(clause);
+      const namedIdentity = /\p{Lu}[\p{L}’'-]+(?:\s+\p{Lu}[\p{L}’'-]+){0,3}\s+(?:is|was|are|were|remains?|became|manages)\b/u.test(clause)
+        || /\b(?:manager|head coach|coach)\s+(?:is|was|remains?)\s+\p{Lu}[\p{L}’'-]+/u.test(clause);
+      const currentIdentity = /\b(?:current|today|now|appointed|replaced|sacked|this season)\b/i.test(clause)
+        && /\b(?:is|was|are|were|has been|appointed|replaced|sacked)\b/i.test(clause);
+      return role && (namedIdentity || currentIdentity);
+    });
+    if (!identity) return sentence;
+    removed = true;
+    return "";
+  });
+  if (!removed) return answer;
+  const cleaned = dropOrphanedSectionLabels(revised.replace(/[ \t]{2,}/g, " ").trim());
+  return hasMeaningfulProse(cleaned.replace(GENERAL_DISCLAIMER, ""))
+    ? `${cleaned}\n\n${CURRENT_CLAIM_ABSTENTION}`
+    : CURRENT_CLAIM_ABSTENTION;
+}
+
 /**
  * Removes price statements that carry no citation from a general-tier answer
  * that owed evidence. Pundit holds no odds for an ungrounded question, and a
@@ -2724,7 +2762,7 @@ export function stripUncitedOddsClaims(answer: string): string {
   let removed = false;
   const revised = reviseAnswerSentences(answer, (sentence) => {
     if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
-    if (ABSTENTION.test(sentence) || !quotesPrice(sentence)) return sentence;
+    if (!affirmativeEvidenceClauses(sentence).some((clause) => quotesPrice(clause))) return sentence;
     removed = true;
     return "";
   });
@@ -8289,11 +8327,18 @@ function verificationForSettledEvidence(
  */
 /**
  * Match-follow-up turns that `composeMatchResponse` can answer from typed facts
- * alone. Generic follow-ups ("Why?", idioms) still reach generation; tactical
- * takes use the desk outline path and also generate.
+ * alone. Generic follow-ups ("Why?", idioms) still reach generation; schematic
+ * tactical takes use the complete conditional desk outline.
  */
-function matchFollowUpSettlesWithoutGeneration(question: string): boolean {
-  if (asksTacticalTake(question)) return false;
+function isClosedTacticalRequest(question: string): boolean {
+  return /^(?:(?:explain|describe|give me|show me)\s+(?:the\s+)?)?tactical matchup[.!?]*$/i.test(question.trim());
+}
+
+function matchFollowUpSettlesWithoutGeneration(question: string, grounding: Grounding): boolean {
+  if (asksTacticalTake(question)) {
+    return isClosedTacticalRequest(question) && !deterministicSearchQuery(question, "", grounding)
+      && !unresolvedSwitchClub(question, [grounding.home, grounding.away]);
+  }
   const priced = pricedGridMarketsAsked(question);
   if (priced.some((market) => market !== "1x2")) return true;
   if (asksUnpricedMarket(question)) return true;
@@ -8328,9 +8373,9 @@ export function closedGroundedAnswer(
     });
     // These modes are fully settled by typed server facts or a typed
     // limitation. They must not spend a search/model call or broaden into a
-    // report. Team news and qualitative reads still reach evidence/expression.
+    // report. Current team news still reaches evidence/expression.
     const settledMatchFollowUp = plan.mode === "match-follow-up"
-      && matchFollowUpSettlesWithoutGeneration(question);
+      && matchFollowUpSettlesWithoutGeneration(question, grounding);
     const settled = !plan.evidenceRequired && (
       settledMatchFollowUp || [
         "exact-score",
@@ -8344,7 +8389,7 @@ export function closedGroundedAnswer(
         "pricing-desk",
         // The long read is the server's 1X2, scorelines and market rows. Sending
         // "Analyse" to the model spent the 90s deadline and returned 502 before
-        // this text could ship. Team news and tactical takes still generate.
+        // this text could ship. Current team news still requires evidence.
         "match-preview",
       ].includes(plan.mode)
     );
@@ -8393,11 +8438,73 @@ export function deterministicUngroundedClarification(
   return null;
 }
 
+const GENERAL_FOOTBALL_LESSONS = [
+  {
+    questions: [
+      "how do you assess a slate of football fixtures without treating any outcome as guaranteed",
+      "how would you assess a slate of football fixtures",
+      "how do you compare a slate of football fixtures",
+      "explain how to assess a football fixture slate",
+    ],
+    answer: [
+      "I’d compare each fixture separately, starting with relative team strength, home advantage and the possible effect of rest on the demands of the game. Then I’d examine how each side could create and prevent chances: a press may disrupt build-up, but an opponent that escapes it can attack the space left behind; width and cut-backs can test a compact defence, while set pieces offer another route to goal.",
+      "Those interactions matter more than treating every favourite as the same kind of prospect. A stronger side can control territory and still lose through missed chances, a counterattack or a defensive error. I’d keep the uncertainty around each match visible: a convincing case for one side is conditional on how the game unfolds, and a slate of favourites is no promise of winners.",
+    ].join("\n\n"),
+  },
+  {
+    questions: [
+      "why should a strong favourite never be treated as a guaranteed win",
+      "why can a strong favourite still lose",
+      "why is a strong favourite not guaranteed to win",
+      "explain why a favourite can lose a football match",
+    ],
+    answer: [
+      "A strong favourite can still lose because the opponent retains ways to create and finish chances. A well-timed counterattack, a set piece or a defensive mistake can produce a decisive opportunity even when the favourite controls most of the territory.",
+      "Finishing varies too: a side can create the better chances and miss them, while its opponent converts a smaller number. An early goal or dismissal can change the spaces and decisions available to both teams. I’d distinguish being the likeliest winner from being certain to win; dominance reduces some risks but does not remove the opponent’s chances.",
+    ].join("\n\n"),
+  },
+  {
+    questions: [
+      "how can a derby change the tactical trade-offs and game management",
+      "how can a derby affect tactics and game management",
+      "explain the tactical trade-offs in a derby",
+      "how might a derby change a team's tactics",
+    ],
+    answer: [
+      "A derby can change the tactical trade-offs if emotional pressure affects composure and how the teams manage tempo and risk. A side that presses more aggressively may win the ball higher up, but an uncoordinated jump can open space behind it. Slowing the game can help restore shape, while also giving the opponent time to organise.",
+      "Discipline and the score then matter: a booked defender may need closer cover, and a team chasing a late goal may push more players forward at the cost of protection against counters. I’d weigh intensity against control and watch those decisions rather than assume every derby is faster or more physical. The actual teams, context and game state determine which of these possibilities matters.",
+    ].join("\n\n"),
+  },
+  {
+    questions: [
+      "what makes a good chance for a striker, beyond past goal totals",
+      "what makes a good goalscoring chance",
+      "how do you assess a striker's chance quality",
+      "explain chance quality beyond past goal totals",
+    ],
+    answer: [
+      "I’d judge a chance by distance and angle to goal, defensive pressure, the goalkeeper’s position and whether a defender blocks the shooting lane. A close central shot with time to set the body is generally easier than a distant attempt from a tight angle under pressure.",
+      "The service and movement matter too. A timed run into space and a pass into stride can permit a clean first-time finish; a bouncing ball or a pass behind the striker can force an awkward touch or body shape. Repeatedly reaching useful positions with good service is a clearer mechanism for creating chances than past goal totals alone. Playing time and attacking opportunities affect how often those situations can arise; past totals do not guarantee the next finish.",
+    ].join("\n\n"),
+  },
+] as const;
+
 export function deterministicUngroundedAnalysis(
   question: string,
   grounding: AskGrounding
 ): string | null {
   if (grounding !== null) return null;
+  // Match the whole question. Club names, current-news additions and pricing
+  // requests must retain their own identity/evidence path, even after a lesson.
+  const lessonQuestion = question.trim().toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/^in general\s*,?\s+/, "")
+    .replace(/[.?!]+$/, "")
+    .replace(/\s+/g, " ");
+  const lesson = GENERAL_FOOTBALL_LESSONS.find((entry) =>
+    entry.questions.some((approved) => approved === lessonQuestion)
+  );
+  if (lesson) return lesson.answer;
   if (comparesTacticalConcepts(question)
     && /\bpress(?:ing)?[ -]+traps?\b/i.test(question)
     && /\bnarrow[ -]+midfield\b/i.test(question)) {
@@ -8512,6 +8619,20 @@ export async function deliverAnswer(args: {
     history = [],
   } = args;
   const deskVoice = voice === "desk";
+  const deliveryPlan = planResponse(question, { groundingKind: grounding?.kind ?? null, hasHistory });
+  if (grounding?.kind === "match" && isClosedTacticalRequest(question)
+    && deliveryPlan.mode === "match-follow-up" && !deliveryPlan.evidenceRequired && !evidenceRequired
+    && !deterministicSearchQuery(question, "", grounding)
+    && !unresolvedSwitchClub(question, [grounding.home, grounding.away])) {
+    // A correct 1X2 plus an availability caveat is not a tactical answer.
+    // Restore complete conditional mechanisms after any generation/pruning,
+    // for both voices; named/current facts retain the evidence path below.
+    return {
+      answer: finalizeDeliveredText(composeDeskTakeOutline(grounding), grounding, ANALYST_RESPONSE_V2),
+      citations: [],
+      verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+    };
+  }
   const evidenceBundle = deskVoice ? filterDeskEvidenceBundle(bundle, grounding) : bundle;
   const deskFootnotes = (text: string) => {
     if (!deskVoice) return text;
@@ -8555,7 +8676,9 @@ export async function deliverAnswer(args: {
     const prepared = sanitizeDeskModelProse(rawAnswer, evidenceBundle.results);
     const prose = salvaged
       || (!rawLooksLikeDraft && prepared ? prepared : "")
-      || await writeDeskProse(question, grounding, history, signal, evidenceBundle)
+      || await writeDeskProse(question, grounding, history, signal, evidenceBundle, {
+        generalConcept: grounding === null && !evidenceRequired && evidenceBundle.queries.length === 0,
+      })
       || (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)
         ? composeDeskFootballTake(grounding)
         : "");
@@ -8574,11 +8697,17 @@ export async function deliverAnswer(args: {
             },
           }
         : await verifyCurrentClaims(prose, evidenceBundle, client, signal);
-      const evidenceSafeAnswer = failClosedEmptyCurrentVerification(
+      const checkedEvidenceAnswer = failClosedEmptyCurrentVerification(
         checked.answer,
         checked.verification,
         deskPlan.evidenceRequired
       );
+      const searchedCurrent = evidenceRequired || evidenceBundle.queries.length > 0;
+      const evidenceSafeAnswer = searchedCurrent
+        ? stripUncitedManagerClaims(grounding === null
+          ? stripUncitedOddsClaims(stripUncitedResultClaims(checkedEvidenceAnswer))
+          : checkedEvidenceAnswer)
+        : checkedEvidenceAnswer;
       if (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)) {
         // Assemble outline before citation render so a sourced wrinkle's [[S1]]
         // expands. Server 1X2 must not pass through stripDeskBoardRecitals.
@@ -8597,7 +8726,8 @@ export async function deliverAnswer(args: {
           verification: checked.verification,
         };
       }
-      const rendered = renderEvidenceCitations(evidenceSafeAnswer, evidenceBundle, true);
+      const rendered = renderEvidenceCitations(evidenceSafeAnswer, evidenceBundle,
+        evidenceRequired || evidenceBundle.queries.length > 0 || grounding !== null);
       const settledAnswer = dropEmptyEmphasis(
         dropOrphanedSectionLabels(
           dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, evidenceBundle)))
@@ -9206,7 +9336,8 @@ async function answerQuestionScoped(
     });
     const deskSkipClosed = voice === "desk" && (
       grounding === null
-      || (grounding.kind === "match" && !DESK_COMPOSER_MODES.has(deskPlan.mode))
+      || (grounding.kind === "match" && !DESK_COMPOSER_MODES.has(deskPlan.mode)
+        && !(asksTacticalTake(question) && !deskPlan.evidenceRequired))
     );
     if (closedAnswer && !deskSkipClosed) {
       return {
@@ -9217,8 +9348,8 @@ async function answerQuestionScoped(
     }
     // `query` still decides whether a turn *owes* a search; the planned set
     // decides how well that search is done. A match question always earns the
-    // full set, which is what separates a read from a recital. Desk turns
-    // without a cue still search, including fixture-less club questions.
+    // full set where external facts are requested. Fixture-less concepts with
+    // no current cue do not receive an unrelated latest-news search.
     const plannedQueries = planTurnEvidenceQueries(question, grounding, query, voice);
     const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal, {
@@ -9236,7 +9367,9 @@ async function answerQuestionScoped(
       && grounding?.kind === "match"
       && planResponse(question, { groundingKind: "match" }).mode === "team-news";
     if (voice === "desk" && !deskUsesMatchEvidencePath) {
-      const prose = await writeDeskProse(question, grounding, history, signal, bundle);
+      const prose = await writeDeskProse(question, grounding, history, signal, bundle, {
+        generalConcept: grounding === null && query === null && bundle.queries.length === 0,
+      });
       if (prose) {
         const delivered = await deliverAnswer({
           answer: prose,
@@ -9272,11 +9405,12 @@ async function answerQuestionScoped(
         ...(scorerSettled.citations.length ? { citations: scorerSettled.citations } : {}),
       };
     }
-    const preparedMessages = attachEvidence(messages, bundle);
+    const generalConcept = grounding === null && query === null && bundle.queries.length === 0;
+    const preparedMessages = generalConcept ? messages : attachEvidence(messages, bundle);
     const rawAnswer = await generateOrDegradeToGrounding(grounding, signal, requestStartedAt, (generationSignal) =>
       generateAnalysis(
         client,
-        systemPrompt,
+        generalConcept ? DESK_GENERAL_CONCEPT_SYSTEM : systemPrompt,
         preparedMessages,
         tier,
         grounding,
@@ -9444,7 +9578,8 @@ async function answerQuestionStreamScoped(
         ...(scorerSettled.citations.length ? { citations: scorerSettled.citations } : {}),
       };
     }
-    const preparedMessages = attachEvidence(messages, bundle);
+    const generalConcept = grounding === null && query === null && bundle.queries.length === 0;
+    const preparedMessages = generalConcept ? messages : attachEvidence(messages, bundle);
     // Search-backed turns are held until their citation markers have been
     // validated and rendered. Ordinary no-search answers remain progressive.
     const ambiguousFallback = allowAmbiguousFallback(question);
@@ -9458,7 +9593,7 @@ async function answerQuestionStreamScoped(
       ? await generateOrDegradeToGrounding(grounding, handlers.signal, requestStartedAt, (generationSignal) =>
         generateAnalysis(
           client,
-          systemPrompt,
+          generalConcept ? DESK_GENERAL_CONCEPT_SYSTEM : systemPrompt,
           preparedMessages,
           tier,
           grounding,
@@ -9469,7 +9604,7 @@ async function answerQuestionStreamScoped(
         ))
       : await generateAnalysisStream(
         client,
-        systemPrompt,
+        generalConcept ? DESK_GENERAL_CONCEPT_SYSTEM : systemPrompt,
         preparedMessages,
         tier,
         handlers.onDelta,

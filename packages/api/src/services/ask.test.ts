@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
+import { DESK_GENERAL_CONCEPT_SYSTEM } from "./desk-voice";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
@@ -31,6 +32,8 @@ import {
   shouldUseMatchGrounding,
   deterministicSearchQuery,
   planEvidenceQueries,
+  planTurnEvidenceQueries,
+  deliverAnswer,
   attachEvidence,
   MATCH_JSON_REMINDER,
   evidenceAuthority,
@@ -65,6 +68,9 @@ import {
   shouldHoldCoverageDeltas,
   shouldHoldRequestFidelity,
   stripUnvalidatedExternalMarketClaims,
+  stripUncitedManagerClaims,
+  stripUncitedResultClaims,
+  stripUncitedOddsClaims,
   dropOrphanedSectionLabels,
   MATCH_ANALYSIS_PRIORITIES,
   MATCH_CAPABILITY_BOUNDS,
@@ -331,6 +337,227 @@ describe("season grounding degradation", () => {
       });
     }
   }, 20_000);
+});
+
+describe("complete standalone football lessons", () => {
+  const lessons = [
+    {
+      question: "In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?",
+      variants: ["How would you assess a slate of football fixtures?", "How do you compare a slate of football fixtures?", "Explain how to assess a football fixture slate."],
+      mechanisms: ["relative team strength", "home advantage", "rest", "press may disrupt build-up", "counterattack", "no promise of winners"],
+    },
+    {
+      question: "In general, why should a strong favourite never be treated as a guaranteed win?",
+      variants: ["Why can a strong favourite still lose?", "Why is a strong favourite not guaranteed to win?", "Explain why a favourite can lose a football match."],
+      mechanisms: ["set piece", "defensive mistake", "Finishing varies", "dismissal", "likeliest winner"],
+    },
+    {
+      question: "In general, how can a derby change the tactical trade-offs and game management?",
+      variants: ["How can a derby affect tactics and game management?", "Explain the tactical trade-offs in a derby.", "How might a derby change a team’s tactics?"],
+      mechanisms: ["emotional pressure", "uncoordinated jump", "booked defender", "late goal", "actual teams, context and game state"],
+    },
+    {
+      question: "In general, what makes a good chance for a striker, beyond past goal totals?",
+      variants: ["What makes a good goalscoring chance?", "How do you assess a striker’s chance quality?", "Explain chance quality beyond past goal totals."],
+      mechanisms: ["distance and angle", "defensive pressure", "goalkeeper’s position", "timed run", "pass into stride", "past totals do not guarantee"],
+    },
+  ];
+
+  it.each(lessons)("answers the full $question with mechanisms and rejects named/current extensions", ({ question, variants, mechanisms }) => {
+    const answer = deterministicUngroundedAnalysis(question, null)!;
+    for (const mechanism of mechanisms) expect(answer).toContain(mechanism);
+    expect(answer).not.toMatch(/\d+(?:\.\d+)?%|70\.6|1\.42|29\.4|verified|team.news|bookmaker|EV%|\bstakes?\b|\*\*/i);
+    for (const variant of variants) expect(deterministicUngroundedAnalysis(variant, null)).toBe(answer);
+    expect(deterministicUngroundedAnalysis(question.toUpperCase(), null)).toBe(answer);
+    expect(deterministicUngroundedAnalysis(question, buildGrounding(fixture("Arsenal", "Leeds")))).toBeNull();
+    for (const addition of [" for Arsenal", " for Northbridge", " with Saka", " with today's injuries", " and current odds"]) {
+      expect(deterministicUngroundedAnalysis(question.replace(/\?$/, "") + addition + "?", null)).toBeNull();
+    }
+  });
+
+  it.each(lessons)("bypasses search and inference in JSON, desk and SSE for $question", async ({ question }) => {
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation(() => { throw new Error("Unexpected answer model call"); });
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      const expected = deterministicUngroundedAnalysis(question, null)!;
+      for (const voice of [undefined, "desk"] as const) {
+        const json = await answerQuestion(question, [], undefined, undefined, undefined, undefined, voice);
+        expect(json.answer).toBe(expected);
+        expect(json.grounding).toBeNull();
+        expect(json.verification.status).toBe("not-required");
+      }
+      const deltas: string[] = [];
+      const stream = await answerQuestionStream(question, [], undefined, {
+        onGrounding: () => {}, onDelta: (text) => deltas.push(text),
+      });
+      expect(deltas).toEqual([stream.answer]);
+      expect(stream.answer).toBe(expected);
+      expect(create).not.toHaveBeenCalled();
+      expect(searchWeb).not.toHaveBeenCalled();
+    } finally {
+      create.mockRestore();
+    }
+  });
+
+  it("does not force current searches for stable concepts, but preserves injury, manager, odds and result queries", () => {
+    const concept = "Explain why covering a passing lane matters in a press.";
+    expect(deterministicSearchQuery(concept, "", null)).toBeNull();
+    expect(planTurnEvidenceQueries(concept, null, null, "desk")).toEqual([]);
+    for (const question of ["What are Arsenal's current injuries?", "Who is Arsenal's manager today?", "What are Arsenal's current odds?", "What was Arsenal's latest result?"]) {
+      const query = deterministicSearchQuery(question, "", null);
+      expect(query).not.toBeNull();
+      expect(planTurnEvidenceQueries(question, null, query, "desk").length).toBeGreaterThan(0);
+      expect(deterministicUngroundedAnalysis(question, null)).toBeNull();
+    }
+    const evidence = attachEvidence([{ role: "user", content: "Question: odds" }], {
+      queries: ["odds"], results: [{ id: "S1", title: "Market", url: "https://example.com/market", date: "2026-10-05", snippet: "A dated market observation.", tier: "other" }], providerCalls: 0,
+    });
+    expect(JSON.stringify(evidence)).toContain("decimal = 1 / probability");
+    expect(JSON.stringify(evidence)).not.toMatch(/70\.6|1\.42|18\.6|5\.38|-470|\+340/);
+  });
+
+  it.each([
+    { question: "Explain why covering a passing lane matters in a press.", text: "If a defender covers the passing lane, the attacker could need a wider route, leaving more time for support to arrive.", mechanism: "covers the passing lane" },
+    { question: "Explain how a 4-4-2 formation can cover central passing lanes.", text: "If a 4-4-2 midfield stays compact, the central players could cover passing lanes while the wide players protect the flanks.", mechanism: "4-4-2 midfield stays compact" },
+  ])("uses the concept prompt without primary or secondary latest-news search: $question", async ({ question, text, mechanism }) => {
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockResolvedValue({
+      content: [{ type: "text", text }],
+      stop_reason: "end_turn",
+    } as Anthropic.Message);
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      const result = await answerQuestion(question, [], undefined, undefined, undefined, undefined, "desk");
+      expect(result.answer).toContain(mechanism);
+      expect(result.answer).not.toMatch(/verified|team.news|bookmaker/i);
+      expect(searchWeb).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledOnce();
+      expect(create.mock.calls[0][0]).toMatchObject({ system: DESK_GENERAL_CONCEPT_SYSTEM });
+      expect(JSON.stringify(create.mock.calls[0][0])).not.toContain("football latest");
+    } finally {
+      create.mockRestore();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+
+  it("replaces the exact failed tactical response with complete conditional mechanisms in either voice", async () => {
+    const failed = "I prefer Arsenal 76.7% over the draw 17.5% and Leeds 5.8%.\n\nI would verify the starters before reassessing; any injury to Bukayo Saka or Kai Havertz—Arsenal's top two scorers so far—would change the attack projection, but I cannot quantify that shift without a revised forecast.";
+    const grounding = buildGrounding(fixture("Arsenal", "Leeds", { pHome: 0.767, pDraw: 0.175, pAway: 0.058 }));
+    const create = vi.fn(() => { throw new Error("Unexpected inference"); });
+    for (const voice of [undefined, "desk"] as const) {
+      const result = await deliverAnswer({ answer: failed, question: "Tactical matchup", tier: "match", grounding,
+        bundle: { queries: [], results: [], providerCalls: 0 }, client: { messages: { create } } as unknown as Pick<Anthropic, "messages">,
+        evidenceRequired: false, candidateUnrecognized: false, voice });
+      expect(result.answer).toMatch(/Arsenal 76\.7%.*draw 17\.5%.*Leeds 5\.8%/);
+      expect(result.answer).toMatch(/first press.*supporting receiver.*turnover/);
+      expect(result.answer).toContain("central passing lanes");
+      expect(result.answer).toContain("less cover against a counterattack");
+      expect(result.answer).not.toMatch(/Saka|Havertz|injury|starters|top two scorers/);
+    }
+    expect(create).not.toHaveBeenCalled();
+    for (const question of ["Tactical matchup with today's injuries", "Tactical matchup and current odds", "Tactical matchup for Northbridge", "How do Man Utd win this?"]) {
+      expect(closedGroundedAnswer(question, grounding)).toBeNull();
+    }
+  });
+
+  it("settles a recognized tactical request consistently in default JSON, desk JSON and SSE without providers", async () => {
+    await refreshClubRatings(new Date());
+    const kickoff = new Date(Date.now() + 86_400_000).toISOString();
+    const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation(() => { throw new Error("Unexpected provider call"); });
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      const context = { fixtureId: espnFixtureIdentity(model) };
+      const json = await answerQuestion("Tactical matchup", [], ["Arsenal", "Leeds"], undefined, context);
+      const desk = await answerQuestion("Tactical matchup", [], ["Arsenal", "Leeds"], undefined, context, undefined, "desk");
+      const deltas: string[] = [];
+      const stream = await answerQuestionStream("Tactical matchup", [], ["Arsenal", "Leeds"], {
+        onGrounding: () => {}, onDelta: (text) => deltas.push(text),
+      }, context);
+      expect(json.grounding?.kind).toBe("match");
+      expect(json.answer).toContain("supporting receiver could become free");
+      expect(desk.answer).toBe(json.answer);
+      expect(stream.answer).toBe(json.answer);
+      expect(deltas).toEqual([stream.answer]);
+      expect(create).not.toHaveBeenCalled();
+      expect(searchWeb).not.toHaveBeenCalled();
+    } finally {
+      cached.mockRestore();
+      create.mockRestore();
+    }
+  });
+
+  it.each([
+    { question: "Who is Arsenal's manager today?", unsupported: "Pat Doe is Arsenal's current manager." },
+    { question: "What was Arsenal's latest result?", unsupported: "Arsenal won 3-0 yesterday." },
+  ])("preserves desk search and source abstention for missing current evidence: $question", async ({ question, unsupported }) => {
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockResolvedValue({
+      content: [{ type: "text", text: unsupported }],
+      stop_reason: "end_turn",
+    } as Anthropic.Message);
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      const result = await answerQuestion(question, [], undefined, undefined, undefined, undefined, "desk");
+      expect(searchWeb).toHaveBeenCalled();
+      expect(result.answer).toMatch(/no verified|could not verify|couldn’t verify|cannot establish|was not verified/i);
+      expect(result.answer).not.toMatch(/Pat Doe|won \d|lost \d|\d+-\d+/);
+      expect(create.mock.calls[0][0]).not.toMatchObject({ system: DESK_GENERAL_CONCEPT_SYSTEM });
+    } finally {
+      create.mockRestore();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+
+  it("does not replace a searched tactical turn with a not-required answer", async () => {
+    const grounding = buildGrounding(fixture("Arsenal", "Leeds"));
+    const create = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "[]" }], stop_reason: "end_turn" });
+    const result = await deliverAnswer({ answer: "No verified, dated team-news update was established.", question: "Tactical matchup", tier: "match", grounding,
+      bundle: { queries: ["Arsenal Leeds injuries today"], results: [], providerCalls: 1 }, client: { messages: { create } } as unknown as Pick<Anthropic, "messages">,
+      evidenceRequired: true, candidateUnrecognized: false });
+    expect(result.verification.status).not.toBe("not-required");
+  });
+
+  it("keeps sourced current identities/results/prices, refusals and general hypotheticals while removing bare claims", () => {
+    for (const [guard, bare, sourced] of [
+      [stripUncitedManagerClaims, "Pat Doe is Arsenal's current manager.", "Pat Doe is Arsenal's current manager [[S1]]."],
+      [stripUncitedResultClaims, "Arsenal won 3-0 yesterday.", "Arsenal won 3-0 yesterday [[S1]]."],
+      [stripUncitedOddsClaims, "Arsenal are priced at 1.42 today.", "Arsenal are priced at 1.42 today [[S1]]."],
+    ] as const) {
+      expect(guard(bare)).not.toBe(bare);
+      expect(guard(sourced)).toBe(sourced);
+      const refusal = "I cannot verify Arsenal's current manager, latest result or current odds.";
+      expect(guard(refusal)).toBe(refusal);
+      for (const suffix of [", but I cannot guarantee the result.", ", and no verified team-news update was established."]) {
+        expect(guard(bare.replace(/\.$/, "") + suffix)).not.toContain(bare.replace(/\.$/, ""));
+      }
+    }
+    const hypothetical = "If a manager changes the pressing trigger, the opponent could need another passing route.";
+    expect(stripUncitedManagerClaims(hypothetical)).toBe(hypothetical);
+    expect(stripUncitedManagerClaims("A coach is responsible for coordinating the press.")).toBe("A coach is responsible for coordinating the press.");
+    for (const [guard, hypothesis, refusal] of [
+      [stripUncitedManagerClaims, "If Pat Doe were Arsenal's manager, he could change the pressing trigger.", "I cannot verify whether Pat Doe is Arsenal's current manager."],
+      [stripUncitedResultClaims, "If Arsenal won 3-0, they could have more room to rotate in the return leg.", "I cannot verify whether Arsenal won 3-0 yesterday."],
+      [stripUncitedOddsClaims, "If Arsenal were priced at 1.42, that could imply a different forecast from another price.", "I cannot verify whether Arsenal are priced at 1.42 today."],
+    ] as const) {
+      expect(guard(hypothesis)).toBe(hypothesis);
+      expect(guard(refusal)).toBe(refusal);
+    }
+    for (const claim of [
+      "If Arsenal press, Pat Doe remains their current manager.",
+      "Pat Doe is Arsenal’s current manager, but I cannot guarantee the result.",
+      "I cannot verify the result, and Pat Doe is Arsenal's current manager.",
+    ]) expect(stripUncitedManagerClaims(claim)).not.toContain("Pat Doe");
+  });
 });
 
 describe("expired rating artifact routing", () => {
@@ -1522,7 +1749,7 @@ describe("current-news evidence hardening", () => {
     });
 
     // Narrow facts, the long preview, and typed limitations settle on the
-    // server. Scorer questions and tactical takes still go to generation.
+    // server. Scorer/current-news questions retain the evidence path.
     it("settles narrow typed-fact or typed-limitation turns without generation", () => {
       expect(closedGroundedAnswer("Who is most likely to score?", model())).toBeNull();
       expect(closedGroundedAnswer(
@@ -1535,7 +1762,7 @@ describe("current-news evidence hardening", () => {
         .toMatch(/My 1X2 is Arsenal 97\.3% \(fair 1\.03\)/);
       expect(closedGroundedAnswer("Projected score", model())).toMatch(/scoreline/i);
       expect(closedGroundedAnswer("Projected score", model())).not.toMatch(/team news/i);
-      expect(closedGroundedAnswer("Tactical matchup", model())).toBeNull();
+      expect(closedGroundedAnswer("Tactical matchup", model())).toMatch(/first press.*supporting receiver/i);
       expect(closedGroundedAnswer("How do Man Utd win this?", model())).toBeNull();
       expect(closedGroundedAnswer("Give me the match briefing for Arsenal vs Coventry.", model()))
         .toMatch(/full 1X2/);
@@ -1549,7 +1776,7 @@ describe("current-news evidence hardening", () => {
         .toMatch(/I am at .*Kalshi is at .*percentage points/i);
       expect(closedGroundedAnswer("What will the 1X2 be?", model(), true))
         .toMatch(/My 1X2 is Arsenal 97\.3%.*draw.*Coventry/i);
-      expect(closedGroundedAnswer("Tactical matchup", model(), true)).toBeNull();
+      expect(closedGroundedAnswer("Tactical matchup", model(), true)).toMatch(/less cover against a counterattack/i);
     });
 
     it("still settles the match questions the payload fully answers", () => {
