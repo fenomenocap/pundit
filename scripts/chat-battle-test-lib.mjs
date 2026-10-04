@@ -1583,9 +1583,20 @@ export function validateAnswerStructure(answer, expectation = {}) {
     noStructuredDraft: !/"(?:directAnswer|factIds|citedClaims)"\s*:/.test(typeof answer === "string" ? answer : ""),
   };
   if (expectation.expectTacticalComparisonAnswer) {
+    const text = typeof answer === "string" ? answer : "";
+    assertions.tacticalInvitationExplained = /\b(?:invite|bait|lure)\w*\b[^.!?\n]{0,100}\b(?:pass|ball|receiver)\b|\b(?:pass|ball|receiver)\b[^.!?\n]{0,80}\b(?:invite|bait|lure)\w*\b|\bleave\b[^.!?\n]{0,80}\b(?:receiver|player)\b[^.!?\n]{0,30}\bfree\b/i.test(text);
+    assertions.tacticalPressTriggerExplained = /\b(?:trigger|cue)\b[^.!?\n]{0,100}\b(?:pass|touch|receiver|ball)\b|\b(?:press|jump|close)\w*\b[^.!?\n]{0,100}\b(?:as|when|while)\b[^.!?\n]{0,80}\b(?:pass|ball|receiver)\b|\b(?:as|when|while)\b[^.!?\n]{0,80}\b(?:pass|ball)\b[^.!?\n]{0,60}\b(?:travel|mov|play|arriv)\w*\b/i.test(text);
+    assertions.tacticalOutletCoverageExplained = /\b(?:block|cover|close|screen|deny|cut off)\w*\b[^.!?\n]{0,100}\b(?:outlets?|exits?|pass|lanes?|return)\b/i.test(text);
+    assertions.tacticalEscapeRiskExplained = /\b(?:risk|danger|overcommit|escap|late|break)\w*\b[^.!?\n]{0,160}\b(?:switch|lay[ -]off|third[ -](?:player|man)|flanks?|space|bypass|overload)\w*\b/i.test(text);
+    assertions.noIrrelevantTeamNewsAbstention = !/\b(?:dated|verif|confirm|evidence)\w*\b[^.!?\n]{0,90}\b(?:team[ -]news|lineups?|injur(?:y|ies))\b|\b(?:team[ -]news|lineups?|injur(?:y|ies))\b[^.!?\n]{0,90}\b(?:dated|verif|confirm|evidence)\w*\b/i.test(text);
     assertions.tacticalComparisonAnswered = /\bpress(?:ing)?\b/i.test(answer)
       && /\b(?:traps?|midfield)\b/i.test(answer)
-      && !/\b(?:couldn['’]?t|could not|can['’]?t|cannot) confirm[^.!?]*(?:matchup|fixture)|unconfirmed fixture|share the teams, competition/i.test(answer);
+      && !/\b(?:couldn['’]?t|could not|can['’]?t|cannot) confirm[^.!?]*(?:matchup|fixture)|unconfirmed fixture|share the teams, competition/i.test(answer)
+      && assertions.tacticalInvitationExplained
+      && assertions.tacticalPressTriggerExplained
+      && assertions.tacticalOutletCoverageExplained
+      && assertions.tacticalEscapeRiskExplained
+      && assertions.noIrrelevantTeamNewsAbstention;
   }
   if (expectation.expectHeadlineOneXTwo) {
     assertions.headlineOneXTwoPresent = lines.some((line) =>
@@ -1612,17 +1623,24 @@ export function validateAnswerStructure(answer, expectation = {}) {
     && !externalPriceTail;
   const unbalancedBoldMarker = (trimmed.match(/\*\*/g) ?? []).length % 2 !== 0;
   assertions.structurallyCompleteEnding = !danglingNumericProbability && !unbalancedBoldMarker;
+  const tacticalFailures = {
+    tacticalInvitationExplained: "pressing-trap answer does not explain the pass or receiver being invited",
+    tacticalPressTriggerExplained: "pressing-trap answer does not explain when the press is triggered",
+    tacticalOutletCoverageExplained: "pressing-trap answer does not explain which exit is covered or blocked",
+    tacticalEscapeRiskExplained: "pressing-trap answer does not explain an escape route or switch risk",
+    noIrrelevantTeamNewsAbstention: "generic tactical answer contains an irrelevant team-news verification notice",
+  };
   const failures = Object.entries(assertions)
     .filter(([, passed]) => !passed)
-    .map(([name]) => name === "noOrphanedSectionLabel"
+    .map(([name]) => tacticalFailures[name] ?? (name === "noOrphanedSectionLabel"
       ? `answer left an empty section label: ${orphaned.join(", ")}`
       : name === "noMalformedLeadingFragment"
         ? "answer begins with a malformed closing fragment"
       : name === "headlineOneXTwoPresent"
         ? "match answer is missing its headline win/draw/win line"
       : name === "tacticalComparisonAnswered"
-        ? "tactical comparison is unanswered or was mistaken for an unconfirmed fixture"
-        : "answer ends with a structurally incomplete fragment");
+        ? "tactical comparison does not supply a complete, relevant pressing-trap explanation"
+        : "answer ends with a structurally incomplete fragment"));
   return { passed: failures.length === 0, assertions, failures };
 }
 
