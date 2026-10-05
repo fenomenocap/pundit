@@ -652,10 +652,18 @@ const ODDS_FIGURE = /\b\d{1,2}\.\d{1,2}\b|(?<![\d/])\d{1,3}\/\d{1,3}(?![\d/])/;
 // the most interesting bet in the market"), where a decimal is often a count.
 const ODDS_FRACTION = /(?<![\d/])\d{1,3}\/\d{1,3}(?![\d/])/;
 const BETTING_CONTEXT = /\b(?:bets?|betting|market|favou?rites?|outsiders?|shorten\w*|drift\w*|backing|punters?)\b/i;
+const NAMED_MARKET_QUOTE = new RegExp(
+  String.raw`\b(?:betfair|bet365|pinnacle|william hill|stake|kalshi|polymarket)\s+(?:quotes?|offers?|prices?)\b[^\d.!?\n]{0,35}(${ODDS_FIGURE.source})`, "i"
+);
 function quotesPrice(sentence: string): boolean {
+  const namedQuote = NAMED_MARKET_QUOTE.exec(sentence);
+  const quotedUnit = namedQuote ? sentence.slice(namedQuote.index + namedQuote[0].length) : "";
+  const namedPrice = namedQuote !== null
+    && !/^\s*(?:%|(?:percent|shots?|passes?|goals?|points?|xg|minutes?)\b)/i.test(quotedUnit);
   return ODDS_PRICE_WORDING.test(sentence)
     || (ODDS_CONTEXT.test(sentence) && ODDS_FIGURE.test(sentence))
-    || (ODDS_FRACTION.test(sentence) && BETTING_CONTEXT.test(sentence));
+    || (ODDS_FRACTION.test(sentence) && BETTING_CONTEXT.test(sentence))
+    || namedPrice;
 }
 const SEASON_STATS_LINE =
   /\b(?:\d+\s*(?:goals?|assists?|appearances?|starts?|caps?)|\d+\s*mins?(?:utes)?|fotmob rating|\bxg\b)/i;
@@ -860,14 +868,17 @@ export function deterministicSearchQuery(
   now = new Date()
 ): string | null {
   const asksStats = asksStatisticalQuestion(question);
+  const directFact = directCurrentFactAbstention(question);
+  const asksExternalIdentityOrResult = directFact === CURRENT_CLAIM_ABSTENTION
+    || directFact === RESULT_CLAIM_ABSTENTION;
   if (!CURRENT_NEWS_QUESTION.test(question)
     && !AMBIGUOUS_CURRENT_QUESTION.test(question)
     && !RESULT_QUESTION.test(question)
     && !containsCorrectionCue(question)
-    && !asksStats) return null;
+    && !asksStats && !asksExternalIdentityOrResult) return null;
   const mandatoryExternal = /\b(?:latest|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i.test(question)
     || RESULT_QUESTION.test(question)
-    || containsCorrectionCue(question);
+    || containsCorrectionCue(question) || asksExternalIdentityOrResult;
   const asksOwnedMatchFact = grounding?.kind === "match"
     && /\b(?:pundit(?:'s)?|model|1x2|win (?:chance|probability)|draw (?:chance|probability)|scorelines?|btts|over 2\.5|under 2\.5)\b/i.test(question);
   const asksOwnedTableFact = grounding?.kind === "competition"
@@ -2702,11 +2713,34 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
  * readable is left, the reader gets the abstention instead of a fragment.
  */
 function affirmativeEvidenceClauses(sentence: string): string[] {
-  return sentence.split(/[,;]|\b(?:but|yet|however|and)\b/i).filter((clause) =>
+  return sentence.split(/[,;:]|(?<!\d)[—–](?!\d)|\b(?:but|yet|however|and)\b/i).filter((clause) =>
     !ABSTENTION.test(clause)
     && !/\b(?:cannot|can't|can’t|couldn't|couldn’t|could not)\s+(?:verify|confirm|establish|know)\b/i.test(clause)
     && !/^\s*(?:If\b|I(?: would|['’]d) (?:look for|watch|test)\b|One (?:possible|potential) route\b)/i.test(clause)
   );
+}
+
+function directCurrentFactAbstention(question: string): string | null {
+  const directQuestion = question.trim()
+    .replace(/^who['’]s\b/i, "who is")
+    .replace(/^what['’]s\b/i, "what is");
+  // Only direct identity/result/price requests. Definitions and qualitative
+  // explanations can remain useful without establishing an external fact.
+  if (/\b(?:how|why|explain|define|definition|meaning|means?|convert|calculate|difference)\b/i.test(directQuestion)) return null;
+  const asksManagerRole = /^who\s+(?:is|was|will be)\b[^?\n]{0,100}\b(?:manager|head coach|coach)\b/i.test(directQuestion);
+  const asksManagerVerb = /^who\s+(?:manages|coaches)\b/i.test(directQuestion)
+    && !/\b(?:space|shape|press|pressing|zones?|width|midfield|defence|defense)\b/i.test(directQuestion);
+  if (asksManagerRole || asksManagerVerb) {
+    return CURRENT_CLAIM_ABSTENTION;
+  }
+  if (RESULT_QUESTION.test(directQuestion)
+    || /^what\s+(?:is|was)\b[^?\n]{0,100}\b(?:latest|last|most recent|final)\s+(?:result|score)\b/i.test(directQuestion)) {
+    return RESULT_CLAIM_ABSTENTION;
+  }
+  if (/^(?:what\s+(?:is|are|were)|show(?: me)?|give(?: me)?)\b[^?\n]{0,100}\b(?:odds|prices?|line)\b/i.test(directQuestion)) {
+    return ODDS_CLAIM_ABSTENTION;
+  }
+  return null;
 }
 
 export function stripUncitedResultClaims(answer: string): string {
@@ -2728,19 +2762,25 @@ export function stripUncitedResultClaims(answer: string): string {
 
 /** Manager identities are external facts, not uncited football hypotheses. */
 export function stripUncitedManagerClaims(answer: string): string {
+  const person = String.raw`\p{Lu}[\p{L}’'-]+(?:\s+\p{Lu}[\p{L}’'-]+){0,3}`;
+  const owner = String.raw`(?:(?:the|their|his|her|a|an)\s+|[\p{L}\p{N}’' -]{1,60}['’]s\s+)?`;
+  const role = String.raw`(?:(?:current|new|next|former|interim)\s+)?(?:manager|head coach|coach)\b`;
+  const personRole = new RegExp(`${person}\\s+(?:is|was|remains?|became|has been appointed(?: as)?)\\s+${owner}${role}`, "u");
+  const personVerb = new RegExp(`${person}\\s+(?:manages|coaches)\\s+\\p{Lu}[\\p{L}’' -]{0,60}`, "u");
+  const rolePerson = new RegExp(`${role}\\s+(?:is|was|remains?|named|appointed)\\s+${person}`, "u");
+  const appositive = new RegExp(`${person}\\s*,\\s*${owner}${role}|${owner}${role}\\s*,\\s*${person}`, "gu");
   let removed = false;
   const revised = reviseAnswerSentences(answer, (sentence) => {
     if (evidenceMarkerIds(sentence).length > 0 || RESOLVED_CITATION_LINK.test(sentence)) return sentence;
-    const identity = affirmativeEvidenceClauses(sentence).some((clause) => {
-      // A refusal or hypothesis protects its own clause, not a separate
-      // positive identity after "but" or the comma following an if-clause.
-      const role = /\b(?:manager|head coach|coach|manages|managed by)\b/i.test(clause);
-      const namedIdentity = /\p{Lu}[\p{L}’'-]+(?:\s+\p{Lu}[\p{L}’'-]+){0,3}\s+(?:is|was|are|were|remains?|became|manages)\b/u.test(clause)
-        || /\b(?:manager|head coach|coach)\s+(?:is|was|remains?)\s+\p{Lu}[\p{L}’'-]+/u.test(clause);
-      const currentIdentity = /\b(?:current|today|now|appointed|replaced|sacked|this season)\b/i.test(clause)
-        && /\b(?:is|was|are|were|has been|appointed|replaced|sacked)\b/i.test(clause);
-      return role && (namedIdentity || currentIdentity);
-    });
+    // Bind the role to a person. A generic capitalized subject and copula
+    // elsewhere ("Teams are organised by their coach") proves no identity.
+    const identity = affirmativeEvidenceClauses(sentence).some((clause) =>
+      personRole.test(clause) || personVerb.test(clause) || rolePerson.test(clause)
+    ) || [...sentence.matchAll(appositive)].some((match) =>
+      // Commas carry the apposition itself, so inspect it before clause
+      // splitting. A genuine uncertain identity proposition still abstains.
+      !/\b(?:cannot|can't|can’t|couldn't|couldn’t|could not)\s+(?:verify|confirm|establish|know)\s+whether\s*$/i.test(sentence.slice(0, match.index))
+    );
     if (!identity) return sentence;
     removed = true;
     return "";
@@ -8366,6 +8406,10 @@ export function closedGroundedAnswer(
     && !isModelOnlyRequest(question)
     && !asksModelInputQuestion(question)) {
     if (!ANALYST_RESPONSE_V2) return null;
+    // A pinned forecast contains no manager identity or dated match result.
+    // Its numeric board cannot settle either before the required search.
+    const directFact = directCurrentFactAbstention(question);
+    if (directFact === CURRENT_CLAIM_ABSTENTION || directFact === RESULT_CLAIM_ABSTENTION) return null;
     const plan = planResponse(question, {
       groundingKind: "match",
       hasHistory,
@@ -8728,6 +8772,15 @@ export async function deliverAnswer(args: {
       }
       const rendered = renderEvidenceCitations(evidenceSafeAnswer, evidenceBundle,
         evidenceRequired || evidenceBundle.queries.length > 0 || grounding !== null);
+      const requestedRefusal = directCurrentFactAbstention(question);
+      const directRefusal = searchedCurrent
+        && (grounding === null || requestedRefusal === CURRENT_CLAIM_ABSTENTION
+          || (grounding.kind === "match" && requestedRefusal === RESULT_CLAIM_ABSTENTION))
+        && checked.verification.supportedClaimCount === 0
+        ? requestedRefusal : null;
+      if (directRefusal) {
+        return { answer: directRefusal, citations: [], verification: checked.verification };
+      }
       const settledAnswer = dropEmptyEmphasis(
         dropOrphanedSectionLabels(
           dropDanglingSectionOpeners(decimalisePrices(nameMarkerLinks(rendered.answer, evidenceBundle)))
@@ -8942,6 +8995,15 @@ export async function deliverAnswer(args: {
     bundle,
     evidenceRequired
   );
+  const requestedRefusal = directCurrentFactAbstention(question);
+  const directRefusal = evidenceRequired
+    && (grounding === null || requestedRefusal === CURRENT_CLAIM_ABSTENTION
+      || (grounding.kind === "match" && requestedRefusal === RESULT_CLAIM_ABSTENTION))
+    && checked.verification.supportedClaimCount === 0
+    ? requestedRefusal : null;
+  if (directRefusal) {
+    return { answer: directRefusal, citations: [], verification: checked.verification };
+  }
   // Evidence, correction and market guards run again after the tier chain,
   // so the settled answer is re-checked for labels they emptied -- and for the
   // emphasis they emptied, which the label sweep does not look at.

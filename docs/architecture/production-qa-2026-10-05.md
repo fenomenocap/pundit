@@ -352,3 +352,14 @@ API build and pinned artifact verification passed with all 18 golden fixtures
 unchanged. Independent source and semantic review accepted the repairs,
 including current-claim clause controls and actual-network pacing. These are
 local checks; a fresh production certificate remains required.
+
+Completed automated review identified an appositive manager-name escape and a
+generic-coach false positive. Final regressions also reproduced unsupported
+colon/dash clauses, quoted bookmaker prices and bare direct answers. The
+bounded repair binds identities to roles, preserves genuine hypotheticals and
+source-backed claims, and refuses direct current facts with no verified support.
+Pinned manager/latest-result requests previously skipped search and returned
+the pricing board; they now retain match context while requiring current
+evidence. Generic defensive-role questions remain no-search explanations.
+Final focused coverage passed 358 tests twice; full API coverage passed 1,197
+tests twice. Build and all 18 golden forecasts remain unchanged.

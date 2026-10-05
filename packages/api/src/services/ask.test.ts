@@ -420,6 +420,7 @@ describe("complete standalone football lessons", () => {
   it.each([
     { question: "Explain why covering a passing lane matters in a press.", text: "If a defender covers the passing lane, the attacker could need a wider route, leaving more time for support to arrive.", mechanism: "covers the passing lane" },
     { question: "Explain how a 4-4-2 formation can cover central passing lanes.", text: "If a 4-4-2 midfield stays compact, the central players could cover passing lanes while the wide players protect the flanks.", mechanism: "4-4-2 midfield stays compact" },
+    { question: "Who manages the space between midfield and defence when a full-back presses?", text: "If the full-back presses, a nearby midfielder could cover the space while the centre-back protects the channel behind.", mechanism: "nearby midfielder could cover the space" },
   ])("uses the concept prompt without primary or secondary latest-news search: $question", async ({ question, text, mechanism }) => {
     const saved = process.env.MINIMAX_API_KEY;
     process.env.MINIMAX_API_KEY = "test-only";
@@ -544,6 +545,10 @@ describe("complete standalone football lessons", () => {
     const hypothetical = "If a manager changes the pressing trigger, the opponent could need another passing route.";
     expect(stripUncitedManagerClaims(hypothetical)).toBe(hypothetical);
     expect(stripUncitedManagerClaims("A coach is responsible for coordinating the press.")).toBe("A coach is responsible for coordinating the press.");
+    expect(stripUncitedManagerClaims("Teams are organised by their coach.")).toBe("Teams are organised by their coach.");
+    const appositive = "Pat Doe, Arsenal’s current manager, is reviewing their pressing shape.";
+    expect(stripUncitedManagerClaims(appositive)).not.toContain("Pat Doe");
+    expect(stripUncitedManagerClaims(`${appositive.slice(0, -1)} [[S1]].`)).toBe(`${appositive.slice(0, -1)} [[S1]].`);
     for (const [guard, hypothesis, refusal] of [
       [stripUncitedManagerClaims, "If Pat Doe were Arsenal's manager, he could change the pressing trigger.", "I cannot verify whether Pat Doe is Arsenal's current manager."],
       [stripUncitedResultClaims, "If Arsenal won 3-0, they could have more room to rotate in the return leg.", "I cannot verify whether Arsenal won 3-0 yesterday."],
@@ -557,6 +562,131 @@ describe("complete standalone football lessons", () => {
       "Pat Doe is Arsenal’s current manager, but I cannot guarantee the result.",
       "I cannot verify the result, and Pat Doe is Arsenal's current manager.",
     ]) expect(stripUncitedManagerClaims(claim)).not.toContain("Pat Doe");
+    for (const verb of ["manages", "coaches"]) {
+      const claim = `Pat Doe ${verb} Arsenal.`;
+      expect(stripUncitedManagerClaims(claim)).not.toContain("Pat Doe");
+      const sourced = `Pat Doe ${verb} Arsenal [[S1]].`;
+      expect(stripUncitedManagerClaims(sourced)).toBe(sourced);
+      const refusal = `I cannot verify whether Pat Doe ${verb} Arsenal.`;
+      expect(stripUncitedManagerClaims(refusal)).toBe(refusal);
+      const hypothetical = `If Pat Doe ${verb} Arsenal, he could change the pressing trigger.`;
+      expect(stripUncitedManagerClaims(hypothetical)).toBe(hypothetical);
+    }
+  });
+
+  it("does not let colon or prose-dash refusals shelter a separate current fact", () => {
+    for (const [guard, claim, fact] of [
+      [stripUncitedManagerClaims, "Pat Doe is Arsenal’s current manager: I cannot verify the sources.", "Pat Doe"],
+      [stripUncitedResultClaims, "Arsenal won 3-0 yesterday — I cannot confirm the report.", "Arsenal won"],
+      [stripUncitedOddsClaims, "Betfair quotes 1.82 for Arsenal: I cannot verify the feed.", "1.82"],
+      [stripUncitedResultClaims, "Arsenal won 3–0 yesterday – I cannot verify the report.", "Arsenal won"],
+      [stripUncitedManagerClaims, "Pat Doe is Arsenal’s current manager—I cannot verify the sources.", "Pat Doe"],
+    ] as const) expect(guard(claim)).not.toContain(fact);
+    const bareScore = "Arsenal won 3–0 yesterday.";
+    const sourcedScore = "Arsenal won 3–0 yesterday [[S1]].";
+    const refusal = "I cannot verify whether Arsenal won 3–0 yesterday.";
+    expect(stripUncitedResultClaims(bareScore)).not.toContain("Arsenal won");
+    expect(stripUncitedResultClaims(sourcedScore)).toBe(sourcedScore);
+    expect(stripUncitedResultClaims(refusal)).toBe(refusal);
+    const managerRefusal = "I cannot verify whether Pat Doe is Arsenal’s current manager.";
+    expect(stripUncitedManagerClaims(managerRefusal)).toBe(managerRefusal);
+    const citedPrice = "Betfair quotes 1.82 for Arsenal [[S1]]: I cannot verify a later feed.";
+    expect(stripUncitedOddsClaims(citedPrice)).toBe(citedPrice);
+    for (const nonPrice of ["Betfair quotes 1.82 shots per game.", "Betfair quotes Arsenal's 3–0 result.", "The article quotes a coach discussing pressing."]) {
+      expect(stripUncitedOddsClaims(nonPrice)).toBe(nonPrice);
+    }
+  });
+
+  it.each([
+    { question: "Who is Arsenal's manager today?", bare: "Pat Doe." },
+    { question: "Who’s Arsenal’s manager today?", bare: "It’s Pat Doe." },
+    { question: "Who manages Arsenal today?", bare: "It’s Pat Doe." },
+    { question: "What was Arsenal's latest result?", bare: "Arsenal 3–0." },
+    { question: "What are Arsenal's current odds?", bare: "Arsenal 1.82." },
+    { question: "What’s Arsenal’s current price?", bare: "1.82." },
+  ])("does not let a bare direct $question answer escape an empty mandatory search", async ({ question, bare }) => {
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockResolvedValue({
+      content: [{ type: "text", text: bare }], stop_reason: "end_turn",
+    } as Anthropic.Message);
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      for (const voice of [undefined, "desk"] as const) {
+        const result = await answerQuestion(question, [], undefined, undefined, undefined, undefined, voice);
+        expect(result.grounding).toBeNull();
+        expect(result.answer).not.toContain(bare.replace(/\.$/, ""));
+        expect(result.answer).toMatch(/verify|verified/i);
+      }
+      const deltas: string[] = [];
+      const result = await answerQuestionStream(question, [], undefined, {
+        onGrounding: () => {}, onDelta: (text) => deltas.push(text),
+      });
+      expect(searchWeb).toHaveBeenCalled();
+      expect(result.grounding).toBeNull();
+      expect(result.answer).not.toContain(bare.replace(/\.$/, ""));
+      expect(result.answer).toMatch(/verify|verified/i);
+      expect(deltas).toEqual([result.answer]);
+    } finally {
+      create.mockRestore();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+
+  it("does not treat citation presence as a verified answer to a direct current fact request", async () => {
+    const result = await deliverAnswer({
+      answer: "No verified result was established [[S1]].", question: "What was Arsenal's latest result?",
+      tier: "general", grounding: null, voice: "desk", evidenceRequired: true, candidateUnrecognized: false,
+      bundle: { queries: ["Arsenal latest result"], providerCalls: 1, results: [{
+        id: "S1", title: "Unestablished report", url: "https://example.com/report", date: "2026-10-05", snippet: "No verified result.", tier: "news",
+      }] }, client: { messages: { create: vi.fn() } } as unknown as Pick<Anthropic, "messages">,
+    });
+    expect(result.verification.supportedClaimCount).toBe(0);
+    expect(result.answer).toMatch(/couldn’t verify that result/i);
+    expect(result.citations).toEqual([]);
+    expect(result.answer).not.toMatch(/example\.com|S1/);
+  });
+
+  it.each([
+    { question: "Who’s Arsenal’s manager today?", bare: "It’s Pat Doe.", refusal: /no verified current source/i },
+    { question: "What was Arsenal’s latest result?", bare: "Arsenal 3–0.", refusal: /couldn’t verify that result/i },
+  ])("requires verified direct $question even with an active match pin in both voices and SSE", async ({ question, bare, refusal }) => {
+    await refreshClubRatings(new Date());
+    const kickoff = new Date(Date.now() + 86_400_000).toISOString();
+    const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockResolvedValue({
+      content: [{ type: "text", text: bare }], stop_reason: "end_turn",
+    } as Anthropic.Message);
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      const context = { fixtureId: espnFixtureIdentity(model) };
+      for (const voice of [undefined, "desk"] as const) {
+        const result = await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, context, undefined, voice);
+        expect(result.grounding?.kind).toBe("match");
+        expect(searchWeb).toHaveBeenCalled();
+        expect(result.answer).toMatch(refusal);
+        expect(result.answer).not.toMatch(/Pat Doe|3[–-]0|My 1X2|\d+%/);
+      }
+      const deltas: string[] = [];
+      const stream = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], {
+        onGrounding: () => {}, onDelta: (text) => deltas.push(text),
+      }, context);
+      expect(stream.grounding?.kind).toBe("match");
+      expect(stream.answer).toMatch(refusal);
+      expect(stream.answer).not.toMatch(/Pat Doe|3[–-]0|My 1X2|\d+%/);
+      expect(deltas).toEqual([stream.answer]);
+    } finally {
+      cached.mockRestore();
+      create.mockRestore();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = saved;
+    }
   });
 });
 
