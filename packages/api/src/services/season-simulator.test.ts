@@ -77,6 +77,10 @@ describe("season simulator", () => {
     "Who is going to finish first?",
     "Who finishes top?",
     "Who takes the title?",
+    "Will Liverpool win the league this season?",
+    "What are Man City's chances of winning the league?",
+    "Arsenal title chances",
+    "What are Arsenal's title odds?",
   ])("treats %s as a season outlook question", (question) => {
     expect(isSeasonOutlookQuestion(question)).toBe(true);
   });
@@ -89,6 +93,7 @@ describe("season simulator", () => {
     "Has the price dropped since this morning?",
     "Explain how a high defensive line works.",
     "Which side is the top scorer likely to come from?",
+    "Can they win the Champions League?",
   ])("does not treat %s as a season outlook question", (question) => {
     expect(isSeasonOutlookQuestion(question)).toBe(false);
   });
