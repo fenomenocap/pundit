@@ -3731,3 +3731,54 @@ test("tactical headings, keyword lists and unsupported certainty do not fake a t
     "Arsenal press high and expose space behind the defence. The cost is space for a counter.",
   ]) assert.equal(validateResponseCorrectness(answer, [], null, { expectFootballTake: true, expectConditionalTactics: true }).passed, false, answer);
 });
+
+test("season scope notices explain the supported outlook without inventing foreign or cup prices", () => {
+  const expectation = { expectSeasonScopeNotice: true };
+  const notices = [
+    "My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.",
+    "I only provide Premier League season forecasts. I cannot price a foreign club's title chances or a league cup campaign. I can discuss the football factors that could matter, or look at a supported match separately.",
+    "The Premier League is the only competition with a season outlook here. Cup and foreign-league season probabilities are not available. Ask me about general analysis or a supported match instead.",
+  ];
+  for (const answer of notices) {
+    assert.equal(validateResponseCorrectness(answer, [], null, expectation).passed, true, answer);
+  }
+  for (const answer of [
+    "I don't know. This is general football analysis.",
+    "I cover the Premier League only.",
+    "I can't give a title probability. Tell me the teams and date.",
+    `${notices[0]} Real Madrid still has a 60% chance.`,
+    `${notices[0]} I make the fair odds 2.40.`,
+    `${notices[0]} Its fair decimal price would be 2.40.`,
+    `${notices[0]} I make it 2.40 in fair decimal odds.`,
+    `${notices[0]} Arsenal has seventy percent to win the cup.`,
+  ]) assert.equal(validateResponseCorrectness(answer, [], null, expectation).passed, false, answer);
+  assert.equal(validateResponseCorrectness(notices[0], [], { kind: "season" }, expectation)
+    .assertions.seasonScopeGroundingAbsent, false);
+});
+
+test("a real EPL outlook board cannot satisfy an unsupported season-scope notice", () => {
+  // Actual EPL answer to an EPL prompt in run 2026-10-04T22-15-04-325Z;
+  // this fixture does not claim the same answer was observed for a foreign prompt.
+  const actualEplBoard = "**Title race**\n1. **Man City 53.0%**\n2. **Arsenal 46.1%**\n3. **Liverpool 0.7%**\n4. **Brighton 0.1%**\n5. **Brentford 0.0%**\n\n**Top-four outlook**\n**Man City 99.9%**, **Arsenal 99.9%**, **Liverpool 72.5%**, **Brighton 44.7%**.\n\n**Context**\nThe current standings are included in the simulation. These are 10,000 simulation results across 330 remaining fixtures, not guarantees.\nThese simulations keep team strengths unchanged for the remaining fixtures; they do not model future injuries, transfers or changes in form.\n";
+  const result = validateResponseCorrectness(actualEplBoard, [], null, { expectSeasonScopeNotice: true });
+  assert.equal(result.passed, false);
+  assert.equal(result.assertions.supportedSeasonScopeExplained, false);
+  assert.equal(result.assertions.noInventedSeasonScopeNumbers, false);
+});
+
+test("required foreign-season scenario preserves the EPL table history without promoting later scope", async () => {
+  const config = JSON.parse(await readFile(path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"), "utf8"));
+  const scenario = config.fixed.find((entry) => entry.id === "foreign-season-scope-after-epl-table");
+  assert.equal(scenario.kind, "json");
+  assert.equal(scenario.requiredForCertification, true);
+  assert.equal(scenario.turns.length, 4);
+  assert.equal(scenario.turns[0].expectGrounding, "competition");
+  assert.equal(scenario.turns[0].expectCompetitionId, "eng.1");
+  for (const turn of scenario.turns.slice(1)) {
+    assert.equal(turn.expectGrounding, null);
+    assert.equal(turn.expectSeasonScopeNotice, true);
+  }
+  assert.equal(scenario.turns[1].question, "Real Madrid title chances?");
+  assert.equal(scenario.turns[2].question, "Can Arsenal win the league cup?");
+  assert.match(scenario.turns[3].question, /Bayern.*Bundesliga.*relegation/);
+});

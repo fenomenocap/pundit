@@ -3384,19 +3384,52 @@ export function resolveCompetitionQuestion(question: string): string | undefined
   // The shared season patterns ("title chances", "win the league") carry no
   // competition of their own, so they must not claim a question that names a
   // competition Pundit holds no table for ("Real Madrid title chances in La Liga").
-  const namesOtherCompetition = UNCOVERED_COMPETITION.test(question)
-    && !/\b(?:premier league|epl)\b/i.test(question);
+  const namesOtherCompetition = UNCOVERED_COMPETITION.test(
+    question.replace(/\bchampions league spots?\b/gi, " ")
+  ) && !/\b(?:premier league|epl)\b/i.test(question);
   for (const entry of COMPETITION_KEYWORDS) {
+    if (entry.competitionId === "eng.1" && namesOtherCompetition) continue;
     if (entry.keywords.some((keyword) => (typeof keyword === "string"
       ? keyword === "epl"
         ? /(?:^|[^\p{L}\p{N}_])epl(?![\p{L}\p{N}_])/u.test(normalized)
         : normalized.includes(keyword)
-      : !(namesOtherCompetition && SEASON_QUESTION_PATTERNS.includes(keyword))
-        && keyword.test(normalized)))) {
+      : keyword.test(normalized)))) {
       return entry.competitionId;
     }
   }
   return undefined;
+}
+
+/** A named title subject must belong to the supplied PL table or approved PL fixtures. */
+function hasUncoveredSeasonClub(question: string, standings: FootballStanding[], fixtures: ModelFixture[]): boolean {
+  if (!isSeasonOutlookQuestion(question)) return false;
+  const ownedClubs = new Set([
+    ...standings.filter((row) => row.competitionId === "eng.1").map((row) => normalizeTeamName(row.team)),
+    ...fixtures.filter((fixture) => fixture.competitionId === "eng.1")
+      .flatMap((fixture) => [normalizeTeamName(fixture.home), normalizeTeamName(fixture.away)]),
+  ]);
+  // Cached ratings and aliases may exclude a named foreign club; they never
+  // establish membership in the Premier League or authorize a forecast.
+  const ratings = getCachedClubRatings().byProfile;
+  const knownNames = [
+    ...getTeamNameAliases().flatMap(([alias, canonical]) => [[alias, canonical], [canonical, canonical]]),
+    ...[...ratings["eng-clubs"].keys(), ...ratings["uefa-clubs"].keys()].map((name) => [name, name]),
+  ];
+  const words = ` ${normalizeTeamText(question).replace(/[^\p{L}\p{N}]+/gu, " ")} `;
+  if (knownNames.some(([name, canonical]) => !ownedClubs.has(normalizeTeamName(canonical))
+    && words.includes(` ${normalizeTeamText(name).replace(/[^\p{L}\p{N}]+/gu, " ")} `))) return true;
+  const request = question.trim().replace(
+    /^(?:what are|what about|how about|how likely (?:is|are)|tell me about|explain|assess|discuss|compare|show(?: me)?|rank)\s+/i, ""
+  );
+  if (/^(?:premier league|epl|league)\s+title\s+/i.test(request)) return false;
+  const club = /\btitle\s+(?:chances?|odds|hopes?|prospects?|probabilit(?:y|ies))\s+(?:for|of)\s+([\p{L}\p{N} .’'-]{1,60}?)(?=[?!.]|$)/iu.exec(request)?.[1]
+    ?? /^((?:[\p{L}\p{N} .’'-]){1,60}?)['’]s\s+(?:(?:premier league|epl|league)\s+)?(?:title\s+)?(?:chances?|odds|hopes?|prospects?|probabilit(?:y|ies))\b/iu.exec(request)?.[1]
+    ?? /^(?:(?:will|can|could|might|does|do)\s+)?([\p{L}\p{N} .’'-]{1,60}?)\s+(?:to\s+)?(?:win|clinch|lift|retain)\s+the\s+(?:premier league|epl|league|title)\b/iu.exec(request)?.[1]
+    ?? /^([\p{L}\p{N} .’'-]{1,60}?)\s+(?:(?:premier league|epl|league)\s+)?title\s+(?:chances?|odds|hopes?|prospects?|probabilit(?:y|ies)|favou?rites?|contenders?|bid|race)\b/iu.exec(request)?.[1];
+  if (!club || /^(?:the|a|an|they|we|you|it|these teams|those teams|the teams|which teams|which clubs)$/i.test(club.trim())
+    || /\b(?:rank|leading|contenders|premier league|epl|table|which|who|most|probabilities|compare|show|league|season)\b/i.test(club)) return false;
+  return club.split(/\s+(?:or|and)\s+/i)
+    .some((name) => !ownedClubs.has(normalizeTeamName(name.replace(/['’]s$/i, ""))));
 }
 
 export function isCompetitionQuestion(question: string): boolean {
@@ -3459,7 +3492,7 @@ function hasLeagueTableCue(question: string): boolean {
  * "a Champions League spot" still reach their own grounding.
  */
 const UNCOVERED_COMPETITION =
-  /\b(?:(?:uefa\s+)?champions league|ucl|europa(?: conference)? league|conference league|la ?liga|serie a|bundesliga|ligue 1|eredivisie|primeira liga|scottish premiership|spl|mls|saudi pro league|efl championship|the championship|league one|league two|fa cup|carabao cup|efl cup|world cup|euros?|nations league)\b/i;
+  /\b(?:(?:uefa\s+)?champions league|ucl|europa(?: conference)? league|conference league|la ?liga|serie a|bundesliga|ligue 1|eredivisie|primeira liga|scottish premiership|spl|mls|saudi pro league|efl championship|the championship|league one|league two|fa cup|carabao cup|efl cup|league cup|world cup|euros?|nations league)\b/i;
 
 function uncoveredCompetitionName(question: string): string | null {
   if (resolveCompetitionQuestion(question)) return null;
@@ -3471,6 +3504,16 @@ function uncoveredCompetitionName(question: string): string | null {
  * "league table" cue inside "Champions League table" used to fall back to the
  * Premier League and print its standings as the answer.
  */
+function uncoveredSeasonResponse(question: string, grounding: AskGrounding): string | null {
+  if (grounding !== null || !(isSeasonOutlookQuestion(question) || hasCompetitionFollowUpCue(question))) return null;
+  if (/\b(?:table|standings)\b/i.test(question) && !isSeasonOutlookQuestion(question)) return null;
+  if (/\b(?:injur(?:y|ies|ed)|line-?up|team news|manager|coach|transfer|suspension)\b/i.test(question)) return null;
+  if (!uncoveredCompetitionName(question)
+    && !hasUncoveredSeasonClub(question, getCachedMatches().standings, getCachedModelData().fixtures)) return null;
+  return "My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, "
+    + "so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.";
+}
+
 export function uncoveredTableResponse(question: string, grounding: AskGrounding): string | null {
   if (grounding !== null || !/\b(?:table|standings)\b/i.test(question)) return null;
   const named = uncoveredCompetitionName(question);
@@ -4302,6 +4345,13 @@ export function resolveAskContext(
       return { tier: "general" };
     }
     return { tier: "candidate" };
+  }
+
+  // Another competition or a club outside the owned PL table cannot inherit
+  // a title forecast from a generic pattern or the preceding season turn.
+  if ((uncoveredCompetitionName(question) && (isSeasonOutlookQuestion(question) || hasCompetitionFollowUpCue(question)))
+    || hasUncoveredSeasonClub(question, standings, fixtures)) {
+    return { tier: "general" };
   }
 
   if (
@@ -9372,9 +9422,15 @@ async function answerQuestionScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
+    const seasonScopeClosed = uncoveredSeasonResponse(question, grounding);
     const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding)
+      ?? seasonScopeClosed
       ?? uncoveredTableResponse(question, grounding);
     if (deterministicAnalysis) {
+      if (seasonScopeClosed) {
+        const scopeQuery = deterministicSearchQuery(question, correctionSearchContext(history, grounding), grounding);
+        if (scopeQuery) await buildEvidenceBundle(scopeQuery, signal);
+      }
       return {
         answer: deterministicAnalysis,
         grounding,
@@ -9593,9 +9649,15 @@ async function answerQuestionStreamScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
+    const seasonScopeClosed = uncoveredSeasonResponse(question, grounding);
     const deterministicAnalysis = deterministicUngroundedAnalysis(question, grounding)
+      ?? seasonScopeClosed
       ?? uncoveredTableResponse(question, grounding);
     if (deterministicAnalysis) {
+      if (seasonScopeClosed) {
+        const scopeQuery = deterministicSearchQuery(question, correctionSearchContext(history, grounding), grounding);
+        if (scopeQuery) await buildEvidenceBundle(scopeQuery, handlers.signal);
+      }
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(deterministicAnalysis);
       return {
         answer: deterministicAnalysis,

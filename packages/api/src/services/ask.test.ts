@@ -4382,8 +4382,16 @@ describe("resolveAskContext", () => {
     "Will Liverpool win the league this season?",
     "What are Man City's chances of winning the league?",
     "Arsenal title chances",
+    "Compare Arsenal and Liverpool title chances",
+    "Compare Man City’s and Liverpool’s title chances",
+    "How likely is Arsenal to win the title?",
+    "Rank the title contenders",
+    "Show title contenders",
+    "Compare title contenders",
+    "Premier League title chances",
+    "What are the title chances for Arsenal?",
   ])("routes %s to the season outlook", (question) => {
-    expect(resolveAskContext(question, [], undefined, fixtures, [standing()]))
+    expect(resolveAskContext(question, [], undefined, fixtures, PREMIER_LEAGUE_TEST_TEAMS.map((team) => standing("eng.1", team))))
       .toEqual({ tier: "season", competitionId: "eng.1" });
   });
 
@@ -4394,6 +4402,75 @@ describe("resolveAskContext", () => {
   ])("does not route %s to the Premier League season outlook", (question) => {
     expect(resolveAskContext(question, [], undefined, fixtures, [standing()]))
       .not.toEqual({ tier: "season", competitionId: "eng.1" });
+  });
+
+  it.each([
+    { question: "Can Arsenal win the league cup?", priorSeason: true },
+    { question: "Real Madrid title race in La Liga", priorSeason: false },
+    { question: "Real Madrid title race in La Liga", priorSeason: true },
+    { question: "Bayern Bundesliga relegation battle", priorSeason: false },
+    { question: "Bayern Bundesliga relegation battle", priorSeason: true },
+    { question: "Real Madrid title chances", priorSeason: false },
+    { question: "Real Madrid title chances", priorSeason: true },
+    { question: "Compare Arsenal and Real Madrid title chances", priorSeason: false },
+    { question: "Compare Arsenal and Real Madrid title chances", priorSeason: true },
+    ...[
+      "Real Madrid league title chances", "Real Madrid’s league title chances",
+      "Show Real Madrid title chances", "Rank Arsenal and Real Madrid title chances",
+      "Real Madrid to win the league?", "How likely is Real Madrid to win the title?",
+      "Compare Man City’s and Real Madrid’s title chances",
+      "What are the title chances for Real Madrid?",
+    ].flatMap((question) => [false, true].map((priorSeason) => ({ question, priorSeason }))),
+  ])("does not promote an unsupported season subject $question (prior PL: $priorSeason)", ({ question, priorSeason }) => {
+    const history = priorSeason ? [{ role: "user" as const, content: "Who wins the Premier League?" }] : [];
+    expect(resolveAskContext(question, history, undefined, fixtures, PREMIER_LEAGUE_TEST_TEAMS.map((team) => standing("eng.1", team))))
+      .toEqual({ tier: "general" });
+  });
+
+  it.each([
+    { question: "Real Madrid title chances", current: false, missingTable: false },
+    { question: "Compare Arsenal and Real Madrid title chances", current: false, missingTable: false },
+    { question: "Real Madrid title race in La Liga", current: false, missingTable: false },
+    { question: "Bayern Bundesliga relegation battle", current: false, missingTable: false },
+    { question: "Can Arsenal win the league cup?", current: false, missingTable: false },
+    { question: "Real Madrid title odds today", current: true, missingTable: false },
+    { question: "Arsenal title chances", current: false, missingTable: true },
+  ])("delivers an honest unavailable season notice for $question without generation", async ({ question, current, missingTable }) => {
+    const history = [{ role: "user" as const, content: "Who wins the Premier League?" }];
+    replaceFootballDataForTests({
+      standings: missingTable ? [] : PREMIER_LEAGUE_TEST_TEAMS.map((team) => standing("eng.1", team)),
+      upcoming: [], recent: [], lastUpdated: new Date(), error: null,
+    });
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockRejectedValue(new Error("unsupported forecast must not generate"));
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      for (const voice of [undefined, "desk"] as const) {
+        const result = await answerQuestion(question, history, undefined, undefined, undefined, undefined, voice);
+        expect(result.grounding).toBeNull();
+        expect(result.answer).toContain("season forecasts cover the Premier League only");
+        expect(result.answer).not.toMatch(/\d+(?:\.\d+)?%|most likely champion|title favourites?|Dixon-Coles/);
+        expect(result.verification.status).toBe("not-required");
+      }
+      const deltas: string[] = [];
+      const stream = await answerQuestionStream(question, history, undefined, {
+        onGrounding: () => {}, onDelta: (text) => deltas.push(text),
+      });
+      expect(stream.grounding).toBeNull();
+      expect(stream.answer).toContain("season forecasts cover the Premier League only");
+      expect(deltas).toEqual([stream.answer]);
+      expect(create).not.toHaveBeenCalled();
+      if (current) expect(searchWeb).toHaveBeenCalled();
+      else expect(searchWeb).not.toHaveBeenCalled();
+      expect(stream.answer).not.toMatch(/outside (?:the|Premier)|Arsenal.*(?:not|isn’t).*Premier League/i);
+    } finally {
+      create.mockRestore();
+      replaceFootballDataForTests({ standings: [], upcoming: [], recent: [], lastUpdated: null, error: null });
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = saved;
+    }
   });
 
   // Match grounding carries no standings, so a table question asked mid-match
