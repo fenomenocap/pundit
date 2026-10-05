@@ -4008,9 +4008,21 @@ describe("resolveAskContext", () => {
     "Who gets relegated?",
     "Which teams go down?",
     "Who is going to finish first?",
+    "Will Liverpool win the league this season?",
+    "What are Man City's chances of winning the league?",
+    "Arsenal title chances",
   ])("routes %s to the season outlook", (question) => {
     expect(resolveAskContext(question, [], undefined, fixtures, [standing()]))
       .toEqual({ tier: "season", competitionId: "eng.1" });
+  });
+
+  it.each([
+    "Real Madrid title chances in La Liga",
+    "Can Bayern win the Bundesliga title?",
+    "What are Inter's chances of winning Serie A?",
+  ])("does not route %s to the Premier League season outlook", (question) => {
+    expect(resolveAskContext(question, [], undefined, fixtures, [standing()]))
+      .not.toEqual({ tier: "season", competitionId: "eng.1" });
   });
 
   // Match grounding carries no standings, so a table question asked mid-match

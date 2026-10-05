@@ -3293,12 +3293,18 @@ const COMPETITION_KEYWORDS: ReadonlyArray<{
 
 export function resolveCompetitionQuestion(question: string): string | undefined {
   const normalized = normalizeTeamText(question);
+  // The shared season patterns ("title chances", "win the league") carry no
+  // competition of their own, so they must not claim a question that names a
+  // competition Pundit holds no table for ("Real Madrid title chances in La Liga").
+  const namesOtherCompetition = UNCOVERED_COMPETITION.test(question)
+    && !/\b(?:premier league|epl)\b/i.test(question);
   for (const entry of COMPETITION_KEYWORDS) {
     if (entry.keywords.some((keyword) => (typeof keyword === "string"
       ? keyword === "epl"
         ? /(?:^|[^\p{L}\p{N}_])epl(?![\p{L}\p{N}_])/u.test(normalized)
         : normalized.includes(keyword)
-      : keyword.test(normalized)))) {
+      : !(namesOtherCompetition && SEASON_QUESTION_PATTERNS.includes(keyword))
+        && keyword.test(normalized)))) {
       return entry.competitionId;
     }
   }
