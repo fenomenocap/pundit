@@ -394,7 +394,7 @@ is zero strictly beyond either eta bound, with the existing interior-sided
 endpoint convention retained.
 
 The 41 focused regressions passed twice; the unchanged-source control failed
-11 new cases. Applied to the complete repository, the repair passed 1,219 API
+11 new cases. Applied to the complete repository, the repair passed 1,230 API
 tests across 59 files twice and the complete API build. All 18 golden production
 forecasts remain unchanged. The independent probe at
 `artifacts/model-qa/mle-gradient-check.cjs` also passed against this repository's
