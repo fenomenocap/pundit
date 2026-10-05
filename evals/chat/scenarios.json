@@ -781,6 +781,39 @@
       ]
     },
     {
+      "id": "foreign-season-scope-after-epl-table",
+      "description": "Foreign-club and cup season questions cannot inherit a Premier League outlook from a prior table turn. They retain general scope with a useful EPL-only season capability notice and no fabricated percentages or fair prices.",
+      "kind": "json",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
+        {
+          "question": "What does the current Premier League table show?",
+          "expectGrounding": "competition",
+          "expectCompetitionId": "eng.1",
+          "expectTableMatchCountsGrounded": true
+        },
+        {
+          "question": "Real Madrid title chances?",
+          "expectGrounding": null,
+          "expectSeasonScopeNotice": true,
+          "allowAbstention": true
+        },
+        {
+          "question": "Can Arsenal win the league cup?",
+          "expectGrounding": null,
+          "expectSeasonScopeNotice": true,
+          "allowAbstention": true
+        },
+        {
+          "question": "What about Bayern's Bundesliga relegation battle?",
+          "expectGrounding": null,
+          "expectSeasonScopeNotice": true,
+          "allowAbstention": true
+        }
+      ]
+    },
+    {
       "id": "competition-follow-up",
       "description": "A referential follow-up remains grounded in the Premier League standings.",
       "kind": "json",

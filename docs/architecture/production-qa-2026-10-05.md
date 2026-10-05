@@ -408,3 +408,31 @@ Preserve prior reports and require a fresh chronological replay with full
 coverage and paired multi-market uncertainty. The production champion's fixed
 2.70 total, constants, artifact and promotion gates remain unchanged; these
 numerical checks support no promotion.
+
+The fresh replay uses the same 69 weekly origins and 730 unique holdouts.
+Valid forecasts rise from 725 to 727; three grids remain invalid and the same
+seven origins remain nonconverged. All 62 origins converged in both versions
+have identical fit hashes and unchanged metrics on 661 valid fixtures. Totals
+Brier on that subset remains worse than the champion (0.256452 versus 0.249298).
+The small pooled loss changes include unconverged fits and support no claim of
+predictive improvement. Exact source/data/split/fit bindings, paired UTC-week
+uncertainty and remaining-failure diagnostics are preserved in
+`artifacts/model-qa/weekly-2026-10-05T02-10-33-652Z/research-summary.md`.
+
+## Competition scope integration repair
+
+Concurrent title-routing changes allowed foreign-club title requests and a
+League Cup question to inherit the Premier League outlook. Named unsupported
+competitions now suppress PL cues; title subjects are checked against supplied
+PL standings or approved PL fixtures. Ratings and aliases can exclude a foreign
+club but never authorize a forecast. Unsupported season requests receive a
+complete, deterministic coverage notice in both JSON voices and SSE, with
+mandatory current searches retained. Missing-input wording does not falsely
+claim that a known EPL club belongs to another league.
+
+The original seven routing failures were reproduced. Independent review passed
+70 wording/context probes; focused tests passed 403 twice. Full integrated API
+coverage passed 1,270 tests across 59 files twice, with build and all 18 golden
+production forecasts unchanged. The harness passed 158 tests twice. The required
+live manifest now contains 71 scenarios, including a four-turn table-to-foreign
+season regression. Fresh production certification remains required.
