@@ -819,10 +819,10 @@ describe("complete standalone football lessons", () => {
   });
 
   it.each([
-    { question: "Who’s Arsenal’s manager today?", bare: "It’s Pat Doe.", refusal: /no verified current source/i },
+    { question: "Who’s Arsenal’s manager today?", bare: "It’s Pat Doe.", refusal: /couldn’t verify that current claim/i },
     { question: "What was Arsenal’s latest result?", bare: "Arsenal 3–0.", refusal: /couldn’t verify that result/i },
-    { question: "What's Arsenal's manager today?", bare: "It’s Pat Doe.", refusal: /no verified current source/i },
-    { question: "Who is Arsenal's manager and why?", bare: "It’s Pat Doe.", refusal: /no verified current source/i },
+    { question: "What's Arsenal's manager today?", bare: "It’s Pat Doe.", refusal: /couldn’t verify that current claim/i },
+    { question: "Who is Arsenal's manager and why?", bare: "It’s Pat Doe.", refusal: /couldn’t verify that current claim/i },
     { question: "What's Arsenal's latest result and why?", bare: "Arsenal 3–0.", refusal: /couldn’t verify that result/i },
     { question: "What are Betfair's current odds for Arsenal and why?", bare: "Betfair 1.82.", refusal: /verify|verified|model|probabilit|1X2/i, externalPrice: true },
     { question: "What are Betfair's current odds for Arsenal and how do they compare with the model?", bare: "Betfair 1.82.", refusal: /verify|verified|model|probabilit|1X2/i, externalPrice: true },
@@ -862,6 +862,64 @@ describe("complete standalone football lessons", () => {
       create.mockRestore();
       if (saved === undefined) delete process.env.MINIMAX_API_KEY;
       else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+});
+
+describe("current verification failure preserves supplied history scope", () => {
+  it.each(["unavailable", "unsupported"] as const)("does not deny prior cited history when fresh verification is %s", async (outcome) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+    await refreshClubRatings(new Date());
+    const kickoff = "2026-10-06T15:00:00Z";
+    const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const datedSource = { title: "Arsenal manager update", link: "https://www.arsenal.com/news/manager-update", date: "2026-10-04", snippet: "Pat Doe is Arsenal's current manager." };
+    const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
+    const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate, finalUrl: candidate.url, text: datedSource.snippet, retrievedAt: new Date().toISOString() })));
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      if (String(input.system).startsWith("You are Pundit's bounded factual claim verifier.")) {
+        if (outcome === "unavailable") return Promise.reject(new Error("Verification unavailable")) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+        const evidence = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
+        return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: evidence.claims.map((claim: { id: string }) => ({ claimId: claim.id, outcome: "unsupported", evidenceIds: [] })), summary: "Not established." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      }
+      return Promise.resolve({ content: [{ type: "text", text: "Pat Doe is Arsenal's current manager [[S1]]." }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    searchWeb.mockReset(); searchWeb.mockResolvedValue([datedSource]);
+    const history = [
+      { role: "user" as const, content: "What's Arsenal's manager today?" },
+      { role: "assistant" as const, content: "Mikel Arteta is Arsenal's manager ([Dated manager report](https://www.skysports.com/football/news/manager-report) · 22 Sep)." },
+    ];
+    try {
+      const context = { fixtureId: espnFixtureIdentity(model) };
+      const question = "Who is Arsenal's manager and why?";
+      for (const voice of [undefined, "desk"] as const) {
+        const result = await answerQuestion(question, history, ["Arsenal", "Leeds"], undefined, context, undefined, voice);
+        expect(result.answer).toMatch(/couldn’t verify that current claim.*for this answer/i);
+        expect(result.answer).not.toMatch(/no verified current source in this conversation|Mikel Arteta|Pat Doe|My 1X2|\d+%/i);
+        expect(result.citations ?? []).toEqual([]);
+        expect(result.verification?.status).toBe(outcome === "unavailable" ? "unavailable" : "abstain");
+        expect(result.verification?.supportedClaimCount).toBe(0);
+        expect(result.verification?.removedClaimCount).toBe(1);
+      }
+      const deltas: string[] = [];
+      const streamed = await answerQuestionStream(question, history, ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
+      expect(streamed.answer).toMatch(/couldn’t verify that current claim.*for this answer/i);
+      expect(streamed.answer).not.toMatch(/no verified current source in this conversation|Mikel Arteta|Pat Doe|\d+%/i);
+      expect(streamed.citations ?? []).toEqual([]);
+      expect(streamed.verification?.status).toBe(outcome === "unavailable" ? "unavailable" : "abstain");
+      expect(streamed.verification?.supportedClaimCount).toBe(0);
+      expect(streamed.verification?.removedClaimCount).toBe(1);
+      expect(deltas).toEqual([streamed.answer]);
+      // Each of the three formats performs the bounded four-query evidence plan.
+      expect(searchWeb).toHaveBeenCalledTimes(12);
+    } finally {
+      cached.mockRestore(); prefetch.mockRestore(); retrieve.mockRestore(); create.mockRestore();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+      vi.useRealTimers();
     }
   });
 });
@@ -1541,7 +1599,7 @@ describe("current-news evidence hardening", () => {
       status: "abstain",
       supportedClaimCount: 0,
       removedClaimCount: 6,
-    }, true)).toBe("No verified current source in this conversation supports that claim.");
+    }, true)).toBe("I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.");
   });
 
   it("drops deterministic model and market interpretations that contradict grounding", () => {
