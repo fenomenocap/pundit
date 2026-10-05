@@ -236,6 +236,25 @@ describe("paired champion/challenger rolling-origin eval", () => {
     expect(missingElo.reason).toBe("invalid-or-lookahead-row-date");
   });
 
+  it("keeps an invalid prior-only forecast in the holdout denominator with an explicit reason", () => {
+    const result = evaluatePairedRollingOrigin({
+      artifact: artifact(),
+      rows: [
+        row("early", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1),
+        row("late", "2025-08-16T14:00:00Z", "Arsenal", "Man United", 2, 2, 4000, 1884),
+      ],
+    });
+    expect(result.pairedForecasts).toHaveLength(1);
+    expect(result.pairedForecasts[0]).toMatchObject({
+      sourceEventId: "late", challenger: null, challengerReason: "invalid-score-grid",
+    });
+    expect(result.origins[0]).toMatchObject({ holdoutCount: 1, scoredCount: 0, uncoveredCount: 1 });
+    expect(result.decision.recommendPromotion).toBe(false);
+    expect(result.decision.activateProduction).toBe(false);
+    expect(result.decision.changeShippedConstants).toBe(false);
+    expect(result.champion.constants).toEqual({ baseGoals: 1.35, homeAdvantageElo: 42, rho: -0.1 });
+  });
+
   it("builds weekly expanding-window splits that train only on earlier results", () => {
     const rows = [
       row("w1a", "2024-08-17T14:00:00Z", "Hull", "Man United", 1, 1),

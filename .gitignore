@@ -12,6 +12,7 @@ dist/
 
 # Local production battle-test output (repo-owned evaluator, untracked evidence)
 artifacts/chat-evals/
+artifacts/model-qa/
 
 # Playwright
 packages/web/test-results/
