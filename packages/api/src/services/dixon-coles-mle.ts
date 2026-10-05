@@ -432,6 +432,67 @@ function unpack(
   return { intercept, homeAdvantage, rho, attack, defence };
 }
 
+export interface FittedDixonColesDiagnostics {
+  gradientNorm: number;
+  stopReason: "gradient-converged" | "line-search-failed" | "iteration-budget";
+  lineSearchEvaluations: number;
+  allFittedPairCount: number;
+  minimumCorrection: number;
+}
+
+export const GLOBALLY_FEASIBLE_DIXON_COLES_METHOD_ID = "globally-feasible-fitted-dixon-coles-v1";
+const CORRECTION_INTERIOR_MARGIN = 1e-8;
+
+/** All ordered fitted-club pairs define a rho interval; no outcome enters it. */
+function globallyFeasibleRho(
+  x: Float64Array,
+  clubs: readonly string[],
+  unpacked: ReturnType<typeof unpack>
+): { rho: number; derivative: Float64Array } {
+  const n = clubs.length;
+  let maximumRateEta = -Infinity;
+  let maximumProductEta = -Infinity;
+  let ratePair: [number, number, boolean] = [0, 1, true];
+  let productPair: [number, number] = [0, 1];
+  const clipped = (eta: number) => Math.min(8, Math.max(-8, eta));
+  for (let h = 0; h < n; h += 1) for (let a = 0; a < n; a += 1) {
+    if (h === a) continue;
+    const eh = clipped(unpacked.intercept + unpacked.homeAdvantage + unpacked.attack[h] + unpacked.defence[a]);
+    const ea = clipped(unpacked.intercept + unpacked.attack[a] + unpacked.defence[h]);
+    if (eh > maximumRateEta) { maximumRateEta = eh; ratePair = [h, a, true]; }
+    if (ea > maximumRateEta) { maximumRateEta = ea; ratePair = [h, a, false]; }
+    if (eh + ea > maximumProductEta) { maximumProductEta = eh + ea; productPair = [h, a]; }
+  }
+  const lower = -Math.min(RHO_BOUND, Math.exp(-maximumRateEta)) * (1 - CORRECTION_INTERIOR_MARGIN);
+  const upper = Math.min(RHO_BOUND, Math.exp(-maximumProductEta)) * (1 - CORRECTION_INTERIOR_MARGIN);
+  const logistic = x[2] >= 0 ? 1 / (1 + Math.exp(-x[2])) : Math.exp(x[2]) / (1 + Math.exp(x[2]));
+  const derivative = new Float64Array(x.length);
+  const addClub = (index: number, offset: number, value: number) => {
+    if (index < n - 1) derivative[offset + index] += value;
+    else for (let i = 0; i < n - 1; i += 1) derivative[offset + i] -= value;
+  };
+  const addEta = (h: number, a: number, home: boolean, scale: number) => {
+    const eta = unpacked.intercept + (home ? unpacked.homeAdvantage : 0)
+      + unpacked.attack[home ? h : a] + unpacked.defence[home ? a : h];
+    // At a clamp endpoint use the interior-sided convention. Strict ties in
+    // the max choose the first pair; finite differences must avoid those kinks.
+    if (eta < -8 || eta > 8) return;
+    derivative[0] += scale;
+    if (home) derivative[1] += scale;
+    addClub(home ? h : a, 3, scale);
+    addClub(home ? a : h, 3 + n - 1, scale);
+  };
+  if (Math.exp(-maximumRateEta) < RHO_BOUND) {
+    addEta(...ratePair, (1 - logistic) * -lower);
+  }
+  if (Math.exp(-maximumProductEta) < RHO_BOUND) {
+    addEta(productPair[0], productPair[1], true, logistic * -upper);
+    addEta(productPair[0], productPair[1], false, logistic * -upper);
+  }
+  derivative[2] = (upper - lower) * logistic * (1 - logistic);
+  return { rho: lower + (upper - lower) * logistic, derivative };
+}
+
 function objectiveAndGradient(
   x: Float64Array,
   rows: readonly FittedDixonColesTrainingRow[],
@@ -440,10 +501,14 @@ function objectiveAndGradient(
   weights: readonly number[],
   priorAttack: readonly number[],
   priorDefence: readonly number[],
-  priorPrecision: readonly number[]
+  priorPrecision: readonly number[],
+  globalPairConstraint = false
 ): { value: number; grad: Float64Array } {
   const n = clubs.length;
-  const { intercept, homeAdvantage, rho, attack, defence } = unpack(x, clubs);
+  const unpacked = unpack(x, clubs);
+  const globalRho = globalPairConstraint ? globallyFeasibleRho(x, clubs, unpacked) : null;
+  const { intercept, homeAdvantage, attack, defence } = unpacked;
+  const rho = globalRho?.rho ?? unpacked.rho;
   const dAttack = new Array<number>(n).fill(0);
   const dDefence = new Array<number>(n).fill(0);
   let dMu = 0;
@@ -518,12 +583,60 @@ function objectiveAndGradient(
   grad[0] = dMu;
   grad[1] = dGamma;
   const sech2 = 1 - (x[2] === 0 ? 0 : Math.tanh(x[2]) ** 2);
-  grad[2] = dRho * RHO_BOUND * sech2;
+  grad[2] = globalRho ? 0 : dRho * RHO_BOUND * sech2;
   for (let i = 0; i < n - 1; i += 1) {
     grad[3 + i] = dAttack[i] - dAttack[n - 1];
     grad[3 + (n - 1) + i] = dDefence[i] - dDefence[n - 1];
   }
+  if (globalRho) for (let i = 0; i < grad.length; i += 1) grad[i] += dRho * globalRho.derivative[i];
   return { value, grad };
+}
+
+/** Stable likelihood increment, avoiding subtraction of two large rounded totals. */
+function globalObjectiveDifference(
+  before: Float64Array,
+  after: Float64Array,
+  rows: readonly FittedDixonColesTrainingRow[],
+  clubs: readonly string[],
+  weights: readonly number[],
+  priorAttack: readonly number[],
+  priorDefence: readonly number[],
+  priorPrecision: readonly number[]
+): number {
+  const old = unpack(before, clubs), next = unpack(after, clubs);
+  const oldRho = globallyFeasibleRho(before, clubs, old).rho;
+  const nextRho = globallyFeasibleRho(after, clubs, next).rho;
+  const deltaRho = nextRho - oldRho;
+  const indexOf = new Map(clubs.map((club, i) => [club, i]));
+  const clipped = (eta: number) => Math.min(8, Math.max(-8, eta));
+  let sum = 0, correction = 0;
+  const add = (term: number) => { const adjusted = term - correction, total = sum + adjusted;
+    correction = (total - sum) - adjusted; sum = total; };
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i], h = indexOf.get(row.homeCanonicalName)!, a = indexOf.get(row.awayCanonicalName)!;
+    const eh = clipped(old.intercept + old.homeAdvantage + old.attack[h] + old.defence[a]);
+    const ea = clipped(old.intercept + old.attack[a] + old.defence[h]);
+    const dh = clipped(next.intercept + next.homeAdvantage + next.attack[h] + next.defence[a]) - eh;
+    const da = clipped(next.intercept + next.attack[a] + next.defence[h]) - ea;
+    const lh = Math.exp(eh), la = Math.exp(ea), dlh = lh * Math.expm1(dh), dla = la * Math.expm1(da);
+    const tau = dixonColesTau(row.homeGoals, row.awayGoals, lh, la, oldRho);
+    let deltaTau = 0;
+    if (row.homeGoals === 0 && row.awayGoals === 0) {
+      deltaTau = -oldRho * lh * la * Math.expm1(dh + da) - deltaRho * Math.exp(eh + dh + ea + da);
+    } else if (row.homeGoals === 0 && row.awayGoals === 1) {
+      deltaTau = oldRho * dlh + deltaRho * Math.exp(eh + dh);
+    } else if (row.homeGoals === 1 && row.awayGoals === 0) {
+      deltaTau = oldRho * dla + deltaRho * Math.exp(ea + da);
+    } else if (row.homeGoals === 1 && row.awayGoals === 1) deltaTau = -deltaRho;
+    if (!(tau > 1e-12) || !(tau + deltaTau > 1e-12)) return -Infinity;
+    add(weights[i] * (Math.log1p(deltaTau / tau) + row.homeGoals * dh - dlh + row.awayGoals * da - dla));
+  }
+  for (let i = 0; i < clubs.length; i += 1) {
+    const da = next.attack[i] - old.attack[i], dd = next.defence[i] - old.defence[i];
+    add(-priorPrecision[i] * ((old.attack[i] - priorAttack[i]) * da + (old.defence[i] - priorDefence[i]) * dd
+      + 0.5 * (da * da + dd * dd)));
+  }
+  return sum;
 }
 
 function initialVector(
@@ -593,14 +706,163 @@ function maximize(
   return { x, value: current.value, iterations, converged: false };
 }
 
-export function fitTimeDecayedDixonColes(
+/** Bounded research optimizer. A stalled search is never labelled convergence. */
+function maximizeLbfgs(
+  x0: Float64Array,
+  evalFn: (x: Float64Array) => { value: number; grad: Float64Array },
+  maxIterations: number,
+  difference: (before: Float64Array, after: Float64Array) => number
+): ReturnType<typeof maximize> & Pick<FittedDixonColesDiagnostics, "gradientNorm" | "stopReason" | "lineSearchEvaluations"> {
+  let x = Float64Array.from(x0);
+  let current = evalFn(x);
+  if (!Number.isFinite(current.value) || current.grad.some((v) => !Number.isFinite(v))) {
+    throw new Error("Cannot optimize Dixon-Coles from an invalid likelihood or gradient.");
+  }
+  const history: Array<{ s: Float64Array; y: Float64Array; sy: number }> = [];
+  const dot = (a: Float64Array, b: Float64Array) => a.reduce((sum, value, i) => sum + value * b[i], 0);
+  let lineSearchEvaluations = 0;
+  const result = (iterations: number, stopReason: FittedDixonColesDiagnostics["stopReason"]) => ({
+    x, value: current.value, iterations, converged: stopReason === "gradient-converged",
+    gradientNorm: Math.hypot(...current.grad), stopReason, lineSearchEvaluations,
+  });
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    if (Math.hypot(...current.grad) <= 1e-6) return result(iteration, "gradient-converged");
+    const direction = Float64Array.from(current.grad);
+    const alpha: number[] = [];
+    for (let j = history.length - 1; j >= 0; j -= 1) {
+      alpha[j] = dot(history[j].s, direction) / history[j].sy;
+      for (let i = 0; i < direction.length; i += 1) direction[i] -= alpha[j] * history[j].y[i];
+    }
+    const last = history[history.length - 1];
+    const scale = last ? last.sy / dot(last.y, last.y) : 1 / Math.max(1, Math.hypot(...current.grad));
+    for (let i = 0; i < direction.length; i += 1) direction[i] *= scale;
+    for (let j = 0; j < history.length; j += 1) {
+      const beta = dot(history[j].y, direction) / history[j].sy;
+      for (let i = 0; i < direction.length; i += 1) direction[i] += history[j].s[i] * (alpha[j] - beta);
+    }
+    let slope = dot(current.grad, direction);
+    if (!(slope > 0) || !Number.isFinite(slope)) {
+      direction.set(current.grad); history.length = 0; slope = dot(current.grad, direction);
+    }
+    let step = 1;
+    let accepted = false;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const next = Float64Array.from(x, (value, i) => value + step * direction[i]);
+      const candidate = evalFn(next); lineSearchEvaluations += 1;
+      if (Number.isFinite(candidate.value) && candidate.grad.every(Number.isFinite)
+        && difference(x, next) >= 1e-4 * step * slope) {
+        const s = Float64Array.from(next, (value, i) => value - x[i]);
+        // For a maximization objective, positive curvature uses old minus new gradient.
+        const y = Float64Array.from(current.grad, (value, i) => value - candidate.grad[i]);
+        const sy = dot(s, y);
+        if (sy > 1e-12 * Math.hypot(...s) * Math.hypot(...y) && Number.isFinite(sy)) {
+          history.push({ s, y, sy }); if (history.length > 10) history.shift();
+        }
+        x = next; current = candidate; accepted = true; break;
+      }
+      step *= 0.5;
+    }
+    if (!accepted) return result(iteration, "line-search-failed");
+  }
+  return result(maxIterations, Math.hypot(...current.grad) <= 1e-6 ? "gradient-converged" : "iteration-budget");
+}
+
+/** Candidate-only eager validation, shared by fitting and inner selection. */
+export function assertGloballyFeasibleTrainingRows(rows: readonly FittedDixonColesTrainingRow[]): void {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    const kickoff = Date.parse(row.kickoff);
+    const ranking = Date.parse(row.rankingDate);
+    const kickoffDay = Number.isFinite(kickoff) ? Date.parse(new Date(kickoff).toISOString().slice(0, 10)) : NaN;
+    if (ids.has(row.sourceEventId) || !row.sourceEventId || row.competitionId !== "eng.1"
+      || !row.homeCanonicalName.trim() || !row.awayCanonicalName.trim() || row.homeCanonicalName === row.awayCanonicalName
+      || !Number.isFinite(kickoff) || !Number.isFinite(ranking) || ranking > kickoffDay - 86_400_000
+      || !Number.isFinite(row.homeElo) || !Number.isFinite(row.awayElo)
+      || !Number.isInteger(row.homeGoals) || row.homeGoals < 0 || !Number.isInteger(row.awayGoals) || row.awayGoals < 0) {
+      throw new Error("Invalid or lookahead globally feasible training row.");
+    }
+    ids.add(row.sourceEventId);
+  }
+}
+
+export function fitGloballyFeasibleDixonColes(
+  rows: readonly FittedDixonColesTrainingRow[],
+  options: { timeDecayXi?: number; clubEloPriorStrength?: number; maxIterations?: number } = {}
+): ReturnType<typeof fitTimeDecayedDixonColes> & { diagnostics: FittedDixonColesDiagnostics } {
+  assertGloballyFeasibleTrainingRows(rows);
+  for (const value of [options.timeDecayXi ?? DEFAULT_TIME_DECAY_XI,
+    options.clubEloPriorStrength ?? DEFAULT_CLUB_ELO_PRIOR_STRENGTH]) {
+    if (!Number.isFinite(value) || value < 0) throw new Error("Invalid globally feasible fit hyperparameter.");
+  }
+  const maxIterations = options.maxIterations ?? 1000;
+  if (!Number.isInteger(maxIterations) || maxIterations < 0) throw new Error("Invalid globally feasible iteration budget.");
+  const sorted = [...rows].sort((a, b) => a.kickoff.localeCompare(b.kickoff) || a.sourceEventId.localeCompare(b.sourceEventId));
+  return fitDixonColesInternal(sorted, { ...options, maxIterations }, true) as ReturnType<typeof fitTimeDecayedDixonColes> & { diagnostics: FittedDixonColesDiagnostics };
+}
+
+/** Offline candidate forecast: nonconverged fits and nonfinite raw globals fail closed. */
+export function forecastGloballyFeasibleDixonColes(
+  fit: ReturnType<typeof fitGloballyFeasibleDixonColes>,
+  home: string,
+  away: string,
+  priorElo?: PriorOnlyEloContext | null
+): FittedDixonColesForecast | null {
+  if (!fit.converged || fit.diagnostics.stopReason !== "gradient-converged"
+    || !Number.isFinite(fit.diagnostics.gradientNorm) || fit.diagnostics.gradientNorm > 1e-6
+    || ![fit.params.intercept, fit.params.homeAdvantage, fit.params.rho, fit.params.timeDecayXi,
+      fit.params.clubEloPriorStrength, fit.meanElo, ...Object.values(fit.params.attack),
+      ...Object.values(fit.params.defence)].every(Number.isFinite)) return null;
+  return forecastFittedDixonColes(fit.params, home, away, priorElo);
+}
+
+/** Research-only analytic objective seam for independently reproducible gradient checks. */
+export function globalPairObjectiveForResearch(
+  rows: readonly FittedDixonColesTrainingRow[],
+  coordinates: readonly number[],
+  options: { timeDecayXi?: number; clubEloPriorStrength?: number } = {}
+): { value: number; grad: Float64Array; rho: number } {
+  const sorted = [...rows].sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+  const clubs = uniqueClubs(sorted);
+  if (coordinates.length !== 3 + 2 * (clubs.length - 1) || clubs.length < 2) throw new Error("Invalid research objective dimensions.");
+  const x = Float64Array.from(coordinates);
+  const { meanElo, byClub, matchCount } = clubEloMeans(sorted);
+  const strength = options.clubEloPriorStrength ?? DEFAULT_CLUB_ELO_PRIOR_STRENGTH;
+  const prior = clubs.map((club) => clubEloAttackDefencePrior(byClub.get(club)!, meanElo));
+  const result = objectiveAndGradient(x, sorted, clubs, new Map(clubs.map((club, i) => [club, i])),
+    sorted.map((row) => timeDecayWeight(row.kickoff, sorted[sorted.length - 1].kickoff,
+      options.timeDecayXi ?? DEFAULT_TIME_DECAY_XI)),
+    prior.map((p) => p.attack), prior.map((p) => p.defence),
+    clubs.map((club) => clubEloPriorPrecision(matchCount.get(club)!, strength)), true);
+  return { ...result, rho: globallyFeasibleRho(x, clubs, unpack(x, clubs)).rho };
+}
+
+/** Independent research seam for mathematical equivalence and cancellation regressions. */
+export function globalPairObjectiveDifferenceForResearch(
+  rows: readonly FittedDixonColesTrainingRow[],
+  before: readonly number[],
+  after: readonly number[],
+  options: { timeDecayXi?: number; clubEloPriorStrength?: number } = {}
+): number {
+  const sorted = [...rows].sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+  const clubs = uniqueClubs(sorted), { meanElo, byClub, matchCount } = clubEloMeans(sorted);
+  if (before.length !== 3 + 2 * (clubs.length - 1) || after.length !== before.length) throw new Error("Invalid research objective dimensions.");
+  const prior = clubs.map((club) => clubEloAttackDefencePrior(byClub.get(club)!, meanElo));
+  return globalObjectiveDifference(Float64Array.from(before), Float64Array.from(after), sorted, clubs,
+    sorted.map((row) => timeDecayWeight(row.kickoff, sorted[sorted.length - 1].kickoff, options.timeDecayXi ?? DEFAULT_TIME_DECAY_XI)),
+    prior.map((p) => p.attack), prior.map((p) => p.defence),
+    clubs.map((club) => clubEloPriorPrecision(matchCount.get(club)!, options.clubEloPriorStrength ?? DEFAULT_CLUB_ELO_PRIOR_STRENGTH)));
+}
+
+function fitDixonColesInternal(
   rows: readonly FittedDixonColesTrainingRow[],
   options: {
     timeDecayXi?: number;
     clubEloPriorStrength?: number;
     maxIterations?: number;
-  } = {}
+  } = {},
+  globalPairConstraint = false
 ): {
+  diagnostics?: FittedDixonColesDiagnostics;
   params: FittedDixonColesArtifact["params"];
   converged: boolean;
   iterations: number;
@@ -628,17 +890,23 @@ export function fitTimeDecayedDixonColes(
   const indexOf = new Map(clubs.map((club, index) => [club, index]));
   const x0 = initialVector(rows, clubs, priorAttack, priorDefence);
   const evaluate = (x: Float64Array) => objectiveAndGradient(
-    x, rows, clubs, indexOf, weights, priorAttack, priorDefence, priorPrecision
+    x, rows, clubs, indexOf, weights, priorAttack, priorDefence, priorPrecision, globalPairConstraint
   );
+  if (globalPairConstraint) {
+    // Zero is strictly feasible for every pairing, regardless of the Elo prior.
+    // Invert the dynamic interval at this initialization to start at rho=0.
+    const low = globallyFeasibleRho(Float64Array.from(x0, (v, i) => i === 2 ? -40 : v), clubs, unpack(x0, clubs)).rho;
+    const high = globallyFeasibleRho(Float64Array.from(x0, (v, i) => i === 2 ? 40 : v), clubs, unpack(x0, clubs)).rho;
+    x0[2] = Math.log(-low / high);
+  }
   // New club priors can make the initial rho=-0.1 inadmissible. Start at
   // independent Poisson in that case, never interpret an invalid zero gradient
   // as convergence. This leaves previously valid initializations unchanged.
   if (!Number.isFinite(evaluate(x0).value)) x0[2] = 0;
-  const fitted = maximize(
-    x0,
-    evaluate,
-    options.maxIterations ?? 250
-  );
+  const fitted = globalPairConstraint
+    ? maximizeLbfgs(x0, evaluate, options.maxIterations ?? 1000,
+      (before, after) => globalObjectiveDifference(before, after, rows, clubs, weights, priorAttack, priorDefence, priorPrecision))
+    : maximize(x0, evaluate, options.maxIterations ?? 250);
   const unpacked = unpack(fitted.x, clubs);
   const attack: Record<string, number> = {};
   const defence: Record<string, number> = {};
@@ -650,17 +918,37 @@ export function fitTimeDecayedDixonColes(
     params: {
       intercept: unpacked.intercept,
       homeAdvantage: unpacked.homeAdvantage,
-      rho: unpacked.rho,
+      rho: globalPairConstraint ? globallyFeasibleRho(fitted.x, clubs, unpacked).rho : unpacked.rho,
       timeDecayXi,
       attack,
       defence,
       clubEloPriorStrength,
     },
+    ...(globalPairConstraint ? { diagnostics: {
+      gradientNorm: (fitted as ReturnType<typeof maximizeLbfgs>).gradientNorm,
+      stopReason: (fitted as ReturnType<typeof maximizeLbfgs>).stopReason,
+      lineSearchEvaluations: (fitted as ReturnType<typeof maximizeLbfgs>).lineSearchEvaluations,
+      allFittedPairCount: clubs.length * (clubs.length - 1),
+      minimumCorrection: Math.min(...clubs.flatMap((home) => clubs.filter((away) => away !== home).flatMap((away) => {
+        const params = { intercept: unpacked.intercept, homeAdvantage: unpacked.homeAdvantage,
+          rho: globallyFeasibleRho(fitted.x, clubs, unpacked).rho, attack, defence, timeDecayXi, clubEloPriorStrength };
+        const rates = fittedDixonColesLambdas(params, home, away)!.lambdas;
+        return [[0, 0], [0, 1], [1, 0], [1, 1]].map(([h, a]) => dixonColesTau(h, a, ...rates, params.rho));
+      }))),
+    } } : {}),
     converged: fitted.converged,
     iterations: fitted.iterations,
     logLikelihood: fitted.value,
     meanElo,
   };
+}
+
+/** Existing research baseline; defaults and parameterization are unchanged. */
+export function fitTimeDecayedDixonColes(
+  rows: readonly FittedDixonColesTrainingRow[],
+  options: { timeDecayXi?: number; clubEloPriorStrength?: number; maxIterations?: number } = {}
+) {
+  return fitDixonColesInternal(rows, options);
 }
 
 function readJsonIfExists<T>(filePath: string): T | null {
