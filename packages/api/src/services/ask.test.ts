@@ -4016,6 +4016,15 @@ describe("resolveAskContext", () => {
       .toEqual({ tier: "season", competitionId: "eng.1" });
   });
 
+  it.each([
+    "Real Madrid title chances in La Liga",
+    "Can Bayern win the Bundesliga title?",
+    "What are Inter's chances of winning Serie A?",
+  ])("does not route %s to the Premier League season outlook", (question) => {
+    expect(resolveAskContext(question, [], undefined, fixtures, [standing()]))
+      .not.toEqual({ tier: "season", competitionId: "eng.1" });
+  });
+
   // Match grounding carries no standings, so a table question asked mid-match
   // could not be answered from the payload it was being held in.
   it.each([
