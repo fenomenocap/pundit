@@ -476,7 +476,8 @@ async function main() {
   if (!report.certificationGate.passed) {
     report.overall = "ISSUES FOUND";
   }
-  report.completedAt = new Date().toISOString();
+  // Browser cooldown evidence remains bound to the API harness completion time.
+  report.finalizedAt = new Date().toISOString();
   const paths = report.progress?.status === "failed"
     ? await writeFailureReport(report, options.outputDir)
     : await writeReport(report, options.outputDir);

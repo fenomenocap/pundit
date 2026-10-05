@@ -787,12 +787,83 @@ function acknowledgesSpaceBehindAcrossSentences(text) {
   return false;
 }
 
+function educationProse(answer) {
+  return answer.replace(/^\s*\*\*[^*\n]+\*\*\s*$/gm, "")
+    .replace(/^#{1,6}[^\n]*$/gm, "").replace(/\*\*/g, "");
+}
+
+function validateGeneralEducation(answer, topic) {
+  const text = typeof answer === "string" ? answer : "";
+  // A heading names a subject; it does not explain the subject.
+  const prose = educationProse(text);
+  const quantifiedProbability = /\b\d+(?:\.\d+)?\s*(?:%|percent(?:age)?\b|per cent\b)|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[- ]\w+)?\s+(?:percent|per cent)\b|\b(?:one|two|three|four|five|six|seven|eight|nine)[- ]in[- ](?:ten|a hundred)\b/i;
+  const quantifiedPrice = /\b\d+(?:\.\d+)?\s*(?:decimal|odds)|\b(?:decimal(?: odds)?|fair (?:price|odds)|odds of|priced at)\s*[:=]?\s*\d|\b\d+\s*\/\s*\d+\b|\b(?:EV|expected value)\b[^.!?\n]{0,35}[+\-]?\d/i;
+  const stakeAdvice = /\b(?:bet only|bet on|place (?:a |your )?bet|i (?:would|recommend) bet|size (?:your |the )?stakes?|staking (?:plan|strategy)|stake (?:\d|a fraction)|risk \d)\b/i;
+  const irrelevantNews = /\bno verified,? dated team[- ]news update|\bno (?:such )?reports were found|\b(?:current search results|retrievable sources|complete same[- ]source,? same[- ]time bookmaker|server[- ]owned evidence)\b/i;
+  const quantifiedSlateOutcomes = /\b(?:expect|predict|forecast|typically|on average)\w*\b[^.!?\n]{0,80}\b(?:\d+(?:\s*[-–]\s*\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\b[^.!?\n]{0,80}\b(?:upsets?|results?|wins?|defeats?)\b|\b(?:\d+(?:\s*[-–]\s*\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\b[^.!?\n]{0,60}\b(?:upsets?|results?|wins?|defeats?)\b[^.!?\n]{0,60}\b(?:expected|predicted|typical)\b/i;
+  const universalDerbyEffect = prose.split(/(?<=[.!?;])\s+|\n+|\b(?:but|however)\b/i).some((sentence) =>
+    /\b(?:derby|derbies)\b[^.!?\n]{0,100}\b(?:always|inevitably|necessarily|guarantees?)\b|\b(?:always|inevitably|every|all)\b[^.!?\n]{0,50}\b(?:derby|derbies)\b/i.test(sentence)
+    && !/\b(?:not|never|no)\b[^.!?\n]{0,25}\b(?:always|necessarily|every|all|guarantee)\w*\b/i.test(sentence)
+    && !/\b(?:rather than|instead of|without)\s+(?:assum|claim|expect)\w*\b[^.!?\n]{0,30}\b(?:every|all)\b|\b(?:cannot|can't|do not|don't|would not|wouldn't)\s+(?:assum|claim|expect)\w*\b[^.!?\n]{0,30}\b(?:every|all)\b/i.test(sentence)
+  );
+  const caveat = /\b(?:can|could|may|might|depends?|sometimes|not necessarily|does not guarantee|doesn't guarantee|not guaranteed|no guarantee|not certain|uncertain|uncertainty|cannot guarantee|can still (?:lose|miss)|is not (?:a )?guarantee)\b/i;
+  const mechanisms = {
+    slate: [
+      /\b(?:strength|quality|stronger|weaker)\b[^.!?\n]{0,100}\b(?:compare|comparison|opponent|team|side)|\b(?:compare|comparison)\b[^.!?\n]{0,100}\b(?:strength|quality)\b/i,
+      /\b(?:home|away|venue|travel|rest|schedule|fatigue)\b[^.!?\n]{0,100}\b(?:advantage|affect|change|recovery|compare|context|differ|matter)|\b(?:compare|account|consider|assess|check)\b[^.!?\n]{0,100}\b(?:home|away|venue|rest|fatigue)\b/i,
+      /\b(?:press|space|transition|low block|matchup|match-up)\w*\b[^.!?\n]{0,100}\b(?:create|limit|deny|expose|risk|recover|opponent|chance)\w*/i,
+    ],
+    favourite: [
+      /\b(?:shot|chance|finish|goal|red card|sending[- ]off|deflection|set[- ]piece)\w*\b[^.!?\n]{0,100}\b(?:miss|swing|change|lose|upset|rare|few|random|variance|decide)|\b(?:miss|swing|change|rare|few|random|variance)\w*\b[^.!?\n]{0,100}\b(?:shot|chance|goal|red card|set[- ]piece)\w*\b/i,
+      /\b(?:favourite|favorite|stronger|better)\b[^.!?\n]{0,130}\b(?:can|could|may|might|still)\b[^.!?\n]{0,60}\b(?:lose|draw|fail|drop points)|\b(?:no|not|never|cannot|can't)\b[^.!?\n]{0,40}\b(?:guarantee|guaranteed|certain|certainty|sure win)\b/i,
+    ],
+    derby: [
+      /\b(?:emotion|rivalry|crowd|intensity|pressure)\w*\b[^.!?\n]{0,120}\b(?:press|duel|discipline|booking|foul|decision|tempo|risk|shape)\w*\b/i,
+      /\b(?:press|duel|foul|booking|discipline|substitution|tempo|transition)\w*\b[^.!?\n]{0,130}\b(?:space|risk|control|manage|protect|tired|fatigue|shape|counter|reduce|avoid)\w*\b/i,
+    ],
+    chance: [
+      /\b(?:close|closer|central|distance|angle)\b[^.!?\n]{0,100}\b(?:goal|shot|shoot|finish|target)|\b(?:goal|shot|finish)\w*\b[^.!?\n]{0,100}\b(?:distance|angle|central|closer)\b/i,
+      /\b(?:pressure|defender|balance|body|control|first touch|service|pass)\w*\b[^.!?\n]{0,100}\b(?:shoot|shot|finish|time|space|clean|chance|settle|strike)|\b(?:shoot|shot|finish)\w*\b[^.!?\n]{0,100}\b(?:pressure|balance|body|control|time|space)\b/i,
+    ],
+  };
+  const required = topic === "slate" ? 2 : mechanisms[topic]?.length;
+  const hits = (mechanisms[topic] ?? []).filter((pattern) => pattern.test(prose)).length;
+  return {
+    generalEducationTopicSupported: Boolean(required) && hits >= required,
+    generalEducationCaveat: caveat.test(prose),
+    noInventedGeneralNumbers: !quantifiedProbability.test(text) && !quantifiedPrice.test(text),
+    noGeneralStakeAdvice: !stakeAdvice.test(text),
+    noIrrelevantGeneralNews: !irrelevantNews.test(text),
+    noInventedSlateOutcomeCount: topic !== "slate" || !quantifiedSlateOutcomes.test(text),
+    noUniversalDerbyEffect: topic !== "derby" || !universalDerbyEffect,
+  };
+}
+
+function validateFootballTake(answer, conditional = false) {
+  const text = educationProse(typeof answer === "string" ? answer : "");
+  const mechanism = /\b(?:press|block|width|overload|transition|counter|defend|build[- ]up)\w*\b[^.!?\n]{0,150}\b(?:force|invite|create|open|deny|limit|expose|leave|attack|protect|target|isolate|stretch|recover|pull|cover|delay)\w*\b[^.!?\n]{0,100}\b(?:space|chance|pass|ball|goal|defen[cs]e|defender|midfield|wing|flank|central|attack|counter|turnover|runner|cut[- ]back)\w*\b/i.test(text)
+    || /\b(?:stretch|isolate|protect|close|attack|deny)\w*\b[^.!?\n]{0,80}\b(?:defen[cs]e|midfield|space|flank|wing)\w*\b[^.!?\n]{0,100}\b(?:because|so that|to (?:create|open|prevent|limit|force))\b/i.test(text);
+  const tradeOff = /\b(?:but|however|risk|cost|trade[- ]off|escape|vulnerable|expose|leave|instead)\w*\b[^.!?\n]{0,120}\b(?:space|counter|transition|press|defen[cs]e|pass|ball|runner|wing|chance|attack)\w*\b/i.test(text);
+  const conditionalShape = /\b(?:if|should|could|may|might|would|depends?|conditional)\b[^.!?\n]{0,100}\b(?:press|block|shape|width|space|defend|transition|build[- ]up|counter)\w*\b/i.test(text);
+  return {
+    footballTakeMechanism: mechanism,
+    footballTakeTradeOff: tradeOff,
+    conditionalTacticalShape: !conditional || conditionalShape,
+  };
+}
+
 export function validateResponseCorrectness(answer, citations, grounding, expectation = {}) {
   const text = typeof answer === "string" ? answer : "";
   const citationList = Array.isArray(citations) ? citations : [];
   const punditProbabilityClaim = /\bpundit(?:'s)?\b[^.!?\n]{0,80}\b(?:\d{1,3}(?:\.\d+)?%|(?:probabilit|forecast|prediction)[^.!?\n]{0,30}\d)/i;
   const scoreline = /(?<![\d-])\d{1,2}\s*[-:–—]\s*\d{1,2}(?![\d-])/;
   const assertions = {};
+  if (expectation.expectGeneralEducationTopic) {
+    Object.assign(assertions, validateGeneralEducation(text, expectation.expectGeneralEducationTopic));
+  }
+  if (expectation.expectFootballTake) {
+    Object.assign(assertions, validateFootballTake(text, expectation.expectConditionalTactics === true));
+  }
   if (expectation.expectNoPunditProbabilities) {
     assertions.noPunditProbabilities = !punditProbabilityClaim.test(text)
       && MODEL_PROBABILITY_FIELDS.every((field) => !Object.hasOwn(grounding ?? {}, field));

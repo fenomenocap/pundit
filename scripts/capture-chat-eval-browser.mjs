@@ -98,16 +98,50 @@ function createRequestStartPacer({
   }
   const starts = [];
   const wallStarts = [];
+  const failures = [];
+  const requests = new WeakMap();
   let lastStart = null;
   let lastWallStart = null;
+  let awaitingRequest = false;
+  const assertComplete = () => {
+    if (failures.length) throw new Error(failures[0]);
+    if (awaitingRequest) throw new Error("Authorized browser action has no observed /api/ask request");
+  };
   return {
     starts,
     wallStarts,
+    failures,
     intervalMs,
+    assertComplete,
+    recordRequestStart(request) {
+      // Both diagnostics and traffic observers can see the same request event.
+      if (requests.has(request)) return requests.get(request);
+      const startedAt = now();
+      const wallStartedAt = wallNow();
+      const authorized = awaitingRequest;
+      awaitingRequest = false;
+      if (!authorized) failures.push("Unexpected /api/ask request without an authorized browser action");
+      if (lastStart !== null && (startedAt - lastStart < intervalMs || wallStartedAt - lastWallStart < intervalMs)) {
+        failures.push("Actual /api/ask request started before the browser pacing interval");
+      }
+      if (starts.length === 0 && Number.isFinite(firstRequestNotBeforeEpochMs) && wallStartedAt < firstRequestNotBeforeEpochMs) {
+        failures.push("Actual /api/ask request started before the API-to-browser cooldown");
+      }
+      starts.push(startedAt);
+      const wallStart = new Date(wallStartedAt).toISOString();
+      wallStarts.push(wallStart);
+      lastStart = startedAt;
+      lastWallStart = wallStartedAt;
+      const observed = { startedAt, wallStart, authorized };
+      requests.set(request, observed);
+      return observed;
+    },
     async beforeRequest() {
+      assertComplete();
       while (true) {
-        // Check and preserve the same clock samples. A backward wall-clock
-        // correction must not invalidate otherwise sound monotonic spacing.
+        assertComplete();
+        // Authorize the next action against the actual prior network event.
+        // The event observer preserves both clock samples when dispatch occurs.
         const startedAt = now();
         const wallStartedAt = wallNow();
         const remaining = Math.max(
@@ -120,10 +154,7 @@ function createRequestStartPacer({
           await wait(remaining);
           continue;
         }
-        starts.push(startedAt);
-        wallStarts.push(new Date(wallStartedAt).toISOString());
-        lastStart = startedAt;
-        lastWallStart = wallStartedAt;
+        awaitingRequest = true;
         return startedAt;
       }
     },
@@ -305,7 +336,11 @@ async function readLatestRun(filePath) {
   }
 }
 
+const answerWaits = new WeakMap();
+
 async function waitForAnswer(page, previousBubbleCount) {
+  answerWaits.set(page, { previousBubbleCount, expectedMinimumBubbleCount: previousBubbleCount + 1 });
+  // Completion is a DOM state; backgrounded pages need not produce animation frames.
   const result = await page.waitForFunction(({ previousBubbleCount }) => {
     const bubbles = document.querySelectorAll('[data-testid="desk-pundit-bubble"]');
     const alert = document.querySelector('[role="alert"]');
@@ -314,20 +349,26 @@ async function waitForAnswer(page, previousBubbleCount) {
     return finished && input instanceof HTMLTextAreaElement && !input.disabled
       ? { answered: bubbles.length > previousBubbleCount, error: alert?.textContent?.trim() ?? "" }
       : null;
-  }, { previousBubbleCount }, { timeout: ASK_TIMEOUT_MS });
+  }, { previousBubbleCount }, { timeout: ASK_TIMEOUT_MS, polling: 100 });
   return result.jsonValue();
 }
 
-function attachAskDiagnostics(page, viewport, progress) {
+function attachAskDiagnostics(page, viewport, progress, pacer) {
   const requests = new Map();
+  const seenRequests = new WeakSet();
   const records = progress.collected.askRequests ??= [];
   page.on("request", (request) => {
     if (request.method() !== "POST" || !new URL(request.url()).pathname.endsWith("/api/ask")) return;
+    if (seenRequests.has(request)) return;
+    seenRequests.add(request);
+    const observed = pacer?.recordRequestStart(request);
     let body;
     try { body = request.postDataJSON(); } catch { body = null; }
     progress.collected.currentPrompt = typeof body?.question === "string" ? body.question.slice(0, 501) : null;
     const record = {
-      requestedAt: new Date().toISOString(), viewport, url: request.url(),
+      requestedAt: observed?.wallStart ?? new Date().toISOString(),
+      ...(observed ? { monotonicStartMs: observed.startedAt, authorized: observed.authorized } : {}),
+      viewport, url: request.url(),
       question: progress.collected.currentPrompt, fixtureId: requestFixtureIdentity(body),
       status: null, requestFailed: null,
     };
@@ -350,7 +391,8 @@ function attachAskDiagnostics(page, viewport, progress) {
 async function captureFailureDiagnostics(page, viewport, options, identity, progress) {
   const diagnostics = {
     capturedAt: new Date().toISOString(), viewport,
-    currentPrompt: progress.collected.currentPrompt ?? null, errors: [],
+    currentPrompt: progress.collected.currentPrompt ?? null,
+    answerWait: answerWaits.get(page) ?? null, errors: [],
   };
   let timer;
   try {
@@ -362,6 +404,7 @@ async function captureFailureDiagnostics(page, viewport, options, identity, prog
           url: location.href, title: document.title,
           viewport: { width: innerWidth, height: innerHeight, documentWidth: document.documentElement.scrollWidth },
           composer: input ? { value: input.value.slice(0, 501), disabled: input.disabled } : null,
+          assistantBubbleCount: document.querySelectorAll('[data-testid="desk-pundit-bubble"]').length,
           buttons: [...document.querySelectorAll("button")].slice(-20).map((button) => ({
             label: (button.getAttribute("aria-label") || button.textContent || "").trim().slice(0, 200),
             disabled: button.disabled,
@@ -400,7 +443,9 @@ async function ask(page, question, pacer) {
     .then(() => true, () => false);
   await page.getByRole("button", { name: "Send" }).click();
   const loadingObserved = await loadingObservation;
-  return { ...(await waitForAnswer(page, previousBubbleCount)), loadingObserved };
+  const answer = await waitForAnswer(page, previousBubbleCount);
+  pacer.assertComplete?.();
+  return { ...answer, loadingObserved };
 }
 
 async function sleep(ms) {
@@ -449,7 +494,9 @@ async function clickFeaturedFixture(page, fixture, pacer) {
     .then(() => true, () => false);
   await fixture.locator.click();
   const loadingObserved = await loadingObservation;
-  return { ...(await waitForAnswer(page, previousBubbleCount)), loadingObserved };
+  const answer = await waitForAnswer(page, previousBubbleCount);
+  pacer.assertComplete?.();
+  return { ...answer, loadingObserved };
 }
 
 async function latestBoardIdentity(page, fixtureId, revealCompact = false) {
@@ -479,8 +526,12 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
   page.setDefaultTimeout(15_000);
   const checks = Object.fromEntries(requiredCheckIds().map((id) => [id, emptyCheck(id)]));
   progress.checks = checks;
+  const seenRequests = new WeakSet();
   page.on("request", (request) => {
     if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/api/ask")) {
+      if (seenRequests.has(request)) return;
+      seenRequests.add(request);
+      pacer.recordRequestStart?.(request);
       traffic.apiAskRequestCount += 1;
       traffic.lastFixtureId = requestFixtureIdentity(request.postDataJSON());
     }
@@ -982,6 +1033,7 @@ async function captureLive(options, report, dependencies = {}) {
     });
     progress.collected.requestStarts = pacer.wallStarts;
     progress.collected.monotonicStarts = pacer.starts;
+    progress.collected.pacingFailures = pacer.failures;
     try {
       for (const viewport of viewports) {
         progress.phase = `viewport-${viewport.width}x${viewport.height}`;
@@ -989,7 +1041,7 @@ async function captureLive(options, report, dependencies = {}) {
         const context = await browser.newContext({ viewport });
         const page = await context.newPage();
         attachConsole(page, consoleEvidence);
-        attachAskDiagnostics(page, viewport, progress);
+        attachAskDiagnostics(page, viewport, progress, pacer);
         progress.collected.currentViewport = viewport;
         progress.collected.currentPrompt = null;
         let failed = false;
@@ -1020,6 +1072,7 @@ async function captureLive(options, report, dependencies = {}) {
       await browser.close();
     }
     progress.phase = "postflight";
+    pacer.assertComplete();
     progress.checks = {};
     const webVersionAfter = await captureWeb(options.webUrl);
     const apiVersionAfter = await captureApi(report.apiUrl);
