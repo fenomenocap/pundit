@@ -32,6 +32,9 @@ jobs:
       - name: Audit critical development dependencies
         run: pnpm audit --audit-level critical
 
+      - name: Verify local braces security mitigation
+        run: pnpm test:braces-security
+
       - name: Type-check API
         working-directory: packages/api
         run: npx tsc --noEmit

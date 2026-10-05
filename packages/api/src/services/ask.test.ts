@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
-import { DESK_GENERAL_CONCEPT_SYSTEM } from "./desk-voice";
+import { DESK_GENERAL_CONCEPT_SYSTEM, DESK_CURRENT_FACT_SYSTEM } from "./desk-voice";
+import * as evidencePages from "./evidence-page-retrieval";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import { AppError } from "../middleware";
 import { ModelFixture } from "./model-data";
@@ -714,6 +715,90 @@ describe("complete standalone football lessons", () => {
       expect(deltas).toEqual([result.answer]);
     } finally {
       create.mockRestore();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+
+  it.each([
+    { question: "Who is Arsenal's manager and why?", title: "Arsenal manager appointment", prose: "Pat Doe is Arsenal's current manager [[S1]]. The club said his appointment reflected his experience developing young players [[S1]].", fact: /Pat Doe is Arsenal.s current manager/, reason: /experience developing young players/ },
+    { question: "What is Arsenal's latest result and why?", title: "Arsenal vs Brighton: match report", prose: "The dated result I found was Arsenal 3–0 Brighton on 4 October 2026 [[S1]]. The report attributes the win to defensive errors [[S1]].", fact: /Arsenal 3[–-]0 Brighton/, reason: /defensive errors/ },
+  ].flatMap((scenario) => [
+    { ...scenario, accepted: true, sourceDate: "2026-10-04", outcome: "supported" },
+    { ...scenario, accepted: false, sourceDate: "2026-10-04", outcome: "conflict" },
+    { ...scenario, accepted: false, sourceDate: "2026-10-04", outcome: "unsupported" },
+    { ...scenario, accepted: false, sourceDate: "", outcome: "supported" },
+    { ...scenario, accepted: false, sourceDate: "2026-07-01", outcome: "supported" },
+  ]))("keeps dated club-fact verification authoritative beyond the pinned opponent: $question ($outcome, $sourceDate)", async ({ question, title, prose, fact, reason, accepted, sourceDate, outcome }) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+    await refreshClubRatings(new Date());
+    const kickoff = new Date(Date.now() + 86_400_000).toISOString();
+    const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const source = { title, link: "https://www.arsenal.com/news/dated-report", snippet: prose.replace(/\[\[S1\]\]/g, ""), date: sourceDate };
+    const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
+    const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({
+      ...candidate, finalUrl: candidate.url, text: source.snippet, retrievedAt: new Date().toISOString(),
+    })));
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      const verifying = String(input.system).startsWith("You are Pundit's bounded factual claim verifier.");
+      const data = verifying ? JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]) : null;
+      if (!verifying) {
+        expect(input.system).toBe(DESK_CURRENT_FACT_SYSTEM);
+        expect(String(input.messages.at(-1)?.content)).toContain("FOCUS CLUB: Arsenal");
+        expect(String(input.messages.at(-1)?.content)).not.toContain("MATCH CARD");
+      }
+      return Promise.resolve({ content: [{ type: "text", text: verifying ? JSON.stringify({ decisions: data.claims.map((claim: { id: string }) => ({ claimId: claim.id, outcome, evidenceIds: ["S1"] })), summary: "Assessed against the club report." }) : prose }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    searchWeb.mockReset();
+    // The relevant source starts after an unrelated opponent report. The
+    // writer and verifier must share the same remapped source IDs in all voices.
+    searchWeb.mockResolvedValue([{ title: "Leeds vs Chelsea: report", link: "https://www.chelseafc.com/news/unrelated", snippet: "Chelsea won against Leeds.", date: "2026-10-04" }, source]);
+    try {
+      const context = { fixtureId: espnFixtureIdentity(model) };
+      for (const voice of [undefined, "desk"] as const) {
+        const result = await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, context, undefined, voice);
+        expect(result.grounding?.kind).toBe("match");
+        if (accepted) {
+          expect(result.answer).toMatch(fact);
+          expect(result.answer).toMatch(reason);
+          expect(result.verification?.supportedClaimCount).toBe(2);
+          expect(result.citations?.[0]?.url).toBe(source.link);
+          expect(result.answer).toContain(source.link);
+        } else {
+          expect(result.answer).not.toMatch(fact);
+          expect(result.answer).not.toMatch(reason);
+          expect(result.answer).toMatch(/verify|verified|conflict/i);
+          expect(result.verification?.supportedClaimCount).toBe(0);
+          expect(result.citations ?? []).toEqual([]);
+        }
+        expect(result.answer).not.toMatch(/\d+%|My 1X2|\[\[S1\]\]/i);
+        expect(result.answer).not.toMatch(/\)\)\s*·|\)\s*·[^\n]+\)\)/);
+      }
+      const deltas: string[] = [];
+      const streamed = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], {
+        onGrounding: () => {}, onDelta: (text) => deltas.push(text),
+      }, context);
+      if (accepted) {
+        expect(streamed.answer).toMatch(fact);
+        expect(streamed.answer).toMatch(reason);
+        expect(streamed.verification?.supportedClaimCount).toBe(2);
+      } else {
+        expect(streamed.answer).not.toMatch(fact);
+        expect(streamed.answer).not.toMatch(reason);
+        expect(streamed.verification?.supportedClaimCount).toBe(0);
+        expect(streamed.citations ?? []).toEqual([]);
+      }
+      expect(deltas).toEqual([streamed.answer]);
+      expect(searchWeb.mock.calls.some(([query]) => /Arsenal.*official/i.test(query))).toBe(true);
+      expect(searchWeb.mock.calls.some(([query]) => /Leeds|injur|recent form/i.test(query))).toBe(false);
+    } finally {
+      create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore();
+      vi.useRealTimers();
       if (saved === undefined) delete process.env.MINIMAX_API_KEY;
       else process.env.MINIMAX_API_KEY = saved;
     }

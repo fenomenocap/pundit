@@ -57,6 +57,7 @@ import {
   groundedSkippedQueries,
   mergeSearchResults,
   planFederatedQueries,
+  singleClubCurrentFactScope,
   type FederatedGrounding,
 } from "./federated-evidence";
 import {
@@ -8748,7 +8749,7 @@ export async function deliverAnswer(args: {
       verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
     };
   }
-  const evidenceBundle = deskVoice ? filterDeskEvidenceBundle(bundle, grounding) : bundle;
+  const evidenceBundle = deskVoice ? filterDeskEvidenceBundle(bundle, grounding, Date.now(), question) : bundle;
   const deskFootnotes = (text: string) => {
     if (!deskVoice) return text;
     const stripped = grounding?.kind === "match"
@@ -9498,16 +9499,18 @@ async function answerQuestionScoped(
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
       })
       : { queries: [], results: [], providerCalls: 0 };
-    const bundle = voice === "desk"
-      ? filterDeskEvidenceBundle(rawBundle, grounding)
+    const clubFact = singleClubCurrentFactScope(question, grounding);
+    const bundle = voice === "desk" || clubFact
+      ? filterDeskEvidenceBundle(rawBundle, grounding, Date.now(), question)
       : rawBundle;
     // Desk team-news uses the typed match-evidence path after search, whether
     // it yields a cited observation or a narrow abstention.
     const deskUsesMatchEvidencePath =
       voice === "desk"
       && grounding?.kind === "match"
+      && !clubFact
       && planResponse(question, { groundingKind: "match" }).mode === "team-news";
-    if (voice === "desk" && !deskUsesMatchEvidencePath) {
+    if (clubFact || (voice === "desk" && !deskUsesMatchEvidencePath)) {
       const prose = await writeDeskProse(question, grounding, history, signal, bundle, {
         generalConcept: grounding === null && query === null && bundle.queries.length === 0,
       });
@@ -9519,12 +9522,12 @@ async function answerQuestionScoped(
           bundle,
           client,
           question,
-          evidenceRequired: deskPlan.evidenceRequired,
+          evidenceRequired: Boolean(query || bundle.queries.length),
           candidateUnrecognized,
           hasHistory: history.length > 0,
           structuredDraftExpected: false,
           signal,
-          voice: "desk",
+          voice,
           history,
         });
         return {
@@ -9707,12 +9710,34 @@ async function answerQuestionStreamScoped(
       };
     }
     const plannedQueries = planEvidenceQueries(question, grounding, query);
-    const bundle: EvidenceBundle = plannedQueries.length
+    const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, handlers.signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
       })
       : { queries: [], results: [], providerCalls: 0 };
+    const clubFact = singleClubCurrentFactScope(question, grounding);
+    const bundle = clubFact
+      ? filterDeskEvidenceBundle(rawBundle, grounding, Date.now(), question)
+      : rawBundle;
+    // A direct club identity/result is evidence prose, not a forecast draft.
+    // Hold every delta until its dated claims have passed the same verifier.
+    if (clubFact) {
+      const prose = await writeDeskProse(question, grounding, history, handlers.signal, bundle);
+      if (prose) {
+        const delivered = await deliverAnswer({
+          answer: prose, tier, grounding, bundle, client, question,
+          evidenceRequired: Boolean(query || bundle.queries.length),
+          candidateUnrecognized, hasHistory: history.length > 0,
+          structuredDraftExpected: false, signal: handlers.signal,
+        });
+        if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(delivered.answer);
+        return {
+          answer: delivered.answer, grounding, verification: delivered.verification,
+          ...(delivered.citations.length ? { citations: delivered.citations } : {}),
+        };
+      }
+    }
     const scorerSettled = await settleEvidenceModeFromBundle(
       question, grounding, bundle, history.length > 0, handlers.signal
     );

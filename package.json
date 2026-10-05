@@ -11,6 +11,7 @@
     "chat-eval:production": "node scripts/chat-battle-test.mjs",
     "chat-eval:browser": "node scripts/capture-chat-eval-browser.mjs",
     "chat-eval:finalize": "node scripts/finalize-chat-report.mjs",
+    "test:braces-security": "node --test scripts/braces-security.test.mjs",
     "test:vercel-ignore": "node --test scripts/vercel-ignore-build.test.mjs",
     "test:deployed-sha": "node --test scripts/resolve-deployed-sha.test.mjs",
     "test:verify-prod": "node --test scripts/verify-prod.test.mjs",
@@ -39,6 +40,9 @@
       "nanoid@>=3 <3.3.18": "3.3.18",
       "postcss-selector-parser@>=6 <6.1.3": "6.1.3",
       "tsx@<4.23.15": "4.23.15"
+    },
+    "patchedDependencies": {
+      "braces@3.0.3": "patches/braces@3.0.3.patch"
     }
   }
 }
