@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import * as deskVoice from "./desk-voice";
+import * as evidencePages from "./evidence-page-retrieval";
 import {
   deliverAnswer,
   deterministicSearchQuery,
@@ -568,8 +569,24 @@ describe("V2 conversational architecture", () => {
     expect(scorerFallback.answer).not.toMatch(/56\.3%/);
     expect(scorerFallback.verification.status).toBe("abstain");
 
-    const quoted = await deliverAnswer({
+    const quotedSnippet = "Cole Palmer anytime 2.10 for Chelsea, Cole Palmer expected to start for Chelsea.";
+    const retrieveQuoted = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({
+      ...candidate, finalUrl: candidate.url, text: quotedSnippet,
+      retrievedAt: "2026-09-12T12:00:00Z",
+    })));
+    let quoteOutcome = "supported";
+    const quoteInputs: { claims: { id: string; text: string }[]; pages: unknown[] }[] = [];
+    const verifyQuote = vi.fn(async (params: { system: string; messages: { content: string }[] }) => {
+      const input = JSON.parse(params.messages[0].content.split("Verify these claims against these pages: ")[1]);
+      quoteInputs.push(input);
+      return { content: [{ type: "text", text: JSON.stringify({
+        decisions: input.claims.map((claim: { id: string }) => ({ claimId: claim.id, outcome: quoteOutcome, evidenceIds: ["S1"] })),
+        summary: "Exact quote and lineup assessed.",
+      }) }] };
+    });
+    const quotedInput = {
       ...base,
+      client: { messages: { create: verifyQuote } } as unknown as Parameters<typeof deliverAnswer>[0]["client"],
       question: "Who is most likely to score?",
       evidenceRequired: true,
       bundle: {
@@ -580,12 +597,13 @@ describe("V2 conversational architecture", () => {
           title: "Chelsea vs Arsenal anytime scorer odds",
           url: "https://example.com/scorers",
           date: "2026-09-11T08:00:00Z",
-          snippet: "Cole Palmer anytime 2.10 for Chelsea, Cole Palmer expected to start for Chelsea.",
+          snippet: quotedSnippet,
           tier: "news" as const,
         }],
       },
       answer: "I make Arsenal 56.3% and therefore Salah is the most likely scorer.",
-    });
+    };
+    const quoted = await deliverAnswer(quotedInput);
     expect(quoted.answer).toMatch(/Cole Palmer/);
     expect(quoted.answer).toMatch(/2\.10 decimal/);
     expect(quoted.answer).toMatch(/example\.com\/scorers/);
@@ -594,6 +612,25 @@ describe("V2 conversational architecture", () => {
     expect(quoted.answer).not.toMatch(/Salah/);
     expect(quoted.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(quoted.verification.status).toBe("verified");
+    expect(quoted.verification.supportedClaimCount).toBe(2);
+    expect(verifyQuote).toHaveBeenCalledTimes(1);
+    expect(verifyQuote.mock.calls[0][0].system).toMatch(/^You are Pundit's bounded factual claim verifier\./);
+    expect(quoteInputs[0].claims).toHaveLength(2);
+    expect(quoteInputs[0].claims.every((claim) => claim.text.includes("Cole Palmer"))).toBe(true);
+    expect(quoteInputs[0].claims.some((claim) => claim.text.includes("Chelsea"))).toBe(true);
+    expect(quoteInputs[0].claims.map((claim) => claim.text).join(" ")).toMatch(/2\.10/);
+    expect(quoteInputs[0].claims.map((claim) => claim.text).join(" ")).toMatch(/expected to start/);
+    expect(quoteInputs[0].pages).toEqual([expect.objectContaining({
+      id: "S1", url: "https://example.com/scorers", publishedDate: "2026-09-11T08:00:00Z", text: quotedSnippet,
+    })]);
+    quoteOutcome = "unsupported";
+    const unsupportedQuote = await deliverAnswer(quotedInput);
+    expect(unsupportedQuote.answer).toBe(PLAYER_SCORER_ABSTENTION);
+    expect(unsupportedQuote.citations).toEqual([]);
+    expect(unsupportedQuote.verification.supportedClaimCount).toBe(0);
+    expect(unsupportedQuote.answer).not.toMatch(/Cole Palmer|2\.10|Salah|56\.3%/);
+    expect(verifyQuote).toHaveBeenCalledTimes(2);
+    retrieveQuoted.mockRestore();
 
     const previewQuestion = "Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.";
     const preview = await deliverAnswer({
@@ -672,8 +709,30 @@ describe("V2 conversational architecture", () => {
       }
     }
 
+    const retrieveNews = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({
+      ...candidate, finalUrl: candidate.url,
+      text: candidate.url === "https://example.com/news" ? "Cole Palmer ruled out for Chelsea."
+        : candidate.url === "https://example.com/brentford-chelsea" ? "Antoni Milambo is ruled out for Brentford with a knee injury. Kafe Furo is ruled out for Brentford with an injury."
+        : "No attributable player availability update.",
+      retrievedAt: "2026-09-12T12:00:00Z",
+    })));
+    const newsInputs: { claims: { id: string; text: string }[]; pages: { id: string; text: string; publishedDate: string }[] }[] = [];
+    const verifyNews = vi.fn(async (params: { system: string; messages: { content: string }[] }) => {
+      const input = JSON.parse(params.messages[0].content.split("Verify these claims against these pages: ")[1]);
+      newsInputs.push(input);
+      return { content: [{ type: "text", text: JSON.stringify({
+        decisions: input.claims.map((claim: { id: string; text: string }) => {
+          const name = ["Cole Palmer", "Antoni Milambo", "Kafe Furo"].find((name) => claim.text.includes(name));
+          const supported = name && /listed as unavailable/.test(claim.text)
+            && input.pages.some((page: { text: string }) => page.text.includes(`${name} ${name === "Cole Palmer" ? "ruled out for Chelsea" : "is ruled out for Brentford"}`));
+          return { claimId: claim.id, outcome: supported ? "supported" : "unsupported", evidenceIds: supported ? ["S1"] : [] };
+        }), summary: "Exact named absence assessed.",
+      }) }] };
+    });
+    const newsClient = { messages: { create: verifyNews } } as unknown as Parameters<typeof deliverAnswer>[0]["client"];
     const teamNewsQuoted = await deliverAnswer({
       ...base,
+      client: newsClient,
       question: "What is the latest team news?",
       evidenceRequired: true,
       bundle: {
@@ -700,6 +759,7 @@ describe("V2 conversational architecture", () => {
 
     const exactNames = await deliverAnswer({
       ...base,
+      client: newsClient,
       grounding: { ...match, fixtureId: "eng.1:brentford-chelsea", home: "Brentford", away: "Chelsea" },
       question: "Any injury or lineup news for Brentford vs Chelsea?",
       evidenceRequired: true,
@@ -723,6 +783,7 @@ describe("V2 conversational architecture", () => {
 
     const deskNews = await deliverAnswer({
       ...base,
+      client: newsClient,
       voice: "desk",
       question: "What is the latest team news?",
       evidenceRequired: true,
@@ -747,6 +808,7 @@ describe("V2 conversational architecture", () => {
 
     const deskSalvage = await deliverAnswer({
       ...base,
+      client: newsClient,
       voice: "desk",
       question: "What is the latest team news?",
       evidenceRequired: true,
@@ -771,6 +833,12 @@ describe("V2 conversational architecture", () => {
     expect(deskSalvage.answer).toMatch(/Cole Palmer/);
     expect(deskSalvage.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(deskSalvage.answer).not.toContain("directAnswer");
+    expect(verifyNews).toHaveBeenCalledTimes(4);
+    expect(newsInputs.map((input) => input.claims.length)).toEqual([1, 2, 1, 1]);
+    expect(newsInputs.every((input) => input.pages.every((page) => page.publishedDate === "2026-09-11T08:00:00Z"))).toBe(true);
+    expect(newsInputs[1].claims.map((claim) => claim.text).join(" ")).toMatch(/Antoni Milambo.*unavailable.*Kafe Furo.*unavailable/);
+    expect(newsInputs.flatMap((input) => input.claims).map((claim) => claim.text).join(" ")).not.toMatch(/Kaye|suspend|fine to start|Iraola|Marco Rose/);
+    retrieveNews.mockRestore();
 
     const briefingWipe = await deliverAnswer({
       ...base,
@@ -832,11 +900,12 @@ describe("V2 conversational architecture", () => {
       answer: "Arsenal should control this at home through territory.",
     });
     expect(briefingWithWrinkle.answer).toMatch(/My 1X2 is Arsenal 56\.3%/);
-    expect(briefingWithWrinkle.answer).toMatch(/Cole Palmer/);
-    expect(briefingWithWrinkle.answer).toMatch(/not priced into the 1X2 above/i);
+    // The raw snippet has not passed the claim verifier and cannot be
+    // appended after the briefing's already-checked prose.
+    expect(briefingWithWrinkle.answer).not.toMatch(/Cole Palmer|unavailable|example\.com\/news/);
     expect(briefingWithWrinkle.answer).toMatch(/I lean to Arsenal at home/);
-    expect(briefingWithWrinkle.answer).toMatch(/example\.com\/news/);
-    expect(briefingWithWrinkle.citations.map((citation) => citation.id)).toEqual(["S1"]);
+    expect(briefingWithWrinkle.answer).toMatch(/If Arsenal draw Chelsea's first press/);
+    expect(briefingWithWrinkle.citations).toEqual([]);
     expect(briefingWithWrinkle.answer).not.toMatch(/captured decimal|EV%|pass or play/i);
   });
 

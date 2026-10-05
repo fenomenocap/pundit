@@ -1917,7 +1917,7 @@ const NO_VERIFIED_NEWS =
  */
 export function validateTeamNewsDiscipline(answer) {
   if (typeof answer !== "string" || !answer.trim()) {
-    return { passed: false, failures: ["answer is empty"], assertions: { teamNewsSourced: false } };
+    return { passed: false, failures: ["answer is empty"], assertions: { teamNewsSourced: false, teamNewsSubjectIdentified: false } };
   }
   // Evaluate every factual region. An abstention only protects its own
   // sentence; it cannot license a later unsupported player claim (the live
@@ -1928,13 +1928,24 @@ export function validateTeamNewsDiscipline(answer) {
     && !NO_VERIFIED_NEWS.test(region)
     && !SOURCE_AND_DATE.test(region)
   );
-  const passed = unsafeClaims.length === 0;
+  // The production composer once promoted a page heading into "Back
+  // (Arsenal) is listed as unavailable". A valid citation/date cannot identify
+  // that subject. This bounded output regression check is independent of the
+  // extractor; it does not replace the agent critic or verify arbitrary names.
+  const descriptorSubject = /^\s*(?:\*\*)?(?:back|return|update|latest|team|news|injur(?:y|ies)|lineup|starting|confirmed|available|unavailable|doubtful|suspended|forward|defender|midfielder|goalkeeper)(?:\*\*)?\s+\([^\n)]{1,60}\)\s+(?:is|are|was|were|has been|have been)\b/i;
+  const normalizedSubject = (region) => region.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").replace(/\*\*|__/g, "");
+  const unidentifiedSubjects = regions.filter((region) => descriptorSubject.test(normalizedSubject(region))
+    && (assertsSquadAvailability(region) || assertsNamedPlayerNews(region)));
+  const sourced = unsafeClaims.length === 0;
+  const identified = unidentifiedSubjects.length === 0;
+  const passed = sourced && identified;
   return {
     passed,
-    assertions: { teamNewsSourced: passed },
-    failures: passed
-      ? []
-      : [`answer asserts team news without a source and date after applying any abstention only to its own sentence: ${unsafeClaims[0].trim()}`],
+    assertions: { teamNewsSourced: sourced, teamNewsSubjectIdentified: identified },
+    failures: [
+      ...(!sourced ? [`answer asserts team news without a source and date after applying any abstention only to its own sentence: ${unsafeClaims[0].trim()}`] : []),
+      ...(!identified ? [`answer identifies a generic page descriptor as an unavailable or selected player: ${unidentifiedSubjects[0].trim()}`] : []),
+    ],
   };
 }
 
