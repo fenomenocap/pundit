@@ -19,6 +19,8 @@ import {
   clubEloAttackDefencePrior,
   clubEloPriorPrecision,
   fitTimeDecayedDixonColes,
+  forecastFittedDixonColes,
+  type FittedDixonColesArtifact,
   joinTrainingRows,
   resolveOfflineTrainingMode,
   rollingOriginSplit,
@@ -108,6 +110,77 @@ function establishedFixtures(): {
   };
 }
 
+function rateParams(lambdaHome: number, lambdaAway: number, rho: number): FittedDixonColesArtifact["params"] {
+  return {
+    intercept: Math.log(lambdaAway),
+    homeAdvantage: Math.log(lambdaHome / lambdaAway),
+    rho,
+    timeDecayXi: 0,
+    attack: { Hull: 0, "Man United": 0 },
+    defence: { Hull: 0, "Man United": 0 },
+    clubEloPriorStrength: 8,
+  };
+}
+
+describe("fitted Dixon-Coles admissibility", () => {
+  it.each([
+    { home: 4, away: 2, rho: -0.3, rejectedCell: "0-1" },
+    { home: 2, away: 4, rho: -0.3, rejectedCell: "1-0" },
+    { home: 2, away: 2, rho: 0.3, rejectedCell: "0-0" },
+    { home: 0.5, away: 0.5, rho: 1.1, rejectedCell: "1-1" },
+  ])("rejects a negative $rejectedCell correction even if the observed score could be 2-2", ({ home, away, rho }) => {
+    expect(forecastFittedDixonColes(rateParams(home, away, rho), "Hull", "Man United")).toBeNull();
+  });
+
+  it.each([-0.25, 0, 0.125])("accepts admissible zero-boundary and interior corrections: rho=%s", (rho) => {
+    const forecast = forecastFittedDixonColes(rateParams(4, 2, rho), "Hull", "Man United");
+    expect(forecast).not.toBeNull();
+    expect(forecast!.pHome + forecast!.pDraw + forecast!.pAway).toBeCloseTo(1, 12);
+    expect(forecast!.pOver2_5 + forecast!.pUnder2_5).toBeCloseTo(1, 12);
+    expect(forecast!.pBttsYes + forecast!.pBttsNo).toBeCloseTo(1, 12);
+    for (const value of [forecast!.pHome, forecast!.pDraw, forecast!.pAway,
+      forecast!.pOver2_5, forecast!.pUnder2_5, forecast!.pBttsYes, forecast!.pBttsNo]) {
+      expect(Number.isFinite(value)).toBe(true);
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("rejects a correction just beyond an admissible zero boundary", () => {
+    expect(forecastFittedDixonColes(rateParams(4, 2, -0.25000001), "Hull", "Man United")).toBeNull();
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])("rejects nonfinite rho=%s", (rho) => {
+    expect(forecastFittedDixonColes(rateParams(2, 2, rho), "Hull", "Man United")).toBeNull();
+  });
+
+  it("rejects a numerically empty score grid even when all low-score corrections are admissible", () => {
+    expect(forecastFittedDixonColes({ ...rateParams(1, 1, 0), intercept: 9 }, "Hull", "Man United")).toBeNull();
+  });
+
+  it("checks prior-only pair corrections as well as fitted clubs", () => {
+    const params = rateParams(2, 2, -0.1);
+    expect(forecastFittedDixonColes(params, "Arsenal", "Man United", {
+      meanElo: 1700, homeElo: 1850, awayElo: 1700,
+    })?.priorOnly).toBe(true);
+    expect(forecastFittedDixonColes(params, "Arsenal", "Man United", {
+      meanElo: 1700, homeElo: 4000, awayElo: 1700,
+    })).toBeNull();
+  });
+
+  it("rejects inadmissible unobserved cells during training initialization", () => {
+    const kickoff = "2025-01-01T14:00:00Z";
+    const rows = joinTrainingRows([historyFixture("extreme-unobserved", kickoff, 2, 2)],
+      [eloRow("extreme-unobserved", kickoff, "Hull", "Man United", 5000, 1000)]);
+    const fit = fitTimeDecayedDixonColes(rows, { maxIterations: 0 });
+    // The observed 2-2 correction equals 1 for every rho. The other cells
+    // must nevertheless reject the initial -0.1 and trigger the rho=0 fallback.
+    expect(fit.params.rho).toBe(0);
+    expect(Number.isFinite(fit.logLikelihood)).toBe(true);
+    expect(fit.converged).toBe(false);
+  });
+});
+
 describe("fitted Dixon-Coles trainer", () => {
   it("does not report an invalid initial likelihood as zero-step convergence", () => {
     const kickoff = "2025-01-01T14:00:00Z";
@@ -116,7 +189,8 @@ describe("fitted Dixon-Coles trainer", () => {
     const fit = fitTimeDecayedDixonColes(rows, { maxIterations: 5 });
     expect(Number.isFinite(fit.logLikelihood)).toBe(true);
     expect(fit.iterations).toBeGreaterThan(0);
-    expect(fit.converged).toBe(false);
+    // Convergence can occur on a clipped-rate plateau after genuine steps;
+    // this regression guards against an invalid zero-step initialization.
   });
 
   it("fails closed without research artifacts and does not invent parameters", () => {

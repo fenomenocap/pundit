@@ -382,3 +382,29 @@ The resulting source passed 1,204 API tests across 59 files twice, 365 focused
 tests twice and 155 evaluator-harness tests twice. Build and pinned artifact
 verification passed with all 18 golden fixtures unchanged. These checks do not
 replace the required fresh production API/browser/critic certificate.
+
+## Offline fitter numerical repair
+
+The research fitter now requires all four low-score correction factors to be
+finite and nonnegative for each training matchup. An unobserved zero remains
+admissible; the observed likelihood retains its existing `tau > 1e-12` safeguard.
+Forecasts independently reject invalid full grids, record resolved rejections as
+`invalid-score-grid`, and retain those holdout rows. The clipped-rate derivative
+is zero strictly beyond either eta bound, with the existing interior-sided
+endpoint convention retained.
+
+The 41 focused regressions passed twice; the unchanged-source control failed
+11 new cases. Applied to the complete repository, the repair passed 1,230 API
+tests across 59 files twice and the complete API build. All 18 golden production
+forecasts remain unchanged. The independent probe at
+`artifacts/model-qa/mle-gradient-check.cjs` also passed against this repository's
+compiled fitter: 306 finite-difference coordinates and seven admissibility
+cases, with maximum scaled error 1.25e-7. Reproduction details and before/after
+evidence are in `artifacts/model-qa/mle-review.md`.
+
+Clipped stationary convergence does not establish a global optimum, usable
+forecast or calibration, nor resolve the seven historical nonconverged origins.
+Preserve prior reports and require a fresh chronological replay with full
+coverage and paired multi-market uncertainty. The production champion's fixed
+2.70 total, constants, artifact and promotion gates remain unchanged; these
+numerical checks support no promotion.

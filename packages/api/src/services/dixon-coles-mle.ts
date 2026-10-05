@@ -323,6 +323,16 @@ export function fittedDixonColesLambdas(
   };
 }
 
+function admissibleLowScoreCorrections(lambdaHome: number, lambdaAway: number, rho: number): boolean {
+  return Number.isFinite(lambdaHome) && lambdaHome > 0
+    && Number.isFinite(lambdaAway) && lambdaAway > 0
+    && Number.isFinite(rho)
+    && [[0, 0], [0, 1], [1, 0], [1, 1]].every(([home, away]) => {
+      const tau = dixonColesTau(home, away, lambdaHome, lambdaAway, rho);
+      return Number.isFinite(tau) && tau >= 0;
+    });
+}
+
 export function forecastFittedDixonColes(
   params: FittedDixonColesArtifact["params"],
   homeCanonicalName: string,
@@ -332,7 +342,10 @@ export function forecastFittedDixonColes(
   const resolved = fittedDixonColesLambdas(params, homeCanonicalName, awayCanonicalName, priorElo);
   if (!resolved) return null;
   const [lambdaHome, lambdaAway] = resolved.lambdas;
+  if (!admissibleLowScoreCorrections(lambdaHome, lambdaAway, params.rho)) return null;
   const matrix = scoreMatrix(lambdaHome, lambdaAway, params.rho);
+  if (!matrix.every((scores) => scores.every((p) => Number.isFinite(p) && p >= 0))
+    || Math.abs(matrix.flat().reduce((sum, p) => sum + p, 0) - 1) >= 1e-9) return null;
   const [pHome, pDraw, pAway] = matrixTo1x2(matrix);
   const [pOver2_5, pUnder2_5] = matrixToTotals(matrix, 2.5);
   const [pBttsYes, pBttsNo] = matrixToBtts(matrix);
@@ -449,7 +462,7 @@ function objectiveAndGradient(
     const lambdaHome = Math.exp(Math.min(8, Math.max(-8, etaHome)));
     const lambdaAway = Math.exp(Math.min(8, Math.max(-8, etaAway)));
     const tau = dixonColesTau(row.homeGoals, row.awayGoals, lambdaHome, lambdaAway, rho);
-    if (!(tau > 1e-12) || !(lambdaHome > 0) || !(lambdaAway > 0)) {
+    if (!admissibleLowScoreCorrections(lambdaHome, lambdaAway, rho) || !(tau > 1e-12)) {
       const grad = new Float64Array(x.length);
       return { value: Number.NEGATIVE_INFINITY, grad };
     }
@@ -479,13 +492,17 @@ function objectiveAndGradient(
     }
     const dLlh = w * (row.homeGoals / lambdaHome - 1 + dTauDLh / tau);
     const dLla = w * (row.awayGoals / lambdaAway - 1 + dTauDLa / tau);
-    dMu += dLlh * lambdaHome + dLla * lambdaAway;
-    dGamma += dLlh * lambdaHome;
+    // The rate is constant outside the eta clamp, so its chain derivative is zero.
+    // At the nondifferentiable endpoints retain the interior-sided convention.
+    const dHomeDEta = etaHome < -8 || etaHome > 8 ? 0 : dLlh * lambdaHome;
+    const dAwayDEta = etaAway < -8 || etaAway > 8 ? 0 : dLla * lambdaAway;
+    dMu += dHomeDEta + dAwayDEta;
+    dGamma += dHomeDEta;
     dRho += w * (dTauDRho / tau);
-    dAttack[h] += dLlh * lambdaHome;
-    dDefence[a] += dLlh * lambdaHome;
-    dAttack[a] += dLla * lambdaAway;
-    dDefence[h] += dLla * lambdaAway;
+    dAttack[h] += dHomeDEta;
+    dDefence[a] += dHomeDEta;
+    dAttack[a] += dAwayDEta;
+    dDefence[h] += dAwayDEta;
   }
 
   for (let i = 0; i < n; i += 1) {
