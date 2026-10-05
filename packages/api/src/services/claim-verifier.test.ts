@@ -1,7 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { RetrievedEvidencePage } from "./evidence-page-retrieval";
-import { verifyClaimsOnce } from "./claim-verifier";
+import {
+  downgradeSpuriousEntityConflicts,
+  namedEntitiesForConflictReconcile,
+  verifyClaimsOnce,
+} from "./claim-verifier";
 
 const claims = [
   { id: "C1", text: "The manager was appointed on Monday." },
@@ -71,6 +75,53 @@ describe("one-call claim verifier", () => {
         else process.env[name] = value;
       }
     }
+  });
+
+  it("downgrades a conflict on the same named entity when another claim is supported", async () => {
+    const artetaClaims = [
+      {
+        id: "C1",
+        text: "Mikel Arteta agreed an improved contract extension on 22 September 2026 that could keep him at Arsenal until 2030 [[S1]].",
+      },
+      {
+        id: "C2",
+        text: "Mikel Arteta remains Arsenal manager after the club improved his contract [[S1]].",
+      },
+    ];
+    const { client } = clientReturning(JSON.stringify({
+      decisions: [
+        { claimId: "C1", outcome: "supported", evidenceIds: ["S1"] },
+        { claimId: "C2", outcome: "conflict", evidenceIds: ["S1"], explanation: "Wording differs." },
+      ],
+      summary: "Checked.",
+    }));
+    expect(await verifyClaimsOnce(client, artetaClaims, pages)).toMatchObject({
+      status: "verified",
+      decisions: [
+        { claimId: "C1", outcome: "supported", evidenceIds: ["S1"] },
+        { claimId: "C2", outcome: "unsupported", evidenceIds: [] },
+      ],
+    });
+  });
+
+  it("keeps a genuine manager conflict when supported and conflict name different people", () => {
+    const decisions = downgradeSpuriousEntityConflicts(
+      [
+        { id: "C1", text: "Mikel Arteta is Arsenal manager [[S1]]." },
+        { id: "C2", text: "Pat Doe is Arsenal manager [[S2]]." },
+      ],
+      [
+        { claimId: "C1", outcome: "supported", evidenceIds: ["S1"] },
+        { claimId: "C2", outcome: "conflict", evidenceIds: ["S2"] },
+      ]
+    );
+    expect(decisions[1]?.outcome).toBe("conflict");
+  });
+
+  it("extracts multi-word names and surnames for conflict reconciliation", () => {
+    expect(namedEntitiesForConflictReconcile("Mikel Arteta agreed a deal.")).toEqual(
+      expect.arrayContaining(["mikel arteta", "arteta"])
+    );
   });
 
   it("preserves conflict outcomes rather than silently selecting a source", async () => {
