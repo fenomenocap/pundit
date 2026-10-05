@@ -111,9 +111,14 @@ const STOPWORDS = new Set([
   "see", "all", "more", "click", "here", "nil", "chance", "double", "winner",
   "compare", "filter", "share", "sort", "oddschecker", "betfair", "select",
   "reset", "apply", "cookies", "privacy", "newsletter",
+  "back", "return", "returns", "returning", "date", "dates", "status", "fitness",
+  "injuries", "absence", "absences", "expected", "potential", "possible", "unknown",
+  "defender", "midfielder", "goalkeeper", "striker", "captain", "manager", "coach",
+  "match", "kick", "tickets",
+  "if", "when", "unless", "whether", "unavailable", "injured",
 ]);
 
-const NAME = /\b([A-Z][a-zÀ-ÿ]+(?:\s+[A-Z][a-zÀ-ÿ]+){0,2})\b/g;
+const NAME = /(?<![\p{L}\p{M}'’\-])(\p{Lu}[\p{L}\p{M}]*(?:['’\-][\p{L}\p{M}]+)*(?:\s+\p{Lu}[\p{L}\p{M}]*(?:['’\-][\p{L}\p{M}]+)*){0,3})(?![\p{L}\p{M}'’\-])/gu;
 const MARKET_CUE = /\b(?:anytime(?:\s+scorer)?|first(?:\s+(?:goal\s+)?scorer)?|goal\s*scorers?|to score(?:\s+anytime)?|player props?|scorer odds|scorers?)\b/i;
 const STARTS_CUE = /\b(?:expected to start|confirmed to start|starts|in the (?:starting )?xi|named in the xi)\b/i;
 const OUT_CUE = /\b(?:ruled out|doubtful|injured|suspended|misses? out|unavailable|out of the (?:side|xi))\b/i;
@@ -171,6 +176,17 @@ function teamForPlayer(
   return affiliated;
 }
 
+function teamForNamedPlayer(window: string, playerName: string, fixture: PlayerFixtureRef): string | null {
+  const at = window.toLocaleLowerCase().indexOf(playerName.toLocaleLowerCase());
+  if (at < 0) return null;
+  const following = teamForPlayer(window.slice(at), fixture);
+  if (following) return following;
+  const preceding = new RegExp(`\\b(${escapeRegExp(fixture.home)}|${escapeRegExp(fixture.away)})['’]s\\s*$`, "i")
+    .exec(window.slice(0, at));
+  return preceding?.[1].toLocaleLowerCase() === fixture.home.toLocaleLowerCase() ? fixture.home
+    : preceding ? fixture.away : null;
+}
+
 function stripMarketChrome(text: string): string {
   return text.replace(/\bsee all odds\b/gi, " ");
 }
@@ -200,7 +216,8 @@ function isPersonName(raw: string, fixture: PlayerFixtureRef): boolean {
     return false;
   }
   const parts = lower.split(/\s+/);
-  return !STOPWORDS.has(parts[0] ?? "") && !STOPWORDS.has(parts[parts.length - 1] ?? "");
+  return parts.every((part, index) => !STOPWORDS.has(part)
+    || (index === 0 && part === "will" && parts.length > 1));
 }
 
 function parseObservedAt(date: string, kickoff: string): { ok: boolean; at: string | null } {
@@ -217,7 +234,8 @@ function collectNames(text: string, fixture: PlayerFixtureRef): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
   for (const match of text.matchAll(NAME)) {
-    const candidate = match[1];
+    const affiliation = new RegExp(`^(?:${escapeRegExp(fixture.home)}|${escapeRegExp(fixture.away)})['’]s\\s+`, "i");
+    const candidate = match[1]?.replace(affiliation, "");
     if (!candidate || !isPersonName(candidate, fixture)) continue;
     const id = slug(candidate);
     if (seen.has(id)) continue;
@@ -252,38 +270,21 @@ function availabilityType(text: string): PlayerEvidenceType | null {
   return null;
 }
 
-type AvailabilityKind = "confirmed-lineup" | "expected-lineup" | "availability";
+type BoundAvailabilityStatus = { kind: PlayerEvidenceType; value: "out" | "doubtful" | "injured" | "suspended" | "start" };
 
-function nearestAvailabilityType(window: string, playerName: string): PlayerEvidenceType | null {
+function boundAvailabilityStatus(window: string, playerName: string): BoundAvailabilityStatus | null {
   const nameAt = window.toLocaleLowerCase().indexOf(playerName.toLocaleLowerCase());
-  if (nameAt < 0) return availabilityType(window);
-  const cues: Array<{ kind: AvailabilityKind; at: number; len: number }> = [];
-  const collect = (pattern: RegExp, kind: AvailabilityKind) => {
-    for (const match of window.matchAll(new RegExp(pattern, "gi"))) {
-      if (match.index == null) continue;
-      cues.push({ kind, at: match.index, len: match[0].length });
-    }
-  };
-  collect(/\bconfirmed to start|named in the xi\b/i, "confirmed-lineup");
-  collect(STARTS_CUE, "expected-lineup");
-  collect(OUT_CUE, "availability");
-  if (!cues.length) return null;
-  cues.sort((left, right) => {
-    const distance = (cue: { at: number; len: number }) =>
-      Math.min(Math.abs(cue.at - nameAt), Math.abs(cue.at + cue.len - nameAt));
-    const delta = distance(left) - distance(right);
-    if (delta !== 0) return delta;
-    const rank = { "confirmed-lineup": 0, "expected-lineup": 1, availability: 2 } as const;
-    return rank[left.kind] - rank[right.kind];
-  });
-  const nearest = cues[0];
-  if (!nearest) return null;
-  const dist = Math.min(
-    Math.abs(nearest.at - nameAt),
-    Math.abs(nearest.at + nearest.len - nameAt)
-  );
-  if (dist > 40) return null;
-  return nearest.kind;
+  if (nameAt < 0) return null;
+  if (/\b(?:if|unless|whether|when|should|in case)\b[^.!?;,|\n]*$/i.test(window.slice(0, nameAt))) return null;
+  // The named subject must carry its own status. A nearby cue can describe
+  // another player or a return-date heading rather than this person.
+  const afterName = window.slice(nameAt + playerName.length);
+  const status = /^\s*(?:\([^()\n]{1,40}\)\s*)?(?:[:–—-]\s*)?(?:(?:is|was|remains|will be|has been)\s+)?(?:(?:currently|still|already)\s+)?(?:(?:listed|reported)\s+as\s+)?(confirmed to start|named in the xi|expected to start|starts|in the (?:starting )?xi|ruled out|doubtful|injured|suspended|misses? out|unavailable|out of the (?:side|xi))\b/i.exec(afterName);
+  const kind = status ? availabilityType(status[1]) : null;
+  if (!kind || !status) return null;
+  const word = status[1].toLocaleLowerCase();
+  return { kind, value: kind !== "availability" ? "start"
+    : word === "doubtful" || word === "injured" || word === "suspended" ? word : "out" };
 }
 
 function parseDecimalOdds(text: string): number | null {
@@ -364,7 +365,7 @@ export function extractPlayerEvidence(
           if (!MARKET_CUE.test(window) && !MARKET_CUE.test(segment)) continue;
           const odds = nearestOdds(window, playerName);
           if (!inRange(odds)) continue;
-          const teamId = teamForPlayer(window, fixture);
+          const teamId = teamForNamedPlayer(window, playerName, fixture);
           if (!teamId) continue;
           const key = `${slug(playerName)}:${odds.toFixed(2)}:${source.id}`;
           if (seenMarket.has(key)) continue;
@@ -392,30 +393,30 @@ export function extractPlayerEvidence(
       const lower = haystack.toLocaleLowerCase();
       const needle = playerName.toLocaleLowerCase();
       let from = 0;
-      let kind: PlayerEvidenceType | null = null;
+      let status: BoundAvailabilityStatus | null = null;
       let window = "";
       while (from < lower.length) {
         const idx = lower.indexOf(needle, from);
         if (idx < 0) break;
         window = localClaimWindow(haystack, idx, playerName.length);
-        kind = nearestAvailabilityType(window, playerName);
-        if (kind) break;
+        status = boundAvailabilityStatus(window, playerName);
+        if (status) break;
         from = idx + needle.length;
       }
-      if (!kind) continue;
+      if (!status) continue;
       const playerId = slug(playerName);
-      const key = `${playerId}:${kind}:${source.id}`;
+      const key = `${playerId}:${status.kind}:${status.value}:${source.id}`;
       if (seenAvailability.has(key)) continue;
       seenAvailability.add(key);
-      const teamId = teamForPlayer(window, fixture);
+      const teamId = teamForNamedPlayer(window, playerName, fixture);
       if (!teamId) continue;
       const row: PlayerEvidence = {
         playerId,
         playerName,
         teamId,
         fixtureId: fixture.fixtureId,
-        evidenceType: kind,
-        value: kind === "availability" ? "out" : "start",
+        evidenceType: status.kind,
+        value: status.value,
         sourceId: source.id,
         observedAt,
         effectiveAt: observedAt,
@@ -430,7 +431,7 @@ export function extractPlayerEvidence(
   const conflicted = new Set<string>();
   for (const [playerId, rows] of availabilityByPlayer) {
     const starts = rows.some((row) => row.value === "start");
-    const out = rows.some((row) => row.value === "out");
+    const out = rows.some((row) => row.evidenceType === "availability" && (row.value === "out" || row.value === "suspended"));
     if (starts && out) conflicted.add(playerId);
   }
 
