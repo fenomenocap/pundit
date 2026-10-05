@@ -6008,3 +6008,112 @@ describe("evidence attached to a match turn", () => {
     expect(turn.content.indexOf("S1")).toBeLessThan(turn.content.lastIndexOf(MATCH_JSON_REMINDER));
   });
 });
+
+describe("settled player news requires exact current-claim verification", () => {
+  it.each([
+    { label: "actual Back identity fragment", snippet: "Back (Arsenal) is unavailable.", outcome: "supported", accepted: false, extracted: false },
+    { label: "different-player heading proximity", snippet: "Saka (Arsenal) trained. Return dates for Kai Havertz are beside an unavailable-player heading.", outcome: "supported", accepted: false, extracted: false },
+    { label: "hypothetical absence", snippet: "If Bukayo Saka (Arsenal) is ruled out, another player could deputise.", outcome: "supported", accepted: false, extracted: false },
+    { label: "negated absence", snippet: "Saka (Arsenal) is not ruled out.", outcome: "supported", accepted: false, extracted: false },
+    { label: "doubtful does not establish unavailable", snippet: "Kai Havertz (Arsenal) is doubtful for Arsenal vs Leeds.", outcome: "supported", accepted: true, extracted: true, exactStatus: "doubtful" },
+    { label: "injury does not establish absence", snippet: "Kai Havertz (Arsenal) is injured but remains available for Arsenal.", outcome: "supported", accepted: true, extracted: true, exactStatus: "injured" },
+    { label: "suspension is preserved", snippet: "Kai Havertz (Arsenal) is suspended.", outcome: "supported", accepted: true, extracted: true, exactStatus: "suspended" },
+    { label: "verified full-name availability", snippet: "Kai Havertz (Arsenal) is ruled out.", outcome: "supported", accepted: true, extracted: true },
+    { label: "verified Unicode identity", snippet: "Martin Ødegaard (Arsenal) is ruled out.", outcome: "supported", accepted: true, extracted: true, named: "Martin Ødegaard" },
+    { label: "verified surname lineup", snippet: "Saka (Arsenal) is confirmed to start.", outcome: "supported", accepted: true, extracted: true },
+    { label: "unsupported named absence", snippet: "Kai Havertz (Arsenal) is ruled out.", outcome: "unsupported", accepted: false, extracted: true },
+    { label: "conflicting named absence", snippet: "Kai Havertz (Arsenal) is ruled out.", outcome: "conflict", accepted: false, extracted: true },
+    { label: "unavailable verifier", snippet: "Kai Havertz (Arsenal) is ruled out.", outcome: "unavailable", accepted: false, extracted: true },
+    { label: "undated named absence", snippet: "Kai Havertz (Arsenal) is ruled out.", outcome: "supported", accepted: false, extracted: false, undated: true },
+    { label: "verified scorer quote and lineup", snippet: "Saka anytime 2.10 for Arsenal; Saka expected to start for Arsenal.", outcome: "supported", accepted: true, extracted: true, scorer: true },
+    { label: "unsupported scorer quote and lineup", snippet: "Saka anytime 2.10 for Arsenal; Saka expected to start for Arsenal.", outcome: "unsupported", accepted: false, extracted: true, scorer: true },
+  ])("does not grant verification from citation count: $label", async ({ snippet, outcome, accepted, extracted, undated, scorer, exactStatus, named }) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+    await refreshClubRatings(new Date());
+    const kickoff = "2026-10-06T15:00:00Z";
+    const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const source = { title: "Arsenal vs Leeds team news", link: "https://www.arsenal.com/news/dated-team-news",
+      snippet: `Arsenal vs Leeds. ${snippet}`, date: undated ? "" : "2026-10-04" };
+    const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
+    const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({
+      ...candidate, finalUrl: candidate.url, text: source.snippet, retrievedAt: new Date().toISOString(),
+    })));
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
+      if (outcome === "unavailable") return Promise.reject(new Error("Provider unavailable")) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
+      expect(data.claims.length).toBeGreaterThan(0);
+      expect(data.claims.every((claim: { text: string }) => named ? claim.text.includes(named) : /Saka|Kai Havertz/.test(claim.text))).toBe(true);
+      return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: data.claims.map((claim: { id: string }) => ({
+        claimId: claim.id, outcome, evidenceIds: ["S1"],
+      })), summary: "Exact claim assessed." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    searchWeb.mockReset(); searchWeb.mockResolvedValue([source]);
+    const question = scorer ? "Who is most likely to score for Arsenal?" : "Any injury or lineup news for Arsenal vs Leeds?";
+    try {
+      const context = { fixtureId: espnFixtureIdentity(model) };
+      for (const voice of [undefined, "desk"] as const) {
+        const result = await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, context, undefined, voice);
+        expect(result.grounding?.kind).toBe("match");
+        if (accepted) {
+          if (named) expect(result.answer).toContain(named);
+          else expect(result.answer).toMatch(/Kai Havertz|Saka/);
+          expect(result.answer).toContain(source.link);
+          expect(result.verification?.status).toBe("verified");
+          expect(result.verification?.supportedClaimCount).toBeGreaterThan(0);
+          expect(result.citations?.[0]?.date).toMatch(/2026-10-04/);
+          if (exactStatus) {
+            expect(result.answer).toContain(`listed as ${exactStatus}`);
+            expect(result.answer).not.toContain("listed as unavailable");
+          }
+        } else {
+          expect(result.answer).not.toMatch(/Kai Havertz|Saka|Back \(Arsenal\)|2\.10/);
+          expect(result.answer).toMatch(/verified|verify/i);
+          expect(result.citations ?? []).toEqual([]);
+          expect(result.verification?.supportedClaimCount).toBe(0);
+          expect(result.verification?.status).toBe(outcome === "conflict" ? "conflict" : outcome === "unavailable" ? "unavailable" : "abstain");
+        }
+        expect(result.answer).not.toMatch(/My 1X2|\[\[S1\]\]/);
+      }
+      const deltas: string[] = [];
+      const streamed = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], {
+        onGrounding: () => {}, onDelta: (text) => deltas.push(text),
+      }, context);
+      expect(deltas).toEqual([streamed.answer]);
+      expect(streamed.verification?.supportedClaimCount ?? 0).toBe(accepted ? scorer ? 2 : 1 : 0);
+      if (named) expect(streamed.answer).toContain(named);
+      if (exactStatus) {
+        expect(streamed.answer).toContain(`listed as ${exactStatus}`);
+        expect(streamed.answer).not.toContain("listed as unavailable");
+      }
+      if (!accepted) {
+        expect(deltas.join("")).not.toMatch(/Kai Havertz|Saka|Back \(Arsenal\)|2\.10/);
+        expect(streamed.citations ?? []).toEqual([]);
+      }
+      expect(create).toHaveBeenCalledTimes(extracted ? 3 : 0);
+      expect(retrieve.mock.calls.every((call) => Boolean(call[2]?.cache))).toBe(true);
+    } finally {
+      create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore();
+      vi.useRealTimers();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+
+  it("does not append an unchecked parsed availability wrinkle after prose verification", async () => {
+    const grounding = buildGrounding(fixture("Arsenal", "Leeds"));
+    const result = await deliverAnswer({ answer: "If Arsenal press high, Leeds could attack the space behind.",
+      question: "Tactical matchup", tier: "match", grounding, voice: "desk", evidenceRequired: true,
+      candidateUnrecognized: false, client: {} as never,
+      bundle: { queries: ["team news"], providerCalls: 0, results: [{ id: "S1", tier: "official", title: "Arsenal vs Leeds team news",
+        url: "https://www.arsenal.com/news/team-news", date: "2026-08-01", snippet: "Arsenal vs Leeds. Kai Havertz (Arsenal) is ruled out." }] } });
+    expect(result.answer).not.toContain("Kai Havertz");
+    expect(result.citations).toEqual([]);
+    expect(result.verification.supportedClaimCount).toBe(0);
+  });
+});

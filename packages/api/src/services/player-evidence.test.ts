@@ -2,7 +2,7 @@ import { buildGrounding, deliverAnswer } from "./ask";
 import { fixture as modelFixture } from "./__fixtures__/model-fixture";
 import * as footballData from "./football-data";
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { composeMatchResponse, composePlayerScorerAnswer, composeTeamNewsAnswer } from "./response-composer";
+import { composeDeskSourcedWrinkle, composeMatchResponse, composePlayerScorerAnswer, composeTeamNewsAnswer } from "./response-composer";
 import { planResponse } from "./response-plan";
 import {
   PLAYER_SCORER_ABSTENTION,
@@ -36,6 +36,79 @@ const source = (over: Partial<PlayerEvidenceSource> = {}): PlayerEvidenceSource 
 });
 
 describe("player evidence adapter", () => {
+  it.each([
+    "Back (Arsenal) is unavailable.",
+    "Unavailable (Arsenal) is injured.",
+    "Return Dates for Arsenal: unavailable players follow.",
+    "Captain for Arsenal is injured.",
+    "If Bukayo Saka (Arsenal) is ruled out, another player could deputise.",
+    "if Saka (Arsenal) is ruled out, another player could deputise.",
+    "Saka (Arsenal) is not ruled out.",
+    "In case Bukayo Saka (Arsenal) is ruled out, another player could deputise.",
+    "Kai Havertz return dates for Arsenal are listed near an unavailable-player heading.",
+  ])("does not turn descriptor, hypothetical or negated status into a person claim: %s", (snippet) => {
+    const bundle = extractPlayerEvidence([source({ title: "Arsenal vs Chelsea team news", snippet })], fixture);
+    expect(bundle.observations).toEqual([]);
+    expect(hasTeamNewsEvidence(bundle)).toBe(false);
+  });
+
+  it.each(["doubtful", "injured", "suspended"])("preserves the exact %s status in team news and desk wrinkles", (status) => {
+    const bundle = extractPlayerEvidence([source({ title: "Arsenal vs Chelsea team news",
+      snippet: `Kai Havertz (Arsenal) is ${status}.` })], fixture);
+    expect(bundle.observations[0]?.value).toBe(status);
+    const grounding = { kind: "match", fixtureId: fixture.fixtureId, home: fixture.home, away: fixture.away, date: fixture.kickoff } as never;
+    for (const answer of [composeTeamNewsAnswer(grounding, bundle), composeDeskSourcedWrinkle(bundle)]) {
+      expect(answer).toContain(`listed as ${status}`);
+      expect(answer).not.toContain("listed as unavailable");
+    }
+  });
+
+  it("treats suspension/start conflict conservatively without turning injury into categorical absence", () => {
+    const out = source({ title: "Arsenal vs Chelsea team news", snippet: "Saka (Arsenal) is suspended." });
+    const starts = source({ id: "S2", title: out.title, snippet: "Saka (Arsenal) is expected to start." });
+    expect(extractPlayerEvidence([out, starts], fixture).observations).toEqual([]);
+    const injured = { ...out, snippet: "Saka (Arsenal) is injured." };
+    expect(extractPlayerEvidence([injured, starts], fixture).observations.map((row) => row.value)).toEqual(["injured", "start"]);
+  });
+
+  it("does not turn an unsupported availability value into unavailable copy", () => {
+    const bundle = extractPlayerEvidence([source({ title: "Arsenal vs Chelsea team news",
+      snippet: "Kai Havertz (Arsenal) is ruled out." })], fixture);
+    bundle.observations[0].value = "available";
+    const grounding = { kind: "match", fixtureId: fixture.fixtureId, home: fixture.home, away: fixture.away, date: fixture.kickoff } as never;
+    expect(composeTeamNewsAnswer(grounding, bundle)).toBe(TEAM_NEWS_COMPOSE_ABSTENTION);
+    expect(composeDeskSourcedWrinkle(bundle)).toBeNull();
+  });
+
+  it("binds each named subject to its own status and club, including direct surnames and mononyms", () => {
+    const bundle = extractPlayerEvidence([source({ title: "Arsenal vs Chelsea team news",
+      snippet: "Saka (Arsenal) trained. Kai Havertz (Arsenal) is ruled out. Palmer (Chelsea) is expected to start. Arsenal’s Martin Odegaard is confirmed to start." })], fixture);
+    expect(bundle.observations.map(({ playerName, teamId, value }) => ({ playerName, teamId, value }))).toEqual([
+      { playerName: "Kai Havertz", teamId: "Arsenal", value: "out" },
+      { playerName: "Palmer", teamId: "Chelsea", value: "start" },
+      { playerName: "Martin Odegaard", teamId: "Arsenal", value: "start" },
+    ]);
+    const mononym = extractPlayerEvidence([source({ title: "Arsenal vs Chelsea team news",
+      snippet: "Evanilson (Chelsea) is unavailable. Saka (Arsenal) is expected to start." })], fixture);
+    expect(mononym.observations.map((row) => row.playerName)).toEqual(["Evanilson", "Saka"]);
+  });
+
+  it("does not inherit a different named subject's preceding club affiliation", () => {
+    const bundle = extractPlayerEvidence([source({ title: "Arsenal vs Chelsea team news",
+      snippet: "Kai Havertz for Arsenal watched Palmer is ruled out for Chelsea." })], fixture);
+    expect(bundle.observations.map(({ playerName, teamId }) => ({ playerName, teamId }))).toEqual([
+      { playerName: "Palmer", teamId: "Chelsea" },
+    ]);
+  });
+
+  it.each(["Martin Ødegaard", "João Pedro", "N'Golo Kanté", "Dominic Calvert-Lewin", "Will Hughes"])(
+    "preserves the exact supported person name %s without clipping", (playerName) => {
+      const bundle = extractPlayerEvidence([source({ title: "Arsenal vs Chelsea team news",
+        snippet: `${playerName} (Arsenal) is ruled out.` })], fixture);
+      expect(bundle.observations.map((row) => row.playerName)).toEqual([playerName]);
+      expect(bundle.observations[0]?.teamId).toBe("Arsenal");
+      expect(bundle.observations[0]?.value).toBe("out");
+    });
   it("extracts a dated player-market quote bound to the fixture", () => {
     const bundle = extractPlayerEvidence([source()], fixture);
     expect(hasTrustworthyPlayerEvidence(bundle)).toBe(true);

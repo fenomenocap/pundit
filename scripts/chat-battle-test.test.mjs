@@ -2062,6 +2062,40 @@ test("team-news guard rejects an unsourced availability claim", () => {
   assert.equal(validateTeamNewsDiscipline("").passed, false);
 });
 
+test("team-news guard rejects the actual cited generic player subject from production", () => {
+  const actual = "Back (Arsenal) is listed as unavailable according to a source ([Arsenal FC injury update: Christos Tzolis, Kai Havertz, Declan Rice latest news and return dates | The Standard](https://www.standard.co.uk/sport/football/arsenal-fc-injury-update-tzolis-havertz-rice-latest-news-return-dates-b1299475.html), 2026-10-05T09:42:23.000Z) (5 October 2026). That is sourced availability, not a revised match forecast.";
+  const result = validateTeamNewsDiscipline(actual);
+  assert.equal(result.passed, false);
+  assert.equal(result.assertions.teamNewsSourced, true);
+  assert.equal(result.assertions.teamNewsSubjectIdentified, false);
+  assert.match(result.failures.join(" "), /generic page descriptor/);
+});
+
+test("team-news subject guard catches descriptor variants even after a safe abstention", () => {
+  for (const name of ["Back", "Return", "News", "Injury", "Lineup", "Confirmed", "Defender", "Forward"]) {
+    const result = validateTeamNewsDiscipline(`No verified team news was established. **${name}** (Arsenal) is unavailable according to BBC Sport (5 October 2026).`);
+    assert.equal(result.passed, false, name);
+    assert.equal(result.assertions.teamNewsSubjectIdentified, false, name);
+  }
+  for (const subject of ["**Back (Arsenal)**", "- Back (Arsenal)", "1. __Back (Arsenal)__"]) {
+    const result = validateTeamNewsDiscipline(`${subject} is unavailable according to BBC Sport (5 October 2026).`);
+    assert.equal(result.passed, false, subject);
+    assert.equal(result.assertions.teamNewsSubjectIdentified, false, subject);
+  }
+});
+
+test("team-news subject guard retains names, mononyms, and ordinary football discussion", () => {
+  for (const text of [
+    "Kai Havertz (Arsenal) is listed as unavailable according to BBC Sport (5 October 2026).",
+    "Wissa (Brentford) is unavailable according to BBC Sport (5 October 2026).",
+    "Evanilson (Bournemouth) is confirmed to start according to BBC Sport (5 October 2026).",
+    "Alex Back (Arsenal) is unavailable according to BBC Sport (5 October 2026).",
+    "A full-back can cover the runner if the press is bypassed; that is a tactical possibility.",
+  ]) {
+    assert.equal(validateTeamNewsDiscipline(text).passed, true, text);
+  }
+});
+
 test("match grounding reports market-source coverage and can assert it", () => {
   const thin = {
     kind: "match",
