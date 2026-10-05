@@ -495,6 +495,88 @@ describe("complete standalone football lessons", () => {
     }
   });
 
+  it.each(["default", "desk", "sse"] as const)("answers every requested part of a composite briefing through $delivery", async (delivery) => {
+    await refreshClubRatings(new Date());
+    const kickoff = new Date(Date.now() + 86_400_000).toISOString();
+    const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10), pHome: 0.767, pDraw: 0.175, pAway: 0.058 });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation(() => { throw new Error("Unexpected provider call"); });
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      const context = { fixtureId: espnFixtureIdentity(model) };
+      for (const question of [
+        "Give me the match briefing for Arsenal vs Leeds. Tactics, who decides it, and the model lean.",
+        "Give me the match briefing for Arsenal vs Leeds.",
+        "Preview Arsenal vs Leeds with tactics, deciding roles and the model lean.",
+      ]) {
+        const deltas: string[] = [];
+        const result = delivery === "sse"
+          ? await answerQuestionStream(question, [], ["Arsenal", "Leeds"], {
+            onGrounding: () => {}, onDelta: (text) => deltas.push(text),
+          }, context)
+          : await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, context, undefined, delivery === "desk" ? "desk" : undefined);
+        {
+          expect(result.grounding?.kind).toBe("match");
+          expect(result.answer, question + " / " + delivery).toMatch(/full 1X2 is Arsenal 76\.7%, draw 17\.5% and Leeds 5\.8%/);
+          expect(result.answer).toMatch(/first press.*supporting receiver.*turnover/);
+          expect(result.answer.indexOf("first press")).toBeLessThan(result.answer.indexOf("Both teams to score"));
+          expect(result.answer).toContain("less cover against a counterattack");
+          expect(result.answer).toMatch(/screening midfielder.*full-back/);
+          expect(result.answer).toMatch(/striker.*cut-back/);
+          expect(result.answer).toContain("roles to watch");
+          expect(result.answer).not.toMatch(/Saka|Havertz|Bamford|guaranteed|will score|will start/i);
+          expect(result.verification.status).toBe("not-required");
+        }
+        expect(result.answer).toBe(closedGroundedAnswer(question, buildGrounding(model)));
+        if (delivery === "sse") expect(deltas).toEqual([result.answer]);
+      }
+      for (const question of ["What are the 1X2 probabilities?", "Is Arsenal vs Leeds over 2.5?", "Projected score"]) {
+        const numeric = await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, context);
+        expect(numeric.answer).not.toMatch(/first press|roles to watch|screening midfielder/);
+      }
+      expect(create).not.toHaveBeenCalled();
+      expect(searchWeb).not.toHaveBeenCalled();
+    } finally {
+      cached.mockRestore();
+      create.mockRestore();
+    }
+  });
+
+  it("does not let a composite briefing skip its explicit current-injury search", async () => {
+    await refreshClubRatings(new Date());
+    const kickoff = new Date(Date.now() + 86_400_000).toISOString();
+    const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockResolvedValue({
+      content: [{ type: "text", text: "I cannot verify any current injury update." }], stop_reason: "end_turn",
+    } as Anthropic.Message);
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      const question = "Give me the match briefing for Arsenal vs Leeds. Tactics, who decides it, and the model lean, with today's injuries.";
+      expect(closedGroundedAnswer(question, buildGrounding(model))).toBeNull();
+      const context = { fixtureId: espnFixtureIdentity(model) };
+      for (const voice of [undefined, "desk"] as const) {
+        searchWeb.mockClear();
+        const result = await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, context, undefined, voice);
+        expect(searchWeb).toHaveBeenCalled();
+        expect(result.answer).not.toMatch(/Saka|Havertz|Bamford|will start|available today/i);
+      }
+      searchWeb.mockClear();
+      const stream = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: () => {} }, context);
+      expect(searchWeb).toHaveBeenCalled();
+      expect(stream.answer).not.toMatch(/Saka|Havertz|Bamford|will start|available today/i);
+    } finally {
+      cached.mockRestore();
+      create.mockRestore();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+
   it.each([
     { question: "Who is Arsenal's manager today?", unsupported: "Pat Doe is Arsenal's current manager." },
     { question: "What was Arsenal's latest result?", unsupported: "Arsenal won 3-0 yesterday." },

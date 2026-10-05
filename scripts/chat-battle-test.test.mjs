@@ -3782,3 +3782,76 @@ test("required foreign-season scenario preserves the EPL table history without p
   assert.equal(scenario.turns[2].question, "Can Arsenal win the league cup?");
   assert.match(scenario.turns[3].question, /Bayern.*Bundesliga.*relegation/);
 });
+
+test("actual homepage and plain briefing number boards fail football request fidelity", () => {
+  // Identical delivered answers to both briefing prompts in production run
+  // 2026-10-05T02-45-15-359Z. Keep this failure distinct from valid narrow odds answers.
+  const actualNumberBoard = "I make Arsenal the likeliest outcome at 76.7%. For 10 October 2026, my full 1X2 is Arsenal 76.7%, draw 17.5% and Leeds 5.8%.\n\nBoth teams to score is 34.7%. The leading scorelines are 2-0 (16.6%), 1-0 (14.2%), 3-0 (12.3%). I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.\n\nKalshi market-implied probabilities: Arsenal 70.6%, draw 17.6%, Leeds 11.8%. Polymarket market-implied probabilities: Arsenal 70.9%, draw 18.6%, Leeds 10.6%. On Arsenal, I am at 76.7% and Kalshi is at 70.6%: I am 6.1 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.\n\nPundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Arsenal 73.6%, draw 19.0% and Leeds 7.4%.\n\nI would revisit the read only after verified team news or a materially different line from the source named above; I can\u2019t assign a lineup effect from these facts alone.";
+  for (const expectDecisiveRoles of [false, true]) {
+    const result = validateResponseCorrectness(actualNumberBoard, [], null, {
+      expectFootballTake: true, expectConditionalTactics: true,
+      expectBriefingConditionalMechanism: true, expectDecisiveRoles,
+    });
+    assert.equal(result.passed, false);
+    assert.equal(result.assertions.footballTakeMechanism, false);
+    assert.equal(result.assertions.briefingConditionalMechanism, false);
+    if (expectDecisiveRoles) assert.equal(result.assertions.decisiveRoleMechanism, false);
+  }
+  assert.equal(validateResponseCorrectness(actualNumberBoard, [], null, {}).passed, true);
+});
+
+test("briefings accept natural conditional mechanisms and useful decisive roles", () => {
+  for (const answer of [
+    "I lean to Arsenal. If Arsenal press high, they could force Leeds wide and deny a central pass, but leave space behind for a counter. If the midfielder turns beyond the press, they could release a runner behind the defence.",
+    "My lean stays with the home side. Should Leeds close the central lanes, Arsenal could use width to pull a defender out and create a cut-back. The risk is less cover against a counterattack. The striker's movement could draw a defender away and open space for a runner.",
+    "If the away side sits in a low block, width could stretch their defence and create space for a cut-back. However, the full-backs advancing could leave space for a counter. A keeper who wins the ball could release a runner before the defence recovers.",
+    "I make Arsenal the likeliest outcome at 76.7%. For 10 October 2026, my full 1X2 is Arsenal 76.7%, draw 17.5% and Leeds 5.8%.\n\nBoth teams to score is 52.0%. The leading scorelines are 1-1 (12.0%). I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.\n\nI lean to Arsenal at home. If Arsenal draw Leeds's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Leeds close the central passing lanes, Arsenal could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.\n\nI\u2019d watch the receiver beyond the first press, the screening midfielder covering for an advancing full-back, and the striker attacking a cut-back. If the receiver can turn, they could connect the attack; if the screening midfielder is pulled towards the ball, a runner could exploit the space behind; if the striker times the run, they could reach the delivery before a defender. Those are roles to watch, not a claim about confirmed starters or a player scoring forecast.\n\nI would revisit the read only after verified team news; I can\u2019t assign a lineup effect from these facts alone.",
+  ]) {
+    assert.equal(validateResponseCorrectness(answer, [], null, {
+      expectFootballTake: true, expectConditionalTactics: true,
+      expectBriefingConditionalMechanism: true, expectDecisiveRoles: true,
+    }).passed, true, answer);
+  }
+});
+
+test("briefing mechanism and deciding-role checks reject disconnected qualifications and hollow labels", () => {
+  const completeTactics = "If Arsenal press high, they could force Leeds wide and deny a central pass, but leave space behind for a counter.";
+  for (const answer of [
+    `${completeTactics} **Who decides it** Striker, midfielder, keeper.`,
+    `${completeTactics} The striker is important and the midfielder decides it.`,
+    `${completeTactics} I cannot confirm starters; I would look at the striker.`,
+  ]) {
+    const result = validateResponseCorrectness(answer, [], null, {
+      expectFootballTake: true, expectConditionalTactics: true,
+      expectBriefingConditionalMechanism: true, expectDecisiveRoles: true,
+    });
+    assert.equal(result.assertions.briefingConditionalMechanism, true);
+    assert.equal(result.assertions.decisiveRoleMechanism, false);
+    assert.equal(result.passed, false);
+  }
+  assert.equal(validateResponseCorrectness(completeTactics, [], null, {
+    expectFootballTake: true, expectConditionalTactics: true,
+    expectBriefingConditionalMechanism: true,
+  }).passed, true);
+  assert.equal(validateResponseCorrectness(
+    "Arsenal press high to force Leeds wide and deny a central pass, but leave space for a counter. If team news changes, I could revisit the tactical shape.",
+    [], null, { expectBriefingConditionalMechanism: true }
+  ).assertions.briefingConditionalMechanism, false);
+});
+
+test("both live briefing cases require football mechanisms and only the composite asks for roles", async () => {
+  const config = JSON.parse(await readFile(path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"), "utf8"));
+  const homepage = config.fixed.find((entry) => entry.id === "homepage-desk-output");
+  const plain = config.fixed.find((entry) => entry.id === "featured-match-briefing-is-not-pricing-desk");
+  for (const expectation of [homepage.turns[0], plain]) {
+    assert.equal(expectation.expectFootballTake, true);
+    assert.equal(expectation.expectConditionalTactics, true);
+    assert.equal(expectation.expectBriefingConditionalMechanism, true);
+  }
+  assert.equal(homepage.turns[0].expectDecisiveRoles, true);
+  assert.equal(plain.expectDecisiveRoles, undefined);
+  assert.equal(homepage.turns[1].expectFootballTake, undefined);
+  assert.equal(homepage.turns[1].expectBriefingConditionalMechanism, undefined);
+  assert.equal(homepage.turns[1].expectDecisiveRoles, undefined);
+  assert.equal(homepage.turns[1].expectNarrowFollowup, true);
+});

@@ -11,7 +11,11 @@
           "questionTemplate": "Give me the match briefing for {home} vs {away}. Tactics, who decides it, and the model lean.",
           "expectGrounding": "match",
           "expectAnalystVoice": true,
-          "expectNoUnsupportedLineupEffect": true
+          "expectNoUnsupportedLineupEffect": true,
+          "expectFootballTake": true,
+          "expectConditionalTactics": true,
+          "expectBriefingConditionalMechanism": true,
+          "expectDecisiveRoles": true
         },
         {
           "question": "What about over and under 2.5? Why do they add to 100%?",
@@ -1038,6 +1042,9 @@
       "questionTemplate": "Give me the match briefing for {home} vs {away}.",
       "expectAnalystVoice": true,
       "expectDirectAnswer": true,
+      "expectFootballTake": true,
+      "expectConditionalTactics": true,
+      "expectBriefingConditionalMechanism": true,
       "forbidText": [
         "captured decimal line",
         "Current reports conflict on one or more requested facts"

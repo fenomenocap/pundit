@@ -103,7 +103,7 @@ import {
   PLAYER_SCORER_ABSTENTION,
   TEAM_NEWS_COMPOSE_ABSTENTION,
 } from "./player-evidence";
-import { composeDeskTakeOutline, composeMatchResponse } from "./response-composer";
+import { asksCompleteMatchBriefing, composeDeskTakeOutline, composeMatchResponse } from "./response-composer";
 import {
   DESK_BOARD_FALLBACK,
   DESK_GENERAL_CONCEPT_SYSTEM,
@@ -8482,6 +8482,10 @@ export function closedGroundedAnswer(
       hasHistory,
       hasUserLine: grounding.pricing.userLine != null,
     });
+    // A briefing may also ask for current external facts. Its owned football
+    // take cannot settle that request before the mandatory evidence lookup.
+    if (plan.mode === "match-preview" && asksCompleteMatchBriefing(question)
+      && deterministicSearchQuery(question, "", grounding)) return null;
     // These modes are fully settled by typed server facts or a typed
     // limitation. They must not spend a search/model call or broaden into a
     // report. Current team news still reaches evidence/expression.
@@ -9473,6 +9477,7 @@ async function answerQuestionScoped(
     const deskSkipClosed = voice === "desk" && (
       grounding === null
       || (grounding.kind === "match" && !DESK_COMPOSER_MODES.has(deskPlan.mode)
+        && !asksCompleteMatchBriefing(question)
         && !(asksTacticalTake(question) && !deskPlan.evidenceRequired))
     );
     if (closedAnswer && !deskSkipClosed) {

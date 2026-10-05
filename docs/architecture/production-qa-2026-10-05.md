@@ -436,3 +436,35 @@ coverage passed 1,270 tests across 59 files twice, with build and all 18 golden
 production forecasts unchanged. The harness passed 158 tests twice. The required
 live manifest now contains 71 scenarios, including a four-turn table-to-foreign
 season regression. Fresh production certification remains required.
+
+## Complete briefing delivery repair
+
+The next production run, `2026-10-05T02-45-15-359Z`, completed all 71 scenarios:
+66 automated passes and five observational absences. Independent review of all
+69 HTTP-200 answer turns found two material failures. Both the homepage's
+composite briefing and the plain featured briefing delivered only the numerical
+board, omitting the football take. Correct arithmetic did not satisfy either
+request. The failed report, answer hashes and critic evidence remain preserved;
+browser certification was not attempted on these known failures.
+
+The typed briefing now places conditional tactical mechanisms and deciding-role
+dependencies immediately after the grounded model lean. It identifies possible
+press escapes, width and cut-back routes, counter-cover costs, and receiver,
+screening-midfielder and striker decisions without naming projected starters or
+inventing player probabilities. Default JSON, desk JSON and SSE use the complete
+owned response; an explicit current-news addition still requires evidence.
+Direct probability, totals and projected-score requests retain their narrow
+answers.
+
+The old source fails all four new endpoint regressions. The repaired source
+passes 559 focused tests twice and 1,274 integrated API tests across 59 files
+twice. Build and all 18 golden forecasts pass unchanged. Offline replay of the
+actual failed grounding and independent semantic/source review support the
+repair; fresh exact-release API, browser and critic certification remains
+required.
+
+Both live briefing cases now require a conditional football mechanism in the
+same sentence; the composite prompt also requires a role, action and consequence.
+The actual failed responses, hollow role labels and disconnected qualifications
+fail those checks. Natural alternatives pass. The integrated harness passes all
+162 tests twice, and dry-run retains the 71-scenario manifest.
