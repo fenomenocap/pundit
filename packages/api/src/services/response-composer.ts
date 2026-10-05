@@ -317,7 +317,8 @@ export function composeTeamNewsAnswer(
     return TEAM_NEWS_COMPOSE_ABSTENTION;
   }
   const dated = evidence.observations.filter((row): row is typeof row & { observedAt: string } =>
-    Boolean(row.observedAt)
+    Boolean(row.observedAt) && (row.evidenceType === "availability" ? availabilityLabel(row.value) !== null
+      : row.evidenceType === "confirmed-lineup" || row.evidenceType === "expected-lineup")
   ).slice(0, 3);
   if (!dated.length) {
     return TEAM_NEWS_COMPOSE_ABSTENTION;
@@ -326,13 +327,18 @@ export function composeTeamNewsAnswer(
     const date = dateLabel(row.observedAt);
     const team = row.teamId ? ` (${row.teamId})` : "";
     if (row.evidenceType === "availability") {
-      return `${row.playerName}${team} is listed as unavailable according to a source [[${row.sourceId}]] (${date}).`;
+      return `${row.playerName}${team} is listed as ${availabilityLabel(row.value)} according to a source [[${row.sourceId}]] (${date}).`;
     }
     const status = row.evidenceType === "confirmed-lineup" ? "confirmed" : "expected";
     return `${row.playerName}${team} is ${status} to start according to a source [[${row.sourceId}]] (${date}).`;
   });
   lines.push("That is sourced availability, not a revised match forecast.");
   return lines.join(" ");
+}
+
+function availabilityLabel(value: string | number): string | null {
+  return value === "out" ? "unavailable"
+    : value === "doubtful" || value === "injured" || value === "suspended" ? value : null;
 }
 
 /** Server-owned labelled 1X2 with fair `1/p`. Never invents a sportsbook decimal. */
@@ -353,13 +359,14 @@ export function composeDeskSourcedWrinkle(
 ): string | null {
   if (!evidence || !hasTeamNewsEvidence(evidence)) return null;
   const row = evidence.observations.find((candidate): candidate is typeof candidate & { observedAt: string } =>
-    Boolean(candidate.observedAt)
+    Boolean(candidate.observedAt) && (candidate.evidenceType === "availability" ? availabilityLabel(candidate.value) !== null
+      : candidate.evidenceType === "confirmed-lineup" || candidate.evidenceType === "expected-lineup")
   );
   if (!row) return null;
   const date = dateLabel(row.observedAt);
   const team = row.teamId ? ` (${row.teamId})` : "";
   const claim = row.evidenceType === "availability"
-    ? `${row.playerName}${team} is listed as unavailable according to a source [[${row.sourceId}]] (${date}).`
+    ? `${row.playerName}${team} is listed as ${availabilityLabel(row.value)} according to a source [[${row.sourceId}]] (${date}).`
     : `${row.playerName}${team} is ${row.evidenceType === "confirmed-lineup" ? "confirmed" : "expected"} to start according to a source [[${row.sourceId}]] (${date}).`;
   return `${claim} That availability is not priced into the 1X2 above.`;
 }
