@@ -18,6 +18,7 @@ import {
   FittedDixonColesTrainingRow,
   RollingOriginSplit,
   forecastFittedDixonColes,
+  fittedDixonColesLambdas,
   fitTimeDecayedDixonColes,
   joinTrainingRows,
   loadOfflineTrainingCorpus,
@@ -407,13 +408,16 @@ function pairHoldout(
     row.awayCanonicalName,
     { meanElo, homeElo, awayElo }
   );
+  const resolved = fittedDixonColesLambdas(artifact.params, row.homeCanonicalName, row.awayCanonicalName,
+    { meanElo, homeElo, awayElo });
   const matrix = challenger ? scoreMatrix(challenger.lambdaHome, challenger.lambdaAway, artifact.params.rho) : null;
   const validGrid = matrix !== null && matrix.every((scores) => scores.every((p) => Number.isFinite(p) && p >= 0))
     && Math.abs(matrix.flat().reduce((sum, p) => sum + p, 0) - 1) < 1e-9;
   let challengerReason: PairedHoldoutForecast["challengerReason"];
   if (!challenger) {
     const missingDatedElo = (!homeFitted && homeElo == null) || (!awayFitted && awayElo == null);
-    challengerReason = missingDatedElo ? "missing-dated-elo" : "missing-club-params";
+    challengerReason = resolved ? "invalid-score-grid"
+      : missingDatedElo ? "missing-dated-elo" : "missing-club-params";
   } else if (!validGrid) {
     challengerReason = "invalid-score-grid";
   }
