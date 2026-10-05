@@ -23,6 +23,32 @@
       ]
     },
     {
+      "id": "pinned-current-manager-and-result-evidence",
+      "description": "A pinned pricing board cannot answer manager identities or dated results, including identity plus why. Current claims require verified citations; empty evidence must abstain while retaining fixture context. Agent critic checks request fidelity and claim support.",
+      "kind": "featured-turns",
+      "voice": "desk",
+      "turns": [
+        {
+          "questionTemplate": "What's {home}'s manager today?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "allowAbstention": true
+        },
+        {
+          "questionTemplate": "Who is {home}'s manager and why?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "allowAbstention": true
+        },
+        {
+          "questionTemplate": "What is {home}'s latest result and why?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "allowAbstention": true
+        }
+      ]
+    },
+    {
       "id": "active-match-grounding",
       "description": "A model-backed active club fixture receives match grounding and delivers a complete headline win/draw/win line under a section label that is not left empty. A provider-labelled normal end_turn still fails if the answer ends in a numeric or Markdown fragment.",
       "kind": "featured",
