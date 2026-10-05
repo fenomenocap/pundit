@@ -143,6 +143,31 @@ describe("filterDeskEvidenceRows", () => {
 });
 
 describe("desk citation rewrite", () => {
+  it("keeps dated manager citations balanced across repeated delivery formatting", () => {
+    const raw = "Mikel Arteta is Arsenal’s manager ([Mikel Arteta agrees improved Arsenal contract, signing extension until 2030 | Arsenal | The Guardian](https://www.theguardian.com/football/2026/sep/22/mikel-arteta-agrees-contract-extension-arsenal-2030), 2026-09-22T17:36:29.000Z).";
+    const once = humaniseDeskCitationDates(raw);
+    expect(once).toContain("2030) · 22 Sep).");
+    expect(humaniseDeskCitationDates(once)).toBe(once);
+    expect(humaniseDeskCitationDates(humaniseDeskCitationDates(once))).toBe(once);
+    expect(once).not.toMatch(/\)\) ·|Sep\)\)/);
+  });
+
+  it("preserves multiple independently dated or undated citations on a second pass", () => {
+    const raw = "The report ([Club update](https://www.arsenal.com/news/update), 2026-10-04) differs from the notice ([League notice](https://www.premierleague.com/news/notice), undated).";
+    const once = humaniseDeskCitationDates(raw);
+    expect(once).toContain("update) · 4 Oct)");
+    expect(once).toContain("notice) · undated)");
+    expect(humaniseDeskCitationDates(once)).toBe(once);
+  });
+
+  it("retains parenthetical and long source titles without duplicating wrapper punctuation", () => {
+    const title = `Club statement (interim manager) ${"x".repeat(157)}`;
+    const raw = `The appointment ([${title}](https://www.arsenal.com/news/appointment), 2026-10-04).`;
+    const once = humaniseDeskCitationDates(raw);
+    expect(once).toContain(`[${title}](https://www.arsenal.com/news/appointment) · 4 Oct)`);
+    expect(humaniseDeskCitationDates(once)).toBe(once);
+  });
+
   it("unsticks a jammed markdown citation and drops an offset ISO instant", () => {
     const raw = "just 40% BTTS([Manchester City vs Sunderland Team News, H2H, early... ]"
       + "(https://www.goal.com/en/news/city), 2025-12-04T09:23:37.534Z). "
@@ -153,6 +178,29 @@ describe("desk citation rewrite", () => {
     expect(out).not.toMatch(/\+01:00/);
     expect(out).toContain("BTTS ([Manchester City vs Sunderland Team News, H2H, early...](https://www.goal.com/en/news/city) · 4 Dec)");
     expect(out).toContain("([Man City vs Coventry](https://www.sportsmole.co.uk/x) · 4 Sep)");
+  });
+});
+
+describe("single-club current evidence relevance", () => {
+  it("keeps a dated latest-result report against another opponent while rejecting unrelated and stale reports", () => {
+    const g = match({ home: "Arsenal", away: "Leeds" });
+    const now = Date.parse("2026-10-05T00:00:00Z");
+    const rows = [
+      { title: "Arsenal vs Brighton: match report", snippet: "Arsenal won 3-0.", date: "2026-10-04" },
+      { title: "Leeds vs Chelsea: match report", snippet: "Leeds won 2-0.", date: "2026-10-04" },
+      { title: "Arsenal vs Brighton: old report", snippet: "Arsenal won 2-0.", date: "2026-08-01" },
+    ];
+    expect(filterDeskEvidenceRows(rows, g, now, "What is Arsenal's latest result?"))
+      .toEqual([{ ...rows[0], id: "S1" }]);
+    expect(filterDeskEvidenceRows(rows, g, now, "Any injury news for Arsenal vs Leeds?"))
+      .toEqual([]);
+    expect(filterDeskEvidenceRows(rows, g, now, "What was Arsenal vs Leeds' result?"))
+      .toEqual([]);
+    for (const question of [
+      "What is Arsenal’s latest result against Liverpool?",
+      "What is Arsenal's latest result against Riverside United?",
+      "What was Arsenal's latest result away to Liverpool?",
+    ]) expect(filterDeskEvidenceRows(rows, g, now, question)).toEqual([]);
   });
 });
 

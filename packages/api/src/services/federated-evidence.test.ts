@@ -8,6 +8,7 @@ import {
   mergeSearchResults,
   planFederatedQueries,
   skipFormQueriesWhenGrounded,
+  singleClubCurrentFactScope,
   type FederatedMatchGrounding,
 } from "./federated-evidence";
 import type { WebSearchOutcome } from "./web-search";
@@ -25,6 +26,54 @@ const matchGrounding = (
 });
 
 describe("planFederatedQueries", () => {
+  it("targets an explicitly named club manager or result without searching its pinned opponent", () => {
+    const grounding = matchGrounding();
+    const now = new Date("2026-10-05T00:00:00Z");
+    for (const question of ["Who's Arsenal's manager and why?", "What is Arsenal's latest result and why?"]) {
+      const queries = planFederatedQueries(question, grounding, deterministicSearchQuery(question, "", grounding as never, now), now);
+      expect(queries[0]).toMatch(/Arsenal.*(?:current manager|latest completed match result).*2026-10-05/);
+      expect(queries[0]).toContain("official");
+      expect(queries.some((query) => /Chelsea|injuries|predicted lineup|recent form/.test(query))).toBe(false);
+      expect(queries.length).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it("does not infer single-club fact scope for ambiguous, two-club, explicit-fixture or role questions", () => {
+    const grounding = matchGrounding();
+    for (const question of ["Who is the manager?", "Who is Liverpool's manager?", "Who are Arsenal and Chelsea's managers?", "What was Arsenal vs Brighton's final score?", "Who manages the space in Arsenal's midfield?", "Who is Liverpool's manager and why do Arsenal struggle?", "Who is Arsenal's manager and Liverpool's manager?", "Who is Arsenal's manager and Liverpool?"]) {
+      expect(singleClubCurrentFactScope(question, grounding)).toBeNull();
+    }
+    for (const question of [
+      "What is Arsenal’s latest result against Liverpool?",
+      "What is Arsenal's latest result against Riverside United?",
+      "What was Arsenal's latest result away to Liverpool?",
+      "What was Arsenal's latest result home to Riverside United?",
+      "Who is Arsenal's manager against Liverpool?",
+      "Who manages Arsenal against a high press?",
+      "Who was Arsenal's manager in 2013?",
+      "Who will be Arsenal's manager in 2028?",
+      "Who is Arsenal's manager in 2013?",
+      "Who manages Arsenal next season?",
+      "What was Arsenal's latest result in 2013?",
+      "What is Arsenal's final score tomorrow?",
+      "Who is Arsenal's manager and why is Liverpool stronger?",
+      "Who is Arsenal's manager and why is Leeds stronger?",
+      "Who is Arsenal's manager? Who is Leeds' manager?",
+      "Who is Arsenal's manager while Liverpool changes coach?",
+      "Who is Arsenal's manager; what is Leeds' latest result?",
+      "Who manages Arsenal, while Riverside United changes coach?",
+      "Who is Arsenal's manager and why was he appointed? Who manages Leeds?",
+      "What is Arsenal's latest result and why is Liverpool stronger?",
+    ]) expect(singleClubCurrentFactScope(question, grounding)).toBeNull();
+    for (const question of ["Who is Arsenal's manager and why?", "Who is Arsenal's manager and why was he appointed?", "Who is Arsenal's manager today and why was he appointed?", "Who is Arsenal's manager and why is he still in charge?", "What is Arsenal's latest result and why did they win?"]) {
+      expect(singleClubCurrentFactScope(question, grounding)).toEqual({ kind: /manager/.test(question) ? "manager" : "result", club: "Arsenal" });
+    }
+    expect(singleClubCurrentFactScope("Who is the manager of Arsenal today?", grounding)).toEqual({ kind: "manager", club: "Arsenal" });
+    expect(singleClubCurrentFactScope("Who coaches Arsenal today?", grounding)).toEqual({ kind: "manager", club: "Arsenal" });
+    expect(singleClubCurrentFactScope("What is Manchester City's latest result?", matchGrounding({ home: "Man City" }))).toEqual({ kind: "result", club: "Man City" });
+    expect(singleClubCurrentFactScope("What is Arsenal's latest result?", null)).toBeNull();
+  });
+
   it("fans out analytics queries with embedded source hints for stat questions", () => {
     const mbeumo = "How has Bryan Mbeumo performed statistically this season?";
     const planned = planFederatedQueries(

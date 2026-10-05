@@ -3,6 +3,7 @@ import type { ResultMark } from "./club-form";
 import { evidenceTier, type EvidenceTier } from "./evidence-authority";
 import { isSchematicMatchTake, planResponse } from "./response-plan";
 import type { WebSearchOutcome } from "./web-search";
+import { getTeamNameAliases, normalizeTeamName, normalizeTeamText } from "../lib/team-names";
 
 export const MAX_FEDERATED_QUERIES = 6;
 
@@ -78,6 +79,53 @@ export function asksStatisticalQuestion(question: string, now = new Date()): boo
 
 function isMatchGrounding(grounding: FederatedGrounding): grounding is FederatedMatchGrounding {
   return grounding?.kind === "match";
+}
+
+/** A club fact is not a fact about its pinned opponent. Never infer a new club. */
+export function singleClubCurrentFactScope(
+  question: string,
+  grounding: FederatedGrounding
+): { kind: "manager" | "result"; club: string } | null {
+  if (!isMatchGrounding(grounding)
+    || /\b(?:vs\.?|versus|against)\b|\s+v\s+|\b(?:away|home)\s+to\b/i.test(question)) return null;
+  const q = question.trim().replace(/^who['’]s\b/i, "who is").replace(/^what['’]s\b/i, "what is");
+  const manager = (/^(?:who|what)\s+is\b[^?\n]{0,100}\b(?:manager|head coach|coach)\b/i.test(q)
+    || /^who\s+(?:manages|coaches)\b/i.test(q))
+    && !/\b(?:space|shape|press|pressing|zones?|width|midfield|defence|defense)\b/i.test(q);
+  const result = /^what\s+(?:is|was)\b[^?\n]{0,100}\b(?:latest|last|most recent|final)\s+(?:result|score)\b/i.test(q);
+  if (!manager && !result) return null;
+  if (/\b(?:19|20)\d{2}\b|\b(?:formerly|former|previous|used to|tomorrow|next (?:week|month|year|season)|last (?:year|season))\b/i.test(q)) return null;
+  // Keep compound requests on the normal evidence path, rather than silently
+  // narrowing a second club/fact to the first club named on the selected card.
+  if (/\band\s+(?!why\b|how\b)/i.test(q)) return null;
+  const reasonMatch = /\band\s+((?:why|how)\b.*)$/i.exec(q);
+  const reasonTail = reasonMatch?.[1];
+  if (reasonTail) {
+    // A reason for this appointment/result is useful; a new club or topic is
+    // a compound request and must keep the normal, wider evidence path.
+    const grammar = "why how was were is are did does has have he she they him her them it this that the a an club manager coach team we his their our for to of in by be been being still";
+    const topic = manager
+      ? "appoint appointed appointment choose chose chosen hire hired hiring select selected selection retain retained keep kept remain remains continuing tenure job role charge"
+      : "win won lose lost draw drew result score match game happen happened finish finished";
+    const allowed = new Set(`${grammar} ${topic}`.split(" "));
+    const words = normalizeTeamText(reasonTail.replace(/[?!.]+$/g, "")).split(" ").filter(Boolean);
+    if (words.some((word) => !allowed.has(word))
+      || (words.length > 1 && !words.some((word) => topic.split(" ").includes(word)))) return null;
+  }
+  const primaryQuestion = reasonMatch ? q.slice(0, reasonMatch.index).trim() : q;
+  const folded = normalizeTeamText(primaryQuestion.replace(/['’]s\b/g, ""));
+  const clubs = [grounding.home, grounding.away].filter((club) => {
+    const canonical = normalizeTeamName(club);
+    const names = [club, ...getTeamNameAliases().filter(([, name]) => normalizeTeamName(name) === canonical).map(([alias]) => alias)];
+    return names.some((name) => {
+      const escaped = normalizeTeamText(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const role = manager ? "(?:current )?(?:manager|head coach|coach)" : "(?:latest|last|most recent|final) (?:result|score)";
+      const tense = manager ? "is" : "(?:is|was)";
+      const currentTime = "(?: (?:today|now|currently|this season))?[?!.]*";
+      return new RegExp(`^(?:(?:who|what) ${tense} ${escaped} ${role}|(?:who|what) ${tense} (?:the |current )?${role} (?:of|for) ${escaped}|who (?:manages|coaches) ${escaped})${currentTime}$`).test(folded);
+    });
+  });
+  return clubs.length === 1 ? { kind: manager ? "manager" : "result", club: clubs[0] } : null;
 }
 
 export function skipFormQueriesWhenGrounded(grounding: FederatedGrounding): boolean {
@@ -194,6 +242,16 @@ export function planFederatedQueries(
   if (baseQuery) planned.push(baseQuery);
   const slice = raw.replace(/[?!.]+$/g, "").slice(0, 100).trim();
   const season = currentFootballSeasonLabel(now);
+  const clubFact = singleClubCurrentFactScope(question, grounding);
+  if (clubFact && baseQuery) {
+    const day = now.toISOString().slice(0, 10);
+    const targeted = clubFact.kind === "manager"
+      ? [`${clubFact.club} current manager head coach official club ${day}`,
+        `${clubFact.club} manager appointment contract reasons official interview ${season}`]
+      : [`${clubFact.club} latest completed match result official report ${season} ${day}`,
+        `${clubFact.club} latest match final score post match report ${day}`];
+    return [...new Set([...targeted, ...planned])].slice(0, MAX_FEDERATED_QUERIES);
+  }
   if (asksStats && slice.length >= 3) {
     planned.push(`${slice} stats ${season}`);
   }
