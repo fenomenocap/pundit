@@ -58,6 +58,22 @@ export interface ModelFixture {
     winner: string | null;
   } | null;
   forecastProvenance?: ModelFixtureForecastProvenance;
+  /** Exact inputs carried with this cached forecast; public Elo remains display-rounded. */
+  forecastInputs?: ModelFixtureForecastInputs;
+}
+
+export interface ModelFixtureForecastInputs {
+  homeStrength: number;
+  awayStrength: number;
+  homeAdvantageElo: number;
+  fixtureId: number;
+  competitionId: string;
+  utcDate: string;
+  home: string;
+  away: string;
+  ratingArtifactId: string | null;
+  ratingArtifactSha256: string | null;
+  ratingSnapshotAt: string | null;
 }
 
 export interface ModelFixtureForecastProvenance {
@@ -166,7 +182,8 @@ export function buildModelFixtureFromActive(
 
   const homeElo = lookupClubRating(fixture.homeTeam, competition.ratingProfile, ratings);
   const awayElo = lookupClubRating(fixture.awayTeam, competition.ratingProfile, ratings);
-  if (homeElo === undefined || awayElo === undefined) return null;
+  if (homeElo === undefined || awayElo === undefined
+    || !Number.isFinite(homeElo) || !Number.isFinite(awayElo)) return null;
   const homeAdvantageElo = competition.homeFieldAdvantage && !recognized.neutralVenue
     ? DEFAULT_HOME_ADVANTAGE_ELO
     : 0;
@@ -226,6 +243,19 @@ export function buildModelFixtureFromActive(
           winner: matchWinner(fixture),
         }
       : null,
+    forecastInputs: {
+      homeStrength: homeElo,
+      awayStrength: awayElo,
+      homeAdvantageElo,
+      fixtureId: fixture.id,
+      competitionId: fixture.competitionId,
+      utcDate: fixture.utcDate,
+      home: fixture.homeTeam,
+      away: fixture.awayTeam,
+      ratingArtifactId: context.ratingArtifactId ?? null,
+      ratingArtifactSha256: context.ratingArtifactSha256 ?? null,
+      ratingSnapshotAt: ratingSnapshotAt?.toISOString() ?? null,
+    },
     forecastProvenance: {
       modelId: PUNDIT_FUNDAMENTAL_MODEL_ID,
       modelVersion: PUNDIT_FUNDAMENTAL_MODEL_VERSION,

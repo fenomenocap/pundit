@@ -90,6 +90,20 @@ export interface ModelFixtureResponse {
   away: string;
   homeElo: number;
   awayElo: number;
+  /** Original forecast inputs; display Elo fields above remain rounded. */
+  forecastInputs?: {
+    homeStrength: number;
+    awayStrength: number;
+    homeAdvantageElo: number;
+    fixtureId: number;
+    competitionId: string;
+    utcDate: string;
+    home: string;
+    away: string;
+    ratingArtifactId: string | null;
+    ratingArtifactSha256: string | null;
+    ratingSnapshotAt: string | null;
+  };
   pHome: number;
   pDraw: number;
   pAway: number;

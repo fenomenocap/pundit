@@ -626,7 +626,7 @@ const TEAM_NEWS_ABSTENTION_UNRETRIEVABLE =
 const TEAM_NEWS_ABSTENTION_UNAVAILABLE =
   "No verified, dated team-news update was established, because verification was unavailable.";
 const CURRENT_CLAIM_ABSTENTION =
-  "No verified current source in this conversation supports that claim.";
+  "I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.";
 const RESULT_CLAIM_ABSTENTION =
   "I couldn’t verify that result from a dated source, so I won’t state it.";
 // A sentence that states how a match, tie or season turned out.

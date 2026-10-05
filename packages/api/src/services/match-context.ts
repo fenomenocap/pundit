@@ -5,7 +5,13 @@ import {
   type ClubScorer,
   type ResultMark,
 } from "./club-form";
-import { DEFAULT_HOME_ADVANTAGE_ELO, eloToLambdas } from "./dixon-coles";
+import { DEFAULT_HOME_ADVANTAGE_ELO, computeMatchModel, eloToLambdas } from "./dixon-coles";
+import {
+  ELO_CHAMPION,
+  ELO_CHAMPION_CONFIG,
+  PUNDIT_FUNDAMENTAL_MODEL_ID,
+  PUNDIT_FUNDAMENTAL_MODEL_VERSION,
+} from "./model-contributors";
 import type { ModelFixture } from "./model-data";
 
 export type MatchTableContext = {
@@ -55,13 +61,57 @@ function teamRow(snapshot: ReturnType<typeof getClubFormSnapshot>, team: string)
   return snapshot.teams.find((row) => sameClub(row.team, team));
 }
 
+function exactForecastInputs(fixture: ModelFixture): [number, number, number] {
+  const inputs = fixture.forecastInputs;
+  // Compatibility for historical rows and hand-authored fixtures only. Newly
+  // built production rows always carry their original full-precision inputs.
+  if (inputs === undefined) return [fixture.homeElo, fixture.awayElo, homeAdvantageEloFor(fixture)];
+  if (inputs === null || typeof inputs !== "object") {
+    throw new Error("Cached forecast inputs do not match fixture provenance");
+  }
+  const provenance = fixture.forecastProvenance;
+  const valid = provenance != null
+    && [inputs.homeStrength, inputs.awayStrength, inputs.homeAdvantageElo].every(Number.isFinite)
+    && Number.isFinite(provenance.homeAdvantageElo)
+    && inputs.homeAdvantageElo === provenance.homeAdvantageElo
+    && provenance.modelId === PUNDIT_FUNDAMENTAL_MODEL_ID
+    && provenance.modelVersion === PUNDIT_FUNDAMENTAL_MODEL_VERSION
+    && provenance.contributorId === ELO_CHAMPION.id
+    && provenance.contributorVersion === ELO_CHAMPION.version
+    && provenance.methodId === ELO_CHAMPION.methodId
+    && provenance.ratingProfile === getCompetitionById(fixture.competitionId)?.ratingProfile
+    && provenance.config != null
+    && (Object.keys(ELO_CHAMPION_CONFIG) as Array<keyof typeof ELO_CHAMPION_CONFIG>)
+      .every((key) => provenance.config[key] === ELO_CHAMPION_CONFIG[key])
+    && inputs.fixtureId === fixture.fixtureId
+    && inputs.competitionId === fixture.competitionId
+    && inputs.utcDate === fixture.utcDate
+    && inputs.home === fixture.home && inputs.away === fixture.away
+    && Math.round(inputs.homeStrength * 10) / 10 === fixture.homeElo
+    && Math.round(inputs.awayStrength * 10) / 10 === fixture.awayElo
+    && inputs.ratingArtifactId === (provenance.ratingArtifactId ?? null)
+    && inputs.ratingArtifactSha256 === (provenance.ratingArtifactSha256 ?? null)
+    && inputs.ratingSnapshotAt === provenance.ratingSnapshotAt;
+  if (!valid) throw new Error("Cached forecast inputs do not match fixture provenance");
+  const model = computeMatchModel(inputs.homeStrength, inputs.awayStrength, inputs.homeAdvantageElo);
+  const probabilities = ["pHome", "pDraw", "pAway", "pOver2_5", "pUnder2_5", "pBttsYes", "pBttsNo"] as const;
+  const matches = probabilities.every((key) => Number.isFinite(fixture[key])
+      && Math.round(model[key] * 10_000) / 10_000 === fixture[key])
+    && (["topScores", "scorelines"] as const).every((key) => {
+      const rows = fixture[key];
+      return Array.isArray(rows) && rows.length === model[key].length
+        && rows.every((row, index) => {
+          const [[home, away], probability] = model[key][index];
+          return row?.score === `${home}-${away}`
+            && Math.round(probability * 10_000) / 10_000 === row.probability;
+        });
+    });
+  if (!matches) throw new Error("Cached forecast inputs do not reproduce fixture probabilities");
+  return [inputs.homeStrength, inputs.awayStrength, inputs.homeAdvantageElo];
+}
+
 export function buildMatchContext(fixture: ModelFixture): MatchContext {
-  const homeAdvantageElo = homeAdvantageEloFor(fixture);
-  const [lambdaHome, lambdaAway] = eloToLambdas(
-    fixture.homeElo,
-    fixture.awayElo,
-    homeAdvantageElo
-  );
+  const [lambdaHome, lambdaAway] = eloToLambdas(...exactForecastInputs(fixture));
   const snapshot = getClubFormSnapshot(fixture.competitionId);
   const homeRow = teamRow(snapshot, fixture.home);
   const awayRow = teamRow(snapshot, fixture.away);

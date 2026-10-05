@@ -1,6 +1,71 @@
 import { test, expect, type Page } from "@playwright/test";
+import type { ModelFixtureResponse } from "../src/lib/api";
+import type { ModelRowLambdas } from "../src/desk/lib/grid";
 
 test.describe("QA regressions", () => {
+  for (const exact of [true, false]) {
+    test(`desk and paper xG use ${exact ? "exact forecast inputs" : "legacy rounded inputs"} at the rounding boundary`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const row = precisionBoundaryRow();
+      if (!exact) delete row.forecastInputs;
+      await routePrecisionDeskSlate(page, row);
+      await page.goto("/");
+      await expect(page.getByText("Live model", { exact: true })).toBeVisible();
+      await page.locator('li [data-testid="desk-slate-fixture"][data-fixture-id="espn:eng.1:901"]').click();
+      const xg = exact ? "1.88–0.82" : "1.87–0.83";
+      await expect(page.locator("aside").getByText(xg, { exact: true })).toBeVisible();
+      await expect(page.locator("aside")).toContainText(`xG ${xg}.`);
+      await expect(page.locator("aside")).toContainText("1X2 50/25/25.");
+      await expect(page.locator("aside")).toContainText("BTTS 50 · O2.5 52");
+      await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
+      await expect(page.getByText(`xG ${xg}`, { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Select Arsenal vs Chelsea", exact: true })).toBeVisible();
+    });
+  }
+
+  test("desk and paper retain an exact neutral-venue home advantage of zero", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const row = precisionBoundaryRow();
+    row.forecastInputs!.homeAdvantageElo = 0;
+    row.forecastProvenance!.homeAdvantageElo = 0;
+    await routePrecisionDeskSlate(page, row);
+    await page.goto("/");
+    await expect(page.getByText("Live model", { exact: true })).toBeVisible();
+    await page.locator('li [data-testid="desk-slate-fixture"][data-fixture-id="espn:eng.1:901"]').click();
+    await expect(page.locator("aside").getByText("1.73–0.97", { exact: true })).toBeVisible();
+    await expect(page.locator("aside")).toContainText("1X2 50/25/25.");
+    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
+    await expect(page.getByText("xG 1.73–0.97", { exact: true })).toBeVisible();
+  });
+
+  const corruptedInputs: Array<[string, (row: ReturnType<typeof precisionBoundaryRow>) => void]> = [
+    ["fixture identity", (row) => { row.forecastInputs!.fixtureId = 902; }],
+    ["team identity", (row) => { row.forecastInputs!.home = "Liverpool"; }],
+    ["kickoff", (row) => { row.forecastInputs!.utcDate = "2099-09-21T19:00:00.000Z"; }],
+    ["display Elo", (row) => { row.forecastInputs!.homeStrength = 1901; }],
+    ["nonfinite strength", (row) => { row.forecastInputs!.awayStrength = NaN; }],
+    ["home advantage", (row) => { row.forecastInputs!.homeAdvantageElo = 0; }],
+    ["artifact identity", (row) => { row.forecastInputs!.ratingArtifactId = "another-artifact"; }],
+    ["artifact hash", (row) => { row.forecastInputs!.ratingArtifactSha256 = "0".repeat(64); }],
+    ["rating snapshot", (row) => { row.forecastInputs!.ratingSnapshotAt = null; }],
+    ["missing provenance", (row) => { delete row.forecastProvenance; }],
+    ["invalid config", (row) => { row.forecastProvenance!.config!.eloScale = 0; }],
+    ["null block", (row) => { Object.assign(row, { forecastInputs: null }); }],
+  ];
+  for (const [label, corrupt] of corruptedInputs) {
+    test(`desk rejects present forecast inputs with ${label}`, async ({ page }) => {
+      const row = precisionBoundaryRow();
+      corrupt(row);
+      await routePrecisionDeskSlate(page, row);
+      await page.goto("/");
+      // Explicit mock mode can recover only to its labelled static slate.
+      await expect(page.getByText("Mock model", { exact: true })).toBeVisible();
+      await expect(page.locator('[data-fixture-id="espn:eng.1:901"]')).toHaveCount(0);
+      await expect(page.getByText("1.88–0.82", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Live model", { exact: true })).toHaveCount(0);
+    });
+  }
+
   for (const width of [390, 1440]) {
     test(`general explainer chips leave an unpriced pin for one turn and preserve its return at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -389,6 +454,34 @@ test.describe("QA regressions", () => {
     });
   }
 });
+
+function precisionBoundaryRow(): ModelRowLambdas & Pick<ModelFixtureResponse,
+  "pHome" | "pDraw" | "pAway" | "pBttsYes" | "topScores" | "oddsSources"> {
+  return {
+    competitionId: "eng.1", fixtureId: 901, utcDate: "2099-09-20T19:00:00.000Z",
+    home: "Arsenal", away: "Chelsea", homeElo: 1900.6, awayElo: 1800,
+    pHome: 0.5, pDraw: 0.25, pAway: 0.25, pOver2_5: 0.52, pBttsYes: 0.5,
+    topScores: [{ score: "1-0", probability: 0.13 }], oddsSources: [],
+    forecastInputs: {
+      homeStrength: 1900.619, awayStrength: 1800, homeAdvantageElo: 42,
+      competitionId: "eng.1", fixtureId: 901, utcDate: "2099-09-20T19:00:00.000Z",
+      home: "Arsenal", away: "Chelsea", ratingArtifactId: "precision-boundary",
+      ratingArtifactSha256: "a".repeat(64), ratingSnapshotAt: "2099-09-19T00:00:00.000Z",
+    },
+    forecastProvenance: {
+      homeAdvantageElo: 42, ratingArtifactId: "precision-boundary",
+      ratingArtifactSha256: "a".repeat(64), ratingSnapshotAt: "2099-09-19T00:00:00.000Z",
+      config: { baseGoals: 1.35, eloScale: 400, lambdaCap: 5 },
+    },
+  };
+}
+
+async function routePrecisionDeskSlate(page: Page, row: ReturnType<typeof precisionBoundaryRow>) {
+  await routeTwoFixtureDeskSlate(page);
+  await page.route("**/api/model/active", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ fixtures: [row] }),
+  }));
+}
 
 async function routeTwoFixtureDeskSlate(page: Page) {
   const fixtures = [
