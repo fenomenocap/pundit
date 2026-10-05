@@ -25,6 +25,20 @@ import {
   type ResponsePlan,
 } from "./response-plan";
 
+/** A briefing includes football and deciding roles, not just the numeric board. */
+export function asksCompleteMatchBriefing(question: string): boolean {
+  return /\bbriefing\b/i.test(question)
+    || (/\bpreview\b/i.test(question)
+      && /\btactics?\b|\btactical\b/i.test(question)
+      && /\bwho decides\b|\b(?:deciding|key) roles\b/i.test(question));
+}
+
+function composeBriefingFootball(grounding: Grounding): string {
+  const tactics = composeDeskFootballTake(grounding);
+  const roles = "I’d watch the receiver beyond the first press, the screening midfielder covering for an advancing full-back, and the striker attacking a cut-back. If the receiver can turn, they could connect the attack; if the screening midfielder is pulled towards the ball, a runner could exploit the space behind; if the striker times the run, they could reach the delivery before a defender. Those are roles to watch, not a claim about confirmed starters or a player scoring forecast.";
+  return `${tactics}\n\n${roles}`;
+}
+
 export const SHARED_TOTAL_XG_SENTENCE =
   "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
 
@@ -508,6 +522,7 @@ export function composeMatchResponse(
     : "";
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
+    asksCompleteMatchBriefing(question) ? composeBriefingFootball(grounding) : "",
     `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${SHARED_TOTAL_XG_SENTENCE}`,
     [marketRows, market].filter(Boolean).join(" "),
     consensus,
