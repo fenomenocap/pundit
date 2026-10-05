@@ -7,7 +7,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "pnpm verify:club-strength-artifact && tsc",
     "test": "vitest run",
     "build:wc-evaluation": "npx ts-node --transpile-only scripts/build-wc2026-evaluation.ts",
@@ -42,7 +42,7 @@
     "@types/helmet": "^4.0.0",
     "@types/node": "^20.11.0",
     "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
+    "tsx": "4.23.15",
     "typescript": "^5.4.0",
     "vitest": "^4.1.11",
     "vite": "^8.0.0"

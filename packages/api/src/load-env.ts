@@ -7,7 +7,7 @@ import { config } from "dotenv";
 //
 // The path is explicit because `pnpm --filter api dev` runs with packages/api
 // as its working directory, so dotenv's default cwd lookup would miss the root
-// file. __dirname sits at packages/api/{src,dist} under both ts-node-dev and
+// file. __dirname sits at packages/api/{src,dist} under both tsx watch and
 // the compiled build, so the same three levels reach the repo root either way.
 //
 // This module exists as a separate import purely for ordering: ES import
