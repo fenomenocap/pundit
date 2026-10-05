@@ -23,6 +23,32 @@
       ]
     },
     {
+      "id": "pinned-current-manager-and-result-evidence",
+      "description": "A pinned pricing board cannot answer manager identities or dated results, including identity plus why. Current claims require verified citations; empty evidence must abstain while retaining fixture context. Agent critic checks request fidelity and claim support.",
+      "kind": "featured-turns",
+      "voice": "desk",
+      "turns": [
+        {
+          "questionTemplate": "What's {home}'s manager today?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "allowAbstention": true
+        },
+        {
+          "questionTemplate": "Who is {home}'s manager and why?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "allowAbstention": true
+        },
+        {
+          "questionTemplate": "What is {home}'s latest result and why?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "allowAbstention": true
+        }
+      ]
+    },
+    {
       "id": "active-match-grounding",
       "description": "A model-backed active club fixture receives match grounding and delivers a complete headline win/draw/win line under a section label that is not left empty. A provider-labelled normal end_turn still fails if the answer ends in a numeric or Markdown fragment.",
       "kind": "featured",
@@ -833,27 +859,59 @@
     },
     {
       "id": "standalone-football-explainers",
-      "description": "Fallback desk chips answer explicit general football questions without manufacturing fixture, probability or guarantee claims.",
+      "description": "Independent slate education chip explains football mechanisms and caveats without fabricated numbers, betting advice or irrelevant team-news chatter.",
       "kind": "json",
       "voice": "desk",
+      "requiredForCertification": true,
       "turns": [
         {
           "question": "In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?",
           "expectGrounding": null,
-          "expectNoCertaintyContradiction": true
-        },
+          "expectNoCertaintyContradiction": true,
+          "expectGeneralEducationTopic": "slate"
+        }
+      ]
+    },
+    {
+      "id": "standalone-football-explainer-favourite",
+      "description": "Independent favourite education chip explains football mechanisms and caveats without fabricated numbers, betting advice or irrelevant team-news chatter.",
+      "kind": "json",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
         {
           "question": "In general, why should a strong favourite never be treated as a guaranteed win?",
           "expectGrounding": null,
-          "expectNoCertaintyContradiction": true
-        },
+          "expectNoCertaintyContradiction": true,
+          "expectGeneralEducationTopic": "favourite"
+        }
+      ]
+    },
+    {
+      "id": "standalone-football-explainer-derby",
+      "description": "Independent derby education chip explains football mechanisms and caveats without fabricated numbers, betting advice or irrelevant team-news chatter.",
+      "kind": "json",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
         {
           "question": "In general, how can a derby change the tactical trade-offs and game management?",
-          "expectGrounding": null
-        },
+          "expectGrounding": null,
+          "expectGeneralEducationTopic": "derby"
+        }
+      ]
+    },
+    {
+      "id": "standalone-football-explainer-chance",
+      "description": "Independent chance education chip explains football mechanisms and caveats without fabricated numbers, betting advice or irrelevant team-news chatter.",
+      "kind": "json",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
         {
           "question": "In general, what makes a good chance for a striker, beyond past goal totals?",
-          "expectGrounding": null
+          "expectGrounding": null,
+          "expectGeneralEducationTopic": "chance"
         }
       ]
     },
@@ -959,6 +1017,8 @@
       "questionTemplate": "Tactical matchup",
       "expectAnalystVoice": true,
       "expectDirectAnswer": true,
+      "expectFootballTake": true,
+      "expectConditionalTactics": true,
       "forbidText": [
         "captured decimal line",
         "Current reports conflict on one or more requested facts"

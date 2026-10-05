@@ -79,11 +79,16 @@ test("answer completion uses the editable composer, not the empty draft's disabl
       : selector === '[role="alert"]' ? { textContent: error } : { disabled: true },
   };
   const page = {
-    waitForFunction: async (predicate, args) => ({
+    waitForFunction: async (predicate, args, options) => ({
       jsonValue: () => runInNewContext(`(${predicate.toString()})(args)`, {
         document, HTMLTextAreaElement: Textarea, args,
       }),
     }),
+  };
+  const originalWait = page.waitForFunction;
+  page.waitForFunction = async (predicate, args, options) => {
+    assert.deepEqual(options, { timeout: 180_000, polling: 100 });
+    return originalWait(predicate, args, options);
   };
   assert.equal((await waitForAnswer(page, 1)).answered, true);
   input.disabled = true;
@@ -95,6 +100,25 @@ test("answer completion uses the editable composer, not the empty draft's disabl
   const failed = await waitForAnswer(page, 1);
   assert.equal(failed.answered, false);
   assert.equal(failed.error, error);
+});
+
+test("failed answer diagnostics preserve expected and actual bubble counts", async () => {
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), "pundit-answer-counts-"));
+  const page = {
+    waitForFunction: async () => { throw new Error("Timeout"); },
+    evaluate: async () => ({ assistantBubbleCount: 3, composer: { disabled: false }, alerts: [] }),
+    screenshot: async () => {},
+  };
+  try {
+    await assert.rejects(waitForAnswer(page, 2), /Timeout/);
+    const diagnostics = await captureFailureDiagnostics(page, MOBILE_VIEWPORT, { outputDir },
+      { runId: "answer-counts" }, { collected: { currentPrompt: "Who scores?" } });
+    assert.deepEqual(diagnostics.answerWait, { previousBubbleCount: 2, expectedMinimumBubbleCount: 3 });
+    assert.equal(diagnostics.page.assistantBubbleCount, 3);
+    assert.equal(diagnostics.page.composer.disabled, false);
+  } finally {
+    await rm(outputDir, { recursive: true, force: true });
+  }
 });
 
 function runNode(args) {
@@ -170,10 +194,13 @@ test("browser request pacer preserves the safety interval across one shared cloc
     },
   });
   await pacer.beforeRequest();
+  pacer.recordRequestStart({});
   clock += 1_000;
   await pacer.beforeRequest();
+  pacer.recordRequestStart({});
   clock += 25_000;
   await pacer.beforeRequest();
+  pacer.recordRequestStart({});
   assert.deepEqual(waits, [12_025, 5]);
   assert.deepEqual(pacer.starts, [1_000, 14_025, 39_025]);
   assert.ok(pacer.starts.slice(1).every((start, index) =>
@@ -191,9 +218,11 @@ test("browser pacer preserves both intervals after a backward wall-clock correct
     wait: async (ms) => { waits.push(ms); monotonicClock += ms; wallClock += ms; },
   });
   await pacer.beforeRequest();
+  pacer.recordRequestStart({});
   monotonicClock += 13_025;
   wallClock += 12_925;
   await pacer.beforeRequest();
+  pacer.recordRequestStart({});
   assert.deepEqual(waits, [100]);
   assert.equal(pacer.starts[1] - pacer.starts[0], 13_125);
   assert.equal(Date.parse(pacer.wallStarts[1]) - Date.parse(pacer.wallStarts[0]), 13_025);
@@ -208,9 +237,11 @@ test("a forward wall-clock jump cannot bypass the monotonic browser interval", a
     wait: async (ms) => { monotonicClock += ms; wallClock += ms; },
   });
   await pacer.beforeRequest();
+  pacer.recordRequestStart({});
   monotonicClock += 1_000;
   wallClock += 20_000;
   await pacer.beforeRequest();
+  pacer.recordRequestStart({});
   assert.equal(pacer.starts[1] - pacer.starts[0], 13_025);
   assert.equal(Date.parse(pacer.wallStarts[1]) - Date.parse(pacer.wallStarts[0]), 32_025);
 });
@@ -242,6 +273,7 @@ test("browser request pacer enforces the API-to-browser cooldown from authoritat
     },
   });
   await pacer.beforeRequest();
+  pacer.recordRequestStart({});
   assert.deepEqual(waits, [60_000, 5]);
   assert.equal(pacer.wallStarts[0], "2026-09-14T04:32:00.000Z");
 });
@@ -263,6 +295,59 @@ test("browser cooldown resolves the final API start and uses later harness compl
     epochMs: Date.parse(report.completedAt),
   });
   assert.throws(() => finalApiRequestStart({ pacing: { requestStarts: [] } }), /authoritative/);
+});
+
+test("actual request pacing survives dispatch delays of 219ms then 52ms", async () => {
+  let clock = 1_000;
+  const waits = [];
+  const pacer = createRequestStartPacer({ now: () => clock, wallNow: () => clock,
+    wait: async (ms) => { waits.push(ms); clock += ms; } });
+  await pacer.beforeRequest();
+  assert.deepEqual(pacer.starts, []);
+  clock += 219;
+  const first = {};
+  const observed = pacer.recordRequestStart(first);
+  assert.equal(pacer.recordRequestStart(first), observed);
+  assert.equal(pacer.starts.length, 1);
+  await pacer.beforeRequest();
+  clock += 52;
+  pacer.recordRequestStart({});
+  pacer.assertComplete();
+  assert.deepEqual(waits, [13_025]);
+  assert.deepEqual(pacer.starts, [1_219, 14_296]);
+  assert.equal(Date.parse(pacer.wallStarts[1]) - Date.parse(pacer.wallStarts[0]), 13_077);
+  assert.deepEqual(pacer.failures, []);
+});
+
+test("unexpected POSTs and missing network starts fail without authorizing further traffic", async () => {
+  const pacer = createRequestStartPacer();
+  pacer.recordRequestStart({});
+  assert.throws(() => pacer.assertComplete(), /Unexpected \/api\/ask request/);
+  await assert.rejects(pacer.beforeRequest(), /Unexpected \/api\/ask request/);
+  const missing = createRequestStartPacer();
+  await missing.beforeRequest();
+  assert.throws(() => missing.assertComplete(), /no observed \/api\/ask request/);
+  await assert.rejects(missing.beforeRequest(), /no observed \/api\/ask request/);
+  assert.deepEqual(missing.starts, []);
+});
+
+test("diagnostics bind the exact monotonic and wall samples once per network request", async () => {
+  const events = {};
+  let clock = 1_000;
+  const pacer = createRequestStartPacer({ now: () => clock, wallNow: () => clock });
+  const progress = { collected: {} };
+  attachAskDiagnostics({ on: (name, listener) => { events[name] = listener; } }, MOBILE_VIEWPORT, progress, pacer);
+  await pacer.beforeRequest();
+  clock += 219;
+  const request = { method: () => "POST", url: () => "https://api.example.test/api/ask", postDataJSON: () => ({ question: "Briefing" }) };
+  events.request(request);
+  events.request(request);
+  pacer.recordRequestStart(request);
+  assert.equal(progress.collected.askRequests.length, 1);
+  assert.equal(pacer.starts.length, 1);
+  assert.equal(progress.collected.askRequests[0].requestedAt, pacer.wallStarts[0]);
+  assert.equal(progress.collected.askRequests[0].monotonicStartMs, pacer.starts[0]);
+  assert.equal(progress.collected.askRequests[0].authorized, true);
 });
 
 test("cross-surface probability parsing and report-driven market expectation stay explicit", () => {
@@ -495,7 +580,8 @@ test("failure page snapshots are bounded and include the restored composer and a
   const document = {
     title: "Pundit", documentElement: { scrollWidth: 390 }, body: { innerText: "b".repeat(20_000) },
     querySelector: (selector) => selector.startsWith("textarea") ? input : { outerHTML: "d".repeat(30_000) },
-    querySelectorAll: (selector) => selector === "button" ? [{ getAttribute: () => "Send", disabled: true }]
+    querySelectorAll: (selector) => selector === '[data-testid="desk-pundit-bubble"]' ? [{}, {}, {}]
+      : selector === "button" ? [{ getAttribute: () => "Send", disabled: true }]
       : [{ textContent: "" }, { textContent: "Actual error" }],
   };
   const page = {
@@ -509,6 +595,7 @@ test("failure page snapshots are bounded and include the restored composer and a
     assert.equal(evidence.page.composer.value.length, 501);
     assert.equal(evidence.page.bodyText.length, 12_000);
     assert.equal(evidence.page.dom.length, 24_000);
+    assert.equal(evidence.page.assistantBubbleCount, 3);
     assert.deepEqual(Array.from(evidence.page.alerts), ["", "Actual error"]);
     assert.equal(evidence.currentPrompt, "Original submitted question");
     assert.match(evidence.errors[0], /Renderer unavailable/);

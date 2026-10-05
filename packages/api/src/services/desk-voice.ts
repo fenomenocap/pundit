@@ -44,6 +44,10 @@ If asked who scores: do not cite undated betting-site quotes as my ranking. If t
 export const DESK_BOARD_FALLBACK =
   "The model has a lean on this fixture. The board under this take has the numbers.";
 
+export const DESK_GENERAL_CONCEPT_SYSTEM = `You are Pundit, a first-person football analyst. Answer the general football question directly in complete causal prose. Explain the mechanism and its trade-offs; use conditional examples when outcomes depend on execution or context. Stable football concepts do not require a current-news source.
+
+There is no fixture, player projection or market forecast for this turn. Do not invent one. Do not invent probabilities, prices, stake advice or quantified match/player effects. Requested formation notation and stable football numbers needed to explain a concept are allowed. Do not introduce current managers, injuries, selections, recent form or team news. Do not add a news-verification notice or a bookmaker notice to an educational answer. Do not infer a named team's current playing style. Keep it concise, with no empty headings or unexplained references to missing examples.`;
+
 const DESK_CURRENT_NEWS_REMAINDER = [
   /current reports conflict on one or more requested facts/i,
   /no verified current source in this conversation supports that claim/i,
@@ -92,10 +96,8 @@ export function composeDeskFootballTake(
   const favourite = sides[0];
   const lean = favourite.role === "draw"
     ? "I have the draw as the likeliest single outcome; that does not establish a low-scoring game."
-    : `I lean to ${favourite.label}${favourite.role === "home" ? " at home" : " away from home"}.`;
-  const football = favourite.role === "draw"
-    ? `If either side commits players forward, the opponent could look for the space left behind.`
-    : `If ${favourite.label} can sustain pressure while protecting the space behind, they could turn territory into chances. If the opponent escapes that pressure, transitions could offer a route back into the game.`;
+    : `I lean to ${favourite.label}${g.homeFieldAdvantage ? (favourite.role === "home" ? " at home" : " away from home") : ""}.`;
+  const football = `If ${g.home} draw ${g.away}'s first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If ${g.away} close the central passing lanes, ${g.home} could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack.`;
   return `${lean} ${football} Those are tactical possibilities, not confirmed selections or playing styles.`;
 }
 
@@ -486,7 +488,8 @@ export async function writeDeskProse(
   grounding: AskGrounding,
   history: ConversationTurn[],
   signal?: AbortSignal,
-  bundle?: EvidenceBundle
+  bundle?: EvidenceBundle,
+  options?: { generalConcept?: boolean }
 ): Promise<string | null> {
   const fallback = grounding?.kind === "match" ? composeDeskFootballTake(grounding) : null;
   const inference = resolveInference();
@@ -494,7 +497,8 @@ export async function writeDeskProse(
   const client = new Anthropic({ apiKey: inference.apiKey, baseURL: inference.baseURL, maxRetries: 0 });
   const model = inference.model;
   let evidence: DeskEvidenceRow[] = filterDeskEvidenceRows(deskRowsFromBundle(bundle), grounding);
-  if (!evidence.length && !isSchematicMatchTake(question)) {
+  const generalConcept = options?.generalConcept === true && grounding === null;
+  if (!evidence.length && !isSchematicMatchTake(question) && !generalConcept) {
     try {
       evidence = filterDeskEvidenceRows(
         deskRowsFromSearch(await fetchDeskEvidence(grounding, question, signal)),
@@ -518,10 +522,10 @@ export async function writeDeskProse(
       content: [
         matchCard,
         focus,
-        formatSearchEvidence(evidence),
-        hint(question),
-        "Ignore manager, injury, and lineup claims from earlier turns. Only SEARCH EVIDENCE this turn is current.",
-        "Cite current-world claims with [[S1]] using only ids from SEARCH EVIDENCE. Do not paste URLs or markdown links.",
+        generalConcept ? "Explain the stable football mechanism requested below; no external current fact is requested." : formatSearchEvidence(evidence),
+        generalConcept ? "" : hint(question),
+        generalConcept ? "" : "Ignore manager, injury, and lineup claims from earlier turns. Only SEARCH EVIDENCE this turn is current.",
+        generalConcept ? "" : "Cite current-world claims with [[S1]] using only ids from SEARCH EVIDENCE. Do not paste URLs or markdown links.",
         `Question: ${question}`,
       ].filter(Boolean).join("\n\n"),
     },
@@ -532,7 +536,7 @@ export async function writeDeskProse(
         model,
         max_tokens: 280,
         temperature: 0.45,
-        system: DESK_SYSTEM,
+        system: generalConcept ? DESK_GENERAL_CONCEPT_SYSTEM : DESK_SYSTEM,
         messages: convo,
       },
       // The SDK timeout alone does not bound an OpenRouter call; the signal does.
