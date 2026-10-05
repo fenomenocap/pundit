@@ -864,6 +864,18 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   if (expectation.expectFootballTake) {
     Object.assign(assertions, validateFootballTake(text, expectation.expectConditionalTactics === true));
   }
+  if (expectation.expectBriefingConditionalMechanism || expectation.expectDecisiveRoles) {
+    const sentences = educationProse(text).match(/[^.!?\n]+(?:[.!?]|$)/g) ?? [];
+    if (expectation.expectBriefingConditionalMechanism) {
+      assertions.briefingConditionalMechanism = sentences.some((sentence) => {
+        const take = validateFootballTake(sentence, true);
+        return take.footballTakeMechanism && take.conditionalTacticalShape;
+      });
+    }
+    if (expectation.expectDecisiveRoles) {
+      assertions.decisiveRoleMechanism = sentences.some((sentence) => /\b(?:receiver|midfielder|striker|forward|winger|full[- ]back|centre[- ]back|center[- ]back|defender|keeper|goalkeeper|wide player|screening player)\w*\b[^.!?\n]{0,100}\b(?:turn|mov|run|attack|cover|screen|pull|time|receiv|pass|draw|mark|press|carry|win|hold|clear)\w*\b[^.!?\n]{0,100}\b(?:connect|release|exploit|reach|create|open|deny|prevent|protect|force|delay|isolate|stretch|pull|cover)\w*\b[^.!?\n]{0,80}\b(?:attack|runner|space|delivery|chance|pass|ball|goal|defen[cs]e|defender|midfield|wing|flank|central|counter|turnover|cut[- ]back)\w*\b/i.test(sentence));
+    }
+  }
   if (expectation.expectSeasonScopeNotice) {
     const scope = text.replace(/[’‘]/g, "'").replace(/\*\*/g, "");
     assertions.seasonScopeGroundingAbsent = grounding === null;
