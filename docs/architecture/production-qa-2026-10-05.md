@@ -363,3 +363,22 @@ the pricing board; they now retain match context while requiring current
 evidence. Generic defensive-role questions remain no-search explanations.
 Final focused coverage passed 358 tests twice; full API coverage passed 1,197
 tests twice. Build and all 18 golden forecasts remain unchanged.
+
+Final-head review reproduced possessive manager questions and identity/result
+requests with an appended "why" still closing on the pricing board. Identity
+and dated-result intent now precedes the explanatory-word exclusion; named
+current-price comparisons cannot evade evidence because they also mention the
+model. Generic geometry and owned fair-price calculations retain their paths.
+The required live manifest now has 70 scenarios, including three pinned
+manager/result requests whose relevance and source support need critic review.
+
+Independent browser review also reproduced finalization overwriting the API
+completion timestamp, invalidating the saved browser cooldown binding. The
+finalizer preserves that timestamp and records `finalizedAt` separately. A
+regression runs finalization twice and validates the persisted evidence each
+time. This repairs evidence consistency without weakening any release gate.
+
+The resulting source passed 1,204 API tests across 59 files twice, 365 focused
+tests twice and 155 evaluator-harness tests twice. Build and pinned artifact
+verification passed with all 18 golden fixtures unchanged. These checks do not
+replace the required fresh production API/browser/critic certificate.

@@ -392,6 +392,48 @@ test("finalizer schema binds pacing, web version, parity, markets and six critic
   assert.equal(criticEvidencePasses(lowUsefulness), false);
 });
 
+test("finalizer preserves harness completion and persisted evidence across repeated finalization", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pundit-finalize-repeat-"));
+  const completedAt = "2026-08-13T10:00:20.000Z";
+  const report = finalizeClassifications({
+    schemaVersion: EVAL_SCHEMA_VERSION, runId: "repeat-finalization",
+    startedAt: "2026-08-13T09:59:00.000Z", completedAt,
+    deployment: completeDeployment(), webUrl: "https://thepundit.vercel.app",
+    scenarios: browserContractScenarios(), pacing: completeApiPacing(),
+    progress: { status: "complete" }, browserEvidence: null, recommendations: [],
+  }, null);
+  const identity = { runId: report.runId, schemaVersion: EVAL_SCHEMA_VERSION,
+    sourceSha: TEST_SHA, deploymentId: "deploy-a", capturedAt: "2026-08-13T10:01:20.000Z" };
+  const browser = completeBrowserEvidence(identity);
+  browser.pacing.finalApiRequestStart = report.pacing.requestStarts.at(-1);
+  browser.pacing.harnessCompletedAt = completedAt;
+  browser.pacing.cooldownAnchor = completedAt;
+  const critic = completeCriticEvidence(identity);
+  assert.deepEqual(evidenceSchemaFailures(report, browser, critic), []);
+  const browserPath = path.join(directory, "browser.json");
+  const criticPath = path.join(directory, "critic.json");
+  try {
+    await writeReport(report, directory);
+    await writeFile(browserPath, JSON.stringify(browser));
+    await writeFile(criticPath, JSON.stringify(critic));
+    let previousFinalizedAt = 0;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await runNode(["scripts/finalize-chat-report.mjs", "--output-dir", directory,
+        "--browser-json", browserPath, "--critic-json", criticPath]);
+      assert.equal(result.code, 0, result.stderr);
+      const finalized = JSON.parse(await readFile(path.join(directory, "latest-run.json"), "utf8"));
+      assert.equal(finalized.overall, "PASS");
+      assert.equal(finalized.completedAt, completedAt);
+      assert.ok(Number.isFinite(Date.parse(finalized.finalizedAt)));
+      assert.ok(Date.parse(finalized.finalizedAt) >= previousFinalizedAt);
+      previousFinalizedAt = Date.parse(finalized.finalizedAt);
+      assert.deepEqual(evidenceSchemaFailures(finalized, finalized.browserEvidence, finalized.criticReview), []);
+    }
+  } finally {
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("finalizer accepts honest failed cooldown and web drift evidence but rejects a false market claim", () => {
   const identity = {
     runId: "honest-failure-run",
@@ -1123,6 +1165,8 @@ test("finalizer enriches the latest failed run without replacing latest complete
     await readFile(path.join(directory, "latest-run.json"), "utf8")
   );
   assert.equal(latestRun.runId, "failed");
+  assert.equal(latestRun.completedAt, null);
+  assert.ok(Number.isFinite(Date.parse(latestRun.finalizedAt)));
   assert.equal(latestRun.browserEvidence.summary, "Required production browser contracts passed.");
   assert.deepEqual(latestRun.recommendations, ["Keep monitoring."]);
 });

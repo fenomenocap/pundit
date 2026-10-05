@@ -2724,23 +2724,33 @@ function directCurrentFactAbstention(question: string): string | null {
   const directQuestion = question.trim()
     .replace(/^who['’]s\b/i, "who is")
     .replace(/^what['’]s\b/i, "what is");
-  // Only direct identity/result/price requests. Definitions and qualitative
-  // explanations can remain useful without establishing an external fact.
-  if (/\b(?:how|why|explain|define|definition|meaning|means?|convert|calculate|difference)\b/i.test(directQuestion)) return null;
-  const asksManagerRole = /^who\s+(?:is|was|will be)\b[^?\n]{0,100}\b(?:manager|head coach|coach)\b/i.test(directQuestion);
+  // A request for an identity or result still needs evidence when it also
+  // asks "why". Pure definitions and geometry have no external fact to settle.
+  const asksManagerRole = /^who\s+(?:is|was|will be)\b[^?\n]{0,100}\b(?:manager|head coach|coach)\b/i.test(directQuestion)
+    || /^what\s+(?:is|was)\b[^?\n]{0,100}['’]s\s+(?:(?:current|new|interim)\s+)?(?:manager|head coach|coach)\b/i.test(directQuestion);
   const asksManagerVerb = /^who\s+(?:manages|coaches)\b/i.test(directQuestion)
     && !/\b(?:space|shape|press|pressing|zones?|width|midfield|defence|defense)\b/i.test(directQuestion);
   if (asksManagerRole || asksManagerVerb) {
     return CURRENT_CLAIM_ABSTENTION;
   }
-  if (RESULT_QUESTION.test(directQuestion)
-    || /^what\s+(?:is|was)\b[^?\n]{0,100}\b(?:latest|last|most recent|final)\s+(?:result|score)\b/i.test(directQuestion)) {
+  if (/^what\s+(?:is|was)\b[^?\n]{0,100}\b(?:latest|last|most recent|final)\s+(?:result|score)\b/i.test(directQuestion)
+    || (/^who\s+/i.test(directQuestion) && RESULT_QUESTION.test(directQuestion))) {
     return RESULT_CLAIM_ABSTENTION;
   }
+  if (asksExplicitExternalPrice(directQuestion)) return ODDS_CLAIM_ABSTENTION;
+  if (/\b(?:how|why|explain|define|definition|meaning|means?|convert|calculate|difference)\b/i.test(directQuestion)) return null;
+  if (RESULT_QUESTION.test(directQuestion)) return RESULT_CLAIM_ABSTENTION;
   if (/^(?:what\s+(?:is|are|were)|show(?: me)?|give(?: me)?)\b[^?\n]{0,100}\b(?:odds|prices?|line)\b/i.test(directQuestion)) {
     return ODDS_CLAIM_ABSTENTION;
   }
   return null;
+}
+
+function asksExplicitExternalPrice(question: string): boolean {
+  const priceRequest = question.trim().split(/\b(?:and|but|how|why)\b/i)[0];
+  return /^(?:what(?:['’]s|\s+(?:is|are|were))|show(?: me)?|give(?: me)?)\b[^?\n]{0,100}\b(?:odds|prices?|line)\b/i.test(priceRequest)
+    && /\b(?:current|today|latest|live|bookmaker|betfair|bet365|pinnacle|william hill|stake|kalshi|polymarket)\b/i.test(priceRequest)
+    && !/\b(?:fair|model(?:['’]s)?|pundit(?:['’]s)?)\s+(?:(?:current|fair)\s+)?(?:odds|prices?|line)\b/i.test(priceRequest);
 }
 
 export function stripUncitedResultClaims(answer: string): string {
@@ -8409,7 +8419,8 @@ export function closedGroundedAnswer(
     // A pinned forecast contains no manager identity or dated match result.
     // Its numeric board cannot settle either before the required search.
     const directFact = directCurrentFactAbstention(question);
-    if (directFact === CURRENT_CLAIM_ABSTENTION || directFact === RESULT_CLAIM_ABSTENTION) return null;
+    if (directFact === CURRENT_CLAIM_ABSTENTION || directFact === RESULT_CLAIM_ABSTENTION
+      || asksExplicitExternalPrice(question)) return null;
     const plan = planResponse(question, {
       groundingKind: "match",
       hasHistory,
@@ -8775,7 +8786,8 @@ export async function deliverAnswer(args: {
       const requestedRefusal = directCurrentFactAbstention(question);
       const directRefusal = searchedCurrent
         && (grounding === null || requestedRefusal === CURRENT_CLAIM_ABSTENTION
-          || (grounding.kind === "match" && requestedRefusal === RESULT_CLAIM_ABSTENTION))
+          || (grounding.kind === "match" && (requestedRefusal === RESULT_CLAIM_ABSTENTION
+            || asksExplicitExternalPrice(question))))
         && checked.verification.supportedClaimCount === 0
         ? requestedRefusal : null;
       if (directRefusal) {

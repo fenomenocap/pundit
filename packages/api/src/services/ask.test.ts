@@ -421,6 +421,7 @@ describe("complete standalone football lessons", () => {
     { question: "Explain why covering a passing lane matters in a press.", text: "If a defender covers the passing lane, the attacker could need a wider route, leaving more time for support to arrive.", mechanism: "covers the passing lane" },
     { question: "Explain how a 4-4-2 formation can cover central passing lanes.", text: "If a 4-4-2 midfield stays compact, the central players could cover passing lanes while the wide players protect the flanks.", mechanism: "4-4-2 midfield stays compact" },
     { question: "Who manages the space between midfield and defence when a full-back presses?", text: "If the full-back presses, a nearby midfielder could cover the space while the centre-back protects the channel behind.", mechanism: "nearby midfielder could cover the space" },
+    { question: "Who manages the space between midfield and defence when a full-back presses, and why?", text: "If the full-back presses, a nearby midfielder could cover the space while the centre-back protects the channel behind.", mechanism: "nearby midfielder could cover the space" },
   ])("uses the concept prompt without primary or secondary latest-news search: $question", async ({ question, text, mechanism }) => {
     const saved = process.env.MINIMAX_API_KEY;
     process.env.MINIMAX_API_KEY = "test-only";
@@ -604,6 +605,7 @@ describe("complete standalone football lessons", () => {
     { question: "What was Arsenal's latest result?", bare: "Arsenal 3–0." },
     { question: "What are Arsenal's current odds?", bare: "Arsenal 1.82." },
     { question: "What’s Arsenal’s current price?", bare: "1.82." },
+    { question: "What are Betfair's current odds for Arsenal and why?", bare: "Betfair 1.82." },
   ])("does not let a bare direct $question answer escape an empty mandatory search", async ({ question, bare }) => {
     const saved = process.env.MINIMAX_API_KEY;
     process.env.MINIMAX_API_KEY = "test-only";
@@ -652,7 +654,12 @@ describe("complete standalone football lessons", () => {
   it.each([
     { question: "Who’s Arsenal’s manager today?", bare: "It’s Pat Doe.", refusal: /no verified current source/i },
     { question: "What was Arsenal’s latest result?", bare: "Arsenal 3–0.", refusal: /couldn’t verify that result/i },
-  ])("requires verified direct $question even with an active match pin in both voices and SSE", async ({ question, bare, refusal }) => {
+    { question: "What's Arsenal's manager today?", bare: "It’s Pat Doe.", refusal: /no verified current source/i },
+    { question: "Who is Arsenal's manager and why?", bare: "It’s Pat Doe.", refusal: /no verified current source/i },
+    { question: "What's Arsenal's latest result and why?", bare: "Arsenal 3–0.", refusal: /couldn’t verify that result/i },
+    { question: "What are Betfair's current odds for Arsenal and why?", bare: "Betfair 1.82.", refusal: /verify|verified|model|probabilit|1X2/i, externalPrice: true },
+    { question: "What are Betfair's current odds for Arsenal and how do they compare with the model?", bare: "Betfair 1.82.", refusal: /verify|verified|model|probabilit|1X2/i, externalPrice: true },
+  ])("requires verified direct $question even with an active match pin in both voices and SSE", async ({ question, bare, refusal, externalPrice }) => {
     await refreshClubRatings(new Date());
     const kickoff = new Date(Date.now() + 86_400_000).toISOString();
     const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
@@ -671,7 +678,8 @@ describe("complete standalone football lessons", () => {
         expect(result.grounding?.kind).toBe("match");
         expect(searchWeb).toHaveBeenCalled();
         expect(result.answer).toMatch(refusal);
-        expect(result.answer).not.toMatch(/Pat Doe|3[–-]0|My 1X2|\d+%/);
+        expect(result.answer).not.toContain(bare.replace(/\.$/, ""));
+        if (!externalPrice) expect(result.answer).not.toMatch(/Pat Doe|3[–-]0|My 1X2|\d+%/);
       }
       const deltas: string[] = [];
       const stream = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], {
@@ -679,7 +687,8 @@ describe("complete standalone football lessons", () => {
       }, context);
       expect(stream.grounding?.kind).toBe("match");
       expect(stream.answer).toMatch(refusal);
-      expect(stream.answer).not.toMatch(/Pat Doe|3[–-]0|My 1X2|\d+%/);
+      expect(stream.answer).not.toContain(bare.replace(/\.$/, ""));
+      if (!externalPrice) expect(stream.answer).not.toMatch(/Pat Doe|3[–-]0|My 1X2|\d+%/);
       expect(deltas).toEqual([stream.answer]);
     } finally {
       cached.mockRestore();
@@ -1917,6 +1926,11 @@ describe("current-news evidence hardening", () => {
       expect(modelOnly).toContain("Arsenal 97.3%");
       expect(closedGroundedAnswer("Which model input matters most to that edge?", model()))
         .toMatch(/reviewed team strength/i);
+      for (const question of [
+        "What are fair odds and how are they calculated?",
+        "What are Pundit's current fair prices and why?",
+        "What are the model's current odds and how are they calculated?",
+      ]) expect(closedGroundedAnswer(question, model())).not.toBeNull();
     });
 
     it("settles a posted userLine from modelP * decimal - 1 without a stake", () => {
