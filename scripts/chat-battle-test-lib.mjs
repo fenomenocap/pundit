@@ -864,6 +864,14 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   if (expectation.expectFootballTake) {
     Object.assign(assertions, validateFootballTake(text, expectation.expectConditionalTactics === true));
   }
+  if (expectation.expectSeasonScopeNotice) {
+    const scope = text.replace(/[’‘]/g, "'").replace(/\*\*/g, "");
+    assertions.seasonScopeGroundingAbsent = grounding === null;
+    assertions.supportedSeasonScopeExplained = /\b(?:season forecasts?|season outlook)\b[^.!?\n]{0,100}\b(?:premier league|epl)\b[^.!?\n]{0,40}\bonly\b|\bonly\b[^.!?\n]{0,40}\b(?:premier league|epl)\b[^.!?\n]{0,100}\b(?:season forecasts?|season outlook)\b|\b(?:premier league|epl)\b[^.!?\n]{0,60}\bonly\b[^.!?\n]{0,100}\b(?:season forecasts?|season outlook)\b/i.test(scope);
+    assertions.unsupportedSeasonForecastDeclined = /\b(?:can't|cannot|do not|don't|unable)\b[^.!?\n]{0,120}\b(?:title|relegation|season|cup|competition|probabilit|forecast)\w*\b|\b(?:season|title|relegation|cup|competition)\b[^.!?\n]{0,80}\b(?:unavailable|not available|not covered|unsupported|outside)\b/i.test(scope);
+    assertions.usefulSeasonScopeAlternative = /\b(?:I can|I could|I would|I'd|able to|ask me)\b[^.!?\n]{0,120}\b(?:football|general analysis|tactic|factors|match|season outlook)\w*\b/i.test(scope);
+    assertions.noInventedSeasonScopeNumbers = !/\b\d+(?:\.\d+)?\s*(?:%|percent(?:age)?\b|per cent\b)|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[- ]\w+)?\s+(?:percent|per cent)\b|\b(?:one|two|three|four|five|six|seven|eight|nine)[- ]in[- ](?:ten|a hundred)\b|\b(?:fair(?: (?:decimal )?(?:price|odds))?|decimal odds?|odds of|priced at)\b[^.!?\n]{0,40}\d|\b\d+(?:\.\d+)?\s*(?:in )?(?:fair (?:decimal )?(?:price|odds)|decimal odds?)\b/i.test(scope);
+  }
   if (expectation.expectNoPunditProbabilities) {
     assertions.noPunditProbabilities = !punditProbabilityClaim.test(text)
       && MODEL_PROBABILITY_FIELDS.every((field) => !Object.hasOwn(grounding ?? {}, field));
