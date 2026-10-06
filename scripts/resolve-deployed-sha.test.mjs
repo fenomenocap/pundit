@@ -318,3 +318,21 @@ test("the resolver agrees with the Vercel ignore-build rule commit for commit", 
     assert.equal(resolve(cwd, "web"), expected);
   });
 });
+
+
+test("local dependency-only repairs advance both deployment build floors", () => {
+  withRepo((cwd) => {
+    seedRepo(cwd);
+    const changed = commitFiles(cwd, "repair local dependency", {
+      "vendor/brace-patterns/lib/compile.js": "bounded traversal",
+    });
+    assert.equal(resolve(cwd, "api"), changed);
+    assert.equal(resolve(cwd, "web"), changed);
+  });
+});
+
+test("both Railway configurations watch the local dependency source", () => {
+  for (const filename of ["railway.toml", "packages/api/railway.toml"]) {
+    assert.match(fs.readFileSync(path.resolve(filename), "utf8"), /"\/vendor\/brace-patterns\/\*\*"/);
+  }
+});

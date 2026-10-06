@@ -13,6 +13,7 @@ watchPatterns = [
   "/package.json",
   "/pnpm-lock.yaml",
   "/pnpm-workspace.yaml",
+  "/vendor/brace-patterns/**",
   "/.node-version",
   "/.nvmrc",
 ]

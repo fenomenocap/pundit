@@ -15,13 +15,11 @@ overrides:
   flatted@<3.4.2: 3.4.2
   ajv@>=6 <6.14.0: 6.14.0
   nanoid@>=3 <3.3.18: 3.3.18
-  postcss-selector-parser@>=6 <6.1.3: 6.1.3
   tsx@<4.23.15: 4.23.15
-
-patchedDependencies:
-  braces@3.0.3:
-    hash: nxhbhdnhwghbz7mzvqi6qps2f4
-    path: patches/braces@3.0.3.patch
+  braces: file:vendor/brace-patterns
+  postcss-selector-parser@<7.1.6: 7.1.6
+  source-map-js@<1.2.2: 1.2.2
+  proxy-addr@<2.0.8: 2.0.8
 
 importers:
 
@@ -660,6 +658,10 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
+  '@pundit/brace-patterns@file:vendor/brace-patterns':
+    resolution: {directory: vendor/brace-patterns, type: directory}
+    engines: {node: '>=22'}
+
   '@radix-ui/react-compose-refs@1.1.2':
     resolution: {integrity: sha512-z4eqJvfiNnFMHIIvXP3CY57y2WJs5g2v3X0zm9mEJkrkNv4rDxu+sg9Jh8EkXyeqBkB7SOcboo9dMVqhyrACIg==}
     peerDependencies:
@@ -1230,10 +1232,6 @@ packages:
   brace-expansion@5.0.12:
     resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
     engines: {node: 20 || >=22}
-
-  braces@3.0.3:
-    resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
-    engines: {node: '>=8'}
 
   bytes@3.1.2:
     resolution: {integrity: sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg==}
@@ -2571,8 +2569,8 @@ packages:
     peerDependencies:
       postcss: 8.5.28
 
-  postcss-selector-parser@6.1.3:
-    resolution: {integrity: sha512-cDoO18VWCIWRsSaws3C23b0HXRxlUknttfdNcbXnf3IGHAPRNLlXPHc6dYiatOkxW0W4uZh524Plaaw5a7WEtQ==}
+  postcss-selector-parser@7.1.6:
+    resolution: {integrity: sha512-7qASPzhKF2l2KLboRZux8CCTRMdGiV08vWmyKzPz22qZ7ZjQBOeY7rNzNoCLSUiftJ7HUq0GERHmxw/t0dCdMw==}
     engines: {node: '>=4'}
 
   postcss-value-parser@4.2.0:
@@ -2592,8 +2590,8 @@ packages:
   property-information@7.2.0:
     resolution: {integrity: sha512-IAtzIB6sUiWaJYrX9smp3V46pBGbBeLFRGdh25kg1334VcBlD8HzhPeNIWQH9zhGmo2itIe25EHt9dQP7G5hmg==}
 
-  proxy-addr@2.0.7:
-    resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
+  proxy-addr@2.0.8:
+    resolution: {integrity: sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==}
     engines: {node: '>= 0.10'}
 
   punycode@2.3.1:
@@ -2810,8 +2808,8 @@ packages:
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
 
-  source-map-js@1.2.1:
-    resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
+  source-map-js@1.2.2:
+    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
 
   space-separated-tokens@2.0.2:
@@ -3625,6 +3623,10 @@ snapshots:
     dependencies:
       playwright: 1.62.0
 
+  '@pundit/brace-patterns@file:vendor/brace-patterns':
+    dependencies:
+      fill-range: 7.1.1
+
   '@radix-ui/react-compose-refs@1.1.2(@types/react@19.3.0)(react@19.3.0)':
     dependencies:
       react: 19.3.0
@@ -4186,10 +4188,6 @@ snapshots:
     dependencies:
       balanced-match: 4.0.4
 
-  braces@3.0.3(patch_hash=nxhbhdnhwghbz7mzvqi6qps2f4):
-    dependencies:
-      fill-range: 7.1.1
-
   bytes@3.1.2: {}
 
   call-bind-apply-helpers@1.0.2:
@@ -4235,7 +4233,7 @@ snapshots:
   chokidar@3.6.0:
     dependencies:
       anymatch: 3.1.3
-      braces: 3.0.3(patch_hash=nxhbhdnhwghbz7mzvqi6qps2f4)
+      braces: '@pundit/brace-patterns@file:vendor/brace-patterns'
       glob-parent: 5.1.2
       is-binary-path: 2.1.0
       is-glob: 4.0.3
@@ -4804,7 +4802,7 @@ snapshots:
       on-finished: 2.4.1
       parseurl: 1.3.3
       path-to-regexp: 0.1.13
-      proxy-addr: 2.0.7
+      proxy-addr: 2.0.8
       qs: 6.16.0
       range-parser: 1.2.1
       safe-buffer: 5.2.1
@@ -5574,7 +5572,7 @@ snapshots:
 
   micromatch@4.0.8:
     dependencies:
-      braces: 3.0.3(patch_hash=nxhbhdnhwghbz7mzvqi6qps2f4)
+      braces: '@pundit/brace-patterns@file:vendor/brace-patterns'
       picomatch: 2.3.2
 
   mime-db@1.52.0: {}
@@ -5790,9 +5788,9 @@ snapshots:
   postcss-nested@6.2.0(postcss@8.5.28):
     dependencies:
       postcss: 8.5.28
-      postcss-selector-parser: 6.1.3
+      postcss-selector-parser: 7.1.6
 
-  postcss-selector-parser@6.1.3:
+  postcss-selector-parser@7.1.6:
     dependencies:
       cssesc: 3.0.0
       util-deprecate: 1.0.2
@@ -5803,7 +5801,7 @@ snapshots:
     dependencies:
       nanoid: 3.3.19
       picocolors: 1.1.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   prelude-ls@1.2.1: {}
 
@@ -5815,7 +5813,7 @@ snapshots:
 
   property-information@7.2.0: {}
 
-  proxy-addr@2.0.7:
+  proxy-addr@2.0.8:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
@@ -6148,7 +6146,7 @@ snapshots:
 
   siginfo@2.0.0: {}
 
-  source-map-js@1.2.1: {}
+  source-map-js@1.2.2: {}
 
   space-separated-tokens@2.0.2: {}
 
@@ -6289,7 +6287,7 @@ snapshots:
       postcss-js: 4.1.0(postcss@8.5.28)
       postcss-load-config: 6.0.1(jiti@1.21.7)(postcss@8.5.28)(tsx@4.23.15)
       postcss-nested: 6.2.0(postcss@8.5.28)
-      postcss-selector-parser: 6.1.3
+      postcss-selector-parser: 7.1.6
       resolve: 1.22.11
       sucrase: 3.35.1
     transitivePeerDependencies:

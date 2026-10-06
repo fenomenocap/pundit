@@ -29,11 +29,11 @@ jobs:
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level high
 
-      - name: Audit critical development dependencies
-        run: pnpm audit --audit-level critical
+      - name: Audit all dependencies
+        run: pnpm audit --audit-level high
 
-      - name: Verify local braces security mitigation
-        run: pnpm test:braces-security
+      - name: Verify dependency security regressions
+        run: pnpm test:dependency-security
 
       - name: Type-check API
         working-directory: packages/api
