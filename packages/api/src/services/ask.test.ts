@@ -6076,9 +6076,9 @@ describe("settled player news requires exact current-claim verification", () => 
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
     const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
-    // Unmodified publisher JSON-LD and paragraphs captured from this real URL.
+    // Actual publication metadata and 20 source words captured from this real URL.
     const html = readFileSync(join(__dirname, "__fixtures__/yahoo-arsenal-injury-2026-10-05.html"), "utf8");
-    const source = { title: "Arsenal injury update: Christos Tzolis, Kai Havertz, Declan Rice latest news and return dates",
+    const source = { title: "Arsenal injury bulletin (dated club report)",
       link: "https://uk.sports.yahoo.com/news/arsenal-injury-christos-tzolis-kai-050000771.html", date: "", snippet: "It has been a costly international break for the Gunners so far" };
     const official = Array.from({ length: 9 }, (_, index) => ({ title: "Arsenal vs Leeds confirmed lineup",
       link: `https://www.premierleague.com/lineups/${index}`, date: "", snippet: "Upcoming fixture lineups." }));
