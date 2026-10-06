@@ -9,6 +9,8 @@ test("builds web and shared-root changes", () => {
     "package.json",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
+    "vendor/brace-patterns/lib/compile.js",
+    "vendor/brace-patterns/package.json",
     ".node-version",
     ".nvmrc",
     "scripts/vercel-ignore-build.mjs",
