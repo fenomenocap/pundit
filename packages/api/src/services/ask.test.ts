@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { DESK_GENERAL_CONCEPT_SYSTEM, DESK_CURRENT_FACT_SYSTEM, DESK_DATED_CLUB_NEWS_SYSTEM } from "./desk-voice";
 import * as evidencePages from "./evidence-page-retrieval";
@@ -752,11 +754,11 @@ describe("complete standalone football lessons", () => {
         expect(String(input.messages.at(-1)?.content)).toContain("FOCUS CLUB: Arsenal");
         expect(String(input.messages.at(-1)?.content)).not.toContain("MATCH CARD");
       }
-      return Promise.resolve({ content: [{ type: "text", text: verifying ? JSON.stringify({ decisions: data.claims.map((claim: { id: string }) => ({ claimId: claim.id, outcome, evidenceIds: ["S1"] })), summary: "Assessed against the club report." }) : prose }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      return Promise.resolve({ content: [{ type: "text", text: verifying ? JSON.stringify({ decisions: data.claims.map((claim: { id: string }) => ({ claimId: claim.id, outcome, evidenceIds: ["S2"] })), summary: "Assessed against the club report." }) : prose.replace(/\[\[S1\]\]/g, "[[S2]]") }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
     });
     searchWeb.mockReset();
     // The relevant source starts after an unrelated opponent report. The
-    // writer and verifier must share the same remapped source IDs in all voices.
+    // writer and verifier must share the same original source IDs in all voices.
     searchWeb.mockResolvedValue([{ title: "Leeds vs Chelsea: report", link: "https://www.chelseafc.com/news/unrelated", snippet: "Chelsea won against Leeds.", date: "2026-10-04" }, source]);
     try {
       const context = { fixtureId: espnFixtureIdentity(model) };
@@ -6068,6 +6070,63 @@ describe("evidence attached to a match turn", () => {
 });
 
 describe("settled player news requires exact current-claim verification", () => {
+  it("hydrates a late real publisher report ahead of nine official fixture hits and preserves its S10 citation in JSON, desk and SSE", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T02:00:00Z"));
+    await refreshClubRatings(new Date());
+    const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
+    // Unmodified publisher JSON-LD and paragraphs captured from this real URL.
+    const html = readFileSync(join(__dirname, "__fixtures__/yahoo-arsenal-injury-2026-10-05.html"), "utf8");
+    const source = { title: "Arsenal injury update: Christos Tzolis, Kai Havertz, Declan Rice latest news and return dates",
+      link: "https://uk.sports.yahoo.com/news/arsenal-injury-christos-tzolis-kai-050000771.html", date: "", snippet: "It has been a costly international break for the Gunners so far" };
+    const official = Array.from({ length: 9 }, (_, index) => ({ title: "Arsenal vs Leeds confirmed lineup",
+      link: `https://www.premierleague.com/lineups/${index}`, date: "", snippet: "Upcoming fixture lineups." }));
+    const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation((candidates) => {
+      expect(candidates).toHaveLength(8); expect(candidates[0]).toMatchObject({ id: "S10", url: source.link });
+    });
+    const realRetrieve = evidencePages.retrieveEvidencePages;
+    const fetch = vi.fn(async (url: string | URL) => new Response(String(url) === source.link
+      ? html : "<html><body>Upcoming fixture lineups.</body></html>", { status: 200, headers: { "content-type": "text/html" } }));
+    const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation((candidates, signal, options) => {
+      expect(candidates.length).toBeLessThanOrEqual(8);
+      return realRetrieve(candidates, signal, { ...options, fetch,
+        resolveHost: async () => [{ address: "93.184.216.34", family: 4 }], now: () => new Date() });
+    });
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      if (String(input.system) === DESK_DATED_CLUB_NEWS_SYSTEM) {
+        const evidence = String(input.messages.at(-1)?.content);
+        expect(evidence).toContain("[[S10]] 2026-10-05T09:42:23Z"); expect(evidence).toContain("Kai Havertz");
+        return Promise.resolve({ content: [{ type: "text", text: "On 2026-10-05, Arsenal's Kai Havertz was reported sidelined with a hamstring problem [[S10]]." }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      }
+      expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
+      const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
+      expect(data.claims).toHaveLength(1); expect(data.claims[0].text).toContain("[[S10]]");
+      expect(data.pages.find((page: { id: string }) => page.id === "S10")).toMatchObject({ publishedDate: "2026-10-05T09:42:23Z", url: source.link });
+      return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: [{ claimId: data.claims[0].id,
+        outcome: "supported", evidenceIds: ["S10"] }], summary: "Exact dated claim supported." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    searchWeb.mockReset(); searchWeb.mockResolvedValue([...official, source]);
+    const question = "What are the latest dated club injury updates for Arsenal and Leeds? Keep current reports distinct from future kickoff availability.";
+    try {
+      for (const voice of [undefined, "desk"] as const) {
+        const result = await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, { fixtureId: espnFixtureIdentity(model) }, undefined, voice);
+        expect(result.verification).toEqual({ status: "verified", supportedClaimCount: 1, removedClaimCount: 0 });
+        expect(result.citations).toMatchObject([{ id: "S10", url: source.link, date: "2026-10-05T09:42:23Z" }]);
+        expect(result.answer).toContain("Kai Havertz"); expect(result.answer).toContain("do not establish the starting XI");
+        expect(result.answer).toContain("couldn’t establish a verified, dated Leeds club update");
+      }
+      const deltas: string[] = [];
+      const result = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: (s) => deltas.push(s) }, { fixtureId: espnFixtureIdentity(model) });
+      expect(result.verification.supportedClaimCount).toBe(1); expect(result.citations?.[0].id).toBe("S10");
+      expect(deltas).toEqual([result.answer]); expect(create).toHaveBeenCalledTimes(6);
+      expect(fetch.mock.calls.filter(([url]) => String(url) === source.link)).toHaveLength(3);
+    } finally {
+      create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
   it.each(["supported", "unsupported", "conflict"] as const)("handles dated club-report prose only after exact claim verification: %s", async (outcome) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T00:00:00Z"));
     await refreshClubRatings(new Date());
