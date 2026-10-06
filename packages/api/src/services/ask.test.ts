@@ -6070,6 +6070,62 @@ describe("evidence attached to a match turn", () => {
 });
 
 describe("settled player news requires exact current-claim verification", () => {
+  it.each(["actual-canary", "implicit-affiliation", "both-clubs"] as const)("keeps verified updates consistent with the coverage summary: %s", async (variant) => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));
+    await refreshClubRatings(new Date());
+    const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
+    const first = "On 2026-10-06, it was reported that Ben White has been spotted back in training and is expected to be fit for the weekend's game [[S1]].";
+    const second = variant === "implicit-affiliation"
+      ? "On 2026-10-06, it was reported that Piero Hincapie has continued training after not being selected for Ecuador [[S1]]."
+      : "On 2026-10-06, it was reported that Piero Hincapie has continued training with Arsenal after not being selected for Ecuador and should be fit to play against Leeds [[S1]].";
+    const third = variant === "both-clubs" ? "On 2026-10-05, Leeds United's Joe Example was reported doubtful [[S3]]."
+      : "On 2026-10-05, it was reported that Christos Tzolis is sidelined with a hamstring injury, with a potential return date of October 24 [[S3]].";
+    const fourth = "As of 2026-10-01, William Saliba is reported to be progressing well in rehabilitation but could still be several weeks from a return, with a possible return date in December [[S5]].";
+    const prose = `Based on the search evidence, here are the latest dated club injury updates for Arsenal: - ${first} - ${second} - ${third} - ${fourth}`;
+    const sources = [{ title: "Arsenal injury news latest and return dates for Leeds", link: "https://www.football.london/arsenal-fc/news/arsenal-injury-news-latest-leeds-34721050", date: "2026-10-06T05:00:00Z", snippet: "Arsenal fitness reports. Ben White has returned to training. Piero Hincapie continued training with Arsenal after not being selected for Ecuador." },
+      { title: "Arsenal vs Leeds lineups", link: "https://www.premierleague.com/lineups/one", date: "", snippet: "Fixture preview." },
+      { title: variant === "both-clubs" ? "Leeds injury update" : "Arsenal injury update", link: "https://www.standard.co.uk/sport/football/news-update.html", date: "2026-10-05", snippet: variant === "both-clubs" ? "Leeds injury news concerns Joe Example after a fitness setback." : "Arsenal injury news concerns Christos Tzolis after a hamstring setback." },
+      { title: "Arsenal vs Leeds lineups", link: "https://www.premierleague.com/lineups/two", date: "", snippet: "Fixture preview." },
+      { title: "Arsenal injury updates and return dates", link: "https://www.football.london/arsenal-fc/news/arsenal-injury-news-saliba-update-34700613", date: "2026-10-01", snippet: "Arsenal injury update concerns William Saliba and rehabilitation." }];
+    const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
+    const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate,
+      finalUrl: candidate.url, text: sources.find((source) => source.link === candidate.url)!.snippet, retrievedAt: new Date().toISOString() })));
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      if (String(input.system) === DESK_DATED_CLUB_NEWS_SYSTEM) return Promise.resolve({ content: [{ type: "text", text: prose }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
+      const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
+      expect(data.claims).toHaveLength(3); expect(data.claims.some((claim: { text: string }) => /search evidence|William Saliba/.test(claim.text))).toBe(false);
+      return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: data.claims.map((claim: { id: string; text: string }) => ({ claimId: claim.id,
+        outcome: "supported", evidenceIds: [claim.text.includes("[[S3]]") ? "S3" : "S1"] })), summary: "Exact dated claims supported." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    searchWeb.mockReset(); searchWeb.mockResolvedValue(sources);
+    try {
+      for (const voice of [undefined, "desk"] as const) {
+        const result = await answerQuestion("What are the latest dated club injury updates for Arsenal and Leeds? Keep current reports distinct from future kickoff availability.", [], ["Arsenal", "Leeds"], undefined, { fixtureId: espnFixtureIdentity(model) }, undefined, voice);
+        expect(result.verification).toEqual({ status: "verified", supportedClaimCount: 3, removedClaimCount: 0 });
+        expect(result.answer).not.toMatch(/search evidence|William Saliba|dated Arsenal or Leeds club update/);
+        expect(result.answer).toContain("Ben White"); expect(result.answer).toContain("Piero Hincapie"); expect(result.answer).toContain("do not establish the starting XI");
+        if (variant === "actual-canary") expect(result.answer).toContain("verified, dated Leeds club update");
+        if (variant === "implicit-affiliation") expect(result.answer).toContain("haven’t verified separate injury updates for both clubs");
+        if (variant === "both-clubs") expect(result.answer).not.toMatch(/couldn’t establish|haven’t verified/);
+      }
+      const deltas: string[] = [];
+      const streamed = await answerQuestionStream("What are the latest dated club injury updates for Arsenal and Leeds? Keep current reports distinct from future kickoff availability.", [], ["Arsenal", "Leeds"],
+        { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, { fixtureId: espnFixtureIdentity(model) });
+      expect(deltas).toEqual([streamed.answer]); expect(streamed.verification.supportedClaimCount).toBe(3);
+      expect(streamed.answer).not.toMatch(/search evidence|William Saliba|dated Arsenal or Leeds club update/);
+      if (variant === "actual-canary") expect(streamed.answer).toContain("verified, dated Leeds club update");
+      if (variant === "implicit-affiliation") expect(streamed.answer).toContain("haven’t verified separate injury updates for both clubs");
+      if (variant === "both-clubs") expect(streamed.answer).not.toMatch(/couldn’t establish|haven’t verified/);
+      expect(create).toHaveBeenCalledTimes(6);
+    } finally {
+      create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
   it("hydrates a late real publisher report ahead of nine official fixture hits and preserves its S10 citation in JSON, desk and SSE", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T02:00:00Z"));
     await refreshClubRatings(new Date());
