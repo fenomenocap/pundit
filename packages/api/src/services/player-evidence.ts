@@ -157,6 +157,15 @@ export function clubNamedInNews(text: string, club: string): boolean {
   return new RegExp(`\\b${clubPattern(club)}\\b`, "i").test(text);
 }
 
+/** Identity candidate only. Exact source/club/status support still owes the
+ * mandatory current-claim verifier after the server has rendered the record. */
+export function playerNamedInNewsBody(name: string, body: string, fixture: PlayerFixtureRef): boolean {
+  const clean = name.trim().replace(/\s+/g, " ");
+  if (!/^[\p{L}\p{M}'’\-]+(?:\s+[\p{L}\p{M}'’\-]+){1,3}$/u.test(clean)
+    || !isPersonName(clean, fixture)) return false;
+  return new RegExp(`(?<![\\p{L}\\p{M}])${escapeRegExp(clean).replace(/\s+/g, "\\s+")}(?![\\p{L}\\p{M}])`, "iu").test(body);
+}
+
 /** Coverage of already verified claims requires explicit player affiliation,
  * not merely an opponent mentioned elsewhere in the same sentence. */
 export function clubsInVerifiedNewsClaims(texts: readonly string[], fixture: PlayerFixtureRef): string[] {

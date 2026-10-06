@@ -8,12 +8,14 @@ import {
   DESK_GENERAL_CONCEPT_SYSTEM,
   datedClubNewsExcerpt,
   writeDeskProse,
+  renderDatedClubNewsRecords,
   card,
   composeDeskFootballTake,
   deskProseIsCurrentNewsRemainder,
   stripSurplusCurrentNewsNotices,
   filterDeskEvidenceRows,
   formatSearchEvidence,
+  formatDeskCitationDate,
   humaniseDeskCitationDates,
   sanitizeDeskModelProse,
   sanitizeDeskFootballHypotheses,
@@ -77,6 +79,102 @@ function match(over: Partial<Grounding> = {}): Grounding {
 const NOW = Date.parse("2026-09-11T03:00:00.000Z");
 
 describe("bounded dated club-news expression", () => {
+  const newsNow = Date.parse("2026-10-06T02:00:00Z");
+  const newsGrounding = match({ home: "Arsenal", away: "Leeds", date: "2026-10-10" });
+  const newsSources = [{ id: "S10", title: "Arsenal injury update", url: "https://www.standard.co.uk/report",
+    date: "2026-10-05T09:42:23Z", tier: "news" as const,
+    snippet: "Arsenal injury update: Christos Tzolis had a hamstring injury while representing Greece on Thursday, October 1. Ben White was back in training. Kai Havertz had a hamstring issue." }];
+  const newsRow = { sourceId: "S10", club: "Arsenal", playerName: "Christos Tzolis", statusText: "was sidelined with a hamstring injury" };
+  const newsJson = (row: Record<string, unknown> = newsRow) => JSON.stringify({ updates: [row] });
+
+  it("labels the immutable source publication date without converting it into the injury date", () => {
+    const answer = renderDatedClubNewsRecords(newsJson(), newsSources, newsGrounding, newsNow);
+    expect(answer).toBe("In an update published on 2026-10-05, Arsenal’s Christos Tzolis was sidelined with a hamstring injury [[S10]].");
+    expect(answer).not.toMatch(/injur\w*.*(?:2026|October|Thursday)|Greece/);
+    const three = [newsRow, { ...newsRow, playerName: "Ben White", statusText: "has been spotted back in training" },
+      { ...newsRow, playerName: "Kai Havertz", statusText: "may be doubtful" }];
+    expect(renderDatedClubNewsRecords(JSON.stringify({ updates: three }), newsSources, newsGrounding, newsNow)).toContain("Kai Havertz may be doubtful [[S10]]");
+  });
+
+  it("normalizes an allowed club alias and full-name whitespace without accepting a duplicate player", () => {
+    const source = { ...newsSources[0], snippet: "Manchester City injury update: Joe Example was doubtful." };
+    const row = { ...newsRow, club: "Man City", playerName: " Joe   Example ", statusText: "may be doubtful" };
+    const grounding = match({ date: "2026-10-10" });
+    expect(renderDatedClubNewsRecords(newsJson(row), [source], grounding, newsNow)).toContain("Manchester City’s Joe Example may be doubtful");
+    expect(renderDatedClubNewsRecords(JSON.stringify({ updates: [row, { ...row, playerName: "Joe Example" }] }), [source], grounding, newsNow)).toBeNull();
+  });
+
+  it("keeps the publisher calendar date consistent with its citation at a timezone boundary", () => {
+    const date = "2026-10-06T00:15:00+0100";
+    expect(renderDatedClubNewsRecords(newsJson(), [{ ...newsSources[0], date }], newsGrounding, newsNow)).toContain("published on 2026-10-06");
+    expect(formatDeskCitationDate(date)).toBe("6 Oct");
+  });
+
+  it.each([
+    "was sidelined with a hamstring injury on 2026-10-05", "was injured on Thursday", "was injured on Thu",
+    "was injured in October", "was injured in Oct", "was injured this morning", "was injured on the fifth",
+    "was sidelined for a fortnight", "was sidelined for three weeks", "was injured in May", "was injured yesterday",
+    "was sidelined with a hamstring injury while playing for Greece", "was expected to return", "may return to training",
+    "will be fit", "may be fit", "could start", "was doubtful but should play", "had a 50% chance of starting",
+    "was injured [[S1]]", "was injured https://example.com", "was injured. Ben White was suspended",
+    "was sidelined alongside Ben White", "was injured for Arsenal", "was injured\nwith a hamstring injury",
+  ])("rejects event timing, future projections, extra subjects or markup by the positive grammar: %s", (statusText) => {
+    expect(renderDatedClubNewsRecords(newsJson({ ...newsRow, statusText }), newsSources, newsGrounding, newsNow)).toBeNull();
+  });
+
+  it.each([
+    "Based solely on SEARCH EVIDENCE: Christos Tzolis suffered a hamstring injury on 2026-10-05 [[S10]].",
+    "```json\n{\"updates\":[]}\n```", "{\"updates\":[", "null", "[]", "{}", "{\"updates\":[]}",
+    JSON.stringify({ updates: [newsRow], publicationDate: "2026-10-05" }),
+    JSON.stringify({ updates: [{ ...newsRow, date: "2026-10-05" }] }),
+    JSON.stringify({ updates: [newsRow, newsRow, newsRow, newsRow] }),
+    JSON.stringify({ updates: [{ ...newsRow, sourceId: "S999" }] }),
+    JSON.stringify({ updates: [{ ...newsRow, sourceId: "S10]] injected" }] }),
+    JSON.stringify({ updates: [{ ...newsRow, club: "Chelsea" }] }),
+    JSON.stringify({ updates: [{ ...newsRow, playerName: "Ben" }] }),
+    JSON.stringify({ updates: [{ ...newsRow, playerName: "Absent Player" }] }),
+    JSON.stringify({ updates: [{ ...newsRow, statusText: "" }] }),
+  ])("rejects malformed or unauthorized record contracts without forwarding raw output: %s", (raw) => {
+    expect(renderDatedClubNewsRecords(raw, newsSources, newsGrounding, newsNow)).toBeNull();
+  });
+
+  it.each(["", "2026-09-28", "2026-10-07", "not-a-date"])("rejects undated, stale or future sources: %s", (date) => {
+    expect(renderDatedClubNewsRecords(newsJson(), [{ ...newsSources[0], date }], newsGrounding, newsNow)).toBeNull();
+  });
+
+  it("requires the full player identity in the same source body, rather than its title or another page", () => {
+    expect(renderDatedClubNewsRecords(newsJson(), [{ ...newsSources[0], title: "Christos Tzolis injury", snippet: "Arsenal injury news." },
+      { ...newsSources[0], id: "S11" }], newsGrounding, newsNow)).toBeNull();
+  });
+
+  it.each([
+    "was reported injured", "was sidelined with a hamstring injury", "was reported doubtful", "may be doubtful",
+    "Has Been Spotted Back In Training", "has a Neural Hamstring pain",
+    "was suspended", "was back in training", "has been spotted back in training", "has continued training",
+    "has returned to training", "withdrew from international duty", "was undergoing assessment", "was in rehabilitation",
+    "had a hamstring issue pending assessment", "has been dealing with neural hamstring pain",
+    ...["neural hamstring", "hamstring", "groin", "calf", "knee", "ankle", "muscle", "back", "thigh", "adductor", "achilles", "foot", "hip", "shoulder", "ligament", "tendon"]
+      .flatMap((part) => ["injury", "issue", "problem", "strain", "pain", "tear"].map((condition) => `has a ${part} ${condition}`)),
+  ])("permits every prompted status and approved condition while leaving its factual support to verification: %s", (statusText) => {
+    expect(renderDatedClubNewsRecords(newsJson({ ...newsRow, statusText }), newsSources, newsGrounding, newsNow)).toContain(statusText);
+  });
+
+  it.each([
+    { raw: "private provider text", sources: newsSources, reason: "invalid_json" },
+    { raw: newsJson({ ...newsRow, privateField: "private value" }), sources: newsSources, reason: "shape" },
+    { raw: newsJson({ ...newsRow, sourceId: "S99" }), sources: newsSources, reason: "source_id" },
+    { raw: newsJson({ ...newsRow, club: "private club" }), sources: newsSources, reason: "club" },
+    { raw: newsJson({ ...newsRow, playerName: "Private Player" }), sources: newsSources, reason: "player_body" },
+    { raw: newsJson(), sources: [{ ...newsSources[0], date: "" }], reason: "date" },
+    { raw: newsJson({ ...newsRow, statusText: "private event context" }), sources: newsSources, reason: "status_grammar" },
+    { raw: JSON.stringify({ updates: [newsRow, newsRow] }), sources: newsSources, reason: "duplicate" },
+  ])("reports only a safe rejection enum: $reason", ({ raw, sources, reason }) => {
+    const rejected = vi.fn();
+    expect(renderDatedClubNewsRecords(raw, sources, newsGrounding, newsNow, rejected)).toBeNull();
+    expect(rejected).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(JSON.stringify(rejected.mock.calls)).not.toMatch(/private|Christos|Arsenal|hamstring|S10/i);
+  });
+
   it("keeps a literal status passage beyond publisher navigation inside the same bounded excerpt", () => {
     const text = "Training menu. Withdrawal headlines. " + "Navigation. ".repeat(500)
       + "Joe Example (Arsenal) has a hamstring issue. The report does not confirm future availability.";
@@ -97,14 +195,15 @@ describe("bounded dated club-news expression", () => {
       vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T02:00:00Z"));
       const info = vi.spyOn(console, "info").mockImplementation(() => {});
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const prose = "On 2026-10-05, Arsenal's Joe Example was reported injured [[S9]].";
+      const records = JSON.stringify({ updates: [{ sourceId: "S9", club: "Arsenal", playerName: "Joe Example", statusText: "was reported injured" }] });
+      const prose = "In an update published on 2026-10-05, Arsenal’s Joe Example was reported injured [[S9]].";
       const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
         const input = params as Anthropic.MessageCreateParamsNonStreaming;
         expect(input.max_tokens).toBe(mode === "minimax" || mode === "reasoning-enabled" ? 8_192 : 1_024);
         expect(input.thinking).toEqual(mode === "minimax" || mode === "reasoning-enabled" ? undefined : { type: "disabled" });
         if (mode === "error") throw new Error("sensitive provider body must never be logged");
         return Promise.resolve({ content: mode === "thinking-only" ? [{ type: "thinking", thinking: "private internal text", signature: "" }]
-          : [{ type: "text", text: prose }], stop_reason: mode === "truncated" ? "max_tokens" : "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+          : [{ type: "text", text: records }], stop_reason: mode === "truncated" ? "max_tokens" : "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
       });
       try {
         const result = await writeDeskProse("Latest Arsenal injury news?", match({ home: "Arsenal", away: "Leeds", date: "2026-10-10" }), [], undefined, {
