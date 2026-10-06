@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
-import { DESK_GENERAL_CONCEPT_SYSTEM, DESK_CURRENT_FACT_SYSTEM } from "./desk-voice";
+import { DESK_GENERAL_CONCEPT_SYSTEM, DESK_CURRENT_FACT_SYSTEM, DESK_DATED_CLUB_NEWS_SYSTEM } from "./desk-voice";
 import * as evidencePages from "./evidence-page-retrieval";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import { AppError } from "../middleware";
@@ -6068,6 +6068,54 @@ describe("evidence attached to a match turn", () => {
 });
 
 describe("settled player news requires exact current-claim verification", () => {
+  it.each(["supported", "unsupported", "conflict"] as const)("handles dated club-report prose only after exact claim verification: %s", async (outcome) => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T00:00:00Z"));
+    await refreshClubRatings(new Date());
+    const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
+    const source = { title: "Arsenal injury update: Kai Havertz latest news", link: "https://www.arsenal.com/news/latest-injury-update", date: "2026-10-05",
+      snippet: "Arsenal are dealing with injury concerns. Kai Havertz sustained a hamstring issue on international duty and will undergo further assessment." };
+    const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
+    const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate,
+      finalUrl: candidate.url, text: source.snippet, retrievedAt: new Date().toISOString() })));
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      if (String(input.system) === DESK_DATED_CLUB_NEWS_SYSTEM) {
+        expect(String(input.messages.at(-1)?.content)).toContain(source.snippet);
+        return Promise.resolve({ content: [{ type: "text", text: "On 2026-10-05, Arsenal's Kai Havertz was reported to have a hamstring issue pending assessment [[S1]]. Leeds will definitely win." }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      }
+      expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
+      const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
+      expect(data.claims).toHaveLength(1); expect(data.claims[0].text).toContain("Kai Havertz");
+      expect(data.claims[0].text).not.toContain("definitely");
+      return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: data.claims.map((claim: { id: string }) => ({ claimId: claim.id, outcome, evidenceIds: ["S1"] })), summary: "Exact claim assessed." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    searchWeb.mockReset(); searchWeb.mockResolvedValue([source]);
+    try {
+      for (const voice of [undefined, "desk"] as const) {
+        const result = await answerQuestion("What is the latest team news?", [], ["Arsenal", "Leeds"], undefined, { fixtureId: espnFixtureIdentity(model) }, undefined, voice);
+        expect(result.grounding?.kind).toBe("match");
+        expect(result.answer).not.toContain("definitely");
+        if (outcome === "supported") {
+          expect(result.answer).toContain("Kai Havertz"); expect(result.answer).toContain(source.link);
+          expect(result.answer).toContain("do not establish the starting XI");
+          expect(result.verification).toEqual({ status: "verified", supportedClaimCount: 1, removedClaimCount: 0 });
+        } else {
+          expect(result.answer).not.toContain("Kai Havertz"); expect(result.citations ?? []).toEqual([]);
+          expect(result.verification.supportedClaimCount).toBe(0);
+        }
+      }
+      const deltas: string[] = [];
+      const result = await answerQuestionStream("What is the latest team news?", [], ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: (s) => deltas.push(s) }, { fixtureId: espnFixtureIdentity(model) });
+      expect(deltas).toEqual([result.answer]); expect(deltas.join("")).not.toContain("definitely");
+      if (outcome !== "supported") expect(deltas.join("")).not.toContain("Kai Havertz");
+      expect(create).toHaveBeenCalledTimes(6);
+    } finally {
+      create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
   it.each([
     { label: "actual Back identity fragment", snippet: "Back (Arsenal) is unavailable.", outcome: "supported", accepted: false, extracted: false },
     { label: "different-player heading proximity", snippet: "Saka (Arsenal) trained. Return dates for Kai Havertz are beside an unavailable-player heading.", outcome: "supported", accepted: false, extracted: false },

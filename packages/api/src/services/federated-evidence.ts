@@ -178,7 +178,8 @@ function newsFanOutQueries(
   question: string,
   grounding: FederatedGrounding,
   slice: string,
-  season: string
+  season: string,
+  now: Date
 ): string[] {
   const planned: string[] = [];
   if (CURRENT_NEWS_QUESTION.test(question) && grounding?.kind !== "match" && slice.length >= 3) {
@@ -197,6 +198,11 @@ function newsFanOutQueries(
     planned.push(`${fixture} team news injuries suspensions availability`);
     planned.push(`${match.home} ${match.away} attacking form goals shots`);
   } else if (mode === "team-news") {
+    // A future matchup query predominantly finds its last meeting. Current
+    // club updates can exist before a fixture-specific preview is published.
+    const day = now.toISOString().slice(0, 10);
+    planned.push(`${match.home} latest injury update team news official club ${day}`);
+    planned.push(`${match.away} latest injury update team news official club ${day}`);
     planned.push(`${fixture} team news injuries suspensions predicted lineup`);
     planned.push(`${fixture} confirmed starting xi availability`);
   } else if (mode === "market-comparison") {
@@ -256,7 +262,7 @@ export function planFederatedQueries(
     planned.push(`${slice} stats ${season}`);
   }
   planned.push(...analyticsFanOutQueries(question, grounding, slice, season));
-  planned.push(...newsFanOutQueries(question, grounding, slice, season));
+  planned.push(...newsFanOutQueries(question, grounding, slice, season, now));
   if (!isMatchGrounding(grounding)) planned.push(...leagueWinnerQueries(question, season));
 
   const unique = new Map<string, string>();

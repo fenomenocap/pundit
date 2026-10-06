@@ -925,6 +925,10 @@ async function runScenario(
         question: turn.questionTemplate
           ? turn.questionTemplate.replaceAll("{home}", featured.home).replaceAll("{away}", featured.away)
           : turn.question,
+        ...(turn.expectLatestResult ? { expectLatestResult: {
+          ...turn.expectLatestResult,
+          team: turn.expectLatestResult.team?.replaceAll("{home}", featured.home).replaceAll("{away}", featured.away),
+        } } : {}),
         expectTeams: turn.expectGrounding === "match" ? [featured.home, featured.away] : turn.expectTeams,
         expectFixtureId: turn.expectGrounding === "match" ? recognizedFixtureId : turn.expectFixtureId,
         expectCompetitionId: turn.expectGrounding === "match" ? featured.competitionId : turn.expectCompetitionId,
