@@ -6070,20 +6070,79 @@ describe("evidence attached to a match turn", () => {
 });
 
 describe("settled player news requires exact current-claim verification", () => {
+  it.each(["publication-date", "authored-event-date", "authored-date-field", "raw-canary-prose", "wrong-club"] as const)(
+    "keeps report publication separate from injury timing and verifies source ownership in JSON, desk and SSE: %s", async (mode) => {
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));
+      await refreshClubRatings(new Date());
+      const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
+      const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+      const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
+      // Paraphrased primary-source distinction from the failed live canary:
+      // the Oct 5 publication describes a Thursday Oct 1 international injury.
+      const source = { title: "Arsenal injury update: Christos Tzolis status", link: "https://www.standard.co.uk/sport/football/arsenal-injury-update-b1299475.html",
+        date: "2026-10-05T09:00:00Z", snippet: "Arsenal injury update. Christos Tzolis sustained a hamstring injury for Greece against the Netherlands on Thursday, October 1. The update was published on October 5. His recovery needs assessment." };
+      const row = { sourceId: "S1", club: mode === "wrong-club" ? "Leeds" : "Arsenal", playerName: "Christos Tzolis",
+        statusText: mode === "authored-event-date" ? "was sidelined with a hamstring injury on 2026-10-05" : "was sidelined with a hamstring injury",
+        ...(mode === "authored-date-field" ? { date: "2026-10-05" } : {}) };
+      const expression = mode === "raw-canary-prose"
+        ? "Based solely on supplied SEARCH EVIDENCE: Christos Tzolis suffered a hamstring injury while playing for Greece on 2026-10-05 [[S1]]."
+        : JSON.stringify({ updates: [row] });
+      const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
+      const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate,
+        finalUrl: candidate.url, text: source.snippet, retrievedAt: new Date().toISOString() })));
+      let verificationCalls = 0;
+      const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+        const input = params as Anthropic.MessageCreateParamsNonStreaming;
+        if (String(input.system) === DESK_DATED_CLUB_NEWS_SYSTEM) return Promise.resolve({ content: [{ type: "text", text: expression }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+        expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
+        verificationCalls += 1;
+        const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
+        expect(data.claims).toHaveLength(1);
+        expect(data.claims[0].text).toBe(`In an update published on 2026-10-05, ${mode === "wrong-club" ? "Leeds" : "Arsenal"}’s Christos Tzolis was sidelined with a hamstring injury [[S1]].`);
+        expect(data.pages[0]).toMatchObject({ id: "S1", publishedDate: source.date, url: source.link });
+        expect(data.pages[0].text).toContain("Thursday, October 1");
+        return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: [{ claimId: data.claims[0].id,
+          outcome: mode === "wrong-club" ? "unsupported" : "supported", evidenceIds: ["S1"] }], summary: "Exact report and club ownership assessed." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      });
+      searchWeb.mockReset(); searchWeb.mockResolvedValue([source]);
+      const question = "What are the latest dated club injury updates for Arsenal and Leeds? Keep current reports distinct from future kickoff availability.";
+      const assertDelivery = (result: Awaited<ReturnType<typeof answerQuestion>>) => {
+        expect(result.answer).not.toMatch(/SEARCH EVIDENCE|sourceId|statusText|suffered.*2026-10-05|while playing|Thursday|October 1/);
+        if (mode === "publication-date") {
+          expect(result.answer).toContain("In an update published on 2026-10-05, Arsenal’s Christos Tzolis was sidelined with a hamstring injury");
+          expect(result.verification).toEqual({ status: "verified", supportedClaimCount: 1, removedClaimCount: 0 });
+          expect(result.citations).toMatchObject([{ id: "S1", url: source.link, date: source.date }]);
+          expect(result.answer).toContain("verified, dated Leeds club update");
+        } else {
+          expect(result.answer).not.toContain("Christos Tzolis");
+          expect(result.verification.supportedClaimCount).toBe(0); expect(result.citations ?? []).toEqual([]);
+        }
+      };
+      try {
+        for (const voice of [undefined, "desk"] as const) assertDelivery(await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, { fixtureId: espnFixtureIdentity(model) }, undefined, voice));
+        const deltas: string[] = [];
+        const streamed = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, { fixtureId: espnFixtureIdentity(model) });
+        assertDelivery(streamed); expect(deltas).toEqual([streamed.answer]);
+        expect(verificationCalls).toBe(["publication-date", "wrong-club"].includes(mode) ? 3 : 0);
+        expect(create).toHaveBeenCalledTimes(["publication-date", "wrong-club"].includes(mode) ? 6 : 3);
+      } finally {
+        create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
+        if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+      }
+    }
+  );
   it.each(["actual-canary", "implicit-affiliation", "both-clubs"] as const)("keeps verified updates consistent with the coverage summary: %s", async (variant) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));
     await refreshClubRatings(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
     const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
-    const first = "On 2026-10-06, it was reported that Ben White has been spotted back in training and is expected to be fit for the weekend's game [[S1]].";
-    const second = variant === "implicit-affiliation"
-      ? "On 2026-10-06, it was reported that Piero Hincapie has continued training after not being selected for Ecuador [[S1]]."
-      : "On 2026-10-06, it was reported that Piero Hincapie has continued training with Arsenal after not being selected for Ecuador and should be fit to play against Leeds [[S1]].";
-    const third = variant === "both-clubs" ? "On 2026-10-05, Leeds United's Joe Example was reported doubtful [[S3]]."
-      : "On 2026-10-05, it was reported that Christos Tzolis is sidelined with a hamstring injury, with a potential return date of October 24 [[S3]].";
-    const fourth = "As of 2026-10-01, William Saliba is reported to be progressing well in rehabilitation but could still be several weeks from a return, with a possible return date in December [[S5]].";
-    const prose = `Based on the search evidence, here are the latest dated club injury updates for Arsenal: - ${first} - ${second} - ${third} - ${fourth}`;
+    const prose = JSON.stringify({ updates: [
+      { sourceId: "S1", club: "Arsenal", playerName: "Ben White", statusText: "has been spotted back in training" },
+      { sourceId: "S1", club: "Arsenal", playerName: "Piero Hincapie", statusText: "has continued training" },
+      { sourceId: "S3", club: variant === "both-clubs" ? "Leeds United" : "Arsenal",
+        playerName: variant === "both-clubs" ? "Joe Example" : "Christos Tzolis", statusText: variant === "both-clubs" ? "was reported doubtful" : "was sidelined with a hamstring injury" },
+    ] });
     const sources = [{ title: "Arsenal injury news latest and return dates for Leeds", link: "https://www.football.london/arsenal-fc/news/arsenal-injury-news-latest-leeds-34721050", date: "2026-10-06T05:00:00Z", snippet: "Arsenal fitness reports. Ben White has returned to training. Piero Hincapie continued training with Arsenal after not being selected for Ecuador." },
       { title: "Arsenal vs Leeds lineups", link: "https://www.premierleague.com/lineups/one", date: "", snippet: "Fixture preview." },
       { title: variant === "both-clubs" ? "Leeds injury update" : "Arsenal injury update", link: "https://www.standard.co.uk/sport/football/news-update.html", date: "2026-10-05", snippet: variant === "both-clubs" ? "Leeds injury news concerns Joe Example after a fitness setback." : "Arsenal injury news concerns Christos Tzolis after a hamstring setback." },
@@ -6109,7 +6168,7 @@ describe("settled player news requires exact current-claim verification", () => 
         expect(result.answer).not.toMatch(/search evidence|William Saliba|dated Arsenal or Leeds club update/);
         expect(result.answer).toContain("Ben White"); expect(result.answer).toContain("Piero Hincapie"); expect(result.answer).toContain("do not establish the starting XI");
         if (variant === "actual-canary") expect(result.answer).toContain("verified, dated Leeds club update");
-        if (variant === "implicit-affiliation") expect(result.answer).toContain("haven’t verified separate injury updates for both clubs");
+        if (variant === "implicit-affiliation") expect(result.answer).toContain("verified, dated Leeds club update");
         if (variant === "both-clubs") expect(result.answer).not.toMatch(/couldn’t establish|haven’t verified/);
       }
       const deltas: string[] = [];
@@ -6118,7 +6177,7 @@ describe("settled player news requires exact current-claim verification", () => 
       expect(deltas).toEqual([streamed.answer]); expect(streamed.verification.supportedClaimCount).toBe(3);
       expect(streamed.answer).not.toMatch(/search evidence|William Saliba|dated Arsenal or Leeds club update/);
       if (variant === "actual-canary") expect(streamed.answer).toContain("verified, dated Leeds club update");
-      if (variant === "implicit-affiliation") expect(streamed.answer).toContain("haven’t verified separate injury updates for both clubs");
+      if (variant === "implicit-affiliation") expect(streamed.answer).toContain("verified, dated Leeds club update");
       if (variant === "both-clubs") expect(streamed.answer).not.toMatch(/couldn’t establish|haven’t verified/);
       expect(create).toHaveBeenCalledTimes(6);
     } finally {
@@ -6164,7 +6223,7 @@ describe("settled player news requires exact current-claim verification", () => 
         expect(evidence).toContain("[[S10]] 2026-10-05T09:42:23Z"); expect(evidence).toContain("Kai Havertz");
         expect(evidence).toContain("hamstring"); expect(evidence).toContain("source passage omitted");
         expect(evidence).toContain("Earlier fixtures: Arsenal vs Everton");
-        return Promise.resolve({ content: [{ type: "text", text: "On 2026-10-05, Arsenal's Kai Havertz was reported sidelined with a hamstring problem [[S10]]." }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+        return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ updates: [{ sourceId: "S10", club: "Arsenal", playerName: "Kai Havertz", statusText: "was sidelined with a hamstring problem" }] }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
       }
       expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
       const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
@@ -6212,9 +6271,9 @@ describe("settled player news requires exact current-claim verification", () => 
         if (outcome === "provider-error") throw new Error("private provider response must not be logged");
         if (outcome === "thinking-only") return Promise.resolve({ content: [{ type: "thinking", thinking: "private reasoning", signature: "" }],
           stop_reason: "max_tokens" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
-        if (outcome === "truncated") return Promise.resolve({ content: [{ type: "text", text: "On 2026-10-05, Arsenal's Kai Havertz had a hamstring issue [[S1]]." }],
+        if (outcome === "truncated") return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ updates: [{ sourceId: "S1", club: "Arsenal", playerName: "Kai Havertz", statusText: "had a hamstring issue" }] }) }],
           stop_reason: "max_tokens" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
-        return Promise.resolve({ content: [{ type: "text", text: "On 2026-10-05, Arsenal's Kai Havertz was reported to have a hamstring issue pending assessment [[S1]]. Leeds will definitely win." }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+        return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ updates: [{ sourceId: "S1", club: "Arsenal", playerName: "Kai Havertz", statusText: "had a hamstring issue pending assessment" }] }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
       }
       expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
       const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
