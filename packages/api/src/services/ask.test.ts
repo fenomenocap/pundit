@@ -723,7 +723,7 @@ describe("complete standalone football lessons", () => {
   });
 
   it.each([
-    { question: "Who is Arsenal's manager and why?", title: "Arsenal manager appointment", prose: "Pat Doe is Arsenal's current manager [[S1]]. The club said his appointment reflected his experience developing young players [[S1]].", fact: /Pat Doe is Arsenal.s current manager/, reason: /experience developing young players/ },
+    { question: "Who is Arsenal's manager and why?", title: "Arsenal manager appointment", prose: "Pat Doe is Arsenal's current manager [[S1]]. Arsenal appointed Pat Doe because he has experience developing young players [[S1]].", fact: /Arsenal.s manager is Pat Doe/, reason: /experience developing young players/ },
     { question: "What is Arsenal's latest result and why?", title: "Arsenal vs Brighton: match report", prose: "The dated result I found was Arsenal 3–0 Brighton on 4 October 2026 [[S1]]. The report attributes the win to defensive errors [[S1]].", fact: /Arsenal 3[–-]0 Brighton/, reason: /defensive errors/ },
   ].flatMap((scenario) => [
     { ...scenario, accepted: true, sourceDate: "2026-10-04", outcome: "supported" },
@@ -1263,9 +1263,112 @@ describe("current-news evidence hardening", () => {
   });
 
   it.each([
+    { label: "actual Sky analysis", reason: "His achievements transformed the club. The agreement reflects the club’s belief in his leadership.", quote: false },
+    { label: "explicit appointment", reason: "Arsenal appointed Mikel Arteta because his coaching gives the club stability.", quote: true },
+    { label: "explicit retention", reason: "Arsenal retained Mikel Arteta because his coaching gives the club stability.", quote: true },
+    { label: "explicit extension", reason: "Arsenal extended Mikel Arteta’s contract because his coaching gives the club stability.", quote: true },
+    { label: "negated decision", reason: "Arsenal did not retain Mikel Arteta because his coaching gives the club stability.", quote: false },
+    { label: "future plan", reason: "Arsenal will retain Mikel Arteta because his coaching gives the club stability.", quote: false },
+    { label: "conditional plan", reason: "Arsenal might retain Mikel Arteta because his coaching gives the club stability.", quote: false },
+    { label: "editorial interpretation", reason: "I think Arsenal retained Mikel Arteta because his coaching gives the club stability.", quote: false },
+    { label: "rejected allegation", reason: "The rejected allegation was: Arsenal retained Mikel Arteta because his coaching gives the club stability.", quote: false },
+    { label: "quoted allegation", reason: "The rejected claim reads: “Arsenal retained Mikel Arteta because his coaching gives the club stability.”", quote: false },
+    { label: "different manager", reason: "Arsenal retained Arsene Wenger because his coaching gives the club stability.", quote: false },
+    { label: "different club", reason: "Chelsea retained Mikel Arteta because his coaching gives the club stability.", quote: false },
+    { label: "publication date only", reason: "Published on 2026-10-06. Mikel Arteta remains in charge.", quote: false },
+  ])("settles manager why from literal decision facts rather than false-positive causal verification: $label", async ({ reason, quote }) => {
+    const body = "Arsenal’s manager is Mikel Arteta. " + reason;
+    const answer = "Arsenal’s manager is Mikel Arteta [[S1]]. The reason for his continued tenure is his transformation of the club and its league title [[S1]].";
+    const checked = await verifyCurrentClaims(answer, { queries: [], providerCalls: 0, results: [
+      { id: "S1", title: "Arsenal manager update", url: "https://www.arsenal.com/news/manager", date: "2026-10-06", snippet: body, tier: "official" },
+    ] }, {} as Parameters<typeof verifyCurrentClaims>[2], undefined, false, {
+      managerWhy: { club: "Arsenal" },
+      retrieve: async (candidates) => candidates.map((candidate) => ({ ...candidate, finalUrl: candidate.url, text: body, retrievedAt: "2026-10-06T19:00:00Z" })),
+      verify: async (_client, claims) => ({ status: "verified", decisions: claims.map((claim) => ({ claimId: claim.id, outcome: "supported", evidenceIds: ["S1"] })), summary: "Blindly supports the invented causal rationale." }),
+    });
+    expect(checked.answer).toContain("Arsenal’s manager is Mikel Arteta [[S1]]");
+    expect(checked.answer).not.toContain("The reason for his continued tenure");
+    expect(checked.answer).not.toContain("transformation of the club");
+    expect(checked.answer.includes("The cited report states:")).toBe(quote);
+    expect(checked.answer.includes("I haven’t verified the club’s stated reason")).toBe(!quote);
+    if (quote) expect(checked.answer).toContain(reason);
+    expect(checked.verification).toEqual({ status: "verified", supportedClaimCount: quote ? 2 : 1, removedClaimCount: 1 });
+  });
+
+  it.each(["foreign-history", "foreign-role", "ambiguous-identities", "unavailable", "no-marker", "no-pages"] as const)(
+    "does not invent manager why or borrow another person’s history: %s", async (mode) => {
+      const body = mode === "ambiguous-identities"
+        ? "Arsenal’s manager is Mikel Arteta. Arsenal’s manager is Arsene Wenger."
+        : "Arsenal’s manager is Mikel Arteta. Arsene Wenger was appointed in 1996.";
+      const answer = mode === "no-marker" ? "Arsenal’s manager is Mikel Arteta. The club kept him because he won trophies."
+        : mode === "ambiguous-identities" || mode === "foreign-role" ? "Arsenal’s manager is Mikel Arteta [[S1]]. Arsenal’s manager is Arsene Wenger [[S1]]."
+        : "Arsenal’s manager is Mikel Arteta [[S1]]. Arsene Wenger was appointed in 1996 [[S1]]. The club kept him because he won trophies.";
+      const checked = await verifyCurrentClaims(answer, { queries: [], providerCalls: 0, results: [
+        { id: "S1", title: "Arsenal manager update", url: "https://www.arsenal.com/news/manager", date: "2026-10-06", snippet: mode === "no-pages" ? "" : body, tier: "official" },
+      ] }, {} as Parameters<typeof verifyCurrentClaims>[2], undefined, false, {
+        managerWhy: { club: "Arsenal", retainAppointment: true },
+        retrieve: async (candidates) => mode === "no-pages" ? [] : candidates.map((candidate) => ({ ...candidate, finalUrl: candidate.url, text: body, retrievedAt: "2026-10-06T19:00:00Z" })),
+        verify: async (_client, claims) => ({ status: mode === "unavailable" ? "unavailable" : "verified", decisions: claims.map((claim) => ({ claimId: claim.id, outcome: "supported", evidenceIds: ["S1"] })), summary: "Blindly supports every claim." }),
+      });
+      expect(checked.answer).not.toContain("appointed"); expect(checked.answer).not.toContain("because");
+      expect(checked.answer).not.toContain("Arsene Wenger");
+      expect(checked.answer).toContain("I haven’t verified the club’s stated reason");
+      expect(checked.verification.supportedClaimCount).toBe(mode === "foreign-history" || mode === "foreign-role" ? 1 : 0);
+      if (mode === "foreign-role") expect(checked.verification.removedClaimCount).toBe(1);
+      if (mode === "unavailable") expect(checked.verification.status).toBe("unavailable");
+    });
+
+  it.each([
+    "Football News\nArsenal manager Mikel Arteta says he and the club are very much aligned when it comes to signing a new contract.",
+    "Football News\nMikel Arteta has agreed a new contract as Arsenal manager following their Premier League title triumph last season; The reporter assesses the club’s progress.",
+  ])("retains a current tenure proposition after a publisher block boundary: %s", async (body) => {
+    const checked = await verifyCurrentClaims("Arsenal’s manager is Mikel Arteta [[S1]]. His achievements are the club’s proven retention reason [[S1]].", {
+      queries: [], providerCalls: 0, results: [
+        { id: "S1", title: "Arsenal manager update", url: "https://www.skysports.com/football/news/manager", date: "2026-10-06", snippet: body, tier: "news" },
+      ],
+    }, {} as Parameters<typeof verifyCurrentClaims>[2], undefined, false, {
+      managerWhy: { club: "Arsenal" },
+      retrieve: async (candidates) => candidates.map((candidate) => ({ ...candidate, finalUrl: candidate.url, text: body, retrievedAt: "2026-10-06T19:00:00Z" })),
+      verify: async (_client, claims) => ({ status: "verified", decisions: claims.map((claim) => ({ claimId: claim.id, outcome: "supported", evidenceIds: ["S1"] })), summary: "Blindly supports every claim." }),
+    });
+    expect(checked.answer).toContain("Arsenal’s manager is Mikel Arteta");
+    expect(checked.answer).not.toContain("achievements");
+    expect(checked.answer).toContain("I haven’t verified the club’s stated reason");
+    expect(checked.verification).toEqual({ status: "verified", supportedClaimCount: 1, removedClaimCount: 1 });
+  });
+
+  it.each([
+    "Arsenal manager Arsene Wenger retired in 2018. Arsenal’s manager is Mikel Arteta.",
+    "Arsenal manager Arsene Wenger no longer leads the club. Arsenal’s manager is Mikel Arteta.",
+    "An opinion piece argues that Arsenal manager Arsene Wenger should return. Arsenal’s manager is Mikel Arteta.",
+    "Arsene Wenger is Arsenal’s manager, but he no longer leads the club. Arsenal’s manager is Mikel Arteta.",
+    "A false report claimed: “Arsene Wenger has agreed a new contract as Arsenal manager.”",
+    "It is not true that Arsene Wenger has agreed a new contract as Arsenal manager.",
+    "An opinion writer speculates that Arsene Wenger has agreed a new contract as Arsenal manager.",
+    "A false report claimed:\n“Arsene Wenger has agreed a new contract as Arsenal manager.”",
+    "A false report claimed:\n“\n\nArsene Wenger has agreed a new contract as Arsenal manager.\n\n”",
+    'A false report claimed:\n"\nArsene Wenger has agreed a new contract as Arsenal manager.\n"',
+    'A false report claimed: "An opening paragraph.\n\nArsene Wenger has agreed a new contract as Arsenal manager."',
+    'A false report claimed: "An opening paragraph.\n\nArsene Wenger has agreed a new contract as Arsenal manager.',
+    'An account quotes a former manager: "This is the opening paragraph.\n\n"This is the final quoted paragraph."\n\nArsenal’s manager is Mikel Arteta.',
+  ])("does not promote a historical or editorial role to current identity: %s", async (body) => {
+    const checked = await verifyCurrentClaims("Arsenal’s manager is Arsene Wenger [[S1]].", {
+      queries: [], providerCalls: 0, results: [
+        { id: "S1", title: "Arsenal manager update", url: "https://www.arsenal.com/news/manager", date: "2026-10-06", snippet: body, tier: "official" },
+      ],
+    }, {} as Parameters<typeof verifyCurrentClaims>[2], undefined, false, {
+      managerWhy: { club: "Arsenal" },
+      retrieve: async (candidates) => candidates.map((candidate) => ({ ...candidate, finalUrl: candidate.url, text: body, retrievedAt: "2026-10-06T19:00:00Z" })),
+      verify: async (_client, claims) => ({ status: "verified", decisions: claims.map((claim) => ({ claimId: claim.id, outcome: "supported", evidenceIds: ["S1"] })), summary: "Blindly supports every claim." }),
+    });
+    expect(checked.answer).not.toContain("Arsene Wenger");
+    expect(checked.verification).toEqual({ status: "abstain", supportedClaimCount: 0, removedClaimCount: 1 });
+  });
+
+  it.each([
     { label: "year-only source", source: "Mikel Arteta was appointed in 2019.", date: "December 2019", expected: "2019" },
     { label: "active voice named appointment", source: "Arsenal appointed Mikel Arteta in 2019.", date: "December 2019", expected: "2019" },
-    { label: "actual source pronoun context", source: "Mikel Arteta will continue managing Arsenal. His prior contract with the Premier League champions dates to September 2024. But the Spaniard, who was appointed in 2019, remains at the club.", date: "December 2019", expected: "2019" },
+    { label: "actual source pronoun context", source: "Mikel Arteta is Arsenal’s manager. His prior contract with the Premier League champions dates to September 2024. But the Spaniard, who was appointed in 2019, remains at the club.", date: "December 2019", expected: "2019" },
     { label: "literal supported month", source: "Mikel Arteta was appointed in December 2019.", date: "December 2019", expected: "December 2019" },
     { label: "ISO supported day", source: "Mikel Arteta was appointed on 2019-12-20.", date: "20 December 2019", expected: "20 December 2019" },
     { label: "supported day literal", source: "Mikel Arteta was appointed on 20 December 2019.", date: "20 December 2019", expected: "20 December 2019" },
@@ -1275,6 +1378,10 @@ describe("current-news evidence hardening", () => {
     { label: "ordinal day", source: "Mikel Arteta was appointed in 2019.", date: "20th December 2019", expected: "2019" },
     { label: "of-year variant", source: "Mikel Arteta was appointed in 2019.", date: "December of 2019", expected: "2019" },
     { label: "contradicting month", source: "Mikel Arteta was appointed in November 2019.", date: "December 2019", expected: null },
+    { label: "quoted false appointment", source: "Mikel Arteta is Arsenal’s manager. A false report claimed: “Mikel Arteta was appointed in December 2005.”", date: "December 2005", expected: null },
+    { label: "negated appointment", source: "Mikel Arteta is Arsenal’s manager. Mikel Arteta was not appointed in December 2005.", date: "December 2005", expected: null },
+    { label: "reported false appointment", source: "Mikel Arteta is Arsenal’s manager. A false report claimed Mikel Arteta was appointed in December 2005.", date: "December 2005", expected: null },
+    { label: "comment false appointment", source: "Mikel Arteta is Arsenal’s manager. Reader comments: Mikel Arteta was appointed in December 2005.", date: "December 2005", expected: null },
     { label: "publication metadata only", source: "Mikel Arteta is Arsenal’s manager. Published December 2019.", date: "December 2019", expected: null },
     { label: "other manager event", source: "Mikel Arteta is Arsenal’s manager. Arsene Wenger was appointed in 1996.", date: "December 2019", expected: null },
     { label: "other manager with adverb", source: "Mikel Arteta is Arsenal’s manager. Arsene Wenger was first appointed in 2019.", date: "December 2019", expected: null },
@@ -6141,6 +6248,69 @@ describe("evidence attached to a match turn", () => {
 });
 
 describe("settled player news requires exact current-claim verification", () => {
+  it.each(["supported", "unavailable", "no-marker", "empty-evidence"] as const)(
+    "blocks the live invented manager cause with and without a pin before JSON, desk and SSE delivery: %s", async (mode) => {
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T19:00:00Z"));
+      await refreshClubRatings(new Date());
+      const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
+      const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+      const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
+      // Short exact source identity/appointment excerpt, with paraphrased
+      // editorial context from the actual Sky source. This is not a club cause.
+      const source = { title: "Arsenal manager new-era analysis", link: "https://www.skysports.com/football/news/13590953/mikel-arteta-to-begin-new-era-at-arsenal-as-club-eye-premier-league-dominance-and-champions-league-success",
+        date: "2026-09-23T09:53:00Z", snippet: "Mikel Arteta has agreed a new contract as Arsenal manager following their Premier League title triumph last season; The reporter analyses the club’s improvement, culture and stability. This is editorial context, not the club’s stated retention reason." };
+      const unsafe = "Arsenal's manager is Mikel Arteta, who has agreed a new contract to extend his stay at the club [[S1]]. The reason for his continued tenure is that he has overseen a remarkable transformation of the club since his arrival in 2019, including guiding the team to a Premier League title triumph last season [[S1]].";
+      const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
+      const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate,
+        finalUrl: candidate.url, text: source.snippet, retrievedAt: new Date().toISOString() })));
+      const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+        const input = params as Anthropic.MessageCreateParamsNonStreaming;
+        const verifying = String(input.system).startsWith("You are Pundit's bounded factual claim verifier.");
+        if (verifying && mode === "unavailable") return Promise.reject(new Error("offline verifier failure")) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+        const data = verifying ? JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]) : null;
+        return Promise.resolve({ content: [{ type: "text", text: verifying ? JSON.stringify({ decisions: data.claims.map((claim: { id: string }) => ({ claimId: claim.id,
+          outcome: "supported", evidenceIds: ["S1"] })), summary: "Blindly supports the invented causal attribution." }) : mode === "no-marker" ? unsafe.replace(/\[\[S1\]\]/g, "") : unsafe }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      });
+      searchWeb.mockReset(); searchWeb.mockResolvedValue(mode === "empty-evidence" ? [] : [source]);
+      try {
+        for (const { pin, question } of [
+          { pin: true, question: "Who is Arsenal’s manager and why?" },
+          { pin: false, question: "Who is Arsenal’s manager and why?" },
+          { pin: false, question: "Who’s Arsenal’s manager and why?" },
+          { pin: false, question: "Who's Arsenal's manager and why?" },
+          { pin: false, question: "What’s Arsenal’s manager and why?" },
+          { pin: false, question: "Who is Arsenal’s manager? Explain why." },
+          { pin: false, question: "Who is Arsenal’s manager? Why did they retain him?" },
+          { pin: false, question: "Who is Arsenal’s manager?" },
+        ]) {
+          const context = pin ? { fixtureId: espnFixtureIdentity(model) } : undefined;
+          const assertDelivery = (result: Awaited<ReturnType<typeof answerQuestion>>) => {
+            expect(result.answer).not.toContain("The reason for his continued tenure");
+            expect(result.answer).not.toContain("remarkable transformation");
+            expect(result.answer).not.toContain("Premier League title triumph");
+            if (!pin) expect(result.grounding).toBeNull();
+            if (mode === "supported") {
+              expect(result.answer).toContain("Arsenal’s manager is Mikel Arteta");
+              if (/why/i.test(question)) expect(result.answer).toContain("I haven’t verified the club’s stated reason");
+              else expect(result.answer).not.toContain("reason");
+              expect(result.answer).toContain(source.link);
+              expect(result.verification).toEqual({ status: "verified", supportedClaimCount: 1, removedClaimCount: 1 });
+            } else {
+              expect(result.answer).toMatch(/verif/i); expect(result.verification?.supportedClaimCount).toBe(0);
+              expect(result.citations ?? []).toEqual([]);
+              if (mode === "unavailable") expect(result.verification?.status).toBe("unavailable");
+            }
+          };
+          for (const voice of [undefined, "desk"] as const) assertDelivery(await answerQuestion(question, [], pin ? ["Arsenal", "Leeds"] : undefined, undefined, context, undefined, voice));
+          const deltas: string[] = [];
+          const streamed = await answerQuestionStream(question, [], pin ? ["Arsenal", "Leeds"] : undefined, { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
+          assertDelivery(streamed); expect(deltas).toEqual([streamed.answer]);
+        }
+      } finally {
+        create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
+        if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+      }
+    });
   it("repairs the live manager answer’s unsupported month from the owned appointment year before JSON, desk and SSE delivery", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));
     await refreshClubRatings(new Date());
@@ -6151,7 +6321,7 @@ describe("settled player news requires exact current-claim verification", () => 
     // appointment clause; surrounding contract context is paraphrased. The raw
     // capture is independently replayed from its preserved provenance hash.
     const source = { title: "Arsenal manager contract update", link: "https://www.skysports.com/football/news/13588507/mikel-arteta-contract-arsenal-boss-agrees-new-deal-to-extend-stay-at-premier-league-champions",
-      date: "2026-09-22T18:26:00Z", snippet: "Mikel Arteta will continue managing Arsenal. His prior contract with the Premier League champions dates to September 2024. But the Spaniard, who was appointed in 2019, remains at the club." };
+      date: "2026-09-22T18:26:00Z", snippet: "Mikel Arteta is Arsenal’s manager. His prior contract with the Premier League champions dates to September 2024. But the Spaniard, who was appointed in 2019, remains at the club." };
     const original = "Mikel Arteta is Arsenal’s manager [[S1]]. The sources do not establish why the club chose him; they only report that he agreed a new contract and that he was appointed in December 2019 [[S1]].";
     const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
     const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate,
@@ -6166,10 +6336,10 @@ describe("settled player news requires exact current-claim verification", () => 
         outcome: "supported", evidenceIds: ["S1"] })), summary: "Both claims accepted despite unsupported month." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
     });
     searchWeb.mockReset(); searchWeb.mockResolvedValue([source]);
-    const question = "Who is Arsenal’s manager and why?";
+    const question = "Who is Arsenal’s manager and why was he appointed?";
     const assertDelivery = (result: Awaited<ReturnType<typeof answerQuestion>>) => {
-      expect(result.answer).toContain("Mikel Arteta is Arsenal’s manager");
-      expect(result.answer).toContain("do not establish why the club chose him");
+      expect(result.answer).toContain("Arsenal’s manager is Mikel Arteta");
+      expect(result.answer).toContain("I haven’t verified the club’s stated reason");
       expect(result.answer).toContain("appointed in 2019"); expect(result.answer).not.toContain("December");
       expect(result.answer).toContain(source.link);
       expect(result.verification).toEqual({ status: "verified", supportedClaimCount: 2, removedClaimCount: 0 });

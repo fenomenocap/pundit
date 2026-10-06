@@ -24,6 +24,8 @@ The default-on conversational response path is `ANALYST_RESPONSE_V2`. It plans a
 
 Narrow latest club-result requests use fresh, error-free ESPN completed records, including the complete Premier League season schedule during an empty rolling window. They return a dated event citation and explicit competition coverage, with no forecast grounding; a score cannot establish why a side won. Unsupported result scope still requires search. Team-news queries also retrieve current club updates before fixture previews exist. Dated club reports no more than seven days old can support exact verified status notes, with explicit limits on future kickoff availability; player markets and lineups retain fixture-specific evidence requirements.
 
+Direct current-manager answers settle from verified, source-bound role facts, including when no fixture is selected. Requested appointment history retains only the same manager's source-owned date precision. A requested appointment or retention reason uses a short, explicitly attributed source statement or a verification boundary; editorial achievements never become the club's proven decision reason. JSON and streaming delivery share this contract, including unavailable verification.
+
 `packages/api` has focused Vitest coverage. `packages/web` has Playwright smoke tests only (`pnpm --filter web test:e2e`); no component unit tests unless explicitly requested.
 
 ## Production and secrets

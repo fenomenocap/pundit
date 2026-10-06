@@ -84,9 +84,10 @@ function isMatchGrounding(grounding: FederatedGrounding): grounding is Federated
 /** A club fact is not a fact about its pinned opponent. Never infer a new club. */
 export function singleClubCurrentFactScope(
   question: string,
-  grounding: FederatedGrounding
+  grounding: FederatedGrounding,
+  explicitClubs: readonly string[] = []
 ): { kind: "manager" | "result"; club: string } | null {
-  if (!isMatchGrounding(grounding)
+  if ((!isMatchGrounding(grounding) && !explicitClubs.length)
     || /\b(?:vs\.?|versus|against)\b|\s+v\s+|\b(?:away|home)\s+to\b/i.test(question)) return null;
   const q = question.trim().replace(/^who['’]s\b/i, "who is").replace(/^what['’]s\b/i, "what is");
   const manager = (/^(?:who|what)\s+is\b[^?\n]{0,100}\b(?:manager|head coach|coach)\b/i.test(q)
@@ -114,7 +115,7 @@ export function singleClubCurrentFactScope(
   }
   const primaryQuestion = reasonMatch ? q.slice(0, reasonMatch.index).trim() : q;
   const folded = normalizeTeamText(primaryQuestion.replace(/['’]s\b/g, ""));
-  const clubs = [grounding.home, grounding.away].filter((club) => {
+  const clubs = (isMatchGrounding(grounding) ? [grounding.home, grounding.away] : explicitClubs).filter((club) => {
     const canonical = normalizeTeamName(club);
     const names = [club, ...getTeamNameAliases().filter(([, name]) => normalizeTeamName(name) === canonical).map(([alias]) => alias)];
     return names.some((name) => {
