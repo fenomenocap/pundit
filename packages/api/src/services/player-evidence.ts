@@ -164,7 +164,15 @@ export function clubsInVerifiedNewsClaims(texts: readonly string[], fixture: Pla
   for (const text of texts) {
     for (const name of collectNames(text, fixture).filter((candidate) => candidate.split(/\s+/).length >= 2)) {
       const at = text.toLocaleLowerCase().indexOf(name.toLocaleLowerCase());
-      const club = teamForNamedPlayer(localClaimWindow(text, at, name.length), name, fixture);
+      const window = localClaimWindow(text, at, name.length);
+      // Coverage only, after exact verification. The explicit training club
+      // takes precedence over a later "fit for Leeds game" opponent reference.
+      const following = window.slice(window.toLocaleLowerCase().indexOf(name.toLocaleLowerCase()) + name.length);
+      const training = new RegExp(`^[^.!?;]{0,100}\\btraining\\s+with\\s+(${clubPattern(fixture.home)}|${clubPattern(fixture.away)})\\b`, "i").exec(following);
+      const ownershipWindow = window.replace(new RegExp(`\\bfor\\s+(?:${clubPattern(fixture.home)}|${clubPattern(fixture.away)})(?:['’]s)?\\s+(?:game|match|clash|fixture|tie|visit)\\b`, "gi"), "for the upcoming fixture");
+      const club = training
+        ? normalizeTeamName(training[1]) === normalizeTeamName(fixture.home) ? fixture.home : fixture.away
+        : teamForNamedPlayer(ownershipWindow, name, fixture);
       if (club) clubs.add(club);
     }
   }

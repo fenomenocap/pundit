@@ -33,6 +33,16 @@ describe("dated club updates before fixture previews", () => {
     expect(clubsInVerifiedNewsClaims(["Arsenal and Leeds injury headlines mention Kai Havertz [[S10]]."], next)).toEqual([]);
     expect(clubsInVerifiedNewsClaims(["On 2026-10-05, Arsenal's Kai Havertz was injured [[S10]].", "On 2026-10-05, Joe Example (Leeds United) was doubtful [[S11]]."], next)).toEqual(["Arsenal", "Leeds"]);
   });
+  it("recognizes verified training with a club without assigning its upcoming opponent", () => {
+    const claim = "On 2026-10-06, it was reported that Piero Hincapie has continued training with Arsenal after not being selected for Ecuador and should be fit to play against Leeds [[S1]].";
+    expect(clubsInVerifiedNewsClaims([claim], next)).toEqual(["Arsenal"]);
+    expect(clubsInVerifiedNewsClaims(["Piero Hincapie continued training with Arsenal and should be fit for Leeds game [[S1]]."], next)).toEqual(["Arsenal"]);
+    expect(clubsInVerifiedNewsClaims(["Ben White is expected to be fit for Leeds United's match [[S1]]."], next)).toEqual([]);
+    expect(clubsInVerifiedNewsClaims(["Joe Example (Leeds) should be fit for Arsenal match [[S1]]."], next)).toEqual(["Leeds"]);
+    expect(clubsInVerifiedNewsClaims([claim.replace("training with Arsenal", "training against Arsenal")], next)).toEqual([]);
+    expect(clubsInVerifiedNewsClaims(["Ben White had training news. Arsenal and Leeds were mentioned [[S1]]."], next)).toEqual([]);
+    expect(clubsInVerifiedNewsClaims([claim.replace("Arsenal", "Leeds United").replace("against Leeds", "against Arsenal")], next)).toEqual(["Leeds"]);
+  });
   it.each([
     ["Man City", "Manchester City", "Erling Haaland"],
     ["Man United", "Manchester United", "Bruno Fernandes"],
