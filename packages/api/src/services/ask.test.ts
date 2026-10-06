@@ -1253,6 +1253,77 @@ describe("current-news evidence hardening", () => {
     )).toEqual([{ id: "C1", text: "The manager is Pat Doe [[S1]]." }]);
   });
 
+  it("exempts only pure cited refusals, while mixed affirmative appointment tails face verification", () => {
+    expect(verifiableCurrentClaims("No verified result was established [[S1]].")).toEqual([]);
+    expect(verifiableCurrentClaims("The club’s reason is not established [[S1]].")).toEqual([]);
+    const mixed = "The club’s reason is not established; Mikel Arteta was appointed in December 2019 [[S1]].";
+    expect(verifiableCurrentClaims(mixed)).toEqual([{ id: "C1", text: mixed }]);
+    const abbreviated = "Mikel Arteta was appointed in Dec. 2019 [[S1]].";
+    expect(verifiableCurrentClaims(abbreviated)).toEqual([{ id: "C1", text: abbreviated }]);
+  });
+
+  it.each([
+    { label: "year-only source", source: "Mikel Arteta was appointed in 2019.", date: "December 2019", expected: "2019" },
+    { label: "active voice named appointment", source: "Arsenal appointed Mikel Arteta in 2019.", date: "December 2019", expected: "2019" },
+    { label: "actual source pronoun context", source: "Mikel Arteta will continue managing Arsenal. His prior contract with the Premier League champions dates to September 2024. But the Spaniard, who was appointed in 2019, remains at the club.", date: "December 2019", expected: "2019" },
+    { label: "literal supported month", source: "Mikel Arteta was appointed in December 2019.", date: "December 2019", expected: "December 2019" },
+    { label: "ISO supported day", source: "Mikel Arteta was appointed on 2019-12-20.", date: "20 December 2019", expected: "20 December 2019" },
+    { label: "supported day literal", source: "Mikel Arteta was appointed on 20 December 2019.", date: "20 December 2019", expected: "20 December 2019" },
+    { label: "month-only source", source: "Mikel Arteta was appointed in December 2019.", date: "20 December 2019", expected: "December 2019" },
+    { label: "abbreviated month", source: "Mikel Arteta was appointed in 2019.", date: "Dec. 2019", expected: "2019" },
+    { label: "abbreviated month ordinal day", source: "Mikel Arteta was appointed in 2019.", date: "Dec. 20th, 2019", expected: "2019" },
+    { label: "ordinal day", source: "Mikel Arteta was appointed in 2019.", date: "20th December 2019", expected: "2019" },
+    { label: "of-year variant", source: "Mikel Arteta was appointed in 2019.", date: "December of 2019", expected: "2019" },
+    { label: "contradicting month", source: "Mikel Arteta was appointed in November 2019.", date: "December 2019", expected: null },
+    { label: "publication metadata only", source: "Mikel Arteta is Arsenal’s manager. Published December 2019.", date: "December 2019", expected: null },
+    { label: "other manager event", source: "Mikel Arteta is Arsenal’s manager. Arsene Wenger was appointed in 1996.", date: "December 2019", expected: null },
+    { label: "other manager with adverb", source: "Mikel Arteta is Arsenal’s manager. Arsene Wenger was first appointed in 2019.", date: "December 2019", expected: null },
+    { label: "distant foreign manager pronoun", source: "Mikel Arteta is Arsenal’s manager. Jose Mourinho had another appointment. " + "The background was reported without an initial date. ".repeat(3) + "He was appointed in 2019.", date: "December 2019", expected: null },
+    { label: "foreign date despite same year", source: "Mikel Arteta and Arsene Wenger were discussed. Arsene Wenger was appointed in December 2019.", date: "December 2019", expected: null },
+    { label: "invalid Gregorian date", source: "Mikel Arteta was appointed in 2019.", date: "31 February 2019", expected: null },
+    { label: "invalid zero day", source: "Mikel Arteta was appointed in January 2019.", date: "0 January 2019", expected: null },
+    { label: "invalid trailing zero day", source: "Mikel Arteta was appointed in January 2019.", date: "January 0, 2019", expected: null },
+    { label: "invalid ISO date", source: "Mikel Arteta was appointed in 2019.", date: "2019-02-31", expected: null },
+    { label: "unrecognized date precision", source: "Mikel Arteta was appointed in 2019.", date: "late December 2019", expected: null },
+  ])("binds manager appointment precision to the selected source’s same-person event: $label", async ({ source, date, expected }) => {
+    const answer = `Mikel Arteta is Arsenal’s manager [[S1]]. The club’s reason is not established; he was appointed in ${date} [[S1]].`;
+    const bundle: EvidenceBundle = { queries: ["current manager"], providerCalls: 0, results: [
+      { id: "S1", title: "Arsenal manager update", url: "https://www.skysports.com/football/news/13588507/arteta-contract", date: "2026-09-22T18:26:00Z", snippet: source, tier: "news" },
+      { id: "S2", title: "Another source", url: "https://www.bbc.com/sport/football/another", date: "2026-09-23", snippet: `Mikel Arteta was appointed in ${date}.`, tier: "news" },
+    ] };
+    const checked = await verifyCurrentClaims(answer, bundle, {} as Parameters<typeof verifyCurrentClaims>[2], undefined, false, {
+      retrieve: async (candidates) => candidates.map((candidate) => ({ ...candidate, finalUrl: candidate.url,
+        text: candidate.id === "S1" ? source : `Mikel Arteta was appointed in ${date}.`, retrievedAt: "2026-10-06T10:00:00Z" })),
+      verify: async (_client, claims) => {
+        expect(claims).toHaveLength(2); expect(claims[1].text).toContain(date);
+        return { status: "verified", decisions: claims.map((claim) => ({ claimId: claim.id, outcome: "supported", evidenceIds: ["S1"] })), summary: "Claim accepted despite excessive date precision." };
+      },
+    });
+    expect(checked.answer).toContain("Mikel Arteta is Arsenal’s manager");
+    if (expected) {
+      expect(checked.answer).toContain(`appointed in ${expected}`);
+      if (date !== expected) expect(checked.answer).not.toContain(date);
+      expect(checked.verification).toEqual({ status: "verified", supportedClaimCount: 2, removedClaimCount: 0 });
+    } else {
+      expect(checked.answer).not.toContain("appointed");
+      expect(checked.verification).toEqual({ status: "verified", supportedClaimCount: 1, removedClaimCount: 1 });
+    }
+  });
+
+  it.each(["standalone", "two-manager-context"] as const)("does not bypass appointment precision without a unique prior manager identity: %s", async (mode) => {
+    const answer = mode === "standalone" ? "Mikel Arteta was appointed in December 2019 [[S1]]."
+      : "Mikel Arteta is Arsenal’s manager [[S1]]. Arsene Wenger was Arsenal’s manager [[S1]]. He was appointed in December 2019 [[S1]].";
+    const source = mode === "standalone" ? "Mikel Arteta was appointed in November 2019."
+      : "Mikel Arteta was appointed in 2019. Arsene Wenger was appointed in 1996.";
+    const checked = await verifyCurrentClaims(answer, { queries: [], providerCalls: 0, results: [{ id: "S1", title: "Arsenal manager news", url: "https://www.arsenal.com/news/managers", date: "2026-10-06", snippet: source, tier: "official" }] }, {} as Parameters<typeof verifyCurrentClaims>[2], undefined, false, {
+      retrieve: async (candidates) => candidates.map((candidate) => ({ ...candidate, finalUrl: candidate.url, text: source, retrievedAt: "2026-10-06T10:00:00Z" })),
+      verify: async (_client, claims) => ({ status: "verified", decisions: claims.map((claim) => ({ claimId: claim.id, outcome: "supported", evidenceIds: ["S1"] })), summary: "Date inaccurately accepted." }),
+    });
+    expect(checked.answer).not.toContain("appointed");
+    expect(checked.verification.removedClaimCount).toBe(1);
+    if (mode === "standalone") expect(checked.verification.status).toBe("abstain");
+  });
+
   it("strips uncited season stats when claim verification is unavailable", async () => {
     const bundle = {
       queries: ["mbeumo stats"],
@@ -6070,6 +6141,49 @@ describe("evidence attached to a match turn", () => {
 });
 
 describe("settled player news requires exact current-claim verification", () => {
+  it("repairs the live manager answer’s unsupported month from the owned appointment year before JSON, desk and SSE delivery", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));
+    await refreshClubRatings(new Date());
+    const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
+    // Captured Sky paragraph: retain its exact competition heading and short
+    // appointment clause; surrounding contract context is paraphrased. The raw
+    // capture is independently replayed from its preserved provenance hash.
+    const source = { title: "Arsenal manager contract update", link: "https://www.skysports.com/football/news/13588507/mikel-arteta-contract-arsenal-boss-agrees-new-deal-to-extend-stay-at-premier-league-champions",
+      date: "2026-09-22T18:26:00Z", snippet: "Mikel Arteta will continue managing Arsenal. His prior contract with the Premier League champions dates to September 2024. But the Spaniard, who was appointed in 2019, remains at the club." };
+    const original = "Mikel Arteta is Arsenal’s manager [[S1]]. The sources do not establish why the club chose him; they only report that he agreed a new contract and that he was appointed in December 2019 [[S1]].";
+    const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
+    const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate,
+      finalUrl: candidate.url, text: source.snippet, retrievedAt: new Date().toISOString() })));
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      if (String(input.system) === DESK_CURRENT_FACT_SYSTEM) return Promise.resolve({ content: [{ type: "text", text: original }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
+      const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
+      expect(data.claims).toHaveLength(2); expect(data.claims[1].text).toContain("December 2019");
+      return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: data.claims.map((claim: { id: string }) => ({ claimId: claim.id,
+        outcome: "supported", evidenceIds: ["S1"] })), summary: "Both claims accepted despite unsupported month." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    searchWeb.mockReset(); searchWeb.mockResolvedValue([source]);
+    const question = "Who is Arsenal’s manager and why?";
+    const assertDelivery = (result: Awaited<ReturnType<typeof answerQuestion>>) => {
+      expect(result.answer).toContain("Mikel Arteta is Arsenal’s manager");
+      expect(result.answer).toContain("do not establish why the club chose him");
+      expect(result.answer).toContain("appointed in 2019"); expect(result.answer).not.toContain("December");
+      expect(result.answer).toContain(source.link);
+      expect(result.verification).toEqual({ status: "verified", supportedClaimCount: 2, removedClaimCount: 0 });
+    };
+    try {
+      for (const voice of [undefined, "desk"] as const) assertDelivery(await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, { fixtureId: espnFixtureIdentity(model) }, undefined, voice));
+      const deltas: string[] = [];
+      const streamed = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, { fixtureId: espnFixtureIdentity(model) });
+      assertDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(create).toHaveBeenCalledTimes(6);
+    } finally {
+      create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
   it.each(["publication-date", "authored-event-date", "authored-date-field", "raw-canary-prose", "wrong-club"] as const)(
     "keeps report publication separate from injury timing and verifies source ownership in JSON, desk and SSE: %s", async (mode) => {
       vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));

@@ -1382,6 +1382,10 @@ export function validateVerification(verification, expectation = {}) {
       : statuses);
   const expectedStatus = shape && (allowed instanceof Set ? allowed : new Set(allowed)).has(verification.status);
   const assertions = { verificationShape: shape, verificationSemantics: semantics, verificationStatus: expectedStatus };
+  if (expectation.requirePositiveDatedClubNews) {
+    assertions.positiveNewsVerification = shape && verification.supportedClaimCount >= 1
+      && ["verified", "conflict"].includes(verification.status);
+  }
   const failures = Object.entries(assertions).filter(([, passed]) => !passed)
     .map(([name]) => `verification failed ${name}`);
   return { passed: failures.length === 0, assertions, failures };
@@ -1938,6 +1942,11 @@ const SOURCE_AND_DATE = new RegExp([
 const NO_VERIFIED_NEWS =
   /\bno (?:additional )?(?:verified|confirmed)\b[^.\n]*\b(?:team news|injury|lineup|line-up|update)\b|\bno verified team[- ]news\b/i;
 
+// A withheld claim is not an assertion that a player is "out". Anchor the
+// entire server notice so an appended/later availability claim cannot borrow
+// its exemption.
+const CONFLICT_WITHHOLDING_NOTICE = /^\s*Current reports conflict on one or more requested facts, so I['’]ve left those claims out\.[\s]*$/i;
+
 /**
  * The match prompt tells the model to go and find team news, and the
  * attribution rules tell it to cite a source and date or say plainly that
@@ -1956,6 +1965,7 @@ export function validateTeamNewsDiscipline(answer) {
   const unsafeClaims = regions.filter((region) =>
     (assertsSquadAvailability(region) || assertsNamedPlayerNews(region))
     && !NO_VERIFIED_NEWS.test(region)
+    && !CONFLICT_WITHHOLDING_NOTICE.test(region)
     && !SOURCE_AND_DATE.test(region)
   );
   // The production composer once promoted a page heading into "Back
@@ -1977,6 +1987,39 @@ export function validateTeamNewsDiscipline(answer) {
       ...(!identified ? [`answer identifies a generic page descriptor as an unavailable or selected player: ${unidentifiedSubjects[0].trim()}`] : []),
     ],
   };
+}
+
+/** Strict positive-news canary only. Counts/status never replace a delivered
+ * named club update with a same-sentence, metadata-matched dated citation. */
+export function validatePositiveDatedClubNews(answer, citations, verification, nowMs = Date.now()) {
+  const verified = ["verified", "conflict"].includes(verification?.status)
+    && Number.isInteger(verification?.supportedClaimCount) && verification.supportedClaimCount >= 1;
+  const sourceRows = (Array.isArray(citations) ? citations : []).filter((source) => {
+    const published = Date.parse(source?.date);
+    const day = /^\d{4}-\d{2}-\d{2}/.exec(source?.date ?? "")?.[0];
+    return /^S\d+$/.test(source?.id ?? "") && typeof source?.url === "string" && /^https?:\/\//.test(source.url)
+      && /^\d{4}-\d{2}-\d{2}/.test(source?.date ?? "") && Number.isFinite(published)
+      && published <= nowMs && nowMs - published <= 7 * 24 * 60 * 60 * 1000
+      && new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) === day;
+  });
+  const regions = typeof answer === "string" ? answer.split(/(?<=[.!?])\s+|\n+/).filter(Boolean) : [];
+  const namedClubStatus = /[\p{L}\p{M}][\p{L}\p{M} .-]{1,50}['’]s\s+\p{Lu}[\p{L}\p{M}'’.-]+(?:\s+\p{Lu}[\p{L}\p{M}'’.-]+){1,3}\s+(?:[Ww]as|[Ii]s|[Hh]as|[Hh]ad|[Rr]emains|[Mm]ay|[Mm]ight|[Cc]ould|[Ww]ithdrew)\b/u;
+  const namedStatus = /\p{Lu}[\p{L}\p{M}'’.-]+(?:\s+\p{Lu}[\p{L}\p{M}'’.-]+){1,3}\s+(?:[Ww]as|[Ii]s|[Hh]as|[Hh]ad|[Rr]emains|[Mm]ay|[Mm]ight|[Cc]ould|[Ww]ithdrew|[Ww]ill)\b/u;
+  const medicalStatus = /\b(?:injur\w*|doubt\w*|sidelined|suspend\w*|unavailable|available|pain|strain|tear|issue|problem|assessment|rehabilitation|withdraw\w*|withdrew|training|fitness|fit|starts?|starting)\b/i;
+  const candidates = regions.filter((region) => {
+    const prose = region.replace(/\[[^\]]*\]\([^)]*\)/g, "");
+    return namedStatus.test(prose) && medicalStatus.test(prose);
+  });
+  const dated = candidates.filter((region) => {
+    const publicationDay = /\bIn an update published on (\d{4}-\d{2}-\d{2}),/i.exec(region)?.[1];
+    const urls = [...region.matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g)].map((match) => match[1]);
+    return namedClubStatus.test(region) && sourceRows.some((source) => source.date.slice(0, 10) === publicationDay && urls.includes(source.url));
+  });
+  const assertions = { positiveNewsVerification: verified, positiveDatedNewsDelivered: dated.length >= 1,
+    everyPositiveNewsRecordDated: candidates.length > 0 && dated.length === candidates.length,
+    positiveNewsCountMatches: dated.length === verification?.supportedClaimCount };
+  return { passed: Object.values(assertions).every(Boolean), assertions,
+    failures: Object.entries(assertions).filter(([, passed]) => !passed).map(([name]) => `positive dated club news failed ${name}`) };
 }
 
 export function validateAbstainedCounterfactualDiscipline(answer, verificationStatus) {

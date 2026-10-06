@@ -12,7 +12,7 @@ import {
   fetchUpcomingMatches,
 } from "@/lib/mock-data";
 import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
-import { buildAskUrl, modelFixtureIdentity } from "@/lib/api";
+import { ApiError, buildAskUrl, modelFixtureIdentity } from "@/lib/api";
 import type {
   CompetitionResponse,
   FixtureCapability,
@@ -438,6 +438,8 @@ function GroupStandingsTable({
 
 export default function FixturesPage() {
   const [competitions, setCompetitions] = useState<CompetitionResponse[]>([]);
+  const [competitionError, setCompetitionError] = useState<string | null>(null);
+  const [competitionRetry, setCompetitionRetry] = useState(0);
   const [selectedCompetition, setSelectedCompetition] = useState(ALL_TAB);
   const {
     matches,
@@ -454,10 +456,21 @@ export default function FixturesPage() {
     useFixturesData(selectedCompetition);
 
   useEffect(() => {
+    let cancelled = false;
+    setCompetitionError(null);
     void fetchCompetitions().then((payload) => {
-      setCompetitions(payload.competitions.filter((competition) => competition.enabled));
+      if (!cancelled) {
+        setCompetitions(payload.competitions.filter((competition) => competition.enabled));
+      }
+    }).catch((failure: unknown) => {
+      if (!cancelled) {
+        setCompetitionError(failure instanceof ApiError && failure.status === 429
+          ? "Competition filters are temporarily limited. Please wait a moment, then retry."
+          : "Competition filters are unavailable right now. Retry to load them.");
+      }
     });
-  }, []);
+    return () => { cancelled = true; };
+  }, [competitionRetry]);
 
   const enabledTabs = useMemo(
     () => [{ id: ALL_TAB, name: "All" }, ...competitions.map((c) => ({ id: c.id, name: c.name }))],
@@ -512,6 +525,10 @@ export default function FixturesPage() {
           />
         ))}
       </div>
+
+      {competitionError && (
+        <ErrorBanner message={competitionError} onRetry={() => setCompetitionRetry((attempt) => attempt + 1)} />
+      )}
 
       {coverageWarning && (
         <p className="-mt-4 mb-4 text-xs text-amber-300/80">

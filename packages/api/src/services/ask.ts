@@ -103,6 +103,7 @@ import {
   datedClubNewsSources,
   selectTeamNewsSources,
   clubNamedInNews,
+  playerNamedInNewsBody,
   clubsInVerifiedNewsClaims,
   recentScorerContext,
   PLAYER_SCORER_ABSTENTION,
@@ -1206,16 +1207,129 @@ function evidenceSourceDate(
 }
 
 export function verifiableCurrentClaims(answer: string): VerifiableClaim[] {
-  return splitAnswerSentences(answer)
+  // Preserve a month abbreviation inside its dated claim without changing
+  // the shared sentence splitter used by model/price responses.
+  const protectedDates = answer.replace(/\b(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.(?=\s+(?:\d{1,2}(?:st|nd|rd|th)?,?\s+)?\d{4}\b)/gi, "$1\uE000");
+  return splitAnswerSentences(protectedDates).map((sentence) => sentence.replace(/\uE000/g, "."))
     // Server-owned citation markers identify the externally sourced claims.
     // Model-grounded numeric sentences have no marker and are not sent to the
     // current-fact verifier, so live evidence can never rewrite probabilities.
     // Marker-shaped rather than strictly `[[S1]]`: a claim the generator wrote
     // as `[[1]]` still has to face the verifier, or widening the renderer's
     // marker regex would hand it a citation nobody checked.
-    .filter((sentence) => evidenceMarkerIds(sentence).length > 0 && !ABSTENTION.test(sentence))
+    // A cited refusal can contain an affirmative tail. It must not exempt
+    // "not established; he was appointed in December 2019" from verification.
+    .filter((sentence) => evidenceMarkerIds(sentence).length > 0
+      && !/^(?:No verified(?:, dated)? (?:team[- ]news update|result|injury update|current claim|news update) was established(?: from retrievable sources|, because verification was unavailable)?|The sources do not establish why the club chose him|The club['’]s reason is not established)[.!]?$/i.test(sentence.replace(/\s*\[\[S\d+\]\]/g, "").trim()))
     .slice(0, 24)
     .map((text, index) => ({ id: `C${index + 1}`, text }));
+}
+
+const APPOINTMENT_MONTH = "(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)";
+const APPOINTMENT_DATE = `(?:\\d{4}-\\d{2}-\\d{2}|(?:\\d{1,2}(?:st|nd|rd|th)?\\s+)?${APPOINTMENT_MONTH}\\.?(?:\\s+\\d{1,2}(?:st|nd|rd|th)?,?)?(?:\\s+of)?\\s+\\d{4}|\\d{4})`;
+const appointmentDates = () => new RegExp(`\\bappointed\\b[^.!?\\n]{0,40}?\\b(?:in|on)\\s+(${APPOINTMENT_DATE})\\b`, "gi");
+
+function appointmentCalendar(raw: string): { year: number; month: number | null; day: number | null; raw: string } | null {
+  if (/^\d{4}$/.test(raw)) return { year: Number(raw), month: null, day: null, raw };
+  const normalized = raw.replace(/(\d)(?:st|nd|rd|th)\b/gi, "$1").replace(/\bof\s+/gi, "").replace(/\./g, "");
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized);
+  const textual = new RegExp(`^(?:(\\d{1,2})\\s+)?(${APPOINTMENT_MONTH})(?:\\s+(\\d{1,2}),?)?\\s+(\\d{4})$`, "i").exec(normalized);
+  if (!iso && !textual) return null;
+  const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const year = Number(iso?.[1] ?? textual![4]);
+  const month = iso ? Number(iso[2]) : months.indexOf(textual![2].slice(0, 3).toLowerCase()) + 1;
+  const textualDay = textual?.[1] ?? textual?.[3];
+  const day = iso ? Number(iso[3]) : textualDay === undefined ? null : Number(textualDay);
+  const date = new Date(Date.UTC(year, month - 1, day ?? 1));
+  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === (day ?? 1)
+    ? { year, month, day, raw } : null;
+}
+
+/** Narrow appointment-date backstop after source selection. A source-owned
+ * event year may reduce unsupported precision; contradictions remove the
+ * claim. Publication metadata and unrelated calendar years never qualify. */
+function sourceOwnedManagerAppointmentPrecision(
+  answer: string, claims: readonly VerifiableClaim[], decisions: Parameters<typeof reviseAnswerWithClaimDecisions>[2],
+  pages: Awaited<ReturnType<typeof retrieveEvidencePages>>
+) {
+  const fullName = "[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+[\\p{Lu}][\\p{L}\\p{M}'’.-]+){1,3}";
+  const roleNames = (claim: VerifiableClaim) => {
+    const direct = new RegExp(`(${fullName})\\s+(?:is|was)\\b[^.!?\\n]{0,60}\\b(?:manager|coach)\\b`, "u").exec(claim.text)?.[1];
+    const inverse = new RegExp(`\\b(?:manager|coach)(?: today)?\\s+is\\s+(${fullName})`, "u").exec(claim.text)?.[1];
+    return direct || inverse ? [direct ?? inverse!] : [];
+  };
+  // Reuse the lexical person guard: competition and publisher headings are
+  // not intervening managers. Exact event/source ownership is checked below.
+  const personNames = (text: string) => [...text.matchAll(new RegExp(`(${fullName})`, "gu"))]
+    .map((entry) => entry[1]).filter((name) => playerNamedInNewsBody(name, text,
+      { fixtureId: "", home: "", away: "", kickoff: "" }));
+  const nearestSubject = (prefix: string) => personNames(prefix.slice(-100)).at(-1);
+  let repairedAnswer = answer;
+  let rejected = 0;
+  const repairedClaims = [...claims];
+  const repairedDecisions = decisions.map((decision) => {
+    if (decision.outcome !== "supported") return decision;
+    const index = repairedClaims.findIndex((claim) => claim.id === decision.claimId);
+    const claim = repairedClaims[index];
+    if (!claim) return decision;
+    let text = claim.text;
+    const events = [...claim.text.matchAll(appointmentDates())];
+    if (!events.length && /\bappointed\b[^!?\n]{0,85}\b\d{4}\b/i.test(claim.text)) {
+      rejected += 1;
+      return { ...decision, outcome: "unsupported" as const, evidenceIds: [], explanation: "Appointment date format unsupported" };
+    }
+    for (const event of events) {
+      const requested = appointmentCalendar(event[1]);
+      const explicitSubject = nearestSubject(claim.text.slice(0, event.index));
+      const priorNames = [...new Set(claims.slice(0, index).flatMap((previous) => {
+        const accepted = decisions.find((entry) => entry.claimId === previous.id);
+        return accepted?.outcome === "supported" && accepted.evidenceIds.some((id) => decision.evidenceIds.includes(id)) ? roleNames(previous) : [];
+      }))];
+      const subject = explicitSubject ?? (priorNames.length === 1 ? priorNames[0] : null);
+      if (!requested || !subject) {
+        rejected += 1;
+        return { ...decision, outcome: "unsupported" as const, evidenceIds: [], explanation: "Appointment date identity or calendar unsupported" };
+      }
+      const ownedDates = decision.evidenceIds.flatMap((id) => {
+        const body = pages.find((page) => page.id === id)?.text ?? "";
+        return [...body.matchAll(appointmentDates())].flatMap((sourceEvent) => {
+          const before = body.slice(Math.max(0, sourceEvent.index! - 400), sourceEvent.index!);
+          const immediateSubject = nearestSubject(before);
+          const subjectPosition = before.lastIndexOf(subject);
+          // An intervening person may have a pronoun appointment clause;
+          // never fall back to an older name elsewhere in the context window.
+          const intervening = subjectPosition >= 0
+            ? personNames(before.slice(subjectPosition + subject.length)).some((name) => name !== subject)
+            : false;
+          const namedInEvent = personNames(sourceEvent[0]);
+          const owned = namedInEvent.length === 1 && namedInEvent[0] === subject
+            || subjectPosition >= 0 && !intervening && (!immediateSubject || immediateSubject === subject);
+          const date = owned ? appointmentCalendar(sourceEvent[1]) : null;
+          return date ? [date] : [];
+        });
+      });
+      const contradicts = ownedDates.some((date) => date.year !== requested.year
+        || date.month !== null && requested.month !== null && date.month !== requested.month
+        || date.day !== null && requested.day !== null && date.day !== requested.day);
+      const exact = ownedDates.some((date) => date.year === requested.year
+        && (requested.month === null || date.month === requested.month)
+        && (requested.day === null || date.day === requested.day));
+      if (contradicts || !ownedDates.length) {
+        rejected += 1;
+        return { ...decision, outcome: "unsupported" as const, evidenceIds: [], explanation: "Appointment date precision not source-owned" };
+      }
+      if (!exact) {
+        const lessPrecise = ownedDates.find((date) => date.year === requested.year)!;
+        text = text.replace(event[0], event[0].replace(event[1], lessPrecise.raw));
+      }
+    }
+    if (text !== claim.text) {
+      repairedAnswer = repairedAnswer.replace(claim.text, text);
+      repairedClaims[index] = { ...claim, text };
+    }
+    return decision;
+  });
+  return { answer: repairedAnswer, claims: repairedClaims, decisions: repairedDecisions, rejected };
 }
 
 export async function verifyCurrentClaims(
@@ -1340,13 +1454,18 @@ export async function verifyCurrentClaims(
   // the server-authored capability notices, none of which were ever claims.
   // The notices no longer need re-adding by hand -- they are simply never
   // touched.
-  const applied = reviseAnswerWithClaimDecisions(answer, claims, result.decisions);
+  const precision = sourceOwnedManagerAppointmentPrecision(answer, claims, result.decisions, pages);
+  const applied = reviseAnswerWithClaimDecisions(precision.answer, precision.claims, precision.decisions);
+  const verificationStatus = precision.rejected && result.status !== "unavailable"
+    ? precision.decisions.some((decision) => decision.outcome === "conflict") ? "conflict"
+      : applied.supported.length ? "verified" : "abstain"
+    : result.status;
   const nextAnswer = result.status === "unavailable"
     ? stripUncitedSeasonStats(applied.answer)
     : applied.answer;
   console.log(JSON.stringify({
     event: "claims_verified",
-    status: result.status,
+    status: verificationStatus,
     claims: claims.length,
     sources: candidates.length,
     fetchable,
@@ -1355,11 +1474,12 @@ export async function verifyCurrentClaims(
     snippetBacked: snippetBacked.length,
     supported: applied.supported.length,
     removed: applied.removedClaimIds.length,
+    appointmentPrecisionRejected: precision.rejected,
   }));
   return {
     answer: nextAnswer.trim(),
     verification: {
-      status: result.status,
+      status: verificationStatus,
       supportedClaimCount: applied.supported.length,
       removedClaimCount: applied.removedClaimIds.length,
     },

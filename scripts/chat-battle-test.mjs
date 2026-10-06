@@ -49,6 +49,7 @@ import {
   validateOneXTwoMarket,
   validateResponseCorrectness,
   validateTeamNewsDiscipline,
+  validatePositiveDatedClubNews,
   validateVerification,
   writeCheckpoint,
   writeFailureReport,
@@ -450,6 +451,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       assertionFailures.push(...newsValidation.failures.map((failure) =>
         `turn ${turnNumber}: ${failure} — ${sanitizeEvidence(result.answer)}`
       ));
+    }
+    if (turn.requirePositiveDatedClubNews || scenario.requirePositiveDatedClubNews) {
+      const positiveNews = validatePositiveDatedClubNews(result.answer, result.citations, result.verification);
+      for (const [name, passed] of Object.entries(positiveNews.assertions)) {
+        result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+      }
+      semanticCheckCount += Object.keys(positiveNews.assertions).length;
+      assertionFailures.push(...positiveNews.failures.map((failure) => `turn ${turnNumber}: ${failure}`));
     }
     result.turnResults.push({
       turn: turnNumber,

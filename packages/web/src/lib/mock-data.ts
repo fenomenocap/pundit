@@ -88,7 +88,7 @@ const MOCK_STANDINGS: StandingResponse[] = [
 ];
 
 export async function fetchCompetitions() {
-  if (!USE_MOCK) {
+  if (!USE_MOCK || e2eFixtureState() === "competitions-live") {
     const { getCompetitions } = await import("./api");
     return getCompetitions();
   }
