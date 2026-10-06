@@ -13,6 +13,7 @@ dist/
 # Local production battle-test output (repo-owned evaluator, untracked evidence)
 artifacts/chat-evals/
 artifacts/model-qa/
+artifacts/remaining-completion/
 
 # Playwright
 packages/web/test-results/
@@ -66,3 +67,4 @@ packages/api/data/research/dixon-coles-mle/
 packages/api/data/research/champion-calibration/ledgers/
 packages/api/data/research/champion-calibration/reports/
 packages/api/data/research/qa-20261005/
+packages/api/data/prospective-model/

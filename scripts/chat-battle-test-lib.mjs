@@ -1284,6 +1284,36 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
   if (expectation.expectEvidenceAbstention) {
     assertions.evidenceAbstention = /\b(?:could not|couldn't|unable to|no verified|not establish|cannot verify|conflict)\b/i.test(text);
   }
+  if (expectation.expectLatestResult) {
+    const scope = expectation.expectLatestResult;
+    const resultCitation = citationList.find((citation) => {
+      try {
+        const url = new URL(citation.url);
+        return url.protocol === "https:"
+          && ["espn.com", "www.espn.com"].includes(url.hostname)
+          && /^\/soccer\/match\/_\/gameId\/[1-9]\d*$/.test(url.pathname);
+      } catch { return false; }
+    });
+    const plain = text.replace(/\*\*/g, "");
+    const citedScore = resultCitation?.title?.split(" — ESPN")[0];
+    assertions.latestResultTeam = plain.toLowerCase().includes(scope.team.toLowerCase());
+    assertions.latestResultScope = plain.toLowerCase().includes(scope.competition.toLowerCase());
+    assertions.latestResultCitedScore = typeof citedScore === "string"
+      && /\b\d+–\d+\b/.test(citedScore) && plain.includes(citedScore);
+    assertions.latestResultDatedEvent = Boolean(resultCitation)
+      && /^\d{4}-\d{2}-\d{2}$/.test(resultCitation.date ?? "")
+      && Number.isFinite(Date.parse(resultCitation.date))
+      && plain.includes(resultCitation.date)
+      && text.includes(`](${resultCitation.url})`);
+    assertions.latestResultNoForecast = !/\d+(?:\.\d+)?\s*%|\bfair (?:decimal )?(?:odds|price)\b/i.test(plain);
+    if (scope.coveredCompetitions) {
+      assertions.latestResultCoverageQualified = /\bcovered competitions\b/i.test(plain)
+        && /\b(?:another|other) cup match may be more recent\b/i.test(plain);
+    }
+    if (scope.explanationBoundary) {
+      assertions.latestResultCausalityBoundary = /\b(?:need|require)\b[^.!?\n]{0,60}\bverified match report\b[^.!?\n]{0,50}\b(?:explain|why)\b/i.test(plain);
+    }
+  }
   if (expectation.expectOfficialCitation) {
     assertions.officialCitation = citationList.some((citation) => {
       try {

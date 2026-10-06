@@ -2383,6 +2383,30 @@ test("schema-17 verification contract enforces shape, counts, and abstention sem
   assert.equal(validateVerification(null).passed, false);
 });
 
+test("latest-result certification requires a dated scoped score matching its ESPN event citation", () => {
+  const citation = { id: "S1", title: "Arsenal 2–1 Leeds — ESPN",
+    url: "https://www.espn.com/soccer/match/_/gameId/401879268", date: "2026-10-10" };
+  const answer = "The latest completed Premier League result I have for Arsenal is **Arsenal 2–1 Leeds** (Premier League, 2026-10-10). [ESPN match record, 2026-10-10](https://www.espn.com/soccer/match/_/gameId/401879268).";
+  const expectation = { expectLatestResult: { team: "Arsenal", competition: "Premier League" } };
+  assert.equal(validateResponseCorrectness(answer, [citation], null, expectation).passed, true);
+  for (const broken of [
+    answer.replace("2–1", "1–2"),
+    answer.replaceAll("2026-10-10", "2026-10-11"),
+    answer.replaceAll("Premier League", "a different competition"),
+    `${answer} My home-win chance is 70%.`,
+    "I couldn't verify Arsenal's latest Premier League result.",
+  ]) assert.equal(validateResponseCorrectness(broken, [citation], null, expectation).passed, false, broken);
+  assert.equal(validateResponseCorrectness(answer, [], null, expectation).passed, false);
+  assert.equal(validateResponseCorrectness(answer, [{ ...citation, url: "https://example.com/match/401879268" }], null, expectation).passed, false);
+  assert.equal(validateResponseCorrectness(answer, [{ ...citation, date: "not-a-date" }], null, expectation).passed, false);
+  const covered = { expectLatestResult: { ...expectation.expectLatestResult,
+    coveredCompetitions: true, explanationBoundary: true } };
+  assert.equal(validateResponseCorrectness(answer, [citation], null, covered).passed, false);
+  const qualified = `${answer} This is in my covered competitions; another cup match may be more recent. I would need a verified match report to explain why it happened.`;
+  assert.equal(validateResponseCorrectness(qualified, [citation], null, covered).passed, true);
+  assert.equal(validateResponseCorrectness(qualified.replace("need a verified match report to explain why", "know why"), [citation], null, covered).passed, false);
+});
+
 test("schema-17 complete market validator enforces source, time, legs and arithmetic", () => {
   const legs = [
     { outcome: "home", decimalOdds: 2, source: "Book", observedAt: "2026-08-13T10:00:00Z" },

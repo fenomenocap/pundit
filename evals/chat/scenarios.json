@@ -28,7 +28,7 @@
     },
     {
       "id": "pinned-current-manager-and-result-evidence",
-      "description": "A pinned pricing board cannot answer manager identities or dated results, including identity plus why. Current claims require verified citations; empty evidence must abstain while retaining fixture context. Agent critic checks request fidelity and claim support.",
+      "description": "Manager identities require verified current citations. A latest result settles from fresh completed ESPN records with a dated event citation and an explicit coverage boundary, without using forecast facts to explain the outcome. Agent critic independently checks the event score and date.",
       "kind": "featured-turns",
       "voice": "desk",
       "turns": [
@@ -46,9 +46,46 @@
         },
         {
           "questionTemplate": "What is {home}'s latest result and why?",
+          "expectGrounding": null,
+          "requireCitation": true,
+          "expectVerification": ["verified"],
+          "expectLatestResult": {
+            "team": "{home}",
+            "competition": "Premier League",
+            "coveredCompetitions": true,
+            "explanationBoundary": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "owned-premier-league-latest-result",
+      "description": "A normal latest Premier League result question delivers a sourced final score despite an empty rolling results window; safe abstention alone does not certify this functionality. Agent critic checks the ESPN event itself.",
+      "kind": "json",
+      "voice": "desk",
+      "turns": [
+        {
+          "question": "What is Arsenal's latest Premier League result?",
+          "expectGrounding": null,
+          "requireCitation": true,
+          "expectVerification": ["verified"],
+          "expectLatestResult": {"team": "Arsenal", "competition": "Premier League"}
+        }
+      ]
+    },
+    {
+      "id": "dated-club-news-delivers-supported-update",
+      "description": "Current dated club injury reports need not name a future fixture. At least one supported dated update must be delivered; an abstention alone does not certify usable news coverage. Agent critic checks publication date, exact player/club/status and future-availability boundaries against the publisher body.",
+      "kind": "featured-turns",
+      "voice": "desk",
+      "turns": [
+        {
+          "questionTemplate": "What are the latest dated club injury updates for {home} and {away}? Keep current reports distinct from future kickoff availability.",
           "expectGrounding": "match",
           "requireCitation": true,
-          "allowAbstention": true
+          "expectVerification": ["verified"],
+          "requireSourcedTeamNews": true,
+          "expectNoUnsupportedLineupEffect": true
         }
       ]
     },

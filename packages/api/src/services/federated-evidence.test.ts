@@ -153,6 +153,16 @@ describe("planFederatedQueries", () => {
     expect(planned.length).toBeLessThanOrEqual(6);
   });
 
+  it("retrieves dated club injury updates before previews of an upcoming matchup", () => {
+    const queries = planFederatedQueries("What is the latest team news?", matchGrounding(),
+      "latest team news", new Date("2026-10-06T00:00:00Z"));
+    expect(queries).toHaveLength(6);
+    expect(queries).toContain("Arsenal latest injury update team news official club 2026-10-06");
+    expect(queries).toContain("Chelsea latest injury update team news official club 2026-10-06");
+    expect(queries).toContain("Arsenal vs Chelsea team news injuries suspensions predicted lineup");
+    expect(queries.some((query) => /goalscorer|odds movement/.test(query))).toBe(false);
+  });
+
   it("returns no queries for general knowledge without a search cue", () => {
     expect(
       planFederatedQueries(
