@@ -1248,6 +1248,8 @@ const MANAGER_WHY_ABSTENTION = "I couldn’t establish a verified current manage
 const managerIdentityAbstention = (scope: { wantsReason?: boolean }) => scope.wantsReason === false
   ? "I couldn’t establish a verified current manager for this club." : MANAGER_WHY_ABSTENTION;
 
+const managerFactPlainText = (text: string) => text.replace(/[*_`]/g, "");
+
 // Quotes retain their range across nested HTML paragraphs. A statement
 // inside a quotation cannot establish the publisher's own role assertion.
 function publisherOwnedManagerBody(page: { text: string }): string {
@@ -1282,7 +1284,7 @@ function settleManagerWhyFacts(
   const fullName = "[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+[\\p{Lu}][\\p{L}\\p{M}'’.-]+){1,3}";
   const aliases = [scope.club, ...getTeamNameAliases().filter(([, name]) => normalizeTeamName(name) === normalizeTeamName(scope.club)).map(([alias]) => alias)];
   const club = `(?:${[...new Set(aliases)].map(escape).join("|")})`;
-  const role = new RegExp(`(?:${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)(?:\\s+today)?\\s+is\\s+(${fullName})|(${fullName})\\s+is\\s+(?:the\\s+)?${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach))`, "u");
+  const role = new RegExp(`(?:${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)(?:\\s+today)?\\s+is\\s+(${fullName})|(${fullName})\\s+(?:is|remains)\\s+(?:the\\s+)?(?:current\\s+)?${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)|(?:the\\s+)?(?:current\\s+)?(?:manager|head coach|coach)\\s+(?:of|for)\\s+${club}\\s+is\\s+(${fullName}))`, "u");
   const ownsCurrentRole = (name: string, body: string) => {
     const named = escape(name);
     const currentRole = `(?:current\\s+)?(?:manager|head coach|coach|boss)`;
@@ -1290,7 +1292,7 @@ function settleManagerWhyFacts(
     // present-tense role statement or an explicit ongoing contract action.
     // Editorial prefixes and trailing retired/return qualifiers cannot fill
     // the closed role statement, regardless of the verifier's verdict.
-    const direct = new RegExp(`^(?:${club}(?:['’]s)?\\s+${currentRole}(?:\\s+today)?\\s+is\\s+${named}|${named}\\s+(?:is|remains)\\s+(?:the\\s+)?${club}(?:['’]s)?\\s+${currentRole})(?:\\s+(?:today|currently))?\\s*[.!]?$`, "iu");
+    const direct = new RegExp(`^(?:${club}(?:['’]s)?\\s+${currentRole}(?:\\s+today)?\\s+is\\s+${named}|${named}\\s+(?:is|remains)\\s+(?:the\\s+)?(?:current\\s+)?${club}(?:['’]s)?\\s+${currentRole}|(?:the\\s+)?${currentRole}\\s+(?:of|for)\\s+${club}\\s+is\\s+${named})(?:\\s+(?:today|currently))?\\s*[.!]?$`, "iu");
     const contract = new RegExp(`^(?:${club}(?:['’]s)?\\s+${currentRole}\\s+(?:is\\s+)?${named}(?:,?\\s+who)?\\s+has\\s+(?:agreed|signed)\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?(?:contract|deal)\\b|${named}\\s+has\\s+agreed\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?contract\\s+as\\s+${club}(?:['’]s)?\\s+${currentRole}\\b)`, "iu");
     const alignment = new RegExp(`^${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+says\\s+he\\s+and\\s+the\\s+club\\s+are\\s+(?:very\\s+much\\s+)?aligned\\b[^.!?;\\n]{0,100}\\bsigning\\s+a\\s+new\\s+contract\\b`, "iu");
     // Publisher blocks retain their boundaries; these explicit tenure
@@ -1304,8 +1306,8 @@ function settleManagerWhyFacts(
     return decision?.outcome === "supported" ? [{ claim, decision }] : [];
   });
   const identities = accepted.flatMap(({ claim, decision }) => {
-    const match = role.exec(claim.text);
-    const name = match?.[1] ?? match?.[2];
+    const match = role.exec(managerFactPlainText(claim.text));
+    const name = match?.[1] ?? match?.[2] ?? match?.[3];
     const sourceId = name && decision.evidenceIds.find((id) => {
       const page = pages.find((row) => row.id === id);
       return page && playerNamedInNewsBody(name, publisherOwnedManagerBody(page),
@@ -1366,12 +1368,13 @@ function appointmentCalendar(raw: string): { year: number; month: number | null;
  * claim. Publication metadata and unrelated calendar years never qualify. */
 function sourceOwnedManagerAppointmentPrecision(
   answer: string, claims: readonly VerifiableClaim[], decisions: Parameters<typeof reviseAnswerWithClaimDecisions>[2],
-  pages: Awaited<ReturnType<typeof retrieveEvidencePages>>
+  pages: Awaited<ReturnType<typeof retrieveEvidencePages>>, clubScope?: string
 ) {
   const fullName = "[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+[\\p{Lu}][\\p{L}\\p{M}'’.-]+){1,3}";
   const roleNames = (claim: VerifiableClaim) => {
-    const direct = new RegExp(`(${fullName})\\s+(?:is|was)\\b[^.!?\\n]{0,60}\\b(?:manager|coach)\\b`, "u").exec(claim.text)?.[1];
-    const inverse = new RegExp(`\\b(?:manager|coach)(?: today)?\\s+is\\s+(${fullName})`, "u").exec(claim.text)?.[1];
+    const plain = managerFactPlainText(claim.text);
+    const direct = new RegExp(`(${fullName})\\s+(?:is|was|remains)\\b[^.!?\\n]{0,60}\\b(?:manager|coach)\\b`, "u").exec(plain)?.[1];
+    const inverse = new RegExp(`\\b(?:manager|coach)(?: today)?(?:\\s+(?:of|for)\\s+[^.!?\\n]{1,60}?)?\\s+is\\s+(${fullName})`, "u").exec(plain)?.[1];
     return direct || inverse ? [direct ?? inverse!] : [];
   };
   // Reuse the lexical person guard: competition and publisher headings are
@@ -1379,7 +1382,7 @@ function sourceOwnedManagerAppointmentPrecision(
   const personNames = (text: string) => [...text.matchAll(new RegExp(`(${fullName})`, "gu"))]
     .map((entry) => entry[1]).filter((name) => playerNamedInNewsBody(name, text,
       { fixtureId: "", home: "", away: "", kickoff: "" }));
-  const nearestSubject = (prefix: string) => personNames(prefix.slice(-100)).at(-1);
+  const nearestSubject = (prefix: string) => personNames(managerFactPlainText(prefix.slice(-100))).at(-1);
   let repairedAnswer = answer;
   let rejected = 0;
   const appointmentFacts: { claimId: string; name: string; date: string; sourceId: string }[] = [];
@@ -1417,13 +1420,19 @@ function sourceOwnedManagerAppointmentPrecision(
           const prefix = body.slice(clauseStart, sourceEvent.index).trim();
           const named = subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           const roleClub = claims.flatMap((row) => {
-            const namedRole = new RegExp(`(?:${named}\\s+is\\s+(?:the\\s+)?([^.!?\\n]{1,60}?)['’]s\\s+(?:current\\s+)?(?:manager|coach)|([^.!?\\n]{1,60}?)['’]s\\s+(?:current\\s+)?(?:manager|coach)\\s+is\\s+${named})`, "u").exec(row.text);
+            const namedRole = new RegExp(`(?:${named}\\s+is\\s+(?:the\\s+)?([^.!?\\n]{1,60}?)['’]s\\s+(?:current\\s+)?(?:manager|coach)|([^.!?\\n]{1,60}?)['’]s\\s+(?:current\\s+)?(?:manager|coach)\\s+is\\s+${named})`, "u").exec(managerFactPlainText(row.text));
             return namedRole ? [namedRole[1] ?? namedRole[2]] : [];
           });
-          const clubNames = [...new Set([...roleClub, ...getTeamNameAliases().flatMap(([alias, name]) => [alias, name])])]
+          const scopedClubs = clubScope ? [clubScope] : roleClub;
+          const clubNames = [...new Set([...scopedClubs, ...getTeamNameAliases()
+            .filter(([, name]) => scopedClubs.some((club) => normalizeTeamName(club) === normalizeTeamName(name)))
+            .flatMap(([alias, name]) => [alias, name])])]
             .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
           const affirmative = new RegExp(`^(?:${named}\\s+(?:was|is|has been)(?:\\s+first)?|(?:${clubNames})|(?:But\\s+)?(?:the Spaniard|he|He)(?:,\\s+who)?\\s+(?:was|is|has been))\\s*$`, "u");
           if (!affirmative.test(prefix)) return [];
+          const dateText = sourceEvent[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const appointment = new RegExp(`^appointed(?:\\s+${named})?(?:\\s+(?:as\\s+)?(?:the\\s+)?(?:(?:${clubNames})(?:['’]s)?\\s+)?(?:manager|head coach|coach))?\\s+(?:in|on)\\s+${dateText}$`, "u");
+          if (!appointment.test(sourceEvent[0])) return [];
           const before = body.slice(Math.max(0, sourceEvent.index! - 400), sourceEvent.index!);
           const immediateSubject = nearestSubject(before);
           const subjectPosition = before.lastIndexOf(subject);
@@ -1591,7 +1600,7 @@ export async function verifyCurrentClaims(
   // the server-authored capability notices, none of which were ever claims.
   // The notices no longer need re-adding by hand -- they are simply never
   // touched.
-  const precision = sourceOwnedManagerAppointmentPrecision(answer, claims, result.decisions, pages);
+  const precision = sourceOwnedManagerAppointmentPrecision(answer, claims, result.decisions, pages, dependencies.managerWhy?.club);
   const applied = reviseAnswerWithClaimDecisions(precision.answer, precision.claims, precision.decisions);
   const verificationStatus = precision.rejected && result.status !== "unavailable"
     ? precision.decisions.some((decision) => decision.outcome === "conflict") ? "conflict"

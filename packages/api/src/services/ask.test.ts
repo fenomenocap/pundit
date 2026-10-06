@@ -1319,6 +1319,29 @@ describe("current-news evidence hardening", () => {
     });
 
   it.each([
+    "Arsenal’s manager is **Mikel Arteta**",
+    "**Mikel Arteta** is Arsenal’s manager",
+    "Arsenal’s manager is *Mikel Arteta*",
+    "__Mikel Arteta__ is Arsenal’s manager",
+    "Mikel Arteta is the current Arsenal manager",
+    "Mikel Arteta remains the current Arsenal manager",
+    "The current manager of Arsenal is Mikel Arteta",
+    "The head coach for Arsenal is Mikel Arteta",
+  ])("retains a source-owned manager identity through presentation and natural role wording: %s", async (role) => {
+    const body = "Mikel Arteta is Arsenal’s manager. Arsenal appointed Mikel Arteta in 2019.";
+    const answer = `${role} [[S1]]. He was appointed in 2019 [[S1]].`;
+    const checked = await verifyCurrentClaims(answer, { queries: [], providerCalls: 0, results: [
+      { id: "S1", title: "Arsenal manager update", url: "https://www.arsenal.com/news/manager", date: "2026-10-06", snippet: body, tier: "official" },
+    ] }, {} as Parameters<typeof verifyCurrentClaims>[2], undefined, false, {
+      managerWhy: { club: "Arsenal", retainAppointment: true, wantsReason: false },
+      retrieve: async (candidates) => candidates.map((candidate) => ({ ...candidate, finalUrl: candidate.url, text: body, retrievedAt: "2026-10-06T19:00:00Z" })),
+      verify: async (_client, claims) => ({ status: "verified", decisions: claims.map((claim) => ({ claimId: claim.id, outcome: "supported", evidenceIds: ["S1"] })), summary: "Role and appointment explicitly supported." }),
+    });
+    expect(checked.answer).toBe("Arsenal’s manager is Mikel Arteta [[S1]]. Mikel Arteta was appointed in 2019 [[S1]].");
+    expect(checked.verification).toEqual({ status: "verified", supportedClaimCount: 2, removedClaimCount: 0 });
+  });
+
+  it.each([
     "Football News\nArsenal manager Mikel Arteta says he and the club are very much aligned when it comes to signing a new contract.",
     "Football News\nMikel Arteta has agreed a new contract as Arsenal manager following their Premier League title triumph last season; The reporter assesses the club’s progress.",
   ])("retains a current tenure proposition after a publisher block boundary: %s", async (body) => {
@@ -1381,6 +1404,9 @@ describe("current-news evidence hardening", () => {
     { label: "quoted false appointment", source: "Mikel Arteta is Arsenal’s manager. A false report claimed: “Mikel Arteta was appointed in December 2005.”", date: "December 2005", expected: null },
     { label: "negated appointment", source: "Mikel Arteta is Arsenal’s manager. Mikel Arteta was not appointed in December 2005.", date: "December 2005", expected: null },
     { label: "reported false appointment", source: "Mikel Arteta is Arsenal’s manager. A false report claimed Mikel Arteta was appointed in December 2005.", date: "December 2005", expected: null },
+    { label: "different club active appointment", source: "Mikel Arteta is Arsenal’s manager. Manchester City appointed Mikel Arteta as assistant coach in 2016.", date: "2016", expected: null },
+    { label: "different club passive appointment", source: "Mikel Arteta is Arsenal’s manager. Mikel Arteta was appointed as Manchester City manager in 2016.", date: "2016", expected: null },
+    { label: "different role appointment", source: "Mikel Arteta is Arsenal’s manager. Mikel Arteta was appointed as assistant coach in 2016.", date: "2016", expected: null },
     { label: "comment false appointment", source: "Mikel Arteta is Arsenal’s manager. Reader comments: Mikel Arteta was appointed in December 2005.", date: "December 2005", expected: null },
     { label: "publication metadata only", source: "Mikel Arteta is Arsenal’s manager. Published December 2019.", date: "December 2019", expected: null },
     { label: "other manager event", source: "Mikel Arteta is Arsenal’s manager. Arsene Wenger was appointed in 1996.", date: "December 2019", expected: null },
