@@ -381,7 +381,7 @@ export function filterDeskEvidenceRows(
   return rows
     .filter((row) => deskEvidenceRowIsCurrent(row, grounding, nowMs, question))
     .slice(0, 8)
-    .map((row, index) => ({ ...row, id: `S${index + 1}` }));
+    .map((row, index) => ({ ...row, id: row.id || `S${index + 1}` }));
 }
 
 function deskRowsFromBundle(bundle: EvidenceBundle | undefined): DeskEvidenceRow[] {
@@ -409,7 +409,7 @@ export function filterDeskEvidenceBundle(
     )) ?? bundle.results.find((candidate) => candidate.title === row.title);
     if (!source) {
       return {
-        id: `S${index + 1}`,
+        id: row.id || `S${index + 1}`,
         title: row.title,
         url: row.url || row.link || "",
         date: row.date,
@@ -417,7 +417,7 @@ export function filterDeskEvidenceBundle(
         tier: row.tier ?? "other",
       };
     }
-    return { ...source, id: `S${index + 1}` };
+    return { ...source, id: row.id || `S${index + 1}` };
   });
   return { ...bundle, results };
 }

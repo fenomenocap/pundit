@@ -111,7 +111,7 @@ describe("filterDeskEvidenceRows", () => {
     );
     expect(kept).toHaveLength(1);
     expect(kept[0]?.url).toContain("bbc.co.uk");
-    expect(kept[0]?.id).toBe("S1");
+    expect(kept[0]?.id).toBe("S4");
   });
 
   it("drops City previews when the pinned fixture is Chelsea vs Hull", () => {

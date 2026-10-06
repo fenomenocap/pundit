@@ -249,6 +249,12 @@ export function planFederatedQueries(
   const slice = raw.replace(/[?!.]+$/g, "").slice(0, 100).trim();
   const season = currentFootballSeasonLabel(now);
   const clubFact = singleClubCurrentFactScope(question, grounding);
+  if (isMatchGrounding(grounding)
+    && planResponse(question, { groundingKind: "match", hasHistory: true }).mode === "team-news") {
+    // Keep club reports ahead of generic fixture hits at the merged-result cap.
+    return [...new Set([...newsFanOutQueries(question, grounding, slice, season, now), ...planned])]
+      .slice(0, MAX_FEDERATED_QUERIES);
+  }
   if (clubFact && baseQuery) {
     const day = now.toISOString().slice(0, 10);
     const targeted = clubFact.kind === "manager"

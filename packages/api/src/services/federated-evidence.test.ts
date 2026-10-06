@@ -159,6 +159,10 @@ describe("planFederatedQueries", () => {
     expect(queries).toHaveLength(6);
     expect(queries).toContain("Arsenal latest injury update team news official club 2026-10-06");
     expect(queries).toContain("Chelsea latest injury update team news official club 2026-10-06");
+    expect(queries.slice(0, 2)).toEqual([
+      "Arsenal latest injury update team news official club 2026-10-06",
+      "Chelsea latest injury update team news official club 2026-10-06",
+    ]);
     expect(queries).toContain("Arsenal vs Chelsea team news injuries suspensions predicted lineup");
     expect(queries.some((query) => /goalscorer|odds movement/.test(query))).toBe(false);
   });
