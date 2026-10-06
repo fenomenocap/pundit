@@ -51,6 +51,7 @@ import {
   validateOneXTwoMarket,
   validateResponseCorrectness,
   validateTeamNewsDiscipline,
+  validatePositiveDatedClubNews,
   summarizeWebSearchTelemetry,
   validateVerification,
   ABSTAINED_VERIFICATION,
@@ -2093,6 +2094,43 @@ test("team-news subject guard retains names, mononyms, and ordinary football dis
     "A full-back can cover the runner if the press is bypassed; that is a tactical possibility.",
   ]) {
     assert.equal(validateTeamNewsDiscipline(text).passed, true, text);
+  }
+});
+
+test("strict positive dated news preserves supported survivors of a conflict without accepting abstention or count-only claims", () => {
+  const now = Date.parse("2026-10-06T11:00:00Z");
+  const citations = [{ id: "S1", url: "https://www.football.london/arsenal-fc/news/arsenal-injury-news-latest-leeds-34721050", date: "2026-10-06T05:00:00Z" }];
+  const citation = `([Football London](${citations[0].url}) · 6 Oct)`;
+  const updates = `In an update published on 2026-10-06, Arsenal’s Declan Rice has been dealing with neural hamstring pain ${citation}. In an update published on 2026-10-06, Arsenal’s Ben White has been spotted back in training ${citation}.`;
+  const notice = "Current reports conflict on one or more requested facts, so I’ve left those claims out.";
+  const actual = `${updates} ${notice} These dated club updates do not establish the starting XI or availability at the future kickoff. I couldn’t establish a verified, dated Leeds club update.`;
+  const verification = { status: "conflict", supportedClaimCount: 2, removedClaimCount: 1 };
+  assert.equal(validatePositiveDatedClubNews(actual, citations, verification, now).passed, true);
+  assert.equal(validateTeamNewsDiscipline(actual).passed, true);
+  assert.equal(validateVerification(verification, { expectVerification: ["verified", "conflict"], requirePositiveDatedClubNews: true }).passed, true);
+  for (const status of ["verified", "conflict", "abstain", "unavailable"]) {
+    assert.equal(validatePositiveDatedClubNews(notice, [], { status, supportedClaimCount: 0, removedClaimCount: 3 }, now).passed, false);
+    assert.equal(validateVerification({ status, supportedClaimCount: 0, removedClaimCount: 3 }, { expectVerification: ["verified", "conflict"], requirePositiveDatedClubNews: true }).passed, false);
+  }
+  assert.equal(validatePositiveDatedClubNews(actual, citations, { ...verification, supportedClaimCount: 3 }, now).passed, false);
+  assert.equal(validatePositiveDatedClubNews(actual, [], verification, now).passed, false);
+  assert.equal(validatePositiveDatedClubNews(actual, [{ ...citations[0], date: "2026-10-05" }], verification, now).passed, false);
+  assert.equal(validatePositiveDatedClubNews(actual, [{ ...citations[0], date: "2026-09-31" }], verification, now).passed, false);
+  assert.equal(validatePositiveDatedClubNews(actual, [{ ...citations[0], date: "2026-09-20" }], verification, now).passed, false);
+  assert.equal(validatePositiveDatedClubNews(actual, [{ ...citations[0], date: "2026-10-07" }], verification, now).passed, false);
+  assert.equal(validatePositiveDatedClubNews(actual.replace(citations[0].url, "https://unresolved.example/article"), citations, verification, now).passed, false);
+  assert.equal(validatePositiveDatedClubNews(actual.replace(/Arsenal’s /g, ""), citations, verification, now).passed, false);
+  for (const tail of ["Ben White will start.", "Declan Rice has a hamstring pain.", "Ben White is available."]) {
+    assert.equal(validatePositiveDatedClubNews(`${actual} ${tail}`, citations, verification, now).passed, false, tail);
+  }
+  assert.equal(validateTeamNewsDiscipline(`${updates} ${notice} Ben White will start.`).passed, false);
+  assert.equal(validateTeamNewsDiscipline(`${updates} ${notice.slice(0, -1)}; Ben White will start.`).passed, false);
+  // This allowance belongs only to the strict positive canary. Other scenarios
+  // retaining an exact verified-only expectation still reject conflict.
+  assert.equal(validateVerification(verification, { expectVerification: ["verified"] }).passed, false);
+  for (const status of ["has an ankle issue", "has a ligament problem", "withdrew from international duty", "may be doubtful", "Has Been Spotted Back In Training"]) {
+    const answer = `In an update published on 2026-10-06, Arsenal’s Joe Example ${status} ${citation}.`;
+    assert.equal(validatePositiveDatedClubNews(answer, citations, { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 }, now).passed, true, status);
   }
 });
 

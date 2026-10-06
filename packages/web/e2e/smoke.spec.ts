@@ -600,6 +600,73 @@ test.describe("smoke", () => {
     await expect(page.locator("span.truncate", { hasText: "Arsenal" }).first()).toBeVisible();
   });
 
+  for (const failure of ["network", "429"] as const) {
+    test(`fixtures recover competition filters after a ${failure} failure without losing the schedule`, async ({ page }) => {
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.addInitScript(() => {
+        (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "competitions-live";
+      });
+      let attempts = 0;
+      await page.route("**/api/matches/competitions", (route) => {
+        if (++attempts === 1) {
+          return failure === "network" ? route.abort("failed") : route.fulfill({
+            status: 429, contentType: "application/json", body: JSON.stringify({ error: "Too many requests, please try again later" }),
+          });
+        }
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          competitions: [{ id: "eng.1", name: "Premier League", type: "league", enabled: true, priority: 1 }],
+          enabled: ["eng.1"], lastUpdated: new Date().toISOString(),
+        }) });
+      });
+      await page.goto("/fixtures");
+      const alert = page.getByRole("alert").filter({ hasText: "Competition filters" });
+      await expect(alert).toContainText(failure === "429" ? "temporarily limited" : "unavailable right now");
+      await expect(page.getByTestId("fixture-row")).toHaveCount(3);
+      await expect(page.getByRole("button", { name: "All", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Premier League", exact: true })).toHaveCount(0);
+      await alert.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Premier League", exact: true })).toBeVisible();
+      await expect(alert).toHaveCount(0);
+      await expect(page.getByTestId("fixture-row")).toHaveCount(3);
+      expect(attempts).toBe(2);
+      expect(errors).toEqual([]);
+    });
+  }
+
+  test("a competition response from an unmounted fixtures page cannot replace the next page's filters", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "competitions-live";
+    });
+    let finishOldRequest!: () => void;
+    const oldRequest = new Promise<void>((resolve) => { finishOldRequest = resolve; });
+    let attempts = 0;
+    await page.route("**/api/matches/competitions", async (route) => {
+      const old = ++attempts === 1;
+      if (old) await oldRequest;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        competitions: [{ id: old ? "old" : "eng.1", name: old ? "Old filters" : "Premier League", type: "league", enabled: true, priority: 1 }],
+        enabled: [old ? "old" : "eng.1"], lastUpdated: new Date().toISOString(),
+      }) });
+    });
+    await page.goto("/fixtures");
+    await expect(page.getByTestId("fixture-row")).toHaveCount(3);
+    await expect.poll(() => attempts).toBe(1);
+    const navigation = page.getByRole("navigation", { name: "Main navigation" });
+    await navigation.getByRole("link", { name: "Desk", exact: true }).click();
+    await expect(page).toHaveURL("/");
+    await navigation.getByRole("link", { name: "Fixtures", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Premier League", exact: true })).toBeVisible();
+    const oldResponse = page.waitForResponse("**/api/matches/competitions");
+    finishOldRequest();
+    await oldResponse;
+    await expect(page.getByRole("button", { name: "Old filters", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Premier League", exact: true })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
   test("fixtures stay chronological and expose canonical capability", async ({ page }) => {
     await page.goto("/fixtures");
     const rows = page.getByTestId("fixture-row");
