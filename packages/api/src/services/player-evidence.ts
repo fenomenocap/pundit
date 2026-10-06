@@ -1,6 +1,7 @@
 import { aggregateScorers, lastLeagueMatches, sameClub } from "./club-form";
 import type { FootballMatch } from "./football-data";
 import { evidenceAuthority } from "./evidence-authority";
+import { getTeamNameAliases, normalizeTeamName } from "../lib/team-names";
 
 /**
  * Request-local player evidence. Chat 1 consumes web-search snippets through
@@ -141,20 +142,49 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function clubPattern(club: string): string {
+  const canonical = normalizeTeamName(club);
+  const aliases = new Set([club]);
+  for (const [alias, target] of getTeamNameAliases()) {
+    if (normalizeTeamName(alias) === canonical || normalizeTeamName(target) === canonical) {
+      aliases.add(alias); aliases.add(target);
+    }
+  }
+  return `(?:${[...aliases].sort((a, b) => b.length - a.length).map(escapeRegExp).join("|")})`;
+}
+
+export function clubNamedInNews(text: string, club: string): boolean {
+  return new RegExp(`\\b${clubPattern(club)}\\b`, "i").test(text);
+}
+
+/** Coverage of already verified claims requires explicit player affiliation,
+ * not merely an opponent mentioned elsewhere in the same sentence. */
+export function clubsInVerifiedNewsClaims(texts: readonly string[], fixture: PlayerFixtureRef): string[] {
+  const clubs = new Set<string>();
+  for (const text of texts) {
+    for (const name of collectNames(text, fixture).filter((candidate) => candidate.split(/\s+/).length >= 2)) {
+      const at = text.toLocaleLowerCase().indexOf(name.toLocaleLowerCase());
+      const club = teamForNamedPlayer(localClaimWindow(text, at, name.length), name, fixture);
+      if (club) clubs.add(club);
+    }
+  }
+  return [...clubs];
+}
+
 function mentionsFixture(text: string, fixture: PlayerFixtureRef): boolean {
   // A source must identify this matchup, not merely mention both clubs in
   // unrelated cards. This is deliberately narrower than page-wide team
   // presence because accepted claims become fixture-scoped typed evidence.
-  const home = escapeRegExp(fixture.home);
-  const away = escapeRegExp(fixture.away);
+  const home = clubPattern(fixture.home);
+  const away = clubPattern(fixture.away);
   const connector = "(?:v(?:s\\.?)?|versus|against|at|@|host(?:s|ing)?|face(?:s|ing)?|travel(?:s|ling)?\\s+to)";
   return new RegExp(`\\b${home}\\b\\s*.{0,24}?\\s*${connector}\\s*.{0,24}?\\b${away}\\b|\\b${away}\\b\\s*.{0,24}?\\s*${connector}\\s*.{0,24}?\\b${home}\\b`, "i")
     .test(text);
 }
 
 function affiliatedTeam(text: string, fixture: PlayerFixtureRef): string | null {
-  const home = escapeRegExp(fixture.home);
-  const away = escapeRegExp(fixture.away);
+  const home = clubPattern(fixture.home);
+  const away = clubPattern(fixture.away);
   const pattern = new RegExp(
     `\\b(?:for|of)\\s+(${home}|${away})\\b|\\b(${home}|${away})'s\\b|\\((${home}|${away})\\)`
     + `|(${home}|${away})\\s*[:\\-]`,
@@ -163,7 +193,7 @@ function affiliatedTeam(text: string, fixture: PlayerFixtureRef): string | null 
   const match = text.match(pattern);
   const raw = match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4];
   if (!raw) return null;
-  return raw.toLocaleLowerCase() === fixture.home.toLocaleLowerCase() ? fixture.home : fixture.away;
+  return normalizeTeamName(raw) === normalizeTeamName(fixture.home) ? fixture.home : fixture.away;
 }
 
 function teamForPlayer(
@@ -182,9 +212,9 @@ function teamForNamedPlayer(window: string, playerName: string, fixture: PlayerF
   if (at < 0) return null;
   const following = teamForPlayer(window.slice(at), fixture);
   if (following) return following;
-  const preceding = new RegExp(`\\b(${escapeRegExp(fixture.home)}|${escapeRegExp(fixture.away)})['’]s\\s*$`, "i")
+  const preceding = new RegExp(`\\b(${clubPattern(fixture.home)}|${clubPattern(fixture.away)})['’]s\\s*$`, "i")
     .exec(window.slice(0, at));
-  return preceding?.[1].toLocaleLowerCase() === fixture.home.toLocaleLowerCase() ? fixture.home
+  return preceding && normalizeTeamName(preceding[1]) === normalizeTeamName(fixture.home) ? fixture.home
     : preceding ? fixture.away : null;
 }
 
@@ -210,7 +240,7 @@ function isPersonName(raw: string, fixture: PlayerFixtureRef): boolean {
   if (name.length < 4) return false;
   const lower = name.toLocaleLowerCase();
   if (STOPWORDS.has(lower)) return false;
-  if (lower === fixture.home.toLocaleLowerCase() || lower === fixture.away.toLocaleLowerCase()) {
+  if (sameClub(name, fixture.home) || sameClub(name, fixture.away)) {
     return false;
   }
   if (fixture.home.toLocaleLowerCase().includes(lower) || fixture.away.toLocaleLowerCase().includes(lower)) {
@@ -493,6 +523,25 @@ export function extractDatedClubAvailability(
   return { observations: observations.filter((row) => !conflicts.has(`${row.teamId}:${row.playerId}`)), markets: [] };
 }
 
+/** Select pages to fetch, not facts to publish. Undated hits need their own
+ * publisher date/body before the unchanged current-claim guards can use them.
+ * Reserve the bounded retrieval slots for club injury reports before generic
+ * fixture/lineup pages, regardless of the search provider's result ordering. */
+export function selectTeamNewsSources<T extends PlayerEvidenceSource>(
+  sources: readonly T[], fixture: PlayerFixtureRef
+): T[] {
+  const mentionsClub = (text: string) => clubNamedInNews(text, fixture.home) || clubNamedInNews(text, fixture.away);
+  const injury = /\b(?:injur\w*|sidelined|fitness|hamstring|muscle strain|suspension|ruled out)\b/i;
+  const rank = (source: T): number => {
+    if (mentionsClub(source.title) && injury.test(source.title) && !mentionsFixture(source.title, fixture)) return 0;
+    if (mentionsClub(source.title) && injury.test(`${source.title} ${source.snippet}`)) return 1;
+    return 2;
+  };
+  return sources.filter((source) => evidenceAuthority(source.url) !== "other")
+    .sort((a, b) => rank(a) - rank(b))
+    .slice(0, 8);
+}
+
 /** Candidate prose only; every resulting claim still faces the verifier. */
 export function datedClubNewsSources(
   sources: PlayerEvidenceSource[], fixture: PlayerFixtureRef, now = Date.now()
@@ -502,7 +551,7 @@ export function datedClubNewsSources(
     if (evidenceAuthority(source.url) === "other" || !Number.isFinite(published)
       || published > now || now - published > 7 * 24 * 60 * 60 * 1000) return false;
     const title = source.title;
-    if (!new RegExp(`\\b(?:${escapeRegExp(fixture.home)}|${escapeRegExp(fixture.away)})\\b`, "i").test(title)) return false;
+    if (!clubNamedInNews(title, fixture.home) && !clubNamedInNews(title, fixture.away)) return false;
     const text = `${title}\n${source.snippet}`;
     // A fixture report rejected by the strict extractor must not get a second
     // route around its identity/status guards.

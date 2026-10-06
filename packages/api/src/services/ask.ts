@@ -101,9 +101,13 @@ import {
   extractPlayerEvidence,
   extractDatedClubAvailability,
   datedClubNewsSources,
+  selectTeamNewsSources,
+  clubNamedInNews,
+  clubsInVerifiedNewsClaims,
   recentScorerContext,
   PLAYER_SCORER_ABSTENTION,
   TEAM_NEWS_COMPOSE_ABSTENTION,
+  type PlayerFixtureRef,
 } from "./player-evidence";
 import { asksCompleteMatchBriefing, composeDeskTakeOutline, composeMatchResponse } from "./response-composer";
 import {
@@ -1110,7 +1114,7 @@ export function planTurnEvidenceQueries(
 async function buildEvidenceBundle(
   queries: string | string[],
   signal?: AbortSignal,
-  mergeOptions?: { asksStats?: boolean; skippedBecauseGrounded?: string[] }
+  mergeOptions?: { asksStats?: boolean; skippedBecauseGrounded?: string[]; teamNewsFixture?: PlayerFixtureRef }
 ): Promise<EvidenceBundle> {
   const planned = (Array.isArray(queries) ? queries : [queries]).slice(0, MAX_EVIDENCE_QUERIES);
   // Run together: they are independent lookups, and a researched answer should
@@ -1131,6 +1135,9 @@ async function buildEvidenceBundle(
     snippet: result.snippet,
     tier: result.tier,
   }));
+  if (mergeOptions?.teamNewsFixture) {
+    bundle.results = selectTeamNewsSources(bundle.results, mergeOptions.teamNewsFixture);
+  }
   bundle.retrievalMeta = {
     queriesRun: planned.length,
     skippedBecauseGrounded: mergeOptions?.skippedBecauseGrounded ?? [],
@@ -8321,10 +8328,40 @@ async function hydrateBundlePublicationDates(
   return pages;
 }
 
+function teamNewsFixture(question: string, grounding: AskGrounding): PlayerFixtureRef | undefined {
+  if (grounding?.kind !== "match"
+    || planResponse(question, { groundingKind: "match", hasHistory: true }).mode !== "team-news") return undefined;
+  return { fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date };
+}
+
+function teamNewsBundleForHydration(
+  question: string, grounding: AskGrounding, bundle: EvidenceBundle
+): EvidenceBundle {
+  const fixture = teamNewsFixture(question, grounding);
+  return fixture ? { ...bundle, results: selectTeamNewsSources(bundle.results, fixture) } : bundle;
+}
+
 interface SettledEvidenceAnswer {
   answer: string;
   citations: AskCitation[];
   verification: AskVerification;
+  verifiedText?: string;
+}
+
+function withTeamNewsCoverage(
+  settled: SettledEvidenceAnswer, question: string, grounding: Grounding
+): SettledEvidenceAnswer {
+  if (!settled.verification.supportedClaimCount) return settled;
+  const sides = [grounding.home, grounding.away];
+  const named = sides.filter((club) => clubNamedInNews(question, club));
+  const requested = named.length ? named : sides;
+  const claims = verifiableCurrentClaims(settled.verifiedText ?? "");
+  const covered = clubsInVerifiedNewsClaims(claims.map((claim) => claim.text), {
+    fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date,
+  });
+  const missing = requested.filter((club) => !covered.includes(club));
+  if (missing.length) settled.answer += ` I couldn’t establish a verified, dated ${missing.join(" or ")} club update.`;
+  return settled;
 }
 
 async function verifySettledEvidence(
@@ -8351,7 +8388,7 @@ async function verifySettledEvidence(
       status: "abstain", supportedClaimCount: 0 } };
   }
   return { answer: finalizeDeliveredText(rendered.answer, grounding, false),
-    citations: rendered.citations, verification: checked.verification };
+    citations: rendered.citations, verification: checked.verification, verifiedText: checked.answer };
 }
 
 async function settlePlayerScorerFromBundle(
@@ -8388,7 +8425,9 @@ async function settleTeamNewsFromBundle(
   const plan = planResponse(question, { groundingKind: "match", hasHistory,
     hasUserLine: grounding.pricing.userLine != null });
   if (plan.mode !== "team-news") return null;
-  const pages = await hydrateBundlePublicationDates(bundle, signal);
+  const selectedBundle = teamNewsBundleForHydration(question, grounding, bundle);
+  const pages = await hydrateBundlePublicationDates(selectedBundle, signal);
+  writeRetrievedDatesOntoBundle(bundle, pages);
   const evidence = evidenceBundleForMatch(grounding, bundle, pages);
   if (!evidence.observations.some((row) => row.observedAt)) {
     const byId = new Map(pages.map((page) => [page.id, page]));
@@ -8400,13 +8439,18 @@ async function settleTeamNewsFromBundle(
     if (updates.observations.length) {
       const composed = composeMatchResponse(question, grounding, plan, updates)
         + " These are dated club updates; they do not establish the starting XI or availability at the future kickoff.";
-      return verifySettledEvidence(composed, grounding, bundle, client, TEAM_NEWS_COMPOSE_ABSTENTION, signal);
+      return withTeamNewsCoverage(await verifySettledEvidence(composed, grounding, bundle, client,
+        TEAM_NEWS_COMPOSE_ABSTENTION, signal), question, grounding);
     }
     const candidates = datedClubNewsSources(bundle.results.map((source) => ({ ...source,
       date: byId.get(source.id)?.date || source.date,
       snippet: byId.get(source.id)?.text.slice(0, 8_000) || source.snippet })), {
       fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date,
     });
+    console.info(JSON.stringify({ event: "team_news_evidence_selected", totalSources: bundle.results.length,
+      selectedSources: selectedBundle.results.length, fetchedPages: pages.length,
+      datedPages: pages.filter((page) => page.date).length, clubObservations: updates.observations.length,
+      proseCandidates: candidates.map((source) => ({ id: source.id, url: source.url, date: source.date })) }));
     if (candidates.length && reserveProviderCall(bundle)) {
       const candidateIds = new Set(candidates.map((source) => source.id));
       const candidateBundle = { ...bundle, results: bundle.results.filter((source) => candidateIds.has(source.id))
@@ -8419,12 +8463,12 @@ async function settleTeamNewsFromBundle(
         const settled = await verifySettledEvidence(citedProse || TEAM_NEWS_COMPOSE_ABSTENTION,
           grounding, bundle, client, TEAM_NEWS_COMPOSE_ABSTENTION, signal);
         if (settled.verification.supportedClaimCount) settled.answer += " These dated club updates do not establish the starting XI or availability at the future kickoff.";
-        return settled;
+        return withTeamNewsCoverage(settled, question, grounding);
       }
     }
   }
-  return verifySettledEvidence(composeMatchResponse(question, grounding, plan, evidence), grounding,
-    bundle, client, TEAM_NEWS_COMPOSE_ABSTENTION, signal);
+  return withTeamNewsCoverage(await verifySettledEvidence(composeMatchResponse(question, grounding, plan, evidence), grounding,
+    bundle, client, TEAM_NEWS_COMPOSE_ABSTENTION, signal), question, grounding);
 }
 
 async function settleEvidenceModeFromBundle(
@@ -9504,12 +9548,14 @@ async function answerQuestionScoped(
       ? await buildEvidenceBundle(plannedQueries, signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
+        teamNewsFixture: teamNewsFixture(question, grounding),
       })
       : { queries: [], results: [], providerCalls: 0 };
     const clubFact = singleClubCurrentFactScope(question, grounding);
+    const prioritizedBundle = teamNewsBundleForHydration(question, grounding, rawBundle);
     const bundle = voice === "desk" || clubFact
-      ? filterDeskEvidenceBundle(rawBundle, grounding, Date.now(), question)
-      : rawBundle;
+      ? filterDeskEvidenceBundle(prioritizedBundle, grounding, Date.now(), question)
+      : prioritizedBundle;
     // Desk team-news and scorer turns use the typed evidence path after search, whether
     // it yields a cited observation or a narrow abstention.
     const deskUsesMatchEvidencePath =
@@ -9729,12 +9775,14 @@ async function answerQuestionStreamScoped(
       ? await buildEvidenceBundle(plannedQueries, handlers.signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
+        teamNewsFixture: teamNewsFixture(question, grounding),
       })
       : { queries: [], results: [], providerCalls: 0 };
     const clubFact = singleClubCurrentFactScope(question, grounding);
+    const prioritizedBundle = teamNewsBundleForHydration(question, grounding, rawBundle);
     const bundle = clubFact
-      ? filterDeskEvidenceBundle(rawBundle, grounding, Date.now(), question)
-      : rawBundle;
+      ? filterDeskEvidenceBundle(prioritizedBundle, grounding, Date.now(), question)
+      : prioritizedBundle;
     // A direct club identity/result is evidence prose, not a forecast draft.
     // Hold every delta until its dated claims have passed the same verifier.
     if (clubFact) {

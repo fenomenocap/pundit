@@ -10,6 +10,8 @@ import {
   extractPlayerEvidence,
   extractDatedClubAvailability,
   datedClubNewsSources,
+  selectTeamNewsSources,
+  clubsInVerifiedNewsClaims,
   hasTeamNewsEvidence,
   hasTrustworthyPlayerEvidence,
   leadingScorerCandidate,
@@ -26,6 +28,31 @@ describe("dated club updates before fixture previews", () => {
   const next = { fixtureId: "espn:eng.1:1", home: "Arsenal", away: "Leeds", kickoff: "2026-10-10T11:30:00Z" };
   const update = (snippet: string, overrides: Partial<PlayerEvidenceSource> = {}): PlayerEvidenceSource => ({ id: "S1",
     title: "Arsenal injury update", url: "https://www.arsenal.com/news/fitness-update", date: "2026-10-05", snippet, ...overrides });
+  it("counts coverage only for an explicitly affiliated named player, not an upcoming opponent", () => {
+    expect(clubsInVerifiedNewsClaims(["On 2026-10-05, Arsenal's Kai Havertz had a hamstring problem before the Leeds game [[S10]]."], next)).toEqual(["Arsenal"]);
+    expect(clubsInVerifiedNewsClaims(["Arsenal and Leeds injury headlines mention Kai Havertz [[S10]]."], next)).toEqual([]);
+    expect(clubsInVerifiedNewsClaims(["On 2026-10-05, Arsenal's Kai Havertz was injured [[S10]].", "On 2026-10-05, Joe Example (Leeds United) was doubtful [[S11]]."], next)).toEqual(["Arsenal", "Leeds"]);
+  });
+  it.each([
+    ["Man City", "Manchester City", "Erling Haaland"],
+    ["Man United", "Manchester United", "Bruno Fernandes"],
+    ["Forest", "Nottingham Forest", "Chris Wood"],
+  ])("uses canonical club aliases for selection and claim-local affiliation: %s", (home, alias, player) => {
+    const fixture = { ...next, home };
+    const report = update(`${player} (${alias}) is injured.`, {
+      id: "S10", title: `${alias} injury update`, url: "https://www.bbc.co.uk/sport/football/news", date: "2026-10-05",
+    });
+    const older = Array.from({ length: 9 }, (_, index) => update("Confirmed lineups", {
+      id: `S${index + 1}`, title: `${alias} vs Leeds lineups`, url: `https://www.premierleague.com/lineups/${index}`, date: "",
+    }));
+    expect(selectTeamNewsSources([...older, report], fixture)[0]).toBe(report);
+    expect(datedClubNewsSources([report], fixture, now)).toEqual([report]);
+    expect(extractDatedClubAvailability([report], fixture, now).observations).toMatchObject([
+      { playerName: player, teamId: home, value: "injured", sourceId: "S10" },
+    ]);
+    expect(extractDatedClubAvailability([update(`${player} is injured. Other news for ${alias}.`, { ...report,
+      snippet: `${player} is injured. Other news for ${alias}.` })], fixture, now).observations).toEqual([]);
+  });
   it("extracts only a full-name, claim-local affiliation and dated status without inferring future lineup", () => {
     const bundle = extractDatedClubAvailability([update("Kai Havertz (Arsenal) is injured. Martin Ødegaard (Arsenal) is doubtful.")], next, now);
     expect(bundle.observations.map((row) => [row.playerName, row.teamId, row.value])).toEqual([["Kai Havertz", "Arsenal", "injured"], ["Martin Ødegaard", "Arsenal", "doubtful"]]);
