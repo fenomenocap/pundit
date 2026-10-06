@@ -15,6 +15,8 @@ const ROOT_TOOLCHAIN_PATHS = [
   /^pnpm-workspace\.yaml$/,
   /^\.node-version$/,
   /^\.nvmrc$/,
+  // Local dependency source is installed from the repository at build time.
+  /^vendor\/brace-patterns\//,
 ];
 
 /** Inputs to the Vercel frontend build, mirroring vercel-ignore-build.mjs. */
