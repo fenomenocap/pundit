@@ -8359,6 +8359,12 @@ function withTeamNewsCoverage(
   const covered = clubsInVerifiedNewsClaims(claims.map((claim) => claim.text), {
     fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date,
   });
+  if (!covered.length) {
+    // Successful status claims cannot be followed by a categorical denial of
+    // those same updates merely because their club attribution is implicit.
+    if (requested.length > 1) settled.answer += " I haven’t verified separate injury updates for both clubs.";
+    return settled;
+  }
   const missing = requested.filter((club) => !covered.includes(club));
   if (missing.length) settled.answer += ` I couldn’t establish a verified, dated ${missing.join(" or ")} club update.`;
   return settled;
@@ -8459,7 +8465,10 @@ async function settleTeamNewsFromBundle(
       if (prose) {
         // Generated candidate prose has no authority until each cited claim
         // survives the unchanged current-fact verifier. Never stream it raw.
-        const citedProse = splitAnswerSentences(prose).filter((sentence) => evidenceMarkerIds(sentence).length).join(" ");
+        const citedProse = splitAnswerSentences(prose).filter((sentence) => evidenceMarkerIds(sentence).length)
+          .map((sentence) => sentence.replace(/^Based on (?:the )?search evidence,[^:]{0,250}:\s*/i, "")
+            .replace(/^\s*[-*]\s*/, ""))
+          .slice(0, 3).join(" ");
         const settled = await verifySettledEvidence(citedProse || TEAM_NEWS_COMPOSE_ABSTENTION,
           grounding, bundle, client, TEAM_NEWS_COMPOSE_ABSTENTION, signal);
         if (settled.verification.supportedClaimCount) settled.answer += " These dated club updates do not establish the starting XI or availability at the future kickoff.";
