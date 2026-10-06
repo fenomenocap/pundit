@@ -25,6 +25,18 @@ const analyticsCandidates: EvidencePageCandidate[] = [
 const publicResolver = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
 
 describe("evidence page retrieval", () => {
+  it("preserves publisher block and quotation boundaries for factual source ownership", async () => {
+    const pages = await retrieveEvidencePages([candidates[1]], undefined, {
+      fetch: async () => new Response("<nav><div>Football menu</div></nav><article><h1>Arsenal update</h1><p>Mikel Arteta is Arsenal’s manager.</p><p>A false report claimed:</p><blockquote>Arsene Wenger has agreed a new contract as Arsenal manager.</blockquote></article>",
+        { status: 200, headers: { "content-type": "text/html" } }),
+      resolveHost: publicResolver,
+      now: () => new Date("2026-10-06T19:00:00Z"),
+    });
+    expect(pages[0].text).toMatch(/Arsenal update\n+Mikel Arteta is Arsenal’s manager\./);
+    expect(pages[0].text).toContain("“Arsene Wenger has agreed a new contract as Arsenal manager.”");
+    expect(pages[0].text).not.toContain("Arsenal update Mikel Arteta");
+  });
+
   it("recognizes private, loopback, link-local and reserved addresses", () => {
     expect(isPrivateOrReservedAddress("127.0.0.1")).toBe(true);
     expect(isPrivateOrReservedAddress("10.2.3.4")).toBe(true);

@@ -11,6 +11,7 @@ import { AppError } from "../middleware";
 import { reasoningOff, resolveInference, type InferenceKeySource } from "./inference-config";
 import {
   getTeamNameAliases,
+  canonicalClubName,
   normalizeTeamName,
   normalizeTeamText,
 } from "../lib/team-names";
@@ -1225,6 +1226,121 @@ export function verifiableCurrentClaims(answer: string): VerifiableClaim[] {
     .map((text, index) => ({ id: `C${index + 1}`, text }));
 }
 
+function managerWhyScope(question: string, grounding: AskGrounding): { club: string; retainAppointment: boolean; wantsReason: boolean } | undefined {
+  const normalized = question.trim().replace(/^who['’]s\b/i, "who is").replace(/^what['’]s\b/i, "what is")
+    .replace(/[?!.]\s*(?:and\s+)?(?:explain\s+)?why\b/gi, " and why")
+    .replace(/\b(?:and\s+)?explain\s+why\b/gi, "and why");
+  const primary = normalized.split(/\band\s+why\b/i)[0].trim().replace(/[?!.]+$/, "");
+  const role = "(?:current )?(?:manager|head coach|coach)";
+  const direct = new RegExp(`^(?:who|what) is (.+?)(?:['’]s)? ${role}(?: (?:today|now|currently))?$`, "i").exec(primary)?.[1]
+    ?? new RegExp(`^(?:who|what) is (?:the |current )?${role} (?:of|for) (.+?)(?: (?:today|now|currently))?$`, "i").exec(primary)?.[1]
+    ?? /^who (?:manages|coaches) (.+?)(?: (?:today|now|currently))?$/i.exec(primary)?.[1];
+  const explicitClub = direct && /^[\p{L}\p{M}\d '&’.-]{1,80}$/u.test(direct) ? canonicalClubName(direct) : null;
+  const knownClubs = [...new Set([...(explicitClub ? [explicitClub] : []), ...getTeamNameAliases().map(([, name]) => name)])];
+  const scope = singleClubCurrentFactScope(normalized, grounding)
+    ?? singleClubCurrentFactScope(normalized, null, knownClubs);
+  return scope?.kind === "manager"
+    ? { club: scope.club, wantsReason: /\bwhy\b/i.test(question), retainAppointment: /\b(?:appoint\w*|hire\w*|when|date|year)\b/i.test(question) } : undefined;
+}
+
+const MANAGER_REASON_BOUNDARY = "I haven’t verified the club’s stated reason for choosing or retaining him.";
+const MANAGER_WHY_ABSTENTION = "I couldn’t establish a verified current manager for this club. " + MANAGER_REASON_BOUNDARY;
+const managerIdentityAbstention = (scope: { wantsReason?: boolean }) => scope.wantsReason === false
+  ? "I couldn’t establish a verified current manager for this club." : MANAGER_WHY_ABSTENTION;
+
+// Quotes retain their range across nested HTML paragraphs. A statement
+// inside a quotation cannot establish the publisher's own role assertion.
+function publisherOwnedManagerBody(page: { text: string }): string {
+  const body = page.text.split(/\b(?:Your views|Reader comments|User comments)\s*:/i)[0]
+    .replace(/“[^”]*(?:”|$)/g, " ");
+  let quoted = false;
+  return body.split(/\n{2,}/).map((block) => {
+    const first = block.search(/\S/);
+    let unquoted = "";
+    for (let index = 0; index < block.length; index += 1) {
+      if (block[index] === '"') {
+        // A paragraph-leading quote continues an already open quotation.
+        // Its final quote closes it; an unclosed range remains excluded.
+        if (!(quoted && index === first && block.trim() !== '"')) quoted = !quoted;
+        unquoted += " ";
+      } else if (!quoted) unquoted += block[index];
+    }
+    return unquoted;
+  }).join("\n\n");
+}
+
+/** Manager+why is a small fact contract, not free-form causal prose. A direct
+ * decision explanation may be quoted only as a complete source-owned sentence
+ * in one of these finite forms. Commentary cannot fill this slot. */
+function settleManagerWhyFacts(
+  scope: { club: string; retainAppointment?: boolean; wantsReason?: boolean }, claims: readonly VerifiableClaim[],
+  decisions: Parameters<typeof reviseAnswerWithClaimDecisions>[2],
+  pages: Awaited<ReturnType<typeof retrieveEvidencePages>>, fetchedIds: ReadonlySet<string>,
+  appointments: readonly { claimId: string; name: string; date: string; sourceId: string }[]
+): { answer: string; supported: number; removed: number } {
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const fullName = "[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+[\\p{Lu}][\\p{L}\\p{M}'’.-]+){1,3}";
+  const aliases = [scope.club, ...getTeamNameAliases().filter(([, name]) => normalizeTeamName(name) === normalizeTeamName(scope.club)).map(([alias]) => alias)];
+  const club = `(?:${[...new Set(aliases)].map(escape).join("|")})`;
+  const role = new RegExp(`(?:${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)(?:\\s+today)?\\s+is\\s+(${fullName})|(${fullName})\\s+is\\s+(?:the\\s+)?${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach))`, "u");
+  const ownsCurrentRole = (name: string, body: string) => {
+    const named = escape(name);
+    const currentRole = `(?:current\\s+)?(?:manager|head coach|coach|boss)`;
+    // A bare affiliation can describe a former manager. Require a complete
+    // present-tense role statement or an explicit ongoing contract action.
+    // Editorial prefixes and trailing retired/return qualifiers cannot fill
+    // the closed role statement, regardless of the verifier's verdict.
+    const direct = new RegExp(`^(?:${club}(?:['’]s)?\\s+${currentRole}(?:\\s+today)?\\s+is\\s+${named}|${named}\\s+(?:is|remains)\\s+(?:the\\s+)?${club}(?:['’]s)?\\s+${currentRole})(?:\\s+(?:today|currently))?\\s*[.!]?$`, "iu");
+    const contract = new RegExp(`^(?:${club}(?:['’]s)?\\s+${currentRole}\\s+(?:is\\s+)?${named}(?:,?\\s+who)?\\s+has\\s+(?:agreed|signed)\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?(?:contract|deal)\\b|${named}\\s+has\\s+agreed\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?contract\\s+as\\s+${club}(?:['’]s)?\\s+${currentRole}\\b)`, "iu");
+    const alignment = new RegExp(`^${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+says\\s+he\\s+and\\s+the\\s+club\\s+are\\s+(?:very\\s+much\\s+)?aligned\\b[^.!?;\\n]{0,100}\\bsigning\\s+a\\s+new\\s+contract\\b`, "iu");
+    // Publisher blocks retain their boundaries; these explicit tenure
+    // propositions must start their own statement. A quoted, negated or
+    // editorial prefix cannot establish the role.
+    return splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
+      .map((sentence) => sentence.trim()).some((sentence) => direct.test(sentence) || contract.test(sentence) || alignment.test(sentence));
+  };
+  const accepted = claims.flatMap((claim) => {
+    const decision = decisions.find((entry) => entry.claimId === claim.id);
+    return decision?.outcome === "supported" ? [{ claim, decision }] : [];
+  });
+  const identities = accepted.flatMap(({ claim, decision }) => {
+    const match = role.exec(claim.text);
+    const name = match?.[1] ?? match?.[2];
+    const sourceId = name && decision.evidenceIds.find((id) => {
+      const page = pages.find((row) => row.id === id);
+      return page && playerNamedInNewsBody(name, publisherOwnedManagerBody(page),
+        { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, publisherOwnedManagerBody(page));
+    });
+    return name && sourceId ? [{ name, sourceId, claimId: claim.id }] : [];
+  });
+  if (new Set(identities.map((row) => row.name)).size !== 1) {
+    return { answer: managerIdentityAbstention(scope),
+      supported: 0, removed: claims.length };
+  }
+  const identity = identities[0];
+  const delivered = [`${scope.club}’s manager is ${identity.name} [[${identity.sourceId}]].`];
+  const usedClaims = new Set(identities.filter((row) => row.name === identity.name).map((row) => row.claimId));
+  // Retain an already verified, source-precision-checked appointment date as
+  // its own fact. It never becomes the reason for choosing the manager.
+  const appointment = scope.retainAppointment && appointments.find((fact) => fact.name === identity.name);
+  if (appointment) {
+    delivered.push(`${identity.name} was appointed ${appointmentCalendar(appointment.date)?.day === null ? "in" : "on"} ${appointment.date} [[${appointment.sourceId}]].`);
+    usedClaims.add(appointment.claimId);
+  }
+  const decisionSentence = new RegExp(`^${club} (?:appointed ${escape(identity.name)}|retained ${escape(identity.name)}|extended ${escape(identity.name)}['’]s contract) because ([^.!?;:\\n]+)\\.$`, "u");
+  const reason = scope.wantsReason !== false && pages.filter((page) => fetchedIds.has(page.id) && accepted.some(({ decision }) => decision.evidenceIds.includes(page.id)))
+    .flatMap((page) => splitAnswerSentences(publisherOwnedManagerBody(page)).map((sentence) => ({ page, sentence: sentence.trim() })))
+    .find(({ sentence }) => decisionSentence.test(sentence) && sentence.split(/\s+/).length <= 25
+      && !/["“”]/.test(sentence));
+  if (reason) {
+    delivered.push(`The cited report states: “${reason.sentence}” [[${reason.page.id}]].`);
+  } else if (scope.wantsReason !== false) {
+    delivered.push(MANAGER_REASON_BOUNDARY);
+  }
+  return { answer: delivered.join(" "), supported: 1 + (appointment ? 1 : 0) + (reason ? 1 : 0),
+    removed: claims.length - usedClaims.size };
+}
+
 const APPOINTMENT_MONTH = "(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)";
 const APPOINTMENT_DATE = `(?:\\d{4}-\\d{2}-\\d{2}|(?:\\d{1,2}(?:st|nd|rd|th)?\\s+)?${APPOINTMENT_MONTH}\\.?(?:\\s+\\d{1,2}(?:st|nd|rd|th)?,?)?(?:\\s+of)?\\s+\\d{4}|\\d{4})`;
 const appointmentDates = () => new RegExp(`\\bappointed\\b[^.!?\\n]{0,40}?\\b(?:in|on)\\s+(${APPOINTMENT_DATE})\\b`, "gi");
@@ -1266,6 +1382,7 @@ function sourceOwnedManagerAppointmentPrecision(
   const nearestSubject = (prefix: string) => personNames(prefix.slice(-100)).at(-1);
   let repairedAnswer = answer;
   let rejected = 0;
+  const appointmentFacts: { claimId: string; name: string; date: string; sourceId: string }[] = [];
   const repairedClaims = [...claims];
   const repairedDecisions = decisions.map((decision) => {
     if (decision.outcome !== "supported") return decision;
@@ -1291,8 +1408,22 @@ function sourceOwnedManagerAppointmentPrecision(
         return { ...decision, outcome: "unsupported" as const, evidenceIds: [], explanation: "Appointment date identity or calendar unsupported" };
       }
       const ownedDates = decision.evidenceIds.flatMap((id) => {
-        const body = pages.find((page) => page.id === id)?.text ?? "";
+        const page = pages.find((page) => page.id === id);
+        const body = page ? publisherOwnedManagerBody(page) : "";
         return [...body.matchAll(appointmentDates())].flatMap((sourceEvent) => {
+          // Require an affirmative event clause from the publisher itself;
+          // a substring inside a denial or reported false claim is no event.
+          const clauseStart = Math.max(body.lastIndexOf("\n", sourceEvent.index), body.lastIndexOf(".", sourceEvent.index), body.lastIndexOf(";", sourceEvent.index)) + 1;
+          const prefix = body.slice(clauseStart, sourceEvent.index).trim();
+          const named = subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const roleClub = claims.flatMap((row) => {
+            const namedRole = new RegExp(`(?:${named}\\s+is\\s+(?:the\\s+)?([^.!?\\n]{1,60}?)['’]s\\s+(?:current\\s+)?(?:manager|coach)|([^.!?\\n]{1,60}?)['’]s\\s+(?:current\\s+)?(?:manager|coach)\\s+is\\s+${named})`, "u").exec(row.text);
+            return namedRole ? [namedRole[1] ?? namedRole[2]] : [];
+          });
+          const clubNames = [...new Set([...roleClub, ...getTeamNameAliases().flatMap(([alias, name]) => [alias, name])])]
+            .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+          const affirmative = new RegExp(`^(?:${named}\\s+(?:was|is|has been)(?:\\s+first)?|(?:${clubNames})|(?:But\\s+)?(?:the Spaniard|he|He)(?:,\\s+who)?\\s+(?:was|is|has been))\\s*$`, "u");
+          if (!affirmative.test(prefix)) return [];
           const before = body.slice(Math.max(0, sourceEvent.index! - 400), sourceEvent.index!);
           const immediateSubject = nearestSubject(before);
           const subjectPosition = before.lastIndexOf(subject);
@@ -1305,7 +1436,7 @@ function sourceOwnedManagerAppointmentPrecision(
           const owned = namedInEvent.length === 1 && namedInEvent[0] === subject
             || subjectPosition >= 0 && !intervening && (!immediateSubject || immediateSubject === subject);
           const date = owned ? appointmentCalendar(sourceEvent[1]) : null;
-          return date ? [date] : [];
+          return date ? [{ ...date, sourceId: id }] : [];
         });
       });
       const contradicts = ownedDates.some((date) => date.year !== requested.year
@@ -1322,6 +1453,10 @@ function sourceOwnedManagerAppointmentPrecision(
         const lessPrecise = ownedDates.find((date) => date.year === requested.year)!;
         text = text.replace(event[0], event[0].replace(event[1], lessPrecise.raw));
       }
+      const owned = exact ? ownedDates.find((date) => date.year === requested.year
+        && (requested.month === null || date.month === requested.month)
+        && (requested.day === null || date.day === requested.day))! : ownedDates.find((date) => date.year === requested.year)!;
+      appointmentFacts.push({ claimId: claim.id, name: subject, date: exact ? requested.raw : owned.raw, sourceId: owned.sourceId });
     }
     if (text !== claim.text) {
       repairedAnswer = repairedAnswer.replace(claim.text, text);
@@ -1329,7 +1464,8 @@ function sourceOwnedManagerAppointmentPrecision(
     }
     return decision;
   });
-  return { answer: repairedAnswer, claims: repairedClaims, decisions: repairedDecisions, rejected };
+  return { answer: repairedAnswer, claims: repairedClaims, decisions: repairedDecisions, rejected,
+    appointments: appointmentFacts.filter((fact) => repairedDecisions.some((decision) => decision.claimId === fact.claimId && decision.outcome === "supported")) };
 }
 
 export async function verifyCurrentClaims(
@@ -1341,6 +1477,7 @@ export async function verifyCurrentClaims(
   dependencies: {
     retrieve?: typeof retrieveEvidencePages;
     verify?: typeof verifyClaimsOnce;
+    managerWhy?: { club: string; retainAppointment?: boolean; wantsReason?: boolean };
   } = {}
 ): Promise<{ answer: string; verification: AskVerification }> {
   const claims = verifiableCurrentClaims(answer);
@@ -1359,7 +1496,7 @@ export async function verifyCurrentClaims(
     // was thrown away for failing a check it was never subject to. Abstain
     // over the evidence regions only.
     return {
-      answer: abstainEvidenceClaims(
+      answer: dependencies.managerWhy ? managerIdentityAbstention(dependencies.managerWhy) : abstainEvidenceClaims(
         answer,
         TEAM_NEWS_ABSTENTION
       ),
@@ -1435,7 +1572,7 @@ export async function verifyCurrentClaims(
       reason: pages.length ? "provider_budget" : fetchable ? "fetch_failed" : "no_eligible_source",
     }));
     return {
-      answer: abstainEvidenceClaims(
+      answer: dependencies.managerWhy ? managerIdentityAbstention(dependencies.managerWhy) : abstainEvidenceClaims(
         answer,
         TEAM_NEWS_ABSTENTION_UNRETRIEVABLE
       ),
@@ -1463,25 +1600,30 @@ export async function verifyCurrentClaims(
   const nextAnswer = result.status === "unavailable"
     ? stripUncitedSeasonStats(applied.answer)
     : applied.answer;
+  const managerFacts = dependencies.managerWhy
+    ? settleManagerWhyFacts(dependencies.managerWhy, precision.claims, result.status === "unavailable" ? [] : precision.decisions,
+      pages, fetchedIds, precision.appointments)
+    : null;
+  const deliveredStatus = managerFacts && !managerFacts.supported && verificationStatus === "verified" ? "abstain" : verificationStatus;
   console.log(JSON.stringify({
     event: "claims_verified",
-    status: verificationStatus,
+    status: deliveredStatus,
     claims: claims.length,
     sources: candidates.length,
     fetchable,
     pages: pages.length,
     fetched: fetched.length,
     snippetBacked: snippetBacked.length,
-    supported: applied.supported.length,
-    removed: applied.removedClaimIds.length,
+    supported: managerFacts?.supported ?? applied.supported.length,
+    removed: managerFacts?.removed ?? applied.removedClaimIds.length,
     appointmentPrecisionRejected: precision.rejected,
   }));
   return {
-    answer: nextAnswer.trim(),
+    answer: (managerFacts?.answer ?? nextAnswer).trim(),
     verification: {
-      status: verificationStatus,
-      supportedClaimCount: applied.supported.length,
-      removedClaimCount: applied.removedClaimIds.length,
+      status: deliveredStatus,
+      supportedClaimCount: managerFacts?.supported ?? applied.supported.length,
+      removedClaimCount: managerFacts?.removed ?? applied.removedClaimIds.length,
     },
   };
 }
@@ -9000,7 +9142,9 @@ export async function deliverAnswer(args: {
               removedClaimCount: 0,
             },
           }
-        : await verifyCurrentClaims(prose, evidenceBundle, client, signal);
+        : await verifyCurrentClaims(prose, evidenceBundle, client, signal, false, {
+          managerWhy: managerWhyScope(question, grounding),
+        });
       const checkedEvidenceAnswer = failClosedEmptyCurrentVerification(
         checked.answer,
         checked.verification,
@@ -9152,7 +9296,8 @@ export async function deliverAnswer(args: {
         bundle,
         client,
         signal,
-        grounding?.kind === "match" && /\b(?:odds|price|market)\b/i.test(question)
+        grounding?.kind === "match" && /\b(?:odds|price|market)\b/i.test(question),
+        { managerWhy: managerWhyScope(question, grounding) }
       )
     : {
         answer,
