@@ -6075,7 +6075,8 @@ describe("settled player news requires exact current-claim verification", () => 
     await refreshClubRatings(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
-    const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
+    const saved = process.env.OPENROUTER_API_KEY; process.env.OPENROUTER_API_KEY = "test-only";
+    const savedReasoning = process.env.PUNDIT_REASONING; delete process.env.PUNDIT_REASONING;
     // Actual publication metadata and 20 source words captured from this real URL.
     const html = readFileSync(join(__dirname, "__fixtures__/yahoo-arsenal-injury-2026-10-05.html"), "utf8");
     const source = { title: "Arsenal injury bulletin (dated club report)",
@@ -6087,7 +6088,9 @@ describe("settled player news requires exact current-claim verification", () => 
     });
     const realRetrieve = evidencePages.retrieveEvidencePages;
     const fetch = vi.fn(async (url: string | URL) => new Response(String(url) === source.link
-      ? html : "<html><body>Upcoming fixture lineups.</body></html>", { status: 200, headers: { "content-type": "text/html" } }));
+      ? html.replace("<body>", `<body><nav>${"Sports navigation. ".repeat(300)}</nav>`)
+        .replace("</body>", "<p>Earlier fixtures: Arsenal vs Everton: archive.</p></body>")
+      : "<html><body>Upcoming fixture lineups.</body></html>", { status: 200, headers: { "content-type": "text/html" } }));
     const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation((candidates, signal, options) => {
       expect(candidates.length).toBeLessThanOrEqual(8);
       return realRetrieve(candidates, signal, { ...options, fetch,
@@ -6096,8 +6099,15 @@ describe("settled player news requires exact current-claim verification", () => 
     const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
       const input = params as Anthropic.MessageCreateParamsNonStreaming;
       if (String(input.system) === DESK_DATED_CLUB_NEWS_SYSTEM) {
+        // A provider can consume a small budget with reasoning and return no
+        // visible text. Mimic that failure unless reasoning is controlled.
+        if (input.thinking?.type !== "disabled") return Promise.resolve({ content: [{ type: "thinking", thinking: "", signature: "" }],
+          stop_reason: "max_tokens" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+        expect(input.max_tokens).toBe(1_024);
         const evidence = String(input.messages.at(-1)?.content);
         expect(evidence).toContain("[[S10]] 2026-10-05T09:42:23Z"); expect(evidence).toContain("Kai Havertz");
+        expect(evidence).toContain("hamstring"); expect(evidence).toContain("source passage omitted");
+        expect(evidence).toContain("Earlier fixtures: Arsenal vs Everton");
         return Promise.resolve({ content: [{ type: "text", text: "On 2026-10-05, Arsenal's Kai Havertz was reported sidelined with a hamstring problem [[S10]]." }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
       }
       expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
@@ -6124,10 +6134,11 @@ describe("settled player news requires exact current-claim verification", () => 
       expect(fetch.mock.calls.filter(([url]) => String(url) === source.link)).toHaveLength(3);
     } finally {
       create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
-      if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+      if (saved === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = saved;
+      if (savedReasoning === undefined) delete process.env.PUNDIT_REASONING; else process.env.PUNDIT_REASONING = savedReasoning;
     }
   });
-  it.each(["supported", "unsupported", "conflict"] as const)("handles dated club-report prose only after exact claim verification: %s", async (outcome) => {
+  it.each(["supported", "unsupported", "conflict", "thinking-only", "truncated", "provider-error"] as const)("handles dated club-report prose only after exact claim verification: %s", async (outcome) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T00:00:00Z"));
     await refreshClubRatings(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
@@ -6142,6 +6153,11 @@ describe("settled player news requires exact current-claim verification", () => 
       const input = params as Anthropic.MessageCreateParamsNonStreaming;
       if (String(input.system) === DESK_DATED_CLUB_NEWS_SYSTEM) {
         expect(String(input.messages.at(-1)?.content)).toContain(source.snippet);
+        if (outcome === "provider-error") throw new Error("private provider response must not be logged");
+        if (outcome === "thinking-only") return Promise.resolve({ content: [{ type: "thinking", thinking: "private reasoning", signature: "" }],
+          stop_reason: "max_tokens" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+        if (outcome === "truncated") return Promise.resolve({ content: [{ type: "text", text: "On 2026-10-05, Arsenal's Kai Havertz had a hamstring issue [[S1]]." }],
+          stop_reason: "max_tokens" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
         return Promise.resolve({ content: [{ type: "text", text: "On 2026-10-05, Arsenal's Kai Havertz was reported to have a hamstring issue pending assessment [[S1]]. Leeds will definitely win." }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
       }
       expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
@@ -6169,7 +6185,7 @@ describe("settled player news requires exact current-claim verification", () => 
       const result = await answerQuestionStream("What is the latest team news?", [], ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: (s) => deltas.push(s) }, { fixtureId: espnFixtureIdentity(model) });
       expect(deltas).toEqual([result.answer]); expect(deltas.join("")).not.toContain("definitely");
       if (outcome !== "supported") expect(deltas.join("")).not.toContain("Kai Havertz");
-      expect(create).toHaveBeenCalledTimes(6);
+      expect(create).toHaveBeenCalledTimes(["thinking-only", "truncated", "provider-error"].includes(outcome) ? 3 : 6);
     } finally {
       create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
       if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;

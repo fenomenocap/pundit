@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import Anthropic from "@anthropic-ai/sdk";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import type { Grounding } from "./ask";
 import { sampleMatchContextFields } from "./match-context";
 import {
   DESK_SYSTEM,
   DESK_GENERAL_CONCEPT_SYSTEM,
+  datedClubNewsExcerpt,
+  writeDeskProse,
   card,
   composeDeskFootballTake,
   deskProseIsCurrentNewsRemainder,
@@ -72,6 +75,54 @@ function match(over: Partial<Grounding> = {}): Grounding {
 }
 
 const NOW = Date.parse("2026-09-11T03:00:00.000Z");
+
+describe("bounded dated club-news expression", () => {
+  it("keeps a literal status passage beyond publisher navigation inside the same bounded excerpt", () => {
+    const text = "Training menu. Withdrawal headlines. " + "Navigation. ".repeat(500)
+      + "Joe Example (Arsenal) has a hamstring issue. The report does not confirm future availability.";
+    const excerpt = datedClubNewsExcerpt(text);
+    expect(excerpt.length).toBeLessThanOrEqual(2_500);
+    expect(excerpt).toContain("Joe Example (Arsenal) has a hamstring issue");
+    expect(excerpt).toContain("source passage omitted");
+    expect(datedClubNewsExcerpt("Short report.")).toBe("Short report.");
+  });
+
+  it.each(["openrouter", "minimax", "reasoning-enabled", "thinking-only", "truncated", "error", "stale"] as const)(
+    "uses provider-compatible budgets and fails closed with safe diagnostics: %s", async (mode) => {
+      const envNames = ["OPENROUTER_API_KEY", "MINIMAX_API_KEY", "PUNDIT_REASONING"] as const;
+      const saved = envNames.map((name) => [name, process.env[name]] as const);
+      delete process.env.OPENROUTER_API_KEY; delete process.env.MINIMAX_API_KEY; delete process.env.PUNDIT_REASONING;
+      process.env[mode === "minimax" ? "MINIMAX_API_KEY" : "OPENROUTER_API_KEY"] = "test-only";
+      if (mode === "reasoning-enabled") process.env.PUNDIT_REASONING = "on";
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T02:00:00Z"));
+      const info = vi.spyOn(console, "info").mockImplementation(() => {});
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const prose = "On 2026-10-05, Arsenal's Joe Example was reported injured [[S9]].";
+      const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+        const input = params as Anthropic.MessageCreateParamsNonStreaming;
+        expect(input.max_tokens).toBe(mode === "minimax" || mode === "reasoning-enabled" ? 8_192 : 1_024);
+        expect(input.thinking).toEqual(mode === "minimax" || mode === "reasoning-enabled" ? undefined : { type: "disabled" });
+        if (mode === "error") throw new Error("sensitive provider body must never be logged");
+        return Promise.resolve({ content: mode === "thinking-only" ? [{ type: "thinking", thinking: "private internal text", signature: "" }]
+          : [{ type: "text", text: prose }], stop_reason: mode === "truncated" ? "max_tokens" : "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      });
+      try {
+        const result = await writeDeskProse("Latest Arsenal injury news?", match({ home: "Arsenal", away: "Leeds", date: "2026-10-10" }), [], undefined, {
+          queries: ["q"], results: [{ id: "S9", title: "Arsenal injury bulletin", url: "https://www.arsenal.com/news/fitness",
+            date: mode === "stale" ? "2026-09-20" : "2026-10-05", tier: "official",
+            snippet: "Joe Example (Arsenal) is injured. Earlier fixtures: Arsenal vs Everton: archive." }],
+        }, { datedClubNews: true });
+        expect(result).toBe(["openrouter", "minimax", "reasoning-enabled"].includes(mode) ? prose : null);
+        expect(create).toHaveBeenCalledTimes(mode === "stale" ? 0 : 1);
+        expect(JSON.stringify([...info.mock.calls, ...warn.mock.calls])).not.toMatch(/sensitive provider body|private internal text|test-only/);
+        if (mode === "error") expect(warn.mock.calls[0][0]).toContain('"errorType":"Error"');
+      } finally {
+        create.mockRestore(); info.mockRestore(); warn.mockRestore(); vi.useRealTimers();
+        for (const [name, value] of saved) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+      }
+    }
+  );
+});
 
 describe("filterDeskEvidenceRows", () => {
   it("drops months-old previews and a different opponent", () => {
