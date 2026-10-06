@@ -84,6 +84,23 @@ describe("one-call claim verifier", () => {
     expect(await verifyClaimsOnce(client, claims, pages)).toMatchObject({ status: "conflict" });
   });
 
+  it("reports verified when at least one claim is supported even if another conflicted", async () => {
+    const { client } = clientReturning(JSON.stringify({
+      decisions: [
+        { claimId: "C1", outcome: "supported", evidenceIds: ["S1"] },
+        { claimId: "C2", outcome: "conflict", evidenceIds: ["S1"], explanation: "Wording differs." },
+      ],
+      summary: "One update stood.",
+    }));
+    expect(await verifyClaimsOnce(client, claims, pages)).toMatchObject({
+      status: "verified",
+      decisions: [
+        { claimId: "C1", outcome: "supported", evidenceIds: ["S1"] },
+        { claimId: "C2", outcome: "conflict", evidenceIds: ["S1"] },
+      ],
+    });
+  });
+
   it("fails closed when the verifier selects stale, undated, or future-dated evidence", async () => {
     const staleOrInvalid = [
       { ...pages[0], id: "S1", date: "2025-01-01" },

@@ -1938,6 +1938,10 @@ const SOURCE_AND_DATE = new RegExp([
 const NO_VERIFIED_NEWS =
   /\bno (?:additional )?(?:verified|confirmed)\b[^.\n]*\b(?:team news|injury|lineup|line-up|update)\b|\bno verified team[- ]news\b/i;
 
+/** Server-owned notice when some verified claims survive and others were removed. */
+const SERVER_CONFLICT_NOTICE =
+  /^Current reports conflict on one or more requested facts, so I['’]ve left those claims out\.?$/i;
+
 /**
  * The match prompt tells the model to go and find team news, and the
  * attribution rules tell it to cite a source and date or say plainly that
@@ -1954,7 +1958,8 @@ export function validateTeamNewsDiscipline(answer) {
   // failure said no update was verified, then hypothesised named absences).
   const regions = answer.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
   const unsafeClaims = regions.filter((region) =>
-    (assertsSquadAvailability(region) || assertsNamedPlayerNews(region))
+    !SERVER_CONFLICT_NOTICE.test(region.trim())
+    && (assertsSquadAvailability(region) || assertsNamedPlayerNews(region))
     && !NO_VERIFIED_NEWS.test(region)
     && !SOURCE_AND_DATE.test(region)
   );

@@ -243,13 +243,18 @@ export async function verifyClaimsOnce(
   }
   const visiblePages = pages.filter((page) => input.pages.some((entry) => entry.id === page.id));
   const decisions = normalizeDecisions(parsed.decisions, input.claims, visiblePages);
-  const conflicts = decisions.some((decision) => decision.outcome === "conflict");
-  const supported = decisions.some((decision) => decision.outcome === "supported");
+  const hasSupported = decisions.some(
+    (decision) => decision.outcome === "supported" && decision.evidenceIds.length > 0
+  );
+  const hasConflict = decisions.some((decision) => decision.outcome === "conflict");
   const summary = typeof parsed.summary === "string"
     ? parsed.summary.trim().slice(0, 500)
     : "Claim verification completed.";
+  // A turn can deliver verified dated updates while omitting a disputed claim.
+  // Reserve `conflict` for when nothing was supported; partial delivery is
+  // `verified` and the conflict notice covers what was removed.
   return {
-    status: conflicts ? "conflict" : supported ? "verified" : "abstain",
+    status: hasSupported ? "verified" : hasConflict ? "conflict" : "abstain",
     decisions,
     summary,
   };

@@ -2026,6 +2026,10 @@ test("team-news guard accepts a sourced claim or an explicit abstention", () => 
   assert.equal(validateTeamNewsDiscipline(
     "Cole Palmer (Chelsea) is listed as unavailable according to a source [[S1]] (11 September 2026). That is sourced availability, not a revised match forecast."
   ).passed, true);
+  assert.equal(validateTeamNewsDiscipline(
+    "In an update published on 2026-10-06, Arsenal’s Declan Rice has been dealing with neural hamstring pain (Football London · 6 Oct). "
+    + "Current reports conflict on one or more requested facts, so I’ve left those claims out."
+  ).passed, true);
   // Nothing to source: an answer that never asserts availability is unaffected.
   assert.equal(validateTeamNewsDiscipline(
     "The model gives the home side a clear edge on the totals market."
