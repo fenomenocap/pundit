@@ -8,6 +8,8 @@ import {
   PLAYER_SCORER_ABSTENTION,
   TEAM_NEWS_COMPOSE_ABSTENTION,
   extractPlayerEvidence,
+  extractDatedClubAvailability,
+  datedClubNewsSources,
   hasTeamNewsEvidence,
   hasTrustworthyPlayerEvidence,
   leadingScorerCandidate,
@@ -18,6 +20,38 @@ import {
 } from "./player-evidence";
 
 afterEach(() => vi.restoreAllMocks());
+
+describe("dated club updates before fixture previews", () => {
+  const now = Date.parse("2026-10-06T00:00:00Z");
+  const next = { fixtureId: "espn:eng.1:1", home: "Arsenal", away: "Leeds", kickoff: "2026-10-10T11:30:00Z" };
+  const update = (snippet: string, overrides: Partial<PlayerEvidenceSource> = {}): PlayerEvidenceSource => ({ id: "S1",
+    title: "Arsenal injury update", url: "https://www.arsenal.com/news/fitness-update", date: "2026-10-05", snippet, ...overrides });
+  it("extracts only a full-name, claim-local affiliation and dated status without inferring future lineup", () => {
+    const bundle = extractDatedClubAvailability([update("Kai Havertz (Arsenal) is injured. Martin Ødegaard (Arsenal) is doubtful.")], next, now);
+    expect(bundle.observations.map((row) => [row.playerName, row.teamId, row.value])).toEqual([["Kai Havertz", "Arsenal", "injured"], ["Martin Ødegaard", "Arsenal", "doubtful"]]);
+    expect(bundle.markets).toEqual([]);
+    expect(bundle.observations.every((row) => row.evidenceType === "availability")).toBe(true);
+  });
+  it.each(["Back (Arsenal) is unavailable.", "Saka (Arsenal) is ruled out.", "If Kai Havertz (Arsenal) is ruled out, another player could deputise.",
+    "Kai Havertz (Arsenal) is not ruled out.", "Kai Havertz trained; Declan Rice (Arsenal) is unavailable.", "Kai Havertz (Arsenal) is expected to start."])("retains identity/status guards: %s", (text) => {
+    const rows = extractDatedClubAvailability([update(text)], next, now).observations;
+    expect(rows.some((row) => row.playerName === "Kai Havertz" || row.playerName === "Back" || row.playerName === "Saka")).toBe(false);
+  });
+  it("rejects stale, future, undated, unapproved and conflicting updates", () => {
+    const text = "Kai Havertz (Arsenal) is injured.";
+    for (const overrides of [{ date: "2026-09-28" }, { date: "2026-10-07" }, { date: "" }, { url: "https://unapproved.example/article" }]) {
+      expect(extractDatedClubAvailability([update(text, overrides)], next, now).observations).toEqual([]);
+      expect(datedClubNewsSources([update(text, overrides)], next, now)).toEqual([]);
+    }
+    expect(extractDatedClubAvailability([update(text), update("Kai Havertz (Arsenal) is doubtful.", { id: "S2" })], next, now).observations).toEqual([]);
+  });
+  it("lets real club-report prose become a verification candidate while rejected fixture reports stay rejected", () => {
+    const report = update("Arsenal are dealing with injury concerns. Kai Havertz sustained a hamstring issue on international duty and will undergo further assessment.");
+    expect(datedClubNewsSources([report], next, now)).toEqual([report]);
+    expect(extractDatedClubAvailability([report], next, now).observations).toEqual([]);
+    expect(datedClubNewsSources([update("Return dates for Kai Havertz appear next to unavailable headings.", { title: "Arsenal vs Leeds team news" })], next, now)).toEqual([]);
+  });
+});
 
 const fixture: PlayerFixtureRef = {
   fixtureId: "eng.1:1",

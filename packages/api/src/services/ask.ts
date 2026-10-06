@@ -34,6 +34,7 @@ import {
 } from "./model-market-odds";
 import { clubRatingsAreCurrent, getCachedClubRatings } from "./club-ratings";
 import { buildMatchContext } from "./match-context";
+import { ownedLatestResult } from "./structured-results";
 import type { ClubScorer, ResultMark } from "./club-form";
 import {
   searchWeb,
@@ -98,6 +99,8 @@ import {
 } from "./pundit-consensus";
 import {
   extractPlayerEvidence,
+  extractDatedClubAvailability,
+  datedClubNewsSources,
   recentScorerContext,
   PLAYER_SCORER_ABSTENTION,
   TEAM_NEWS_COMPOSE_ABSTENTION,
@@ -8387,6 +8390,39 @@ async function settleTeamNewsFromBundle(
   if (plan.mode !== "team-news") return null;
   const pages = await hydrateBundlePublicationDates(bundle, signal);
   const evidence = evidenceBundleForMatch(grounding, bundle, pages);
+  if (!evidence.observations.some((row) => row.observedAt)) {
+    const byId = new Map(pages.map((page) => [page.id, page]));
+    const updates = extractDatedClubAvailability(bundle.results.map((source) => ({ ...source,
+      date: byId.get(source.id)?.date || source.date,
+      snippet: byId.get(source.id)?.text.slice(0, 8_000) || source.snippet })), {
+      fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date,
+    });
+    if (updates.observations.length) {
+      const composed = composeMatchResponse(question, grounding, plan, updates)
+        + " These are dated club updates; they do not establish the starting XI or availability at the future kickoff.";
+      return verifySettledEvidence(composed, grounding, bundle, client, TEAM_NEWS_COMPOSE_ABSTENTION, signal);
+    }
+    const candidates = datedClubNewsSources(bundle.results.map((source) => ({ ...source,
+      date: byId.get(source.id)?.date || source.date,
+      snippet: byId.get(source.id)?.text.slice(0, 8_000) || source.snippet })), {
+      fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date,
+    });
+    if (candidates.length && reserveProviderCall(bundle)) {
+      const candidateIds = new Set(candidates.map((source) => source.id));
+      const candidateBundle = { ...bundle, results: bundle.results.filter((source) => candidateIds.has(source.id))
+        .map((source) => ({ ...source, ...candidates.find((candidate) => candidate.id === source.id)! })) };
+      const prose = await writeDeskProse(question, grounding, [], signal, candidateBundle, { datedClubNews: true });
+      if (prose) {
+        // Generated candidate prose has no authority until each cited claim
+        // survives the unchanged current-fact verifier. Never stream it raw.
+        const citedProse = splitAnswerSentences(prose).filter((sentence) => evidenceMarkerIds(sentence).length).join(" ");
+        const settled = await verifySettledEvidence(citedProse || TEAM_NEWS_COMPOSE_ABSTENTION,
+          grounding, bundle, client, TEAM_NEWS_COMPOSE_ABSTENTION, signal);
+        if (settled.verification.supportedClaimCount) settled.answer += " These dated club updates do not establish the starting XI or availability at the future kickoff.";
+        return settled;
+      }
+    }
+  }
   return verifySettledEvidence(composeMatchResponse(question, grounding, plan, evidence), grounding,
     bundle, client, TEAM_NEWS_COMPOSE_ABSTENTION, signal);
 }
@@ -9374,6 +9410,12 @@ async function answerQuestionScoped(
   verification: AskVerification;
 }> {
   const requestStartedAt = Date.now();
+  const resultRecord = ownedLatestResult(question);
+  if (resultRecord) {
+    if (signal?.aborted) throw signal.reason;
+    return { ...resultRecord, grounding: null,
+      verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
+  }
   const prepared = prepareAsk(
     question,
     history,
@@ -9602,6 +9644,14 @@ async function answerQuestionStreamScoped(
   verification: AskVerification;
 }> {
   const requestStartedAt = Date.now();
+  const resultRecord = ownedLatestResult(question);
+  if (resultRecord) {
+    if (handlers.signal?.aborted) throw handlers.signal.reason;
+    handlers.onGrounding(null);
+    if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(resultRecord.answer);
+    return { ...resultRecord, grounding: null,
+      verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
+  }
   const prepared = prepareAsk(
     question,
     history,

@@ -145,9 +145,10 @@ export function AgentPane() {
         id: `p-${Date.now()}`,
         role: "pundit",
         text: res.text || opening,
-        fixtureId: resolvedFixtureId || fixtureId || undefined,
+        fixtureId: res.sourceLabel ? undefined : resolvedFixtureId || fixtureId || undefined,
         grounding: res.grounding,
         presentation: res.presentation,
+        sourceLabel: res.sourceLabel,
         at: Date.now(),
       });
     } catch (e) {
@@ -421,12 +422,12 @@ export function AgentPane() {
 
 function Bubble({ msg }: { msg: ChatMsg }) {
   const f = msg.fixtureId ? getFixture(msg.fixtureId) : undefined;
-  const groundingLabel = msg.grounding === undefined ? null
+  const groundingLabel = msg.sourceLabel ?? (msg.grounding === undefined ? null
     : msg.grounding?.kind === "season" ? `Season outlook · ${msg.grounding.competition}`
       : msg.grounding?.kind === "competition" ? `Current table · ${msg.grounding.competition}`
         : msg.grounding?.kind === "match" ? "Match forecast"
           : msg.grounding?.kind === "fixture" ? `${msg.grounding.fixture.competition.name} · ${capabilityLabel(msg.grounding.capability)}`
-            : "General analysis";
+            : "General analysis");
   if (msg.role === "user") {
     return (
       <div className="flex justify-end">

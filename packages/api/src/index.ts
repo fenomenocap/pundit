@@ -18,6 +18,7 @@ import {
 } from "./services/club-ratings";
 import { getCachedModelData, getModelRefreshState, startModelCron } from "./services/model-data";
 import { startClubSeasonCheckpointCron } from "./services/club-season-snapshots";
+import { getProspectiveCollectorStatus, startProspectiveCollector } from "./services/prospective-model-collector";
 import {
   getCachedMatches,
   getCachedSeasonSchedule,
@@ -214,6 +215,8 @@ app.get("/ready", (_req, res) => {
     // make schema acceptance, fail-closed fallback and numeric intervention
     // visible without exposing prompts or user text.
     analystResponse: getAnalystResponseStatus(),
+    // Private frozen-candidate evidence is independent of public model readiness.
+    prospectiveModel: getProspectiveCollectorStatus(),
     // Surfaced because the effective limit is a function of replica count, and
     // a mismatch between API_REPLICAS and Railway's actual setting is
     // otherwise invisible until someone bursts the endpoint.
@@ -294,6 +297,7 @@ export function startServer() {
       await startModelCron();
       await startModelMarketOddsCron();
       startClubSeasonCheckpointCron();
+      startProspectiveCollector();
     })().catch((error) => {
       logFatalProcessError("Bootstrap", error);
     });

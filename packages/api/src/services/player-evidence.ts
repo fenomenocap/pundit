@@ -1,5 +1,6 @@
 import { aggregateScorers, lastLeagueMatches, sameClub } from "./club-form";
 import type { FootballMatch } from "./football-data";
+import { evidenceAuthority } from "./evidence-authority";
 
 /**
  * Request-local player evidence. Chat 1 consumes web-search snippets through
@@ -439,6 +440,76 @@ export function extractPlayerEvidence(
     observations: observations.filter((row) => !conflicted.has(row.playerId)),
     markets: markets.filter((row) => !conflicted.has(row.playerId)),
   };
+}
+
+/**
+ * Current club reports need not name a fixture still weeks away. Keep these
+ * separate from fixture lineups/markets: they establish only dated statuses,
+ * never that a player will miss (or start) the future match.
+ */
+export function extractDatedClubAvailability(
+  sources: PlayerEvidenceSource[],
+  fixture: PlayerFixtureRef,
+  now = Date.now()
+): PlayerEvidenceBundle {
+  const observations: PlayerEvidence[] = [];
+  const seen = new Set<string>();
+  for (const source of sources) {
+    const published = Date.parse(source.date);
+    if (evidenceAuthority(source.url) === "other" || !Number.isFinite(published)
+      || published > now || now - published > 7 * 24 * 60 * 60 * 1000) continue;
+    const text = `${source.title}\n${source.snippet}`;
+    for (const playerName of collectNames(text, fixture)) {
+      // A surname, generic "Back", or heading is not a player identity.
+      if (playerName.split(/\s+/).length < 2) continue;
+      const lower = text.toLocaleLowerCase();
+      const needle = playerName.toLocaleLowerCase();
+      let from = 0;
+      while (from < lower.length) {
+        const at = lower.indexOf(needle, from);
+        if (at < 0) break;
+        from = at + needle.length;
+        const window = localClaimWindow(text, at, playerName.length);
+        const status = boundAvailabilityStatus(window, playerName);
+        if (status?.kind !== "availability") continue;
+        // Affiliation must be explicit in the same claim. Do not inherit it
+        // from a whole-page headline, navigation, or a different player.
+        const teamId = teamForNamedPlayer(window, playerName, fixture);
+        if (!teamId) continue;
+        const key = `${slug(playerName)}:${teamId}:${status.value}:${source.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        observations.push({ playerId: slug(playerName), playerName, teamId,
+          fixtureId: fixture.fixtureId, evidenceType: "availability", value: status.value,
+          sourceId: source.id, observedAt: new Date(published).toISOString(),
+          effectiveAt: new Date(published).toISOString() });
+      }
+    }
+  }
+  // Contradictory dated statuses remain unresolved rather than selecting the
+  // convenient source. The exact composed claims still owe verification.
+  const conflicts = new Set(observations.filter((row) => observations.some((other) =>
+    row.playerId === other.playerId && row.teamId === other.teamId && row.value !== other.value)).map((row) => `${row.teamId}:${row.playerId}`));
+  return { observations: observations.filter((row) => !conflicts.has(`${row.teamId}:${row.playerId}`)), markets: [] };
+}
+
+/** Candidate prose only; every resulting claim still faces the verifier. */
+export function datedClubNewsSources(
+  sources: PlayerEvidenceSource[], fixture: PlayerFixtureRef, now = Date.now()
+): PlayerEvidenceSource[] {
+  return sources.filter((source) => {
+    const published = Date.parse(source.date);
+    if (evidenceAuthority(source.url) === "other" || !Number.isFinite(published)
+      || published > now || now - published > 7 * 24 * 60 * 60 * 1000) return false;
+    const title = source.title;
+    if (!new RegExp(`\\b(?:${escapeRegExp(fixture.home)}|${escapeRegExp(fixture.away)})\\b`, "i").test(title)) return false;
+    const text = `${title}\n${source.snippet}`;
+    // A fixture report rejected by the strict extractor must not get a second
+    // route around its identity/status guards.
+    if (mentionsFixture(title, fixture)) return false;
+    if (!/\b(?:injur\w*|sidelined|fitness|hamstring|muscle strain|suspension|ruled out)\b/i.test(text)) return false;
+    return collectNames(text, fixture).some((name) => name.split(/\s+/).length >= 2);
+  }).slice(0, 3);
 }
 
 export function hasTrustworthyPlayerEvidence(bundle: PlayerEvidenceBundle): boolean {

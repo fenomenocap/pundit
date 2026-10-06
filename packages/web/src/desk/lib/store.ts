@@ -57,6 +57,7 @@ export type ChatMsg = {
   fixtureId?: string;
   grounding?: AskGrounding;
   presentation?: AskPresentation;
+  sourceLabel?: "ESPN result";
   at: number;
 };
 

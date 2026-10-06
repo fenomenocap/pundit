@@ -724,6 +724,50 @@ test.describe("smoke", () => {
     await expect(page.locator("body")).not.toContainText("model-grounded");
   });
 
+  for (const width of [390, 1440]) {
+    test(`verified ESPN results have their own label and retain the forecast pin at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await routeTwoFixtureDeskSlate(page);
+      const fixtureId = "espn:eng.1:901";
+      const citation = { id: "S1", title: "Brighton 3–0 Arsenal — ESPN",
+        url: "https://www.espn.com/soccer/match/_/gameId/401879274", date: "2026-09-19" };
+      const result = "The latest completed Premier League result I have for Arsenal is **Brighton 3–0 Arsenal** (2026-09-19). [ESPN match record, 2026-09-19](https://www.espn.com/soccer/match/_/gameId/401879274).";
+      const responses = [
+        { answer: "I have the Arsenal–Chelsea forecast in view.", grounding: deskMatchGrounding(fixtureId, "Arsenal", "Chelsea") },
+        { answer: result, grounding: null, citations: [citation],
+          verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } },
+        { answer: "I still have Arsenal–Chelsea in view.", grounding: deskMatchGrounding(fixtureId, "Arsenal", "Chelsea") },
+        { answer: "I couldn't verify that result.", grounding: null, citations: [citation],
+          verification: { status: "unavailable", supportedClaimCount: 0, removedClaimCount: 1 } },
+      ];
+      const requests: Array<Record<string, unknown>> = [];
+      await page.route("**/api/ask", async (route) => {
+        requests.push(route.request().postDataJSON());
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(responses.shift()) });
+      });
+      await page.goto("/");
+      await page.locator(`[data-testid="desk-featured-fixture"][data-fixture-id="${fixtureId}"]`).click();
+      await expect(page.getByText("I have the Arsenal–Chelsea forecast in view.")).toBeVisible();
+      const input = page.getByRole("textbox", { name: "Ask a question" });
+      await input.fill("What is Arsenal's latest Premier League result?");
+      await page.getByRole("button", { name: "Send" }).click();
+      const resultBubble = page.getByTestId("desk-pundit-bubble").last();
+      await expect(resultBubble.getByTestId("desk-grounding-label")).toHaveText("ESPN result");
+      await expect(resultBubble.getByRole("link", { name: "ESPN match record, 2026-09-19" })).toHaveAttribute("href", citation.url);
+      await expect(resultBubble).toContainText("Brighton 3–0 Arsenal");
+      await expect(resultBubble).not.toContainText("ARS–CHE");
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.selectedId)).toBe(fixtureId);
+      await input.fill("Back to that match: what is the 1X2?");
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect(page.getByText("I still have Arsenal–Chelsea in view.")).toBeVisible();
+      expect(requests[2].fixtureContext).toEqual({ fixtureId });
+      await input.fill("Can you verify that result?");
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect(page.getByTestId("desk-grounding-label").last()).toHaveText("General analysis");
+      await expect(page.getByTestId("desk-grounding-label").filter({ hasText: "ESPN result" })).toHaveCount(1);
+    });
+  }
+
   test("desk featured fixture keeps its identity and renders grounded market rows", async ({ page }) => {
     await routeTwoFixtureDeskSlate(page);
     const requests: Array<Record<string, unknown>> = [];
