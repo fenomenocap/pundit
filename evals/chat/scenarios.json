@@ -83,7 +83,8 @@
           "questionTemplate": "What are the latest dated club injury updates for {home} and {away}? Keep current reports distinct from future kickoff availability.",
           "expectGrounding": "match",
           "requireCitation": true,
-          "expectVerification": ["verified"],
+          "expectVerification": ["verified", "conflict"],
+          "requirePositiveDatedClubNews": true,
           "requireSourcedTeamNews": true,
           "expectNoUnsupportedLineupEffect": true
         }
