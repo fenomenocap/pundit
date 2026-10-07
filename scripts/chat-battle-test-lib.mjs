@@ -2127,17 +2127,32 @@ function datedClubNewsRecords(answer, citations, nowMs) {
       && published <= nowMs && nowMs - published <= 7 * 24 * 60 * 60 * 1000
       && new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) === day;
   });
-  const regions = typeof answer === "string" ? answer.split(/(?<=[.!?])\s+|\n+/).filter(Boolean) : [];
+  // A publisher title can contain "vs. Arsenal", a question, or an
+  // exclamation. Protect complete links so only prose punctuation divides
+  // claims; restore their exact bytes before source/date matching. The desk
+  // may retain a bracketed phrase inside its source label.
+  const linkPattern = /\[(?:[^\[\]]|\[[^\[\]]*\])+\]\((https?:\/\/[^\s)]+)\)/g;
+  const text = typeof answer === "string" ? answer : "";
+  let markerPrefix = "@@NEWSLINK";
+  while (text.includes(markerPrefix)) markerPrefix += "_";
+  const links = [];
+  const protectedAnswer = text.replace(linkPattern, (link) => {
+    links.push(link);
+    return `${markerPrefix}${links.length - 1}@@`;
+  });
+  const markerPattern = new RegExp(`${markerPrefix}(\\d+)@@`, "g");
+  const regions = protectedAnswer.split(/(?<=[.!?])\s+|\n+/).filter(Boolean)
+    .map((region) => region.replace(markerPattern, (marker, index) => links[Number(index)] ?? marker));
   const namedClubStatus = /[\p{L}\p{M}][\p{L}\p{M} .-]{1,50}['’]s\s+\p{Lu}[\p{L}\p{M}'’.-]+(?:\s+\p{Lu}[\p{L}\p{M}'’.-]+){1,3}\s+(?:[Ww]as|[Ii]s|[Hh]as|[Hh]ad|[Rr]emains|[Mm]ay|[Mm]ight|[Cc]ould|[Ww]ithdrew|[Ss]ustained|[Ss]uffered)\b/u;
   const namedStatus = /\p{Lu}[\p{L}\p{M}'’.-]+(?:\s+\p{Lu}[\p{L}\p{M}'’.-]+){1,3}\s+(?:[Ww]as|[Ii]s|[Hh]as|[Hh]ad|[Rr]emains|[Mm]ay|[Mm]ight|[Cc]ould|[Ww]ithdrew|[Ww]ill|[Ss]ustained|[Ss]uffered)\b/u;
   const medicalStatus = /\b(?:injur\w*|doubt\w*|sidelined|suspend\w*|unavailable|available|pain|strain|tear|issue|problem|assessment|rehabilitation|withdraw\w*|withdrew|training|fitness|fit|starts?|starting)\b/i;
   const candidates = regions.filter((region) => {
-    const prose = region.replace(/\[[^\]]*\]\([^)]*\)/g, "");
+    const prose = region.replace(linkPattern, "");
     return namedStatus.test(prose) && medicalStatus.test(prose);
   });
   const dated = candidates.filter((region) => {
     const publicationDay = /\bIn an update published on (\d{4}-\d{2}-\d{2}),/i.exec(region)?.[1];
-    const urls = [...region.matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g)].map((match) => match[1]);
+    const urls = [...region.matchAll(linkPattern)].map((match) => match[1]);
     return namedClubStatus.test(region) && sourceRows.some((source) => source.date.slice(0, 10) === publicationDay && urls.includes(source.url));
   });
   return { candidates, dated };
