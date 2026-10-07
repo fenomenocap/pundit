@@ -1360,6 +1360,34 @@ export function establishedNothing(verification) {
     && (ABSTAINED_VERIFICATION.has(verification?.status) || verification?.status === "conflict");
 }
 
+/** A scoped news scenario may retain supported claims after removing a
+ * conflict. Its positive delivery still needs the strict source/date/count
+ * checks; an explicit verification expectation always takes priority. */
+export function deriveTurnVerificationExpectation(verification, scenario = {}, turn = {}) {
+  const expectation = {
+    ...turn,
+    requireCitation: Boolean(turn.requireCitation || scenario.requireCitation),
+    allowAbstention: Boolean(turn.allowAbstention || scenario.allowAbstention),
+    requireSourcedTeamNews: Boolean(turn.requireSourcedTeamNews || scenario.requireSourcedTeamNews),
+    requirePositiveDatedClubNews: Boolean(turn.requirePositiveDatedClubNews || scenario.requirePositiveDatedClubNews),
+  };
+  if (turn.expectVerification === undefined && scenario.expectVerification !== undefined) {
+    expectation.expectVerification = scenario.expectVerification;
+  }
+  const scoped = (turn.allowSupportedNewsConflict ?? scenario.allowSupportedNewsConflict) === true;
+  const positive = Number.isInteger(verification?.supportedClaimCount) && verification.supportedClaimCount >= 1;
+  expectation.requireDatedClubNewsConsistency = scoped;
+  expectation.guardUnsupportedConflictCounterfactuals = scoped && verification?.status === "conflict";
+  if (scoped && positive) {
+    expectation.requireSourcedTeamNews = true;
+    expectation.requirePositiveDatedClubNews = true;
+    if (verification.status === "conflict" && expectation.expectVerification == null) {
+      expectation.expectVerification = ["verified", "conflict", ...(expectation.allowAbstention ? ABSTAINED_VERIFICATION : [])];
+    }
+  }
+  return expectation;
+}
+
 export function validateVerification(verification, expectation = {}) {
   const statuses = new Set(["not-required", "verified", "conflict", "abstain", "unavailable"]);
   const shape = statuses.has(verification?.status)
@@ -2088,11 +2116,9 @@ export function validatePositiveCurrentManager(answer, citations, verification, 
     failures: Object.entries(assertions).filter(([, passed]) => !passed).map(([key]) => `positive current manager failed ${key}`) };
 }
 
-/** Strict positive-news canary only. Counts/status never replace a delivered
- * named club update with a same-sentence, metadata-matched dated citation. */
-export function validatePositiveDatedClubNews(answer, citations, verification, nowMs = Date.now()) {
-  const verified = ["verified", "conflict"].includes(verification?.status)
-    && Number.isInteger(verification?.supportedClaimCount) && verification.supportedClaimCount >= 1;
+/** Shared record parsing: a bad or missing citation cannot hide a delivered
+ * named status record from the verification-count consistency check. */
+function datedClubNewsRecords(answer, citations, nowMs) {
   const sourceRows = (Array.isArray(citations) ? citations : []).filter((source) => {
     const published = Date.parse(source?.date);
     const day = /^\d{4}-\d{2}-\d{2}/.exec(source?.date ?? "")?.[0];
@@ -2114,11 +2140,33 @@ export function validatePositiveDatedClubNews(answer, citations, verification, n
     const urls = [...region.matchAll(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g)].map((match) => match[1]);
     return namedClubStatus.test(region) && sourceRows.some((source) => source.date.slice(0, 10) === publicationDay && urls.includes(source.url));
   });
+  return { candidates, dated };
+}
+
+/** Strict positive-news canary only. Counts/status never replace a delivered
+ * named club update with a same-sentence, metadata-matched dated citation. */
+export function validatePositiveDatedClubNews(answer, citations, verification, nowMs = Date.now()) {
+  const verified = ["verified", "conflict"].includes(verification?.status)
+    && Number.isInteger(verification?.supportedClaimCount) && verification.supportedClaimCount >= 1;
+  const { candidates, dated } = datedClubNewsRecords(answer, citations, nowMs);
   const assertions = { positiveNewsVerification: verified, positiveDatedNewsDelivered: dated.length >= 1,
     everyPositiveNewsRecordDated: candidates.length > 0 && dated.length === candidates.length,
     positiveNewsCountMatches: dated.length === verification?.supportedClaimCount };
   return { passed: Object.values(assertions).every(Boolean), assertions,
     failures: Object.entries(assertions).filter(([, passed]) => !passed).map(([name]) => `positive dated club news failed ${name}`) };
+}
+
+/** Scoped partial-news delivery must agree with the supported count even
+ * when zero claims survived. A safe no-update sentence carries no records. */
+export function validateDatedClubNewsConsistency(answer, citations, verification, nowMs = Date.now()) {
+  if (Number.isInteger(verification?.supportedClaimCount) && verification.supportedClaimCount >= 1) {
+    return validatePositiveDatedClubNews(answer, citations, verification, nowMs);
+  }
+  const { candidates } = datedClubNewsRecords(answer, citations, nowMs);
+  const assertions = { zeroSupportedNewsCountValid: verification?.supportedClaimCount === 0,
+    zeroSupportedNewsHasNoDeliveredRecords: candidates.length === 0 };
+  return { passed: Object.values(assertions).every(Boolean), assertions,
+    failures: Object.entries(assertions).filter(([, passed]) => !passed).map(([name]) => `dated club news consistency failed ${name}`) };
 }
 
 export function validateAbstainedCounterfactualDiscipline(answer, verificationStatus) {
