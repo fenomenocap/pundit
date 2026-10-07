@@ -3,6 +3,45 @@ import type { ModelFixtureResponse } from "../src/lib/api";
 import type { ModelRowLambdas } from "../src/desk/lib/grid";
 
 test.describe("QA regressions", () => {
+  for (const width of [320, 390, 768, 1440]) {
+    test(`expanded model details remain readable without horizontal panning at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto("/model");
+      const row = page.getByTestId("model-fixture-row").first();
+      await row.getByRole("button", { name: "Expand details" }).click();
+      const details = row.locator("xpath=following-sibling::tr[1]");
+      await expect(details.getByTestId("totals-honesty")).toBeVisible();
+      for (const label of ["Over 2.5", "Under 2.5", "BTTS Yes", "BTTS No", "Likely scorelines"]) {
+        await expect(details.getByText(label, { exact: true })).toBeVisible();
+      }
+      // Body overflow alone misses clipping inside the horizontally scrollable table.
+      // Inspect every rendered text line, including the far-right probabilities.
+      const geometry = await details.evaluate(element => {
+        const container = element.closest("table")!.parentElement!;
+        const clip = container.getBoundingClientRect();
+        const text = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        const clipped: string[] = [];
+        let probabilityCount = 0;
+        while (text.nextNode()) {
+          const node = text.currentNode;
+          const value = node.textContent?.trim();
+          if (!value) continue;
+          if (/^\d+(?:\.\d+)?%$/.test(value)) probabilityCount += 1;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          for (const rect of Array.from(range.getClientRects())) {
+            if (rect.left < Math.max(0, clip.left) - 1 || rect.right > Math.min(innerWidth, clip.right) + 1) clipped.push(value);
+          }
+        }
+        return { clipped, probabilityCount, scrollLeft: container.scrollLeft };
+      });
+      expect(geometry.scrollLeft).toBe(0);
+      expect(geometry.probabilityCount).toBeGreaterThanOrEqual(7);
+      expect(geometry.clipped).toEqual([]);
+      await page.screenshot({ path: testInfo.outputPath(`expanded-model-${width}.png`), fullPage: true });
+    });
+  }
+
   test("calibrated EPL goals use server means, disclosure and joint paper scores", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.addInitScript(() => { Math.random = () => 0.95; });

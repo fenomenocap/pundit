@@ -475,8 +475,20 @@ export function filterDeskEvidenceRows(
   nowMs = Date.now(),
   question?: string
 ): DeskEvidenceRow[] {
-  return rows
-    .filter((row) => deskEvidenceRowIsCurrent(row, grounding, nowMs, question))
+  const eligible = rows.filter((row) => deskEvidenceRowIsCurrent(row, grounding, nowMs, question));
+  if (question && singleClubCurrentFactScope(question, grounding)?.kind === "manager") {
+    // Selection priority only: a profile's affiliation still cannot establish
+    // a current role. Keep room for recent reporting before the page cap.
+    const priority = (row: DeskEvidenceRow) => {
+      const text = `${row.title} ${row.snippet}`;
+      const role = /\b(?:manager|head coach|coach|boss)\b/i.test(text);
+      const update = /\b(?:appoint\w*|contract|deal|interview|remain\w*|extend\w*|extension)\b/i.test(text);
+      return Number(role && update) * 4 + Number(role && row.tier === "news") * 2
+        + Number(role && Number.isFinite(Date.parse(row.date)));
+    };
+    eligible.sort((left, right) => priority(right) - priority(left));
+  }
+  return eligible
     .slice(0, 8)
     .map((row, index) => ({ ...row, id: row.id || `S${index + 1}` }));
 }

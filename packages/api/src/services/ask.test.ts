@@ -722,6 +722,70 @@ describe("complete standalone football lessons", () => {
     }
   });
 
+  it.each(["dated", "stale", "undated", "404"] as const)("hydrates selected manager news before expression without profile starvation (%s)", async (mode) => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-07T06:00:00Z"));
+    await refreshClubRatings(new Date());
+    const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
+    // The role sentence and date are from the separately captured Sky publisher
+    // page; search supplied no date, and nine club-profile hits precede it.
+    const role = "Arsenal manager Mikel Arteta says he and the club are very much aligned when it comes to signing a new contract with the club.";
+    const news = { title: "Mikel Arteta contract: Arsenal boss agrees new deal", link: "https://www.skysports.com/football/news/13588507/mikel-arteta-contract-arsenal-boss-agrees-new-deal-to-extend-stay-at-premier-league-champions", date: "", snippet: role };
+    const profiles = Array.from({ length: 9 }, (_, index) => ({ title: `Arsenal manager staff directory ${index}`, link: `https://www.arsenal.com/men/staff/profile-${index}`, date: "", snippet: "Arsenal club staff profile details." }));
+    const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation((candidates) => {
+      expect(candidates.length).toBeLessThanOrEqual(8);
+      expect(candidates.some((candidate) => candidate.id === "S10" && candidate.url === news.link)).toBe(true);
+    });
+    const controller = new AbortController(); let hydrated = false;
+    const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates, signal, options) => {
+      expect(signal).toBe(controller.signal); expect(options?.cache).toBeDefined();
+      expect(candidates.length).toBeLessThanOrEqual(8); hydrated = true;
+      return candidates.filter((candidate) => candidate.url === news.link && mode !== "404").map((candidate) => ({
+        ...candidate, date: mode === "dated" ? "2026-09-22T18:26:00+0000" : mode === "stale" ? "2026-07-01" : "",
+        finalUrl: candidate.url, text: role, retrievedAt: new Date().toISOString(),
+      }));
+    });
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      const verifying = String(input.system).startsWith("You are Pundit's bounded factual claim verifier.");
+      const data = verifying ? JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]) : null;
+      if (!verifying) {
+        expect(hydrated).toBe(true); expect(input.system).toBe(DESK_CURRENT_FACT_SYSTEM);
+        const prompt = String(input.messages.at(-1)?.content);
+        if (mode === "dated") expect(prompt).toContain("[[S10]] 22 Sep");
+        if (mode === "stale") expect(prompt).not.toContain("[[S10]]");
+      }
+      return Promise.resolve({ content: [{ type: "text", text: verifying
+        ? JSON.stringify({ decisions: data.claims.map((claim: { id: string }) => ({ claimId: claim.id, outcome: "supported", evidenceIds: ["S10"] })), summary: "Checked supplied publisher role sentence." })
+        : "Arsenal’s manager is Mikel Arteta [[S10]]." }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    searchWeb.mockReset(); searchWeb.mockResolvedValue([...profiles, news]);
+    try {
+      const context = { fixtureId: espnFixtureIdentity(model) };
+      const checkDelivery = (result: Awaited<ReturnType<typeof answerQuestion>>) => {
+        if (mode === "dated") {
+          expect(result.answer).toContain("Arsenal’s manager is Mikel Arteta"); expect(result.answer).toContain(news.link);
+          expect(result.citations?.[0]?.id).toBe("S10"); expect(result.verification?.supportedClaimCount).toBe(1);
+        } else {
+          expect(result.answer).not.toContain("Arsenal’s manager is Mikel Arteta"); expect(result.citations ?? []).toEqual([]);
+          expect(result.verification?.supportedClaimCount).toBe(0);
+        }
+      };
+      for (const voice of [undefined, "desk"] as const) {
+        hydrated = false; searchWeb.mockClear();
+        checkDelivery(await answerQuestion("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], controller.signal, context, undefined, voice));
+        expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(4);
+      }
+      hydrated = false; searchWeb.mockClear(); const deltas: string[] = [];
+      const streamed = await answerQuestionStream("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], { signal: controller.signal, onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
+      checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(4);
+    } finally {
+      create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+
   it.each([
     { question: "Who is Arsenal's manager and why?", title: "Arsenal manager appointment", prose: "Pat Doe is Arsenal's current manager [[S1]]. Arsenal appointed Pat Doe because he has experience developing young players [[S1]].", fact: /Arsenal.s manager is Pat Doe/, reason: /experience developing young players/ },
     { question: "What is Arsenal's latest result and why?", title: "Arsenal vs Brighton: match report", prose: "The dated result I found was Arsenal 3–0 Brighton on 4 October 2026 [[S1]]. The report attributes the win to defensive errors [[S1]].", fact: /Arsenal 3[–-]0 Brighton/, reason: /defensive errors/ },
