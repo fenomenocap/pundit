@@ -35,7 +35,8 @@ const parse = (input, options = {}) => {
   }
 
   const opts = options || {};
-  const max = typeof opts.maxLength === 'number' ? Math.min(MAX_LENGTH, opts.maxLength) : MAX_LENGTH;
+  const max = typeof opts.maxLength === 'number' && Number.isFinite(opts.maxLength)
+    ? Math.min(MAX_LENGTH, opts.maxLength) : MAX_LENGTH;
   if (input.length > max) {
     throw new SyntaxError(`Input length (${input.length}), exceeds max characters (${max})`);
   }

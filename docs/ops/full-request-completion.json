@@ -350,22 +350,22 @@
       "id": "dependency-security",
       "request": "Resolve the remaining development dependency advisory durably.",
       "owner": "root",
-      "state": "accepted",
+      "state": "ongoing",
       "acceptanceCriteria": [
         "Vulnerable braces paths replaced by audited bounded compatibility implementation.",
         "Clean install, actual attack positive/negative controls, API compatibility and unsuppressed audits pass twice."
       ],
       "phases": {
         "implementation": {
-          "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "status": "pending",
+          "reason": "Reopened after independent invalid-option parser cap failure. Previous security release evidence is preserved as historical; current corrected guard requires separate review, testing, deployment and product acceptance.",
           "evidence": [
             {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
           ]
         },
         "testing": {
-          "status": "passed",
-          "reason": "Security patch, upstream attribution, maintenance obligations and clean-install/audit controls accepted; no advisory suppression.",
+          "status": "pending",
+          "reason": "Reopened after independent invalid-option parser cap failure. Previous security release evidence is preserved as historical; current corrected guard requires separate review, testing, deployment and product acceptance.",
           "evidence": [
             {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-first.log", "sha256": "80e5304436471b3075e483afa87ab2e257e64dcefc0e9edf720069bbfb7cef28"},
             {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-second.log", "sha256": "411eed08061d535deecb6edc76045cd0fd3a5b21c52c1d2c8393ec709dac053c"},
@@ -373,8 +373,8 @@
           ]
         },
         "deployment": {
-          "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "status": "pending",
+          "reason": "Reopened after independent invalid-option parser cap failure. Previous security release evidence is preserved as historical; current corrected guard requires separate review, testing, deployment and product acceptance.",
           "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
           "evidence": [
             {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
@@ -382,8 +382,8 @@
           ]
         },
         "productAcceptance": {
-          "status": "passed",
-          "reason": "Security patch, upstream attribution, maintenance obligations and clean-install/audit controls accepted; no advisory suppression.",
+          "status": "pending",
+          "reason": "Reopened after independent invalid-option parser cap failure. Previous security release evidence is preserved as historical; current corrected guard requires separate review, testing, deployment and product acceptance.",
           "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
           "evidence": [
             {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
@@ -391,7 +391,21 @@
             {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
           ]
         }
-      }
+      },
+      "historicalEvidence": [
+        {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"},
+        {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-first.log", "sha256": "80e5304436471b3075e483afa87ab2e257e64dcefc0e9edf720069bbfb7cef28"},
+        {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-second.log", "sha256": "411eed08061d535deecb6edc76045cd0fd3a5b21c52c1d2c8393ec709dac053c"},
+        {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-audit-second.json", "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"},
+        {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+        {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"},
+        {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+        {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+        {"path": "artifacts/historical-calibration-2026-10-07/production/register-before-nonfinite-security-reopening.json", "sha256": "0e69f147e4ed4995a57260b01b38595d06082dc08a178201f1d4d9f7364e8043"},
+        {"path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-original-independent-failure.json", "sha256": "c16495504a3993bda763630c9562715c6d2b6fe43db897b6639108727ef5ff52"}
+      ],
+      "nextAction": "Independently review the nonfinite maxLength guard, merge the small tested fix, deploy its actual source and refresh exact-source production/browser/criterion acceptance before closing security.",
+      "blocker": null
     },
     {
       "id": "scenario-and-repeat-testing",
