@@ -65,7 +65,7 @@ export const ELO_CHAMPION: ForecastContributor = {
 };
 
 export const PUNDIT_FUNDAMENTAL_MODEL_ID = "pundit-fundamental";
-export const PUNDIT_FUNDAMENTAL_MODEL_VERSION = "2";
+export const PUNDIT_FUNDAMENTAL_MODEL_VERSION = "3";
 
 export const ELO_CHAMPION_CONFIG = {
   eloScale: ELO_SCALE,

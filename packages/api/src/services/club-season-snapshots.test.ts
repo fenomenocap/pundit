@@ -21,6 +21,7 @@ import { replaceFootballDataForTests } from "./football-data";
 import { fetchAllMarketOdds } from "./fixture-market-sources";
 import { refreshModelMarketOdds } from "./model-market-odds";
 import { ELO_CHAMPION_CONFIG } from "./model-contributors";
+import { getResolvedActiveScoreModel } from "./active-score-model";
 
 vi.mock("./fixture-market-sources", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./fixture-market-sources")>();
@@ -267,6 +268,82 @@ describe("club-season snapshots", () => {
       homeAdvantageElo: 42,
     });
     expect(snapshot.modelId).toBe("pundit-fundamental");
+  });
+
+  function calibratedFixture(): ModelFixture {
+    const utcDate = "2026-10-10T11:30:00.000Z";
+    const forecastAt = "2026-10-08T00:00:00.000Z";
+    const homeStrength = 2040.320763777506, awayStrength = 1816.5033321509707;
+    const model = getResolvedActiveScoreModel({ competitionId: "eng.1", home: "Arsenal", away: "Leeds",
+      kickoff: utcDate, homeStrength, awayStrength, homeAdvantageElo: 42 }, new Date(forecastAt));
+    const ratingSha = "a".repeat(64), ratingId = `clubelo@1:${ratingSha}`;
+    const fixture = sampleModelFixture({ utcDate, date: "2026-10-10", away: "Leeds",
+      homeElo: Math.round(homeStrength * 10) / 10, awayElo: Math.round(awayStrength * 10) / 10,
+      goalCalibration: { methodId: model.methodId, artifactId: model.artifactId!, artifactSha256: model.artifactSha256! },
+      scoreGrid: model.matrix, expectedHomeGoals: model.expectedHomeGoals, expectedAwayGoals: model.expectedAwayGoals,
+      forecastInputs: { homeStrength, awayStrength, homeAdvantageElo: 42, fixtureId: 101,
+        competitionId: "eng.1", utcDate, home: "Arsenal", away: "Leeds",
+        ratingArtifactId: ratingId, ratingArtifactSha256: ratingSha, ratingSnapshotAt: forecastAt,
+        goalCalibrationArtifactSha256: model.artifactSha256! },
+      forecastProvenance: { modelId: "pundit-fundamental", modelVersion: "3", contributorId: "clubelo-calibrated-goals",
+        contributorVersion: model.artifactSha256!, methodId: model.methodId, forecastAt,
+        ratingProfile: "eng-clubs", ratingSnapshotAt: forecastAt, ratingAgeMinutes: 0, ratingSourceState: "artifact",
+        ratingArtifactId: ratingId, ratingArtifactSha256: ratingSha,
+        goalCalibrationArtifactSha256: model.artifactSha256!, homeAdvantageElo: 42, config: ELO_CHAMPION_CONFIG } });
+    for (const key of ["pHome", "pDraw", "pAway", "pOver2_5", "pUnder2_5", "pBttsYes", "pBttsNo"] as const)
+      fixture[key] = Math.round(model[key] * 10_000) / 10_000;
+    return fixture;
+  }
+
+  it("carries exact calibrated inputs, immutable grid and final means across persistence for replay", () => {
+    const fixture = calibratedFixture();
+    const seal = buildSnapshotFromModel(fixture, "2026-10-10T10:30:00.000Z");
+    expect(seal.provenanceCompleteness).toBe("complete");
+    expect(seal.inputs.homeRating).toBe(2040.320763777506);
+    expect(seal.inputs.homeRating).not.toBe(seal.homeElo);
+    expect(seal.inputs.goalCalibrationArtifactSha256).toBe(fixture.goalCalibration!.artifactSha256);
+    fixture.scoreGrid![0][0] = 0;
+    fixture.forecastInputs!.homeStrength = 500;
+    expect(seal.scoreGrid![0][0]).toBeGreaterThan(0);
+    expect(seal.forecastInputs!.homeStrength).toBe(2040.320763777506);
+    const persisted = migrateClubSeasonEvaluationArtifact(JSON.parse(JSON.stringify({ fixtures: [seal] })));
+    expect(persisted.fixtures[0]).toEqual(seal);
+    const restored = persisted.fixtures[0], inputs = restored.forecastInputs!;
+    const replay = getResolvedActiveScoreModel({ competitionId: restored.competitionId, home: restored.home,
+      away: restored.away, kickoff: restored.utcDate, homeStrength: inputs.homeStrength,
+      awayStrength: inputs.awayStrength, homeAdvantageElo: inputs.homeAdvantageElo }, new Date(restored.forecastAt));
+    expect(replay.matrix).toEqual(restored.scoreGrid);
+    expect(replay.expectedHomeGoals).toBe(restored.expectedHomeGoals);
+    expect(replay.expectedAwayGoals).toBe(restored.expectedAwayGoals);
+    expect(replay.artifactSha256).toBe(restored.goalCalibration!.artifactSha256);
+  });
+
+  it("preserves a prior seal's bytes when a later calibrated revision arrives", () => {
+    const before = buildSnapshotFromModel(sampleModelFixture(), "2026-08-15T13:59:00.000Z");
+    const original = JSON.stringify(before);
+    const after = buildSnapshotFromModel(calibratedFixture(), "2026-10-10T10:30:00.000Z");
+    const merged = mergeSnapshots({ ...migrateClubSeasonEvaluationArtifact(null), fixtures: [before] },
+      [calibratedFixture()], new Set(["eng.1:101"]), "2026-10-10T10:30:00.000Z");
+    expect(merged.fixtures).toHaveLength(2);
+    expect(JSON.stringify(merged.fixtures.find((r) => r.forecastId === before.forecastId))).toBe(original);
+    expect(merged.fixtures.find((r) => r.forecastId === after.forecastId)?.scoreGrid).toEqual(after.scoreGrid);
+  });
+
+  it("excludes incomplete or corrupted new calibration replay evidence without rewriting its forecast", () => {
+    const good = calibratedFixture();
+    for (const bad of [
+      { ...good, forecastInputs: undefined }, { ...good, goalCalibration: undefined },
+      { ...good, scoreGrid: undefined }, { ...good, expectedHomeGoals: good.expectedHomeGoals! + 0.1 },
+      { ...good, forecastInputs: { ...good.forecastInputs!, goalCalibrationArtifactSha256: "b".repeat(64) } },
+      { ...good, forecastProvenance: { ...good.forecastProvenance!, contributorVersion: "b".repeat(64) } },
+    ]) {
+      const seal = buildSnapshotFromModel(bad, "2026-10-10T10:30:00.000Z");
+      expect(seal.pOver2_5).toBe(good.pOver2_5);
+      expect(seal.provenanceCompleteness).toBe("source_partial");
+      seal.result = { homeScore: 2, awayScore: 0, winner: "home" };
+      const artifact = migrateClubSeasonEvaluationArtifact({ fixtures: [seal] });
+      expect(artifact.evaluation.exclusions.byReason.incompleteInputProvenance).toBe(1);
+    }
   });
 
   it("migrates old rows without inventing missing provenance", () => {

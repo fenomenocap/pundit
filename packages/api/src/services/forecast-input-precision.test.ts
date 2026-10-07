@@ -15,7 +15,8 @@ const profile = new Map(Object.entries(strengths));
 const ratings = { world: new Map<string, number>(), "eng-clubs": profile, "uefa-clubs": profile };
 const event: ActiveFixture = {
   id: 401879268, competitionId: "eng.1", competition: "Premier League",
-  homeTeam: "Arsenal", awayTeam: "Leeds", utcDate: "2026-10-10T14:00:00.000Z",
+  // Historical baseline regression predates the calibrated distribution release.
+  homeTeam: "Arsenal", awayTeam: "Leeds", utcDate: "2026-10-06T14:00:00.000Z",
   status: "SCHEDULED", neutralVenue: false, stage: null, matchday: null, group: null, score: null, featured: false,
 };
 function model(neutralVenue = false): ModelFixture {
@@ -67,7 +68,7 @@ describe("exact cached forecast inputs", () => {
     expect([context.lambdaHome, context.lambdaAway]).toEqual(eloToLambdas(strengths.Arsenal, strengths.Leeds, 0));
   });
   it("respects a coherent explicit provenance HFA override", () => {
-    const row = copied(); const hfa = 17;
+    const row = copied(); const hfa = 0;
     row.forecastInputs!.homeAdvantageElo = hfa;
     row.forecastProvenance!.homeAdvantageElo = hfa;
     const original = computeMatchModel(strengths.Arsenal, strengths.Leeds, hfa);
@@ -77,6 +78,9 @@ describe("exact cached forecast inputs", () => {
     for (const key of ["scorelines", "topScores"] as const) {
       row[key] = original[key].map(([[h, a], p]) => ({ score: `${h}-${a}`, probability: rounded(p) }));
     }
+    row.scoreGrid = scoreMatrix(...eloToLambdas(strengths.Arsenal, strengths.Leeds, hfa));
+    row.expectedHomeGoals = row.scoreGrid.reduce((sum, line, h) => sum + h * line.reduce((a, b) => a + b, 0), 0);
+    row.expectedAwayGoals = row.scoreGrid.reduce((sum, line) => sum + line.reduce((a, p, away) => a + p * away, 0), 0);
     const context = buildMatchContext(row);
     expect([context.lambdaHome, context.lambdaAway]).toEqual(eloToLambdas(strengths.Arsenal, strengths.Leeds, hfa));
   });
@@ -109,7 +113,7 @@ describe("exact cached forecast inputs", () => {
     expect(() => buildMatchContext(noProvenance)).toThrow(/provenance/);
   });
   it.each([
-    ["homeAdvantageElo", undefined], ["modelId", "another-model"], ["modelVersion", "3"],
+    ["homeAdvantageElo", undefined], ["modelId", "another-model"], ["modelVersion", "99"],
     ["contributorId", "other"], ["contributorVersion", "2"], ["methodId", "other-method"],
     ["ratingProfile", "uefa-clubs"], ["config", { baseGoals: 2 }],
   ])("rejects inconsistent forecast provenance %s", (key, invalid) => {

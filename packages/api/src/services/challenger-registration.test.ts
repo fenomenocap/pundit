@@ -133,7 +133,7 @@ describe("fail-closed dixon-coles-mle registration", () => {
     const modelData = fs.readFileSync(path.join(__dirname, "model-data.ts"), "utf8");
     const contributors = fs.readFileSync(path.join(__dirname, "model-contributors.ts"), "utf8");
     const index = fs.readFileSync(path.join(__dirname, "../index.ts"), "utf8");
-    expect(modelData).toMatch(/ELO_CHAMPION\.forecast/);
+    expect(modelData).toMatch(/getResolvedActiveScoreModel/);
     expect(modelData).not.toMatch(/REGISTERED_CHALLENGERS/);
     expect(modelData).not.toMatch(/dixon-coles-mle/);
     expect(modelData).not.toMatch(/challenger-registration/);

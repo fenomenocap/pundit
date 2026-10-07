@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { getCachedModelData } from "../services/model-data";
 import { clubRatingsAreCurrent } from "../services/club-ratings";
 import { publicModelFixtures } from "../services/model-market-odds";
+import { getEplGoalCalibrationReadiness } from "../services/epl-goal-calibration-artifact";
 
 const router: Router = Router();
 
@@ -17,7 +18,7 @@ router.get("/wc", (_req: Request, res: Response) => {
 
 router.get("/active", (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!clubRatingsAreCurrent()) {
+    if (!clubRatingsAreCurrent() || (req.query.competition !== "uefa.champions_qual" && !getEplGoalCalibrationReadiness().ready)) {
       return res.status(503).json({
         error: "Pundit's match model is temporarily unavailable.",
         code: "MODEL_UNAVAILABLE",
@@ -44,7 +45,7 @@ router.get("/active", (req: Request, res: Response, next: NextFunction) => {
 
 router.get("/fixtures", (req: Request, res: Response, next: NextFunction) => {
   try {
-    if (!clubRatingsAreCurrent()) {
+    if (!clubRatingsAreCurrent() || (req.query.competition !== "uefa.champions_qual" && !getEplGoalCalibrationReadiness().ready)) {
       return res.status(503).json({
         error: "Pundit's match model is temporarily unavailable.",
         code: "MODEL_UNAVAILABLE",

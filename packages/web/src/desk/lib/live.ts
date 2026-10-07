@@ -7,7 +7,7 @@ import {
 import { applyLiveForm, FORM, type ResultMark } from "./data/form";
 import type { TeamId } from "./data/teams";
 import { TEAM_LIST, TEAMS } from "./data/teams";
-import { deskNumbersFromModelRow } from "./grid";
+import { deskNumbersFromModelRow, type ModelRowLambdas } from "./grid";
 
 export const LIVE_API =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
@@ -146,18 +146,10 @@ function applyClubForm(snapshot: ClubFormSnapshot) {
   applyLiveStats(stats);
 }
 
-type LiveModelRow = {
-  competitionId: string;
-  fixtureId: number;
-  utcDate: string;
-  home: string;
-  away: string;
-  homeElo: number;
-  awayElo: number;
+type LiveModelRow = ModelRowLambdas & {
   pHome: number;
   pDraw: number;
   pAway: number;
-  pOver2_5: number;
   pBttsYes: number;
   topScores?: { score: string; probability: number }[];
   oddsSources?: {
@@ -167,12 +159,6 @@ type LiveModelRow = {
     pDraw: number;
     pAway: number;
   }[];
-  forecastProvenance?: {
-    methodId?: string;
-    ratingArtifactId?: string;
-    homeAdvantageElo?: number;
-    config?: { baseGoals?: number; eloScale?: number; dixonColesRho?: number; lambdaCap?: number };
-  };
 };
 
 type LiveMatch = {
@@ -186,7 +172,7 @@ type LiveMatch = {
   score?: { home: number; away: number } | null;
 };
 
-/** Frozen-total 2.70 split — production engine. Desk Over 2.5 uses the server probability. */
+/** Goal estimates and totals come from the validated server forecast. */
 
 function pickLean(pHome: number, pDraw: number, pAway: number, pBtts: number): MarketKey {
   const oneXTwo: { key: MarketKey; p: number }[] = [
@@ -255,6 +241,8 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
     away,
     status: "upcoming",
     xg,
+    ...(row.scoreGrid ? { scoreGrid: row.scoreGrid } : {}),
+    ...(row.goalCalibration ? { goalCalibration: row.goalCalibration } : {}),
     model: {
       home: row.pHome,
       draw: row.pDraw,

@@ -12,6 +12,8 @@ import {
   lookupClubRating,
 } from "./club-ratings";
 import { DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
+import { getResolvedActiveScoreModel } from "./active-score-model";
+import { EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN, getEplGoalCalibrationReadiness } from "./epl-goal-calibration-artifact";
 import { footballMatchesForFreshness, getCachedMatches } from "./football-data";
 import { updateClubSeasonSnapshots } from "./club-season-snapshots";
 import {
@@ -60,6 +62,14 @@ export interface ModelFixture {
   forecastProvenance?: ModelFixtureForecastProvenance;
   /** Exact inputs carried with this cached forecast; public Elo remains display-rounded. */
   forecastInputs?: ModelFixtureForecastInputs;
+  expectedHomeGoals?: number;
+  expectedAwayGoals?: number;
+  scoreGrid?: number[][];
+  goalCalibration?: {
+    methodId: string;
+    artifactId: string;
+    artifactSha256: string;
+  };
 }
 
 export interface ModelFixtureForecastInputs {
@@ -74,6 +84,7 @@ export interface ModelFixtureForecastInputs {
   ratingArtifactId: string | null;
   ratingArtifactSha256: string | null;
   ratingSnapshotAt: string | null;
+  goalCalibrationArtifactSha256?: string;
 }
 
 export interface ModelFixtureForecastProvenance {
@@ -89,6 +100,7 @@ export interface ModelFixtureForecastProvenance {
   ratingSourceState: "live" | "artifact" | "persisted" | "unknown";
   ratingArtifactId?: string;
   ratingArtifactSha256?: string;
+  goalCalibrationArtifactSha256?: string;
   homeAdvantageElo: number;
   config: typeof ELO_CHAMPION_CONFIG;
 }
@@ -118,7 +130,13 @@ let refreshInProgress = false;
 let missingRatingTeamIds = new Set<string>();
 
 export function getCachedModelData(): ModelDataCache {
-  return { ...cache, fixtures: cache.fixtures.filter((fixture) => isCurrentPreMatchModelFixture(fixture)) };
+  const calibration = cache.fixtures.some((fixture) => fixture.goalCalibration)
+    ? getEplGoalCalibrationReadiness() : null;
+  return { ...cache,
+    error: calibration?.ready === false ? calibration.error : cache.error,
+    fixtures: cache.fixtures.filter((fixture) => isCurrentPreMatchModelFixture(fixture)
+      && (!fixture.goalCalibration || calibration?.ready !== false)),
+  };
 }
 
 /** ESPN can advance before the hourly model refresh. Never publish the old
@@ -187,13 +205,17 @@ export function buildModelFixtureFromActive(
   const homeAdvantageElo = competition.homeFieldAdvantage && !recognized.neutralVenue
     ? DEFAULT_HOME_ADVANTAGE_ELO
     : 0;
-  const model = ELO_CHAMPION.forecast({
+  const forecastAt = context.forecastAt ?? new Date();
+  const model = getResolvedActiveScoreModel({
+    competitionId: fixture.competitionId,
+    home: fixture.homeTeam,
+    away: fixture.awayTeam,
+    kickoff: fixture.utcDate,
     homeStrength: homeElo,
     awayStrength: awayElo,
     homeAdvantageElo,
-  });
+  }, forecastAt);
   const completed = fixture.status === "FINISHED" && fixture.score;
-  const forecastAt = context.forecastAt ?? new Date();
   const usesFallbackRating = context.fallbackRatingClubs?.has(canonicalClubName(fixture.homeTeam))
     || context.fallbackRatingClubs?.has(canonicalClubName(fixture.awayTeam));
   // A fixture mixing the daily snapshot with an individual lapsed-window feed
@@ -224,6 +246,12 @@ export function buildModelFixtureFromActive(
     pUnder2_5: rounded(model.pUnder2_5),
     pBttsYes: rounded(model.pBttsYes),
     pBttsNo: rounded(model.pBttsNo),
+    expectedHomeGoals: model.expectedHomeGoals,
+    expectedAwayGoals: model.expectedAwayGoals,
+    scoreGrid: model.matrix,
+    ...(model.method === "calibrated" ? { goalCalibration: {
+      methodId: model.methodId, artifactId: model.artifactId!, artifactSha256: model.artifactSha256!,
+    } } : {}),
     topScores: model.topScores.map(([[home, away], probability]) => ({
       score: `${home}-${away}`,
       probability: rounded(probability),
@@ -255,13 +283,14 @@ export function buildModelFixtureFromActive(
       ratingArtifactId: context.ratingArtifactId ?? null,
       ratingArtifactSha256: context.ratingArtifactSha256 ?? null,
       ratingSnapshotAt: ratingSnapshotAt?.toISOString() ?? null,
+      ...(model.artifactSha256 ? { goalCalibrationArtifactSha256: model.artifactSha256 } : {}),
     },
     forecastProvenance: {
       modelId: PUNDIT_FUNDAMENTAL_MODEL_ID,
       modelVersion: PUNDIT_FUNDAMENTAL_MODEL_VERSION,
-      contributorId: ELO_CHAMPION.id,
-      contributorVersion: ELO_CHAMPION.version,
-      methodId: ELO_CHAMPION.methodId,
+      contributorId: model.method === "calibrated" ? "clubelo-calibrated-goals" : ELO_CHAMPION.id,
+      contributorVersion: model.artifactSha256 ?? ELO_CHAMPION.version,
+      methodId: model.methodId,
       forecastAt: forecastAt.toISOString(),
       ratingProfile: competition.ratingProfile,
       ratingSnapshotAt: ratingSnapshotAt?.toISOString() ?? null,
@@ -269,6 +298,7 @@ export function buildModelFixtureFromActive(
       ratingSourceState: usesFallbackRating ? "unknown" : context.ratingSourceState ?? "unknown",
       ...(context.ratingArtifactId ? { ratingArtifactId: context.ratingArtifactId } : {}),
       ...(context.ratingArtifactSha256 ? { ratingArtifactSha256: context.ratingArtifactSha256 } : {}),
+      ...(model.artifactSha256 ? { goalCalibrationArtifactSha256: model.artifactSha256 } : {}),
       homeAdvantageElo,
       config: ELO_CHAMPION_CONFIG,
     },
@@ -280,7 +310,12 @@ export function buildActiveModelFixtures(
   ratings = getCachedClubRatings().byProfile,
   context: ForecastBuildContext = {}
 ): ModelFixture[] {
+  const now = context.forecastAt ?? new Date();
+  const calibration = getEplGoalCalibrationReadiness({ now });
   return fixtures
+    // A failed EPL artifact cannot discard independent UCL or neutral coverage.
+    .filter((fixture) => calibration.ready || fixture.competitionId !== "eng.1"
+      || fixture.neutralVenue || Date.parse(fixture.utcDate) < Date.parse(EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN))
     .map((fixture) => buildModelFixtureFromActive(fixture, ratings, context))
     .filter((fixture): fixture is ModelFixture => fixture !== null)
     .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
@@ -432,9 +467,13 @@ export async function refreshModelData(activeFixtures: ActiveFixture[]): Promise
     });
     cache.fixtures = fixtures;
     cache.lastUpdated = new Date();
-    cache.error = missingTeams.length > 0
-      ? missingRatingsMessage(missingTeams, activeFixtures.length - fixtures.length)
-      : null;
+    const goalCalibration = getEplGoalCalibrationReadiness({ now: forecastAt });
+    cache.error = [
+      missingTeams.length > 0 ? missingRatingsMessage(missingTeams, activeFixtures.length - fixtures.length) : null,
+      !goalCalibration.ready && activeFixtures.some((fixture) => fixture.competitionId === "eng.1"
+        && !fixture.neutralVenue && Date.parse(fixture.utcDate) >= Date.parse(EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN))
+        ? `EPL goal calibration unavailable: ${goalCalibration.error}` : null,
+    ].filter(Boolean).join(" ") || null;
     if (cache.error) console.warn(`[Model] ${cache.error}`);
     console.log(
       `[Model] ${fixtures.length}/${activeFixtures.length} active fixtures cached.`

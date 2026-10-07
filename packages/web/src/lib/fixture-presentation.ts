@@ -1,5 +1,6 @@
 import type {
   EdgeBand,
+  GoalCalibration,
   FixtureCapability,
   MatchGrounding,
   MatchResponse,
@@ -154,7 +155,7 @@ export function deskBoardFromGrounding(grounding: MatchGrounding): DeskBoardView
     bttsNo: grounding.pBttsNo,
     over25: grounding.pOver2_5,
     under25: grounding.pUnder2_5,
-    totalsHonesty: SHARED_TOTAL_XG_SENTENCE,
+    totalsHonesty: goalForecastDisclosure(grounding.goalCalibration),
     topScores: (grounding.topScores ?? []).slice(0, 3),
     markets: rows.filter((row) => row.provenance === "market"),
     userLine: line
@@ -218,6 +219,19 @@ export function marketRowSource(row: Pick<MarketProbabilityRow, "id">): string |
 /** Same honesty line the API prints for totals. Do not sell Over 2.5 as match-specific. */
 export const SHARED_TOTAL_XG_SENTENCE =
   "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
+
+export const CALIBRATED_GOALS_SENTENCE =
+  "I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.";
+
+export function goalForecastDisclosure(calibration?: GoalCalibration): string {
+  if (calibration === undefined) return SHARED_TOTAL_XG_SENTENCE;
+  if (calibration.methodId !== "outcome-anchored-shrunk-goals-v2"
+    || !/^[a-f0-9]{64}$/.test(calibration.artifactSha256)
+    || calibration.artifactId !== `${calibration.methodId}:${calibration.artifactSha256}`) {
+    throw new Error("Invalid goal calibration provenance");
+  }
+  return CALIBRATED_GOALS_SENTENCE;
+}
 
 /** Empty-state pull-mode chip. Structured `userLine` is away @ 7; do not parse the label. */
 export const PULL_CHIP_OUTCOME: OneXTwoOutcome = "away";

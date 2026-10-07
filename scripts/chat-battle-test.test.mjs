@@ -3951,3 +3951,22 @@ test("both live briefing cases require football mechanisms and only the composit
   assert.equal(homepage.turns[1].expectDecisiveRoles, undefined);
   assert.equal(homepage.turns[1].expectNarrowFollowup, true);
 });
+
+
+test("totals honesty follows the server-bound calibrated distribution", () => {
+  const hash = "a".repeat(64);
+  const methodId = "outcome-anchored-shrunk-goals-v2";
+  const grounding = { goalCalibration: { methodId, artifactSha256: hash, artifactId: `${methodId}:${hash}` } };
+  const calibrated = "I have over 2.5 at 54%; under 2.5 is 46%. I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.";
+  const baseline = "I have over 2.5 at 50.6%; under 2.5 is 49.4%. I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
+  const check = (answer, facts) => validateAnalystExpression(answer, { expectTotalsHonesty: true }, facts).passed;
+  assert.equal(check(calibrated, grounding), true);
+  assert.equal(check(baseline, grounding), false);
+  assert.equal(check(calibrated, null), false);
+  assert.equal(check(baseline, null), true);
+  for (const bad of [
+    { ...grounding.goalCalibration, artifactSha256: "bad" },
+    { ...grounding.goalCalibration, artifactId: `${methodId}:${"b".repeat(64)}` },
+    { ...grounding.goalCalibration, methodId: "other" },
+  ]) assert.equal(check(calibrated, { goalCalibration: bad }), false);
+});

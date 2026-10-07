@@ -5,7 +5,9 @@ import {
   type ClubScorer,
   type ResultMark,
 } from "./club-form";
-import { DEFAULT_HOME_ADVANTAGE_ELO, computeMatchModel, eloToLambdas } from "./dixon-coles";
+import { DEFAULT_HOME_ADVANTAGE_ELO, eloToLambdas } from "./dixon-coles";
+import { getResolvedActiveScoreModel } from "./active-score-model";
+import { EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN } from "./epl-goal-calibration-artifact";
 import {
   ELO_CHAMPION,
   ELO_CHAMPION_CONFIG,
@@ -65,20 +67,30 @@ function exactForecastInputs(fixture: ModelFixture): [number, number, number] {
   const inputs = fixture.forecastInputs;
   // Compatibility for historical rows and hand-authored fixtures only. Newly
   // built production rows always carry their original full-precision inputs.
-  if (inputs === undefined) return [fixture.homeElo, fixture.awayElo, homeAdvantageEloFor(fixture)];
+  if (inputs === undefined) {
+    const requiresCalibration = fixture.competitionId === "eng.1"
+      && homeAdvantageEloFor(fixture) === DEFAULT_HOME_ADVANTAGE_ELO
+      && Date.parse(fixture.utcDate) >= Date.parse(EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN);
+    if (fixture.goalCalibration || (requiresCalibration
+      && (fixture.forecastProvenance !== undefined || fixture.scoreGrid !== undefined))) {
+      throw new Error("Calibrated forecast requires its exact carried inputs and artifact identity");
+    }
+    return [fixture.homeElo, fixture.awayElo, homeAdvantageEloFor(fixture)];
+  }
   if (inputs === null || typeof inputs !== "object") {
     throw new Error("Cached forecast inputs do not match fixture provenance");
   }
   const provenance = fixture.forecastProvenance;
+  const calibration = fixture.goalCalibration;
   const valid = provenance != null
     && [inputs.homeStrength, inputs.awayStrength, inputs.homeAdvantageElo].every(Number.isFinite)
     && Number.isFinite(provenance.homeAdvantageElo)
     && inputs.homeAdvantageElo === provenance.homeAdvantageElo
     && provenance.modelId === PUNDIT_FUNDAMENTAL_MODEL_ID
     && provenance.modelVersion === PUNDIT_FUNDAMENTAL_MODEL_VERSION
-    && provenance.contributorId === ELO_CHAMPION.id
-    && provenance.contributorVersion === ELO_CHAMPION.version
-    && provenance.methodId === ELO_CHAMPION.methodId
+    && provenance.contributorId === (calibration ? "clubelo-calibrated-goals" : ELO_CHAMPION.id)
+    && provenance.contributorVersion === (calibration?.artifactSha256 ?? ELO_CHAMPION.version)
+    && provenance.methodId === (calibration?.methodId ?? ELO_CHAMPION.methodId)
     && provenance.ratingProfile === getCompetitionById(fixture.competitionId)?.ratingProfile
     && provenance.config != null
     && (Object.keys(ELO_CHAMPION_CONFIG) as Array<keyof typeof ELO_CHAMPION_CONFIG>)
@@ -91,9 +103,18 @@ function exactForecastInputs(fixture: ModelFixture): [number, number, number] {
     && Math.round(inputs.awayStrength * 10) / 10 === fixture.awayElo
     && inputs.ratingArtifactId === (provenance.ratingArtifactId ?? null)
     && inputs.ratingArtifactSha256 === (provenance.ratingArtifactSha256 ?? null)
-    && inputs.ratingSnapshotAt === provenance.ratingSnapshotAt;
+    && inputs.ratingSnapshotAt === provenance.ratingSnapshotAt
+    && (inputs.goalCalibrationArtifactSha256 ?? null) === (calibration?.artifactSha256 ?? null)
+    && (provenance.goalCalibrationArtifactSha256 ?? null) === (calibration?.artifactSha256 ?? null);
   if (!valid) throw new Error("Cached forecast inputs do not match fixture provenance");
-  const model = computeMatchModel(inputs.homeStrength, inputs.awayStrength, inputs.homeAdvantageElo);
+  const model = getResolvedActiveScoreModel({
+    competitionId: fixture.competitionId, home: fixture.home, away: fixture.away, kickoff: fixture.utcDate,
+    homeStrength: inputs.homeStrength, awayStrength: inputs.awayStrength, homeAdvantageElo: inputs.homeAdvantageElo,
+  });
+  if ((model.artifactSha256 ?? null) !== (calibration?.artifactSha256 ?? null)
+    || (calibration && (calibration.artifactId !== model.artifactId || calibration.methodId !== model.methodId))) {
+    throw new Error("Cached forecast calibration does not match the reviewed artifact");
+  }
   const probabilities = ["pHome", "pDraw", "pAway", "pOver2_5", "pUnder2_5", "pBttsYes", "pBttsNo"] as const;
   const matches = probabilities.every((key) => Number.isFinite(fixture[key])
       && Math.round(model[key] * 10_000) / 10_000 === fixture[key])
@@ -107,11 +128,25 @@ function exactForecastInputs(fixture: ModelFixture): [number, number, number] {
         });
     });
   if (!matches) throw new Error("Cached forecast inputs do not reproduce fixture probabilities");
+  if (fixture.scoreGrid !== undefined || calibration) {
+    const grid = fixture.scoreGrid;
+    if (!Array.isArray(grid) || grid.length !== model.matrix.length
+      || grid.some((row, home) => !Array.isArray(row) || row.length !== model.matrix[home].length
+        || row.some((p, away) => !Number.isFinite(p) || Math.abs(p - model.matrix[home][away]) > 1e-12))
+      || !Number.isFinite(fixture.expectedHomeGoals) || !Number.isFinite(fixture.expectedAwayGoals)
+      || Math.abs(fixture.expectedHomeGoals! - model.expectedHomeGoals) > 1e-10
+      || Math.abs(fixture.expectedAwayGoals! - model.expectedAwayGoals) > 1e-10) {
+      throw new Error("Cached forecast grid or expected goals do not reproduce the reviewed distribution");
+    }
+  }
   return [inputs.homeStrength, inputs.awayStrength, inputs.homeAdvantageElo];
 }
 
 export function buildMatchContext(fixture: ModelFixture): MatchContext {
-  const [lambdaHome, lambdaAway] = eloToLambdas(...exactForecastInputs(fixture));
+  const inputs = exactForecastInputs(fixture);
+  const [lambdaHome, lambdaAway] = fixture.goalCalibration
+    ? [fixture.expectedHomeGoals!, fixture.expectedAwayGoals!]
+    : eloToLambdas(...inputs);
   const snapshot = getClubFormSnapshot(fixture.competitionId);
   const homeRow = teamRow(snapshot, fixture.home);
   const awayRow = teamRow(snapshot, fixture.away);

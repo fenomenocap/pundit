@@ -76,6 +76,12 @@ export function modelFixtureIdentity(
   return `espn:${fixture.competitionId}:${fixture.fixtureId}`;
 }
 
+export interface GoalCalibration {
+  methodId: "outcome-anchored-shrunk-goals-v2";
+  artifactId: string;
+  artifactSha256: string;
+}
+
 export interface ModelFixtureResponse {
   competitionId: string;
   competition: string;
@@ -90,6 +96,10 @@ export interface ModelFixtureResponse {
   away: string;
   homeElo: number;
   awayElo: number;
+  expectedHomeGoals?: number;
+  expectedAwayGoals?: number;
+  scoreGrid?: number[][];
+  goalCalibration?: GoalCalibration;
   /** Original forecast inputs; display Elo fields above remain rounded. */
   forecastInputs?: {
     homeStrength: number;
@@ -103,6 +113,7 @@ export interface ModelFixtureResponse {
     ratingArtifactId: string | null;
     ratingArtifactSha256: string | null;
     ratingSnapshotAt: string | null;
+    goalCalibrationArtifactSha256?: string;
   };
   pHome: number;
   pDraw: number;
@@ -144,6 +155,7 @@ export interface ModelFixtureResponse {
     ratingArtifactSha256?: string;
     homeAdvantageElo: number;
     config: Record<string, number>;
+    goalCalibrationArtifactSha256?: string;
   };
 }
 
@@ -424,6 +436,10 @@ export interface PricingObject {
 
 export interface MatchGrounding {
   kind: "match";
+  goalCalibration?: GoalCalibration;
+  expectedHomeGoals?: number;
+  expectedAwayGoals?: number;
+  scoreGrid?: number[][];
   fixtureId: string;
   competitionId: string;
   competition: string;

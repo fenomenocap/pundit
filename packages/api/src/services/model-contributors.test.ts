@@ -54,7 +54,7 @@ describe("model contributor boundary", () => {
     })).toThrow(DIXON_COLES_MLE_NOT_ACTIVATED);
   });
 
-  it("versions the Phase-0 mapping as Fundamental 2", () => {
-    expect(PUNDIT_FUNDAMENTAL_MODEL_VERSION).toBe("2");
+  it("versions the active scoring release as Fundamental 3", () => {
+    expect(PUNDIT_FUNDAMENTAL_MODEL_VERSION).toBe("3");
   });
 });

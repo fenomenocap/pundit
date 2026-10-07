@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   hasCompleteLeagueSchedule,
   isSeasonOutlookQuestion,
@@ -60,6 +60,15 @@ const scheduled: FootballMatch[] = [
 ];
 
 describe("season simulator", () => {
+  it("uses zero home advantage for a neutral season fixture", () => {
+    const ratings = { world: new Map<string, number>(), "eng-clubs": new Map([["Arsenal", 1850], ["Liverpool", 1840]]), "uefa-clubs": new Map<string, number>() };
+    const sampleScore = vi.fn((): [number, number] => [0, 0]);
+    const contributor: ForecastContributor = { id: "neutral-control", version: "1", methodId: "neutral-control", status: "challenger", forecast: ({ homeStrength, awayStrength, homeAdvantageElo }) => computeMatchModel(homeStrength, awayStrength, homeAdvantageElo), sampleScore };
+    expect(simulateSeasonOutlook("eng.1", standings, [{ ...scheduled[0], neutralVenue: true }], ratings, 2, () => 0.5, contributor)).not.toBeNull();
+    expect(sampleScore.mock.calls).toHaveLength(2);
+    for (const [input] of sampleScore.mock.calls as unknown as [{ homeAdvantageElo: number }][]) expect(input.homeAdvantageElo).toBe(0);
+  });
+
   it("detects season outlook questions", () => {
     expect(isSeasonOutlookQuestion("Who will win the Premier League?")).toBe(true);
     expect(isSeasonOutlookQuestion("What does the table show?")).toBe(false);

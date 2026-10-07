@@ -24,8 +24,11 @@ import {
   PULL_CHIP_OUTCOME,
   pullModeChipCopy,
   SHARED_TOTAL_XG_SENTENCE,
+  CALIBRATED_GOALS_SENTENCE,
+  goalForecastDisclosure,
   userLinePayloadForAsk,
 } from "./fixture-presentation.ts";
+import { deskNumbersFromModelRow, samplePaperScore, sampleScoreGrid, type ModelRowLambdas } from "../desk/lib/grid.ts";
 
 function pricing(overrides: Partial<PricingObject> = {}): PricingObject {
   return {
@@ -272,5 +275,96 @@ describe("UK kickoff clock", () => {
     assert.equal(formatKickoffDay("2026-10-10T11:30:00Z"), "10 Oct");
     assert.equal(formatKickoffTime("2026-12-10T12:30:00Z"), "12:30");
     assert.equal(formatKickoffDay("2026-08-01T23:30:00Z"), "2 Aug");
+  });
+});
+
+
+function calibratedRow(): ModelRowLambdas {
+  const artifactSha256 = "b".repeat(64);
+  return {
+    competitionId: "eng.1", fixtureId: 1, utcDate: "2026-10-10T11:30:00Z", home: "Arsenal", away: "Leeds",
+    homeElo: 1900, awayElo: 1600, pHome: 0.5, pDraw: 0.3, pAway: 0.2,
+    pOver2_5: 0.35, pUnder2_5: 0.65, pBttsYes: 0.45, pBttsNo: 0.55,
+    expectedHomeGoals: 1.15, expectedAwayGoals: 0.8,
+    scoreGrid: [[0.1, 0.1, 0.05], [0.2, 0.1, 0.05], [0.1, 0.2, 0.1]],
+    goalCalibration: { methodId: "outcome-anchored-shrunk-goals-v2", artifactSha256,
+      artifactId: `outcome-anchored-shrunk-goals-v2:${artifactSha256}` },
+    forecastInputs: { homeStrength: 1900, awayStrength: 1600, homeAdvantageElo: 42,
+      fixtureId: 1, competitionId: "eng.1", utcDate: "2026-10-10T11:30:00Z", home: "Arsenal", away: "Leeds",
+      ratingArtifactId: "ratings:test", ratingArtifactSha256: "a".repeat(64), ratingSnapshotAt: "2026-10-06T00:00:00Z",
+      goalCalibrationArtifactSha256: artifactSha256 },
+    forecastProvenance: { homeAdvantageElo: 42, ratingArtifactId: "ratings:test", ratingArtifactSha256: "a".repeat(64),
+      ratingSnapshotAt: "2026-10-06T00:00:00Z", goalCalibrationArtifactSha256: artifactSha256,
+      config: { baseGoals: 1.35, eloScale: 400, lambdaCap: 5 } },
+  };
+}
+
+describe("calibrated goal distribution delivery", () => {
+  it("uses final server means instead of reconstructing shape or fixed-total lambdas", () => {
+    const row = calibratedRow();
+    assert.deepEqual(deskNumbersFromModelRow(row), { xg: [1.15, 0.8], over25: 0.35 });
+    row.pOver2_5 = 0.35004;
+    assert.equal(deskNumbersFromModelRow(row).over25, 0.35004);
+    delete row.goalCalibration;
+    delete row.forecastInputs!.goalCalibrationArtifactSha256;
+    delete row.forecastProvenance!.goalCalibrationArtifactSha256;
+    assert.deepEqual(deskNumbersFromModelRow(row).xg, [2.37, 0.33]);
+  });
+
+  it("rejects mismatched artifacts, fixture ownership and final-grid arithmetic", () => {
+    const mutations: Array<(row: ModelRowLambdas) => void> = [
+      row => { row.goalCalibration!.artifactId = "wrong"; },
+      row => { row.goalCalibration!.artifactSha256 = "not-a-hash"; },
+      row => { row.forecastInputs!.goalCalibrationArtifactSha256 = "a".repeat(64); },
+      row => { delete row.forecastProvenance!.goalCalibrationArtifactSha256; },
+      row => { row.competitionId = "uefa.champions_qual"; },
+      row => { row.forecastInputs!.home = "Chelsea"; },
+      row => { row.expectedHomeGoals = 2.22; },
+      row => { row.expectedAwayGoals = NaN; },
+      row => { row.pOver2_5 = 0.5; },
+      row => { row.pBttsYes = 0.5; },
+      row => { row.pHome = 0.6; },
+      row => { row.pUnder2_5 = 0.7; },
+      row => { row.pBttsNo = 0.7; },
+      row => { row.scoreGrid![0][0] = -0.1; },
+      row => { row.scoreGrid![0][0] = NaN; },
+      row => { row.scoreGrid![0][0] = 0.2; },
+      row => { row.scoreGrid = [[1, 0], [0]]; },
+      row => { delete row.scoreGrid; },
+      row => { delete row.goalCalibration; },
+    ];
+    for (const mutate of mutations) {
+      const row = calibratedRow(); mutate(row);
+      assert.throws(() => deskNumbersFromModelRow(row));
+    }
+  });
+
+  it("renders calibrated and baseline disclosures from the actual method", () => {
+    assert.equal(goalForecastDisclosure(calibratedRow().goalCalibration), CALIBRATED_GOALS_SENTENCE);
+    assert.equal(goalForecastDisclosure(), SHARED_TOTAL_XG_SENTENCE);
+    const invalid = { ...calibratedRow().goalCalibration!, artifactId: "wrong" };
+    assert.throws(() => goalForecastDisclosure(invalid));
+    const grounding: MatchGrounding = { kind: "match", competition: "Premier League", homeFieldAdvantage: true,
+      date: "2026-10-10", stage: "match", topScores: [], scorelines: [], stakePHome: null, stakePDraw: null, stakePAway: null, fixtureId: "espn:eng.1:1", competitionId: "eng.1", home: "Arsenal", away: "Leeds",
+      pricing: pricing(), oddsSources: [], pHome: 0.5, pDraw: 0.3, pAway: 0.2,
+      pOver2_5: 0.35, pUnder2_5: 0.65, pBttsYes: 0.45, pBttsNo: 0.55,
+      goalCalibration: calibratedRow().goalCalibration };
+    assert.equal(deskBoardFromGrounding(grounding).totalsHonesty, CALIBRATED_GOALS_SENTENCE);
+    delete grounding.goalCalibration;
+    assert.equal(deskBoardFromGrounding(grounding).totalsHonesty, SHARED_TOTAL_XG_SENTENCE);
+  });
+
+  it("paper sampling uses the full joint CDF with one draw and retains a legacy fallback", () => {
+    const row = calibratedRow();
+    let calls = 0;
+    assert.deepEqual(samplePaperScore({ xg: [1.15, 0.8], scoreGrid: row.scoreGrid, goalCalibration: row.goalCalibration },
+      () => { calls++; return 0.95; }), [2, 2]);
+    assert.equal(calls, 1);
+    assert.deepEqual(sampleScoreGrid(row.scoreGrid!, () => 0), [0, 0]);
+    assert.deepEqual(sampleScoreGrid(row.scoreGrid!, () => 0.10001), [0, 1]);
+    assert.deepEqual(samplePaperScore({ xg: [0, 0] }, () => 0.5), [0, 0]);
+    assert.throws(() => samplePaperScore({ xg: [1.15, 0.8], goalCalibration: row.goalCalibration }));
+    assert.throws(() => sampleScoreGrid([[0, 0], [0, 0]]));
+    assert.throws(() => sampleScoreGrid(row.scoreGrid!, () => 1));
   });
 });

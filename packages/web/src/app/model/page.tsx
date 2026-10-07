@@ -21,7 +21,7 @@ import {
   formatPercent as percent,
   marketRowsFromModel,
   modelFixtureStatusLabel,
-  SHARED_TOTAL_XG_SENTENCE,
+  goalForecastDisclosure,
 } from "@/lib/fixture-presentation";
 
 function stageLabel(stage: string): string {
@@ -309,7 +309,7 @@ export default function ModelPage() {
                                     data-testid="totals-honesty"
                                     className="text-[11px] leading-snug text-muted-foreground"
                                   >
-                                    {SHARED_TOTAL_XG_SENTENCE}
+                                    {goalForecastDisclosure(fixture.goalCalibration)}
                                   </p>
                                   <div className="flex items-center justify-between font-mono text-sm tabular-nums">
                                     <span className="text-muted-foreground">Over 2.5</span>

@@ -403,7 +403,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     assertionFailures.push(...copyValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
-    const expressionValidation = validateAnalystExpression(result.answer, { ...scenario, ...turn });
+    const expressionValidation = validateAnalystExpression(result.answer, { ...scenario, ...turn }, grounding);
     semanticCheckCount += Object.keys(expressionValidation.assertions).length;
     for (const [name, passed] of Object.entries(expressionValidation.assertions)) {
       result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
