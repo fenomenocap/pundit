@@ -1360,6 +1360,33 @@ export function establishedNothing(verification) {
     && (ABSTAINED_VERIFICATION.has(verification?.status) || verification?.status === "conflict");
 }
 
+/** A scoped news scenario may retain supported claims after removing a
+ * conflict. Its positive delivery still needs the strict source/date/count
+ * checks; an explicit verification expectation always takes priority. */
+export function deriveTurnVerificationExpectation(verification, scenario = {}, turn = {}) {
+  const expectation = {
+    ...turn,
+    requireCitation: Boolean(turn.requireCitation || scenario.requireCitation),
+    allowAbstention: Boolean(turn.allowAbstention || scenario.allowAbstention),
+    requireSourcedTeamNews: Boolean(turn.requireSourcedTeamNews || scenario.requireSourcedTeamNews),
+    requirePositiveDatedClubNews: Boolean(turn.requirePositiveDatedClubNews || scenario.requirePositiveDatedClubNews),
+  };
+  if (turn.expectVerification === undefined && scenario.expectVerification !== undefined) {
+    expectation.expectVerification = scenario.expectVerification;
+  }
+  const scoped = (turn.allowSupportedNewsConflict ?? scenario.allowSupportedNewsConflict) === true;
+  const positive = Number.isInteger(verification?.supportedClaimCount) && verification.supportedClaimCount >= 1;
+  expectation.guardUnsupportedConflictCounterfactuals = scoped && positive && verification?.status === "conflict";
+  if (scoped && positive) {
+    expectation.requireSourcedTeamNews = true;
+    expectation.requirePositiveDatedClubNews = true;
+    if (verification.status === "conflict" && expectation.expectVerification == null) {
+      expectation.expectVerification = ["verified", "conflict", ...(expectation.allowAbstention ? ABSTAINED_VERIFICATION : [])];
+    }
+  }
+  return expectation;
+}
+
 export function validateVerification(verification, expectation = {}) {
   const statuses = new Set(["not-required", "verified", "conflict", "abstain", "unavailable"]);
   const shape = statuses.has(verification?.status)
