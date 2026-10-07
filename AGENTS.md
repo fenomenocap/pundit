@@ -43,6 +43,12 @@ Direct current-manager answers settle from verified, source-bound role facts, in
 
 ## Production verification
 
+### Whole-request completion
+
+[`docs/ops/full-request-completion.json`](docs/ops/full-request-completion.json) is the authoritative register for the user's entire October QA/fix request, including predictive calibration and completion governance. Track implementation, testing, deployment and product acceptance separately. Before saying the task, "everything", or the full request is complete, run `pnpm verify:completion` and require `complete: true`. A release certification PASS, merged PR, zero open PRs, or working collector proves only its own scope; it cannot close unresolved calibration. Use `pnpm completion:status` for ongoing status without a completion claim. See [`docs/ops/request-completion.md`](docs/ops/request-completion.md) for evidence and calibration receipt requirements.
+
+Keep working on ongoing items. A worse candidate, uncertainty, optional live slate absence, or insufficient future observations is not an external blocker. Blocked work requires a concrete external condition, missing input, attempted actions, evidence, responsible owner and unblock action. Historical matches can establish retrospective improvement without waiting for future results. Preserve previous release receipts and failures unchanged; new evidence must bind to the actual source and deployment under review. Scope changes require explicit user instructions and corresponding register/guard review; an agent cannot self-approve a product boundary in place of predictive improvement.
+
 Live URLs: **Web** [thepundit.vercel.app](https://thepundit.vercel.app) · **API** [thepundit.up.railway.app](https://thepundit.up.railway.app)
 
 After Vercel or Railway env/config changes that affect production, run `pnpm verify:prod` from the repo root (~15s). For local dev against running servers, use `bash scripts/verify-local.sh`.
