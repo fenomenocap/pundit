@@ -162,7 +162,15 @@
       "id": "output-contracts",
       "request": "Test actual output, conversation history, routing and all delivery formats.",
       "owner": "root",
-      "state": "accepted",
+      "state": "ongoing",
+      "nextAction": "Reject the invalid For Arsenal player-market identity, independently review the extractor and evaluator regressions, deploy the tested repair and rerun exact-source full chat/browser/critic certification before accepting output contracts.",
+      "blocker": null,
+      "historicalEvidence": [
+        {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+        {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+        {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"},
+        {"path": "artifacts/historical-calibration-2026-10-07/production/pr260-material-scorer-identity-certification-failure.json", "sha256": "fbc2c7a9fc7d5a56c31fdea64e52a7435aa2bfa6de6e5b2bb75e67cf39ece58d"}
+      ],
       "acceptanceCriteria": [
         "JSON, desk and SSE preserve typed facts and scope.",
         "No unsupported scorer, lineup, causal probability or current-fact claims."
@@ -194,13 +202,13 @@
           ]
         },
         "productAcceptance": {
-          "status": "passed",
-          "reason": "71 successful production turns reviewed, plus rendering and controlled transport/history cases.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "status": "pending",
+          "reason": "Independent review of the complete 0aa7 release found a club heading delivered as a player name despite automated scenario PASS. The previous product acceptance remains historical; this request stays unfinished pending repaired exact-source acceptance.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr260-material-scorer-identity-certification-failure.json",
+              "sha256": "fbc2c7a9fc7d5a56c31fdea64e52a7435aa2bfa6de6e5b2bb75e67cf39ece58d"
+            }
           ]
         }
       }

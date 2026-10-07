@@ -107,6 +107,8 @@ const STOPWORDS = new Set([
   "premier", "league", "home", "away", "team", "news", "injury", "predicted",
   "lineup", "confirmed", "starting", "available", "doubtful", "suspended",
   "player", "props", "decimal", "price", "prices", "versus", "with", "from",
+  // Capitalized club headings (e.g. "For Arsenal") are not player identities.
+  "for", "of", "to", "at", "on", "against", "vs",
   "this", "that", "their", "they", "will", "most", "likely", "score",
   "sports", "sky", "bbc", "betting", "preview", "football", "soccer", "latest",
   "update", "updates", "best", "tips", "accumulator", "acca", "live", "blog",
