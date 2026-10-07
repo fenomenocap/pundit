@@ -61,7 +61,7 @@ export const DESK_DATED_CLUB_NEWS_SYSTEM = `Extract club injury/status records f
 
 Use only supplied source IDs and focus clubs. Choose distinct player records; prefer the newest applicable report. The player's full name must occur in that same source body. statusText is a short grammatical fragment following the player's name, describing only the explicitly reported injury, fitness assessment, training, withdrawal or suspension. Preserve uncertainty and distinctions between these states. Do not infer club ownership; unsupported ownership/status will be rejected by the verifier.
 
-Choose only these status forms: "was reported injured", "was sidelined with a hamstring injury", "was reported doubtful", "may be doubtful", "was suspended", "was back in training", "has been spotted back in training", "has continued training", "has returned to training", "withdrew from international duty", "was undergoing assessment", "was in rehabilitation", "had a hamstring issue pending assessment", or "has been dealing with neural hamstring pain". Use a supported injury/issue/problem/strain/pain/tear for these body parts only: hamstring, neural hamstring, groin, calf, knee, ankle, muscle, back, thigh, adductor, achilles, foot, hip, shoulder, ligament or tendon. Do not add any other clause, event context or adverb.
+Choose only these status forms: "was reported injured", "was sidelined with a hamstring injury", "was reported doubtful", "may be doubtful", "was suspended", "was back in training", "has been spotted back in training", "has continued training", "has returned to training", "withdrew from international duty", "was undergoing assessment", "was in rehabilitation", "had a hamstring issue pending assessment", "sustained a hamstring issue", or "has been dealing with neural hamstring pain". Use a supported injury/issue/problem/strain/pain/tear for these body parts only: hamstring, neural hamstring, groin, calf, knee, ankle, muscle, back, thigh, adductor, achilles, foot, hip, shoulder, ligament or tendon. Do not add any other clause, event context or adverb.
 
 Never put dates, days, months, relative event timing, durations, quantities, publication metadata, citations, URLs or source titles in statusText. The server supplies the publication date and citation. A publication date never establishes when an injury occurred. Omit potential return dates and predictions about future availability, starts, lineups or the upcoming fixture. Do not put a player name, club name or internal evidence terminology inside statusText. No probabilities, prices, betting advice or numerical injury effects. Use no prior turns or training memory.`;
 
@@ -73,6 +73,7 @@ const CLUB_NEWS_STATE = "(?:injured|sidelined|unavailable|doubtful|suspended|bac
 const CLUB_NEWS_STATUS = new RegExp("^(?:"
   + `(?:(?:was|is)(?: reported)?|has been|had been|remains|may be|might be|could be) ${CLUB_NEWS_STATE}(?: with (?:a |an )?${CLUB_NEWS_CONDITION})?`
   + `|(?:was reported to have|has|had|has been dealing with|is dealing with|was dealing with) (?:a |an )?${CLUB_NEWS_CONDITION}(?: pending (?:further )?assessment)?`
+  + `|(?:sustained|suffered|has sustained|has suffered|had sustained|had suffered) (?:a |an )?${CLUB_NEWS_CONDITION}`
   + "|has (?:returned to|resumed|continued) training|has been spotted back in training"
   + "|(?:withdrew|had withdrawn|was reported to have withdrawn) from international duty"
   + "|(?:was|is|was reported to be) progressing(?: well)? in rehabilitation"
@@ -115,7 +116,13 @@ export function renderDatedClubNewsRecords(
     // Narrative event dates and future availability cannot be rescued by a
     // citation. Those fields are deliberately absent from the record schema.
     if (!CLUB_NEWS_STATUS.test(status)
-      || textMentionsClub(status, grounding.home) || textMentionsClub(status, grounding.away)) return reject("status_grammar");
+      || textMentionsClub(status, grounding.home) || textMentionsClub(status, grounding.away)) {
+      // A prohibited narrative fragment is never expressed. Independently
+      // valid source-bound records still owe verification; one bad status
+      // must not erase their useful supported updates.
+      onReject?.("status_grammar");
+      continue;
+    }
     const fullName = playerName.trim().replace(/\s+/g, " ");
     const key = `${ownedClub}:${fullName.toLocaleLowerCase()}`;
     if (seen.has(key)) return reject("duplicate");
@@ -124,7 +131,7 @@ export function renderDatedClubNewsRecords(
     // an offset near midnight must not silently move it to another UTC day.
     rendered.push(`In an update published on ${publicationDay}, ${ownedClub}’s ${fullName} ${status} [[${sourceId}]].`);
   }
-  return rendered.join(" ");
+  return rendered.length ? rendered.join(" ") : null;
 }
 
 /** Literal passages only. A publisher's navigation can consume the old entire
@@ -737,7 +744,7 @@ export async function writeDeskProse(
     if (!text || (datedClubNews && msg.stop_reason === "max_tokens")) return null;
     if (datedClubNews && grounding?.kind === "match") {
       const records = renderDatedClubNewsRecords(text, evidence, grounding, Date.now(), (reason) => {
-        console.info(JSON.stringify({ event: "desk_prose_skipped", mode, reason }));
+        console.info(JSON.stringify({ event: "desk_news_record_rejected", mode, reason }));
       });
       return records;
     }
