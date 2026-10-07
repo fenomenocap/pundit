@@ -50,6 +50,7 @@ import {
   validateResponseCorrectness,
   validateTeamNewsDiscipline,
   validatePositiveDatedClubNews,
+  validateDatedClubNewsConsistency,
   validatePositiveCurrentManager,
   validateVerification,
   deriveTurnVerificationExpectation,
@@ -466,6 +467,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       }
       semanticCheckCount += Object.keys(positiveNews.assertions).length;
       assertionFailures.push(...positiveNews.failures.map((failure) => `turn ${turnNumber}: ${failure}`));
+    }
+    if (verificationExpectation.requireDatedClubNewsConsistency) {
+      const newsConsistency = validateDatedClubNewsConsistency(result.answer, result.citations, result.verification);
+      for (const [name, passed] of Object.entries(newsConsistency.assertions)) {
+        result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+      }
+      semanticCheckCount += Object.keys(newsConsistency.assertions).length;
+      assertionFailures.push(...newsConsistency.failures.map((failure) => `turn ${turnNumber}: ${failure}`));
     }
     result.turnResults.push({
       turn: turnNumber,
