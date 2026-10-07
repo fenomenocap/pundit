@@ -722,7 +722,7 @@ describe("complete standalone football lessons", () => {
     }
   });
 
-  it.each(["dated", "stale", "undated", "404"] as const)("hydrates selected manager news before expression without profile starvation (%s)", async (mode) => {
+  it.each(["dated", "punctuation", "orphan", "stale", "undated", "404", "future", "future-snippet", "retired", "quoted", "comment"] as const)("hydrates selected manager news before expression without profile starvation (%s)", async (mode) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-07T06:00:00Z"));
     await refreshClubRatings(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
@@ -731,7 +731,8 @@ describe("complete standalone football lessons", () => {
     // The role sentence and date are from the separately captured Sky publisher
     // page; search supplied no date, and nine club-profile hits precede it.
     const role = "Arsenal manager Mikel Arteta says he and the club are very much aligned when it comes to signing a new contract with the club.";
-    const news = { title: "Mikel Arteta contract: Arsenal boss agrees new deal", link: "https://www.skysports.com/football/news/13588507/mikel-arteta-contract-arsenal-boss-agrees-new-deal-to-extend-stay-at-premier-league-champions", date: "", snippet: role };
+    const news = { title: "Arsenal manager contract update", link: "https://www.skysports.com/football/news/13588507/mikel-arteta-contract-arsenal-boss-agrees-new-deal-to-extend-stay-at-premier-league-champions", date: "", snippet: "Arsenal club contract reporting." };
+    if (mode === "future-snippet") news.snippet = role;
     const profiles = Array.from({ length: 9 }, (_, index) => ({ title: `Arsenal manager staff directory ${index}`, link: `https://www.arsenal.com/men/staff/profile-${index}`, date: "", snippet: "Arsenal club staff profile details." }));
     const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation((candidates) => {
       expect(candidates.length).toBeLessThanOrEqual(8);
@@ -742,8 +743,11 @@ describe("complete standalone football lessons", () => {
       expect(signal).toBe(controller.signal); expect(options?.cache).toBeDefined();
       expect(candidates.length).toBeLessThanOrEqual(8); hydrated = true;
       return candidates.filter((candidate) => candidate.url === news.link && mode !== "404").map((candidate) => ({
-        ...candidate, date: mode === "dated" ? "2026-09-22T18:26:00+0000" : mode === "stale" ? "2026-07-01" : "",
-        finalUrl: candidate.url, text: role, retrievedAt: new Date().toISOString(),
+        ...candidate, date: mode === "undated" ? "" : mode === "stale" ? "2026-07-01" : ["future", "future-snippet"].includes(mode) ? "2026-10-08T00:00:00Z" : "2026-09-22T18:26:00+0000",
+        finalUrl: candidate.url, text: mode === "quoted" ? `A rejected rumor: “${role}”`
+          : mode === "comment" ? `Arsenal report.\n\nYour views:\n\n${role}`
+          : mode === "retired" ? "Arsenal manager Mikel Arteta retired and no longer leads the club."
+          : `${"Page navigation\n\n".repeat(400)}${role}`, retrievedAt: new Date().toISOString(),
       }));
     });
     const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
@@ -753,18 +757,21 @@ describe("complete standalone football lessons", () => {
       if (!verifying) {
         expect(hydrated).toBe(true); expect(input.system).toBe(DESK_CURRENT_FACT_SYSTEM);
         const prompt = String(input.messages.at(-1)?.content);
-        if (mode === "dated") expect(prompt).toContain("[[S10]] 22 Sep");
+        if (["dated", "punctuation", "orphan"].includes(mode)) { expect(prompt).toContain("[[S10]] 22 Sep"); expect(prompt).toContain(role); expect(prompt).not.toContain("Page navigation"); }
+        if (["future", "future-snippet", "undated", "404", "quoted", "comment"].includes(mode)) expect(prompt).not.toContain(role);
         if (mode === "stale") expect(prompt).not.toContain("[[S10]]");
       }
       return Promise.resolve({ content: [{ type: "text", text: verifying
         ? JSON.stringify({ decisions: data.claims.map((claim: { id: string }) => ({ claimId: claim.id, outcome: "supported", evidenceIds: ["S10"] })), summary: "Checked supplied publisher role sentence." })
+        : mode === "punctuation" ? "Mikel Arteta is Arsenal's manager. [[S10]] He agreed a new contract to extend his stay at the club. [[S10]]"
+        : mode === "orphan" ? "Mikel Arteta is Arsenal's manager. Unrelated reporting [[S10]]."
         : "Arsenal’s manager is Mikel Arteta [[S10]]." }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
     });
     searchWeb.mockReset(); searchWeb.mockResolvedValue([...profiles, news]);
     try {
       const context = { fixtureId: espnFixtureIdentity(model) };
       const checkDelivery = (result: Awaited<ReturnType<typeof answerQuestion>>) => {
-        if (mode === "dated") {
+        if (["dated", "punctuation"].includes(mode)) {
           expect(result.answer).toContain("Arsenal’s manager is Mikel Arteta"); expect(result.answer).toContain(news.link);
           expect(result.citations?.[0]?.id).toBe("S10"); expect(result.verification?.supportedClaimCount).toBe(1);
         } else {

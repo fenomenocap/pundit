@@ -1386,6 +1386,10 @@ export function validateVerification(verification, expectation = {}) {
     assertions.positiveNewsVerification = shape && verification.supportedClaimCount >= 1
       && ["verified", "conflict"].includes(verification.status);
   }
+  if (expectation.expectCurrentManager) {
+    assertions.positiveCurrentManagerVerification = shape && verification.supportedClaimCount >= 1
+      && ["verified", "conflict"].includes(verification.status);
+  }
   const failures = Object.entries(assertions).filter(([, passed]) => !passed)
     .map(([name]) => `verification failed ${name}`);
   return { passed: failures.length === 0, assertions, failures };
@@ -1994,6 +1998,71 @@ export function validateTeamNewsDiscipline(answer) {
       ...(!identified ? [`answer identifies a generic page descriptor as an unavailable or selected player: ${unidentifiedSubjects[0].trim()}`] : []),
     ],
   };
+}
+
+/** Required manager delivery gate, independent of the API role extractor.
+ * Counters cannot replace an affirmative, cited current-role proposition. */
+export function validatePositiveCurrentManager(answer, citations, verification, expectation, nowMs = Date.now()) {
+  const team = expectation?.team;
+  const scopeValid = typeof team === "string" && team.trim().length > 0;
+  const verified = ["verified", "conflict"].includes(verification?.status)
+    && Number.isInteger(verification?.supportedClaimCount) && verification.supportedClaimCount >= 1;
+  const sourceRows = (Array.isArray(citations) ? citations : []).filter((source) => {
+    const day = /^\d{4}-\d{2}-\d{2}/.exec(source?.date ?? "")?.[0];
+    const published = Date.parse(source?.date);
+    let validUrl = false;
+    try { validUrl = ["http:", "https:"].includes(new URL(source?.url).protocol); } catch { /* Invalid metadata fails closed. */ }
+    return validUrl && /^S\d+$/.test(source?.id ?? "") && typeof source?.title === "string" && source.title.trim()
+      && typeof source?.url === "string" && /^https?:\/\//.test(source.url)
+      && day && Number.isFinite(published) && published <= nowMs
+      && nowMs - published <= 21 * 24 * 60 * 60 * 1000
+      && new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) === day;
+  });
+  const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const club = escape(scopeValid ? team.trim() : "");
+  const role = "(?:current\\s+)?(?:manager|head coach|coach|boss)";
+  const name = "([\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+[\\p{Lu}][\\p{L}\\p{M}'’.-]+){1,3})";
+  const endings = "(?=\\s*(?:today|currently)?\\s*(?:[,.;!(]|$))";
+  const patterns = [
+    new RegExp(`^${club}(?:['’]s|['’])?\\s+${role}\\s+is\\s+${name}${endings}`, "iu"),
+    new RegExp(`^${name}\\s+(?:is|remains|continues as)\\s+(?:the\\s+)?${club}(?:['’]s|['’])?\\s+${role}${endings}`, "iu"),
+    new RegExp(`^${name}\\s+(?:is|remains|continues as)\\s+(?:the\\s+)?${role}\\s+(?:of|for)\\s+${club}${endings}`, "iu"),
+    new RegExp(`^${club}(?:['’]s|['’])?\\s+${role}\\s+${name}\\s+has\\s+(?:agreed|signed)\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?(?:contract|deal)\\b`, "iu"),
+    new RegExp(`^${name}\\s+has\\s+(?:agreed|signed)\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?(?:contract|deal)\\s+(?:as|to remain as)\\s+${club}(?:['’]s|['’])?\\s+${role}\\b`, "iu"),
+  ];
+  // Protect complete links before sentence splitting: punctuation in a source
+  // title or URL cannot detach the citation from its role assertion.
+  const links = [];
+  const protectedText = (typeof answer === "string" ? answer : "").replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
+    links.push({ label, url }); return `@@CITE${links.length - 1}@@`;
+  });
+  const regions = protectedText.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
+  const identities = regions.flatMap((region) => {
+    const prose = region.replace(/@@CITE\d+@@/g, "").replace(/\*\*|__/g, "").replace(/^\s*[-*+]\s+/, "").trim();
+    const identity = scopeValid && patterns.map((pattern) => pattern.exec(prose)?.[1]?.replace(/\s+(?:today|currently)$/i, "")).find((value) => value
+      && value.split(/\s+/).every((part) => /^\p{Lu}/u.test(part))
+      && !/\b(?:The|Current|Unknown|Unverified|Manager|Coach)\b/i.test(value));
+    if (!identity || /\b(?:former|formerly|retired|no longer|not|cannot|could|might|would|rumou?r|if)\b/i.test(prose)
+      || /[?]/.test(prose) || /^["“]/.test(prose)) return [];
+    const regionLinks = [...region.matchAll(/@@CITE(\d+)@@/g)].map((match) => links[Number(match[1])]);
+    const matched = sourceRows.some((source) => {
+      const sourceLinks = regionLinks.filter((link) => link?.url === source.url);
+      if (!sourceLinks.length) return false;
+      const day = source.date.slice(0, 10);
+      const [year, month, date] = day.split("-").map(Number);
+      const months = ["Jan(?:uary)?", "Feb(?:ruary)?", "Mar(?:ch)?", "Apr(?:il)?", "May", "Jun(?:e)?", "Jul(?:y)?", "Aug(?:ust)?", "Sep(?:t)?(?:ember)?", "Oct(?:ober)?", "Nov(?:ember)?", "Dec(?:ember)?"];
+      const monthName = months[month - 1];
+      const dateText = [region, ...sourceLinks.map((link) => link.label)].join(" ");
+      return new RegExp(`\\b${day}\\b|\\b${date}(?:st|nd|rd|th)?\\s+${monthName}\\.?\\s*,?\\s*${year}\\b|\\b${monthName}\\.?\\s+${date}(?:st|nd|rd|th)?\\s*,?\\s*${year}\\b`, "i").test(dateText);
+    });
+    return [{ name: identity, cited: matched }];
+  });
+  const assertions = { positiveCurrentManagerVerification: verified, currentManagerRequestedClub: scopeValid,
+    currentManagerIdentityDelivered: identities.some((identity) => identity.cited),
+    everyCurrentManagerIdentityCited: identities.length > 0 && identities.every((identity) => identity.cited),
+    currentManagerIdentityUnambiguous: new Set(identities.map((identity) => identity.name)).size === 1 };
+  return { passed: Object.values(assertions).every(Boolean), assertions,
+    failures: Object.entries(assertions).filter(([, passed]) => !passed).map(([key]) => `positive current manager failed ${key}`) };
 }
 
 /** Strict positive-news canary only. Counts/status never replace a delivered
