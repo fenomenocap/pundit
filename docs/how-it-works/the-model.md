@@ -67,7 +67,7 @@ The separate fitted attack/defence Dixon–Coles challenger remains **registered
 
 ### Historical evidence for v3
 
-The outcome-anchored V2 evaluation refits each weekly origin using earlier outcomes with a 24-hour availability lag. Candidate selection uses earlier-origin forecasts only. On 341 primary 2023–24 fixtures across 33 UTC weeks, the changes versus the shipped baseline were:
+The outcome-anchored V2 evaluation refits each weekly origin using earlier outcomes with a 24-hour availability lag. Candidate selection uses earlier-origin forecasts only. The initial development results on 341 primary 2023–24 fixtures across 33 UTC weeks were:
 
 | Metric | Candidate minus baseline | Retrospective 95% interval |
 |---|---:|---:|
@@ -76,9 +76,26 @@ The outcome-anchored V2 evaluation refits each weekly origin using earlier outco
 | BTTS Brier | −0.02285 | [−0.03164, −0.01387] |
 | 1X2 log loss | 0 | Preserved by outcome anchoring |
 
-Lower is better. V2 followed diagnosis of V1's failed 1X2 regression gate. These cohorts were already exposed during development: this is chronological retrospective validation, not a newly pristine holdout or prospective superiority proof. Dated ratings were retrieved from an archival mirror; they are an availability proxy rather than original sealed forecasts or proof that no historical ratings were revised. The intervals are unadjusted paired retrospective uncertainty after that development history.
+Lower is better. V2 followed diagnosis of V1's failed 1X2 regression gate. The 2023–24 and secondary cohorts were already exposed during development; their results are chronological retrospective development evidence. The later family-unexposed validation below was fixed before its labels were acquired. Neither is prospective superiority proof. Dated ratings were retrieved from an archival mirror; they are an availability proxy rather than original sealed forecasts or proof that no historical ratings were revised. The intervals are unadjusted paired retrospective uncertainty after that development history.
 
 The 580-fixture exposed secondary cohort showed a score-log-loss change of −0.02843 and BTTS Brier change of −0.01180. Its totals Brier change was −0.00225 with interval [−0.00937, +0.00483], which crosses zero. Broader totals improvement is therefore uncertain. The checks support a bounded historical improvement in score shape while preserving 1X2; they do not establish best possible performance or guaranteed future accuracy.
+
+### Later family-unexposed retrospective validation
+
+The first unused family reserve, 353 fresh-rated 2017–18 fixtures, **failed** its declared gates. The score-log-loss interval upper bound was +0.006864, so improvement was not established; the BTTS Brier upper bound was +0.005759, above the declared +0.005 noninferiority margin. That failure remains preserved.
+
+The unchanged V2 family was then tested on all five EPL seasons from 2009–10 through 2013–14, fixed before outcome acquisition under protocol SHA-256 `988820c1d7c7f027396575c96d7a87628b78f531e58c300b4a3413113f0cf467`. These seasons had not been used in family development. The method, candidates, metrics and thresholds were not retuned after the 2017–18 failure or after seeing the new labels. On 1,770 fresh-rated fixtures across 182 UTC weeks, with zero fallbacks, the declared gates passed:
+
+| Metric | Candidate minus baseline | Paired 95% interval |
+|---|---:|---:|
+| Exact-score log loss | −0.014175 | [−0.024269, −0.003894] |
+| Over/Under 2.5 Brier | −0.000698 | [−0.003184, +0.001845] |
+| BTTS Brier | −0.005319 | [−0.008193, −0.002368] |
+| 1X2 log loss | 0 within floating precision | Preserved by outcome anchoring |
+
+Scoreline and BTTS losses improved in this cohort. Totals met the predeclared +0.005 noninferiority margin; their interval includes zero, so significant totals superiority was not established. Another 130 stale-rated rows remain reported separately and do not inflate the primary denominator.
+
+The same source-calendar availability proxy and 24-hour result lag apply. These are retrospectively acquired data, not original forecast seals. The paired UTC-week intervals are unadjusted for choosing an additional historical cohort after the earlier reserve failed. The entire five-season cohort was fixed before new labels, without optional stopping within it; this does not erase sequential research uncertainty. The result supports bounded retrospective validation of the unchanged family, not guaranteed future accuracy or best possible performance. The current pinned release fit remains 3,090 goal outcomes and 996 dated-rating allocation rows; the validation did not alter it or establish a merged/deployed release.
 
 The source-bound prospective candidate `2b5bc111…` belongs to the previous model sources. Before releasing v3, disable it with `PROSPECTIVE_MODEL_CAPTURE=false` and preserve its `/data/prospective-model` cohort. The old 40-match requirement remains historical cohort policy, not a prerequisite for this retrospective improvement. Any future collector must use a newly reviewed candidate and source binding; future results provide additional monitoring.
 

@@ -13,7 +13,7 @@ Recognized fixtures that the public model cannot price stay available as context
 
 Pundit doesn't run its own markets and there's nothing to trade here — it's an analysis layer on top of public data.
 
-The calibration improved historical scoreline, totals and BTTS metrics in the primary retrospective cohort. The data were already exposed during development, 1X2 was preserved, and secondary totals uncertainty includes zero. This is bounded historical evidence, not a claim of proven future superiority; see [The Model](how-it-works/the-model.md).
+The unchanged calibration family passed a later five-season retrospective validation frozen before label acquisition: scoreline and BTTS metrics improved while 1X2 was preserved. Totals met the declared noninferiority margin; their interval includes zero, so significant superiority is unproven. Earlier exposed development results and a failed 2017–18 reserve remain reported. Sequential cohort research is not adjusted away, and no historical test proves future superiority or deployment completion; see [The Model](how-it-works/the-model.md).
 
 ### Where to start
 

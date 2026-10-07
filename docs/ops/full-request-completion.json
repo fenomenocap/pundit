@@ -108,7 +108,7 @@
       "owner": "root",
       "state": "ongoing",
       "blocker": null,
-      "nextAction": "Audit historical data and shipped distribution; predeclare chronological split, proper-score primary metric and regression policy before candidate selection, then train/evaluate and independently review historical candidates. Exact numerical thresholds remain pending that audit.",
+      "nextAction": "Merge the twice-tested calibrated implementation after final CI, deploy exact reviewed source, then complete fresh API/browser/critic certification and live model acceptance.",
       "acceptanceCriteria": [
         "Reproducible leakage-safe chronological training, selection and held-out evaluation with pre-kickoff inputs.",
         "Compare to shipped full score distribution on 1X2, totals, BTTS and scorelines; finite coherent grid and independent numerical review.",
@@ -118,12 +118,28 @@
       ],
       "phases": {
         "implementation": {
-          "status": "pending",
-          "reason": "Public totals retain fixed2.70; private capture infrastructure and a worse historical challenger do not implement predictive improvement."
+          "status": "passed",
+          "reason": "Pinned EPL goal-rate shape implemented across API/chat/consensus/season/web/paper with coherent finalgrid and exactprovenance; UCLneutralbaselines preserved.",
+          "evidence": [
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/historical-promotion-decision.json",
+              "sha256": "2422fe5099989e9ecd3fca231ec3e2cae1777e5339ee4e5c37e2e394fd529b78"
+            }
+          ]
         },
         "testing": {
-          "status": "pending",
-          "reason": "Historical challenger evidence must be re-audited against predeclared held-out criteria; passing arithmetic and prose tests are insufficient."
+          "status": "passed",
+          "reason": "All frozen five-season proper-score/noninferiority gates pass;twoidenticalreplaysandindependentreconstruction. Earlier2017failure retained. API1906/web84/harness168eachpassedtwice; liveacceptance stillpending.",
+          "evidence": [
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/elo-independent-2009-2014-final-review.json",
+              "sha256": "77159a39fd6a70910abc9091e5126fdba86a014f6fc694345ca83ccafde3cb65"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/local-frozen-integration-verification.json",
+              "sha256": "8476c7762a7fa4e423cbca7d258109c9edecb8992bc08c8183a3b3cff9cac057"
+            }
+          ]
         },
         "deployment": {
           "status": "pending",
@@ -135,7 +151,10 @@
         }
       },
       "historicalEvidence": [
-        {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        }
       ]
     },
     {
