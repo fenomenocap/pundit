@@ -50,8 +50,10 @@ import {
   validateResponseCorrectness,
   validateTeamNewsDiscipline,
   validatePositiveDatedClubNews,
+  validateDatedClubNewsConsistency,
   validatePositiveCurrentManager,
   validateVerification,
+  deriveTurnVerificationExpectation,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -384,11 +386,8 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       result.citations,
       citationRequired
     );
-    const verificationValidation = validateVerification(result.verification, {
-      ...turn,
-      requireCitation: Boolean(turn.requireCitation || scenario.requireCitation),
-      allowAbstention: Boolean(turn.allowAbstention || scenario.allowAbstention),
-    });
+    const verificationExpectation = deriveTurnVerificationExpectation(result.verification, scenario, turn);
+    const verificationValidation = validateVerification(result.verification, verificationExpectation);
     if (turn.expectCurrentManager) {
       const positiveManager = validatePositiveCurrentManager(result.answer, result.citations, result.verification, turn.expectCurrentManager);
       semanticCheckCount += Object.keys(positiveManager.assertions).length;
@@ -444,7 +443,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     ));
     const abstentionValidation = validateAbstainedCounterfactualDiscipline(
       result.answer,
-      result.verification?.status
+      verificationExpectation.guardUnsupportedConflictCounterfactuals ? "abstain" : result.verification?.status
     );
     semanticCheckCount += Object.keys(abstentionValidation.assertions).length;
     for (const [name, passed] of Object.entries(abstentionValidation.assertions)) {
@@ -453,7 +452,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     assertionFailures.push(...abstentionValidation.failures.map((failure) =>
       `turn ${turnNumber}: ${failure}`
     ));
-    if (turn.requireSourcedTeamNews || scenario.requireSourcedTeamNews) {
+    if (verificationExpectation.requireSourcedTeamNews) {
       const newsValidation = validateTeamNewsDiscipline(result.answer);
       result.assertions[`turn${turnNumber}TeamNewsSourced`] = newsValidation.passed;
       semanticCheckCount += 1;
@@ -461,13 +460,21 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
         `turn ${turnNumber}: ${failure} — ${sanitizeEvidence(result.answer)}`
       ));
     }
-    if (turn.requirePositiveDatedClubNews || scenario.requirePositiveDatedClubNews) {
+    if (verificationExpectation.requirePositiveDatedClubNews) {
       const positiveNews = validatePositiveDatedClubNews(result.answer, result.citations, result.verification);
       for (const [name, passed] of Object.entries(positiveNews.assertions)) {
         result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
       }
       semanticCheckCount += Object.keys(positiveNews.assertions).length;
       assertionFailures.push(...positiveNews.failures.map((failure) => `turn ${turnNumber}: ${failure}`));
+    }
+    if (verificationExpectation.requireDatedClubNewsConsistency) {
+      const newsConsistency = validateDatedClubNewsConsistency(result.answer, result.citations, result.verification);
+      for (const [name, passed] of Object.entries(newsConsistency.assertions)) {
+        result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+      }
+      semanticCheckCount += Object.keys(newsConsistency.assertions).length;
+      assertionFailures.push(...newsConsistency.failures.map((failure) => `turn ${turnNumber}: ${failure}`));
     }
     result.turnResults.push({
       turn: turnNumber,

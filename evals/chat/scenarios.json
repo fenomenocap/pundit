@@ -749,6 +749,7 @@
       "questionTemplate": "Any injury or lineup news for {home} vs {away}?",
       "requireSourcedTeamNews": true,
       "requireCitation": true,
+      "allowSupportedNewsConflict": true,
       "allowAbstention": true
     },
     {
