@@ -55,6 +55,7 @@ import {
   validatePositiveCurrentManager,
   summarizeWebSearchTelemetry,
   validateVerification,
+  deriveTurnVerificationExpectation,
   ABSTAINED_VERIFICATION,
   establishedNothing,
   writeCheckpoint,
@@ -2171,6 +2172,59 @@ test("strict dated news counts finite past injury reports without losing citatio
     assert.equal(validatePositiveDatedClubNews(`${actualThreeClaims} ${tail}`, sources, three, now).passed, false, tail);
   }
   assert.equal(validatePositiveDatedClubNews(`${record("suffered an ankle strain")} ${record("sustained a hamstring issue", "")}`, sources, state, now).passed, false);
+});
+
+test("scoped team-news conflict requires positive dated survivors and preserves explicit verification expectations", () => {
+  const now = Date.parse("2026-10-07T09:45:00Z");
+  const source = { id: "S3", title: "Football London", url: "https://www.football.london/arsenal-fc/news/arsenal-injury-news-latest-leeds-34721050", date: "2026-10-06T05:00:00Z" };
+  const citation = `([Football London](${source.url}), ${source.date})`;
+  const updates = `In an update published on 2026-10-06, Arsenal’s Declan Rice has been dealing with neural hamstring pain ${citation}. In an update published on 2026-10-06, Arsenal’s Ben White has been spotted back in training ${citation}.`;
+  const answer = `${updates} Current reports conflict on one or more requested facts, so I’ve left those claims out. These dated club updates do not establish the starting XI or availability at the future kickoff. I couldn’t establish a verified, dated Leeds club update.`;
+  const verification = { status: "conflict", supportedClaimCount: 2, removedClaimCount: 1 };
+  const scenario = { requireCitation: true, requireSourcedTeamNews: true, allowAbstention: true, allowSupportedNewsConflict: true };
+  const check = (text = answer, citations = [source], state = verification, config = scenario, turn = {}) => {
+    const expectation = deriveTurnVerificationExpectation(state, config, turn);
+    return [
+      validateVerification(state, expectation),
+      validateCitationContract(text, citations, expectation.requireCitation && !establishedNothing(state)),
+      ...(expectation.requireSourcedTeamNews ? [validateTeamNewsDiscipline(text)] : []),
+      ...(expectation.requirePositiveDatedClubNews ? [validatePositiveDatedClubNews(text, citations, state, now)] : []),
+      validateAbstainedCounterfactualDiscipline(text, expectation.guardUnsupportedConflictCounterfactuals ? "abstain" : state.status),
+    ].every((result) => result.passed);
+  };
+  const expectation = deriveTurnVerificationExpectation(verification, scenario);
+  assert.equal(expectation.requirePositiveDatedClubNews, true);
+  assert.equal(expectation.requireSourcedTeamNews, true);
+  assert.equal(expectation.guardUnsupportedConflictCounterfactuals, true);
+  assert.equal(check(), true);
+  assert.equal(check(answer, [source], { ...verification, status: "verified" }), true);
+  for (const text of [
+    `${answer} Ben White is available.`,
+    `${answer} Arsenal’s Joe Example suffered an ankle strain.`,
+    `${answer} If rotation changes, the home-win probability moves higher.`,
+    answer.replaceAll(source.url, "https://wrong.example/article"),
+    answer.replaceAll("published on 2026-10-06", "published on 2026-10-05"),
+  ]) assert.equal(check(text), false, text);
+  assert.equal(check(answer, []), false);
+  assert.equal(check(answer, [{ ...source, date: "2026-10-08T05:00:00Z" }]), false);
+  assert.equal(check(answer, [source], { ...verification, supportedClaimCount: 3 }), false);
+  assert.equal(check(answer, [source], verification, { ...scenario, allowSupportedNewsConflict: false }), false);
+  assert.equal(check(answer, [source], verification, scenario, { allowSupportedNewsConflict: false }), false);
+  assert.equal(check(answer, [source], verification, scenario, { expectVerification: ["verified"] }), false);
+  assert.equal(check(answer, [source], verification, { ...scenario, expectVerification: ["verified"] }), false);
+  assert.equal(check(answer, [source], verification, { ...scenario, expectVerification: ["verified"] }, { expectVerification: ["verified", "conflict"] }), true);
+  for (const status of ["abstain", "unavailable", "conflict"]) {
+    const empty = { status, supportedClaimCount: 0, removedClaimCount: 3 };
+    const noUpdate = "No verified, dated team-news update was established.";
+    const emptyExpectation = deriveTurnVerificationExpectation(empty, scenario);
+    assert.equal(emptyExpectation.requirePositiveDatedClubNews, false, status);
+    assert.equal(emptyExpectation.guardUnsupportedConflictCounterfactuals, false, status);
+    assert.equal(check(noUpdate, [], empty), true, status);
+    assert.equal(check(`${noUpdate} Ben White will start.`, [], empty), false, status);
+  }
+  assert.equal(validateVerification(verification, { expectVerification: ["verified"] }).passed, false);
+  const configured = JSON.parse(fs.readFileSync("evals/chat/scenarios.json", "utf8")).fixed;
+  assert.deepEqual(configured.filter((entry) => entry.allowSupportedNewsConflict).map((entry) => entry.id), ["team-news-sourcing"]);
 });
 
 test("required current-manager delivery checks requested role, positive verification and a recent same-sentence citation", () => {
