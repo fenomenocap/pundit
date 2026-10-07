@@ -2156,6 +2156,11 @@ test("required current-manager delivery checks requested role, positive verifica
     `Arsenal’s manager is Joe Example ([Role](${source.url}), September 22, 2026).`,
     `Arsenal’s manager is Joe Example ([Sky Sports, 2026-09-22](${source.url})).`,
     `Arsenal’s manager is Joe Example ([Current club role. Interview, 22 Sep 2026](${source.url})).`,
+    `Arsenal’s manager is Joe Example ([${source.title}](${source.url}) · 22 Sep).`,
+    `Arsenal’s manager is Joe Example ([Current club role. Interview, 22 Sep](${source.url})).`,
+    `Arsenal’s manager is Joe Example ([${source.title}](${source.url}) · September 22).`,
+    `Arsenal’s manager is Joe Example ([${source.title}](${source.url}) · **22 Sep**).`,
+    `Arsenal’s manager is Joe Example ([${source.title}](${source.url}) · _22 Sep_).`,
   ];
   for (const answer of accepted) {
     assert.equal(check(answer).passed, true, answer);
@@ -2180,6 +2185,22 @@ test("required current-manager delivery checks requested role, positive verifica
     `Arsenal’s manager is Joe Example ([Role](${source.url}), 23 Sep 2026).`,
     `Arsenal’s manager is Joe Example ([Role](https://different.example/role), 22 Sep 2026).`,
     `Arsenal’s manager is Joe Example ([Current role, 23 Sep 2026](${source.url})).`,
+    `Arsenal’s manager is Joe Example ([Role](${source.url}) · 23 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role](${source.url}) · 22 Sep 2025).`,
+    `Arsenal’s manager is Joe Example ([Role](${source.url}) · September 22, 2025).`,
+    `Arsenal’s manager is Joe Example ([Role, 22 Sep 2025](${source.url})).`,
+    `Arsenal’s manager is Joe Example ([Role, 2025-09-22](${source.url}) · 22 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role, 23 Sep](${source.url}) · 22 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role, 2026-09-23](${source.url}) · 22 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role, 22 Aug](${source.url}) · 22 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role, 23 Sep 2026](${source.url}) · 22 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role, September 23, 2026](${source.url}) · 22 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role, Aug 22](${source.url}) · 22 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role, 22 Sep](${source.url}) · 23 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role](${source.url}) · 22 Sep, 23 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role](${source.url}) · 23 Sep; 22 Sep).`,
+    `Arsenal’s manager is Joe Example ([Role, 22 Sep](${source.url}) · **23 Sep**).`,
+    `Arsenal’s manager is Joe Example ([Role, 22 Sep](${source.url}) · _23 Sep_).`,
     `Arsenal’s manager is Joe Example ${citation}. Arsenal’s manager is Pat Sample ${citation}.`,
     `Arsenal’s manager is Joe Example ${citation}. Arsenal’s manager is Pat Sample.`,
     `Arsenal’s manager is Joe Example ${citation}. Joe Example remains Arsenal’s manager.`,
@@ -2198,6 +2219,33 @@ test("required current-manager delivery checks requested role, positive verifica
   assert.equal(check(accepted[0], [{ ...source, id: "unknown" }]).passed, false);
   assert.equal(check(accepted[0], [source], verification, { team: "Chelsea" }).passed, false);
   assert.equal(check(accepted[0], [source], verification, {}).passed, false);
+  // A publication date is not an arbitrary year/article ID, and dates in
+  // separate role prose are not adjoining citation display metadata.
+  assert.equal(check(`Arsenal’s manager is Joe Example ([Article 13588507, 2019](${source.url}) · 22 Sep).`).passed, true);
+  assert.equal(check(`Arsenal’s manager is Joe Example, appointed on 3 Dec 2019 ([Role](${source.url}) · 22 Sep).`).passed, true);
+  assert.equal(check(`Arsenal’s manager is Joe Example ([Article 13588507, 2019](${source.url})).`).passed, false);
+});
+
+test("manager renderer dates use exact recent source metadata across a year boundary", () => {
+  const source = {
+    id: "S7", date: "2026-09-22T18:26:00+0000",
+    title: "Mikel Arteta contract: Arsenal boss agrees new deal to extend stay at Premier League champions | Football News | Sky Sports",
+    url: "https://www.skysports.com/football/news/13588507/mikel-arteta-contract-arsenal-boss-agrees-new-deal-to-extend-stay-at-premier-league-champions",
+  };
+  const verification = { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 };
+  const expectation = { team: "Arsenal" };
+  const actual = `Arsenal’s manager is Mikel Arteta ([${source.title}](${source.url}) · 22 Sep).`;
+  assert.equal(validatePositiveCurrentManager(actual, [source], verification, expectation, Date.parse("2026-10-07T06:43:00Z")).passed, true);
+  const rolloverSource = { ...source, date: "2026-12-22T18:26:00Z" };
+  const rollover = `Arsenal’s manager is Mikel Arteta ([${source.title}](${source.url}) · 22 Dec).`;
+  const januaryNow = Date.parse("2027-01-07T06:43:00Z");
+  assert.equal(validatePositiveCurrentManager(rollover, [rolloverSource], verification, expectation, januaryNow).passed, true);
+  assert.equal(validatePositiveCurrentManager(rollover.replace("22 Dec", "22 Dec 2027"), [rolloverSource], verification, expectation, januaryNow).passed, false);
+  assert.equal(validatePositiveCurrentManager(rollover.replace("22 Dec", "23 Dec"), [rolloverSource], verification, expectation, januaryNow).passed, false);
+  assert.equal(validatePositiveCurrentManager(rollover, [{ ...rolloverSource, date: "2025-12-22T18:26:00Z" }], verification, expectation, januaryNow).passed, false);
+  assert.equal(validatePositiveCurrentManager(rollover, [{ ...rolloverSource, date: "2027-12-22T18:26:00Z" }], verification, expectation, januaryNow).passed, false);
+  assert.equal(validatePositiveCurrentManager(rollover, [{ ...rolloverSource, url: "https://different.example/role" }], verification, expectation, januaryNow).passed, false);
+  assert.equal(validatePositiveCurrentManager("I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.", [], { status: "abstain", supportedClaimCount: 0, removedClaimCount: 1 }, expectation, januaryNow).passed, false);
 });
 
 test("both pinned manager turns require affirmative current identity rather than safe abstention", () => {

@@ -2044,16 +2044,39 @@ export function validatePositiveCurrentManager(answer, citations, verification, 
       && !/\b(?:The|Current|Unknown|Unverified|Manager|Coach)\b/i.test(value));
     if (!identity || /\b(?:former|formerly|retired|no longer|not|cannot|could|might|would|rumou?r|if)\b/i.test(prose)
       || /[?]/.test(prose) || /^["“]/.test(prose)) return [];
-    const regionLinks = [...region.matchAll(/@@CITE(\d+)@@/g)].map((match) => links[Number(match[1])]);
+    const regionLinks = [...region.matchAll(/@@CITE(\d+)@@/g)].map((match) => ({ ...links[Number(match[1])], index: match.index, marker: match[0] }));
     const matched = sourceRows.some((source) => {
       const sourceLinks = regionLinks.filter((link) => link?.url === source.url);
       if (!sourceLinks.length) return false;
       const day = source.date.slice(0, 10);
       const [year, month, date] = day.split("-").map(Number);
       const months = ["Jan(?:uary)?", "Feb(?:ruary)?", "Mar(?:ch)?", "Apr(?:il)?", "May", "Jun(?:e)?", "Jul(?:y)?", "Aug(?:ust)?", "Sep(?:t)?(?:ember)?", "Oct(?:ober)?", "Nov(?:ember)?", "Dec(?:ember)?"];
-      const monthName = months[month - 1];
-      const dateText = [region, ...sourceLinks.map((link) => link.label)].join(" ");
-      return new RegExp(`\\b${day}\\b|\\b${date}(?:st|nd|rd|th)?\\s+${monthName}\\.?\\s*,?\\s*${year}\\b|\\b${monthName}\\.?\\s+${date}(?:st|nd|rd|th)?\\s*,?\\s*${year}\\b`, "i").test(dateText);
+      const monthName = `(?:${months.join("|")})`;
+      const calendarDate = `\\b\\d{4}-\\d{2}-\\d{2}\\b|\\b\\d{1,2}(?:st|nd|rd|th)?\\s+${monthName}\\.?(?:\\s*,?\\s*\\d{4})?\\b|\\b${monthName}\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:\\s*,?\\s*\\d{4})?\\b`;
+      const separator = "[\\s(),;·—:-]*";
+      const beforeDate = new RegExp(`(?:${separator}(?:${calendarDate}))+${separator}$`, "i");
+      const afterDate = new RegExp(`^(?:${separator}(?:${calendarDate}))+${separator}`, "i");
+      const dateText = sourceLinks.flatMap((link) => {
+        const prefix = region.slice(0, link.index);
+        const open = prefix.lastIndexOf("(");
+        const citationPrefix = open > prefix.lastIndexOf(")") ? prefix.slice(open + 1) : "";
+        const displayText = (value) => value.replace(/[*_]/g, "");
+        return [displayText(link.label), beforeDate.exec(displayText(citationPrefix))?.[0] ?? "",
+          afterDate.exec(displayText(region.slice(link.index + link.marker.length)))?.[0] ?? ""];
+      }).join(" ");
+      // The desk renders "22 Sep". Its year is unambiguous only because the
+      // exact linked source above is recent and nonfuture. Every displayed
+      // calendar date must agree; a correct adjoining date cannot conceal a
+      // different date in the link label. Article IDs are not calendar dates.
+      const displayedDates = [...dateText.matchAll(new RegExp(
+        `\\b(\\d{4})-(\\d{2})-(\\d{2})\\b|\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${monthName})\\.?(?:\\s*,?\\s*(\\d{4}))?\\b|\\b(${monthName})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*,?\\s*(\\d{4}))?\\b`, "gi",
+      ))];
+      return displayedDates.length > 0 && displayedDates.every((match) => {
+        const displayedYear = Number(match[1] ?? match[6] ?? match[9] ?? year);
+        const displayedMonth = match[1] ? Number(match[2]) : months.findIndex((name) => new RegExp(`^${name}$`, "i").test(match[5] ?? match[7])) + 1;
+        const displayedDay = Number(match[3] ?? match[4] ?? match[8]);
+        return displayedYear === year && displayedMonth === month && displayedDay === date;
+      });
     });
     return [{ name: identity, cited: matched }];
   });

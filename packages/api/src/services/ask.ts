@@ -1280,18 +1280,10 @@ function publisherOwnedManagerBody(page: { text: string }): string {
   }).join("\n\n");
 }
 
-/** Manager+why is a small fact contract, not free-form causal prose. A direct
- * decision explanation may be quoted only as a complete source-owned sentence
- * in one of these finite forms. Commentary cannot fill this slot. */
-function settleManagerWhyFacts(
-  scope: { club: string; retainAppointment?: boolean; wantsReason?: boolean }, claims: readonly VerifiableClaim[],
-  decisions: Parameters<typeof reviseAnswerWithClaimDecisions>[2],
-  pages: Awaited<ReturnType<typeof retrieveEvidencePages>>, fetchedIds: ReadonlySet<string>,
-  appointments: readonly { claimId: string; name: string; date: string; sourceId: string }[]
-): { answer: string; supported: number; removed: number } {
+function managerRoleGrammar(clubName: string) {
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const fullName = "[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+[\\p{Lu}][\\p{L}\\p{M}'’.-]+){1,3}";
-  const aliases = [scope.club, ...getTeamNameAliases().filter(([, name]) => normalizeTeamName(name) === normalizeTeamName(scope.club)).map(([alias]) => alias)];
+  const aliases = [clubName, ...getTeamNameAliases().filter(([, name]) => normalizeTeamName(name) === normalizeTeamName(clubName)).map(([alias]) => alias)];
   const club = `(?:${[...new Set(aliases)].map(escape).join("|")})`;
   const role = new RegExp(`(?:${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)(?:\\s+today)?\\s+is\\s+(${fullName})|(${fullName})\\s+(?:is|remains)\\s+(?:the\\s+)?(?:current\\s+)?${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)|(?:the\\s+)?(?:current\\s+)?(?:manager|head coach|coach)\\s+(?:of|for)\\s+${club}\\s+is\\s+(${fullName}))`, "u");
   const ownsCurrentRole = (name: string, body: string) => {
@@ -1310,6 +1302,63 @@ function settleManagerWhyFacts(
     return splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
       .map((sentence) => sentence.trim()).some((sentence) => direct.test(sentence) || contract.test(sentence) || alignment.test(sentence));
   };
+  return { fullName, role, ownsCurrentRole };
+}
+
+/** A current-role question has one small source-owned fact. Keep extra
+ * generated explanation out of its claim; the unchanged verifier still has
+ * to establish the identity from the retrieved publisher body. */
+export function sourceOwnedManagerDraft(
+  scope: { club: string; retainAppointment?: boolean; wantsReason?: boolean },
+  bundle: EvidenceBundle, pages: readonly RetrievedEvidencePage[], now = Date.now()
+): string | undefined {
+  // Appointment history retains the existing source-precision contract.
+  if (scope.retainAppointment) return undefined;
+  const { fullName, ownsCurrentRole } = managerRoleGrammar(scope.club);
+  const facts = pages.flatMap((page) => {
+    const sources = bundle.results.filter((row) => row.id === page.id);
+    const source = sources.length === 1 ? sources[0] : undefined;
+    const day = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(page.date);
+    const calendar = day && new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
+    const published = Date.parse(page.date);
+    if (!source || source.url !== page.url || source.date !== page.date
+      || evidenceAuthority(source.url) === "other" || evidenceAuthority(page.finalUrl) === "other"
+      || !day || calendar!.toISOString().slice(0, 10) !== day[0].slice(0, 10)
+      || !Number.isFinite(published) || !Number.isFinite(now)
+      || published > now || now - published > 21 * 86_400_000) return [];
+    const body = publisherOwnedManagerBody(page);
+    // Keep discovery inside the same statement boundaries used by the role
+    // guard. Otherwise punctuation in a capitalized name run can consume the
+    // next club statement and hide a conflicting identity on the same page.
+    const names = splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
+      .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
+      .flatMap((match) => {
+        const words = match[0].split(/\s+/);
+        return words.flatMap((_word, start) => words.slice(start + 1).map((_next, offset) =>
+          words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
+      }).filter((name) => playerNamedInNewsBody(name, body,
+      { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, body));
+    return [...new Set(names)].map((name) => ({ name, sourceId: source.id }));
+  });
+  const nameKey = (name: string) => name.normalize("NFC").toLocaleLowerCase("en").replace(/\s+/g, " ");
+  if (new Set(facts.map((fact) => nameKey(fact.name))).size !== 1) return managerIdentityAbstention(scope);
+  const ids = [...new Set(facts.map((fact) => fact.sourceId))];
+  return `${scope.club}’s manager is ${facts[0].name} ${ids.map((id) => `[[${id}]]`).join(" ")}.`;
+}
+
+/** Manager+why is a small fact contract, not free-form causal prose. A direct
+ * decision explanation may be quoted only as a complete source-owned sentence
+ * in one of these finite forms. Commentary cannot fill this slot. */
+function settleManagerWhyFacts(
+  scope: { club: string; retainAppointment?: boolean; wantsReason?: boolean }, claims: readonly VerifiableClaim[],
+  decisions: Parameters<typeof reviseAnswerWithClaimDecisions>[2],
+  pages: Awaited<ReturnType<typeof retrieveEvidencePages>>, fetchedIds: ReadonlySet<string>,
+  appointments: readonly { claimId: string; name: string; date: string; sourceId: string }[]
+): { answer: string; supported: number; removed: number } {
+  const { role, ownsCurrentRole } = managerRoleGrammar(scope.club);
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const aliases = [scope.club, ...getTeamNameAliases().filter(([, name]) => normalizeTeamName(name) === normalizeTeamName(scope.club)).map(([alias]) => alias)];
+  const club = `(?:${[...new Set(aliases)].map(escape).join("|")})`;
   const accepted = claims.flatMap((claim) => {
     const decision = decisions.find((entry) => entry.claimId === claim.id);
     return decision?.outcome === "supported" ? [{ claim, decision }] : [];
@@ -9838,7 +9887,9 @@ async function answerQuestionScoped(
     // full set where external facts are requested. Fixture-less concepts with
     // no current cue do not receive an unrelated latest-news search.
     const plannedQueries = planTurnEvidenceQueries(question, grounding, query, voice);
-    const clubFact = singleClubCurrentFactScope(question, grounding);
+    const managerScope = managerWhyScope(question, grounding);
+    const clubFact = singleClubCurrentFactScope(question, grounding)
+      ?? (managerScope ? { kind: "manager" as const, club: managerScope.club } : null);
     const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
@@ -9865,16 +9916,20 @@ async function answerQuestionScoped(
       && !clubFact
       && ["team-news", "player-or-scorer"].includes(planResponse(question, { groundingKind: "match" }).mode);
     if (clubFact || (voice === "desk" && !deskUsesMatchEvidencePath)) {
-      const prose = await writeDeskProse(question, grounding, history, signal, bundle, {
+      const managerDraft = managerScope && managerPages
+        ? sourceOwnedManagerDraft(managerScope, bundle, managerPages) : undefined;
+      const prose = managerDraft ?? await writeDeskProse(question, grounding, history, signal, bundle, {
         generalConcept: grounding === null && query === null && bundle.queries.length === 0,
         managerPages,
       });
       if (prose) {
+        const deliveryBundle = managerDraft === undefined ? bundle : { ...bundle,
+          results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) };
         const delivered = await deliverAnswer({
           answer: prose,
           tier,
           grounding,
-          bundle,
+          bundle: deliveryBundle,
           client,
           question,
           evidenceRequired: Boolean(query || bundle.queries.length),
@@ -10073,7 +10128,9 @@ async function answerQuestionStreamScoped(
       };
     }
     const plannedQueries = planEvidenceQueries(question, grounding, query);
-    const clubFact = singleClubCurrentFactScope(question, grounding);
+    const managerScope = managerWhyScope(question, grounding);
+    const clubFact = singleClubCurrentFactScope(question, grounding)
+      ?? (managerScope ? { kind: "manager" as const, club: managerScope.club } : null);
     const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, handlers.signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
@@ -10095,10 +10152,14 @@ async function answerQuestionStreamScoped(
     // A direct club identity/result is evidence prose, not a forecast draft.
     // Hold every delta until its dated claims have passed the same verifier.
     if (clubFact) {
-      const prose = await writeDeskProse(question, grounding, history, handlers.signal, bundle, { managerPages });
+      const managerDraft = managerScope && managerPages
+        ? sourceOwnedManagerDraft(managerScope, bundle, managerPages) : undefined;
+      const prose = managerDraft ?? await writeDeskProse(question, grounding, history, handlers.signal, bundle, { managerPages });
       if (prose) {
+        const deliveryBundle = managerDraft === undefined ? bundle : { ...bundle,
+          results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) };
         const delivered = await deliverAnswer({
-          answer: prose, tier, grounding, bundle, client, question,
+          answer: prose, tier, grounding, bundle: deliveryBundle, client, question,
           evidenceRequired: Boolean(query || bundle.queries.length),
           candidateUnrecognized, hasHistory: history.length > 0,
           structuredDraftExpected: false, signal: handlers.signal,
