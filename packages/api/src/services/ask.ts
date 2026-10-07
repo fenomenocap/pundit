@@ -1327,13 +1327,16 @@ export function sourceOwnedManagerDraft(
       || !Number.isFinite(published) || !Number.isFinite(now)
       || published > now || now - published > 21 * 86_400_000) return [];
     const body = publisherOwnedManagerBody(page);
-    // Enumerate shorter suffixes too: a publisher heading can precede a
-    // person's name in the same capitalized run. The closed role grammar and
-    // lexical person guard must both accept every candidate.
-    const names = [...body.matchAll(new RegExp(fullName, "gu"))].flatMap((match) => {
-      const words = match[0].split(/\s+/);
-      return words.slice(0, -1).map((_word, index) => words.slice(index).join(" ").replace(/[.!?]+$/, ""));
-    }).filter((name) => playerNamedInNewsBody(name, body,
+    // Keep discovery inside the same statement boundaries used by the role
+    // guard. Otherwise punctuation in a capitalized name run can consume the
+    // next club statement and hide a conflicting identity on the same page.
+    const names = splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
+      .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
+      .flatMap((match) => {
+        const words = match[0].split(/\s+/);
+        return words.flatMap((_word, start) => words.slice(start + 1).map((_next, offset) =>
+          words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
+      }).filter((name) => playerNamedInNewsBody(name, body,
       { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, body));
     return [...new Set(names)].map((name) => ({ name, sourceId: source.id }));
   });
