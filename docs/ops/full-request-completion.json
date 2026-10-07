@@ -1,0 +1,563 @@
+{
+  "schemaVersion": 1,
+  "requestId": "pundit-finish-everything-2026-10",
+  "scope": "All original user requests plus explicit completion-governance and historical predictive-calibration follow-up.",
+  "targetRelease": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+  "historicalEvidence": [
+    {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+  ],
+  "historicalBoundary": "Prior receipt certifies a repaired production release only. Its prospective minimum-cohort policy is preserved as history; it does not replace the new retrospective improvement request. Prior evidence is never rewritten or rebound to a later source.",
+  "requirements": [
+    {
+      "id": "functional-qa",
+      "request": "Quick QA and fix all identified product defects.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "Delivered repairs work through the desk and API.",
+        "Separate predictive quality acceptance remains mandatory in predictive-calibration."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "54 rendered route/viewport checks, repeated flows and fresh production answer review passed.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
+            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "54 rendered route/viewport checks, repeated flows and fresh production answer review passed.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "probability-and-odds",
+      "request": "Investigate O/U2.5 normalization and repair numerical presentation.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "Over and Under are complementary probabilities summing to one.",
+        "Decimal fair odds are distinguished from probabilities; finite coherent delivered market arithmetic."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "Independent critic checked 4,968 numerical facts and probability/odds output. This does not establish predictive calibration.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
+            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "Independent critic checked 4,968 numerical facts and probability/odds output. This does not establish predictive calibration.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "predictive-calibration",
+      "request": "Finish quant-model investigation and predictive improvement using historical matches, including the fixed2.70 totals limitation.",
+      "owner": "root",
+      "state": "ongoing",
+      "blocker": null,
+      "nextAction": "Audit historical data and shipped distribution; predeclare chronological split, proper-score primary metric and regression policy before candidate selection, then train/evaluate and independently review historical candidates. Exact numerical thresholds remain pending that audit.",
+      "acceptanceCriteria": [
+        "Reproducible leakage-safe chronological training, selection and held-out evaluation with pre-kickoff inputs.",
+        "Compare to shipped full score distribution on 1X2, totals, BTTS and scorelines; finite coherent grid and independent numerical review.",
+        "Demonstrable held-out improvement in a predeclared primary proper-scoring metric with uncertainty and no material regression in other delivered markets, or an explicitly approved product decision boundary.",
+        "Reviewed deployment and live output/source verification for the accepted candidate or product boundary.",
+        "Future results provide additional monitoring and are not a prerequisite for retrospective improvement; finite evidence cannot prove highest possible performance."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "pending",
+          "reason": "Public totals retain fixed2.70; private capture infrastructure and a worse historical challenger do not implement predictive improvement."
+        },
+        "testing": {
+          "status": "pending",
+          "reason": "Historical challenger evidence must be re-audited against predeclared held-out criteria; passing arithmetic and prose tests are insufficient."
+        },
+        "deployment": {
+          "status": "pending",
+          "reason": "No historically accepted improvement or explicit product decision boundary has been released."
+        },
+        "productAcceptance": {
+          "status": "pending",
+          "reason": "Predictive acceptance is ongoing, independently of the prior repaired-release PASS."
+        }
+      },
+      "historicalEvidence": [
+        {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+      ]
+    },
+    {
+      "id": "output-contracts",
+      "request": "Test actual output, conversation history, routing and all delivery formats.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "JSON, desk and SSE preserve typed facts and scope.",
+        "No unsupported scorer, lineup, causal probability or current-fact claims."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "71 successful production turns reviewed, plus rendering and controlled transport/history cases.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
+            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "71 successful production turns reviewed, plus rendering and controlled transport/history cases.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "epl-branding",
+      "request": "Replace wrong logo for the EPL product focus.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "EPL branding renders correctly in settled product views."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "EPL logo visually inspected in the repeated product browser checks.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
+            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "EPL logo visually inspected in the repeated product browser checks.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "current-news",
+      "request": "Repair current-news coverage and useful manager/result/injury delivery.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "Positive claims have publisher support and correct club ownership.",
+        "Current manager facts remain useful; unsupported rationale and future availability retain clear boundaries."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "Fresh production manager/news/result/scorer turns independently reviewed; source outages preserved and safely handled.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
+            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "Fresh production manager/news/result/scorer turns independently reviewed; source outages preserved and safely handled.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "citations-and-dates",
+      "request": "Fix citation formatting and source/date fidelity.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "Same-sentence server citations support positive current claims.",
+        "Publication dates never become invented event dates; source-owned appointment precision only."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "Production independent critic and exact publisher/false-support controls passed; dated-news conflict remained qualified.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
+            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "Production independent critic and exact publisher/false-support controls passed; dated-news conflict remained qualified.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "dependency-security",
+      "request": "Resolve the remaining development dependency advisory durably.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "Vulnerable braces paths replaced by audited bounded compatibility implementation.",
+        "Clean install, actual attack positive/negative controls, API compatibility and unsuppressed audits pass twice."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "Security patch, upstream attribution, maintenance obligations and clean-install/audit controls accepted; no advisory suppression.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-first.log", "sha256": "80e5304436471b3075e483afa87ab2e257e64dcefc0e9edf720069bbfb7cef28"},
+            {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-second.log", "sha256": "411eed08061d535deecb6edc76045cd0fd3a5b21c52c1d2c8393ec709dac053c"},
+            {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-audit-second.json", "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "Security patch, upstream attribution, maintenance obligations and clean-install/audit controls accepted; no advisory suppression.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "scenario-and-repeat-testing",
+      "request": "Use subagents to test all scenarios and double test.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "Independent domain critics cover every successful turn.",
+        "Tests repeated on frozen source; safe optional live absence is explicit and controlled runtime cases exercised.",
+        "No blanket claim of exhaustive possible-world coverage."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "73 scenarios: 68 passed and five safe optional live states unavailable; every successful turn independently reviewed. Optional absence is not an external blocker.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
+            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "73 scenarios: 68 passed and five safe optional live states unavailable; every successful turn independently reviewed. Optional absence is not an external blocker.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "merge-and-deploy",
+      "request": "Merge and deploy approved work, then verify both production targets.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "Approved changes merged and exact production API/web source and deployment identity verified.",
+        "Source-specific live certification and rendered product acceptance pass."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "PR249/250 merged, CI success, exact API/web release receipts and fresh live certification passed.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
+            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "PR249/250 merged, CI success, exact API/web release receipts and fresh live certification passed.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "open-work-closure",
+      "request": "Finish open work and explain/close superseded pull requests.",
+      "owner": "root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "Superseded PRs closed; merged fixes accounted for.",
+        "Open-request register remains authoritative even when no PR is open."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "PR235/247 closed, PR249/250 merged and zero open PRs at the captured host check. This does not close unfinished calibration.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
+            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
+            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+          ]
+        },
+        "deployment": {
+          "status": "passed",
+          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
+            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
+          ]
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "PR235/247 closed, PR249/250 merged and zero open PRs at the captured host check. This does not close unfinished calibration.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
+            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
+            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "completion-governance",
+      "request": "Fix premature-completion process first; require whole-request acceptance before saying everything is complete.",
+      "owner": "remaining_dependency; independent review by root",
+      "state": "accepted",
+      "acceptanceCriteria": [
+        "Original scope cannot disappear from the register.",
+        "Implementation, testing, deployment and product acceptance remain independent.",
+        "A release PASS never completes an unfinished predictive-calibration item.",
+        "Concrete external blockers require evidence and an unblock action; uncertainty or worse candidates remain ongoing."
+      ],
+      "phases": {
+        "implementation": {
+          "status": "passed",
+          "reason": "Seven-file governance implementation independently inspected by root and remaining_news; original scope and phase separation enforced.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/governance/verification.json", "sha256": "28d69bde02045aba692ff9994bc70137df0be6663c6a47e7ab23d39d3a2e4e3b"},
+            {"path": "scripts/verify-request-completion.mjs", "sha256": "f8060814d910e728c12d25832ed7b04694120c0268a3b1194c3ecd593c843028"},
+            {"path": "scripts/verify-request-completion.test.mjs", "sha256": "f7031fb19fd49f46228cd551ff01b294477d524f90e0d3b2e1f7ec108ac11d14"}
+          ]
+        },
+        "testing": {
+          "status": "passed",
+          "reason": "24 meaningful local controls passed twice on unchanged governance code; independent reviewer reran controls and inspected strict/status exits.",
+          "evidence": [
+            {"path": "artifacts/remaining-completion/governance/verification.json", "sha256": "28d69bde02045aba692ff9994bc70137df0be6663c6a47e7ab23d39d3a2e4e3b"},
+            {"path": "artifacts/remaining-completion/governance/tests-first.log", "sha256": "0fa69cfd1ee0a90b94bfa2fd55595bbb7bc447aa7334a992465c35084aa07dba"},
+            {"path": "artifacts/remaining-completion/governance/tests-second.log", "sha256": "172ae2440cfee1b758711e63c186d7cb0ba871e04f80c697345f848b1dfefc4e"}
+          ]
+        },
+        "deployment": {
+          "status": "not_required",
+          "reason": "Local completion governance tool changes no production behavior; merge and CI are covered by implementation/testing."
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "Root accepted remaining_news independent review: policy prevents release PASS from closing unfinished predictive calibration. This governance acceptance does not accept the model.",
+          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "evidence": [
+            {"path": "artifacts/remaining-completion/governance/root-independent-acceptance-review.json", "sha256": "46018bf422d1b6f6e14d2bdcf6cf61b3707f42901258a5e48c99d40e9b6e39fb"}
+          ]
+        }
+      }
+    }
+  ],
+  "releaseEvidence": {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+}
