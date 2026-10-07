@@ -66,6 +66,7 @@ import {
   trackedInference,
   verifiableCurrentClaims,
   verifyCurrentClaims,
+  sourceOwnedManagerDraft,
   type FixtureGrounding,
   type AskGrounding,
   shouldHoldCoverageDeltas,
@@ -597,7 +598,8 @@ describe("complete standalone football lessons", () => {
       expect(searchWeb).toHaveBeenCalled();
       expect(result.answer).toMatch(/no verified|could not verify|couldn’t verify|cannot establish|was not verified/i);
       expect(result.answer).not.toMatch(/Pat Doe|won \d|lost \d|\d+-\d+/);
-      expect(create.mock.calls[0][0]).not.toMatchObject({ system: DESK_GENERAL_CONCEPT_SYSTEM });
+      if (/manager/.test(question)) expect(create).not.toHaveBeenCalled();
+      else expect(create.mock.calls[0][0]).not.toMatchObject({ system: DESK_GENERAL_CONCEPT_SYSTEM });
     } finally {
       create.mockRestore();
       if (saved === undefined) delete process.env.MINIMAX_API_KEY;
@@ -771,7 +773,7 @@ describe("complete standalone football lessons", () => {
     try {
       const context = { fixtureId: espnFixtureIdentity(model) };
       const checkDelivery = (result: Awaited<ReturnType<typeof answerQuestion>>) => {
-        if (["dated", "punctuation"].includes(mode)) {
+        if (["dated", "punctuation", "orphan"].includes(mode)) {
           expect(result.answer).toContain("Arsenal’s manager is Mikel Arteta"); expect(result.answer).toContain(news.link);
           expect(result.citations?.[0]?.id).toBe("S10"); expect(result.verification?.supportedClaimCount).toBe(1);
         } else {
@@ -787,6 +789,8 @@ describe("complete standalone football lessons", () => {
       hydrated = false; searchWeb.mockClear(); const deltas: string[] = [];
       const streamed = await answerQuestionStream("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], { signal: controller.signal, onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
       checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(4);
+      expect(create.mock.calls.every(([params]) => String((params as Anthropic.MessageCreateParamsNonStreaming).system)
+        .startsWith("You are Pundit's bounded factual claim verifier."))).toBe(true);
     } finally {
       create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
       if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
@@ -936,6 +940,74 @@ describe("complete standalone football lessons", () => {
       if (saved === undefined) delete process.env.MINIMAX_API_KEY;
       else process.env.MINIMAX_API_KEY = saved;
     }
+  });
+});
+
+describe("source-owned manager identity drafts", () => {
+  const now = Date.parse("2026-10-07T12:00:00Z");
+  const source = { id: "S7", title: "Current role", url: "https://www.skysports.com/football/news/current-role",
+    date: "2026-10-06T12:00:00Z", snippet: "A search snippet cannot establish identity.", tier: "news" as const };
+  const page = { ...source, authority: "reputable" as const, finalUrl: source.url, text: "Arsenal’s manager is Joe Example.", retrievedAt: "2026-10-07T11:00:00Z" };
+  const bundle: EvidenceBundle = { queries: [], providerCalls: 0, results: [source] };
+  const scope = { club: "Arsenal", wantsReason: true };
+  it.each([
+    "Arsenal’s manager is Joe Example.",
+    "Joe Example remains the current Arsenal manager.",
+    "Football News\nArsenal manager Joe Example says he and the club are very much aligned when it comes to signing a new contract.",
+    "Joe Example has agreed a new contract as Arsenal manager following their league title.",
+  ])("builds only the strict dynamic current identity: %s", (text) => {
+    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text }], now)).toBe("Arsenal’s manager is Joe Example [[S7]].");
+  });
+  it.each([
+    "Arsenal manager Joe Example retired in 2020.",
+    "Arsenal’s manager is Joe Example if he returns.",
+    "The rejected allegation was: Arsenal’s manager is Joe Example.",
+    "The report says: “Arsenal’s manager is Joe Example.”",
+    '"Arsenal’s manager is Joe Example.',
+    '"A quotation begins.\n\n"Arsenal’s manager is Joe Example."',
+    "Reader comments: Arsenal’s manager is Joe Example.",
+    "Chelsea’s manager is Joe Example.",
+    "Joe Example was Arsenal’s manager.",
+    "Arsenal will appoint Joe Example as manager.",
+    "Arsenal’s manager is not Joe Example.",
+    "Arsenal’s manager may be Joe Example.",
+  ])("cannot promote a rejected role statement: %s", (text) => {
+    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text }], now)).not.toContain("Joe Example");
+  });
+  it.each(["", "2026-02-30", "2026-09-16T11:59:59.999Z", "2026-10-07T12:00:00.001Z"])("rejects invalid, stale or future metadata %s", (date) => {
+    const rows = { ...bundle, results: [{ ...source, date }] };
+    expect(sourceOwnedManagerDraft(scope, rows, [{ ...page, date }], now)).not.toContain("Joe Example");
+  });
+  it("requires exact unique ID/URL/date binding and a retrieved eligible publisher", () => {
+    for (const pages of [[], [{ ...page, id: "S8" }], [{ ...page, url: "https://www.bbc.com/sport/other" }],
+      [{ ...page, date: "2026-10-05" }], [{ ...page, finalUrl: "https://untrusted.example/role" }]]) {
+      expect(sourceOwnedManagerDraft(scope, bundle, pages, now)).not.toContain("Joe Example");
+    }
+    expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [source, { ...source, url: "https://www.bbc.com/sport/other" }] }, [page], now)).not.toContain("Joe Example");
+  });
+  it("abstains on two fresh current identities but excludes stale conflicts", () => {
+    const other = { ...source, id: "S8", url: "https://www.bbc.com/sport/football/other" };
+    const second = { ...page, ...other, finalUrl: other.url, text: "Arsenal’s manager is Pat Example." };
+    const rows = { ...bundle, results: [source, other] };
+    expect(sourceOwnedManagerDraft(scope, rows, [page, second], now)).not.toMatch(/Joe Example|Pat Example/);
+    const stale = "2026-09-01";
+    expect(sourceOwnedManagerDraft(scope, { ...rows, results: [source, { ...other, date: stale }] }, [page, { ...second, date: stale }], now)).toBe("Arsenal’s manager is Joe Example [[S7]].");
+  });
+  it("cannot hide one current identity in a capitalized run across a sentence boundary", () => {
+    const text = "Arsenal’s manager is José Example. Arsenal’s manager is Pat Example.";
+    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text }], now)).not.toMatch(/José Example|Pat Example/);
+    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text: "Arsenal’s manager is José Example. Football News" }], now))
+      .toBe("Arsenal’s manager is José Example [[S7]].");
+  });
+  it("does not treat casing variants of one strict current identity as two people", () => {
+    const other = { ...source, id: "S8", url: "https://www.bbc.com/sport/football/other" };
+    expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [source, other] }, [page,
+      { ...page, ...other, finalUrl: other.url, text: "Arsenal’s manager is JOE EXAMPLE." }], now)).toBe("Arsenal’s manager is Joe Example [[S7]] [[S8]].");
+  });
+  it("retains the exact fresh boundary and leaves appointment history to its existing precision path", () => {
+    const date = "2026-09-16T12:00:00Z";
+    expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [{ ...source, date }] }, [{ ...page, date }], now)).toContain("Joe Example");
+    expect(sourceOwnedManagerDraft({ ...scope, retainAppointment: true }, bundle, [page], now)).toBeUndefined();
   });
 });
 
@@ -6386,12 +6458,12 @@ describe("settled player news requires exact current-claim verification", () => 
             expect(result.answer).not.toContain("remarkable transformation");
             expect(result.answer).not.toContain("Premier League title triumph");
             if (!pin) expect(result.grounding).toBeNull();
-            if (mode === "supported") {
-              expect(result.answer).toContain("Arsenal’s manager is Mikel Arteta");
+            if (mode === "supported" || mode === "no-marker") {
+              expect(result.answer, question).toContain("Arsenal’s manager is Mikel Arteta");
               if (/why/i.test(question)) expect(result.answer).toContain("I haven’t verified the club’s stated reason");
               else expect(result.answer).not.toContain("reason");
               expect(result.answer).toContain(source.link);
-              expect(result.verification).toEqual({ status: "verified", supportedClaimCount: 1, removedClaimCount: 1 });
+              expect(result.verification, question).toEqual({ status: "verified", supportedClaimCount: 1, removedClaimCount: 0 });
             } else {
               expect(result.answer).toMatch(/verif/i); expect(result.verification?.supportedClaimCount).toBe(0);
               expect(result.citations ?? []).toEqual([]);
@@ -6634,6 +6706,60 @@ describe("settled player news requires exact current-claim verification", () => 
       if (savedReasoning === undefined) delete process.env.PUNDIT_REASONING; else process.env.PUNDIT_REASONING = savedReasoning;
     }
   });
+  it.each(["supported", "partial-invalid-status", "zero-valid-status"] as const)("delivers the observed structured news records through JSON, desk and SSE: %s", async (mode) => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-07T06:00:00Z"));
+    await refreshClubRatings(new Date());
+    const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
+    const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
+    const sources = [
+      { title: "Unrelated archive", link: "https://www.arsenal.com/archive-1", date: "", snippet: "Archive details." },
+      { title: "Arsenal injury update", link: "https://www.football.london/arsenal-fc/news/arsenal-injury-news-latest-leeds-34721050", date: "2026-10-06T05:00:00Z", snippet: "Declan Rice: Neural hamstring pain. Ben White: Spotted back in training." },
+      { title: "Unrelated archive", link: "https://www.arsenal.com/archive-2", date: "", snippet: "Archive details." },
+      { title: "Arsenal injury concerns", link: "https://www.football.london/arsenal-fc/news/arsenal-dream-week-injury-boost-34724741", date: "2026-10-06T14:34:50Z", snippet: "Both Kai Havertz and Christos Tzolis sustained hamstring issues while away with Germany and Greece, respectively." },
+    ];
+    const rows = [
+      { sourceId: "S2", club: "Arsenal", playerName: "Declan Rice", statusText: "has been dealing with neural hamstring pain" },
+      { sourceId: "S2", club: "Arsenal", playerName: "Ben White", statusText: "has been spotted back in training" },
+      { sourceId: "S4", club: "Arsenal", playerName: "Kai Havertz", statusText: "sustained a hamstring issue" },
+    ];
+    if (mode === "partial-invalid-status") rows[2].statusText = "will be fit for Leeds";
+    if (mode === "zero-valid-status") rows.forEach((row) => { row.statusText = "was injured on Thu"; });
+    const count = mode === "supported" ? 3 : mode === "partial-invalid-status" ? 2 : 0;
+    const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
+    const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate,
+      finalUrl: candidate.url, text: sources.find((source) => source.link === candidate.url)!.snippet, retrievedAt: new Date().toISOString() })));
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      if (String(input.system) === DESK_DATED_CLUB_NEWS_SYSTEM) return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ updates: rows }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
+      const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
+      expect(data.claims).toHaveLength(count); expect(JSON.stringify(data.claims)).not.toMatch(/will be fit|injured on Thu/);
+      return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: data.claims.map((claim: { id: string; text: string }) => ({ claimId: claim.id, outcome: "supported", evidenceIds: [claim.text.includes("Kai Havertz") ? "S4" : "S2"] })), summary: "Exact reported statuses checked." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    searchWeb.mockReset(); searchWeb.mockResolvedValue(sources);
+    const question = "What are the latest dated club injury updates for Arsenal and Leeds? Keep current reports distinct from future kickoff availability.";
+    const check = (result: Awaited<ReturnType<typeof answerQuestion>>) => {
+      expect(result.verification?.supportedClaimCount).toBe(count);
+      expect(result.answer).not.toMatch(/will be fit|injured on Thu|statusText|sourceId/);
+      if (count) {
+        expect(result.answer).toContain("published on 2026-10-06"); expect(result.answer).toContain("Declan Rice"); expect(result.answer).toContain("Ben White");
+        expect(result.answer).toContain("do not establish the starting XI"); expect(result.answer).toContain("couldn’t establish a verified, dated Leeds club update");
+        expect(result.citations?.some((source) => source.id === "S2" && source.url === sources[1].link)).toBe(true);
+        if (count === 3) expect(result.answer).toContain("Kai Havertz sustained a hamstring issue"); else expect(result.answer).not.toContain("Kai Havertz");
+      } else { expect(result.citations ?? []).toEqual([]); expect(result.answer).toMatch(/couldn.t establish|won.t make/); }
+    };
+    try {
+      for (const voice of [undefined, "desk"] as const) check(await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, { fixtureId: espnFixtureIdentity(model) }, undefined, voice));
+      const deltas: string[] = [];
+      const streamed = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, { fixtureId: espnFixtureIdentity(model) });
+      check(streamed); expect(deltas).toEqual([streamed.answer]);
+    } finally {
+      create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+
   it.each(["supported", "unsupported", "conflict", "thinking-only", "truncated", "provider-error"] as const)("handles dated club-report prose only after exact claim verification: %s", async (outcome) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T00:00:00Z"));
     await refreshClubRatings(new Date());
