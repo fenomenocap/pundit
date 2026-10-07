@@ -15,6 +15,7 @@ import {
   stripSurplusCurrentNewsNotices,
   filterDeskEvidenceRows,
   formatSearchEvidence,
+  formatManagerEvidence,
   formatDeskCitationDate,
   humaniseDeskCitationDates,
   sanitizeDeskModelProse,
@@ -224,6 +225,35 @@ describe("bounded dated club-news expression", () => {
 });
 
 describe("filterDeskEvidenceRows", () => {
+  it("exposes a literal same-source current-role passage after navigation without inventing source metadata", () => {
+    const row = { id: "S10", title: "Arsenal manager report", snippet: "Contract reporting.", date: "2026-09-22", tier: "news" as const, url: "https://www.skysports.com/report" };
+    const role = "Arsenal manager Mikel Arteta has agreed a new contract with the club.";
+    const body = `${"Site navigation\n\n".repeat(600)}${role}\n\nUnrelated match commentary.`;
+    const before = JSON.stringify(row);
+    const result = formatManagerEvidence([row], "Arsenal", [{ ...row, text: body }], Date.parse("2026-10-07"));
+    expect(result).toContain("[[S10]] 22 Sep"); expect(result).toContain(role);
+    expect(result).not.toContain("Site navigation"); expect(JSON.stringify(row)).toBe(before);
+  });
+
+  it("includes a short complete role statement from a dated body when the search snippet lacks identity", () => {
+    const row = { id: "S10", title: "Arsenal manager report", snippet: "Club reporting.", date: "2026-10-06", tier: "news" as const, url: "https://www.skysports.com/report" };
+    const role = "Mikel Arteta is Arsenal’s manager.";
+    expect(formatManagerEvidence([row], "Arsenal", [{ ...row, text: role }], Date.parse("2026-10-07"))).toContain(role);
+  });
+
+  it.each(["stale", "future", "undated", "wrong-id", "wrong-url", "different-date", "404"])("never supplies an unbound or unusable manager body (%s)", (mode) => {
+    const row = { id: "S10", title: "Arsenal manager report", snippet: "Contract reporting.", date: "2026-09-22", tier: "news" as const, url: "https://www.skysports.com/report" };
+    const page = { ...row, text: "Arsenal manager Pat Example has agreed a new contract with the club." };
+    if (mode === "stale") row.date = page.date = "2026-07-01";
+    if (mode === "future") row.date = page.date = "2026-10-08";
+    if (mode === "undated") row.date = page.date = "";
+    if (mode === "wrong-id") page.id = "S1";
+    if (mode === "wrong-url") page.url = "https://www.skysports.com/other";
+    if (mode === "different-date") page.date = "2026-09-23";
+    const result = formatManagerEvidence([row], "Arsenal", mode === "404" ? [] : [page], Date.parse("2026-10-07"));
+    expect(result).not.toContain("Pat Example"); expect(result).toContain("Contract reporting.");
+  });
+
   it("selects a relevant manager report ahead of profiles without changing original IDs or other turn ordering", () => {
     const profiles = Array.from({ length: 9 }, (_, index) => ({
       id: `S${index + 1}`, title: "Arsenal manager staff directory", snippet: "Arsenal staff profile.", date: "",

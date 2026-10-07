@@ -264,10 +264,11 @@ export function planFederatedQueries(
     const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const targeted = clubFact.kind === "manager"
       ? [`${clubFact.club} current manager head coach official club ${day}`,
-        `${clubFact.club} manager head coach latest appointment contract news ${monthLabel(previousMonth)} ${monthLabel(now)} BBC Sky Sports official`]
+        `site:skysports.com/football/news ${clubFact.club} manager contract ${monthLabel(previousMonth)}`,
+        `site:bbc.com/sport/football ${clubFact.club} manager head coach ${monthLabel(now)}`]
       : [`${clubFact.club} latest completed match result official report ${season} ${day}`,
         `${clubFact.club} latest match final score post match report ${day}`];
-    return [...new Set([...targeted, ...planned])].slice(0, MAX_FEDERATED_QUERIES);
+    return [...new Set([...targeted, ...planned])].slice(0, clubFact.kind === "manager" ? 4 : MAX_FEDERATED_QUERIES);
   }
   if (asksStats && slice.length >= 3) {
     planned.push(`${slice} stats ${season}`);

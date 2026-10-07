@@ -3,6 +3,51 @@ import type { ModelFixtureResponse } from "../src/lib/api";
 import type { ModelRowLambdas } from "../src/desk/lib/grid";
 
 test.describe("QA regressions", () => {
+  test("model empty state distinguishes unpriced fixtures from an empty schedule", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "unpriced";
+    });
+    await page.goto("/model");
+    await expect(page.getByText("No priced fixtures are available for this competition right now.", { exact: false })).toBeVisible();
+    const competition = page.getByRole("button", { name: "UEFA Champions League Qualifiers", exact: true });
+    await competition.click();
+    await expect(competition).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("No priced fixtures are available for this competition right now. Try a table question in chat or browse fixtures and standings.", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("model-fixture-row")).toHaveCount(0);
+    await expect(page.getByText(/No upcoming fixtures|next (14|21) days/)).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("model-unpriced-empty.png") });
+    await page.getByRole("link", { name: "View fixtures & standings", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Fixtures", exact: true })).toBeVisible();
+    await expect(page.getByText("Scheduled", { exact: true }).first()).toBeVisible();
+  });
+
+  for (const missingSnapshot of [true, false]) {
+    test(`desk does not infer zero goals from ${missingSnapshot ? "missing scorer snapshot" : "empty scorer details"}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await routePrecisionDeskSlate(page, precisionBoundaryRow());
+      await page.route("**/api/matches/recent?competition=eng.1", route => route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          matches: [{ id: 902, competitionId: "eng.1", homeTeam: "Arsenal", awayTeam: "Chelsea",
+            utcDate: "2026-09-20T14:00:00.000Z", status: "FINISHED", score: { home: 3, away: 1 } }],
+          ...(missingSnapshot ? {} : { clubForm: { teams: [
+            { team: "Arsenal", form: ["W"], scorers: [] },
+            { team: "Chelsea", form: ["L"], scorers: [] },
+          ] } }),
+        }),
+      }));
+      await page.goto("/");
+      await page.locator('li [data-testid="desk-slate-fixture"][data-fixture-id="espn:eng.1:901"]').click();
+      const intel = page.locator("aside");
+      await expect(intel.getByText("Recent scorer details are unavailable for these teams.", { exact: true })).toBeVisible();
+      await expect(intel.getByText(/No goals in the last five/)).toHaveCount(0);
+      await expect(page.getByText("3–1", { exact: true }).first()).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath("scorer-details-unavailable.png") });
+    });
+  }
+
   for (const width of [320, 390, 768, 1440]) {
     test(`expanded model details remain readable without horizontal panning at ${width}px`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 1000 });
@@ -766,7 +811,7 @@ test.describe("smoke", () => {
     await page.goto("/model");
     await expect(page.getByRole("heading", { name: "Club season model" })).toBeVisible();
     const table = page.locator("table");
-    const emptyState = page.getByText("No upcoming fixtures in the next 14 days");
+    const emptyState = page.getByText("No priced fixtures are available for this competition right now.");
     await expect(table.or(emptyState)).toBeVisible({ timeout: 15_000 });
   });
 
