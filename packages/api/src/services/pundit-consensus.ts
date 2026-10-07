@@ -14,6 +14,7 @@ import {
   probabilityTotalWithinTolerance,
   type PricingConsensusBlock,
 } from "./response-correctness";
+import { anchorScoreGridTo1x2 } from "./outcome-anchored-score-grid";
 
 /** Halfway shrink toward one timestamped no-vig 1X2. Not a production champion weight. */
 export const CONSENSUS_MARKET_WEIGHT = 0.5;
@@ -41,7 +42,7 @@ export interface ConsensusScoreline {
 export interface PunditConsensusBlock {
   label: typeof PUNDIT_CONSENSUS_LABEL;
   fundamentalLabel: typeof PUNDIT_FUNDAMENTAL_LABEL;
-  methodId: typeof CONSENSUS_METHOD_ID;
+  methodId: typeof CONSENSUS_METHOD_ID | "labelled-1x2-shrink-outcome-anchor";
   marketSource: string;
   marketLabel: string;
   observedAt: string;
@@ -63,6 +64,7 @@ export interface PunditConsensusBlock {
 
 export interface ConsensusInput {
   fundamental: OneXTwoProbabilities;
+  fundamentalGrid?: number[][];
   market: {
     source: string;
     observedAt: string;
@@ -249,12 +251,26 @@ export function buildPunditConsensus(input: ConsensusInput): PunditConsensusBloc
   const weight = input.marketWeight ?? CONSENSUS_MARKET_WEIGHT;
   const shrunkTarget = shrinkOneXTwoTowardMarket(input.fundamental, market, weight);
   if (!shrunkTarget) return null;
-  const refit = refitLambdasToTarget1x2(shrunkTarget);
+  let refit: ReturnType<typeof refitLambdasToTarget1x2>;
+  if (input.fundamentalGrid) {
+    const original = matrixTo1x2(input.fundamentalGrid);
+    if (original.some((p, i) => Math.abs(p - [input.fundamental.pHome, input.fundamental.pDraw, input.fundamental.pAway][i]) > 0.0000500001)) return null;
+    const anchored = anchorScoreGridTo1x2(input.fundamentalGrid, [shrunkTarget.pHome, shrunkTarget.pDraw, shrunkTarget.pAway]);
+    const matrix = anchored.matrix;
+    const [pHome, pDraw, pAway] = matrixTo1x2(matrix);
+    const [pOver2_5, pUnder2_5] = matrixToTotals(matrix, 2.5);
+    const [pBttsYes, pBttsNo] = matrixToBtts(matrix);
+    refit = { pHome, pDraw, pAway, pOver2_5, pUnder2_5, pBttsYes, pBttsNo,
+      lambdaHome: anchored.expectedHomeGoals, lambdaAway: anchored.expectedAwayGoals,
+      totalXg: anchored.expectedHomeGoals + anchored.expectedAwayGoals,
+      topScores: matrixToCorrectScores(matrix, 5).map(([[home, away], probability]) => ({ score: `${home}-${away}`, probability })),
+      scorelines: matrixToScorelines(matrix).map(([[home, away], probability]) => ({ score: `${home}-${away}`, probability })) };
+  } else refit = refitLambdasToTarget1x2(shrunkTarget);
   if (!refit) return null;
   return {
     label: PUNDIT_CONSENSUS_LABEL,
     fundamentalLabel: PUNDIT_FUNDAMENTAL_LABEL,
-    methodId: CONSENSUS_METHOD_ID,
+    methodId: input.fundamentalGrid ? "labelled-1x2-shrink-outcome-anchor" : CONSENSUS_METHOD_ID,
     marketSource: market.source,
     marketLabel: marketNoVigLabel(market.source),
     observedAt: market.observedAt,
@@ -300,4 +316,3 @@ export function consensusCandidateRows(input: {
     ...input.oddsSources,
   ];
 }
-

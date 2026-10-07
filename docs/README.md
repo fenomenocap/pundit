@@ -4,7 +4,7 @@ Pundit is an analysis desk for the club season — Premier League and UEFA Champ
 
 Under the hood, every answer is backed by:
 
-* A **score model** with a Dixon–Coles low-score correction. Expected goals are a fixed 2.70 total split from a reviewed, pinned ClubElo artifact, plus home-field advantage where applicable. It produces win/draw/loss, totals, BTTS, and scoreline probabilities for active fixtures without a runtime ClubElo call. A fitted attack/defence Dixon–Coles model is registered and not the champion
+* A **Fundamental v3 score model** that preserves the rating/home-advantage win/draw/loss probabilities while calibrating EPL total-goal rates, allocation and low-score shape from historical results. Totals, BTTS, scorelines and calibrated expected goals come from one final joint grid. UCL qualifiers, neutral and pre-origin fixtures retain the baseline 2.70-total shape. Both ratings and EPL calibration are reviewed, pinned artifacts; production never contacts ClubElo
 * A **season outlook simulator** for Premier League title and top-four probabilities, gated on a complete persisted schedule and full rating coverage
 * Active **Stake, Kalshi, and Polymarket** 1X2 prices for featured matches, shown alongside the model when available
 * Live **fixtures, results, and standings** from ESPN, with approved structured identities separated from discovery-only fixture candidates
@@ -12,6 +12,8 @@ Under the hood, every answer is backed by:
 Recognized fixtures that the public model cannot price stay available as context with a specific coverage or input label. They never receive invented Pundit probabilities.
 
 Pundit doesn't run its own markets and there's nothing to trade here — it's an analysis layer on top of public data.
+
+The unchanged calibration family passed a later five-season retrospective validation frozen before label acquisition: scoreline and BTTS metrics improved while 1X2 was preserved. Totals met the declared noninferiority margin; their interval includes zero, so significant superiority is unproven. Earlier exposed development results and a failed 2017–18 reserve remain reported. Sequential cohort research is not adjusted away, and no historical test proves future superiority or deployment completion; see [The Model](how-it-works/the-model.md).
 
 ### Where to start
 

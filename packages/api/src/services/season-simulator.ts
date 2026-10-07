@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { DEFAULT_HOME_ADVANTAGE_ELO } from "./dixon-coles";
+import { DEFAULT_HOME_ADVANTAGE_ELO, sampleScoreFromMatrix } from "./dixon-coles";
+import { getResolvedActiveScoreModel } from "./active-score-model";
 import { FootballMatch, FootballStanding } from "./football-data";
 import { lookupClubRating, ClubRatingsCache } from "./club-ratings";
 import { getCompetitionById } from "../config/competitions";
@@ -52,7 +53,8 @@ function seasonReplaySeed(
   ratings: ClubRatingsCache["byProfile"],
   ratingProfile: keyof ClubRatingsCache["byProfile"],
   runs: number,
-  contributor: ForecastContributor
+  contributor: ForecastContributor,
+  goalCalibrationArtifacts: string[]
 ): number {
   const relevantTeams = [...new Set(fixtures.flatMap(({ homeTeam, awayTeam }) => [homeTeam, awayTeam]))]
     .sort((a, b) => a.localeCompare(b));
@@ -66,6 +68,7 @@ function seasonReplaySeed(
       methodId: contributor.methodId,
       status: contributor.status,
     },
+    goalCalibrationArtifacts,
     standings: standings.map((row) => ({
       team: row.team,
       points: row.points,
@@ -79,6 +82,7 @@ function seasonReplaySeed(
       awayTeam: fixture.awayTeam,
       utcDate: fixture.utcDate,
       status: fixture.status,
+      neutralVenue: fixture.neutralVenue ?? false,
     })).sort((a, b) =>
       a.utcDate.localeCompare(b.utcDate)
       || String(a.id).localeCompare(String(b.id))
@@ -276,6 +280,16 @@ export function simulateSeasonOutlook(
   if (ratedFixtures.some(({ homeElo, awayElo }) => homeElo === undefined || awayElo === undefined)) {
     return null;
   }
+  // Build each reviewed distribution once; every simulated score then uses it.
+  let resolvedFixtures;
+  try {
+    resolvedFixtures = ratedFixtures.map(({ fixture, homeElo, awayElo }) => ({ fixture, homeElo, awayElo,
+      model: contributor === ELO_CHAMPION ? getResolvedActiveScoreModel({
+        competitionId, home: fixture.homeTeam, away: fixture.awayTeam, kickoff: fixture.utcDate,
+        homeStrength: homeElo!, awayStrength: awayElo!,
+        homeAdvantageElo: competition.homeFieldAdvantage && !fixture.neutralVenue ? DEFAULT_HOME_ADVANTAGE_ELO : 0,
+      }) : null }));
+  } catch { return null; }
   const replayRandom = random ?? deterministicRandom(seasonReplaySeed(
     competitionId,
     competitionStandings,
@@ -283,7 +297,8 @@ export function simulateSeasonOutlook(
     ratings,
     competition.ratingProfile,
     runs,
-    contributor
+    contributor,
+    [...new Set(resolvedFixtures.flatMap(({ model }) => model?.artifactSha256 ? [model.artifactSha256] : []))].sort()
   ));
 
   const titleCounts = new Map<string, number>();
@@ -292,9 +307,9 @@ export function simulateSeasonOutlook(
 
   for (let run = 0; run < runs; run += 1) {
     const state = cloneState(baseState);
-    for (const { fixture, homeElo, awayElo } of ratedFixtures) {
-      const homeAdvantage = competition.homeFieldAdvantage ? DEFAULT_HOME_ADVANTAGE_ELO : 0;
-      const [homeGoals, awayGoals] = contributor.sampleScore({
+    for (const { fixture, homeElo, awayElo, model } of resolvedFixtures) {
+      const homeAdvantage = competition.homeFieldAdvantage && !fixture.neutralVenue ? DEFAULT_HOME_ADVANTAGE_ELO : 0;
+      const [homeGoals, awayGoals] = model ? sampleScoreFromMatrix(model.matrix, replayRandom) : contributor.sampleScore({
         homeStrength: homeElo!,
         awayStrength: awayElo!,
         homeAdvantageElo: homeAdvantage,

@@ -36,6 +36,7 @@ import { footballMatchesForFreshness } from "./services/football-data";
 import { getWebSearchStatus } from "./services/web-search";
 import { getAnalystResponseStatus, getInferenceStatus } from "./services/ask";
 import { getRuntimeVersion } from "./services/runtime-version";
+import { getEplGoalCalibrationReadiness } from "./services/epl-goal-calibration-artifact";
 import {
   getFixtureRegistryStatus,
   getRecognizedFixtureSnapshot,
@@ -114,10 +115,11 @@ function currentReadiness() {
   const active = getActiveFixtureStatus();
   const odds = getModelMarketOddsStatus();
   const ratings = getCachedClubRatings();
+  const goalCalibration = getEplGoalCalibrationReadiness();
   const readiness = evaluateReadiness(
-    model, football, activeFixtures, odds, clubRatingsAreCurrent(ratings)
+    model, football, activeFixtures, odds, clubRatingsAreCurrent(ratings), goalCalibration.ready
   );
-  return { model, football, activeFixtures, active, odds, ratings, readiness };
+  return { model, football, activeFixtures, active, odds, ratings, readiness, goalCalibration };
 }
 
 app.get("/startup", (_req, res) => {
@@ -142,7 +144,7 @@ app.get("/startup", (_req, res) => {
 
 app.get("/ready", (_req, res) => {
   const {
-    model, football, activeFixtures, active, odds, ratings, readiness,
+    model, football, activeFixtures, active, odds, ratings, readiness, goalCalibration,
   } = currentReadiness();
   const seasonSchedule = getCachedSeasonSchedule();
   const seasonStatus = seasonScheduleStatus(seasonSchedule);
@@ -168,6 +170,7 @@ app.get("/ready", (_req, res) => {
       ratingsServedFromCache: ratings.servingPersisted,
       ratingArtifactId: ratings.artifactId,
       ratingArtifactSha256: ratings.artifactSha256,
+      goalCalibration,
     },
     football: {
       ready: readiness.footballReady,
