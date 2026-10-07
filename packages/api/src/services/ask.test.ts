@@ -993,6 +993,12 @@ describe("source-owned manager identity drafts", () => {
     const stale = "2026-09-01";
     expect(sourceOwnedManagerDraft(scope, { ...rows, results: [source, { ...other, date: stale }] }, [page, { ...second, date: stale }], now)).toBe("Arsenal’s manager is Joe Example [[S7]].");
   });
+  it("cannot hide one current identity in a capitalized run across a sentence boundary", () => {
+    const text = "Arsenal’s manager is José Example. Arsenal’s manager is Pat Example.";
+    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text }], now)).not.toMatch(/José Example|Pat Example/);
+    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text: "Arsenal’s manager is José Example. Football News" }], now))
+      .toBe("Arsenal’s manager is José Example [[S7]].");
+  });
   it("does not treat casing variants of one strict current identity as two people", () => {
     const other = { ...source, id: "S8", url: "https://www.bbc.com/sport/football/other" };
     expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [source, other] }, [page,
