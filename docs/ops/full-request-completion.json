@@ -13,7 +13,7 @@
       "request": "Quick QA and fix all identified product defects.",
       "owner": "root",
       "state": "ongoing",
-      "nextAction": "Repair the expanded mobile model row clipping found during fresh live QA, then repeat rendered product checks and certify the corrected release. Existing phase receipts describe the prior release only.",
+      "nextAction": "Preserve the certified38ed desk/mobile acceptance; refresh exact-source product verification after the final parser-cap security release.",
       "acceptanceCriteria": [
         "Delivered repairs work through the desk and API.",
         "Separate predictive quality acceptance remains mandatory in predictive-calibration."
@@ -109,7 +109,7 @@
       "owner": "root",
       "state": "ongoing",
       "blocker": null,
-      "nextAction": "The historical calibration is deployed on a8030e3. Repair newly discovered live product defects, then complete fresh API/browser/critic certification and bind all acceptance to the corrected actual release.",
+      "nextAction": "Preserve the deployed historical calibration and certified38ed model acceptance; bind its unchanged calibration inputs and fresh public output to the final parser-cap security release.",
       "acceptanceCriteria": [
         "Reproducible leakage-safe chronological training, selection and held-out evaluation with pre-kickoff inputs.",
         "Compare to shipped full score distribution on 1X2, totals, BTTS and scorelines; finite coherent grid and independent numerical review.",
@@ -256,7 +256,7 @@
       "request": "Repair current-news coverage and useful manager/result/injury delivery.",
       "owner": "root",
       "state": "ongoing",
-      "nextAction": "Diversify bounded current-manager retrieval and hydrate selected publisher dates before expression; preserve verification safeguards and rerun live current-news acceptance on the corrected release.",
+      "nextAction": "Preserve the useful certified38ed manager and dated-news delivery; repeat source-bound current-news acceptance on the final parser-cap security release.",
       "acceptanceCriteria": [
         "Positive claims have publisher support and correct club ownership.",
         "Current manager facts remain useful; unsupported rationale and future availability retain clear boundaries."
