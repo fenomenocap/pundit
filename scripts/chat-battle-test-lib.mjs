@@ -2102,8 +2102,8 @@ export function validatePositiveDatedClubNews(answer, citations, verification, n
       && new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) === day;
   });
   const regions = typeof answer === "string" ? answer.split(/(?<=[.!?])\s+|\n+/).filter(Boolean) : [];
-  const namedClubStatus = /[\p{L}\p{M}][\p{L}\p{M} .-]{1,50}['’]s\s+\p{Lu}[\p{L}\p{M}'’.-]+(?:\s+\p{Lu}[\p{L}\p{M}'’.-]+){1,3}\s+(?:[Ww]as|[Ii]s|[Hh]as|[Hh]ad|[Rr]emains|[Mm]ay|[Mm]ight|[Cc]ould|[Ww]ithdrew)\b/u;
-  const namedStatus = /\p{Lu}[\p{L}\p{M}'’.-]+(?:\s+\p{Lu}[\p{L}\p{M}'’.-]+){1,3}\s+(?:[Ww]as|[Ii]s|[Hh]as|[Hh]ad|[Rr]emains|[Mm]ay|[Mm]ight|[Cc]ould|[Ww]ithdrew|[Ww]ill)\b/u;
+  const namedClubStatus = /[\p{L}\p{M}][\p{L}\p{M} .-]{1,50}['’]s\s+\p{Lu}[\p{L}\p{M}'’.-]+(?:\s+\p{Lu}[\p{L}\p{M}'’.-]+){1,3}\s+(?:[Ww]as|[Ii]s|[Hh]as|[Hh]ad|[Rr]emains|[Mm]ay|[Mm]ight|[Cc]ould|[Ww]ithdrew|[Ss]ustained|[Ss]uffered)\b/u;
+  const namedStatus = /\p{Lu}[\p{L}\p{M}'’.-]+(?:\s+\p{Lu}[\p{L}\p{M}'’.-]+){1,3}\s+(?:[Ww]as|[Ii]s|[Hh]as|[Hh]ad|[Rr]emains|[Mm]ay|[Mm]ight|[Cc]ould|[Ww]ithdrew|[Ww]ill|[Ss]ustained|[Ss]uffered)\b/u;
   const medicalStatus = /\b(?:injur\w*|doubt\w*|sidelined|suspend\w*|unavailable|available|pain|strain|tear|issue|problem|assessment|rehabilitation|withdraw\w*|withdrew|training|fitness|fit|starts?|starting)\b/i;
   const candidates = regions.filter((region) => {
     const prose = region.replace(/\[[^\]]*\]\([^)]*\)/g, "");

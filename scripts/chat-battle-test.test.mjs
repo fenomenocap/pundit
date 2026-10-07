@@ -2135,6 +2135,44 @@ test("strict positive dated news preserves supported survivors of a conflict wit
   }
 });
 
+test("strict dated news counts finite past injury reports without losing citation, date or tail guards", () => {
+  const now = Date.parse("2026-10-07T09:12:00Z");
+  const sources = [
+    { id: "S1", url: "https://www.football.london/arsenal-fc/news/arsenal-injury-news-latest-leeds-34721050", date: "2026-10-06T05:00:00Z" },
+    { id: "S2", url: "https://www.standard.co.uk/sport/football/arsenal-fc-injury-update-konsa-tzolis-havertz-latest-news-return-dates-b1299740.html", date: "2026-10-06T13:20:06.000Z" },
+  ];
+  const cited = (source) => `([Publisher](${source.url}) · 6 Oct)`;
+  const record = (status, citation = cited(sources[1])) => `In an update published on 2026-10-06, Arsenal’s Christos Tzolis ${status} ${citation}.`;
+  const state = { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 };
+  for (const status of ["sustained a hamstring issue", "suffered an ankle strain"]) {
+    const answer = record(status);
+    assert.equal(validatePositiveDatedClubNews(answer, sources, state, now).passed, true, status);
+    assert.equal(validatePositiveDatedClubNews(record(status, ""), sources, state, now).passed, false);
+    assert.equal(validatePositiveDatedClubNews(record(status, "([Other](https://wrong.example/article) · 6 Oct)"), sources, state, now).passed, false);
+    assert.equal(validatePositiveDatedClubNews(answer, [{ ...sources[1], date: "2026-10-05T13:20:06Z" }], state, now).passed, false);
+    assert.equal(validatePositiveDatedClubNews(answer, [{ ...sources[1], date: "2026-10-08T13:20:06Z" }], state, now).passed, false);
+    assert.equal(validatePositiveDatedClubNews(answer.replace("Arsenal’s ", ""), sources, state, now).passed, false);
+    assert.equal(validatePositiveDatedClubNews(answer, sources, { ...state, supportedClaimCount: 2 }, now).passed, false);
+  }
+  for (const status of ["sustained a defeat", "suffered a tactical setback", "sustains a hamstring issue", "suffers an ankle strain"]) {
+    assert.equal(validatePositiveDatedClubNews(record(status), sources, state, now).passed, false, status);
+  }
+  const actualThreeClaims = [
+    `In an update published on 2026-10-06, Arsenal’s Declan Rice has been dealing with neural hamstring pain ${cited(sources[0])}.`,
+    `In an update published on 2026-10-06, Arsenal’s Ben White has been spotted back in training ${cited(sources[0])}.`,
+    record("sustained a hamstring issue"),
+    "These dated club updates do not establish the starting XI or availability at the future kickoff. I couldn’t establish a verified, dated Leeds club update.",
+  ].join(" ");
+  const three = { ...state, supportedClaimCount: 3 };
+  assert.equal(validatePositiveDatedClubNews(actualThreeClaims, sources, three, now).passed, true);
+  assert.equal(validatePositiveDatedClubNews(actualThreeClaims, sources, { ...three, supportedClaimCount: 2 }, now).passed, false);
+  assert.equal(validatePositiveDatedClubNews(actualThreeClaims, [sources[0]], three, now).passed, false);
+  for (const tail of ["Christos Tzolis sustained a calf injury.", "Ben White suffered an ankle strain.", "Ben White will start."]) {
+    assert.equal(validatePositiveDatedClubNews(`${actualThreeClaims} ${tail}`, sources, three, now).passed, false, tail);
+  }
+  assert.equal(validatePositiveDatedClubNews(`${record("suffered an ankle strain")} ${record("sustained a hamstring issue", "")}`, sources, state, now).passed, false);
+});
+
 test("required current-manager delivery checks requested role, positive verification and a recent same-sentence citation", () => {
   const now = Date.parse("2026-10-07T06:00:00Z");
   const source = { id: "S10", title: "Current club role. Interview", date: "2026-09-22T18:26:00+00:00", url: "https://publisher.example/football/current-role" };
