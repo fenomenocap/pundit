@@ -646,7 +646,8 @@ export async function writeDeskProse(
   history: ConversationTurn[],
   signal?: AbortSignal,
   bundle?: EvidenceBundle,
-  options?: { generalConcept?: boolean; datedClubNews?: boolean; managerPages?: readonly RetrievedEvidencePage[] }
+  options?: { generalConcept?: boolean; datedClubNews?: boolean; managerPages?: readonly RetrievedEvidencePage[];
+    reserveRepairCall?: () => boolean }
 ): Promise<string | null> {
   const clubFact = singleClubCurrentFactScope(question, grounding);
   const datedClubNews = options?.datedClubNews === true;
@@ -716,49 +717,67 @@ export async function writeDeskProse(
   const mode = datedClubNews ? "dated-club-news" : generalConcept ? "general-concept" : clubFact?.kind ?? "football-take";
   console.info(JSON.stringify({ event: "desk_prose_started", mode, provider: inference.provider,
     evidenceIds: evidence.map((row) => row.id), evidenceChars: evidence.reduce((sum, row) => sum + row.snippet.length, 0) }));
+  // Both attempts share the original writer timeout and request deadline.
+  const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000);
   try {
-    const msg = await client.messages.create(
-      {
-        model,
-        // MiniMax (and explicitly enabled reasoning) shares its budget with
-        // internal reasoning. Keep the existing answer ceiling in that mode.
-        max_tokens: datedClubNews ? thinkingControl.thinking?.type === "disabled" ? 1_024 : 8_192 : 280,
-        temperature: 0.45,
-        ...thinkingControl,
-        system: generalConcept ? DESK_GENERAL_CONCEPT_SYSTEM : datedClubNews ? DESK_DATED_CLUB_NEWS_SYSTEM : clubFact ? DESK_CURRENT_FACT_SYSTEM : DESK_SYSTEM,
-        messages: convo,
-      },
-      // The SDK timeout alone does not bound an OpenRouter call; the signal does.
-      {
-        timeout: 45_000,
-        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (requestSignal.aborted) return fallback;
+      const msg = await client.messages.create(
+        {
+          model,
+          // MiniMax (and explicitly enabled reasoning) shares its budget with
+          // internal reasoning. Keep the existing answer ceiling in that mode.
+          max_tokens: datedClubNews ? thinkingControl.thinking?.type === "disabled" ? 1_024 : 8_192 : 280,
+          temperature: datedClubNews ? 0 : 0.45,
+          ...thinkingControl,
+          system: generalConcept ? DESK_GENERAL_CONCEPT_SYSTEM : datedClubNews ? DESK_DATED_CLUB_NEWS_SYSTEM : clubFact ? DESK_CURRENT_FACT_SYSTEM : DESK_SYSTEM,
+          messages: attempt === 0 ? convo : [...convo.slice(0, -1), {
+            role: "user",
+            content: `${convo.at(-1)?.content}\n\nFormatting reminder: Return only a valid JSON object with the exact updates schema. No prose, Markdown fences or additional fields. Use the same supplied evidence; return an empty updates array if no status is supported.`,
+          }],
+        },
+        // The SDK timeout alone does not bound an OpenRouter call; the signal does.
+        {
+          timeout: 45_000,
+          signal: requestSignal,
+        }
+      );
+      const text = msg.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("\n")
+        .trim();
+      console.info(JSON.stringify({ event: "desk_prose_completed", mode, stopReason: msg.stop_reason,
+        contentTypes: msg.content.map((block) => block.type), textChars: text.length }));
+      if (!text || (datedClubNews && msg.stop_reason === "max_tokens")) return null;
+      if (datedClubNews && grounding?.kind === "match") {
+        let rejection: DatedNewsRejection | undefined;
+        const records = renderDatedClubNewsRecords(text, evidence, grounding, Date.now(), (reason) => {
+          rejection = reason;
+          console.info(JSON.stringify({ event: "desk_news_record_rejected", mode, reason }));
+        });
+        // Syntax repair has no factual authority. Never send the invalid draft
+        // back as evidence or repeat semantic rejections/empty supported sets.
+        if (!records && rejection === "invalid_json" && attempt === 0 && !requestSignal.aborted
+          && options?.reserveRepairCall?.() && !requestSignal.aborted) {
+          console.info(JSON.stringify({ event: "desk_news_format_retry", mode, reason: "invalid_json" }));
+          continue;
+        }
+        return records;
       }
-    );
-    const text = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
-    console.info(JSON.stringify({ event: "desk_prose_completed", mode, stopReason: msg.stop_reason,
-      contentTypes: msg.content.map((block) => block.type), textChars: text.length }));
-    if (!text || (datedClubNews && msg.stop_reason === "max_tokens")) return null;
-    if (datedClubNews && grounding?.kind === "match") {
-      const records = renderDatedClubNewsRecords(text, evidence, grounding, Date.now(), (reason) => {
-        console.info(JSON.stringify({ event: "desk_news_record_rejected", mode, reason }));
-      });
-      return records;
+      const allowed = managersNamedInEvidence(evidence);
+      // Some providers put the adjacent citation after the sentence terminator.
+      // Bind that existing marker to the preceding sentence before verification;
+      // neither source IDs nor factual text are created by this punctuation fix.
+      const citationBound = clubFact?.kind === "manager"
+        ? text.replace(/([.!?])\s+((?:\[\[S\d{1,3}\]\]\s*)+)/g,
+          (_whole, punctuation: string, markers: string) => ` ${markers.trim()}${punctuation} `).trim()
+        : text;
+      const cleaned = stripUnlistedManagers(citationBound, allowed) || citationBound;
+      const football = stripDeskBoardRecitals(sanitizeDeskModelProse(cleaned, evidence));
+      return football || fallback || DESK_BOARD_FALLBACK;
     }
-    const allowed = managersNamedInEvidence(evidence);
-    // Some providers put the adjacent citation after the sentence terminator.
-    // Bind that existing marker to the preceding sentence before verification;
-    // neither source IDs nor factual text are created by this punctuation fix.
-    const citationBound = clubFact?.kind === "manager"
-      ? text.replace(/([.!?])\s+((?:\[\[S\d{1,3}\]\]\s*)+)/g,
-        (_whole, punctuation: string, markers: string) => ` ${markers.trim()}${punctuation} `).trim()
-      : text;
-    const cleaned = stripUnlistedManagers(citationBound, allowed) || citationBound;
-    const football = stripDeskBoardRecitals(sanitizeDeskModelProse(cleaned, evidence));
-    return football || fallback || DESK_BOARD_FALLBACK;
+    return fallback;
   } catch (error) {
     console.warn(JSON.stringify({ event: "desk_prose_failed", mode,
       errorType: error instanceof Error ? error.name : "unknown",
