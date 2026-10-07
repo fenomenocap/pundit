@@ -1118,7 +1118,10 @@ export function planTurnEvidenceQueries(
 async function buildEvidenceBundle(
   queries: string | string[],
   signal?: AbortSignal,
-  mergeOptions?: { asksStats?: boolean; skippedBecauseGrounded?: string[]; teamNewsFixture?: PlayerFixtureRef }
+  mergeOptions?: {
+    asksStats?: boolean; skippedBecauseGrounded?: string[]; teamNewsFixture?: PlayerFixtureRef;
+    managerFact?: { question: string; grounding: AskGrounding };
+  }
 ): Promise<EvidenceBundle> {
   const planned = (Array.isArray(queries) ? queries : [queries]).slice(0, MAX_EVIDENCE_QUERIES);
   // Run together: they are independent lookups, and a researched answer should
@@ -1141,6 +1144,10 @@ async function buildEvidenceBundle(
   }));
   if (mergeOptions?.teamNewsFixture) {
     bundle.results = selectTeamNewsSources(bundle.results, mergeOptions.teamNewsFixture);
+  }
+  if (mergeOptions?.managerFact) {
+    const { question, grounding } = mergeOptions.managerFact;
+    bundle.results = filterDeskEvidenceBundle(bundle, grounding, Date.now(), question).results;
   }
   bundle.retrievalMeta = {
     queriesRun: planned.length,
@@ -9831,18 +9838,23 @@ async function answerQuestionScoped(
     // full set where external facts are requested. Fixture-less concepts with
     // no current cue do not receive an unrelated latest-news search.
     const plannedQueries = planTurnEvidenceQueries(question, grounding, query, voice);
+    const clubFact = singleClubCurrentFactScope(question, grounding);
     const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
         teamNewsFixture: teamNewsFixture(question, grounding),
+        managerFact: clubFact?.kind === "manager" ? { question, grounding } : undefined,
       })
       : { queries: [], results: [], providerCalls: 0 };
-    const clubFact = singleClubCurrentFactScope(question, grounding);
     const prioritizedBundle = teamNewsBundleForHydration(question, grounding, rawBundle);
-    const bundle = voice === "desk" || clubFact
+    let bundle = voice === "desk" || clubFact
       ? filterDeskEvidenceBundle(prioritizedBundle, grounding, Date.now(), question)
       : prioritizedBundle;
+    if (clubFact?.kind === "manager") {
+      await hydrateBundlePublicationDates(bundle, signal);
+      bundle = filterDeskEvidenceBundle(bundle, grounding, Date.now(), question);
+    }
     // Desk team-news and scorer turns use the typed evidence path after search, whether
     // it yields a cited observation or a narrow abstention.
     const deskUsesMatchEvidencePath =
@@ -10058,18 +10070,23 @@ async function answerQuestionStreamScoped(
       };
     }
     const plannedQueries = planEvidenceQueries(question, grounding, query);
+    const clubFact = singleClubCurrentFactScope(question, grounding);
     const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, handlers.signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
         teamNewsFixture: teamNewsFixture(question, grounding),
+        managerFact: clubFact?.kind === "manager" ? { question, grounding } : undefined,
       })
       : { queries: [], results: [], providerCalls: 0 };
-    const clubFact = singleClubCurrentFactScope(question, grounding);
     const prioritizedBundle = teamNewsBundleForHydration(question, grounding, rawBundle);
-    const bundle = clubFact
+    let bundle = clubFact
       ? filterDeskEvidenceBundle(prioritizedBundle, grounding, Date.now(), question)
       : prioritizedBundle;
+    if (clubFact?.kind === "manager") {
+      await hydrateBundlePublicationDates(bundle, handlers.signal);
+      bundle = filterDeskEvidenceBundle(bundle, grounding, Date.now(), question);
+    }
     // A direct club identity/result is evidence prose, not a forecast draft.
     // Hold every delta until its dated claims have passed the same verifier.
     if (clubFact) {

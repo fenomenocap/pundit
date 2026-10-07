@@ -300,7 +300,7 @@ export default function ModelPage() {
                         {isExpanded && (
                           <tr className="border-t border-border/40 bg-secondary/20">
                             <td colSpan={7} className="px-4 py-3">
-                              <div className={`grid gap-4 sm:grid-cols-2 ${markets.length > 0 ? "lg:grid-cols-3" : ""} sm:divide-x sm:divide-border/60`}>
+                              <div className={`grid w-[calc(100vw-4rem)] gap-4 sm:w-auto sm:grid-cols-2 ${markets.length > 0 ? "lg:grid-cols-3" : ""} sm:divide-x sm:divide-border/60`}>
                                 <div className="space-y-1">
                                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                     Goals

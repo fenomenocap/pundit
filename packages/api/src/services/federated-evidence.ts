@@ -258,9 +258,13 @@ export function planFederatedQueries(
   }
   if (clubFact && baseQuery) {
     const day = now.toISOString().slice(0, 10);
+    const monthLabel = (date: Date) => date.toLocaleDateString("en-GB", {
+      month: "long", year: "numeric", timeZone: "UTC",
+    });
+    const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const targeted = clubFact.kind === "manager"
       ? [`${clubFact.club} current manager head coach official club ${day}`,
-        `${clubFact.club} manager appointment contract reasons official interview ${season}`]
+        `${clubFact.club} manager head coach latest appointment contract news ${monthLabel(previousMonth)} ${monthLabel(now)} BBC Sky Sports official`]
       : [`${clubFact.club} latest completed match result official report ${season} ${day}`,
         `${clubFact.club} latest match final score post match report ${day}`];
     return [...new Set([...targeted, ...planned])].slice(0, MAX_FEDERATED_QUERIES);
