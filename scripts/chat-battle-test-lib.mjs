@@ -1190,6 +1190,32 @@ export function validateResponseCorrectness(answer, citations, grounding, expect
     }
   }
   if (grounding?.kind === "match") {
+    // A club heading cannot be a quoted player identity. Inspect delivered
+    // prose, not a source title, on every match turn (including market turns).
+    const playerMarketProse = text.replace(/\[(?:[^\[\]]|\[[^\[\]]*\])+\]\(https?:\/\/[^\s)]+\)/g, "")
+      .replace(/\*\*/g, "");
+    const clubAliases = {
+      "Arsenal": ["Arsenal FC"],
+      "Leeds": ["Leeds United"],
+      "Man City": ["Manchester City"],
+      "Man United": ["Manchester United", "Manchester Utd", "Man Utd"],
+      "Nottingham Forest": ["Forest"],
+      "Wolves": ["Wolverhampton Wanderers", "Wolverhampton"],
+      "Tottenham": ["Tottenham Hotspur", "Spurs"],
+      "Brighton": ["Brighton & Hove Albion", "Brighton and Hove Albion"],
+    };
+    const fixtureClubs = [grounding.home, grounding.away].filter((club) => typeof club === "string" && club.trim());
+    const clubLabels = fixtureClubs.flatMap((club) => {
+      const normalized = club.trim().toLowerCase();
+      const family = Object.entries(clubAliases).find(([canonical, aliases]) =>
+        [canonical, ...aliases].some((label) => label.toLowerCase() === normalized));
+      return family ? [club, family[0], ...family[1]] : [club];
+    });
+    const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const invalidPlayerIdentity = clubLabels.some((club) => new RegExp(
+      `(?:^|[.!?\\n]|\\b(?:player|name)\\s+)\\s*[-*]?\\s*["'“‘]?(?:for|of|at|against|with|from|to|on|vs)\\s+${escape(club)}["'”’]?\\s+(?:is|was|are|were|remains?)\\b[^.!?\\n]{0,140}\\b(?:shortest[- ]priced|player[- ]market|scorer|to score|decimal|quoted|priced|name)\\b`, "i"
+    ).test(playerMarketProse));
+    assertions.noClubHeadingAsPlayerMarketIdentity = !invalidPlayerIdentity;
     assertions.fixtureStatusGrounded = !/\b(?:result is (?:already )?on (?:the )?record|match (?:has )?(?:already )?been played|future replay|played match)\b/i.test(text);
     // Active match grounding carries a forecast, not an immutable ledger seal.
     assertions.noUnsupportedSealClaim = !/\b(?:sealed|immutable)\s+(?:(?:pundit|fundamental|model)\s+)*(?:1x2|forecast|probabilities)\b/i.test(text);

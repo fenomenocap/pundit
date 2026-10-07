@@ -63,6 +63,52 @@ import {
   writeFailureReport,
   writeReport
 } from "./chat-battle-test-lib.mjs";
+
+test("all match turns reject fixture headings presented as player-market identities", () => {
+  const grounding = { kind: "match", home: "Arsenal", away: "Leeds" };
+  const check = (answer, facts = grounding) => validateResponseCorrectness(answer, [], facts);
+  // Exact delivered failure; the market caveat cannot turn a club heading into a person.
+  const actual = "I don’t have player-level projections for this fixture, so I can’t name a most likely scorer from match probabilities. For Arsenal is the shortest-priced Arsenal name in the player-market quotes I have, at 1.44 decimal (7 October 2026) ([Arsenal FC - Leeds United prediction & tips 10.10.2026](https://www.transfermarkt.com/betting/tips/arsenal-fc-vs-leeds-united-prediction-10-10-2026/), 2026-10-07T00:33:45+00:00). I treat that quote as a market price, not my probability.";
+  assert.equal(check(actual).assertions.noClubHeadingAsPlayerMarketIdentity, false);
+  assert.equal(check(actual).passed, false);
+  for (const heading of ["For Arsenal", "For Leeds", "Of Arsenal", "Against Leeds", "With Arsenal", "From Leeds", "At Arsenal", "To Leeds", "On Arsenal", "Vs Leeds"]) {
+    assert.equal(check(`${heading} is the shortest-priced name, at 1.44 decimal.`).passed, false, heading);
+    assert.equal(check(`**${heading}** is quoted at 1.44 decimal.`).passed, false, heading);
+    assert.equal(check(`“${heading}” is the shortest-priced name at 1.44 decimal.`).passed, false, heading);
+  }
+  for (const [home, alias] of [["Arsenal", "Arsenal FC"], ["Leeds", "Leeds United"], ["Man City", "Manchester City"], ["Manchester United", "Man United"], ["Wolves", "Wolverhampton Wanderers"], ["Nottingham Forest", "Forest"], ["Tottenham", "Spurs"]]) {
+    assert.equal(check(`For ${alias} is the shortest-priced player-market name at 1.44 decimal.`, { kind: "match", home, away: "Leeds" }).passed, false, alias);
+  }
+  for (const name of ["Bukayo Saka", "Kai Havertz", "Martin Ødegaard", "João Pedro", "De la Fuente", "Calvert-Lewin"]) {
+    assert.equal(check(`${name} is the shortest-priced Arsenal name in the player-market quotes, at 1.44 decimal. I treat that as a market price, not my probability.`).passed, true, name);
+  }
+  for (const answer of [
+    "For Arsenal, Bukayo Saka is the shortest-priced name at 1.44 decimal.",
+    "The quoted team price for Arsenal is 1.44 decimal; it is not a player projection.",
+    "Arsenal are quoted at 1.44 decimal in the match market.",
+    "I don’t have player-level projections, so I can’t name a most likely scorer.",
+    "Bukayo Saka is quoted at 1.44 decimal ([For Arsenal is the shortest-priced name](https://example.com/market)).",
+  ]) assert.equal(check(answer).passed, true, answer);
+  assert.equal(check(actual, null).assertions.noClubHeadingAsPlayerMarketIdentity, undefined);
+  // The original team-to-scorer prohibition remains separate and mandatory.
+  assert.equal(validateAnalystExpression("Saka is the best scorer because Arsenal are the team-level favourite.", { expectNoUnsupportedScorerInference: true }).passed, false);
+});
+
+test("scorer heading checks resolve the whole known alias family in either direction", () => {
+  for (const family of [
+    ["Tottenham", "Tottenham Hotspur", "Spurs"],
+    ["Man United", "Manchester United", "Manchester Utd", "Man Utd"],
+    ["Brighton", "Brighton & Hove Albion", "Brighton and Hove Albion"],
+  ]) {
+    for (const home of family) for (const label of family) {
+      const grounding = { kind: "match", home: home.toLowerCase(), away: "Leeds" };
+      const check = (answer) => validateResponseCorrectness(answer, [], grounding);
+      assert.equal(check(`For ${label} is quoted at 1.44 decimal.`).passed, false, `${home} -> ${label}`);
+      assert.equal(check(`For ${label}, Will Hughes is quoted at 2.10 decimal.`).passed, true, `${home} narrative`);
+      assert.equal(check(`The quoted match price for ${label} is 1.44 decimal.`).passed, true, `${home} team quote`);
+    }
+  }
+});
 import {
   CRITIC_DIMENSIONS,
   criticEvidencePasses,
