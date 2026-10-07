@@ -2,9 +2,72 @@
   "schemaVersion": 1,
   "requestId": "pundit-finish-everything-2026-10",
   "scope": "All original user requests plus explicit completion-governance and historical predictive-calibration follow-up.",
-  "targetRelease": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+  "targetRelease": {
+    "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+    "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+    "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+  },
   "historicalEvidence": [
-    {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+    {
+      "path": "artifacts/remaining-completion/completion-packet.json",
+      "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-scorer-identity-release-closure-compact.json",
+      "sha256": "ce2704cf6a86af5903984124332ae6a33a0753767b66ddf20bb92469b05667b9"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/register-before-release-closure.json",
+      "sha256": "5777305646af8594609527b51c20feaa0f21e75a52afb180128298ddc2d3406c"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-parser-release-closure.json",
+      "sha256": "7b9af0df02be216a847214015908ac0a014d29c3a75aa2f4765b5f4d1f69f457"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/register-before-scorer-identity-reopening.json",
+      "sha256": "7b9af0df02be216a847214015908ac0a014d29c3a75aa2f4765b5f4d1f69f457"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-scorer-identity-release-closure.json",
+      "sha256": "2bf140868cc0c55b35e6e9a5367a40278f8531831e368dbe50e2c1d3ce025627"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-repair-closure.json",
+      "sha256": "0e69f147e4ed4995a57260b01b38595d06082dc08a178201f1d4d9f7364e8043"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-security-closure.json",
+      "sha256": "9393649a6592f8c580a2148f25cc9627f5a57bfdece43c29d28a5aa45321a6ed"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-security-closure-compact.json",
+      "sha256": "309a38c1a89de2a28fafb5d321ab405c81d89129120e8d9915f8a57d880bcb17"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/register-before-nonfinite-security-reopening.json",
+      "sha256": "0e69f147e4ed4995a57260b01b38595d06082dc08a178201f1d4d9f7364e8043"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-independent-review/review.json",
+      "sha256": "35dbf14268afe19027aab698e5498048269691084dcafe9047c72d3b1dde3fc4"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+      "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/pr260-material-scorer-identity-certification-failure.json",
+      "sha256": "fbc2c7a9fc7d5a56c31fdea64e52a7435aa2bfa6de6e5b2bb75e67cf39ece58d"
+    },
+    {
+      "path": "artifacts/historical-calibration-2026-10-07/production/pr260-final-critics/model.json",
+      "sha256": "3f97261bf50ab7d8d5c4b6383f74e814664da16d4e339e14b905b7f41ebbe835"
+    },
+    {
+      "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+      "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+    }
   ],
   "historicalBoundary": "Prior receipt certifies a repaired production release only. Its prospective minimum-cohort policy is preserved as history; it does not replace the new retrospective improvement request. Prior evidence is never rewritten or rebound to a later source.",
   "requirements": [
@@ -12,8 +75,7 @@
       "id": "functional-qa",
       "request": "Quick QA and fix all identified product defects.",
       "owner": "root",
-      "state": "ongoing",
-      "nextAction": "Preserve the certified38ed desk/mobile acceptance; refresh exact-source product verification after the final parser-cap security release.",
+      "state": "accepted",
       "acceptanceCriteria": [
         "Delivered repairs work through the desk and API.",
         "Separate predictive quality acceptance remains mandatory in predictive-calibration."
@@ -21,40 +83,198 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "reason": "Exact current source submission matches frozen tested merged tree; scoped repairs reviewed independently. Original web copy, narrow scorer runtime and evaluator alias guard remain source-bound; UI containment review has root author-external current sample.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-clean-cli-source-provenance-audit.json",
+              "sha256": "f9067556f177bca9be0db20120ee91161483c3315579f1fe4adb26cdcdb20326"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-scorer-guard/repaired-v2-independent-review.json",
+              "sha256": "1df6828e6709676a4cf8b170050f03d3784a1492176e5ea26bfaf7c097dd4eb3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-root-independent-rendered-sample-review.json",
+              "sha256": "cd168bff0bb5af2588e6e8d132813d113c4f37012d9f7cfaedf28b7a81d8a5f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-controlled-copy-byte-continuity.json",
+              "sha256": "d5f80dd37d8128d62c756c3b5a235d37a2f5f96e0d9ad59b5b014ea77d501861"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "54 rendered route/viewport checks, repeated flows and fresh production answer review passed.",
+          "reason": "Relevant frozen repair suites repeated twice plus author-external controls, and fresh actual paired responsive GET sweeps both pass. Fresh71answer domain review and official11browser checks pass; historical unchanged91×2 mocked missing-scorer controls stay separate from current observations.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
-            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+              "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+            },
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+              "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+              "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-scorer-guard/repaired-v2-independent-review.json",
+              "sha256": "1df6828e6709676a4cf8b170050f03d3784a1492176e5ea26bfaf7c097dd4eb3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/browser-copy-repaired-1670ecc64e5c-independent-review.json",
+              "sha256": "fe3c155258e84d286dc8b5acf47db2ccfd72ce8a1a47206b78730ca5711760b8"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-controlled-copy-byte-continuity.json",
+              "sha256": "d5f80dd37d8128d62c756c3b5a235d37a2f5f96e0d9ad59b5b014ea77d501861"
+            }
           ]
         },
         "deployment": {
           "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Terminal RailwaySUCCESS/VercelREADY and public exact API/web1670 with9645deployment bind clean CLI submitted checkout. Both paired UI and official browser preserve exact source before/after; no production mutation by this reviewer.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-clean-cli-source-provenance-audit.json",
+              "sha256": "f9067556f177bca9be0db20120ee91161483c3315579f1fe4adb26cdcdb20326"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/browser-copy-repaired-1670ecc64e5c-independent-review.json",
+              "sha256": "fe3c155258e84d286dc8b5acf47db2ccfd72ce8a1a47206b78730ca5711760b8"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
           "status": "passed",
-          "reason": "54 rendered route/viewport checks, repeated flows and fresh production answer review passed.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Current68actualPNG/60grids, root current author-external sample,71actual200 fresh critic coverage and all11officialbrowser checks accepted. Finalized report is actualPASS with immutable requests/answers/grounding; six criteria retain finite/controlled/statistical boundaries.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/browser-copy-repaired-1670ecc64e5c-independent-review.json",
+              "sha256": "fe3c155258e84d286dc8b5acf47db2ccfd72ce8a1a47206b78730ca5711760b8"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-root-independent-rendered-sample-review.json",
+              "sha256": "cd168bff0bb5af2588e6e8d132813d113c4f37012d9f7cfaedf28b7a81d8a5f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-ui-date-market-binding-review.json",
+              "sha256": "a39008a3de8af1d6564e72a27f29a4b0f34ab88338e8fd8573f2f93f6002bc9a"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/web-v2.json",
+              "sha256": "150e64c9e54e2b5ec06f7deae40bf0cdffe6379016d7c879aad452c909ac57d2"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-finalized-report-review.json",
+              "sha256": "2c23151222644f656e0b8086a66f917e2fa74488729b01117a830a778650911f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
-      }
+      },
+      "historicalEvidence": [
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+          "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+          "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+        },
+        {
+          "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+          "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        },
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        }
+      ],
+      "blocker": null
     },
     {
       "id": "probability-and-odds",
@@ -68,48 +288,213 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "reason": "Reviewed numericalalgorithm/pinnedfit artifacts remainunchanged;20sourcebindings agree withdeployedbytes, fullgridscoherent andcurrentidentityrepairseparatelyauthor-externalreviewed. Historicalproperloss,leakage andruntimefailclosedreviews retained.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model-final-math.json",
+              "sha256": "bd0e65d4d9fbc777661f1ad02e552887165202a4166262e133a09ae959dd6ddf"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/independent-finalization-review.json",
+              "sha256": "0f90d51c819b22b8007c4b7ca788e9d65832cf9a49152a0356713ab136e40edb"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "Independent critic checked 4,968 numerical facts and probability/odds output. This does not establish predictive calibration.",
+          "reason": "Freshpublic30grid/3golden5284checks repeatedtwice; everyownactual200answer manuallyreviewed with6,463arithmeticchecks. DeclaredNode22fullAPI2012×2/focused619×2 andharness177×2/completion24×2 pass, source-treeCIproof unchanged. Historicalindependentreconstruction repeated, meaningfulfailures retained.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
-            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+              "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+            },
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+              "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+              "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model-final-math.json",
+              "sha256": "bd0e65d4d9fbc777661f1ad02e552887165202a4166262e133a09ae959dd6ddf"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/independent-finalization-review.json",
+              "sha256": "0f90d51c819b22b8007c4b7ca788e9d65832cf9a49152a0356713ab136e40edb"
+            }
           ]
         },
         "deployment": {
           "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Actual1670API/websha andRailway9645SUCCESS/webREADY verifiedfromterminal+publicstate, cleanCLI409fileprovenance agreeswithtestedtree; pina502and30readyrows,collectorfalse inspectedtwice.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
           "status": "passed",
-          "reason": "Independent critic checked 4,968 numerical facts and probability/odds output. This does not establish predictive calibration.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Freshexact1670/9645Schema17 finalizedoverallPASS afterindependent38model/12news/23generalcritics;71actual200turnshashbound,68PASS/5safeabsenceINC,all11officialmobile/desktopbrowserchecks pass. Fiveunavailableconditionsretainno factualacceptance. Thisacceptsonly2modelrequirements;authoritativewholecompletionregister unchanged.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model-final-math.json",
+              "sha256": "bd0e65d4d9fbc777661f1ad02e552887165202a4166262e133a09ae959dd6ddf"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/independent-finalization-review.json",
+              "sha256": "0f90d51c819b22b8007c4b7ca788e9d65832cf9a49152a0356713ab136e40edb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
-      }
+      },
+      "historicalEvidence": [
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+          "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+          "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+        },
+        {
+          "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+          "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        },
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        }
+      ],
+      "blocker": null
     },
     {
       "id": "predictive-calibration",
       "request": "Finish quant-model investigation and predictive improvement using historical matches, including the fixed2.70 totals limitation.",
       "owner": "root",
-      "state": "ongoing",
+      "state": "accepted",
       "blocker": null,
-      "nextAction": "Preserve the deployed historical calibration and certified38ed model acceptance; bind its unchanged calibration inputs and fresh public output to the final parser-cap security release.",
       "acceptanceCriteria": [
         "Reproducible leakage-safe chronological training, selection and held-out evaluation with pre-kickoff inputs.",
         "Compare to shipped full score distribution on 1X2, totals, BTTS and scorelines; finite coherent grid and independent numerical review.",
@@ -120,17 +505,29 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Pinned EPL goal-rate shape implemented across API/chat/consensus/season/web/paper with coherent finalgrid and exactprovenance; UCLneutralbaselines preserved.",
+          "reason": "Reviewed numericalalgorithm/pinnedfit artifacts remainunchanged;20sourcebindings agree withdeployedbytes, fullgridscoherent andcurrentidentityrepairseparatelyauthor-externalreviewed. Historicalproperloss,leakage andruntimefailclosedreviews retained.",
           "evidence": [
             {
               "path": "artifacts/historical-calibration-2026-10-07/historical-promotion-decision.json",
               "sha256": "2422fe5099989e9ecd3fca231ec3e2cae1777e5339ee4e5c37e2e394fd529b78"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/elo-independent-2009-2014-final-review.json",
+              "sha256": "77159a39fd6a70910abc9091e5126fdba86a014f6fc694345ca83ccafde3cb65"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/elo-family-reserve-final-review.json",
+              "sha256": "478805fd53657a2aa85909a13366007328bac9931a62da27d495bfdaafe59699"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
             }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "All frozen five-season proper-score/noninferiority gates pass;twoidenticalreplaysandindependentreconstruction. Earlier2017failure retained. API1906/web84/harness168eachpassedtwice; liveacceptance stillpending.",
+          "reason": "Freshpublic30grid/3golden5284checks repeatedtwice; everyownactual200answer manuallyreviewed with6,463arithmeticchecks. DeclaredNode22fullAPI2012×2/focused619×2 andharness177×2/completion24×2 pass, source-treeCIproof unchanged. Historicalindependentreconstruction repeated, meaningfulfailures retained.",
           "evidence": [
             {
               "path": "artifacts/historical-calibration-2026-10-07/elo-independent-2009-2014-final-review.json",
@@ -139,37 +536,182 @@
             {
               "path": "artifacts/historical-calibration-2026-10-07/local-frozen-integration-verification.json",
               "sha256": "8476c7762a7fa4e423cbca7d258109c9edecb8992bc08c8183a3b3cff9cac057"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model-final-math.json",
+              "sha256": "bd0e65d4d9fbc777661f1ad02e552887165202a4166262e133a09ae959dd6ddf"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/independent-finalization-review.json",
+              "sha256": "0f90d51c819b22b8007c4b7ca788e9d65832cf9a49152a0356713ab136e40edb"
             }
           ]
         },
         "deployment": {
-          "status": "pending",
-          "reason": "No historically accepted improvement or explicit product decision boundary has been released."
+          "status": "passed",
+          "reason": "Actual1670API/websha andRailway9645SUCCESS/webREADY verifiedfromterminal+publicstate, cleanCLI409fileprovenance agreeswithtestedtree; pina502and30readyrows,collectorfalse inspectedtwice.",
+          "evidence": [
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
-          "status": "pending",
-          "reason": "Predictive acceptance is ongoing, independently of the prior repaired-release PASS."
+          "status": "passed",
+          "reason": "Freshexact1670/9645Schema17 finalizedoverallPASS afterindependent38model/12news/23generalcritics;71actual200turnshashbound,68PASS/5safeabsenceINC,all11officialmobile/desktopbrowserchecks pass. Fiveunavailableconditionsretainno factualacceptance. Thisacceptsonly2modelrequirements;authoritativewholecompletionregister unchanged.",
+          "evidence": [
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model-final-math.json",
+              "sha256": "bd0e65d4d9fbc777661f1ad02e552887165202a4166262e133a09ae959dd6ddf"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/independent-finalization-review.json",
+              "sha256": "0f90d51c819b22b8007c4b7ca788e9d65832cf9a49152a0356713ab136e40edb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
       },
       "historicalEvidence": [
         {
           "path": "artifacts/remaining-completion/completion-packet.json",
           "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/historical-calibration-2026-10-07/historical-promotion-decision.json",
+          "sha256": "2422fe5099989e9ecd3fca231ec3e2cae1777e5339ee4e5c37e2e394fd529b78"
+        },
+        {
+          "path": "artifacts/historical-calibration-2026-10-07/elo-independent-2009-2014-final-review.json",
+          "sha256": "77159a39fd6a70910abc9091e5126fdba86a014f6fc694345ca83ccafde3cb65"
+        },
+        {
+          "path": "artifacts/historical-calibration-2026-10-07/local-frozen-integration-verification.json",
+          "sha256": "8476c7762a7fa4e423cbca7d258109c9edecb8992bc08c8183a3b3cff9cac057"
         }
-      ]
+      ],
+      "calibrationReceipt": {
+        "path": "artifacts/historical-calibration-2026-10-07/production/historical-predictive-calibration-receipt-v4.json",
+        "sha256": "18a658ec9912f51ecbb0339917d8bc28656caeb0c7ca22a519d555d711c3b57c"
+      }
     },
     {
       "id": "output-contracts",
       "request": "Test actual output, conversation history, routing and all delivery formats.",
       "owner": "root",
-      "state": "ongoing",
-      "nextAction": "Reject the invalid For Arsenal player-market identity, independently review the extractor and evaluator regressions, deploy the tested repair and rerun exact-source full chat/browser/critic certification before accepting output contracts.",
+      "state": "accepted",
       "blocker": null,
       "historicalEvidence": [
-        {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-        {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-        {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"},
-        {"path": "artifacts/historical-calibration-2026-10-07/production/pr260-material-scorer-identity-certification-failure.json", "sha256": "fbc2c7a9fc7d5a56c31fdea64e52a7435aa2bfa6de6e5b2bb75e67cf39ece58d"}
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        },
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/historical-calibration-2026-10-07/production/pr260-material-scorer-identity-certification-failure.json",
+          "sha256": "fbc2c7a9fc7d5a56c31fdea64e52a7435aa2bfa6de6e5b2bb75e67cf39ece58d"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+          "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+          "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+        },
+        {
+          "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+          "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        }
       ],
       "acceptanceCriteria": [
         "JSON, desk and SSE preserve typed facts and scope.",
@@ -178,38 +720,201 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "reason": "Source-bound parser and typed-delivery repairs independently reviewed; same citation/source/date semantics retained. Scorer author-external937c and evaluator alias review support bounded identity protection.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/news.json",
+              "sha256": "bbd15137af42615bdcee2567ba810edff36776aa837cd2a374f565eebec25aac"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/fresh-primary-source-review.json",
+              "sha256": "22d41d3ce646b59d82ba3c1d436d02752d6d43c5b1ae80f5bebc67296cb3f523"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/runtime-news-format-independent/independent-review.json",
+              "sha256": "3815d9249d8f02ee6b0eafa401b0cc1963f1a28cb17f60aab24e69cdc52607e4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-repair/verification-node22.json",
+              "sha256": "251184a5c2131b8dd8951e8bfd3978bd58330067b9a09a97fd1a03665de0f31f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-harness/alias-family-verification.json",
+              "sha256": "c211da2045d1a40fe616392ab1c2f4c927e7f5cb9c93b5ff9272390c111e69a3"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "71 successful production turns reviewed, plus rendering and controlled transport/history cases.",
+          "reason": "Node22 fullAPI2012 twice, harness177 twice and independent runtime46case packets twice pass; exact failed ForArsenal witness remains preserved and guard now rejects it locally. Final current actual12/10turn manual source/scorer review adds live evidence.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
-            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+              "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+            },
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+              "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+              "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/news.json",
+              "sha256": "bbd15137af42615bdcee2567ba810edff36776aa837cd2a374f565eebec25aac"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/fresh-primary-source-review.json",
+              "sha256": "22d41d3ce646b59d82ba3c1d436d02752d6d43c5b1ae80f5bebc67296cb3f523"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/runtime-news-format-independent/independent-review.json",
+              "sha256": "3815d9249d8f02ee6b0eafa401b0cc1963f1a28cb17f60aab24e69cdc52607e4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-repair/verification-node22.json",
+              "sha256": "251184a5c2131b8dd8951e8bfd3978bd58330067b9a09a97fd1a03665de0f31f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-harness/alias-family-verification.json",
+              "sha256": "c211da2045d1a40fe616392ab1c2f4c927e7f5cb9c93b5ff9272390c111e69a3"
+            }
           ]
         },
         "deployment": {
           "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
-          "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
-        },
-        "productAcceptance": {
-          "status": "pending",
-          "reason": "Independent review of the complete 0aa7 release found a club heading delivered as a player name despite automated scenario PASS. The previous product acceptance remains historical; this request stays unfinished pending repaired exact-source acceptance.",
+          "reason": "ExactAPI/web1670source converged, Railway9645SUCCESS/VercelREADY, source-bound mainCI37646122378SUCCESS and verifyprodPASS reviewed; final certificate uses this same pair.",
           "evidence": [
             {
-              "path": "artifacts/historical-calibration-2026-10-07/production/pr260-material-scorer-identity-certification-failure.json",
-              "sha256": "fbc2c7a9fc7d5a56c31fdea64e52a7435aa2bfa6de6e5b2bb75e67cf39ece58d"
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-public-source-convergence.json",
+              "sha256": "cbab3af303e3ebf2ef1ed377dd4811460a898a1fb5895f4eb7873eee49d85ccc"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-exact-pair-verify-prod.log",
+              "sha256": "37e2f9c5737532a798df49679757c408086f26da3d4931b4b3f26b71bfa051a6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
             }
-          ]
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
+        },
+        "productAcceptance": {
+          "status": "passed",
+          "reason": "FinalizedSchema17 PASS has73scenarios68PASS5safeabsenceINCONCLUSIVE,71successful answers independently reviewed, clean official browser and latency/pacing/source gates. No old failed report regraded.",
+          "evidence": [
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/news.json",
+              "sha256": "bbd15137af42615bdcee2567ba810edff36776aa837cd2a374f565eebec25aac"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/fresh-primary-source-review.json",
+              "sha256": "22d41d3ce646b59d82ba3c1d436d02752d6d43c5b1ae80f5bebc67296cb3f523"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/runtime-news-format-independent/independent-review.json",
+              "sha256": "3815d9249d8f02ee6b0eafa401b0cc1963f1a28cb17f60aab24e69cdc52607e4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-repair/verification-node22.json",
+              "sha256": "251184a5c2131b8dd8951e8bfd3978bd58330067b9a09a97fd1a03665de0f31f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-harness/alias-family-verification.json",
+              "sha256": "c211da2045d1a40fe616392ab1c2f4c927e7f5cb9c93b5ff9272390c111e69a3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
       }
     },
@@ -224,47 +929,204 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "reason": "Exact current source submission matches frozen tested merged tree; scoped repairs reviewed independently. Original web copy, narrow scorer runtime and evaluator alias guard remain source-bound; UI containment review has root author-external current sample.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-clean-cli-source-provenance-audit.json",
+              "sha256": "f9067556f177bca9be0db20120ee91161483c3315579f1fe4adb26cdcdb20326"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-scorer-guard/repaired-v2-independent-review.json",
+              "sha256": "1df6828e6709676a4cf8b170050f03d3784a1492176e5ea26bfaf7c097dd4eb3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-root-independent-rendered-sample-review.json",
+              "sha256": "cd168bff0bb5af2588e6e8d132813d113c4f37012d9f7cfaedf28b7a81d8a5f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-controlled-copy-byte-continuity.json",
+              "sha256": "d5f80dd37d8128d62c756c3b5a235d37a2f5f96e0d9ad59b5b014ea77d501861"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "EPL logo visually inspected in the repeated product browser checks.",
+          "reason": "Relevant frozen repair suites repeated twice plus author-external controls, and fresh actual paired responsive GET sweeps both pass. Fresh71answer domain review and official11browser checks pass; historical unchanged91×2 mocked missing-scorer controls stay separate from current observations.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
-            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+              "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+            },
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+              "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+              "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-scorer-guard/repaired-v2-independent-review.json",
+              "sha256": "1df6828e6709676a4cf8b170050f03d3784a1492176e5ea26bfaf7c097dd4eb3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/browser-copy-repaired-1670ecc64e5c-independent-review.json",
+              "sha256": "fe3c155258e84d286dc8b5acf47db2ccfd72ce8a1a47206b78730ca5711760b8"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-controlled-copy-byte-continuity.json",
+              "sha256": "d5f80dd37d8128d62c756c3b5a235d37a2f5f96e0d9ad59b5b014ea77d501861"
+            }
           ]
         },
         "deployment": {
           "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Terminal RailwaySUCCESS/VercelREADY and public exact API/web1670 with9645deployment bind clean CLI submitted checkout. Both paired UI and official browser preserve exact source before/after; no production mutation by this reviewer.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-clean-cli-source-provenance-audit.json",
+              "sha256": "f9067556f177bca9be0db20120ee91161483c3315579f1fe4adb26cdcdb20326"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/browser-copy-repaired-1670ecc64e5c-independent-review.json",
+              "sha256": "fe3c155258e84d286dc8b5acf47db2ccfd72ce8a1a47206b78730ca5711760b8"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
           "status": "passed",
-          "reason": "EPL logo visually inspected in the repeated product browser checks.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Current68actualPNG/60grids, root current author-external sample,71actual200 fresh critic coverage and all11officialbrowser checks accepted. Finalized report is actualPASS with immutable requests/answers/grounding; six criteria retain finite/controlled/statistical boundaries.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/browser-copy-repaired-1670ecc64e5c-independent-review.json",
+              "sha256": "fe3c155258e84d286dc8b5acf47db2ccfd72ce8a1a47206b78730ca5711760b8"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-root-independent-rendered-sample-review.json",
+              "sha256": "cd168bff0bb5af2588e6e8d132813d113c4f37012d9f7cfaedf28b7a81d8a5f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-ui-date-market-binding-review.json",
+              "sha256": "a39008a3de8af1d6564e72a27f29a4b0f34ab88338e8fd8573f2f93f6002bc9a"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/web-v2.json",
+              "sha256": "150e64c9e54e2b5ec06f7deae40bf0cdffe6379016d7c879aad452c909ac57d2"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-finalized-report-review.json",
+              "sha256": "2c23151222644f656e0b8086a66f917e2fa74488729b01117a830a778650911f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
-      }
+      },
+      "historicalEvidence": [
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+          "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+          "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+        },
+        {
+          "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+          "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        },
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        }
+      ],
+      "blocker": null
     },
     {
       "id": "current-news",
       "request": "Repair current-news coverage and useful manager/result/injury delivery.",
       "owner": "root",
-      "state": "ongoing",
-      "nextAction": "Preserve the useful certified38ed manager and dated-news delivery; repeat source-bound current-news acceptance on the final parser-cap security release.",
+      "state": "accepted",
       "acceptanceCriteria": [
         "Positive claims have publisher support and correct club ownership.",
         "Current manager facts remain useful; unsupported rationale and future availability retain clear boundaries."
@@ -272,40 +1134,238 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "reason": "Typed publication-date/news records and invalid_json-only retry have author-external3815 review; exactbody/source verifier retained. Root manager fact delivery independently accepted from actual fresh role/why responses.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/news.json",
+              "sha256": "bbd15137af42615bdcee2567ba810edff36776aa837cd2a374f565eebec25aac"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/fresh-primary-source-review.json",
+              "sha256": "22d41d3ce646b59d82ba3c1d436d02752d6d43c5b1ae80f5bebc67296cb3f523"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/runtime-news-format-independent/independent-review.json",
+              "sha256": "3815d9249d8f02ee6b0eafa401b0cc1963f1a28cb17f60aab24e69cdc52607e4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-repair/verification-node22.json",
+              "sha256": "251184a5c2131b8dd8951e8bfd3978bd58330067b9a09a97fd1a03665de0f31f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-harness/alias-family-verification.json",
+              "sha256": "c211da2045d1a40fe616392ab1c2f4c927e7f5cb9c93b5ff9272390c111e69a3"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "Fresh production manager/news/result/scorer turns independently reviewed; source outages preserved and safely handled.",
+          "reason": "Current source tests/negative calendar/source/name/status/budget/abort controls and two fullAPI runs pass. Actual manager/news positives are externally reviewed against fresh exact sources; authored strictnews scenario accepted by separate model reviewer66ca.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
-            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+              "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+            },
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+              "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+              "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/news.json",
+              "sha256": "bbd15137af42615bdcee2567ba810edff36776aa837cd2a374f565eebec25aac"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/fresh-primary-source-review.json",
+              "sha256": "22d41d3ce646b59d82ba3c1d436d02752d6d43c5b1ae80f5bebc67296cb3f523"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/runtime-news-format-independent/independent-review.json",
+              "sha256": "3815d9249d8f02ee6b0eafa401b0cc1963f1a28cb17f60aab24e69cdc52607e4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-repair/verification-node22.json",
+              "sha256": "251184a5c2131b8dd8951e8bfd3978bd58330067b9a09a97fd1a03665de0f31f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-harness/alias-family-verification.json",
+              "sha256": "c211da2045d1a40fe616392ab1c2f4c927e7f5cb9c93b5ff9272390c111e69a3"
+            }
           ]
         },
         "deployment": {
           "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "ExactAPI/web1670source converged, Railway9645SUCCESS/VercelREADY, source-bound mainCI37646122378SUCCESS and verifyprodPASS reviewed; final certificate uses this same pair.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-public-source-convergence.json",
+              "sha256": "cbab3af303e3ebf2ef1ed377dd4811460a898a1fb5895f4eb7873eee49d85ccc"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-exact-pair-verify-prod.log",
+              "sha256": "37e2f9c5737532a798df49679757c408086f26da3d4931b4b3f26b71bfa051a6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
           "status": "passed",
-          "reason": "Fresh production manager/news/result/scorer turns independently reviewed; source outages preserved and safely handled.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Actual useful manager role, requested news facts and clear future/cause limits accepted in current final PASS. Requests with unestablished Leeds news are scoped as evidence limits, not categorical source absence; no medical forecast or appointment cause invented.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/news.json",
+              "sha256": "bbd15137af42615bdcee2567ba810edff36776aa837cd2a374f565eebec25aac"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/fresh-primary-source-review.json",
+              "sha256": "22d41d3ce646b59d82ba3c1d436d02752d6d43c5b1ae80f5bebc67296cb3f523"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/runtime-news-format-independent/independent-review.json",
+              "sha256": "3815d9249d8f02ee6b0eafa401b0cc1963f1a28cb17f60aab24e69cdc52607e4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-repair/verification-node22.json",
+              "sha256": "251184a5c2131b8dd8951e8bfd3978bd58330067b9a09a97fd1a03665de0f31f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-harness/alias-family-verification.json",
+              "sha256": "c211da2045d1a40fe616392ab1c2f4c927e7f5cb9c93b5ff9272390c111e69a3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
-      }
+      },
+      "historicalEvidence": [
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+          "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+          "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+        },
+        {
+          "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+          "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        },
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        }
+      ],
+      "blocker": null
     },
     {
       "id": "citations-and-dates",
@@ -319,100 +1379,442 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "reason": "Server-owned source IDs/date rendering and strict typed status grammar preserve publication/event separation; independent formatter/semantic reviews cover JSON/desk/SSE and exactmanager precision.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/news.json",
+              "sha256": "bbd15137af42615bdcee2567ba810edff36776aa837cd2a374f565eebec25aac"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/fresh-primary-source-review.json",
+              "sha256": "22d41d3ce646b59d82ba3c1d436d02752d6d43c5b1ae80f5bebc67296cb3f523"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/runtime-news-format-independent/independent-review.json",
+              "sha256": "3815d9249d8f02ee6b0eafa401b0cc1963f1a28cb17f60aab24e69cdc52607e4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-repair/verification-node22.json",
+              "sha256": "251184a5c2131b8dd8951e8bfd3978bd58330067b9a09a97fd1a03665de0f31f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-harness/alias-family-verification.json",
+              "sha256": "c211da2045d1a40fe616392ab1c2f4c927e7f5cb9c93b5ff9272390c111e69a3"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "Production independent critic and exact publisher/false-support controls passed; dated-news conflict remained qualified.",
+          "reason": "Source/date/row-count/marker/cross-sentence/alias and actual supported-scoped conflict guards pass repeated frozen tests. Fresh primary metadata/body checked, with Standard rawHTML timestamp limit explicitly preserved.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
-            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+              "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+            },
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+              "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+              "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/news.json",
+              "sha256": "bbd15137af42615bdcee2567ba810edff36776aa837cd2a374f565eebec25aac"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/fresh-primary-source-review.json",
+              "sha256": "22d41d3ce646b59d82ba3c1d436d02752d6d43c5b1ae80f5bebc67296cb3f523"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/runtime-news-format-independent/independent-review.json",
+              "sha256": "3815d9249d8f02ee6b0eafa401b0cc1963f1a28cb17f60aab24e69cdc52607e4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-repair/verification-node22.json",
+              "sha256": "251184a5c2131b8dd8951e8bfd3978bd58330067b9a09a97fd1a03665de0f31f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-harness/alias-family-verification.json",
+              "sha256": "c211da2045d1a40fe616392ab1c2f4c927e7f5cb9c93b5ff9272390c111e69a3"
+            }
           ]
         },
         "deployment": {
           "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "ExactAPI/web1670source converged, Railway9645SUCCESS/VercelREADY, source-bound mainCI37646122378SUCCESS and verifyprodPASS reviewed; final certificate uses this same pair.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-public-source-convergence.json",
+              "sha256": "cbab3af303e3ebf2ef1ed377dd4811460a898a1fb5895f4eb7873eee49d85ccc"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-exact-pair-verify-prod.log",
+              "sha256": "37e2f9c5737532a798df49679757c408086f26da3d4931b4b3f26b71bfa051a6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
           "status": "passed",
-          "reason": "Production independent critic and exact publisher/false-support controls passed; dated-news conflict remained qualified.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Current immutable final report, complete critic and official browser accept resolved same-sentence citations and factual date fidelity. No unverified eventdate/appointmentmonth is delivered; no absoluteStandard timestamp seal claimed.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/news.json",
+              "sha256": "bbd15137af42615bdcee2567ba810edff36776aa837cd2a374f565eebec25aac"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/model.json",
+              "sha256": "ae5367518a579b5d7165acdb20f22ac16d746233294c9da927a516254ee22139"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/strict-news-independent-primary-review.json",
+              "sha256": "66ca345294f684d4ddccbbaff62526ff291af9e05a55e7c0e352475915c00310"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/fresh-primary-source-review.json",
+              "sha256": "22d41d3ce646b59d82ba3c1d436d02752d6d43c5b1ae80f5bebc67296cb3f523"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/runtime-news-format-independent/independent-review.json",
+              "sha256": "3815d9249d8f02ee6b0eafa401b0cc1963f1a28cb17f60aab24e69cdc52607e4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-repair/verification-node22.json",
+              "sha256": "251184a5c2131b8dd8951e8bfd3978bd58330067b9a09a97fd1a03665de0f31f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-scorer-identity-harness/alias-family-verification.json",
+              "sha256": "c211da2045d1a40fe616392ab1c2f4c927e7f5cb9c93b5ff9272390c111e69a3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
-      }
+      },
+      "historicalEvidence": [
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+          "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+          "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+        },
+        {
+          "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+          "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        },
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        }
+      ],
+      "blocker": null
     },
     {
       "id": "dependency-security",
       "request": "Resolve the remaining development dependency advisory durably.",
       "owner": "root",
-      "state": "ongoing",
+      "state": "accepted",
       "acceptanceCriteria": [
         "Vulnerable braces paths replaced by audited bounded compatibility implementation.",
         "Clean install, actual attack positive/negative controls, API compatibility and unsuppressed audits pass twice."
       ],
       "phases": {
         "implementation": {
-          "status": "pending",
-          "reason": "Reopened after independent invalid-option parser cap failure. Previous security release evidence is preserved as historical; current corrected guard requires separate review, testing, deployment and product acceptance.",
+          "status": "passed",
+          "reason": "Independent35db acceptance covers allactual forkcontracts/realconsumer resolution and finitecap repair; current13source fingerprint checks match. Implementation acceptance is separate from advisory metadata.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-independent-review/review.json",
+              "sha256": "35dbf14268afe19027aab698e5498048269691084dcafe9047c72d3b1dde3fc4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-repair-verification.json",
+              "sha256": "ed086852e250112960aac7b360705e8687098d4fa02abc0cb8ccd288aa373818"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/security-current-source-preparation.json",
+              "sha256": "612dbccbac56613226d26c5900f6beb5793f8f57213ae7dc8accc963df540c3c"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr256-news-critic-sources/dependency-audit-first.json",
+              "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr256-news-critic-sources/dependency-audit-second.json",
+              "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"
+            }
           ]
         },
         "testing": {
-          "status": "pending",
-          "reason": "Reopened after independent invalid-option parser cap failure. Previous security release evidence is preserved as historical; current corrected guard requires separate review, testing, deployment and product acceptance.",
+          "status": "passed",
+          "reason": "Attack positive/negative controls and realconsumer NaN/Infinity/default/lowerlimit cases repeated independently; cleaninstall and upstreamparity author proof, unsuppressed audits and current successful releaseCI retained with unchanged graph/source verification.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-first.log", "sha256": "80e5304436471b3075e483afa87ab2e257e64dcefc0e9edf720069bbfb7cef28"},
-            {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-second.log", "sha256": "411eed08061d535deecb6edc76045cd0fd3a5b21c52c1d2c8393ec709dac053c"},
-            {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-audit-second.json", "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"}
+            {
+              "path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-first.log",
+              "sha256": "80e5304436471b3075e483afa87ab2e257e64dcefc0e9edf720069bbfb7cef28"
+            },
+            {
+              "path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-second.log",
+              "sha256": "411eed08061d535deecb6edc76045cd0fd3a5b21c52c1d2c8393ec709dac053c"
+            },
+            {
+              "path": "artifacts/remaining-completion/dependencies/pundit-dependency-audit-second.json",
+              "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-independent-review/review.json",
+              "sha256": "35dbf14268afe19027aab698e5498048269691084dcafe9047c72d3b1dde3fc4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-repair-verification.json",
+              "sha256": "ed086852e250112960aac7b360705e8687098d4fa02abc0cb8ccd288aa373818"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/security-current-source-preparation.json",
+              "sha256": "612dbccbac56613226d26c5900f6beb5793f8f57213ae7dc8accc963df540c3c"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr256-news-critic-sources/dependency-audit-first.json",
+              "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr256-news-critic-sources/dependency-audit-second.json",
+              "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"
+            }
           ]
         },
         "deployment": {
-          "status": "pending",
-          "reason": "Reopened after independent invalid-option parser cap failure. Previous security release evidence is preserved as historical; current corrected guard requires separate review, testing, deployment and product acceptance.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "status": "passed",
+          "reason": "ExactAPI/web1670source converged, Railway9645SUCCESS/VercelREADY, source-bound mainCI37646122378SUCCESS and verifyprodPASS reviewed; final certificate uses this same pair.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-public-source-convergence.json",
+              "sha256": "cbab3af303e3ebf2ef1ed377dd4811460a898a1fb5895f4eb7873eee49d85ccc"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-exact-pair-verify-prod.log",
+              "sha256": "37e2f9c5737532a798df49679757c408086f26da3d4931b4b3f26b71bfa051a6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
-          "status": "pending",
-          "reason": "Reopened after independent invalid-option parser cap failure. Previous security release evidence is preserved as historical; current corrected guard requires separate review, testing, deployment and product acceptance.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "status": "passed",
+          "reason": "Exact1670 deployment includes reviewed fork; current finalSchema17/browserPASS demonstrates product delivery after deployed guard. Scope remains bounded development/build consumers and tested AST/string contracts, not an exhaustive security audit or hypothetical HTTPpath.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-independent-review/review.json",
+              "sha256": "35dbf14268afe19027aab698e5498048269691084dcafe9047c72d3b1dde3fc4"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-repair-verification.json",
+              "sha256": "ed086852e250112960aac7b360705e8687098d4fa02abc0cb8ccd288aa373818"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-news-sources/security-current-source-preparation.json",
+              "sha256": "612dbccbac56613226d26c5900f6beb5793f8f57213ae7dc8accc963df540c3c"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr256-news-critic-sources/dependency-audit-first.json",
+              "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr256-news-critic-sources/dependency-audit-second.json",
+              "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
       },
       "historicalEvidence": [
-        {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"},
-        {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-first.log", "sha256": "80e5304436471b3075e483afa87ab2e257e64dcefc0e9edf720069bbfb7cef28"},
-        {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-second.log", "sha256": "411eed08061d535deecb6edc76045cd0fd3a5b21c52c1d2c8393ec709dac053c"},
-        {"path": "artifacts/remaining-completion/dependencies/pundit-dependency-audit-second.json", "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"},
-        {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-        {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"},
-        {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-        {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-        {"path": "artifacts/historical-calibration-2026-10-07/production/register-before-nonfinite-security-reopening.json", "sha256": "0e69f147e4ed4995a57260b01b38595d06082dc08a178201f1d4d9f7364e8043"},
-        {"path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-original-independent-failure.json", "sha256": "c16495504a3993bda763630c9562715c6d2b6fe43db897b6639108727ef5ff52"}
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-first.log",
+          "sha256": "80e5304436471b3075e483afa87ab2e257e64dcefc0e9edf720069bbfb7cef28"
+        },
+        {
+          "path": "artifacts/remaining-completion/dependencies/pundit-dependency-security-second.log",
+          "sha256": "411eed08061d535deecb6edc76045cd0fd3a5b21c52c1d2c8393ec709dac053c"
+        },
+        {
+          "path": "artifacts/remaining-completion/dependencies/pundit-dependency-audit-second.json",
+          "sha256": "6f0663b12477e9557b00bbc32ca55c1f24f254cecb3244e10415f14629397809"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        },
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        },
+        {
+          "path": "artifacts/historical-calibration-2026-10-07/production/register-before-nonfinite-security-reopening.json",
+          "sha256": "0e69f147e4ed4995a57260b01b38595d06082dc08a178201f1d4d9f7364e8043"
+        },
+        {
+          "path": "artifacts/historical-calibration-2026-10-07/production/parser-cap-original-independent-failure.json",
+          "sha256": "c16495504a3993bda763630c9562715c6d2b6fe43db897b6639108727ef5ff52"
+        }
       ],
-      "nextAction": "Independently review the nonfinite maxLength guard, merge the small tested fix, deploy its actual source and refresh exact-source production/browser/criterion acceptance before closing security.",
       "blocker": null
     },
     {
@@ -428,40 +1830,198 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "reason": "Exact current source submission matches frozen tested merged tree; scoped repairs reviewed independently. Original web copy, narrow scorer runtime and evaluator alias guard remain source-bound; UI containment review has root author-external current sample.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-clean-cli-source-provenance-audit.json",
+              "sha256": "f9067556f177bca9be0db20120ee91161483c3315579f1fe4adb26cdcdb20326"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-scorer-guard/repaired-v2-independent-review.json",
+              "sha256": "1df6828e6709676a4cf8b170050f03d3784a1492176e5ea26bfaf7c097dd4eb3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-root-independent-rendered-sample-review.json",
+              "sha256": "cd168bff0bb5af2588e6e8d132813d113c4f37012d9f7cfaedf28b7a81d8a5f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-controlled-copy-byte-continuity.json",
+              "sha256": "d5f80dd37d8128d62c756c3b5a235d37a2f5f96e0d9ad59b5b014ea77d501861"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "73 scenarios: 68 passed and five safe optional live states unavailable; every successful turn independently reviewed. Optional absence is not an external blocker.",
+          "reason": "Relevant frozen repair suites repeated twice plus author-external controls, and fresh actual paired responsive GET sweeps both pass. Fresh71answer domain review and official11browser checks pass; historical unchanged91×2 mocked missing-scorer controls stay separate from current observations.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
-            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+              "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+            },
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+              "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+              "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-scorer-guard/repaired-v2-independent-review.json",
+              "sha256": "1df6828e6709676a4cf8b170050f03d3784a1492176e5ea26bfaf7c097dd4eb3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-runtime-scorer-independent/independent-review.json",
+              "sha256": "937c002891467ef056ba7edb5a1854120b8e914dfed4766fbb4267bd82bf5adb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/browser-copy-repaired-1670ecc64e5c-independent-review.json",
+              "sha256": "fe3c155258e84d286dc8b5acf47db2ccfd72ce8a1a47206b78730ca5711760b8"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-controlled-copy-byte-continuity.json",
+              "sha256": "d5f80dd37d8128d62c756c3b5a235d37a2f5f96e0d9ad59b5b014ea77d501861"
+            }
           ]
         },
         "deployment": {
           "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Terminal RailwaySUCCESS/VercelREADY and public exact API/web1670 with9645deployment bind clean CLI submitted checkout. Both paired UI and official browser preserve exact source before/after; no production mutation by this reviewer.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-clean-cli-source-provenance-audit.json",
+              "sha256": "f9067556f177bca9be0db20120ee91161483c3315579f1fe4adb26cdcdb20326"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/browser-copy-repaired-1670ecc64e5c-independent-review.json",
+              "sha256": "fe3c155258e84d286dc8b5acf47db2ccfd72ce8a1a47206b78730ca5711760b8"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
           "status": "passed",
-          "reason": "73 scenarios: 68 passed and five safe optional live states unavailable; every successful turn independently reviewed. Optional absence is not an external blocker.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Current68actualPNG/60grids, root current author-external sample,71actual200 fresh critic coverage and all11officialbrowser checks accepted. Finalized report is actualPASS with immutable requests/answers/grounding; six criteria retain finite/controlled/statistical boundaries.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/browser-copy-repaired-1670ecc64e5c-independent-review.json",
+              "sha256": "fe3c155258e84d286dc8b5acf47db2ccfd72ce8a1a47206b78730ca5711760b8"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-root-independent-rendered-sample-review.json",
+              "sha256": "cd168bff0bb5af2588e6e8d132813d113c4f37012d9f7cfaedf28b7a81d8a5f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-ui-date-market-binding-review.json",
+              "sha256": "a39008a3de8af1d6564e72a27f29a4b0f34ab88338e8fd8573f2f93f6002bc9a"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-critics/web-v2.json",
+              "sha256": "150e64c9e54e2b5ec06f7deae40bf0cdffe6379016d7c879aad452c909ac57d2"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-finalized-report-review.json",
+              "sha256": "2c23151222644f656e0b8086a66f917e2fa74488729b01117a830a778650911f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
-      }
+      },
+      "historicalEvidence": [
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+          "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+          "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+        },
+        {
+          "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+          "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        },
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        }
+      ],
+      "blocker": null
     },
     {
       "id": "merge-and-deploy",
@@ -475,40 +2035,162 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "reason": "Current repair and earlier fixes actually merged and included in the deployed source ancestry.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-merge.json",
+              "sha256": "67745282dd9cf141d8144d4c16d165b32829707a238a2c096ffa64eb8c898ca5"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-merge-openwork-readonly-review.json",
+              "sha256": "6ea7d6d3e1e1aad488805d933e5a40f2ad14ce96a66ac837cb60d230472664bc"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "PR249/250 merged, CI success, exact API/web release receipts and fresh live certification passed.",
+          "reason": "Frozen API2012/harness177/control24 twice and independent repair reviews, plus exact-main CI allsteps success; live acceptance remains separate.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
-            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+              "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+            },
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+              "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+              "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-frozen-local-verification.json",
+              "sha256": "1c56b58863d8c534a1a8eaaa47ed4f05db80ddff766f8c6f1653c9772b962c34"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-exact-main-ci.json",
+              "sha256": "d39583b2f9e350c34852df7a48af22211da408f81d45c6dbda274e69b3e0fa9a"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-exact-main-ci-jobs.json",
+              "sha256": "5c3b7565fd9b768e27ff9c85cce24a9d64a943cbed4b6255504b53dc85b64b5f"
+            }
           ]
         },
         "deployment": {
           "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Terminal targets and fresh exact public versions establish1670/9645.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-merge-openwork-readonly-review.json",
+              "sha256": "6ea7d6d3e1e1aad488805d933e5a40f2ad14ce96a66ac837cb60d230472664bc"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
           "status": "passed",
-          "reason": "PR249/250 merged, CI success, exact API/web release receipts and fresh live certification passed.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Actual finalized1670/9645Schema17PASS includes exact embedded browser/critic equality, independent packet review and71 domain-reviewed hash-bound answers, current rendered/browser and live quant acceptance.",
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          },
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-merge-openwork-final-binding-review.json",
+              "sha256": "8ea122342a5d3a752579754803e7d4505fbc199a327a362c3a076faaf6634a58"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-merge-openwork-readonly-review.json",
+              "sha256": "6ea7d6d3e1e1aad488805d933e5a40f2ad14ce96a66ac837cb60d230472664bc"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
           ]
         }
-      }
+      },
+      "historicalEvidence": [
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+          "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+          "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+        },
+        {
+          "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+          "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        },
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        }
+      ],
+      "blocker": null
     },
     {
       "id": "open-work-closure",
@@ -522,40 +2204,158 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Reviewed repair release contains this change; scope is limited to the stated acceptance criteria.",
+          "reason": "Merged fixes/superseded closures are accounted for while the register preserves unfinished product acceptance.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/remaining-completion/completion-packet.json",
+              "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-merge-openwork-readonly-review.json",
+              "sha256": "6ea7d6d3e1e1aad488805d933e5a40f2ad14ce96a66ac837cb60d230472664bc"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-scorer-identity-release-closure-compact.json",
+              "sha256": "ce2704cf6a86af5903984124332ae6a33a0753767b66ddf20bb92469b05667b9"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-criterion-root-review.json",
+              "sha256": "e2cf4a08ad9713428eff20f7590f071476e9cfe430082247e2bf2702cd405f11"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "PR235/247 closed, PR249/250 merged and zero open PRs at the captured host check. This does not close unfinished calibration.",
+          "reason": "Fresh root-independent controlled governance review covers allfour criteria and24guards twice.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log", "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"},
-            {"path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log", "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"},
-            {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+              "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+            },
+            {
+              "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+              "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+              "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-criterion-root-review.json",
+              "sha256": "e2cf4a08ad9713428eff20f7590f071476e9cfe430082247e2bf2702cd405f11"
+            }
           ]
         },
         "deployment": {
           "status": "passed",
-          "reason": "Captured production receipt confirms this repaired behavior on the target release.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Current functional release reached exact1670targets; later administrative recording is separate.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json", "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"},
-            {"path": "artifacts/remaining-completion/pr250-final-verify-prod.log", "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"}
-          ]
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-merge-openwork-readonly-review.json",
+              "sha256": "6ea7d6d3e1e1aad488805d933e5a40f2ad14ce96a66ac837cb60d230472664bc"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         },
         "productAcceptance": {
           "status": "passed",
-          "reason": "PR235/247 closed, PR249/250 merged and zero open PRs at the captured host check. This does not close unfinished calibration.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Current full certified1670release and completed functional repair accounting plus zero-open evidence allow the private closure draft. Future administrative merge/postmerge verification remain explicit prerequisites for final task claim.",
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          },
           "evidence": [
-            {"path": "artifacts/remaining-completion/critics/pr250-final-critic.json", "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"},
-            {"path": "artifacts/remaining-completion/product-browser-double-check.json", "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"},
-            {"path": "artifacts/remaining-completion/completion-packet.json", "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"}
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-merge-openwork-final-binding-review.json",
+              "sha256": "8ea122342a5d3a752579754803e7d4505fbc199a327a362c3a076faaf6634a58"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/chat-evals/2026-10-07T15-49-53-547Z.browser.json",
+              "sha256": "973a48a15e22d0eab30ece5f9f6a5e0433b97fcf7c703e0a9530c6430ef4a778"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-combined-critic-v2.json",
+              "sha256": "63ff630f2ea98e26977a4b92b5852334b35d58562f7e47a712e583003cfea79e"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-quant/independent-public-quant-review.json",
+              "sha256": "adca0450851883d5f3329a7e1e0364217ccc8050f919c4f1bffb35c0d35e5339"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-terminal-source-bound-deployment.json",
+              "sha256": "fcb54d50e79001fa105e33f3ab33244b1de1456049c59b447965eb0ce8899335"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-official-browser-review.json",
+              "sha256": "d0cc6c7bfdecf6c8280cb9c05bb55bdc335462fcb8429be55b334ed633940a8f"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-combined-critic-v2-review.json",
+              "sha256": "4fe7ab9b29748a618e2f4c749584243c68d5be68ee5f3f9d140dd2d8f2652ed6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-independent-merge-openwork-readonly-review.json",
+              "sha256": "6ea7d6d3e1e1aad488805d933e5a40f2ad14ce96a66ac837cb60d230472664bc"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
           ]
         }
-      }
+      },
+      "historicalEvidence": [
+        {
+          "path": "artifacts/remaining-completion/completion-packet.json",
+          "sha256": "f4a83fec99517ac9c1b3fcc38309bd89d56d8a2589bd776914695431d1a6ba33"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-first.log",
+          "sha256": "275db914c440822946d4203f7f22fefbedf02f77066e3bea907aaa0f01877615"
+        },
+        {
+          "path": "artifacts/remaining-completion/manager-wording-owner-final-full-api-second.log",
+          "sha256": "56ea15a29e60ec062ea6f5cda0b039bc76c45beb02d72b3ba9dde0f015578207"
+        },
+        {
+          "path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json",
+          "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-deployment-receipt.json",
+          "sha256": "408c348b76349510592a81201112294d58f5917a8c2bbf8c01a5a204840b2884"
+        },
+        {
+          "path": "artifacts/remaining-completion/pr250-final-verify-prod.log",
+          "sha256": "43453ff9fc0b74512846f26686a66e81067fb515069a36240e2ecf4cdbcb5cd6"
+        },
+        {
+          "path": "artifacts/remaining-completion/critics/pr250-final-critic.json",
+          "sha256": "3ee5d182bf3f6a16fd4e59b8e0b8d54d4917270b98740c44fcfc557255a83aa4"
+        },
+        {
+          "path": "artifacts/remaining-completion/product-browser-double-check.json",
+          "sha256": "7c51a5864be1e6680b931cd6850f346792e87a05a92e1c2de483ca97cc34883e"
+        }
+      ],
+      "blocker": null
     },
     {
       "id": "completion-governance",
@@ -571,20 +2371,126 @@
       "phases": {
         "implementation": {
           "status": "passed",
-          "reason": "Seven-file governance implementation independently inspected by root and remaining_news; original scope and phase separation enforced.",
+          "reason": "Independent unchanged policy inspection plus fresh 24-control repeats and actual failure-preserving reopened register establish this local governance phase, not whole-request completion.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/governance/verification.json", "sha256": "28d69bde02045aba692ff9994bc70137df0be6663c6a47e7ab23d39d3a2e4e3b"},
-            {"path": "scripts/verify-request-completion.mjs", "sha256": "f8060814d910e728c12d25832ed7b04694120c0268a3b1194c3ecd593c843028"},
-            {"path": "scripts/verify-request-completion.test.mjs", "sha256": "f7031fb19fd49f46228cd551ff01b294477d524f90e0d3b2e1f7ec108ac11d14"}
+            {
+              "path": "artifacts/remaining-completion/governance/verification.json",
+              "sha256": "28d69bde02045aba692ff9994bc70137df0be6663c6a47e7ab23d39d3a2e4e3b"
+            },
+            {
+              "path": "scripts/verify-request-completion.mjs",
+              "sha256": "f8060814d910e728c12d25832ed7b04694120c0268a3b1194c3ecd593c843028"
+            },
+            {
+              "path": "scripts/verify-request-completion.test.mjs",
+              "sha256": "f7031fb19fd49f46228cd551ff01b294477d524f90e0d3b2e1f7ec108ac11d14"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-controls-first.log",
+              "sha256": "3cf7045e7f31cf68c4c9a0d605a2a8a83164753cf5d0e89777c1ead30e092df3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-controls-second.log",
+              "sha256": "b33d0c66277b8a46e77d67f35b95dbb271ff14487a1264cb26486e736c229606"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-reopened-output-completion-status-compact.log",
+              "sha256": "ad775a21942484d766cd52c3e5d593300c69c96ad51b9e03e613abb7155aaac6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-scorer-identity-release-closure-compact.json",
+              "sha256": "ce2704cf6a86af5903984124332ae6a33a0753767b66ddf20bb92469b05667b9"
+            },
+            {
+              "path": "artifacts/remaining-completion/governance/root-independent-acceptance-review.json",
+              "sha256": "46018bf422d1b6f6e14d2bdcf6cf61b3707f42901258a5e48c99d40e9b6e39fb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr260-material-scorer-identity-certification-failure.json",
+              "sha256": "fbc2c7a9fc7d5a56c31fdea64e52a7435aa2bfa6de6e5b2bb75e67cf39ece58d"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-root-independent-v4-preparation-review.json",
+              "sha256": "c4695a230e1c2a7dccd490c78754466e3c2acd0538d3f70858b503355acd356b"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-criterion-root-review.json",
+              "sha256": "e2cf4a08ad9713428eff20f7590f071476e9cfe430082247e2bf2702cd405f11"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-finalized-cert-but-request-still-ongoing.log",
+              "sha256": "ad775a21942484d766cd52c3e5d593300c69c96ad51b9e03e613abb7155aaac6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            }
           ]
         },
         "testing": {
           "status": "passed",
-          "reason": "24 meaningful local controls passed twice on unchanged governance code; independent reviewer reran controls and inspected strict/status exits.",
+          "reason": "Independent unchanged policy inspection plus fresh 24-control repeats and actual failure-preserving reopened register establish this local governance phase, not whole-request completion.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/governance/verification.json", "sha256": "28d69bde02045aba692ff9994bc70137df0be6663c6a47e7ab23d39d3a2e4e3b"},
-            {"path": "artifacts/remaining-completion/governance/tests-first.log", "sha256": "0fa69cfd1ee0a90b94bfa2fd55595bbb7bc447aa7334a992465c35084aa07dba"},
-            {"path": "artifacts/remaining-completion/governance/tests-second.log", "sha256": "172ae2440cfee1b758711e63c186d7cb0ba871e04f80c697345f848b1dfefc4e"}
+            {
+              "path": "artifacts/remaining-completion/governance/verification.json",
+              "sha256": "28d69bde02045aba692ff9994bc70137df0be6663c6a47e7ab23d39d3a2e4e3b"
+            },
+            {
+              "path": "artifacts/remaining-completion/governance/tests-first.log",
+              "sha256": "0fa69cfd1ee0a90b94bfa2fd55595bbb7bc447aa7334a992465c35084aa07dba"
+            },
+            {
+              "path": "artifacts/remaining-completion/governance/tests-second.log",
+              "sha256": "172ae2440cfee1b758711e63c186d7cb0ba871e04f80c697345f848b1dfefc4e"
+            },
+            {
+              "path": "scripts/verify-request-completion.mjs",
+              "sha256": "f8060814d910e728c12d25832ed7b04694120c0268a3b1194c3ecd593c843028"
+            },
+            {
+              "path": "scripts/verify-request-completion.test.mjs",
+              "sha256": "f7031fb19fd49f46228cd551ff01b294477d524f90e0d3b2e1f7ec108ac11d14"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-controls-first.log",
+              "sha256": "3cf7045e7f31cf68c4c9a0d605a2a8a83164753cf5d0e89777c1ead30e092df3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-controls-second.log",
+              "sha256": "b33d0c66277b8a46e77d67f35b95dbb271ff14487a1264cb26486e736c229606"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-reopened-output-completion-status-compact.log",
+              "sha256": "ad775a21942484d766cd52c3e5d593300c69c96ad51b9e03e613abb7155aaac6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-scorer-identity-release-closure-compact.json",
+              "sha256": "ce2704cf6a86af5903984124332ae6a33a0753767b66ddf20bb92469b05667b9"
+            },
+            {
+              "path": "artifacts/remaining-completion/governance/root-independent-acceptance-review.json",
+              "sha256": "46018bf422d1b6f6e14d2bdcf6cf61b3707f42901258a5e48c99d40e9b6e39fb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr260-material-scorer-identity-certification-failure.json",
+              "sha256": "fbc2c7a9fc7d5a56c31fdea64e52a7435aa2bfa6de6e5b2bb75e67cf39ece58d"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-root-independent-v4-preparation-review.json",
+              "sha256": "c4695a230e1c2a7dccd490c78754466e3c2acd0538d3f70858b503355acd356b"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-criterion-root-review.json",
+              "sha256": "e2cf4a08ad9713428eff20f7590f071476e9cfe430082247e2bf2702cd405f11"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-finalized-cert-but-request-still-ongoing.log",
+              "sha256": "ad775a21942484d766cd52c3e5d593300c69c96ad51b9e03e613abb7155aaac6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            }
           ]
         },
         "deployment": {
@@ -593,14 +2499,110 @@
         },
         "productAcceptance": {
           "status": "passed",
-          "reason": "Root accepted remaining_news independent review: policy prevents release PASS from closing unfinished predictive calibration. This governance acceptance does not accept the model.",
-          "release": {"sourceSha": "dde415ff8e26b3fd0b6f8d88e44149bfae7da28a", "webSourceSha": "141da58bdfd33ac89c2679353e4b8f2976287c1b", "deploymentId": "d3492b7b-5e2c-4535-951a-c9facd785e4d"},
+          "reason": "Independent unchanged policy inspection plus fresh 24-control repeats and actual failure-preserving reopened register establish this local governance phase, not whole-request completion.",
           "evidence": [
-            {"path": "artifacts/remaining-completion/governance/root-independent-acceptance-review.json", "sha256": "46018bf422d1b6f6e14d2bdcf6cf61b3707f42901258a5e48c99d40e9b6e39fb"}
-          ]
+            {
+              "path": "scripts/verify-request-completion.mjs",
+              "sha256": "f8060814d910e728c12d25832ed7b04694120c0268a3b1194c3ecd593c843028"
+            },
+            {
+              "path": "scripts/verify-request-completion.test.mjs",
+              "sha256": "f7031fb19fd49f46228cd551ff01b294477d524f90e0d3b2e1f7ec108ac11d14"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-controls-first.log",
+              "sha256": "3cf7045e7f31cf68c4c9a0d605a2a8a83164753cf5d0e89777c1ead30e092df3"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-controls-second.log",
+              "sha256": "b33d0c66277b8a46e77d67f35b95dbb271ff14487a1264cb26486e736c229606"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-reopened-output-completion-status-compact.log",
+              "sha256": "ad775a21942484d766cd52c3e5d593300c69c96ad51b9e03e613abb7155aaac6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/register-before-final-scorer-identity-release-closure-compact.json",
+              "sha256": "ce2704cf6a86af5903984124332ae6a33a0753767b66ddf20bb92469b05667b9"
+            },
+            {
+              "path": "artifacts/remaining-completion/governance/root-independent-acceptance-review.json",
+              "sha256": "46018bf422d1b6f6e14d2bdcf6cf61b3707f42901258a5e48c99d40e9b6e39fb"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr260-material-scorer-identity-certification-failure.json",
+              "sha256": "fbc2c7a9fc7d5a56c31fdea64e52a7435aa2bfa6de6e5b2bb75e67cf39ece58d"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-root-independent-v4-preparation-review.json",
+              "sha256": "c4695a230e1c2a7dccd490c78754466e3c2acd0538d3f70858b503355acd356b"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-governance-criterion-root-review.json",
+              "sha256": "e2cf4a08ad9713428eff20f7590f071476e9cfe430082247e2bf2702cd405f11"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-finalized-cert-but-request-still-ongoing.log",
+              "sha256": "ad775a21942484d766cd52c3e5d593300c69c96ad51b9e03e613abb7155aaac6"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+              "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+            },
+            {
+              "path": "artifacts/historical-calibration-2026-10-07/production/pr261-all12-criterion-closure-acceptance.json",
+              "sha256": "f17b1ae54b283814aa5aed5fa6df7962105d3b32731a72b902be3b836d2c0ed8"
+            }
+          ],
+          "release": {
+            "sourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "webSourceSha": "1670ecc64e5c35cec6c83b269030d26a78aacfc7",
+            "deploymentId": "9645b895-6905-4953-b46a-72b122069935"
+          }
         }
-      }
+      },
+      "historicalEvidence": [
+        {
+          "path": "artifacts/remaining-completion/governance/verification.json",
+          "sha256": "28d69bde02045aba692ff9994bc70137df0be6663c6a47e7ab23d39d3a2e4e3b"
+        },
+        {
+          "path": "scripts/verify-request-completion.mjs",
+          "sha256": "f8060814d910e728c12d25832ed7b04694120c0268a3b1194c3ecd593c843028"
+        },
+        {
+          "path": "scripts/verify-request-completion.test.mjs",
+          "sha256": "f7031fb19fd49f46228cd551ff01b294477d524f90e0d3b2e1f7ec108ac11d14"
+        },
+        {
+          "path": "artifacts/remaining-completion/governance/tests-first.log",
+          "sha256": "0fa69cfd1ee0a90b94bfa2fd55595bbb7bc447aa7334a992465c35084aa07dba"
+        },
+        {
+          "path": "artifacts/remaining-completion/governance/tests-second.log",
+          "sha256": "172ae2440cfee1b758711e63c186d7cb0ba871e04f80c697345f848b1dfefc4e"
+        },
+        {
+          "path": "artifacts/remaining-completion/governance/root-independent-acceptance-review.json",
+          "sha256": "46018bf422d1b6f6e14d2bdcf6cf61b3707f42901258a5e48c99d40e9b6e39fb"
+        }
+      ],
+      "blocker": null
     }
   ],
-  "releaseEvidence": {"path": "artifacts/chat-evals/2026-10-06T21-40-35-146Z.json", "sha256": "7226ec95b402468f7224c90cc58e917d45232bd295bd2a1e54b05898de80a9f7"}
+  "releaseEvidence": {
+    "path": "artifacts/historical-calibration-2026-10-07/production/pr261-final-immutable-finalized-report.json",
+    "sha256": "c57ac10dbb3f7d6bb38b9ced120e21af86632cf360a1938e767827a6a9e992be"
+  },
+  "closure": {
+    "runId": "2026-10-07T15-49-53-547Z",
+    "recordedAt": "2026-10-07T16:24:48.223Z",
+    "actualScenarioCount": 73,
+    "scenarioCounts": {
+      "PASS": 68,
+      "FAIL": 0,
+      "INCONCLUSIVE": 5
+    },
+    "boundary": "Counts come from this release report only. Safe observational absence is not exhaustive live-state coverage. Controlled branches are identified separately in criterion acceptance evidence."
+  }
 }
