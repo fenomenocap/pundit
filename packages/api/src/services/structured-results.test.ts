@@ -27,6 +27,11 @@ describe("owned latest results", () => {
     expect(result?.answer).toContain("another cup match may be more recent");
     expect(result?.answer).toContain("need a verified match report to explain why");
   });
+  it("answers scorer questions from the owned result without inventing scorers", () => {
+    const result = ownedLatestResult("Who scored in the last Arsenal match?", state(), now, season());
+    expect(result?.answer).toContain("Brighton 3–0 Arsenal");
+    expect(result?.answer).toContain("but not the scorers");
+  });
   it("uses a fresh complete season during an international break with an empty rolling window", () => {
     const cached = state(); cached.recent = []; cached.byCompetition["eng.1"].recent = [];
     expect(ownedLatestResult("What is Arsenal's latest Premier League result?", cached, now, season())?.answer).toContain("Brighton 3–0 Arsenal");

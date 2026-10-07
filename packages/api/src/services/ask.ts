@@ -716,7 +716,7 @@ const MARKET_SUBJECT = /\b(?:markets?|lines?|prices?|odds|kalshi|polymarket|book
 // "a Rice or Saka start would..." is still an availability claim even
 // though it is phrased as a counterfactual rather than news.
 const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
-  /\b(?:available|unavailable|out injured|out with a|will miss|misses? out|(?:is|are|was|were|be) missed|sits? out|back in (?:training|contention)|match ?fit|fitness test|doubt|confirmed absence|genuinely out|first-choice XI|full-strength XI)\b|\b[A-Z][A-Za-z.'’-]+(?:\s+or\s+[A-Z][A-Za-z.'’-]+)?\s+starts?\s+(?:would|will|could|should)\b/i;
+  /\b(?:available|unavailable|out injured|out with a|will miss|misses? out|(?:is|are|was|were|be) missed|sits? out|back in (?:training|contention)|match ?fit|fitness test|doubt|(?:ankle|hamstring|calf|knee|groin|muscle|thigh|foot|back) (?:injury|problem|issue|concern|knock|strain)|fatigue management|fitness (?:concern|issue|worry|problem)|confirmed absence|genuinely out|first-choice XI|full-strength XI)\b|\b[A-Z][A-Za-z.'’-]+(?:\s+or\s+[A-Z][A-Za-z.'’-]+)?\s+starts?\s+(?:would|will|could|should)\b/i;
 
 /**
  * Does this sentence make a squad-availability claim -- the narrow class that

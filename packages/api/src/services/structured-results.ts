@@ -22,7 +22,12 @@ export function ownedLatestResult(
   if (cache.error || !Number.isFinite(age) || age < 0 || age > FOOTBALL_REFRESH_NORMAL_MS + 60_000) return null;
   const folded = normalizeTeamText(question).replace(/^what['’]s\b/, "what is").replace(/['’]s\b/g, "").replace(/[?!.]+$/g, "").trim();
   const asksWhy = / and why(?: did they (?:win|lose|draw))?$/.test(folded);
-  const q = folded.replace(/ and why(?: did they (?:win|lose|draw))?$/, "");
+  // "Who scored in the last Arsenal match?" is answered from the same owned
+  // record; the record carries no scorers, so the answer says so.
+  const scorerMatch = /^who scored (?:in )?(?:the )?(?:latest|last|most recent) (.+?) (?:match|game)$/.exec(folded);
+  const q = (scorerMatch ? `what was the latest result for ${scorerMatch[1]}` : folded)
+    .replace(/ and why(?: did they (?:win|lose|draw))?$/, "");
+  const asksScorers = scorerMatch !== null;
   const competitions = getEnabledCompetitions();
   const seasonAge = season.lastUpdated ? now - season.lastUpdated.getTime() : Infinity;
   const seasonFresh = season.competitionId === "eng.1" && !season.error && !season.servingLastGood
@@ -82,7 +87,7 @@ export function ownedLatestResult(
     : `The latest completed result I have for ${requested.club} in my covered competitions`;
   const coverage = requested.competitionId ? "" : " I cover the Premier League and Champions League qualifiers here; another cup match may be more recent.";
   return {
-    answer: `${qualifier} is **${latest.homeTeam} ${home}–${away} ${latest.awayTeam}** (${competition.name}, ${date}): ${outcome}. [ESPN match record, ${date}](${url}).${coverage}${asksWhy ? " The score establishes the outcome; I would need a verified match report to explain why it happened." : ""}`,
+    answer: `${qualifier} is **${latest.homeTeam} ${home}–${away} ${latest.awayTeam}** (${competition.name}, ${date}): ${outcome}. [ESPN match record, ${date}](${url}).${coverage}${asksScorers ? " My match record has the score but not the scorers, so I can't say who scored without a verified match report." : ""}${asksWhy ? " The score establishes the outcome; I would need a verified match report to explain why it happened." : ""}`,
     citations: [{ id: "S1", title: `${latest.homeTeam} ${home}–${away} ${latest.awayTeam} — ESPN`, url, date }],
   };
 }

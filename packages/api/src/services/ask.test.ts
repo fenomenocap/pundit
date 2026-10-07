@@ -1778,6 +1778,12 @@ describe("current-news evidence hardening", () => {
     expect(delivered).toContain("omitted those numbers");
   });
 
+  it("removes unsourced injury-condition prose when verification supported nothing", () => {
+    const unsafe = "Haaland's presence changes City's attacking profile.\n\nThe concern isn't his ankle injury now; it's fatigue management, especially with a heavy fixture run ahead.";
+    const safe = failClosedEmptyCurrentVerification(unsafe, { status: "abstain", supportedClaimCount: 0, removedClaimCount: 0 }, true);
+    expect(safe).not.toMatch(/ankle|fatigue/i);
+    expect(safe).toContain("No verified, dated team-news update was established");
+  });
   it("removes artifact-shaped positive team news when verification supported nothing", () => {
     const candidateNotice = "I couldn't confirm that matchup. Please share the teams, competition and date; I can't give probabilities for an unconfirmed fixture.";
     const unsafe = `${candidateNotice}\n\nLyon: Jason Denayer is out with a knock. Paulo Fonseca expects key Fenerbahce attackers to be unavailable. If Saliba and Timber are missed and Saka or Bruno join them, the clean-sheet concentration eases. Confirmed absence of Saliba and Timber alone is unlikely to move the gap, but a Rice or Saka start would sharpen the defensive read; if Guimaraes is genuinely out, clarify the source.`;
