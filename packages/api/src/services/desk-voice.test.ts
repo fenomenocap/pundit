@@ -97,6 +97,39 @@ describe("bounded dated club-news expression", () => {
     expect(renderDatedClubNewsRecords(JSON.stringify({ updates: three }), newsSources, newsGrounding, newsNow)).toContain("Kai Havertz may be doubtful [[S10]]");
   });
 
+  it("renders the actual provider's bounded past injury wording alongside its two valid updates", () => {
+    const sources = [
+      { ...newsSources[0], id: "S2", date: "2026-10-06T05:00:00Z", snippet: "Arsenal injury update: Declan Rice has neural hamstring pain. Ben White was spotted back in training." },
+      { ...newsSources[0], id: "S4", date: "2026-10-06T14:34:50Z", snippet: "Arsenal injury update: both Kai Havertz and Christos Tzolis sustained hamstring issues while away with Germany and Greece, respectively." },
+    ];
+    const rows = [
+      { sourceId: "S2", club: "Arsenal", playerName: "Declan Rice", statusText: "has been dealing with neural hamstring pain" },
+      { sourceId: "S2", club: "Arsenal", playerName: "Ben White", statusText: "has been spotted back in training" },
+      { sourceId: "S4", club: "Arsenal", playerName: "Kai Havertz", statusText: "sustained a hamstring issue" },
+    ];
+    const answer = renderDatedClubNewsRecords(JSON.stringify({ updates: rows }), sources, newsGrounding, Date.parse("2026-10-07T06:00:00Z"));
+    expect(answer).toContain("Arsenal’s Declan Rice has been dealing with neural hamstring pain [[S2]].");
+    expect(answer).toContain("Arsenal’s Ben White has been spotted back in training [[S2]].");
+    expect(answer).toContain("Arsenal’s Kai Havertz sustained a hamstring issue [[S4]].");
+    expect(answer).not.toMatch(/Germany|Greece|available|starting/);
+  });
+
+  it.each(["will be fit", "was injured on Thu", "sustained a hamstring issue yesterday", "was doubtful but should play"])(
+    "withholds an invalid status independently without erasing a separately valid source-bound update: %s", (statusText) => {
+      const valid = { ...newsRow, playerName: "Ben White", statusText: "has been spotted back in training" };
+      const rejected = vi.fn();
+      const answer = renderDatedClubNewsRecords(JSON.stringify({ updates: [valid, { ...newsRow, statusText }] }), newsSources, newsGrounding, newsNow, rejected);
+      expect(answer).toContain("Arsenal’s Ben White has been spotted back in training [[S10]].");
+      expect(answer).not.toMatch(/Christos|will|Thu|yesterday|should play/);
+      expect(rejected).toHaveBeenCalledExactlyOnceWith("status_grammar");
+      expect(renderDatedClubNewsRecords(newsJson({ ...newsRow, statusText }), newsSources, newsGrounding, newsNow)).toBeNull();
+    }
+  );
+
+  it("still rejects a whole contract with an invalid source rather than retaining its other status", () => {
+    expect(renderDatedClubNewsRecords(JSON.stringify({ updates: [newsRow, { ...newsRow, playerName: "Ben White", sourceId: "S999" }] }), newsSources, newsGrounding, newsNow)).toBeNull();
+  });
+
   it("normalizes an allowed club alias and full-name whitespace without accepting a duplicate player", () => {
     const source = { ...newsSources[0], snippet: "Manchester City injury update: Joe Example was doubtful." };
     const row = { ...newsRow, club: "Man City", playerName: " Joe   Example ", statusText: "may be doubtful" };
@@ -154,6 +187,7 @@ describe("bounded dated club-news expression", () => {
     "was suspended", "was back in training", "has been spotted back in training", "has continued training",
     "has returned to training", "withdrew from international duty", "was undergoing assessment", "was in rehabilitation",
     "had a hamstring issue pending assessment", "has been dealing with neural hamstring pain",
+    "sustained a hamstring issue", "suffered an ankle injury", "has sustained a calf strain", "had suffered a knee problem",
     ...["neural hamstring", "hamstring", "groin", "calf", "knee", "ankle", "muscle", "back", "thigh", "adductor", "achilles", "foot", "hip", "shoulder", "ligament", "tendon"]
       .flatMap((part) => ["injury", "issue", "problem", "strain", "pain", "tear"].map((condition) => `has a ${part} ${condition}`)),
   ])("permits every prompted status and approved condition while leaving its factual support to verification: %s", (statusText) => {
