@@ -2302,6 +2302,47 @@ test("scoped news delivery count matches actual records across verification stat
   assert.ok(runner.includes("validateDatedClubNewsConsistency(result.answer, result.citations, result.verification)"));
 });
 
+test("dated news protects complete source links while preserving real claim sentence boundaries", () => {
+  const now = Date.parse("2026-10-07T11:20:00Z");
+  const source = { id: "S7", title: "Leeds United injury, suspension list and return dates vs. Arsenal: Joe Rodon, Harry Wilson latest - Sports Mole", url: "https://www.sportsmole.co.uk/football/arsenal/injury-news/injuries-and-suspensions/rodon-wilson-latest-leeds-injury-suspension-list-vs-arsenal_606374.html", date: "2026-10-07T12:01:41+01:00" };
+  const standard = { id: "S29", title: "Arsenal FC injury update", url: "https://www.standard.co.uk/sport/football/arsenal-fc-injury-update-konsa-tzolis-havertz-latest-news-return-dates-b1299740.html", date: "2026-10-06T13:20:06.000Z" };
+  const state = { status: "verified", supportedClaimCount: 3, removedClaimCount: 0 };
+  const record = (name, status, label = source.title, url = source.url) => `In an update published on 2026-10-07, Leeds’s ${name} was reported ${status} ([${label}](${url}), ${source.date}).`;
+  const arsenal = `In an update published on 2026-10-06, Arsenal’s Christos Tzolis sustained a hamstring issue ([${standard.title}](${standard.url}), ${standard.date}).`;
+  const answer = `${record("Joe Rodon", "injured")} ${record("Harry Wilson", "doubtful")} ${arsenal} These dated club updates do not establish the starting XI or availability at the future kickoff.`;
+  const sources = [source, standard];
+  const check = (text = answer, citations = sources, verification = state) => validateDatedClubNewsConsistency(text, citations, verification, now).passed;
+  assert.equal(validatePositiveDatedClubNews(answer, sources, state, now).passed, true);
+  assert.equal(check(), true);
+  for (const label of ["Leeds injury latest vs. Arsenal", "How is Joe Rodon? Latest Leeds update", "Rodon injured! Leeds update", "Dr. Example reports vs. Arsenal", "**Leeds [live] vs. Arsenal? Update!**", "Leeds [live. Latest?] vs. Arsenal!"]) {
+    const text = `${record("Joe Rodon", "injured", label)} ${record("Harry Wilson", "doubtful", label)} ${arsenal}`;
+    assert.equal(check(text), true, label);
+  }
+  const punctuatedUrl = "https://publisher.example/news.v2?club=leeds&report=latest!#injury";
+  const punctuatedSource = { ...source, url: punctuatedUrl };
+  const one = { ...state, supportedClaimCount: 1 };
+  assert.equal(check(record("Joe Rodon", "injured", "Report? Update! vs. Arsenal", punctuatedUrl), [punctuatedSource], one), true);
+  for (const tail of ["Leeds’s Pat Sample suffered an ankle strain.", "Ben White will start."]) {
+    assert.equal(check(`${answer} ${tail}`), false, tail);
+  }
+  const detached = `In an update published on 2026-10-07, Leeds’s Joe Rodon was reported injured. ([${source.title}](${source.url}), ${source.date}).`;
+  assert.equal(check(detached, [source], one), false);
+  assert.equal(check(detached.replace("injured. (", "injured.\n("), [source], one), false);
+  for (const literalMarker of ["@@NEWSLINK0@@", "@@NEWSLINK0@@ @@NEWSLINK_0@@"]) {
+    const collision = `In an update published on 2026-10-07, Leeds’s Joe Rodon was reported injured ${literalMarker}. Later source ([${source.title}](${source.url}), ${source.date}).`;
+    assert.equal(check(collision, [source], one), false, literalMarker);
+  }
+  assert.equal(check(answer.replaceAll(source.url, "https://wrong.example/report")), false);
+  assert.equal(check(answer.replaceAll("published on 2026-10-07", "published on 2026-10-06")), false);
+  assert.equal(check(answer, [{ ...source, date: "2026-10-08T12:01:41+01:00" }, standard]), false);
+  assert.equal(check(answer, sources, { ...state, supportedClaimCount: 2 }), false);
+  for (const status of ["conflict", "abstain", "unavailable", "not-required"]) {
+    assert.equal(check(answer, sources, { status, supportedClaimCount: 0, removedClaimCount: 3 }), false, status);
+  }
+  const noUpdate = `No verified, dated team-news update was established ([**Joe Rodon [live] was injured. Latest?**](${source.url})).`;
+  assert.equal(check(noUpdate, [source], { status: "conflict", supportedClaimCount: 0, removedClaimCount: 3 }), true);
+});
+
 test("required current-manager delivery checks requested role, positive verification and a recent same-sentence citation", () => {
   const now = Date.parse("2026-10-07T06:00:00Z");
   const source = { id: "S10", title: "Current club role. Interview", date: "2026-09-22T18:26:00+00:00", url: "https://publisher.example/football/current-role" };
