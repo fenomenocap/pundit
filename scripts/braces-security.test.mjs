@@ -60,6 +60,29 @@ test("direct AST callers cannot bypass the depth guard with deep or cyclic nodes
   }
 });
 
+test("nonfinite input-limit options cannot bypass the immutable parser cap", () => {
+  const atLimit = "a".repeat(10000);
+  const overLimit = atLimit + "a";
+  for (const maxLength of [NaN, Infinity, -Infinity, 10000, 20000]) {
+    for (const method of ["parse", "compile", "expand", "stringify"]) {
+      assert.doesNotThrow(() => braces[method](atLimit, { maxLength }));
+      assert.throws(() => braces[method](overLimit, { maxLength }), {
+        name: "SyntaxError", message: /exceeds max characters \(10000\)/,
+      });
+    }
+    assert.throws(() => braces(overLimit, { maxLength }), /exceeds max characters \(10000\)/);
+    assert.throws(() => braces(overLimit, { maxLength, expand: true }), /exceeds max characters \(10000\)/);
+  }
+  for (const maxLength of [0, 1, 7]) {
+    assert.doesNotThrow(() => braces.parse("a".repeat(maxLength), { maxLength }));
+    assert.throws(() => braces.parse("a".repeat(maxLength + 1), { maxLength }), /exceeds max characters/);
+  }
+  for (const maxLength of [-1, -10000]) {
+    assert.throws(() => braces.parse("", { maxLength }), { name: "SyntaxError" });
+    assert.throws(() => braces.parse("a", { maxLength }), { name: "SyntaxError" });
+  }
+});
+
 test("the bounded compatibility package works through real micromatch, fast-glob and watcher consumers", async () => {
   const micromatch = tailwindRequire("micromatch");
   const fastGlob = tailwindRequire("fast-glob");
