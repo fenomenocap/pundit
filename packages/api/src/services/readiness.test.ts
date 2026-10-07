@@ -56,6 +56,12 @@ const football = { lastUpdated: new Date(), error: null };
 const odds = { ready: true, lastUpdated: new Date(), error: null };
 
 describe("evaluateReadiness", () => {
+  it("withholds an otherwise ready empty window when the calibration artifact fails", () => {
+    const current = model({ lastUpdated: new Date() });
+    expect(evaluateReadiness(current, football, [], odds, true, false))
+      .toMatchObject({ ready: false, modelReady: false, footballReady: true });
+    expect(evaluateReadiness(current, football, [], odds, true, true).ready).toBe(true);
+  });
   it("fails closed when active fixtures exist but the model never initialized", () => {
     const state = evaluateReadiness(
       model({ error: "Club ratings are not ready" }),

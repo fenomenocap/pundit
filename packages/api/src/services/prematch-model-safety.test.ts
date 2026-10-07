@@ -12,6 +12,7 @@ import {
   replaceFixtureRegistryForTests,
 } from "./fixture-registry";
 import {
+  type ModelFixture,
   buildModelFixtureFromActive,
   findModelFixtureByTeams,
   getCachedModelData,
@@ -58,11 +59,12 @@ const ratings = {
   "eng-clubs": new Map([["Arsenal", 2040.3], ["Leeds", 1816.5]]),
   "uefa-clubs": new Map<string, number>(),
 };
-const model = buildModelFixtureFromActive(scheduled, ratings)!;
+let model: ModelFixture;
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-10-04T00:00:00Z"));
+  vi.setSystemTime(new Date("2026-10-07T00:00:00Z"));
+  model = buildModelFixtureFromActive(scheduled, ratings)!;
   testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "pundit-prematch-safety-"));
   process.env.PUNDIT_DATA_DIR = testDataDir;
   process.env.FIXTURE_REGISTRY_ENABLED = "false";

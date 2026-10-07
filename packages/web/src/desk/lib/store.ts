@@ -13,7 +13,7 @@ import {
   type MarketKey,
 } from "./data/fixtures";
 import { PLAYERS_BY_ADP, getPlayer, type Pos } from "./data/players";
-import { poisson } from "./format";
+import { samplePaperScore } from "./grid";
 import type { AskGrounding, AskPresentation } from "@/lib/api";
 import { VAULTS, type VaultId } from "./data/vaults";
 import { reconcileHydratedPaperState, resolveHydratedSelection } from "./slate-selection";
@@ -219,7 +219,7 @@ export const useDesk = create<State>()(
         const f = getFixture(id);
         if (!f || f.status === "ft" || !f.xg) return get().scores[id] ?? null;
         if (get().scores[id]) return get().scores[id];
-        const score: [number, number] = [poisson(f.xg[0]), poisson(f.xg[1])];
+        const score: [number, number] = samplePaperScore(f);
         set((s) => {
           const scores = { ...s.scores, [id]: score };
           const applied = applyScores(s.tickets, scores, s.cash);
@@ -232,7 +232,7 @@ export const useDesk = create<State>()(
         set((st) => {
           const scores = { ...st.scores };
           for (const f of OPEN_FIXTURES) {
-            if (!scores[f.id] && f.xg) scores[f.id] = [poisson(f.xg[0]), poisson(f.xg[1])];
+            if (!scores[f.id] && f.xg) scores[f.id] = samplePaperScore(f);
           }
           const applied = applyScores(st.tickets, scores, st.cash);
           return { scores, tickets: applied.tickets, cash: applied.cash };

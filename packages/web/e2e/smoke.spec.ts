@@ -3,6 +3,43 @@ import type { ModelFixtureResponse } from "../src/lib/api";
 import type { ModelRowLambdas } from "../src/desk/lib/grid";
 
 test.describe("QA regressions", () => {
+  test("calibrated EPL goals use server means, disclosure and joint paper scores", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => { Math.random = () => 0.95; });
+    const row = precisionBoundaryRow();
+    const hash = "b".repeat(64);
+    row.goalCalibration = { methodId: "outcome-anchored-shrunk-goals-v2", artifactSha256: hash,
+      artifactId: `outcome-anchored-shrunk-goals-v2:${hash}` };
+    row.forecastInputs!.goalCalibrationArtifactSha256 = hash;
+    row.forecastProvenance!.goalCalibrationArtifactSha256 = hash;
+    row.expectedHomeGoals = 1.15; row.expectedAwayGoals = 0.8;
+    row.scoreGrid = [[0.1, 0.1, 0.05], [0.2, 0.1, 0.05], [0.1, 0.2, 0.1]];
+    row.pHome = 0.5; row.pDraw = 0.3; row.pAway = 0.2;
+    row.pOver2_5 = 0.35; row.pBttsYes = 0.45;
+    await routePrecisionDeskSlate(page, row);
+    const disclosure = "I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.";
+    await page.route("**/api/ask", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      answer: `Over 2.5 is 35.0%; under 2.5 is 65.0%. ${disclosure}`,
+      grounding: { ...deskMatchGrounding("espn:eng.1:901", "Arsenal", "Chelsea"), goalCalibration: row.goalCalibration,
+        pHome: 0.5, pDraw: 0.3, pAway: 0.2, pOver2_5: 0.35, pUnder2_5: 0.65, pBttsYes: 0.45, pBttsNo: 0.55 },
+      presentation: { responseMode: "totals", fixtureCard: "expanded" },
+    }) }));
+    await page.goto("/");
+    await page.locator('li [data-testid="desk-slate-fixture"][data-fixture-id="espn:eng.1:901"]').click();
+    await expect(page.locator("aside").getByText("1.15–0.80", { exact: true })).toBeVisible();
+    await expect(page.locator("aside").getByText(disclosure, { exact: true })).toBeVisible();
+    await expect(page.locator("aside")).toContainText("Paper scores sample the joint forecast distribution.");
+    await page.locator("aside").getByRole("button", { name: "Project score", exact: true }).click();
+    await expect(page.locator("aside").getByText("2–2", { exact: true })).toBeVisible();
+    const input = page.getByRole("textbox", { name: "Ask a question" });
+    await input.fill("What about over 2.5?");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByTestId("desk-totals-honesty")).toHaveText(disclosure);
+    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
+    await expect(page.getByText("xG 1.15–0.80", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Select Arsenal vs Chelsea", exact: true })).toBeVisible();
+  });
+
   for (const exact of [true, false]) {
     test(`desk and paper xG use ${exact ? "exact forecast inputs" : "legacy rounded inputs"} at the rounding boundary`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 900 });

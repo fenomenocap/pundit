@@ -1,3 +1,4 @@
+import type { GoalCalibration } from "@/lib/api";
 import type { TeamId } from "./teams";
 import { capturedRecord } from "../slate-selection";
 
@@ -18,6 +19,8 @@ export type Fixture = {
   score?: [number, number];
   scorers?: string;
   xg: [number, number] | null;
+  scoreGrid?: number[][];
+  goalCalibration?: GoalCalibration;
   model: { home: number; draw: number; away: number; over25: number; btts: number } | null;
   odds: Odds | null;
   brief: string;

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ModelFixture } from "./model-data";
 import type { FootballMatch } from "./football-data";
+import { getResolvedActiveScoreModel } from "./active-score-model";
 import { computeEvaluationMetrics, EvaluationFixture, EvaluationMetrics } from "./wc-evaluation";
 import {
   ELO_CHAMPION,
@@ -50,6 +51,12 @@ export interface ClubSeasonSnapshotFixture {
   pUnder2_5: number;
   pBttsYes: number;
   pBttsNo: number;
+  /** Additive replay evidence on new rows; existing immutable rows stay intact. */
+  forecastInputs?: ModelFixture["forecastInputs"];
+  goalCalibration?: ModelFixture["goalCalibration"];
+  scoreGrid?: number[][];
+  expectedHomeGoals?: number;
+  expectedAwayGoals?: number;
   snapshottedAt: string;
   forecastAt: string;
   checkpointPolicyId: string;
@@ -69,6 +76,7 @@ export interface ClubSeasonSnapshotFixture {
     ratingSourceState: "live" | "artifact" | "persisted" | "unknown";
     ratingArtifactId?: string;
     ratingArtifactSha256?: string;
+    goalCalibrationArtifactSha256?: string;
     homeAdvantageElo: number | null;
     config: typeof ELO_CHAMPION_CONFIG | null;
   };
@@ -433,6 +441,49 @@ export function buildSnapshotFromModel(
 ): ClubSeasonSnapshotFixture {
   const provenance = fixture.forecastProvenance;
   const forecastAt = provenance?.forecastAt ?? snapshottedAt;
+  const exact = fixture.forecastInputs;
+  let calibrationReplayComplete = !fixture.goalCalibration
+    && provenance?.methodId !== "outcome-anchored-shrunk-goals-v2";
+  if (fixture.goalCalibration && exact && provenance) {
+    try {
+      const replay = getResolvedActiveScoreModel({ competitionId: fixture.competitionId,
+        home: fixture.home, away: fixture.away, kickoff: fixture.utcDate,
+        homeStrength: exact.homeStrength, awayStrength: exact.awayStrength,
+        homeAdvantageElo: exact.homeAdvantageElo }, new Date(forecastAt));
+      const grid = fixture.scoreGrid;
+      calibrationReplayComplete = replay.method === "calibrated"
+        && exact.fixtureId === fixture.fixtureId && exact.competitionId === fixture.competitionId
+        && exact.utcDate === fixture.utcDate && exact.home === fixture.home && exact.away === fixture.away
+        && replay.artifactId === fixture.goalCalibration.artifactId
+        && replay.artifactSha256 === fixture.goalCalibration.artifactSha256
+        && replay.methodId === fixture.goalCalibration.methodId
+        && exact.goalCalibrationArtifactSha256 === replay.artifactSha256
+        && provenance.goalCalibrationArtifactSha256 === replay.artifactSha256
+        && provenance.contributorVersion === replay.artifactSha256
+        && provenance.methodId === replay.methodId
+        && provenance.modelId === PUNDIT_FUNDAMENTAL_MODEL_ID
+        && provenance.modelVersion === PUNDIT_FUNDAMENTAL_MODEL_VERSION
+        && provenance.contributorId === "clubelo-calibrated-goals"
+        && provenance.ratingProfile === "eng-clubs"
+        && provenance.homeAdvantageElo === exact.homeAdvantageElo
+        && provenance.config != null
+        && (Object.keys(ELO_CHAMPION_CONFIG) as Array<keyof typeof ELO_CHAMPION_CONFIG>)
+          .every((key) => provenance.config[key] === ELO_CHAMPION_CONFIG[key])
+        && exact.ratingArtifactId === (provenance.ratingArtifactId ?? null)
+        && exact.ratingArtifactSha256 === (provenance.ratingArtifactSha256 ?? null)
+        && exact.ratingSnapshotAt === provenance.ratingSnapshotAt
+        && Math.round(exact.homeStrength * 10) / 10 === fixture.homeElo
+        && Math.round(exact.awayStrength * 10) / 10 === fixture.awayElo
+        && Array.isArray(grid) && grid.length === replay.matrix.length
+        && grid.every((line, h) => Array.isArray(line) && line.length === replay.matrix[h].length
+          && line.every((p, a) => Number.isFinite(p) && Math.abs(p - replay.matrix[h][a]) <= 1e-12))
+        && Number.isFinite(fixture.expectedHomeGoals) && Number.isFinite(fixture.expectedAwayGoals)
+        && Math.abs(fixture.expectedHomeGoals! - replay.expectedHomeGoals) <= 1e-10
+        && Math.abs(fixture.expectedAwayGoals! - replay.expectedAwayGoals) <= 1e-10
+        && (["pHome", "pDraw", "pAway", "pOver2_5", "pUnder2_5", "pBttsYes", "pBttsNo"] as const)
+          .every((key) => Math.round(replay[key] * 10_000) / 10_000 === fixture[key]);
+    } catch { calibrationReplayComplete = false; }
+  }
   return {
     schemaVersion: CLUB_SEASON_LEDGER_SCHEMA_VERSION,
     forecastId: forecastIdentity(fixture),
@@ -452,6 +503,11 @@ export function buildSnapshotFromModel(
     pUnder2_5: fixture.pUnder2_5,
     pBttsYes: fixture.pBttsYes,
     pBttsNo: fixture.pBttsNo,
+    ...(exact ? { forecastInputs: { ...exact } } : {}),
+    ...(fixture.goalCalibration ? { goalCalibration: { ...fixture.goalCalibration } } : {}),
+    ...(fixture.scoreGrid ? { scoreGrid: fixture.scoreGrid.map((line) => [...line]) } : {}),
+    ...(fixture.expectedHomeGoals !== undefined ? { expectedHomeGoals: fixture.expectedHomeGoals } : {}),
+    ...(fixture.expectedAwayGoals !== undefined ? { expectedAwayGoals: fixture.expectedAwayGoals } : {}),
     snapshottedAt,
     forecastAt,
     checkpointPolicyId: PRE_KICKOFF_CHECKPOINT_POLICY_ID,
@@ -464,10 +520,11 @@ export function buildSnapshotFromModel(
     provenanceCompleteness: !provenance
       ? "legacy_partial"
       : provenance.ratingSnapshotAt && provenance.ratingSourceState !== "unknown"
+        && calibrationReplayComplete
         && validArtifactInputProvenance({
           ratingProfile: provenance.ratingProfile,
-          homeRating: fixture.homeElo,
-          awayRating: fixture.awayElo,
+          homeRating: exact?.homeStrength ?? fixture.homeElo,
+          awayRating: exact?.awayStrength ?? fixture.awayElo,
           ratingSnapshotAt: provenance.ratingSnapshotAt,
           ratingAgeMinutes: provenance.ratingAgeMinutes,
           ratingSourceState: provenance.ratingSourceState,
@@ -480,8 +537,8 @@ export function buildSnapshotFromModel(
         : "source_partial",
     inputs: {
       ratingProfile: provenance?.ratingProfile ?? null,
-      homeRating: fixture.homeElo,
-      awayRating: fixture.awayElo,
+      homeRating: exact?.homeStrength ?? fixture.homeElo,
+      awayRating: exact?.awayStrength ?? fixture.awayElo,
       ratingSnapshotAt: provenance?.ratingSnapshotAt ?? null,
       ratingAgeMinutes: provenance?.ratingAgeMinutes ?? null,
       ratingSourceState: provenance?.ratingSourceState ?? "unknown",
@@ -489,6 +546,7 @@ export function buildSnapshotFromModel(
       ...(provenance?.ratingArtifactSha256
         ? { ratingArtifactSha256: provenance.ratingArtifactSha256 }
         : {}),
+      ...(fixture.goalCalibration ? { goalCalibrationArtifactSha256: fixture.goalCalibration.artifactSha256 } : {}),
       homeAdvantageElo: provenance?.homeAdvantageElo ?? null,
       config: provenance?.config ?? null,
     },

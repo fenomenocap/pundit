@@ -217,6 +217,8 @@ export interface Grounding {
   pUnder2_5: number;
   pBttsYes: number;
   pBttsNo: number;
+  goalCalibration?: ModelFixture["goalCalibration"];
+  scoreGrid?: number[][];
   topScores: Array<{ score: string; probability: number }>;
   scorelines: Array<{ score: string; probability: number }>;
   stakePHome: number | null;
@@ -4335,13 +4337,14 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     })),
   ];
   const consensusMarket = firstCompleteNoVigMarket(pricingMarkets);
+  const matchContext = buildMatchContext(fixture);
   const consensus = consensusMarket
     ? buildPunditConsensus({
         fundamental: { pHome: fixture.pHome, pDraw: fixture.pDraw, pAway: fixture.pAway },
         market: consensusMarket,
+        ...(fixture.goalCalibration ? { fundamentalGrid: fixture.scoreGrid } : {}),
       })
     : null;
-  const matchContext = buildMatchContext(fixture);
 
   return {
     kind: "match",
@@ -4362,6 +4365,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     pUnder2_5: fixture.pUnder2_5,
     pBttsYes: fixture.pBttsYes,
     pBttsNo: fixture.pBttsNo,
+    ...(fixture.goalCalibration ? { goalCalibration: fixture.goalCalibration, scoreGrid: fixture.scoreGrid } : {}),
     topScores: fixture.topScores,
     scorelines: fixture.scorelines,
     stakePHome,

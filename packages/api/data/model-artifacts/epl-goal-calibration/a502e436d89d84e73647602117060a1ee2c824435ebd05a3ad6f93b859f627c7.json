@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "methodId": "outcome-anchored-shrunk-goals-v2",
+  "competitionId": "eng.1",
+  "fit": {
+    "methodId": "shrunk-event-rate-elo-allocation-v1",
+    "origin": "2026-10-07T00:00:00.000Z",
+    "options": {
+      "decayDays": 180,
+      "teamPrecision": 100
+    },
+    "intercept": 1.0298591021732213,
+    "teamEffects": {
+      "Arsenal": -0.03269511599519174,
+      "Aston Villa": 0.008612010201253883,
+      "Bournemouth": 0.000002955747886372464,
+      "Brentford": 0.006722520530958504,
+      "Brighton": 0.028656706289382328,
+      "Burnley": 0.014909953891925147,
+      "Cardiff City": -0.000001018796228557585,
+      "Chelsea": 0.052716362672279804,
+      "Coventry": -0.023002652731131546,
+      "Crystal Palace": -0.007003860112106568,
+      "Everton": -0.05537156445911567,
+      "Forest": -0.03830006144619089,
+      "Fulham": -0.033786834303017474,
+      "Huddersfield Town": -0.0000010693720355104172,
+      "Hull": -0.03312840206336813,
+      "Ipswich": 0.03824042540750299,
+      "Leeds": -0.033384551874129365,
+      "Leicester": 0.002367432987879888,
+      "Liverpool": 0.022347270443491225,
+      "Luton Town": 0.007722796193556701,
+      "Man City": 0.04038553210382108,
+      "Man United": 0.03333062169142993,
+      "Newcastle": 0.042435305355305215,
+      "Norwich City": 0.00002011149703223904,
+      "Sheffield United": 0.0075957802164014696,
+      "Southampton": 0.004059349898380154,
+      "Sunderland": -0.018146877374115834,
+      "Tottenham": -0.010395160344317736,
+      "Watford": 0.00004376578787677051,
+      "West Bromwich Albion": 0.000017246465766449366,
+      "West Ham": 0.007614727233819896,
+      "Wolves": -0.025262239912413432
+    },
+    "allocationSlope": 0.6234818713754426,
+    "homeOffset": 0.21235291828728034,
+    "rho": -0.11,
+    "trainingCount": 3090,
+    "allocationTrainingCount": 996,
+    "trainingThrough": "2026-09-20T15:30Z",
+    "trainingSha256": "12f0f758b2cf383bcd209a16ddcab47554aafa5bdcde3d33818717947442e111",
+    "converged": true,
+    "gradientNorm": 8.012459070832473e-10
+  },
+  "review": {
+    "experimentId": "outcome-anchored-goal-rates-v2",
+    "source": [
+      {
+        "path": "packages/api/src/services/historical-goal-calibration.ts",
+        "sha256": "00e429e3bea3082949587def37cfe6db86b35b452f9819810da47224a36f2c5b"
+      },
+      {
+        "path": "packages/api/src/services/dixon-coles.ts",
+        "sha256": "b9fc96af5954e917a101256fa6466567c258611504dd1f01860d1059cc48252d"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-join-manifest-v3.json",
+        "sha256": "c332a9abdafcd9a681b2aa4592e939351099d1139ca38b46069da74c679c7fa1"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/historical-capture-manifest.json",
+        "sha256": "f54155f87bb0eea54c4d044ec602230f787b336cf396d07ec43029ca498295d2"
+      },
+      {
+        "path": "packages/api/src/services/historical-goal-evaluation.ts",
+        "sha256": "914a55145957e1d25ec2d823df1f0836976db7ca728f54678049a7f2c4ba4dea"
+      },
+      {
+        "path": "packages/api/src/services/outcome-anchored-score-grid.ts",
+        "sha256": "c397be1487fb70ff1a98a41598562cbf6e1792535014de13390719d434def07a"
+      },
+      {
+        "path": "scripts/build-epl-goal-calibration.ts",
+        "sha256": "c18a210edd0bf2b90bd0d0172d627c434d63ea6136e7c4574f12d03d96323352"
+      }
+    ],
+    "training": [
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/historical-capture-manifest.json",
+        "sha256": "f54155f87bb0eea54c4d044ec602230f787b336cf396d07ec43029ca498295d2"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-join-manifest-v3.json",
+        "sha256": "c332a9abdafcd9a681b2aa4592e939351099d1139ca38b46069da74c679c7fa1"
+      },
+      {
+        "path": "packages/api/data/research/clubelo-history/raw/tonyelhabr/clubelo-club-rankings.csv",
+        "sha256": "9cd156ce90584517bd12662f63688fe0856b2af0194cb70b1482b38f8cb3b6a3"
+      },
+      {
+        "path": "packages/api/src/lib/team-names.ts",
+        "sha256": "583a0cfccb54c392ee2b135033b20d7f443c4e9fe3f8d5e62037d0a4f2a2329b"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-build-strict-joins-v3.cjs",
+        "sha256": "f0bb4222e7fe1b2567ebd761c98160ba8d66f1efaab37680314272479c486179"
+      },
+      {
+        "path": "packages/api/data/research/club-history/datasets/00f7065a80a5de7c0f4de6c89c7f7b27c11f863205acbb986ee9deb6bef7898a.json",
+        "sha256": "00f7065a80a5de7c0f4de6c89c7f7b27c11f863205acbb986ee9deb6bef7898a"
+      },
+      {
+        "path": "packages/api/data/research/club-history/builds/2026-09-09T13-20-29-741Z-00f7065a80a5.json",
+        "sha256": "ab991c6f6eb0e85bd2bdf002b0df3b461ae7ec01dbbab3eddcde0a29ec47de74"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/provenance/elo-v2-independent-source-review.json",
+        "sha256": "551f75463e8a4d4ecca27598647d45f5d037c84ea3ca2ee8356466697945c886"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2022-23.json",
+        "sha256": "079692a0ac5a985730dba48a5ab90c4f6362fbe926b292d438fba0035ffadf6e"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2023-24.json",
+        "sha256": "22ab1b08774420dac74e72de6e8a6d8755211e75b37d339244d6eba3ede049bd"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-fixtures-2024-25.json",
+        "sha256": "df3bb12725a09280637f83f6753b7478275a06b30bc49b43e113e3f2a46d00fa"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-fixtures-2025-26.json",
+        "sha256": "a01a6317e025c10e6b144cbcae0f61b8545af47c1ef6b3e68cac055e22ecc0bd"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2018-19.json",
+        "sha256": "ac60db329c41b29c0b7de2a2faeb6b2b46a6897d42ea02d2fbcba4c57f4ccca8"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2019-20.json",
+        "sha256": "7d7f058ba14a782afa6248c2507d0bdfa423961c73deca82aa8ba6f864f8c268"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2020-21.json",
+        "sha256": "0efb5bb54fcc0c865ec756ea18e40b4c1804a75a472df80110616d7bc14f8e3b"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2021-22.json",
+        "sha256": "7d42d312119ae52f38765d7b346c15a28c75a8f4acb632d8e5c6ec61354c0cd1"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/current/current-capture-receipt.json",
+        "sha256": "b0ae79f9bb538c72ddef49f1e8fb05c3a2a7545ba2b0e4811e81b1ae8103302d"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/current/independent-source-review.json",
+        "sha256": "4b031d864585360cb3f2954a7bcdee8bf98464346a40e17ad5cada02cc41b06c"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/current/source-capture.json",
+        "sha256": "e355917d7c1a6d282d3507730a7689ff1981199ae3158d56422c75e89968bf02"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/current/espn-calendar-2026.json.gz",
+        "sha256": "ceabaae1ff37487b8308e506e6c79f3fa301b1257c653fa9afb0920e3590fa3c"
+      },
+      {
+        "path": "packages/api/src/services/club-history-corpus.ts",
+        "sha256": "d749eca92cf8130bb1689e809130e89d35e504687798743fb8fa865c63c6a63d"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/current/normalize-current.cjs",
+        "sha256": "0a1c21f9d323fe2a129eda9302b346545e8a2f2b321829f1175c512b6f30f7a9"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/current/fixtures-2026-27.json",
+        "sha256": "549a916eb08c6e0babf80c7c7d08dc05d29a62b9654943c2128de4c62fdf85ff"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-joined-2022-23-1cc650a1e1e8d784d75951d4debe2c58816e29b6fee6b9ac42121cf5e7a0679b.json",
+        "sha256": "fd736339ab6ca27ed62f1ee827104c83c40e0020487a0d4426f2da6df4577699"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-joined-2023-24-3e0da8085ac8fa192cd3bfd07db51cf0061d631632b610636f65101c2e2e2848.json",
+        "sha256": "70454adb2df178d20cd99a60406a0fb098c5fbce7d0c3352d802bfb195b243e2"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-joined-newexposed-2024-25-09d08bc28138eaf6c73703f5dd7c8ff71bc167e43c8cd0f874e5aeaf93780574.json",
+        "sha256": "0db0f61c5300d0fcd61d1ca1b85d3c5d5797973a548169709c1e0bd30efab004"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-joined-newexposed-2025-26-b147a6db9149a91e952ee5a8c2cf87a41daaae56bb979b39c66f18d9134d0197.json",
+        "sha256": "088026dfd46a8070da1400000d7c97a49a222ae8631833f621863bc22479063d"
+      }
+    ],
+    "evaluation": [
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/protocol-outcome-anchored-v2.json",
+        "sha256": "dc1cb0d73d863793cbce1ed385ea80099c87c19ff1cbfb05f689e54812e6d6b4"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/protocol-outcome-anchored-v2-tolerance-amendment.json",
+        "sha256": "7567953114f5f46f1142bbfb46dc7454ba879532aec07e013580ee848871048c"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/replay-anchored-v2-first.json",
+        "sha256": "5e16c8adbb2f9c3669038c141fc1aef79babb680d957fc06b061162989893de0"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/replay-anchored-v2-second.json",
+        "sha256": "5e16c8adbb2f9c3669038c141fc1aef79babb680d957fc06b061162989893de0"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-v2-report-independent-review.json",
+        "sha256": "2143913787294a49fc8527008c81f1131dac32f5081c9f222e763e9a51f57958"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-v2-training-binding-review.json",
+        "sha256": "9141e94b402d7bf84f5114d01b37b279e3328317395fada3ec3581c379d53c97"
+      },
+      {
+        "path": "packages/api/src/services/historical-goal-calibration.ts",
+        "sha256": "00e429e3bea3082949587def37cfe6db86b35b452f9819810da47224a36f2c5b"
+      },
+      {
+        "path": "packages/api/src/services/dixon-coles.ts",
+        "sha256": "b9fc96af5954e917a101256fa6466567c258611504dd1f01860d1059cc48252d"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-join-manifest-v3.json",
+        "sha256": "c332a9abdafcd9a681b2aa4592e939351099d1139ca38b46069da74c679c7fa1"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/historical-capture-manifest.json",
+        "sha256": "f54155f87bb0eea54c4d044ec602230f787b336cf396d07ec43029ca498295d2"
+      },
+      {
+        "path": "scripts/replay-historical-goals.ts",
+        "sha256": "2670c506dda9d64dd47ac08cf3ca0f52cfb896d50574d2ebd5591c3e5122b94a"
+      },
+      {
+        "path": "packages/api/src/services/historical-goal-evaluation.ts",
+        "sha256": "914a55145957e1d25ec2d823df1f0836976db7ca728f54678049a7f2c4ba4dea"
+      },
+      {
+        "path": "packages/api/src/services/outcome-anchored-score-grid.ts",
+        "sha256": "c397be1487fb70ff1a98a41598562cbf6e1792535014de13390719d434def07a"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2018-19.json",
+        "sha256": "ac60db329c41b29c0b7de2a2faeb6b2b46a6897d42ea02d2fbcba4c57f4ccca8"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2019-20.json",
+        "sha256": "7d7f058ba14a782afa6248c2507d0bdfa423961c73deca82aa8ba6f864f8c268"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2020-21.json",
+        "sha256": "0efb5bb54fcc0c865ec756ea18e40b4c1804a75a472df80110616d7bc14f8e3b"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2021-22.json",
+        "sha256": "7d42d312119ae52f38765d7b346c15a28c75a8f4acb632d8e5c6ec61354c0cd1"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2022-23.json",
+        "sha256": "079692a0ac5a985730dba48a5ab90c4f6362fbe926b292d438fba0035ffadf6e"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/fixtures-2023-24.json",
+        "sha256": "22ab1b08774420dac74e72de6e8a6d8755211e75b37d339244d6eba3ede049bd"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-fixtures-2024-25.json",
+        "sha256": "df3bb12725a09280637f83f6753b7478275a06b30bc49b43e113e3f2a46d00fa"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-fixtures-2025-26.json",
+        "sha256": "a01a6317e025c10e6b144cbcae0f61b8545af47c1ef6b3e68cac055e22ecc0bd"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-joined-2022-23-1cc650a1e1e8d784d75951d4debe2c58816e29b6fee6b9ac42121cf5e7a0679b.json",
+        "sha256": "fd736339ab6ca27ed62f1ee827104c83c40e0020487a0d4426f2da6df4577699"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-joined-2023-24-3e0da8085ac8fa192cd3bfd07db51cf0061d631632b610636f65101c2e2e2848.json",
+        "sha256": "70454adb2df178d20cd99a60406a0fb098c5fbce7d0c3352d802bfb195b243e2"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-joined-newexposed-2024-25-09d08bc28138eaf6c73703f5dd7c8ff71bc167e43c8cd0f874e5aeaf93780574.json",
+        "sha256": "0db0f61c5300d0fcd61d1ca1b85d3c5d5797973a548169709c1e0bd30efab004"
+      },
+      {
+        "path": "artifacts/historical-calibration-2026-10-07/elo-joined-newexposed-2025-26-b147a6db9149a91e952ee5a8c2cf87a41daaae56bb979b39c66f18d9134d0197.json",
+        "sha256": "088026dfd46a8070da1400000d7c97a49a222ae8631833f621863bc22479063d"
+      }
+    ]
+  }
+}

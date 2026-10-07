@@ -1577,7 +1577,7 @@ export function validateAnswerCopy(answer) {
 }
 
 /** Conversation-level expression rules layered on top of factual validators. */
-export function validateAnalystExpression(answer, expectation = {}) {
+export function validateAnalystExpression(answer, expectation = {}, grounding = null) {
   // Typography cannot change the meaning of an abstention. Normalize only
   // apostrophes; do not loosen the underlying causal or numeric checks.
   const text = typeof answer === "string" ? answer.trim().replace(/[’‘]/g, "'") : "";
@@ -1668,8 +1668,15 @@ export function validateAnalystExpression(answer, expectation = {}) {
   }
   if (expectation.expectTotalsHonesty) {
     assertions.totalsOverUnderPresent = /\bover 2\.5\b/i.test(text) && /\bunder 2\.5\b/i.test(text);
-    assertions.totalsSharedExpectedGoals = /\bfixed total-goals assumption\b/i.test(text)
-      && /\bcannot tell me whether this particular match will be more open or tighter\b/i.test(text);
+    const calibration = grounding?.goalCalibration;
+    const calibrated = calibration?.methodId === "outcome-anchored-shrunk-goals-v2"
+      && /^[a-f0-9]{64}$/.test(calibration.artifactSha256 ?? "")
+      && calibration.artifactId === `${calibration.methodId}:${calibration.artifactSha256}`;
+    assertions.totalsAssumptionMatchesDistribution = calibrated
+      ? /\bestimate goals from historical scoring patterns and team ratings\b/i.test(text)
+        && /\bforecasts, not guarantees\b/i.test(text) && !/\bfixed total-goals assumption\b/i.test(text)
+      : /\bfixed total-goals assumption\b/i.test(text)
+        && /\bcannot tell me whether this particular match will be more open or tighter\b/i.test(text);
     assertions.totalsNoEngineJargon = !/\b(?:dixon-?coles|clubelo)\b/i.test(text);
   }
   const failures = Object.entries(assertions)

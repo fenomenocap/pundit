@@ -41,6 +41,13 @@ function composeBriefingFootball(grounding: Grounding): string {
 
 export const SHARED_TOTAL_XG_SENTENCE =
   "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
+export const CALIBRATED_GOALS_SENTENCE =
+  "I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.";
+
+function totalsAssumptionSentence(grounding: Grounding): string {
+  return grounding.goalCalibration?.methodId === "outcome-anchored-shrunk-goals-v2"
+    ? CALIBRATED_GOALS_SENTENCE : SHARED_TOTAL_XG_SENTENCE;
+}
 
 export const STAKE_REFUSAL_SENTENCE =
   "I can print the price. I will not size a stake without a bankroll and a risk band.";
@@ -110,7 +117,7 @@ function composeTotalsLead(question: string, grounding: Grounding): string {
   const complement = /\b(?:sum|add|complementary|complement)\b/i.test(question)
     ? " Under covers fewer than three goals; over covers three or more. There is no push at a half-goal line, so their probabilities sum to one. Decimal odds are the reciprocals of those probabilities."
     : "";
-  return `${lead}${complement} ${SHARED_TOTAL_XG_SENTENCE}`;
+  return `${lead}${complement} ${totalsAssumptionSentence(grounding)}`;
 }
 
 function composeBttsLead(question: string, grounding: Grounding): string {
@@ -530,7 +537,7 @@ export function composeMatchResponse(
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
     asksCompleteMatchBriefing(question) ? composeBriefingFootball(grounding) : "",
-    `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${SHARED_TOTAL_XG_SENTENCE}`,
+    `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${totalsAssumptionSentence(grounding)}`,
     [marketRows, market].filter(Boolean).join(" "),
     consensus,
     revisitAfterNews(grounding),

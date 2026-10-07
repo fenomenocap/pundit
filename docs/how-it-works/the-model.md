@@ -1,17 +1,23 @@
 # The Model
 
-Pundit's match probabilities come from an independent Poisson score matrix with a **Dixon–Coles** low-score correction. Expected goals are not a fitted attack/defence model: they are a fixed 2.70 total split by the Elo odds ratio from a reviewed, pinned **ClubElo** artifact, computed locally inside the API. The content-addressed ratings snapshot ships with a release. The active fixture set (21-day horizon across enabled competitions) recomputes on the adaptive model cadence — hourly when nothing is live or imminent, every 30 minutes on a match day, every 15 minutes while a match is in play — without contacting ClubElo at runtime.
+Fundamental v3 preserves Pundit's rating-and-home-advantage win/draw/loss probabilities while calibrating the score shape for ordinary Premier League home fixtures. A historical fit estimates shrunk team-event total-goal rates, an Elo-based home/away allocation and a Dixon–Coles low-score correction. It then rescales each home-win, draw and away-win region to the unchanged baseline 1X2 mass. Totals, BTTS, likely scores and calibrated expected goals come from that final joint distribution.
+
+The calibration is pinned by raw SHA-256 `a502e436d89d84e73647602117060a1ee2c824435ebd05a3ad6f93b859f627c7`, method `outcome-anchored-shrunk-goals-v2`, with origin `2026-10-07T00:00:00Z`. Its release fit uses 3,090 earlier goal outcomes and 996 dated-rating allocation rows. The 50 completed current-season results contribute goals only; they have no retrospective ratings manufactured for allocation. Production loads this artifact and the pinned ClubElo ratings locally.
+
+UCL qualifiers, neutral fixtures and kickoffs before the calibration origin retain the baseline 2.70-total score shape. Current ordinary EPL fixtures fail closed on missing, invalid, future or more-than-30-day-old calibration; they never silently revert to fixed totals. The active fixture set retains its 21-day horizon and adaptive refresh cadence, without contacting ClubElo at runtime. Refreshing a fixture cache does not refit the calibration; a new fit, content-addressed artifact and pin require a reviewed release.
 
 ### Active fixture model
 
 For each recognized, policy-eligible upcoming club fixture in the active window:
 
-* **Win, draw, or loss probabilities** (`pHome`, `pDraw`, `pAway`) — Dixon-Coles output for that specific matchup
-* **Over/under 2.5, BTTS, and likely scorelines** derived from the score matrix
-* **Elo → expected goals** via a fixed 2.70 total xG split by the Elo odds ratio (not a geometric-mean mapping that inflates totals on mismatches)
+* **Win, draw, or loss probabilities** (`pHome`, `pDraw`, `pAway`) — the preserved rating/HFA baseline for that specific matchup
+* **Over/under 2.5, BTTS, and likely scorelines** — derived from the resolved final score grid
+* **Calibrated expected goals** — probability-weighted home/away score means from that grid. Raw fitted lambdas describe the shape before outcome anchoring; they are not the published xG
 * **Home-field advantage** applied for Premier League and UEFA Champions League qualifier home teams when the venue is not neutral (not for neutral-site tournaments)
 
 Team strength comes from a pinned `clubelo@1` snapshot, scoped by competition rating profile (domestic league vs continental). Its selector, payload hash, source timestamp, minimum coverage and 30-day freshness are validated before use. A corrupt, expired or incomplete artifact fails closed rather than guessing ratings.
+
+The team effects shrink toward zero; a club absent from the fit has an explicit zero-effect extrapolation. This is a statistical team scoring-rate adjustment, not a live injury or tactical counterfactual.
 
 Fixture recognition is a gate, not a numeric input. The registry binds approved structured source IDs to canonical teams, kickoff, venue/neutral state, competition, and status. Cancelled, postponed, unsupported, ambiguous, or incomplete fixtures fail closed before pricing; this does not alter the numeric output for existing eligible fixtures.
 
@@ -20,12 +26,12 @@ Fixture recognition is a gate, not a numeric input. The registry binds approved 
 For Premier League title-race and top-four questions, Pundit runs a **Monte Carlo simulation** over remaining scheduled fixtures:
 
 * Uses current ESPN standings as the starting state
-* Samples 90-minute scores from the same Dixon-Coles score matrix used for individual fixtures (inverse-CDF of the τ-corrected 0–10 grid)
+* Resolves each remaining fixture through the same calibration/baseline policy, then samples 90-minute scores from its full joint 0–10 grid; it does not rebuild an independent Poisson distribution from published xG
 * Reports title probability and top-four probability per team
 
-The default simulation seed is derived from the complete standings, remaining fixtures, ratings, run count, and active contributor identity. Identical grounded inputs therefore replay to identical probabilities across follow-up turns; changing a grounded input changes the replay. Tests may still inject an explicit random source.
+The default simulation seed is derived from the complete standings, remaining fixtures, ratings, run count, active contributor identity and goal-calibration artifact hash. Identical grounded inputs therefore replay to identical probabilities across follow-up turns; changing a grounded input changes the replay. Tests may still inject an explicit random source.
 
-This is separate from the per-fixture active cache — it answers "who wins the league?" rather than "who wins this match?"
+The simulator uses the same score-model policy beyond the per-fixture active cache, gated on a complete schedule and rating coverage. The paper lab samples the supplied joint grid too; calibrated rows without a coherent grid fail closed. Legacy paper rows without a grid retain their separately disclosed simulation fallback.
 
 ### How the desk uses it
 
@@ -33,9 +39,9 @@ For a recognized, priced fixture in the 21-day window, Pundit treats the fixture
 
 Pundit then:
 
-1. Compares the model's win, draw, or loss read with complete active Stake, Kalshi, and Polymarket 1X2 prices when available. Labelled **Pundit Consensus**, when shown, is a separate number that may shrink toward one complete same-source market and then refit expected goals. It is never the Fundamental headline.
-2. Runs a live web search whenever the question touches injuries, suspensions, lineups, form, transfers, or a recent result — for a specific fixture that information changes the read, so Pundit searches rather than answering from memory. Every item it reports names its source and date, and it says plainly where a search turned up nothing
-3. Responds in plain language from the server-owned facts, including fair prices `1/p`. Totals sit near 50% on every row because every match uses the same 2.70 expected goals; that sentence is honesty, not match insight.
+1. Compares the Fundamental win/draw/loss read with complete active Stake, Kalshi and Polymarket 1X2 prices when available. Labelled **Pundit Consensus** remains separate: when a Fundamental grid is supplied, it reanchors that score shape to its market-adjusted 1X2 target and derives its own markets and expected-goal means. It does not replace the calibrated shape with a fixed-total refit or become the Fundamental headline.
+2. Requires evidence for externally current injuries, suspensions, lineups and transfers. Narrow latest-result requests can use fresh supported ESPN records; broader requests retain search. Positive current-news claims cite their source and publication date, without implying a verified numerical lineup effect or guaranteed future availability
+3. Responds in plain language from server-owned facts, including fair prices `1/p`. Calibrated EPL totals vary with the fitted score shape while 1X2 remains unchanged. Over and Under 2.5 are complementary probabilities summing to one; their decimal fair odds are reciprocals, not percentages.
 
 Odds and market questions also retain mandatory search. If verification supports no external claim, Pundit discards the generated prose and deterministically renders only complete same-source market rows already present in match grounding. The verification remains `abstain` or `unavailable`, citations are empty, and an incomplete or absent grounded market is omitted rather than guessed.
 
@@ -53,11 +59,28 @@ Two read-only evaluation artifacts measure how well pre-kickoff probabilities ma
 | **Club season (rolling)** | `/evaluation/club-season` | First eligible forecast sealed in the 90-minute pre-kickoff window (`pre-kickoff-90m-v1`). Live volume is on Railway `/data`, not the empty in-repo seed. |
 | **WC 2026 (frozen)** | `/evaluation/wc-2026` | Reconstructed pre-kickoff probabilities for every finished World Cup 2026 match |
 
-The live Model page recalculates older fixtures with the release's **pinned, freshness-gated** ratings artifact — useful for exploration, but not a look-ahead-free backtest. Rigorous calibration uses the evaluation artifacts above.
+The Model page and recalculated historical fixture rows are exploratory views using release inputs. Targets before the EPL calibration origin retain the historical baseline; they never receive later-trained calibration parameters. Recalculation with a release ratings snapshot is not a look-ahead-free backtest.
 
-An **offline Phase 1b calibrator** (`pnpm --filter @sports-predict/api calibrate:champion`) can refit `BASE_GOALS`, home-field advantage, and `rho` on official sealed club-season rows. It writes a research report only; production still uses the shipped 1.35 / 42 / −0.1 constants until a human copies a reviewed config. The in-repo ledger seed is not production truth — Railway `PUNDIT_DATA_DIR=/data` is. MiniMax does not author these numbers.
+The older **offline Phase 1b calibrator** (`pnpm --filter @sports-predict/api calibrate:champion`) still writes research reports from sealed club-season rows. It does not select the active v3 artifact or change runtime constants. The in-repo ledger seed is not production truth — Railway `PUNDIT_DATA_DIR=/data` is. MiniMax does not author match probabilities.
 
-A fitted attack/defence Dixon–Coles challenger is **registered, not activated**. Production still calls the ClubElo → fixed-total λ champion. Promotion requires the chronological rolling-origin gate **and** an explicit human **promote**. The 2026-09-15 evaluation refits each origin and does not recommend promotion.
+The separate fitted attack/defence Dixon–Coles challenger remains **registered, not activated**. It is distinct from the active shrunk goal-rate calibration. The preserved rating/HFA baseline still supplies Fundamental 1X2 and unsupported calibration scopes.
+
+### Historical evidence for v3
+
+The outcome-anchored V2 evaluation refits each weekly origin using earlier outcomes with a 24-hour availability lag. Candidate selection uses earlier-origin forecasts only. On 341 primary 2023–24 fixtures across 33 UTC weeks, the changes versus the shipped baseline were:
+
+| Metric | Candidate minus baseline | Retrospective 95% interval |
+|---|---:|---:|
+| Exact-score log loss | −0.0863 | [−0.1219, −0.0511] |
+| Over/Under 2.5 Brier | −0.01450 | [−0.02408, −0.00507] |
+| BTTS Brier | −0.02285 | [−0.03164, −0.01387] |
+| 1X2 log loss | 0 | Preserved by outcome anchoring |
+
+Lower is better. V2 followed diagnosis of V1's failed 1X2 regression gate. These cohorts were already exposed during development: this is chronological retrospective validation, not a newly pristine holdout or prospective superiority proof. Dated ratings were retrieved from an archival mirror; they are an availability proxy rather than original sealed forecasts or proof that no historical ratings were revised. The intervals are unadjusted paired retrospective uncertainty after that development history.
+
+The 580-fixture exposed secondary cohort showed a score-log-loss change of −0.02843 and BTTS Brier change of −0.01180. Its totals Brier change was −0.00225 with interval [−0.00937, +0.00483], which crosses zero. Broader totals improvement is therefore uncertain. The checks support a bounded historical improvement in score shape while preserving 1X2; they do not establish best possible performance or guaranteed future accuracy.
+
+The source-bound prospective candidate `2b5bc111…` belongs to the previous model sources. Before releasing v3, disable it with `PROSPECTIVE_MODEL_CAPTURE=false` and preserve its `/data/prospective-model` cohort. The old 40-match requirement remains historical cohort policy, not a prerequisite for this retrospective improvement. Any future collector must use a newly reviewed candidate and source binding; future results provide additional monitoring.
 
 ### Historical note: World Cup 2026
 
