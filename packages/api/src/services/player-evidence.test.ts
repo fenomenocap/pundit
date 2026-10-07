@@ -108,6 +108,56 @@ const source = (over: Partial<PlayerEvidenceSource> = {}): PlayerEvidenceSource 
 
 describe("player evidence adapter", () => {
   it.each([
+    { heading: "For Arsenal", home: "Arsenal", away: "Chelsea" },
+    { heading: "Of Arsenal", home: "Arsenal", away: "Chelsea" },
+    { heading: "To Arsenal", home: "Arsenal", away: "Chelsea" },
+    { heading: "At Chelsea", home: "Arsenal", away: "Chelsea" },
+    { heading: "Vs Arsenal", home: "Arsenal", away: "Chelsea" },
+    { heading: "Against Chelsea", home: "Arsenal", away: "Chelsea" },
+    { heading: "On Arsenal", home: "Arsenal", away: "Chelsea" },
+    { heading: "For Man United", home: "Man United", away: "Leeds" },
+    { heading: "For Manchester United", home: "Man United", away: "Leeds" },
+  ])("does not price a prepositional club heading as a player: $heading", ({ heading, home, away }) => {
+    // Synthetic page heading control for the observed delivered `For Arsenal`
+    // identity defect. The blocked publisher body is not reconstructed here.
+    const focus = { ...fixture, home, away };
+    const bundle = extractPlayerEvidence([source({ title: `${home} vs ${away} anytime scorer odds`,
+      snippet: `${heading} anytime 1.44.` })], focus);
+    expect(bundle.markets).toEqual([]);
+    expect(leadingScorerCandidate(bundle)).toBeNull();
+    expect(composePlayerScorerAnswer({} as never, bundle)).toBe(PLAYER_SCORER_ABSTENTION);
+  });
+
+  it.each(["For Arsenal", "Of Arsenal", "To Arsenal", "At Arsenal", "Against Arsenal"])(
+    "keeps the real locally bound quote after heading %s", (heading) => {
+      const bundle = extractPlayerEvidence([source({ snippet:
+        `${heading} anytime 1.44. Bukayo Saka anytime 2.10 for Arsenal.` })], fixture);
+      expect(bundle.markets.map(({ playerName, teamId, decimalOdds }) => ({ playerName, teamId, decimalOdds })))
+        .toEqual([{ playerName: "Bukayo Saka", teamId: "Arsenal", decimalOdds: 2.1 }]);
+      const answer = composePlayerScorerAnswer({} as never, bundle);
+      expect(answer).toContain("Bukayo Saka is the shortest-priced Arsenal name");
+      expect(answer).not.toContain(heading);
+      expect(answer).toContain("not my probability");
+    });
+
+  it.each(["Martin Ødegaard", "João Pedro", "N'Golo Kanté", "Dominic Calvert-Lewin", "Will Hughes", "Saka", "Evanilson"])(
+    "preserves a genuine full, Unicode or single-name market candidate %s", (playerName) => {
+      const bundle = extractPlayerEvidence([source({ snippet: `${playerName} anytime 2.10 for Arsenal.` })], fixture);
+      expect(bundle.markets.map((row) => ({ playerName: row.playerName, teamId: row.teamId, decimalOdds: row.decimalOdds })))
+        .toEqual([{ playerName, teamId: "Arsenal", decimalOdds: 2.1 }]);
+      expect(composePlayerScorerAnswer({} as never, bundle)).toContain(`${playerName} is the shortest-priced Arsenal name`);
+    });
+
+  it.each([
+    "For Arsenal anytime 1.44. Bukayo Saka is discussed for Arsenal.",
+    "Arsenal to win 1.44. Bukayo Saka is discussed for Arsenal. Anytime scorer markets follow.",
+  ])("does not lend an earlier club price to unrelated named-player prose: %s", (snippet) => {
+    const bundle = extractPlayerEvidence([source({ snippet })], fixture);
+    expect(bundle.markets).toEqual([]);
+    expect(composePlayerScorerAnswer({} as never, bundle)).toBe(PLAYER_SCORER_ABSTENTION);
+  });
+
+  it.each([
     "Back (Arsenal) is unavailable.",
     "Unavailable (Arsenal) is injured.",
     "Return Dates for Arsenal: unavailable players follow.",
