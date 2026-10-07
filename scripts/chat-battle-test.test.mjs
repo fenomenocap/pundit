@@ -2218,9 +2218,10 @@ test("scoped team-news conflict requires positive dated survivors and preserves 
     const noUpdate = "No verified, dated team-news update was established.";
     const emptyExpectation = deriveTurnVerificationExpectation(empty, scenario);
     assert.equal(emptyExpectation.requirePositiveDatedClubNews, false, status);
-    assert.equal(emptyExpectation.guardUnsupportedConflictCounterfactuals, false, status);
+    assert.equal(emptyExpectation.guardUnsupportedConflictCounterfactuals, status === "conflict", status);
     assert.equal(check(noUpdate, [], empty), true, status);
     assert.equal(check(`${noUpdate} Ben White will start.`, [], empty), false, status);
+    assert.equal(check(`${noUpdate} If rotation changes, the home-win probability moves higher.`, [], empty), false, status);
   }
   assert.equal(validateVerification(verification, { expectVerification: ["verified"] }).passed, false);
   const configured = JSON.parse(fs.readFileSync("evals/chat/scenarios.json", "utf8")).fixed;
