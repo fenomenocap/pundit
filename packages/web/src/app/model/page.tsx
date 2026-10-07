@@ -178,7 +178,7 @@ export default function ModelPage() {
               </div>
             ) : filteredFixtures.length === 0 ? (
               <EmptyState
-                message="No upcoming fixtures in the next 14 days — the model window may be between rounds or off-season. Try a table question in chat or browse standings."
+                message="No priced fixtures are available for this competition right now. Try a table question in chat or browse fixtures and standings."
                 actionLabel="View fixtures & standings"
                 actionHref="/fixtures"
                 className="border-0 bg-transparent"

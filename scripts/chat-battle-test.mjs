@@ -50,6 +50,7 @@ import {
   validateResponseCorrectness,
   validateTeamNewsDiscipline,
   validatePositiveDatedClubNews,
+  validatePositiveCurrentManager,
   validateVerification,
   writeCheckpoint,
   writeFailureReport,
@@ -388,6 +389,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       requireCitation: Boolean(turn.requireCitation || scenario.requireCitation),
       allowAbstention: Boolean(turn.allowAbstention || scenario.allowAbstention),
     });
+    if (turn.expectCurrentManager) {
+      const positiveManager = validatePositiveCurrentManager(result.answer, result.citations, result.verification, turn.expectCurrentManager);
+      semanticCheckCount += Object.keys(positiveManager.assertions).length;
+      for (const [name, passed] of Object.entries(positiveManager.assertions)) {
+        result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+      }
+      assertionFailures.push(...positiveManager.failures.map((failure) => `turn ${turnNumber}: ${failure}`));
+    }
     for (const [name, passed] of Object.entries(verificationValidation.assertions)) {
       result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
     }
@@ -937,6 +946,10 @@ async function runScenario(
         ...(turn.expectLatestResult ? { expectLatestResult: {
           ...turn.expectLatestResult,
           team: turn.expectLatestResult.team?.replaceAll("{home}", featured.home).replaceAll("{away}", featured.away),
+        } } : {}),
+        ...(turn.expectCurrentManager ? { expectCurrentManager: {
+          ...turn.expectCurrentManager,
+          team: turn.expectCurrentManager.team?.replaceAll("{home}", featured.home).replaceAll("{away}", featured.away),
         } } : {}),
         expectTeams: turn.expectGrounding === "match" ? [featured.home, featured.away] : turn.expectTeams,
         expectFixtureId: turn.expectGrounding === "match" ? recognizedFixtureId : turn.expectFixtureId,

@@ -28,7 +28,7 @@
     },
     {
       "id": "pinned-current-manager-and-result-evidence",
-      "description": "Manager identities require verified current citations. A latest result settles from fresh completed ESPN records with a dated event citation and an explicit coverage boundary, without using forecast facts to explain the outcome. Agent critic independently checks the event score and date.",
+      "description": "Required current-manager turns deliver a named role for the requested club with a supported, recent dated citation; a generic abstention alone cannot certify usefulness. A latest result settles from fresh completed ESPN records with a dated event citation and an explicit coverage boundary, without using forecast facts to explain the outcome. Agent critic independently checks publisher role ownership and the event score/date.",
       "kind": "featured-turns",
       "voice": "desk",
       "turns": [
@@ -36,13 +36,15 @@
           "questionTemplate": "What's {home}'s manager today?",
           "expectGrounding": "match",
           "requireCitation": true,
-          "allowAbstention": true
+          "expectVerification": ["verified", "conflict"],
+          "expectCurrentManager": {"team": "{home}"}
         },
         {
           "questionTemplate": "Who is {home}'s manager and why?",
           "expectGrounding": "match",
           "requireCitation": true,
-          "allowAbstention": true
+          "expectVerification": ["verified", "conflict"],
+          "expectCurrentManager": {"team": "{home}"}
         },
         {
           "questionTemplate": "What is {home}'s latest result and why?",

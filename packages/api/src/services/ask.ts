@@ -9851,8 +9851,10 @@ async function answerQuestionScoped(
     let bundle = voice === "desk" || clubFact
       ? filterDeskEvidenceBundle(prioritizedBundle, grounding, Date.now(), question)
       : prioritizedBundle;
+    let managerPages: RetrievedEvidencePage[] | undefined;
     if (clubFact?.kind === "manager") {
-      await hydrateBundlePublicationDates(bundle, signal);
+      managerPages = (await hydrateBundlePublicationDates(bundle, signal))
+        .map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
       bundle = filterDeskEvidenceBundle(bundle, grounding, Date.now(), question);
     }
     // Desk team-news and scorer turns use the typed evidence path after search, whether
@@ -9865,6 +9867,7 @@ async function answerQuestionScoped(
     if (clubFact || (voice === "desk" && !deskUsesMatchEvidencePath)) {
       const prose = await writeDeskProse(question, grounding, history, signal, bundle, {
         generalConcept: grounding === null && query === null && bundle.queries.length === 0,
+        managerPages,
       });
       if (prose) {
         const delivered = await deliverAnswer({
@@ -10083,14 +10086,16 @@ async function answerQuestionStreamScoped(
     let bundle = clubFact
       ? filterDeskEvidenceBundle(prioritizedBundle, grounding, Date.now(), question)
       : prioritizedBundle;
+    let managerPages: RetrievedEvidencePage[] | undefined;
     if (clubFact?.kind === "manager") {
-      await hydrateBundlePublicationDates(bundle, handlers.signal);
+      managerPages = (await hydrateBundlePublicationDates(bundle, handlers.signal))
+        .map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
       bundle = filterDeskEvidenceBundle(bundle, grounding, Date.now(), question);
     }
     // A direct club identity/result is evidence prose, not a forecast draft.
     // Hold every delta until its dated claims have passed the same verifier.
     if (clubFact) {
-      const prose = await writeDeskProse(question, grounding, history, handlers.signal, bundle);
+      const prose = await writeDeskProse(question, grounding, history, handlers.signal, bundle, { managerPages });
       if (prose) {
         const delivered = await deliverAnswer({
           answer: prose, tier, grounding, bundle, client, question,

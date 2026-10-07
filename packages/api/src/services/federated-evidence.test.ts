@@ -27,19 +27,18 @@ const matchGrounding = (
 
 describe("planFederatedQueries", () => {
   it.each([
-    ["2026-10-07T06:00:00Z", "September 2026 October 2026"],
-    ["2027-01-01T00:00:00Z", "December 2026 January 2027"],
-  ])("diversifies manager retrieval with a recent news window (%s)", (origin, months) => {
+    ["2026-10-07T06:00:00Z", "September 2026", "October 2026"],
+    ["2027-01-01T00:00:00Z", "December 2026", "January 2027"],
+  ])("diversifies manager retrieval with a recent news window (%s)", (origin, previousMonth, currentMonth) => {
     const grounding = matchGrounding();
     const question = "Who is Arsenal's manager and why?";
     const now = new Date(origin);
     const queries = planFederatedQueries(question, grounding, deterministicSearchQuery(question, "", grounding as never, now), now);
-    expect(queries[1]).toContain(months);
-    expect(queries[1]).toMatch(/manager head coach latest appointment contract news/);
-    expect(queries[1]).toMatch(/BBC Sky Sports official/);
+    expect(queries[1]).toBe(`site:skysports.com/football/news Arsenal manager contract ${previousMonth}`);
+    expect(queries[2]).toBe(`site:bbc.com/sport/football Arsenal manager head coach ${currentMonth}`);
     expect(queries.some((query) => /Arteta|Emery|Wenger|Chelsea/.test(query))).toBe(false);
     expect(queries.some((query) => query.includes(question))).toBe(true);
-    expect(queries.slice(0, 4)).toHaveLength(4);
+    expect(queries).toHaveLength(4);
   });
 
   it("targets an explicitly named club manager or result without searching its pinned opponent", () => {

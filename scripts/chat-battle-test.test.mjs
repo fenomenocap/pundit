@@ -52,6 +52,7 @@ import {
   validateResponseCorrectness,
   validateTeamNewsDiscipline,
   validatePositiveDatedClubNews,
+  validatePositiveCurrentManager,
   summarizeWebSearchTelemetry,
   validateVerification,
   ABSTAINED_VERIFICATION,
@@ -2132,6 +2133,85 @@ test("strict positive dated news preserves supported survivors of a conflict wit
     const answer = `In an update published on 2026-10-06, Arsenal’s Joe Example ${status} ${citation}.`;
     assert.equal(validatePositiveDatedClubNews(answer, citations, { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 }, now).passed, true, status);
   }
+});
+
+test("required current-manager delivery checks requested role, positive verification and a recent same-sentence citation", () => {
+  const now = Date.parse("2026-10-07T06:00:00Z");
+  const source = { id: "S10", title: "Current club role. Interview", date: "2026-09-22T18:26:00+00:00", url: "https://publisher.example/football/current-role" };
+  const citation = `([${source.title}](${source.url}), 22 Sep 2026)`;
+  const verification = { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 };
+  const check = (answer, citations = [source], state = verification, scope = { team: "Arsenal" }) => validatePositiveCurrentManager(answer, citations, state, scope, now);
+  const accepted = [
+    `Arsenal’s manager is Joe Example ${citation}.`,
+    `Arsenal’s current head coach is Pat Sample ${citation}.`,
+    `**Joe Example remains Arsenal’s manager** ${citation}.`,
+    `Joe Example continues as Arsenal’s manager ${citation}.`,
+    `Joe Example is the current manager of Arsenal ${citation}.`,
+    `Arsenal manager Joe Example has agreed a new contract ${citation}.`,
+    `Joe Example has signed a new contract to remain as Arsenal’s manager ${citation}.`,
+    `Joe Example has agreed an improved contract as Arsenal manager ${citation}.`,
+    `Arsenal’s manager is Joe Example today ${citation}.`,
+    `Arsenal’s manager is Joe Example ${citation}. I haven’t verified the club’s stated reason for retaining him.`,
+    `Arsenal’s manager is Joe Example ([Role](${source.url}), 2026-09-22).`,
+    `Arsenal’s manager is Joe Example ([Role](${source.url}), September 22, 2026).`,
+    `Arsenal’s manager is Joe Example ([Sky Sports, 2026-09-22](${source.url})).`,
+    `Arsenal’s manager is Joe Example ([Current club role. Interview, 22 Sep 2026](${source.url})).`,
+  ];
+  for (const answer of accepted) {
+    assert.equal(check(answer).passed, true, answer);
+    assert.equal(check(answer, [source], { ...verification, status: "conflict", removedClaimCount: 1 }).passed, true, answer);
+  }
+  assert.equal(check(`Leeds’ manager is Pat Sample ${citation}.`, [source], verification, { team: "Leeds" }).passed, true);
+  const rejected = [
+    "I couldn’t establish a verified current manager for this club.",
+    `I haven’t verified Arsenal’s manager ${citation}.`,
+    `Joe Example was appointed in 2019 ${citation}.`,
+    `Joe Example was Arsenal’s manager ${citation}.`,
+    `Joe Example might become Arsenal’s manager ${citation}.`,
+    `Arsenal’s manager is not Joe Example ${citation}.`,
+    `Former Arsenal manager Joe Example has agreed a new contract ${citation}.`,
+    `Arsenal’s manager is Joe Example, who is no longer in charge ${citation}.`,
+    `Arsenal’s manager is Joe Example? ${citation}.`,
+    `“Arsenal’s manager is Joe Example” ${citation}.`,
+    `Chelsea’s manager is Joe Example ${citation}.`,
+    `Arsenal’s manager is The Manager ${citation}.`,
+    `Arsenal’s manager is Joe Example. Source: ${citation}.`,
+    `Arsenal’s manager is Joe Example ([Role](${source.url})).`,
+    `Arsenal’s manager is Joe Example ([Role](${source.url}), 23 Sep 2026).`,
+    `Arsenal’s manager is Joe Example ([Role](https://different.example/role), 22 Sep 2026).`,
+    `Arsenal’s manager is Joe Example ([Current role, 23 Sep 2026](${source.url})).`,
+    `Arsenal’s manager is Joe Example ${citation}. Arsenal’s manager is Pat Sample ${citation}.`,
+    `Arsenal’s manager is Joe Example ${citation}. Arsenal’s manager is Pat Sample.`,
+    `Arsenal’s manager is Joe Example ${citation}. Joe Example remains Arsenal’s manager.`,
+  ];
+  for (const answer of rejected) assert.equal(check(answer).passed, false, answer);
+  for (const status of ["abstain", "unavailable", "not-required", "verified", "conflict"]) {
+    const state = { status, supportedClaimCount: 0, removedClaimCount: 1 };
+    assert.equal(check(accepted[0], [source], state).passed, false, status);
+    assert.equal(validateVerification(state, { requireCitation: true, allowAbstention: true, expectCurrentManager: { team: "Arsenal" } }).passed, false, status);
+  }
+  for (const date of ["", "2026-09-31", "2026-07-01", "2026-10-08", "2026-10-07T07:00:00Z"]) {
+    assert.equal(check(accepted[0], [{ ...source, date }]).passed, false, date);
+  }
+  assert.equal(check(accepted[0], []).passed, false);
+  assert.equal(check(accepted[0], [{ ...source, url: "https://" }]).passed, false);
+  assert.equal(check(accepted[0], [{ ...source, id: "unknown" }]).passed, false);
+  assert.equal(check(accepted[0], [source], verification, { team: "Chelsea" }).passed, false);
+  assert.equal(check(accepted[0], [source], verification, {}).passed, false);
+});
+
+test("both pinned manager turns require affirmative current identity rather than safe abstention", () => {
+  const definition = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../evals/chat/scenarios.json"), "utf8"));
+  const scenario = definition.fixed.find((row) => row.id === "pinned-current-manager-and-result-evidence");
+  assert.equal(scenario.turns.length, 3);
+  for (const turn of scenario.turns.slice(0, 2)) {
+    assert.deepEqual(turn.expectCurrentManager, { team: "{home}" });
+    assert.deepEqual(turn.expectVerification, ["verified", "conflict"]);
+    assert.equal(turn.requireCitation, true);
+    assert.notEqual(turn.allowAbstention, true);
+  }
+  assert.equal(scenario.turns[2].expectLatestResult.team, "{home}");
+  assert.equal(scenario.turns[2].expectLatestResult.explanationBoundary, true);
 });
 
 test("match grounding reports market-source coverage and can assert it", () => {

@@ -8,6 +8,7 @@ import {
 } from "./match-context";
 import { managersNamedInEvidence, stripUnlistedManagers } from "./pl-managers";
 import type { EvidenceTier } from "./evidence-authority";
+import type { RetrievedEvidencePage } from "./evidence-page-retrieval";
 import {
   MAX_FEDERATED_QUERIES,
   mergeSearchResults,
@@ -383,6 +384,31 @@ export function formatSearchEvidence(results: readonly DeskEvidenceRow[]): strin
   return `${preamble}:\n${sections.join("\n\n")}`;
 }
 
+/** Literal publisher passages improve expression coverage, never role authority.
+ * The caller supplies the existing quote/comment-stripped publisher body;
+ * verification still reads the original cached source independently. */
+export function formatManagerEvidence(
+  rows: readonly DeskEvidenceRow[], club: string,
+  pages: readonly Pick<RetrievedEvidencePage, "id" | "url" | "date" | "text">[], nowMs = Date.now()
+): string {
+  const sources = rows.slice(0, 8).map((row) => {
+    const page = pages.find((source) => source.id === row.id && source.url === row.url && source.date === row.date);
+    const date = page ? Date.parse(page.date) : NaN;
+    if (!page || !Number.isFinite(date) || date > nowMs || nowMs - date > DESK_EVIDENCE_MAX_AGE_MS) return row;
+    const passages = page.text.split(/\n{2,}/).map((text) => text.trim()).filter((text) =>
+      text.length >= 20 && text.length <= 2400 && textMentionsClub(text.replace(/(?<=[\p{L}])['’]s\b/gu, ""), club)
+      && /\b(?:manager|head coach|coach|boss)\b/i.test(text)
+    );
+    const priority = (text: string) => Number(/\b(?:is|remains|has agreed|has signed|aligned)\b/i.test(text)) * 2
+      + Number(/\b(?:contract|deal|signing)\b/i.test(text));
+    passages.sort((left, right) => priority(right) - priority(left));
+    const excerpt = passages.slice(0, 2).map((text) => text.slice(0, 600)).join("\n\n");
+    return excerpt ? { ...row, snippet: excerpt } : row;
+  });
+  return "SEARCH EVIDENCE (untrusted dated manager reports; literal publisher passages, not inferred roles):\n"
+    + sources.map((row, index) => `[[${row.id || `S${index + 1}`}]] ${formatDeskCitationDate(row.date || "undated")} · ${row.title.slice(0, 120)} — ${row.snippet.slice(0, 1200)}`).join("\n");
+}
+
 export function card(g: Grounding) {
   const favourite = [
     { label: g.home, p: g.pHome },
@@ -457,6 +483,7 @@ function deskEvidenceRowIsCurrent(
   const dated = Date.parse(row.date);
   if (Number.isFinite(dated) && nowMs - dated > DESK_EVIDENCE_MAX_AGE_MS) return false;
   const clubFact = question ? singleClubCurrentFactScope(question, grounding) : null;
+  if (clubFact?.kind === "manager" && Number.isFinite(dated) && dated > nowMs) return false;
   if (clubFact) return textMentionsClub(`${row.title} ${row.snippet}`, clubFact.club);
   const sides = deskEvidenceSides(grounding);
   if (!sides) return true;
@@ -612,7 +639,7 @@ export async function writeDeskProse(
   history: ConversationTurn[],
   signal?: AbortSignal,
   bundle?: EvidenceBundle,
-  options?: { generalConcept?: boolean; datedClubNews?: boolean }
+  options?: { generalConcept?: boolean; datedClubNews?: boolean; managerPages?: readonly RetrievedEvidencePage[] }
 ): Promise<string | null> {
   const clubFact = singleClubCurrentFactScope(question, grounding);
   const datedClubNews = options?.datedClubNews === true;
@@ -668,7 +695,9 @@ export async function writeDeskProse(
         focus,
         generalConcept ? "Explain the stable football mechanism requested below; no external current fact is requested." : datedClubNews
           ? `SEARCH EVIDENCE (untrusted dated reports):\n${evidence.slice(0, 3).map((row) => `[[${row.id}]] ${row.date} · ${row.title} — ${datedClubNewsExcerpt(row.snippet)}`).join("\n")}`
-          : formatSearchEvidence(evidence),
+          : clubFact?.kind === "manager" && options?.managerPages
+            ? formatManagerEvidence(evidence, clubFact.club, options.managerPages)
+            : formatSearchEvidence(evidence),
         generalConcept || clubFact || datedClubNews ? "" : hint(question),
         generalConcept ? "" : "Ignore manager, injury, and lineup claims from earlier turns. Only SEARCH EVIDENCE this turn is current.",
         generalConcept ? "" : datedClubNews ? "Return only the requested JSON records. Publication dates and citations will be rendered by the server; do not author them."
@@ -713,7 +742,14 @@ export async function writeDeskProse(
       return records;
     }
     const allowed = managersNamedInEvidence(evidence);
-    const cleaned = stripUnlistedManagers(text, allowed) || text;
+    // Some providers put the adjacent citation after the sentence terminator.
+    // Bind that existing marker to the preceding sentence before verification;
+    // neither source IDs nor factual text are created by this punctuation fix.
+    const citationBound = clubFact?.kind === "manager"
+      ? text.replace(/([.!?])\s+((?:\[\[S\d{1,3}\]\]\s*)+)/g,
+        (_whole, punctuation: string, markers: string) => ` ${markers.trim()}${punctuation} `).trim()
+      : text;
+    const cleaned = stripUnlistedManagers(citationBound, allowed) || citationBound;
     const football = stripDeskBoardRecitals(sanitizeDeskModelProse(cleaned, evidence));
     return football || fallback || DESK_BOARD_FALLBACK;
   } catch (error) {

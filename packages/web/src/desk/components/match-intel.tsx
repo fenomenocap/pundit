@@ -113,7 +113,7 @@ export function MatchIntel() {
           <div className="eyebrow mb-2">Recent scorers</div>
           {homeMen.length + awayMen.length === 0 ? (
             <p className="text-sm text-quiet">
-              No goals in the last five league matches for either side.
+              Recent scorer details are unavailable for these teams.
             </p>
           ) : (
             <ul className="space-y-1.5">
