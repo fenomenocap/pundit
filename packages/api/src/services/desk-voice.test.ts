@@ -224,6 +224,26 @@ describe("bounded dated club-news expression", () => {
 });
 
 describe("filterDeskEvidenceRows", () => {
+  it("selects a relevant manager report ahead of profiles without changing original IDs or other turn ordering", () => {
+    const profiles = Array.from({ length: 9 }, (_, index) => ({
+      id: `S${index + 1}`, title: "Arsenal manager staff directory", snippet: "Arsenal staff profile.", date: "",
+      tier: "official" as const, url: `https://www.arsenal.com/profile-${index}`,
+    }));
+    const news = { id: "S10", title: "Arsenal manager agrees new contract", snippet: "Arsenal manager remains in charge.", date: "", tier: "news" as const, url: "https://www.skysports.com/current-report" };
+    const stale = { ...news, id: "S11", date: "2026-07-01" };
+    const otherClub = { ...news, id: "S12", title: "Chelsea manager agrees new contract", snippet: "Chelsea manager remains in charge." };
+    const rows = [...profiles, news, stale, otherClub];
+    const original = JSON.stringify(rows);
+    const grounding = match({ home: "Arsenal", away: "Leeds" });
+    const now = Date.parse("2026-10-07T06:00:00Z");
+    const kept = filterDeskEvidenceRows(rows, grounding, now, "Who is Arsenal's manager today?");
+    expect(kept.map((row) => row.id)).toEqual(["S10", "S1", "S2", "S3", "S4", "S5", "S6", "S7"]);
+    expect(kept[0]?.date).toBe(""); // Selection supplies no publication or role proof.
+    expect(filterDeskEvidenceRows(rows, grounding, now, "What is Arsenal's latest result?").map((row) => row.id))
+      .toEqual(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"]);
+    expect(JSON.stringify(rows)).toBe(original);
+  });
+
   it("drops months-old previews and a different opponent", () => {
     const kept = filterDeskEvidenceRows(
       [
