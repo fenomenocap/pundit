@@ -8792,7 +8792,9 @@ async function settleTeamNewsFromBundle(
       const candidateIds = new Set(candidates.map((source) => source.id));
       const candidateBundle = { ...bundle, results: bundle.results.filter((source) => candidateIds.has(source.id))
         .map((source) => ({ ...source, ...candidates.find((candidate) => candidate.id === source.id)! })) };
-      const prose = await writeDeskProse(question, grounding, [], signal, candidateBundle, { datedClubNews: true });
+      const prose = await writeDeskProse(question, grounding, [], signal, candidateBundle, {
+        datedClubNews: true, reserveRepairCall: () => reserveProviderCall(bundle),
+      });
       if (prose) {
         // Generated candidate prose has no authority until each cited claim
         // survives the unchanged current-fact verifier. Never stream it raw.

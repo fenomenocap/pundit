@@ -20,6 +20,7 @@ import {
 } from "./fixture-registry";
 import {
   MATCH_ANSWER_GUARDS,
+  PROVIDER_CALL_BUDGET,
   MATCH_QUESTION_SCOPE,
   buildCompetitionGrounding,
   buildGrounding,
@@ -6577,7 +6578,7 @@ describe("settled player news requires exact current-claim verification", () => 
         const streamed = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, { fixtureId: espnFixtureIdentity(model) });
         assertDelivery(streamed); expect(deltas).toEqual([streamed.answer]);
         expect(verificationCalls).toBe(["publication-date", "wrong-club"].includes(mode) ? 3 : 0);
-        expect(create).toHaveBeenCalledTimes(["publication-date", "wrong-club"].includes(mode) ? 6 : 3);
+        expect(create).toHaveBeenCalledTimes(["publication-date", "wrong-club", "raw-canary-prose"].includes(mode) ? 6 : 3);
       } finally {
         create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
         if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
@@ -6706,7 +6707,7 @@ describe("settled player news requires exact current-claim verification", () => 
       if (savedReasoning === undefined) delete process.env.PUNDIT_REASONING; else process.env.PUNDIT_REASONING = savedReasoning;
     }
   });
-  it.each(["supported", "partial-invalid-status", "zero-valid-status"] as const)("delivers the observed structured news records through JSON, desk and SSE: %s", async (mode) => {
+  it.each(["supported", "partial-invalid-status", "zero-valid-status", "invalid-json-recovered", "invalid-json-twice", "invalid-json-then-unsupported"] as const)("delivers the observed structured news records through JSON, desk and SSE: %s", async (mode) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-07T06:00:00Z"));
     await refreshClubRatings(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
@@ -6725,17 +6726,28 @@ describe("settled player news requires exact current-claim verification", () => 
     ];
     if (mode === "partial-invalid-status") rows[2].statusText = "will be fit for Leeds";
     if (mode === "zero-valid-status") rows.forEach((row) => { row.statusText = "was injured on Thu"; });
-    const count = mode === "supported" ? 3 : mode === "partial-invalid-status" ? 2 : 0;
+    const count = ["supported", "invalid-json-recovered"].includes(mode) ? 3 : mode === "partial-invalid-status" ? 2 : 0;
     const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
     const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate,
       finalUrl: candidate.url, text: sources.find((source) => source.link === candidate.url)!.snippet, retrievedAt: new Date().toISOString() })));
+    let writerCalls = 0;
     const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
       const input = params as Anthropic.MessageCreateParamsNonStreaming;
-      if (String(input.system) === DESK_DATED_CLUB_NEWS_SYSTEM) return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ updates: rows }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      if (String(input.system) === DESK_DATED_CLUB_NEWS_SYSTEM) {
+        writerCalls += 1;
+        const repair = mode.startsWith("invalid-json");
+        const malformed = "private malformed writer output {updates:";
+        expect(JSON.stringify(input.messages)).not.toContain(malformed);
+        if (repair && writerCalls % 2 === 0) expect(String(input.messages.at(-1)?.content)).toContain("Formatting reminder:");
+        return Promise.resolve({ content: [{ type: "text", text: repair && (writerCalls % 2 === 1 || mode === "invalid-json-twice")
+          ? malformed : JSON.stringify({ updates: rows }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      }
       expect(String(input.system)).toMatch(/^You are Pundit's bounded factual claim verifier\./);
       const data = JSON.parse(String(input.messages[0].content).split("Verify these claims against these pages: ")[1]);
-      expect(data.claims).toHaveLength(count); expect(JSON.stringify(data.claims)).not.toMatch(/will be fit|injured on Thu/);
-      return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: data.claims.map((claim: { id: string; text: string }) => ({ claimId: claim.id, outcome: "supported", evidenceIds: [claim.text.includes("Kai Havertz") ? "S4" : "S2"] })), summary: "Exact reported statuses checked." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      expect(data.claims).toHaveLength(mode === "invalid-json-then-unsupported" ? 3 : count); expect(JSON.stringify(data.claims)).not.toMatch(/will be fit|injured on Thu/);
+      return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ decisions: data.claims.map((claim: { id: string; text: string }) => ({ claimId: claim.id,
+        outcome: mode === "invalid-json-then-unsupported" ? "unsupported" : "supported",
+        evidenceIds: [claim.text.includes("Kai Havertz") ? "S4" : "S2"] })), summary: "Exact reported statuses checked." }) }], stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
     });
     searchWeb.mockReset(); searchWeb.mockResolvedValue(sources);
     const question = "What are the latest dated club injury updates for Arsenal and Leeds? Keep current reports distinct from future kickoff availability.";
@@ -6750,10 +6762,17 @@ describe("settled player news requires exact current-claim verification", () => 
       } else { expect(result.citations ?? []).toEqual([]); expect(result.answer).toMatch(/couldn.t establish|won.t make/); }
     };
     try {
-      for (const voice of [undefined, "desk"] as const) check(await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, { fixtureId: espnFixtureIdentity(model) }, undefined, voice));
+      for (const voice of [undefined, "desk"] as const) {
+        const before = searchWeb.mock.calls.length + create.mock.calls.length;
+        check(await answerQuestion(question, [], ["Arsenal", "Leeds"], undefined, { fixtureId: espnFixtureIdentity(model) }, undefined, voice));
+        expect(searchWeb.mock.calls.length + create.mock.calls.length - before).toBeLessThanOrEqual(PROVIDER_CALL_BUDGET);
+      }
       const deltas: string[] = [];
+      const before = searchWeb.mock.calls.length + create.mock.calls.length;
       const streamed = await answerQuestionStream(question, [], ["Arsenal", "Leeds"], { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, { fixtureId: espnFixtureIdentity(model) });
       check(streamed); expect(deltas).toEqual([streamed.answer]);
+      expect(writerCalls).toBe(mode.startsWith("invalid-json") ? 6 : 3);
+      expect(searchWeb.mock.calls.length + create.mock.calls.length - before).toBeLessThanOrEqual(PROVIDER_CALL_BUDGET);
     } finally {
       create.mockRestore(); retrieve.mockRestore(); prefetch.mockRestore(); cached.mockRestore(); vi.useRealTimers();
       if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
