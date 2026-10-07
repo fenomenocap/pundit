@@ -256,6 +256,58 @@ describe("bounded dated club-news expression", () => {
       }
     }
   );
+
+  it.each(["recover", "second-invalid", "repair-source", "repair-status", "empty", "source", "club", "player", "date", "future", "status", "shape", "duplicate",
+    "budget", "abort", "abort-on-reserve", "truncated", "error", "other-mode"] as const)(
+    "bounds a dated-news JSON syntax repair without promoting unsupported records: %s", async (mode) => {
+      const saved = process.env.OPENROUTER_API_KEY; process.env.OPENROUTER_API_KEY = "test-only";
+      vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T02:00:00Z"));
+      const info = vi.spyOn(console, "info").mockImplementation(() => {});
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const controller = new AbortController();
+      const reserve = vi.fn(() => { if (mode === "abort-on-reserve") controller.abort(); return mode !== "budget"; });
+      const source = { id: "S9", title: "Arsenal injury bulletin", url: "https://www.arsenal.com/news/fitness",
+        date: "2026-10-05", tier: "official" as const, snippet: "Joe Example (Arsenal) is injured." };
+      const row = { sourceId: "S9", club: "Arsenal", playerName: "Joe Example", statusText: "was reported injured" };
+      if (mode === "source" || mode === "repair-source") row.sourceId = "S999";
+      if (mode === "club") row.club = "Chelsea";
+      if (mode === "player") row.playerName = "Unknown Person";
+      if (mode === "date") source.date = "2026-09-01";
+      if (mode === "future") source.date = "2026-10-07";
+      if (mode === "status" || mode === "repair-status") row.statusText = "will start for Arsenal";
+      const valid = JSON.stringify({ updates: mode === "duplicate" ? [row, row] : [row] });
+      const invalid = "private malformed draft: {updates:";
+      const signals: (AbortSignal | null | undefined)[] = [];
+      let calls = 0;
+      const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params, options) => {
+        calls += 1; signals.push(options?.signal);
+        const input = params as Anthropic.MessageCreateParamsNonStreaming;
+        expect(JSON.stringify(input.messages)).not.toContain(invalid);
+        if (mode !== "other-mode") expect(input.temperature).toBe(0);
+        if (calls === 2) expect(String(input.messages.at(-1)?.content)).toContain("Formatting reminder:");
+        if (mode === "error") throw new Error("private provider body");
+        if (mode === "abort") controller.abort();
+        const semantic = ["empty", "source", "club", "player", "status", "shape", "duplicate"].includes(mode);
+        const text = mode === "empty" ? '{"updates":[]}' : mode === "shape" ? '{"wrong":[]}'
+          : semantic ? valid : calls === 1 || mode === "second-invalid" ? invalid : valid;
+        return Promise.resolve({ content: [{ type: "text", text }], stop_reason: mode === "truncated" ? "max_tokens" : "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+      });
+      try {
+        const result = await writeDeskProse("Latest Arsenal injury news?", match({ home: "Arsenal", away: "Leeds", date: "2026-10-10" }), [], controller.signal,
+          { queries: ["q"], results: [source] }, { datedClubNews: mode !== "other-mode", reserveRepairCall: reserve });
+        expect(create).toHaveBeenCalledTimes(["date", "future"].includes(mode) ? 0 : ["recover", "second-invalid", "repair-source", "repair-status"].includes(mode) ? 2 : 1);
+        expect(reserve).toHaveBeenCalledTimes(["recover", "second-invalid", "repair-source", "repair-status", "budget", "abort-on-reserve"].includes(mode) ? 1 : 0);
+        if (mode === "recover") {
+          expect(result).toBe("In an update published on 2026-10-05, Arsenal’s Joe Example was reported injured [[S9]].");
+          expect(signals[0]).toBe(signals[1]);
+        } else if (mode !== "other-mode") expect(result).toBeNull();
+        expect(JSON.stringify([...info.mock.calls, ...warn.mock.calls])).not.toMatch(/private malformed draft|private provider body|test-only/);
+      } finally {
+        create.mockRestore(); info.mockRestore(); warn.mockRestore(); vi.useRealTimers();
+        if (saved === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = saved;
+      }
+    }
+  );
 });
 
 describe("filterDeskEvidenceRows", () => {
