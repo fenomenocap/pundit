@@ -1376,7 +1376,7 @@ export function deriveTurnVerificationExpectation(verification, scenario = {}, t
   }
   const scoped = (turn.allowSupportedNewsConflict ?? scenario.allowSupportedNewsConflict) === true;
   const positive = Number.isInteger(verification?.supportedClaimCount) && verification.supportedClaimCount >= 1;
-  expectation.guardUnsupportedConflictCounterfactuals = scoped && positive && verification?.status === "conflict";
+  expectation.guardUnsupportedConflictCounterfactuals = scoped && verification?.status === "conflict";
   if (scoped && positive) {
     expectation.requireSourcedTeamNews = true;
     expectation.requirePositiveDatedClubNews = true;
