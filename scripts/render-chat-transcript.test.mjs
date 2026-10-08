@@ -63,6 +63,39 @@ test("does not flag a sentence that recurs in only two scenarios", () => {
   assert.equal(repeatedSentences(turns).length, 0);
 });
 
+test("does not flag sequential manager probes inside one scenario", () => {
+  const cited = "Arsenal's manager is Mikel Arteta ([Sky Sports manager contract report](https://www.skysports.com/football/news/13588507/example) · 22 Sep).";
+  const turns = transcriptTurns(report([
+    {
+      id: "pinned-current-manager-and-result-evidence",
+      classification: "PASS",
+      turnResults: [
+        turn("What's Arsenal's manager today?", cited, { verification: { status: "verified" }, citations: [{ id: "S1" }] }),
+        turn(
+          "Who is Arsenal's manager and why?",
+          `${cited} I haven't verified the club's stated reason for choosing or retaining him.`,
+          { verification: { status: "verified" }, citations: [{ id: "S1" }] },
+        ),
+      ],
+    },
+  ]));
+  assert.equal(nearDuplicateAnswers(turns).length, 0);
+  assert.equal(summarizeTranscript(report([
+    {
+      id: "pinned-current-manager-and-result-evidence",
+      classification: "PASS",
+      turnResults: [
+        turn("What's Arsenal's manager today?", cited, { verification: { status: "verified" }, citations: [{ id: "S1" }] }),
+        turn(
+          "Who is Arsenal's manager and why?",
+          `${cited} I haven't verified the club's stated reason for choosing or retaining him.`,
+          { verification: { status: "verified" }, citations: [{ id: "S1" }] },
+        ),
+      ],
+    },
+  ])).status, "clean");
+});
+
 test("pairs near-identical answers to different questions but not the same question asked twice", () => {
   const body = "Arsenal press high and win the ball in the final third, then Saka isolates the full-back while Odegaard drifts into the half-space to create the overload that Chelsea struggle to cover.";
   const turns = transcriptTurns(report([

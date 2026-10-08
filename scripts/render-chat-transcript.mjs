@@ -105,7 +105,9 @@ export function jaccard(a, b) {
   return shared / (a.size + b.size - shared);
 }
 
-// Two different questions answered with substantially the same text.
+// Two different questions answered with substantially the same text. Turns inside
+// one scenario are often deliberate follow-ups (manager identity, then manager
+// and why); overlap there is expected and the battle-test assertions cover it.
 export function nearDuplicateAnswers(turns, threshold = NEAR_DUPLICATE_THRESHOLD) {
   const candidates = softSignalEligibleTurns(turns)
     .filter((turn) => turn.answer.length >= 120 && turn.question)
@@ -115,6 +117,7 @@ export function nearDuplicateAnswers(turns, threshold = NEAR_DUPLICATE_THRESHOLD
     for (let j = i + 1; j < candidates.length; j += 1) {
       const a = candidates[i];
       const b = candidates[j];
+      if (a.turn.scenarioId === b.turn.scenarioId) continue;
       if (normalizeSentence(a.turn.question) === normalizeSentence(b.turn.question)) continue;
       const similarity = jaccard(a.shingles, b.shingles);
       if (similarity >= threshold) {
