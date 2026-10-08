@@ -21,6 +21,20 @@ describe("owned latest results", () => {
     expect(result?.citations[0].url).toBe("https://www.espn.com/soccer/match/_/gameId/401879274");
     expect(result?.answer).not.toContain("another cup");
   });
+  it.each(["Did Arsenal win their last game?", "Did Arsenal lose the last match?", "did Arsenal draw their most recent fixture"])("answers yes/no last-game wording from the result: %s", (q) => {
+    const result = ownedLatestResult(q, state(), now, season());
+    expect(result?.answer).toContain("Brighton 3–0 Arsenal");
+    expect(result?.answer).not.toContain("need a verified match report");
+  });
+  it("declines to explain why a last game ended as it did", () => {
+    const result = ownedLatestResult("Why did Arsenal lose their last game?", state(), now, season());
+    expect(result?.answer).toContain("Brighton 3–0 Arsenal");
+    expect(result?.answer).toContain("need a verified match report to explain why");
+  });
+  it("leaves compound last-game questions to search", () => {
+    expect(ownedLatestResult("Did Arsenal win their last game against Liverpool?", state(), now, season())).toBeNull();
+    expect(ownedLatestResult("Did Arsenal win their last game and did Liverpool?", state(), now, season())).toBeNull();
+  });
   it("states coverage and does not infer causes from the result", () => {
     const result = ownedLatestResult("What is Arsenal's latest result and why?", state(), now, season());
     expect(result?.answer).toContain("in my covered competitions");
