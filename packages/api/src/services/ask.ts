@@ -718,7 +718,7 @@ const MARKET_SUBJECT = /\b(?:markets?|lines?|prices?|odds|kalshi|polymarket|book
 // "a Rice or Saka start would..." is still an availability claim even
 // though it is phrased as a counterfactual rather than news.
 const SUPPLEMENTARY_TEAM_NEWS_CLAIM =
-  /\b(?:available|unavailable|out injured|out with a|will miss|misses? out|(?:is|are|was|were|be) missed|sits? out|back in (?:training|contention)|match ?fit|fitness test|doubt|confirmed absence|genuinely out|first-choice XI|full-strength XI)\b|\b[A-Z][A-Za-z.'’-]+(?:\s+or\s+[A-Z][A-Za-z.'’-]+)?\s+starts?\s+(?:would|will|could|should)\b/i;
+  /\b(?:available|unavailable|out injured|out with a|(?:is|are|was|were|will be)\s+(?:also\s+|currently\s+|definitely\s+)?out\s+(?:for|against)|will miss|misses? out|(?:is|are|was|were|be) missed|sits? out|back in (?:training|contention)|match ?fit|fitness test|doubt|confirmed absence|genuinely out|first-choice XI|full-strength XI)\b|\b[A-Z][A-Za-z.'’-]+(?:\s+or\s+[A-Z][A-Za-z.'’-]+)?\s+starts?\s+(?:would|will|could|should)\b/i;
 
 /**
  * Does this sentence make a squad-availability claim -- the narrow class that
@@ -2430,7 +2430,13 @@ export function repairTruncatedLists(answer: string): string {
   return changed ? repaired.join("\n") : answer;
 }
 
+// A label glued to the end of the preceding sentence ("... established.
+// **What it changes**") has no line of its own, so the line sweep never saw it.
+const TRAILING_INLINE_LABEL = /(?<=[.!?”"’)])[ \t]+\*\*[^*\n]{1,60}\*\*:?\s*$/;
+
 export function dropOrphanedSectionLabels(answer: string): string {
+  const unglued = answer.replace(TRAILING_INLINE_LABEL, "");
+  if (unglued !== answer) return dropOrphanedSectionLabels(unglued);
   const lines = answer.split("\n");
   const retained = lines.filter((line, index) => {
     if (!SECTION_LABEL_LINE.test(line)) return true;
@@ -3058,6 +3064,9 @@ function affirmativeEvidenceClauses(sentence: string): string[] {
   );
 }
 
+const PLAYER_AVAILABILITY_QUESTION =
+  /^(?:is|are|was|will|has|have|does|did)\b[^?\n]{0,80}\b(?:injured|injury|ruled out|suspended|doubtful|a doubt|fit to play|available|unavailable|missing|out (?:for|against|injured))\b/i;
+
 function directCurrentFactAbstention(question: string): string | null {
   const directQuestion = question.trim()
     .replace(/^who['’]s\b/i, "who is")
@@ -3076,6 +3085,14 @@ function directCurrentFactAbstention(question: string): string | null {
     return RESULT_CLAIM_ABSTENTION;
   }
   if (asksExplicitExternalPrice(directQuestion)) return ODDS_CLAIM_ABSTENTION;
+  // "Is Saka injured for the Leeds game?" is a yes/no on a named person's
+  // fitness. With no supported source the only honest reply is the scoped
+  // abstention: a live answer said "Yes, Bukayo Saka is out" with verification
+  // `abstain`, and others answered a tactical counterfactual that presumed it.
+  if (PLAYER_AVAILABILITY_QUESTION.test(directQuestion)
+    && !/\b(?:how|why|explain|define|definition|meaning|means?)\b/i.test(directQuestion)) {
+    return TEAM_NEWS_ABSTENTION;
+  }
   if (/\b(?:how|why|explain|define|definition|meaning|means?|convert|calculate|difference)\b/i.test(directQuestion)) return null;
   if (RESULT_QUESTION.test(directQuestion)) return RESULT_CLAIM_ABSTENTION;
   if (/^(?:what\s+(?:is|are|were)|show(?: me)?|give(?: me)?)\b[^?\n]{0,100}\b(?:odds|prices?|line)\b/i.test(directQuestion)) {
@@ -9050,6 +9067,21 @@ export function deterministicUngroundedAnalysis(
 }
 
 /**
+ * A request to reveal or override Pundit's own instructions is answered by the
+ * server. Left to the model it paraphrased the system prompt back ("My
+ * instructions are to answer the general football question directly in
+ * complete causal prose...").
+ */
+const PROMPT_EXTRACTION =
+  /\b(?:(?:print|show|reveal|repeat|display|output|leak|recite|tell me|share|what(?:['’]s| is| are))\b[^.?!\n]{0,40}\b(?:system|developer|hidden|initial|original|your)\s+(?:prompt|instructions?|rules)\b|ignore\b[^.?!\n]{0,30}\b(?:previous|prior|above|your|all)\b[^.?!\n]{0,20}\b(?:instructions?|rules|prompt)\b)/i;
+export const PROMPT_EXTRACTION_REFUSAL =
+  "I don’t share or change how I’m set up, but I’m happy to help with football: a fixture, a table, or a tactical question.";
+
+export function promptExtractionResponse(question: string): string | null {
+  return PROMPT_EXTRACTION.test(question) ? PROMPT_EXTRACTION_REFUSAL : null;
+}
+
+/**
  * World Cup 2026 is over and Pundit's live pipeline for it is retired. The
  * model treated "Who will win the 2026 World Cup?" as an upcoming tournament,
  * and "England vs France at the World Cup" fell to the unconfirmed-matchup
@@ -9814,7 +9846,8 @@ async function answerQuestionScoped(
   const grounding = withOptionalUserLine(prepared.grounding, userLine);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   try {
-    const evidenceFollowUp = worldCupRetiredResponse(question, grounding)
+    const evidenceFollowUp = promptExtractionResponse(question)
+      ?? worldCupRetiredResponse(question, grounding)
       ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
       return {
@@ -10067,7 +10100,8 @@ async function answerQuestionStreamScoped(
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   handlers.onGrounding(grounding);
   try {
-    const evidenceFollowUp = worldCupRetiredResponse(question, grounding)
+    const evidenceFollowUp = promptExtractionResponse(question)
+      ?? worldCupRetiredResponse(question, grounding)
       ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(evidenceFollowUp);
