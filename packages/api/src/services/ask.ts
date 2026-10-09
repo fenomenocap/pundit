@@ -111,7 +111,12 @@ import {
   TEAM_NEWS_COMPOSE_ABSTENTION,
   type PlayerFixtureRef,
 } from "./player-evidence";
-import { asksCompleteMatchBriefing, composeDeskTakeOutline, composeMatchResponse } from "./response-composer";
+import {
+  asksCompleteMatchBriefing,
+  composeDatedClubAvailabilityAnswer,
+  composeDeskTakeOutline,
+  composeMatchResponse,
+} from "./response-composer";
 import {
   DESK_BOARD_FALLBACK,
   DESK_GENERAL_CONCEPT_SYSTEM,
@@ -8774,9 +8779,12 @@ async function settleTeamNewsFromBundle(
       fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date,
     });
     if (updates.observations.length) {
-      const composed = composeMatchResponse(question, grounding, plan, updates)
-        + " These are dated club updates; they do not establish the starting XI or availability at the future kickoff.";
-      return withTeamNewsCoverage(await verifySettledEvidence(composed, grounding, bundle, client,
+      const datedAnswer = composeDatedClubAvailabilityAnswer(updates);
+      const composed = datedAnswer ?? composeMatchResponse(question, grounding, plan, updates);
+      const datedClubNews = composed + (datedAnswer
+        ? " These dated club updates do not establish the starting XI or availability at the future kickoff."
+        : " These are dated club updates; they do not establish the starting XI or availability at the future kickoff.");
+      return withTeamNewsCoverage(await verifySettledEvidence(datedClubNews, grounding, bundle, client,
         TEAM_NEWS_COMPOSE_ABSTENTION, signal), question, grounding);
     }
     const candidates = datedClubNewsSources(bundle.results.map((source) => ({ ...source,
