@@ -6585,7 +6585,7 @@ describe("settled player news requires exact current-claim verification", () => 
       }
     }
   );
-  it.each(["actual-canary", "implicit-affiliation", "both-clubs"] as const)("keeps verified updates consistent with the coverage summary: %s", async (variant) => {
+  it.each(["actual-canary", "implicit-affiliation", "both-clubs", "lineup-row"] as const)("keeps verified updates consistent with the coverage summary: %s", async (variant) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));
     await refreshClubRatings(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
@@ -6601,7 +6601,8 @@ describe("settled player news requires exact current-claim verification", () => 
       { title: "Arsenal vs Leeds lineups", link: "https://www.premierleague.com/lineups/one", date: "", snippet: "Fixture preview." },
       { title: variant === "both-clubs" ? "Leeds injury update" : "Arsenal injury update", link: "https://www.standard.co.uk/sport/football/news-update.html", date: "2026-10-05", snippet: variant === "both-clubs" ? "Leeds injury news concerns Joe Example after a fitness setback." : "Arsenal injury news concerns Christos Tzolis after a hamstring setback." },
       { title: "Arsenal vs Leeds lineups", link: "https://www.premierleague.com/lineups/two", date: "", snippet: "Fixture preview." },
-      { title: "Arsenal injury updates and return dates", link: "https://www.football.london/arsenal-fc/news/arsenal-injury-news-saliba-update-34700613", date: "2026-10-01", snippet: "Arsenal injury update concerns William Saliba and rehabilitation." }];
+      { title: "Arsenal injury updates and return dates", link: "https://www.football.london/arsenal-fc/news/arsenal-injury-news-saliba-update-34700613", date: "2026-10-01", snippet: "Arsenal injury update concerns William Saliba and rehabilitation." },
+      ...(variant === "lineup-row" ? [{ title: "Arsenal vs Leeds team news", link: "https://www.premierleague.com/news/lineup-row", date: "2026-10-06T06:00:00Z", snippet: "Arsenal vs Leeds: Eberechi Eze (Arsenal) is expected to start." }] : [])];
     const prefetch = vi.spyOn(evidencePages, "prefetchEvidencePages").mockImplementation(() => {});
     const retrieve = vi.spyOn(evidencePages, "retrieveEvidencePages").mockImplementation(async (candidates) => candidates.map((candidate) => ({ ...candidate,
       finalUrl: candidate.url, text: sources.find((source) => source.link === candidate.url)!.snippet, retrievedAt: new Date().toISOString() })));
@@ -6624,6 +6625,7 @@ describe("settled player news requires exact current-claim verification", () => 
         if (variant === "actual-canary") expect(result.answer).toContain("verified, dated Leeds club update");
         if (variant === "implicit-affiliation") expect(result.answer).toContain("verified, dated Leeds club update");
         if (variant === "both-clubs") expect(result.answer).not.toMatch(/couldn’t establish|haven’t verified/);
+        if (variant === "lineup-row") expect(result.answer).not.toMatch(/expected to start/);
       }
       const deltas: string[] = [];
       const streamed = await answerQuestionStream("What are the latest dated club injury updates for Arsenal and Leeds? Keep current reports distinct from future kickoff availability.", [], ["Arsenal", "Leeds"],

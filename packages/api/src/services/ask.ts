@@ -8766,7 +8766,14 @@ async function settleTeamNewsFromBundle(
   const pages = await hydrateBundlePublicationDates(selectedBundle, signal);
   writeRetrievedDatesOntoBundle(bundle, pages);
   const evidence = evidenceBundleForMatch(grounding, bundle, pages);
-  if (!evidence.observations.some((row) => row.observedAt)) {
+  // A fixture-specific "expected to start" row is a lineup status, not an
+  // injury report. When the user asked for injury updates, it must not
+  // suppress the dated club-update path below.
+  const asksInjuryUpdates = /\binjur(?:y|ies)\b/i.test(question)
+    && !/\b(?:line-?ups?|starting xi|starters?|start(?:s|ing)?|xi)\b/i.test(question);
+  const hasUsableObservation = evidence.observations.some((row) =>
+    row.observedAt && !(asksInjuryUpdates && row.value === "start"));
+  if (!hasUsableObservation) {
     const byId = new Map(pages.map((page) => [page.id, page]));
     const updates = extractDatedClubAvailability(bundle.results.map((source) => ({ ...source,
       date: byId.get(source.id)?.date || source.date,
