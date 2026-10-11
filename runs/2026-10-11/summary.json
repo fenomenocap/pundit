@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-11",
+  "runId": "2026-10-11T10-53-12-884Z",
+  "status": "attention",
+  "overall": "ISSUES FOUND",
+  "progress": "complete",
+  "scenariosRun": 73,
+  "passed": 67,
+  "inconclusive": 5,
+  "failed": 1,
+  "turns": 71,
+  "answeredTurns": 71,
+  "turnsWithCitations": 4,
+  "medianLatencyMs": 235,
+  "repeatedSentences": 0,
+  "nearDuplicatePairs": 1,
+  "uncitedCurrentNews": 0,
+  "findings": [
+    {
+      "scenario": "pinned-current-manager-and-result-evidence",
+      "summary": "REGRESSION: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "near-duplicate",
+      "summary": "90% overlap between answers to \"What are the latest dated club injury updates for Crystal Palace and Forest? Keep current reports distinct from future kickoff availability.\" and \"Any injury or lineup news for Crystal Palace vs Forest?\""
+    }
+  ],
+  "sourceCommit": "11c0b4a",
+  "apiSha": "1670ecc",
+  "ranAt": "2026-10-11T10:53:12.884Z"
+}
