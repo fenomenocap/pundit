@@ -897,11 +897,35 @@ describe("complete standalone football lessons", () => {
   });
 
   it.each([
+    "Who is the Premier League top scorer this season?",
+    "How many goals has Salah scored this season?",
+  ])("refuses an unverified season statistic with statistic copy, not team-news copy: %s", async (question) => {
+    const saved = process.env.MINIMAX_API_KEY;
+    process.env.MINIMAX_API_KEY = "test-only";
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockResolvedValue({
+      content: [{ type: "text", text: "One route is to pin the left-back, which produced 29 goals." }], stop_reason: "end_turn",
+    } as Anthropic.Message);
+    searchWeb.mockReset();
+    searchWeb.mockResolvedValue([]);
+    try {
+      const result = await answerQuestion(question, [], ["", ""]);
+      expect(searchWeb).toHaveBeenCalled();
+      expect(result.answer).toMatch(/couldn’t verify that season statistic/i);
+      expect(result.answer).not.toMatch(/29 goals|team-news/i);
+    } finally {
+      create.mockRestore();
+      if (saved === undefined) delete process.env.MINIMAX_API_KEY;
+      else process.env.MINIMAX_API_KEY = saved;
+    }
+  });
+
+  it.each([
     { question: "Who’s Arsenal’s manager today?", bare: "It’s Pat Doe.", refusal: /couldn’t verify that current claim/i },
     { question: "What was Arsenal’s latest result?", bare: "Arsenal 3–0.", refusal: /couldn’t verify that result/i },
     { question: "What's Arsenal's manager today?", bare: "It’s Pat Doe.", refusal: /couldn’t verify that current claim/i },
     { question: "Who is Arsenal's manager and why?", bare: "It’s Pat Doe.", refusal: /couldn’t verify that current claim/i },
     { question: "What's Arsenal's latest result and why?", bare: "Arsenal 3–0.", refusal: /couldn’t verify that result/i },
+    { question: "How many goals has Salah scored this season?", bare: "Salah has scored 29 goals.", refusal: /couldn’t verify that season statistic/i },
     { question: "What are Betfair's current odds for Arsenal and why?", bare: "Betfair 1.82.", refusal: /verify|verified|model|probabilit|1X2/i, externalPrice: true },
     { question: "What are Betfair's current odds for Arsenal and how do they compare with the model?", bare: "Betfair 1.82.", refusal: /verify|verified|model|probabilit|1X2/i, externalPrice: true },
   ])("requires verified direct $question even with an active match pin in both voices and SSE", async ({ question, bare, refusal, externalPrice }) => {

@@ -12,7 +12,10 @@ const CURRENT_NEWS_QUESTION =
 
 const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about)\b/i;
 
-const STATS_QUESTION = /\b(stats?|statistics|statistically|xg|assists?|appearances?)\b/i;
+// Season counts and league leaders are statistics too. "How many goals has X
+// scored this season?" carried no cue, reached the general tier with no search,
+// and answered with unrelated tactical prose and an uncited goal tally.
+const STATS_QUESTION = /\b(stats?|statistics|statistically|xg|assists?|appearances?)\b|\bhow many (?:goals?|assists?|appearances?|clean sheets?|cards?)\b|\b(?:top|leading|joint) (?:goal)?scorers?\b|\bgolden boot\b|\bmost (?:goals|assists|clean sheets|appearances)\b/i;
 
 const PLAYER_MARKET_QUESTION =
   /\b(?:scorer?|score|goalscorer|assist|card|booked|penalty|prop|props|anytime|player)\b/i;
