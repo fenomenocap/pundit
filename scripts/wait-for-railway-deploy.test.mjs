@@ -3,7 +3,10 @@ import test from "node:test";
 
 import {
   classifyRailwayStatus,
+  findSupersedingSuccessfulDeploy,
   latestStatusForContext,
+  listMainDescendantsAfter,
+  parseDescendantRevList,
   railwayDeployRequired,
   waitForRailwayDeploy,
 } from "./wait-for-railway-deploy.mjs";
@@ -43,6 +46,7 @@ test("waitForRailwayDeploy exits successfully on Railway success", async () => {
     repo: { owner: "fenomenocap", repo: "pundit" },
     timeoutSeconds: 30,
     intervalSeconds: 1,
+    listDescendants: () => [],
     now: () => 0,
     sleepImpl: async () => {},
     fetchImpl: async () => {
@@ -85,6 +89,79 @@ test("waitForRailwayDeploy fails fast when Railway reports failure", async () =>
   assert.equal(result.reason, "railway-status-failed");
 });
 
+test("parseDescendantRevList trims rev-list output", () => {
+  assert.deepEqual(parseDescendantRevList("abc\n\ndef\n"), ["abc", "def"]);
+});
+
+test("findSupersedingSuccessfulDeploy returns newest descendant with Railway success", async () => {
+  const supersession = await findSupersedingSuccessfulDeploy({
+    sha: "97fbb9e",
+    context: CONTEXT,
+    listDescendants: () => ["c838735", "92daae1"],
+    fetchStatusesForSha: async (targetSha) => {
+      if (targetSha === "92daae1") {
+        return [{ context: CONTEXT, state: "success", description: "done" }];
+      }
+      return [{ context: CONTEXT, state: "pending" }];
+    },
+  });
+
+  assert.equal(supersession?.supersededBy, "92daae1");
+});
+
+test("findSupersedingSuccessfulDeploy ignores pending descendants", async () => {
+  const supersession = await findSupersedingSuccessfulDeploy({
+    sha: "97fbb9e",
+    context: CONTEXT,
+    listDescendants: () => ["aac3da6"],
+    fetchStatusesForSha: async () => [{ context: CONTEXT, state: "pending" }],
+  });
+
+  assert.equal(supersession, null);
+});
+
+test("waitForRailwayDeploy succeeds when a newer main deploy supersedes the target SHA", async () => {
+  const result = await waitForRailwayDeploy({
+    sha: "97fbb9e",
+    context: CONTEXT,
+    token: "test-token",
+    repo: { owner: "fenomenocap", repo: "pundit" },
+    timeoutSeconds: 30,
+    intervalSeconds: 1,
+    now: () => 0,
+    sleepImpl: async () => {},
+    listDescendants: () => ["92daae1"],
+    fetchImpl: async (_url) => ({
+      ok: true,
+      async json() {
+        const sha = _url.split("/commits/")[1]?.split("/")[0];
+        if (sha === "97fbb9e") {
+          return [{ context: CONTEXT, state: "pending", description: "deploying" }];
+        }
+        if (sha === "92daae1") {
+          return [{ context: CONTEXT, state: "success", description: "done", target_url: "https://railway.example" }];
+        }
+        return [];
+      },
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.reason, "railway-status-superseded");
+  assert.equal(result.supersededBy, "92daae1");
+});
+
+test("listMainDescendantsAfter walks first-parent history on main", () => {
+  const repoDir = process.cwd();
+  const descendants = listMainDescendantsAfter("ad8de57", {
+    cwd: repoDir,
+    fetchMain: false,
+    mainRef: "origin/main",
+  });
+  assert.ok(descendants.some((sha) => sha.startsWith("97fbb9e")));
+  assert.ok(descendants.some((sha) => sha.startsWith("c838735")));
+});
+
 test("waitForRailwayDeploy times out when status never succeeds", async () => {
   let nowMs = 0;
   const result = await waitForRailwayDeploy({
@@ -94,6 +171,7 @@ test("waitForRailwayDeploy times out when status never succeeds", async () => {
     repo: { owner: "fenomenocap", repo: "pundit" },
     timeoutSeconds: 5,
     intervalSeconds: 2,
+    listDescendants: () => [],
     now: () => nowMs,
     sleepImpl: async (ms) => {
       nowMs += ms;

@@ -9,9 +9,12 @@
  * push. This helper blocks only when the push required an API rebuild.
  */
 
+import { execFileSync } from "node:child_process";
+
 const DEFAULT_CONTEXT = "pundit - @pundit/api";
 const DEFAULT_TIMEOUT_SECONDS = 900;
 const DEFAULT_INTERVAL_SECONDS = 15;
+const DEFAULT_MAIN_REF = "origin/main";
 
 function flag(argv, name) {
   const index = argv.indexOf(name);
@@ -53,6 +56,70 @@ export function classifyRailwayStatus(status) {
   if (state === "success") return "done";
   if (state === "failure" || state === "error") return "failed";
   return "waiting";
+}
+
+/**
+ * First-parent descendants of `sha` on main, newest first. Empty when `sha`
+ * is already the deploy tip. Used to detect Railway supersession during bursts.
+ */
+export function parseDescendantRevList(revListOutput) {
+  return String(revListOutput ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+export function listMainDescendantsAfter(sha, options = {}) {
+  const {
+    cwd = process.cwd(),
+    mainRef = DEFAULT_MAIN_REF,
+    fetchMain = true,
+    execFile = execFileSync,
+  } = options;
+  const target = (sha ?? "").trim();
+  if (!target) return [];
+
+  if (fetchMain) {
+    try {
+      execFile("git", ["fetch", "--quiet", "origin", "main"], { cwd, stdio: "ignore" });
+    } catch {
+      // Best-effort; local origin/main may still be usable.
+    }
+  }
+
+  try {
+    const output = execFile(
+      "git",
+      ["rev-list", "--first-parent", `${target}..${mainRef}`],
+      { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    return parseDescendantRevList(output);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * When Railway starts a newer main deploy, older SHAs often stay at pending
+ * forever. Treat a descendant success as completion for the superseded commit.
+ */
+export async function findSupersedingSuccessfulDeploy(options = {}) {
+  const {
+    sha,
+    context = DEFAULT_CONTEXT,
+    listDescendants = listMainDescendantsAfter,
+    fetchStatusesForSha,
+  } = options;
+
+  const descendants = listDescendants(sha);
+  for (const descendantSha of descendants) {
+    const statuses = await fetchStatusesForSha(descendantSha);
+    const latest = latestStatusForContext(statuses, context);
+    if (classifyRailwayStatus(latest) === "done") {
+      return { supersededBy: descendantSha, status: latest };
+    }
+  }
+  return null;
 }
 
 function repoFromEnv(env = process.env) {
@@ -125,6 +192,23 @@ export async function waitForRailwayDeploy(options = {}) {
       };
     }
 
+    const supersession = await findSupersedingSuccessfulDeploy({
+      sha,
+      context,
+      listDescendants: options.listDescendants ?? listMainDescendantsAfter,
+      fetchStatusesForSha: (targetSha) =>
+        fetchStatuses({ ...repo, sha: targetSha, token, fetchImpl }),
+    });
+    if (supersession) {
+      return {
+        ok: true,
+        attempts: attempt,
+        status: supersession.status,
+        supersededBy: supersession.supersededBy,
+        reason: "railway-status-superseded",
+      };
+    }
+
     if (now() + intervalSeconds * 1000 > deadline) break;
     await sleepImpl(intervalSeconds * 1000);
   }
@@ -152,7 +236,13 @@ async function main(argv = process.argv.slice(2)) {
 
   if (result.ok) {
     const url = result.status?.target_url ?? "";
-    process.stdout.write(`Railway deploy success for ${sha}${url ? ` (${url})` : ""}\n`);
+    if (result.reason === "railway-status-superseded") {
+      process.stdout.write(
+        `Railway deploy for ${sha} superseded by successful deploy on ${result.supersededBy}${url ? ` (${url})` : ""}\n`,
+      );
+    } else {
+      process.stdout.write(`Railway deploy success for ${sha}${url ? ` (${url})` : ""}\n`);
+    }
     process.exit(0);
   }
 

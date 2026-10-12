@@ -5,6 +5,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Main can receive several pushes in minutes. Railway deploys only the newest
+# API rebuild and often leaves intermediate SHAs stuck at pending GitHub status,
+# which made parallel Verify Production runs false-fail after the 15-minute wait.
+concurrency:
+  group: verify-production-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
