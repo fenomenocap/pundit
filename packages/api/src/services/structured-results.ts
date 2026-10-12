@@ -21,8 +21,8 @@ export function ownedLatestResult(
   const age = cache.lastUpdated ? now - cache.lastUpdated.getTime() : Infinity;
   if (cache.error || !Number.isFinite(age) || age < 0 || age > FOOTBALL_REFRESH_NORMAL_MS + 60_000) return null;
   const folded = normalizeTeamText(question).replace(/^what['’]s\b/, "what is").replace(/['’]s\b/g, "").replace(/[?!.]+$/g, "").trim();
-  const asksWhy = / and why(?: did they (?:win|lose|draw))?$/.test(folded);
-  const q = folded.replace(/ and why(?: did they (?:win|lose|draw))?$/, "");
+  const asksWhy = / and why(?: did they (?:win|lose|draw))?$/.test(folded) || /^why did /.test(folded);
+  const q = folded.replace(/ and why(?: did they (?:win|lose|draw))?$/, "").replace(/^why did /, "did ");
   const competitions = getEnabledCompetitions();
   const seasonAge = season.lastUpdated ? now - season.lastUpdated.getTime() : Infinity;
   const seasonFresh = season.competitionId === "eng.1" && !season.error && !season.servingLastGood
@@ -41,7 +41,8 @@ export function ownedLatestResult(
           : competition ? escapeRegex(normalizeTeamText(competition.name)) : "";
         const fact = `(?:latest|last|most recent) (?:completed )?${label ? `(?:${label} )?` : ""}(?:result|score|match result)`;
         const scope = label ? `(?: in (?:the )?${label})?` : "";
-        const pattern = `^(?:what (?:is|was) (?:the )?${escaped} ${fact}|what (?:is|was) (?:the )?${fact} (?:of|for) ${escaped})${scope}(?: (?:today|now|currently))?$`;
+        const game = `(?:latest|last|most recent) (?:completed )?${label ? `(?:${label} )?` : ""}(?:game|match|fixture)`;
+        const pattern = `^(?:what (?:is|was) (?:the )?${escaped} ${fact}|what (?:is|was) (?:the )?${fact} (?:of|for) ${escaped}|did ${escaped} (?:win|lose|draw) (?:their|the) ${game})${scope}(?: (?:today|now|currently))?$`;
         if (!new RegExp(pattern).test(q)) continue;
         if (competition && !new RegExp(`\\b${label}\\b`).test(q)) continue;
         if (requested && normalizeTeamName(requested.club) !== canonical) return null;
