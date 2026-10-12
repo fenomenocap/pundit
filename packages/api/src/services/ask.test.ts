@@ -2910,6 +2910,19 @@ describe("current-news evidence hardening", () => {
       expect(unfinished).not.toMatch(/finished first|final league ranking|small fraction|sample size/i);
     });
 
+    it("states the sample-size caveat for an early-season counterargument", () => {
+      const row = (position: number, team: string, points: number) => ({
+        competitionId: "eng.1", position, team, playedGames: 6, won: 0, draw: 0, lost: 0,
+        points, goalsFor: 0, goalsAgainst: 0, goalDifference: 0, group: null, advanced: false,
+      });
+      const table = buildCompetitionGrounding("eng.1", [row(1, "Man City", 18), row(2, "Arsenal", 15)],
+        new Date("2026-10-12T07:00:00.000Z"));
+      const answer = deterministicGroundedResponse(
+        "What is the strongest counterargument to that ranking?", table) as string;
+      expect(answer).toMatch(/sample size/i);
+      expect(answer).toContain("a 3-point lead is not decisive");
+    });
+
     it("distinguishes later-season standings from a title forecast without early-sample language", () => {
       const table = buildCompetitionGrounding("eng.1", [
         {
