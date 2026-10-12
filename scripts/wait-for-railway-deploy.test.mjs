@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -151,15 +155,64 @@ test("waitForRailwayDeploy succeeds when a newer main deploy supersedes the targ
   assert.equal(result.supersededBy, "92daae1");
 });
 
-test("listMainDescendantsAfter walks first-parent history on main", () => {
-  const repoDir = process.cwd();
-  const descendants = listMainDescendantsAfter("ad8de57", {
-    cwd: repoDir,
+test("listMainDescendantsAfter parses rev-list from injected execFile", () => {
+  const calls = [];
+  const descendants = listMainDescendantsAfter("aaa1111", {
+    cwd: "/tmp/fake-repo",
     fetchMain: false,
     mainRef: "origin/main",
+    execFile: (cmd, args) => {
+      calls.push({ cmd, args });
+      if (args[0] === "rev-list") {
+        return "ccc3333\nbbb2222\n";
+      }
+      throw new Error(`unexpected git invocation: ${args.join(" ")}`);
+    },
   });
-  assert.ok(descendants.some((sha) => sha.startsWith("97fbb9e")));
-  assert.ok(descendants.some((sha) => sha.startsWith("c838735")));
+
+  assert.deepEqual(descendants, ["ccc3333", "bbb2222"]);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args, ["rev-list", "--first-parent", "aaa1111..origin/main"]);
+});
+
+test("listMainDescendantsAfter walks first-parent history on main", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pundit-wait-railway-git-"));
+  try {
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: dir });
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+    execFileSync("git", ["config", "user.name", "test"], { cwd: dir });
+    for (const msg of ["a", "b", "c", "d"]) {
+      execFileSync("git", ["commit", "--allow-empty", "-m", msg], { cwd: dir });
+    }
+
+    const bSha = execFileSync("git", ["rev-parse", "HEAD~2"], { cwd: dir, encoding: "utf8" }).trim();
+    const cSha = execFileSync("git", ["rev-parse", "HEAD~1"], { cwd: dir, encoding: "utf8" }).trim();
+    const dSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+
+    const descendants = listMainDescendantsAfter(bSha, {
+      cwd: dir,
+      fetchMain: false,
+      mainRef: "main",
+    });
+
+    assert.ok(descendants.some((sha) => sha.startsWith(cSha.slice(0, 7))));
+    assert.ok(descendants.some((sha) => sha.startsWith(dSha.slice(0, 7))));
+    assert.equal(descendants[0]?.slice(0, 7), dSha.slice(0, 7));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("listMainDescendantsAfter returns empty when rev-list fails", () => {
+  const descendants = listMainDescendantsAfter("missing-sha", {
+    cwd: "/tmp/fake-repo",
+    fetchMain: false,
+    mainRef: "origin/main",
+    execFile: () => {
+      throw new Error("unknown revision");
+    },
+  });
+  assert.deepEqual(descendants, []);
 });
 
 test("waitForRailwayDeploy times out when status never succeeds", async () => {
