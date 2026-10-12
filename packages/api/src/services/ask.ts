@@ -8538,8 +8538,14 @@ function renderGroundedCompetitionAnswer(question: string, grounding: Competitio
       const matchesPlayed = playedCounts.length === 1
         ? `Every listed club has played ${played} matches. `
         : `Listed clubs have played between ${playedCounts[0]} and ${playedCounts.at(-1)} matches. `;
+      const second = rows[1];
+      const margin = second ? leader.points - second.points : undefined;
+      const season = grounding.competitionId === "eng.1" && rows.length === 20 ? " of 38" : "";
       return `${leader.team} are first in the supplied table with ${leader.points} points. `
         + matchesPlayed
+        + (played > 12 ? "" : `The strongest caveat is sample size: at most ${played}${season} matches are in the table`
+          + (margin === undefined ? ". " : margin === 0 ? ", and the top two are level on points. "
+            : `, so a ${margin}-point lead is not decisive. `))
         + "That establishes the current standings, not title probabilities. While fixtures remain, "
         + "the current ordering is not a guarantee of the final positions; a forecast would also need "
         + "club strengths and the remaining fixture schedule.";
