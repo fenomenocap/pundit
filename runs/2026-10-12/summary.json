@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-12",
+  "runId": "2026-10-12T12-08-38-718Z",
+  "status": "attention",
+  "overall": "ISSUES FOUND",
+  "progress": "complete",
+  "scenariosRun": 73,
+  "passed": 66,
+  "inconclusive": 5,
+  "failed": 2,
+  "turns": 71,
+  "answeredTurns": 71,
+  "turnsWithCitations": 2,
+  "medianLatencyMs": 234,
+  "repeatedSentences": 0,
+  "nearDuplicatePairs": 0,
+  "uncitedCurrentNews": 0,
+  "findings": [
+    {
+      "scenario": "pinned-current-manager-and-result-evidence",
+      "summary": "EXISTING ISSUE: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "dated-club-news-delivers-supported-update",
+      "summary": "REGRESSION: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
+    }
+  ],
+  "sourceCommit": "740ee17",
+  "apiSha": "c838735",
+  "ranAt": "2026-10-12T12:08:38.718Z"
+}
