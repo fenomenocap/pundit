@@ -201,18 +201,30 @@ function mentionsFixture(text: string, fixture: PlayerFixtureRef): boolean {
     .test(text);
 }
 
+function resolveFixtureClub(raw: string, fixture: PlayerFixtureRef): string | null {
+  if (!raw) return null;
+  return normalizeTeamName(raw) === normalizeTeamName(fixture.home) ? fixture.home : fixture.away;
+}
+
 function affiliatedTeam(text: string, fixture: PlayerFixtureRef): string | null {
   const home = clubPattern(fixture.home);
   const away = clubPattern(fixture.away);
-  const pattern = new RegExp(
-    `\\b(?:for|of)\\s+(${home}|${away})\\b|\\b(${home}|${away})'s\\b|\\((${home}|${away})\\)`
-    + `|(${home}|${away})\\s*[:\\-]`,
-    "i"
-  );
-  const match = text.match(pattern);
-  const raw = match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4];
-  if (!raw) return null;
-  return normalizeTeamName(raw) === normalizeTeamName(fixture.home) ? fixture.home : fixture.away;
+  const paren = text.match(new RegExp(`\\((${home}|${away})\\)`, "i"));
+  if (paren) return resolveFixtureClub(paren[1], fixture);
+  const possessive = text.match(new RegExp(`\\b(${home}|${away})['’]s\\b`, "i"));
+  if (possessive) return resolveFixtureClub(possessive[1], fixture);
+  const forClub = text.match(new RegExp(`\\bfor\\s+(${home}|${away})\\b`, "i"));
+  if (forClub) return resolveFixtureClub(forClub[1], fixture);
+  const ofClub = text.match(new RegExp(`\\bof\\s+(${home}|${away})\\b`, "i"));
+  if (ofClub) {
+    const beforeOf = text.slice(Math.max(0, ofClub.index! - 40), ofClub.index!);
+    // "ruled out of Arsenal clash" names the opponent, not the player's club.
+    if (!/\b(?:ruled\s+out|miss(?:es|ing)?(?:\s+out)?|withdrawn|pulled\s+out)\s+$/i.test(beforeOf)) {
+      return resolveFixtureClub(ofClub[1], fixture);
+    }
+  }
+  const label = text.match(new RegExp(`\\b(${home}|${away})\\s*[:\\-]`, "i"));
+  return label ? resolveFixtureClub(label[1], fixture) : null;
 }
 
 function teamForPlayer(
@@ -231,10 +243,16 @@ function teamForNamedPlayer(window: string, playerName: string, fixture: PlayerF
   if (at < 0) return null;
   const following = teamForPlayer(window.slice(at), fixture);
   if (following) return following;
+  const before = window.slice(0, at);
   const preceding = new RegExp(`\\b(${clubPattern(fixture.home)}|${clubPattern(fixture.away)})['’]s\\s*$`, "i")
-    .exec(window.slice(0, at));
-  return preceding && normalizeTeamName(preceding[1]) === normalizeTeamName(fixture.home) ? fixture.home
-    : preceding ? fixture.away : null;
+    .exec(before);
+  if (preceding) return resolveFixtureClub(preceding[1], fixture);
+  const clubLead = new RegExp(
+    `\\b(${clubPattern(fixture.home)}|${clubPattern(fixture.away)})(?:\\s+(?:United|City|FC))?`
+    + `\\s+(?:injury|team(?:\\s+news)?)(?:\\s+(?:update|news))?\\s+as\\s*$`,
+    "i",
+  ).exec(before);
+  return clubLead ? resolveFixtureClub(clubLead[1], fixture) : null;
 }
 
 function stripMarketChrome(text: string): string {
