@@ -316,6 +316,32 @@ export function composePlayerScorerAnswer(
   return lines.join(" ");
 }
 
+function datedClubAvailabilityStatus(value: string): string {
+  switch (value) {
+    case "out": return "is ruled out";
+    case "doubtful": return "is doubtful";
+    case "injured": return "was reported injured";
+    case "suspended": return "was suspended";
+    default: return "is unavailable";
+  }
+}
+
+/** Server-owned dated club records for extractDatedClubAvailability observations. */
+export function composeDatedClubAvailabilityAnswer(evidence: PlayerEvidenceBundle | null): string | null {
+  if (!evidence?.observations.length) return null;
+  const dated = evidence.observations.filter((row): row is typeof row & { observedAt: string } =>
+    Boolean(row.observedAt) && row.evidenceType === "availability"
+    && datedClubAvailabilityStatus(String(row.value)) !== "is unavailable"
+  ).slice(0, 3);
+  if (!dated.length) return null;
+  const lines = dated.map((row) => {
+    const publicationDay = row.observedAt.slice(0, 10);
+    return `In an update published on ${publicationDay}, ${row.teamId}’s ${row.playerName} ${datedClubAvailabilityStatus(String(row.value))} [[${row.sourceId}]].`;
+  });
+  lines.push("That is sourced availability, not a revised match forecast.");
+  return lines.join(" ");
+}
+
 export function composeTeamNewsAnswer(
   grounding: Grounding,
   evidence: PlayerEvidenceBundle | null

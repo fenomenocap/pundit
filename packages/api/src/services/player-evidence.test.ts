@@ -2,7 +2,13 @@ import { buildGrounding, deliverAnswer } from "./ask";
 import { fixture as modelFixture } from "./__fixtures__/model-fixture";
 import * as footballData from "./football-data";
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { composeDeskSourcedWrinkle, composeMatchResponse, composePlayerScorerAnswer, composeTeamNewsAnswer } from "./response-composer";
+import {
+  composeDatedClubAvailabilityAnswer,
+  composeDeskSourcedWrinkle,
+  composeMatchResponse,
+  composePlayerScorerAnswer,
+  composeTeamNewsAnswer,
+} from "./response-composer";
 import { planResponse } from "./response-plan";
 import {
   PLAYER_SCORER_ABSTENTION,
@@ -87,6 +93,20 @@ describe("dated club updates before fixture previews", () => {
     expect(datedClubNewsSources([report], next, now)).toEqual([report]);
     expect(extractDatedClubAvailability([report], next, now).observations).toEqual([]);
     expect(datedClubNewsSources([update("Return dates for Kai Havertz appear next to unavailable headings.", { title: "Arsenal vs Leeds team news" })], next, now)).toEqual([]);
+  });
+  it("does not treat ruled out of the opponent as the player's club in a Leeds injury headline", () => {
+    const source = update("Daniel James ruled out of Arsenal clash after missing training.", {
+      title: "Daniel Farke provides mixed Leeds United injury update as Daniel James ruled out of Arsenal clash",
+      url: "https://www.goal.com/en-gb/lists/daniel-farke-mixed-leeds-united-injury-update-daniel-james-arsenal-clash/blt3f6fcf753c7f5bf4",
+      date: "2026-10-09",
+    });
+    const bundle = extractDatedClubAvailability([source], next, Date.parse("2026-10-09T12:00:00Z"));
+    expect(bundle.observations).toEqual([
+      expect.objectContaining({ playerName: "Daniel James", teamId: "Leeds", value: "out", sourceId: "S1" }),
+    ]);
+    expect(composeDatedClubAvailabilityAnswer(bundle)).toContain(
+      "In an update published on 2026-10-09, Leeds’s Daniel James is ruled out [[S1]].",
+    );
   });
 });
 
