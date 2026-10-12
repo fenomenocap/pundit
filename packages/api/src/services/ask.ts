@@ -604,7 +604,10 @@ const CURRENT_NEWS_QUESTION = /\b(latest|current|currently|this season|season so
 // qualifier on aggregate?" with "Celtic advanced" and no search at all.
 const RESULT_QUESTION = /\b(?:who (?:won|went through|qualified|progressed|advanced|was (?:eliminated|knocked out))|went through|go(?:es)? through|on aggregate|aggregate (?:score|win)|final score|result (?:of|in|from)|who (?:beat|lost to|drew with)|(?:won|win|wins|winning) (?:serie a|la ?liga|the bundesliga|bundesliga|ligue 1|the eredivisie|the champions league|the europa league|the fa cup))\b/i;
 const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it))\b/i;
-const STATS_QUESTION = /\b(stats?|statistics|statistically|xg|assists?|appearances?)\b/i;
+// Season counts and league leaders are statistics too. "How many goals has X
+// scored this season?" carried no cue, reached the general tier with no search,
+// and answered with unrelated tactical prose and an uncited goal tally.
+const STATS_QUESTION = /\b(stats?|statistics|statistically|xg|assists?|appearances?)\b|\bhow many (?:goals?|assists?|appearances?|clean sheets?|cards?)\b|\b(?:top|leading|joint) (?:goal)?scorers?\b|\bgolden boot\b|\bmost (?:goals|assists|clean sheets|appearances)\b/i;
 // `unknown` and `unconfirmed` used to match as bare words, which handed any
 // sentence a way out of the squad-claim guard: an answer wrote "Beer-Sheva's
 // wider injury list is the more material unknown going into kickoff" -- an
@@ -645,6 +648,12 @@ const CURRENT_CLAIM_ABSTENTION =
   "I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.";
 const RESULT_CLAIM_ABSTENTION =
   "I couldn’t verify that result from a dated source, so I won’t state it.";
+const STATS_CLAIM_ABSTENTION =
+  "I couldn’t verify that season statistic from a dated source, so I won’t state it.";
+// A season tally or league-leader request is an outside-world fact. Stable
+// definitions ("how are assists counted") are excluded by the verb guard.
+const SEASON_STATISTIC_QUESTION =
+  /\b(?:how many (?:goals?|assists?|appearances?|clean sheets?|cards?)\b[^?\n]{0,80}\b(?:this season|so far|currently|season to date)|(?:top|leading|joint) (?:goal)?scorers?\b|golden boot|most (?:goals|assists|clean sheets|appearances)\b[^?\n]{0,60}\b(?:this season|so far|currently))/i;
 // A sentence that states how a match, tie or season turned out.
 const RESULT_CLAIM = new RegExp([
   /\b(?:won|wins|clinched|lifted|claimed|retained)\b[^.!?\n]{0,50}\b(?:title|league|cup|trophy|championship|scudetto|final|double|treble|shield)\b/.source,
@@ -3081,6 +3090,10 @@ function directCurrentFactAbstention(question: string): string | null {
     return RESULT_CLAIM_ABSTENTION;
   }
   if (asksExplicitExternalPrice(directQuestion)) return ODDS_CLAIM_ABSTENTION;
+  if (SEASON_STATISTIC_QUESTION.test(directQuestion)
+    && !/\b(?:why|explain|define|definition|meaning|means?|counted|calculated?)\b/i.test(directQuestion)) {
+    return STATS_CLAIM_ABSTENTION;
+  }
   if (/\b(?:how|why|explain|define|definition|meaning|means?|convert|calculate|difference)\b/i.test(directQuestion)) return null;
   if (RESULT_QUESTION.test(directQuestion)) return RESULT_CLAIM_ABSTENTION;
   if (/^(?:what\s+(?:is|are|were)|show(?: me)?|give(?: me)?)\b[^?\n]{0,100}\b(?:odds|prices?|line)\b/i.test(directQuestion)) {
@@ -8905,7 +8918,7 @@ export function closedGroundedAnswer(
     // Its numeric board cannot settle either before the required search.
     const directFact = directCurrentFactAbstention(question);
     if (directFact === CURRENT_CLAIM_ABSTENTION || directFact === RESULT_CLAIM_ABSTENTION
-      || asksExplicitExternalPrice(question)) return null;
+      || directFact === STATS_CLAIM_ABSTENTION || asksExplicitExternalPrice(question)) return null;
     const plan = planResponse(question, {
       groundingKind: "match",
       hasHistory,
@@ -9271,6 +9284,7 @@ export async function deliverAnswer(args: {
       const requestedRefusal = directCurrentFactAbstention(question);
       const directRefusal = searchedCurrent
         && (grounding === null || requestedRefusal === CURRENT_CLAIM_ABSTENTION
+          || requestedRefusal === STATS_CLAIM_ABSTENTION
           || (grounding.kind === "match" && (requestedRefusal === RESULT_CLAIM_ABSTENTION
             || asksExplicitExternalPrice(question))))
         && checked.verification.supportedClaimCount === 0
@@ -9482,6 +9496,7 @@ export async function deliverAnswer(args: {
   const requestedRefusal = directCurrentFactAbstention(question);
   const directRefusal = evidenceRequired
     && (grounding === null || requestedRefusal === CURRENT_CLAIM_ABSTENTION
+      || requestedRefusal === STATS_CLAIM_ABSTENTION
       || (grounding.kind === "match" && requestedRefusal === RESULT_CLAIM_ABSTENTION))
     && checked.verification.supportedClaimCount === 0
     ? requestedRefusal : null;
