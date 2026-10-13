@@ -84,6 +84,12 @@ function isMatchGrounding(grounding: FederatedGrounding): grounding is Federated
   return grounding?.kind === "match";
 }
 
+/** Injury-only team-news asks (eval dated-club-news scenario). Lineup asks keep fixture fan-out. */
+function asksInjuryUpdatesWithoutLineups(question: string): boolean {
+  return /\binjur(?:y|ies)\b/i.test(question)
+    && !/\b(?:line-?ups?|starting xi|starters?|start(?:s|ing)?|xi)\b/i.test(question);
+}
+
 /** A club fact is not a fact about its pinned opponent. Never infer a new club. */
 export function singleClubCurrentFactScope(
   question: string,
@@ -207,8 +213,16 @@ function newsFanOutQueries(
     const day = now.toISOString().slice(0, 10);
     planned.push(`${match.home} latest injury update team news official club ${day}`);
     planned.push(`${match.away} latest injury update team news official club ${day}`);
-    planned.push(`${fixture} team news injuries suspensions predicted lineup`);
-    planned.push(`${fixture} confirmed starting xi availability`);
+    if (asksInjuryUpdatesWithoutLineups(question)) {
+      // Generic fixture team-news queries often rank fan blogs (authority `other`)
+      // above allowlisted club and national-beat reports. Mirror the manager
+      // fan-out: bias retrieval toward publishers verification can fetch.
+      planned.push(`site:bbc.com/sport/football ${match.home} injury update ${day}`);
+      planned.push(`site:bbc.com/sport/football ${match.away} injury update ${day}`);
+    } else {
+      planned.push(`${fixture} team news injuries suspensions predicted lineup`);
+      planned.push(`${fixture} confirmed starting xi availability`);
+    }
   } else if (mode === "market-comparison") {
     planned.push(`${fixture} betting odds decimal over 2.5 goals both teams to score`);
     planned.push(`${fixture} odds movement line move opening price`);
