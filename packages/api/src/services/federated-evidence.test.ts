@@ -182,6 +182,18 @@ describe("planFederatedQueries", () => {
     expect(queries.some((query) => /goalscorer|odds movement/.test(query))).toBe(false);
   });
 
+  it("biases injury-only team-news fan-out toward allowlisted beat pages", () => {
+    const question = "What are the latest dated club injury updates for Everton and Chelsea? Keep current reports distinct from future kickoff availability.";
+    const queries = planFederatedQueries(question, matchGrounding({ home: "Everton", away: "Chelsea" }),
+      question.slice(0, 220), new Date("2026-10-13T00:00:00Z"));
+    expect(queries).toHaveLength(5);
+    expect(queries).toContain("Everton latest injury update team news official club 2026-10-13");
+    expect(queries).toContain("Chelsea latest injury update team news official club 2026-10-13");
+    expect(queries).toContain("site:bbc.com/sport/football Everton injury update 2026-10-13");
+    expect(queries).toContain("site:bbc.com/sport/football Chelsea injury update 2026-10-13");
+    expect(queries.some((query) => /predicted lineup|starting xi/.test(query))).toBe(false);
+  });
+
   it("returns no queries for general knowledge without a search cue", () => {
     expect(
       planFederatedQueries(
