@@ -1,6 +1,6 @@
 {
   "date": "2026-10-13",
-  "runId": "2026-10-13T01-56-37-057Z",
+  "runId": "2026-10-13T03-03-15-907Z",
   "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
@@ -11,7 +11,7 @@
   "turns": 71,
   "answeredTurns": 71,
   "turnsWithCitations": 2,
-  "medianLatencyMs": 105,
+  "medianLatencyMs": 239,
   "repeatedSentences": 0,
   "nearDuplicatePairs": 0,
   "uncitedCurrentNews": 0,
@@ -25,7 +25,7 @@
       "summary": "EXISTING ISSUE: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
     }
   ],
-  "sourceCommit": "5eb360c",
-  "apiSha": "5eb360c",
-  "ranAt": "2026-10-13T01:56:37.057Z"
+  "sourceCommit": "668c1ca",
+  "apiSha": "668c1ca",
+  "ranAt": "2026-10-13T03:03:15.907Z"
 }
