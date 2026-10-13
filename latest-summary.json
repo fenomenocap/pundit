@@ -1,19 +1,19 @@
 {
   "date": "2026-10-13",
-  "runId": "2026-10-13T03-03-15-907Z",
+  "runId": "2026-10-13T11-54-17-008Z",
   "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
   "scenariosRun": 73,
-  "passed": 66,
+  "passed": 67,
   "inconclusive": 5,
-  "failed": 2,
+  "failed": 1,
   "turns": 71,
   "answeredTurns": 71,
-  "turnsWithCitations": 2,
-  "medianLatencyMs": 239,
+  "turnsWithCitations": 4,
+  "medianLatencyMs": 101,
   "repeatedSentences": 0,
-  "nearDuplicatePairs": 0,
+  "nearDuplicatePairs": 1,
   "uncitedCurrentNews": 0,
   "findings": [
     {
@@ -21,11 +21,11 @@
       "summary": "EXISTING ISSUE: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
     },
     {
-      "scenario": "dated-club-news-delivers-supported-update",
-      "summary": "EXISTING ISSUE: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
+      "scenario": "near-duplicate",
+      "summary": "88% overlap between answers to \"What are the latest dated club injury updates for Everton and Chelsea? Keep current reports distinct from future kickoff availability.\" and \"Any injury or lineup news for Everton vs Chelsea?\""
     }
   ],
   "sourceCommit": "668c1ca",
   "apiSha": "668c1ca",
-  "ranAt": "2026-10-13T03:03:15.907Z"
+  "ranAt": "2026-10-13T11:54:17.008Z"
 }
