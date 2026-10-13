@@ -175,9 +175,50 @@ export function loadClubStrengthArtifact(now = new Date()): boolean {
   }
 }
 
+const BUNDLED_CLUB_STRENGTH_HASH_PATTERN = /^[a-f0-9]{64}\.json$/;
+
+function readNewestBundledClubStrengthArtifact(now: Date): ValidatedClubStrengthArtifact | null {
+  const clubeloDir = path.join(getRepoDataDir(), "model-artifacts/clubelo");
+  const candidates = fs.readdirSync(clubeloDir)
+    .filter((name) => BUNDLED_CLUB_STRENGTH_HASH_PATTERN.test(name))
+    .map((name) => {
+      try {
+        return readClubStrengthArtifact(path.join(clubeloDir, name), now);
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry): entry is ValidatedClubStrengthArtifact => entry !== null)
+    .sort((left, right) => right.snapshotAt.getTime() - left.snapshotAt.getTime());
+  return candidates[0] ?? null;
+}
+
+/**
+ * Test helper for frozen-clock suites: prefer the release selector when it
+ * validates at `now`, otherwise load the newest bundled historical artifact
+ * that still passes the same freshness and future-skew gates.
+ */
+export function loadClubStrengthArtifactForTest(now = new Date()): boolean {
+  if (loadClubStrengthArtifact(now)) return true;
+  const historical = readNewestBundledClubStrengthArtifact(now);
+  if (!historical) return false;
+  adoptArtifact(historical, false);
+  cache.error = null;
+  console.log(
+    `[ClubRatings] Loaded bundled test artifact ${historical.artifact.artifactId} `
+    + `(${historical.byProfile["uefa-clubs"].size} UEFA clubs, ${historical.ageDays}d old).`
+  );
+  return true;
+}
+
 /** Backwards-compatible bootstrap name; no vendor refresh is performed. */
 export async function refreshClubRatings(now = new Date()): Promise<void> {
   loadClubStrengthArtifact(now);
+}
+
+/** Frozen-clock ask tests; production callers should use refreshClubRatings. */
+export async function refreshClubRatingsForTest(now = new Date()): Promise<void> {
+  loadClubStrengthArtifactForTest(now);
 }
 
 /** Backwards-compatible restore name used by older tests and callers. */

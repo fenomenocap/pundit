@@ -105,7 +105,7 @@ import {
   replaceSeasonScheduleForTests,
   type FootballMatch,
 } from "./football-data";
-import { refreshClubRatings } from "./club-ratings";
+import { refreshClubRatings, refreshClubRatingsForTest } from "./club-ratings";
 import { sampleMatchContextFields } from "./match-context";
 import { eloToLambdas } from "./dixon-coles";
 
@@ -473,7 +473,7 @@ describe("complete standalone football lessons", () => {
   });
 
   it("settles a recognized tactical request consistently in default JSON, desk JSON and SSE without providers", async () => {
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const kickoff = new Date(Date.now() + 86_400_000).toISOString();
     const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
@@ -502,7 +502,7 @@ describe("complete standalone football lessons", () => {
   });
 
   it.each(["default", "desk", "sse"] as const)("answers every requested part of a composite briefing through $delivery", async (delivery) => {
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const kickoff = new Date(Date.now() + 86_400_000).toISOString();
     const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10), pHome: 0.767, pDraw: 0.175, pAway: 0.058 });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
@@ -550,7 +550,7 @@ describe("complete standalone football lessons", () => {
   });
 
   it("does not let a composite briefing skip its explicit current-injury search", async () => {
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const kickoff = new Date(Date.now() + 86_400_000).toISOString();
     const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
@@ -752,7 +752,7 @@ describe("complete standalone football lessons", () => {
 
   it.each(["dated", "punctuation", "orphan", "stale", "undated", "404", "future", "future-snippet", "retired", "quoted", "comment"] as const)("hydrates selected manager news before expression without profile starvation (%s)", async (mode) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-07T06:00:00Z"));
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
     const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
@@ -835,7 +835,7 @@ describe("complete standalone football lessons", () => {
   ]))("keeps dated club-fact verification authoritative beyond the pinned opponent: $question ($outcome, $sourceDate)", async ({ question, title, prose, fact, reason, accepted, sourceDate, outcome }) => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const kickoff = new Date(Date.now() + 86_400_000).toISOString();
     const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
@@ -954,7 +954,7 @@ describe("complete standalone football lessons", () => {
     { question: "What are Betfair's current odds for Arsenal and why?", bare: "Betfair 1.82.", refusal: /verify|verified|model|probabilit|1X2/i, externalPrice: true },
     { question: "What are Betfair's current odds for Arsenal and how do they compare with the model?", bare: "Betfair 1.82.", refusal: /verify|verified|model|probabilit|1X2/i, externalPrice: true },
   ])("requires verified direct $question even with an active match pin in both voices and SSE", async ({ question, bare, refusal, externalPrice }) => {
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const kickoff = new Date(Date.now() + 86_400_000).toISOString();
     const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
@@ -1065,7 +1065,7 @@ describe("current verification failure preserves supplied history scope", () => 
   it.each(["unavailable", "unsupported"] as const)("does not deny prior cited history when fresh verification is %s", async (outcome) => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const kickoff = "2026-10-06T15:00:00Z";
     const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
@@ -6426,7 +6426,7 @@ describe("inference credential configuration", () => {
 
 describe("deterministic fixture clarification", () => {
   it("preserves compact presentation for a desk totals follow-up", async () => {
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const kickoff = new Date(Date.now() + 86_400_000).toISOString();
     const model = fixture("Arsenal", "Chelsea", { utcDate: kickoff, date: kickoff.slice(0, 10) });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
@@ -6510,7 +6510,7 @@ describe("settled player news requires exact current-claim verification", () => 
   it.each(["supported", "unavailable", "no-marker", "empty-evidence"] as const)(
     "blocks the live invented manager cause with and without a pin before JSON, desk and SSE delivery: %s", async (mode) => {
       vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T19:00:00Z"));
-      await refreshClubRatings(new Date());
+      await refreshClubRatingsForTest(new Date());
       const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
       const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
       const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
@@ -6572,7 +6572,7 @@ describe("settled player news requires exact current-claim verification", () => 
     });
   it("repairs the live manager answer’s unsupported month from the owned appointment year before JSON, desk and SSE delivery", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
     const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
@@ -6616,7 +6616,7 @@ describe("settled player news requires exact current-claim verification", () => 
   it.each(["publication-date", "authored-event-date", "authored-date-field", "raw-canary-prose", "wrong-club"] as const)(
     "keeps report publication separate from injury timing and verifies source ownership in JSON, desk and SSE: %s", async (mode) => {
       vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));
-      await refreshClubRatings(new Date());
+      await refreshClubRatingsForTest(new Date());
       const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
       const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
       const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
@@ -6676,7 +6676,7 @@ describe("settled player news requires exact current-claim verification", () => 
   );
   it.each(["actual-canary", "implicit-affiliation", "both-clubs", "lineup-row"] as const)("keeps verified updates consistent with the coverage summary: %s", async (variant) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T10:00:00Z"));
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
     const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
@@ -6732,7 +6732,7 @@ describe("settled player news requires exact current-claim verification", () => 
   });
   it("hydrates a late real publisher report ahead of nine official fixture hits and preserves its S10 citation in JSON, desk and SSE", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T02:00:00Z"));
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
     const saved = process.env.OPENROUTER_API_KEY; process.env.OPENROUTER_API_KEY = "test-only";
@@ -6800,7 +6800,7 @@ describe("settled player news requires exact current-claim verification", () => 
   });
   it.each(["supported", "partial-invalid-status", "zero-valid-status", "invalid-json-recovered", "invalid-json-twice", "invalid-json-then-unsupported"] as const)("delivers the observed structured news records through JSON, desk and SSE: %s", async (mode) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-07T06:00:00Z"));
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
     const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
@@ -6872,7 +6872,7 @@ describe("settled player news requires exact current-claim verification", () => 
 
   it.each(["supported", "unsupported", "conflict", "thinking-only", "truncated", "provider-error"] as const)("handles dated club-report prose only after exact claim verification: %s", async (outcome) => {
     vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T00:00:00Z"));
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const model = fixture("Arsenal", "Leeds", { utcDate: "2026-10-10T11:30:00Z", date: "2026-10-10" });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
     const saved = process.env.MINIMAX_API_KEY; process.env.MINIMAX_API_KEY = "test-only";
@@ -6943,7 +6943,7 @@ describe("settled player news requires exact current-claim verification", () => 
   ])("does not grant verification from citation count: $label", async ({ snippet, outcome, accepted, extracted, undated, scorer, exactStatus, named }) => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
-    await refreshClubRatings(new Date());
+    await refreshClubRatingsForTest(new Date());
     const kickoff = "2026-10-06T15:00:00Z";
     const model = fixture("Arsenal", "Leeds", { utcDate: kickoff, date: kickoff.slice(0, 10) });
     const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({ fixtures: [model], lastUpdated: new Date(), error: null });
