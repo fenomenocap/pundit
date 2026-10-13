@@ -8821,8 +8821,11 @@ async function settleTeamNewsFromBundle(
   // suppress the dated club-update path below.
   const asksInjuryUpdates = /\binjur(?:y|ies)\b/i.test(question)
     && !/\b(?:line-?ups?|starting xi|starters?|start(?:s|ing)?|xi)\b/i.test(question);
-  const hasUsableObservation = evidence.observations.some((row) =>
-    row.observedAt && !(asksInjuryUpdates && row.value === "start"));
+  // Injury-update asks want dated club reports. Fixture-preview observations
+  // come only from pages that mention this matchup; they must not skip the
+  // club-report extractor when those preview claims fail verification.
+  const hasUsableObservation = !asksInjuryUpdates
+    && evidence.observations.some((row) => row.observedAt);
   if (!hasUsableObservation) {
     const byId = new Map(pages.map((page) => [page.id, page]));
     const updates = extractDatedClubAvailability(bundle.results.map((source) => ({ ...source,
