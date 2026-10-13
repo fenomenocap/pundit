@@ -13,6 +13,7 @@ import {
   getCachedClubRatings,
   lookupClubRating,
   refreshClubRatings,
+  refreshClubRatingsForTest,
 } from "./club-ratings";
 import { CLUB_STRENGTH_MAX_AGE_MS, CLUB_STRENGTH_WARN_AGE_MS } from "./club-strength-artifact";
 
@@ -91,6 +92,24 @@ describe("club ratings artifact adapter", () => {
     expect(clubRatingsAgeDays(snapshotAt, new Date(boundary))).toBe(30);
     expect(clubRatingsAreCurrent(ratings, new Date(boundary + 1))).toBe(false);
     expect(clubRatingsAgeDays(snapshotAt, new Date(boundary + 1))).toBe(30);
+  });
+
+  it("loads the newest bundled artifact valid at a frozen clock", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+    try {
+      await refreshClubRatings(new Date());
+      expect(getCachedClubRatings().error).toMatch(/future-dated|freshness/i);
+      await refreshClubRatingsForTest(new Date());
+      const ratings = getCachedClubRatings();
+      expect(ratings.error).toBeNull();
+      expect(ratings.artifactSha256).toBe(
+        "dc24d0cb7ba184bcce90711e43e6f5354c5bc62707b8c9028eab837a27b65115"
+      );
+    } finally {
+      vi.useRealTimers();
+      await refreshClubRatings();
+    }
   });
 
   it("flags a 7-day refresh without withholding forecasts", async () => {
