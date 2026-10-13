@@ -38,7 +38,8 @@ describe("planFederatedQueries", () => {
     expect(queries[2]).toBe(`site:bbc.com/sport/football Arsenal manager head coach ${currentMonth}`);
     expect(queries.some((query) => /Arteta|Emery|Wenger|Chelsea/.test(query))).toBe(false);
     expect(queries.some((query) => query.includes(question))).toBe(true);
-    expect(queries).toHaveLength(4);
+    expect(queries).toHaveLength(5);
+    expect(queries[3]).toBe(`site:football.london Arsenal manager ${currentMonth}`);
   });
 
   it("targets an explicitly named club manager or result without searching its pinned opponent", () => {
@@ -186,11 +187,15 @@ describe("planFederatedQueries", () => {
     const question = "What are the latest dated club injury updates for Everton and Chelsea? Keep current reports distinct from future kickoff availability.";
     const queries = planFederatedQueries(question, matchGrounding({ home: "Everton", away: "Chelsea" }),
       question.slice(0, 220), new Date("2026-10-13T00:00:00Z"));
-    expect(queries).toHaveLength(5);
+    expect(queries).toHaveLength(8);
     expect(queries).toContain("Everton latest injury update team news official club 2026-10-13");
     expect(queries).toContain("Chelsea latest injury update team news official club 2026-10-13");
     expect(queries).toContain("site:bbc.com/sport/football Everton injury update 2026-10-13");
     expect(queries).toContain("site:bbc.com/sport/football Chelsea injury update 2026-10-13");
+    expect(queries).toContain("site:skysports.com/football/news Everton injury update 2026-10-13");
+    expect(queries).toContain("site:skysports.com/football/news Chelsea injury update 2026-10-13");
+    expect(queries).toContain("site:football.london Everton injury update 2026-10-13");
+    expect(queries).toContain("site:football.london Chelsea injury update 2026-10-13");
     expect(queries.some((query) => /predicted lineup|starting xi/.test(query))).toBe(false);
   });
 

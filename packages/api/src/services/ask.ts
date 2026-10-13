@@ -10014,7 +10014,6 @@ async function answerQuestionScoped(
     if (clubFact?.kind === "manager") {
       managerPages = (await hydrateBundlePublicationDates(bundle, signal))
         .map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
-      bundle = filterDeskEvidenceBundle(bundle, grounding, Date.now(), question);
     }
     // Desk team-news and scorer turns use the typed evidence path after search, whether
     // it yields a cited observation or a narrow abstention.
@@ -10256,7 +10255,6 @@ async function answerQuestionStreamScoped(
     if (clubFact?.kind === "manager") {
       managerPages = (await hydrateBundlePublicationDates(bundle, handlers.signal))
         .map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
-      bundle = filterDeskEvidenceBundle(bundle, grounding, Date.now(), question);
     }
     // A direct club identity/result is evidence prose, not a forecast draft.
     // Hold every delta until its dated claims have passed the same verifier.
