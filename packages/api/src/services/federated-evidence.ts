@@ -219,6 +219,10 @@ function newsFanOutQueries(
       // fan-out: bias retrieval toward publishers verification can fetch.
       planned.push(`site:bbc.com/sport/football ${match.home} injury update ${day}`);
       planned.push(`site:bbc.com/sport/football ${match.away} injury update ${day}`);
+      planned.push(`site:skysports.com/football/news ${match.home} injury update ${day}`);
+      planned.push(`site:skysports.com/football/news ${match.away} injury update ${day}`);
+      planned.push(`site:football.london ${match.home} injury update ${day}`);
+      planned.push(`site:football.london ${match.away} injury update ${day}`);
     } else {
       planned.push(`${fixture} team news injuries suspensions predicted lineup`);
       planned.push(`${fixture} confirmed starting xi availability`);
@@ -270,8 +274,10 @@ export function planFederatedQueries(
   if (isMatchGrounding(grounding)
     && planResponse(question, { groundingKind: "match", hasHistory: true }).mode === "team-news") {
     // Keep club reports ahead of generic fixture hits at the merged-result cap.
+    const injuryOnly = asksInjuryUpdatesWithoutLineups(question);
+    const cap = injuryOnly ? MAX_FEDERATED_QUERIES + 2 : MAX_FEDERATED_QUERIES;
     return [...new Set([...newsFanOutQueries(question, grounding, slice, season, now), ...planned])]
-      .slice(0, MAX_FEDERATED_QUERIES);
+      .slice(0, cap);
   }
   if (clubFact && baseQuery) {
     const day = now.toISOString().slice(0, 10);
@@ -282,10 +288,11 @@ export function planFederatedQueries(
     const targeted = clubFact.kind === "manager"
       ? [`${clubFact.club} current manager head coach official club ${day}`,
         `site:skysports.com/football/news ${clubFact.club} manager contract ${monthLabel(previousMonth)}`,
-        `site:bbc.com/sport/football ${clubFact.club} manager head coach ${monthLabel(now)}`]
+        `site:bbc.com/sport/football ${clubFact.club} manager head coach ${monthLabel(now)}`,
+        `site:football.london ${clubFact.club} manager ${monthLabel(now)}`]
       : [`${clubFact.club} latest completed match result official report ${season} ${day}`,
         `${clubFact.club} latest match final score post match report ${day}`];
-    return [...new Set([...targeted, ...planned])].slice(0, clubFact.kind === "manager" ? 4 : MAX_FEDERATED_QUERIES);
+    return [...new Set([...targeted, ...planned])].slice(0, clubFact.kind === "manager" ? 5 : MAX_FEDERATED_QUERIES);
   }
   if (asksStats && slice.length >= 3) {
     planned.push(`${slice} stats ${season}`);

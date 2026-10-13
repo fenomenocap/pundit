@@ -810,11 +810,11 @@ describe("complete standalone football lessons", () => {
       for (const voice of [undefined, "desk"] as const) {
         hydrated = false; searchWeb.mockClear();
         checkDelivery(await answerQuestion("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], controller.signal, context, undefined, voice));
-        expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(4);
+        expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(5);
       }
       hydrated = false; searchWeb.mockClear(); const deltas: string[] = [];
       const streamed = await answerQuestionStream("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], { signal: controller.signal, onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
-      checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(4);
+      checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(5);
       expect(create.mock.calls.every(([params]) => String((params as Anthropic.MessageCreateParamsNonStreaming).system)
         .startsWith("You are Pundit's bounded factual claim verifier."))).toBe(true);
     } finally {
@@ -1109,8 +1109,8 @@ describe("current verification failure preserves supplied history scope", () => 
       expect(streamed.verification?.supportedClaimCount).toBe(0);
       expect(streamed.verification?.removedClaimCount).toBe(1);
       expect(deltas).toEqual([streamed.answer]);
-      // Each of the three formats performs the bounded four-query evidence plan.
-      expect(searchWeb).toHaveBeenCalledTimes(12);
+      // Each of the three formats performs the bounded five-query manager evidence plan.
+      expect(searchWeb).toHaveBeenCalledTimes(15);
     } finally {
       cached.mockRestore(); prefetch.mockRestore(); retrieve.mockRestore(); create.mockRestore();
       if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
