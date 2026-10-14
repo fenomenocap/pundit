@@ -3108,6 +3108,28 @@ describe("current-news evidence hardening", () => {
     expect(rendered.citations).toEqual([expect.objectContaining({ id: "S1" })]);
   });
 
+  it("never ships a bare or parenthetical source id to the reader", () => {
+    const bundle = {
+      queries: ["bet"],
+      results: [{
+        id: "S1", title: "Market report", url: "https://www.linegauge.com/wire/report",
+        date: "2026-10-13", snippet: "One arb window.", tier: "news" as const,
+      }, {
+        id: "S5", title: "Arb scanner", url: "https://arb-bet.com/",
+        date: "2026-10-12", snippet: "Scanner.", tier: "news" as const,
+      }],
+    };
+    const rendered = renderEvidenceCitations(
+      "S1 reports a single arb window. Sure bets are marketing (S5). Bayern are strong (S99).",
+      bundle,
+      false
+    );
+    expect(rendered.answer).not.toMatch(/\bS\d+\b/);
+    expect(rendered.answer).toContain("linegauge.com reports a single arb window");
+    expect(rendered.answer).toContain("[Arb scanner](https://arb-bet.com/)");
+    expect(rendered.answer).not.toContain("Bayern");
+  });
+
   it("abstains when a positive current claim has no provenance marker", () => {
     const rendered = renderEvidenceCitations(
       "The player is ruled out for Sunday.",
