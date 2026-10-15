@@ -642,6 +642,12 @@ describe("complete standalone football lessons", () => {
     expect(result.verification.status).not.toBe("not-required");
   });
 
+  it("strips uncited 'ended 2-2' result claims", () => {
+    const bare = "Chelsea's last match ended 2–2, a draw away from home.";
+    expect(stripUncitedResultClaims(bare)).not.toContain("2–2");
+    expect(stripUncitedResultClaims("Chelsea's last match ended in a draw.")).not.toContain("draw");
+  });
+
   it("keeps sourced current identities/results/prices, refusals and general hypotheticals while removing bare claims", () => {
     for (const [guard, bare, sourced] of [
       [stripUncitedManagerClaims, "Pat Doe is Arsenal's current manager.", "Pat Doe is Arsenal's current manager [[S1]]."],

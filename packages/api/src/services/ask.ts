@@ -609,7 +609,7 @@ const CURRENT_NEWS_QUESTION = /\b(latest|current|currently|this season|season so
 // A question about a result -- who won, who went through -- is a question
 // about the outside world. Production answered "Who went through in Celtic's
 // qualifier on aggregate?" with "Celtic advanced" and no search at all.
-const RESULT_QUESTION = /\b(?:who (?:won|went through|qualified|progressed|advanced|was (?:eliminated|knocked out))|went through|go(?:es)? through|on aggregate|aggregate (?:score|win)|final score|result (?:of|in|from)|who (?:beat|lost to|drew with)|(?:won|win|wins|winning) (?:serie a|la ?liga|the bundesliga|bundesliga|ligue 1|the eredivisie|the champions league|the europa league|the fa cup))\b/i;
+const RESULT_QUESTION = /\b(?:who (?:won|went through|qualified|progressed|advanced|was (?:eliminated|knocked out))|went through|go(?:es)? through|on aggregate|aggregate (?:score|win)|final score|result (?:of|in|from)|(?:score|result)\b[^?\n]{0,60}\b(?:latest|last|most recent)\s+(?:[\w.'’-]+\s+){0,3}(?:game|match|fixture)|who (?:beat|lost to|drew with)|(?:won|win|wins|winning) (?:serie a|la ?liga|the bundesliga|bundesliga|ligue 1|the eredivisie|the champions league|the europa league|the fa cup))\b/i;
 const AMBIGUOUS_CURRENT_QUESTION = /\b(news|update|anything changed|what(?:'s| is) happening|what about (?:him|her|them|it))\b/i;
 // Season counts and league leaders are statistics too. "How many goals has X
 // scored this season?" carried no cue, reached the general tier with no search,
@@ -669,6 +669,7 @@ const RESULT_CLAIM = new RegExp([
   /\b\d{1,3} points? (?:clear|ahead|behind)\b/.source,
   /\b(?:finished|ended|finishing)\b[^.!?\n]{0,40}\b(?:\d{1,3} points|first|second|third|top|bottom|champions?|runners?-up)\b/.source,
   /\b(?:beat|beaten|defeated|thrashed|lost|drew|won)\b[^.!?\n]{0,40}\b\d{1,2}\s?[-–]\s?\d{1,2}\b/.source,
+  /\b(?:ended|finished)\b(?: in)?(?: a)? \d{1,2}\s?[-–]\s?\d{1,2}\b|\b(?:ended|finished) in a (?:draw|stalemate)\b/.source,
 ].join("|"), "i");
 const ODDS_CLAIM_ABSTENTION =
   "I couldn’t verify current prices from a dated source, so I won’t quote them.";
@@ -3137,6 +3138,7 @@ function directCurrentFactAbstention(question: string): string | null {
     return CURRENT_CLAIM_ABSTENTION;
   }
   if (/^what\s+(?:is|was)\b[^?\n]{0,100}\b(?:latest|last|most recent|final)\s+(?:result|score)\b/i.test(directQuestion)
+    || /^what\s+(?:is|was)\s+(?:the\s+)?(?:final\s+)?(?:score|result)\b[^?\n]{0,60}\b(?:latest|last|most recent)\s+(?:[\w.'’-]+\s+){0,3}(?:game|match|fixture)\b/i.test(directQuestion)
     || (/^who\s+/i.test(directQuestion) && RESULT_QUESTION.test(directQuestion))) {
     return RESULT_CLAIM_ABSTENTION;
   }
