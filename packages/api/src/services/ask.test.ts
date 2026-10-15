@@ -1005,8 +1005,13 @@ describe("source-owned manager identity drafts", () => {
     "Joe Example remains the current Arsenal manager.",
     "Football News\nArsenal manager Joe Example says he and the club are very much aligned when it comes to signing a new contract.",
     "Joe Example has agreed a new contract as Arsenal manager following their league title.",
+    "Everton boss David Moyes has been speaking to the media before Sunday's Premier League game.",
+    "Everton manager David Moyes says he is surprised that the club has been put up for sale.",
+    "The Everton boss David Moyes has been speaking to the media.",
   ])("builds only the strict dynamic current identity: %s", (text) => {
-    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text }], now)).toBe("Arsenal’s manager is Joe Example [[S7]].");
+    const clubScope = /Everton/.test(text) ? { ...scope, club: "Everton" } : scope;
+    const name = /David Moyes/.test(text) ? "David Moyes" : "Joe Example";
+    expect(sourceOwnedManagerDraft(clubScope, bundle, [{ ...page, text }], now)).toBe(`${clubScope.club}’s manager is ${name} [[S7]].`);
   });
   it.each([
     "Arsenal manager Joe Example retired in 2020.",
@@ -1021,6 +1026,8 @@ describe("source-owned manager identity drafts", () => {
     "Arsenal will appoint Joe Example as manager.",
     "Arsenal’s manager is not Joe Example.",
     "Arsenal’s manager may be Joe Example.",
+    "Former Everton boss David Moyes says he will leave.",
+    "Everton manager David Moyes will be replaced this week.",
   ])("cannot promote a rejected role statement: %s", (text) => {
     expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text }], now)).not.toContain("Joe Example");
   });

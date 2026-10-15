@@ -1348,11 +1348,15 @@ function managerRoleGrammar(clubName: string) {
     const direct = new RegExp(`^(?:${club}(?:['’]s)?\\s+${currentRole}(?:\\s+today)?\\s+is\\s+${named}|${named}\\s+(?:is|remains)\\s+(?:the\\s+)?(?:current\\s+)?${club}(?:['’]s)?\\s+${currentRole}|(?:the\\s+)?${currentRole}\\s+(?:of|for)\\s+${club}\\s+is\\s+${named})(?:\\s+(?:today|currently))?\\s*[.!]?$`, "iu");
     const contract = new RegExp(`^(?:${club}(?:['’]s)?\\s+${currentRole}\\s+(?:is\\s+)?${named}(?:,?\\s+who)?\\s+has\\s+(?:agreed|signed)\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?(?:contract|deal)\\b|${named}\\s+has\\s+agreed\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?contract\\s+as\\s+${club}(?:['’]s)?\\s+${currentRole}\\b)`, "iu");
     const alignment = new RegExp(`^${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+says\\s+he\\s+and\\s+the\\s+club\\s+are\\s+(?:very\\s+much\\s+)?aligned\\b[^.!?;\\n]{0,100}\\bsigning\\s+a\\s+new\\s+contract\\b`, "iu");
+    // Beat reporting often names the incumbent in apposition ("Everton boss
+    // David Moyes has been speaking") rather than with an explicit "is".
+    const appositiveReporting = new RegExp(`^(?:The\\s+)?(?!(?:Former|Ex[-\\s])\\s)${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+(?:has\\s+(?:been\\s+speaking|said|confirmed|told)|says|said|insists|added|was\\s+speaking)\\b`, "iu");
     // Publisher blocks retain their boundaries; these explicit tenure
     // propositions must start their own statement. A quoted, negated or
     // editorial prefix cannot establish the role.
     return splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
-      .map((sentence) => sentence.trim()).some((sentence) => direct.test(sentence) || contract.test(sentence) || alignment.test(sentence));
+      .map((sentence) => sentence.trim()).some((sentence) => direct.test(sentence) || contract.test(sentence)
+        || alignment.test(sentence) || appositiveReporting.test(sentence));
   };
   return { fullName, role, ownsCurrentRole };
 }
