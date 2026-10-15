@@ -3286,11 +3286,37 @@ function acknowledgeCorrection(answer: string, verification: AskVerification): s
   return `${acknowledgement}\n\n${answer}`.trim();
 }
 
+/**
+ * The generator is asked for `[[S1]]` but also writes `(S5)`, `(S5, S7)` and
+ * "S1 reports ...", which no resolver matched, so the server's internal id
+ * reached the reader verbatim. A parenthetical id is a citation in a spelling
+ * the resolver does not know: it becomes a real marker (an id the bundle does
+ * not hold is then removed as invented). A bare id inside prose is replaced by
+ * its source's host when the bundle holds it, and otherwise left alone.
+ */
+export function normalizeBareSourceIds(answer: string, bundle?: EvidenceBundle): string {
+  const byId = new Map((bundle?.results ?? []).map((source) => [source.id, source]));
+  const asMarkers = (group: string) => [...group.matchAll(/S(\d{1,3})/g)]
+    .map((match) => `[[S${Number(match[1])}]]`).join(" ");
+  return answer
+    .replace(/\s*\(\s*(S\d{1,3}(?:\s*[,;&]\s*S\d{1,3})*)\s*\)/g, (_all, group: string) => ` ${asMarkers(group)}`)
+    .replace(/(?<![\w\[/.#-])S(\d{1,3})(?![\w\]-])(?!\]\()/g, (match, digits: string) => {
+      const source = byId.get(`S${Number(digits)}`);
+      if (!source) return match;
+      try {
+        return new URL(source.url).hostname.replace(/^www\./, "");
+      } catch {
+        return match;
+      }
+    });
+}
+
 export function renderEvidenceCitations(
   answer: string,
   bundle: EvidenceBundle | undefined,
   evidenceRequired: boolean
 ): { answer: string; citations: AskCitation[] } {
+  answer = normalizeBareSourceIds(answer, bundle);
   const byId = new Map((bundle?.results ?? []).map((source) => [source.id, source]));
   const cited = new Map<string, AskCitation>();
   const notice = TEAM_NEWS_ABSTENTION;
