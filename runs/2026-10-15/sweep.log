@@ -1,5 +1,5 @@
 {
-  "runId": "2026-10-15T09-12-35-683Z",
+  "runId": "2026-10-15T15-40-47-335Z",
   "overall": "ISSUES FOUND",
   "requests": 74,
   "featured": {
@@ -12,7 +12,7 @@
     "recognizedFixtureId": "espn:eng.1:401878771"
   },
   "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/2026-10-15T09-12-35-683Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/2026-10-15T09-12-35-683Z.md"
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/2026-10-15T15-40-47-335Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/2026-10-15T15-40-47-335Z.md"
   }
 }
