@@ -85,7 +85,7 @@ function isMatchGrounding(grounding: FederatedGrounding): grounding is Federated
 }
 
 /** Injury-only team-news asks (eval dated-club-news scenario). Lineup asks keep fixture fan-out. */
-function asksInjuryUpdatesWithoutLineups(question: string): boolean {
+export function asksInjuryUpdatesWithoutLineups(question: string): boolean {
   return /\binjur(?:y|ies)\b/i.test(question)
     && !/\b(?:line-?ups?|starting xi|starters?|start(?:s|ing)?|xi)\b/i.test(question);
 }
