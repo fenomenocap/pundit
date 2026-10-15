@@ -60,8 +60,15 @@ import {
   mergeSearchResults,
   planFederatedQueries,
   singleClubCurrentFactScope,
+  asksInjuryUpdatesWithoutLineups,
   type FederatedGrounding,
 } from "./federated-evidence";
+import {
+  appendTeamNewsSearchResults,
+  injuryOnlyTeamNewsNeedsSiteBeatRetry,
+  injurySiteBeatQueries,
+  INJURY_ONLY_SITE_BEAT_FALLBACK_ORDER,
+} from "./team-news-evidence-retrieval";
 import {
   SECTION_LABEL_LINE,
   splitAnswerSentences,
@@ -1134,6 +1141,7 @@ async function buildEvidenceBundle(
   signal?: AbortSignal,
   mergeOptions?: {
     asksStats?: boolean; skippedBecauseGrounded?: string[]; teamNewsFixture?: PlayerFixtureRef;
+    teamNewsQuestion?: string;
     managerFact?: { question: string; grounding: AskGrounding };
   }
 ): Promise<EvidenceBundle> {
@@ -1158,6 +1166,36 @@ async function buildEvidenceBundle(
   }));
   if (mergeOptions?.teamNewsFixture) {
     bundle.results = selectTeamNewsSources(bundle.results, mergeOptions.teamNewsFixture);
+    if (mergeOptions.teamNewsQuestion
+      && asksInjuryUpdatesWithoutLineups(mergeOptions.teamNewsQuestion)
+      && injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, mergeOptions.teamNewsFixture)) {
+      const fixture = mergeOptions.teamNewsFixture;
+      const day = new Date().toISOString().slice(0, 10);
+      for (const beat of INJURY_ONLY_SITE_BEAT_FALLBACK_ORDER) {
+        if (!injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, fixture)) break;
+        const beatQueries = [...injurySiteBeatQueries(beat, fixture.home, fixture.away, day)];
+        if ((bundle.providerCalls ?? 0) + beatQueries.length > PROVIDER_CALL_BUDGET) break;
+        const before = bundle.results.length;
+        const outcomes = await searchWebBatch(beatQueries, signal);
+        for (const outcome of outcomes) noteSearchOutcome(bundle, outcome);
+        bundle.queries.push(...beatQueries);
+        bundle.providerCalls = (bundle.providerCalls ?? 0) + beatQueries.length;
+        bundle.results = appendTeamNewsSearchResults(
+          bundle.results,
+          outcomes,
+          fixture,
+          MAX_EVIDENCE_RESULTS
+        );
+        console.info(JSON.stringify({
+          event: "injury_only_team_news_site_beat_retry",
+          beat,
+          queries: beatQueries.length,
+          resultsBefore: before,
+          resultsAfter: bundle.results.length,
+          needsRetry: injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, fixture),
+        }));
+      }
+    }
   }
   if (mergeOptions?.managerFact) {
     const { question, grounding } = mergeOptions.managerFact;
@@ -1310,11 +1348,15 @@ function managerRoleGrammar(clubName: string) {
     const direct = new RegExp(`^(?:${club}(?:['’]s)?\\s+${currentRole}(?:\\s+today)?\\s+is\\s+${named}|${named}\\s+(?:is|remains)\\s+(?:the\\s+)?(?:current\\s+)?${club}(?:['’]s)?\\s+${currentRole}|(?:the\\s+)?${currentRole}\\s+(?:of|for)\\s+${club}\\s+is\\s+${named})(?:\\s+(?:today|currently))?\\s*[.!]?$`, "iu");
     const contract = new RegExp(`^(?:${club}(?:['’]s)?\\s+${currentRole}\\s+(?:is\\s+)?${named}(?:,?\\s+who)?\\s+has\\s+(?:agreed|signed)\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?(?:contract|deal)\\b|${named}\\s+has\\s+agreed\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?contract\\s+as\\s+${club}(?:['’]s)?\\s+${currentRole}\\b)`, "iu");
     const alignment = new RegExp(`^${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+says\\s+he\\s+and\\s+the\\s+club\\s+are\\s+(?:very\\s+much\\s+)?aligned\\b[^.!?;\\n]{0,100}\\bsigning\\s+a\\s+new\\s+contract\\b`, "iu");
+    // Beat reporting often names the incumbent in apposition ("Everton boss
+    // David Moyes has been speaking") rather than with an explicit "is".
+    const appositiveReporting = new RegExp(`^(?:The\\s+)?(?!(?:Former|Ex[-\\s])\\s)${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+(?:has\\s+(?:been\\s+speaking|said|confirmed|told)|says|said|insists|added|was\\s+speaking)\\b`, "iu");
     // Publisher blocks retain their boundaries; these explicit tenure
     // propositions must start their own statement. A quoted, negated or
     // editorial prefix cannot establish the role.
     return splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
-      .map((sentence) => sentence.trim()).some((sentence) => direct.test(sentence) || contract.test(sentence) || alignment.test(sentence));
+      .map((sentence) => sentence.trim()).some((sentence) => direct.test(sentence) || contract.test(sentence)
+        || alignment.test(sentence) || appositiveReporting.test(sentence));
   };
   return { fullName, role, ownsCurrentRole };
 }
@@ -10024,11 +10066,13 @@ async function answerQuestionScoped(
     const managerScope = managerWhyScope(question, grounding);
     const clubFact = singleClubCurrentFactScope(question, grounding)
       ?? (managerScope ? { kind: "manager" as const, club: managerScope.club } : null);
+    const newsFixture = teamNewsFixture(question, grounding);
     const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
-        teamNewsFixture: teamNewsFixture(question, grounding),
+        teamNewsFixture: newsFixture,
+        teamNewsQuestion: newsFixture ? question : undefined,
         managerFact: clubFact?.kind === "manager" ? { question, grounding } : undefined,
       })
       : { queries: [], results: [], providerCalls: 0 };
@@ -10265,11 +10309,13 @@ async function answerQuestionStreamScoped(
     const managerScope = managerWhyScope(question, grounding);
     const clubFact = singleClubCurrentFactScope(question, grounding)
       ?? (managerScope ? { kind: "manager" as const, club: managerScope.club } : null);
+    const newsFixture = teamNewsFixture(question, grounding);
     const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, handlers.signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
-        teamNewsFixture: teamNewsFixture(question, grounding),
+        teamNewsFixture: newsFixture,
+        teamNewsQuestion: newsFixture ? question : undefined,
         managerFact: clubFact?.kind === "manager" ? { question, grounding } : undefined,
       })
       : { queries: [], results: [], providerCalls: 0 };
