@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WebSearchOutcome } from "./web-search";
+import type { EvidenceTier } from "./evidence-authority";
 import {
   appendTeamNewsSearchResults,
   injuryOnlyTeamNewsNeedsSiteBeatRetry,
@@ -20,6 +21,7 @@ const okOutcome = (
   status: "ok",
   provider: "minimax",
   usedFallback: false,
+  reason: null,
   attempts: [],
   results: results.map((row) => ({
     title: row.title,
@@ -93,6 +95,7 @@ describe("appendTeamNewsSearchResults", () => {
       url: "https://www.bbc.com/sport/football/articles/preview",
       date: "2026-10-13T00:00:00Z",
       snippet: "Fixture preview only.",
+      tier: "news" as EvidenceTier,
     }];
     const outcomes = [okOutcome([{
       title: "Chelsea dealt injury scare before Everton clash",

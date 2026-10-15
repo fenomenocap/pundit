@@ -1,4 +1,4 @@
-import { evidenceAuthority } from "./evidence-authority";
+import { evidenceAuthority, type EvidenceTier } from "./evidence-authority";
 import { mergeSearchResults } from "./federated-evidence";
 import {
   clubNamedInNews,
@@ -8,6 +8,8 @@ import {
   type PlayerFixtureRef,
 } from "./player-evidence";
 import type { WebSearchOutcome } from "./web-search";
+
+type TeamNewsEvidenceRow = PlayerEvidenceSource & { tier: EvidenceTier };
 
 /** Beats tried after the initial federated pass when injury-only retrieval is thin. */
 export const INJURY_ONLY_SITE_BEAT_FALLBACK_ORDER = [
@@ -53,14 +55,14 @@ export function injuryOnlyTeamNewsNeedsSiteBeatRetry(
 }
 
 export function appendTeamNewsSearchResults(
-  existing: readonly PlayerEvidenceSource[],
+  existing: readonly TeamNewsEvidenceRow[],
   outcomes: readonly WebSearchOutcome[],
   fixture: PlayerFixtureRef,
   maxResults = 30
-): PlayerEvidenceSource[] {
+): TeamNewsEvidenceRow[] {
   const seen = new Set(existing.map((row) => row.url.toLocaleLowerCase()));
   const merged = mergeSearchResults(outcomes, { maxResults });
-  const combined: PlayerEvidenceSource[] = [...existing];
+  const combined: TeamNewsEvidenceRow[] = [...existing];
   for (const row of merged) {
     const url = row.link.trim();
     if (!url) continue;
@@ -73,6 +75,7 @@ export function appendTeamNewsSearchResults(
       url,
       date: row.date,
       snippet: row.snippet,
+      tier: row.tier,
     });
   }
   const reindexed = combined.slice(0, maxResults).map((source, index) => ({
