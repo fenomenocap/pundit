@@ -131,7 +131,7 @@ export function singleClubCurrentFactScope(
       const escaped = normalizeTeamText(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const role = manager ? "(?:current )?(?:manager|head coach|coach)" : "(?:latest|last|most recent|final) (?:result|score)";
       const tense = manager ? "is" : "(?:is|was)";
-      const currentTime = "(?: (?:today|now|currently|this season))?[?!.]*";
+      const currentTime = "(?: (?:today|now|currently|right now|at the moment|at present|these days|this season))?[?!.]*";
       return new RegExp(`^(?:(?:who|what) ${tense} ${escaped} ${role}|(?:who|what) ${tense} (?:the |current )?${role} (?:of|for) ${escaped}|who (?:manages|coaches) ${escaped})${currentTime}$`).test(folded);
     });
   });

@@ -98,6 +98,7 @@ import {
   type MarketDivergence,
   type SeasonGrounding,
   todayPreamble,
+  managerWhyScope,
 } from "./ask";
 import {
   premierLeagueSeasonWindow,
@@ -7028,5 +7029,11 @@ describe("settled player news requires exact current-claim verification", () => 
     expect(result.answer).not.toContain("Kai Havertz");
     expect(result.citations).toEqual([]);
     expect(result.verification.supportedClaimCount).toBe(0);
+  });
+});
+
+describe("manager question time qualifiers", () => {
+  it.each(["right now", "at the moment", "today", "currently"])("scopes 'Who is Arsenal's manager %s?' to a manager fact", (qualifier) => {
+    expect(managerWhyScope(`Who is Arsenal's manager ${qualifier}?`, null as never)?.club).toBe("Arsenal");
   });
 });

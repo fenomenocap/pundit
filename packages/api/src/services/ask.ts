@@ -1249,15 +1249,17 @@ export function verifiableCurrentClaims(answer: string): VerifiableClaim[] {
     .map((text, index) => ({ id: `C${index + 1}`, text }));
 }
 
-function managerWhyScope(question: string, grounding: AskGrounding): { club: string; retainAppointment: boolean; wantsReason: boolean } | undefined {
+export function managerWhyScope(question: string, grounding: AskGrounding): { club: string; retainAppointment: boolean; wantsReason: boolean } | undefined {
   const normalized = question.trim().replace(/^who['’]s\b/i, "who is").replace(/^what['’]s\b/i, "what is")
     .replace(/[?!.]\s*(?:and\s+)?(?:explain\s+)?why\b/gi, " and why")
     .replace(/\b(?:and\s+)?explain\s+why\b/gi, "and why");
   const primary = normalized.split(/\band\s+why\b/i)[0].trim().replace(/[?!.]+$/, "");
   const role = "(?:current )?(?:manager|head coach|coach)";
-  const direct = new RegExp(`^(?:who|what) is (.+?)(?:['’]s)? ${role}(?: (?:today|now|currently))?$`, "i").exec(primary)?.[1]
-    ?? new RegExp(`^(?:who|what) is (?:the |current )?${role} (?:of|for) (.+?)(?: (?:today|now|currently))?$`, "i").exec(primary)?.[1]
-    ?? /^who (?:manages|coaches) (.+?)(?: (?:today|now|currently))?$/i.exec(primary)?.[1];
+  // "right now" / "at the moment" are the same present-tense cue as "now".
+  const timeQualifier = "(?: (?:today|now|currently|right now|at the moment|at present|these days))?";
+  const direct = new RegExp(`^(?:who|what) is (.+?)(?:['’]s)? ${role}${timeQualifier}$`, "i").exec(primary)?.[1]
+    ?? new RegExp(`^(?:who|what) is (?:the |current )?${role} (?:of|for) (.+?)${timeQualifier}$`, "i").exec(primary)?.[1]
+    ?? new RegExp(`^who (?:manages|coaches) (.+?)${timeQualifier}$`, "i").exec(primary)?.[1];
   const explicitClub = direct && /^[\p{L}\p{M}\d '&’.-]{1,80}$/u.test(direct) ? canonicalClubName(direct) : null;
   const knownClubs = [...new Set([...(explicitClub ? [explicitClub] : []), ...getTeamNameAliases().map(([, name]) => name)])];
   const scope = singleClubCurrentFactScope(normalized, grounding)
