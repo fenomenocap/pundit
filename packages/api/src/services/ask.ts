@@ -60,8 +60,15 @@ import {
   mergeSearchResults,
   planFederatedQueries,
   singleClubCurrentFactScope,
+  asksInjuryUpdatesWithoutLineups,
   type FederatedGrounding,
 } from "./federated-evidence";
+import {
+  appendTeamNewsSearchResults,
+  injuryOnlyTeamNewsNeedsSiteBeatRetry,
+  injurySiteBeatQueries,
+  INJURY_ONLY_SITE_BEAT_FALLBACK_ORDER,
+} from "./team-news-evidence-retrieval";
 import {
   SECTION_LABEL_LINE,
   splitAnswerSentences,
@@ -1134,6 +1141,7 @@ async function buildEvidenceBundle(
   signal?: AbortSignal,
   mergeOptions?: {
     asksStats?: boolean; skippedBecauseGrounded?: string[]; teamNewsFixture?: PlayerFixtureRef;
+    teamNewsQuestion?: string;
     managerFact?: { question: string; grounding: AskGrounding };
   }
 ): Promise<EvidenceBundle> {
@@ -1158,6 +1166,36 @@ async function buildEvidenceBundle(
   }));
   if (mergeOptions?.teamNewsFixture) {
     bundle.results = selectTeamNewsSources(bundle.results, mergeOptions.teamNewsFixture);
+    if (mergeOptions.teamNewsQuestion
+      && asksInjuryUpdatesWithoutLineups(mergeOptions.teamNewsQuestion)
+      && injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, mergeOptions.teamNewsFixture)) {
+      const fixture = mergeOptions.teamNewsFixture;
+      const day = new Date().toISOString().slice(0, 10);
+      for (const beat of INJURY_ONLY_SITE_BEAT_FALLBACK_ORDER) {
+        if (!injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, fixture)) break;
+        const beatQueries = [...injurySiteBeatQueries(beat, fixture.home, fixture.away, day)];
+        if ((bundle.providerCalls ?? 0) + beatQueries.length > PROVIDER_CALL_BUDGET) break;
+        const before = bundle.results.length;
+        const outcomes = await searchWebBatch(beatQueries, signal);
+        for (const outcome of outcomes) noteSearchOutcome(bundle, outcome);
+        bundle.queries.push(...beatQueries);
+        bundle.providerCalls = (bundle.providerCalls ?? 0) + beatQueries.length;
+        bundle.results = appendTeamNewsSearchResults(
+          bundle.results,
+          outcomes,
+          fixture,
+          MAX_EVIDENCE_RESULTS
+        );
+        console.info(JSON.stringify({
+          event: "injury_only_team_news_site_beat_retry",
+          beat,
+          queries: beatQueries.length,
+          resultsBefore: before,
+          resultsAfter: bundle.results.length,
+          needsRetry: injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, fixture),
+        }));
+      }
+    }
   }
   if (mergeOptions?.managerFact) {
     const { question, grounding } = mergeOptions.managerFact;
@@ -9998,11 +10036,13 @@ async function answerQuestionScoped(
     const managerScope = managerWhyScope(question, grounding);
     const clubFact = singleClubCurrentFactScope(question, grounding)
       ?? (managerScope ? { kind: "manager" as const, club: managerScope.club } : null);
+    const newsFixture = teamNewsFixture(question, grounding);
     const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
-        teamNewsFixture: teamNewsFixture(question, grounding),
+        teamNewsFixture: newsFixture,
+        teamNewsQuestion: newsFixture ? question : undefined,
         managerFact: clubFact?.kind === "manager" ? { question, grounding } : undefined,
       })
       : { queries: [], results: [], providerCalls: 0 };
@@ -10239,11 +10279,13 @@ async function answerQuestionStreamScoped(
     const managerScope = managerWhyScope(question, grounding);
     const clubFact = singleClubCurrentFactScope(question, grounding)
       ?? (managerScope ? { kind: "manager" as const, club: managerScope.club } : null);
+    const newsFixture = teamNewsFixture(question, grounding);
     const rawBundle: EvidenceBundle = plannedQueries.length
       ? await buildEvidenceBundle(plannedQueries, handlers.signal, {
         asksStats: federatedAsksStatisticalQuestion(question),
         skippedBecauseGrounded: groundedSkippedQueries(federatedGroundingFromAsk(grounding)),
-        teamNewsFixture: teamNewsFixture(question, grounding),
+        teamNewsFixture: newsFixture,
+        teamNewsQuestion: newsFixture ? question : undefined,
         managerFact: clubFact?.kind === "manager" ? { question, grounding } : undefined,
       })
       : { queries: [], results: [], providerCalls: 0 };
