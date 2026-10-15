@@ -26,6 +26,11 @@ describe("owned latest results", () => {
     expect(result?.answer).toContain("Brighton 3–0 Arsenal");
     expect(result?.answer).not.toContain("need a verified match report");
   });
+  it.each(["What's the score of Arsenal's last game?", "What was the score of the last Arsenal match?", "What is the final score in Arsenal's most recent game?", "What was the result of Arsenal's last match"])("answers score-of-last-game wording: %s", (q) => {
+    const result = ownedLatestResult(q, state(), now, season());
+    expect(result?.answer).toContain("Brighton 3–0 Arsenal");
+    expect(result?.citations[0].url).toBe("https://www.espn.com/soccer/match/_/gameId/401879274");
+  });
   it("declines to explain why a last game ended as it did", () => {
     const result = ownedLatestResult("Why did Arsenal lose their last game?", state(), now, season());
     expect(result?.answer).toContain("Brighton 3–0 Arsenal");
