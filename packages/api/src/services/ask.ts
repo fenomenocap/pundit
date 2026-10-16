@@ -176,6 +176,8 @@ import {
   buildExternalMarketConsensus,
   type ExternalMarketConsensus,
 } from "./external-market-consensus";
+import { chatEngineMode, isChatAgentEngine } from "./chat-engine";
+import { runChatAgentMatch } from "./chat-agent";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
 import {
   isSeasonOutlookQuestion,
@@ -347,6 +349,7 @@ export function getAnalystResponseStatus() {
   return {
     version: ANALYST_RESPONSE_V2 ? "v2" as const : "legacy" as const,
     enabled: ANALYST_RESPONSE_V2,
+    chatEngine: chatEngineMode(),
     ...analystResponseMetrics,
   };
 }
@@ -10257,6 +10260,14 @@ async function answerQuestionScoped(
       if (query) await buildEvidenceBundle(query, signal);
       return {
         answer: coverageClosed,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
+    if (isChatAgentEngine() && grounding?.kind === "match" && client) {
+      const agentAnswer = await runChatAgentMatch(question, grounding, client, signal);
+      return {
+        answer: agentAnswer,
         grounding,
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
