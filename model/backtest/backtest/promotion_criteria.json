@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "declaredAt": "2026-10-16",
+  "holdout": {
+    "competition": "E0",
+    "evaluationSeasonsFrom": "2122",
+    "minPriorTrainRows": 300
+  },
+  "primaryMetrics": ["logLoss", "brier", "calibration"],
+  "bootstrap": {
+    "n": 2000,
+    "seed": 0,
+    "confidence": 0.95
+  },
+  "promotion": {
+    "requiresBeatCloseLogLoss": true,
+    "logLossDeltaUpperBoundMustBeBelow": 0,
+    "requiresBeatCurrentChampionLogLoss": true,
+    "neverPromoteOn": ["simulatedProfit", "kellyRoi", "flatBetRoi"]
+  },
+  "edgeGate": {
+    "divergenceThresholds": [0.05, 0.1, 0.15],
+    "metric": "logLoss",
+    "requiresCiExcludesZero": true
+  }
+}

@@ -24,7 +24,11 @@
     "clean": "pnpm -r clean",
     "verify:prod": "bash scripts/verify-prod.sh",
     "verify:local": "bash scripts/verify-local.sh",
-    "test:dependency-security": "node --test scripts/braces-security.test.mjs scripts/dependency-security.test.mjs"
+    "test:dependency-security": "node --test scripts/braces-security.test.mjs scripts/dependency-security.test.mjs",
+    "backtest:install": "pip install -e './model/backtest[dev]'",
+    "backtest:ci": "pnpm backtest:install && python3 -m pytest -q model/backtest/tests && python3 -m backtest.cli run --phase baseline --fast",
+    "backtest:download": "python3 -m backtest.cli download-data",
+    "backtest:run": "python3 -m backtest.cli run --phase all"
   },
   "engines": {
     "node": "22.x"
