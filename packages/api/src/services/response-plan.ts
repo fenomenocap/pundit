@@ -190,7 +190,7 @@ export function planResponse(
     mode = "lineup-counterfactual";
   } else if (/\b(?:goalscorer|goal scorer|anytime scorer|first scorer|top scorer|leading scorer|who scores|who (?:will|might|could) score|who (?:will|might|could) (?:most )?likely score|who (?:will|might|could) be (?:most )?likely to score|who is (?:the )?(?:most )?likely to score|who is the scorer|player prop|assists?|cards?)\b/i.test(q)) {
     mode = "player-or-scorer";
-  } else if (/\b(?:injur(?:y|ies|ed)|suspension|availability|team news|confirmed line-?up|starting xi)\b/i.test(q)) {
+  } else if (/\b(?:injur(?:y|ies|ed)|suspension|availability|team news|(?:predicted|probable|expected|likely|confirmed|official|starting)\s+line-?ups?|line-?ups?\s+(?:news|updates?|reports?)|starting (?:xi|eleven))\b/i.test(q)) {
     mode = "team-news";
   } else if (/\b(?:table|standings?)\b/i.test(q)) mode = "table";
   else if (/\b(?:title race|top[- ]four|season outlook|champion)\b/i.test(q)) mode = "season";

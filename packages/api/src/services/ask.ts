@@ -605,7 +605,7 @@ const OVERALL_DEADLINE_MS = 60_000;
 const MAX_EVIDENCE_QUERIES = 6;
 const MAX_EVIDENCE_RESULTS = 30;
 
-const CURRENT_NEWS_QUESTION = /\b(latest|current|currently|this season|season so far|so far this season|right now|at the moment|these days|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
+const CURRENT_NEWS_QUESTION = /\b(latest|current|currently|this season|season so far|so far this season|right now|at the moment|these days|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|line-?ups?|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i;
 // A question about a result -- who won, who went through -- is a question
 // about the outside world. Production answered "Who went through in Celtic's
 // qualifier on aggregate?" with "Celtic advanced" and no search at all.
@@ -908,7 +908,7 @@ export function deterministicSearchQuery(
     && !RESULT_QUESTION.test(question)
     && !containsCorrectionCue(question)
     && !asksStats && !asksExternalIdentityOrResult) return null;
-  const mandatoryExternal = /\b(?:latest|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|lineup|line-up|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i.test(question)
+  const mandatoryExternal = /\b(?:latest|today|tomorrow|this weekend|next (?:match|fixture|game)|recent(?:ly| form)?|dated?|when (?:is|does)|kickoff|kick-off|schedule|injur(?:y|ies|ed)|suspension|availability|available|unavailable|line-?ups?|team news|transfer|manager|coach|odds|price|market|last (?:five|six|\d+) (?:games|matches)|form)\b/i.test(question)
     || RESULT_QUESTION.test(question)
     || containsCorrectionCue(question) || asksExternalIdentityOrResult;
   const asksOwnedMatchFact = grounding?.kind === "match"

@@ -111,6 +111,13 @@ describe("V2 conversational architecture", () => {
       .toBe("totals");
     const followUp = { groundingKind: "match" as const, hasHistory: true };
     expect(planResponse("BTTS?", followUp).mode).toBe("btts");
+    for (const q of ["Everton vs Chelsea lineup news", "Everton vs Chelsea predicted lineup", "Everton vs Chelsea confirmed lineups", "What is the starting eleven?"]) {
+      const plan = planResponse(q, { groundingKind: "match" });
+      expect(plan.mode, q).toBe("team-news");
+      expect(plan.evidenceRequired, q).toBe(true);
+    }
+    expect(planResponse("What if Chelsea's lineup changes?", { groundingKind: "match" }).mode).toBe("lineup-counterfactual");
+
     expect(planResponse("btts", followUp).mode).toBe("btts");
     expect(planResponse("both teams to score", followUp).mode).toBe("btts");
     expect(planResponse("what are the possible scorelines and odds for o2.5", followUp).mode)
