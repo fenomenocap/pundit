@@ -25,7 +25,7 @@ export async function getTeamNews(
   input: GetTeamNewsInput,
   signal?: AbortSignal,
 ): Promise<DataLayerResult<TeamNewsHit[]>> {
-  const queries = planFederatedQueries(input.question, input.grounding ?? null);
+  const queries = planFederatedQueries(input.question, input.grounding ?? null, input.question);
   const outcomes: WebSearchOutcome[] = [];
   for (const query of queries) {
     outcomes.push(await searchWeb(query, signal));
