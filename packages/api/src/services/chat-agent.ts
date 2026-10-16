@@ -129,7 +129,7 @@ function extractText(response: Anthropic.Message): string {
 export async function runChatAgentMatch(
   question: string,
   grounding: Grounding,
-  client: Anthropic,
+  client: Pick<Anthropic, "messages">,
   signal?: AbortSignal,
 ): Promise<string> {
   const inference = resolveInference();
