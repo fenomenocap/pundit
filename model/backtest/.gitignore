@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 *.egg-info/
 data/raw/
-data/xg/
-!data/xg/fixtures/**
+data/xg/understat/
+data/xg/statsbomb/
+data/xg/calibration_v1.json
+data/xg/*manifest.json
 artifacts/

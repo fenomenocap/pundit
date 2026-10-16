@@ -1,0 +1,9 @@
+{
+  "status": "fitted",
+  "n": 75,
+  "scale_h": 0.8711208773875732,
+  "bias_h": 0.16409687009922458,
+  "scale_a": 0.9034663625541213,
+  "bias_a": 0.14235178472162618,
+  "reference": "statsbomb/open-data PL 2015/16 vs understat 2015"
+}
