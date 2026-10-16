@@ -1,0 +1,73 @@
+/**
+ * Quality metrics for chat eval runs (template share, near-duplicates, LLM rate, etc.).
+ */
+
+function normalize(text) {
+  return String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function jaccard(a, b) {
+  const left = new Set(normalize(a).split(" ").filter(Boolean));
+  const right = new Set(normalize(b).split(" ").filter(Boolean));
+  if (!left.size || !right.size) return 0;
+  let inter = 0;
+  for (const token of left) if (right.has(token)) inter += 1;
+  return inter / (left.size + right.size - inter);
+}
+
+const TEMPLATE_MARKERS = [
+  "model vs market",
+  "my 1x2 is",
+  "fair decimal",
+  "no bet",
+  "gamble responsibly",
+  "18+",
+];
+
+export function computeTurnQualityMetrics(turns) {
+  const successful = turns.filter((turn) => turn.httpStatus === 200 && turn.answer);
+  const llmTurns = successful.filter((turn) => turn.engine === "agent" || turn.usedLlm === true);
+  const templateTurns = successful.filter((turn) =>
+    TEMPLATE_MARKERS.some((marker) => normalize(turn.answer).includes(marker)));
+  const citationTurns = successful.filter((turn) => /\]\(https?:\/\//.test(turn.answer ?? ""));
+  const abstainTurns = successful.filter((turn) =>
+    turn.verification?.status === "abstain"
+    || /could not verify|left those claims out/i.test(turn.answer ?? ""));
+
+  let nearDuplicatePairs = 0;
+  for (let i = 0; i < successful.length; i += 1) {
+    for (let j = i + 1; j < successful.length; j += 1) {
+      if (jaccard(successful[i].answer, successful[j].answer) >= 0.85) nearDuplicatePairs += 1;
+    }
+  }
+
+  const n = successful.length || 1;
+  return {
+    templateShare: templateTurns.length / n,
+    nearDuplicateRate: nearDuplicatePairs / Math.max(1, (successful.length * (successful.length - 1)) / 2),
+    llmCallRate: llmTurns.length / n,
+    abstainRate: abstainTurns.length / n,
+    citationCoverage: citationTurns.length / n,
+  };
+}
+
+/**
+ * Side-by-side quality summary for legacy vs agent engine runs.
+ */
+export function compareEngineQuality(legacyTurns, agentTurns) {
+  return {
+    legacy: computeTurnQualityMetrics(legacyTurns),
+    agent: computeTurnQualityMetrics(agentTurns),
+  };
+}
+
+/**
+ * Placeholder LLM-judge hook: production eval supplies critic JSON; this scores coverage only.
+ */
+export function llmJudgePlaceholder(report) {
+  const criticPass = report?.criticReview?.overallVerdict === "PASS";
+  return {
+    score: criticPass ? 1 : 0,
+    note: "Use agent-authored critic JSON for full LLM-judge quality; this field tracks PASS coverage only.",
+  };
+}
