@@ -1,3 +1,5 @@
+import { MODEL_EDGE_CLAIMS_ALLOWED } from "../config/backtest-gate";
+
 export type OneXTwoOutcome = "home" | "draw" | "away";
 
 export type EdgeBand = "noise" | "thin" | "real" | "fat-and-fragile";
@@ -263,7 +265,7 @@ export function buildMatchPricing(input: MatchPricingInput): PricingObject {
       source: row.source,
       observedAt: row.observedAt,
       legs,
-      edgeBand: fattest === null ? null : edgeBand(fattest),
+      edgeBand: !MODEL_EDGE_CLAIMS_ALLOWED || fattest === null ? null : edgeBand(fattest),
     });
   }
   const modelVersion = input.modelVersion?.trim();

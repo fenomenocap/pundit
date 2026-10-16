@@ -434,6 +434,20 @@ export interface PricingObject {
   stakeFrac: null;
 }
 
+export interface ExternalMarketConsensus {
+  label: "Market consensus";
+  pHome: number;
+  pDraw: number;
+  pAway: number;
+  asOf: string;
+  stale: boolean;
+  staleSources: string[];
+  disagreement: boolean;
+  maxSpreadPoints: number;
+  sourceCount: number;
+  sources: Array<{ source: string; observedAt: string; weight: number }>;
+}
+
 export interface MatchGrounding {
   kind: "match";
   goalCalibration?: GoalCalibration;
@@ -462,6 +476,7 @@ export interface MatchGrounding {
   stakePAway: number | null;
   stakeObservedAt?: string;
   oddsSources: OddsSource[];
+  externalMarketConsensus?: ExternalMarketConsensus;
   pricing: PricingObject;
 }
 
