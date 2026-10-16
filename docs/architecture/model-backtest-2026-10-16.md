@@ -22,15 +22,17 @@ Package: `model/backtest/` (`pnpm backtest:ci`, `pnpm backtest:run`).
 | Ensemble (fundamental stack) | 0.9864 | +0.0021 | +0.0274 |
 | **Market close** | **0.9590** | — | — |
 
-**No phase beats the close** on log loss; bootstrap 95% CI for the best fundamental (phase 1) vs close is **[+0.017, +0.033]** (entirely above zero).
+**No phase beats the close** on log loss. Bootstrap 95% CI for (model − close) log loss on the best fundamental (phase 1) is **[+0.017, +0.033]**, which **excludes zero** — the **close is significantly better**, not the model.
 
 Phase 1 marginally beats the champion on walk-forward log loss but stays **behind** `BACKTEST_PROMOTED_MODEL_ENABLED` (default `false`) until a human enables it. Edge/chat wording remains gated: `edgeValidationActive=false` (see `GET /api/model/backtest-gate`).
 
-## Phase 3 data notes
+## Phase 3 xG (see PR after 2026-10-16)
 
-- **StatsBomb open data**: competitions manifest reachable (80 competitions); full PL xG merge needs event files per season (next data pull).
-- **Understat / FBref**: no stable free API key; scraping omitted from CI.
-- **Injuries / lineups**: no free keyed feed identified — **stopped without spend** (`injuries: unavailable_free_source` in gate artifact).
+Understat match xG is fetched offline (`pnpm backtest:download-xg`) into versioned JSON under `model/backtest/data/xg/`. StatsBomb open-data PL 2015/16 shot events calibrate Understat (`calibration_v1.json`). Rolling time-decayed pre-match xG for/against feeds a Poisson/Dixon–Coles 1X2 head and the fundamental ensemble. ClubElo dated CSVs are probed via API/Wayback; when unreachable the results-built Elo proxy remains.
+
+## Other data notes
+
+- **Injuries / lineups**: no free keyed feed identified — **stopped without spend**.
 
 ## Promotion criteria
 

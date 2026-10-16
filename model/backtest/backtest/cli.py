@@ -18,6 +18,11 @@ def main(argv: list[str] | None = None) -> int:
     dl = sub.add_parser("download-data", help="Fetch football-data.co.uk CSVs")
     dl.add_argument("--season", action="append", dest="seasons")
 
+    dxg = sub.add_parser("download-xg", help="Fetch Understat + StatsBomb xG (offline)")
+    dxg.add_argument("--understat-season", type=int, action="append", dest="us_seasons")
+
+    cal = sub.add_parser("calibrate-xg", help="Fit Understat→StatsBomb calibration")
+
     run = sub.add_parser("run", help="Run walk-forward backtest")
     run.add_argument(
         "--phase",
@@ -28,6 +33,21 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     root = package_root()
+
+    if args.cmd == "download-xg":
+        from backtest.xg.statsbomb_fetch import download_statsbomb_calibration
+        from backtest.xg.understat_fetch import download_understat
+
+        rep_us = download_understat(root, seasons=args.us_seasons)
+        rep_sb = download_statsbomb_calibration(root)
+        print(json.dumps({"understat": rep_us, "statsbomb": rep_sb}, indent=2))
+        return 0
+
+    if args.cmd == "calibrate-xg":
+        from backtest.xg.calibration import fit_understat_to_statsbomb
+
+        print(json.dumps(fit_understat_to_statsbomb(root), indent=2))
+        return 0
 
     if args.cmd == "download-data":
         rep = download_all(root, seasons=args.seasons)

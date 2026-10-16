@@ -66,6 +66,35 @@ def score_matrix_1x2(
     return home, draw, away
 
 
+def lambdas_to_1x2_probs(
+    lambda_home: float,
+    lambda_away: float,
+    rho: float = RHO,
+    max_goals: int = MAX_GOALS,
+) -> Tuple[float, float, float]:
+    i = np.arange(max_goals + 1)
+    fact = np.array([math.factorial(int(k)) for k in i], dtype=float)
+    ph = np.exp(-lambda_home) * lambda_home**i / fact
+    pa = np.exp(-lambda_away) * lambda_away**i / fact
+    m = np.outer(ph, pa)
+    for ii in range(min(2, max_goals + 1)):
+        for jj in range(min(2, max_goals + 1)):
+            m[ii, jj] *= _tau(ii, jj, lambda_home, lambda_away, rho)
+    m /= m.sum()
+    return float(np.tril(m, -1).sum()), float(np.trace(m)), float(np.triu(m, 1).sum())
+
+
+def batch_lambdas_to_1x2(
+    lh: np.ndarray,
+    la: np.ndarray,
+    rho: float = RHO,
+) -> np.ndarray:
+    out = np.zeros((len(lh), 3))
+    for idx, (h, a) in enumerate(zip(lh, la)):
+        out[idx] = lambdas_to_1x2_probs(h, a, rho=rho)
+    return out
+
+
 def batch_pundit_1x2(
     elo_h: np.ndarray,
     elo_a: np.ndarray,
