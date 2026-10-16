@@ -373,6 +373,22 @@ export function marketRowsFromGrounding(grounding: MatchGrounding): MarketProbab
       provenance: "market",
     });
   }
+  const consensus = grounding.externalMarketConsensus;
+  if (consensus) {
+    rows.push({
+      id: "market-consensus",
+      label: consensus.disagreement
+        ? "Market consensus (sources disagree)"
+        : consensus.stale
+          ? "Market consensus (stale)"
+          : "Market consensus",
+      pHome: consensus.pHome,
+      pDraw: consensus.pDraw,
+      pAway: consensus.pAway,
+      observedAt: consensus.asOf,
+      provenance: "market",
+    });
+  }
   return rows;
 }
 
