@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { computeTurnQualityMetrics } from "./chat-eval-quality-metrics.mjs";
 import {
   EVAL_SCHEMA_VERSION,
   MIN_REQUEST_INTERVAL_MS,
@@ -1285,6 +1286,14 @@ async function main() {
   await capturePostRunReadiness(report, options, preflightResult.ready.body);
   report.completedAt = new Date().toISOString();
   finalizeClassifications(report, previous);
+  const allTurns = (report.scenarios ?? []).flatMap((scenario) => scenario.turns ?? []).map((turn) => ({
+    httpStatus: turn.httpStatus,
+    answer: turn.answer,
+    verification: turn.verification,
+    usedLlm: turn.usedLlm,
+    engine: report.preflight?.ready?.body?.analystResponse?.chatEngine,
+  }));
+  report.qualityMetrics = computeTurnQualityMetrics(allTurns);
   await writeCheckpoint(report, options.outputDir);
   const paths = await writeReport(report, options.outputDir);
   console.log(JSON.stringify({
