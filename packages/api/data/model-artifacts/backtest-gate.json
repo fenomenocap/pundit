@@ -4,13 +4,13 @@
   "gates": [
     {
       "divergenceMin": 0.05,
-      "n": 1030,
-      "modelLogLoss": 1.0361,
-      "marketLogLoss": 0.9919,
+      "n": 874,
+      "modelLogLoss": 1.0179,
+      "marketLogLoss": 0.9766,
       "bootstrapLogLossDelta": {
-        "delta_mean": 0.0441,
-        "ci_low": 0.0289,
-        "ci_high": 0.0593,
+        "delta_mean": 0.0413,
+        "ci_low": 0.0242,
+        "ci_high": 0.059,
         "beats_close_point_estimate": false,
         "beats_close_ci_excludes_zero": false
       },
@@ -19,13 +19,13 @@
     },
     {
       "divergenceMin": 0.1,
-      "n": 384,
-      "modelLogLoss": 1.1312,
-      "marketLogLoss": 1.036,
+      "n": 306,
+      "modelLogLoss": 1.1165,
+      "marketLogLoss": 1.0312,
       "bootstrapLogLossDelta": {
-        "delta_mean": 0.0953,
-        "ci_low": 0.0636,
-        "ci_high": 0.1273,
+        "delta_mean": 0.085,
+        "ci_low": 0.0471,
+        "ci_high": 0.1211,
         "beats_close_point_estimate": false,
         "beats_close_ci_excludes_zero": false
       },
@@ -34,13 +34,13 @@
     },
     {
       "divergenceMin": 0.15,
-      "n": 116,
-      "modelLogLoss": 1.2566,
-      "marketLogLoss": 1.05,
+      "n": 79,
+      "modelLogLoss": 1.1562,
+      "marketLogLoss": 0.9997,
       "bootstrapLogLossDelta": {
-        "delta_mean": 0.2054,
-        "ci_low": 0.1314,
-        "ci_high": 0.2734,
+        "delta_mean": 0.1579,
+        "ci_low": 0.058,
+        "ci_high": 0.2563,
         "beats_close_point_estimate": false,
         "beats_close_ci_excludes_zero": false
       },
@@ -49,40 +49,58 @@
     }
   ],
   "disclaimer": "Edge labels require walk-forward backtest CI excluding zero vs close at stated divergence.",
-  "promotedModel": "phase1_refit",
-  "challengerBeatsChampion": true,
+  "promotedModel": "champion_baseline",
+  "challengerBeatsChampion": false,
   "challengerBeatsCloseCi": false,
   "phaseMetrics": {
     "champion_baseline": {
-      "logloss": 0.9843,
+      "logloss": 0.9793,
       "vs_champion_delta": 0.0,
-      "vs_close_delta": 0.0253
+      "vs_close_delta": 0.0234
     },
     "phase1_refit": {
-      "logloss": 0.984,
-      "vs_champion_delta": -0.0002,
-      "vs_close_delta": 0.0251
+      "logloss": 0.9807,
+      "vs_champion_delta": 0.0014,
+      "vs_close_delta": 0.0248
     },
     "phase2_dc_mle": {
-      "logloss": 1.0228,
-      "vs_champion_delta": 0.0385,
-      "vs_close_delta": 0.0638
+      "logloss": 1.0189,
+      "vs_champion_delta": 0.0396,
+      "vs_close_delta": 0.063
     },
-    "phase3_context_xg": {
-      "logloss": 0.9871,
-      "vs_champion_delta": 0.0029,
-      "vs_close_delta": 0.0282
+    "phase3_xg_poisson": {
+      "logloss": 1.0321,
+      "vs_champion_delta": 0.0528,
+      "vs_close_delta": 0.0762
     },
     "ensemble_fundamental": {
-      "logloss": 0.9864,
-      "vs_champion_delta": 0.0021,
-      "vs_close_delta": 0.0274
+      "logloss": 0.9876,
+      "vs_champion_delta": 0.0083,
+      "vs_close_delta": 0.0317
     }
   },
-  "clubelo_anchor_corr": 0.9638548663699615,
+  "clubelo_anchor_corr": 0.9578745353726953,
+  "clubelo_history_probe": {
+    "status": "unreachable",
+    "dates": {
+      "2021-08-13": "unreachable",
+      "2022-01-01": "unreachable",
+      "2024-08-16": "unreachable"
+    },
+    "note": "Production backtest keeps results-built Elo proxy when ClubElo CSVs are unavailable."
+  },
   "phase3_meta": {
-    "statsbomb_competitions": 80,
-    "injuries": "unavailable_free_source"
+    "calibration": {
+      "status": "fitted",
+      "n": 75,
+      "scale_h": 0.8711208773875732,
+      "bias_h": 0.16409687009922458,
+      "scale_a": 0.9034663625541213,
+      "bias_a": 0.14235178472162618,
+      "reference": "statsbomb/open-data PL 2015/16 vs understat 2015"
+    },
+    "coverage": 1.0,
+    "model": "xg_poisson_dc"
   },
   "ensemble_weights": {
     "2122": {
@@ -91,27 +109,27 @@
     "2223": {
       "phase1": 0.3333333333333333,
       "phase2": 0.3333333333333333,
-      "phase3": 0.3333333333333333
+      "phase3_xg": 0.3333333333333333
     },
     "2324": {
       "phase1": 0.3333333333333333,
       "phase2": 0.3333333333333333,
-      "phase3": 0.3333333333333333
+      "phase3_xg": 0.3333333333333333
     },
     "2425": {
       "phase1": 0.3333333333333333,
       "phase2": 0.3333333333333333,
-      "phase3": 0.3333333333333333
+      "phase3_xg": 0.3333333333333333
     },
     "2526": {
       "phase1": 0.3333333333333333,
       "phase2": 0.3333333333333333,
-      "phase3": 0.3333333333333333
+      "phase3_xg": 0.3333333333333333
     },
     "2627": {
       "phase1": 0.3333333333333333,
       "phase2": 0.3333333333333333,
-      "phase3": 0.3333333333333333
+      "phase3_xg": 0.3333333333333333
     }
   }
 }

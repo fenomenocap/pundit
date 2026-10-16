@@ -26,7 +26,8 @@ from backtest.metrics import (
 )
 from backtest.phase1 import walk_forward_phase1
 from backtest.phase2 import walk_forward_phase2
-from backtest.phase3 import walk_forward_phase3
+from backtest.phase3_xg import walk_forward_xg_poisson
+from backtest.clubelo_history import probe_clubelo_reachability
 
 
 def _prepare(root: Path, seasons: list[str] | None):
@@ -60,12 +61,12 @@ def run_all_phases(root: Path, seasons: list[str] | None = None) -> dict:
     unset2 = phase2.sum(axis=1) == 0
     phase2[unset2] = champion[unset2]
 
-    phase3, p3_meta = walk_forward_phase3(e, df, seasons_sorted, baseline_probs=phase1)
+    phase3, p3_meta = walk_forward_xg_poisson(e, root, seasons_sorted)
     unset3 = phase3.sum(axis=1) == 0
     phase3[unset3] = phase1[unset3]
 
     ensemble, ens_w = walk_forward_stack(
-        {"phase1": phase1, "phase2": phase2, "phase3": phase3},
+        {"phase1": phase1, "phase2": phase2, "phase3_xg": phase3},
         y,
         season_arr,
         seasons_sorted,
@@ -75,7 +76,7 @@ def run_all_phases(root: Path, seasons: list[str] | None = None) -> dict:
         "champion_baseline": champion,
         "phase1_refit": phase1,
         "phase2_dc_mle": phase2,
-        "phase3_context_xg": phase3,
+        "phase3_xg_poisson": phase3,
         "ensemble_fundamental": ensemble,
         "market_close_novig": market,
     }
@@ -96,7 +97,7 @@ def run_all_phases(root: Path, seasons: list[str] | None = None) -> dict:
         "champion_baseline": champion,
         "phase1_refit": phase1,
         "phase2_dc_mle": phase2,
-        "phase3_context_xg": phase3,
+        "phase3_xg_poisson": phase3,
         "ensemble_fundamental": ensemble,
     }
     ll_scores = {k: log_loss(v, y) for k, v in candidates.items()}
@@ -131,7 +132,11 @@ def run_all_phases(root: Path, seasons: list[str] | None = None) -> dict:
         for name, p in candidates.items()
     }
     gate["clubelo_anchor_corr"] = corr
+    gate["clubelo_history_probe"] = probe_clubelo_reachability()
     gate["phase3_meta"] = p3_meta
+    gate["edgeValidationActive"] = bool(
+        gate.get("challengerBeatsCloseCi") and gate.get("edgeValidationActive")
+    )
     gate["ensemble_weights"] = ens_w
     write_gate_artifact(gate, root)
 
@@ -163,14 +168,15 @@ def run_single_phase(root: Path, phase: str, seasons: list[str] | None = None) -
         p[p.sum(axis=1) == 0] = champion[p.sum(axis=1) == 0]
         name = "phase2_dc_mle"
     elif phase == "3":
-        p, _ = walk_forward_phase3(e, df, seasons_sorted, baseline_probs=champion)
-        name = "phase3_context_xg"
+        p, _ = walk_forward_xg_poisson(e, root, seasons_sorted)
+        name = "phase3_xg_poisson"
     elif phase == "ensemble":
         p1, _ = walk_forward_phase1(season_arr, seasons_sorted, elo_h, elo_a, y)
         p2 = walk_forward_phase2(e, seasons_sorted)
         p2[p2.sum(axis=1) == 0] = champion[p2.sum(axis=1) == 0]
-        p3, _ = walk_forward_phase3(e, df, seasons_sorted, baseline_probs=p1)
-        p, _ = walk_forward_stack({"phase1": p1, "phase2": p2, "phase3": p3}, y, season_arr, seasons_sorted)
+        p3, _ = walk_forward_xg_poisson(e, root, seasons_sorted)
+        p3[p3.sum(axis=1) == 0] = p1[p3.sum(axis=1) == 0]
+        p, _ = walk_forward_stack({"phase1": p1, "phase2": p2, "phase3_xg": p3}, y, season_arr, seasons_sorted)
         name = "ensemble_fundamental"
     else:
         raise ValueError(phase)
