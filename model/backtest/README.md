@@ -18,7 +18,7 @@ Declared before any experiment (`backtest/promotion_criteria.json`):
 | Baseline | Production ClubElo-style proxy + fixed HFA 42 + `eloToLambdas` + Dixon–Coles ρ=−0.1 |
 | 1 | Per-season walk-forward refit of HFA + base goals + ρ |
 | 2 | Time-decayed Dixon–Coles attack/defence MLE |
-| 3 | xG (StatsBomb open), rest days, European midweek flags |
+| 3 | Calibrated Understat rolling xG → Poisson/DC 1X2 (`download-xg`, StatsBomb calibration) |
 | 4 | Stacked / calibrated ensemble of fundamental heads (no market in stack) |
 | Gate | Edge labels allowed only when promoted model beats close at divergence threshold with CI excluding zero |
 
@@ -28,8 +28,10 @@ Declared before any experiment (`backtest/promotion_criteria.json`):
 cd model/backtest
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-python -m backtest.cli download-data   # football-data.co.uk CSVs → data/raw/
-python -m backtest.cli run --phase all # full walk-forward report
+python3 -m backtest.cli download-data   # football-data.co.uk CSVs → data/raw/
+python3 -m backtest.cli download-xg     # Understat + StatsBomb (offline; not in CI)
+python3 -m backtest.cli calibrate-xg    # Understat → StatsBomb scale
+python3 -m backtest.cli run --phase all   # full walk-forward report
 pytest -q                              # CI smoke (fixture CSV, no network)
 ```
 
