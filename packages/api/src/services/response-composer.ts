@@ -1,3 +1,4 @@
+import { MODEL_EDGE_CLAIMS_ALLOWED } from "../config/backtest-gate";
 import type { Grounding } from "./ask";
 import { sanitizeDeskFootballHypotheses, composeDeskFootballTake } from "./desk-voice";
 import { PUNDIT_CONSENSUS_LABEL, PUNDIT_FUNDAMENTAL_LABEL } from "./pundit-consensus";
@@ -192,8 +193,10 @@ function composePricingDeskAnswer(grounding: Grounding, question = ""): string {
     const subject = outcomeLabel(grounding, captured.outcome);
     const source = captured.source[0].toUpperCase() + captured.source.slice(1);
     const band = captured.edgeBand ? ` (${explainEdgeBand(captured.edgeBand)})` : "";
-    return `${oneXTwo} Against the captured ${source} decimal of ${captured.decimalOdds.toFixed(2)} on ${subject}, `
-      + `EV is ${signedEvPct(captured.evPct)}${band}.`;
+    const gapLine = MODEL_EDGE_CLAIMS_ALLOWED
+      ? `EV is ${signedEvPct(captured.evPct)}${band}.`
+      : `My model vs that captured price is ${signedEvPct(captured.evPct)} on probability${band}.`;
+    return `${oneXTwo} Against the captured ${source} decimal of ${captured.decimalOdds.toFixed(2)} on ${subject}, ${gapLine}`;
   }
   if (TYPED_DECIMAL_PRICE.test(question)) {
     return `${oneXTwo} I only price a line you enter in the line field, not one typed into the question, so add it there and I will print EV% and pass or play.`;
@@ -234,7 +237,10 @@ function composeUserLineAnswer(grounding: Grounding): string {
     : line.riskBand === "low"
       ? "a higher chance of winning and a small price gap; losses are still possible"
       : "neither the lower-risk nor higher-risk conditions apply; losses are still possible";
-  return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)}). ${call} Risk is ${line.riskBand}: ${riskExplanation}.`;
+  const gapPhrase = MODEL_EDGE_CLAIMS_ALLOWED
+    ? `EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`
+    : `model vs that line ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`;
+  return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, ${gapPhrase}. ${call} Risk is ${line.riskBand}: ${riskExplanation}.`;
 }
 
 function pct(value: number): string {

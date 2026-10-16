@@ -172,6 +172,10 @@ import {
   type FixtureCapability,
   type RecognizedFixture,
 } from "./fixture-registry";
+import {
+  buildExternalMarketConsensus,
+  type ExternalMarketConsensus,
+} from "./external-market-consensus";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
 import {
   isSeasonOutlookQuestion,
@@ -260,6 +264,8 @@ export interface Grounding {
    * server-owned figure to guarantee it with when the model still omits it.
    */
   marketDivergence: MarketDivergence[];
+  /** Volume-weighted median of complete de-margined external 1X2 sources (not Pundit Consensus). */
+  externalMarketConsensus?: ExternalMarketConsensus;
   /** When each upstream cache was last refreshed — agent must not imply realtime beyond this. */
   freshness: AgentFreshnessMetadata;
   homeElo: number;
@@ -3952,8 +3958,8 @@ const GENERAL_SYSTEM_PROMPT = `You are Pundit, speaking as a first-person genera
 based on one of your match forecasts. Say that naturally in first person when the distinction matters;
 never say "Pundit model", "Pundit's model", "the model" or "model-driven read". Use the web_search tool for current
 facts when helpful, and never fabricate a statistic, injury, squad update, or result.
-For historical World Cup 2026 backtest statistics, you may mention Pundit's frozen evaluation at
-/evaluation/wc-2026 but do not invent numbers from it unless search returns them.
+For historical World Cup 2026 questions, point to the frozen archive at /evaluation/wc-2026 only
+when asked; do not cite it as proof of current model quality or live accuracy.
 For player-level questions (goalscorer, assists, cards, player props), use web_search for current
 player-prop odds and player news, and present anything found as market- or search-sourced with its
 source and date. If search returns nothing solid, say no verified player data is available.
@@ -4688,6 +4694,16 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
       })
     : null;
 
+  const externalMarketConsensus = buildExternalMarketConsensus(
+    oddsSources.map((source) => ({
+      source: source.source,
+      observedAt: source.observedAt,
+      pHome: source.pHome,
+      pDraw: source.pDraw ?? NaN,
+      pAway: source.pAway,
+    })),
+  );
+
   return {
     kind: "match",
     fixtureId,
@@ -4716,6 +4732,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     ...(stakeObservedAt ? { stakeObservedAt } : {}),
     oddsSources,
     ...(consensus ? { consensus } : {}),
+    ...(externalMarketConsensus ? { externalMarketConsensus } : {}),
     marketDivergence: computeMarketDivergence(fixture, oddsSources),
     pricing: buildMatchPricing({
       fixtureId,

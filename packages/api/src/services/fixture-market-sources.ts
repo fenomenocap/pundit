@@ -393,7 +393,8 @@ export function parseKalshiEventDetailed(raw: unknown, fixture: ModelFixture): K
       .map((value) => String(value ?? "").toLowerCase()).join(" ");
     if (!isKalshiMatchOutcomeMarket(label)) continue;
     sawMatchOutcomeMarket = true;
-    const key = marketSelection(String(market.yes_sub_title ?? market.subtitle ?? ""), fixture);
+    const key = marketSelection(String(market.yes_sub_title ?? market.subtitle ?? ""), fixture)
+      ?? marketSelection(String(market.title ?? ""), fixture);
     const price = kalshiPrice(market);
     if (key && price !== null) prices[key] = price;
   }
