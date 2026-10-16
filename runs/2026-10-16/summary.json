@@ -1,31 +1,27 @@
 {
   "date": "2026-10-16",
-  "runId": "2026-10-16T12-08-22-270Z",
+  "runId": "2026-10-16T12-41-25-992Z",
   "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
   "scenariosRun": 73,
-  "passed": 67,
+  "passed": 68,
   "inconclusive": 5,
-  "failed": 1,
+  "failed": 0,
   "turns": 71,
   "answeredTurns": 71,
-  "turnsWithCitations": 4,
-  "medianLatencyMs": 149,
+  "turnsWithCitations": 6,
+  "medianLatencyMs": 105,
   "repeatedSentences": 0,
   "nearDuplicatePairs": 1,
   "uncitedCurrentNews": 0,
   "findings": [
     {
-      "scenario": "pinned-current-manager-and-result-evidence",
-      "summary": "EXISTING ISSUE: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
-    },
-    {
       "scenario": "near-duplicate",
       "summary": "87% overlap between answers to \"What are the latest dated club injury updates for Everton and Chelsea? Keep current reports distinct from future kickoff availability.\" and \"Any injury or lineup news for Everton vs Chelsea?\""
     }
   ],
-  "sourceCommit": "6021c95",
-  "apiSha": "6021c95",
-  "ranAt": "2026-10-16T12:08:22.270Z"
+  "sourceCommit": "6f88e32",
+  "apiSha": "6f88e32",
+  "ranAt": "2026-10-16T12:41:25.992Z"
 }
