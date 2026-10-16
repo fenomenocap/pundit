@@ -1,6 +1,6 @@
 {
   "date": "2026-10-16",
-  "runId": "2026-10-16T09-05-30-192Z",
+  "runId": "2026-10-16T11-34-05-335Z",
   "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
@@ -10,22 +10,22 @@
   "failed": 2,
   "turns": 71,
   "answeredTurns": 71,
-  "turnsWithCitations": 2,
-  "medianLatencyMs": 111,
+  "turnsWithCitations": 3,
+  "medianLatencyMs": 258,
   "repeatedSentences": 0,
   "nearDuplicatePairs": 0,
   "uncitedCurrentNews": 0,
   "findings": [
     {
       "scenario": "pinned-current-manager-and-result-evidence",
-      "summary": "REGRESSION: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+      "summary": "EXISTING ISSUE: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
     },
     {
       "scenario": "dated-club-news-delivers-supported-update",
       "summary": "EXISTING ISSUE: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
     }
   ],
-  "sourceCommit": "f98b630",
-  "apiSha": "f98b630",
-  "ranAt": "2026-10-16T09:05:30.192Z"
+  "sourceCommit": "c166eff",
+  "apiSha": "c166eff",
+  "ranAt": "2026-10-16T11:34:05.335Z"
 }
