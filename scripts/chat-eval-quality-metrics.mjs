@@ -62,12 +62,24 @@ export function compareEngineQuality(legacyTurns, agentTurns) {
 }
 
 /**
- * Placeholder LLM-judge hook: production eval supplies critic JSON; this scores coverage only.
+ * Summarize LLM-judge output on a report (see chat-eval-llm-judge.mjs).
  */
-export function llmJudgePlaceholder(report) {
-  const criticPass = report?.criticReview?.overallVerdict === "PASS";
+export function summarizeLlmJudge(report) {
+  const judge = report?.llmJudge;
+  if (!judge) {
+    const criticPass = report?.criticReview?.overallVerdict === "PASS";
+    return {
+      score: criticPass ? 1 : 0,
+      note: "LLM judge skipped; critic PASS coverage only.",
+    };
+  }
+  if (!judge?.averages) {
+    return { score: null, note: judge?.turns?.[0]?.reason ?? "LLM judge not run." };
+  }
   return {
-    score: criticPass ? 1 : 0,
-    note: "Use agent-authored critic JSON for full LLM-judge quality; this field tracks PASS coverage only.",
+    score: judge.averages.overall,
+    averages: judge.averages,
+    judgedTurns: judge.judgedTurns,
+    scoredTurns: judge.scoredTurns,
   };
 }

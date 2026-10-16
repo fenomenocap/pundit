@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MODEL_EDGE_CLAIMS_ALLOWED } from "../config/backtest-gate";
-import type { Grounding } from "./ask";
-import { getModelForecast } from "./data-layer/getModelForecast";
+import type { AskGrounding } from "./ask";
+import { getFixtures } from "./data-layer/getFixtures";
 import { getMarketOdds } from "./data-layer/getMarketOdds";
 import { getForm } from "./data-layer/getForm";
 import { getStandings } from "./data-layer/getStandings";
@@ -11,27 +11,53 @@ import { getPlayer } from "./data-layer/getPlayer";
 import { getModelForecastByKey } from "./data-layer/getModelForecast";
 import { getCachedModelData, getModelFixtureKey } from "./model-data";
 import { resolveInference } from "./inference-config";
+import type { FederatedGrounding } from "./federated-evidence";
 
 const AGENT_TOOLS: Anthropic.Tool[] = [
   {
+    name: "get_fixtures",
+    description: "Upcoming and recent fixtures from ESPN (optional competitionId filter).",
+    input_schema: {
+      type: "object",
+      properties: { competitionId: { type: "string" } },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "get_model_forecast",
-    description: "Pundit Fundamental 1X2, totals, BTTS and scorelines for the selected fixture.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    description: "Pundit Fundamental 1X2, totals, BTTS and scorelines for a priced fixture.",
+    input_schema: {
+      type: "object",
+      properties: { fixtureId: { type: "string" } },
+      additionalProperties: false,
+    },
   },
   {
     name: "get_market_odds",
-    description: "External no-vig 1X2 sources and volume-weighted market consensus.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    description: "External no-vig 1X2 sources and volume-weighted market consensus for a fixture.",
+    input_schema: {
+      type: "object",
+      properties: { fixtureId: { type: "string" } },
+      additionalProperties: false,
+    },
   },
   {
     name: "get_form",
-    description: "Recent league form for both clubs in the fixture competition.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    description: "Recent league form for clubs in a competition.",
+    input_schema: {
+      type: "object",
+      properties: { competitionId: { type: "string" } },
+      additionalProperties: false,
+    },
   },
   {
     name: "get_standings",
     description: "Current competition table rows from ESPN.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    input_schema: {
+      type: "object",
+      properties: { competitionId: { type: "string" } },
+      additionalProperties: false,
+    },
   },
   {
     name: "get_team_news",
@@ -77,41 +103,74 @@ function agentReasoning(): { thinking?: { type: "enabled"; budget_tokens: number
   return {};
 }
 
+function defaultCompetitionId(grounding: AskGrounding): string | undefined {
+  if (grounding?.kind === "match") return grounding.competitionId;
+  if (grounding?.kind === "competition") return grounding.competitionId;
+  if (grounding?.kind === "season") return grounding.competitionId;
+  return "eng.1";
+}
+
+function defaultFixtureId(grounding: AskGrounding): string | undefined {
+  return grounding?.kind === "match" ? grounding.fixtureId : undefined;
+}
+
+function federatedGrounding(grounding: AskGrounding): FederatedGrounding {
+  if (grounding?.kind === "match") {
+    return {
+      kind: "match",
+      home: grounding.home,
+      away: grounding.away,
+      freshness: grounding.freshness,
+    };
+  }
+  return null;
+}
+
 async function runAgentTool(
   name: string,
   input: Record<string, unknown>,
-  fixture: Grounding,
+  grounding: AskGrounding,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const cached = getCachedModelData().fixtures.find(
-    (row) => getModelFixtureKey(row) === fixture.fixtureId,
-  );
-  const modelRow = getModelForecastByKey(fixture.fixtureId);
+  const fixtureId = typeof input.fixtureId === "string" && input.fixtureId.trim()
+    ? input.fixtureId.trim()
+    : defaultFixtureId(grounding);
+  const competitionId = typeof input.competitionId === "string" && input.competitionId.trim()
+    ? input.competitionId.trim()
+    : defaultCompetitionId(grounding);
+  const cached = fixtureId
+    ? getCachedModelData().fixtures.find((row) => getModelFixtureKey(row) === fixtureId)
+    : undefined;
+  const modelRow = fixtureId ? getModelForecastByKey(fixtureId) : null;
+  const fed = federatedGrounding(grounding);
+
   switch (name) {
+    case "get_fixtures":
+      return getFixtures({ competitionId: typeof input.competitionId === "string" ? input.competitionId : competitionId }).data;
     case "get_model_forecast":
-      return modelRow?.data ?? { error: "model_fixture_not_found" };
+      return modelRow?.data ?? (fixtureId ? { error: "model_fixture_not_found", fixtureId } : { error: "fixture_id_required" });
     case "get_market_odds":
-      if (!cached) return { error: "model_fixture_not_found" };
+      if (!cached) return { error: "model_fixture_not_found", fixtureId };
       return getMarketOdds(cached).data;
     case "get_form":
-      return getForm({ competitionId: fixture.competitionId }).data;
+      return getForm({ competitionId: competitionId ?? "eng.1" }).data;
     case "get_standings":
-      return getStandings({ competitionId: fixture.competitionId }).data;
+      return getStandings({ competitionId: competitionId ?? "eng.1" }).data;
     case "get_team_news":
       return (await getTeamNews({
         question: String(input.question ?? ""),
-        grounding: { kind: "match", home: fixture.home, away: fixture.away, freshness: fixture.freshness },
+        grounding: fed,
       }, signal)).data;
     case "get_managers":
       return (await getManagers({
-        club: String(input.club ?? fixture.home),
-        grounding: { kind: "match", home: fixture.home, away: fixture.away, freshness: fixture.freshness },
+        club: String(input.club ?? (grounding?.kind === "match" ? grounding.home : "")),
+        grounding: fed,
       }, signal)).data;
     case "get_player":
       return (await getPlayer({
         player: String(input.player ?? ""),
         club: typeof input.club === "string" ? input.club : undefined,
-        grounding: { kind: "match", home: fixture.home, away: fixture.away, freshness: fixture.freshness },
+        grounding: fed,
       }, signal)).data;
     default:
       return { error: "unknown_tool" };
@@ -126,16 +185,33 @@ function extractText(response: Anthropic.Message): string {
     .trim();
 }
 
-export async function runChatAgentMatch(
+function groundingContextLine(grounding: AskGrounding): string {
+  if (grounding?.kind === "match") {
+    return `Fixture: ${grounding.home} vs ${grounding.away} (${grounding.competition}, fixtureId=${grounding.fixtureId}).`;
+  }
+  if (grounding?.kind === "competition") {
+    return `Competition table: ${grounding.competition} (${grounding.competitionId}).`;
+  }
+  if (grounding?.kind === "season") {
+    return `Season outlook: ${grounding.competition} (${grounding.competitionId}).`;
+  }
+  if (grounding?.kind === "fixture") {
+    return `Recognized fixture (non-priced): ${grounding.fixture.homeTeam.name} vs ${grounding.fixture.awayTeam.name}.`;
+  }
+  return "General football analysis (no priced fixture selected).";
+}
+
+/** Agent path for match, table, season, and general tiers using data-layer tools. */
+export async function runChatAgent(
   question: string,
-  grounding: Grounding,
+  grounding: AskGrounding,
   client: Pick<Anthropic, "messages">,
   signal?: AbortSignal,
 ): Promise<string> {
   const inference = resolveInference();
   const messages: Anthropic.MessageParam[] = [{
     role: "user",
-    content: `Fixture: ${grounding.home} vs ${grounding.away} (${grounding.competition}).\nQuestion: ${question}`,
+    content: `${groundingContextLine(grounding)}\nQuestion: ${question}`,
   }];
 
   for (let step = 0; step < 8; step += 1) {
@@ -167,4 +243,19 @@ export async function runChatAgentMatch(
     messages.push({ role: "user", content: results });
   }
   return "No bet — the agent loop exhausted its tool budget before finishing.";
+}
+
+/** @deprecated Use runChatAgent */
+export async function runChatAgentMatch(
+  question: string,
+  grounding: Extract<AskGrounding, { kind: "match" }>,
+  client: Pick<Anthropic, "messages">,
+  signal?: AbortSignal,
+): Promise<string> {
+  return runChatAgent(question, grounding, client, signal);
+}
+
+export function chatAgentGroundingEligible(grounding: AskGrounding): boolean {
+  if (grounding?.kind === "fixture") return false;
+  return true;
 }

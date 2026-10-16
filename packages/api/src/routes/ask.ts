@@ -10,6 +10,10 @@ import {
   UserLine,
 } from "../services/ask";
 import {
+  parseChatEvalEngineOverrideHeader,
+  withChatEngineRequestScope,
+} from "../services/chat-engine";
+import {
   parseChatEvalSearchReplayHeader,
   withWebSearchReplayScope,
 } from "../services/web-search-replay";
@@ -178,10 +182,17 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     const searchReplayScope = parseChatEvalSearchReplayHeader(
       req.headers["x-pundit-chat-eval-search-replay"]
     );
+    const evalGuardActive = searchReplayScope !== null;
+    const engineOverride = parseChatEvalEngineOverrideHeader(
+      req.headers["x-pundit-chat-engine"],
+      evalGuardActive,
+    );
+    const runAsk = <T>(fn: () => Promise<T>) => withWebSearchReplayScope(searchReplayScope, () =>
+      withChatEngineRequestScope(engineOverride, fn));
 
     if (req.body?.stream !== true) {
       try {
-        const result = await withWebSearchReplayScope(searchReplayScope, () => answerQuestion(
+        const result = await runAsk(() => answerQuestion(
           trimmedQuestion,
           history,
           teamContext,
@@ -219,9 +230,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     req.on("close", onClose);
     res.on("close", onClose);
     try {
-      const { answer, grounding, citations, verification, presentation } = await withWebSearchReplayScope(
-        searchReplayScope,
-        () => answerQuestionStream(
+      const { answer, grounding, citations, verification, presentation } = await runAsk(() => answerQuestionStream(
         trimmedQuestion,
         history,
         teamContext,
