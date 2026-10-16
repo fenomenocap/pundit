@@ -49,6 +49,14 @@ jobs:
       - name: Test API
         run: pnpm --filter @sports-predict/api test
 
+      - name: Set up Python for model backtest
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Model backtest (walk-forward smoke)
+        run: pnpm backtest:ci
+
       # The chat-eval harness lives in root scripts/, so pnpm -r test never
       # reached it and its guards could rot unnoticed. Both commands are local:
       # no production traffic and no MiniMax credits.
