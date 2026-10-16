@@ -116,16 +116,36 @@ function mentionsClubManager(source: PlayerEvidenceSource, club: string): boolea
   return clubNamedInNews(text, club) && CLUB_MANAGER_HINT.test(text);
 }
 
-/** Dated candidates for desk/extractor, or allowlisted club-injury pages that may hydrate. */
+/** Approved injury evidence on the post-selection bundle used by desk settlement. */
+export function injuryOnlyTeamNewsHasApprovedEvidenceFromSelected(
+  selected: readonly PlayerEvidenceSource[],
+  fixture: PlayerFixtureRef,
+  now = Date.now()
+): boolean {
+  if (datedClubNewsSources(selected, fixture, now).length > 0) return true;
+  return selected.some((source) => mentionsFixtureClubInjury(source, fixture));
+}
+
+/** Approved injury evidence that survives team-news selection and dated filters. */
+export function injuryOnlyTeamNewsHasApprovedEvidence(
+  sources: readonly PlayerEvidenceSource[],
+  fixture: PlayerFixtureRef,
+  now = Date.now()
+): boolean {
+  return injuryOnlyTeamNewsHasApprovedEvidenceFromSelected(
+    selectTeamNewsSources([...sources], fixture),
+    fixture,
+    now
+  );
+}
+
+/** Retry only when no approved source would survive post-filter selection. */
 export function injuryOnlyTeamNewsNeedsSiteBeatRetry(
   sources: readonly PlayerEvidenceSource[],
   fixture: PlayerFixtureRef,
   now = Date.now()
 ): boolean {
-  if (datedClubNewsSources([...sources], fixture, now).length > 0) return false;
-  return !sources.some((source) =>
-    evidenceAuthority(source.url) !== "other" && mentionsFixtureClubInjury(source, fixture)
-  );
+  return !injuryOnlyTeamNewsHasApprovedEvidence(sources, fixture, now);
 }
 
 export function managerLookupNeedsSiteBeatRetry(
