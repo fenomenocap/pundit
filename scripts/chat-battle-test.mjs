@@ -74,6 +74,9 @@ function parseArgs(argv) {
     dryRun: false,
     deploymentId: process.env.PUNDIT_DEPLOYMENT_ID ?? null,
     sourceSha: process.env.PUNDIT_SOURCE_SHA ?? null,
+    searchReplayId: process.env.CHAT_EVAL_SEARCH_REPLAY_ID ?? null,
+    pinnedGateFixture: null,
+    gateOnly: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -87,6 +90,9 @@ function parseArgs(argv) {
     else if (argument === "--timeout-ms") options.timeoutMs = Number(argv[++index]);
     else if (argument === "--deployment-id") options.deploymentId = argv[++index];
     else if (argument === "--source-sha") options.sourceSha = argv[++index];
+    else if (argument === "--search-replay-id") options.searchReplayId = argv[++index];
+    else if (argument === "--pinned-gate-fixture") options.pinnedGateFixture = path.resolve(argv[++index]);
+    else if (argument === "--gate-only") options.gateOnly = true;
     else throw new Error(`Unknown argument: ${argument}`);
   }
   if (!Number.isFinite(options.intervalMs) || options.intervalMs < 0) {
@@ -273,9 +279,13 @@ async function jsonTurn(
     startedAt: start,
     reproduction: { method: "POST", path: "/api/ask", body: requestBody },
   });
+  const askHeaders = { "content-type": "application/json" };
+  if (options.searchReplayId) {
+    askHeaders["x-pundit-chat-eval-search-replay"] = options.searchReplayId;
+  }
   let response = await fetchJson(`${options.apiUrl}/api/ask`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: askHeaders,
     body: JSON.stringify(requestBody)
   }, options.timeoutMs);
   let gateway502Retried = false;
@@ -285,7 +295,7 @@ async function jsonTurn(
     const retryStart = pacer.starts.at(-1);
     response = await fetchJson(`${options.apiUrl}/api/ask`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: askHeaders,
       body: JSON.stringify(requestBody)
     }, options.timeoutMs);
     gateway502Retried = true;
@@ -1035,6 +1045,23 @@ async function runScenario(
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (options.pinnedGateFixture) {
+    const { spawnSync } = await import("node:child_process");
+    const args = [
+      path.join(ROOT, "scripts/chat-eval-pinned-gate.mjs"),
+      "--assert-only",
+      "--fixture",
+      options.pinnedGateFixture,
+    ];
+    if (options.gateOnly) {
+      args.push("--scenarios", options.scenariosPath);
+    } else {
+      args.push("--scenarios", path.join(ROOT, "evals/chat/scenarios.monitor.json"));
+    }
+    const child = spawnSync(process.execPath, args, { stdio: "inherit" });
+    process.exitCode = child.status ?? 1;
+    return;
+  }
   const scenarioConfig = JSON.parse(await readFile(options.scenariosPath, "utf8"));
   if (scenarioConfig.schemaVersion !== EVAL_SCHEMA_VERSION) {
     throw new Error(`Scenario schema ${scenarioConfig.schemaVersion} does not match evaluator schema ${EVAL_SCHEMA_VERSION}.`);
