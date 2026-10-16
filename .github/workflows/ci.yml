@@ -63,6 +63,9 @@ jobs:
       - name: Validate chat-eval scenarios
         run: pnpm chat-eval:dry-run
 
+      - name: Pinned monitor chat-eval gate (deterministic)
+        run: pnpm chat-eval:gate
+
       - name: Test Vercel ignored-build policy
         run: pnpm test:vercel-ignore
 
