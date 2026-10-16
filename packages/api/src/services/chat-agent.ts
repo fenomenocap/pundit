@@ -69,10 +69,10 @@ When our model disagrees with market consensus, say so plainly and explain using
 Never say lock, guaranteed, or can't lose. Mention small stakes and 18+ / gamble responsibly on any betting call.
 Refuse anything aimed at problem gambling.`;
 
-function agentReasoning(): { thinking?: { type: "enabled" } } {
+function agentReasoning(): { thinking?: { type: "enabled"; budget_tokens: number } } {
   if (process.env.PUNDIT_REASONING?.trim().toLowerCase() === "off") return {};
   if (resolveInference().provider === "openrouter") {
-    return { thinking: { type: "enabled" as const } };
+    return { thinking: { type: "enabled", budget_tokens: 2048 } };
   }
   return {};
 }
