@@ -9,6 +9,10 @@ import {
   TeamContext,
   UserLine,
 } from "../services/ask";
+import {
+  parseChatEvalSearchReplayHeader,
+  withWebSearchReplayScope,
+} from "../services/web-search-replay";
 
 const router: Router = Router();
 const MAX_HISTORY_TURNS = 12;
@@ -171,9 +175,13 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     req.once("aborted", abortOnDisconnect);
     res.once("close", abortOnDisconnect);
 
+    const searchReplayScope = parseChatEvalSearchReplayHeader(
+      req.headers["x-pundit-chat-eval-search-replay"]
+    );
+
     if (req.body?.stream !== true) {
       try {
-        const result = await answerQuestion(
+        const result = await withWebSearchReplayScope(searchReplayScope, () => answerQuestion(
           trimmedQuestion,
           history,
           teamContext,
@@ -181,7 +189,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           fixtureContext,
           userLine,
           voice
-        );
+        ));
         res.json(result);
       } finally {
         clearTimeout(deadline);
@@ -211,7 +219,9 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     req.on("close", onClose);
     res.on("close", onClose);
     try {
-      const { answer, grounding, citations, verification, presentation } = await answerQuestionStream(
+      const { answer, grounding, citations, verification, presentation } = await withWebSearchReplayScope(
+        searchReplayScope,
+        () => answerQuestionStream(
         trimmedQuestion,
         history,
         teamContext,
@@ -243,7 +253,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
         },
         fixtureContext,
         userLine
-      );
+      ));
       stopHeartbeat();
       if (!clientGone && !res.writableEnded) {
         sseSend(res, "done", {
