@@ -177,7 +177,8 @@ import {
   type ExternalMarketConsensus,
 } from "./external-market-consensus";
 import { chatEngineMode, isChatAgentEngine } from "./chat-engine";
-import { runChatAgentMatch } from "./chat-agent";
+import { chatAgentGroundingEligible, runChatAgent } from "./chat-agent";
+import type { ChatEngineMode } from "./chat-engine";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
 import {
   isSeasonOutlookQuestion,
@@ -10140,12 +10141,24 @@ export interface AskResult {
   citations?: AskCitation[];
   verification: AskVerification;
   presentation: ResponsePresentation;
+  /** Effective chat engine for this response (env or eval-only header override). */
+  engine: ChatEngineMode;
+  /** True when the answer path invoked the inference client (agent or legacy prose). */
+  usedLlm: boolean;
 }
+
+type ScopedAskPayload = {
+  answer: string;
+  grounding: AskGrounding;
+  citations?: AskCitation[];
+  verification: AskVerification;
+  usedLlm?: boolean;
+};
 
 function withPresentation(
   question: string,
   hasHistory: boolean,
-  result: Omit<AskResult, "presentation">
+  result: ScopedAskPayload,
 ): AskResult {
   const plan = planResponse(question, {
     hasHistory,
@@ -10156,6 +10169,8 @@ function withPresentation(
     ...result,
     answer: finalizeDeliveredText(result.answer, result.grounding, ANALYST_RESPONSE_V2),
     presentation: responsePresentation(plan),
+    engine: chatEngineMode(),
+    usedLlm: result.usedLlm === true,
   };
 }
 
@@ -10190,12 +10205,7 @@ async function answerQuestionScoped(
   fixtureContext?: FixtureContext,
   userLine?: UserLine,
   voice?: "desk"
-): Promise<{
-  answer: string;
-  grounding: AskGrounding;
-  citations?: AskCitation[];
-  verification: AskVerification;
-}> {
+): Promise<ScopedAskPayload> {
   const requestStartedAt = Date.now();
   const resultRecord = ownedLatestResult(question);
   if (resultRecord) {
@@ -10264,12 +10274,13 @@ async function answerQuestionScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
-    if (isChatAgentEngine() && grounding?.kind === "match" && client) {
-      const agentAnswer = await runChatAgentMatch(question, grounding, client, signal);
+    if (isChatAgentEngine() && client && chatAgentGroundingEligible(grounding)) {
+      const agentAnswer = await runChatAgent(question, grounding, client, signal);
       return {
         answer: agentAnswer,
         grounding,
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+        usedLlm: true,
       };
     }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
@@ -10394,6 +10405,7 @@ async function answerQuestionScoped(
           answer: delivered.answer,
           grounding,
           verification: delivered.verification,
+          usedLlm: true,
           ...(delivered.citations.length ? { citations: delivered.citations } : {}),
         };
       }
@@ -10406,6 +10418,7 @@ async function answerQuestionScoped(
         answer: scorerSettled.answer,
         grounding,
         verification: scorerSettled.verification,
+        usedLlm: true,
         ...(scorerSettled.citations.length ? { citations: scorerSettled.citations } : {}),
       };
     }
@@ -10442,6 +10455,7 @@ async function answerQuestionScoped(
       answer: delivered.answer,
       grounding,
       verification: delivered.verification,
+      usedLlm: true,
       ...(delivered.citations.length ? { citations: delivered.citations } : {}),
     };
   } catch (err) {
@@ -10490,12 +10504,7 @@ async function answerQuestionStreamScoped(
   handlers: AskStreamHandlers,
   fixtureContext?: FixtureContext,
   userLine?: UserLine
-): Promise<{
-  answer: string;
-  grounding: AskGrounding;
-  citations?: AskCitation[];
-  verification: AskVerification;
-}> {
+): Promise<ScopedAskPayload> {
   const requestStartedAt = Date.now();
   const resultRecord = ownedLatestResult(question);
   if (resultRecord) {
@@ -10567,6 +10576,16 @@ async function answerQuestionStreamScoped(
         answer: settledCoverage,
         grounding,
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
+    if (isChatAgentEngine() && client && chatAgentGroundingEligible(grounding)) {
+      const agentAnswer = await runChatAgent(question, grounding, client, handlers.signal);
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(agentAnswer);
+      return {
+        answer: agentAnswer,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+        usedLlm: true,
       };
     }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);

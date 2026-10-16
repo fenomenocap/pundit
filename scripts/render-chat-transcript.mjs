@@ -198,6 +198,10 @@ export function summarizeTranscript(report, { runDate } = {}) {
     repeatedSentences: repeated.length,
     nearDuplicatePairs: nearDuplicates.length,
     uncitedCurrentNews: uncited.length,
+    requestEngine: report?.requestEngine ?? null,
+    qualityMetrics: report?.qualityMetrics ?? null,
+    llmJudgeSummary: report?.llmJudgeSummary ?? null,
+    engineQualityComparison: report?.engineQualityComparison ?? null,
     findings,
     sourceCommit: report?.deployment?.sourceSha?.slice(0, 7) ?? null,
     apiSha: report?.deployment?.apiSha?.slice(0, 7) ?? null,
@@ -227,6 +231,16 @@ export function renderTranscript(report, summary = summarizeTranscript(report)) 
     `- API \`${summary.apiSha ?? "?"}\` · scenarios ${summary.scenariosRun} (pass ${summary.passed}, inconclusive ${summary.inconclusive}, fail ${summary.failed})`,
     `- Turns ${summary.turns} · answered ${summary.answeredTurns} · with citations ${summary.turnsWithCitations} · median latency ${summary.medianLatencyMs ?? "n/a"} ms`,
     `- Quality signals: ${summary.repeatedSentences} repeated sentence(s), ${summary.nearDuplicatePairs} near-duplicate answer pair(s), ${summary.uncitedCurrentNews} uncited current-news turn(s)`,
+    summary.requestEngine ? `- Request engine: **${summary.requestEngine}**` : null,
+    summary.qualityMetrics
+      ? `- Eval quality: template ${Math.round(summary.qualityMetrics.templateShare * 100)}%, LLM rate ${Math.round(summary.qualityMetrics.llmCallRate * 100)}%, citations ${Math.round(summary.qualityMetrics.citationCoverage * 100)}%`
+      : null,
+    summary.llmJudgeSummary?.score != null
+      ? `- LLM judge overall: ${summary.llmJudgeSummary.score}`
+      : null,
+    summary.engineQualityComparison
+      ? `- Engine comparison (legacy vs agent): template ${summary.engineQualityComparison.legacy.templateShare?.toFixed(2)} → ${summary.engineQualityComparison.agent.templateShare?.toFixed(2)}`
+      : null,
     "",
     "## Findings",
     "",

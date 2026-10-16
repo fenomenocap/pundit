@@ -10,6 +10,14 @@ on:
   schedule:
     - cron: "17 4 * * *"
   workflow_dispatch:
+    inputs:
+      engine:
+        description: Chat engine override for the live sweep (eval replay guard required on API)
+        type: choice
+        options:
+          - legacy
+          - agent
+        default: legacy
 
 permissions:
   contents: write
@@ -83,9 +91,12 @@ jobs:
       - name: Run production chat battle test
         id: sweep
         continue-on-error: true
+        env:
+          CHAT_EVAL_ENGINE: ${{ github.event_name == 'workflow_dispatch' && inputs.engine || 'legacy' }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           set -o pipefail
-          node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" 2>&1 | tee sweep.log
+          node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine "$CHAT_EVAL_ENGINE" 2>&1 | tee sweep.log
 
       - name: Render transcript and summary
         id: render
