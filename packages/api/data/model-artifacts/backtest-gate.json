@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "edgeValidationActive": false,
+  "gates": [
+    {
+      "divergenceMin": 0.05,
+      "n": 1030,
+      "modelLogLoss": 1.0361,
+      "marketLogLoss": 0.9919,
+      "bootstrapLogLossDelta": {
+        "delta_mean": 0.0441,
+        "ci_low": 0.0289,
+        "ci_high": 0.0593,
+        "beats_close_point_estimate": false,
+        "beats_close_ci_excludes_zero": false
+      },
+      "status": "fail",
+      "edgeAllowed": false
+    },
+    {
+      "divergenceMin": 0.1,
+      "n": 384,
+      "modelLogLoss": 1.1312,
+      "marketLogLoss": 1.036,
+      "bootstrapLogLossDelta": {
+        "delta_mean": 0.0953,
+        "ci_low": 0.0636,
+        "ci_high": 0.1273,
+        "beats_close_point_estimate": false,
+        "beats_close_ci_excludes_zero": false
+      },
+      "status": "fail",
+      "edgeAllowed": false
+    },
+    {
+      "divergenceMin": 0.15,
+      "n": 116,
+      "modelLogLoss": 1.2566,
+      "marketLogLoss": 1.05,
+      "bootstrapLogLossDelta": {
+        "delta_mean": 0.2054,
+        "ci_low": 0.1314,
+        "ci_high": 0.2734,
+        "beats_close_point_estimate": false,
+        "beats_close_ci_excludes_zero": false
+      },
+      "status": "fail",
+      "edgeAllowed": false
+    }
+  ],
+  "disclaimer": "Edge labels require walk-forward backtest CI excluding zero vs close at stated divergence.",
+  "promotedModel": "phase1_refit",
+  "challengerBeatsChampion": true,
+  "challengerBeatsCloseCi": false,
+  "phaseMetrics": {
+    "champion_baseline": {
+      "logloss": 0.9843,
+      "vs_champion_delta": 0.0,
+      "vs_close_delta": 0.0253
+    },
+    "phase1_refit": {
+      "logloss": 0.984,
+      "vs_champion_delta": -0.0002,
+      "vs_close_delta": 0.0251
+    },
+    "phase2_dc_mle": {
+      "logloss": 1.0228,
+      "vs_champion_delta": 0.0385,
+      "vs_close_delta": 0.0638
+    },
+    "phase3_context_xg": {
+      "logloss": 0.9871,
+      "vs_champion_delta": 0.0029,
+      "vs_close_delta": 0.0282
+    },
+    "ensemble_fundamental": {
+      "logloss": 0.9864,
+      "vs_champion_delta": 0.0021,
+      "vs_close_delta": 0.0274
+    }
+  },
+  "clubelo_anchor_corr": 0.9638548663699615,
+  "phase3_meta": {
+    "statsbomb_competitions": 80,
+    "injuries": "unavailable_free_source"
+  },
+  "ensemble_weights": {
+    "2122": {
+      "phase1": 1.0
+    },
+    "2223": {
+      "phase1": 0.3333333333333333,
+      "phase2": 0.3333333333333333,
+      "phase3": 0.3333333333333333
+    },
+    "2324": {
+      "phase1": 0.3333333333333333,
+      "phase2": 0.3333333333333333,
+      "phase3": 0.3333333333333333
+    },
+    "2425": {
+      "phase1": 0.3333333333333333,
+      "phase2": 0.3333333333333333,
+      "phase3": 0.3333333333333333
+    },
+    "2526": {
+      "phase1": 0.3333333333333333,
+      "phase2": 0.3333333333333333,
+      "phase3": 0.3333333333333333
+    },
+    "2627": {
+      "phase1": 0.3333333333333333,
+      "phase2": 0.3333333333333333,
+      "phase3": 0.3333333333333333
+    }
+  }
+}
