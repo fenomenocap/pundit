@@ -4,6 +4,8 @@ import type { EvidenceTier } from "./evidence-authority";
 import {
   appendManagerSearchResults,
   appendTeamNewsSearchResults,
+  injuryOnlyTeamNewsHasApprovedEvidence,
+  injuryOnlyTeamNewsHasApprovedEvidenceFromSelected,
   injuryOnlyTeamNewsNeedsSiteBeatRetry,
   injurySiteBeatFallbackOrder,
   injurySiteBeatQueries,
@@ -95,6 +97,26 @@ describe("manager site beat helpers", () => {
       snippet: "Arsenal manager Mikel Arteta spoke to reporters.",
     };
     expect(managerLookupNeedsSiteBeatRetry([beat], "Arsenal")).toBe(false);
+  });
+});
+
+describe("injuryOnlyTeamNewsHasApprovedEvidence", () => {
+  const now = Date.parse("2026-10-14T12:00:00Z");
+
+  it("ignores dated club reports that would be dropped before desk filters", () => {
+    const selected = [{
+      id: "S1",
+      title: "Everton vs Chelsea preview",
+      url: "https://www.bbc.com/sport/football/articles/preview",
+      date: "2026-10-13T00:00:00Z",
+      snippet: "General schedule notes only.",
+    }];
+    expect(injuryOnlyTeamNewsHasApprovedEvidenceFromSelected(selected, fixture, now)).toBe(false);
+    expect(injuryOnlyTeamNewsHasApprovedEvidenceFromSelected([{
+      ...selected[0],
+      title: "Everton team news update",
+      snippet: "Dominic Calvert-Lewin was sidelined with a hamstring injury.",
+    }], fixture, now)).toBe(true);
   });
 });
 

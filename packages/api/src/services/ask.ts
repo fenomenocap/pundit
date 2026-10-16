@@ -134,6 +134,7 @@ import {
   DESK_BOARD_FALLBACK,
   DESK_GENERAL_CONCEPT_SYSTEM,
   composeDeskFootballTake,
+  countDatedEvidenceSources,
   deskProseIsCurrentNewsRemainder,
   filterDeskEvidenceBundle,
   stripSurplusCurrentNewsNotices,
@@ -1455,10 +1456,13 @@ export function sourceOwnedManagerDraft(
   const facts = pages.flatMap((page) => {
     const sources = bundle.results.filter((row) => row.id === page.id);
     const source = sources.length === 1 ? sources[0] : undefined;
-    const day = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(page.date);
+    const publishedText = page.date.trim() || (source ? evidenceSourceDate(source, new Date(now)) : "");
+    const day = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(publishedText);
     const calendar = day && new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
-    const published = Date.parse(page.date);
-    if (!source || source.url !== page.url || source.date !== page.date
+    const published = Date.parse(publishedText);
+    const sourceDay = source ? /^\d{4}-\d{2}-\d{2}/.exec(source.date.trim())?.[0] : undefined;
+    if (!source || source.url !== page.url
+      || (sourceDay && day && sourceDay !== day[0].slice(0, 10))
       || evidenceAuthority(source.url) === "other" || evidenceAuthority(page.finalUrl) === "other"
       || !day || calendar!.toISOString().slice(0, 10) !== day[0].slice(0, 10)
       || !Number.isFinite(published) || !Number.isFinite(now)
@@ -10164,8 +10168,26 @@ async function answerQuestionScoped(
       : prioritizedBundle;
     let managerPages: RetrievedEvidencePage[] | undefined;
     if (clubFact?.kind === "manager") {
+      console.info(JSON.stringify({
+        event: "manager_lookup_evidence",
+        phase: "post_search_pre_hydrate",
+        club: clubFact.club,
+        sourcesBeforeFilter: rawBundle.results.length,
+        datedSourcesBeforeFilter: countDatedEvidenceSources(rawBundle.results),
+        sourcesAfterFilter: bundle.results.length,
+        datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+      }));
       managerPages = (await hydrateBundlePublicationDates(bundle, signal))
         .map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
+      console.info(JSON.stringify({
+        event: "manager_lookup_evidence",
+        phase: "post_hydrate",
+        club: clubFact.club,
+        sourcesAfterFilter: bundle.results.length,
+        datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+        hydratedPages: managerPages.length,
+        datedHydratedPages: managerPages.filter((page) => Number.isFinite(Date.parse(page.date))).length,
+      }));
     }
     // Desk team-news and scorer turns use the typed evidence path after search, whether
     // it yields a cited observation or a narrow abstention.
@@ -10181,6 +10203,15 @@ async function answerQuestionScoped(
         generalConcept: grounding === null && query === null && bundle.queries.length === 0,
         managerPages,
       });
+      if (!prose && clubFact?.kind === "manager") {
+        console.info(JSON.stringify({
+          event: "manager_lookup_skipped",
+          reason: "no_desk_prose",
+          club: clubFact.club,
+          sourcesAfterFilter: bundle.results.length,
+          datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+        }));
+      }
       if (prose) {
         const deliveryBundle = managerDraft === undefined ? bundle : { ...bundle,
           results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) };
@@ -10407,8 +10438,26 @@ async function answerQuestionStreamScoped(
       : prioritizedBundle;
     let managerPages: RetrievedEvidencePage[] | undefined;
     if (clubFact?.kind === "manager") {
+      console.info(JSON.stringify({
+        event: "manager_lookup_evidence",
+        phase: "post_search_pre_hydrate",
+        club: clubFact.club,
+        sourcesBeforeFilter: rawBundle.results.length,
+        datedSourcesBeforeFilter: countDatedEvidenceSources(rawBundle.results),
+        sourcesAfterFilter: bundle.results.length,
+        datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+      }));
       managerPages = (await hydrateBundlePublicationDates(bundle, handlers.signal))
         .map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
+      console.info(JSON.stringify({
+        event: "manager_lookup_evidence",
+        phase: "post_hydrate",
+        club: clubFact.club,
+        sourcesAfterFilter: bundle.results.length,
+        datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+        hydratedPages: managerPages.length,
+        datedHydratedPages: managerPages.filter((page) => Number.isFinite(Date.parse(page.date))).length,
+      }));
     }
     // A direct club identity/result is evidence prose, not a forecast draft.
     // Hold every delta until its dated claims have passed the same verifier.
@@ -10416,6 +10465,15 @@ async function answerQuestionStreamScoped(
       const managerDraft = managerScope && managerPages
         ? sourceOwnedManagerDraft(managerScope, bundle, managerPages) : undefined;
       const prose = managerDraft ?? await writeDeskProse(question, grounding, history, handlers.signal, bundle, { managerPages });
+      if (!prose && clubFact.kind === "manager") {
+        console.info(JSON.stringify({
+          event: "manager_lookup_skipped",
+          reason: "no_desk_prose",
+          club: clubFact.club,
+          sourcesAfterFilter: bundle.results.length,
+          datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+        }));
+      }
       if (prose) {
         const deliveryBundle = managerDraft === undefined ? bundle : { ...bundle,
           results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) };

@@ -289,6 +289,15 @@ describe("genuine emptiness versus infrastructure failure", () => {
     expect(outcome.reason).toBe("timeout");
   });
 
+  it("does not open the circuit breaker after one timed-out question", async () => {
+    const timeout = new Error("The operation timed out");
+    timeout.name = "TimeoutError";
+    fetchMock.mockRejectedValue(timeout);
+    await withSearchQuestion(() => searchWeb("single timeout question"));
+    expect(getWebSearchStatus().providers.openrouter.circuitOpen).toBe(false);
+    expect(getWebSearchStatus().providers.openrouter.consecutiveFailedQuestions).toBe(1);
+  });
+
   it("reports an unparseable body as a malformed response, and does not retry it", async () => {
     fetchMock.mockResolvedValue({
       ok: true, status: 200, headers: new Headers(), text: async () => "<html>nope</html>",

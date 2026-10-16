@@ -135,7 +135,15 @@ describe("bounded dated club-news expression", () => {
     const row = { ...newsRow, club: "Man City", playerName: " Joe   Example ", statusText: "may be doubtful" };
     const grounding = match({ date: "2026-10-10" });
     expect(renderDatedClubNewsRecords(newsJson(row), [source], grounding, newsNow)).toContain("Manchester City’s Joe Example may be doubtful");
-    expect(renderDatedClubNewsRecords(JSON.stringify({ updates: [row, { ...row, playerName: "Joe Example" }] }), [source], grounding, newsNow)).toBeNull();
+    expect(renderDatedClubNewsRecords(JSON.stringify({ updates: [row, { ...row, playerName: "Joe Example" }] }), [source], grounding, newsNow))
+      .toContain("Manchester City’s Joe Example may be doubtful");
+  });
+
+  it("keeps the first record when the model returns duplicate rows for the same player", () => {
+    const rejected = vi.fn();
+    const answer = renderDatedClubNewsRecords(JSON.stringify({ updates: [newsRow, newsRow] }), newsSources, newsGrounding, newsNow, rejected);
+    expect(answer).toContain("Arsenal’s Christos Tzolis");
+    expect(rejected).toHaveBeenCalledExactlyOnceWith("duplicate");
   });
 
   it("keeps the publisher calendar date consistent with its citation at a timezone boundary", () => {
@@ -202,7 +210,6 @@ describe("bounded dated club-news expression", () => {
     { raw: newsJson({ ...newsRow, playerName: "Private Player" }), sources: newsSources, reason: "player_body" },
     { raw: newsJson(), sources: [{ ...newsSources[0], date: "" }], reason: "date" },
     { raw: newsJson({ ...newsRow, statusText: "private event context" }), sources: newsSources, reason: "status_grammar" },
-    { raw: JSON.stringify({ updates: [newsRow, newsRow] }), sources: newsSources, reason: "duplicate" },
   ])("reports only a safe rejection enum: $reason", ({ raw, sources, reason }) => {
     const rejected = vi.fn();
     expect(renderDatedClubNewsRecords(raw, sources, newsGrounding, newsNow, rejected)).toBeNull();
@@ -257,7 +264,7 @@ describe("bounded dated club-news expression", () => {
     }
   );
 
-  it.each(["recover", "second-invalid", "repair-source", "repair-status", "empty", "source", "club", "player", "date", "future", "status", "shape", "duplicate",
+  it.each(["recover", "second-invalid", "repair-source", "repair-status", "empty", "source", "club", "player", "date", "future", "status", "shape",
     "budget", "abort", "abort-on-reserve", "truncated", "error", "other-mode"] as const)(
     "bounds a dated-news JSON syntax repair without promoting unsupported records: %s", async (mode) => {
       const saved = process.env.OPENROUTER_API_KEY; process.env.OPENROUTER_API_KEY = "test-only";
@@ -275,7 +282,7 @@ describe("bounded dated club-news expression", () => {
       if (mode === "date") source.date = "2026-09-01";
       if (mode === "future") source.date = "2026-10-07";
       if (mode === "status" || mode === "repair-status") row.statusText = "will start for Arsenal";
-      const valid = JSON.stringify({ updates: mode === "duplicate" ? [row, row] : [row] });
+      const valid = JSON.stringify({ updates: [row] });
       const invalid = "private malformed draft: {updates:";
       const signals: (AbortSignal | null | undefined)[] = [];
       let calls = 0;
@@ -287,7 +294,7 @@ describe("bounded dated club-news expression", () => {
         if (calls === 2) expect(String(input.messages.at(-1)?.content)).toContain("Formatting reminder:");
         if (mode === "error") throw new Error("private provider body");
         if (mode === "abort") controller.abort();
-        const semantic = ["empty", "source", "club", "player", "status", "shape", "duplicate"].includes(mode);
+        const semantic = ["empty", "source", "club", "player", "status", "shape"].includes(mode);
         const text = mode === "empty" ? '{"updates":[]}' : mode === "shape" ? '{"wrong":[]}'
           : semantic ? valid : calls === 1 || mode === "second-invalid" ? invalid : valid;
         return Promise.resolve({ content: [{ type: "text", text }], stop_reason: mode === "truncated" ? "max_tokens" : "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
@@ -308,9 +315,41 @@ describe("bounded dated club-news expression", () => {
       }
     }
   );
+
+  it("delivers one supported record when duplicate rows are returned on JSON repair", async () => {
+    const saved = process.env.OPENROUTER_API_KEY; process.env.OPENROUTER_API_KEY = "test-only";
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T02:00:00Z"));
+    const source = { id: "S9", title: "Arsenal injury bulletin", url: "https://www.arsenal.com/news/fitness",
+      date: "2026-10-05", tier: "official" as const, snippet: "Joe Example (Arsenal) is injured." };
+    const row = { sourceId: "S9", club: "Arsenal", playerName: "Joe Example", statusText: "was reported injured" };
+    const duplicatePayload = JSON.stringify({ updates: [row, row] });
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      const repair = String(input.messages.at(-1)?.content).includes("Formatting reminder:");
+      return Promise.resolve({ content: [{ type: "text", text: repair ? duplicatePayload : "private malformed draft: {updates:" }],
+        stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    try {
+      const result = await writeDeskProse("Latest Arsenal injury news?", match({ home: "Arsenal", away: "Leeds", date: "2026-10-10" }), [], undefined,
+        { queries: ["q"], results: [source] }, { datedClubNews: true, reserveRepairCall: () => true });
+      expect(result).toBe("In an update published on 2026-10-05, Arsenal’s Joe Example was reported injured [[S9]].");
+      expect(create).toHaveBeenCalledTimes(2);
+    } finally {
+      create.mockRestore(); vi.useRealTimers();
+      if (saved === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = saved;
+    }
+  });
 });
 
 describe("filterDeskEvidenceRows", () => {
+  it("keeps undated official club sources for manager lookups until hydration backfills the date", () => {
+    const row = { id: "S1", title: "Arsenal manager update", snippet: "Arsenal manager Mikel Arteta spoke to reporters.",
+      date: "", url: "https://www.arsenal.com/news/manager", tier: "official" as const };
+    const kept = filterDeskEvidenceRows([row], null, Date.parse("2026-10-07T12:00:00Z"),
+      "Who is Arsenal's manager today?");
+    expect(kept).toHaveLength(1);
+  });
+
   it("exposes a literal same-source current-role passage after navigation without inventing source metadata", () => {
     const row = { id: "S10", title: "Arsenal manager report", snippet: "Contract reporting.", date: "2026-09-22", tier: "news" as const, url: "https://www.skysports.com/report" };
     const role = "Arsenal manager Mikel Arteta has agreed a new contract with the club.";
