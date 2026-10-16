@@ -50,6 +50,7 @@ import {
   prefetchEvidencePages,
   createEvidencePageCache,
   extractPlainTextPublicationDate,
+  sameEvidenceHost,
   type EvidencePageCache,
   type RetrievedEvidencePage,
 } from "./evidence-page-retrieval";
@@ -1443,6 +1444,115 @@ function managerRoleGrammar(clubName: string) {
   return { fullName, role, ownsCurrentRole };
 }
 
+function managerBundleSourceForPage(
+  bundle: EvidenceBundle,
+  page: Pick<RetrievedEvidencePage, "id" | "url">
+): EvidenceBundle["results"][number] | undefined {
+  const matches = bundle.results.filter((row) => row.id === page.id);
+  if (matches.length !== 1) return undefined;
+  const source = matches[0];
+  return managerSearchedUrlAligns(source, page) ? source : undefined;
+}
+
+function managerSearchedUrlAligns(
+  source: { url: string },
+  page: Pick<RetrievedEvidencePage, "url">
+): boolean {
+  if (source.url === page.url) return true;
+  try {
+    return sameEvidenceHost(new URL(source.url).hostname, new URL(page.url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+export type ManagerExtractionCandidate = {
+  pageId: string;
+  sourceId?: string;
+  names: string[];
+  ownsRole: boolean;
+  rejectedReason?: string;
+};
+
+/** Hydrated publisher pages are the authority for manager extraction. */
+export function extractManagerIdentityCandidates(
+  scope: { club: string },
+  bundle: EvidenceBundle,
+  pages: readonly RetrievedEvidencePage[],
+  now = Date.now()
+): { facts: { name: string; sourceId: string }[]; candidates: ManagerExtractionCandidate[] } {
+  const { fullName, ownsCurrentRole } = managerRoleGrammar(scope.club);
+  const candidates: ManagerExtractionCandidate[] = [];
+  const facts = pages.flatMap((page) => {
+    const source = managerBundleSourceForPage(bundle, page);
+    const hydratedDay = /^\d{4}-\d{2}-\d{2}/.exec(page.date.trim())?.[0];
+    const publishedText = page.date.trim() || (source ? evidenceSourceDate(source, new Date(now)) : "");
+    const day = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(publishedText);
+    const calendar = day && new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
+    const published = Date.parse(publishedText);
+    const sourceDay = source && !hydratedDay
+      ? /^\d{4}-\d{2}-\d{2}/.exec(source.date.trim())?.[0] : undefined;
+    const reject = (reason: string): [] => {
+      candidates.push({ pageId: page.id, sourceId: source?.id, names: [], ownsRole: false, rejectedReason: reason });
+      return [];
+    };
+    if (!source) return reject(bundle.results.filter((row) => row.id === page.id).length > 1
+      ? "ambiguous_bundle_source" : "no_bundle_source");
+    if (!managerSearchedUrlAligns(source, page)) return reject("url_host_mismatch");
+    if (sourceDay && day && sourceDay !== day[0].slice(0, 10)) return reject("provider_date_mismatch");
+    if (evidenceAuthority(source.url) === "other" || evidenceAuthority(page.finalUrl) === "other") {
+      return reject("authority_other");
+    }
+    if (!day || calendar!.toISOString().slice(0, 10) !== day[0].slice(0, 10)) return reject("invalid_calendar_day");
+    if (!Number.isFinite(published) || !Number.isFinite(now)) return reject("invalid_published_instant");
+    if (published > now || now - published > 21 * 86_400_000) return reject("stale_or_future");
+    const body = publisherOwnedManagerBody(page);
+    const names = splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
+      .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
+      .flatMap((match) => {
+        const words = match[0].split(/\s+/);
+        return words.flatMap((_word, start) => words.slice(start + 1).map((_next, offset) =>
+          words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
+      }).filter((name) => playerNamedInNewsBody(name, body,
+      { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, body));
+    const unique = [...new Set(names)];
+    candidates.push({
+      pageId: page.id,
+      sourceId: source.id,
+      names: unique,
+      ownsRole: unique.length > 0,
+      ...(unique.length ? {} : { rejectedReason: "owns_current_role_failed" }),
+    });
+    return unique.map((name) => ({ name, sourceId: source.id }));
+  });
+  return { facts, candidates };
+}
+
+export function logManagerIdentityExtraction(
+  club: string,
+  pages: readonly RetrievedEvidencePage[],
+  extraction: ReturnType<typeof extractManagerIdentityCandidates>,
+  draft: string | undefined
+): void {
+  console.info(JSON.stringify({
+    event: "manager_lookup_evidence",
+    phase: "extraction",
+    club,
+    hydratedPages: pages.length,
+    candidatePages: extraction.candidates.length,
+    acceptedFacts: extraction.facts.length,
+    distinctNames: [...new Set(extraction.facts.map((fact) => fact.name))],
+    candidates: extraction.candidates.map((row) => ({
+      pageId: row.pageId,
+      sourceId: row.sourceId ?? null,
+      names: row.names,
+      ownsRole: row.ownsRole,
+      rejectedReason: row.rejectedReason ?? null,
+    })),
+    draftKind: draft === undefined ? "none" : draft.includes("’s manager is") ? "identity" : "abstention",
+  }));
+}
+
 /** A current-role question has one small source-owned fact. Keep extra
  * generated explanation out of its claim; the unchanged verifier still has
  * to establish the identity from the retrieved publisher body. */
@@ -1452,39 +1562,17 @@ export function sourceOwnedManagerDraft(
 ): string | undefined {
   // Appointment history retains the existing source-precision contract.
   if (scope.retainAppointment) return undefined;
-  const { fullName, ownsCurrentRole } = managerRoleGrammar(scope.club);
-  const facts = pages.flatMap((page) => {
-    const sources = bundle.results.filter((row) => row.id === page.id);
-    const source = sources.length === 1 ? sources[0] : undefined;
-    const publishedText = page.date.trim() || (source ? evidenceSourceDate(source, new Date(now)) : "");
-    const day = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(publishedText);
-    const calendar = day && new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
-    const published = Date.parse(publishedText);
-    const sourceDay = source ? /^\d{4}-\d{2}-\d{2}/.exec(source.date.trim())?.[0] : undefined;
-    if (!source || source.url !== page.url
-      || (sourceDay && day && sourceDay !== day[0].slice(0, 10))
-      || evidenceAuthority(source.url) === "other" || evidenceAuthority(page.finalUrl) === "other"
-      || !day || calendar!.toISOString().slice(0, 10) !== day[0].slice(0, 10)
-      || !Number.isFinite(published) || !Number.isFinite(now)
-      || published > now || now - published > 21 * 86_400_000) return [];
-    const body = publisherOwnedManagerBody(page);
-    // Keep discovery inside the same statement boundaries used by the role
-    // guard. Otherwise punctuation in a capitalized name run can consume the
-    // next club statement and hide a conflicting identity on the same page.
-    const names = splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
-      .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
-      .flatMap((match) => {
-        const words = match[0].split(/\s+/);
-        return words.flatMap((_word, start) => words.slice(start + 1).map((_next, offset) =>
-          words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
-      }).filter((name) => playerNamedInNewsBody(name, body,
-      { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, body));
-    return [...new Set(names)].map((name) => ({ name, sourceId: source.id }));
-  });
+  const extraction = extractManagerIdentityCandidates(scope, bundle, pages, now);
+  const facts = extraction.facts;
   const nameKey = (name: string) => name.normalize("NFC").toLocaleLowerCase("en").replace(/\s+/g, " ");
-  if (new Set(facts.map((fact) => nameKey(fact.name))).size !== 1) return managerIdentityAbstention(scope);
+  if (new Set(facts.map((fact) => nameKey(fact.name))).size !== 1) {
+    logManagerIdentityExtraction(scope.club, pages, extraction, undefined);
+    return managerIdentityAbstention(scope);
+  }
   const ids = [...new Set(facts.map((fact) => fact.sourceId))];
-  return `${scope.club}’s manager is ${facts[0].name} ${ids.map((id) => `[[${id}]]`).join(" ")}.`;
+  const draft = `${scope.club}’s manager is ${facts[0].name} ${ids.map((id) => `[[${id}]]`).join(" ")}.`;
+  logManagerIdentityExtraction(scope.club, pages, extraction, draft);
+  return draft;
 }
 
 /** Manager+why is a small fact contract, not free-form causal prose. A direct
@@ -9357,6 +9445,10 @@ export async function deliverAnswer(args: {
   signal?: AbortSignal;
   voice?: "desk";
   history?: ConversationTurn[];
+  /** Hydrated publisher bodies for manager turns; must feed desk prose when generation runs. */
+  managerPages?: readonly RetrievedEvidencePage[];
+  /** Source-owned manager draft already selected from hydrated pages. */
+  sourceOwnedManagerDraft?: boolean;
 }): Promise<{ answer: string; citations: AskCitation[]; verification: AskVerification }> {
   const {
     answer: rawAnswer,
@@ -9372,9 +9464,23 @@ export async function deliverAnswer(args: {
     signal,
     voice,
     history = [],
+    managerPages,
+    sourceOwnedManagerDraft: sourceOwnedManagerPath = false,
   } = args;
   const deskVoice = voice === "desk";
+  const clubFactDelivery = singleClubCurrentFactScope(question, grounding);
   const deliveryPlan = planResponse(question, { groundingKind: grounding?.kind ?? null, hasHistory });
+  if (clubFactDelivery?.kind === "manager") {
+    console.info(JSON.stringify({
+      event: "manager_lookup_evidence",
+      phase: "composer_input",
+      club: clubFactDelivery.club,
+      sourceOwnedDraft: sourceOwnedManagerPath,
+      answerChars: rawAnswer.length,
+      hasManagerPages: Boolean(managerPages?.length),
+      bundleSources: bundle.results.length,
+    }));
+  }
   if (grounding?.kind === "match" && isClosedTacticalRequest(question)
     && deliveryPlan.mode === "match-follow-up" && !deliveryPlan.evidenceRequired && !evidenceRequired
     && !deterministicSearchQuery(question, "", grounding)
@@ -9427,8 +9533,9 @@ export async function deliverAnswer(args: {
       || (!rawLooksLikeDraft && prepared ? prepared : "")
       || await writeDeskProse(question, grounding, history, signal, evidenceBundle, {
         generalConcept: grounding === null && !evidenceRequired && evidenceBundle.queries.length === 0,
+        managerPages,
       })
-      || (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)
+      || (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question) && !clubFactDelivery
         ? composeDeskFootballTake(grounding)
         : "");
     if (prose) {
@@ -9459,7 +9566,7 @@ export async function deliverAnswer(args: {
           ? stripUncitedOddsClaims(stripUncitedResultClaims(checkedEvidenceAnswer))
           : checkedEvidenceAnswer)
         : checkedEvidenceAnswer;
-      if (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)) {
+      if (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question) && !clubFactDelivery) {
         // Assemble outline before citation render so a sourced wrinkle's [[S1]]
         // expands. Server 1X2 must not pass through stripDeskBoardRecitals.
         const outlined = deskSchematicOutline(evidenceSafeAnswer);
@@ -9476,6 +9583,18 @@ export async function deliverAnswer(args: {
           citations: rendered.citations,
           verification: checked.verification,
         };
+      }
+      if (clubFactDelivery?.kind === "manager") {
+        console.info(JSON.stringify({
+          event: "manager_lookup_evidence",
+          phase: "composer_output",
+          club: clubFactDelivery.club,
+          sourceOwnedDraft: sourceOwnedManagerPath,
+          verificationStatus: checked.verification.status,
+          supportedClaims: checked.verification.supportedClaimCount,
+          answerChars: evidenceSafeAnswer.length,
+          includesManagerRole: /\b(?:manager|head coach|coach)\b/i.test(evidenceSafeAnswer),
+        }));
       }
       const rendered = renderEvidenceCitations(evidenceSafeAnswer, evidenceBundle,
         evidenceRequired || evidenceBundle.queries.length > 0 || grounding !== null);
@@ -10199,6 +10318,16 @@ async function answerQuestionScoped(
     if (clubFact || (voice === "desk" && !deskUsesMatchEvidencePath)) {
       const managerDraft = managerScope && managerPages
         ? sourceOwnedManagerDraft(managerScope, bundle, managerPages) : undefined;
+      const sourceOwnedIdentity = Boolean(managerDraft?.includes("’s manager is"));
+      if (managerDraft) {
+        console.info(JSON.stringify({
+          event: "manager_lookup_evidence",
+          phase: "draft_selected",
+          club: clubFact?.club ?? managerScope?.club,
+          sourceOwnedIdentity,
+          usedGenerativeProse: false,
+        }));
+      }
       const prose = managerDraft ?? await writeDeskProse(question, grounding, history, signal, bundle, {
         generalConcept: grounding === null && query === null && bundle.queries.length === 0,
         managerPages,
@@ -10213,8 +10342,9 @@ async function answerQuestionScoped(
         }));
       }
       if (prose) {
-        const deliveryBundle = managerDraft === undefined ? bundle : { ...bundle,
-          results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) };
+        const deliveryBundle = sourceOwnedIdentity && managerDraft
+          ? { ...bundle, results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) }
+          : bundle;
         const delivered = await deliverAnswer({
           answer: prose,
           tier,
@@ -10229,6 +10359,8 @@ async function answerQuestionScoped(
           signal,
           voice,
           history,
+          managerPages,
+          sourceOwnedManagerDraft: sourceOwnedIdentity,
         });
         return {
           answer: delivered.answer,
@@ -10464,6 +10596,16 @@ async function answerQuestionStreamScoped(
     if (clubFact) {
       const managerDraft = managerScope && managerPages
         ? sourceOwnedManagerDraft(managerScope, bundle, managerPages) : undefined;
+      const sourceOwnedIdentity = Boolean(managerDraft?.includes("’s manager is"));
+      if (managerDraft) {
+        console.info(JSON.stringify({
+          event: "manager_lookup_evidence",
+          phase: "draft_selected",
+          club: clubFact.club,
+          sourceOwnedIdentity,
+          usedGenerativeProse: false,
+        }));
+      }
       const prose = managerDraft ?? await writeDeskProse(question, grounding, history, handlers.signal, bundle, { managerPages });
       if (!prose && clubFact.kind === "manager") {
         console.info(JSON.stringify({
@@ -10475,13 +10617,18 @@ async function answerQuestionStreamScoped(
         }));
       }
       if (prose) {
-        const deliveryBundle = managerDraft === undefined ? bundle : { ...bundle,
-          results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) };
+        const deliveryBundle = sourceOwnedIdentity && managerDraft
+          ? { ...bundle, results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) }
+          : bundle;
         const delivered = await deliverAnswer({
           answer: prose, tier, grounding, bundle: deliveryBundle, client, question,
           evidenceRequired: Boolean(query || bundle.queries.length),
           candidateUnrecognized, hasHistory: history.length > 0,
           structuredDraftExpected: false, signal: handlers.signal,
+          voice: "desk",
+          history,
+          managerPages,
+          sourceOwnedManagerDraft: sourceOwnedIdentity,
         });
         if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(delivered.answer);
         return {

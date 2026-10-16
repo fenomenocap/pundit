@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { DESK_GENERAL_CONCEPT_SYSTEM, DESK_CURRENT_FACT_SYSTEM, DESK_DATED_CLUB_NEWS_SYSTEM } from "./desk-voice";
+import {
+  DESK_GENERAL_CONCEPT_SYSTEM,
+  DESK_CURRENT_FACT_SYSTEM,
+  DESK_DATED_CLUB_NEWS_SYSTEM,
+} from "./desk-voice";
+import { singleClubCurrentFactScope } from "./federated-evidence";
+import { planResponse } from "./response-plan";
 import * as evidencePages from "./evidence-page-retrieval";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import { AppError } from "../middleware";
@@ -11,6 +17,7 @@ import * as modelData from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
 import { attachUserLine, buildMatchPricing } from "./response-correctness";
 import { SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
+import { ownedLatestResult } from "./structured-results";
 import { SEASON_OUTLOOK_UNAVAILABLE } from "./season-simulator";
 import * as seasonSimulator from "./season-simulator";
 import {
@@ -68,6 +75,7 @@ import {
   verifiableCurrentClaims,
   verifyCurrentClaims,
   sourceOwnedManagerDraft,
+  extractManagerIdentityCandidates,
   type FixtureGrounding,
   type AskGrounding,
   shouldHoldCoverageDeltas,
@@ -1043,9 +1051,11 @@ describe("source-owned manager identity drafts", () => {
   });
   it("requires exact unique ID/URL/date binding and a retrieved eligible publisher", () => {
     for (const pages of [[], [{ ...page, id: "S8" }], [{ ...page, url: "https://www.bbc.com/sport/other" }],
-      [{ ...page, date: "2026-10-05" }], [{ ...page, finalUrl: "https://untrusted.example/role" }]]) {
+      [{ ...page, finalUrl: "https://untrusted.example/role" }]]) {
       expect(sourceOwnedManagerDraft(scope, bundle, pages, now)).not.toContain("Joe Example");
     }
+    expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [{ ...source, date: "2026-10-06T12:00:00Z" }] },
+      [{ ...page, date: "2026-10-05T12:00:00Z", text: "Arsenal’s manager is Joe Example." }], now)).toContain("Joe Example");
     expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [source, { ...source, url: "https://www.bbc.com/sport/other" }] }, [page], now)).not.toContain("Joe Example");
   });
   it("abstains on two fresh current identities but excludes stale conflicts", () => {
@@ -1071,6 +1081,92 @@ describe("source-owned manager identity drafts", () => {
     const date = "2026-09-16T12:00:00Z";
     expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [{ ...source, date }] }, [{ ...page, date }], now)).toContain("Joe Example");
     expect(sourceOwnedManagerDraft({ ...scope, retainAppointment: true }, bundle, [page], now)).toBeUndefined();
+  });
+  it("names the manager from a hydrated dated page when the search row was undated", () => {
+    const undatedSource = { ...source, date: "" };
+    const hydrated = {
+      ...page,
+      date: "2026-10-06T09:00:00.000Z",
+      text: "Everton’s manager is David Moyes.",
+      finalUrl: "https://www.skysports.com/football/news/everton-manager",
+    };
+    const evertonScope = { club: "Everton", wantsReason: false };
+    const rows = { ...bundle, results: [undatedSource] };
+    expect(sourceOwnedManagerDraft(evertonScope, rows, [hydrated], now)).toBe("Everton’s manager is David Moyes [[S7]].");
+    const extraction = extractManagerIdentityCandidates(evertonScope, rows, [hydrated], now);
+    expect(extraction.facts).toEqual([{ name: "David Moyes", sourceId: "S7" }]);
+  });
+  it("accepts apex/www host alignment between bundle and hydrated pages", () => {
+    const searched = { ...source, url: "https://www.bbc.com/sport/football/manager-story" };
+    const hydrated = {
+      ...page,
+      id: "S7",
+      url: searched.url,
+      finalUrl: "https://bbc.com/sport/football/manager-story",
+      date: "2026-10-06T12:00:00Z",
+      text: "Arsenal’s manager is Joe Example.",
+    };
+    expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [searched] }, [hydrated], now)).toContain("Joe Example");
+  });
+});
+
+describe("manager delivery composer", () => {
+  it("scopes manager turns as direct club facts that must not use the desk 1X2 outline path", () => {
+    const grounding = buildGrounding(fixture("Everton", "Hull", {
+      utcDate: "2026-10-12T14:00:00Z",
+      date: "2026-10-12",
+    }));
+    const question = "Who is Everton's manager and why?";
+    expect(singleClubCurrentFactScope(question, grounding)).toEqual({ kind: "manager", club: "Everton" });
+    expect(planResponse(question, { groundingKind: "match", hasHistory: true }).mode).toBe("match-follow-up");
+  });
+
+  it("delivers manager identity and a cited latest result when both are source-owned", () => {
+    const manager = sourceOwnedManagerDraft(
+      { club: "Everton", wantsReason: false },
+      {
+        queries: [], providerCalls: 0, results: [{
+          id: "S1", title: "Role", url: "https://www.skysports.com/role", date: "", snippet: "", tier: "news",
+        }],
+      },
+      [{
+        id: "S1", url: "https://www.skysports.com/role", title: "Role", date: "2026-10-06T12:00:00Z",
+        authority: "reputable", finalUrl: "https://www.skysports.com/role",
+        text: "Everton’s manager is David Moyes.", retrievedAt: "2026-10-07T11:00:00Z",
+      }],
+      Date.parse("2026-10-07T12:00:00Z")
+    );
+    const evalNow = Date.parse("2026-10-07T12:00:00Z");
+    const hullEverton = {
+      id: 401879900,
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeTeam: "Hull",
+      awayTeam: "Everton",
+      status: "FINISHED",
+      utcDate: "2026-10-05T15:00:00Z",
+      stage: null,
+      matchday: 8,
+      group: null,
+      score: { home: 2, away: 2 },
+    };
+    const cache = {
+      upcoming: [],
+      recent: [hullEverton],
+      standings: [],
+      lastUpdated: new Date(evalNow),
+      error: null,
+      competitionErrors: {},
+      byCompetition: {
+        "eng.1": { upcoming: [], recent: [hullEverton], standings: [], error: null },
+        "uefa.champions_qual": { upcoming: [], recent: [], standings: [], error: null },
+      },
+    };
+    const result = ownedLatestResult("What is Everton's latest result?", cache as never, evalNow);
+    expect(manager).toContain("David Moyes");
+    expect(result?.answer).toMatch(/Hull 2[–-]2 Everton/);
+    expect(`${manager} ${result?.answer ?? ""}`).toMatch(/manager/i);
+    expect(`${manager} ${result?.answer ?? ""}`).toMatch(/2[–-]2/);
   });
 });
 

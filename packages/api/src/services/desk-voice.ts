@@ -8,7 +8,7 @@ import {
 } from "./match-context";
 import { managersNamedInEvidence, stripUnlistedManagers } from "./pl-managers";
 import { evidenceAuthority, type EvidenceTier } from "./evidence-authority";
-import type { RetrievedEvidencePage } from "./evidence-page-retrieval";
+import { sameEvidenceHost, type RetrievedEvidencePage } from "./evidence-page-retrieval";
 import {
   MAX_FEDERATED_QUERIES,
   mergeSearchResults,
@@ -399,10 +399,23 @@ export function formatSearchEvidence(results: readonly DeskEvidenceRow[]): strin
  * verification still reads the original cached source independently. */
 export function formatManagerEvidence(
   rows: readonly DeskEvidenceRow[], club: string,
-  pages: readonly Pick<RetrievedEvidencePage, "id" | "url" | "date" | "text">[], nowMs = Date.now()
+  pages: readonly (Pick<RetrievedEvidencePage, "id" | "url" | "date" | "text"> & { finalUrl?: string })[], nowMs = Date.now()
 ): string {
   const sources = rows.slice(0, 8).map((row) => {
-    const page = pages.find((source) => source.id === row.id && source.url === row.url);
+    const page = pages.find((source) => {
+      if (source.id !== row.id) return false;
+      const rowUrl = row.url || row.link || "";
+      if (!rowUrl) return false;
+      if (source.url === rowUrl) return true;
+      try {
+        const searched = new URL(rowUrl);
+        const retrieved = new URL(source.url);
+        return sameEvidenceHost(searched.hostname, retrieved.hostname)
+          && searched.pathname.replace(/\/$/, "") === retrieved.pathname.replace(/\/$/, "");
+      } catch {
+        return false;
+      }
+    });
     if (!page) return row;
     const rowDay = /^\d{4}-\d{2}-\d{2}/.exec(row.date.trim())?.[0];
     const pageDay = /^\d{4}-\d{2}-\d{2}/.exec(page.date.trim())?.[0];
