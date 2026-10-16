@@ -4,7 +4,8 @@ import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
-import { computeTurnQualityMetrics } from "./chat-eval-quality-metrics.mjs";
+import { compareEngineQuality, computeTurnQualityMetrics, summarizeLlmJudge } from "./chat-eval-quality-metrics.mjs";
+import { judgeEvalTurns } from "./chat-eval-llm-judge.mjs";
 import {
   EVAL_SCHEMA_VERSION,
   MIN_REQUEST_INTERVAL_MS,
@@ -76,6 +77,8 @@ function parseArgs(argv) {
     deploymentId: process.env.PUNDIT_DEPLOYMENT_ID ?? null,
     sourceSha: process.env.PUNDIT_SOURCE_SHA ?? null,
     searchReplayId: process.env.CHAT_EVAL_SEARCH_REPLAY_ID ?? null,
+    engine: process.env.CHAT_EVAL_ENGINE?.trim().toLowerCase() === "agent" ? "agent" : "legacy",
+    evalReplayGuardId: "monitor-gate-v1",
     pinnedGateFixture: null,
     gateOnly: false,
   };
@@ -92,6 +95,11 @@ function parseArgs(argv) {
     else if (argument === "--deployment-id") options.deploymentId = argv[++index];
     else if (argument === "--source-sha") options.sourceSha = argv[++index];
     else if (argument === "--search-replay-id") options.searchReplayId = argv[++index];
+    else if (argument === "--engine") {
+      const value = argv[++index]?.trim().toLowerCase();
+      if (value !== "legacy" && value !== "agent") throw new Error("--engine must be legacy or agent.");
+      options.engine = value;
+    }
     else if (argument === "--pinned-gate-fixture") options.pinnedGateFixture = path.resolve(argv[++index]);
     else if (argument === "--gate-only") options.gateOnly = true;
     else throw new Error(`Unknown argument: ${argument}`);
@@ -104,6 +112,44 @@ function parseArgs(argv) {
 
 function timestampId(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, "-");
+}
+
+function resolveEvalSearchReplayId(options) {
+  if (options.searchReplayId) return options.searchReplayId;
+  if (options.engine === "agent") return options.evalReplayGuardId;
+  return null;
+}
+
+function buildAskEvalHeaders(options) {
+  const headers = { "content-type": "application/json" };
+  const replayId = resolveEvalSearchReplayId(options);
+  if (replayId) headers["x-pundit-chat-eval-search-replay"] = replayId;
+  if (replayId && options.engine === "agent") {
+    headers["x-pundit-chat-engine"] = "agent";
+  } else if (replayId && options.engine === "legacy") {
+    headers["x-pundit-chat-engine"] = "legacy";
+  }
+  return headers;
+}
+
+function flattenReportTurns(report, scenarioId = null) {
+  const turns = [];
+  for (const scenario of report?.scenarios ?? []) {
+    for (const turn of scenario.turnResults ?? []) {
+      turns.push({
+        scenarioId: scenarioId ?? scenario.id,
+        turn: turn.turn,
+        question: turn.request?.question ?? null,
+        httpStatus: turn.status,
+        answer: turn.answer,
+        verification: turn.verification,
+        citations: turn.citations,
+        usedLlm: turn.usedLlm,
+        engine: turn.engine,
+      });
+    }
+  }
+  return turns;
 }
 
 async function fetchJson(url, init, timeoutMs) {
@@ -280,10 +326,7 @@ async function jsonTurn(
     startedAt: start,
     reproduction: { method: "POST", path: "/api/ask", body: requestBody },
   });
-  const askHeaders = { "content-type": "application/json" };
-  if (options.searchReplayId) {
-    askHeaders["x-pundit-chat-eval-search-replay"] = options.searchReplayId;
-  }
+  const askHeaders = buildAskEvalHeaders(options);
   let response = await fetchJson(`${options.apiUrl}/api/ask`, {
     method: "POST",
     headers: askHeaders,
@@ -497,6 +540,8 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       citations: result.citations,
       verification: result.verification,
       answer: result.answer,
+      engine: response.body?.engine ?? options.engine,
+      usedLlm: response.body?.usedLlm === true,
       assertions: Object.fromEntries(Object.entries(result.assertions).filter(([name]) => name.startsWith(`turn${turnNumber}`))),
     });
   }
@@ -1286,14 +1331,17 @@ async function main() {
   await capturePostRunReadiness(report, options, preflightResult.ready.body);
   report.completedAt = new Date().toISOString();
   finalizeClassifications(report, previous);
-  const allTurns = (report.scenarios ?? []).flatMap((scenario) => scenario.turns ?? []).map((turn) => ({
-    httpStatus: turn.httpStatus,
-    answer: turn.answer,
-    verification: turn.verification,
-    usedLlm: turn.usedLlm,
-    engine: report.preflight?.ready?.body?.analystResponse?.chatEngine,
-  }));
+  report.requestEngine = options.engine;
+  const allTurns = flattenReportTurns(report);
   report.qualityMetrics = computeTurnQualityMetrics(allTurns);
+  report.llmJudge = await judgeEvalTurns(allTurns, { maxTurns: 24, paceMs: 250 });
+  report.llmJudgeSummary = summarizeLlmJudge(report);
+  const previousTurns = previous ? flattenReportTurns(previous) : [];
+  if (previous?.requestEngine && previous.requestEngine !== report.requestEngine) {
+    report.engineQualityComparison = previous.requestEngine === "legacy"
+      ? compareEngineQuality(previousTurns, allTurns)
+      : compareEngineQuality(allTurns, previousTurns);
+  }
   await writeCheckpoint(report, options.outputDir);
   const paths = await writeReport(report, options.outputDir);
   console.log(JSON.stringify({
