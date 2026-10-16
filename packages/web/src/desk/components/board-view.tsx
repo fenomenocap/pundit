@@ -8,13 +8,12 @@ import {
   getFixture,
   gw3Record,
   hasCapturedForecast,
-  modelProbFor,
   selectionLabel,
   type MarketKey,
 } from "@/desk/lib/data/fixtures";
 import { TEAMS } from "@/desk/lib/data/teams";
-import { accaPrice, fmtEdge, fmtKickoff, fmtMoney, fmtOdds, fmtPct, signedClass } from "@/desk/lib/format";
-import { bestEdge, useDesk } from "@/desk/lib/store";
+import { accaPrice, fmtKickoff, fmtMoney, fmtOdds, fmtPct } from "@/desk/lib/format";
+import { useDesk } from "@/desk/lib/store";
 import { cn } from "@/lib/utils";
 import { FormDots } from "./form-dots";
 import { KitPip, TeamMark } from "./kit";
@@ -111,7 +110,6 @@ function MarketList() {
           const active = f.id === selectedId;
           const score = scores[f.id];
           const odds = f.odds;
-          const edgeHome = odds?.home ? modelProbFor(f, "home") - 1 / odds.home : null;
           const onSlip = slip.find((l) => l.fixtureId === f.id);
           return (
             <li key={f.id}>
@@ -167,7 +165,6 @@ function MarketList() {
                             key={key}
                             label={label}
                             price={price}
-                            edge={modelProbFor(f, key) - 1 / price}
                             active={onSlip?.market === key}
                             onClick={() => {
                               addLeg({ fixtureId: f.id, market: key, price });
@@ -182,13 +179,7 @@ function MarketList() {
                   )}
                 </div>
                 <div className="mt-2 flex items-center gap-2 text-2xs">
-                  {edgeHome !== null ? (
-                    <span className={cn("tabular-nums", signedClass(edgeHome))}>
-                      H {fmtEdge(edgeHome)}
-                    </span>
-                  ) : (
-                    <span className="text-quiet">No comparison market</span>
-                  )}
+                  <span className="text-quiet">Paper prices · not a market line</span>
                   <span className="text-quiet">lean {selectionLabel(f, f.modelPick)}</span>
                   {onSlip ? <span className="ml-auto text-accent">on slip</span> : null}
                 </div>
@@ -242,7 +233,6 @@ function TicketPanel() {
   if (!f) return null;
   const score = scores[f.id] ?? f.score;
   const onSlip = slip.find((l) => l.fixtureId === f.id);
-  const edge = bestEdge(f.id);
   const odds = f.odds;
   const hasForecast = hasCapturedForecast(f);
 
@@ -299,7 +289,6 @@ function TicketPanel() {
                     key={key}
                     label={`${label} · ${key === "home" ? TEAMS[f.home].short : key === "away" ? TEAMS[f.away].short : "Draw"}`}
                     price={price}
-                    edge={modelProbFor(f, key) - 1 / price}
                     active={onSlip?.market === key}
                     dim={!!score}
                     onClick={() => addLeg({ fixtureId: f.id, market: key, price })}
@@ -316,7 +305,6 @@ function TicketPanel() {
                     key={key}
                     label={label}
                     price={price}
-                    edge={modelProbFor(f, key) - 1 / price}
                     active={onSlip?.market === key}
                     dim={!!score}
                     onClick={() => addLeg({ fixtureId: f.id, market: key, price })}
@@ -328,14 +316,6 @@ function TicketPanel() {
         ) : (
           <p className="mt-4 text-sm text-quiet">No comparison market is currently available.</p>
         )}
-
-        {edge ? (
-          <p className="mt-4 text-sm text-quiet leading-relaxed">
-            Widest gap vs the board is{" "}
-            <span className="text-fg">{selectionLabel(f, edge.key)}</span> at {fmtOdds(edge.price)},{" "}
-            <span className={signedClass(edge.edge)}>{fmtEdge(edge.edge)}</span> model vs implied.
-          </p>
-        ) : null}
 
         <Button
           className="mt-4 w-full"
