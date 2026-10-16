@@ -64,10 +64,16 @@ import {
   type FederatedGrounding,
 } from "./federated-evidence";
 import {
+  appendManagerSearchResults,
   appendTeamNewsSearchResults,
   injuryOnlyTeamNewsNeedsSiteBeatRetry,
+  injurySiteBeatFallbackOrder,
   injurySiteBeatQueries,
-  INJURY_ONLY_SITE_BEAT_FALLBACK_ORDER,
+  managerLookupNeedsSiteBeatRetry,
+  managerSiteBeatFallbackOrder,
+  managerSiteBeatQueries,
+  SITE_BEAT_RETRY_PROVIDER_CALLS,
+  siteBeatRetryWouldExceedBudget,
 } from "./team-news-evidence-retrieval";
 import {
   SECTION_LABEL_LINE,
@@ -396,6 +402,19 @@ export interface AskVerification {
 // Inference turns, their retries, and searches all draw on one budget, so a
 // request cannot spiral in cost or latency however badly the provider behaves.
 export const PROVIDER_CALL_BUDGET = 10;
+
+/** Initial federated search count when a site-beat retry must stay within budget. */
+export function initialEvidenceQueryCap(options: {
+  injuryOnlyTeamNews?: boolean;
+  managerLookup?: boolean;
+}): number {
+  const reserve = (options.injuryOnlyTeamNews || options.managerLookup)
+    ? SITE_BEAT_RETRY_PROVIDER_CALLS
+    : 0;
+  // Keep the six-query execution cap so inference retains budget; never spend
+  // the reserved site-beat calls on the first federated pass.
+  return Math.min(MAX_EVIDENCE_QUERIES, PROVIDER_CALL_BUDGET - reserve);
+}
 
 function providerCallsLeft(bundle?: EvidenceBundle): number {
   return bundle
@@ -1146,7 +1165,16 @@ async function buildEvidenceBundle(
     managerFact?: { question: string; grounding: AskGrounding };
   }
 ): Promise<EvidenceBundle> {
-  const planned = (Array.isArray(queries) ? queries : [queries]).slice(0, MAX_EVIDENCE_QUERIES);
+  const injuryOnlyTeamNews = Boolean(
+    mergeOptions?.teamNewsFixture
+    && mergeOptions?.teamNewsQuestion
+    && asksInjuryUpdatesWithoutLineups(mergeOptions.teamNewsQuestion)
+  );
+  const managerLookup = Boolean(mergeOptions?.managerFact);
+  const planned = (Array.isArray(queries) ? queries : [queries]).slice(0, initialEvidenceQueryCap({
+    injuryOnlyTeamNews,
+    managerLookup,
+  }));
   // Run together: they are independent lookups, and a researched answer should
   // not cost the reader one round trip per question it needs answered. A
   // failing search degrades that angle, never the whole bundle.
@@ -1171,16 +1199,27 @@ async function buildEvidenceBundle(
       && asksInjuryUpdatesWithoutLineups(mergeOptions.teamNewsQuestion)
       && injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, mergeOptions.teamNewsFixture)) {
       const fixture = mergeOptions.teamNewsFixture;
-      const day = new Date().toISOString().slice(0, 10);
-      for (const beat of INJURY_ONLY_SITE_BEAT_FALLBACK_ORDER) {
+      for (const beat of injurySiteBeatFallbackOrder(fixture.home, fixture.away)) {
         if (!injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, fixture)) break;
-        const beatQueries = [...injurySiteBeatQueries(beat, fixture.home, fixture.away, day)];
-        if ((bundle.providerCalls ?? 0) + beatQueries.length > PROVIDER_CALL_BUDGET) break;
+        const beatQueries = [...injurySiteBeatQueries(beat, fixture.home, fixture.away)];
+        const providerCallsUsed = bundle.providerCalls ?? 0;
+        if (siteBeatRetryWouldExceedBudget(providerCallsUsed, beatQueries.length, PROVIDER_CALL_BUDGET)) {
+          console.info(JSON.stringify({
+            event: "injury_only_team_news_site_beat_retry_skipped",
+            reason: "provider_budget",
+            beat,
+            providerCallBudget: PROVIDER_CALL_BUDGET,
+            providerCallsUsed,
+            queriesNeeded: beatQueries.length,
+            siteBeatRetryReserved: SITE_BEAT_RETRY_PROVIDER_CALLS,
+          }));
+          break;
+        }
         const before = bundle.results.length;
         const outcomes = await searchWebBatch(beatQueries, signal);
         for (const outcome of outcomes) noteSearchOutcome(bundle, outcome);
         bundle.queries.push(...beatQueries);
-        bundle.providerCalls = (bundle.providerCalls ?? 0) + beatQueries.length;
+        bundle.providerCalls = providerCallsUsed + beatQueries.length;
         bundle.results = appendTeamNewsSearchResults(
           bundle.results,
           outcomes,
@@ -1201,6 +1240,47 @@ async function buildEvidenceBundle(
   if (mergeOptions?.managerFact) {
     const { question, grounding } = mergeOptions.managerFact;
     bundle.results = filterDeskEvidenceBundle(bundle, grounding, Date.now(), question).results;
+    const clubScope = singleClubCurrentFactScope(question, grounding);
+    if (clubScope?.kind === "manager"
+      && managerLookupNeedsSiteBeatRetry(bundle.results, clubScope.club)) {
+      for (const beat of managerSiteBeatFallbackOrder(clubScope.club)) {
+        if (!managerLookupNeedsSiteBeatRetry(bundle.results, clubScope.club)) break;
+        const beatQueries = [...managerSiteBeatQueries(beat, clubScope.club)];
+        const providerCallsUsed = bundle.providerCalls ?? 0;
+        if (siteBeatRetryWouldExceedBudget(providerCallsUsed, beatQueries.length, PROVIDER_CALL_BUDGET)) {
+          console.info(JSON.stringify({
+            event: "current_manager_site_beat_retry_skipped",
+            reason: "provider_budget",
+            beat,
+            club: clubScope.club,
+            providerCallBudget: PROVIDER_CALL_BUDGET,
+            providerCallsUsed,
+            queriesNeeded: beatQueries.length,
+            siteBeatRetryReserved: SITE_BEAT_RETRY_PROVIDER_CALLS,
+          }));
+          break;
+        }
+        const before = bundle.results.length;
+        const outcomes = await searchWebBatch(beatQueries, signal);
+        for (const outcome of outcomes) noteSearchOutcome(bundle, outcome);
+        bundle.queries.push(...beatQueries);
+        bundle.providerCalls = providerCallsUsed + beatQueries.length;
+        bundle.results = appendManagerSearchResults(
+          bundle.results,
+          outcomes,
+          MAX_EVIDENCE_RESULTS
+        );
+        console.info(JSON.stringify({
+          event: "current_manager_site_beat_retry",
+          beat,
+          club: clubScope.club,
+          queries: beatQueries.length,
+          resultsBefore: before,
+          resultsAfter: bundle.results.length,
+          needsRetry: managerLookupNeedsSiteBeatRetry(bundle.results, clubScope.club),
+        }));
+      }
+    }
   }
   bundle.retrievalMeta = {
     queriesRun: planned.length,
