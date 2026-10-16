@@ -3,4 +3,6 @@ __pycache__/
 *.pyc
 *.egg-info/
 data/raw/
+data/xg/
+!data/xg/fixtures/**
 artifacts/
