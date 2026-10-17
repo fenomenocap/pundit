@@ -26,7 +26,7 @@ Package: `model/backtest/` (`pnpm backtest:ci`, `pnpm backtest:run`).
 
 Phase 1 marginally beats the champion on walk-forward log loss but stays **behind** `BACKTEST_PROMOTED_MODEL_ENABLED` (default `false`) until a human enables it. Edge/chat wording remains gated: `edgeValidationActive=false` (see `GET /api/model/backtest-gate`).
 
-## Phase 3 xG (see PR after 2026-10-16)
+## Phase 3 xG (2026-10-16)
 
 Understat match xG is fetched offline (`pnpm backtest:download-xg`) into versioned JSON under `model/backtest/data/xg/`. StatsBomb open-data PL 2015/16 shot events calibrate Understat (`calibration_v1.json`). Rolling time-decayed pre-match xG for/against feeds a Poisson/Dixon–Coles 1X2 head and the fundamental ensemble. ClubElo dated CSVs are probed via API/Wayback; when unreachable the results-built Elo proxy remains.
 
