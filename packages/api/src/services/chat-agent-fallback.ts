@@ -10,6 +10,8 @@ export const AGENT_USER_BANNED_PHRASES: readonly RegExp[] = [
   /\bgeneration_degraded\b/i,
   /\bhard budget exceeded\b/i,
   /\btool-calling agent\b/i,
+  /\bwhat I already have on record\b/i,
+  /\bsticking to what we already pulled\b/i,
 ];
 
 export function containsAgentInternalWording(text: string): boolean {
@@ -36,14 +38,8 @@ export function composeAgentEvidenceFallback(
 
   if (grounding?.kind === "match") {
     const headline = envelopChatAgentAnswer("", question, grounding, { hasHistory }).trim();
-    if (sources.length) {
-      const body = cited
-        ? `What I already have on record: ${cited}.`
-        : "";
-      return [headline, body, "No bet — I'll keep the take tied to the model sheet and those sources only."]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
+    if (sources.length && headline) {
+      return `${headline} ${cited}`.trim();
     }
     if (headline) {
       return `${headline} No bet — I'll keep this to the Fundamental sheet only.`.trim();
@@ -51,7 +47,7 @@ export function composeAgentEvidenceFallback(
   }
 
   if (sources.length) {
-    return `Lean Avoid — sticking to what we already pulled: ${cited}.`;
+    return `Lean Avoid — ${cited}`.trim();
   }
 
   return "No bet — I'll keep this to verified sources and the model sheet only.";

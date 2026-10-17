@@ -14,7 +14,8 @@ export type ChatAgentTurnOutcome =
   | "fallback"
   | "cancelled"
   | "timeout"
-  | "error";
+  | "error"
+  | "skipped";
 
 export interface ChatAgentTurnMetrics {
   latencyMs: number;
@@ -25,6 +26,8 @@ export interface ChatAgentTurnMetrics {
   publisherFetches: number;
   capHit: ChatAgentCapHit;
   outcome: ChatAgentTurnOutcome;
+  /** Set when outcome is skipped (deterministic/coverage/ineligible route). */
+  skipReason?: string;
 }
 
 export function emptyChatAgentTurnMetrics(): ChatAgentTurnMetrics {
@@ -51,5 +54,6 @@ export function logChatAgentTurn(metrics: ChatAgentTurnMetrics): void {
     publisherFetches: metrics.publisherFetches,
     capHit: metrics.capHit,
     outcome: metrics.outcome,
+    ...(metrics.skipReason ? { skipReason: metrics.skipReason } : {}),
   }));
 }
