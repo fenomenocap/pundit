@@ -8,8 +8,12 @@ import { getStandings } from "./data-layer/getStandings";
 import { getTeamNews } from "./data-layer/getTeamNews";
 import { getManagers } from "./data-layer/getManagers";
 import { getPlayer } from "./data-layer/getPlayer";
-import { getModelForecastByKey } from "./data-layer/getModelForecast";
-import { getCachedModelData, getModelFixtureKey } from "./model-data";
+import { getModelForecast, getModelForecastByKey } from "./data-layer/getModelForecast";
+import {
+  findModelFixtureByPublicRef,
+  getModelFixtureKey,
+  type ModelFixtureLookupHint,
+} from "./model-data";
 import { resolveInference } from "./inference-config";
 import type { FederatedGrounding } from "./federated-evidence";
 
@@ -90,10 +94,13 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
 
 export const CHAT_AGENT_SYSTEM = `You are The Gaffer's Analyst on Pundit — sharp, opinionated, dry banter allowed.
 Make one clear call per answer: Back / Lean / Avoid / No bet. Confidence follows the numbers.
-Every probability and fair price must come from a tool result. Every news claim needs a URL from search tools.
-When our model disagrees with market consensus, say so plainly and explain using the supplied gaps — never call it "edge" or "value"${MODEL_EDGE_CLAIMS_ALLOWED ? "" : " until the backtest gate passes"}.
-Never say lock, guaranteed, or can't lose. Mention small stakes and 18+ / gamble responsibly on any betting call.
-Refuse anything aimed at problem gambling.`;
+Every probability and fair price must come from tool output or the seeded Fundamental block — never guess.
+Label Pundit Fundamental numbers separately from external market consensus; never blend them into one "model" figure.
+Every injury, manager, or news claim needs a markdown link [title](url) copied from search tool output.
+If a search tool returns no rows, say you could not verify that fact — do not invent squad or injury news.
+When Fundamental disagrees with market consensus, say so plainly using the supplied gaps — never call it "edge" or "value"${MODEL_EDGE_CLAIMS_ALLOWED ? "" : " until the backtest gate passes"}.
+Never say lock, guaranteed, or can't lose. On explicit betting calls only, mention small stakes and 18+ / gamble responsibly.
+Refuse anything aimed at problem gambling. Vary phrasing; avoid repeating the same section headers every turn.`;
 
 function agentReasoning(): { thinking?: { type: "enabled"; budget_tokens: number } } {
   if (process.env.PUNDIT_REASONING?.trim().toLowerCase() === "off") return {};
@@ -112,6 +119,52 @@ function defaultCompetitionId(grounding: AskGrounding): string | undefined {
 
 function defaultFixtureId(grounding: AskGrounding): string | undefined {
   return grounding?.kind === "match" ? grounding.fixtureId : undefined;
+}
+
+function fixtureLookupHint(grounding: AskGrounding): ModelFixtureLookupHint | undefined {
+  if (grounding?.kind !== "match") return undefined;
+  return {
+    competitionId: grounding.competitionId,
+    date: grounding.date,
+    home: grounding.home,
+    away: grounding.away,
+  };
+}
+
+function resolveCachedFixture(
+  fixtureId: string | undefined,
+  grounding: AskGrounding,
+) {
+  const hint = fixtureLookupHint(grounding);
+  if (fixtureId) return findModelFixtureByPublicRef(fixtureId, hint);
+  if (hint?.home && hint?.away) return findModelFixtureByPublicRef("", hint);
+  return undefined;
+}
+
+function matchSeedBlock(grounding: Extract<AskGrounding, { kind: "match" }>): string {
+  const fixture = resolveCachedFixture(grounding.fixtureId, grounding);
+  const modelKey = fixture ? getModelFixtureKey(fixture) : null;
+  const fundamental = {
+    pHome: grounding.pHome,
+    pDraw: grounding.pDraw,
+    pAway: grounding.pAway,
+    pOver2_5: grounding.pOver2_5,
+    pUnder2_5: grounding.pUnder2_5,
+    pBttsYes: grounding.pBttsYes,
+    pBttsNo: grounding.pBttsNo,
+    topScores: grounding.topScores?.slice(0, 5) ?? [],
+  };
+  return [
+    "Seeded data (use for Fundamental quotes; pass fixtureId below to tools when needed):",
+    JSON.stringify({
+      fixtureRefs: {
+        espn: grounding.fixtureId,
+        modelKey,
+      },
+      fundamental,
+      externalMarketConsensus: grounding.externalMarketConsensus ?? null,
+    }),
+  ].join("\n");
 }
 
 function federatedGrounding(grounding: AskGrounding): FederatedGrounding {
@@ -138,10 +191,13 @@ async function runAgentTool(
   const competitionId = typeof input.competitionId === "string" && input.competitionId.trim()
     ? input.competitionId.trim()
     : defaultCompetitionId(grounding);
-  const cached = fixtureId
-    ? getCachedModelData().fixtures.find((row) => getModelFixtureKey(row) === fixtureId)
-    : undefined;
-  const modelRow = fixtureId ? getModelForecastByKey(fixtureId) : null;
+  const hint = fixtureLookupHint(grounding);
+  const cached = resolveCachedFixture(fixtureId, grounding);
+  const modelRow = cached
+    ? getModelForecast({ fixture: cached })
+    : fixtureId
+      ? getModelForecastByKey(fixtureId, hint)
+      : null;
   const fed = federatedGrounding(grounding);
 
   switch (name) {
@@ -209,9 +265,10 @@ export async function runChatAgent(
   signal?: AbortSignal,
 ): Promise<string> {
   const inference = resolveInference();
+  const seed = grounding?.kind === "match" ? `\n${matchSeedBlock(grounding)}\n` : "";
   const messages: Anthropic.MessageParam[] = [{
     role: "user",
-    content: `${groundingContextLine(grounding)}\nQuestion: ${question}`,
+    content: `${groundingContextLine(grounding)}${seed}\nQuestion: ${question}`,
   }];
 
   for (let step = 0; step < 8; step += 1) {

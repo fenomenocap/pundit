@@ -1,5 +1,5 @@
 import { buildGrounding, type Grounding } from "../ask";
-import { getCachedModelData, getModelFixtureKey, type ModelFixture } from "../model-data";
+import { findModelFixtureByPublicRef, getCachedModelData, type ModelFixture } from "../model-data";
 import { writeDataLayerSnapshot } from "./snapshot-store";
 import type { DataLayerResult } from "./types";
 import { wrapWithFreshness } from "./shared";
@@ -32,9 +32,11 @@ export function getModelForecast(input: GetModelForecastInput): DataLayerResult<
   );
 }
 
-export function getModelForecastByKey(fixtureKey: string): DataLayerResult<Grounding> | null {
-  const model = getCachedModelData();
-  const fixture = model.fixtures.find((row) => getModelFixtureKey(row) === fixtureKey);
+export function getModelForecastByKey(
+  fixtureKey: string,
+  hint?: Parameters<typeof findModelFixtureByPublicRef>[1],
+): DataLayerResult<Grounding> | null {
+  const fixture = findModelFixtureByPublicRef(fixtureKey, hint);
   if (!fixture) return null;
   return getModelForecast({ fixture });
 }
