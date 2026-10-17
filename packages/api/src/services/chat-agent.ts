@@ -1,11 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MODEL_EDGE_CLAIMS_ALLOWED } from "../config/backtest-gate";
-import type { AskGrounding } from "./ask";
+import type { AskGrounding, EvidenceBundle, EvidenceSource } from "./ask";
 import { getFixtures } from "./data-layer/getFixtures";
 import { getMarketOdds } from "./data-layer/getMarketOdds";
 import { getForm } from "./data-layer/getForm";
 import { getStandings } from "./data-layer/getStandings";
-import { getTeamNews } from "./data-layer/getTeamNews";
+import { getTeamNews, type TeamNewsHit } from "./data-layer/getTeamNews";
 import { getManagers } from "./data-layer/getManagers";
 import { getPlayer } from "./data-layer/getPlayer";
 import { getModelForecast, getModelForecastByKey } from "./data-layer/getModelForecast";
@@ -16,6 +16,7 @@ import {
 } from "./model-data";
 import { resolveInference } from "./inference-config";
 import type { FederatedGrounding } from "./federated-evidence";
+import { STAKE_REFUSAL_SENTENCE } from "./response-composer";
 
 const AGENT_TOOLS: Anthropic.Tool[] = [
   {
@@ -93,19 +94,24 @@ const AGENT_TOOLS: Anthropic.Tool[] = [
 ];
 
 export const CHAT_AGENT_SYSTEM = `You are The Gaffer's Analyst on Pundit — sharp, opinionated, dry banter allowed.
-Make one clear call per answer: Back / Lean / Avoid / No bet. Confidence follows the numbers.
+Open with your call (Back / Lean / Avoid / No bet) or a direct factual answer — never "I will explain" preambles.
+For a priced fixture, the first line must state home, draw and away percentages from the seeded Fundamental block or get_model_forecast.
 Every probability and fair price must come from tool output or the seeded Fundamental block — never guess.
 Label Pundit Fundamental numbers separately from external market consensus; never blend them into one "model" figure.
-Every injury, manager, or news claim needs a markdown link [title](url) copied from search tool output.
+When comparing to Kalshi, Polymarket or Stake, name the source you are quoting.
+For manager or injury claims: cite with [[S1]]-style markers matching tool source ids, plus a markdown link [title](url) on the same sentence.
 If a search tool returns no rows, say you could not verify that fact — do not invent squad or injury news.
 When Fundamental disagrees with market consensus, say so plainly using the supplied gaps — never call it "edge" or "value"${MODEL_EDGE_CLAIMS_ALLOWED ? "" : " until the backtest gate passes"}.
 Never say lock, guaranteed, or can't lose. On explicit betting calls only, mention small stakes and 18+ / gamble responsibly.
+If asked to size a stake without a bankroll, refuse with exactly: "${STAKE_REFUSAL_SENTENCE}"
+Do not leave empty **Section** headers. Finish every sentence; do not trail off mid-thought.
 Refuse anything aimed at problem gambling. Vary phrasing; avoid repeating the same section headers every turn.`;
 
 function agentReasoning(): { thinking?: { type: "enabled"; budget_tokens: number } } {
-  if (process.env.PUNDIT_REASONING?.trim().toLowerCase() === "off") return {};
-  if (resolveInference().provider === "openrouter") {
-    return { thinking: { type: "enabled", budget_tokens: 2048 } };
+  if (process.env.PUNDIT_REASONING?.trim().toLowerCase() === "on") {
+    if (resolveInference().provider === "openrouter") {
+      return { thinking: { type: "enabled", budget_tokens: 1024 } };
+    }
   }
   return {};
 }
@@ -138,7 +144,7 @@ function resolveCachedFixture(
   const hint = fixtureLookupHint(grounding);
   if (fixtureId) return findModelFixtureByPublicRef(fixtureId, hint);
   if (hint?.home && hint?.away) return findModelFixtureByPublicRef("", hint);
-  return undefined;
+  return null;
 }
 
 function matchSeedBlock(grounding: Extract<AskGrounding, { kind: "match" }>): string {
@@ -163,6 +169,7 @@ function matchSeedBlock(grounding: Extract<AskGrounding, { kind: "match" }>): st
       },
       fundamental,
       externalMarketConsensus: grounding.externalMarketConsensus ?? null,
+      oddsSources: grounding.oddsSources ?? [],
     }),
   ].join("\n");
 }
@@ -179,10 +186,43 @@ function federatedGrounding(grounding: AskGrounding): FederatedGrounding {
   return null;
 }
 
+function emptyBundle(): EvidenceBundle {
+  return { queries: [], results: [], providerCalls: 0 };
+}
+
+function appendNewsHits(bundle: EvidenceBundle, hits: TeamNewsHit[], query: string): void {
+  if (!query.trim()) return;
+  if (!bundle.queries.includes(query)) bundle.queries.push(query);
+  bundle.providerCalls = (bundle.providerCalls ?? 0) + 1;
+  const offset = bundle.results.length;
+  for (const [index, hit] of hits.entries()) {
+    const row: EvidenceSource = {
+      id: `S${offset + index + 1}`,
+      title: hit.title,
+      url: hit.link,
+      date: hit.date || new Date().toISOString().slice(0, 10),
+      snippet: hit.snippet,
+      tier: hit.tier,
+    };
+    bundle.results.push(row);
+  }
+}
+
+function normalizeAgentMarkers(text: string, bundle: EvidenceBundle): string {
+  let normalized = text;
+  for (const source of bundle.results) {
+    const escapedUrl = source.url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const linkPattern = new RegExp(`\\[([^\\]]+)\\]\\(${escapedUrl}\\)`, "g");
+    normalized = normalized.replace(linkPattern, `[[${source.id}]]`);
+  }
+  return normalized;
+}
+
 async function runAgentTool(
   name: string,
   input: Record<string, unknown>,
   grounding: AskGrounding,
+  bundle: EvidenceBundle,
   signal?: AbortSignal,
 ): Promise<unknown> {
   const fixtureId = typeof input.fixtureId === "string" && input.fixtureId.trim()
@@ -212,22 +252,31 @@ async function runAgentTool(
       return getForm({ competitionId: competitionId ?? "eng.1" }).data;
     case "get_standings":
       return getStandings({ competitionId: competitionId ?? "eng.1" }).data;
-    case "get_team_news":
-      return (await getTeamNews({
-        question: String(input.question ?? ""),
-        grounding: fed,
-      }, signal)).data;
-    case "get_managers":
-      return (await getManagers({
-        club: String(input.club ?? (grounding?.kind === "match" ? grounding.home : "")),
-        grounding: fed,
-      }, signal)).data;
-    case "get_player":
-      return (await getPlayer({
-        player: String(input.player ?? ""),
-        club: typeof input.club === "string" ? input.club : undefined,
-        grounding: fed,
-      }, signal)).data;
+    case "get_team_news": {
+      const question = String(input.question ?? "");
+      const result = await getTeamNews({ question, grounding: fed }, signal);
+      const hits = Array.isArray(result.data) ? result.data : [];
+      appendNewsHits(bundle, hits, question);
+      return { hits, sourceIds: bundle.results.map((row) => row.id) };
+    }
+    case "get_managers": {
+      const club = String(input.club ?? (grounding?.kind === "match" ? grounding.home : ""));
+      const result = await getManagers({ club, grounding: fed }, signal);
+      const hits = Array.isArray(result.data) ? result.data : [];
+      appendNewsHits(bundle, hits, `Who is the current manager of ${club}?`);
+      return { hits, sourceIds: bundle.results.map((row) => row.id) };
+    }
+    case "get_player": {
+      const player = String(input.player ?? "");
+      const club = typeof input.club === "string" ? input.club : undefined;
+      const question = club
+        ? `${player} injury availability ${club}`
+        : `${player} injury availability`;
+      const result = await getPlayer({ player, club }, signal);
+      const hits = Array.isArray(result.data) ? result.data : [];
+      appendNewsHits(bundle, hits, question);
+      return { hits, sourceIds: bundle.results.map((row) => row.id) };
+    }
     default:
       return { error: "unknown_tool" };
   }
@@ -257,24 +306,31 @@ function groundingContextLine(grounding: AskGrounding): string {
   return "General football analysis (no priced fixture selected).";
 }
 
+export interface ChatAgentRunResult {
+  text: string;
+  bundle: EvidenceBundle;
+}
+
 /** Agent path for match, table, season, and general tiers using data-layer tools. */
 export async function runChatAgent(
   question: string,
   grounding: AskGrounding,
   client: Pick<Anthropic, "messages">,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<ChatAgentRunResult> {
   const inference = resolveInference();
+  const bundle = emptyBundle();
   const seed = grounding?.kind === "match" ? `\n${matchSeedBlock(grounding)}\n` : "";
   const messages: Anthropic.MessageParam[] = [{
     role: "user",
     content: `${groundingContextLine(grounding)}${seed}\nQuestion: ${question}`,
   }];
 
-  for (let step = 0; step < 8; step += 1) {
+  let text = "";
+  for (let step = 0; step < 6; step += 1) {
     const response = await client.messages.create({
       model: inference.model,
-      max_tokens: 1200,
+      max_tokens: 1400,
       system: CHAT_AGENT_SYSTEM,
       tools: AGENT_TOOLS,
       messages,
@@ -284,7 +340,10 @@ export async function runChatAgent(
     const toolUses = response.content.filter(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
     );
-    if (!toolUses.length) return extractText(response) || "No bet — I couldn't assemble a grounded read.";
+    if (!toolUses.length) {
+      text = extractText(response) || "";
+      break;
+    }
 
     messages.push({ role: "assistant", content: response.content as Anthropic.ContentBlockParam[] });
     const results = await Promise.all(toolUses.map(async (toolUse) => ({
@@ -294,12 +353,19 @@ export async function runChatAgent(
         toolUse.name,
         (toolUse.input ?? {}) as Record<string, unknown>,
         grounding,
+        bundle,
         signal,
       )),
     })));
     messages.push({ role: "user", content: results });
   }
-  return "No bet — the agent loop exhausted its tool budget before finishing.";
+  if (!text) {
+    text = "No bet — the agent loop exhausted its tool budget before finishing.";
+  }
+  return {
+    text: normalizeAgentMarkers(text, bundle),
+    bundle,
+  };
 }
 
 /** @deprecated Use runChatAgent */
@@ -309,7 +375,7 @@ export async function runChatAgentMatch(
   client: Pick<Anthropic, "messages">,
   signal?: AbortSignal,
 ): Promise<string> {
-  return runChatAgent(question, grounding, client, signal);
+  return (await runChatAgent(question, grounding, client, signal)).text;
 }
 
 export function chatAgentGroundingEligible(grounding: AskGrounding): boolean {
