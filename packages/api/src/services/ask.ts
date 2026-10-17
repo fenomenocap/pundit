@@ -185,8 +185,14 @@ import {
   AGENT_GENERATION_BUDGET_MS,
   AGENT_MAX_PUBLISHER_FETCHES,
   emptyChatAgentTurnMetrics,
+  logChatAgentTurn,
   type ChatAgentTurnMetrics,
 } from "./chat-agent-limits";
+import {
+  composeAgentEvidenceFallback,
+  containsAgentInternalWording,
+  sanitizeAgentUserText,
+} from "./chat-agent-fallback";
 import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
 import type { ChatEngineMode } from "./chat-engine";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
@@ -10429,7 +10435,21 @@ export function agentNonEmptyGroundedFallback(
   if (deterministic?.trim()) return deterministic;
   const closed = closedGroundedAnswer(question, grounding, hasHistory);
   if (closed?.trim()) return closed;
-  return "No bet — I ran out of time on that turn. Ask again and I'll keep it to grounded facts only.";
+  return "No bet — I'll keep this to the model sheet and verified sources only.";
+}
+
+function resolveAgentUserAnswer(
+  question: string,
+  grounding: AskGrounding,
+  bundle: EvidenceBundle,
+  hasHistory: boolean,
+  agentText: string,
+): string {
+  const cleaned = sanitizeAgentUserText(agentText);
+  if (cleaned) return cleaned;
+  const fromEvidence = composeAgentEvidenceFallback(question, grounding, bundle, hasHistory).trim();
+  if (fromEvidence) return fromEvidence;
+  return agentNonEmptyGroundedFallback(question, grounding, hasHistory);
 }
 
 async function deliverChatAgentTurn(
@@ -10449,6 +10469,8 @@ async function deliverChatAgentTurn(
   let agentText = "";
   const turnStartedAt = Date.now();
   const metrics: ChatAgentTurnMetrics = emptyChatAgentTurnMetrics();
+  let pendingError: unknown = null;
+  let generationBudgetHit = false;
   try {
     if (grounding?.kind === "match") {
       agentText = await generateOrDegradeToGrounding(
@@ -10460,42 +10482,46 @@ async function deliverChatAgentTurn(
             hardBudgetMs: agentGenerationBudgetMs(requestStartedAt),
           });
           bundle = result.bundle;
-          metrics.toolSteps = result.metrics.toolSteps;
-          metrics.inputTokens = result.metrics.inputTokens;
-          metrics.outputTokens = result.metrics.outputTokens;
-          metrics.cumulativeTokens = result.metrics.cumulativeTokens;
-          metrics.publisherFetches = result.metrics.publisherFetches;
+          Object.assign(metrics, result.metrics);
           return result.text;
         },
         { budgetCapMs: AGENT_GENERATION_BUDGET_MS },
       );
+      if (!agentText.trim()) generationBudgetHit = true;
     } else {
       const result = await runChatAgent(question, grounding, prepared.client, signal, {
         hardBudgetMs: AGENT_GENERATION_BUDGET_MS,
       });
       bundle = result.bundle;
       agentText = result.text;
-      metrics.toolSteps = result.metrics.toolSteps;
-      metrics.inputTokens = result.metrics.inputTokens;
-      metrics.outputTokens = result.metrics.outputTokens;
-      metrics.cumulativeTokens = result.metrics.cumulativeTokens;
-      metrics.publisherFetches = result.metrics.publisherFetches;
+      Object.assign(metrics, result.metrics);
     }
   } catch (error) {
     const timedOut = error instanceof AppError && error.statusCode === 504;
     const cancelled = isCancellation(error, signal);
-    if (!timedOut && !cancelled) mapAnalysisError(error);
+    metrics.outcome = cancelled ? "cancelled" : timedOut ? "timeout" : "error";
+    if (timedOut) metrics.capHit = metrics.capHit ?? "time";
+    if (!timedOut && !cancelled) pendingError = error;
     agentText = "";
+  } finally {
+    metrics.latencyMs = Date.now() - turnStartedAt;
+    metrics.publisherFetches = bundle.providerCalls ?? metrics.publisherFetches;
+    if (generationBudgetHit && !metrics.capHit) metrics.capHit = "generation_budget";
+    if ((!agentText.trim() || containsAgentInternalWording(agentText))
+      && metrics.outcome === "success") {
+      metrics.outcome = "fallback";
+    }
+    logChatAgentTurn(metrics);
   }
-  metrics.latencyMs = Date.now() - turnStartedAt;
-  console.info(JSON.stringify({ event: "chat_agent_turn", ...metrics }));
+  if (pendingError) mapAnalysisError(pendingError);
 
-  if (!agentText.trim()) {
+  if (!agentText.trim() || containsAgentInternalWording(agentText)) {
+    metrics.outcome = metrics.outcome === "success" ? "fallback" : metrics.outcome;
     return {
-      answer: agentNonEmptyGroundedFallback(question, grounding, history.length > 0),
+      answer: resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, agentText),
       grounding,
       verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
-      usedLlm: false,
+      usedLlm: metrics.toolSteps > 0,
     };
   }
 
@@ -10530,7 +10556,7 @@ async function deliverChatAgentTurn(
     });
     const answer = delivered.answer.trim()
       ? delivered.answer
-      : agentNonEmptyGroundedFallback(question, grounding, history.length > 0);
+      : resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, "");
     return {
       answer,
       grounding,
@@ -10542,7 +10568,7 @@ async function deliverChatAgentTurn(
 
   const bare = prose.trim()
     ? prose
-    : agentNonEmptyGroundedFallback(question, grounding, history.length > 0);
+    : resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, "");
   return {
     answer: bare,
     grounding,

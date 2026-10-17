@@ -2732,6 +2732,11 @@ describe("current-news evidence hardening", () => {
     expect(agentGenerationBudgetMs(start, start)).toBe(72_000);
   });
 
+  it("uses a 40k per-turn cumulative LLM token cap", async () => {
+    const { AGENT_MAX_CUMULATIVE_LLM_TOKENS } = await import("./chat-agent-limits");
+    expect(AGENT_MAX_CUMULATIVE_LLM_TOKENS).toBe(40_000);
+  });
+
   it("keeps an unrecognized matchup candidate ungrounded and strips invented output", () => {
     expect(resolveAskContext(
       "Northbridge Athletic vs Southbank Rovers tomorrow",
