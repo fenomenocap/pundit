@@ -33,6 +33,10 @@ Optional: **LLM judge** utilities in `scripts/chat-eval-llm-judge.mjs` for secon
 - Set **`CHAT_EVAL_ENGINE=agent`** to evaluate the tool-calling engine.
 - With search replay active, **`X-Pundit-Chat-Engine`** header can override per request (eval guard only). See [Chat engine](../how-it-works/chat-engine.md).
 
+### Daily side-by-side (GitHub Actions)
+
+Workflow [`.github/workflows/chat-eval-daily.yml`](../../.github/workflows/chat-eval-daily.yml) runs legacy (gated) and agent (non-gating) sweeps, then **`node scripts/merge-dual-engine-chat-eval.mjs`** to produce a combined `latest-run.json` with `engineQualityComparison`. Flip criteria for production agent mode: [Chat engine rollout readiness](chat-engine-rollout-readiness.md).
+
 ## What Schema-17 guards
 
 Non-exhaustive: internal jargon, raw search payloads, incomplete endings, match scoreline arithmetic, table-source fidelity, abstained counterfactuals, team-news sourcing, high-line geometry, clause-scoped certainty, build-floor SHA convergence, deployment id, pacing gates, and critic PASS on every HTTP 200 turn.
