@@ -69,11 +69,12 @@ Never put dates, days, months, relative event timing, durations, quantities, pub
 // excludes temporal/numeric fields and additional subjects by construction.
 const CLUB_NEWS_BODY_PART = "(?:neural hamstring|hamstring|groin|calf|knee|ankle|muscle|back|thigh|adductor|achilles|foot|hip|shoulder|ligament|tendon)";
 const CLUB_NEWS_CONDITION = `${CLUB_NEWS_BODY_PART} (?:injury|issue|problem|strain|pain|tear)`;
-const CLUB_NEWS_STATE = "(?:injured|sidelined|unavailable|doubtful|suspended|back in training|in training|in rehabilitation|undergoing assessment|awaiting assessment)";
+const CLUB_NEWS_STATE = "(?:injured|sidelined|unavailable|doubtful|suspended|back in training|in training|in rehabilitation|undergoing assessment|awaiting assessment|ruled out|out)";
 const CLUB_NEWS_STATUS = new RegExp("^(?:"
   + `(?:(?:was|is)(?: reported)?|has been|had been|remains|may be|might be|could be) ${CLUB_NEWS_STATE}(?: with (?:a |an )?${CLUB_NEWS_CONDITION})?`
   + `|(?:was reported to have|has|had|has been dealing with|is dealing with|was dealing with) (?:a |an )?${CLUB_NEWS_CONDITION}(?: pending (?:further )?assessment)?`
   + `|(?:sustained|suffered|has sustained|has suffered|had sustained|had suffered) (?:a |an )?${CLUB_NEWS_CONDITION}`
+  + "|(?:is|was|remains|has) (?:a )?fitness doubt"
   + "|has (?:returned to|resumed|continued) training|has been spotted back in training"
   + "|(?:withdrew|had withdrawn|was reported to have withdrawn) from international duty"
   + "|(?:was|is|was reported to be) progressing(?: well)? in rehabilitation"
