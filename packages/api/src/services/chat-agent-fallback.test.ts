@@ -63,6 +63,7 @@ describe("agent user-facing fallbacks", () => {
     const text = composeAgentEvidenceFallback("Any injuries?", matchGrounding, bundle, false);
     expect(text).toContain("[[S1]]");
     expect(text).toMatch(/Everton|22\.0%/);
+    expect(text).not.toMatch(/what I already have on record/i);
   });
 
   it("emits chat_agent_turn on fallback-oriented metrics", () => {
@@ -76,6 +77,20 @@ describe("agent user-facing fallbacks", () => {
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('"event":"chat_agent_turn"'));
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('"capHit":"tokens"'));
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('"outcome":"fallback"'));
+    spy.mockRestore();
+  });
+
+  it("emits chat_agent_turn on skipped agent routes", () => {
+    const spy = vi.spyOn(console, "info").mockImplementation(() => {});
+    logChatAgentTurn({
+      ...emptyChatAgentTurnMetrics(),
+      latencyMs: 4,
+      outcome: "skipped",
+      capHit: null,
+      skipReason: "deterministic_analysis",
+    });
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('"outcome":"skipped"'));
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('"skipReason":"deterministic_analysis"'));
     spy.mockRestore();
   });
 });
