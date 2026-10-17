@@ -17,6 +17,7 @@ The unchanged calibration family passed a later five-season retrospective valida
 
 ### Where to start
 
+* [Documentation index](index.md) — full map of product, API, ops, and architecture docs
 * [What is Pundit](getting-started/what-is-pundit.md) — the short version of what this product does
 * [How to Use Pundit](getting-started/how-to-use.md) — the desk, paper lab, fixtures, model, and ledger
 * [The Model](how-it-works/the-model.md) — how the underlying probabilities are actually generated
