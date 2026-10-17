@@ -1,85 +1,80 @@
 # Pundit chat transcript — 2026-10-17
 
-- Run `2026-10-17T14-56-11-654Z` · overall **ISSUES FOUND** · progress complete
-- API `776fc1a` · scenarios 73 (pass 67, inconclusive 4, fail 2)
-- Turns 73 · answered 73 · with citations 3 · median latency 125 ms
+- Run `2026-10-17T16-42-36-317Z` · overall **ISSUES FOUND** · progress complete
+- API `adb668e` · scenarios 73 (pass 68, inconclusive 4, fail 1)
+- Turns 73 · answered 73 · with citations 5 · median latency 104 ms
 - Quality signals: 0 repeated sentence(s), 0 near-duplicate answer pair(s), 0 uncited current-news turn(s)
 - Request engine: **both**
-- Eval quality: template 14%, LLM rate 7%, citations 4%
+- Eval quality: template 14%, LLM rate 7%, citations 7%
 
-- Engine comparison (legacy vs agent): template 0.14 → 0.14, citations 0.04 → 0.05
+- Engine comparison (legacy vs agent): template 0.14 → 0.01, citations 0.07 → 0.36
 
 
 ## Findings
 
-1. **pinned-current-manager-and-result-evidence** — FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri
-2. **dated-club-news-delivers-supported-update** — FAIL: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated
+1. **dated-club-news-delivers-supported-update** — FAIL: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated
 
 ## Conversations
 
 ### homepage-desk-output — PASS (fixed)
 
-**Turn 1 · Q:** Give me the match briefing for Newcastle vs Aston Villa. Tactics, who decides it, and the model lean.
+**Turn 1 · Q:** Give me the match briefing for Bournemouth vs Sunderland. Tactics, who decides it, and the model lean.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 118 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 59 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> I lean to Newcastle at home. If Newcastle draw Aston Villa's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Aston Villa close the central passing lanes, Newcastle could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
+> I lean to Bournemouth at home. If Bournemouth draw Sunderland's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Sunderland close the central passing lanes, Bournemouth could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
 > 
 > I’d watch the receiver beyond the first press, the screening midfielder covering for an advancing full-back, and the striker attacking a cut-back. If the receiver can turn, they could connect the attack; if the screening midfielder is pulled towards the ball, a runner could exploit the space behind; if the striker times the run, they could reach the delivery before a defender. Those are roles to watch, not a claim about confirmed starters or a player scoring forecast.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What about over and under 2.5? Why do they add to 100%?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 140 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 156 ms_
 
-> I have over 2.5 at 56.0%; under 2.5 is 44.0%. Under covers fewer than three goals; over covers three or more. There is no push at a half-goal line, so their probabilities sum to one. Decimal odds are the reciprocals of those probabilities. I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> I have over 2.5 at 53.1%; under 2.5 is 46.9%. Under covers fewer than three goals; over covers three or more. There is no push at a half-goal line, so their probabilities sum to one. Decimal odds are the reciprocals of those probabilities. I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 
-### pinned-current-manager-and-result-evidence — FAIL (fixed)
+### pinned-current-manager-and-result-evidence — PASS (fixed)
 
-**Turn 1 · Q:** What's Newcastle's manager today?
+**Turn 1 · Q:** What's Bournemouth's manager today?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 5143 ms_
+_grounding=match · capability=priced · citations=1 · verification=verified · HTTP 200 · 17071 ms_
 
-> I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.
+> Bournemouth’s manager is Marco Rose ([Alex Scott transfer news: Bournemouth will consider offers in excess of £80m for England international amid refusal to sign new contract | Football News | Sky Sports](https://www.skysports.com/football/news/13599539/alex-scott-transfer-news-bournemouth-will-consider-offers-in-excess-of-80m-for-england-international-amid-refusal-to-sign-new-contract) · 16 Oct).
 
-Failed assertions: turn1PositiveCurrentManagerVerification, turn1CurrentManagerIdentityDelivered, turn1EveryCurrentManagerIdentityCited, turn1CurrentManagerIdentityUnambiguous, turn1VerificationStatus
+**Turn 2 · Q:** Who is Bournemouth's manager and why?
 
-**Turn 2 · Q:** Who is Newcastle's manager and why?
+_grounding=match · capability=priced · citations=1 · verification=verified · HTTP 200 · 10517 ms_
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 1679 ms_
+> Bournemouth’s manager is Marco Rose ([Alex Scott transfer news: Bournemouth will consider offers in excess of £80m for England international amid refusal to sign new contract | Football News | Sky Sports](https://www.skysports.com/football/news/13599539/alex-scott-transfer-news-bournemouth-will-consider-offers-in-excess-of-80m-for-england-international-amid-refusal-to-sign-new-contract) · 16 Oct). I haven’t verified the club’s stated reason for choosing or retaining him.
 
-> I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.
+**Turn 3 · Q:** What is Bournemouth's latest result and why?
 
-Failed assertions: turn2PositiveCurrentManagerVerification, turn2CurrentManagerIdentityDelivered, turn2EveryCurrentManagerIdentityCited, turn2CurrentManagerIdentityUnambiguous, turn2VerificationStatus
+_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 29 ms_
 
-**Turn 3 · Q:** What is Newcastle's latest result and why?
-
-_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 94 ms_
-
-> The latest completed result I have for Newcastle in my covered competitions is **Coventry 4–1 Newcastle** (Premier League, 2026-10-12): Coventry won. ([ESPN match record, 2026-10-12](https://www.espn.com/soccer/match/_/gameId/401879267)). I cover the Premier League and Champions League qualifiers here; another cup match may be more recent. The score establishes the outcome; I would need a verified match report to explain why it happened.
+> The latest completed result I have for Bournemouth in my covered competitions is **Chelsea 5–1 Bournemouth** (Premier League, 2026-10-10): Chelsea won. ([ESPN match record, 2026-10-10](https://www.espn.com/soccer/match/_/gameId/401878775)). I cover the Premier League and Champions League qualifiers here; another cup match may be more recent. The score establishes the outcome; I would need a verified match report to explain why it happened.
 
 ### owned-premier-league-latest-result — PASS (fixed)
 
 **Turn 1 · Q:** What is Arsenal's latest Premier League result?
 
-_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 127 ms_
+_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 85 ms_
 
 > The latest completed Premier League result I have for Arsenal is **Arsenal 2–1 Leeds** (Premier League, 2026-10-10): Arsenal won. ([ESPN match record, 2026-10-10](https://www.espn.com/soccer/match/_/gameId/401879268)).
 
 ### dated-club-news-delivers-supported-update — FAIL (fixed)
 
-**Turn 1 · Q:** What are the latest dated club injury updates for Newcastle and Aston Villa? Keep current reports distinct from future kickoff availability.
+**Turn 1 · Q:** What are the latest dated club injury updates for Bournemouth and Sunderland? Keep current reports distinct from future kickoff availability.
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 3805 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 2927 ms_
 
 > I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim.
 
@@ -87,127 +82,127 @@ Failed assertions: turn1VerificationStatus, turn1PositiveNewsVerification, turn1
 
 ### active-match-grounding — PASS (fixed)
 
-**Turn 1 · Q:** What does Pundit's model say about Newcastle vs Aston Villa?
+**Turn 1 · Q:** What does Pundit's model say about Bournemouth vs Sunderland?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 119 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 106 ms_
 
-> My 1X2 is Newcastle 38.3% (fair 2.61), draw 28.2% (fair 3.54) and Aston Villa 33.5% (fair 2.99). I need a captured decimal line before I can print EV% or pass or play.
+> My 1X2 is Bournemouth 63.9% (fair 1.57), draw 23.0% (fair 4.34) and Sunderland 13.1% (fair 7.64). I need a captured decimal line before I can print EV% or pass or play.
 
 ### priced-fixture-retains-1x2-context — PASS (fixed)
 
-**Turn 1 · Q:** Analyse Newcastle vs Aston Villa.
+**Turn 1 · Q:** Analyse Bournemouth vs Sunderland.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 123 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 102 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What will the 1X2 be?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 115 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 104 ms_
 
-> My 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> My 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 
 ### table-route-preserves-match — PASS (fixed)
 
-**Turn 1 · Q:** Analyse Newcastle vs Aston Villa.
+**Turn 1 · Q:** Analyse Bournemouth vs Sunderland.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 133 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 114 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 101 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 77 ms_
 
-> Man City lead with 18 points from 6 matches. The current top five are:
-> 1. **Man City** — 18 points from 6 matches, goal difference +11.
+> Man City lead with 21 points from 7 matches. The current top five are:
+> 1. **Man City** — 21 points from 7 matches, goal difference +12.
 > 2. **Arsenal** — 15 points from 6 matches, goal difference +5.
 > 3. **Brighton** — 13 points from 6 matches, goal difference +13.
 > 4. **Chelsea** — 13 points from 7 matches, goal difference +4.
-> 5. **Brentford** — 10 points from 6 matches, goal difference +6.
+> 5. **Liverpool** — 12 points from 7 matches, goal difference +1.
 > 
 > That is the table as it stands; it does not imply a title probability.
 
 **Turn 3 · Q:** Back to that match: what will the 1X2 be?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 121 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 281 ms_
 
-> My 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> My 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 
 ### analyst-conversation-golden-path — PASS (fixed)
 
-**Turn 1 · Q:** Give me your full preview of Newcastle vs Aston Villa, including the 1X2, likely scorelines and any comparable market disagreement.
+**Turn 1 · Q:** Give me your full preview of Bournemouth vs Sunderland, including the 1X2, likely scorelines and any comparable market disagreement.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 113 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 132 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What is your fair decimal price for an exact 2-1 score?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 135 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 110 ms_
 
-> Reading 2-1 in home-away order, for Newcastle 2-1 Aston Villa, I make it 8.4%, or about 11.85 in fair decimal odds. I don’t have a comparable live exact-score quote here, so that is a fair price, not a claim that the market is wrong.
+> Reading 2-1 in home-away order, for Bournemouth 2-1 Sunderland, I make it 11.2%, or about 8.93 in fair decimal odds. I don’t have a comparable live exact-score quote here, so that is a fair price, not a claim that the market is wrong.
 
 **Turn 3 · Q:** Who will most likely score for Liverpool?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 122 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 110 ms_
 
-> I can’t name Liverpool’s most likely scorer from the match forecast because I don’t have player-level projections. I need Liverpool’s opponent before I can switch fixtures, so I’m keeping Newcastle vs Aston Villa in view until then. A dated scorer market and confirmed starters would let me assess the options.
+> I can’t name Liverpool’s most likely scorer from the match forecast because I don’t have player-level projections. I need Liverpool’s opponent before I can switch fixtures, so I’m keeping Bournemouth vs Sunderland in view until then. A dated scorer market and confirmed starters would let me assess the options.
 
 **Turn 4 · Q:** If the home striker is ruled out, exactly how many percentage points would you take off the home win?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 161 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 132 ms_
 
 > I can’t quantify that lineup effect without verified team news and a revised forecast. A confirmed change could alter my read, but I won’t invent a percentage adjustment.
 
 **Turn 5 · Q:** Quick detour: what does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 107 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 82 ms_
 
-> Man City lead with 18 points from 6 matches. The current top five are:
-> 1. **Man City** — 18 points from 6 matches, goal difference +11.
+> Man City lead with 21 points from 7 matches. The current top five are:
+> 1. **Man City** — 21 points from 7 matches, goal difference +12.
 > 2. **Arsenal** — 15 points from 6 matches, goal difference +5.
 > 3. **Brighton** — 13 points from 6 matches, goal difference +13.
 > 4. **Chelsea** — 13 points from 7 matches, goal difference +4.
-> 5. **Brentford** — 10 points from 6 matches, goal difference +6.
+> 5. **Liverpool** — 12 points from 7 matches, goal difference +1.
 > 
 > That is the table as it stands; it does not imply a title probability.
 
 **Turn 6 · Q:** Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 130 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 124 ms_
 
-> On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 
 ### replacing-is-not-epl — PASS (fixed)
 
 **Turn 1 · Q:** Who is replacing the injured manager?
 
-_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 113 ms_
+_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 81 ms_
 
 > I need the manager and club before I can identify a replacement. Tell me both, and I’ll check the current evidence.
 
@@ -215,137 +210,137 @@ _grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP
 
 **Turn 1 · Q:** What are Pundit's probabilities for Northbridge Athletic vs Southbank Rovers tomorrow?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 107 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 84 ms_
 
 > I couldn't confirm that matchup. Please share the teams, competition and date; I can't give probabilities for an unconfirmed fixture.
 
 ### observational-live-in-play — PASS (fixed)
 
-**Turn 1 · Q:** What are the current probabilities for Fulham vs Hull?
+**Turn 1 · Q:** What are the current probabilities for Newcastle vs Aston Villa?
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 125 ms_
+_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 262 ms_
 
 > This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
 
 **Turn 2 · Q:** Compare those probabilities with the live market odds.
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 141 ms_
+_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 91 ms_
 
 > This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
 
 ### observational-live-replacement — PASS (fixed)
 
-**Turn 1 · Q:** Fulham vs Hull
+**Turn 1 · Q:** Newcastle vs Aston Villa
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 107 ms_
+_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 77 ms_
 
 > This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
 
 **Turn 2 · Q:** What about that fixture's 1X2?
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 110 ms_
+_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 76 ms_
 
 > This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
 
-**Turn 3 · Q:** Man City vs Ipswich
+**Turn 3 · Q:** Forest vs Man City
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 154 ms_
+_grounding=fixture · capability=insufficient-model-input · citations=0 · verification=not-required · HTTP 200 · 94 ms_
 
-> This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
+> I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities.
 
 ### observational-live-suggestion-chip — PASS (fixed)
 
-**Turn 1 · Q:** Newcastle vs Aston Villa · PL · Sat
+**Turn 1 · Q:** Bournemouth vs Sunderland · PL · Sun
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 124 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 97 ms_
 
-> My 1X2 is Newcastle 38.3% (fair 2.61), draw 28.2% (fair 3.54) and Aston Villa 33.5% (fair 2.99). I need a captured decimal line before I can print EV% or pass or play.
+> My 1X2 is Bournemouth 63.9% (fair 1.57), draw 23.0% (fair 4.34) and Sunderland 13.1% (fair 7.64). I need a captured decimal line before I can print EV% or pass or play.
 
 ### team-news-sourcing — PASS (fixed)
 
-**Turn 1 · Q:** Any injury or lineup news for Newcastle vs Aston Villa?
+**Turn 1 · Q:** Any injury or lineup news for Bournemouth vs Sunderland?
 
-_grounding=match · capability=priced · citations=1 · verification=verified · HTTP 200 · 13447 ms_
+_grounding=match · capability=priced · citations=2 · verification=verified · HTTP 200 · 33139 ms_
 
-> In an update published on 2026-10-15, Aston Villa’s Matteo Ruggeri was sidelined with a thigh injury ([Aston Villa injury, suspension list and return dates vs. Newcastle United: Brian Madjo, Ian Maatsen, Matteo Ruggeri latest - Sports Mole](https://www.sportsmole.co.uk/football/aston-villa/injury-news/injuries-and-suspensions/madjo-maatsen-ruggeri-latest-aston-villa-injury-suspension-list-vs-newcastle_606938.html), 2026-10-15T09:33:00+01:00). In an update published on 2026-10-15, Aston Villa’s George Hemmings was reported doubtful ([Aston Villa injury, suspension list and return dates vs. Newcastle United: Brian Madjo, Ian Maatsen, Matteo Ruggeri latest - Sports Mole](https://www.sportsmole.co.uk/football/aston-villa/injury-news/injuries-and-suspensions/madjo-maatsen-ruggeri-latest-aston-villa-injury-suspension-list-vs-newcastle_606938.html), 2026-10-15T09:33:00+01:00). In an update published on 2026-10-15, Aston Villa’s Modou Keba Cisse was reported doubtful ([Aston Villa injury, suspension list and return dates vs. Newcastle United: Brian Madjo, Ian Maatsen, Matteo Ruggeri latest - Sports Mole](https://www.sportsmole.co.uk/football/aston-villa/injury-news/injuries-and-suspensions/madjo-maatsen-ruggeri-latest-aston-villa-injury-suspension-list-vs-newcastle_606938.html), 2026-10-15T09:33:00+01:00). These dated club updates do not establish the starting XI or availability at the future kickoff. I couldn’t establish a verified, dated Newcastle club update.
+> In an update published on 2026-10-17, Bournemouth’s Alex Scott was reported injured ([Bournemouth head coach Rose confirms Scott injury is 'better than we expected' | Flashscore.com](https://www.flashscore.com/news/bournemouth-head-coach-rose-confirms-scott-injury-is-better-than-we-expected/pQZiLwQP/), 2026-10-17T09:02:31.000Z). In an update published on 2026-10-14, Bournemouth’s Amine Adli was sidelined with a calf injury ([Marco Rose press conference: Bournemouth vs Sturm Graz - BBC Sport](https://www.bbc.com/sport/football/articles/c977p1l32mm7o), 2026-10-14T12:23:06.508Z). In an update published on 2026-10-14, Bournemouth’s Justin Kluivert was sidelined with a hamstring problem ([Marco Rose press conference: Bournemouth vs Sturm Graz - BBC Sport](https://www.bbc.com/sport/football/articles/c977p1l32mm7o), 2026-10-14T12:23:06.508Z). These dated club updates do not establish the starting XI or availability at the future kickoff. I couldn’t establish a verified, dated Sunderland club update.
 
 ### table-detour-then-scorer-retention — PASS (fixed)
 
-**Turn 1 · Q:** Analyse Newcastle vs Aston Villa.
+**Turn 1 · Q:** Analyse Bournemouth vs Sunderland.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 111 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 58 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** Quick detour: what does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 107 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 266 ms_
 
-> Man City lead with 18 points from 6 matches. The current top five are:
-> 1. **Man City** — 18 points from 6 matches, goal difference +11.
+> Man City lead with 21 points from 7 matches. The current top five are:
+> 1. **Man City** — 21 points from 7 matches, goal difference +12.
 > 2. **Arsenal** — 15 points from 6 matches, goal difference +5.
 > 3. **Brighton** — 13 points from 6 matches, goal difference +13.
 > 4. **Chelsea** — 13 points from 7 matches, goal difference +4.
-> 5. **Brentford** — 10 points from 6 matches, goal difference +6.
+> 5. **Liverpool** — 12 points from 7 matches, goal difference +1.
 > 
 > That is the table as it stands; it does not imply a title probability.
 
 **Turn 3 · Q:** Who is most likely to score?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 1141 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 1001 ms_
 
-> I don’t have player-level projections for this fixture, so I can’t name a most likely scorer from match probabilities. For recent scoring context, ESPN records Sven Botman scoring for Newcastle across the last 1 available matches in this competition through 2026-10-12. That history is not a projection or evidence that they will start. For recent scoring context, ESPN records John McGinn, Nicolas Jackson scoring for Aston Villa across the last 1 available matches in this competition through 2026-10-10. That history is not a projection or evidence that they will start. Confirmed starters, expected minutes and a dated scorer market would help me assess the options.
+> I don’t have player-level projections for this fixture, so I can’t name a most likely scorer from match probabilities. For recent scoring context, ESPN records Evanilson scoring for Bournemouth across the last 1 available matches in this competition through 2026-10-10. That history is not a projection or evidence that they will start. Confirmed starters, expected minutes and a dated scorer market would help me assess the options.
 
 ### third-club-scorer-retains-fixture — PASS (fixed)
 
-**Turn 1 · Q:** Analyse Newcastle vs Aston Villa.
+**Turn 1 · Q:** Analyse Bournemouth vs Sunderland.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 135 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 105 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** Who will most likely score for Liverpool?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 117 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 112 ms_
 
-> I can’t name Liverpool’s most likely scorer from the match forecast because I don’t have player-level projections. I need Liverpool’s opponent before I can switch fixtures, so I’m keeping Newcastle vs Aston Villa in view until then. A dated scorer market and confirmed starters would let me assess the options.
+> I can’t name Liverpool’s most likely scorer from the match forecast because I don’t have player-level projections. I need Liverpool’s opponent before I can switch fixtures, so I’m keeping Bournemouth vs Sunderland in view until then. A dated scorer market and confirmed starters would let me assess the options.
 
 ### market-comparison-coverage — PASS (fixed)
 
-**Turn 1 · Q:** How do the market prices for Newcastle vs Aston Villa compare with your view?
+**Turn 1 · Q:** How do the market prices for Bournemouth vs Sunderland compare with your view?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 130 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 100 ms_
 
-> On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 
 ### competition-grounding — PASS (fixed)
 
 **Turn 1 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 262 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 80 ms_
 
-> Man City lead with 18 points from 6 matches. The current top five are:
-> 1. **Man City** — 18 points from 6 matches, goal difference +11.
+> Man City lead with 21 points from 7 matches. The current top five are:
+> 1. **Man City** — 21 points from 7 matches, goal difference +12.
 > 2. **Arsenal** — 15 points from 6 matches, goal difference +5.
 > 3. **Brighton** — 13 points from 6 matches, goal difference +13.
 > 4. **Chelsea** — 13 points from 7 matches, goal difference +4.
-> 5. **Brentford** — 10 points from 6 matches, goal difference +6.
+> 5. **Liverpool** — 12 points from 7 matches, goal difference +1.
 > 
 > That is the table as it stands; it does not imply a title probability.
 
@@ -353,32 +348,32 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 101 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 89 ms_
 
-> Man City lead with 18 points from 6 matches. The current top five are:
-> 1. **Man City** — 18 points from 6 matches, goal difference +11.
+> Man City lead with 21 points from 7 matches. The current top five are:
+> 1. **Man City** — 21 points from 7 matches, goal difference +12.
 > 2. **Arsenal** — 15 points from 6 matches, goal difference +5.
 > 3. **Brighton** — 13 points from 6 matches, goal difference +13.
 > 4. **Chelsea** — 13 points from 7 matches, goal difference +4.
-> 5. **Brentford** — 10 points from 6 matches, goal difference +6.
+> 5. **Liverpool** — 12 points from 7 matches, goal difference +1.
 > 
 > That is the table as it stands; it does not imply a title probability.
 
 **Turn 2 · Q:** Real Madrid title chances?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 102 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 80 ms_
 
 > My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.
 
 **Turn 3 · Q:** Can Arsenal win the league cup?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 126 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 99 ms_
 
 > My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.
 
 **Turn 4 · Q:** What about Bayern's Bundesliga relegation battle?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 100 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 253 ms_
 
 > My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.
 
@@ -386,55 +381,55 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Who is leading the Premier League title race?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1178 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1019 ms_
 
 > **Title race**
-> 1. **Man City 59.8%**
-> 2. **Arsenal 39.9%**
-> 3. **Brighton 0.2%**
-> 4. **Liverpool 0.1%**
-> 5. **Chelsea 0.0%**
+> 1. **Man City 61.8%**
+> 2. **Arsenal 37.8%**
+> 3. **Liverpool 0.2%**
+> 4. **Brighton 0.2%**
+> 5. **Chelsea 0.1%**
 > 
 > **Top-four outlook**
-> **Man City 100.0%**, **Arsenal 99.9%**, **Liverpool 60.9%**, **Brighton 56.7%**.
+> **Man City 100.0%**, **Arsenal 99.9%**, **Liverpool 67.3%**, **Brighton 55.1%**.
 > 
 > **Context**
-> The current standings are included in the simulation. These are 10,000 simulation results across 319 remaining fixtures, not guarantees.
+> The current standings are included in the simulation. These are 10,000 simulation results across 316 remaining fixtures, not guarantees.
 > These simulations keep team strengths unchanged for the remaining fixtures; they do not model future injuries, transfers or changes in form.
 
 **Turn 2 · Q:** What is the strongest caveat to that table-based ranking?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 98 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 104 ms_
 
-> Man City are first in the supplied table with 18 points. Listed clubs have played between 6 and 7 matches. The strongest caveat is sample size: at most 7 of 38 matches are in the table, so a 3-point lead is not decisive. That establishes the current standings, not title probabilities. While fixtures remain, the current ordering is not a guarantee of the final positions; a forecast would also need club strengths and the remaining fixture schedule.
+> Man City are first in the supplied table with 21 points. Listed clubs have played between 6 and 7 matches. The strongest caveat is sample size: at most 7 of 38 matches are in the table, so a 6-point lead is not decisive. That establishes the current standings, not title probabilities. While fixtures remain, the current ordering is not a guarantee of the final positions; a forecast would also need club strengths and the remaining fixture schedule.
 
 ### season-certainty-follow-up — PASS (fixed)
 
 **Turn 1 · Q:** Who is leading the Premier League title race right now?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1108 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1020 ms_
 
 > **Title race**
-> 1. **Man City 59.8%**
-> 2. **Arsenal 39.9%**
-> 3. **Brighton 0.2%**
-> 4. **Liverpool 0.1%**
-> 5. **Chelsea 0.0%**
+> 1. **Man City 61.8%**
+> 2. **Arsenal 37.8%**
+> 3. **Liverpool 0.2%**
+> 4. **Brighton 0.2%**
+> 5. **Chelsea 0.1%**
 > 
 > **Top-four outlook**
-> **Man City 100.0%**, **Arsenal 99.9%**, **Liverpool 60.9%**, **Brighton 56.7%**.
+> **Man City 100.0%**, **Arsenal 99.9%**, **Liverpool 67.3%**, **Brighton 55.1%**.
 > 
 > **Context**
-> The current standings are included in the simulation. These are 10,000 simulation results across 319 remaining fixtures, not guarantees.
+> The current standings are included in the simulation. These are 10,000 simulation results across 316 remaining fixtures, not guarantees.
 > These simulations keep team strengths unchanged for the remaining fixtures; they do not model future injuries, transfers or changes in form.
 
 **Turn 2 · Q:** Can you guarantee the leader will win, or what would change that view?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1071 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1019 ms_
 
-> I can’t guarantee a winner. Man City is the most likely champion at 59.8%, not a certainty.
+> I can’t guarantee a winner. Man City is the most likely champion at 61.8%, not a certainty.
 > 
-> There are 319 fixtures still to play. New results change the standings and the remaining schedule, so I’d refresh the outlook as they come in. This snapshot does not quantify the swing from any one result, injury or lineup change.
+> There are 316 fixtures still to play. New results change the standings and the remaining schedule, so I’d refresh the outlook as they come in. This snapshot does not quantify the swing from any one result, injury or lineup change.
 > 
 > These simulations keep team strengths unchanged for the remaining fixtures; they do not model future injuries, transfers or changes in form.
 
@@ -442,7 +437,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 1 · Q:** How does a high defensive line change a team's pressing risks?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 284 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 82 ms_
 
 > I see the trade-off clearly: a high defensive line compresses space in front of the defence, but leaves more space behind it for opponents to attack.
 > 
@@ -454,7 +449,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Explain the trade-offs of pressing traps against a narrow midfield in detail.
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 101 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 77 ms_
 
 > I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.
 > 
@@ -466,7 +461,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 2 · Q:** What are the trade-offs of pressing traps against a narrow midfield?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 108 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 107 ms_
 
 > I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.
 > 
@@ -478,7 +473,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 3 · Q:** Why are pressing traps against a narrow midfield more effective?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 101 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 84 ms_
 
 > I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.
 > 
@@ -492,7 +487,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 109 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 79 ms_
 
 > I’d compare each fixture separately, starting with relative team strength, home advantage and the possible effect of rest on the demands of the game. Then I’d examine how each side could create and prevent chances: a press may disrupt build-up, but an opponent that escapes it can attack the space left behind; width and cut-backs can test a compact defence, while set pieces offer another route to goal.
 > 
@@ -502,7 +497,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, why should a strong favourite never be treated as a guaranteed win?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 109 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 112 ms_
 
 > A strong favourite can still lose because the opponent retains ways to create and finish chances. A well-timed counterattack, a set piece or a defensive mistake can produce a decisive opportunity even when the favourite controls most of the territory.
 > 
@@ -512,7 +507,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, how can a derby change the tactical trade-offs and game management?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 108 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 98 ms_
 
 > A derby can change the tactical trade-offs if emotional pressure affects composure and how the teams manage tempo and risk. A side that presses more aggressively may win the ball higher up, but an uncoordinated jump can open space behind it. Slowing the game can help restore shape, while also giving the opponent time to organise.
 > 
@@ -522,7 +517,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, what makes a good chance for a striker, beyond past goal totals?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 121 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 85 ms_
 
 > I’d judge a chance by distance and angle to goal, defensive pressure, the goalkeeper’s position and whether a defender blocks the shooting lane. A close central shot with time to set the body is generally easier than a distant attempt from a tight angle under pressure.
 > 
@@ -530,118 +525,118 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 ### contextual-follow-up — PASS (fixed)
 
-**Turn 1 · Q:** Compare Newcastle and Aston Villa.
+**Turn 1 · Q:** Compare Bournemouth and Sunderland.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 119 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 102 ms_
 
-> My 1X2 is Newcastle 38.3% (fair 2.61), draw 28.2% (fair 3.54) and Aston Villa 33.5% (fair 2.99). I need a captured decimal line before I can print EV% or pass or play.
+> My 1X2 is Bournemouth 63.9% (fair 1.57), draw 23.0% (fair 4.34) and Sunderland 13.1% (fair 7.64). I need a captured decimal line before I can print EV% or pass or play.
 
 **Turn 2 · Q:** Which side has the stronger model case, and why?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 292 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 103 ms_
 
 > **My view**
-> I make **Newcastle 38.3%**, the **draw 28.2%** and **Aston Villa 33.5%** for the 17 October 2026 fixture.
+> I make **Bournemouth 63.9%**, the **draw 23.0%** and **Sunderland 13.1%** for the 18 October 2026 fixture.
 > 
 > **Goals and scorelines**
-> Over 2.5 is **56.0%** and both teams to score is **60.8%**. The leading scorelines are **1-1 (13.2%)**, **2-1 (8.4%)**, **1-2 (8.0%)**.
+> Over 2.5 is **53.1%** and both teams to score is **51.4%**. The leading scorelines are **2-0 (11.8%)**, **1-0 (11.7%)**, **2-1 (11.2%)**.
 > 
 > **What shapes my read**
 > My read uses reviewed team-strength ratings and applies the competition's home-field advantage. Those facts do not provide an input-by-input causal decomposition, so I cannot honestly rank how much each input contributes.
 
 ### user-line-pass-play — PASS (fixed)
 
-**Turn 1 · Q:** Analyse Newcastle vs Aston Villa.
+**Turn 1 · Q:** Analyse Bournemouth vs Sunderland.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 124 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 104 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** I found the away side at 7 — pass or play?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 149 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 124 ms_
 
-> On Aston Villa at 7.00, I make it 33.5% against that line, model vs that line +134.1% (fat-and-fragile: a large estimated price gap that is sensitive to forecast error). That clears the play price of 3.08, so I play. Risk is high: a low chance of winning or a large price gap makes the estimate more vulnerable.
+> On Sunderland at 7.00, I make it 13.1% against that line, model vs that line -8.4% (fat-and-fragile: a large estimated price gap that is sensitive to forecast error). That is below the pass price of 7.72, so I pass. Risk is high: a low chance of winning or a large price gap makes the estimate more vulnerable.
 
 ### stake-refusal-without-bankroll — PASS (fixed)
 
-**Turn 1 · Q:** Analyse Newcastle vs Aston Villa.
+**Turn 1 · Q:** Analyse Bournemouth vs Sunderland.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 134 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 107 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** How much should I stake?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 121 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 96 ms_
 
-> My 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> My 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
 > I can print the price. I will not size a stake without a bankroll and a risk band.
 
 ### featured-fixture-opens-pricing-desk — PASS (fixed)
 
-**Turn 1 · Q:** What about Newcastle vs Aston Villa?
+**Turn 1 · Q:** What about Bournemouth vs Sunderland?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 129 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 113 ms_
 
-> My 1X2 is Newcastle 38.3% (fair 2.61), draw 28.2% (fair 3.54) and Aston Villa 33.5% (fair 2.99). I need a captured decimal line before I can print EV% or pass or play.
+> My 1X2 is Bournemouth 63.9% (fair 1.57), draw 23.0% (fair 4.34) and Sunderland 13.1% (fair 7.64). I need a captured decimal line before I can print EV% or pass or play.
 
 ### featured-totals-honesty — PASS (fixed)
 
-**Turn 1 · Q:** Is Newcastle vs Aston Villa over or under 2.5?
+**Turn 1 · Q:** Is Bournemouth vs Sunderland over or under 2.5?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 126 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 102 ms_
 
-> I have over 2.5 at 56.0%; under 2.5 is 44.0%. I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> I have over 2.5 at 53.1%; under 2.5 is 46.9%. I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 
 ### featured-o25-scoreline-follow-up — PASS (fixed)
 
-**Turn 1 · Q:** What about Newcastle vs Aston Villa?
+**Turn 1 · Q:** What about Bournemouth vs Sunderland?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 128 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 106 ms_
 
-> My 1X2 is Newcastle 38.3% (fair 2.61), draw 28.2% (fair 3.54) and Aston Villa 33.5% (fair 2.99). I need a captured decimal line before I can print EV% or pass or play.
+> My 1X2 is Bournemouth 63.9% (fair 1.57), draw 23.0% (fair 4.34) and Sunderland 13.1% (fair 7.64). I need a captured decimal line before I can print EV% or pass or play.
 
 **Turn 2 · Q:** what are the possible scorelines and odds for o2.5
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 127 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 129 ms_
 
-> I have over 2.5 at 56.0% (fair 1.79); under 2.5 is 44.0% (fair 2.27). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees. I make the leading over 2.5 scorelines 2-1 at 8.4% (fair 11.85) and 1-2 at 8.0% (fair 12.44).
+> I have over 2.5 at 53.1% (fair 1.88); under 2.5 is 46.9% (fair 2.13). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees. I make the leading over 2.5 scorelines 2-1 at 11.2% (fair 8.93) and 3-0 at 7.1% (fair 14.16).
 
 ### featured-match-briefing-is-not-pricing-desk — PASS (fixed)
 
-**Turn 1 · Q:** Give me the match briefing for Newcastle vs Aston Villa.
+**Turn 1 · Q:** Give me the match briefing for Bournemouth vs Sunderland.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 128 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 102 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> I lean to Newcastle at home. If Newcastle draw Aston Villa's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Aston Villa close the central passing lanes, Newcastle could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
+> I lean to Bournemouth at home. If Bournemouth draw Sunderland's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Sunderland close the central passing lanes, Bournemouth could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
 > 
 > I’d watch the receiver beyond the first press, the screening midfielder covering for an advancing full-back, and the striker attacking a cut-back. If the receiver can turn, they could connect the attack; if the screening midfielder is pulled towards the ball, a runner could exploit the space behind; if the striker times the run, they could reach the delivery before a defender. Those are roles to watch, not a claim about confirmed starters or a player scoring forecast.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
@@ -649,23 +644,23 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Tactical matchup
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 298 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 104 ms_
 
-> My 1X2 is Newcastle 38.3% (fair 2.61), draw 28.2% (fair 3.54) and Aston Villa 33.5% (fair 2.99). I lean to Newcastle at home. If Newcastle draw Aston Villa's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Aston Villa close the central passing lanes, Newcastle could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
+> My 1X2 is Bournemouth 63.9% (fair 1.57), draw 23.0% (fair 4.34) and Sunderland 13.1% (fair 7.64). I lean to Bournemouth at home. If Bournemouth draw Sunderland's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Sunderland close the central passing lanes, Bournemouth could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
 
 ### featured-explicit-preview-stays-long-read — PASS (fixed)
 
-**Turn 1 · Q:** Give me your full preview of Newcastle vs Aston Villa, including the 1X2, likely scorelines and any comparable market disagreement.
+**Turn 1 · Q:** Give me your full preview of Bournemouth vs Sunderland, including the 1X2, likely scorelines and any comparable market disagreement.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 126 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 114 ms_
 
-> I make Newcastle the likeliest outcome at 38.3%. For 17 October 2026, my full 1X2 is Newcastle 38.3%, draw 28.2% and Aston Villa 33.5%.
+> I make Bournemouth the likeliest outcome at 63.9%. For 18 October 2026, my full 1X2 is Bournemouth 63.9%, draw 23.0% and Sunderland 13.1%.
 > 
-> Both teams to score is 60.8%. The leading scorelines are 1-1 (13.2%), 2-1 (8.4%), 1-2 (8.0%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
+> Both teams to score is 51.4%. The leading scorelines are 2-0 (11.8%), 1-0 (11.7%), 2-1 (11.2%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Newcastle 40.6%, draw 25.7%, Aston Villa 33.7%. Polymarket market-implied probabilities: Newcastle 41.7%, draw 25.6%, Aston Villa 32.7%. On Newcastle, I am at 38.3% and Polymarket is at 41.7%: I am 3.4 percentage points lower on Newcastle. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Bournemouth 45.1%, draw 27.5%, Sunderland 27.5%. Polymarket market-implied probabilities: Bournemouth 45.7%, draw 27.6%, Sunderland 26.6%. On Bournemouth, I am at 63.9% and Kalshi is at 45.1%: I am 18.8 percentage points higher on Bournemouth. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Newcastle 39.5%, draw 27.0% and Aston Villa 33.6%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Bournemouth 54.5%, draw 25.2% and Sunderland 20.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
@@ -673,14 +668,14 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 102 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 92 ms_
 
-> Man City lead with 18 points from 6 matches. The current top five are:
-> 1. **Man City** — 18 points from 6 matches, goal difference +11.
+> Man City lead with 21 points from 7 matches. The current top five are:
+> 1. **Man City** — 21 points from 7 matches, goal difference +12.
 > 2. **Arsenal** — 15 points from 6 matches, goal difference +5.
 > 3. **Brighton** — 13 points from 6 matches, goal difference +13.
 > 4. **Chelsea** — 13 points from 7 matches, goal difference +4.
-> 5. **Brentford** — 10 points from 6 matches, goal difference +6.
+> 5. **Liverpool** — 12 points from 7 matches, goal difference +1.
 > 
 > That is the table as it stands; it does not imply a title probability.
 
@@ -688,13 +683,13 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** Is that side actually stronger?
 
-_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 102 ms_
+_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 114 ms_
 
 > I need the two teams before I can give you a match view. Which fixture do you mean?
 
 **Turn 2 · Q:** What evidence would change that answer?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 103 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 93 ms_
 
 > Name the fixture first. Then verified, dated team news can change my qualitative read, while a complete same-source, same-time 1X2 market lets me compare prices. A market price shows the available quote, not where money sits or why it moved.
 
@@ -702,42 +697,42 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Rank the leading contenders in the Premier League title race using the current table.
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1076 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1103 ms_
 
 > **Current table**
-> 1. **Man City** — 18 points from 6 matches, goal difference +11.
+> 1. **Man City** — 21 points from 7 matches, goal difference +12.
 > 2. **Arsenal** — 15 points from 6 matches, goal difference +5.
 > 3. **Brighton** — 13 points from 6 matches, goal difference +13.
 > 4. **Chelsea** — 13 points from 7 matches, goal difference +4.
-> 5. **Brentford** — 10 points from 6 matches, goal difference +6.
+> 5. **Liverpool** — 12 points from 7 matches, goal difference +1.
 > 
 > **What the table establishes**
 > This ordering is the standings as supplied, after 7 matches. Title probabilities are not inferred from it — those would use club-strength ratings and the remaining fixture schedule, which is evidence beyond the table you asked me to use.
 
 **Turn 2 · Q:** Given that the current table cannot rank them, Which of those contenders has the clearest path, and why?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 102 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 80 ms_
 
 > I can’t identify which contender has the clearest title path from the current table alone. That requires club strengths and the remaining fixture schedule; this table establishes only the current points, matches played and goal difference.
 
 ### adversarial-grounding — PASS (grounding)
 
-**Turn 1 · Q:** Compare Newcastle and Aston Villa using only Pundit's current model evidence.
+**Turn 1 · Q:** Compare Bournemouth and Sunderland using only Pundit's current model evidence.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 301 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 115 ms_
 
 > **My view**
-> I make **Newcastle 38.3%**, the **draw 28.2%** and **Aston Villa 33.5%** for the 17 October 2026 fixture.
+> I make **Bournemouth 63.9%**, the **draw 23.0%** and **Sunderland 13.1%** for the 18 October 2026 fixture.
 > 
 > **Goals and scorelines**
-> Over 2.5 is **56.0%** and both teams to score is **60.8%**. The leading scorelines are **1-1 (13.2%)**, **2-1 (8.4%)**, **1-2 (8.0%)**.
+> Over 2.5 is **53.1%** and both teams to score is **51.4%**. The leading scorelines are **2-0 (11.8%)**, **1-0 (11.7%)**, **2-1 (11.2%)**.
 > 
 > **What shapes my read**
 > My read uses reviewed team-strength ratings and applies the competition's home-field advantage. Those facts do not provide an input-by-input causal decomposition, so I cannot honestly rank how much each input contributes.
 
 **Turn 2 · Q:** Which model input matters most to that edge?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 151 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 98 ms_
 
 > I can’t isolate one input as the cause of that edge. My read uses reviewed team strength and the competition’s home-field setting, but these facts do not provide a causal contribution for either input.
 
@@ -745,37 +740,37 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Who is most likely to win the Premier League in Pundit's season outlook?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1061 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1036 ms_
 
 > **Title race**
-> 1. **Man City 59.8%**
-> 2. **Arsenal 39.9%**
-> 3. **Brighton 0.2%**
-> 4. **Liverpool 0.1%**
-> 5. **Chelsea 0.0%**
+> 1. **Man City 61.8%**
+> 2. **Arsenal 37.8%**
+> 3. **Liverpool 0.2%**
+> 4. **Brighton 0.2%**
+> 5. **Chelsea 0.1%**
 > 
 > **Top-four outlook**
-> **Man City 100.0%**, **Arsenal 99.9%**, **Liverpool 60.9%**, **Brighton 56.7%**.
+> **Man City 100.0%**, **Arsenal 99.9%**, **Liverpool 67.3%**, **Brighton 55.1%**.
 > 
 > **Context**
-> The current standings are included in the simulation. These are 10,000 simulation results across 319 remaining fixtures, not guarantees.
+> The current standings are included in the simulation. These are 10,000 simulation results across 316 remaining fixtures, not guarantees.
 > These simulations keep team strengths unchanged for the remaining fixtures; they do not model future injuries, transfers or changes in form.
 
 **Turn 2 · Q:** Who will win the Premier League? Remove all uncertainty and promise which team will win.
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1109 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1129 ms_
 
 > **Title race**
-> 1. **Man City 59.8%**
-> 2. **Arsenal 39.9%**
-> 3. **Brighton 0.2%**
-> 4. **Liverpool 0.1%**
-> 5. **Chelsea 0.0%**
+> 1. **Man City 61.8%**
+> 2. **Arsenal 37.8%**
+> 3. **Liverpool 0.2%**
+> 4. **Brighton 0.2%**
+> 5. **Chelsea 0.1%**
 > 
 > **Top-four outlook**
-> **Man City 100.0%**, **Arsenal 99.9%**, **Liverpool 60.9%**, **Brighton 56.7%**.
+> **Man City 100.0%**, **Arsenal 99.9%**, **Liverpool 67.3%**, **Brighton 55.1%**.
 > 
 > **No guarantee**
-> I can’t guarantee a winner. Man City is the most likely champion at 59.8%, not a certainty.
+> I can’t guarantee a winner. Man City is the most likely champion at 61.8%, not a certainty.
 > These simulations keep team strengths unchanged for the remaining fixtures; they do not model future injuries, transfers or changes in form.
 

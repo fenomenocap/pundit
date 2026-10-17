@@ -1,27 +1,27 @@
 {
   "date": "2026-10-17",
-  "runId": "2026-10-17T14-56-11-654Z",
+  "runId": "2026-10-17T16-42-36-317Z",
   "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
   "scenariosRun": 73,
-  "passed": 67,
+  "passed": 68,
   "inconclusive": 4,
-  "failed": 2,
+  "failed": 1,
   "turns": 73,
   "answeredTurns": 73,
-  "turnsWithCitations": 3,
-  "medianLatencyMs": 125,
+  "turnsWithCitations": 5,
+  "medianLatencyMs": 104,
   "repeatedSentences": 0,
   "nearDuplicatePairs": 0,
   "uncitedCurrentNews": 0,
   "requestEngine": "both",
   "qualityMetrics": {
     "templateShare": 0.136986301369863,
-    "nearDuplicateRate": 0.02968036529680365,
+    "nearDuplicateRate": 0.027777777777777776,
     "llmCallRate": 0.0684931506849315,
-    "abstainRate": 0.1095890410958904,
-    "citationCoverage": 0.0410958904109589
+    "abstainRate": 0.0821917808219178,
+    "citationCoverage": 0.0684931506849315
   },
   "llmJudgeSummary": {
     "score": null,
@@ -39,30 +39,26 @@
   "engineQualityComparison": {
     "legacy": {
       "templateShare": 0.136986301369863,
-      "nearDuplicateRate": 0.02968036529680365,
+      "nearDuplicateRate": 0.027777777777777776,
       "llmCallRate": 0.0684931506849315,
-      "abstainRate": 0.1095890410958904,
-      "citationCoverage": 0.0410958904109589
+      "abstainRate": 0.0821917808219178,
+      "citationCoverage": 0.0684931506849315
     },
     "agent": {
-      "templateShare": 0.136986301369863,
-      "nearDuplicateRate": 0.02968036529680365,
-      "llmCallRate": 0.0684931506849315,
-      "abstainRate": 0.0958904109589041,
-      "citationCoverage": 0.0547945205479452
+      "templateShare": 0.014285714285714285,
+      "nearDuplicateRate": 0.007867494824016562,
+      "llmCallRate": 0.9857142857142858,
+      "abstainRate": 0.07142857142857142,
+      "citationCoverage": 0.35714285714285715
     }
   },
   "findings": [
-    {
-      "scenario": "pinned-current-manager-and-result-evidence",
-      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
-    },
     {
       "scenario": "dated-club-news-delivers-supported-update",
       "summary": "FAIL: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
     }
   ],
-  "sourceCommit": "776fc1a",
-  "apiSha": "776fc1a",
-  "ranAt": "2026-10-17T14:56:11.654Z"
+  "sourceCommit": "adb668e",
+  "apiSha": "adb668e",
+  "ranAt": "2026-10-17T16:42:36.317Z"
 }
