@@ -7,7 +7,7 @@ const engineRequestScope = new AsyncLocalStorage<ChatEngineMode>();
 export function chatEngineMode(): ChatEngineMode {
   const override = engineRequestScope.getStore();
   if (override) return override;
-  return process.env.CHAT_ENGINE?.trim().toLowerCase() === "agent" ? "agent" : "legacy";
+  return configuredChatEngineMode();
 }
 
 export function isChatAgentEngine(): boolean {
@@ -23,17 +23,44 @@ export function parseChatEvalEngineOverrideValue(
   return null;
 }
 
-/** Whether this deploy accepts eval-only `x-pundit-chat-engine` without search replay. */
+/** Process-wide default when no per-request eval header override is active. */
+export function configuredChatEngineMode(): ChatEngineMode {
+  return process.env.CHAT_ENGINE?.trim().toLowerCase() === "agent" ? "agent" : "legacy";
+}
+
+/** Effective engine from env default plus optional eval header override (no ALS). */
+export function resolveEffectiveChatEngine(headerOverride: ChatEngineMode | null): ChatEngineMode {
+  if (headerOverride) return headerOverride;
+  return configuredChatEngineMode();
+}
+
+/**
+ * Whether this deploy accepts eval-only `x-pundit-chat-engine` without search replay.
+ * Unset `CHAT_ENGINE` defaults runtime to legacy and uses the same header guard as
+ * `CHAT_ENGINE=legacy` (production default; no Railway env change required).
+ */
 export function isChatEvalEngineOverrideGuardActive(searchReplayActive: boolean): boolean {
   if (searchReplayActive) return true;
   const configured = process.env.CHAT_ENGINE?.trim().toLowerCase();
+  if (!configured) return true;
   return configured === "legacy" || configured === "agent";
+}
+
+export function logAskChatEngineTurn(params: {
+  effectiveEngine: ChatEngineMode;
+  engineFromHeaderOverride: boolean;
+}): void {
+  console.log(JSON.stringify({
+    event: "ask_chat_engine",
+    effectiveEngine: params.effectiveEngine,
+    engineFromHeaderOverride: params.engineFromHeaderOverride,
+  }));
 }
 
 /**
  * Eval-only per-request override. The web app never sends `x-pundit-chat-engine`.
- * Live daily sweeps may set the engine header without search replay when
- * `CHAT_ENGINE` is explicitly `legacy` or `agent`; pinned gate jobs use replay.
+ * Live daily sweeps may set the engine header without search replay when the
+ * deploy guard is active (unset or explicit `CHAT_ENGINE`); pinned gate uses replay.
  */
 export function resolveChatEvalEngineOverride(
   raw: string | string[] | undefined,
