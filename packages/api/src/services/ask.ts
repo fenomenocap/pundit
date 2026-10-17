@@ -178,6 +178,7 @@ import {
 } from "./external-market-consensus";
 import { chatEngineMode, isChatAgentEngine } from "./chat-engine";
 import { chatAgentGroundingEligible, runChatAgent } from "./chat-agent";
+import { finalizeChatAgentAnswer } from "./chat-agent-guard";
 import type { ChatEngineMode } from "./chat-engine";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
 import {
@@ -10275,7 +10276,10 @@ async function answerQuestionScoped(
       };
     }
     if (isChatAgentEngine() && client && chatAgentGroundingEligible(grounding)) {
-      const agentAnswer = await runChatAgent(question, grounding, client, signal);
+      const agentAnswer = finalizeChatAgentAnswer(
+        await runChatAgent(question, grounding, client, signal),
+        grounding,
+      );
       return {
         answer: agentAnswer,
         grounding,
@@ -10579,7 +10583,10 @@ async function answerQuestionStreamScoped(
       };
     }
     if (isChatAgentEngine() && client && chatAgentGroundingEligible(grounding)) {
-      const agentAnswer = await runChatAgent(question, grounding, client, handlers.signal);
+      const agentAnswer = finalizeChatAgentAnswer(
+        await runChatAgent(question, grounding, client, handlers.signal),
+        grounding,
+      );
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(agentAnswer);
       return {
         answer: agentAnswer,

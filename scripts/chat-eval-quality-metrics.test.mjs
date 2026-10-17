@@ -12,6 +12,13 @@ test("computeTurnQualityMetrics counts template and citation coverage", () => {
   assert.equal(metrics.llmCallRate, 0.5);
 });
 
+test("agent template share ignores compliance boilerplate", () => {
+  const metrics = computeTurnQualityMetrics([
+    { httpStatus: 200, answer: "Lean home. Gamble responsibly 18+.", engine: "agent" },
+  ]);
+  assert.equal(metrics.templateShare, 0);
+});
+
 test("compareEngineQuality returns both engines", () => {
   const out = compareEngineQuality(
     [{ httpStatus: 200, answer: "legacy answer", usedLlm: false }],

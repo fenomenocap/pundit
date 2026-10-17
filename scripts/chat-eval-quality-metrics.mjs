@@ -15,20 +15,29 @@ function jaccard(a, b) {
   return inter / (left.size + right.size - inter);
 }
 
-const TEMPLATE_MARKERS = [
+const STRUCTURAL_TEMPLATE_MARKERS = [
   "model vs market",
   "my 1x2 is",
   "fair decimal",
+];
+
+const LEGACY_TEMPLATE_MARKERS = [
+  ...STRUCTURAL_TEMPLATE_MARKERS,
   "no bet",
   "gamble responsibly",
   "18+",
 ];
 
+function templateMarkersForTurn(turn) {
+  if (turn.engine === "agent") return STRUCTURAL_TEMPLATE_MARKERS;
+  return LEGACY_TEMPLATE_MARKERS;
+}
+
 export function computeTurnQualityMetrics(turns) {
   const successful = turns.filter((turn) => turn.httpStatus === 200 && turn.answer);
   const llmTurns = successful.filter((turn) => turn.engine === "agent" || turn.usedLlm === true);
   const templateTurns = successful.filter((turn) =>
-    TEMPLATE_MARKERS.some((marker) => normalize(turn.answer).includes(marker)));
+    templateMarkersForTurn(turn).some((marker) => normalize(turn.answer).includes(marker)));
   const citationTurns = successful.filter((turn) => /\]\(https?:\/\//.test(turn.answer ?? ""));
   const abstainTurns = successful.filter((turn) =>
     turn.verification?.status === "abstain"

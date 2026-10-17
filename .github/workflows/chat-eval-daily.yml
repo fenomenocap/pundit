@@ -8,19 +8,21 @@ name: Daily Chat Eval
 
 on:
   schedule:
-    - cron: "17 4 * * *"
+    - cron: "5 9 * * *"
   workflow_dispatch:
     inputs:
       engine:
-        description: Chat engine override for the live sweep (eval replay guard required on API)
+        description: Live sweep engine mode (both = legacy certification + agent report)
         type: choice
         options:
+          - both
           - legacy
           - agent
-        default: legacy
+        default: both
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: chat-eval-daily
@@ -88,15 +90,52 @@ jobs:
           git fetch origin main
           echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
 
-      - name: Run production chat battle test
-        id: sweep
+      - name: Resolve sweep engine mode
+        id: engine
+        run: |
+          MODE="${{ github.event_name == 'workflow_dispatch' && inputs.engine || 'both' }}"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Run production chat battle test (legacy)
+        id: sweep_legacy
+        if: steps.engine.outputs.mode == 'both' || steps.engine.outputs.mode == 'legacy'
         continue-on-error: true
         env:
-          CHAT_EVAL_ENGINE: ${{ github.event_name == 'workflow_dispatch' && inputs.engine || 'legacy' }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           set -o pipefail
-          node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine "$CHAT_EVAL_ENGINE" 2>&1 | tee sweep.log
+          node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine legacy \
+            --output-dir "$EVAL_DIR/legacy" 2>&1 | tee sweep-legacy.log
+
+      - name: Run production chat battle test (agent, non-gating)
+        id: sweep_agent
+        if: steps.engine.outputs.mode == 'both' || steps.engine.outputs.mode == 'agent'
+        continue-on-error: true
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -o pipefail
+          node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine agent --non-gating \
+            --output-dir "$EVAL_DIR/agent" 2>&1 | tee sweep-agent.log
+
+      - name: Merge dual-engine eval report
+        if: steps.engine.outputs.mode == 'both'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          node scripts/merge-dual-engine-chat-eval.mjs \
+            "$EVAL_DIR/legacy/latest-run.json" \
+            "$EVAL_DIR/agent/latest-run.json" \
+            "$EVAL_DIR/latest-run.json"
+          cp sweep-legacy.log sweep.log
+          tail -n 40 sweep-agent.log >> sweep.log
+
+      - name: Promote single-engine sweep report
+        if: steps.engine.outputs.mode != 'both'
+        run: |
+          SRC="$EVAL_DIR/${{ steps.engine.outputs.mode }}/latest-run.json"
+          cp "$SRC" "$EVAL_DIR/latest-run.json"
+          cp "sweep-${{ steps.engine.outputs.mode }}.log" sweep.log
 
       - name: Render transcript and summary
         id: render
