@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-17",
+  "runId": "2026-10-17T14-56-11-654Z",
+  "status": "attention",
+  "overall": "ISSUES FOUND",
+  "progress": "complete",
+  "scenariosRun": 73,
+  "passed": 67,
+  "inconclusive": 4,
+  "failed": 2,
+  "turns": 73,
+  "answeredTurns": 73,
+  "turnsWithCitations": 3,
+  "medianLatencyMs": 125,
+  "repeatedSentences": 0,
+  "nearDuplicatePairs": 0,
+  "uncitedCurrentNews": 0,
+  "requestEngine": "both",
+  "qualityMetrics": {
+    "templateShare": 0.136986301369863,
+    "nearDuplicateRate": 0.02968036529680365,
+    "llmCallRate": 0.0684931506849315,
+    "abstainRate": 0.1095890410958904,
+    "citationCoverage": 0.0410958904109589
+  },
+  "llmJudgeSummary": {
+    "score": null,
+    "averages": {
+      "personaStrength": null,
+      "clearCall": null,
+      "specificity": null,
+      "variety": null,
+      "citationCorrectness": null,
+      "overall": null
+    },
+    "judgedTurns": 24,
+    "scoredTurns": 0
+  },
+  "engineQualityComparison": {
+    "legacy": {
+      "templateShare": 0.136986301369863,
+      "nearDuplicateRate": 0.02968036529680365,
+      "llmCallRate": 0.0684931506849315,
+      "abstainRate": 0.1095890410958904,
+      "citationCoverage": 0.0410958904109589
+    },
+    "agent": {
+      "templateShare": 0.136986301369863,
+      "nearDuplicateRate": 0.02968036529680365,
+      "llmCallRate": 0.0684931506849315,
+      "abstainRate": 0.0958904109589041,
+      "citationCoverage": 0.0547945205479452
+    }
+  },
+  "findings": [
+    {
+      "scenario": "pinned-current-manager-and-result-evidence",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "dated-club-news-delivers-supported-update",
+      "summary": "FAIL: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
+    }
+  ],
+  "sourceCommit": "776fc1a",
+  "apiSha": "776fc1a",
+  "ranAt": "2026-10-17T14:56:11.654Z"
+}
