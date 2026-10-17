@@ -130,6 +130,7 @@ import {
   composeDatedClubAvailabilityAnswer,
   composeDeskTakeOutline,
   composeMatchResponse,
+  composeTeamNewsAnswer,
 } from "./response-composer";
 import {
   DESK_BOARD_FALLBACK,
@@ -1785,6 +1786,8 @@ export async function verifyCurrentClaims(
     retrieve?: typeof retrieveEvidencePages;
     verify?: typeof verifyClaimsOnce;
     managerWhy?: { club: string; retainAppointment?: boolean; wantsReason?: boolean };
+    /** Hydrated publisher bodies already used for source-owned manager drafts. */
+    prefetchedPages?: readonly RetrievedEvidencePage[];
   } = {}
 ): Promise<{ answer: string; verification: AskVerification }> {
   const claims = verifiableCurrentClaims(answer);
@@ -1828,12 +1831,21 @@ export async function verifyCurrentClaims(
     ...candidates.filter((candidate) => citedIds.has(candidate.id)),
     ...candidates.filter((candidate) => !citedIds.has(candidate.id)),
   ];
+  const prefetchedById = new Map((dependencies.prefetchedPages ?? []).map((page) => [page.id, page]));
   const fetched = await (dependencies.retrieve ?? retrieveEvidencePages)(
     ordered,
     signal,
     { cache: bundle.pageCache }
   );
-  writeRetrievedDatesOntoBundle(bundle, fetched);
+  const hydratedFetched = fetched.map((page) => prefetchedById.get(page.id) ?? page);
+  const prefetchedOnly = [...citedIds]
+    .filter((id) => !hydratedFetched.some((page) => page.id === id))
+    .flatMap((id) => {
+      const page = prefetchedById.get(id);
+      return page ? [page] : [];
+    });
+  const mergedFetched = [...hydratedFetched, ...prefetchedOnly];
+  writeRetrievedDatesOntoBundle(bundle, mergedFetched);
   // Most publishers block a server-side fetch, so verification ran against one
   // retrieved page out of thirty sources and abstained on nearly everything --
   // the same question answering with cited team news or with the notice
@@ -1847,7 +1859,7 @@ export async function verifyCurrentClaims(
   // the claim matches its source rather than independently corroborating it.
   // It still catches the failure that matters most -- a claim no source
   // supports at all -- and the reader gets the citation either way.
-  const fetchedIds = new Set(fetched.map((page) => page.id));
+  const fetchedIds = new Set(mergedFetched.map((page) => page.id));
   const snippetBacked = bundle.results
     .filter((source) => citedIds.has(source.id)
       && !fetchedIds.has(source.id)
@@ -1863,7 +1875,7 @@ export async function verifyCurrentClaims(
       text: `${source.title}\n${source.snippet}`,
       retrievedAt: new Date().toISOString(),
     }));
-  const pages = [...fetched, ...snippetBacked];
+  const pages = [...mergedFetched, ...snippetBacked];
   if (!pages.length || !reserveProviderCall(bundle)) {
     // The stage had no observability at all, which is why the same fixture
     // could answer with cited team news or with the abstention and nothing
@@ -1875,7 +1887,8 @@ export async function verifyCurrentClaims(
       sources: candidates.length,
       fetchable,
       pages: pages.length,
-      fetched: fetched.length,
+      fetched: mergedFetched.length,
+      prefetched: prefetchedOnly.length,
       reason: pages.length ? "provider_budget" : fetchable ? "fetch_failed" : "no_eligible_source",
     }));
     return {
@@ -1919,7 +1932,8 @@ export async function verifyCurrentClaims(
     sources: candidates.length,
     fetchable,
     pages: pages.length,
-    fetched: fetched.length,
+    fetched: mergedFetched.length,
+    prefetched: prefetchedOnly.length,
     snippetBacked: snippetBacked.length,
     supported: managerFacts?.supported ?? applied.supported.length,
     removed: managerFacts?.removed ?? applied.removedClaimIds.length,
@@ -9098,10 +9112,14 @@ async function settleTeamNewsFromBundle(
       fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date,
     });
     if (updates.observations.length) {
-      const datedAnswer = composeDatedClubAvailabilityAnswer(updates);
+      const datedAnswer = asksInjuryUpdates
+        ? composeDatedClubAvailabilityAnswer(updates)
+        : composeTeamNewsAnswer(grounding, updates);
       const composed = datedAnswer ?? composeMatchResponse(question, grounding, plan, updates);
       const datedClubNews = composed + (datedAnswer
-        ? " These dated club updates do not establish the starting XI or availability at the future kickoff."
+        ? asksInjuryUpdates
+          ? " These dated club updates do not establish the starting XI or availability at the future kickoff."
+          : " These updates do not establish the starting XI or availability at the future kickoff."
         : " These are dated club updates; they do not establish the starting XI or availability at the future kickoff.");
       return withTeamNewsCoverage(await verifySettledEvidence(datedClubNews, grounding, bundle, client,
         TEAM_NEWS_COMPOSE_ABSTENTION, signal), question, grounding);
@@ -9576,6 +9594,9 @@ export async function deliverAnswer(args: {
           }
         : await verifyCurrentClaims(prose, evidenceBundle, client, signal, false, {
           managerWhy: managerWhyScope(question, grounding),
+          ...(sourceOwnedManagerPath && managerPages?.length
+            ? { prefetchedPages: managerPages }
+            : {}),
         });
       const checkedEvidenceAnswer = failClosedEmptyCurrentVerification(
         checked.answer,

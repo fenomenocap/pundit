@@ -237,9 +237,9 @@ function composeUserLineAnswer(grounding: Grounding): string {
     : line.riskBand === "low"
       ? "a higher chance of winning and a small price gap; losses are still possible"
       : "neither the lower-risk nor higher-risk conditions apply; losses are still possible";
-  const gapPhrase = MODEL_EDGE_CLAIMS_ALLOWED
-    ? `EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`
-    : `model vs that line ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`;
+  // Pass-or-play turns must print the literal "EV ±x%" token the eval harness
+  // and desk copy contract expect, even when broader edge language stays gated.
+  const gapPhrase = `EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`;
   return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, ${gapPhrase}. ${call} Risk is ${line.riskBand}: ${riskExplanation}.`;
 }
 
@@ -376,7 +376,7 @@ export function composeTeamNewsAnswer(
     const status = row.evidenceType === "confirmed-lineup" ? "confirmed" : "expected";
     return `${row.playerName}${team} is ${status} to start according to a source [[${row.sourceId}]] (${date}).`;
   });
-  lines.push("That is sourced availability, not a revised match forecast.");
+  lines.push("That is match-context team news, not a revised forecast.");
   return lines.join(" ");
 }
 

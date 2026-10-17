@@ -1852,6 +1852,65 @@ describe("current-news evidence hardening", () => {
     expect(bundle.providerCalls).toBe(1);
   });
 
+  it("verifies source-owned manager drafts against prefetched publisher pages when fetch text would fail", async () => {
+    const answer = "Brentford’s manager is Keith Andrews [[S1]].";
+    const bundle: EvidenceBundle = {
+      queries: ["Brentford manager"],
+      providerCalls: 1,
+      results: [{
+        id: "S1",
+        title: "Brentford boss",
+        url: "https://www.bbc.com/sport/football/brentford-manager",
+        date: "2026-10-10",
+        snippet: "A search snippet without the full role sentence.",
+        tier: "news",
+      }],
+    };
+    const hydrated = {
+      id: "S1",
+      url: bundle.results[0].url,
+      title: "Brentford boss",
+      date: "2026-10-10T09:00:00.000Z",
+      authority: "reputable" as const,
+      finalUrl: bundle.results[0].url,
+      text: "Brentford’s manager is Keith Andrews.",
+      retrievedAt: "2026-10-10T10:00:00.000Z",
+    };
+    const checked = await verifyCurrentClaims(
+      answer,
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      {
+        managerWhy: { club: "Brentford", wantsReason: false },
+        prefetchedPages: [hydrated],
+        retrieve: async () => [{
+          ...hydrated,
+          text: "Fetched body that does not establish Keith Andrews as manager.",
+        }],
+        verify: async (_client, claims, pages) => {
+          expect(pages[0]?.text).toContain("Keith Andrews");
+          return {
+            status: "verified",
+            decisions: claims.map((claim) => ({
+              claimId: claim.id,
+              outcome: "supported",
+              evidenceIds: ["S1"],
+            })),
+            summary: "supported",
+          };
+        },
+      }
+    );
+    expect(checked.answer).toContain("Keith Andrews");
+    expect(checked.verification).toEqual({
+      status: "verified",
+      supportedClaimCount: 1,
+      removedClaimCount: 0,
+    });
+  });
+
   it("writes extracted publication dates back onto matching bundle results", async () => {
     const bundle: EvidenceBundle = {
       queries: ["tottenham form"],

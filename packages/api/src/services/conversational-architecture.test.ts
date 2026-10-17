@@ -753,7 +753,7 @@ describe("V2 conversational architecture", () => {
     expect(teamNewsQuoted.answer).toMatch(/Cole Palmer/);
     expect(teamNewsQuoted.answer).toMatch(/unavailable/);
     expect(teamNewsQuoted.answer).toMatch(/example\.com\/news/);
-    expect(teamNewsQuoted.answer).toMatch(/not a revised match forecast/i);
+    expect(teamNewsQuoted.answer).toMatch(/match-context team news, not a revised forecast/i);
     expect(teamNewsQuoted.answer).not.toMatch(/56\.3%/);
     expect(teamNewsQuoted.citations.map((citation) => citation.id)).toEqual(["S1"]);
     expect(teamNewsQuoted.verification.status).toBe("verified");
@@ -1006,6 +1006,7 @@ describe("V2 conversational architecture", () => {
       planResponse("I found Arsenal at 7 — pass or play?", { groundingKind: "match", hasUserLine: true })
     );
     expect(userLine).toMatch(/Chelsea at 7\.00/);
+    expect(userLine).toMatch(/\bEV [+-]\d+(?:\.\d+)?%/);
     expect(userLine).toMatch(/I play/);
     expect(userLine).toMatch(/Risk is high/);
     expect(userLine).not.toMatch(/\block\b/i);
