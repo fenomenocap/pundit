@@ -760,7 +760,7 @@
         },
         {
           "status": 200,
-          "answer": "I make the away win **54.0%**. at 7.00 decimal that is **EV +278.0%**. I play it. Risk is medium. I will not size a stake without a bankroll and a risk band.",
+          "answer": "On Chelsea at 7.00, I make it 54.0% against that line, model vs that line +278.0% (real). That clears the play price, so I play. Risk is medium: neither the lower-risk nor higher-risk conditions apply; losses are still possible.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
