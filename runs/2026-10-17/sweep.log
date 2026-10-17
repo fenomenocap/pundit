@@ -1,23 +1,5 @@
 {
-  "runId": "2026-10-17T21-02-24-680Z",
-  "overall": "ISSUES FOUND",
-  "requests": 72,
-  "featured": {
-    "homeTeam": "Bournemouth",
-    "awayTeam": "Sunderland",
-    "competitionId": "eng.1",
-    "competition": "Premier League",
-    "utcDate": "2026-10-18T13:00Z",
-    "stage": "2026_27_english_premier_league",
-    "recognizedFixtureId": "espn:eng.1:401879263"
-  },
-  "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-17T21-02-24-680Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-17T21-02-24-680Z.md"
-  }
-}
-{
-  "runId": "2026-10-17T21-19-32-008Z",
+  "runId": "2026-10-17T21-59-58-982Z",
   "overall": "ISSUES FOUND",
   "requests": 74,
   "featured": {
@@ -30,7 +12,25 @@
     "recognizedFixtureId": "espn:eng.1:401879263"
   },
   "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-17T21-19-32-008Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-17T21-19-32-008Z.md"
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-17T21-59-58-982Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-17T21-59-58-982Z.md"
+  }
+}
+{
+  "runId": "2026-10-17T22-16-22-179Z",
+  "overall": "ISSUES FOUND",
+  "requests": 74,
+  "featured": {
+    "homeTeam": "Bournemouth",
+    "awayTeam": "Sunderland",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "utcDate": "2026-10-18T13:00Z",
+    "stage": "2026_27_english_premier_league",
+    "recognizedFixtureId": "espn:eng.1:401879263"
+  },
+  "report": {
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-17T22-16-22-179Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-17T22-16-22-179Z.md"
   }
 }
