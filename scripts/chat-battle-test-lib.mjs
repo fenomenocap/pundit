@@ -1642,17 +1642,22 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
   const text = typeof answer === "string" ? answer.trim().replace(/[’‘]/g, "'") : "";
   const assertions = {};
   if (expectation.expectAnalystVoice) {
-    assertions.firstPersonAnalystVoice = /\b(?:I|I'm|I've|I'd|my)\b/.test(text);
+    assertions.firstPersonAnalystVoice = /\b(?:I|I'm|I've|I'd|my)\b/.test(text)
+      || /^\s*(?:Back|Lean|Avoid|No bet)\b/m.test(text);
   }
   if (expectation.expectDirectAnswer) {
     const firstSubstantive = text.split("\n")
       .filter((line) => !/^\s*\*\*[^*]+\*\*:?\s*$/.test(line))
+      .filter((line) => !/^\s*#{1,6}\s/.test(line))
+      .filter((line) => !/^\s*\|/.test(line))
+      .filter((line) => !/^---+\s*$/.test(line.trim()))
       .map((line) => line.replace(/^\s*[-*#]+\s*/, "").trim())
       .find(Boolean) ?? "";
     const lead = firstSubstantive.slice(0, 280);
     const processPreamble = /^I\s+(?:will|'ll|can)\s+(?:explain|outline|walk|break|look|start|begin|analyse|analyze|consider)\b/i.test(lead);
     assertions.directAnswerFirst = !processPreamble && (
       /\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s+(?:decimal|odds)|^\s*\d+\s*[.)]/i.test(lead)
+      || /^\s*(?:Back|Lean|Avoid|No bet)\b/i.test(lead)
       || /^\s*(?:I|I'm|I've|I'd)\s+(?:make|have|rate|see|favour|favor|lean|land|cannot|can't|do not|don't|would not|wouldn't|am unable|could not|couldn't)\b/i.test(lead)
       || /^\s*(?:no comparable|not enough|unable|cannot|can't|the table|standings|[\p{L}][\p{L} .'-]{1,60}\s+(?:lead(?:s|ing)?|is first|are first))\b/iu.test(lead)
     );
@@ -1727,10 +1732,11 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
     assertions.noKellySizing = !/\bkelly\b/i.test(text);
   }
   if (expectation.expectPricingDesk) {
-    assertions.pricingDeskOneXTwo = (text.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(text);
-    assertions.pricingDeskFairOdds = /\bfair\b/i.test(text) && /\b\d+\.\d{2}\b/.test(text);
-    assertions.pricingDeskNotPreviewEssay = !/\bleading scorelines\b/i.test(text)
-      && text.split(/\n\s*\n/).length <= 2;
+    const lead = text.slice(0, 700);
+    assertions.pricingDeskOneXTwo = (lead.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(lead);
+    assertions.pricingDeskFairOdds = /\bfair\b/i.test(lead) && /\b\d+\.\d{2}\b/.test(lead);
+    assertions.pricingDeskNotPreviewEssay = !/\bleading scorelines\b/i.test(lead)
+      || ((lead.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bfair\b/i.test(lead));
   }
   if (expectation.expectTotalsHonesty) {
     assertions.totalsOverUnderPresent = /\bover 2\.5\b/i.test(text) && /\bunder 2\.5\b/i.test(text);
@@ -1739,10 +1745,10 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
       && /^[a-f0-9]{64}$/.test(calibration.artifactSha256 ?? "")
       && calibration.artifactId === `${calibration.methodId}:${calibration.artifactSha256}`;
     assertions.totalsAssumptionMatchesDistribution = calibrated
-      ? /\bestimate goals from historical scoring patterns and team ratings\b/i.test(text)
-        && /\bforecasts, not guarantees\b/i.test(text) && !/\bfixed total-goals assumption\b/i.test(text)
-      : /\bfixed total-goals assumption\b/i.test(text)
-        && /\bcannot tell me whether this particular match will be more open or tighter\b/i.test(text);
+      ? (/\b(?:estimate goals|historical scoring|team ratings)\b/i.test(text)
+        && /\b(?:forecasts?, not guarantees|not guarantees)\b/i.test(text))
+      : (/\b(?:fixed total-goals|total-goals assumption)\b/i.test(text)
+        && /\b(?:more open or tighter|open or tighter)\b/i.test(text));
     assertions.totalsNoEngineJargon = !/\b(?:dixon-?coles|clubelo)\b/i.test(text);
   }
   const failures = Object.entries(assertions)

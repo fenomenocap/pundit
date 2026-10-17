@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { finalizeChatAgentAnswer } from "./chat-agent-guard";
+import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
 import type { AskGrounding } from "./ask";
 
 const matchGrounding = {
@@ -33,5 +33,15 @@ describe("finalizeChatAgentAnswer", () => {
     const out = finalizeChatAgentAnswer(answer, matchGrounding);
     expect(out).not.toContain("91.0%");
     expect(out.toLowerCase()).toMatch(/no bet|couldn't tie/);
+  });
+
+  it("prepends a headline 1X2 when the agent prose omitted it", () => {
+    const wrapped = envelopChatAgentAnswer(
+      "Lean Chelsea. They carry the stronger rating band here.",
+      "What does the model say?",
+      matchGrounding,
+    );
+    expect(wrapped).toMatch(/Everton.*draw.*Chelsea/i);
+    expect((wrapped.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 });
