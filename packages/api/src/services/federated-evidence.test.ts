@@ -27,19 +27,22 @@ const matchGrounding = (
 
 describe("planFederatedQueries", () => {
   it.each([
-    ["2026-10-07T06:00:00Z", "September 2026", "October 2026"],
-    ["2027-01-01T00:00:00Z", "December 2026", "January 2027"],
-  ])("diversifies manager retrieval with a recent news window (%s)", (origin, previousMonth, currentMonth) => {
+    ["2026-10-07T06:00:00Z", "October 2026", "2026/27"],
+    ["2027-01-01T00:00:00Z", "January 2027", "2026/27"],
+  ])("diversifies manager retrieval toward fresh press and season coverage (%s)", (origin, currentMonth, season) => {
     const grounding = matchGrounding();
     const question = "Who is Arsenal's manager and why?";
     const now = new Date(origin);
     const queries = planFederatedQueries(question, grounding, deterministicSearchQuery(question, "", grounding as never, now), now);
-    expect(queries[1]).toBe(`site:skysports.com/football/news Arsenal manager contract ${previousMonth}`);
-    expect(queries[2]).toBe(`site:bbc.com/sport/football Arsenal manager head coach ${currentMonth}`);
-    expect(queries.some((query) => /Arteta|Emery|Wenger|Chelsea/.test(query))).toBe(false);
+    expect(queries[0]).toMatch(/Arsenal current manager head coach official club/);
+    expect(queries[1]).toBe(`site:skysports.com/football/news Arsenal head coach press conference ${currentMonth}`);
+    expect(queries[2]).toBe(`site:skysports.com/football/news Arsenal manager pre-match preview ${currentMonth}`);
+    expect(queries[3]).toBe(`site:bbc.com/sport/football Arsenal manager head coach ${season}`);
+    expect(queries[4]).toBe(`Arsenal head coach staff profile official ${season}`);
+    expect(queries.some((query) => /Arteta|Emery|Wenger|Chelsea|contract/.test(query))).toBe(false);
     expect(queries.some((query) => query.includes(question))).toBe(true);
-    expect(queries).toHaveLength(5);
-    expect(queries[3]).toBe(`site:football.london Arsenal manager ${currentMonth}`);
+    expect(queries).toHaveLength(6);
+    expect(queries[5]).toContain(question);
   });
 
   it("targets an explicitly named club manager or result without searching its pinned opponent", () => {

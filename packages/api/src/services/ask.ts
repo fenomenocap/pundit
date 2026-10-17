@@ -1435,7 +1435,10 @@ function managerRoleGrammar(clubName: string) {
   const role = new RegExp(`(?:${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)(?:\\s+today)?\\s+is\\s+(${fullName})|(${fullName})\\s+(?:is|remains)\\s+(?:the\\s+)?(?:current\\s+)?${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)|(?:the\\s+)?(?:current\\s+)?(?:manager|head coach|coach)\\s+(?:of|for)\\s+${club}\\s+is\\s+(${fullName}))`, "u");
   const ownsCurrentRole = (name: string, body: string) => {
     const named = escape(name);
+    const surname = escape(name.split(/\s+/).pop() ?? name);
     const currentRole = `(?:current\\s+)?(?:manager|head coach|coach|boss)`;
+    const reporting = "(?:has\\s+(?:been\\s+speaking|said|confirmed|told|revealed|warned|admitted|insisted|explained|discussed|spoken|commented|updated|outlined)|says|said|insists|added|was\\s+speaking)";
+    const rejectsIncumbent = (sentence: string) => /\b(?:former|ex[-\s]|sacked|dismissed|departs|has left|will leave|was replaced|linked with|set to replace|in the frame to replace)\b/i.test(sentence);
     // A bare affiliation can describe a former manager. Require a complete
     // present-tense role statement or an explicit ongoing contract action.
     // Editorial prefixes and trailing retired/return qualifiers cannot fill
@@ -1445,13 +1448,24 @@ function managerRoleGrammar(clubName: string) {
     const alignment = new RegExp(`^${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+says\\s+he\\s+and\\s+the\\s+club\\s+are\\s+(?:very\\s+much\\s+)?aligned\\b[^.!?;\\n]{0,100}\\bsigning\\s+a\\s+new\\s+contract\\b`, "iu");
     // Beat reporting often names the incumbent in apposition ("Everton boss
     // David Moyes has been speaking") rather than with an explicit "is".
-    const appositiveReporting = new RegExp(`^(?:The\\s+)?(?!(?:Former|Ex[-\\s])\\s)${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+(?:has\\s+(?:been\\s+speaking|said|confirmed|told)|says|said|insists|added|was\\s+speaking)\\b`, "iu");
+    const appositiveReporting = new RegExp(`^(?:The\\s+)?(?!(?:Former|Ex[-\\s])\\s)${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+${reporting}\\b`, "iu");
+    // Sky and club sites often lead with "manager Eddie Howe said" once the
+    // club is named elsewhere in the same publisher sentence.
+    const roleFirstReporting = new RegExp(`(?=.*\\b${club}\\b).*\\b(?!(?:Former|Ex[-\\s])\\s)${currentRole}\\s+${named}\\s+${reporting}\\b`, "iu");
+    // Official staff profiles and mastheads ("Eddie Howe - Head Coach").
+    const staffProfile = new RegExp(`^${named}\\s*[,–—-]\\s*(?:${club}(?:['’]s)?\\s+)?${currentRole}\\b`, "iu");
+    const staffHeading = new RegExp(`^${currentRole}\\s*[:–—-]\\s*${named}\\b`, "iu");
+    // Beat shorthand once the club is in the same sentence ("Howe's side").
+    const possessiveSide = new RegExp(`(?=.*\\b${club}\\b).*\\b${surname}(?:['’]s)?\\s+side\\b`, "iu");
     // Publisher blocks retain their boundaries; these explicit tenure
     // propositions must start their own statement. A quoted, negated or
     // editorial prefix cannot establish the role.
     return splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
-      .map((sentence) => sentence.trim()).some((sentence) => direct.test(sentence) || contract.test(sentence)
-        || alignment.test(sentence) || appositiveReporting.test(sentence));
+      .map((sentence) => sentence.trim()).some((sentence) => !rejectsIncumbent(sentence) && (
+        direct.test(sentence) || contract.test(sentence) || alignment.test(sentence)
+        || appositiveReporting.test(sentence) || roleFirstReporting.test(sentence)
+        || staffProfile.test(sentence) || staffHeading.test(sentence) || possessiveSide.test(sentence)
+      ));
   };
   return { fullName, role, ownsCurrentRole };
 }
@@ -5248,7 +5262,10 @@ function toMessageParams(messages: ConversationTurn[]): Anthropic.MessageParam[]
   return messages.map(({ role, content }) => ({ role, content }));
 }
 
-function mapTimeoutError(error: unknown): never {
+function mapTimeoutError(error: unknown, signal?: AbortSignal): never {
+  if (isCancellation(error, signal)) {
+    throw new AppError(504, "Analysis service timed out. Please try again.");
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (/timed?\s*out|timeout/i.test(message)) {
     throw new AppError(504, "Analysis service timed out. Please try again.");
@@ -7709,9 +7726,9 @@ export async function generateAnalysis(
             { timeout: remainingMs, signal: bounded }
           )), signal);
       } catch (error) {
-        if (signal?.aborted || retried || !isRetryableStreamError(error)
+        if (isCancellation(error, signal) || retried || !isRetryableStreamError(error)
           || Date.now() - startedAt >= OVERALL_DEADLINE_MS) {
-          mapTimeoutError(error);
+          mapTimeoutError(error, signal);
         }
         retried = true;
       }
@@ -7843,7 +7860,7 @@ export async function generateAnalysisStream(
       } catch (error) {
         if (!shouldContinue()) throw new AppError(499, "Client disconnected.");
         if (deltaSeen || anyDeltaSeen || retried || !isRetryableStreamError(error)) {
-          mapTimeoutError(error);
+          mapTimeoutError(error, signal);
         }
         retried = true;
       }
@@ -8060,7 +8077,9 @@ export async function trackedInference<T>(
 function isCancellation(error: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true;
   if (error instanceof Anthropic.APIUserAbortError) return true;
-  return error instanceof Error && error.name === "AbortError";
+  if (error instanceof Error && error.name === "AbortError") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /request was aborted|aborted before completion|the operation was aborted/i.test(message);
 }
 
 /**
@@ -8134,11 +8153,13 @@ export async function generateOrDegradeToGrounding(
   }
 }
 
-function mapAnalysisError(err: unknown): never {
+function mapAnalysisError(err: unknown, signal?: AbortSignal): never {
   if (err instanceof AppError) throw err;
+  if (isCancellation(err, signal)) {
+    throw new AppError(504, "Analysis service timed out. Please try again.");
+  }
   const message = err instanceof Error ? err.message : String(err);
-  if (/timed?\s*out|timeout|deadline exceeded/i.test(message)
-    || (err instanceof Error && err.name === "AbortError")) {
+  if (/timed?\s*out|timeout|deadline exceeded/i.test(message)) {
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
   if (err instanceof Anthropic.APIError && err.status === 429) {
@@ -10613,7 +10634,7 @@ async function answerQuestionScoped(
       ...(delivered.citations.length ? { citations: delivered.citations } : {}),
     };
   } catch (err) {
-    mapAnalysisError(err);
+    mapAnalysisError(err, signal);
   }
 }
 
@@ -10916,6 +10937,6 @@ async function answerQuestionStreamScoped(
       ...(delivered.citations.length ? { citations: delivered.citations } : {}),
     };
   } catch (err) {
-    mapAnalysisError(err);
+    mapAnalysisError(err, handlers.signal);
   }
 }
