@@ -81,6 +81,7 @@ function parseArgs(argv) {
     evalReplayGuardId: "monitor-gate-v1",
     pinnedGateFixture: null,
     gateOnly: false,
+    nonGating: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -102,6 +103,7 @@ function parseArgs(argv) {
     }
     else if (argument === "--pinned-gate-fixture") options.pinnedGateFixture = path.resolve(argv[++index]);
     else if (argument === "--gate-only") options.gateOnly = true;
+    else if (argument === "--non-gating") options.nonGating = true;
     else throw new Error(`Unknown argument: ${argument}`);
   }
   if (!Number.isFinite(options.intervalMs) || options.intervalMs < 0) {
@@ -1168,7 +1170,10 @@ async function main() {
   const seed = runId.slice(0, 10);
   const adversarial = generateAdversarialScenarios(seed, exactFeatured)
     .map((scenario) => ({ ...scenario, requiredForCertification: false }));
-  const scenarios = requireAvailableRecognizedScenarios([...scenarioConfig.fixed, ...adversarial], routableRecognized);
+  let scenarios = requireAvailableRecognizedScenarios([...scenarioConfig.fixed, ...adversarial], routableRecognized);
+  if (options.nonGating) {
+    scenarios = scenarios.map((scenario) => ({ ...scenario, requiredForCertification: false }));
+  }
   const pacer = createPacer(options.intervalMs);
   const deploymentFromVersion = typeof preflightResult.apiVersion.body?.deploymentId === "string"
     ? preflightResult.apiVersion.body.deploymentId.trim()

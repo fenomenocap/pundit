@@ -1,0 +1,80 @@
+#!/usr/bin/env node
+
+import { readFile, writeFile } from "node:fs/promises";
+import process from "node:process";
+import {
+  compareEngineQuality,
+  computeTurnQualityMetrics,
+  summarizeLlmJudge,
+} from "./chat-eval-quality-metrics.mjs";
+import { judgeEvalTurns } from "./chat-eval-llm-judge.mjs";
+
+function flattenReportTurns(report) {
+  const turns = [];
+  for (const scenario of report?.scenarios ?? []) {
+    for (const turn of scenario.turnResults ?? []) {
+      turns.push({
+        scenarioId: scenario.id,
+        turn: turn.turn,
+        question: turn.request?.question ?? null,
+        httpStatus: turn.status,
+        answer: turn.answer,
+        verification: turn.verification,
+        citations: turn.citations,
+        usedLlm: turn.usedLlm,
+        engine: turn.engine,
+      });
+    }
+  }
+  return turns;
+}
+
+async function main() {
+  const [legacyPath, agentPath, outputPath] = process.argv.slice(2);
+  if (!legacyPath || !agentPath || !outputPath) {
+    throw new Error("usage: merge-dual-engine-chat-eval.mjs <legacy-run.json> <agent-run.json> <out-run.json>");
+  }
+  const legacy = JSON.parse(await readFile(legacyPath, "utf8"));
+  const agent = JSON.parse(await readFile(agentPath, "utf8"));
+  const legacyTurns = flattenReportTurns(legacy);
+  const agentTurns = flattenReportTurns(agent);
+
+  const merged = {
+    ...legacy,
+    requestEngine: "both",
+    agentEval: {
+      runId: agent.runId,
+      overall: agent.overall,
+      qualityMetrics: agent.qualityMetrics ?? computeTurnQualityMetrics(agentTurns),
+      llmJudgeSummary: agent.llmJudgeSummary ?? summarizeLlmJudge(agent),
+      scenarioCount: agent.scenarios?.length ?? 0,
+    },
+    qualityMetrics: legacy.qualityMetrics ?? computeTurnQualityMetrics(legacyTurns),
+    llmJudgeSummary: legacy.llmJudgeSummary ?? summarizeLlmJudge(legacy),
+    engineQualityComparison: compareEngineQuality(legacyTurns, agentTurns),
+  };
+
+  if (!legacy.llmJudge?.scoredTurns && process.env.OPENROUTER_API_KEY?.trim()) {
+    merged.llmJudge = await judgeEvalTurns(legacyTurns, { maxTurns: 24, paceMs: 250 });
+    merged.llmJudgeSummary = summarizeLlmJudge(merged);
+  }
+  if (!agent.llmJudge?.scoredTurns && process.env.OPENROUTER_API_KEY?.trim()) {
+    merged.agentEval.llmJudge = await judgeEvalTurns(agentTurns, { maxTurns: 24, paceMs: 250 });
+    merged.agentEval.llmJudgeSummary = summarizeLlmJudge({ llmJudge: merged.agentEval.llmJudge });
+  }
+
+  await writeFile(outputPath, `${JSON.stringify(merged, null, 2)}\n`);
+  console.log(JSON.stringify({
+    outputPath,
+    legacyOverall: legacy.overall,
+    agentOverall: agent.overall,
+    engineQualityComparison: merged.engineQualityComparison,
+    legacyJudge: merged.llmJudgeSummary,
+    agentJudge: merged.agentEval.llmJudgeSummary,
+  }, null, 2));
+}
+
+main().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});
