@@ -20,7 +20,7 @@ The **agent** engine is an LLM **tool-calling** loop over typed data-layer acces
 | --- | --- |
 | `CHAT_ENGINE=agent` | Process-wide agent mode (non-production or explicit ops choice) |
 | `CHAT_ENGINE` unset or `legacy` | Legacy engine (production default) |
-| Header `X-Pundit-Chat-Engine: agent` \| `legacy` | **Eval-only** per-request override; honored when search replay scope is active **or** Railway sets `CHAT_ENGINE` explicitly to `legacy` or `agent` (live sweeps use the header without replay) |
+| Header `X-Pundit-Chat-Engine: agent` \| `legacy` | **Eval-only** per-request override; honored when search replay scope is active **or** the deploy guard is active (unset `CHAT_ENGINE` defaults to legacy and matches explicit `CHAT_ENGINE=legacy` for header policy; live sweeps use the header without replay) |
 
 Agent mode still respects the backtest **edge gate**: when `edgeValidationActive` is false, copy must not claim betting edge, value, or +EV from model-minus-market gaps (see [Model backtest](model-backtest.md)).
 
