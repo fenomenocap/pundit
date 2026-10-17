@@ -1,27 +1,27 @@
 {
   "date": "2026-10-17",
-  "runId": "2026-10-17T20-04-02-503Z",
-  "status": "clean",
+  "runId": "2026-10-17T21-02-24-680Z",
+  "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
   "scenariosRun": 73,
-  "passed": 68,
+  "passed": 66,
   "inconclusive": 5,
-  "failed": 0,
-  "turns": 71,
-  "answeredTurns": 71,
-  "turnsWithCitations": 5,
-  "medianLatencyMs": 125,
+  "failed": 2,
+  "turns": 68,
+  "answeredTurns": 68,
+  "turnsWithCitations": 2,
+  "medianLatencyMs": 103,
   "repeatedSentences": 0,
   "nearDuplicatePairs": 0,
   "uncitedCurrentNews": 0,
   "requestEngine": "both",
   "qualityMetrics": {
-    "templateShare": 0.14084507042253522,
-    "nearDuplicateRate": 0.028169014084507043,
-    "llmCallRate": 0.07042253521126761,
-    "abstainRate": 0.08450704225352113,
-    "citationCoverage": 0.07042253521126761
+    "templateShare": 0.14705882352941177,
+    "nearDuplicateRate": 0.030728709394205442,
+    "llmCallRate": 0.04411764705882353,
+    "abstainRate": 0.08823529411764706,
+    "citationCoverage": 0.029411764705882353
   },
   "llmJudgeSummary": {
     "score": null,
@@ -38,22 +38,31 @@
   },
   "engineQualityComparison": {
     "legacy": {
-      "templateShare": 0.14084507042253522,
-      "nearDuplicateRate": 0.028169014084507043,
-      "llmCallRate": 0.07042253521126761,
-      "abstainRate": 0.08450704225352113,
-      "citationCoverage": 0.07042253521126761
+      "templateShare": 0.14705882352941177,
+      "nearDuplicateRate": 0.030728709394205442,
+      "llmCallRate": 0.04411764705882353,
+      "abstainRate": 0.08823529411764706,
+      "citationCoverage": 0.029411764705882353
     },
     "agent": {
-      "templateShare": 0.3088235294117647,
-      "nearDuplicateRate": 0.04784899034240562,
-      "llmCallRate": 0.9852941176470589,
-      "abstainRate": 0.4411764705882353,
-      "citationCoverage": 0.04411764705882353
+      "templateShare": 0.30985915492957744,
+      "nearDuplicateRate": 0.013682092555331992,
+      "llmCallRate": 0.9859154929577465,
+      "abstainRate": 0.22535211267605634,
+      "citationCoverage": 0.38028169014084506
     }
   },
-  "findings": [],
-  "sourceCommit": "c209655",
-  "apiSha": "c209655",
-  "ranAt": "2026-10-17T20:04:02.503Z"
+  "findings": [
+    {
+      "scenario": "pinned-current-manager-and-result-evidence",
+      "summary": "FAIL: HTTP 504: {\"error\":\"Analysis service timed out. Please try again.\"}"
+    },
+    {
+      "scenario": "dated-club-news-delivers-supported-update",
+      "summary": "FAIL: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
+    }
+  ],
+  "sourceCommit": "28e87bf",
+  "apiSha": "28e87bf",
+  "ranAt": "2026-10-17T21:02:24.680Z"
 }
