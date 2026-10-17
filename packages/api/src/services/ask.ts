@@ -10452,6 +10452,39 @@ function resolveAgentUserAnswer(
   return agentNonEmptyGroundedFallback(question, grounding, hasHistory);
 }
 
+function logAgentEngineSkip(requestStartedAt: number, skipReason: string): void {
+  if (!isChatAgentEngine()) return;
+  logChatAgentTurn({
+    ...emptyChatAgentTurnMetrics(),
+    latencyMs: Date.now() - requestStartedAt,
+    outcome: "skipped",
+    capHit: null,
+    skipReason,
+  });
+}
+
+/** #301-style agent delivery: agent prose + citation rendering, no deliverAnswer re-verify. */
+function packageAgentDirectAnswer(
+  question: string,
+  grounding: AskGrounding,
+  bundle: EvidenceBundle,
+  prose: string,
+  hasHistory: boolean,
+  usedLlm: boolean,
+): ScopedAskPayload {
+  const { answer: rendered, citations } = renderEvidenceCitations(prose, bundle, false);
+  const answer = rendered.trim()
+    ? rendered
+    : resolveAgentUserAnswer(question, grounding, bundle, hasHistory, "");
+  return {
+    answer,
+    grounding,
+    verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+    usedLlm,
+    ...(citations.length ? { citations } : {}),
+  };
+}
+
 async function deliverChatAgentTurn(
   question: string,
   grounding: AskGrounding,
@@ -10517,12 +10550,15 @@ async function deliverChatAgentTurn(
 
   if (!agentText.trim() || containsAgentInternalWording(agentText)) {
     metrics.outcome = metrics.outcome === "success" ? "fallback" : metrics.outcome;
-    return {
-      answer: resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, agentText),
+    const fallbackProse = resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, agentText);
+    return packageAgentDirectAnswer(
+      question,
       grounding,
-      verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
-      usedLlm: metrics.toolSteps > 0,
-    };
+      bundle,
+      fallbackProse,
+      history.length > 0,
+      metrics.toolSteps > 0,
+    );
   }
 
   let prose = envelopChatAgentAnswer(agentText, question, grounding, {
@@ -10531,54 +10567,14 @@ async function deliverChatAgentTurn(
   });
   prose = finalizeChatAgentAnswer(prose, grounding);
 
-  const query = deterministicSearchQuery(
+  return packageAgentDirectAnswer(
     question,
-    correctionSearchContext(history, grounding),
     grounding,
+    bundle,
+    prose,
+    history.length > 0,
+    true,
   );
-  const evidenceRequired = Boolean(query || bundle.results.length);
-
-  if (evidenceRequired && bundle.results.length) {
-    const delivered = await deliverAnswer({
-      answer: prose,
-      tier: prepared.tier,
-      grounding,
-      bundle,
-      client: prepared.client,
-      question,
-      evidenceRequired: true,
-      candidateUnrecognized: prepared.candidateUnrecognized,
-      hasHistory: history.length > 0,
-      structuredDraftExpected: false,
-      signal,
-      agentVerification: { publisherFetchCap: AGENT_MAX_PUBLISHER_FETCHES },
-      ...(voice === "desk" ? { voice, history } : {}),
-    });
-    const answer = delivered.answer.trim()
-      ? delivered.answer
-      : resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, "");
-    return {
-      answer,
-      grounding,
-      verification: delivered.verification,
-      usedLlm: true,
-      ...(delivered.citations.length ? { citations: delivered.citations } : {}),
-    };
-  }
-
-  const bare = prose.trim()
-    ? prose
-    : resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, "");
-  return {
-    answer: bare,
-    grounding,
-    verification: {
-      status: evidenceRequired ? "abstain" : "not-required",
-      supportedClaimCount: 0,
-      removedClaimCount: 0,
-    },
-    usedLlm: true,
-  };
 }
 
 export async function answerQuestion(
@@ -10623,11 +10619,13 @@ async function answerQuestionScoped(
   );
   const grounding = withOptionalUserLine(prepared.grounding, userLine);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
+  const agentEngineActive = isChatAgentEngine() && Boolean(client);
   try {
     const evidenceFollowUp = promptExtractionResponse(question)
       ?? worldCupRetiredResponse(question, grounding)
       ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_evidence_follow_up");
       return {
         answer: evidenceFollowUp,
         grounding,
@@ -10643,6 +10641,7 @@ async function answerQuestionScoped(
         const scopeQuery = deterministicSearchQuery(question, correctionSearchContext(history, grounding), grounding);
         if (scopeQuery) await buildEvidenceBundle(scopeQuery, signal);
       }
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_analysis");
       return {
         answer: deterministicAnalysis,
         grounding,
@@ -10651,6 +10650,7 @@ async function answerQuestionScoped(
     }
     const clarification = deterministicUngroundedClarification(question, grounding);
     if (clarification) {
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_clarification");
       return {
         answer: clarification,
         grounding,
@@ -10670,6 +10670,7 @@ async function answerQuestionScoped(
       // so the closed notice is returned after the lookup without giving the
       // provider or generated prose authority over fixture identity.
       if (query) await buildEvidenceBundle(query, signal);
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "coverage_closed");
       return {
         answer: coverageClosed,
         grounding,
@@ -10687,6 +10688,7 @@ async function answerQuestionScoped(
         voice,
       );
     }
+    if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "grounding_ineligible_legacy_path");
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     const deskPlan = planResponse(question, {
       groundingKind: grounding?.kind ?? undefined,
@@ -10926,12 +10928,14 @@ async function answerQuestionStreamScoped(
   );
   const grounding = withOptionalUserLine(prepared.grounding, userLine);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
+  const agentEngineActive = isChatAgentEngine() && Boolean(client);
   handlers.onGrounding(grounding);
   try {
     const evidenceFollowUp = promptExtractionResponse(question)
       ?? worldCupRetiredResponse(question, grounding)
       ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_evidence_follow_up");
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(evidenceFollowUp);
       return {
         answer: evidenceFollowUp,
@@ -10948,6 +10952,7 @@ async function answerQuestionStreamScoped(
         const scopeQuery = deterministicSearchQuery(question, correctionSearchContext(history, grounding), grounding);
         if (scopeQuery) await buildEvidenceBundle(scopeQuery, handlers.signal);
       }
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_analysis");
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(deterministicAnalysis);
       return {
         answer: deterministicAnalysis,
@@ -10957,6 +10962,7 @@ async function answerQuestionStreamScoped(
     }
     const clarification = deterministicUngroundedClarification(question, grounding);
     if (clarification) {
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_clarification");
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(clarification);
       return {
         answer: clarification,
@@ -10975,6 +10981,7 @@ async function answerQuestionStreamScoped(
       const settledCoverage = ANALYST_RESPONSE_V2
         ? normalizeAnalystIdentity(coverageClosed)
         : coverageClosed;
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "coverage_closed");
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(settledCoverage);
       return {
         answer: settledCoverage,
@@ -10994,6 +11001,7 @@ async function answerQuestionStreamScoped(
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(delivered.answer);
       return delivered;
     }
+    if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "grounding_ineligible_legacy_path");
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     if (closedAnswer) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(closedAnswer);
