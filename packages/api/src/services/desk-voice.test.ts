@@ -193,6 +193,8 @@ describe("bounded dated club-news expression", () => {
     "was reported injured", "was sidelined with a hamstring injury", "was reported doubtful", "may be doubtful",
     "Has Been Spotted Back In Training", "has a Neural Hamstring pain",
     "was suspended", "was back in training", "has been spotted back in training", "has continued training",
+    "was ruled out", "is ruled out with a knee injury", "is out with a knee injury", "remains a fitness doubt",
+    "has a fitness doubt",
     "has returned to training", "withdrew from international duty", "was undergoing assessment", "was in rehabilitation",
     "had a hamstring issue pending assessment", "has been dealing with neural hamstring pain",
     "sustained a hamstring issue", "suffered an ankle injury", "has sustained a calf strain", "had suffered a knee problem",

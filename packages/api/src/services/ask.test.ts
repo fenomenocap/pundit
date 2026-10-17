@@ -824,11 +824,11 @@ describe("complete standalone football lessons", () => {
       for (const voice of [undefined, "desk"] as const) {
         hydrated = false; searchWeb.mockClear();
         checkDelivery(await answerQuestion("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], controller.signal, context, undefined, voice));
-        expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(5);
+        expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(6);
       }
       hydrated = false; searchWeb.mockClear(); const deltas: string[] = [];
       const streamed = await answerQuestionStream("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], { signal: controller.signal, onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
-      checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(5);
+      checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(6);
       expect(create.mock.calls.every(([params]) => String((params as Anthropic.MessageCreateParamsNonStreaming).system)
         .startsWith("You are Pundit's bounded factual claim verifier."))).toBe(true);
     } finally {
@@ -1022,9 +1022,16 @@ describe("source-owned manager identity drafts", () => {
     "Everton boss David Moyes has been speaking to the media before Sunday's Premier League game.",
     "Everton manager David Moyes says he is surprised that the club has been put up for sale.",
     "The Everton boss David Moyes has been speaking to the media.",
+    "Newcastle United head coach Eddie Howe has revealed his plans for Aston Villa.",
+    "Newcastle boss Eddie Howe said his side must improve defensively.",
+    "Ahead of Aston Villa, manager Eddie Howe said Newcastle United need a fast start.",
+    "Eddie Howe - Head Coach\nNewcastle United first-team staff profile.",
+    "Newcastle United | Eddie Howe, head coach — Howe's side face Aston Villa on Saturday.",
   ])("builds only the strict dynamic current identity: %s", (text) => {
-    const clubScope = /Everton/.test(text) ? { ...scope, club: "Everton" } : scope;
-    const name = /David Moyes/.test(text) ? "David Moyes" : "Joe Example";
+    const clubScope = /Everton/.test(text) ? { ...scope, club: "Everton" }
+      : /Newcastle/.test(text) ? { ...scope, club: "Newcastle" } : scope;
+    const name = /David Moyes/.test(text) ? "David Moyes"
+      : /Eddie Howe/.test(text) ? "Eddie Howe" : "Joe Example";
     expect(sourceOwnedManagerDraft(clubScope, bundle, [{ ...page, text }], now)).toBe(`${clubScope.club}’s manager is ${name} [[S7]].`);
   });
   it.each([
@@ -1042,8 +1049,14 @@ describe("source-owned manager identity drafts", () => {
     "Arsenal’s manager may be Joe Example.",
     "Former Everton boss David Moyes says he will leave.",
     "Everton manager David Moyes will be replaced this week.",
+    "Former Newcastle head coach Eddie Howe has been linked with the England job.",
+    "Newcastle sacked Eddie Howe after a poor run of results.",
+    "Eddie Howe was Newcastle's manager before the takeover.",
+    "Newcastle are linked with Jane Example as their next manager.",
   ])("cannot promote a rejected role statement: %s", (text) => {
-    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text }], now)).not.toContain("Joe Example");
+    const clubScope = /Newcastle|Eddie Howe/.test(text) ? { ...scope, club: "Newcastle" } : scope;
+    const forbidden = /Eddie Howe/.test(text) ? "Eddie Howe" : "Joe Example";
+    expect(sourceOwnedManagerDraft(clubScope, bundle, [{ ...page, text }], now)).not.toContain(forbidden);
   });
   it.each(["", "2026-02-30", "2026-09-16T11:59:59.999Z", "2026-10-07T12:00:00.001Z"])("rejects invalid, stale or future metadata %s", (date) => {
     const rows = { ...bundle, results: [{ ...source, date }] };
@@ -1291,8 +1304,8 @@ describe("current verification failure preserves supplied history scope", () => 
       expect(streamed.verification?.supportedClaimCount).toBe(0);
       expect(streamed.verification?.removedClaimCount).toBe(1);
       expect(deltas).toEqual([streamed.answer]);
-      // Each of the three formats performs the bounded five-query manager evidence plan.
-      expect(searchWeb).toHaveBeenCalledTimes(15);
+      // Each of the three formats performs the bounded six-query manager evidence plan.
+      expect(searchWeb).toHaveBeenCalledTimes(18);
     } finally {
       cached.mockRestore(); prefetch.mockRestore(); retrieve.mockRestore(); create.mockRestore();
       if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
