@@ -58,6 +58,8 @@ import {
   sanitizeFixtureCoverageAnswer,
   generateOrDegradeToGrounding,
   matchGenerationBudgetMs,
+  agentGenerationBudgetMs,
+  agentNonEmptyGroundedFallback,
   sanitizeFootballGeometry,
   sanitizeGroundedMatchNarrative,
   sanitizeContradictoryRationales,
@@ -2697,6 +2699,37 @@ describe("current-news evidence hardening", () => {
     it("passes a generated answer through untouched", async () => {
       await expect(generateOrDegradeToGrounding(match, undefined, Date.now(), async () => "draft")).resolves.toBe("draft");
     });
+  });
+
+  it("agentNonEmptyGroundedFallback never returns empty on a priced match", () => {
+    const grounding = {
+      kind: "match",
+      fixtureId: "401",
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeFieldAdvantage: true,
+      date: "2026-10-18",
+      home: "Everton",
+      away: "Chelsea",
+      pHome: 0.22,
+      pDraw: 0.24,
+      pAway: 0.54,
+      pOver2_5: 0.52,
+      pUnder2_5: 0.48,
+      pBttsYes: 0.55,
+      pBttsNo: 0.45,
+      topScores: [{ score: "1-1", probability: 0.11 }],
+      pricing: { model: { home: 0.22, draw: 0.24, away: 0.54 } },
+    } as unknown as AskGrounding;
+    const fallback = agentNonEmptyGroundedFallback("Why do you lean Chelsea?", grounding, true);
+    expect(fallback.trim().length).toBeGreaterThan(20);
+    expect(fallback).toMatch(/22\.0%|Chelsea|54\.0%/);
+  });
+
+  it("raises the agent generation budget cap above the legacy match budget", () => {
+    const start = 1_000_000;
+    expect(agentGenerationBudgetMs(start, start)).toBeGreaterThan(matchGenerationBudgetMs(start, start));
+    expect(agentGenerationBudgetMs(start, start)).toBe(72_000);
   });
 
   it("keeps an unrecognized matchup candidate ungrounded and strips invented output", () => {

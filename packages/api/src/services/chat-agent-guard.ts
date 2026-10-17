@@ -1,13 +1,6 @@
 import type { AskGrounding } from "./ask";
-import {
-  CALIBRATED_GOALS_SENTENCE,
-  SHARED_TOTAL_XG_SENTENCE,
-  STAKE_REFUSAL_SENTENCE,
-  composeDeskLabelledOneXTwo,
-  composeMarketDivergenceHeadline,
-  composeUserLineAnswer,
-} from "./response-composer";
-import { planResponse, pricedGridMarketsAsked } from "./response-plan";
+import { composeDeskLabelledOneXTwo } from "./response-composer";
+import { planResponse } from "./response-plan";
 
 const PERCENT_RE = /\b(\d{1,2}(?:\.\d)?)\s*%/g;
 const SECTION_LABEL_LINE = /^\s*\*\*[^*\n]+\*\*:?\s*$/;
@@ -86,61 +79,6 @@ function trimIncompleteTrailingBold(text: string): string {
   return trimmed.slice(0, lastOpen).trim();
 }
 
-function needsMarketAttribution(
-  question: string,
-  text: string,
-  grounding: Extract<AskGrounding, { kind: "match" }>,
-): boolean {
-  const asksMarket = /\b(?:market|kalshi|polymarket|stake|odds|compare|comparison|disagree|gap)\b/i.test(question);
-  if (!asksMarket) return false;
-  const attributionText = text.replace(/[‘’]/g, "'");
-  const comparisonClaim = /\b(?:market|kalshi|polymarket|stake|bookmakers?|bookies?|price|odds|gap|disagree|higher|lower)\b/i.test(attributionText);
-  return comparisonClaim;
-}
-
-function appendMarketAttribution(text: string, grounding: Extract<AskGrounding, { kind: "match" }>): string {
-  const headline = composeMarketDivergenceHeadline(grounding);
-  if (!headline || text.includes(headline.slice(0, 40))) return text;
-  return `${text.trim()}\n\n${headline}`.trim();
-}
-
-function appendTotalsHonestyIfNeeded(
-  question: string,
-  text: string,
-  grounding: Extract<AskGrounding, { kind: "match" }>,
-): string {
-  const asksTotals = pricedGridMarketsAsked(question).includes("totals")
-    || /\bover 2\.5\b/i.test(question)
-    || /\bunder 2\.5\b/i.test(question);
-  if (!asksTotals) return text;
-  const hasOverUnder = /\bover 2\.5\b/i.test(text) && /\bunder 2\.5\b/i.test(text);
-  if (!hasOverUnder) return text;
-  const calibrated = grounding.goalCalibration?.methodId === "outcome-anchored-shrunk-goals-v2";
-  const assumptionPresent = calibrated
-    ? /\b(?:estimate goals|historical scoring|forecasts?, not guarantees)\b/i.test(text)
-    : /\b(?:fixed total-goals|more open or tighter)\b/i.test(text);
-  if (assumptionPresent) return text;
-  const sentence = calibrated ? CALIBRATED_GOALS_SENTENCE : SHARED_TOTAL_XG_SENTENCE;
-  return `${text.trim()} ${sentence}`.trim();
-}
-
-function ensureStakeRefusal(text: string, planMode: string): string {
-  if (planMode !== "stake-refusal") return text;
-  if (text.includes(STAKE_REFUSAL_SENTENCE)) return text;
-  return `${text.trim()}\n\n${STAKE_REFUSAL_SENTENCE}`.trim();
-}
-
-function ensureUserLineBlock(
-  text: string,
-  grounding: Extract<AskGrounding, { kind: "match" }>,
-  planMode: string,
-): string {
-  if (planMode !== "user-line" || !grounding.pricing?.userLine) return text;
-  const block = composeUserLineAnswer(grounding);
-  if (/\bat 7\.00\b/.test(text) && /\bmodel vs that line\b/i.test(text)) return text;
-  return `${block}\n\n${text.trim()}`.trim();
-}
-
 function matchHeadlineLine(grounding: Extract<AskGrounding, { kind: "match" }>): string {
   if (grounding.pricing?.model) return composeDeskLabelledOneXTwo(grounding);
   const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
@@ -176,7 +114,7 @@ export function finalizeChatAgentAnswer(answer: string, grounding: AskGrounding)
   ].join(" ");
 }
 
-/** Structural and contract envelopes before verification/delivery. */
+/** Minimal server-owned W/D/W headline only; agent prose carries the rest. */
 export function envelopChatAgentAnswer(
   answer: string,
   question: string,
@@ -195,13 +133,5 @@ export function envelopChatAgentAnswer(
   });
   const expectHeadline = plan.mode !== "team-news" && plan.mode !== "player-or-scorer";
   text = ensureMatchHeadline(text, grounding, expectHeadline);
-  text = ensureUserLineBlock(text, grounding, plan.mode);
-  text = ensureStakeRefusal(text, plan.mode);
-  text = appendTotalsHonestyIfNeeded(question, text, grounding);
-  if (needsMarketAttribution(question, text, grounding)) {
-    text = appendMarketAttribution(text, grounding);
-  } else if (plan.mode === "market-comparison") {
-    text = appendMarketAttribution(text, grounding);
-  }
   return text.trim();
 }
