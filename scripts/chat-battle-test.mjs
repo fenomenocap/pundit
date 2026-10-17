@@ -1356,7 +1356,12 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(`chat battle test failed: ${error.message}`);
-  process.exitCode = 1;
-});
+const executedDirectly = import.meta.url === `file://${process.argv[1]}`
+  || process.argv[1]?.endsWith("chat-battle-test.mjs");
+
+if (executedDirectly) {
+  main().catch((error) => {
+    console.error(`chat battle test failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
