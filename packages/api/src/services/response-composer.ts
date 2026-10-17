@@ -237,9 +237,9 @@ function composeUserLineAnswer(grounding: Grounding): string {
     : line.riskBand === "low"
       ? "a higher chance of winning and a small price gap; losses are still possible"
       : "neither the lower-risk nor higher-risk conditions apply; losses are still possible";
-  // Pass-or-play turns must print the literal "EV ±x%" token the eval harness
-  // and desk copy contract expect, even when broader edge language stays gated.
-  const gapPhrase = `EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`;
+  const gapPhrase = MODEL_EDGE_CLAIMS_ALLOWED
+    ? `EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`
+    : `model vs that line ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`;
   return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, ${gapPhrase}. ${call} Risk is ${line.riskBand}: ${riskExplanation}.`;
 }
 

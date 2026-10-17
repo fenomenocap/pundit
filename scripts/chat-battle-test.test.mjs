@@ -1736,8 +1736,18 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
   const stakeRefusal = "I can print the price. I will not size a stake without a bankroll and a risk band.";
   assert.equal(validateAnalystExpression(stakeRefusal, { expectStakeRefusal: true }).passed, true);
   assert.equal(validateAnalystExpression("Kelly 4% of bankroll.", { expectStakeRefusal: true }).passed, false);
-  const userLinePlay = "On Chelsea at 7.00, I make it 10.0% against that line, EV +40.0% (fat-and-fragile). That clears the play price of 10.30, so I play. Risk is high.";
-  assert.equal(validateAnalystExpression(userLinePlay, { expectUserLinePassPlay: true }).passed, true);
+  const userLinePlayEv = "On Chelsea at 7.00, I make it 10.0% against that line, EV +40.0% (fat-and-fragile). That clears the play price of 10.30, so I play. Risk is high.";
+  assert.equal(validateAnalystExpression(userLinePlayEv, {
+    expectUserLinePassPlay: true,
+    modelEdgeClaimsAllowed: true,
+  }).passed, true);
+  const userLinePlayHonest = "On Chelsea at 7.00, I make it 10.0% against that line, model vs that line +40.0% (fat-and-fragile). That clears the play price of 10.30, so I play. Risk is high.";
+  assert.equal(validateAnalystExpression(userLinePlayHonest, { expectUserLinePassPlay: true }).passed, true);
+  assert.equal(validateAnalystExpression(userLinePlayEv, { expectUserLinePassPlay: true }).passed, false);
+  assert.equal(validateAnalystExpression(userLinePlayHonest, {
+    expectUserLinePassPlay: true,
+    modelEdgeClaimsAllowed: true,
+  }).passed, false);
   assert.equal(validateAnalystExpression("I like the away side.", { expectUserLinePassPlay: true }).passed, false);
   assert.equal(validateAnalystExpression(
     "The markets agree, which proves my view is right.",

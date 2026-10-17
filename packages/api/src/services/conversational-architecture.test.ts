@@ -1006,7 +1006,6 @@ describe("V2 conversational architecture", () => {
       planResponse("I found Arsenal at 7 — pass or play?", { groundingKind: "match", hasUserLine: true })
     );
     expect(userLine).toMatch(/Chelsea at 7\.00/);
-    expect(userLine).toMatch(/\bEV [+-]\d+(?:\.\d+)?%/);
     expect(userLine).toMatch(/I play/);
     expect(userLine).toMatch(/Risk is high/);
     expect(userLine).not.toMatch(/\block\b/i);

@@ -10,7 +10,8 @@ import {
   UserLine,
 } from "../services/ask";
 import {
-  parseChatEvalEngineOverrideHeader,
+  isChatEvalEngineOverrideGuardActive,
+  resolveChatEvalEngineOverride,
   withChatEngineRequestScope,
 } from "../services/chat-engine";
 import {
@@ -182,8 +183,8 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     const searchReplayScope = parseChatEvalSearchReplayHeader(
       req.headers["x-pundit-chat-eval-search-replay"]
     );
-    const evalGuardActive = searchReplayScope !== null;
-    const engineOverride = parseChatEvalEngineOverrideHeader(
+    const evalGuardActive = isChatEvalEngineOverrideGuardActive(searchReplayScope !== null);
+    const engineOverride = resolveChatEvalEngineOverride(
       req.headers["x-pundit-chat-engine"],
       evalGuardActive,
     );

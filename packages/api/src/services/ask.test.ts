@@ -1082,6 +1082,79 @@ describe("source-owned manager identity drafts", () => {
     expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [{ ...source, date }] }, [{ ...page, date }], now)).toContain("Joe Example");
     expect(sourceOwnedManagerDraft({ ...scope, retainAppointment: true }, bundle, [page], now)).toBeUndefined();
   });
+  it("accepts an older official appointment story when no newer manager conflict exists", () => {
+    const now = Date.parse("2026-10-17T12:00:00Z");
+    const source = {
+      id: "S9",
+      title: "Brentford appoint Keith Andrews as head coach",
+      url: "https://www.brentfordfc.com/en/news/2025/june/andrews-appointed",
+      date: "2025-06-27",
+      snippet: "Appointment story.",
+      tier: "official" as const,
+    };
+    const page = {
+      ...source,
+      authority: "official" as const,
+      finalUrl: source.url,
+      text: "Brentford’s manager is Keith Andrews.",
+      retrievedAt: "2026-10-17T11:00:00Z",
+    };
+    expect(sourceOwnedManagerDraft(
+      { club: "Brentford", wantsReason: false },
+      { queries: [], providerCalls: 0, results: [source] },
+      [page],
+      now,
+    )).toBe("Brentford’s manager is Keith Andrews [[S9]].");
+  });
+
+  it("rejects a durable old appointment when a recent page reports a different manager", () => {
+    const now = Date.parse("2026-10-17T12:00:00Z");
+    const oldSource = {
+      id: "S9",
+      title: "Brentford appoint Keith Andrews as head coach",
+      url: "https://www.brentfordfc.com/en/news/2025/june/andrews-appointed",
+      date: "2025-06-27",
+      snippet: "Old appointment.",
+      tier: "official" as const,
+    };
+    const recentSource = {
+      id: "S2",
+      title: "Brentford sack Andrews and appoint Jane Example",
+      url: "https://www.bbc.com/sport/football/brentford-manager-change",
+      date: "2026-10-10T09:00:00Z",
+      snippet: "Recent change.",
+      tier: "news" as const,
+    };
+    const pages = [
+      {
+        ...oldSource,
+        authority: "official" as const,
+        finalUrl: oldSource.url,
+        text: "Brentford’s manager is Keith Andrews.",
+        retrievedAt: "2026-10-17T11:00:00Z",
+      },
+      {
+        ...recentSource,
+        authority: "reputable" as const,
+        finalUrl: recentSource.url,
+        text: "Brentford’s manager is Jane Example.",
+        retrievedAt: "2026-10-10T10:00:00Z",
+      },
+    ];
+    expect(sourceOwnedManagerDraft(
+      { club: "Brentford", wantsReason: false },
+      { queries: [], providerCalls: 0, results: [oldSource, recentSource] },
+      pages,
+      now,
+    )).not.toContain("Keith Andrews");
+    expect(sourceOwnedManagerDraft(
+      { club: "Brentford", wantsReason: false },
+      { queries: [], providerCalls: 0, results: [oldSource, recentSource] },
+      pages,
+      now,
+    )).toContain("Jane Example");
+  });
+
   it("names the manager from a hydrated dated page when the search row was undated", () => {
     const undatedSource = { ...source, date: "" };
     const hydrated = {

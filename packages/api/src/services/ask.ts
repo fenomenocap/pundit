@@ -1478,13 +1478,107 @@ function managerSearchedUrlAligns(
   }
 }
 
+const MANAGER_RECENT_WINDOW_MS = 21 * 86_400_000;
+
 export type ManagerExtractionCandidate = {
   pageId: string;
   sourceId?: string;
   names: string[];
   ownsRole: boolean;
   rejectedReason?: string;
+  publishedDate?: string | null;
+  urlHost?: string | null;
 };
+
+function managerPageUrlHost(page: Pick<RetrievedEvidencePage, "url" | "finalUrl">): string | null {
+  const raw = page.finalUrl?.trim() || page.url?.trim() || "";
+  if (!raw) return null;
+  try {
+    return new URL(raw).hostname.replace(/^www\./i, "");
+  } catch {
+    return null;
+  }
+}
+
+function isManagerDurableIdentitySource(
+  source: EvidenceBundle["results"][number],
+  page: RetrievedEvidencePage,
+): boolean {
+  const authority = evidenceAuthority(source.url);
+  const url = `${page.finalUrl || source.url}`.toLowerCase();
+  const body = publisherOwnedManagerBody(page);
+  const title = source.title.toLowerCase();
+  if (authority === "official") {
+    if (/(coach|manager|staff|management|head-coach|first-team)/.test(url)) return true;
+    if (/\b(?:head coach|first[- ]team coach|manager)\b/i.test(body.slice(0, 1200))) return true;
+  }
+  if (authority === "reputable") {
+    const hay = `${title} ${body}`.toLowerCase();
+    if (/\b(?:appoint\w*|named as|unveil\w*|replace\w*|new head coach|new manager)\b/.test(hay)
+      && /\b(?:manager|head coach|coach)\b/.test(hay)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function managerIdentityNamesOnPage(
+  page: RetrievedEvidencePage,
+  ownsCurrentRole: (name: string, body: string) => boolean,
+  fullName: string,
+): string[] {
+  const body = publisherOwnedManagerBody(page);
+  return [...new Set(splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
+    .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
+    .flatMap((match) => {
+      const words = match[0].split(/\s+/);
+      return words.flatMap((_word, start) => words.slice(start + 1).map((_next, offset) =>
+        words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
+    }).filter((name) => playerNamedInNewsBody(name, body,
+      { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, body)))];
+}
+
+function managerNameKey(name: string): string {
+  return name.normalize("NFC").toLocaleLowerCase("en").replace(/\s+/g, " ");
+}
+
+function managerRecentIdentityConflict(
+  scope: { club: string },
+  pages: readonly RetrievedEvidencePage[],
+  bundle: EvidenceBundle,
+  candidateName: string,
+  now: number,
+  ownsCurrentRole: (name: string, body: string) => boolean,
+  fullName: string,
+): boolean {
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const aliases = [scope.club, ...getTeamNameAliases()
+    .filter(([, name]) => normalizeTeamName(name) === normalizeTeamName(scope.club))
+    .map(([alias]) => alias)];
+  const club = `(?:${[...new Set(aliases)].map(escape).join("|")})`;
+  const candidate = escape(candidateName);
+  for (const page of pages) {
+    const source = managerBundleSourceForPage(bundle, page);
+    if (!source) continue;
+    const publishedText = page.date.trim() || source.date.trim();
+    const published = Date.parse(publishedText);
+    if (!Number.isFinite(published) || published > now || now - published > MANAGER_RECENT_WINDOW_MS) continue;
+    const body = publisherOwnedManagerBody(page);
+    const recentNames = managerIdentityNamesOnPage(page, ownsCurrentRole, fullName);
+    if (recentNames.some((name) => managerNameKey(name) !== managerNameKey(candidateName))) return true;
+    if (new RegExp(`${club}[^.!?\\n]{0,140}\\b(?:sack\\w*|dismiss\\w*|replace\\w*|part(?:ed|s)? company with)\\b`, "iu").test(body)) {
+      return true;
+    }
+    if (new RegExp(`${candidate}[^.!?\\n]{0,80}\\b(?:sacked|dismissed|departs|has left|will leave|was replaced)`, "iu").test(body)) {
+      return true;
+    }
+    if (new RegExp(`\\b(?:appoint\\w*|name\\w*)[^.!?\\n]{0,60}\\bas (?:${club}['’]?s )?(?:manager|head coach|coach)\\b`, "iu").test(body)
+      && !recentNames.some((name) => managerNameKey(name) === managerNameKey(candidateName))) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** Hydrated publisher pages are the authority for manager extraction. */
 export function extractManagerIdentityCandidates(
@@ -1495,7 +1589,8 @@ export function extractManagerIdentityCandidates(
 ): { facts: { name: string; sourceId: string }[]; candidates: ManagerExtractionCandidate[] } {
   const { fullName, ownsCurrentRole } = managerRoleGrammar(scope.club);
   const candidates: ManagerExtractionCandidate[] = [];
-  const facts = pages.flatMap((page) => {
+  const factRows: { name: string; sourceId: string; durableOld: boolean }[] = [];
+  for (const page of pages) {
     const source = managerBundleSourceForPage(bundle, page);
     const hydratedDay = /^\d{4}-\d{2}-\d{2}/.exec(page.date.trim())?.[0];
     const publishedText = page.date.trim() || (source ? evidenceSourceDate(source, new Date(now)) : "");
@@ -1504,39 +1599,71 @@ export function extractManagerIdentityCandidates(
     const published = Date.parse(publishedText);
     const sourceDay = source && !hydratedDay
       ? /^\d{4}-\d{2}-\d{2}/.exec(source.date.trim())?.[0] : undefined;
-    const reject = (reason: string): [] => {
-      candidates.push({ pageId: page.id, sourceId: source?.id, names: [], ownsRole: false, rejectedReason: reason });
-      return [];
+    const publishedDate = page.date.trim() || source?.date.trim() || null;
+    const urlHost = managerPageUrlHost(page);
+    const reject = (reason: string) => {
+      candidates.push({
+        pageId: page.id,
+        sourceId: source?.id,
+        names: [],
+        ownsRole: false,
+        rejectedReason: reason,
+        publishedDate,
+        urlHost,
+      });
     };
-    if (!source) return reject(bundle.results.filter((row) => row.id === page.id).length > 1
-      ? "ambiguous_bundle_source" : "no_bundle_source");
-    if (!managerSearchedUrlAligns(source, page)) return reject("url_host_mismatch");
-    if (sourceDay && day && sourceDay !== day[0].slice(0, 10)) return reject("provider_date_mismatch");
-    if (evidenceAuthority(source.url) === "other" || evidenceAuthority(page.finalUrl) === "other") {
-      return reject("authority_other");
+    if (!source) {
+      reject(bundle.results.filter((row) => row.id === page.id).length > 1
+        ? "ambiguous_bundle_source" : "no_bundle_source");
+      continue;
     }
-    if (!day || calendar!.toISOString().slice(0, 10) !== day[0].slice(0, 10)) return reject("invalid_calendar_day");
-    if (!Number.isFinite(published) || !Number.isFinite(now)) return reject("invalid_published_instant");
-    if (published > now || now - published > 21 * 86_400_000) return reject("stale_or_future");
-    const body = publisherOwnedManagerBody(page);
-    const names = splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
-      .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
-      .flatMap((match) => {
-        const words = match[0].split(/\s+/);
-        return words.flatMap((_word, start) => words.slice(start + 1).map((_next, offset) =>
-          words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
-      }).filter((name) => playerNamedInNewsBody(name, body,
-      { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, body));
-    const unique = [...new Set(names)];
+    if (!managerSearchedUrlAligns(source, page)) {
+      reject("url_host_mismatch");
+      continue;
+    }
+    if (sourceDay && day && sourceDay !== day[0].slice(0, 10)) {
+      reject("provider_date_mismatch");
+      continue;
+    }
+    if (evidenceAuthority(source.url) === "other" || evidenceAuthority(page.finalUrl) === "other") {
+      reject("authority_other");
+      continue;
+    }
+    if (!day || calendar!.toISOString().slice(0, 10) !== day[0].slice(0, 10)) {
+      reject("invalid_calendar_day");
+      continue;
+    }
+    if (!Number.isFinite(published) || !Number.isFinite(now)) {
+      reject("invalid_published_instant");
+      continue;
+    }
+    if (published > now) {
+      reject("stale_or_future");
+      continue;
+    }
+    const isRecent = now - published <= MANAGER_RECENT_WINDOW_MS;
+    const durableOld = !isRecent && isManagerDurableIdentitySource(source, page);
+    if (!isRecent && !durableOld) {
+      reject("stale_or_future");
+      continue;
+    }
+    const unique = managerIdentityNamesOnPage(page, ownsCurrentRole, fullName);
     candidates.push({
       pageId: page.id,
       sourceId: source.id,
       names: unique,
       ownsRole: unique.length > 0,
+      publishedDate,
+      urlHost,
       ...(unique.length ? {} : { rejectedReason: "owns_current_role_failed" }),
     });
-    return unique.map((name) => ({ name, sourceId: source.id }));
-  });
+    for (const name of unique) {
+      factRows.push({ name, sourceId: source.id, durableOld });
+    }
+  }
+  const facts = factRows.filter((row) => !row.durableOld
+    || !managerRecentIdentityConflict(scope, pages, bundle, row.name, now, ownsCurrentRole, fullName))
+    .map((row) => ({ name: row.name, sourceId: row.sourceId }));
   return { facts, candidates };
 }
 
@@ -1560,6 +1687,8 @@ export function logManagerIdentityExtraction(
       names: row.names,
       ownsRole: row.ownsRole,
       rejectedReason: row.rejectedReason ?? null,
+      publishedDate: row.publishedDate ?? null,
+      urlHost: row.urlHost ?? null,
     })),
     draftKind: draft === undefined ? "none" : draft.includes("’s manager is") ? "identity" : "abstention",
   }));
