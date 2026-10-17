@@ -23,8 +23,10 @@ import {
   AGENT_MAX_TOOL_STEPS,
   AGENT_TURN_HARD_MS,
   emptyChatAgentTurnMetrics,
+  type ChatAgentCapHit,
   type ChatAgentTurnMetrics,
 } from "./chat-agent-limits";
+import { stepFitsTokenBudget } from "./chat-agent-token-estimate";
 
 const AGENT_TOOLS: Anthropic.Tool[] = [
   {
@@ -333,6 +335,10 @@ function usageTokens(response: Anthropic.Message): { input: number; output: numb
   };
 }
 
+function setCapHit(metrics: ChatAgentTurnMetrics, capHit: ChatAgentCapHit): void {
+  if (!metrics.capHit) metrics.capHit = capHit;
+}
+
 /** Agent path for match, table, season, and general tiers using data-layer tools. */
 export async function runChatAgent(
   question: string,
@@ -351,6 +357,7 @@ export async function runChatAgent(
   if (signal?.aborted) hardCap.abort(signal.reason);
   else signal?.addEventListener("abort", onParentAbort, { once: true });
   const hardTimer = setTimeout(() => {
+    setCapHit(metrics, "time");
     hardCap.abort(new Error("agent turn hard budget exceeded"));
   }, hardBudgetMs);
   const loopSignal = hardCap.signal;
@@ -364,7 +371,16 @@ export async function runChatAgent(
   let text = "";
   try {
     for (let step = 0; step < AGENT_MAX_TOOL_STEPS; step += 1) {
-      if (metrics.cumulativeTokens >= AGENT_MAX_CUMULATIVE_LLM_TOKENS) break;
+      const llmPayload = {
+        system: CHAT_AGENT_SYSTEM,
+        messages,
+        tools: AGENT_TOOLS,
+      };
+      if (!stepFitsTokenBudget(metrics.cumulativeTokens, AGENT_MAX_CUMULATIVE_LLM_TOKENS, llmPayload)) {
+        setCapHit(metrics, "tokens");
+        break;
+      }
+
       const response = await client.messages.create({
         model: inference.model,
         max_tokens: AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
@@ -387,7 +403,6 @@ export async function runChatAgent(
         text = extractText(response) || "";
         break;
       }
-      if (metrics.cumulativeTokens >= AGENT_MAX_CUMULATIVE_LLM_TOKENS) break;
 
       messages.push({ role: "assistant", content: response.content as Anthropic.ContentBlockParam[] });
       const results = await Promise.all(toolUses.map(async (toolUse) => ({
@@ -403,19 +418,23 @@ export async function runChatAgent(
       })));
       messages.push({ role: "user", content: results });
     }
+    if (!text && metrics.toolSteps >= AGENT_MAX_TOOL_STEPS && !metrics.capHit) {
+      setCapHit(metrics, "steps");
+    }
   } catch (error) {
-    if (!text.trim() && !isAbortError(error, loopSignal)) throw error;
+    if (!text.trim()) {
+      if (loopSignal.aborted && !metrics.capHit) setCapHit(metrics, "time");
+      if (!isAbortError(error, loopSignal)) throw error;
+    }
   } finally {
     clearTimeout(hardTimer);
     signal?.removeEventListener("abort", onParentAbort);
+    metrics.latencyMs = Date.now() - turnStarted;
+    metrics.publisherFetches = bundle.providerCalls ?? 0;
   }
-  if (!text) {
-    text = "No bet — the agent loop exhausted its tool budget before finishing.";
-  }
-  metrics.latencyMs = Date.now() - turnStarted;
-  metrics.publisherFetches = bundle.providerCalls ?? 0;
+
   return {
-    text: normalizeAgentMarkers(text, bundle),
+    text: text.trim() ? normalizeAgentMarkers(text, bundle) : "",
     bundle,
     metrics,
   };
