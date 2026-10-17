@@ -1673,6 +1673,45 @@ describe("current-news evidence hardening", () => {
     expect(verifiableCurrentClaims(abbreviated)).toEqual([{ id: "C1", text: abbreviated }]);
   });
 
+  it("legacy manager path keeps a publisher-confirmed current manager as verified", async () => {
+    const body = "Leeds United have confirmed Marco Rose as their head coach ahead of the weekend fixture.";
+    const answer = "Leeds United's manager is Marco Rose [[S1]].";
+    const checked = await verifyCurrentClaims(answer, {
+      queries: [],
+      providerCalls: 0,
+      results: [{
+        id: "S1",
+        title: "Leeds confirm head coach",
+        url: "https://www.leedsunited.com/news/manager",
+        date: "2026-10-12",
+        snippet: body,
+        tier: "official",
+      }],
+    }, {} as Parameters<typeof verifyCurrentClaims>[2], undefined, false, {
+      retrieve: async (candidates) => candidates.map((candidate) => ({
+        ...candidate,
+        finalUrl: candidate.url,
+        text: body,
+        retrievedAt: "2026-10-12T12:00:00Z",
+      })),
+      verify: async (_client, claims) => ({
+        status: "verified",
+        decisions: claims.map((claim) => ({
+          claimId: claim.id,
+          outcome: "supported",
+          evidenceIds: ["S1"],
+        })),
+        summary: "Publisher-owned manager confirmed.",
+      }),
+    });
+    expect(checked.answer).toMatch(/Marco Rose/i);
+    expect(checked.verification).toEqual({
+      status: "verified",
+      supportedClaimCount: 1,
+      removedClaimCount: 0,
+    });
+  });
+
   it.each([
     { label: "actual Sky analysis", reason: "His achievements transformed the club. The agreement reflects the club’s belief in his leadership.", quote: false },
     { label: "explicit appointment", reason: "Arsenal appointed Mikel Arteta because his coaching gives the club stability.", quote: true },

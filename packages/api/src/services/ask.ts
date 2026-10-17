@@ -105,7 +105,6 @@ import {
   type UserLineInput,
   type ValidatedOneXTwoMarket,
   type VerifiableClaim,
-  type ClaimDecision,
 } from "./response-correctness";
 import {
   buildPunditConsensus,
@@ -180,10 +179,8 @@ import {
 } from "./external-market-consensus";
 import { chatEngineMode, isChatAgentEngine } from "./chat-engine";
 import { chatAgentGroundingEligible, runChatAgent } from "./chat-agent";
-import { partitionClaimsForAgentTrust } from "./agent-fetched-claim-trust";
 import {
   AGENT_GENERATION_BUDGET_MS,
-  AGENT_MAX_PUBLISHER_FETCHES,
   emptyChatAgentTurnMetrics,
   logChatAgentTurn,
   type ChatAgentTurnMetrics,
@@ -1945,10 +1942,6 @@ export async function verifyCurrentClaims(
     managerWhy?: { club: string; retainAppointment?: boolean; wantsReason?: boolean };
     /** Hydrated publisher bodies already used for source-owned manager drafts. */
     prefetchedPages?: readonly RetrievedEvidencePage[];
-    /** Agent turn: publisher bodies successfully retrieved (not snippet-only). */
-    agentBodyFetchedSourceIds?: ReadonlySet<string>;
-    /** Agent turn: hard cap on publisher page fetches for this verification. */
-    agentPublisherFetchCap?: number;
   } = {}
 ): Promise<{ answer: string; verification: AskVerification }> {
   const claims = verifiableCurrentClaims(answer);
@@ -1992,12 +1985,9 @@ export async function verifyCurrentClaims(
     ...candidates.filter((candidate) => citedIds.has(candidate.id)),
     ...candidates.filter((candidate) => !citedIds.has(candidate.id)),
   ];
-  const fetchCandidates = dependencies.agentPublisherFetchCap
-    ? ordered.slice(0, dependencies.agentPublisherFetchCap)
-    : ordered;
   const prefetchedById = new Map((dependencies.prefetchedPages ?? []).map((page) => [page.id, page]));
   const fetched = await (dependencies.retrieve ?? retrieveEvidencePages)(
-    fetchCandidates,
+    ordered,
     signal,
     { cache: bundle.pageCache }
   );
@@ -2067,33 +2057,7 @@ export async function verifyCurrentClaims(
       },
     };
   }
-  const agentTrustPath = dependencies.agentPublisherFetchCap != null;
-  const bodyFetchedSourceIds = agentTrustPath
-    ? new Set(mergedFetched.filter((page) => page.text?.trim()).map((page) => page.id))
-    : dependencies.agentBodyFetchedSourceIds;
-  const trustScope = agentTrustPath || bodyFetchedSourceIds?.size
-    ? {
-      managerClub: dependencies.managerWhy?.club,
-      extractManager: extractManagerIdentityCandidates,
-    }
-    : undefined;
-  const partitioned = agentTrustPath || bodyFetchedSourceIds?.size
-    ? partitionClaimsForAgentTrust(
-      claims,
-      bodyFetchedSourceIds ?? new Set(),
-      pages,
-      bundle,
-      trustScope,
-    )
-    : { trusted: [], verify: [...claims] };
-  const result = partitioned.verify.length
-    ? await (dependencies.verify ?? verifyClaimsOnce)(client, partitioned.verify, pages, signal)
-    : {
-      status: "verified" as const,
-      decisions: [] as ClaimDecision[],
-      summary: "body fetched",
-    };
-  const mergedDecisions = [...partitioned.trusted, ...result.decisions];
+  const result = await (dependencies.verify ?? verifyClaimsOnce)(client, claims, pages, signal);
   // Verification operates only on externally sourced factual claims, so the
   // answer is *revised* rather than rebuilt: each unsupported claim's span is
   // excised and every other character survives. Rebuilding from the supported
@@ -2101,7 +2065,7 @@ export async function verifyCurrentClaims(
   // the server-authored capability notices, none of which were ever claims.
   // The notices no longer need re-adding by hand -- they are simply never
   // touched.
-  const precision = sourceOwnedManagerAppointmentPrecision(answer, claims, mergedDecisions, pages, dependencies.managerWhy?.club);
+  const precision = sourceOwnedManagerAppointmentPrecision(answer, claims, result.decisions, pages, dependencies.managerWhy?.club);
   const applied = reviseAnswerWithClaimDecisions(precision.answer, precision.claims, precision.decisions);
   const verificationStatus = precision.rejected && result.status !== "unavailable"
     ? precision.decisions.some((decision) => decision.outcome === "conflict") ? "conflict"
@@ -2111,7 +2075,7 @@ export async function verifyCurrentClaims(
     ? stripUncitedSeasonStats(applied.answer)
     : applied.answer;
   const managerFacts = dependencies.managerWhy
-    ? settleManagerWhyFacts(dependencies.managerWhy, precision.claims, result.status === "unavailable" ? [] : mergedDecisions,
+    ? settleManagerWhyFacts(dependencies.managerWhy, precision.claims, result.status === "unavailable" ? [] : precision.decisions,
       pages, fetchedIds, precision.appointments)
     : null;
   const deliveredStatus = managerFacts && !managerFacts.supported && verificationStatus === "verified" ? "abstain" : verificationStatus;
@@ -9702,8 +9666,6 @@ export async function deliverAnswer(args: {
   managerPages?: readonly RetrievedEvidencePage[];
   /** Source-owned manager draft already selected from hydrated pages. */
   sourceOwnedManagerDraft?: boolean;
-  /** Agent path: hard caps and body-fetch trust for claim verification. */
-  agentVerification?: { publisherFetchCap?: number };
 }): Promise<{ answer: string; citations: AskCitation[]; verification: AskVerification }> {
   const {
     answer: rawAnswer,
@@ -9721,11 +9683,7 @@ export async function deliverAnswer(args: {
     history = [],
     managerPages,
     sourceOwnedManagerDraft: sourceOwnedManagerPath = false,
-    agentVerification,
   } = args;
-  const agentVerifyDeps = agentVerification
-    ? { agentPublisherFetchCap: agentVerification.publisherFetchCap ?? AGENT_MAX_PUBLISHER_FETCHES }
-    : {};
   const deskVoice = voice === "desk";
   const clubFactDelivery = singleClubCurrentFactScope(question, grounding);
   const deliveryPlan = planResponse(question, { groundingKind: grounding?.kind ?? null, hasHistory });
@@ -9816,7 +9774,6 @@ export async function deliverAnswer(args: {
           ...(sourceOwnedManagerPath && managerPages?.length
             ? { prefetchedPages: managerPages }
             : {}),
-          ...agentVerifyDeps,
         });
       const checkedEvidenceAnswer = failClosedEmptyCurrentVerification(
         checked.answer,
@@ -9983,7 +9940,7 @@ export async function deliverAnswer(args: {
         client,
         signal,
         grounding?.kind === "match" && /\b(?:odds|price|market)\b/i.test(question),
-        { managerWhy: managerWhyScope(question, grounding), ...agentVerifyDeps }
+        { managerWhy: managerWhyScope(question, grounding) }
       )
     : {
         answer,
