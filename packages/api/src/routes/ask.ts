@@ -11,7 +11,9 @@ import {
 } from "../services/ask";
 import {
   isChatEvalEngineOverrideGuardActive,
+  logAskChatEngineTurn,
   resolveChatEvalEngineOverride,
+  resolveEffectiveChatEngine,
   withChatEngineRequestScope,
 } from "../services/chat-engine";
 import {
@@ -202,6 +204,10 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           userLine,
           voice
         ));
+        logAskChatEngineTurn({
+          effectiveEngine: result.engine,
+          engineFromHeaderOverride: engineOverride !== null,
+        });
         res.json(result);
       } finally {
         clearTimeout(deadline);
@@ -266,6 +272,10 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       ));
       stopHeartbeat();
       if (!clientGone && !res.writableEnded) {
+        logAskChatEngineTurn({
+          effectiveEngine: resolveEffectiveChatEngine(engineOverride),
+          engineFromHeaderOverride: engineOverride !== null,
+        });
         sseSend(res, "done", {
           answer,
           grounding,
