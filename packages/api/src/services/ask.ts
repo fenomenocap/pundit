@@ -179,7 +179,7 @@ import {
 } from "./external-market-consensus";
 import { chatEngineMode, isChatAgentEngine } from "./chat-engine";
 import { chatAgentGroundingEligible, runChatAgent } from "./chat-agent";
-import { finalizeChatAgentAnswer } from "./chat-agent-guard";
+import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
 import type { ChatEngineMode } from "./chat-engine";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
 import {
@@ -10351,6 +10351,106 @@ function withOptionalUserLine(grounding: AskGrounding, userLine?: UserLine): Ask
   return { ...grounding, pricing: attachUserLine(grounding.pricing, userLine) };
 }
 
+async function deliverChatAgentTurn(
+  question: string,
+  grounding: AskGrounding,
+  history: ConversationTurn[],
+  prepared: {
+    tier: AnalysisTier;
+    client: Pick<Anthropic, "messages">;
+    candidateUnrecognized: boolean;
+  },
+  signal: AbortSignal | undefined,
+  requestStartedAt: number,
+  voice?: "desk",
+): Promise<ScopedAskPayload> {
+  let bundle: EvidenceBundle = { queries: [], results: [], providerCalls: 0 };
+  let agentText = "";
+  try {
+    if (grounding?.kind === "match") {
+      agentText = await generateOrDegradeToGrounding(
+        grounding,
+        signal,
+        requestStartedAt,
+        async (genSignal) => {
+          const result = await runChatAgent(question, grounding, prepared.client, genSignal);
+          bundle = result.bundle;
+          return result.text;
+        },
+      );
+    } else {
+      const result = await runChatAgent(question, grounding, prepared.client, signal);
+      bundle = result.bundle;
+      agentText = result.text;
+    }
+  } catch (error) {
+    const timedOut = error instanceof AppError && error.statusCode === 504;
+    const cancelled = isCancellation(error, signal);
+    if (!timedOut && !cancelled) mapAnalysisError(error);
+    agentText = "";
+  }
+
+  if (!agentText.trim()) {
+    const fallback = closedGroundedAnswer(question, grounding, history.length > 0)
+      ?? deterministicGroundedResponse(question, grounding)
+      ?? "No bet — I ran out of time on that turn. Ask again and I'll keep it to grounded facts only.";
+    return {
+      answer: fallback,
+      grounding,
+      verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      usedLlm: false,
+    };
+  }
+
+  let prose = envelopChatAgentAnswer(agentText, question, grounding, {
+    hasHistory: history.length > 0,
+    voice,
+  });
+  prose = finalizeChatAgentAnswer(prose, grounding);
+
+  const query = deterministicSearchQuery(
+    question,
+    correctionSearchContext(history, grounding),
+    grounding,
+  );
+  const evidenceRequired = Boolean(query || bundle.results.length);
+
+  if (evidenceRequired && bundle.results.length) {
+    const delivered = await deliverAnswer({
+      answer: prose,
+      tier: prepared.tier,
+      grounding,
+      bundle,
+      client: prepared.client,
+      question,
+      evidenceRequired: true,
+      candidateUnrecognized: prepared.candidateUnrecognized,
+      hasHistory: history.length > 0,
+      structuredDraftExpected: false,
+      signal,
+      ...(voice === "desk" ? { voice, history } : {}),
+    });
+    return {
+      answer: delivered.answer,
+      grounding,
+      verification: delivered.verification,
+      usedLlm: true,
+      ...(delivered.citations.length ? { citations: delivered.citations } : {}),
+    };
+  }
+
+  return {
+    answer: prose,
+    grounding,
+    verification: {
+      status: evidenceRequired ? "abstain" : "not-required",
+      supportedClaimCount: 0,
+      removedClaimCount: 0,
+    },
+    usedLlm: true,
+  };
+}
+
 export async function answerQuestion(
   question: string,
   history: ConversationTurn[] = [],
@@ -10447,16 +10547,15 @@ async function answerQuestionScoped(
       };
     }
     if (isChatAgentEngine() && client && chatAgentGroundingEligible(grounding)) {
-      const agentAnswer = finalizeChatAgentAnswer(
-        await runChatAgent(question, grounding, client, signal),
+      return deliverChatAgentTurn(
+        question,
         grounding,
+        history,
+        { tier, client, candidateUnrecognized },
+        signal,
+        requestStartedAt,
+        voice,
       );
-      return {
-        answer: agentAnswer,
-        grounding,
-        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
-        usedLlm: true,
-      };
     }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     const deskPlan = planResponse(question, {
@@ -10754,17 +10853,16 @@ async function answerQuestionStreamScoped(
       };
     }
     if (isChatAgentEngine() && client && chatAgentGroundingEligible(grounding)) {
-      const agentAnswer = finalizeChatAgentAnswer(
-        await runChatAgent(question, grounding, client, handlers.signal),
+      const delivered = await deliverChatAgentTurn(
+        question,
         grounding,
+        history,
+        { tier, client, candidateUnrecognized },
+        handlers.signal,
+        requestStartedAt,
       );
-      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(agentAnswer);
-      return {
-        answer: agentAnswer,
-        grounding,
-        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
-        usedLlm: true,
-      };
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(delivered.answer);
+      return delivered;
     }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     if (closedAnswer) {
