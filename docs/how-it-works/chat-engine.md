@@ -31,8 +31,13 @@ Implementation (for maintainers): `packages/api/src/services/chat-engine.ts`, `c
 - Battle-test harness: set `CHAT_EVAL_ENGINE=agent` for an agent run (see [Chat eval runbook](../ops/chat-eval.md)).
 - Search replay certification can combine replay fixtures with the eval header override to compare legacy vs agent on identical retrieved evidence.
 
+## Promoting agent to production
+
+Production stays on **legacy** until side-by-side daily chat eval meets the flip criteria in [Chat engine rollout readiness](../ops/chat-engine-rollout-readiness.md). Do not set Railway `CHAT_ENGINE=agent` from docs alone.
+
 ## Related
 
 - [Ask API](../api-reference/ask.md)
 - [Data sources](data-sources.md) — model vs market vs external analytics
 - [Environment variables](../ops/environment-variables.md) — `CHAT_ENGINE`, inference keys
+- [Chat eval runbook](../ops/chat-eval.md) — certification and dual-engine merge script
