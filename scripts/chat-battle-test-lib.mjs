@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { classifyServedSha, isAcceptableServedSha, resolveDeployedSha } from "./resolve-deployed-sha.mjs";
+import { MODEL_EDGE_CLAIMS_ALLOWED } from "./chat-eval-model-edge-flag.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -1713,7 +1714,14 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
   }
   if (expectation.expectUserLinePassPlay) {
     assertions.userLineDecimalPresent = /\bat 7\.00\b/.test(text);
-    assertions.userLineEvPresent = /\bEV [+-]\d+(?:\.\d+)?%/.test(text);
+    const modelEdgeAllowed = expectation.modelEdgeClaimsAllowed ?? MODEL_EDGE_CLAIMS_ALLOWED;
+    if (modelEdgeAllowed) {
+      assertions.userLineEvPresent = /\bEV [+-]\d+(?:\.\d+)?%/.test(text);
+      assertions.userLineHonestGapPresent = !/\bmodel vs that line\b/i.test(text);
+    } else {
+      assertions.userLineEvPresent = !/\bEV [+-]\d+(?:\.\d+)?%/.test(text);
+      assertions.userLineHonestGapPresent = /\bmodel vs that line [+-]\d+(?:\.\d+)?%/i.test(text);
+    }
     assertions.userLineDecision = /\bI (?:play|pass)\b|\bI will not call it\b/.test(text);
     assertions.userLineRiskBand = /\bRisk is (?:low|medium|high)\b/.test(text);
     assertions.noKellySizing = !/\bkelly\b/i.test(text);

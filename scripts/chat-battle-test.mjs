@@ -116,20 +116,18 @@ function timestampId(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, "-");
 }
 
-function resolveEvalSearchReplayId(options) {
+export function resolveEvalSearchReplayId(options) {
   if (options.searchReplayId) return options.searchReplayId;
-  if (options.engine === "agent") return options.evalReplayGuardId;
+  if (options.gateOnly || options.pinnedGateFixture) return options.evalReplayGuardId;
   return null;
 }
 
-function buildAskEvalHeaders(options) {
+export function buildAskEvalHeaders(options) {
   const headers = { "content-type": "application/json" };
   const replayId = resolveEvalSearchReplayId(options);
   if (replayId) headers["x-pundit-chat-eval-search-replay"] = replayId;
-  if (replayId && options.engine === "agent") {
-    headers["x-pundit-chat-engine"] = "agent";
-  } else if (replayId && options.engine === "legacy") {
-    headers["x-pundit-chat-engine"] = "legacy";
+  if (options.engine === "agent" || options.engine === "legacy") {
+    headers["x-pundit-chat-engine"] = options.engine;
   }
   return headers;
 }

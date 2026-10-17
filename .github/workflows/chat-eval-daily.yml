@@ -165,6 +165,8 @@ jobs:
           path: |
             ${{ env.EVAL_DIR }}/*.json
             ${{ env.EVAL_DIR }}/*.md
+            ${{ env.EVAL_DIR }}/legacy/**
+            ${{ env.EVAL_DIR }}/agent/**
             sweep.log
             transcript.md
             summary.json

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import process from "node:process";
 import {
   compareEngineQuality,
@@ -8,6 +9,7 @@ import {
   summarizeLlmJudge,
 } from "./chat-eval-quality-metrics.mjs";
 import { judgeEvalTurns } from "./chat-eval-llm-judge.mjs";
+import { writeReport } from "./chat-battle-test-lib.mjs";
 
 function flattenReportTurns(report) {
   const turns = [];
@@ -29,13 +31,7 @@ function flattenReportTurns(report) {
   return turns;
 }
 
-async function main() {
-  const [legacyPath, agentPath, outputPath] = process.argv.slice(2);
-  if (!legacyPath || !agentPath || !outputPath) {
-    throw new Error("usage: merge-dual-engine-chat-eval.mjs <legacy-run.json> <agent-run.json> <out-run.json>");
-  }
-  const legacy = JSON.parse(await readFile(legacyPath, "utf8"));
-  const agent = JSON.parse(await readFile(agentPath, "utf8"));
+export async function mergeDualEngineChatEvalReports(legacy, agent, outputPath) {
   const legacyTurns = flattenReportTurns(legacy);
   const agentTurns = flattenReportTurns(agent);
 
@@ -64,6 +60,19 @@ async function main() {
   }
 
   await writeFile(outputPath, `${JSON.stringify(merged, null, 2)}\n`);
+  const outputDir = path.dirname(outputPath);
+  await writeReport(merged, outputDir);
+  return merged;
+}
+
+async function main() {
+  const [legacyPath, agentPath, outputPath] = process.argv.slice(2);
+  if (!legacyPath || !agentPath || !outputPath) {
+    throw new Error("usage: merge-dual-engine-chat-eval.mjs <legacy-run.json> <agent-run.json> <out-run.json>");
+  }
+  const legacy = JSON.parse(await readFile(legacyPath, "utf8"));
+  const agent = JSON.parse(await readFile(agentPath, "utf8"));
+  const merged = await mergeDualEngineChatEvalReports(legacy, agent, outputPath);
   console.log(JSON.stringify({
     outputPath,
     legacyOverall: legacy.overall,
@@ -74,7 +83,9 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (import.meta.url === new URL(process.argv[1], "file:").href) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}

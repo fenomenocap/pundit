@@ -376,7 +376,7 @@ export function composeTeamNewsAnswer(
     const status = row.evidenceType === "confirmed-lineup" ? "confirmed" : "expected";
     return `${row.playerName}${team} is ${status} to start according to a source [[${row.sourceId}]] (${date}).`;
   });
-  lines.push("That is sourced availability, not a revised match forecast.");
+  lines.push("That is match-context team news, not a revised forecast.");
   return lines.join(" ");
 }
 
