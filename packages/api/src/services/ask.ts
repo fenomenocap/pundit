@@ -2629,7 +2629,13 @@ export function dropDanglingSectionOpeners(answer: string): string {
     }
     out.push(line);
   }
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  // Removing an unsupported clause can strand its punctuation (",,") or leave a
+  // paragraph opening with a single space.
+  return out.join("\n")
+    .replace(/,(?:\s*,)+/g, ",")
+    .replace(/^ (?=\S)/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**
@@ -4056,10 +4062,11 @@ function hasUncoveredSeasonClub(question: string, standings: FootballStanding[],
     /^(?:what are|what about|how about|how likely (?:is|are)|tell me about|explain|assess|discuss|compare|show(?: me)?|rank)\s+/i, ""
   );
   if (/^(?:premier league|epl|league)\s+title\s+/i.test(request)) return false;
-  const club = /\btitle\s+(?:chances?|odds|hopes?|prospects?|probabilit(?:y|ies))\s+(?:for|of)\s+([\p{L}\p{N} .’'-]{1,60}?)(?=[?!.]|$)/iu.exec(request)?.[1]
+  const rawClub = /\btitle\s+(?:chances?|odds|hopes?|prospects?|probabilit(?:y|ies))\s+(?:for|of)\s+([\p{L}\p{N} .’'-]{1,60}?)(?=[?!.]|$)/iu.exec(request)?.[1]
     ?? /^((?:[\p{L}\p{N} .’'-]){1,60}?)['’]s\s+(?:(?:premier league|epl|league)\s+)?(?:title\s+)?(?:chances?|odds|hopes?|prospects?|probabilit(?:y|ies))\b/iu.exec(request)?.[1]
     ?? /^(?:(?:will|can|could|might|does|do)\s+)?([\p{L}\p{N} .’'-]{1,60}?)\s+(?:to\s+)?(?:win|clinch|lift|retain)\s+the\s+(?:premier league|epl|league|title)\b/iu.exec(request)?.[1]
     ?? /^([\p{L}\p{N} .’'-]{1,60}?)\s+(?:(?:premier league|epl|league)\s+)?title\s+(?:chances?|odds|hopes?|prospects?|probabilit(?:y|ies)|favou?rites?|contenders?|bid|race)\b/iu.exec(request)?.[1];
+  const club = rawClub?.replace(/^(?:(?:what(?:['’]s| is| are)|how (?:big|good|high) (?:is|are))\s+)?(?:the\s+)?(?:odds|chances?|probabilit(?:y|ies)|likelihood)\s+(?:(?:that|of|for)\s+)?/i, "").trim();
   if (!club || /^(?:the|a|an|they|we|you|it|these teams|those teams|the teams|which teams|which clubs)$/i.test(club.trim())
     || /\b(?:rank|leading|contenders|premier league|epl|table|which|who|most|probabilities|compare|show|league|season)\b/i.test(club)) return false;
   return club.split(/\s+(?:or|and)\s+/i)
@@ -4251,6 +4258,8 @@ const MATCH_FOLLOW_UP_CUES = [
   "under 2.5",
   "btts",
   "both teams to score",
+  "both teams score",
+  "both sides to score",
   "scoreline",
   "score line",
   "goals",
@@ -5277,7 +5286,7 @@ function correctCombinedScorelineProbabilityClaims(
   return unsupportedAggregate ? null : corrected;
 }
 
-const GOAL_MARKET_LINE = /both teams to score|\bbtts\b|\b(?:over|under)\s*2\.5/i;
+const GOAL_MARKET_LINE = /both (?:teams|sides) (?:to |will )?scor|\bbtts\b|\b(?:over|under)\s*2\.5/i;
 
 // Works out which goal-market number a percentage in the line is describing, so
 // a misquoted figure can be corrected where it stands instead of the whole

@@ -16,7 +16,7 @@ import { stripUnresolvedResponseMarkers } from "./answer-provenance";
 import { PLAYER_SCORER_ABSTENTION, TEAM_NEWS_COMPOSE_ABSTENTION } from "./player-evidence";
 import { composeMatchResponse, SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
 import { buildResponseFacts } from "./response-facts";
-import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
+import { asksBttsQuestion, asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, responsePresentation } from "./response-plan";
 import { attachUserLine, buildMatchPricing, stripUntraceableMatchPercentages } from "./response-correctness";
 import { buildPunditConsensus, pricingConsensusFromBlock } from "./pundit-consensus";
 import { sampleMatchContextFields } from "./match-context";
@@ -1236,4 +1236,18 @@ it("explains fixed totals and risk labels without inventing fixture-specific ins
   expect(answer).toContain("fat-and-fragile: a large estimated price gap that is sensitive to forecast error");
   expect(answer).toContain("Risk is high: a low chance of winning or a large price gap makes the estimate more vulnerable");
   expect(answer).not.toMatch(/payload|grounding|JSON|Dixon.Coles|ClubElo/i);
+});
+
+describe("BTTS phrasing", () => {
+  it.each([
+    "Will both teams score in Forest vs Arsenal?",
+    "Do both sides score in Forest vs Arsenal?",
+    "Forest vs Arsenal both teams to score?",
+    "Forest vs Arsenal btts",
+  ])("recognises %s", (question) => {
+    expect(asksBttsQuestion(question)).toBe(true);
+  });
+  it("does not match unrelated scoring talk", () => {
+    expect(asksBttsQuestion("Which team will score first, Forest or Arsenal?")).toBe(false);
+  });
 });

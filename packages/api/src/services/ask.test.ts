@@ -4994,6 +4994,16 @@ describe("resolveAskContext", () => {
     )).toEqual({ tier: "season", competitionId: "eng.1" });
   });
 
+  it("routes an odds-phrased title question for an owned club to season grounding", () => {
+    for (const question of [
+      "What are the odds Arsenal win the Premier League?",
+      "What are the chances Arsenal win the league?",
+    ]) {
+      expect(resolveAskContext(question, [], undefined, fixtures, [standing()]))
+        .toEqual({ tier: "season", competitionId: "eng.1" });
+    }
+  });
+
   it("routes a clear named matchup to match grounding even when the competition is named", () => {
     expect(resolveAskContext(
       "Arsenal vs Coventry City in the Premier League",
@@ -7159,5 +7169,13 @@ describe("settled player news requires exact current-claim verification", () => 
     expect(result.answer).not.toContain("Kai Havertz");
     expect(result.citations).toEqual([]);
     expect(result.verification.supportedClaimCount).toBe(0);
+  });
+});
+
+describe("dropDanglingSectionOpeners punctuation tidy", () => {
+  it("collapses stranded commas and leading spaces left by removed clauses", () => {
+    const out = dropDanglingSectionOpeners("**Current**\n\nHe is in charge for 2026-27,, ([BBC](https://x.test), 2026-10-02).\n\n Second paragraph.");
+    expect(out).not.toContain(",,");
+    expect(out).toContain("\n\nSecond paragraph.");
   });
 });
