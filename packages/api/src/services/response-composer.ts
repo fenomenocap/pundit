@@ -214,7 +214,7 @@ function explainEdgeBand(band: string): string {
   return `${band}: ${explanations[band] ?? "an estimated price gap"}`;
 }
 
-function composeUserLineAnswer(grounding: Grounding): string {
+export function composeUserLineAnswer(grounding: Grounding): string {
   const line = grounding.pricing.userLine;
   if (!line) {
     return "I need a decimal line on home, draw, or away before I can pass or play.";
@@ -272,7 +272,7 @@ function revisitAfterNews(grounding: Grounding): string {
   return `I would revisit the read only after ${news}; I can’t assign a lineup effect from these facts alone.`;
 }
 
-function headlineMarket(grounding: Grounding): string | null {
+export function composeMarketDivergenceHeadline(grounding: Grounding): string | null {
   const row = grounding.marketDivergence
     .flatMap((market) => market.legs.map((leg) => ({ market, leg })))
     .sort((a, b) => Math.abs(b.leg.gapPoints) - Math.abs(a.leg.gapPoints))[0];
@@ -516,7 +516,7 @@ export function composeMatchResponse(
     return `${priced}\n\n${STAKE_REFUSAL_SENTENCE}`;
   }
   if (plan.mode === "market-comparison") {
-    return headlineMarket(grounding)
+    return composeMarketDivergenceHeadline(grounding)
       ?? "I don’t have a complete, same-source and same-time 1X2 market to compare with this fixture, so I can’t claim a pricing disagreement.";
   }
   if (plan.mode === "match-follow-up") {
@@ -558,7 +558,7 @@ export function composeMatchResponse(
 
   const scores = grounding.topScores.slice(0, 3)
     .map((row) => `${row.score} (${pct(row.probability)})`).join(", ");
-  const market = headlineMarket(grounding);
+  const market = composeMarketDivergenceHeadline(grounding);
   const marketRows = grounding.oddsSources
     .filter((row) => row.pDraw !== null)
     .map((row) => {
