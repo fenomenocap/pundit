@@ -17,6 +17,14 @@ import {
 import { resolveInference } from "./inference-config";
 import type { FederatedGrounding } from "./federated-evidence";
 import { STAKE_REFUSAL_SENTENCE } from "./response-composer";
+import {
+  AGENT_MAX_CUMULATIVE_LLM_TOKENS,
+  AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
+  AGENT_MAX_TOOL_STEPS,
+  AGENT_TURN_HARD_MS,
+  emptyChatAgentTurnMetrics,
+  type ChatAgentTurnMetrics,
+} from "./chat-agent-limits";
 
 const AGENT_TOOLS: Anthropic.Tool[] = [
   {
@@ -309,6 +317,20 @@ function groundingContextLine(grounding: AskGrounding): string {
 export interface ChatAgentRunResult {
   text: string;
   bundle: EvidenceBundle;
+  metrics: ChatAgentTurnMetrics;
+}
+
+export interface RunChatAgentOptions {
+  /** Wall-clock cap for the whole agent loop (hard stop). */
+  hardBudgetMs?: number;
+}
+
+function usageTokens(response: Anthropic.Message): { input: number; output: number } {
+  const usage = response.usage;
+  return {
+    input: usage?.input_tokens ?? 0,
+    output: usage?.output_tokens ?? 0,
+  };
 }
 
 /** Agent path for match, table, season, and general tiers using data-layer tools. */
@@ -317,9 +339,22 @@ export async function runChatAgent(
   grounding: AskGrounding,
   client: Pick<Anthropic, "messages">,
   signal?: AbortSignal,
+  options: RunChatAgentOptions = {},
 ): Promise<ChatAgentRunResult> {
   const inference = resolveInference();
   const bundle = emptyBundle();
+  const metrics = emptyChatAgentTurnMetrics();
+  const turnStarted = Date.now();
+  const hardBudgetMs = options.hardBudgetMs ?? AGENT_TURN_HARD_MS;
+  const hardCap = new AbortController();
+  const onParentAbort = () => hardCap.abort(signal?.reason);
+  if (signal?.aborted) hardCap.abort(signal.reason);
+  else signal?.addEventListener("abort", onParentAbort, { once: true });
+  const hardTimer = setTimeout(() => {
+    hardCap.abort(new Error("agent turn hard budget exceeded"));
+  }, hardBudgetMs);
+  const loopSignal = hardCap.signal;
+
   const seed = grounding?.kind === "match" ? `\n${matchSeedBlock(grounding)}\n` : "";
   const messages: Anthropic.MessageParam[] = [{
     role: "user",
@@ -327,45 +362,68 @@ export async function runChatAgent(
   }];
 
   let text = "";
-  for (let step = 0; step < 6; step += 1) {
-    const response = await client.messages.create({
-      model: inference.model,
-      max_tokens: 1400,
-      system: CHAT_AGENT_SYSTEM,
-      tools: AGENT_TOOLS,
-      messages,
-      ...agentReasoning(),
-    }, { signal });
+  try {
+    for (let step = 0; step < AGENT_MAX_TOOL_STEPS; step += 1) {
+      if (metrics.cumulativeTokens >= AGENT_MAX_CUMULATIVE_LLM_TOKENS) break;
+      const response = await client.messages.create({
+        model: inference.model,
+        max_tokens: AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
+        system: CHAT_AGENT_SYSTEM,
+        tools: AGENT_TOOLS,
+        messages,
+        ...agentReasoning(),
+      }, { signal: loopSignal });
 
-    const toolUses = response.content.filter(
-      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
-    );
-    if (!toolUses.length) {
-      text = extractText(response) || "";
-      break;
+      const stepUsage = usageTokens(response);
+      metrics.inputTokens += stepUsage.input;
+      metrics.outputTokens += stepUsage.output;
+      metrics.cumulativeTokens += stepUsage.input + stepUsage.output;
+      metrics.toolSteps = step + 1;
+
+      const toolUses = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+      );
+      if (!toolUses.length) {
+        text = extractText(response) || "";
+        break;
+      }
+      if (metrics.cumulativeTokens >= AGENT_MAX_CUMULATIVE_LLM_TOKENS) break;
+
+      messages.push({ role: "assistant", content: response.content as Anthropic.ContentBlockParam[] });
+      const results = await Promise.all(toolUses.map(async (toolUse) => ({
+        type: "tool_result" as const,
+        tool_use_id: toolUse.id,
+        content: JSON.stringify(await runAgentTool(
+          toolUse.name,
+          (toolUse.input ?? {}) as Record<string, unknown>,
+          grounding,
+          bundle,
+          loopSignal,
+        )),
+      })));
+      messages.push({ role: "user", content: results });
     }
-
-    messages.push({ role: "assistant", content: response.content as Anthropic.ContentBlockParam[] });
-    const results = await Promise.all(toolUses.map(async (toolUse) => ({
-      type: "tool_result" as const,
-      tool_use_id: toolUse.id,
-      content: JSON.stringify(await runAgentTool(
-        toolUse.name,
-        (toolUse.input ?? {}) as Record<string, unknown>,
-        grounding,
-        bundle,
-        signal,
-      )),
-    })));
-    messages.push({ role: "user", content: results });
+  } catch (error) {
+    if (!text.trim() && !isAbortError(error, loopSignal)) throw error;
+  } finally {
+    clearTimeout(hardTimer);
+    signal?.removeEventListener("abort", onParentAbort);
   }
   if (!text) {
     text = "No bet — the agent loop exhausted its tool budget before finishing.";
   }
+  metrics.latencyMs = Date.now() - turnStarted;
+  metrics.publisherFetches = bundle.providerCalls ?? 0;
   return {
     text: normalizeAgentMarkers(text, bundle),
     bundle,
+    metrics,
   };
+}
+
+function isAbortError(error: unknown, signal: AbortSignal): boolean {
+  if (signal.aborted) return true;
+  return error instanceof Error && /abort|budget exceeded/i.test(error.message);
 }
 
 /** @deprecated Use runChatAgent */

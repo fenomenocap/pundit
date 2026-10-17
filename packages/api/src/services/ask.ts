@@ -105,6 +105,7 @@ import {
   type UserLineInput,
   type ValidatedOneXTwoMarket,
   type VerifiableClaim,
+  type ClaimDecision,
 } from "./response-correctness";
 import {
   buildPunditConsensus,
@@ -179,6 +180,13 @@ import {
 } from "./external-market-consensus";
 import { chatEngineMode, isChatAgentEngine } from "./chat-engine";
 import { chatAgentGroundingEligible, runChatAgent } from "./chat-agent";
+import { partitionClaimsForAgentTrust } from "./agent-fetched-claim-trust";
+import {
+  AGENT_GENERATION_BUDGET_MS,
+  AGENT_MAX_PUBLISHER_FETCHES,
+  emptyChatAgentTurnMetrics,
+  type ChatAgentTurnMetrics,
+} from "./chat-agent-limits";
 import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
 import type { ChatEngineMode } from "./chat-engine";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
@@ -1931,6 +1939,10 @@ export async function verifyCurrentClaims(
     managerWhy?: { club: string; retainAppointment?: boolean; wantsReason?: boolean };
     /** Hydrated publisher bodies already used for source-owned manager drafts. */
     prefetchedPages?: readonly RetrievedEvidencePage[];
+    /** Agent turn: publisher bodies successfully retrieved (not snippet-only). */
+    agentBodyFetchedSourceIds?: ReadonlySet<string>;
+    /** Agent turn: hard cap on publisher page fetches for this verification. */
+    agentPublisherFetchCap?: number;
   } = {}
 ): Promise<{ answer: string; verification: AskVerification }> {
   const claims = verifiableCurrentClaims(answer);
@@ -1974,9 +1986,12 @@ export async function verifyCurrentClaims(
     ...candidates.filter((candidate) => citedIds.has(candidate.id)),
     ...candidates.filter((candidate) => !citedIds.has(candidate.id)),
   ];
+  const fetchCandidates = dependencies.agentPublisherFetchCap
+    ? ordered.slice(0, dependencies.agentPublisherFetchCap)
+    : ordered;
   const prefetchedById = new Map((dependencies.prefetchedPages ?? []).map((page) => [page.id, page]));
   const fetched = await (dependencies.retrieve ?? retrieveEvidencePages)(
-    ordered,
+    fetchCandidates,
     signal,
     { cache: bundle.pageCache }
   );
@@ -2046,7 +2061,33 @@ export async function verifyCurrentClaims(
       },
     };
   }
-  const result = await (dependencies.verify ?? verifyClaimsOnce)(client, claims, pages, signal);
+  const agentTrustPath = dependencies.agentPublisherFetchCap != null;
+  const bodyFetchedSourceIds = agentTrustPath
+    ? new Set(mergedFetched.filter((page) => page.text?.trim()).map((page) => page.id))
+    : dependencies.agentBodyFetchedSourceIds;
+  const trustScope = agentTrustPath || bodyFetchedSourceIds?.size
+    ? {
+      managerClub: dependencies.managerWhy?.club,
+      extractManager: extractManagerIdentityCandidates,
+    }
+    : undefined;
+  const partitioned = agentTrustPath || bodyFetchedSourceIds?.size
+    ? partitionClaimsForAgentTrust(
+      claims,
+      bodyFetchedSourceIds ?? new Set(),
+      pages,
+      bundle,
+      trustScope,
+    )
+    : { trusted: [], verify: [...claims] };
+  const result = partitioned.verify.length
+    ? await (dependencies.verify ?? verifyClaimsOnce)(client, partitioned.verify, pages, signal)
+    : {
+      status: "verified" as const,
+      decisions: [] as ClaimDecision[],
+      summary: "body fetched",
+    };
+  const mergedDecisions = [...partitioned.trusted, ...result.decisions];
   // Verification operates only on externally sourced factual claims, so the
   // answer is *revised* rather than rebuilt: each unsupported claim's span is
   // excised and every other character survives. Rebuilding from the supported
@@ -2054,7 +2095,7 @@ export async function verifyCurrentClaims(
   // the server-authored capability notices, none of which were ever claims.
   // The notices no longer need re-adding by hand -- they are simply never
   // touched.
-  const precision = sourceOwnedManagerAppointmentPrecision(answer, claims, result.decisions, pages, dependencies.managerWhy?.club);
+  const precision = sourceOwnedManagerAppointmentPrecision(answer, claims, mergedDecisions, pages, dependencies.managerWhy?.club);
   const applied = reviseAnswerWithClaimDecisions(precision.answer, precision.claims, precision.decisions);
   const verificationStatus = precision.rejected && result.status !== "unavailable"
     ? precision.decisions.some((decision) => decision.outcome === "conflict") ? "conflict"
@@ -2064,7 +2105,7 @@ export async function verifyCurrentClaims(
     ? stripUncitedSeasonStats(applied.answer)
     : applied.answer;
   const managerFacts = dependencies.managerWhy
-    ? settleManagerWhyFacts(dependencies.managerWhy, precision.claims, result.status === "unavailable" ? [] : precision.decisions,
+    ? settleManagerWhyFacts(dependencies.managerWhy, precision.claims, result.status === "unavailable" ? [] : mergedDecisions,
       pages, fetchedIds, precision.appointments)
     : null;
   const deliveredStatus = managerFacts && !managerFacts.supported && verificationStatus === "verified" ? "abstain" : verificationStatus;
@@ -8100,8 +8141,20 @@ const FALLBACK_RESERVE_MS = 12_000;
  * Zero means the reserve is already spent: generation is skipped outright.
  */
 export function matchGenerationBudgetMs(requestStartedAt: number, now: number = Date.now()): number {
+  return generationBudgetCapMs(requestStartedAt, MATCH_GENERATION_BUDGET_MS, now);
+}
+
+export function agentGenerationBudgetMs(requestStartedAt: number, now: number = Date.now()): number {
+  return generationBudgetCapMs(requestStartedAt, AGENT_GENERATION_BUDGET_MS, now);
+}
+
+export function generationBudgetCapMs(
+  requestStartedAt: number,
+  capMs: number,
+  now: number = Date.now(),
+): number {
   const remaining = REQUEST_DEADLINE_MS - FALLBACK_RESERVE_MS - (now - requestStartedAt);
-  return Math.max(0, Math.min(MATCH_GENERATION_BUDGET_MS, remaining));
+  return Math.max(0, Math.min(capMs, remaining));
 }
 
 /**
@@ -8115,10 +8168,14 @@ export async function generateOrDegradeToGrounding(
   grounding: AskGrounding,
   signal: AbortSignal | undefined,
   requestStartedAt: number,
-  generate: (signal: AbortSignal | undefined) => Promise<string>
+  generate: (signal: AbortSignal | undefined) => Promise<string>,
+  options?: { budgetCapMs?: number },
 ): Promise<string> {
   if (grounding?.kind !== "match") return generate(signal);
-  const budgetMs = matchGenerationBudgetMs(requestStartedAt);
+  const budgetMs = generationBudgetCapMs(
+    requestStartedAt,
+    options?.budgetCapMs ?? MATCH_GENERATION_BUDGET_MS,
+  );
   if (budgetMs <= 0 && signal?.aborted !== true) {
     console.warn(JSON.stringify({ event: "generation_degraded_to_grounding", reason: "no_budget_left" }));
     return "";
@@ -9639,6 +9696,8 @@ export async function deliverAnswer(args: {
   managerPages?: readonly RetrievedEvidencePage[];
   /** Source-owned manager draft already selected from hydrated pages. */
   sourceOwnedManagerDraft?: boolean;
+  /** Agent path: hard caps and body-fetch trust for claim verification. */
+  agentVerification?: { publisherFetchCap?: number };
 }): Promise<{ answer: string; citations: AskCitation[]; verification: AskVerification }> {
   const {
     answer: rawAnswer,
@@ -9656,7 +9715,11 @@ export async function deliverAnswer(args: {
     history = [],
     managerPages,
     sourceOwnedManagerDraft: sourceOwnedManagerPath = false,
+    agentVerification,
   } = args;
+  const agentVerifyDeps = agentVerification
+    ? { agentPublisherFetchCap: agentVerification.publisherFetchCap ?? AGENT_MAX_PUBLISHER_FETCHES }
+    : {};
   const deskVoice = voice === "desk";
   const clubFactDelivery = singleClubCurrentFactScope(question, grounding);
   const deliveryPlan = planResponse(question, { groundingKind: grounding?.kind ?? null, hasHistory });
@@ -9747,6 +9810,7 @@ export async function deliverAnswer(args: {
           ...(sourceOwnedManagerPath && managerPages?.length
             ? { prefetchedPages: managerPages }
             : {}),
+          ...agentVerifyDeps,
         });
       const checkedEvidenceAnswer = failClosedEmptyCurrentVerification(
         checked.answer,
@@ -9913,7 +9977,7 @@ export async function deliverAnswer(args: {
         client,
         signal,
         grounding?.kind === "match" && /\b(?:odds|price|market)\b/i.test(question),
-        { managerWhy: managerWhyScope(question, grounding) }
+        { managerWhy: managerWhyScope(question, grounding), ...agentVerifyDeps }
       )
     : {
         answer,
@@ -10351,6 +10415,23 @@ function withOptionalUserLine(grounding: AskGrounding, userLine?: UserLine): Ask
   return { ...grounding, pricing: attachUserLine(grounding.pricing, userLine) };
 }
 
+/** Short server-owned answer when the agent path yields no prose (e.g. budget_exceeded). */
+export function agentNonEmptyGroundedFallback(
+  question: string,
+  grounding: AskGrounding,
+  hasHistory: boolean,
+): string {
+  if (grounding?.kind === "match") {
+    const headline = renderGroundedMatchFallback(grounding).trim();
+    if (headline) return headline;
+  }
+  const deterministic = deterministicGroundedResponse(question, grounding);
+  if (deterministic?.trim()) return deterministic;
+  const closed = closedGroundedAnswer(question, grounding, hasHistory);
+  if (closed?.trim()) return closed;
+  return "No bet — I ran out of time on that turn. Ask again and I'll keep it to grounded facts only.";
+}
+
 async function deliverChatAgentTurn(
   question: string,
   grounding: AskGrounding,
@@ -10366,6 +10447,8 @@ async function deliverChatAgentTurn(
 ): Promise<ScopedAskPayload> {
   let bundle: EvidenceBundle = { queries: [], results: [], providerCalls: 0 };
   let agentText = "";
+  const turnStartedAt = Date.now();
+  const metrics: ChatAgentTurnMetrics = emptyChatAgentTurnMetrics();
   try {
     if (grounding?.kind === "match") {
       agentText = await generateOrDegradeToGrounding(
@@ -10373,15 +10456,30 @@ async function deliverChatAgentTurn(
         signal,
         requestStartedAt,
         async (genSignal) => {
-          const result = await runChatAgent(question, grounding, prepared.client, genSignal);
+          const result = await runChatAgent(question, grounding, prepared.client, genSignal, {
+            hardBudgetMs: agentGenerationBudgetMs(requestStartedAt),
+          });
           bundle = result.bundle;
+          metrics.toolSteps = result.metrics.toolSteps;
+          metrics.inputTokens = result.metrics.inputTokens;
+          metrics.outputTokens = result.metrics.outputTokens;
+          metrics.cumulativeTokens = result.metrics.cumulativeTokens;
+          metrics.publisherFetches = result.metrics.publisherFetches;
           return result.text;
         },
+        { budgetCapMs: AGENT_GENERATION_BUDGET_MS },
       );
     } else {
-      const result = await runChatAgent(question, grounding, prepared.client, signal);
+      const result = await runChatAgent(question, grounding, prepared.client, signal, {
+        hardBudgetMs: AGENT_GENERATION_BUDGET_MS,
+      });
       bundle = result.bundle;
       agentText = result.text;
+      metrics.toolSteps = result.metrics.toolSteps;
+      metrics.inputTokens = result.metrics.inputTokens;
+      metrics.outputTokens = result.metrics.outputTokens;
+      metrics.cumulativeTokens = result.metrics.cumulativeTokens;
+      metrics.publisherFetches = result.metrics.publisherFetches;
     }
   } catch (error) {
     const timedOut = error instanceof AppError && error.statusCode === 504;
@@ -10389,13 +10487,12 @@ async function deliverChatAgentTurn(
     if (!timedOut && !cancelled) mapAnalysisError(error);
     agentText = "";
   }
+  metrics.latencyMs = Date.now() - turnStartedAt;
+  console.info(JSON.stringify({ event: "chat_agent_turn", ...metrics }));
 
   if (!agentText.trim()) {
-    const fallback = closedGroundedAnswer(question, grounding, history.length > 0)
-      ?? deterministicGroundedResponse(question, grounding)
-      ?? "No bet — I ran out of time on that turn. Ask again and I'll keep it to grounded facts only.";
     return {
-      answer: fallback,
+      answer: agentNonEmptyGroundedFallback(question, grounding, history.length > 0),
       grounding,
       verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       usedLlm: false,
@@ -10428,10 +10525,14 @@ async function deliverChatAgentTurn(
       hasHistory: history.length > 0,
       structuredDraftExpected: false,
       signal,
+      agentVerification: { publisherFetchCap: AGENT_MAX_PUBLISHER_FETCHES },
       ...(voice === "desk" ? { voice, history } : {}),
     });
+    const answer = delivered.answer.trim()
+      ? delivered.answer
+      : agentNonEmptyGroundedFallback(question, grounding, history.length > 0);
     return {
-      answer: delivered.answer,
+      answer,
       grounding,
       verification: delivered.verification,
       usedLlm: true,
@@ -10439,8 +10540,11 @@ async function deliverChatAgentTurn(
     };
   }
 
+  const bare = prose.trim()
+    ? prose
+    : agentNonEmptyGroundedFallback(question, grounding, history.length > 0);
   return {
-    answer: prose,
+    answer: bare,
     grounding,
     verification: {
       status: evidenceRequired ? "abstain" : "not-required",
