@@ -82,6 +82,14 @@ const CLUB_NEWS_STATUS = new RegExp("^(?:"
 
 export type DatedNewsRejection = "invalid_json" | "shape" | "source_id" | "club" | "player_body" | "date" | "status_grammar" | "duplicate";
 
+const DATED_CLUB_NEWS_ROW_KEYS = ["club", "playerName", "sourceId", "statusText"] as const;
+
+function datedClubNewsJsonPayload(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i.exec(trimmed);
+  return fenced ? fenced[1].trim() : trimmed;
+}
+
 export function renderDatedClubNewsRecords(
   raw: string, evidence: readonly DeskEvidenceRow[], grounding: Grounding, nowMs = Date.now(),
   onReject?: (reason: DatedNewsRejection) => void
@@ -89,7 +97,7 @@ export function renderDatedClubNewsRecords(
   const reject = (reason: DatedNewsRejection): null => { onReject?.(reason); return null; };
   if (raw.length > 12_000) return reject("shape");
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); } catch { return reject("invalid_json"); }
+  try { parsed = JSON.parse(datedClubNewsJsonPayload(raw)); } catch { return reject("invalid_json"); }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
     || Object.keys(parsed).some((key) => key !== "updates")) return reject("shape");
   const rows = (parsed as { updates?: unknown }).updates;
@@ -98,21 +106,41 @@ export function renderDatedClubNewsRecords(
   const rendered: string[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
-    if (!row || typeof row !== "object" || Array.isArray(row)
-      || Object.keys(row).sort().join(",") !== "club,playerName,sourceId,statusText") return reject("shape");
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      onReject?.("shape");
+      continue;
+    }
+    const keys = Object.keys(row as Record<string, unknown>);
+    if (keys.sort().join(",") !== DATED_CLUB_NEWS_ROW_KEYS.join(",")) {
+      onReject?.("shape");
+      continue;
+    }
     const { sourceId, club, playerName, statusText } = row as Record<string, unknown>;
     if (typeof sourceId !== "string" || !/^S\d+$/.test(sourceId) || typeof club !== "string"
       || typeof playerName !== "string" || playerName.length > 80 || typeof statusText !== "string"
-      || !statusText.trim() || statusText.length > 220) return reject("shape");
+      || !statusText.trim() || statusText.length > 220) {
+      onReject?.("shape");
+      continue;
+    }
     const source = evidence.find((entry) => entry.id === sourceId);
     const ownedClub = [grounding.home, grounding.away].find((side) => normalizeTeamName(side) === normalizeTeamName(club));
     const published = source ? Date.parse(source.date) : NaN;
     if (!source) return reject("source_id");
-    if (!ownedClub) return reject("club");
+    if (!ownedClub) {
+      onReject?.("club");
+      continue;
+    }
     const publicationDay = /^\d{4}-\d{2}-\d{2}/.exec(source.date.trim())?.[0];
     if (!Number.isFinite(published) || published > nowMs || nowMs - published > 7 * 24 * 60 * 60 * 1000
-      || !publicationDay || new Date(`${publicationDay}T00:00:00Z`).toISOString().slice(0, 10) !== publicationDay) return reject("date");
-    if (!playerNamedInNewsBody(playerName, source.snippet, fixture)) return reject("player_body");
+      || !publicationDay || new Date(`${publicationDay}T00:00:00Z`).toISOString().slice(0, 10) !== publicationDay) {
+      onReject?.("date");
+      continue;
+    }
+    const publisherBody = `${source.title}\n${datedClubNewsExcerpt(source.snippet)}`;
+    if (!playerNamedInNewsBody(playerName, publisherBody, fixture)) {
+      onReject?.("player_body");
+      continue;
+    }
     const status = statusText.trim();
     // Narrative event dates and future availability cannot be rescued by a
     // citation. Those fields are deliberately absent from the record schema.

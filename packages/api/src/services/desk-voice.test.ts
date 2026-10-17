@@ -184,9 +184,34 @@ describe("bounded dated club-news expression", () => {
     expect(renderDatedClubNewsRecords(newsJson(), [{ ...newsSources[0], date }], newsGrounding, newsNow)).toBeNull();
   });
 
-  it("requires the full player identity in the same source body, rather than its title or another page", () => {
-    expect(renderDatedClubNewsRecords(newsJson(), [{ ...newsSources[0], title: "Christos Tzolis injury", snippet: "Arsenal injury news." },
+  it("accepts a full name in the publisher title when the search snippet omitted it", () => {
+    const grounding = match({ home: "Bournemouth", away: "Sunderland", date: "2026-10-18" });
+    const source = { ...newsSources[0], id: "S1", date: "2026-10-17T09:00:00Z",
+      title: "Bournemouth head coach Rose confirms Alex Scott injury is better than expected",
+      snippet: "The midfielder was reported injured ahead of the weekend." };
+    const row = { sourceId: "S1", club: "Bournemouth", playerName: "Alex Scott", statusText: "was reported injured" };
+    const now = Date.parse("2026-10-17T12:00:00Z");
+    expect(renderDatedClubNewsRecords(JSON.stringify({ updates: [row] }), [source], grounding, now)).toContain("Alex Scott was reported injured [[S1]]");
+  });
+
+  it("withholds a player name that appears on neither the title nor the bounded excerpt", () => {
+    expect(renderDatedClubNewsRecords(newsJson(), [{ ...newsSources[0], title: "Injury bulletin", snippet: "Arsenal team news without a named player." },
       { ...newsSources[0], id: "S11" }], newsGrounding, newsNow)).toBeNull();
+  });
+
+  it("keeps valid rows when another row has an extra field or a missing player body", () => {
+    const rejected = vi.fn();
+    const valid = { sourceId: "S10", club: "Arsenal", playerName: "Ben White", statusText: "has been spotted back in training" };
+    const answer = renderDatedClubNewsRecords(JSON.stringify({
+      updates: [
+        valid,
+        { ...newsRow, statusText: "was reported injured", confidence: "high" },
+        { ...newsRow, playerName: "Absent Player", statusText: "was reported injured" },
+      ],
+    }), newsSources, newsGrounding, newsNow, rejected);
+    expect(answer).toContain("Ben White has been spotted back in training [[S10]]");
+    expect(rejected).toHaveBeenCalledWith("shape");
+    expect(rejected).toHaveBeenCalledWith("player_body");
   });
 
   it.each([
