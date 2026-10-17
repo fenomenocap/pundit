@@ -1,10 +1,10 @@
 # Pundit — Exhaustive Project Overview
 
-*Snapshot: 2026-08-25 · later product surface is the analysis desk on `/` (see `AGENTS.md`). This file remains a deep code map; route names below were updated 2026-09-15.*
+*Snapshot: 2026-10-17 · product surface is the analysis desk on `/` (see `AGENTS.md`). This file is a deep code map; user-facing docs live in `docs/` ([index](docs/index.md)).*
 
 Pundit is a **desk-first football analysis product** for the club season (Premier League + UEFA Champions League qualifiers). You ask about an upcoming match, the title race, the table, or football in general, and you get a **clearly labelled** answer: either grounded in server-owned data (fixture model, ESPN table, season simulation) or explicitly marked as general analysis.
 
-The defining constraint of the codebase: **when the server owns a complete answer, the LLM never touches it.** MiniMax is reserved for (a) evidence-required "current" turns that need live web search and citation verification, and (b) open-ended general/ungrounded analysis. Everything else renders deterministically from a grounding payload.
+The defining constraint of the codebase: **when the server owns a complete answer, the language model never touches it.** OpenRouter (`deepseek/deepseek-v4-flash`) handles evidence-required "current" turns and general analysis when configured; MiniMax is the answer-only fallback. Production chat uses the **legacy** engine; **`CHAT_ENGINE=agent`** is eval-only tool-calling. Everything else renders deterministically from a grounding payload.
 
 There is **no database, no blockchain, no trading, nothing to buy.** The former onchain parimutuel prediction market (Solidity on Base Sepolia, Prisma/Postgres, wagmi/RainbowKit) was fully removed and archived at git tag `archive/onchain-trading-v1`.
 
@@ -12,7 +12,7 @@ There is **no database, no blockchain, no trading, nothing to buy.** The former 
 
 ## 1. Product surface
 
-### Frontend pages (`packages/web`, Next.js 14 App Router)
+### Frontend pages (`packages/web`, Next.js 15 App Router)
 
 | Route | What it is |
 |---|---|
@@ -206,7 +206,8 @@ packages/
     src/lib/team-names.ts   canonical name/alias resolution
     data/                   pinned artifacts, registry, evaluation JSON
     scripts/                artifact build + verify, corpus build, ledger backup
-  web/                      Next.js 14 App Router
+  web/                      Next.js 15 App Router
+  model/backtest/           EPL walk-forward harness (Python)
     src/app/                page.tsx (desk) · board · draft · vault · legacy · fixtures · model · evaluation/*
     src/components/         home-chat.tsx (1,028 lines) + ui/ (shadcn primitives)
     src/lib/                api.ts (typed boundary) · mock-data.ts · team-logos · site-links
@@ -225,9 +226,9 @@ CLAUDE.md / AGENTS.md       standing constraints for agentic work
 | Layer | Technology |
 |---|---|
 | Monorepo | pnpm workspaces 9.15.4, Node 22, 2 packages |
-| Frontend | Next.js 14.2.35, React 18, TypeScript 5, TailwindCSS 3.4, shadcn/ui, react-markdown, lucide-react |
-| Backend | Express 4.21, TypeScript 5.4, `@anthropic-ai/sdk` ^0.111, helmet 8, express-rate-limit 8, dotenv |
-| Test | Vitest 2.1, Playwright 1.51 |
+| Frontend | Next.js 15.5, React 19, TypeScript 5, TailwindCSS 3.4, shadcn/ui, react-markdown, lucide-react |
+| Backend | Express 4.22, TypeScript 5.4, `@anthropic-ai/sdk` ^0.111, helmet 8, express-rate-limit 8, dotenv |
+| Test | Vitest 4, Playwright 1.51, pytest (`model/backtest`) |
 
 **Explicitly absent and not to be reintroduced without discussion:** Prisma, Postgres, wagmi/viem/RainbowKit, Solidity/Hardhat.
 

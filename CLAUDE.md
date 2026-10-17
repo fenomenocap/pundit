@@ -110,6 +110,12 @@ API_REPLICAS=1
 # Conversational response-facts architecture. On by default; set exactly false
 # only for an emergency rollback. /ready reports its version and guard counters.
 ANALYST_RESPONSE_V2=true
+
+# legacy (production default) | agent (LLM tool-calling; eval/staging only unless explicitly chosen)
+CHAT_ENGINE=
+
+# Walk-forward backtest promotion switch (default false)
+BACKTEST_PROMOTED_MODEL_ENABLED=false
 ```
 
 ---

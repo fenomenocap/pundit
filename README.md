@@ -10,8 +10,8 @@ World Cup 2026 live analysis is retired. The frozen backtest lives at `/evaluati
 
 ```
 ┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
-│   Next.js 14     │────────▶│   Express API    │────────▶│   MiniMax API    │
-│   (chat UI)      │         │                  │         │   (chat answers) │
+│   Next.js 15     │────────▶│   Express API    │────────▶│ OpenRouter /     │
+│   (analysis desk)│         │  legacy + eval   │         │ MiniMax (fallback)│
 └──────────────────┘         └────────┬─────────┘         └──────────────────┘
                                        │
                         ┌──────────────┼──────────────┐
@@ -32,8 +32,8 @@ Public football and market sources are keyless and cached server-side on a caden
 | Layer | Technology |
 |---|---|
 | Monorepo | pnpm workspaces (Node 22, pnpm 9.15.4) |
-| Frontend | Next.js 14 App Router, TypeScript, TailwindCSS, shadcn/ui |
-| Backend | Express + TypeScript, `@anthropic-ai/sdk` (wire client for MiniMax's Anthropic-compatible endpoint) |
+| Frontend | Next.js 15 App Router, React 19, TypeScript, TailwindCSS, shadcn/ui |
+| Backend | Express + TypeScript, `@anthropic-ai/sdk` (OpenRouter answers/search; MiniMax Anthropic-compatible fallback) |
 
 ---
 
@@ -41,7 +41,7 @@ Public football and market sources are keyless and cached server-side on a caden
 
 ```
 packages/
-  web/   — Next.js 14 frontend: analysis desk, paper lab, /fixtures, /model, /evaluation
+  web/   — Next.js 15 frontend: analysis desk, paper lab, /fixtures, /model, /evaluation
   api/   — Express REST API: /api/ask, /api/matches, /api/model, /api/evaluation
 ```
 
@@ -91,7 +91,7 @@ pnpm test && pnpm build
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/ask` | Multi-turn match, competition, or general football analysis. Requires `MINIMAX_API_KEY`. |
+| POST | `/api/ask` | Multi-turn match, competition, or general football analysis. Server needs `OPENROUTER_API_KEY` (or `MINIMAX_API_KEY` fallback). |
 | GET | `/api/matches/competitions` | Enabled competition registry |
 | GET | `/api/matches/active` | Active fixtures (21-day horizon) |
 | GET | `/api/matches/upcoming` | Upcoming fixtures (ESPN, optional `?competition=`) |
@@ -100,6 +100,7 @@ pnpm test && pnpm build
 | GET | `/api/fixtures/recognized` | Approved structured fixture identities and current capability decisions; never discovery candidates |
 | GET | `/api/model/active` | Active club fixtures with model 1X2 probabilities |
 | GET | `/api/model/fixtures` | Same as active set (optional `?competition=`) |
+| GET | `/api/model/backtest-gate` | Pinned walk-forward backtest gate (`edgeValidationActive`, promotion flags) |
 | GET | `/api/evaluation/club-season` | Rolling club-season calibration artifact |
 | GET | `/api/evaluation/wc-2026` | Frozen WC 2026 backtest artifact |
 | GET | `/health` | Process liveness |
@@ -125,7 +126,7 @@ pnpm test && pnpm build
 
 ## Deploy
 
-Production (August 2026):
+Production:
 
 | Service | URL |
 |---|---|
@@ -144,10 +145,13 @@ pnpm verify:prod
 cd packages/api && railway up
 ```
 
-| Variable | Production value |
+| Variable | Role |
 |---|---|
-| `MINIMAX_API_KEY` | Railway secret (required for chat) |
-| `ALLOWED_ORIGINS` | `https://thepundit.vercel.app` (comma-separate extra origins if needed) |
+| `OPENROUTER_API_KEY` | Answers and search (primary) |
+| `MINIMAX_API_KEY` | Answer fallback when OpenRouter unset |
+| `ALLOWED_ORIGINS` | Vercel frontend origin(s) |
+| `PUNDIT_DATA_DIR` | `/data` mounted volume |
+| `CHAT_ENGINE` | Omit or `legacy` in production; `agent` is eval-only |
 
 ### Vercel (`packages/web`)
 
@@ -155,19 +159,23 @@ cd packages/api && railway up
 cd packages/web && vercel --prod
 ```
 
-| Variable | Production value |
+| Variable | Role |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | `https://thepundit.up.railway.app` |
-| `NEXT_PUBLIC_USE_MOCK` | `false` |
-| `NEXT_PUBLIC_DOCS_URL` | GitBook public URL after publishing `docs/` (enables footer and chat doc links) |
+| `NEXT_PUBLIC_API_URL` | Railway API URL |
+| `NEXT_PUBLIC_USE_MOCK` | `false` in production |
+| `NEXT_PUBLIC_DOCS_URL` | Published GitBook URL (enables in-app doc links) |
 
 **GitBook:** connect the repo `docs/` folder (GitHub sync), publish, then set `NEXT_PUBLIC_DOCS_URL` in Vercel to the public space URL.
 
 Required env vars for local dev are listed in `.env.example`. Never commit `OPENROUTER_API_KEY` or `MINIMAX_API_KEY`.
 
-## Backtesting note
+## Backtesting
 
-The WC 2026 evaluation at `/evaluation/wc-2026` uses a frozen reconstructed artifact. Live model views are recalculated hourly from the release's pinned strength artifact; look-ahead-free club-season calibration uses the immutable pre-kickoff snapshots exposed at `/evaluation/club-season`.
+- **WC 2026** — frozen reconstructed artifact at `/evaluation/wc-2026` (not live forecasts).
+- **Club season** — rolling 90-minute pre-kickoff seals at `/evaluation/club-season` (production volume on Railway `/data`).
+- **EPL walk-forward harness** — `model/backtest/` (`pnpm backtest:ci`, `pnpm backtest:run`); gate exposed at `GET /api/model/backtest-gate`. See [`docs/how-it-works/model-backtest.md`](docs/how-it-works/model-backtest.md).
+
+Live model views recalculate from the release's pinned strength artifact on the adaptive model cadence.
 
 ---
 
