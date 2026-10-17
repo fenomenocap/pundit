@@ -1082,6 +1082,79 @@ describe("source-owned manager identity drafts", () => {
     expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [{ ...source, date }] }, [{ ...page, date }], now)).toContain("Joe Example");
     expect(sourceOwnedManagerDraft({ ...scope, retainAppointment: true }, bundle, [page], now)).toBeUndefined();
   });
+  it("accepts an older official appointment story when no newer manager conflict exists", () => {
+    const now = Date.parse("2026-10-17T12:00:00Z");
+    const source = {
+      id: "S9",
+      title: "Brentford appoint Keith Andrews as head coach",
+      url: "https://www.brentfordfc.com/en/news/2025/june/andrews-appointed",
+      date: "2025-06-27",
+      snippet: "Appointment story.",
+      tier: "official" as const,
+    };
+    const page = {
+      ...source,
+      authority: "official" as const,
+      finalUrl: source.url,
+      text: "Brentford’s manager is Keith Andrews.",
+      retrievedAt: "2026-10-17T11:00:00Z",
+    };
+    expect(sourceOwnedManagerDraft(
+      { club: "Brentford", wantsReason: false },
+      { queries: [], providerCalls: 0, results: [source] },
+      [page],
+      now,
+    )).toBe("Brentford’s manager is Keith Andrews [[S9]].");
+  });
+
+  it("rejects a durable old appointment when a recent page reports a different manager", () => {
+    const now = Date.parse("2026-10-17T12:00:00Z");
+    const oldSource = {
+      id: "S9",
+      title: "Brentford appoint Keith Andrews as head coach",
+      url: "https://www.brentfordfc.com/en/news/2025/june/andrews-appointed",
+      date: "2025-06-27",
+      snippet: "Old appointment.",
+      tier: "official" as const,
+    };
+    const recentSource = {
+      id: "S2",
+      title: "Brentford sack Andrews and appoint Jane Example",
+      url: "https://www.bbc.com/sport/football/brentford-manager-change",
+      date: "2026-10-10T09:00:00Z",
+      snippet: "Recent change.",
+      tier: "news" as const,
+    };
+    const pages = [
+      {
+        ...oldSource,
+        authority: "official" as const,
+        finalUrl: oldSource.url,
+        text: "Brentford’s manager is Keith Andrews.",
+        retrievedAt: "2026-10-17T11:00:00Z",
+      },
+      {
+        ...recentSource,
+        authority: "reputable" as const,
+        finalUrl: recentSource.url,
+        text: "Brentford’s manager is Jane Example.",
+        retrievedAt: "2026-10-10T10:00:00Z",
+      },
+    ];
+    expect(sourceOwnedManagerDraft(
+      { club: "Brentford", wantsReason: false },
+      { queries: [], providerCalls: 0, results: [oldSource, recentSource] },
+      pages,
+      now,
+    )).not.toContain("Keith Andrews");
+    expect(sourceOwnedManagerDraft(
+      { club: "Brentford", wantsReason: false },
+      { queries: [], providerCalls: 0, results: [oldSource, recentSource] },
+      pages,
+      now,
+    )).toContain("Jane Example");
+  });
+
   it("names the manager from a hydrated dated page when the search row was undated", () => {
     const undatedSource = { ...source, date: "" };
     const hydrated = {
@@ -1850,6 +1923,65 @@ describe("current-news evidence hardening", () => {
       removedClaimCount: 0,
     });
     expect(bundle.providerCalls).toBe(1);
+  });
+
+  it("verifies source-owned manager drafts against prefetched publisher pages when fetch text would fail", async () => {
+    const answer = "Brentford’s manager is Keith Andrews [[S1]].";
+    const bundle: EvidenceBundle = {
+      queries: ["Brentford manager"],
+      providerCalls: 1,
+      results: [{
+        id: "S1",
+        title: "Brentford boss",
+        url: "https://www.bbc.com/sport/football/brentford-manager",
+        date: "2026-10-10",
+        snippet: "A search snippet without the full role sentence.",
+        tier: "news",
+      }],
+    };
+    const hydrated = {
+      id: "S1",
+      url: bundle.results[0].url,
+      title: "Brentford boss",
+      date: "2026-10-10T09:00:00.000Z",
+      authority: "reputable" as const,
+      finalUrl: bundle.results[0].url,
+      text: "Brentford’s manager is Keith Andrews.",
+      retrievedAt: "2026-10-10T10:00:00.000Z",
+    };
+    const checked = await verifyCurrentClaims(
+      answer,
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      {
+        managerWhy: { club: "Brentford", wantsReason: false },
+        prefetchedPages: [hydrated],
+        retrieve: async () => [{
+          ...hydrated,
+          text: "Fetched body that does not establish Keith Andrews as manager.",
+        }],
+        verify: async (_client, claims, pages) => {
+          expect(pages[0]?.text).toContain("Keith Andrews");
+          return {
+            status: "verified",
+            decisions: claims.map((claim) => ({
+              claimId: claim.id,
+              outcome: "supported",
+              evidenceIds: ["S1"],
+            })),
+            summary: "supported",
+          };
+        },
+      }
+    );
+    expect(checked.answer).toContain("Keith Andrews");
+    expect(checked.verification).toEqual({
+      status: "verified",
+      supportedClaimCount: 1,
+      removedClaimCount: 0,
+    });
   });
 
   it("writes extracted publication dates back onto matching bundle results", async () => {
