@@ -1,27 +1,27 @@
 {
   "date": "2026-10-17",
-  "runId": "2026-10-17T16-42-36-317Z",
+  "runId": "2026-10-17T18-52-42-545Z",
   "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
   "scenariosRun": 73,
   "passed": 68,
-  "inconclusive": 4,
-  "failed": 1,
-  "turns": 73,
-  "answeredTurns": 73,
-  "turnsWithCitations": 5,
+  "inconclusive": 5,
+  "failed": 0,
+  "turns": 71,
+  "answeredTurns": 71,
+  "turnsWithCitations": 6,
   "medianLatencyMs": 104,
   "repeatedSentences": 0,
-  "nearDuplicatePairs": 0,
+  "nearDuplicatePairs": 1,
   "uncitedCurrentNews": 0,
   "requestEngine": "both",
   "qualityMetrics": {
-    "templateShare": 0.136986301369863,
-    "nearDuplicateRate": 0.027777777777777776,
-    "llmCallRate": 0.0684931506849315,
-    "abstainRate": 0.0821917808219178,
-    "citationCoverage": 0.0684931506849315
+    "templateShare": 0.14084507042253522,
+    "nearDuplicateRate": 0.02857142857142857,
+    "llmCallRate": 0.07042253521126761,
+    "abstainRate": 0.07042253521126761,
+    "citationCoverage": 0.08450704225352113
   },
   "llmJudgeSummary": {
     "score": null,
@@ -38,27 +38,27 @@
   },
   "engineQualityComparison": {
     "legacy": {
-      "templateShare": 0.136986301369863,
-      "nearDuplicateRate": 0.027777777777777776,
-      "llmCallRate": 0.0684931506849315,
-      "abstainRate": 0.0821917808219178,
-      "citationCoverage": 0.0684931506849315
+      "templateShare": 0.14084507042253522,
+      "nearDuplicateRate": 0.02857142857142857,
+      "llmCallRate": 0.07042253521126761,
+      "abstainRate": 0.07042253521126761,
+      "citationCoverage": 0.08450704225352113
     },
     "agent": {
-      "templateShare": 0.014285714285714285,
-      "nearDuplicateRate": 0.007867494824016562,
-      "llmCallRate": 0.9857142857142858,
-      "abstainRate": 0.07142857142857142,
-      "citationCoverage": 0.35714285714285715
+      "templateShare": 0.1323529411764706,
+      "nearDuplicateRate": 0.005706760316066725,
+      "llmCallRate": 0.9852941176470589,
+      "abstainRate": 0.23529411764705882,
+      "citationCoverage": 0.14705882352941177
     }
   },
   "findings": [
     {
-      "scenario": "dated-club-news-delivers-supported-update",
-      "summary": "FAIL: turn 1: verification failed verificationStatus; turn 1: verification failed positiveNewsVerification; turn 1: positive dated club news failed positiveNewsVerification; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated"
+      "scenario": "near-duplicate",
+      "summary": "85% overlap between answers to \"What are the latest dated club injury updates for Bournemouth and Sunderland? Keep current reports distinct from future kickoff availability.\" and \"Any injury or lineup news for Bournemouth vs Sunderland?\""
     }
   ],
-  "sourceCommit": "adb668e",
-  "apiSha": "adb668e",
-  "ranAt": "2026-10-17T16:42:36.317Z"
+  "sourceCommit": "bd5f335",
+  "apiSha": "bd5f335",
+  "ranAt": "2026-10-17T18:52:42.545Z"
 }

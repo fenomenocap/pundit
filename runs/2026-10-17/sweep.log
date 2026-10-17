@@ -1,7 +1,7 @@
 {
-  "runId": "2026-10-17T16-42-36-317Z",
+  "runId": "2026-10-17T18-52-42-545Z",
   "overall": "ISSUES FOUND",
-  "requests": 76,
+  "requests": 74,
   "featured": {
     "homeTeam": "Bournemouth",
     "awayTeam": "Sunderland",
@@ -12,14 +12,14 @@
     "recognizedFixtureId": "espn:eng.1:401879263"
   },
   "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-17T16-42-36-317Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-17T16-42-36-317Z.md"
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-17T18-52-42-545Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-17T18-52-42-545Z.md"
   }
 }
 {
-  "runId": "2026-10-17T16-59-25-324Z",
+  "runId": "2026-10-17T19-09-50-545Z",
   "overall": "ISSUES FOUND",
-  "requests": 75,
+  "requests": 73,
   "featured": {
     "homeTeam": "Bournemouth",
     "awayTeam": "Sunderland",
@@ -30,7 +30,7 @@
     "recognizedFixtureId": "espn:eng.1:401879263"
   },
   "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-17T16-59-25-324Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-17T16-59-25-324Z.md"
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-17T19-09-50-545Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-17T19-09-50-545Z.md"
   }
 }
