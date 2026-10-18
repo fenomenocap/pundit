@@ -90,7 +90,10 @@ test("judgeEvalTurns skips when OpenRouter key is unset", async () => {
   const result = await judgeEvalTurns([
     { httpStatus: 200, answer: "Lean home. Gamble responsibly 18+.", question: "Who wins?" },
   ]);
+  assert.equal(result.status, "skipped_no_key");
+  assert.equal(result.judgedTurns, 0);
   assert.equal(result.scoredTurns, 0);
+  assert.equal(result.skippedTurns, 1);
   assert.equal(result.turns[0].skipped, true);
   if (prior) process.env.OPENROUTER_API_KEY = prior;
 });
