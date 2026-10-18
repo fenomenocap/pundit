@@ -98,6 +98,16 @@ describe("parseHistory", () => {
     ])).toHaveLength(2);
   });
 
+  it("accepts agent desk briefings capped to the per-turn history limit", async () => {
+    const { capAgentAnswerForHistory } = await import("../services/chat-agent-package");
+    const briefing = capAgentAnswerForHistory(`${"Match briefing sentence. ".repeat(400)}Final thought.`);
+    expect(briefing.length).toBeLessThanOrEqual(4_000);
+    expect(parseHistory([
+      { role: "user", content: "Give me the match briefing for Bournemouth vs Sunderland." },
+      { role: "assistant", content: briefing },
+    ])).toHaveLength(2);
+  });
+
   it("rejects dangling turns and oversized total history", () => {
     expect(() => parseHistory([{ role: "user", content: "Question" }]))
       .toThrow(/conversation context is invalid/i);
