@@ -43,4 +43,5 @@ Measured with eval-only agent override (no production `CHAT_ENGINE` flip):
 
 | Date | SHA | Recommend flip? | Reason |
 |------|-----|-----------------|--------|
-| 2026-10-17 | _(pending merge)_ | **Not yet** | Side-by-side daily eval with judge not run on fixed agent; citation and abstain gaps vs legacy. Revisit after first green **both** sweep post-merge. |
+| 2026-10-17 | `012f6e2` | **Not yet** | Daily **both** sweep: citations agent > legacy (~48.6% vs ~8.5%), but dual LLM judge scored **0/24** turns (parse/thinking/model-id path). Flip blocked on `llmJudgeSummary.score` until judge fix ships and a post-fix run shows non-null scores for both engines. |
+| 2026-10-18 | _(this PR)_ | **Not yet** | Judge path hardened: pin model (ignore `openrouter/auto`), disable reasoning for judge calls, parse fenced/embedded JSON and string numerics. Revisit after next scheduled **both** run shows `scoredTurns > 0` and agent ≥ legacy on `llmJudgeSummary.score`. |
