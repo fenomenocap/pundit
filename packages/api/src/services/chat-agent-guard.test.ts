@@ -44,4 +44,16 @@ describe("finalizeChatAgentAnswer", () => {
     expect(wrapped).toMatch(/Everton.*draw.*Chelsea/i);
     expect((wrapped.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
+
+  it("does not prepend or keep a headline win/draw/win line on follow-up turns", () => {
+    const agentDraft = "My 1X2 is Everton 22.0%, draw 24.0% and Chelsea 54.0%. Lean Chelsea for the totals angle.";
+    const wrapped = envelopChatAgentAnswer(
+      agentDraft,
+      "What about over and under 2.5?",
+      matchGrounding,
+      { hasHistory: true },
+    );
+    expect(wrapped).not.toMatch(/^My 1X2 is/i);
+    expect((wrapped.match(/\bdraw\b/gi) ?? []).length).toBeLessThan(2);
+  });
 });
