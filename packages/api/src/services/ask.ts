@@ -191,6 +191,7 @@ import {
   sanitizeAgentUserText,
 } from "./chat-agent-fallback";
 import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
+import { finalizeAgentPackagedAnswer } from "./chat-agent-package";
 import type { ChatEngineMode } from "./chat-engine";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
 import {
@@ -10428,17 +10429,26 @@ function packageAgentDirectAnswer(
   prose: string,
   hasHistory: boolean,
   usedLlm: boolean,
+  voice?: "desk",
 ): ScopedAskPayload {
   const { answer: rendered, citations } = renderEvidenceCitations(prose, bundle, false);
   const answer = rendered.trim()
     ? rendered
     : resolveAgentUserAnswer(question, grounding, bundle, hasHistory, "");
-  return {
-    answer,
+  const packaged = finalizeAgentPackagedAnswer(
+    question,
     grounding,
-    verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+    bundle,
+    answer,
+    citations,
+    { hasHistory, voice },
+  );
+  return {
+    answer: packaged.prose,
+    grounding,
+    verification: packaged.verification,
     usedLlm,
-    ...(citations.length ? { citations } : {}),
+    ...(packaged.citations.length ? { citations: packaged.citations } : {}),
   };
 }
 
@@ -10515,6 +10525,7 @@ async function deliverChatAgentTurn(
       fallbackProse,
       history.length > 0,
       metrics.toolSteps > 0,
+      voice,
     );
   }
 
@@ -10531,6 +10542,7 @@ async function deliverChatAgentTurn(
     prose,
     history.length > 0,
     true,
+    voice,
   );
 }
 
