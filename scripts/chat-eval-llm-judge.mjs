@@ -195,10 +195,44 @@ export function assertJudgeScoredWhenMockSucceeded(result, mockLabel) {
   }
 }
 
-export async function judgeEvalTurns(turns, options = {}) {
+export const JUDGE_SKIPPED_NO_KEY_NOTE = "judge: skipped (no key)";
+
+export function skippedNoKeyJudge(turns, options = {}) {
   const sample = turns.filter((turn) => turn.httpStatus === 200 && turn.answer?.trim());
   const maxTurns = options.maxTurns ?? 24;
   const selected = options.sampleAll ? sample : sample.slice(0, maxTurns);
+  return {
+    status: "skipped_no_key",
+    judgedTurns: 0,
+    scoredTurns: 0,
+    skippedTurns: selected.length,
+    averages: {
+      personaStrength: null,
+      clearCall: null,
+      specificity: null,
+      variety: null,
+      citationCorrectness: null,
+      overall: null,
+    },
+    turns: selected.map((turn) => ({
+      scenarioId: turn.scenarioId ?? null,
+      turn: turn.turn ?? null,
+      question: turn.question ?? null,
+      skipped: true,
+      reason: "OPENROUTER_API_KEY unset",
+      scores: null,
+    })),
+  };
+}
+
+export async function judgeEvalTurns(turns, options = {}) {
+  const apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY?.trim();
+  const sample = turns.filter((turn) => turn.httpStatus === 200 && turn.answer?.trim());
+  const maxTurns = options.maxTurns ?? 24;
+  const selected = options.sampleAll ? sample : sample.slice(0, maxTurns);
+  if (!apiKey) {
+    return skippedNoKeyJudge(turns, options);
+  }
   const results = [];
   for (const turn of selected) {
     const verdict = await judgeAnswerTurn({
@@ -215,14 +249,16 @@ export async function judgeEvalTurns(turns, options = {}) {
     if (options.paceMs) await new Promise((resolve) => setTimeout(resolve, options.paceMs));
   }
   const scored = results.filter((row) => row.scores && typeof row.scores.overall === "number");
+  const skipped = results.filter((row) => row.skipped);
   const average = (key) => {
     const values = scored.map((row) => row.scores[key]).filter((value) => typeof value === "number");
     if (!values.length) return null;
     return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 1000) / 1000;
   };
   return {
-    judgedTurns: results.length,
+    judgedTurns: scored.length,
     scoredTurns: scored.length,
+    skippedTurns: skipped.length,
     averages: {
       personaStrength: average("personaStrength"),
       clearCall: average("clearCall"),
