@@ -4024,6 +4024,13 @@ describe("resolveTeams", () => {
       .toEqual(["Brighton & Hove Albion", "Tottenham Hotspur"]);
   });
 
+  it("resolves common nicknames to the canonical fixture names", () => {
+    expect(resolveTeams("Brighton against Spurs", fixtures))
+      .toEqual(["Brighton & Hove Albion", "Tottenham Hotspur"]);
+    expect(resolveTeams("Man Utd vs Liverpool, what are the odds?", fixtures))
+      .toEqual(["Manchester United", "Liverpool"]);
+  });
+
   it("rejects questions naming more than one matchup", () => {
     expect(() => resolveTeams("Arsenal vs Liverpool, then Brighton", fixtures))
       .toThrowError(AppError);
