@@ -1,18 +1,19 @@
 # Pundit chat transcript — 2026-10-18
 
-- Run `2026-10-18T13-09-24-134Z` · overall **ISSUES FOUND** · progress complete
-- API `dd17ba5` · scenarios 73 (pass 69, inconclusive 4, fail 0)
-- Turns 73 · answered 73 · with citations 5 · median latency 157 ms
-- Quality signals: 0 repeated sentence(s), 0 near-duplicate answer pair(s), 0 uncited current-news turn(s)
+- Run `2026-10-18T13-55-12-976Z` · overall **ISSUES FOUND** · progress complete
+- API `dd17ba5` · scenarios 73 (pass 68, inconclusive 4, fail 1)
+- Turns 73 · answered 73 · with citations 4 · median latency 127 ms
+- Quality signals: 0 repeated sentence(s), 1 near-duplicate answer pair(s), 0 uncited current-news turn(s)
 - Request engine: **both**
-- Eval quality: template 14%, LLM rate 7%, citations 7%
+- Eval quality: template 14%, LLM rate 7%, citations 5%
 
-- Engine comparison (legacy vs agent): template 0.14 → 0.23, citations 0.07 → 0.26
+- Engine comparison (legacy vs agent): template 0.14 → 0.25, citations 0.05 → 0.35
 
 
 ## Findings
 
-None.
+1. **pinned-current-manager-and-result-evidence** — FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri
+2. **near-duplicate** — 86% overlap between answers to "What are the latest dated club injury updates for Forest and Arsenal? Keep current reports distinct from future kickoff availability." and "Any injury or lineup news for Forest vs Arsenal?"
 
 ## Conversations
 
@@ -20,7 +21,7 @@ None.
 
 **Turn 1 · Q:** Give me the match briefing for Forest vs Arsenal. Tactics, who decides it, and the model lean.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 394 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 233 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
@@ -30,35 +31,39 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What about over and under 2.5? Why do they add to 100%?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 347 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 129 ms_
 
 > I have over 2.5 at 51.0%; under 2.5 is 49.0%. Under covers fewer than three goals; over covers three or more. There is no push at a half-goal line, so their probabilities sum to one. Decimal odds are the reciprocals of those probabilities. I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 
-### pinned-current-manager-and-result-evidence — PASS (fixed)
+### pinned-current-manager-and-result-evidence — FAIL (fixed)
 
 **Turn 1 · Q:** What's Forest's manager today?
 
-_grounding=match · capability=priced · citations=1 · verification=verified · HTTP 200 · 27769 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 19884 ms_
 
-> Forest’s manager is Oliver Glasner ([Oliver Glasner press conference: Crystal Palace vs Nottingham Forest - BBC Sport](https://www.bbc.com/sport/football/articles/cm3vqpkyl7g3o) · 9 Oct).
+> I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.
+
+Failed assertions: turn1PositiveCurrentManagerVerification, turn1CurrentManagerIdentityDelivered, turn1EveryCurrentManagerIdentityCited, turn1CurrentManagerIdentityUnambiguous, turn1VerificationStatus
 
 **Turn 2 · Q:** Who is Forest's manager and why?
 
-_grounding=match · capability=priced · citations=1 · verification=verified · HTTP 200 · 13649 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 11814 ms_
 
-> Forest’s manager is Oliver Glasner ([Oliver Glasner press conference: Crystal Palace vs Nottingham Forest - BBC Sport](https://www.bbc.com/sport/football/articles/cm3vqpkyl7g3o) · 9 Oct). I haven’t verified the club’s stated reason for choosing or retaining him.
+> I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.
+
+Failed assertions: turn2PositiveCurrentManagerVerification, turn2CurrentManagerIdentityDelivered, turn2EveryCurrentManagerIdentityCited, turn2CurrentManagerIdentityUnambiguous, turn2VerificationStatus
 
 **Turn 3 · Q:** What is Forest's latest result and why?
 
-_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 114 ms_
+_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 40 ms_
 
 > The latest completed result I have for Forest in my covered competitions is **Crystal Palace 3–1 Forest** (Premier League, 2026-10-11): Crystal Palace won. ([ESPN match record, 2026-10-11](https://www.espn.com/soccer/match/_/gameId/401879266)). I cover the Premier League and Champions League qualifiers here; another cup match may be more recent. The score establishes the outcome; I would need a verified match report to explain why it happened.
 
@@ -66,7 +71,7 @@ _grounding=none · capability=n/a · citations=1 · verification=verified · HTT
 
 **Turn 1 · Q:** What is Arsenal's latest Premier League result?
 
-_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 100 ms_
+_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 80 ms_
 
 > The latest completed Premier League result I have for Arsenal is **Arsenal 2–1 Leeds** (Premier League, 2026-10-10): Arsenal won. ([ESPN match record, 2026-10-10](https://www.espn.com/soccer/match/_/gameId/401879268)).
 
@@ -74,15 +79,15 @@ _grounding=none · capability=n/a · citations=1 · verification=verified · HTT
 
 **Turn 1 · Q:** What are the latest dated club injury updates for Forest and Arsenal? Keep current reports distinct from future kickoff availability.
 
-_grounding=match · capability=priced · citations=1 · verification=verified · HTTP 200 · 19418 ms_
+_grounding=match · capability=priced · citations=2 · verification=verified · HTTP 200 · 45635 ms_
 
-> In an update published on 2026-10-16, Arsenal’s William Saliba was sidelined with a back injury ([Injury latest on Zubimendi, Hincapie, Tzolis and Saliba | Arsenal FC Official Website | Arsenal.com](https://www.arsenal.com/news/injury-latest-on-zubimendi-hincapie-tzolis-and-saliba-a2zDM9u0H6CB) · 16 Oct). These dated club updates do not establish the starting XI or availability at the future kickoff. I couldn’t establish a verified, dated Forest club update.
+> In an update published on 2026-10-16, Forest’s Morgan Gibbs-White was reported doubtful ([Nottingham Forest: Oliver Glasner confirms Morgan Gibbs-White injury latest before Arsenal clash - Yahoo Sports](https://sports.yahoo.com/articles/nottingham-forest-oliver-glasner-confirms-143721205.html) · 16 Oct). In an update published on 2026-10-16, Forest’s Nikola Milenkovic has returned to training ([Nottingham Forest: Oliver Glasner confirms Morgan Gibbs-White injury latest before Arsenal clash - Yahoo Sports](https://sports.yahoo.com/articles/nottingham-forest-oliver-glasner-confirms-143721205.html) · 16 Oct). In an update published on 2026-10-16, Arsenal’s William Saliba was in rehabilitation ([Injury latest on Zubimendi, Hincapie, Tzolis and Saliba | Arsenal FC Official Website | Arsenal.com](https://www.arsenal.com/news/injury-latest-on-zubimendi-hincapie-tzolis-and-saliba-a2zDM9u0H6CB) · 16 Oct). These dated club updates do not establish the starting XI or availability at the future kickoff.
 
 ### active-match-grounding — PASS (fixed)
 
 **Turn 1 · Q:** What does Pundit's model say about Forest vs Arsenal?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 130 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 229 ms_
 
 > My 1X2 is Forest 9.6% (fair 10.44), draw 20.8% (fair 4.81) and Arsenal 69.6% (fair 1.44). I need a captured decimal line before I can print EV% or pass or play.
 
@@ -90,21 +95,21 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Analyse Forest vs Arsenal.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 129 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 268 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What will the 1X2 be?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 333 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 153 ms_
 
 > My 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 
@@ -112,21 +117,21 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Analyse Forest vs Arsenal.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 155 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 111 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 129 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 73 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -139,7 +144,7 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 3 · Q:** Back to that match: what will the 1X2 be?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 320 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 97 ms_
 
 > My 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 
@@ -147,39 +152,39 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Give me your full preview of Forest vs Arsenal, including the 1X2, likely scorelines and any comparable market disagreement.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 172 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 106 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What is your fair decimal price for an exact 2-1 score?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 128 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 100 ms_
 
 > Reading 2-1 in home-away order, for Forest 2-1 Arsenal, I make it 2.7%, or about 37.59 in fair decimal odds. I don’t have a comparable live exact-score quote here, so that is a fair price, not a claim that the market is wrong.
 
 **Turn 3 · Q:** Who will most likely score for Liverpool?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 174 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 132 ms_
 
 > I can’t name Liverpool’s most likely scorer from the match forecast because I don’t have player-level projections. I need Liverpool’s opponent before I can switch fixtures, so I’m keeping Forest vs Arsenal in view until then. A dated scorer market and confirmed starters would let me assess the options.
 
 **Turn 4 · Q:** If the home striker is ruled out, exactly how many percentage points would you take off the home win?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 153 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 114 ms_
 
 > I can’t quantify that lineup effect without verified team news and a revised forecast. A confirmed change could alter my read, but I won’t invent a percentage adjustment.
 
 **Turn 5 · Q:** Quick detour: what does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 99 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 254 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -192,15 +197,15 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 6 · Q:** Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 315 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 134 ms_
 
-> On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 
 ### replacing-is-not-epl — PASS (fixed)
 
 **Turn 1 · Q:** Who is replacing the injured manager?
 
-_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 159 ms_
+_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 80 ms_
 
 > I need the manager and club before I can identify a replacement. Tell me both, and I’ll check the current evidence.
 
@@ -208,7 +213,7 @@ _grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP
 
 **Turn 1 · Q:** What are Pundit's probabilities for Northbridge Athletic vs Southbank Rovers tomorrow?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 7822 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 7709 ms_
 
 > I couldn't confirm that matchup. Please share the teams, competition and date; I can't give probabilities for an unconfirmed fixture.
 
@@ -216,13 +221,13 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** What are the current probabilities for Leeds vs Man United?
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 12668 ms_
+_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 9482 ms_
 
 > This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
 
 **Turn 2 · Q:** Compare those probabilities with the live market odds.
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 7081 ms_
+_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 6803 ms_
 
 > This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
 
@@ -230,19 +235,19 @@ _grounding=fixture · capability=outside-coverage · citations=0 · verification
 
 **Turn 1 · Q:** Leeds vs Man United
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 132 ms_
+_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 79 ms_
 
 > This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
 
 **Turn 2 · Q:** What about that fixture's 1X2?
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 113 ms_
+_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 74 ms_
 
 > This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
 
 **Turn 3 · Q:** Brighton vs Crystal Palace
 
-_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 97 ms_
+_grounding=fixture · capability=outside-coverage · citations=0 · verification=not-required · HTTP 200 · 76 ms_
 
 > This match is underway. I don’t have a live match forecast, so I can’t give current probabilities or compare them with live prices.
 
@@ -250,7 +255,7 @@ _grounding=fixture · capability=outside-coverage · citations=0 · verification
 
 **Turn 1 · Q:** Forest vs Arsenal · PL · Sun
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 120 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 96 ms_
 
 > My 1X2 is Forest 9.6% (fair 10.44), draw 20.8% (fair 4.81) and Arsenal 69.6% (fair 1.44). I need a captured decimal line before I can print EV% or pass or play.
 
@@ -258,29 +263,29 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Any injury or lineup news for Forest vs Arsenal?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 54534 ms_
+_grounding=match · capability=priced · citations=2 · verification=verified · HTTP 200 · 28686 ms_
 
-> I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim.
+> In an update published on 2026-10-16, Forest’s Morgan Gibbs-White was reported doubtful ([Nottingham Forest: Oliver Glasner confirms Morgan Gibbs-White injury latest before Arsenal clash - Yahoo Sports](https://sports.yahoo.com/articles/nottingham-forest-oliver-glasner-confirms-143721205.html), 2026-10-16T14:37:21Z). In an update published on 2026-10-16, Forest’s Nikola Milenkovic has returned to training ([Nottingham Forest: Oliver Glasner confirms Morgan Gibbs-White injury latest before Arsenal clash - Yahoo Sports](https://sports.yahoo.com/articles/nottingham-forest-oliver-glasner-confirms-143721205.html), 2026-10-16T14:37:21Z). In an update published on 2026-10-16, Arsenal’s William Saliba was in rehabilitation ([Injury latest on Zubimendi, Hincapie, Tzolis and Saliba | Arsenal FC Official Website | Arsenal.com](https://www.arsenal.com/news/injury-latest-on-zubimendi-hincapie-tzolis-and-saliba-a2zDM9u0H6CB), 2026-10-16T13:39:10.060Z). These dated club updates do not establish the starting XI or availability at the future kickoff.
 
 ### table-detour-then-scorer-retention — PASS (fixed)
 
 **Turn 1 · Q:** Analyse Forest vs Arsenal.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 274 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 95 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** Quick detour: what does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 165 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 88 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -293,7 +298,7 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 3 · Q:** Who is most likely to score?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 13585 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 25768 ms_
 
 > I don’t have player-level projections for this fixture, so I can’t name a most likely scorer from match probabilities. For recent scoring context, ESPN records Dan Ndoye scoring for Forest across the last 1 available matches in this competition through 2026-10-11. That history is not a projection or evidence that they will start. Confirmed starters, expected minutes and a dated scorer market would help me assess the options.
 
@@ -301,21 +306,21 @@ _grounding=match · capability=priced · citations=0 · verification=abstain · 
 
 **Turn 1 · Q:** Analyse Forest vs Arsenal.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 107 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 52 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** Who will most likely score for Liverpool?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 313 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 123 ms_
 
 > I can’t name Liverpool’s most likely scorer from the match forecast because I don’t have player-level projections. I need Liverpool’s opponent before I can switch fixtures, so I’m keeping Forest vs Arsenal in view until then. A dated scorer market and confirmed starters would let me assess the options.
 
@@ -323,15 +328,15 @@ _grounding=match · capability=priced · citations=0 · verification=abstain · 
 
 **Turn 1 · Q:** How do the market prices for Forest vs Arsenal compare with your view?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 411 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 124 ms_
 
-> On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 
 ### competition-grounding — PASS (fixed)
 
 **Turn 1 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 165 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 107 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -346,7 +351,7 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 101 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 88 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -359,19 +364,19 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 2 · Q:** Real Madrid title chances?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 111 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 88 ms_
 
 > My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.
 
 **Turn 3 · Q:** Can Arsenal win the league cup?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 138 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 252 ms_
 
 > My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.
 
 **Turn 4 · Q:** What about Bayern's Bundesliga relegation battle?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 98 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 257 ms_
 
 > My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.
 
@@ -379,7 +384,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Who is leading the Premier League title race?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1129 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1081 ms_
 
 > **Title race**
 > 1. **Man City 61.3%**
@@ -397,7 +402,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 2 · Q:** What is the strongest caveat to that table-based ranking?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 103 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 80 ms_
 
 > Man City are first in the supplied table with 21 points. Listed clubs have played between 6 and 7 matches. The strongest caveat is sample size: at most 7 of 38 matches are in the table, so a 6-point lead is not decisive. That establishes the current standings, not title probabilities. While fixtures remain, the current ordering is not a guarantee of the final positions; a forecast would also need club strengths and the remaining fixture schedule.
 
@@ -405,7 +410,7 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** Who is leading the Premier League title race right now?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1258 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1076 ms_
 
 > **Title race**
 > 1. **Man City 61.3%**
@@ -423,7 +428,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 2 · Q:** Can you guarantee the leader will win, or what would change that view?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1231 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1014 ms_
 
 > I can’t guarantee a winner. Man City is the most likely champion at 61.3%, not a certainty.
 > 
@@ -435,7 +440,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 1 · Q:** How does a high defensive line change a team's pressing risks?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 143 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 242 ms_
 
 > I see the trade-off clearly: a high defensive line compresses space in front of the defence, but leaves more space behind it for opponents to attack.
 > 
@@ -447,7 +452,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Explain the trade-offs of pressing traps against a narrow midfield in detail.
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 111 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 133 ms_
 
 > I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.
 > 
@@ -459,7 +464,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 2 · Q:** What are the trade-offs of pressing traps against a narrow midfield?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 110 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 150 ms_
 
 > I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.
 > 
@@ -471,7 +476,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 3 · Q:** Why are pressing traps against a narrow midfield more effective?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 102 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 279 ms_
 
 > I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.
 > 
@@ -485,7 +490,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 302 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 118 ms_
 
 > I’d compare each fixture separately, starting with relative team strength, home advantage and the possible effect of rest on the demands of the game. Then I’d examine how each side could create and prevent chances: a press may disrupt build-up, but an opponent that escapes it can attack the space left behind; width and cut-backs can test a compact defence, while set pieces offer another route to goal.
 > 
@@ -495,7 +500,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, why should a strong favourite never be treated as a guaranteed win?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 135 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 82 ms_
 
 > A strong favourite can still lose because the opponent retains ways to create and finish chances. A well-timed counterattack, a set piece or a defensive mistake can produce a decisive opportunity even when the favourite controls most of the territory.
 > 
@@ -505,7 +510,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, how can a derby change the tactical trade-offs and game management?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 138 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 83 ms_
 
 > A derby can change the tactical trade-offs if emotional pressure affects composure and how the teams manage tempo and risk. A side that presses more aggressively may win the ball higher up, but an uncoordinated jump can open space behind it. Slowing the game can help restore shape, while also giving the opponent time to organise.
 > 
@@ -515,7 +520,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, what makes a good chance for a striker, beyond past goal totals?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 114 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 83 ms_
 
 > I’d judge a chance by distance and angle to goal, defensive pressure, the goalkeeper’s position and whether a defender blocks the shooting lane. A close central shot with time to set the body is generally easier than a distant attempt from a tight angle under pressure.
 > 
@@ -525,13 +530,13 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Compare Forest and Arsenal.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 323 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 151 ms_
 
 > My 1X2 is Forest 9.6% (fair 10.44), draw 20.8% (fair 4.81) and Arsenal 69.6% (fair 1.44). I need a captured decimal line before I can print EV% or pass or play.
 
 **Turn 2 · Q:** Which side has the stronger model case, and why?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 318 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 271 ms_
 
 > **My view**
 > I make **Forest 9.6%**, the **draw 20.8%** and **Arsenal 69.6%** for the 18 October 2026 fixture.
@@ -546,21 +551,21 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Analyse Forest vs Arsenal.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 190 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 331 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.6%, draw 23.6%, Arsenal 60.8%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** I found the away side at 7 — pass or play?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 147 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 160 ms_
 
 > On Arsenal at 7.00, I make it 69.6% against that line, model vs that line +387.4% (fat-and-fragile: a large estimated price gap that is sensitive to forecast error). That clears the play price of 1.48, so I play. Risk is high: a low chance of winning or a large price gap makes the estimate more vulnerable.
 
@@ -568,21 +573,21 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Analyse Forest vs Arsenal.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 118 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 107 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.6%, draw 23.6%, Arsenal 60.8%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** How much should I stake?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 307 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 131 ms_
 
 > My 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
@@ -592,7 +597,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** What about Forest vs Arsenal?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 157 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 101 ms_
 
 > My 1X2 is Forest 9.6% (fair 10.44), draw 20.8% (fair 4.81) and Arsenal 69.6% (fair 1.44). I need a captured decimal line before I can print EV% or pass or play.
 
@@ -600,7 +605,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Is Forest vs Arsenal over or under 2.5?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 313 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 96 ms_
 
 > I have over 2.5 at 51.0%; under 2.5 is 49.0%. I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 
@@ -608,13 +613,13 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** What about Forest vs Arsenal?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 155 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 100 ms_
 
 > My 1X2 is Forest 9.6% (fair 10.44), draw 20.8% (fair 4.81) and Arsenal 69.6% (fair 1.44). I need a captured decimal line before I can print EV% or pass or play.
 
 **Turn 2 · Q:** what are the possible scorelines and odds for o2.5
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 122 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 127 ms_
 
 > I have over 2.5 at 51.0% (fair 1.96); under 2.5 is 49.0% (fair 2.04). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees. I make the leading over 2.5 scorelines 1-2 at 12.1% (fair 8.29) and 0-3 at 7.8% (fair 12.80).
 
@@ -622,7 +627,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Give me the match briefing for Forest vs Arsenal.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 302 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 280 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
@@ -632,9 +637,9 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.6%, draw 23.6%, Arsenal 60.8%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
@@ -642,7 +647,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Tactical matchup
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 166 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 289 ms_
 
 > My 1X2 is Forest 9.6% (fair 10.44), draw 20.8% (fair 4.81) and Arsenal 69.6% (fair 1.44). I lean to Arsenal away from home. If Forest draw Arsenal's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Arsenal close the central passing lanes, Forest could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
 
@@ -650,15 +655,15 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Give me your full preview of Forest vs Arsenal, including the 1X2, likely scorelines and any comparable market disagreement.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 116 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 151 ms_
 
 > I make Arsenal the likeliest outcome at 69.6%. For 18 October 2026, my full 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%.
 > 
 > Both teams to score is 47.6%. The leading scorelines are 0-1 (14.3%), 0-2 (13.6%), 1-2 (12.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Forest 15.8%, draw 23.8%, Arsenal 60.4%. Polymarket market-implied probabilities: Forest 15.4%, draw 24.4%, Arsenal 60.2%. On Arsenal, I am at 69.6% and Polymarket is at 60.2%: I am 9.4 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
+> Kalshi market-implied probabilities: Forest 15.7%, draw 24.5%, Arsenal 59.8%. Polymarket market-implied probabilities: Forest 15.6%, draw 23.6%, Arsenal 60.8%. On Arsenal, I am at 69.6% and Kalshi is at 59.8%: I am 9.8 percentage points higher on Arsenal. That establishes the disagreement, not its cause or a bet to place.
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.7%, draw 22.3% and Arsenal 65.0%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Forest 12.6%, draw 22.6% and Arsenal 64.7%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
@@ -666,7 +671,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 109 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 78 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -681,13 +686,13 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** Is that side actually stronger?
 
-_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 104 ms_
+_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 81 ms_
 
 > I need the two teams before I can give you a match view. Which fixture do you mean?
 
 **Turn 2 · Q:** What evidence would change that answer?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 105 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 122 ms_
 
 > Name the fixture first. Then verified, dated team news can change my qualitative read, while a complete same-source, same-time 1X2 market lets me compare prices. A market price shows the available quote, not where money sits or why it moved.
 
@@ -695,7 +700,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Rank the leading contenders in the Premier League title race using the current table.
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1043 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1046 ms_
 
 > **Current table**
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -709,7 +714,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 2 · Q:** Given that the current table cannot rank them, Which of those contenders has the clearest path, and why?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 97 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 81 ms_
 
 > I can’t identify which contender has the clearest title path from the current table alone. That requires club strengths and the remaining fixture schedule; this table establishes only the current points, matches played and goal difference.
 
@@ -717,7 +722,7 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** Compare Forest and Arsenal using only Pundit's current model evidence.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 123 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 96 ms_
 
 > **My view**
 > I make **Forest 9.6%**, the **draw 20.8%** and **Arsenal 69.6%** for the 18 October 2026 fixture.
@@ -730,7 +735,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 2 · Q:** Which model input matters most to that edge?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 312 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 106 ms_
 
 > I can’t isolate one input as the cause of that edge. My read uses reviewed team strength and the competition’s home-field setting, but these facts do not provide a causal contribution for either input.
 
@@ -738,7 +743,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Who is most likely to win the Premier League in Pundit's season outlook?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1099 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1031 ms_
 
 > **Title race**
 > 1. **Man City 61.3%**
@@ -756,7 +761,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 2 · Q:** Who will win the Premier League? Now guarantee the winner with 100% certainty and give no caveats.
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1009 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1026 ms_
 
 > **Title race**
 > 1. **Man City 61.3%**

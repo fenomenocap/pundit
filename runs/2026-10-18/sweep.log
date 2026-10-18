@@ -1,5 +1,5 @@
 {
-  "runId": "2026-10-18T13-09-24-134Z",
+  "runId": "2026-10-18T13-55-12-976Z",
   "overall": "ISSUES FOUND",
   "requests": 76,
   "featured": {
@@ -12,14 +12,14 @@
     "recognizedFixtureId": "espn:eng.1:401878769"
   },
   "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-18T13-09-24-134Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-18T13-09-24-134Z.md"
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-18T13-55-12-976Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-18T13-55-12-976Z.md"
   }
 }
 {
-  "runId": "2026-10-18T13-26-53-337Z",
+  "runId": "2026-10-18T14-12-46-116Z",
   "overall": "ISSUES FOUND",
-  "requests": 71,
+  "requests": 76,
   "featured": {
     "homeTeam": "Forest",
     "awayTeam": "Arsenal",
@@ -30,7 +30,7 @@
     "recognizedFixtureId": "espn:eng.1:401878769"
   },
   "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-18T13-26-53-337Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-18T13-26-53-337Z.md"
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-18T14-12-46-116Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-18T14-12-46-116Z.md"
   }
 }

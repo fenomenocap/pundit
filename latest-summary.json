@@ -1,27 +1,27 @@
 {
   "date": "2026-10-18",
-  "runId": "2026-10-18T13-09-24-134Z",
-  "status": "clean",
+  "runId": "2026-10-18T13-55-12-976Z",
+  "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
   "scenariosRun": 73,
-  "passed": 69,
+  "passed": 68,
   "inconclusive": 4,
-  "failed": 0,
+  "failed": 1,
   "turns": 73,
   "answeredTurns": 73,
-  "turnsWithCitations": 5,
-  "medianLatencyMs": 157,
+  "turnsWithCitations": 4,
+  "medianLatencyMs": 127,
   "repeatedSentences": 0,
-  "nearDuplicatePairs": 0,
+  "nearDuplicatePairs": 1,
   "uncitedCurrentNews": 0,
   "requestEngine": "both",
   "qualityMetrics": {
     "templateShare": 0.136986301369863,
-    "nearDuplicateRate": 0.029299847792998476,
+    "nearDuplicateRate": 0.030060882800608826,
     "llmCallRate": 0.0684931506849315,
-    "abstainRate": 0.0821917808219178,
-    "citationCoverage": 0.0684931506849315
+    "abstainRate": 0.0958904109589041,
+    "citationCoverage": 0.0547945205479452
   },
   "llmJudgeSummary": {
     "score": null,
@@ -39,21 +39,30 @@
   "engineQualityComparison": {
     "legacy": {
       "templateShare": 0.136986301369863,
-      "nearDuplicateRate": 0.029299847792998476,
+      "nearDuplicateRate": 0.030060882800608826,
       "llmCallRate": 0.0684931506849315,
-      "abstainRate": 0.0821917808219178,
-      "citationCoverage": 0.0684931506849315
+      "abstainRate": 0.0958904109589041,
+      "citationCoverage": 0.0547945205479452
     },
     "agent": {
-      "templateShare": 0.23076923076923078,
-      "nearDuplicateRate": 0.011057692307692308,
-      "llmCallRate": 0.9846153846153847,
-      "abstainRate": 0.046153846153846156,
-      "citationCoverage": 0.26153846153846155
+      "templateShare": 0.25,
+      "nearDuplicateRate": 0.01134585289514867,
+      "llmCallRate": 0.9861111111111112,
+      "abstainRate": 0.05555555555555555,
+      "citationCoverage": 0.3472222222222222
     }
   },
-  "findings": [],
+  "findings": [
+    {
+      "scenario": "pinned-current-manager-and-result-evidence",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "near-duplicate",
+      "summary": "86% overlap between answers to \"What are the latest dated club injury updates for Forest and Arsenal? Keep current reports distinct from future kickoff availability.\" and \"Any injury or lineup news for Forest vs Arsenal?\""
+    }
+  ],
   "sourceCommit": "dd17ba5",
   "apiSha": "dd17ba5",
-  "ranAt": "2026-10-18T13:09:24.134Z"
+  "ranAt": "2026-10-18T13:55:12.976Z"
 }
