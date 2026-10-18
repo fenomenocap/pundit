@@ -1,27 +1,27 @@
 {
-  "date": "2026-10-17",
-  "runId": "2026-10-17T21-59-58-982Z",
+  "date": "2026-10-18",
+  "runId": "2026-10-18T13-09-24-134Z",
   "status": "clean",
   "overall": "ISSUES FOUND",
   "progress": "complete",
   "scenariosRun": 73,
-  "passed": 68,
-  "inconclusive": 5,
+  "passed": 69,
+  "inconclusive": 4,
   "failed": 0,
-  "turns": 71,
-  "answeredTurns": 71,
-  "turnsWithCitations": 6,
-  "medianLatencyMs": 138,
+  "turns": 73,
+  "answeredTurns": 73,
+  "turnsWithCitations": 5,
+  "medianLatencyMs": 157,
   "repeatedSentences": 0,
   "nearDuplicatePairs": 0,
   "uncitedCurrentNews": 0,
   "requestEngine": "both",
   "qualityMetrics": {
-    "templateShare": 0.14084507042253522,
-    "nearDuplicateRate": 0.028169014084507043,
-    "llmCallRate": 0.07042253521126761,
-    "abstainRate": 0.08450704225352113,
-    "citationCoverage": 0.08450704225352113
+    "templateShare": 0.136986301369863,
+    "nearDuplicateRate": 0.029299847792998476,
+    "llmCallRate": 0.0684931506849315,
+    "abstainRate": 0.0821917808219178,
+    "citationCoverage": 0.0684931506849315
   },
   "llmJudgeSummary": {
     "score": null,
@@ -38,22 +38,22 @@
   },
   "engineQualityComparison": {
     "legacy": {
-      "templateShare": 0.14084507042253522,
-      "nearDuplicateRate": 0.028169014084507043,
-      "llmCallRate": 0.07042253521126761,
-      "abstainRate": 0.08450704225352113,
-      "citationCoverage": 0.08450704225352113
+      "templateShare": 0.136986301369863,
+      "nearDuplicateRate": 0.029299847792998476,
+      "llmCallRate": 0.0684931506849315,
+      "abstainRate": 0.0821917808219178,
+      "citationCoverage": 0.0684931506849315
     },
     "agent": {
-      "templateShare": 0.32857142857142857,
-      "nearDuplicateRate": 0.011594202898550725,
-      "llmCallRate": 0.9857142857142858,
-      "abstainRate": 0.05714285714285714,
-      "citationCoverage": 0.4857142857142857
+      "templateShare": 0.23076923076923078,
+      "nearDuplicateRate": 0.011057692307692308,
+      "llmCallRate": 0.9846153846153847,
+      "abstainRate": 0.046153846153846156,
+      "citationCoverage": 0.26153846153846155
     }
   },
   "findings": [],
-  "sourceCommit": "012f6e2",
-  "apiSha": "012f6e2",
-  "ranAt": "2026-10-17T21:59:58.982Z"
+  "sourceCommit": "dd17ba5",
+  "apiSha": "dd17ba5",
+  "ranAt": "2026-10-18T13:09:24.134Z"
 }

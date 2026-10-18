@@ -1,0 +1,36 @@
+{
+  "runId": "2026-10-18T13-09-24-134Z",
+  "overall": "ISSUES FOUND",
+  "requests": 76,
+  "featured": {
+    "homeTeam": "Forest",
+    "awayTeam": "Arsenal",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "utcDate": "2026-10-18T15:30Z",
+    "stage": "2026_27_english_premier_league",
+    "recognizedFixtureId": "espn:eng.1:401878769"
+  },
+  "report": {
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-18T13-09-24-134Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-18T13-09-24-134Z.md"
+  }
+}
+{
+  "runId": "2026-10-18T13-26-53-337Z",
+  "overall": "ISSUES FOUND",
+  "requests": 71,
+  "featured": {
+    "homeTeam": "Forest",
+    "awayTeam": "Arsenal",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "utcDate": "2026-10-18T15:30Z",
+    "stage": "2026_27_english_premier_league",
+    "recognizedFixtureId": "espn:eng.1:401878769"
+  },
+  "report": {
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-18T13-26-53-337Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-18T13-26-53-337Z.md"
+  }
+}
