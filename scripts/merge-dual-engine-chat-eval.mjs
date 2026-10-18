@@ -50,11 +50,14 @@ export async function mergeDualEngineChatEvalReports(legacy, agent, outputPath) 
     engineQualityComparison: compareEngineQuality(legacyTurns, agentTurns),
   };
 
-  if (!legacy.llmJudge?.scoredTurns && process.env.OPENROUTER_API_KEY?.trim()) {
+  const judgeNeedsRerun = (judge) => !judge?.scoredTurns
+    || (judge.judgedTurns > 0 && judge.scoredTurns === 0);
+
+  if (judgeNeedsRerun(legacy.llmJudge) && process.env.OPENROUTER_API_KEY?.trim()) {
     merged.llmJudge = await judgeEvalTurns(legacyTurns, { maxTurns: 24, paceMs: 250 });
     merged.llmJudgeSummary = summarizeLlmJudge(merged);
   }
-  if (!agent.llmJudge?.scoredTurns && process.env.OPENROUTER_API_KEY?.trim()) {
+  if (judgeNeedsRerun(agent.llmJudge) && process.env.OPENROUTER_API_KEY?.trim()) {
     merged.agentEval.llmJudge = await judgeEvalTurns(agentTurns, { maxTurns: 24, paceMs: 250 });
     merged.agentEval.llmJudgeSummary = summarizeLlmJudge({ llmJudge: merged.agentEval.llmJudge });
   }
