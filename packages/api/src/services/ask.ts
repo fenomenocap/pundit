@@ -141,6 +141,7 @@ import {
   filterDeskEvidenceBundle,
   stripSurplusCurrentNewsNotices,
   humaniseDeskCitationDates,
+  formatDeskCitationDate,
   sanitizeDeskModelProse,
   shouldRestoreDeskFootballTake,
   stripDeskBoardRecitals,
@@ -191,7 +192,11 @@ import {
   sanitizeAgentUserText,
 } from "./chat-agent-fallback";
 import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
-import { finalizeAgentPackagedAnswer } from "./chat-agent-package";
+import {
+  enrichAgentTeamNewsAttribution,
+  finalizeAgentPackagedAnswer,
+  sanitizeAgentCitationArtifacts,
+} from "./chat-agent-package";
 import type { ChatEngineMode } from "./chat-engine";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
 import {
@@ -9145,6 +9150,17 @@ function evidenceBundleForMatch(
   });
 }
 
+/** Publisher HTML bodies for manager verification on the agent path (not snippet-only). */
+export async function fetchManagerPublisherPages(
+  bundle: EvidenceBundle,
+  signal?: AbortSignal,
+): Promise<RetrievedEvidencePage[]> {
+  if (!bundle.results.length) return [];
+  if (!bundle.pageCache) bundle.pageCache = createEvidencePageCache();
+  const pages = await hydrateBundlePublicationDates(bundle, signal);
+  return pages.map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
+}
+
 async function hydrateBundlePublicationDates(
   bundle: EvidenceBundle,
   signal?: AbortSignal
@@ -10421,6 +10437,49 @@ function logAgentEngineSkip(requestStartedAt: number, skipReason: string): void 
   });
 }
 
+export function normalizeAgentManagerAnswer(
+  question: string,
+  grounding: AskGrounding,
+  prose: string,
+  citations: AskCitation[],
+  bundle: EvidenceBundle,
+  managerPages: readonly RetrievedEvidencePage[] | undefined,
+  nowMs = Date.now(),
+): { prose: string; verification: AskVerification } {
+  const notRequired: AskVerification = {
+    status: "not-required",
+    supportedClaimCount: 0,
+    removedClaimCount: 0,
+  };
+  const scope = singleClubCurrentFactScope(question, grounding);
+  if (scope?.kind !== "manager" || !managerPages?.length) {
+    return { prose, verification: notRequired };
+  }
+  const extraction = extractManagerIdentityCandidates(scope, bundle, managerPages, nowMs);
+  if (extraction.facts.length !== 1) {
+    return { prose, verification: notRequired };
+  }
+  const { name, sourceId } = extraction.facts[0];
+  const citation = citations.find((row) => row.id === sourceId)
+    ?? bundle.results.find((row) => row.id === sourceId);
+  if (!citation) {
+    return { prose, verification: notRequired };
+  }
+  const displayDate = formatDeskCitationDate(citation.date);
+  const title = citation.title.replace(/[\[\]]/g, "").trim();
+  const lead = `${scope.club}'s manager is ${name} ([${title}](${citation.url}) · ${displayDate}).`;
+  const tail = prose
+    .replace(/^\s*\*{0,2}[^*\n]+manager[^*\n]*\*{0,2}[^.!?]*[.!?]\s*/i, "")
+    .trim();
+  const merged = tail && !tail.toLowerCase().startsWith(name.toLowerCase())
+    ? `${lead} ${tail}`.trim()
+    : lead;
+  return {
+    prose: merged,
+    verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 },
+  };
+}
+
 /** #301-style agent delivery: agent prose + citation rendering, no deliverAnswer re-verify. */
 function packageAgentDirectAnswer(
   question: string,
@@ -10430,25 +10489,31 @@ function packageAgentDirectAnswer(
   hasHistory: boolean,
   usedLlm: boolean,
   voice?: "desk",
+  managerPages?: readonly RetrievedEvidencePage[],
 ): ScopedAskPayload {
-  const { answer: rendered, citations } = renderEvidenceCitations(prose, bundle, false);
+  let prepared = sanitizeAgentCitationArtifacts(prose);
+  if (planResponse(question, { groundingKind: grounding?.kind ?? null }).mode === "team-news") {
+    prepared = enrichAgentTeamNewsAttribution(prepared, bundle, grounding);
+  }
+  const { answer: rendered, citations } = renderEvidenceCitations(prepared, bundle, false);
   const answer = rendered.trim()
     ? rendered
     : resolveAgentUserAnswer(question, grounding, bundle, hasHistory, "");
-  const packaged = finalizeAgentPackagedAnswer(
+  const shaped = finalizeAgentPackagedAnswer(answer, { voice });
+  const manager = normalizeAgentManagerAnswer(
     question,
     grounding,
-    bundle,
-    answer,
+    shaped,
     citations,
-    { hasHistory, voice },
+    bundle,
+    managerPages,
   );
   return {
-    answer: packaged.prose,
+    answer: manager.prose,
     grounding,
-    verification: packaged.verification,
+    verification: manager.verification,
     usedLlm,
-    ...(packaged.citations.length ? { citations: packaged.citations } : {}),
+    ...(citations.length ? { citations } : {}),
   };
 }
 
@@ -10515,6 +10580,16 @@ async function deliverChatAgentTurn(
   }
   if (pendingError) mapAnalysisError(pendingError);
 
+  let managerPages: RetrievedEvidencePage[] | undefined;
+  const managerScope = singleClubCurrentFactScope(question, grounding);
+  if (managerScope?.kind === "manager" && bundle.results.length && !signal?.aborted) {
+    try {
+      managerPages = await fetchManagerPublisherPages(bundle, signal);
+    } catch (error) {
+      if (!isCancellation(error, signal)) managerPages = [];
+    }
+  }
+
   if (!agentText.trim() || containsAgentInternalWording(agentText)) {
     metrics.outcome = metrics.outcome === "success" ? "fallback" : metrics.outcome;
     const fallbackProse = resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, agentText);
@@ -10526,6 +10601,7 @@ async function deliverChatAgentTurn(
       history.length > 0,
       metrics.toolSteps > 0,
       voice,
+      managerPages,
     );
   }
 
@@ -10543,6 +10619,7 @@ async function deliverChatAgentTurn(
     history.length > 0,
     true,
     voice,
+    managerPages,
   );
 }
 
