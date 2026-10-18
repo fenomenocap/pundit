@@ -2532,6 +2532,16 @@ export function renderMarkdown(report) {
     `- Certification gate: ${report.certificationGate?.passed ? "PASS" : "FAIL"}`,
     `- Pacing gate: ${report.pacingGate?.passed ? "PASS" : "FAIL"} — ${report.pacingGate?.minimumObservedGapMs ?? "n/a"} ms minimum observed gap (required ${report.pacingGate?.minimumIntervalMs ?? "n/a"} ms)`,
     `- Web search telemetry: preflight ${report.postRun?.webSearch?.preflightTotalSearches ?? "n/a"}, post-run ${report.postRun?.webSearch?.postRunTotalSearches ?? "n/a"}, delta ${report.postRun?.webSearch?.totalSearchesDelta ?? "n/a"}, consecutive failures ${report.postRun?.webSearch?.postRunConsecutiveFailures ?? "n/a"}`,
+    report.llmJudgeSummary?.status === "skipped_no_key"
+      ? `- ${report.llmJudgeSummary.note ?? "judge: skipped (no key)"} · skipped turns ${report.llmJudgeSummary.skippedTurns ?? 0}`
+      : report.llmJudgeSummary?.score != null
+        ? `- LLM judge overall: ${report.llmJudgeSummary.score} (${report.llmJudgeSummary.scoredTurns ?? "?"} scored turn(s))`
+        : null,
+    report.agentEval?.llmJudgeSummary?.status === "skipped_no_key"
+      ? `- Agent ${report.agentEval.llmJudgeSummary.note ?? "judge: skipped (no key)"} · skipped turns ${report.agentEval.llmJudgeSummary.skippedTurns ?? 0}`
+      : report.agentEval?.llmJudgeSummary?.score != null
+        ? `- Agent LLM judge overall: ${report.agentEval.llmJudgeSummary.score}`
+        : null,
     "",
     "## Scenario Results",
     "",
