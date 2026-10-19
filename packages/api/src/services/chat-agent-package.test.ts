@@ -4,13 +4,39 @@ import { normalizeAgentManagerAnswer } from "./ask";
 import type { RetrievedEvidencePage } from "./evidence-page-retrieval";
 import {
   AGENT_HISTORY_CONTENT_MAX,
+  AGENT_NARROW_DELIVERY_MAX,
   agentDeliveryStructurallyComplete,
   capAgentAnswerForHistory,
+  capAgentNarrowDelivery,
   completeAgentAnswerEnding,
+  ensureAgentDirectAnswerLead,
   enrichAgentTeamNewsAttribution,
   finalizeAgentPackagedAnswer,
+  trimAgentDeliveryForPlan,
 } from "./chat-agent-package";
 import { parseHistory } from "../routes/ask";
+
+/** Test-only mirror of Schema-17 directAnswerFirst — not used in delivery code. */
+function directAnswerFirstForTest(answer: string): boolean {
+  const text = answer.trim().replace(/[’‘]/g, "'");
+  const firstSubstantive = text.split("\n")
+    .filter((line) => !/^\s*\*\*[^*]+\*\*:?\s*$/.test(line))
+    .filter((line) => !/^\s*#{1,6}\s/.test(line))
+    .filter((line) => !/^\s*\|/.test(line))
+    .filter((line) => !/^---+\s*$/.test(line.trim()))
+    .map((line) => line.replace(/^\s*[-*#]+\s*/, "").trim())
+    .find(Boolean) ?? "";
+  const lead = firstSubstantive.slice(0, 280);
+  if (/^I\s+(?:will|'ll|can)\s+(?:explain|outline|walk|break|look|start|begin|analyse|analyze|consider)\b/i.test(lead)) {
+    return false;
+  }
+  return (
+    /\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s+(?:decimal|odds)|^\s*\d+\s*[.)]/i.test(lead)
+    || /^\s*(?:Back|Lean|Avoid|No bet)\b/i.test(lead)
+    || /^\s*(?:I|I'm|I've|I'd)\s+(?:make|have|rate|see|favour|favor|lean|land|cannot|can't|do not|don't|would not|wouldn't|am unable|could not|couldn't)\b/i.test(lead)
+    || /^\s*(?:no comparable|not enough|unable|cannot|can't|the table|standings|[\p{L}][\p{L} .'-]{1,60}\s+(?:lead(?:s|ing)?|is first|are first))\b/iu.test(lead)
+  );
+}
 
 const matchGrounding = {
   kind: "match",
@@ -150,6 +176,63 @@ describe("normalizeAgentManagerAnswer", () => {
       supportedClaimCount: 1,
       removedClaimCount: 0,
     });
+  });
+});
+
+describe("ensureAgentDirectAnswerLead", () => {
+  it("strips a Here's-how table meta-preface without injecting copy", () => {
+    const raw = `Here's how the Premier League table looks through the opening weeks (taken from the ESPN feed): **Top five**
+1. **Man City** — 7-0-0, 21 pts, +12 GD`;
+    const out = ensureAgentDirectAnswerLead(raw);
+    expect(out).not.toMatch(/^Here's how/i);
+    expect(out).toMatch(/^\*\*Top five\*\*/);
+    expect(out).not.toMatch(/I make Man City the current leaders/i);
+  });
+
+  it("unwraps a bold No — before I can't guarantee without adding template prose", () => {
+    const raw = "**No — I can't guarantee it, and neither should anyone else.** The leader is Man City, and the numbers are ominous for the chasing pack.";
+    const out = ensureAgentDirectAnswerLead(raw);
+    expect(out).toMatch(/^I can't guarantee it, and neither should anyone else\./);
+    expect(out).not.toMatch(/season outlook alone/i);
+  });
+});
+
+describe("capAgentNarrowDelivery", () => {
+  it("ends on a complete sentence within the narrow limit", () => {
+    const raw = `I can't guarantee it. ${"Man City lead the table on 21 points with perfect form. ".repeat(80)}`;
+    const out = capAgentNarrowDelivery(raw, AGENT_NARROW_DELIVERY_MAX);
+    expect(out.length).toBeLessThanOrEqual(AGENT_NARROW_DELIVERY_MAX);
+    expect(out.length).toBeGreaterThan(0);
+    expect(agentDeliveryStructurallyComplete(out)).toBe(true);
+    expect(out.endsWith(".")).toBe(true);
+  });
+
+  it("does not return empty when the cap cannot find a safe prefix", () => {
+    const raw = "A".repeat(950);
+    expect(capAgentNarrowDelivery(raw, AGENT_NARROW_DELIVERY_MAX).length).toBeGreaterThan(0);
+  });
+});
+
+describe("trimAgentDeliveryForPlan", () => {
+  it("keeps pricing-desk turns compact and drops unsolicited team-news essays", () => {
+    const raw = `${"My 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%. ".repeat(2)}**Back Arsenal** — lean rather than full stake.\n## Team News\nLong injury packet.`;
+    const out = trimAgentDeliveryForPlan(raw, "What about Forest vs Arsenal?", { groundingKind: "match" });
+    expect(out.length).toBeLessThanOrEqual(AGENT_NARROW_DELIVERY_MAX);
+    expect(out).not.toMatch(/## Team News/i);
+    expect(out).toMatch(/Back Arsenal/i);
+  });
+
+  it("caps long season certainty follow-ups for narrow delivery", () => {
+    const raw = `I can't guarantee it, and neither should anyone else. ${"Man City lead the table on 21 points with perfect form. ".repeat(80)}`;
+    const out = trimAgentDeliveryForPlan(
+      raw,
+      "Can you guarantee the leader will win, or what would change that view?",
+      { hasHistory: true, groundingKind: "season" },
+    );
+    expect(out.length).toBeLessThanOrEqual(AGENT_NARROW_DELIVERY_MAX);
+    expect(agentDeliveryStructurallyComplete(out)).toBe(true);
+    expect(out.split("\n").filter((line) => /^\s*\*\*[^*\n]+\*\*:?\s*$/.test(line)).length).toBeLessThanOrEqual(1);
+    expect(directAnswerFirstForTest(out)).toBe(true);
   });
 });
 

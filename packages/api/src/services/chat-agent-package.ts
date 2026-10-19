@@ -4,9 +4,15 @@ import type { RetrievedEvidencePage } from "./evidence-page-retrieval";
 import { formatDeskCitationDate, rewriteDeskCitationMarkdown } from "./desk-voice";
 import { playerNamedInNewsBody } from "./player-evidence";
 import type { ChatAgentCapHit } from "./chat-agent-limits";
+import { planResponse, type ResponseMode } from "./response-plan";
 
 /** Must stay aligned with `MAX_HISTORY_CONTENT_LENGTH` in routes/ask.ts */
 export const AGENT_HISTORY_CONTENT_MAX = 4_000;
+
+/** Aligns with Schema-17 `expectNarrowFollowup` length gate for agent delivery. */
+export const AGENT_NARROW_DELIVERY_MAX = 900;
+
+const SECTION_LABEL_LINE = /^\s*\*\*[^*\n]+\*\*:?\s*$/;
 
 /** Agent delivery last resort when recovery and grounding copy are both empty. */
 export const AGENT_DELIVERY_LAST_RESORT =
@@ -166,6 +172,128 @@ export function completeAgentAnswerEnding(text: string): string {
   return trimmed.trim();
 }
 
+function unwrapAgentGuaranteeBoldWrapper(text: string): string {
+  let trimmed = text.trim();
+  trimmed = trimmed.replace(
+    /^\*\*No\s*[—–-]\s*\*\*\s*(I\s+(?:can'?t|cannot)\s+guarantee[^.!?]*[.!?])\s*/i,
+    "$1 ",
+  );
+  trimmed = trimmed.replace(
+    /^\*\*No\s*[—–-]\s*([^*]+)\*\*\s*/i,
+    "$1 ",
+  );
+  trimmed = trimmed.replace(/^\*\*No\s*[—–-]\s*\*\*\s*/i, "");
+  return trimmed.trim();
+}
+
+/** Agent-only formatting: drop meta table prefaces and bold guarantee wrappers. */
+export function ensureAgentDirectAnswerLead(text: string, _question?: string): string {
+  let trimmed = text.trim();
+  trimmed = trimmed.replace(
+    /^Here(?:'|')?s how the (?:current )?(?:Premier League )?table looks[^:]*:\s*/i,
+    "",
+  );
+  return unwrapAgentGuaranteeBoldWrapper(trimmed);
+}
+
+/**
+ * Narrow delivery cap: sentence boundaries only — never mid-clause chop.
+ * Falls back to the input when no structurally complete prefix fits.
+ */
+export function capAgentNarrowDelivery(text: string, maxLen = AGENT_NARROW_DELIVERY_MAX): string {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length <= maxLen) return trimmed;
+
+  let working = completeAgentAnswerEnding(trimmed);
+  let slice = working.slice(0, maxLen);
+  const lastSentenceEnd = Math.max(
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf("! "),
+    slice.lastIndexOf("? "),
+  );
+  if (lastSentenceEnd > maxLen * 0.45) slice = slice.slice(0, lastSentenceEnd + 1);
+  working = completeAgentAnswerEnding(slice.trim());
+  if (working.length > 0 && working.length <= maxLen && agentDeliveryStructurallyComplete(working)) {
+    return working;
+  }
+
+  const sentenceOnly = trimToLastCompleteSentence(working.slice(0, maxLen));
+  if (
+    sentenceOnly.length > 0
+    && sentenceOnly.length <= maxLen
+    && agentDeliveryStructurallyComplete(sentenceOnly)
+  ) {
+    return sentenceOnly;
+  }
+
+  const fromFull = trimToLastCompleteSentence(trimmed.slice(0, maxLen));
+  if (
+    fromFull.length > 0
+    && fromFull.length <= maxLen
+    && agentDeliveryStructurallyComplete(fromFull)
+  ) {
+    return fromFull;
+  }
+
+  return trimmed;
+}
+
+const NARROW_AGENT_MODES: ReadonlySet<ResponseMode> = new Set([
+  "pricing-desk",
+  "totals",
+  "btts",
+  "exact-score",
+  "fair-price",
+  "match-follow-up",
+  "player-or-scorer",
+  "table",
+  "season",
+  "market-comparison",
+  "stake-refusal",
+  "user-line",
+]);
+
+function stripUnrequestedPricingEssay(text: string, mode: ResponseMode, question: string): string {
+  if (mode !== "pricing-desk") return text;
+  if (/\b(?:injur|team news|line-?up|availability)\b/i.test(question)) return text;
+  const cut = text.search(/\n(?:##\s|\*\*(?:Team News|Form(?: Check)?)\*\*)/i);
+  return cut >= 0 ? text.slice(0, cut).trim() : text;
+}
+
+function collapseExtraAgentSectionLabels(text: string, maxSections: number): string {
+  if (maxSections >= 2) return text;
+  const lines = text.split("\n");
+  let labelsSeen = 0;
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (SECTION_LABEL_LINE.test(line)) {
+      labelsSeen += 1;
+      if (labelsSeen > maxSections) break;
+    }
+    kept.push(line);
+  }
+  return kept.join("\n").trim();
+}
+
+export function trimAgentDeliveryForPlan(
+  text: string,
+  question: string,
+  options: { hasHistory?: boolean; groundingKind?: string | null } = {},
+): string {
+  const plan = planResponse(question, {
+    hasHistory: Boolean(options.hasHistory),
+    groundingKind: options.groundingKind ?? null,
+  });
+  let trimmed = ensureAgentDirectAnswerLead(text, question);
+  trimmed = stripUnrequestedPricingEssay(trimmed, plan.mode, question);
+  trimmed = collapseExtraAgentSectionLabels(trimmed, plan.maxSections);
+  const narrow = Boolean(options.hasHistory) || NARROW_AGENT_MODES.has(plan.mode);
+  if (narrow && trimmed.length > AGENT_NARROW_DELIVERY_MAX) {
+    trimmed = capAgentNarrowDelivery(trimmed, AGENT_NARROW_DELIVERY_MAX);
+  }
+  return trimmed.trim();
+}
+
 export function capAgentAnswerForHistory(text: string, maxLen = AGENT_HISTORY_CONTENT_MAX): string {
   let trimmed = completeAgentAnswerEnding(text.trim());
   if (trimmed.length <= maxLen) return trimmed;
@@ -188,12 +316,23 @@ export function capAgentAnswerForHistory(text: string, maxLen = AGENT_HISTORY_CO
 
 function polishAgentDeliveredProse(
   prose: string,
-  options: { voice?: "desk" },
+  options: {
+    voice?: "desk";
+    question?: string;
+    hasHistory?: boolean;
+    groundingKind?: string | null;
+  },
   trimStructuralTail: (text: string) => string,
 ): string {
   let text = trimStructuralTail(prose.trim());
   if (options.voice === "desk") text = rewriteDeskCitationMarkdown(text);
   text = completeAgentAnswerEnding(text);
+  if (options.question) {
+    text = trimAgentDeliveryForPlan(text, options.question, {
+      hasHistory: options.hasHistory,
+      groundingKind: options.groundingKind,
+    });
+  }
   return capAgentAnswerForHistory(text);
 }
 
@@ -207,6 +346,9 @@ export function repairAgentDeliveredProse(
   options: {
     voice?: "desk";
     capHit?: ChatAgentCapHit | null;
+    question?: string;
+    hasHistory?: boolean;
+    groundingKind?: string | null;
     recover: () => string;
     groundedFallback?: () => string;
   },
@@ -233,7 +375,12 @@ export function repairAgentDeliveredProse(
 
 export function finalizeAgentPackagedAnswer(
   prose: string,
-  options: { voice?: "desk" } = {},
+  options: {
+    voice?: "desk";
+    question?: string;
+    hasHistory?: boolean;
+    groundingKind?: string | null;
+  } = {},
   trimStructuralTail: (text: string) => string = (text) => text,
 ): string {
   return polishAgentDeliveredProse(prose, options, trimStructuralTail);
