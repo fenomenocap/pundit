@@ -10738,7 +10738,7 @@ async function deliverChatAgentTurn(
     hasHistory: history.length > 0,
     voice,
   });
-  prose = finalizeChatAgentAnswer(prose, grounding);
+  prose = normalizeAnalystIdentity(finalizeChatAgentAnswer(prose, grounding));
 
   return finishChatAgentDelivery(
     metrics,

@@ -184,9 +184,9 @@ export function marketOddsToolPayload(
   grounding: AskGrounding,
 ): Record<string, unknown> {
   const data = getMarketOdds(fixture).data;
-  if (completeCachedMarketOdds(data.markets)) return data as Record<string, unknown>;
+  if (completeCachedMarketOdds(data.markets)) return data as unknown as Record<string, unknown>;
   if (grounding?.kind !== "match" || !grounding.oddsSources?.length) {
-    return data as Record<string, unknown>;
+    return data as unknown as Record<string, unknown>;
   }
   const quotes = grounding.oddsSources.map((row) => ({
     source: row.source,
