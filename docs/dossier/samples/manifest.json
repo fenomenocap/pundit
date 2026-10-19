@@ -1,0 +1,88 @@
+{
+  "builtAt": "2026-10-19T10:27:38.999Z",
+  "window": {
+    "kickoffFromInclusive": "2026-10-23T00:00:00.000Z",
+    "kickoffToExclusive": "2026-10-26T00:00:00.000Z"
+  },
+  "fixtureCount": 10,
+  "fixtures": [
+    {
+      "fixtureId": "espn:eng.1:401879253",
+      "kickoffUtc": "2026-10-23T19:00Z",
+      "home": "Ipswich",
+      "away": "Forest",
+      "file": "espn-eng.1-401879253.json"
+    },
+    {
+      "fixtureId": "espn:eng.1:401879256",
+      "kickoffUtc": "2026-10-24T11:30Z",
+      "home": "Aston Villa",
+      "away": "Man City",
+      "file": "espn-eng.1-401879256.json"
+    },
+    {
+      "fixtureId": "espn:eng.1:401878768",
+      "kickoffUtc": "2026-10-24T14:00Z",
+      "home": "Arsenal",
+      "away": "Everton",
+      "file": "espn-eng.1-401878768.json"
+    },
+    {
+      "fixtureId": "espn:eng.1:401879255",
+      "kickoffUtc": "2026-10-24T14:00Z",
+      "home": "Coventry",
+      "away": "Fulham",
+      "file": "espn-eng.1-401879255.json"
+    },
+    {
+      "fixtureId": "espn:eng.1:401878767",
+      "kickoffUtc": "2026-10-24T16:30Z",
+      "home": "Chelsea",
+      "away": "Tottenham",
+      "file": "espn-eng.1-401878767.json"
+    },
+    {
+      "fixtureId": "espn:eng.1:401879254",
+      "kickoffUtc": "2026-10-25T14:00Z",
+      "home": "Crystal Palace",
+      "away": "Newcastle",
+      "file": "espn-eng.1-401879254.json"
+    },
+    {
+      "fixtureId": "espn:eng.1:401878766",
+      "kickoffUtc": "2026-10-25T14:00Z",
+      "home": "Hull",
+      "away": "Brentford",
+      "file": "espn-eng.1-401878766.json"
+    },
+    {
+      "fixtureId": "espn:eng.1:401878765",
+      "kickoffUtc": "2026-10-25T14:00Z",
+      "home": "Liverpool",
+      "away": "Brighton",
+      "file": "espn-eng.1-401878765.json"
+    },
+    {
+      "fixtureId": "espn:eng.1:401879252",
+      "kickoffUtc": "2026-10-25T14:00Z",
+      "home": "Man United",
+      "away": "Bournemouth",
+      "file": "espn-eng.1-401879252.json"
+    },
+    {
+      "fixtureId": "espn:eng.1:401878764",
+      "kickoffUtc": "2026-10-25T16:30Z",
+      "home": "Sunderland",
+      "away": "Leeds",
+      "file": "espn-eng.1-401878764.json"
+    }
+  ],
+  "sourceNotes": [
+    "ESPN public scoreboard (table, form, rest, H2H)",
+    "Pinned clubelo@1 artifact (model strengths + factor breakdown)",
+    "Stake/Kalshi/Polymarket bounded fetch where available (market reference only)",
+      "Evidence: run scripts/capture-verified-dossier-samples.ts (OPENROUTER_API_KEY) for page-verified rows; see docs/dossier/captures/capture-summary.json when present",
+    "Stake: disabled (Cloudflare 403 on public GraphQL); Kalshi + Polymarket best-effort in market.rows",
+    "Regenerate: packages/api/scripts/build-dossier-samples.ts (+ optional refresh-dossier-sample-markets.ts)"
+  ]
+}

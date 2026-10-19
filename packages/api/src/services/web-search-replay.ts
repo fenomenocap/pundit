@@ -9,6 +9,8 @@ export interface WebSearchReplayBundle {
   schemaVersion: typeof SEARCH_REPLAY_SCHEMA_VERSION;
   replayId: string;
   recordedAt?: string;
+  /** When true, outcomes are hand-authored for CI only — never attach to real fixtures. */
+  synthetic?: boolean;
   queries: Record<string, WebSearchOutcome>;
 }
 
@@ -50,6 +52,10 @@ export function loadWebSearchReplayBundle(replayId: string): WebSearchReplayBund
   }
   bundleCache.set(replayId, parsed);
   return parsed;
+}
+
+export function isSyntheticWebSearchReplay(replayId: string): boolean {
+  return loadWebSearchReplayBundle(replayId).synthetic === true;
 }
 
 function cloneOutcome(outcome: WebSearchOutcome): WebSearchOutcome {

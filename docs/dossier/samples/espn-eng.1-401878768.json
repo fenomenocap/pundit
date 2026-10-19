@@ -1,0 +1,494 @@
+{
+  "schemaVersion": 1,
+  "fixture": {
+    "fixtureId": "espn:eng.1:401878768",
+    "espnEventId": 401878768,
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "kickoffUtc": "2026-10-24T14:00Z",
+    "home": "Arsenal",
+    "away": "Everton"
+  },
+  "builtAt": "2026-10-19T10:27:38.999Z",
+  "builderVersion": "phase1-2026-10-19",
+  "scheduleReason": "manual",
+  "table": {
+    "home": {
+      "value": {
+        "position": 2,
+        "points": 18,
+        "goalDifference": 6
+      },
+      "provenance": {
+        "sourceId": "espn-public-scoreboard",
+        "label": "ESPN",
+        "trustTier": "fixture-spine",
+        "asOf": "2026-10-19T10:27:38.942Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+      }
+    },
+    "away": {
+      "value": {
+        "position": 8,
+        "points": 10,
+        "goalDifference": 1
+      },
+      "provenance": {
+        "sourceId": "espn-public-scoreboard",
+        "label": "ESPN",
+        "trustTier": "fixture-spine",
+        "asOf": "2026-10-19T10:27:38.942Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+      }
+    }
+  },
+  "form": {
+    "homeLast5": {
+      "value": {
+        "results": [
+          "W",
+          "W",
+          "L",
+          "W",
+          "W"
+        ],
+        "played": 5,
+        "goalsFor": 7,
+        "goalsAgainst": 5
+      },
+      "provenance": {
+        "sourceId": "espn-public-scoreboard",
+        "label": "ESPN",
+        "trustTier": "fixture-spine",
+        "asOf": "2026-10-19T10:27:38.942Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+      }
+    },
+    "awayLast5": {
+      "value": {
+        "results": [
+          "D",
+          "D",
+          "W",
+          "D",
+          "L"
+        ],
+        "played": 5,
+        "goalsFor": 5,
+        "goalsAgainst": 6
+      },
+      "provenance": {
+        "sourceId": "espn-public-scoreboard",
+        "label": "ESPN",
+        "trustTier": "fixture-spine",
+        "asOf": "2026-10-19T10:27:38.942Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+      }
+    },
+    "homeLast10": {
+      "value": {
+        "results": [
+          "W",
+          "W",
+          "W",
+          "W",
+          "W",
+          "W",
+          "W",
+          "L",
+          "W",
+          "W"
+        ],
+        "played": 10,
+        "goalsFor": 15,
+        "goalsAgainst": 6
+      },
+      "provenance": {
+        "sourceId": "espn-public-scoreboard",
+        "label": "ESPN",
+        "trustTier": "fixture-spine",
+        "asOf": "2026-10-19T10:27:38.942Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+      }
+    },
+    "awayLast10": {
+      "value": {
+        "results": [
+          "D",
+          "L",
+          "L",
+          "W",
+          "D",
+          "D",
+          "D",
+          "W",
+          "D",
+          "L"
+        ],
+        "played": 10,
+        "goalsFor": 11,
+        "goalsAgainst": 13
+      },
+      "provenance": {
+        "sourceId": "espn-public-scoreboard",
+        "label": "ESPN",
+        "trustTier": "fixture-spine",
+        "asOf": "2026-10-19T10:27:38.942Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+      }
+    }
+  },
+  "splits": {
+    "home": {
+      "value": {
+        "home": {
+          "results": [
+            "W",
+            "W",
+            "D",
+            "W",
+            "W",
+            "W",
+            "W",
+            "W",
+            "W",
+            "W",
+            "D",
+            "L",
+            "W",
+            "W",
+            "W",
+            "L",
+            "W",
+            "W",
+            "W",
+            "W",
+            "W",
+            "W"
+          ],
+          "played": 22,
+          "goalsFor": 48,
+          "goalsAgainst": 13
+        },
+        "away": {
+          "results": [
+            "W",
+            "L",
+            "W",
+            "W",
+            "W",
+            "D",
+            "D",
+            "L",
+            "W",
+            "W",
+            "D",
+            "W",
+            "D",
+            "D",
+            "W",
+            "W",
+            "L",
+            "W",
+            "W",
+            "W",
+            "W",
+            "L",
+            "W"
+          ],
+          "played": 23,
+          "goalsFor": 34,
+          "goalsAgainst": 19
+        }
+      },
+      "provenance": {
+        "sourceId": "espn-public-scoreboard",
+        "label": "ESPN",
+        "trustTier": "fixture-spine",
+        "asOf": "2026-10-19T10:27:38.942Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+      }
+    },
+    "away": {
+      "value": {
+        "home": {
+          "results": [
+            "W",
+            "D",
+            "D",
+            "W",
+            "L",
+            "W",
+            "L",
+            "W",
+            "L",
+            "L",
+            "D",
+            "D",
+            "L",
+            "L",
+            "W",
+            "W",
+            "L",
+            "D",
+            "L",
+            "W",
+            "D",
+            "W",
+            "L"
+          ],
+          "played": 23,
+          "goalsFor": 31,
+          "goalsAgainst": 31
+        },
+        "away": {
+          "results": [
+            "L",
+            "W",
+            "L",
+            "L",
+            "D",
+            "W",
+            "W",
+            "L",
+            "D",
+            "W",
+            "W",
+            "D",
+            "W",
+            "W",
+            "L",
+            "D",
+            "L",
+            "D",
+            "L",
+            "D",
+            "D",
+            "D"
+          ],
+          "played": 22,
+          "goalsFor": 24,
+          "goalsAgainst": 26
+        }
+      },
+      "provenance": {
+        "sourceId": "espn-public-scoreboard",
+        "label": "ESPN",
+        "trustTier": "fixture-spine",
+        "asOf": "2026-10-19T10:27:38.942Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+      }
+    }
+  },
+  "rest": {
+    "value": {
+      "restDaysHome": 5,
+      "restDaysAway": 7,
+      "homeMatchesLast14Days": 1,
+      "awayMatchesLast14Days": 2
+    },
+    "provenance": {
+      "sourceId": "espn-public-scoreboard",
+      "label": "ESPN",
+      "trustTier": "fixture-spine",
+      "asOf": "2026-10-19T10:27:38.942Z",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+    }
+  },
+  "headToHead": {
+    "value": {
+      "meetings": [
+        {
+          "utcDate": "2026-03-14T17:30Z",
+          "homeTeam": "Arsenal",
+          "awayTeam": "Everton",
+          "homeScore": 2,
+          "awayScore": 0,
+          "competitionId": "eng.1"
+        },
+        {
+          "utcDate": "2025-12-20T20:00Z",
+          "homeTeam": "Everton",
+          "awayTeam": "Arsenal",
+          "homeScore": 0,
+          "awayScore": 1,
+          "competitionId": "eng.1"
+        }
+      ],
+      "homeWins": 2,
+      "draws": 0,
+      "awayWins": 0
+    },
+    "provenance": {
+      "sourceId": "espn-public-scoreboard",
+      "label": "ESPN",
+      "trustTier": "fixture-spine",
+      "asOf": "2026-10-19T10:27:38.942Z",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
+    }
+  },
+  "rollingXg": {
+    "value": null,
+    "provenance": {
+      "sourceId": "rolling-xg-unavailable",
+      "label": "Not ingested in Phase 1",
+      "trustTier": "fixture-spine",
+      "asOf": "2026-10-19T10:27:38.999Z"
+    }
+  },
+  "injuries": {
+    "value": {
+      "items": []
+    },
+    "provenance": {
+      "sourceId": "injuries-placeholder",
+      "label": "Phase 2 federated corroboration",
+      "trustTier": "news",
+      "asOf": "2026-10-19T10:27:38.999Z"
+    }
+  },
+  "lineups": {
+    "value": {
+      "items": []
+    },
+    "provenance": {
+      "sourceId": "lineups-placeholder",
+      "label": "Phase 2 pre-kickoff search",
+      "trustTier": "news",
+      "asOf": "2026-10-19T10:27:38.999Z"
+    }
+  },
+  "manager": {
+    "value": {
+      "home": {
+        "name": null,
+        "tenureNote": null
+      },
+      "away": {
+        "name": null,
+        "tenureNote": null
+      }
+    },
+    "provenance": {
+      "sourceId": "manager-placeholder",
+      "label": "Phase 2 manager evidence",
+      "trustTier": "news",
+      "asOf": "2026-10-19T10:27:38.999Z"
+    }
+  },
+  "model": {
+    "value": {
+      "pHome": 0.7626,
+      "pDraw": 0.1769,
+      "pAway": 0.0605,
+      "pOver2_5": 0.503,
+      "pBttsYes": 0.4117,
+      "factorBreakdown": {
+        "shipped": {
+          "pHome": 0.7626,
+          "pDraw": 0.1769,
+          "pAway": 0.0605
+        },
+        "pricingExact": {
+          "pHome": 0.7626,
+          "pDraw": 0.1769,
+          "pAway": 0.0605
+        },
+        "baseline": {
+          "pHome": 0.3587,
+          "pDraw": 0.2827,
+          "pAway": 0.3587
+        },
+        "counterfactualSteps": [
+          {
+            "factorId": "elo-rating-gap",
+            "label": "Club strength (Elo gap)",
+            "narrative": "Rating gap 219.4459 Elo vs equal-strength baseline at 1933.2089 (neutral venue).",
+            "deltaPHomePct": 35.8907,
+            "deltaPDrawPct": -8.4109,
+            "deltaPAwayPct": -27.4798
+          },
+          {
+            "factorId": "home-advantage",
+            "label": "Home advantage",
+            "narrative": "42 Elo home boost for Arsenal (effective gap 261.4459).",
+            "deltaPHomePct": 4.5075,
+            "deltaPDrawPct": -2.1671,
+            "deltaPAwayPct": -2.3404
+          },
+          {
+            "factorId": "goal-calibration-shape",
+            "label": "EPL goal calibration (score shape)",
+            "narrative": "Outcome-anchored calibration preserves champion 1X2; adjusts score-shape marginals only.",
+            "deltaPHomePct": 0,
+            "deltaPDrawPct": 0,
+            "deltaPAwayPct": 0
+          }
+        ],
+        "reconciliation": {
+          "deltaPHomePctSum": 40.3982,
+          "expectedDeltaPHomePct": 40.3982,
+          "deltaPHomePctResidual": 0
+        },
+        "eloGapRaw": 219.4459,
+        "eloGapEffective": 261.4459,
+        "homeAdvantageElo": 42,
+        "lambdaHome": 2.0901,
+        "lambdaAway": 0.5807,
+        "totalXg": 2.6708,
+        "calibrationActive": true
+      }
+    },
+    "provenance": {
+      "sourceId": "clubelo-artifact",
+      "label": "Pinned ClubElo artifact",
+      "trustTier": "model-pin",
+      "asOf": "2026-10-19T10:27:38.974Z",
+      "url": "clubelo@1:e92896a0c08bf99a5ab548df41a9b1529c267b15f46f15eef84ab35ff883cb83"
+    }
+  },
+  "market": {
+    "value": {
+      "rows": [
+        {
+          "source": "kalshi",
+          "observedAt": "2026-10-19T10:29:34.300Z",
+          "pHome": 0.6862745098039215,
+          "pDraw": 0.20588235294117646,
+          "pAway": 0.10784313725490198
+        },
+        {
+          "source": "polymarket",
+          "observedAt": "2026-10-19T10:29:34.300Z",
+          "pHome": 0.7014925373134329,
+          "pDraw": 0.20398009950248758,
+          "pAway": 0.09452736318407962
+        }
+      ]
+    },
+    "provenance": {
+      "sourceId": "fixture-market-sources",
+      "label": "Stake / Kalshi / Polymarket (no-vig)",
+      "trustTier": "market-fetch",
+      "asOf": "2026-10-19T10:29:34.300Z"
+    }
+  },
+  "evidence": [],
+  "featureCandidates": [
+    {
+      "fieldPath": "form.homeLast5",
+      "factorId": "form",
+      "note": "Result sequence + GF/GA; candidate for calibration track only."
+    },
+    {
+      "fieldPath": "rest",
+      "factorId": "rest-congestion",
+      "note": "Rest days and 14-day match count from ESPN schedule."
+    },
+    {
+      "fieldPath": "rollingXg",
+      "factorId": "rolling-xg",
+      "note": "Requires licensed or search-ingested xG; not a Phase 1 model input."
+    }
+  ]
+}

@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "replayId": "synthetic-dossier-evidence-v1",
+  "synthetic": true,
+  "recordedAt": "2026-10-19T12:00:00.000Z",
+  "queries": {
+    "north testborough fc vs south example city team news injuries suspensions availability 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — North Testborough FC availability",
+          "link": "https://dossier-fixture.example.test/v1/north-testborough-injury-note",
+          "snippet": "SYNTHETIC FIXTURE ONLY: North Testborough FC list a doubtful striker for pipeline tests; not a real match or club.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "north testborough fc injury suspension update 2026-10-19": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — North Testborough training",
+          "link": "https://dossier-fixture.example.test/v1/north-testborough-training",
+          "snippet": "SYNTHETIC FIXTURE ONLY: Midfielder participated in a partial session in this test dossier.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "south example city injury suspension update 2026-10-19": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — South Example City squad",
+          "link": "https://dossier-fixture.example.test/v1/south-example-squad",
+          "snippet": "SYNTHETIC FIXTURE ONLY: South Example City report two players unavailable in this test dossier.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "north testborough fc vs south example city predicted lineup rotation starting xi 2026-10-19": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — predicted XI",
+          "link": "https://dossier-fixture.example.test/v1/rotation-hint",
+          "snippet": "SYNTHETIC FIXTURE ONLY: Rotation expected in midfield for dossier evidence merge tests.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "north testborough fc manager head coach appointment 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — North Testborough coach",
+          "link": "https://dossier-fixture.example.test/v1/north-manager",
+          "snippet": "SYNTHETIC FIXTURE ONLY: Test Coach Alpha listed as head coach for CI dossier builds.",
+          "date": "2026-08-01"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "south example city manager head coach appointment 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — South Example coach",
+          "link": "https://dossier-fixture.example.test/v1/south-manager",
+          "snippet": "SYNTHETIC FIXTURE ONLY: Test Coach Beta listed as head coach for CI dossier builds.",
+          "date": "2026-08-01"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "north testborough fc vs south example city tactical preview matchup style pressing 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — tactical note",
+          "link": "https://dossier-fixture.example.test/v1/tactics",
+          "snippet": "SYNTHETIC FIXTURE ONLY: High press vs wide build-up described for evidence category tests.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "north testborough fc motivation title race relegation form 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — North motivation",
+          "link": "https://dossier-fixture.example.test/v1/north-motivation",
+          "snippet": "SYNTHETIC FIXTURE ONLY: Table position narrative for motivation category tests.",
+          "date": "2026-10-17"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "south example city motivation title race relegation form 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — South motivation",
+          "link": "https://dossier-fixture.example.test/v1/south-motivation",
+          "snippet": "SYNTHETIC FIXTURE ONLY: Relegation-pressure narrative for motivation category tests.",
+          "date": "2026-10-18"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "north testborough fc vs south example city travel fatigue fixture congestion schedule 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — schedule congestion",
+          "link": "https://dossier-fixture.example.test/v1/congestion",
+          "snippet": "SYNTHETIC FIXTURE ONLY: Rest-day difference invented for travel-congestion category tests.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "north testborough fc vs south example city advanced stats xg fbref whoscored fotmob transfermarkt 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "SYNTHETIC CI — xG placeholder",
+          "link": "https://dossier-fixture.example.test/v1/xg-placeholder",
+          "snippet": "SYNTHETIC FIXTURE ONLY: Placeholder xG numbers for analytics-tier evidence tests.",
+          "date": "2026-10-15"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    }
+  }
+}

@@ -45,6 +45,8 @@ import {
   getRecognizedFixtureSnapshot,
   startFixtureRegistryShadow,
 } from "./services/fixture-registry";
+import matchDossierRoutes from "./routes/match-dossier";
+import { startMatchDossierCron } from "./services/match-dossier/schedule";
 
 export const app: Express = express();
 app.set("trust proxy", 1);
@@ -264,6 +266,7 @@ app.use("/api/model", modelRoutes);
 app.use("/api/ask", askRoutes);
 app.use("/api/evaluation", evaluationRoutes);
 app.use("/internal/eval", internalEvalRoutes);
+app.use("/api/match-dossier", matchDossierRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 
@@ -311,6 +314,7 @@ export function startServer() {
       await startModelMarketOddsCron();
       startClubSeasonCheckpointCron();
       startProspectiveCollector();
+      startMatchDossierCron();
     })().catch((error) => {
       logFatalProcessError("Bootstrap", error);
     });
