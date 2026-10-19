@@ -276,25 +276,45 @@ export function findBodySentenceForSnippet(pageText: string, snippet: string): s
   return null;
 }
 
+export function evidenceClaimFromInput(input: EvidenceCandidateInput): string {
+  return input.title.trim() && input.snippet.trim()
+    ? `${input.title.trim()} — ${input.snippet.trim()}`
+    : (input.title.trim() || input.snippet.trim());
+}
+
+/** Fixture pairing / foreign-club gate (CTO item 1); vacuous pass for non injury/lineup categories. */
+export function gateFixtureMatchEvidence(
+  fixture: ModelFixture,
+  input: EvidenceCandidateInput,
+): string | null {
+  const category = categoryForQuery(input.query);
+  const claim = evidenceClaimFromInput(input);
+  return gateFixtureTeamMatch(fixture, input.title, claim, category);
+}
+
+/** Season, category window, and stale preview/hub freshness gates (CTO items 2–3, 6). */
+export function gateFreshnessEvidence(
+  fixture: ModelFixture,
+  input: EvidenceCandidateInput,
+  resolved: ResolvedEvidenceDate | null,
+  ctx: EvidenceGateContext,
+): string | null {
+  return gatePostDateResolve(fixture, input, resolved, ctx);
+}
+
 export function gatePreFetch(
   fixture: ModelFixture,
   input: EvidenceCandidateInput,
   ctx: EvidenceGateContext,
 ): string | null {
-  const category = categoryForQuery(input.query);
-  const claim = input.title.trim() && input.snippet.trim()
-    ? `${input.title.trim()} — ${input.snippet.trim()}`
-    : (input.title.trim() || input.snippet.trim());
-
   if (claimLooksLikeBoilerplate(input.title, input.snippet)) return "boilerplate_chrome";
 
-  const fixtureReason = gateFixtureTeamMatch(fixture, input.title, claim, category);
+  const fixtureReason = gateFixtureMatchEvidence(fixture, input);
   if (fixtureReason) return fixtureReason;
 
   if (HUB_PAGE.test(`${input.title} ${input.url}`)) return "stale_hub_page";
 
   void ctx;
-  void category;
   return null;
 }
 
@@ -305,9 +325,7 @@ export function gatePostDateResolve(
   ctx: EvidenceGateContext,
 ): string | null {
   const category = categoryForQuery(input.query);
-  const claim = input.title.trim() && input.snippet.trim()
-    ? `${input.title.trim()} — ${input.snippet.trim()}`
-    : (input.title.trim() || input.snippet.trim());
+  const claim = evidenceClaimFromInput(input);
 
   if (!resolved) return "missing_published_at";
 

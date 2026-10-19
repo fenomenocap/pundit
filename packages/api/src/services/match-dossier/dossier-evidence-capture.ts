@@ -18,8 +18,9 @@ import {
 import { verifyClaimAgainstPageText } from "./dossier-claim-page-verify";
 import {
   findBodySentenceForSnippet,
+  gateFixtureMatchEvidence,
+  gateFreshnessEvidence,
   gatePageBodyMatch,
-  gatePostDateResolve,
   gatePreFetch,
   resolveEvidencePublishedAt,
   type EvidenceGateContext,
@@ -274,14 +275,15 @@ export async function verifySearchCandidatesForFixture(
     }
 
     const page = pages[0]!;
-    const resolvedDate = resolveEvidencePublishedAt(candidate.date, page.date, page.dateSource);
-    const dateReason = gatePostDateResolve(fixture, {
+    const gateInput = {
       title: candidate.title,
       snippet: candidate.snippet,
       url: candidate.url,
       publishedAtRaw: candidate.date,
       query: candidate.query,
-    }, resolvedDate, ctx);
+    };
+    const resolvedDate = resolveEvidencePublishedAt(candidate.date, page.date, page.dateSource);
+    const dateReason = gateFreshnessEvidence(fixture, gateInput, resolvedDate, ctx);
     if (dateReason) {
       verifications.push({
         url: candidate.url,
@@ -325,6 +327,35 @@ export async function verifySearchCandidatesForFixture(
         httpStatus: 200,
       });
       pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: check.reason, query: candidate.query });
+      continue;
+    }
+
+    const fixtureMatchReason = gateFixtureMatchEvidence(fixture, gateInput);
+    if (fixtureMatchReason) {
+      verifications.push({
+        url: candidate.url,
+        claim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: fixtureMatchReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: fixtureMatchReason, query: candidate.query });
+      continue;
+    }
+    const freshnessReason = gateFreshnessEvidence(fixture, gateInput, resolvedDate, ctx);
+    if (freshnessReason) {
+      verifications.push({
+        url: candidate.url,
+        claim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: freshnessReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: freshnessReason, query: candidate.query });
       continue;
     }
 
@@ -375,6 +406,8 @@ export async function verifySearchCandidatesForFixture(
         publishedAt: row?.date ?? item.publishedAt,
         publishedAtSource: row?.publishedAtSource,
         verification: "page-verified" as const,
+        fixtureMatchVerified: true,
+        freshnessVerified: true,
         snippet: row?.pageSnippet ?? item.snippet,
         contentSha256: row?.contentSha256,
       };

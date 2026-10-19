@@ -47,6 +47,17 @@ export interface DossierEvidenceItem {
   /** SHA-256 of normalized page excerpt when verification is page-verified. */
   contentSha256?: string;
   publishedAtSource?: "search-result" | "json-ld-datePublished" | "meta-article-published-time" | "meta-pubdate" | "meta-itemprop-datePublished" | "time-datetime";
+  /** Take v2 (#341): fixture pairing / foreign-club gate passed before promotion. */
+  fixtureMatchVerified?: boolean;
+  /** Take v2 (#341): current season + category recency (and stale preview) gates passed. */
+  freshnessVerified?: boolean;
+}
+
+/** Evidence eligible for desk take v2 (#341 @ccd8b9a). */
+export function isTakeV2DossierEvidence(item: DossierEvidenceItem): boolean {
+  return item.verification === "page-verified"
+    && item.fixtureMatchVerified === true
+    && item.freshnessVerified === true;
 }
 
 export interface DossierEvidenceDroppedItem {
