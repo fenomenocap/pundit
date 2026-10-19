@@ -45,6 +45,8 @@ import {
   validateAbstainedCounterfactualDiscipline,
   validateCitationContract,
   establishedNothing,
+  isAgentEmptyAfterRecovery,
+  validateAgentDeliveryRecovered,
   validateErrorCopy,
   validateFixtureGrounding,
   validateNoDraftLeak,
@@ -146,6 +148,7 @@ function flattenReportTurns(report, scenarioId = null) {
         citations: turn.citations,
         usedLlm: turn.usedLlm,
         engine: turn.engine,
+        agentTurn: turn.agentTurn ?? null,
       });
     }
   }
@@ -400,6 +403,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     result.answer = response.body?.answer ?? "";
     result.citations = response.body?.citations ?? [];
     result.verification = response.body?.verification ?? null;
+    result.agentTurn = response.body?.agentTurn ?? null;
+    if (isAgentEmptyAfterRecovery(result.agentTurn)) {
+      result.verification = {
+        status: "abstain",
+        supportedClaimCount: 0,
+        removedClaimCount: result.verification?.removedClaimCount ?? 1,
+      };
+    }
     result.grounding = grounding;
     if (grounding?.kind === "match") {
       teamContext = [grounding.home, grounding.away];
@@ -506,6 +517,16 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     assertionFailures.push(...abstentionValidation.failures.map((failure) =>
       `turn ${turnNumber}: ${failure}`
     ));
+    if (options.engine === "agent") {
+      const agentDeliveryValidation = validateAgentDeliveryRecovered(result.agentTurn);
+      semanticCheckCount += Object.keys(agentDeliveryValidation.assertions).length;
+      for (const [name, passed] of Object.entries(agentDeliveryValidation.assertions)) {
+        result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+      }
+      assertionFailures.push(...agentDeliveryValidation.failures.map((failure) =>
+        `turn ${turnNumber}: ${failure}`
+      ));
+    }
     if (verificationExpectation.requireSourcedTeamNews) {
       const newsValidation = validateTeamNewsDiscipline(result.answer);
       result.assertions[`turn${turnNumber}TeamNewsSourced`] = newsValidation.passed;
@@ -542,6 +563,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       answer: result.answer,
       engine: response.body?.engine ?? options.engine,
       usedLlm: response.body?.usedLlm === true,
+      agentTurn: result.agentTurn,
       assertions: Object.fromEntries(Object.entries(result.assertions).filter(([name]) => name.startsWith(`turn${turnNumber}`))),
     });
   }
