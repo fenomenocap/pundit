@@ -26,6 +26,9 @@ describe("slate parlay and deictic helpers", () => {
       "Build me a 2-leg parlay from today's matches with the combined price"
     )).toBe(true);
     expect(isSlateParlayRequest(
+      "Pick me a 5-fold acca from today's 3pm kick-offs"
+    )).toBe(true);
+    expect(isSlateParlayRequest(
       "In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?"
     )).toBe(false);
   });

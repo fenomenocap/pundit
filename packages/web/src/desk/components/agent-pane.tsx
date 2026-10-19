@@ -32,6 +32,7 @@ export function AgentPane() {
   const removeChat = useDesk((s) => s.removeChat);
   const reset = useDesk((s) => s.resetChat);
   const selectedId = useDesk((s) => s.selectedId);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const queued = useDesk((s) => s.queuedAsk);
   const clearQueued = useDesk((s) => s.clearQueuedAsk);
   const select = useDesk((s) => s.selectFixture);
@@ -119,6 +120,9 @@ export function AgentPane() {
     push(userMsg);
     const request = { controller: new AbortController(), userId: userMsg.id, prompt: q };
     activeRequest.current = request;
+    const parlayPending = /\b(?:parlay|acca|accumulator|\d+[\s-]*fold)\b/i.test(q)
+      && /\b(?:today|tonight|matches?|slate|kick[\s-]?offs?)\b/i.test(q);
+    setPendingStatus(parlayPending ? "Building your parlay…" : "Writing the take…");
     setBusy(true);
     try {
       const res = await askPundit({
@@ -160,6 +164,7 @@ export function AgentPane() {
       if (activeRequest.current === request) {
         activeRequest.current = null;
         setBusy(false);
+        setPendingStatus(null);
         box.current?.focus();
       }
     }
@@ -268,7 +273,7 @@ export function AgentPane() {
         {busy ? (
           <div>
             <div className="eyebrow mb-2">Pundit</div>
-            <p className="shimmer text-sm text-quiet">Writing the take…</p>
+            <p className="shimmer text-sm text-quiet">{pendingStatus ?? "Writing the take…"}</p>
           </div>
         ) : null}
         {err ? <p role="alert" className="text-sm text-down">{err}</p> : null}

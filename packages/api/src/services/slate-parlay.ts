@@ -19,8 +19,11 @@ export function referencesFeaturedMatchDeictic(question: string): boolean {
 
 export function isSlateParlayRequest(question: string): boolean {
   if (/\bin general\b/i.test(question)) return false;
-  if (!/\b(?:parlay|acca|accumulator)\b/i.test(question)) return false;
-  return /\b(?:today|tonight|slate|card|desk|matches?|fixtures?|combined|price|prices|odds)\b/i.test(question);
+  const bettingShape = /\b(?:parlay|acca|accumulator)\b/i.test(question)
+    || /\b\d+[\s-]*fold\b/i.test(question)
+    || /\b(?:five|four|three|two)[\s-]*fold\b/i.test(question);
+  if (!bettingShape) return false;
+  return /\b(?:today|tonight|slate|card|desk|kick[\s-]?offs?|matches?|fixtures?|combined|price|prices|odds|\d+\s*pm)\b/i.test(question);
 }
 
 function pct(value: number): string {
@@ -31,12 +34,33 @@ function fairDecimal(probability: number): string {
   return (1 / probability).toFixed(2);
 }
 
-function parseParlayLegCount(question: string): number {
+export function parseParlayLegCount(question: string): number {
+  const fold = /\b(\d+)[\s-]*fold\b/i.exec(question)?.[1]
+    ?? (/\bfive[\s-]*fold\b/i.test(question) ? "5" : null)
+    ?? (/\bfour[\s-]*fold\b/i.test(question) ? "4" : null)
+    ?? (/\bthree[\s-]*fold\b/i.test(question) ? "3" : null)
+    ?? (/\btwo[\s-]*fold\b/i.test(question) ? "2" : null);
+  if (fold) return Math.min(Math.max(Number.parseInt(fold, 10), 2), 6);
   const explicit = /\b(\d+)[\s-]*leg\b/i.exec(question)?.[1];
   if (explicit) return Math.min(Math.max(Number.parseInt(explicit, 10), 2), 6);
   if (/\b(?:two|2)[\s-]*leg\b/i.test(question)) return 2;
   if (/\bthree[\s-]*leg\b/i.test(question) || /\b3[\s-]*leg\b/i.test(question)) return 3;
   return 2;
+}
+
+function requestedKickoffHourLondon(question: string): number | null {
+  if (/\b3\s*pm\b/i.test(question)) return 15;
+  const clock = /\b(\d{1,2}):00\b/.exec(question);
+  if (clock) return Number.parseInt(clock[1], 10);
+  return null;
+}
+
+export function kickoffHourLondon(utcDate: string): number {
+  return Number(new Intl.DateTimeFormat("en-GB", {
+    hour: "numeric",
+    hour12: false,
+    timeZone: "Europe/London",
+  }).format(new Date(utcDate)));
 }
 
 function favouriteOutcome(fixture: ModelFixture): {
@@ -75,13 +99,30 @@ export function composeSlateParlayAnswer(
   const priced = slate.filter((row) =>
     Number.isFinite(row.pHome) && Number.isFinite(row.pDraw) && Number.isFinite(row.pAway)
   );
-  const legCount = parseParlayLegCount(question);
-  if (priced.length < legCount) return null;
+  const requestedLegs = parseParlayLegCount(question);
+  const kickoffHour = requestedKickoffHourLondon(question);
+  let pool = priced;
+  let kickoffNotice = "";
+  if (kickoffHour != null) {
+    const atKickoff = priced.filter((row) => kickoffHourLondon(row.utcDate) === kickoffHour);
+    if (atKickoff.length === 0) {
+      const label = kickoffHour === 15 ? "3pm" : `${kickoffHour}:00`;
+      kickoffNotice = `There are no ${label} kick-offs on today's desk slate; this uses today's priced fixtures instead.\n\n`;
+      pool = priced;
+    } else {
+      pool = atKickoff;
+    }
+  }
+  const legCount = Math.min(requestedLegs, pool.length);
+  if (legCount < 2) return null;
 
-  const legs = priced.slice(0, legCount);
+  const legs = pool.slice(0, legCount);
+  const shortfall = requestedLegs > legCount
+    ? ` (only ${legCount} priced legs available on the slate)`
+    : "";
   const framing = legCount === 2
-    ? "Here is a two-leg model read from today’s priced desk slate — fair prices from my 1X2, not a bookmaker ticket."
-    : `Here is a ${legCount}-leg model read from today’s priced desk slate — fair prices from my 1X2, not a bookmaker ticket.`;
+    ? `Here is a two-leg model read from today's priced desk slate${shortfall} — fair prices from my 1X2, not a bookmaker ticket.`
+    : `Here is a ${legCount}-leg model read from today's priced desk slate${shortfall} — fair prices from my 1X2, not a bookmaker ticket.`;
 
   const lines = legs.map((fixture) => {
     const fav = favouriteOutcome(fixture);
@@ -94,5 +135,9 @@ export function composeSlateParlayAnswer(
     "These legs are not independent; shared league context and same-day scheduling mean correlation is material and not priced in this product.",
   ];
 
-  return [framing, ...lines, ...tail].join("\n");
+  return [kickoffNotice + framing, ...lines, ...tail].filter(Boolean).join("\n");
+}
+
+export function slateParlayFailClosedAnswer(): string {
+  return "I don't have enough priced fixtures on today's desk slate to build that parlay without inventing legs.";
 }

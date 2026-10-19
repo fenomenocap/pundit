@@ -28,6 +28,8 @@ import {
   recordOptionalScenarioFailure,
   sanitizeEvidence,
   selectFeaturedMatch,
+  selectFeaturedSlate,
+  validateBettingMaths,
   selectSuggestionChips,
   selectTwoLeggedTie,
   snapshotAskRequest,
@@ -510,6 +512,27 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     assertionFailures.push(...correctnessValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
+    if (turn.expectBettingMaths) {
+      const bettingValidation = validateBettingMaths(
+        result.answer,
+        scenario.bettingMathsSlate ?? [],
+        turn.expectBettingMaths
+      );
+      semanticCheckCount += Object.keys(bettingValidation.assertions).length;
+      for (const [name, passed] of Object.entries(bettingValidation.assertions)) {
+        result.assertions[`turn${turnNumber}Betting${name[0].toUpperCase()}${name.slice(1)}`] = passed;
+      }
+      assertionFailures.push(...bettingValidation.failures.map((failure) =>
+        `turn ${turnNumber}: ${failure}`
+      ));
+    }
+    if (Array.isArray(turn.forbidText) && turn.forbidText.length > 0) {
+      const forbidden = turn.forbidText.filter((text) => result.answer.includes(text));
+      result.assertions[`turn${turnNumber}ForbiddenText`] = forbidden.length === 0;
+      if (forbidden.length > 0) {
+        assertionFailures.push(`turn ${turnNumber}: answer contains forbidden text: ${forbidden.join(", ")}`);
+      }
+    }
     const abstentionValidation = validateAbstainedCounterfactualDiscipline(
       result.answer,
       verificationExpectation.guardUnsupportedConflictCounterfactuals ? "abstain" : result.verification?.status
@@ -1077,6 +1100,33 @@ async function runScenario(
   // The homepage's default entry point, reproduced exactly: the chip's own
   // label plus the identity of the fixture it was rendered from. A chip must
   // land on that fixture and no other.
+  if (scenario.kind === "betting-maths-slate") {
+    const slate = selectFeaturedSlate(activeFixtures);
+    const lead = slate[0];
+    if (!lead) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        evidence: "No priced fixtures on the active model slate.",
+      };
+    }
+    const recognizedId = `espn:${lead.competitionId}:${lead.fixtureId}`;
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      category: scenario.category ?? "betting-maths",
+      voice: scenario.voice ?? "desk",
+      bettingMathsSlate: slate,
+      turns: scenario.turns.map((turn) => ({
+        ...turn,
+        ...(turn.expectGrounding === "match" ? {
+          expectTeams: [lead.home, lead.away],
+          expectFixtureId: recognizedId,
+          expectCompetitionId: lead.competitionId,
+        } : {}),
+      })),
+    }, options, pacer, onRequestStart);
+  }
   if (scenario.kind === "suggestion-chip") {
     const chips = selectSuggestionChips(activeFixtures);
     const tie = selectTwoLeggedTie(activeFixtures);

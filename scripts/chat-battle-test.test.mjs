@@ -34,6 +34,8 @@ import {
   enabledCompetitionIds,
   describeRecognizedRoutability,
   selectFeaturedMatch,
+  selectFeaturedSlate,
+  validateBettingMaths,
   selectSuggestionChips,
   selectTwoLeggedTie,
   snapshotAskRequest,
@@ -535,6 +537,24 @@ test("selectFeaturedMatch uses a model-backed active club fixture with known tea
   ]);
   assert.equal(match.home, "Riga FC");
   assert.equal(selectFeaturedMatch([]), null);
+});
+
+test("validateBettingMaths rejects off-slate parlay legs and checks combined product", () => {
+  const slate = [
+    { home: "Tottenham Hotspur", away: "Coventry City", pHome: 0.62, pDraw: 0.22, pAway: 0.16 },
+    { home: "Arsenal", away: "Crystal Palace", pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
+  ];
+  const good = [
+    "Here is a two-leg model read from today's priced desk slate — fair prices from my 1X2, not a bookmaker ticket.",
+    "Tottenham Hotspur v Coventry City: Tottenham Hotspur at 62.0% (fair 1.61) — ratings.",
+    "Arsenal v Crystal Palace: Arsenal at 58.0% (fair 1.72) — ratings.",
+    "Combined model probability 36.0% (fair combined decimal about 2.78).",
+    "These legs are not independent; correlation is material.",
+  ].join("\n");
+  assert.equal(validateBettingMaths(good, slate, { kind: "slate-parlay", minLegs: 2 }).passed, true);
+  const bad = `${good}\nBrighton v Nottingham Forest: Brighton at 50.0% (fair 2.00) — tactical edge.`;
+  assert.equal(validateBettingMaths(bad, slate, { kind: "slate-parlay", minLegs: 2 }).passed, false);
+  assert.equal(selectFeaturedSlate(slate, 1).length, 1);
 });
 
 // The evaluator could not see the two-legged shape at all: every fixture

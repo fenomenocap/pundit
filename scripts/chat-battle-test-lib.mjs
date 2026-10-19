@@ -422,6 +422,126 @@ export function selectFeaturedMatch(matches = []) {
   ) ?? null;
 }
 
+/** Same ordering as homepage featured chips: first priced rows on `/api/model/active`. */
+export function selectFeaturedSlate(matches = [], limit = 6) {
+  return matches
+    .filter((match) => isKnownTeam(match.home) && isKnownTeam(match.away))
+    .slice(0, limit);
+}
+
+function normalizedPairKey(home, away) {
+  return [home, away].map((team) => String(team ?? "").trim().toLowerCase()).sort().join("|");
+}
+
+function slatePairKeys(slate = []) {
+  return new Set(slate.map((row) => normalizedPairKey(row.home, row.away)));
+}
+
+function slateClubNames(slate = []) {
+  return new Set(slate.flatMap((row) => [row.home, row.away].filter(Boolean)));
+}
+
+function parseLegLines(answer) {
+  const legs = [];
+  for (const line of String(answer).split("\n")) {
+    const match = /^(.+?)\s+v\s+(.+?):\s+.+?\s+at\s+(\d+(?:\.\d+)?)\s*%\s*\(fair\s+(\d+(?:\.\d+)?)\)/i.exec(line.trim());
+    if (!match) continue;
+    legs.push({
+      home: match[1].trim(),
+      away: match[2].trim(),
+      probability: Number.parseFloat(match[3]) / 100,
+      fair: Number.parseFloat(match[4]),
+      line,
+    });
+  }
+  return legs;
+}
+
+function parseCombinedProbability(answer) {
+  const match = /Combined model probability\s+(\d+(?:\.\d+)?)\s*%/i.exec(answer);
+  return match ? Number.parseFloat(match[1]) / 100 : null;
+}
+
+function parseCombinedFairDecimal(answer) {
+  const match = /fair combined decimal about\s+(\d+(?:\.\d+)?)/i.exec(answer);
+  return match ? Number.parseFloat(match[1]) : null;
+}
+
+/** Extracts `Home v Away` mentions that look like priced legs or fixture references. */
+function extractFixtureMentions(answer) {
+  const mentions = [];
+  const text = String(answer);
+  const legPattern = /([A-Z][A-Za-z.'’\- ]{1,60}?)\s+v\s+([A-Z][A-Za-z.'’\- ]{1,60}?)(?=\s*:|,|\.|\s+at\s+)/g;
+  for (const match of text.matchAll(legPattern)) {
+    mentions.push({ home: match[1].trim(), away: match[2].trim() });
+  }
+  return mentions;
+}
+
+/**
+ * Regression checks for desk slate parlays / accas and featured-match fair price.
+ * `expectation.kind`: featured-fair-price | slate-parlay | slate-acca
+ */
+export function validateBettingMaths(answer, slate = [], expectation = {}) {
+  const text = typeof answer === "string" ? answer : "";
+  const assertions = {};
+  const allowedPairs = slatePairKeys(slate);
+  const allowedClubs = slateClubNames(slate);
+  const kind = expectation.kind ?? "slate-parlay";
+
+  if (kind === "featured-fair-price") {
+    assertions.noUnconfirmedFixtureNotice = !/\b(?:couldn['’]?t|could not|can['’]?t|cannot) confirm\b[^.!?\n]{0,80}\b(?:matchup|fixture)|unconfirmed fixture/i.test(text);
+    assertions.fairPricePresent = /\bfair\b/i.test(text) && (/\d+\.\d{2}\b/.test(text) || /\d+(?:\.\d+)?\s*%/.test(text));
+    assertions.marketEdgeOrGap = /\b(?:percentage points?|market|stake|kalshi|polymarket|priced|edge|gap|disagree|don't have a complete)\b/i.test(text)
+      || /\b(?:higher|lower)\b/i.test(text);
+    assertions.noOffSlateFixtureMention = extractFixtureMentions(text).every((pair) =>
+      allowedPairs.has(normalizedPairKey(pair.home, pair.away))
+    );
+  } else {
+    const legs = parseLegLines(text);
+    const minLegs = expectation.minLegs ?? (kind === "slate-acca" ? 2 : 2);
+    assertions.legLinesPresent = legs.length >= minLegs;
+    assertions.legsOnlyFromSlate = legs.every((leg) =>
+      allowedPairs.has(normalizedPairKey(leg.home, leg.away))
+    );
+    assertions.perLegFairOdds = legs.every((leg) =>
+      Number.isFinite(leg.probability) && leg.probability > 0 && leg.probability < 1
+      && Number.isFinite(leg.fair) && Math.abs(leg.fair - (1 / leg.probability)) <= 0.06
+    );
+    const product = legs.reduce((acc, leg) => acc * leg.probability, 1);
+    const stated = parseCombinedProbability(text);
+    assertions.combinedProductCorrect = legs.length >= 2
+      && stated != null
+      && Math.abs(stated - product) <= 0.002;
+    const statedFair = parseCombinedFairDecimal(text);
+    assertions.combinedFairDecimal = statedFair != null
+      && Math.abs(statedFair - (1 / product)) <= 0.08;
+    assertions.correlationNote = /\b(?:not independent|correlation)\b/i.test(text);
+    if (kind === "slate-acca" && expectation.expectKickoffFallbackNotice) {
+      assertions.kickoffFallbackOrMatch = /\bno\s+3\s*pm\s+kick[\s-]?offs?\b/i.test(text)
+        || legs.length >= Math.min(expectation.requestedLegs ?? 5, slate.length);
+    }
+    const mentions = extractFixtureMentions(text);
+    assertions.noOffSlateFixtureMention = mentions.every((pair) =>
+      allowedPairs.has(normalizedPairKey(pair.home, pair.away))
+    );
+    assertions.noOffSlateClubTactics = [...allowedClubs].length > 0 && !mentions.some((pair) =>
+      !allowedPairs.has(normalizedPairKey(pair.home, pair.away))
+    );
+    for (const pair of mentions) {
+      if (!allowedPairs.has(normalizedPairKey(pair.home, pair.away))) {
+        assertions.noOffSlateFixtureMention = false;
+        break;
+      }
+    }
+  }
+
+  const failures = Object.entries(assertions)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => `betting maths failed ${name}`);
+  return { passed: failures.length === 0, assertions, failures };
+}
+
 function clubPairKey(match) {
   return [match?.home, match?.away]
     .map((team) => String(team ?? "").trim().toLowerCase())

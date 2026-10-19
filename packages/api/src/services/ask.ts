@@ -138,6 +138,7 @@ import {
   isNonFixtureVersusTarget,
   isSlateParlayRequest,
   referencesFeaturedMatchDeictic,
+  slateParlayFailClosedAnswer,
 } from "./slate-parlay";
 import {
   DESK_BOARD_FALLBACK,
@@ -10787,6 +10788,14 @@ async function answerQuestionScoped(
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
   }
+  if (isSlateParlayRequest(question)) {
+    const slateParlay = composeSlateParlayAnswer(question) ?? slateParlayFailClosedAnswer();
+    return {
+      answer: voice === "desk" ? humaniseDeskCitationDates(slateParlay) : slateParlay,
+      grounding: null,
+      verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+    };
+  }
   const prepared = prepareAsk(
     question,
     history,
@@ -10804,16 +10813,6 @@ async function answerQuestionScoped(
       if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_evidence_follow_up");
       return {
         answer: evidenceFollowUp,
-        grounding,
-        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
-      };
-    }
-    if (isSlateParlayRequest(question)) {
-      const slateParlay = composeSlateParlayAnswer(question)
-        ?? "I don't have enough priced fixtures on today's desk slate to build that parlay without inventing legs.";
-      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "slate_parlay");
-      return {
-        answer: voice === "desk" ? humaniseDeskCitationDates(slateParlay) : slateParlay,
         grounding,
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
@@ -11105,6 +11104,18 @@ async function answerQuestionStreamScoped(
     if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(resultRecord.answer);
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
+  }
+  if (isSlateParlayRequest(question)) {
+    const slateParlay = composeSlateParlayAnswer(question) ?? slateParlayFailClosedAnswer();
+    handlers.onGrounding(null);
+    if ((handlers.shouldContinue ?? (() => true))()) {
+      handlers.onDelta(slateParlay);
+    }
+    return {
+      answer: slateParlay,
+      grounding: null,
+      verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+    };
   }
   const prepared = prepareAsk(
     question,

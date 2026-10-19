@@ -994,6 +994,59 @@
       ]
     },
     {
+      "id": "featured-match-fair-price-vs-market",
+      "description": "Homepage deictic featured match resolves to the lead priced fixture and answers fair price vs market without an unconfirmed-fixture notice.",
+      "category": "betting-maths",
+      "kind": "betting-maths-slate",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
+        {
+          "question": "What's the fair price on today's featured match and is there any edge vs the market?",
+          "expectGrounding": "match",
+          "expectBettingMaths": { "kind": "featured-fair-price" },
+          "forbidText": ["couldn't confirm", "unconfirmed fixture", "Brighton", "Nottingham Forest"]
+        }
+      ]
+    },
+    {
+      "id": "desk-slate-two-leg-parlay",
+      "description": "A two-leg parlay over today's slate uses only priced desk fixtures with per-leg fair odds, a correct combined product, and a correlation note.",
+      "category": "betting-maths",
+      "kind": "betting-maths-slate",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
+        {
+          "question": "Build me a 2-leg parlay from today's matches with the combined price",
+          "expectGrounding": null,
+          "expectBettingMaths": { "kind": "slate-parlay", "minLegs": 2 },
+          "forbidText": ["Brighton", "Nottingham Forest", "Forest's full-backs"]
+        }
+      ]
+    },
+    {
+      "id": "desk-slate-five-fold-acca-3pm",
+      "description": "A five-fold acca request filters 3pm kick-offs when present; otherwise states that in one line and uses today's priced slate. Hard-fails on fixtures off the slate.",
+      "category": "betting-maths",
+      "kind": "betting-maths-slate",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
+        {
+          "question": "Pick me a 5-fold acca from today's 3pm kick-offs",
+          "expectGrounding": null,
+          "expectBettingMaths": {
+            "kind": "slate-acca",
+            "minLegs": 2,
+            "requestedLegs": 5,
+            "expectKickoffFallbackNotice": true
+          },
+          "forbidText": ["Brighton", "Nottingham Forest"]
+        }
+      ]
+    },
+    {
       "id": "contextual-follow-up",
       "description": "A pronoun follow-up retains the dynamically discovered featured match context.",
       "kind": "featured-follow-up"
