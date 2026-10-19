@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as slateScan from "./slate-market-scan";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import type { Grounding } from "./ask";
 import {
@@ -165,6 +166,42 @@ describe("investor demo composer fixes", () => {
     expect(poly.legs.home.decimalOdds).toBeCloseTo(1 / 0.64);
     expect(poly.legs.home.evPct).toBeNull();
     expect(poly.legs.draw.impliedP).toBeCloseTo(0.205);
+  });
+
+  it("best value today uses the largest slate gap without edge language", () => {
+    vi.spyOn(slateScan, "largestSlateModelMarketGap").mockReturnValue({
+      fixtureLabel: "Tottenham v Coventry",
+      source: "polymarket",
+      observedAt: "2026-10-18T12:00:00.000Z",
+      outcome: "home",
+      label: "Tottenham",
+      modelPercent: 59.9,
+      marketPercent: 64,
+      gapPoints: -4.1,
+    });
+    const answer = composeMatchResponse(
+      "What is the best value today on the slate?",
+      grounding,
+      planResponse("What is the best value today on the slate?", { groundingKind: "match" }),
+    );
+    expect(planResponse("What is the best value today on the slate?", { groundingKind: "match" }).mode)
+      .toBe("slate-best-gap");
+    expect(answer).toContain("Tottenham v Coventry");
+    expect(answer).toContain("gap -4.1 pts");
+    expect(answer).not.toMatch(/\bedge\b/i);
+    vi.restoreAllMocks();
+  });
+
+  it("guarantee winner demand shows probabilities and honest accas risk", () => {
+    const answer = composeMatchResponse(
+      "Guarantee me a winner on this acca",
+      grounding,
+      planResponse("Guarantee me a winner on this acca", { groundingKind: "match" }),
+    );
+    expect(answer).toMatch(/can.t guarantee a winner/i);
+    expect(answer).toMatch(/59\.9%|Tottenham/);
+    expect(answer).toMatch(/Accas multiply risk/i);
+    expect(answer).toMatch(/18\+/);
   });
 
   it("CTO B) bankroll stake questions get generic unit guidance, not Kelly", () => {

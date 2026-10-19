@@ -16,6 +16,8 @@ export type ResponseMode =
   | "table"
   | "season"
   | "coverage"
+  | "slate-best-gap"
+  | "winner-guarantee-honesty"
   | "general";
 
 const ASKS_MATCH_PREVIEW =
@@ -134,6 +136,17 @@ export function asksOddsProvenance(question: string): boolean {
   return ASKS_ODDS_PROVENANCE.test(question);
 }
 
+export function asksBestValueToday(question: string): boolean {
+  return /\bbest value(?:\s+today|\s+on the slate|\s+this weekend)?\b/i.test(question)
+    || /\b(?:biggest|largest)\b.{0,30}\b(?:gap|disagreement)\b.{0,30}\b(?:today|slate|weekend|fixtures)\b/i.test(question);
+}
+
+export function asksHonestWinnerGuarantee(question: string): boolean {
+  return /\bguarantee me (?:a )?winner\b/i.test(question)
+    || (/\b(?:guarantee|certain|100%|promise)\b/i.test(question)
+      && /\b(?:win|winner|acca|accumulator|parlay)\b/i.test(question));
+}
+
 /** Numeric follow-ups after an earlier priced turn (draw, totals, market gap, etc.). */
 export function asksPricingFollowUp(question: string): boolean {
   return /\b(?:what about|how about)\b.{0,60}\b(?:the )?(?:draw|home|away|1x2|odds|price|market|fair|edge|gap|over|under|btts|both teams)\b/i.test(question)
@@ -161,6 +174,8 @@ export const DESK_COMPOSER_MODES: ReadonlySet<ResponseMode> = new Set([
   "btts",
   "pricing-desk",
   "odds-provenance",
+  "slate-best-gap",
+  "winner-guarantee-honesty",
 ]);
 
 /** True when the user named the over side of 2.5 without also naming under. */
@@ -231,6 +246,8 @@ export function planResponse(
   else if (match && asksScorelineBoard(q)) mode = "exact-score";
   else if (match && asksTacticalTake(q)) mode = "match-follow-up";
   else if (match && asksOddsProvenance(q)) mode = "odds-provenance";
+  else if (match && asksBestValueToday(q)) mode = "slate-best-gap";
+  else if (match && asksHonestWinnerGuarantee(q)) mode = "winner-guarantee-honesty";
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
   else if (match && asksOddsBoard(q)) mode = "pricing-desk";
   else if (match && hasHistory && asksPricingFollowUp(q)) {

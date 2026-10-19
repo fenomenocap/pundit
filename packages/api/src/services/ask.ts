@@ -9508,6 +9508,8 @@ export function closedGroundedAnswer(
         "btts",
         "pricing-desk",
         "odds-provenance",
+        "slate-best-gap",
+        "winner-guarantee-honesty",
         // The long read is the server's 1X2, scorelines and market rows. Sending
         // "Analyse" to the model spent the 90s deadline and returned 502 before
         // this text could ship. Current team news still requires evidence.

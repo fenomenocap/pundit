@@ -29,6 +29,7 @@ import {
   resolveRequestedScoreline,
   type ResponsePlan,
 } from "./response-plan";
+import { largestSlateModelMarketGap } from "./slate-market-scan";
 
 /** A briefing includes football and deciding roles, not just the numeric board. */
 export function asksCompleteMatchBriefing(question: string): boolean {
@@ -379,6 +380,28 @@ export function composeMarketDivergenceHeadline(grounding: Grounding, question =
   return composeMarketComparisonAnswer(question, grounding);
 }
 
+export function composeSlateBestGapAnswer(): string {
+  const highlight = largestSlateModelMarketGap();
+  if (!highlight) {
+    return "I don’t have complete external 1X2 quotes on enough of today’s priced slate to name the largest model-vs-market gap.";
+  }
+  const source = highlight.source[0].toUpperCase() + highlight.source.slice(1);
+  const sign = highlight.gapPoints >= 0 ? "+" : "";
+  return `On today’s priced slate, the largest model-vs-market gap I have is ${highlight.fixtureLabel}: `
+    + `${highlight.label} model ${highlight.modelPercent.toFixed(1)}% vs ${source} implied `
+    + `${highlight.marketPercent.toFixed(1)}% (as of ${dateLabel(highlight.observedAt)}), `
+    + `gap ${sign}${highlight.gapPoints.toFixed(1)} pts. That states a disagreement, not a bet to place.`;
+}
+
+export function composeWinnerGuaranteeHonestyAnswer(question: string, grounding: Grounding): string {
+  const oneXTwo = `My 1X2 on ${grounding.home} v ${grounding.away} is ${grounding.home} ${pct(grounding.pHome)}, `
+    + `draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`;
+  const accas = /\b(?:acca|accumulator|parlay)\b/i.test(question)
+    ? " Accas multiply risk because every leg has to win — nothing in that structure is guaranteed."
+    : "";
+  return `${oneXTwo} I can’t guarantee a winner; these are probabilities, not certainties.${accas} Gamble responsibly, 18+.`;
+}
+
 export function composeOddsProvenanceAnswer(grounding: Grounding): string {
   const feeds = grounding.oddsSources
     .filter((row) => row.pDraw !== null && Number.isFinite(row.pHome) && Number.isFinite(row.pAway))
@@ -640,6 +663,12 @@ export function composeMatchResponse(
   }
   if (plan.mode === "odds-provenance") {
     return composeOddsProvenanceAnswer(grounding);
+  }
+  if (plan.mode === "slate-best-gap") {
+    return composeSlateBestGapAnswer();
+  }
+  if (plan.mode === "winner-guarantee-honesty") {
+    return composeWinnerGuaranteeHonestyAnswer(question, grounding);
   }
   if (plan.mode === "user-line") {
     return composeUserLineAnswer(grounding);

@@ -272,6 +272,8 @@ const NARROW_AGENT_MODES: ReadonlySet<ResponseMode> = new Set([
   "market-comparison",
   "stake-refusal",
   "user-line",
+  "slate-best-gap",
+  "winner-guarantee-honesty",
 ]);
 
 function stripUnrequestedPricingEssay(text: string, mode: ResponseMode, question: string): string {
