@@ -1,8 +1,8 @@
 [chat-eval-judge] remote OIDC bearer source: fresh_actions_mint
 {
-  "runId": "2026-10-19T06-12-19-029Z",
+  "runId": "2026-10-19T15-44-16-443Z",
   "overall": "ISSUES FOUND",
-  "requests": 74,
+  "requests": 78,
   "featured": {
     "homeTeam": "Tottenham",
     "awayTeam": "Coventry",
@@ -13,15 +13,15 @@
     "recognizedFixtureId": "espn:eng.1:401879257"
   },
   "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-19T06-12-19-029Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-19T06-12-19-029Z.md"
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-19T15-44-16-443Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-19T15-44-16-443Z.md"
   }
 }
 [chat-eval-judge] remote OIDC bearer source: fresh_actions_mint
 {
-  "runId": "2026-10-19T06-30-46-959Z",
+  "runId": "2026-10-19T16-03-16-163Z",
   "overall": "ISSUES FOUND",
-  "requests": 67,
+  "requests": 78,
   "featured": {
     "homeTeam": "Tottenham",
     "awayTeam": "Coventry",
@@ -32,7 +32,7 @@
     "recognizedFixtureId": "espn:eng.1:401879257"
   },
   "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-19T06-30-46-959Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-19T06-30-46-959Z.md"
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-19T16-03-16-163Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-19T16-03-16-163Z.md"
   }
 }

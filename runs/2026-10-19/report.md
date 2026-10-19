@@ -1,15 +1,15 @@
-# Pundit Chat Battle Test — 2026-10-19T06:12:19.029Z
+# Pundit Chat Battle Test — 2026-10-19T15:44:16.443Z
 
-- Run: `2026-10-19T06-12-19-029Z`
-- Deployment: `ec6af6db-9c43-4e2b-94e6-e5d7699188b8` (api version)
-- Source/API/Web SHAs: `4460d2d634ad9ccb754f60ecfc36b573566a0617` / `4460d2d634ad9ccb754f60ecfc36b573566a0617` / `4460d2d634ad9ccb754f60ecfc36b573566a0617`
-- SHA convergence: PASS — api=4460d2d634ad9ccb754f60ecfc36b573566a0617 (match vs floor 4460d2d634ad9ccb754f60ecfc36b573566a0617), web=4460d2d634ad9ccb754f60ecfc36b573566a0617 (match vs floor 4460d2d634ad9ccb754f60ecfc36b573566a0617)
+- Run: `2026-10-19T15-44-16-443Z`
+- Deployment: `1a4a5bc3-94f6-4ec1-9bcb-ab17c37ff5e8` (api version)
+- Source/API/Web SHAs: `cb28e649c772ac9d31d4a45fdbf2b88535779405` / `cb28e649c772ac9d31d4a45fdbf2b88535779405` / `8fb6a813f7c6efab8a8310d4058dfae8b8808be3`
+- SHA convergence: PASS — api=cb28e649c772ac9d31d4a45fdbf2b88535779405 (match vs floor cb28e649c772ac9d31d4a45fdbf2b88535779405), web=8fb6a813f7c6efab8a8310d4058dfae8b8808be3 (match vs floor 8fb6a813f7c6efab8a8310d4058dfae8b8808be3)
 - Evaluation schema: `17`
 - Previous comparison: baseline—no prior comparator
 - Overall: **ISSUES FOUND**
 - Certification gate: FAIL
-- Pacing gate: PASS — 13024.187562999956 ms minimum observed gap (required 13000 ms)
-- Web search telemetry: preflight 0, post-run 38, delta 38, consecutive failures 0
+- Pacing gate: PASS — 13024.58528 ms minimum observed gap (required 13000 ms)
+- Web search telemetry: preflight 0, post-run 33, delta 33, consecutive failures 1
 - judge: skipped (unavailable) · skipped turns 24
 - Agent judge: skipped (unavailable) · skipped turns 24
 
@@ -17,29 +17,30 @@
 
 | Scenario | Result | Status | Latency | Evidence |
 |---|---:|---:|---:|---|
-| homepage-desk-output | PASS | 200 | 820 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=344 chars. |
-| pinned-current-manager-and-result-evidence | FAIL | 200 | 34570 ms | turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVerification; turn 2: positive current manager failed positiveCurrentManagerVerification; turn 2: positive current manager failed currentManagerIdentityDelivered; turn 2: positive current manager failed everyCurrentManagerIdentityCited; turn 2: positive current manager failed currentManagerIdentityUnambiguous; turn 2: verification failed verificationStatus; turn 2: verification failed positiveCurrentManagerVerification |
-| owned-premier-league-latest-result | PASS | 200 | 160 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=verified, citations=1, answer=219 chars. |
-| dated-club-news-delivers-supported-update | PASS | 200 | 36437 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=verified, citations=1, answer=775 chars. |
-| active-match-grounding | PASS | 200 | 286 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=164 chars. |
-| priced-fixture-retains-1x2-context | PASS | 200 | 659 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=57 chars. |
-| table-route-preserves-match | PASS | 200 | 726 ms | 3 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=57 chars. |
-| analyst-conversation-golden-path | PASS | 200 | 1125 ms | 6 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=170 chars. |
-| replacing-is-not-epl | PASS | 200 | 156 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=abstain, citations=0, answer=115 chars. |
-| candidate-never-becomes-fixture | PASS | 200 | 8292 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=133 chars. |
+| homepage-desk-output | FAIL | 200 | 439 ms | turn 2: analyst expression failed directAnswerFirst |
+| pinned-current-manager-and-result-evidence | FAIL | 200 | 26490 ms | turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVerification; turn 2: positive current manager failed positiveCurrentManagerVerification; turn 2: positive current manager failed currentManagerIdentityDelivered; turn 2: positive current manager failed everyCurrentManagerIdentityCited; turn 2: positive current manager failed currentManagerIdentityUnambiguous; turn 2: verification failed verificationStatus; turn 2: verification failed positiveCurrentManagerVerification |
+| pinned-current-manager-everton-fixed | FAIL | 200 | 19807 ms | turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVerification; turn 1: match grounding failed groundingKind; turn 1: match grounding failed oneXTwoProbabilities; turn 1: match grounding failed totalsProbabilities; turn 1: match grounding failed totalsComplement; turn 1: match grounding failed bttsComplement; turn 1: match grounding failed scorelinesPresent; turn 1: match grounding failed oddsSourcesPresent; turn 2: match grounding failed groundingKind; turn 2: match grounding failed oneXTwoProbabilities; turn 2: match grounding failed totalsProbabilities; turn 2: match grounding failed totalsComplement; turn 2: match grounding failed bttsComplement; turn 2: match grounding failed scorelinesPresent; turn 2: match grounding failed oddsSourcesPresent |
+| owned-premier-league-latest-result | PASS | 200 | 34 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=verified, citations=1, answer=219 chars. |
+| dated-club-news-delivers-supported-update | PASS | 200 | 18896 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=conflict, citations=2, answer=771 chars. |
+| active-match-grounding | PASS | 200 | 56 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=282 chars. |
+| priced-fixture-retains-1x2-context | PASS | 200 | 653 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=57 chars. |
+| table-route-preserves-match | PASS | 200 | 772 ms | 3 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=57 chars. |
+| analyst-conversation-golden-path | FAIL | 200 | 665 ms | turn 6: analyst expression failed directAnswerFirst |
+| replacing-is-not-epl | PASS | 200 | 87 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=abstain, citations=0, answer=115 chars. |
+| candidate-never-becomes-fixture | PASS | 200 | 5179 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=133 chars. |
 | two-legged-tie-resolves-to-a-real-leg | PASS | — | — ms | Built API runtime helper resolveFixtureRoutingSequence returned the exact expected contract. |
 | suggestion-chip-identity-selects-its-leg | PASS | — | — ms | Built API runtime helper resolveFixtureRoutingSequence returned the exact expected contract. |
 | recognized-friendly-outside-coverage | PASS | — | — ms | Built API runtime helper resolveFixtureRoutingSequence returned the exact expected contract. |
 | temporary-fixture-unavailability | PASS | — | — ms | Built API runtime helper resolveFixtureRoutingSequence returned the exact expected contract. |
 | unsupported-followup-and-matchup-replacement | PASS | — | — ms | Built API runtime helper resolveFixtureRoutingSequence returned the exact expected contract. |
 | table-route-preserves-match-routing | PASS | — | — ms | Built API runtime helper resolveFixtureRoutingSequence returned the exact expected contract. |
-| observational-live-friendly | INCONCLUSIVE | — | — ms | No routable recognized fixture matched outside-coverage/friendly-policy-disabled (registry routing enabled; 61 of 90 observed identities routable). |
-| observational-live-in-play | INCONCLUSIVE | — | — ms | No routable recognized fixture matched outside-coverage/in-play-model-unavailable (registry routing enabled; 61 of 90 observed identities routable). |
-| observational-live-temporary | INCONCLUSIVE | — | — ms | No routable recognized fixture matched temporarily-unpriced/any (registry routing enabled; 61 of 90 observed identities routable). |
-| observational-live-replacement | PASS | 200 | 489 ms | 3 turn(s), grounding=fixture, fixture=espn:eng.1:401878754, capability=insufficient-model-input, verification=not-required, citations=0, answer=117 chars. |
-| observational-live-neutral-venue | INCONCLUSIVE | — | — ms | No routable recognized fixture matched insufficient-model-input/neutral-venue-unknown (registry routing enabled; 61 of 90 observed identities routable). |
+| observational-live-friendly | INCONCLUSIVE | — | — ms | No routable recognized fixture matched outside-coverage/friendly-policy-disabled (registry routing enabled; 61 of 86 observed identities routable). |
+| observational-live-in-play | INCONCLUSIVE | — | — ms | No routable recognized fixture matched outside-coverage/in-play-model-unavailable (registry routing enabled; 61 of 86 observed identities routable). |
+| observational-live-temporary | INCONCLUSIVE | — | — ms | No routable recognized fixture matched temporarily-unpriced/any (registry routing enabled; 61 of 86 observed identities routable). |
+| observational-live-replacement | PASS | 200 | 263 ms | 3 turn(s), grounding=fixture, fixture=espn:eng.1:401878754, capability=insufficient-model-input, verification=not-required, citations=0, answer=117 chars. |
+| observational-live-neutral-venue | INCONCLUSIVE | — | — ms | No routable recognized fixture matched insufficient-model-input/neutral-venue-unknown (registry routing enabled; 61 of 86 observed identities routable). |
 | observational-live-two-legged-matchup | INCONCLUSIVE | — | — ms | No two-legged tie in the active model set; substitution is forbidden. |
-| observational-live-suggestion-chip | PASS | 200 | 198 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=164 chars. |
+| observational-live-suggestion-chip | PASS | 200 | 121 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=282 chars. |
 | complete-market-arithmetic | PASS | — | — ms | Built API runtime helper validateCompleteOneXTwoMarket returned the exact expected contract. |
 | combined-scoreline-arithmetic | PASS | — | — ms | Built API runtime helper sanitizeFinalMatchAnswer returned the exact expected contract. |
 | incomplete-market-fails-closed | PASS | — | — ms | Built API runtime helper validateCompleteOneXTwoMarket returned the exact expected contract. |
@@ -59,37 +60,40 @@
 | one-one-is-not-over-two-five | PASS | — | — ms | Built API runtime helper settleScorelineTotal returned the exact expected contract. |
 | unrelated-citation-rejected | PASS | — | — ms | Built API runtime helper applyClaimDecisions returned the exact expected contract. |
 | degraded-search-retrieval-verifier | PASS | — | — ms | Built API runtime helper applyClaimDecisions returned the exact expected contract. |
-| team-news-sourcing | FAIL | 200 | 13871 ms | turn 1: answer asserts team news without a source and date after applying any abstention only to its own sentence: I haven’t verified separate injury updates for both clubs. — Bentancur (Tottenham) is listed as suspended according to a source (16 October 2026) ([Tottenham Hotspur injury, suspension list and return dates vs. Coventry: Pedro Porro, Dejan Kulusevski latest - Sports Mole](https://www.sportsmole.co.uk/football/spurs/injury-news/injuries-and-suspensions/porro-kulusevski-updates-spurs-injury-suspension-list-vs-coventry_607017.html), 2026-10-16T07:52:00+01:00). That is match-context team news, not a revised forecast. I haven’t verified separate injury updates for both clubs.; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated; turn 1: positive dated club news failed positiveNewsCountMatches; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated; turn 1: positive dated club news failed positiveNewsCountMatches |
-| table-detour-then-scorer-retention | PASS | 200 | 15105 ms | 3 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=abstain, citations=0, answer=460 chars. |
-| third-club-scorer-retains-fixture | PASS | 200 | 270 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=abstain, citations=0, answer=307 chars. |
-| market-comparison-coverage | PASS | 200 | 178 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=170 chars. |
-| competition-grounding | PASS | 200 | 148 ms | 1 turn(s), grounding=competition, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=463 chars. |
-| foreign-season-scope-after-epl-table | PASS | 200 | 1147 ms | 4 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=244 chars. |
-| competition-follow-up | PASS | 200 | 1555 ms | 2 turn(s), grounding=competition, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=450 chars. |
-| season-certainty-follow-up | PASS | 200 | 2003 ms | 2 turn(s), grounding=season, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=465 chars. |
-| general-analysis-label | PASS | 200 | 159 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=595 chars. |
-| tactical-comparison-not-fixture | PASS | 200 | 498 ms | 3 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=1390 chars. |
-| standalone-football-explainers | PASS | 200 | 167 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=786 chars. |
-| standalone-football-explainer-favourite | PASS | 200 | 163 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=603 chars. |
-| standalone-football-explainer-derby | PASS | 200 | 161 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=726 chars. |
-| standalone-football-explainer-chance | PASS | 200 | 167 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=738 chars. |
-| contextual-follow-up | PASS | 200 | 422 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=525 chars. |
-| user-line-pass-play | PASS | 200 | 396 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=307 chars. |
-| stake-refusal-without-bankroll | PASS | 200 | 378 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=141 chars. |
-| featured-fixture-opens-pricing-desk | PASS | 200 | 178 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=164 chars. |
-| featured-totals-honesty | PASS | 200 | 169 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=150 chars. |
-| featured-o25-scoreline-follow-up | PASS | 200 | 544 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=238 chars. |
-| featured-match-briefing-is-not-pricing-desk | PASS | 200 | 198 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=2126 chars. |
-| featured-tactical-matchup-keeps-a-take | PASS | 200 | 185 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=728 chars. |
-| featured-explicit-preview-stays-long-read | PASS | 200 | 189 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=1016 chars. |
-| sse-ordering | PASS | 200 | 166 ms | SSE order: grounding → delta → done. |
-| client-cancellation | PASS | 200 | 190 ms | Grounding received, then client AbortError observed after 0ms. |
-| malformed-history | PASS | 400 | 173 ms | HTTP 400: {"error":"The conversation context is invalid. Start a new chat and try again."} |
-| adversarial-ambiguity | PASS | 200 | 296 ms | 2 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=241 chars. |
-| adversarial-follow-up | PASS | 200 | 1265 ms | 2 turn(s), grounding=competition, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=239 chars. |
-| adversarial-grounding | PASS | 200 | 411 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=201 chars. |
-| adversarial-certainty | PASS | 200 | 2298 ms | 2 turn(s), grounding=season, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=475 chars. |
-| adversarial-malformed | PASS | 400 | 160 ms | HTTP 400: {"error":"The conversation context is invalid. Start a new chat and try again."} |
+| team-news-sourcing | PASS | 200 | 14534 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=abstain, citations=0, answer=112 chars. |
+| table-detour-then-scorer-retention | PASS | 200 | 9015 ms | 3 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=abstain, citations=0, answer=460 chars. |
+| third-club-scorer-retains-fixture | PASS | 200 | 645 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=abstain, citations=0, answer=307 chars. |
+| market-comparison-coverage | PASS | 200 | 160 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=384 chars. |
+| competition-grounding | PASS | 200 | 106 ms | 1 turn(s), grounding=competition, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=463 chars. |
+| foreign-season-scope-after-epl-table | PASS | 200 | 359 ms | 4 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=244 chars. |
+| competition-follow-up | PASS | 200 | 1371 ms | 2 turn(s), grounding=competition, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=450 chars. |
+| season-certainty-follow-up | PASS | 200 | 2162 ms | 2 turn(s), grounding=season, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=465 chars. |
+| general-analysis-label | PASS | 200 | 100 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=595 chars. |
+| tactical-comparison-not-fixture | PASS | 200 | 308 ms | 3 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=1390 chars. |
+| standalone-football-explainers | PASS | 200 | 80 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=786 chars. |
+| standalone-football-explainer-favourite | PASS | 200 | 85 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=603 chars. |
+| standalone-football-explainer-derby | PASS | 200 | 325 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=726 chars. |
+| standalone-football-explainer-chance | PASS | 200 | 116 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=738 chars. |
+| featured-match-deictic-routing | PASS | — | — ms | Built API runtime helper resolveFixtureRoutingSequence returned the exact expected contract. |
+| featured-match-fair-price-vs-market | PASS | 200 | 108 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=282 chars. |
+| desk-cross-game-parlay-decline | PASS | 200 | 111 ms | 1 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=108 chars. |
+| contextual-follow-up | PASS | 200 | 255 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=525 chars. |
+| user-line-pass-play | PASS | 200 | 465 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=220 chars. |
+| stake-refusal-without-bankroll | PASS | 200 | 483 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=287 chars. |
+| featured-fixture-opens-pricing-desk | PASS | 200 | 97 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=282 chars. |
+| featured-totals-honesty | FAIL | 200 | 104 ms | turn 1: analyst expression failed directAnswerFirst |
+| featured-o25-scoreline-follow-up | PASS | 200 | 462 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=238 chars. |
+| featured-match-briefing-is-not-pricing-desk | PASS | 200 | 101 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=2459 chars. |
+| featured-tactical-matchup-keeps-a-take | PASS | 200 | 115 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=728 chars. |
+| featured-explicit-preview-stays-long-read | PASS | 200 | 104 ms | 1 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=1349 chars. |
+| sse-ordering | PASS | 200 | 80 ms | SSE order: grounding → delta → done. |
+| client-cancellation | PASS | 200 | 97 ms | Grounding received, then client AbortError observed after 0ms. |
+| malformed-history | PASS | 400 | 86 ms | HTTP 400: {"error":"The conversation context is invalid. Start a new chat and try again."} |
+| adversarial-ambiguity | PASS | 200 | 189 ms | 2 turn(s), grounding=null, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=241 chars. |
+| adversarial-follow-up | PASS | 200 | 1236 ms | 2 turn(s), grounding=competition, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=239 chars. |
+| adversarial-grounding | PASS | 200 | 219 ms | 2 turn(s), grounding=match, fixture=espn:eng.1:401879257, capability=priced-or-n/a, verification=not-required, citations=0, answer=201 chars. |
+| adversarial-certainty | PASS | 200 | 2394 ms | 2 turn(s), grounding=season, fixture=none, capability=priced-or-n/a, verification=not-required, citations=0, answer=479 chars. |
+| adversarial-malformed | PASS | 400 | 79 ms | HTTP 400: {"error":"The conversation context is invalid. Start a new chat and try again."} |
 
 ## Browser Evidence
 
@@ -97,8 +101,11 @@
 
 ## Findings
 
-1. **FAIL — pinned-current-manager-and-result-evidence:** turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVerification; turn 2: positive current manager failed positiveCurrentManagerVerification; turn 2: positive current manager failed currentManagerIdentityDelivered; turn 2: positive current manager failed everyCurrentManagerIdentityCited; turn 2: positive current manager failed currentManagerIdentityUnambiguous; turn 2: verification failed verificationStatus; turn 2: verification failed positiveCurrentManagerVerification
-2. **FAIL — team-news-sourcing:** turn 1: answer asserts team news without a source and date after applying any abstention only to its own sentence: I haven’t verified separate injury updates for both clubs. — Bentancur (Tottenham) is listed as suspended according to a source (16 October 2026) ([Tottenham Hotspur injury, suspension list and return dates vs. Coventry: Pedro Porro, Dejan Kulusevski latest - Sports Mole](https://www.sportsmole.co.uk/football/spurs/injury-news/injuries-and-suspensions/porro-kulusevski-updates-spurs-injury-suspension-list-vs-coventry_607017.html), 2026-10-16T07:52:00+01:00). That is match-context team news, not a revised forecast. I haven’t verified separate injury updates for both clubs.; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated; turn 1: positive dated club news failed positiveNewsCountMatches; turn 1: positive dated club news failed positiveDatedNewsDelivered; turn 1: positive dated club news failed everyPositiveNewsRecordDated; turn 1: positive dated club news failed positiveNewsCountMatches
+1. **FAIL — homepage-desk-output:** turn 2: analyst expression failed directAnswerFirst
+2. **FAIL — pinned-current-manager-and-result-evidence:** turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVerification; turn 2: positive current manager failed positiveCurrentManagerVerification; turn 2: positive current manager failed currentManagerIdentityDelivered; turn 2: positive current manager failed everyCurrentManagerIdentityCited; turn 2: positive current manager failed currentManagerIdentityUnambiguous; turn 2: verification failed verificationStatus; turn 2: verification failed positiveCurrentManagerVerification
+3. **FAIL — pinned-current-manager-everton-fixed:** turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVerification; turn 1: match grounding failed groundingKind; turn 1: match grounding failed oneXTwoProbabilities; turn 1: match grounding failed totalsProbabilities; turn 1: match grounding failed totalsComplement; turn 1: match grounding failed bttsComplement; turn 1: match grounding failed scorelinesPresent; turn 1: match grounding failed oddsSourcesPresent; turn 2: match grounding failed groundingKind; turn 2: match grounding failed oneXTwoProbabilities; turn 2: match grounding failed totalsProbabilities; turn 2: match grounding failed totalsComplement; turn 2: match grounding failed bttsComplement; turn 2: match grounding failed scorelinesPresent; turn 2: match grounding failed oddsSourcesPresent
+4. **FAIL — analyst-conversation-golden-path:** turn 6: analyst expression failed directAnswerFirst
+5. **FAIL — featured-totals-honesty:** turn 1: analyst expression failed directAnswerFirst
 
 ## Recommendations
 

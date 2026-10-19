@@ -1,27 +1,27 @@
 {
   "date": "2026-10-19",
-  "runId": "2026-10-19T06-12-19-029Z",
+  "runId": "2026-10-19T15-44-16-443Z",
   "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
-  "scenariosRun": 73,
-  "passed": 66,
+  "scenariosRun": 77,
+  "passed": 67,
   "inconclusive": 5,
-  "failed": 2,
-  "turns": 71,
-  "answeredTurns": 71,
+  "failed": 5,
+  "turns": 75,
+  "answeredTurns": 75,
   "turnsWithCitations": 4,
-  "medianLatencyMs": 189,
+  "medianLatencyMs": 117,
   "repeatedSentences": 0,
   "nearDuplicatePairs": 0,
   "uncitedCurrentNews": 0,
   "requestEngine": "both",
   "qualityMetrics": {
-    "templateShare": 0.14084507042253522,
-    "nearDuplicateRate": 0.02857142857142857,
-    "llmCallRate": 0.07042253521126761,
-    "abstainRate": 0.09859154929577464,
-    "citationCoverage": 0.056338028169014086
+    "templateShare": 0.13333333333333333,
+    "nearDuplicateRate": 0.02810810810810811,
+    "llmCallRate": 0.09333333333333334,
+    "abstainRate": 0.13333333333333333,
+    "citationCoverage": 0.05333333333333334
   },
   "llmJudgeSummary": {
     "score": null,
@@ -33,31 +33,43 @@
   },
   "engineQualityComparison": {
     "legacy": {
-      "templateShare": 0.14084507042253522,
-      "nearDuplicateRate": 0.02857142857142857,
-      "llmCallRate": 0.07042253521126761,
-      "abstainRate": 0.09859154929577464,
-      "citationCoverage": 0.056338028169014086
+      "templateShare": 0.13333333333333333,
+      "nearDuplicateRate": 0.02810810810810811,
+      "llmCallRate": 0.09333333333333334,
+      "abstainRate": 0.13333333333333333,
+      "citationCoverage": 0.05333333333333334
     },
     "agent": {
-      "templateShare": 0.1111111111111111,
-      "nearDuplicateRate": 0.009084556254367574,
-      "llmCallRate": 0.9814814814814815,
-      "abstainRate": 0.037037037037037035,
-      "citationCoverage": 0.09259259259259259
+      "templateShare": 0.13333333333333333,
+      "nearDuplicateRate": 0.02702702702702703,
+      "llmCallRate": 0.9866666666666667,
+      "abstainRate": 0.05333333333333334,
+      "citationCoverage": 0.02666666666666667
     }
   },
   "findings": [
+    {
+      "scenario": "homepage-desk-output",
+      "summary": "FAIL: turn 2: analyst expression failed directAnswerFirst"
+    },
     {
       "scenario": "pinned-current-manager-and-result-evidence",
       "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
     },
     {
-      "scenario": "team-news-sourcing",
-      "summary": "FAIL: turn 1: answer asserts team news without a source and date after applying any abstention only to its own sentence: I haven’t verified separate injury updates for both clubs. — Bentancur (Tottenham) is listed as suspended according to a source (16 October 2026) ([Tottenham Hotspur injury, suspension list and return dates vs. Coventry: Pedro Porro, Dejan Kulusevski latest - Sports Mole](https://www."
+      "scenario": "pinned-current-manager-everton-fixed",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    },
+    {
+      "scenario": "analyst-conversation-golden-path",
+      "summary": "FAIL: turn 6: analyst expression failed directAnswerFirst"
+    },
+    {
+      "scenario": "featured-totals-honesty",
+      "summary": "FAIL: turn 1: analyst expression failed directAnswerFirst"
     }
   ],
-  "sourceCommit": "4460d2d",
-  "apiSha": "4460d2d",
-  "ranAt": "2026-10-19T06:12:19.029Z"
+  "sourceCommit": "cb28e64",
+  "apiSha": "cb28e64",
+  "ranAt": "2026-10-19T15:44:16.443Z"
 }
