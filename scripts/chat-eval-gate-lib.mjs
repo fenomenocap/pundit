@@ -18,7 +18,10 @@ import {
   validateVerification,
 } from "./chat-battle-test-lib.mjs";
 
-export function gradeRecordedJsonScenario(scenario, recordedTurns, { evaluationNow = Date.now() } = {}) {
+export function gradeRecordedJsonScenario(scenario, recordedTurns, {
+  evaluationNow = Date.now(),
+  relaxedEvalAssertions = true,
+} = {}) {
   const result = {
     id: scenario.id,
     passed: false,
@@ -69,9 +72,10 @@ export function gradeRecordedJsonScenario(scenario, recordedTurns, { evaluationN
 
     history.push({ role: "user", content: turn.question }, { role: "assistant", content: answer });
 
-    const copyValidation = validateAnswerCopy(answer, {
-      grounding: grounding?.kind === "match" ? grounding : undefined,
-    });
+    const copyValidation = validateAnswerCopy(
+      answer,
+      relaxedEvalAssertions && grounding?.kind === "match" ? { grounding } : {},
+    );
     result.assertions.plainLanguageCopy = copyValidation.passed;
     const structureValidation = validateAnswerStructure(answer, {
       expectHeadlineOneXTwo: grounding?.kind === "match"
@@ -118,7 +122,12 @@ export function gradeRecordedJsonScenario(scenario, recordedTurns, { evaluationN
     assertionFailures.push(...structureValidation.failures.map((failure) => `turn ${turnNumber}: ${failure}`));
     assertionFailures.push(...copyValidation.failures.map((failure) => `turn ${turnNumber}: ${failure}`));
 
-    const expressionValidation = validateAnalystExpression(answer, { ...scenario, ...turn }, grounding);
+    const expressionTurn = { ...scenario, ...turn };
+    if (!relaxedEvalAssertions) {
+      delete expressionTurn.expectModelProbabilityOrFairOdds;
+      expressionTurn.relaxedStakeRefusal = false;
+    }
+    const expressionValidation = validateAnalystExpression(answer, expressionTurn, grounding);
     semanticCheckCount += Object.keys(expressionValidation.assertions).length;
     for (const [name, passed] of Object.entries(expressionValidation.assertions)) {
       result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
@@ -137,7 +146,8 @@ export function gradeRecordedJsonScenario(scenario, recordedTurns, { evaluationN
 
     const abstentionValidation = validateAbstainedCounterfactualDiscipline(
       answer,
-      verificationExpectation.guardUnsupportedConflictCounterfactuals ? "abstain" : verification?.status
+      verificationExpectation.guardUnsupportedConflictCounterfactuals ? "abstain" : verification?.status,
+      { allowConditionalSafe: relaxedEvalAssertions },
     );
     semanticCheckCount += Object.keys(abstentionValidation.assertions).length;
     for (const [name, passed] of Object.entries(abstentionValidation.assertions)) {
