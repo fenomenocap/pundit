@@ -34,8 +34,10 @@ import {
   basicsFavouriteLean,
   basicsLargestGapLean,
   basicsProvenanceLine,
+  appendTableVsFavoriteExplain,
   joinBasicsAnswer,
   PARLAY_OUT_OF_SCOPE,
+  tableVsModelFavoriteExplainLine,
 } from "./basics-answer-voice";
 import { largestSlateModelMarketGapForDemo } from "./slate-market-scan";
 
@@ -230,7 +232,7 @@ function composePricingDeskAnswer(grounding: Grounding, question = ""): string {
     + `draw ${pct(model.draw.p)} (fair ${model.draw.fairOdds.toFixed(2)}) and `
     + `${grounding.away} ${pct(model.away.p)} (fair ${model.away.fairOdds.toFixed(2)}).`;
   if (grounding.pricing.userLine) {
-    return `${oneXTwo} ${composeUserLineAnswer(grounding)}`;
+    return appendTableVsFavoriteExplain(grounding, `${oneXTwo} ${composeUserLineAnswer(grounding)}`);
   }
   const captured = fattestCapturedEv(grounding);
   if (captured) {
@@ -240,12 +242,21 @@ function composePricingDeskAnswer(grounding: Grounding, question = ""): string {
     const gapLine = MODEL_EDGE_CLAIMS_ALLOWED
       ? `EV is ${signedEvPct(captured.evPct)}${band}.`
       : `My model vs that captured price is ${signedEvPct(captured.evPct)} on probability${band}.`;
-    return `${oneXTwo} Against the captured ${source} decimal of ${captured.decimalOdds.toFixed(2)} on ${subject}, ${gapLine}`;
+    return appendTableVsFavoriteExplain(
+      grounding,
+      `${oneXTwo} Against the captured ${source} decimal of ${captured.decimalOdds.toFixed(2)} on ${subject}, ${gapLine}`,
+    );
   }
   if (TYPED_DECIMAL_PRICE.test(question)) {
-    return `${oneXTwo} I only price a line you enter in the line field, not one typed into the question, so add it there and I will print EV% and pass or play.`;
+    return appendTableVsFavoriteExplain(
+      grounding,
+      `${oneXTwo} I only price a line you enter in the line field, not one typed into the question, so add it there and I will print EV% and pass or play.`,
+    );
   }
-  return `${oneXTwo} I need a captured decimal line before I can print EV% or pass or play.`;
+  return appendTableVsFavoriteExplain(
+    grounding,
+    `${oneXTwo} I need a captured decimal line before I can print EV% or pass or play.`,
+  );
 }
 
 function explainEdgeBand(band: string): string {
@@ -422,6 +433,8 @@ export function composeMarketComparisonAnswer(question: string, grounding: Groun
       away: grounding.externalMarketConsensus.pAway,
     }, true)}.`);
   }
+  const tableExplain = tableVsModelFavoriteExplainLine(grounding);
+  if (tableExplain) supports.unshift(tableExplain);
   return joinBasicsAnswer({
     headline,
     supports,
@@ -455,9 +468,13 @@ export function composeSlateBestGapAnswer(now = new Date()): string {
 export function composeWinnerGuaranteeHonestyAnswer(_question: string, grounding: Grounding): string {
   const headline = `${grounding.home} v ${grounding.away}: I make ${grounding.home} ${pct(grounding.pHome)}, `
     + `draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)} — I can’t guarantee a winner.`;
+  const supports = [
+    tableVsModelFavoriteExplainLine(grounding),
+    "These are probabilities from reviewed team strength, not certainties.",
+  ].filter(Boolean) as string[];
   return joinBasicsAnswer({
     headline,
-    supports: ["These are probabilities from reviewed team strength, not certainties."],
+    supports,
     lean: basicsFavouriteLean(grounding),
     provenance: basicsProvenanceLine(grounding),
     responsibleGambling: true,
@@ -694,6 +711,7 @@ export function composeMatchResponse(
     if (/\b(?:what about|how about)\b/i.test(question) && /\b(?:the )?draw\b/i.test(question)) {
       return joinBasicsAnswer({
         headline: `The draw is ${pct(grounding.pDraw)} (fair ${fairDecimal(grounding.pDraw)}) in ${grounding.home} v ${grounding.away}.`,
+        supports: [tableVsModelFavoriteExplainLine(grounding)].filter(Boolean) as string[],
         lean: basicsFavouriteLean(grounding),
         provenance: basicsProvenanceLine(grounding),
       });
@@ -763,6 +781,7 @@ export function composeMatchResponse(
       : `Lean: ${STAKE_REFUSAL_SENTENCE}`;
     return joinBasicsAnswer({
       headline,
+      supports: [tableVsModelFavoriteExplainLine(grounding)].filter(Boolean) as string[],
       lean,
       provenance: basicsProvenanceLine(grounding),
       responsibleGambling: mentionsBankroll(question),
@@ -827,8 +846,10 @@ export function composeMatchResponse(
   const consensus = grounding.consensus
     ? `${PUNDIT_FUNDAMENTAL_LABEL} is the model-only 1X2 above. ${PUNDIT_CONSENSUS_LABEL}, a separate view shrunk toward ${grounding.consensus.marketLabel}, is ${grounding.home} ${pct(grounding.consensus.pHome)}, draw ${pct(grounding.consensus.pDraw)} and ${grounding.away} ${pct(grounding.consensus.pAway)}.`
     : "";
+  const tableExplain = tableVsModelFavoriteExplainLine(grounding);
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
+    tableExplain ?? "",
     asksCompleteMatchBriefing(question) ? composeBriefingFootball(grounding) : "",
     `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${totalsAssumptionSentence(grounding)}`,
     [marketRows, market].filter(Boolean).join(" "),

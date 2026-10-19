@@ -105,7 +105,12 @@ function spursCoventryGrounding(): Grounding {
       modelLastUpdated: observedAt,
       ratingsAsOf: "2026-09-13T00:00:00.000Z",
     }),
-    ...sampleMatchContextFields(),
+    ...sampleMatchContextFields({
+      homeElo: 1799,
+      awayElo: 1706,
+      homeTable: { position: 20, points: 3, goalDifference: -12, playedGames: 8 },
+      awayTable: { position: 8, points: 14, goalDifference: 2, playedGames: 8 },
+    }),
   };
 }
 
@@ -150,6 +155,17 @@ describe("investor demo composer fixes", () => {
     const scoreAfter = composeMatchResponse("What is the most likely score?", grounding, planResponse("What is the most likely score?", { groundingKind: "match" }));
     expect(scoreAfter).toContain("1-1 the likeliest scoreline at 11.6% (fair 8.62)");
     expect(scoreAfter).toContain("Lean:");
+  });
+
+  it("adds one table-vs-Elo line when league rank contradicts the model favourite", () => {
+    const answer = composeMatchResponse(
+      "What are the 1X2 odds?",
+      grounding,
+      planResponse("What are the 1X2 odds?", { groundingKind: "match" }),
+    );
+    expect(answer).toMatch(/20th on 3 pts/);
+    expect(answer).toMatch(/Elo \(1799 v 1706\)/);
+    expect(answer).toMatch(/home advantage/);
   });
 
   it("4) pricing follow-ups with history stay on the composer, not tactics LLM route", () => {
