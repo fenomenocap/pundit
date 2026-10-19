@@ -209,8 +209,8 @@ describe("Pundit Take v2 style pack (PR1)", () => {
     expect(delivery.answer).toMatch(/20th on 3 points/);
       expect(delivery.answer).not.toMatch(/\bstill\b/i);
       expect(delivery.answer).not.toMatch(/sharper than my read/i);
-      expect(delivery.answer).not.toMatch(/applied in this forecast|sits at|home backing/i);
-      expect(delivery.answer).toMatch(/42-point home bump/);
+      expect(delivery.answer).not.toMatch(/applied in this forecast|sits at|home backing|rating sheet|\bElo\b/i);
+      expect(delivery.answer).toMatch(/at home/);
   });
 
   it("take v2 BTTS and totals avoid Lean labels", () => {

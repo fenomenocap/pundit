@@ -40,6 +40,11 @@ export function buildTakeSourcesFooter(
     modelPricedAt: grounding.pricing.pricedAt,
     modelPricedAtSgt: formatTimestampSgt(grounding.pricing.pricedAt),
     ratingsAsOf: grounding.freshness.ratingsAsOf ?? null,
+    ratingsAsOfSgt: grounding.freshness.ratingsAsOf
+      ? formatTimestampSgt(grounding.freshness.ratingsAsOf)
+      : null,
+    homeClubRating: Number.isFinite(grounding.homeElo) ? Math.round(grounding.homeElo * 1000) / 1000 : null,
+    awayClubRating: Number.isFinite(grounding.awayElo) ? Math.round(grounding.awayElo * 1000) / 1000 : null,
     tableSource: "ESPN standings (club-form snapshot)",
     tableAsOf,
     tableAsOfSgt: tableAsOf ? formatTimestampSgt(tableAsOf) : null,

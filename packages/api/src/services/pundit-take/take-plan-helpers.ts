@@ -1,5 +1,4 @@
 import type { Grounding } from "../ask";
-import { DEFAULT_HOME_ADVANTAGE_ELO } from "../dixon-coles";
 import type { MatchDossier } from "../match-dossier/types";
 import { compactTeamLabel } from "../basics-answer-voice";
 import type { TakePlanPoint } from "./types";
@@ -92,8 +91,8 @@ export function build1x2SupportingPoints(
     points.push({
       id: "fact-home-advantage",
       role: "support",
-      text: `${homeShort} get a ${DEFAULT_HOME_ADVANTAGE_ELO}-point home bump on the rating sheet (${Math.round(grounding.homeElo)} v ${Math.round(grounding.awayElo)} for ${awayShort}).`,
-      fieldPath: "fixture.homeFieldAdvantage,homeElo,awayElo",
+      text: `${homeShort} are at home; ${awayShort} travel.`,
+      fieldPath: "fixture.homeFieldAdvantage",
     });
   }
 

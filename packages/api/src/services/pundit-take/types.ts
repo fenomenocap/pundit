@@ -91,6 +91,9 @@ export interface PunditTakeSourcesFooter {
   modelPricedAt: string;
   modelPricedAtSgt: string;
   ratingsAsOf: string | null;
+  ratingsAsOfSgt: string | null;
+  homeClubRating: number | null;
+  awayClubRating: number | null;
   tableSource: string;
   tableAsOf: string | null;
   tableAsOfSgt: string | null;
