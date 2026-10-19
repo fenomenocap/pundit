@@ -1037,6 +1037,21 @@
       ]
     },
     {
+      "id": "desk-cross-game-parlay-decline",
+      "description": "Cross-game parlay pricing returns one short honest decline with a featured-fixture prompt, not a 400 or tactical essay.",
+      "kind": "json",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
+        {
+          "question": "Spurs to beat Coventry and Arsenal to beat Everton — combined fair price?",
+          "expectGrounding": null,
+          "expectText": ["multi-leg pricing is coming soon", "Want the numbers on"],
+          "forbidText": ["one match at a time", "pressing trap", "low block", "couldn't confirm"]
+        }
+      ]
+    },
+    {
       "id": "contextual-follow-up",
       "description": "A pronoun follow-up retains the dynamically discovered featured match context.",
       "kind": "featured-follow-up"

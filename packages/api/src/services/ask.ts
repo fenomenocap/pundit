@@ -135,6 +135,10 @@ import {
 import { getLeadFeaturedModelFixture } from "./featured-fixtures";
 import { isNonFixtureVersusTarget, referencesFeaturedMatchDeictic } from "./featured-match-deictic";
 import {
+  composeMultiLegPricingDeclineAnswer,
+  isMultiLegPricingQuestion,
+} from "./multi-leg-pricing-decline";
+import {
   DESK_BOARD_FALLBACK,
   DESK_GENERAL_CONCEPT_SYSTEM,
   composeDeskFootballTake,
@@ -10747,6 +10751,14 @@ async function deliverChatAgentTurn(
   );
 }
 
+function multiLegPricingDeclinePayload(): ScopedAskPayload {
+  return {
+    answer: composeMultiLegPricingDeclineAnswer(),
+    grounding: null,
+    verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+  };
+}
+
 export async function answerQuestion(
   question: string,
   history: ConversationTurn[] = [],
@@ -10780,6 +10792,9 @@ async function answerQuestionScoped(
     if (signal?.aborted) throw signal.reason;
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
+  }
+  if (isMultiLegPricingQuestion(question)) {
+    return multiLegPricingDeclinePayload();
   }
   const prepared = prepareAsk(
     question,
@@ -11089,6 +11104,12 @@ async function answerQuestionStreamScoped(
     if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(resultRecord.answer);
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
+  }
+  if (isMultiLegPricingQuestion(question)) {
+    const decline = multiLegPricingDeclinePayload();
+    handlers.onGrounding(null);
+    if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(decline.answer);
+    return decline;
   }
   const prepared = prepareAsk(
     question,
