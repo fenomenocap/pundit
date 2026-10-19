@@ -57,6 +57,9 @@ import {
 } from "./basics-answer-voice";
 import { largestSlateModelMarketGapForDemo, type SlateGapHighlight } from "./slate-market-scan";
 import { getCachedModelData } from "./model-data";
+import { punditTakeV2Active, stashPunditTakeDelivery, stashTakeDossier } from "./pundit-take/flags";
+import { composePunditTakeDelivery } from "./pundit-take/compose";
+import { prefetchStoredTakeDossier } from "./pundit-take/take-dossier";
 
 /** A briefing includes football and deciding roles, not just the numeric board. */
 export function asksCompleteMatchBriefing(question: string): boolean {
@@ -774,6 +777,16 @@ export function composeMatchResponse(
   }),
   playerEvidence: PlayerEvidenceBundle | null = null
 ): string {
+  if (punditTakeV2Active()) {
+    if (grounding.kind === "match") {
+      stashTakeDossier(prefetchStoredTakeDossier(grounding));
+    }
+    const take = composePunditTakeDelivery(question, grounding, plan);
+    if (take) {
+      stashPunditTakeDelivery(take);
+      return take.answer;
+    }
+  }
   if (asksParlayQuestion(question)) {
     return PARLAY_OUT_OF_SCOPE;
   }
