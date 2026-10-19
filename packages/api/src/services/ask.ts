@@ -136,8 +136,8 @@ import { getLeadFeaturedModelFixture } from "./featured-fixtures";
 import { composeDeskSameGameParlayAnswer, isSameGameParlayQuestion } from "./same-game-parlay";
 import {
   composeDeskParlayAnswer,
-  isDeskParlayRequest,
   isNonFixtureVersusTarget,
+  isParlayPricingAttempt,
   referencesFeaturedMatchDeictic,
   slateParlayFailClosedAnswer,
 } from "./slate-parlay";
@@ -10788,7 +10788,7 @@ async function answerQuestionScoped(
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
   }
-  if (isDeskParlayRequest(question)) {
+  if (isParlayPricingAttempt(question)) {
     const slateParlay = composeDeskParlayAnswer(question) ?? slateParlayFailClosedAnswer();
     return {
       answer: voice === "desk" ? humaniseDeskCitationDates(slateParlay) : slateParlay,
@@ -11115,7 +11115,7 @@ async function answerQuestionStreamScoped(
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
   }
-  if (isDeskParlayRequest(question)) {
+  if (isParlayPricingAttempt(question)) {
     const slateParlay = composeDeskParlayAnswer(question) ?? slateParlayFailClosedAnswer();
     handlers.onGrounding(null);
     if ((handlers.shouldContinue ?? (() => true))()) {

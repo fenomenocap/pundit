@@ -15,6 +15,11 @@ export function isNonFixtureVersusTarget(rightSide: string): boolean {
 export function referencesFeaturedMatchDeictic(question: string): boolean {
   const q = question.toLowerCase();
   if (/\b(?:today'?s?|tonight'?s?)\s+featured\s+match\b/.test(q)) return true;
+  if (/\b(?:this|the)\s+featured\s+match\b/.test(q)) return true;
+  if (/\bthe\s+featured\s+game\b/.test(q)) return true;
+  if (/\bthis\s+match\b/.test(q) && /\b(?:fair|price|odds|market|featured|card|slate|desk|homepage)\b/.test(q)) {
+    return true;
+  }
   if (/\bfeatured\s+match\b/.test(q) && /\b(?:today|tonight|homepage|on the (?:card|slate|desk))\b/.test(q)) return true;
   if (/\b(?:the\s+)?match\s+on\s+the\s+(?:featured\s+)?(?:card|slate)\b/.test(q)) return true;
   if (/\b(?:today'?s?|tonight'?s?)\s+match\s+on\s+the\s+(?:card|slate|desk)\b/.test(q)) return true;
@@ -28,16 +33,6 @@ export function isSlateParlayRequest(question: string): boolean {
     || /\b(?:five|four|three|two)[\s-]*fold\b/i.test(question);
   if (!bettingShape) return false;
   return /\b(?:today|tonight|this\s+weekend|(?:the\s+)?next\s+slate|slate|card|desk|kick[\s-]?offs?|matches?|fixtures?|combined|price|prices|odds|\d+\s*pm)\b/i.test(question);
-}
-
-export function isGuaranteedWinnerAccaRequest(question: string): boolean {
-  if (/\bin general\b/i.test(question)) return false;
-  if (/\bclosest\b[^?.!]{0,40}\bsure\s+thing\b/i.test(question)) return true;
-  if (/\b(?:sure\s+thing|banker\s+acca|safe\s+(?:bet|acca)|can'?t\s+lose|cannot\s+lose)\b/i.test(question)) {
-    return true;
-  }
-  return /\bguarantee\w*\b/i.test(question)
-    && /\b(?:winner|win(?:ner)?|acca|parlay|accumulator|fold)\b/i.test(question);
 }
 
 function teamSearchTerms(fixtures: ModelFixture[]): Array<[string, string]> {
@@ -96,10 +91,21 @@ export function isCrossGameParlayRequest(question: string, slate: ModelFixture[]
 }
 
 export function isDeskParlayRequest(question: string): boolean {
-  return isSlateParlayRequest(question)
-    || isCrossGameParlayRequest(question)
-    || isGuaranteedWinnerAccaRequest(question);
+  return isSlateParlayRequest(question) || isCrossGameParlayRequest(question);
 }
+
+/** Any parlay/acca-shaped desk ask — composer or honest fallback, never tactical LLM prose. */
+export function isParlayPricingAttempt(question: string): boolean {
+  if (/\bin general\b/i.test(question)) return false;
+  if (isDeskParlayRequest(question)) return true;
+  if (/\b(?:parlay|acca|accumulator)\b/i.test(question)) return true;
+  if (/\b\d+[\s-]*fold\b/i.test(question)) return true;
+  if (/\b(?:five|four|three|two)[\s-]*fold\b/i.test(question)) return true;
+  return false;
+}
+
+export const PARLAY_PRICING_FALLBACK =
+  "Parlay and acca pricing is coming soon; ask me about a single match for now.";
 
 export type SlateTimeScope = "today" | "weekend" | "next-slate" | "desk";
 
@@ -614,48 +620,16 @@ export function composeCrossGameParlayAnswer(
   return composeParlayAnswerBody(question, fixtures, legOutcomes, scopeLead, null, foldLabel);
 }
 
-export function composeGuaranteedWinnerAccaAnswer(
-  question: string,
-  slate: ModelFixture[] = getDeskPricedSlate(),
-  now: Date = new Date()
-): string | null {
-  if (!isGuaranteedWinnerAccaRequest(question)) return null;
-  const withSlate = /\bnext\s+slate\b/i.test(question) ? question : `${question} from the next slate`;
-  const parlayQuestion = /\b(?:parlay|acca|accumulator|\d+[\s-]*fold)\b/i.test(withSlate)
-    ? withSlate
-    : `${withSlate} Build a 3-fold favourites acca.`;
-  const selection = selectSlateLegsForParlay(parlayQuestion, slate, now);
-  if (!selection) return null;
-  const { legs, fillNotice, scopeLead } = selection;
-  const legOutcomes = legs.map((fixture) => ({ fixture, fav: favouriteOutcome(fixture) }));
-  const combined = legOutcomes.reduce((product, row) => product * row.fav.p, 1);
-  const preamble = "I can't guarantee a winner — nothing in football is certain, and accas multiply risk because every leg must land. "
-    + `The model's combined probability for these favourites is ${pct(combined)} (fair ${fairDecimal(combined)}), not a sure thing.`;
-  const foldLabel = legOutcomes.length === 2 ? "two-leg" : `${legOutcomes.length}-fold`;
-  return composeParlayAnswerBody(
-    parlayQuestion,
-    legs,
-    legOutcomes,
-    scopeLead,
-    fillNotice,
-    foldLabel,
-    preamble
-  );
-}
-
 export function composeDeskParlayAnswer(
   question: string,
   slate: ModelFixture[] = getDeskPricedSlate(),
   now: Date = new Date()
 ): string | null {
-  if (isGuaranteedWinnerAccaRequest(question)) {
-    return composeGuaranteedWinnerAccaAnswer(question, slate, now);
-  }
-  const cross = composeCrossGameParlayAnswer(question, slate);
+  const cross = composeCrossGameParlayAnswer(question, slate, now);
   if (cross) return cross;
   return composeSlateParlayAnswer(question, slate, now);
 }
 
 export function slateParlayFailClosedAnswer(): string {
-  return "I don't have enough priced fixtures on the desk to build that parlay without inventing legs.";
+  return PARLAY_PRICING_FALLBACK;
 }

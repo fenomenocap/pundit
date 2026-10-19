@@ -10,7 +10,8 @@ import {
   londonCalendarDate,
   referencesFeaturedMatchDeictic,
   selectSlateLegsForParlay,
-  composeGuaranteedWinnerAccaAnswer,
+  PARLAY_PRICING_FALLBACK,
+  slateParlayFailClosedAnswer,
 } from "./slate-parlay";
 import { MODEL_EDGE_CLAIMS_ALLOWED } from "../config/backtest-gate";
 
@@ -24,6 +25,8 @@ describe("slate parlay and deictic helpers", () => {
     expect(referencesFeaturedMatchDeictic(
       "What's the fair price on today's featured match and is there any edge vs the market?"
     )).toBe(true);
+    expect(referencesFeaturedMatchDeictic("Fair price on the featured game?")).toBe(true);
+    expect(referencesFeaturedMatchDeictic("What's the fair price on this match on the desk?")).toBe(true);
   });
 
   it("filters today first then fills from next kickoffs with one notice", () => {
@@ -89,41 +92,10 @@ describe("slate parlay and deictic helpers", () => {
     expect(selection?.scopeLead).toMatch(/Next desk slate/);
   });
 
-  it("refuses sure-thing accas with combined favourite probability", () => {
-    const now = new Date("2026-10-19T12:00:00.000Z");
-    const slate = [
-      fixture("Tottenham Hotspur", "Coventry City", {
-        fixtureId: 1,
-        utcDate: "2026-10-19T19:00:00.000Z",
-        pHome: 0.62,
-        pDraw: 0.22,
-        pAway: 0.16,
-      }),
-      fixture("Arsenal", "Everton", {
-        fixtureId: 2,
-        utcDate: "2026-10-23T14:00:00.000Z",
-        pHome: 0.58,
-        pDraw: 0.24,
-        pAway: 0.18,
-        stakePHome: 0.56,
-        stakePDraw: 0.25,
-        stakePAway: 0.19,
-      }),
-      fixture("Liverpool", "Chelsea", {
-        fixtureId: 3,
-        utcDate: "2026-10-23T14:00:00.000Z",
-        pHome: 0.5,
-        pDraw: 0.25,
-        pAway: 0.25,
-      }),
-    ];
-    const answer = composeGuaranteedWinnerAccaAnswer("Guarantee me a winner on a desk acca", slate, now);
-    expect(answer).toMatch(/can't guarantee/i);
-    expect(answer).toMatch(/multiply risk/i);
-    expect(answer).toMatch(/combined probability/i);
-    expect(answer).toMatch(/not a sure thing/i);
-    expect(answer).not.toMatch(/closest to a sure thing/i);
-    expect(answer).toMatch(/gap [+-]?\d+\.\d pts/);
+  it("returns honest fallback when parlay cannot be priced", () => {
+    expect(slateParlayFailClosedAnswer()).toBe(PARLAY_PRICING_FALLBACK);
+    const answer = composeSlateParlayAnswer("2-leg parlay from the desk", [], new Date());
+    expect(answer).toBeNull();
   });
 
   it("composes kickoff labels and fair-only framing when no market", () => {

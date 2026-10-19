@@ -4,6 +4,7 @@ import * as modelData from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
 import { answerQuestion } from "./ask";
 import { refreshClubRatingsForTest } from "./club-ratings";
+import { PARLAY_PRICING_FALLBACK } from "./slate-parlay";
 
 describe("demo featured match and slate parlay", () => {
   it("grounds today's featured match and builds a two-leg parlay without provider calls", async () => {
@@ -78,6 +79,30 @@ describe("demo featured match and slate parlay", () => {
     } finally {
       cached.mockRestore();
       vi.restoreAllMocks();
+    }
+  });
+
+  it("returns one honest line when a parlay cannot be priced", async () => {
+    await refreshClubRatingsForTest(new Date());
+    const only = fixture("Tottenham Hotspur", "Coventry City", {
+      fixtureId: 1,
+      utcDate: new Date(Date.now() + 86_400_000).toISOString(),
+      pHome: 0.62,
+      pDraw: 0.22,
+      pAway: 0.16,
+    });
+    const cached = vi.spyOn(modelData, "getCachedModelData").mockReturnValue({
+      fixtures: [only],
+      lastUpdated: new Date(),
+      error: null,
+    });
+    try {
+      const turn = await answerQuestion("Build me a 4-fold acca from the desk", [], undefined, undefined, undefined, undefined, "desk");
+      expect(turn.answer).toBe(PARLAY_PRICING_FALLBACK);
+      expect(turn.grounding).toBeNull();
+      expect(turn.answer).not.toMatch(/tactical|If I would/i);
+    } finally {
+      cached.mockRestore();
     }
   });
 });
