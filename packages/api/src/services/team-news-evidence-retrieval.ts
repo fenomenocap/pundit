@@ -1,4 +1,4 @@
-import { normalizeTeamName } from "../lib/team-names";
+import { canonicalClubName, normalizeTeamName } from "../lib/team-names";
 import { evidenceAuthority, type EvidenceTier } from "./evidence-authority";
 import { mergeSearchResults } from "./federated-evidence";
 import {
@@ -94,6 +94,38 @@ export function managerSiteBeatQueries(
   club: string
 ): readonly [string] {
   return [`site:${beat} ${club} manager head coach`];
+}
+
+const CLUB_OFFICIAL_PUBLISHER_DOMAIN: Readonly<Record<string, string>> = {
+  Arsenal: "arsenal.com",
+  "Aston Villa": "avfc.co.uk",
+  Bournemouth: "afcb.co.uk",
+  Brentford: "brentfordfc.com",
+  Brighton: "brightonandhovealbion.com",
+  Burnley: "burnleyfootballclub.com",
+  Chelsea: "chelseafc.com",
+  "Crystal Palace": "cpfc.co.uk",
+  Everton: "evertonfc.com",
+  Fulham: "fulhamfc.com",
+  Leeds: "leedsunited.com",
+  Liverpool: "liverpoolfc.com",
+  "Man City": "mancity.com",
+  "Man United": "manutd.com",
+  Newcastle: "newcastleunited.com",
+  Forest: "nottinghamforest.co.uk",
+  Sunderland: "safc.com",
+  Tottenham: "tottenhamhotspur.com",
+  "West Ham": "whufc.com",
+  Wolves: "wolves.co.uk",
+};
+
+/** One retry when hydrated pages still yield no manager identity. */
+export function managerNarrowRetryQueries(club: string): string[] {
+  const canonical = canonicalClubName(club);
+  const domain = CLUB_OFFICIAL_PUBLISHER_DOMAIN[canonical];
+  const queries = [`${club} head coach`];
+  if (domain) queries.push(`site:${domain} head coach manager`);
+  return queries.slice(0, 2);
 }
 
 const CLUB_INJURY_HINT =

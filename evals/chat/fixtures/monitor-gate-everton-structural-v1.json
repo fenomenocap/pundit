@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "searchReplayId": "monitor-gate-everton-structural-v1",
+  "recordedAt": "2026-10-19T06:00:00.000Z",
+  "evaluationNow": "2026-10-19T06:00:00.000Z",
+  "pinnedFeatured": {
+    "home": "Everton",
+    "away": "Chelsea",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "recognizedFixtureId": "eng.1:401878771",
+    "utcDate": "2026-10-18T15:00:00.000Z"
+  },
+  "scenarios": [
+    {
+      "id": "pinned-current-manager-everton-fixed",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "Everton's manager is David Moyes ([David Moyes: Everton manager admits surprise at seeing the club being put up for sale](https://www.skysports.com/football/news/13596920/david-moyes-everton-manager-admits-surprise-at-seeing-the-club-being-put-up-for-sale-by-the-friedkin-group), 9 Oct 2026).",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [{ "score": "1-1", "probability": 0.11 }],
+            "scorelines": [
+              { "score": "1-1", "probability": 0.11 },
+              { "score": "0-1", "probability": 0.09 },
+              { "score": "1-2", "probability": 0.08 }
+            ],
+            "oddsSources": []
+          },
+          "citations": [
+            {
+              "id": "S10",
+              "title": "David Moyes: Everton manager admits surprise at seeing the club being put up for sale by The Friedkin Group",
+              "date": "2026-10-09T15:00:00+0000",
+              "url": "https://www.skysports.com/football/news/13596920/david-moyes-everton-manager-admits-surprise-at-seeing-the-club-being-put-up-for-sale-by-the-friedkin-group"
+            }
+          ],
+          "verification": {
+            "status": "verified",
+            "supportedClaimCount": 1,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "What's Everton's manager today?"
+          }
+        },
+        {
+          "status": 200,
+          "answer": "Everton's manager is David Moyes ([David Moyes: Everton manager admits surprise at seeing the club being put up for sale](https://www.skysports.com/football/news/13596920/david-moyes-everton-manager-admits-surprise-at-seeing-the-club-being-put-up-for-sale-by-the-friedkin-group), 9 Oct 2026). I haven't verified the club's stated reason for retaining him.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [{ "score": "1-1", "probability": 0.11 }],
+            "scorelines": [
+              { "score": "1-1", "probability": 0.11 },
+              { "score": "0-1", "probability": 0.09 },
+              { "score": "1-2", "probability": 0.08 }
+            ],
+            "oddsSources": []
+          },
+          "citations": [
+            {
+              "id": "S10",
+              "title": "David Moyes: Everton manager admits surprise at seeing the club being put up for sale by The Friedkin Group",
+              "date": "2026-10-09T15:00:00+0000",
+              "url": "https://www.skysports.com/football/news/13596920/david-moyes-everton-manager-admits-surprise-at-seeing-the-club-being-put-up-for-sale-by-the-friedkin-group"
+            }
+          ],
+          "verification": {
+            "status": "verified",
+            "supportedClaimCount": 1,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "Who is Everton's manager and why?"
+          }
+        }
+      ]
+    }
+  ]
+}
