@@ -39,6 +39,7 @@ import {
   composeIndependentMarketTakeAnswer,
   formatBttsSideRow,
   formatCompact1x2SideRow,
+  formatMarketActionLean,
   composeWhyAfterPricedTurn,
   compactTeamLabel,
   formatModelOnlySideRows,
