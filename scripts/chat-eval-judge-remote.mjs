@@ -62,20 +62,19 @@ export async function judgeEvalTurnsRemote(turns, options = {}) {
       },
       body: JSON.stringify({ turns: payloadTurns, maxTurns }),
     });
-  } catch (error) {
-    return skippedUnavailableJudge(turns, {
-      ...options,
-      skipReason: `remote judge fetch failed: ${error instanceof Error ? error.message : String(error)}`,
-    });
+  } catch {
+    return skippedUnavailableJudge(turns, { ...options, skipReason: "judge_unavailable" });
   }
   const text = await response.text();
-  if (response.status === 503) {
+  if (response.status === 503 || response.status === 404) {
     let reason = "judge_unavailable";
-    try {
-      const body = JSON.parse(text);
-      if (body?.error === "judge_unavailable") reason = "judge_unavailable";
-    } catch {
-      // keep default
+    if (response.status === 503) {
+      try {
+        const body = JSON.parse(text);
+        if (body?.error === "judge_unavailable") reason = "judge_unavailable";
+      } catch {
+        // keep default
+      }
     }
     return skippedUnavailableJudge(turns, { ...options, skipReason: reason });
   }
