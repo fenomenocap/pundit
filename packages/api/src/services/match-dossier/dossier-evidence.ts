@@ -29,6 +29,7 @@ export interface DossierEvidenceCollectOptions {
 
 export interface DossierEvidenceCollectResult {
   items: DossierEvidenceItem[];
+  dropped: import("./types").DossierEvidenceDroppedItem[];
   droppedCount: number;
   queryCount: number;
   replayId: string | null;
@@ -84,7 +85,7 @@ function evidenceId(url: string, claim: string): string {
   return createHash("sha256").update(`${url}\n${claim}`).digest("hex").slice(0, 16);
 }
 
-function categoryForQuery(query: string): DossierEvidenceCategory {
+export function categoryForQuery(query: string): DossierEvidenceCategory {
   const q = query.toLocaleLowerCase();
   if (/injur|suspension|availability/.test(q)) return "injuries";
   if (/lineup|rotation|starting xi/.test(q)) return "rotation";
@@ -246,6 +247,7 @@ export async function collectDossierEvidence(
     if (!isDossierSyntheticTestFixture(fixture)) {
       return {
         items: [],
+        dropped: [],
         droppedCount: 0,
         queryCount: queries.length,
         replayId: null,
@@ -295,6 +297,7 @@ export async function collectDossierEvidence(
     const allowed = rejectSyntheticEvidenceForRealFixture(fixture, citedOnly);
     return {
       items: allowed,
+      dropped: [],
       droppedCount: dropped + unverifiedDropped + (citedOnly.length - allowed.length),
       queryCount: queries.length,
       replayId: replayScope?.replayId ?? null,

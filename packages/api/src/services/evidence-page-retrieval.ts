@@ -34,6 +34,7 @@ export interface RetrievedEvidencePage extends EvidencePageCandidate {
   finalUrl: string;
   text: string;
   retrievedAt: string;
+  dateSource?: PagePublicationDateSource;
 }
 
 type AddressRecord = { address: string; family: number };
@@ -59,6 +60,7 @@ interface FetchedPageBody {
    * empty value here must not overwrite a search-result date.
    */
   date: string;
+  dateSource?: PagePublicationDateSource;
 }
 
 /**
@@ -313,21 +315,33 @@ function extractJsonLdPublished(html: string, now: Date): string {
   return "";
 }
 
-function extractMetaPublished(html: string, now: Date): string {
+export type PagePublicationDateSource =
+  | "json-ld-datePublished"
+  | "meta-article-published-time"
+  | "meta-pubdate"
+  | "meta-itemprop-datePublished"
+  | "time-datetime";
+
+function extractMetaPublishedWithSource(html: string, now: Date): { date: string; source: PagePublicationDateSource } | null {
   const tags = [...html.matchAll(/<meta\b[^>]*>/gi)].map((match) => match[0]);
-  const pick = (test: (tag: string) => boolean): string => {
+  const pick = (
+    test: (tag: string) => boolean,
+    source: PagePublicationDateSource,
+  ): { date: string; source: PagePublicationDateSource } | null => {
     for (const tag of tags) {
       if (!test(tag)) continue;
       const found = usablePublicationDate(attrValue(tag, "content"), now);
-      if (found) return found;
+      if (found) return { date: found, source };
     }
-    return "";
+    return null;
   };
-  return pick((tag) =>
-    /(?:property|name)\s*=\s*["']article:published_time["']/i.test(tag)
-  )
-    || pick((tag) => /name\s*=\s*["']pubdate["']/i.test(tag))
-    || pick((tag) => /itemprop\s*=\s*["']datePublished["']/i.test(tag));
+  return pick((tag) => /(?:property|name)\s*=\s*["']article:published_time["']/i.test(tag), "meta-article-published-time")
+    ?? pick((tag) => /name\s*=\s*["']pubdate["']/i.test(tag), "meta-pubdate")
+    ?? pick((tag) => /itemprop\s*=\s*["']datePublished["']/i.test(tag), "meta-itemprop-datePublished");
+}
+
+function extractMetaPublished(html: string, now: Date): string {
+  return extractMetaPublishedWithSource(html, now)?.date ?? "";
 }
 
 function extractTimePublished(html: string, now: Date): string {
@@ -344,9 +358,20 @@ function extractTimePublished(html: string, now: Date): string {
  * `dateModified` is ignored. Unparseable and future dates are rejected.
  */
 export function extractPublicationDate(raw: string, now: Date): string {
-  return extractJsonLdPublished(raw, now)
-    || extractMetaPublished(raw, now)
-    || extractTimePublished(raw, now);
+  return extractPublicationDateWithSource(raw, now)?.date ?? "";
+}
+
+export function extractPublicationDateWithSource(
+  raw: string,
+  now: Date,
+): { date: string; source: PagePublicationDateSource } | null {
+  const jsonLd = extractJsonLdPublished(raw, now);
+  if (jsonLd) return { date: jsonLd, source: "json-ld-datePublished" };
+  const meta = extractMetaPublishedWithSource(raw, now);
+  if (meta) return meta;
+  const time = extractTimePublished(raw, now);
+  if (time) return { date: time, source: "time-datetime" };
+  return null;
 }
 
 function pad2(value: number): string {
@@ -499,12 +524,15 @@ async function retrieveOne(
   const contentType = response.headers.get("content-type")?.toLocaleLowerCase() ?? "";
   const kind = usableEvidenceKind(raw, contentType);
   if (!kind) throw new Error("unsupported evidence content type");
-  const extractedDate = kind === "html" ? extractPublicationDate(raw, options.now()) : "";
+  const extracted = kind === "html"
+    ? extractPublicationDateWithSource(raw, options.now())
+    : null;
   const text = plainTextFromPage(raw, kind === "html" ? "text/html" : "text/plain", options.maxTextChars);
   if (!text) throw new Error("evidence page contained no readable text");
   return {
     ...candidate,
-    date: extractedDate,
+    date: extracted?.date ?? "",
+    dateSource: extracted?.source,
     finalUrl: url.toString(),
     text,
     retrievedAt: options.now().toISOString(),
@@ -561,13 +589,18 @@ export async function retrieveEvidencePages(
       const now = resolved.now();
       const pageDate = usablePublicationDate(body.date, now);
       const providerDate = usablePublicationDate(candidate.date, now);
-      return { ...candidate, ...body, date: pageDate || providerDate };
+      return {
+        ...candidate,
+        ...body,
+        date: pageDate || providerDate,
+        dateSource: body.dateSource,
+      };
     } catch (error) {
       if (signal?.aborted) throw error;
       return null;
     }
   }));
-  return settled.filter((page): page is RetrievedEvidencePage => page !== null);
+  return settled.filter((page) => page !== null) as RetrievedEvidencePage[];
 }
 
 /**
@@ -609,6 +642,7 @@ async function retrieveBody(
       text: page.text,
       retrievedAt: page.retrievedAt,
       date: page.date,
+      dateSource: page.dateSource,
     };
   } catch (error) {
     if (!signal?.aborted) logEvidenceFetchFailure(candidate.url, error);
