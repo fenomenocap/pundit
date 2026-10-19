@@ -2,6 +2,11 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import process from "node:process";
+import {
+  formatLiveBettingMathsHeadline,
+  summarizeLiveBettingMaths,
+  summarizeScenarioOutcomesByCategory,
+} from "./chat-eval-category-reporting.mjs";
 
 // Questions that name something only the live web can answer. A turn like this
 // that comes back without a single citation answered from memory or not at all.
@@ -181,12 +186,17 @@ export function summarizeTranscript(report, { runDate } = {}) {
   let status = "clean";
   if (progressStatus !== "complete") status = "attention";
   if (findings.length > 0) status = "attention";
+  const liveBettingMaths = report?.liveBettingMaths ?? summarizeLiveBettingMaths(scenarios);
+  const byCategory = report?.byCategory ?? summarizeScenarioOutcomesByCategory(scenarios);
   return {
     date: runDate ?? String(report?.startedAt ?? "").slice(0, 10),
     runId: report?.runId ?? null,
     status,
     overall: report?.overall ?? null,
     progress: progressStatus,
+    liveBettingMaths,
+    liveBettingMathsHeadline: formatLiveBettingMathsHeadline(liveBettingMaths),
+    byCategory,
     scenariosRun: scenarios.length,
     passed,
     inconclusive,
@@ -228,6 +238,10 @@ export function renderTranscript(report, summary = summarizeTranscript(report)) 
     `# Pundit chat transcript — ${summary.date}`,
     "",
     `- Run \`${summary.runId}\` · overall **${summary.overall ?? "n/a"}** · progress ${summary.progress ?? "n/a"}`,
+    `- **${summary.liveBettingMathsHeadline ?? formatLiveBettingMathsHeadline(summary.liveBettingMaths ?? { pass: 0, inconclusive: 0, fail: 0, total: 0 })}**`,
+    summary.byCategory
+      ? `- By category (pass/inc/fail): betting-maths ${summary.byCategory["betting-maths"]?.pass ?? 0}/${summary.byCategory["betting-maths"]?.inconclusive ?? 0}/${summary.byCategory["betting-maths"]?.fail ?? 0}, context ${summary.byCategory.context?.pass ?? 0}/${summary.byCategory.context?.inconclusive ?? 0}/${summary.byCategory.context?.fail ?? 0}, infra ${summary.byCategory.infra?.pass ?? 0}/${summary.byCategory.infra?.inconclusive ?? 0}/${summary.byCategory.infra?.fail ?? 0}`
+      : null,
     `- API \`${summary.apiSha ?? "?"}\` · scenarios ${summary.scenariosRun} (pass ${summary.passed}, inconclusive ${summary.inconclusive}, fail ${summary.failed})`,
     `- Turns ${summary.turns} · answered ${summary.answeredTurns} · with citations ${summary.turnsWithCitations} · median latency ${summary.medianLatencyMs ?? "n/a"} ms`,
     `- Quality signals: ${summary.repeatedSentences} repeated sentence(s), ${summary.nearDuplicatePairs} near-duplicate answer pair(s), ${summary.uncitedCurrentNews} uncited current-news turn(s)`,
