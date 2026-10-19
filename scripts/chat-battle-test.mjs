@@ -42,6 +42,7 @@ import {
   routableRecognizedEntries,
   requireAvailableRecognizedScenarios,
   selectRecognizedScenarioEntry,
+  answerQuotesMarketPrice,
   validateGrounding,
   validateSse,
   validateAnswerCopy,
@@ -398,8 +399,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       return result;
     }
     const grounding = response.body?.grounding ?? null;
-    const groundingValidation = validateGrounding(grounding, turn);
     const turnNumber = history.length / 2 + 1;
+    result.answer = response.body?.answer ?? "";
+    const groundingExpectation = {
+      ...turn,
+      expectOddsSources: Boolean(turn.expectOddsSources)
+        || (grounding?.kind === "match" && answerQuotesMarketPrice(result.answer)),
+    };
+    const groundingValidation = validateGrounding(grounding, groundingExpectation);
     for (const [name, passed] of Object.entries(groundingValidation.assertions)) {
       result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
     }
@@ -411,7 +418,6 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
         [`turn${turnNumber}`]: groundingValidation.observations,
       };
     }
-    result.answer = response.body?.answer ?? "";
     result.citations = response.body?.citations ?? [];
     result.verification = response.body?.verification ?? null;
     result.agentTurn = response.body?.agentTurn ?? null;
@@ -446,6 +452,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     const structureValidation = validateAnswerStructure(result.answer, {
       expectHeadlineOneXTwo: grounding?.kind === "match"
         && Boolean(turn.expectHeadlineOneXTwo ?? scenario.expectHeadlineOneXTwo),
+      grounding: grounding?.kind === "match" ? grounding : undefined,
     });
     Object.assign(result.assertions, structureValidation.assertions);
     // `unavailable` is the same outcome as `abstain` -- both mean zero
@@ -984,7 +991,11 @@ async function runScenario(
         expectTeams: [featured.home, featured.away],
         expectFixtureId: featured.recognizedFixtureId,
         expectCompetitionId: featured.competitionId,
-        expectOddsSources: scenario.expectOddsSources ?? false
+        expectOddsSources: scenario.expectOddsSources ?? false,
+        expectHeadlineOneXTwo: scenario.expectHeadlineOneXTwo,
+        expectModelProbabilityOrFairOdds: scenario.expectModelProbabilityOrFairOdds,
+        expectComparableMarketAttribution: scenario.expectComparableMarketAttribution,
+        expectNoUnsupportedMarketCausality: scenario.expectNoUnsupportedMarketCausality,
       }]
     }, options, pacer, onRequestStart);
   }

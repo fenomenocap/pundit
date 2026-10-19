@@ -1622,6 +1622,111 @@ export function sanitizeEvidence(value) {
     .slice(0, 2_000);
 }
 
+/** External or captured market prices in delivered prose — triggers strict odds-source grounding. */
+export function answerQuotesMarketPrice(text) {
+  const body = String(text ?? "").replace(/[‘’]/g, "'");
+  return /\bat\s+\d+(?:\.\d+)?\b/.test(body)
+    || /\b(?:kalshi|polymarket|stake)\b[^.!?\n]{0,140}\d+(?:\.\d+)?\s*%/i.test(body)
+    || /\b(?:market[- ]implied|book(?:maker)?|captured decimal|decimal line|fair decimal)\b/i.test(body);
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function asOfTokensFromIso(iso) {
+  if (!validIsoDate(iso)) return [];
+  const date = new Date(iso);
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth();
+  const d = date.getUTCDate();
+  const month = MONTH_NAMES[m];
+  return [
+    iso.slice(0, 10),
+    `${d} ${month} ${y}`,
+    `${month} ${d}, ${y}`,
+    `${month} ${d} ${y}`,
+  ];
+}
+
+function modelVersionMentioned(text, modelVersion) {
+  const version = String(modelVersion ?? "").trim();
+  if (!version || version === "unknown") {
+    return /\bunknown\b/i.test(text);
+  }
+  if (text.includes(version)) return true;
+  const hashSegment = version.includes(":") ? version.split(":").pop() : "";
+  if (hashSegment.length >= 8 && text.includes(hashSegment.slice(0, 8))) return true;
+  return false;
+}
+
+/**
+ * Pricing-desk / headline 1X2 answers must name the odds feed, model version,
+ * and as-of time that match the turn's match grounding (not generic filler).
+ */
+export function validateMatchAnswerProvenance(answer, grounding) {
+  const text = String(answer ?? "").replace(/[‘’]/g, "'");
+  const assertions = {
+    provenanceOddsFeed: false,
+    provenanceModelVersion: false,
+    provenanceAsOf: false,
+  };
+  if (grounding?.kind !== "match") {
+    return {
+      passed: false,
+      assertions,
+      failures: ["match answer provenance requires match grounding"],
+    };
+  }
+  const completeMarkets = (Array.isArray(grounding.oddsSources) ? grounding.oddsSources : [])
+    .filter((source) => typeof source?.source === "string"
+      && validIsoDate(source?.observedAt)
+      && [source?.pHome, source?.pDraw, source?.pAway].every(finiteProbability));
+  const mentionsMarket = /\b(?:market|kalshi|polymarket|stake|book(?:maker|ie)?s?|odds|price|decimal|fair)\b/i.test(text);
+  const honestNoMarket = /\b(?:no|do not|don't|cannot|can't|without)\b[^.!?\n]{0,100}\b(?:comparable|complete|same[- ]source|market|price|odds|line)\b/i.test(text);
+  assertions.provenanceOddsFeed = completeMarkets.length === 0
+    ? (!mentionsMarket || honestNoMarket)
+    : completeMarkets.some((source) =>
+      new RegExp(`\\b${String(source.source).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
+
+  const modelVersion = grounding.pricing?.modelVersion ?? null;
+  assertions.provenanceModelVersion = modelVersionMentioned(text, modelVersion);
+
+  const pricedAt = grounding.pricing?.pricedAt ?? completeMarkets[0]?.observedAt ?? null;
+  const tokens = asOfTokensFromIso(pricedAt);
+  assertions.provenanceAsOf = tokens.length > 0
+    && tokens.some((token) => text.toLowerCase().includes(token.toLowerCase()));
+
+  const passed = Object.values(assertions).every(Boolean);
+  return {
+    passed,
+    assertions,
+    failures: passed ? [] : ["match answer provenance did not match grounding"],
+  };
+}
+
+export function answerIncludesGroundedModelNumbers(text, grounding) {
+  if (grounding?.kind !== "match") return false;
+  const probabilities = [
+    grounding.pHome,
+    grounding.pDraw,
+    grounding.pAway,
+    grounding.pOver2_5,
+    grounding.pUnder2_5,
+  ].filter(finiteProbability);
+  const percentages = [...String(text ?? "").matchAll(/(\d+(?:\.\d+)?)\s*%/g)]
+    .map((match) => Number(match[1]));
+  if (percentages.some((pct) => probabilities.some((p) =>
+    Math.abs(pct - p * 100) <= statedPercentageTolerance(pct)))) {
+    return true;
+  }
+  const decimals = [...String(text ?? "").matchAll(/\b(\d+\.\d{2})\b/g)]
+    .map((match) => Number(match[1]));
+  return decimals.some((decimal) => probabilities.some((p) =>
+    p > 0 && Math.abs(decimal - 1 / p) <= 0.06));
+}
+
 /** User-facing jargon that must not appear in chat answers. */
 export const FORBIDDEN_ANSWER_TERMS = [
   "dixon-coles",
@@ -1771,6 +1876,12 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
     assertions.pricingDeskFairOdds = /\bfair\b/i.test(lead) && /\b\d+\.\d{2}\b/.test(lead);
     assertions.pricingDeskNotPreviewEssay = !/\bleading scorelines\b/i.test(lead)
       || ((lead.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bfair\b/i.test(lead));
+    if (grounding?.kind === "match") {
+      Object.assign(assertions, validateMatchAnswerProvenance(text, grounding).assertions);
+    }
+  }
+  if (expectation.expectModelProbabilityOrFairOdds && grounding?.kind === "match") {
+    assertions.modelProbabilityOrFairOdds = answerIncludesGroundedModelNumbers(text, grounding);
   }
   if (expectation.expectTotalsHonesty) {
     assertions.totalsOverUnderPresent = /\bover 2\.5\b/i.test(text) && /\bunder 2\.5\b/i.test(text);
@@ -1857,6 +1968,10 @@ export function validateAnswerStructure(answer, expectation = {}) {
     assertions.headlineOneXTwoPresent = lines.some((line) =>
       (line.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(line)
     );
+    const matchGrounding = expectation.grounding?.kind === "match" ? expectation.grounding : null;
+    if (matchGrounding) {
+      Object.assign(assertions, validateMatchAnswerProvenance(typeof answer === "string" ? answer : "", matchGrounding).assertions);
+    }
   }
   const trimmed = typeof answer === "string" ? answer.trim() : "";
   // MiniMax has returned stop_reason=end_turn while cutting a requested 1X2
