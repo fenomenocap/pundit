@@ -255,7 +255,10 @@ export async function verifySearchCandidatesForFixture(
 
     let pages: RetrievedEvidencePage[] = [];
     try {
-      pages = await retrieveEvidencePages([pageCandidate], undefined, pageRetrieval);
+      pages = await retrieveEvidencePages([pageCandidate], undefined, {
+        articleBodyExtract: true,
+        ...pageRetrieval,
+      });
     } catch {
       pages = [];
     }

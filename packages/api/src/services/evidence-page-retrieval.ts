@@ -89,6 +89,8 @@ export interface RetrievalOptions {
   maxTextChars?: number;
   now?: () => Date;
   cache?: EvidencePageCache;
+  /** Dossier verified capture only; default false preserves legacy chat plain text. */
+  articleBodyExtract?: boolean;
 }
 
 function hasDisallowedPort(url: URL): boolean {
@@ -460,7 +462,7 @@ async function retrieveOne(
   candidate: EvidencePageCandidate,
   requestSignal: AbortSignal | undefined,
   options: Required<Pick<RetrievalOptions, "timeoutMs" | "maxResponseBytes" | "maxTextChars" | "now">>
-    & { fetch: FetchPage; resolveHost: ResolveHost }
+    & { fetch: FetchPage; resolveHost: ResolveHost; articleBodyExtract: boolean }
 ): Promise<RetrievedEvidencePage> {
   const timeout = AbortSignal.timeout(options.timeoutMs);
   const signal = requestSignal ? AbortSignal.any([requestSignal, timeout]) : timeout;
@@ -509,12 +511,16 @@ async function retrieveOne(
     ? extractPublicationDateWithSource(raw, options.now())
     : null;
   let text = "";
-  let articleHeadline = "";
+  let articleHeadline: string | undefined;
   if (kind === "html") {
-    const article = extractArticleBodyFromHtml(raw, url.toString(), options.maxTextChars);
-    if (article) {
-      text = article.text;
-      articleHeadline = article.headline;
+    if (options.articleBodyExtract) {
+      const article = extractArticleBodyFromHtml(raw, url.toString(), options.maxTextChars);
+      if (article) {
+        text = article.text;
+        articleHeadline = article.headline || undefined;
+      } else {
+        text = plainTextFromPage(raw, "text/html", options.maxTextChars);
+      }
     } else {
       text = plainTextFromPage(raw, "text/html", options.maxTextChars);
     }
@@ -528,7 +534,7 @@ async function retrieveOne(
     dateSource: extracted?.source,
     finalUrl: url.toString(),
     text,
-    articleHeadline: articleHeadline || undefined,
+    articleHeadline,
     retrievedAt: options.now().toISOString(),
   };
 }
@@ -575,6 +581,7 @@ export async function retrieveEvidencePages(
     maxResponseBytes: options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES,
     maxTextChars: options.maxTextChars ?? DEFAULT_MAX_TEXT_CHARS,
     now: options.now ?? (() => new Date()),
+    articleBodyExtract: options.articleBodyExtract === true,
   };
   const settled = await Promise.all(selected.map(async (candidate) => {
     try {
@@ -607,11 +614,11 @@ function bodyFor(
   candidate: EvidencePageCandidate,
   signal: AbortSignal | undefined,
   resolved: Required<Pick<RetrievalOptions, "timeoutMs" | "maxResponseBytes" | "maxTextChars" | "now">>
-    & { fetch: FetchPage; resolveHost: ResolveHost },
+    & { fetch: FetchPage; resolveHost: ResolveHost; articleBodyExtract: boolean },
   cache: EvidencePageCache | undefined
 ): Promise<FetchedPageBody | null> {
   if (!cache) return retrieveBody(candidate, signal, resolved);
-  const key = candidate.url;
+  const key = `${candidate.url}\0${resolved.articleBodyExtract ? "article" : "legacy"}`;
   const existing = cache.get(key);
   if (existing) return existing;
   // Stored as a promise, not a value, so two callers racing for the same URL
@@ -628,7 +635,7 @@ async function retrieveBody(
   candidate: EvidencePageCandidate,
   signal: AbortSignal | undefined,
   resolved: Required<Pick<RetrievalOptions, "timeoutMs" | "maxResponseBytes" | "maxTextChars" | "now">>
-    & { fetch: FetchPage; resolveHost: ResolveHost }
+    & { fetch: FetchPage; resolveHost: ResolveHost; articleBodyExtract: boolean }
 ): Promise<FetchedPageBody> {
   try {
     const page = await retrieveOne(candidate, signal, resolved);
@@ -681,6 +688,7 @@ export function prefetchEvidencePages(
     maxResponseBytes: options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES,
     maxTextChars: options.maxTextChars ?? DEFAULT_MAX_TEXT_CHARS,
     now: options.now ?? (() => new Date()),
+    articleBodyExtract: options.articleBodyExtract === true,
   };
   for (const candidate of selectRetrievable(candidates)) {
     // Kicked off, deliberately not awaited. The catch keeps a failed prefetch

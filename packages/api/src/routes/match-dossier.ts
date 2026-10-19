@@ -1,5 +1,11 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
-import { getMatchDossier, matchDossierEnabled, dossierCronStatus, listStoredDossierFixtureIds } from "../services/match-dossier";
+import {
+  getMatchDossier,
+  matchDossierEnabled,
+  dossierCronStatus,
+  listStoredDossierFixtureIds,
+  triggerDossierSlateRebuild,
+} from "../services/match-dossier";
 import { publicMatchDossierView } from "../services/match-dossier/types";
 
 const router: Router = Router();
@@ -16,11 +22,21 @@ router.use((_req, res, next) => {
   next();
 });
 
-router.get("/status", (_req: Request, res: Response) => {
-  res.set("Cache-Control", "no-store").json({
+router.get("/status", (req: Request, res: Response) => {
+  if (req.query.rebuild === "true") {
+    triggerDossierSlateRebuild();
+    const payload = {
+      ...dossierCronStatus(),
+      storedCount: listStoredDossierFixtureIds().length,
+    };
+    res.status(202).set("Cache-Control", "no-store").json(payload);
+    return;
+  }
+  const payload = {
     ...dossierCronStatus(),
     storedCount: listStoredDossierFixtureIds().length,
-  });
+  };
+  res.set("Cache-Control", "no-store").json(payload);
 });
 
 router.get("/:fixtureKey", async (req: Request, res: Response, next: NextFunction) => {
