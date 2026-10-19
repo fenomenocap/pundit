@@ -268,6 +268,7 @@ export function buildMatchDossierForFixture(
       marketProvenance(markets?.observedAt ?? builtAt),
     ),
     evidence: evidenceItems,
+    dropped: evidenceMeta?.dropped ?? [],
     ...(evidenceMeta && !evidenceMeta.syntheticReplayBlocked ? {
       evidenceBuild: {
         replayId: evidenceMeta.replayId,
@@ -295,6 +296,7 @@ export async function buildMatchDossierForFixtureAsync(
   let evidence: DossierEvidenceCollectResult | undefined = options.evidence
     ? {
       items: options.evidence.items,
+      dropped: options.evidence.dropped,
       droppedCount: options.evidence.droppedCount,
       queryCount: options.evidence.queryCount,
       replayId: options.evidence.replayId,
@@ -310,6 +312,7 @@ export async function buildMatchDossierForFixtureAsync(
       });
       evidence = {
         items: verified.items,
+        dropped: verified.dropped,
         droppedCount: verified.droppedCount,
         queryCount: verified.queryCount,
         replayId: null,

@@ -46,6 +46,15 @@ export interface DossierEvidenceItem {
   snippet?: string;
   /** SHA-256 of normalized page excerpt when verification is page-verified. */
   contentSha256?: string;
+  publishedAtSource?: "search-result" | "json-ld-datePublished" | "meta-article-published-time" | "meta-pubdate" | "meta-itemprop-datePublished" | "time-datetime";
+}
+
+export interface DossierEvidenceDroppedItem {
+  sourceUrl: string;
+  claim: string;
+  reason: string;
+  category: DossierEvidenceCategory;
+  query: string;
 }
 
 export interface ProvenanceField<T> {
@@ -213,6 +222,9 @@ export interface MatchDossier {
 
   evidence: DossierEvidenceItem[];
 
+  /** Evidence candidates rejected by the verifier (visible on /api/match-dossier). */
+  dropped: DossierEvidenceDroppedItem[];
+
   evidenceBuild?: {
     replayId: string | null;
     captureId: string | null;
@@ -232,6 +244,7 @@ export interface MatchDossier {
 
 export interface DossierEvidenceBuildMeta {
   items: DossierEvidenceItem[];
+  dropped: DossierEvidenceDroppedItem[];
   droppedCount: number;
   queryCount: number;
   replayId: string | null;

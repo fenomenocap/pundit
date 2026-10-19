@@ -70,4 +70,44 @@ describe("dossier evidence capture (synthetic, no network)", () => {
     expect(capture.summary.dropped).toBe(1);
     expect(capture.verifications[0]?.reason).toMatch(/fetch_failed/);
   });
+
+  it("(7) accepts page meta published time when search result has no date", async () => {
+    const row = fixture(DOSSIER_SYNTHETIC_HOME, DOSSIER_SYNTHETIC_AWAY, {
+      fixtureId: 909990004,
+      utcDate: "2026-10-24T15:00:00.000Z",
+      date: "2026-10-24",
+    });
+    const claimSnippet = "Test Player Beta remains doubtful for North Testborough FC";
+    const mockFetch = async () => new Response(
+      `<html><head><meta property="article:published_time" content="2026-10-18T09:00:00Z" /></head>`
+      + `<body><p>SYNTHETIC FIXTURE ONLY. ${claimSnippet} ahead of South Example City.</p></body></html>`,
+      { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+    );
+
+    const { verifiedItems, dropped } = await runDossierEvidenceCapture(row, {
+      fixtureId: "espn:eng.1:909990004",
+      persistCapture: false,
+      now: new Date("2026-10-19T12:00:00.000Z"),
+      queries: ["North Testborough FC injury suspension update 2026-10-19"],
+      searchOutcomes: [{
+        status: "ok",
+        provider: "test",
+        reason: null,
+        usedFallback: false,
+        attempts: [],
+        results: [{
+          title: "SYNTHETIC CI — North Testborough training",
+          link: "https://www.bbc.co.uk/sport/synthetic-dossier-ci-fixture-only-meta-date",
+          snippet: claimSnippet,
+          date: "",
+        }],
+      }],
+      pageRetrieval: { fetch: mockFetch },
+    });
+
+    expect(dropped.filter((d) => d.reason === "missing_published_at")).toHaveLength(0);
+    expect(verifiedItems).toHaveLength(1);
+    expect(verifiedItems[0]?.publishedAtSource).toBe("meta-article-published-time");
+    expect(verifiedItems[0]?.publishedAt).toMatch(/^2026-10-18/);
+  });
 });
