@@ -504,6 +504,12 @@ describe("emphasis and link hygiene", () => {
 
   // Live: "Hull are without Jack Butland ()" -- the parenthesis a removed
   // aside was sitting in.
+  it("drops a parenthesis holding only the separators and date a removed citation left", () => {
+    expect(dropEmptyEmphasis("Maresca played it down (,, 17 Oct 2026) and (, Oct 2026) later."))
+      .toBe("Maresca played it down and later.");
+    expect(dropEmptyEmphasis("Kept (17 Oct 2026) and (see, here).")).toBe("Kept (17 Oct 2026) and (see, here).");
+  });
+
   it("drops a parenthesis left standing empty", () => {
     expect(dropEmptyEmphasis("Hull are without Jack Butland (), so the backup starts."))
       .toBe("Hull are without Jack Butland, so the backup starts.");
@@ -1004,6 +1010,12 @@ describe("an unverified outright price", () => {
 });
 
 describe("normalizeAnalystIdentity", () => {
+  it("leaves a public statistic's own model alone", () => {
+    expect(normalizeAnalystIdentity("xG weighs shot location. The model considers body part and everything else the model sees."))
+      .toBe("xG weighs shot location. The model considers body part and everything else the model sees.");
+    expect(normalizeAnalystIdentity("Weigh the numbers against the model.")).toBe("Weigh the numbers against my model.");
+  });
+
   it("does not turn the model into a bare 'I' where it is an object or a modifier", () => {
     expect(normalizeAnalystIdentity("Weigh the numbers against the model."))
       .toBe("Weigh the numbers against my model.");
