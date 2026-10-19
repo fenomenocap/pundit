@@ -22,6 +22,7 @@ import {
   buildContradictingPointsShared,
   buildGoalReasonPoints,
 } from "./take-plan-helpers";
+import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
 
 const OUTCOMES: OneXTwoOutcome[] = ["home", "draw", "away"];
 
@@ -49,7 +50,7 @@ function favoriteOutcome(grounding: Grounding): TakePlanCall {
 }
 
 function buildFlipCondition(dossier: MatchDossier | null): TakePlanPoint | null {
-  const lineupItems = dossier?.lineups.value.items ?? [];
+  const lineupItems = (dossier?.lineups.value.items ?? []).filter(takeEligibleDossierEvidence);
   if (lineupItems.length) {
     return {
       id: "flip-lineups",

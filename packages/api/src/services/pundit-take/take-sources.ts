@@ -3,6 +3,7 @@ import { getClubFormSnapshot } from "../club-form";
 import { formatTimestampSgt, shortModelVersionLabel } from "../basics-answer-voice";
 import type { MatchDossier } from "../match-dossier/types";
 import type { PunditTakeSourcesFooter } from "./types";
+import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
 
 function labelSource(source: string): string {
   if (source === "kalshi") return "Kalshi";
@@ -25,7 +26,7 @@ export function buildTakeSourcesFooter(
     }));
 
   const evidenceUrls = (dossier?.evidence ?? [])
-    .filter((item) => item.verification === "cited" && item.sourceUrl)
+    .filter((item) => takeEligibleDossierEvidence(item) && item.sourceUrl)
     .map((item) => ({
       id: item.id,
       url: item.sourceUrl,

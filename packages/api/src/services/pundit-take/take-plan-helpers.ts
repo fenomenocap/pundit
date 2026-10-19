@@ -2,6 +2,7 @@ import type { Grounding } from "../ask";
 import type { MatchDossier } from "../match-dossier/types";
 import { compactTeamLabel } from "../basics-answer-voice";
 import type { TakePlanPoint } from "./types";
+import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
 
 /** Goal-rate copy must match calibrated grid means on the same row as pBTTS / totals. */
 function calibratedGoalRatesOnRow(grounding: Grounding): boolean {
@@ -97,6 +98,7 @@ export function build1x2SupportingPoints(
   }
 
   for (const item of dossier?.evidence ?? []) {
+    if (!takeEligibleDossierEvidence(item)) continue;
     if (item.direction === "supports-home" && favSide === "home") {
       points.push({
         id: `support-ev-${item.id}`,
@@ -149,7 +151,7 @@ export function buildContradictingPointsShared(
     });
   }
 
-  const injuryItems = dossier?.injuries.value.items ?? [];
+  const injuryItems = (dossier?.injuries.value.items ?? []).filter(takeEligibleDossierEvidence);
   if (injuryItems.length) {
     points.push({
       id: "fact-injuries",
@@ -161,6 +163,7 @@ export function buildContradictingPointsShared(
   }
 
   for (const item of dossier?.evidence ?? []) {
+    if (!takeEligibleDossierEvidence(item)) continue;
     if (item.direction === "contradicts-model") {
       points.push({
         id: `contradict-ev-${item.id}`,
