@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-19",
+  "runId": "2026-10-19T05-03-01-159Z",
+  "status": "attention",
+  "overall": "ISSUES FOUND",
+  "progress": "complete",
+  "scenariosRun": 73,
+  "passed": 67,
+  "inconclusive": 5,
+  "failed": 1,
+  "turns": 71,
+  "answeredTurns": 71,
+  "turnsWithCitations": 4,
+  "medianLatencyMs": 255,
+  "repeatedSentences": 0,
+  "nearDuplicatePairs": 0,
+  "uncitedCurrentNews": 0,
+  "requestEngine": "both",
+  "qualityMetrics": {
+    "templateShare": 0.14084507042253522,
+    "nearDuplicateRate": 0.02857142857142857,
+    "llmCallRate": 0.07042253521126761,
+    "abstainRate": 0.09859154929577464,
+    "citationCoverage": 0.056338028169014086
+  },
+  "llmJudgeSummary": {
+    "score": null,
+    "status": "skipped_unavailable",
+    "note": "judge: skipped (unavailable)",
+    "judgedTurns": 0,
+    "scoredTurns": 0,
+    "skippedTurns": 24
+  },
+  "engineQualityComparison": {
+    "legacy": {
+      "templateShare": 0.14084507042253522,
+      "nearDuplicateRate": 0.02857142857142857,
+      "llmCallRate": 0.07042253521126761,
+      "abstainRate": 0.09859154929577464,
+      "citationCoverage": 0.056338028169014086
+    },
+    "agent": {
+      "templateShare": 0.14925373134328357,
+      "nearDuplicateRate": 0.006331976481230212,
+      "llmCallRate": 0.9850746268656716,
+      "abstainRate": 0.05970149253731343,
+      "citationCoverage": 0.13432835820895522
+    }
+  },
+  "findings": [
+    {
+      "scenario": "pinned-current-manager-and-result-evidence",
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
+    }
+  ],
+  "sourceCommit": "64f4e16",
+  "apiSha": "456df75",
+  "ranAt": "2026-10-19T05:03:01.159Z"
+}
