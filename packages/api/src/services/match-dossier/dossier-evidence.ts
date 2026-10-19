@@ -199,7 +199,7 @@ async function searchQueries(
         status: "empty" as const,
         results: [],
         provider: "replay",
-        reason: "missing_replay_query",
+        reason: "provider_unavailable" as const,
         usedFallback: false,
         attempts: [],
       };

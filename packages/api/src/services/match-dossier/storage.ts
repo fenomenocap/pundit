@@ -41,7 +41,8 @@ export function readMatchDossier(fixtureId: string): MatchDossier | null {
   const parsed = readJsonFile<MatchDossier>(latestDossierPath(fixtureId));
   if (!parsed) return null;
   if (parsed.fixture.fixtureId !== fixtureId) return null;
-  if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== MATCH_DOSSIER_SCHEMA_VERSION) return null;
+  const version = parsed.schemaVersion as number;
+  if (version !== 1 && version !== MATCH_DOSSIER_SCHEMA_VERSION) return null;
   return parsed;
 }
 
