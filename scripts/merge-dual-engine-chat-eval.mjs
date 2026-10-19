@@ -8,7 +8,7 @@ import {
   computeTurnQualityMetrics,
   summarizeLlmJudge,
 } from "./chat-eval-quality-metrics.mjs";
-import { judgeEvalTurns } from "./chat-eval-llm-judge.mjs";
+import { judgeEvalTurns, skippedNoKeyJudge } from "./chat-eval-llm-judge.mjs";
 import { writeReport } from "./chat-battle-test-lib.mjs";
 
 function flattenReportTurns(report) {
@@ -50,13 +50,25 @@ export async function mergeDualEngineChatEvalReports(legacy, agent, outputPath) 
     engineQualityComparison: compareEngineQuality(legacyTurns, agentTurns),
   };
 
-  if (!legacy.llmJudge?.scoredTurns && process.env.OPENROUTER_API_KEY?.trim()) {
-    merged.llmJudge = await judgeEvalTurns(legacyTurns, { maxTurns: 24, paceMs: 250 });
+  const judgeNeedsRerun = (judge) => !judge?.scoredTurns
+    || (judge.judgedTurns > 0 && judge.scoredTurns === 0);
+
+  const hasJudgeKey = Boolean(process.env.OPENROUTER_API_KEY?.trim());
+
+  if (!hasJudgeKey) {
+    merged.llmJudge = skippedNoKeyJudge(legacyTurns, { maxTurns: 24 });
     merged.llmJudgeSummary = summarizeLlmJudge(merged);
-  }
-  if (!agent.llmJudge?.scoredTurns && process.env.OPENROUTER_API_KEY?.trim()) {
-    merged.agentEval.llmJudge = await judgeEvalTurns(agentTurns, { maxTurns: 24, paceMs: 250 });
+    merged.agentEval.llmJudge = skippedNoKeyJudge(agentTurns, { maxTurns: 24 });
     merged.agentEval.llmJudgeSummary = summarizeLlmJudge({ llmJudge: merged.agentEval.llmJudge });
+  } else {
+    if (judgeNeedsRerun(legacy.llmJudge)) {
+      merged.llmJudge = await judgeEvalTurns(legacyTurns, { maxTurns: 24, paceMs: 250 });
+      merged.llmJudgeSummary = summarizeLlmJudge(merged);
+    }
+    if (judgeNeedsRerun(agent.llmJudge)) {
+      merged.agentEval.llmJudge = await judgeEvalTurns(agentTurns, { maxTurns: 24, paceMs: 250 });
+      merged.agentEval.llmJudgeSummary = summarizeLlmJudge({ llmJudge: merged.agentEval.llmJudge });
+    }
   }
 
   await writeFile(outputPath, `${JSON.stringify(merged, null, 2)}\n`);

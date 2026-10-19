@@ -85,6 +85,18 @@ function matchHeadlineLine(grounding: Extract<AskGrounding, { kind: "match" }>):
   return `My 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`;
 }
 
+const AGENT_HEADLINE_LINE =
+  /^(?:My 1X2 is|Lean ).+\bdraw\b.+\d+(?:\.\d+)?\s*%.+\.\s*/im;
+
+function stripInjectedMatchHeadline(text: string): string {
+  const lines = text.split("\n");
+  const kept = lines.filter((line) => !(
+    (line.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(line)
+  ));
+  const joined = kept.join("\n").trim();
+  return joined.replace(AGENT_HEADLINE_LINE, "").trim();
+}
+
 function ensureMatchHeadline(
   text: string,
   grounding: Extract<AskGrounding, { kind: "match" }>,
@@ -126,12 +138,17 @@ export function envelopChatAgentAnswer(
   text = trimIncompleteTrailingBold(text);
   if (grounding?.kind !== "match") return text.trim();
 
+  const hasHistory = options.hasHistory ?? false;
   const plan = planResponse(question, {
     groundingKind: "match",
-    hasHistory: options.hasHistory ?? false,
+    hasHistory,
     hasUserLine: grounding.pricing?.userLine != null,
   });
-  const expectHeadline = plan.mode !== "team-news" && plan.mode !== "player-or-scorer";
-  text = ensureMatchHeadline(text, grounding, expectHeadline);
+  if (hasHistory) {
+    text = stripInjectedMatchHeadline(text);
+  } else {
+    const expectHeadline = plan.mode !== "team-news" && plan.mode !== "player-or-scorer";
+    text = ensureMatchHeadline(text, grounding, expectHeadline);
+  }
   return text.trim();
 }
