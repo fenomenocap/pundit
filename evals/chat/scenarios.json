@@ -61,6 +61,28 @@
       ]
     },
     {
+      "id": "pinned-current-manager-everton-fixed",
+      "description": "Everton current-manager turns stay club-pinned so structural manager grammar remains certified when the live featured home rotates away from Goodison. Agent critic checks publisher role ownership on replayed Moyes copy.",
+      "kind": "json",
+      "voice": "desk",
+      "turns": [
+        {
+          "question": "What's Everton's manager today?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "expectVerification": ["verified", "conflict"],
+          "expectCurrentManager": { "team": "Everton" }
+        },
+        {
+          "question": "Who is Everton's manager and why?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "expectVerification": ["verified", "conflict"],
+          "expectCurrentManager": { "team": "Everton" }
+        }
+      ]
+    },
+    {
       "id": "owned-premier-league-latest-result",
       "description": "A normal latest Premier League result question delivers a sourced final score despite an empty rolling results window; safe abstention alone does not certify this functionality. Agent critic checks the ESPN event itself.",
       "kind": "json",

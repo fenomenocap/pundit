@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "replayId": "monitor-gate-everton-structural-v1",
+  "recordedAt": "2026-10-19T06:00:00.000Z",
+  "queries": {
+    "everton manager today": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "David Moyes: Everton manager admits surprise at seeing the club being put up for sale by The Friedkin Group",
+          "link": "https://www.skysports.com/football/news/13596920/david-moyes-everton-manager-admits-surprise-at-seeing-the-club-being-put-up-for-sale-by-the-friedkin-group",
+          "snippet": "Everton manager David Moyes says he was surprised to hear that the club's owners were keen to sell the club.",
+          "date": "2026-10-09"
+        }
+      ],
+      "provider": "openrouter",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": [{ "provider": "openrouter", "outcome": "ok", "reason": null, "attempts": 1 }]
+    },
+    "everton head coach": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "David Moyes: Everton manager admits surprise",
+          "link": "https://www.skysports.com/football/news/13596920/david-moyes-everton-manager-admits-surprise-at-seeing-the-club-being-put-up-for-sale-by-the-friedkin-group",
+          "snippet": "Everton manager David Moyes says he was surprised.",
+          "date": "2026-10-09"
+        }
+      ],
+      "provider": "openrouter",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": [{ "provider": "openrouter", "outcome": "ok", "reason": null, "attempts": 1 }]
+    }
+  }
+}
