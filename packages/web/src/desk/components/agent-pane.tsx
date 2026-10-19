@@ -17,7 +17,13 @@ import { DeskBoard } from "@/desk/components/desk-board";
 import { FormDots } from "@/desk/components/form-dots";
 import { KitPip } from "@/desk/components/kit";
 import { Button } from "@/desk/components/ui/button";
+import { MarketQuoteLine } from "@/desk/components/market-quote-line";
 import { useLiveSlate } from "@/desk/components/use-live-slate";
+
+function deskPendingStatus(prompt: string): string {
+  if (/\b(parlay|acca|accumulator)\b/i.test(prompt)) return "Building your parlay…";
+  return "Writing the take…";
+}
 
 const SLATE_CHIPS = [
   { label: "Reading a slate", question: "In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?" },
@@ -43,6 +49,7 @@ export function AgentPane() {
   const [lineDecimal, setLineDecimal] = useState("");
   const [lineFixtureId, setLineFixtureId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyPrompt, setBusyPrompt] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -63,6 +70,7 @@ export function AgentPane() {
     removeChat(request.userId);
     setDraft(request.prompt);
     setBusy(false);
+    setBusyPrompt("");
     setErr(null);
     box.current?.focus();
   }
@@ -119,6 +127,7 @@ export function AgentPane() {
     push(userMsg);
     const request = { controller: new AbortController(), userId: userMsg.id, prompt: q };
     activeRequest.current = request;
+    setBusyPrompt(q);
     setBusy(true);
     try {
       const res = await askPundit({
@@ -160,6 +169,7 @@ export function AgentPane() {
       if (activeRequest.current === request) {
         activeRequest.current = null;
         setBusy(false);
+        setBusyPrompt("");
         box.current?.focus();
       }
     }
@@ -181,7 +191,7 @@ export function AgentPane() {
   }, [selectedId]);
 
   return (
-    <section className="flex min-h-[58dvh] lg:min-h-0 flex-col bg-bg lg:h-[calc(100dvh-7.5rem)]">
+    <section className="flex min-h-0 flex-1 flex-col bg-bg lg:h-[calc(100dvh-7.5rem)]">
       <header className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border">
         <div className="min-w-0">
           <div className="eyebrow text-accent">Pundit</div>
@@ -192,7 +202,11 @@ export function AgentPane() {
                 ? "Slate · live"
                 : source === "no-fixtures"
                   ? "Slate · no priced fixtures"
-                  : source === "static" ? "Slate · mock" : "Slate unavailable"}
+                  : source === "static"
+                ? "Slate · mock"
+                : source === "pending"
+                  ? "Slate · loading"
+                  : "Slate unavailable"}
           </p>
         </div>
         <Button
@@ -217,7 +231,7 @@ export function AgentPane() {
       <div
         ref={scroller}
         data-testid="desk-chat-transcript"
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-5"
+        className="flex-1 overflow-y-auto px-4 py-4 pb-44 space-y-5 lg:pb-4"
       >
         {messages.length === 0 ? (
           <div>
@@ -255,9 +269,15 @@ export function AgentPane() {
                   <span className="font-display text-lg uppercase tracking-wide leading-none">
                     {TEAMS[f.away].short}
                   </span>
-                  <span className="ml-auto font-display text-lg tabular-nums text-accent">
-                    {Math.round(p * 100)}%
-                  </span>
+                  <div className="ml-auto text-right shrink-0">
+                    <span className="font-display text-lg tabular-nums text-accent">
+                      {Math.round(p * 100)}%
+                    </span>
+                    <MarketQuoteLine
+                      fixture={f}
+                      className="block text-2xs text-quiet tabular-nums mt-0.5 max-w-[11rem]"
+                    />
+                  </div>
                 </button>
               ))}
             </div>
@@ -268,13 +288,13 @@ export function AgentPane() {
         {busy ? (
           <div>
             <div className="eyebrow mb-2">Pundit</div>
-            <p className="shimmer text-sm text-quiet">Writing the take…</p>
+            <p className="shimmer text-sm text-quiet">{deskPendingStatus(busyPrompt)}</p>
           </div>
         ) : null}
         {err ? <p role="alert" className="text-sm text-down">{err}</p> : null}
       </div>
 
-      <div className="border-t border-border bg-surface px-3 sm:px-4 py-3">
+      <div className="fixed inset-x-0 bottom-[calc(3rem+env(safe-area-inset-bottom,0px))] z-30 border-t border-border bg-surface/95 backdrop-blur px-3 sm:px-4 py-3 lg:static lg:z-auto lg:bottom-auto lg:bg-surface lg:backdrop-blur-none">
         <div className="flex flex-wrap gap-1.5 mb-2.5">
           {matchChips.map((chip) => (
             <button

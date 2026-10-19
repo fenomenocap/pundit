@@ -385,6 +385,42 @@ test.describe("QA regressions", () => {
     });
   }
 
+  test("desk surfaces fresh comparison market lines on featured fixtures", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const observedAt = new Date().toISOString();
+    await routeTwoFixtureDeskSlate(page);
+    await page.route("**/api/model/active", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ fixtures: [{
+        competitionId: "eng.1",
+        fixtureId: 901,
+        utcDate: "2099-09-20T19:00:00.000Z",
+        home: "Arsenal",
+        away: "Chelsea",
+        homeElo: 1900,
+        awayElo: 1800,
+        pHome: 0.5,
+        pDraw: 0.25,
+        pAway: 0.25,
+        pOver2_5: 0.52,
+        pBttsYes: 0.5,
+        oddsSources: [{
+          source: "polymarket",
+          observedAt,
+          pHome: 0.48,
+          pDraw: 0.26,
+          pAway: 0.26,
+        }],
+      }] }),
+    }));
+    await page.goto("/");
+    const quote = page.getByTestId("desk-market-quote").first();
+    await expect(quote).toContainText("Polymarket");
+    await expect(quote).toContainText("as of");
+    await expect(quote).toContainText("Mkt");
+  });
+
   test("desk times out an unanswered request and keeps it ready to retry", async ({ page }) => {
     await routeTwoFixtureDeskSlate(page);
     await page.clock.install();
@@ -1177,7 +1213,8 @@ test.describe("smoke", () => {
     await expect(page.getByText("No priced fixtures", { exact: true })).toBeVisible();
     await expect(page.getByText("No priced fixtures are live right now.", { exact: true }).first()).toBeVisible();
     await expect(page.getByText(/Pinned ·/)).toHaveCount(0);
-    await expect(page.getByText("NO FORECAST", { exact: true })).toBeVisible();
+    await expect(page.getByText("NO FORECAST", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Recent settled", { exact: true })).toHaveCount(0);
     await expect(page.getByText("MISS", { exact: true })).toHaveCount(0);
     await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
     await expect(page.getByText("No captured settled forecasts", { exact: true })).toBeVisible();
