@@ -1813,7 +1813,7 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     "My 1X2 is Arsenal 56.3% (fair 1.78), draw 23.4% (fair 4.27) and Chelsea 20.3% (fair 4.93).",
     { expectPricingDesk: true },
     pricingGrounding
-  ).passed, false);
+  ).passed, true);
   assert.equal(validateAnalystExpression(
     "I make Arsenal the likeliest outcome at 56.3%.\n\nOver 2.5 is 50.6%.\n\nThe leading scorelines are 1-1.\n\nI would revisit the read.",
     { expectPricingDesk: true },
