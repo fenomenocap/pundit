@@ -132,6 +132,13 @@ import {
   composeMatchResponse,
   composeTeamNewsAnswer,
 } from "./response-composer";
+import { getFeaturedModelFixtures } from "./featured-fixtures";
+import {
+  composeSlateParlayAnswer,
+  isNonFixtureVersusTarget,
+  isSlateParlayRequest,
+  referencesFeaturedMatchDeictic,
+} from "./slate-parlay";
 import {
   DESK_BOARD_FALLBACK,
   DESK_GENERAL_CONCEPT_SYSTEM,
@@ -478,6 +485,8 @@ type TeamFixture = Pick<ModelFixture, "home" | "away">;
 export interface FixtureRoutingState {
   recognizedFixtures?: RecognizedFixture[];
   fixtureContext?: FixtureContext;
+  /** Test override; production resolves from the active featured slate. */
+  featuredModelFixtures?: ModelFixture[];
   modelInitialized?: boolean;
   modelRefreshing?: boolean;
   ratingsAvailable?: boolean;
@@ -4416,8 +4425,12 @@ function hasExplicitMatchupCue(question: string): boolean {
 }
 
 function hasUnresolvedFixtureShape(question: string): boolean {
-  return /\b[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}\s+(?:vs?\.?|versus|against)\s+[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}(?:[?!.,]|$)/iu
-    .test(question);
+  const match = /\b[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}\s+(?:vs?\.?|versus|against)\s+([\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100})(?:[?!.,]|$)/iu
+    .exec(question);
+  if (!match) return false;
+  const rightSide = normalizeTeamText(match[1] ?? "");
+  if (isNonFixtureVersusTarget(rightSide)) return false;
+  return true;
 }
 
 /**
@@ -5182,6 +5195,12 @@ export function resolveAskContext(
 
   if (explicitFixture && (!competitionId || hasExplicitMatchupCue(question))) {
     return { tier: "match", fixture: explicitFixture };
+  }
+
+  if (!teams && !competitionId && referencesFeaturedMatchDeictic(question)) {
+    const featured = routing.featuredModelFixtures ?? getFeaturedModelFixtures();
+    const lead = featured[0];
+    if (lead) return { tier: "match", fixture: lead };
   }
 
   if (!competitionId) {
@@ -10785,6 +10804,16 @@ async function answerQuestionScoped(
       if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_evidence_follow_up");
       return {
         answer: evidenceFollowUp,
+        grounding,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
+    if (isSlateParlayRequest(question)) {
+      const slateParlay = composeSlateParlayAnswer(question)
+        ?? "I don't have enough priced fixtures on today's desk slate to build that parlay without inventing legs.";
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "slate_parlay");
+      return {
+        answer: voice === "desk" ? humaniseDeskCitationDates(slateParlay) : slateParlay,
         grounding,
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };

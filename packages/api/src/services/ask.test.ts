@@ -4590,6 +4590,15 @@ describe("resolveAskContext", () => {
       .toEqual({ tier: "general" });
   });
 
+  it("resolves today's featured match deictic to the lead featured fixture", () => {
+    const spurs = fixture("Tottenham Hotspur", "Coventry City", { fixtureId: 99 });
+    const other = fixture("Arsenal", "Crystal Palace", { fixtureId: 100 });
+    const question = "What's the fair price on today's featured match and is there any edge vs the market?";
+    expect(resolveAskContext(question, [], undefined, [spurs, other], [], [], {
+      featuredModelFixtures: [spurs, other],
+    })).toEqual({ tier: "match", fixture: spurs });
+  });
+
   it.each([
     "Explain Northbridge Athletic vs Southbank Rovers pressing traps.",
     "What are the trade-offs of Northbridge Athletic pressing traps against Southbank Rovers narrow midfield?",
