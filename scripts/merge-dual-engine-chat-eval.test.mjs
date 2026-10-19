@@ -28,6 +28,7 @@ test("mergeDualEngineChatEvalReports writes latest.json and latest.md beside lat
     pacingGate: { passed: true, minimumObservedGapMs: 13000, minimumIntervalMs: 13000 },
     scenarios: [{
       id: "sample",
+      category: "betting-maths",
       classification: "FAIL",
       turnResults: [{
         turn: 1,
@@ -37,6 +38,7 @@ test("mergeDualEngineChatEvalReports writes latest.json and latest.md beside lat
         engine: "legacy",
       }],
     }],
+    byCategory: { "betting-maths": { pass: 0, inconclusive: 0, fail: 1 } },
   };
   const agent = {
     schemaVersion: 17,
@@ -49,6 +51,7 @@ test("mergeDualEngineChatEvalReports writes latest.json and latest.md beside lat
     pacingGate: { passed: true, minimumObservedGapMs: 13000, minimumIntervalMs: 13000 },
     scenarios: [{
       id: "sample",
+      category: "betting-maths",
       classification: "PASS",
       turnResults: [{
         turn: 1,
@@ -58,14 +61,18 @@ test("mergeDualEngineChatEvalReports writes latest.json and latest.md beside lat
         engine: "agent",
       }],
     }],
+    byCategory: { "betting-maths": { pass: 1, inconclusive: 0, fail: 0 } },
   };
   const outputPath = path.join(dir, "latest-run.json");
   await mergeDualEngineChatEvalReports(legacy, agent, outputPath);
   const latestJson = JSON.parse(await readFile(path.join(dir, "latest.json"), "utf8"));
   const latestMd = await readFile(path.join(dir, "latest.md"), "utf8");
   assert.equal(latestJson.requestEngine, "both");
+  assert.ok(latestJson.agentEval.byCategory["betting-maths"].pass === 1);
+  assert.ok(latestJson.qualityMetricsByCategory["betting-maths"]);
   assert.match(latestMd, /legacy-run/);
   assert.match(latestMd, /ISSUES FOUND/);
+  assert.match(latestMd, /Live betting-maths/);
 });
 
 test("mergeDualEngineChatEvalReports records skipped_no_key judge when local mode lacks OpenRouter key", async () => {

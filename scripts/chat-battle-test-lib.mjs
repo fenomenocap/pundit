@@ -5,6 +5,10 @@ import path from "node:path";
 
 import { classifyServedSha, isAcceptableServedSha, resolveDeployedSha } from "./resolve-deployed-sha.mjs";
 import { MODEL_EDGE_CLAIMS_ALLOWED } from "./chat-eval-model-edge-flag.mjs";
+import {
+  formatLiveBettingMathsHeadline,
+  summarizeLiveBettingMaths,
+} from "./chat-eval-category-reporting.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -2317,6 +2321,7 @@ function skippedScenarioResult(scenario, failedScenarioId) {
   return {
     id: scenario.id,
     category: scenario.category ?? "fixed",
+    kind: scenario.kind ?? null,
     passed: false,
     outcome: "INCONCLUSIVE",
     classification: null,
@@ -2441,7 +2446,7 @@ export function generateAdversarialScenarios(seed, featured) {
     {
       id: "adversarial-ambiguity",
       generationSeed: seed,
-      category: "ambiguity",
+      category: "context",
       kind: "json",
       turns: [
         { question: ambiguity, expectGrounding: null },
@@ -2451,7 +2456,7 @@ export function generateAdversarialScenarios(seed, featured) {
     {
       id: "adversarial-follow-up",
       generationSeed: seed,
-      category: "follow-ups",
+      category: "context",
       kind: "json",
       turns: [
         {
@@ -2474,7 +2479,7 @@ export function generateAdversarialScenarios(seed, featured) {
     {
       id: "adversarial-grounding",
       generationSeed: seed,
-      category: "grounding",
+      category: "betting-maths",
       kind: featured ? "json" : "inconclusive",
       reason: featured ? undefined : "no model-backed active club fixture",
       teamContext: featured ? [featured.home, featured.away] : undefined,
@@ -2501,7 +2506,7 @@ export function generateAdversarialScenarios(seed, featured) {
     {
       id: "adversarial-certainty",
       generationSeed: seed,
-      category: "unsupported-certainty",
+      category: "betting-maths",
       kind: "certainty",
       turns: [
         {
@@ -2523,7 +2528,7 @@ export function generateAdversarialScenarios(seed, featured) {
     {
       id: "adversarial-malformed",
       generationSeed: seed,
-      category: "malformed-inputs",
+      category: "infra",
       kind: "invalid",
       body: {
         question: "Continue.",
@@ -2543,8 +2548,15 @@ export function renderMarkdown(report) {
   );
   const recommendations = report.recommendations?.slice(0, 3) ?? [];
   const browser = report.browserEvidence;
+  const liveBetting = report.liveBettingMaths ?? summarizeLiveBettingMaths(report.scenarios);
+  const byCategory = report.byCategory ?? null;
   const lines = [
     `# Pundit Chat Battle Test — ${report.startedAt}`,
+    "",
+    `- **${formatLiveBettingMathsHeadline(liveBetting)}**`,
+    byCategory
+      ? `- By category (pass / inconclusive / fail): betting-maths ${byCategory["betting-maths"]?.pass ?? 0}/${byCategory["betting-maths"]?.inconclusive ?? 0}/${byCategory["betting-maths"]?.fail ?? 0}, context ${byCategory.context?.pass ?? 0}/${byCategory.context?.inconclusive ?? 0}/${byCategory.context?.fail ?? 0}, infra ${byCategory.infra?.pass ?? 0}/${byCategory.infra?.inconclusive ?? 0}/${byCategory.infra?.fail ?? 0}`
+      : null,
     "",
     `- Run: \`${report.runId}\``,
     `- Deployment: \`${report.deployment.id}\` (${report.deployment.source})`,

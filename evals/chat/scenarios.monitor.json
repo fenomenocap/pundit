@@ -11,21 +11,33 @@
           "questionTemplate": "What's {home}'s manager today?",
           "expectGrounding": "match",
           "requireCitation": true,
-          "expectVerification": ["verified", "conflict"],
-          "expectCurrentManager": {"team": "{home}"}
+          "expectVerification": [
+            "verified",
+            "conflict"
+          ],
+          "expectCurrentManager": {
+            "team": "{home}"
+          }
         },
         {
           "questionTemplate": "Who is {home}'s manager and why?",
           "expectGrounding": "match",
           "requireCitation": true,
-          "expectVerification": ["verified", "conflict"],
-          "expectCurrentManager": {"team": "{home}"}
+          "expectVerification": [
+            "verified",
+            "conflict"
+          ],
+          "expectCurrentManager": {
+            "team": "{home}"
+          }
         },
         {
           "questionTemplate": "What is {home}'s latest result and why?",
           "expectGrounding": null,
           "requireCitation": true,
-          "expectVerification": ["verified"],
+          "expectVerification": [
+            "verified"
+          ],
           "expectLatestResult": {
             "team": "{home}",
             "competition": "Premier League",
@@ -33,7 +45,8 @@
             "explanationBoundary": true
           }
         }
-      ]
+      ],
+      "category": "context"
     },
     {
       "id": "dated-club-news-delivers-supported-update",
@@ -45,18 +58,23 @@
           "questionTemplate": "What are the latest dated club injury updates for {home} and {away}? Keep current reports distinct from future kickoff availability.",
           "expectGrounding": "match",
           "requireCitation": true,
-          "expectVerification": ["verified", "conflict"],
+          "expectVerification": [
+            "verified",
+            "conflict"
+          ],
           "requirePositiveDatedClubNews": true,
           "requireSourcedTeamNews": true,
           "expectNoUnsupportedLineupEffect": true
         }
-      ]
+      ],
+      "category": "context"
     },
     {
       "id": "active-match-grounding",
       "description": "A model-backed active club fixture receives match grounding and delivers a complete headline win/draw/win line under a section label that is not left empty. A provider-labelled normal end_turn still fails if the answer ends in a numeric or Markdown fragment.",
       "kind": "featured",
-      "expectHeadlineOneXTwo": true
+      "expectHeadlineOneXTwo": true,
+      "category": "betting-maths"
     },
     {
       "id": "priced-fixture-retains-1x2-context",
@@ -71,20 +89,44 @@
           "question": "What will the 1X2 be?",
           "expectGrounding": "match"
         }
-      ]
+      ],
+      "category": "betting-maths"
     },
     {
       "id": "complete-market-arithmetic",
       "description": "A complete same-source/time decimal 1X2 market uses 1/odds and normalizes to 100 percent.",
       "kind": "runtime-helper",
       "helper": "validateCompleteOneXTwoMarket",
-      "args": [[
-        { "outcome": "home", "decimalOdds": 2, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
-        { "outcome": "draw", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
-        { "outcome": "away", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" }
-      ]],
-      "expect": { "valid": true },
-      "expectText": ["noVigProbabilities", "overround"]
+      "args": [
+        [
+          {
+            "outcome": "home",
+            "decimalOdds": 2,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          },
+          {
+            "outcome": "draw",
+            "decimalOdds": 4,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          },
+          {
+            "outcome": "away",
+            "decimalOdds": 4,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          }
+        ]
+      ],
+      "expect": {
+        "valid": true
+      },
+      "expectText": [
+        "noVigProbabilities",
+        "overround"
+      ],
+      "category": "betting-maths"
     },
     {
       "id": "combined-scoreline-arithmetic",
@@ -100,46 +142,95 @@
           "home": "Arsenal",
           "away": "Chelsea",
           "scorelines": [
-            { "score": "2-1", "probability": 0.0795 },
-            { "score": "2-0", "probability": 0.0568 }
+            {
+              "score": "2-1",
+              "probability": 0.0795
+            },
+            {
+              "score": "2-0",
+              "probability": 0.0568
+            }
           ],
           "oddsSources": []
         }
       ],
       "expect": {},
-      "expectText": ["13.6%"],
-      "forbidText": ["21%"]
+      "expectText": [
+        "13.6%"
+      ],
+      "forbidText": [
+        "21%"
+      ],
+      "category": "betting-maths"
     },
     {
       "id": "incomplete-market-fails-closed",
       "description": "A missing 1X2 leg is never guessed or normalized.",
       "kind": "runtime-helper",
       "helper": "validateCompleteOneXTwoMarket",
-      "args": [[
-        { "outcome": "home", "decimalOdds": 2, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" },
-        { "outcome": "away", "decimalOdds": 4, "source": "Example Book", "observedAt": "2026-08-13T10:00:00Z" }
-      ]],
-      "expect": { "valid": false, "reason": "missing-leg" }
+      "args": [
+        [
+          {
+            "outcome": "home",
+            "decimalOdds": 2,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          },
+          {
+            "outcome": "away",
+            "decimalOdds": 4,
+            "source": "Example Book",
+            "observedAt": "2026-08-13T10:00:00Z"
+          }
+        ]
+      ],
+      "expect": {
+        "valid": false,
+        "reason": "missing-leg"
+      },
+      "category": "betting-maths"
     },
     {
       "id": "model-probabilities-survive-market-guard",
       "description": "The settled match guard chain keeps Pundit's own headline 1X2, totals and BTTS numbers when the answer also states plainly that no market line is available, which the match prompt requires it to say.",
       "kind": "runtime-helper",
       "helper": "sanitizeFinalMatchAnswer",
-      "args": ["**Verdict**\nNo Kalshi market is available.\nMan United win **77.6%**, draw **14.2%**, Hull **8.2%**.\nOver 2.5 sits at **77.6%**.\nBTTS No at **61.0%**."],
+      "args": [
+        "**Verdict**\nNo Kalshi market is available.\nMan United win **77.6%**, draw **14.2%**, Hull **8.2%**.\nOver 2.5 sits at **77.6%**.\nBTTS No at **61.0%**."
+      ],
       "expect": {},
-      "expectText": ["**Verdict**", "No Kalshi market is available.", "77.6%", "14.2%", "8.2%", "61.0%"],
-      "forbidText": ["omitted those numbers"]
+      "expectText": [
+        "**Verdict**",
+        "No Kalshi market is available.",
+        "77.6%",
+        "14.2%",
+        "8.2%",
+        "61.0%"
+      ],
+      "forbidText": [
+        "omitted those numbers"
+      ],
+      "category": "betting-maths"
     },
     {
       "id": "external-market-price-still-fails-closed",
       "description": "A price positively attributed to a named external source is still removed for the fail-closed notice, and the section label it emptied does not survive as a heading over blank space.",
       "kind": "runtime-helper",
       "helper": "sanitizeFinalMatchAnswer",
-      "args": ["**Verdict**\nKalshi has Arsenal at 62% and the bookmakers price the draw at 3.40.\n\n**Read on the underdog**\nChelsea need an early goal."],
+      "args": [
+        "**Verdict**\nKalshi has Arsenal at 62% and the bookmakers price the draw at 3.40.\n\n**Read on the underdog**\nChelsea need an early goal."
+      ],
       "expect": {},
-      "expectText": ["omitted those numbers", "**Read on the underdog**"],
-      "forbidText": ["62%", "3.40", "**Verdict**"]
+      "expectText": [
+        "omitted those numbers",
+        "**Read on the underdog**"
+      ],
+      "forbidText": [
+        "62%",
+        "3.40",
+        "**Verdict**"
+      ],
+      "category": "betting-maths"
     },
     {
       "id": "featured-fixture-opens-pricing-desk",
@@ -150,7 +241,8 @@
       "expectAnalystVoice": true,
       "expectDirectAnswer": true,
       "expectNarrowFollowup": true,
-      "expectPricingDesk": true
+      "expectPricingDesk": true,
+      "category": "betting-maths"
     },
     {
       "id": "featured-match-briefing-is-not-pricing-desk",
@@ -162,7 +254,8 @@
       "forbidText": [
         "captured decimal line",
         "Current reports conflict on one or more requested facts"
-      ]
+      ],
+      "category": "context"
     },
     {
       "id": "featured-tactical-matchup-keeps-a-take",
@@ -174,7 +267,8 @@
       "forbidText": [
         "captured decimal line",
         "Current reports conflict on one or more requested facts"
-      ]
+      ],
+      "category": "context"
     },
     {
       "id": "featured-totals-honesty",
@@ -184,7 +278,8 @@
       "expectAnalystVoice": true,
       "expectDirectAnswer": true,
       "expectNarrowFollowup": true,
-      "expectTotalsHonesty": true
+      "expectTotalsHonesty": true,
+      "category": "betting-maths"
     },
     {
       "id": "featured-o25-scoreline-follow-up",
@@ -203,7 +298,8 @@
           "expectNarrowFollowup": true,
           "expectTotalsHonesty": true
         }
-      ]
+      ],
+      "category": "betting-maths"
     },
     {
       "id": "user-line-pass-play",
@@ -216,14 +312,18 @@
         },
         {
           "question": "I found the away side at 7 — pass or play?",
-          "userLine": { "outcome": "away", "decimalOdds": 7 },
+          "userLine": {
+            "outcome": "away",
+            "decimalOdds": 7
+          },
           "expectGrounding": "match",
           "expectAnalystVoice": true,
           "expectDirectAnswer": true,
           "expectNarrowFollowup": true,
           "expectUserLinePassPlay": true
         }
-      ]
+      ],
+      "category": "betting-maths"
     },
     {
       "id": "stake-refusal-without-bankroll",
@@ -241,7 +341,8 @@
           "expectNarrowFollowup": true,
           "expectStakeRefusal": true
         }
-      ]
+      ],
+      "category": "betting-maths"
     }
   ]
 }
