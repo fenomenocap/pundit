@@ -989,9 +989,9 @@ describe("V2 conversational architecture", () => {
       planResponse("What if Saka is absent?", { groundingKind: "match", hasHistory: true }))).toMatch(/won’t invent a percentage/i);
     const market = composeMatchResponse("Where do you disagree with Kalshi?", match,
       planResponse("Where do you disagree with Kalshi?", { groundingKind: "match", hasHistory: true }));
-    expect(market).toMatch(/my call: Arsenal win\./);
-    expect(market).toMatch(/Biggest gap vs market: Arsenal, \+6\.2 pts\./);
-    expect(market).toMatch(/Market \(Kalshi no-vig,/);
+    expect(market).toMatch(/largest gap is on Arsenal: I have 56\.3% vs Kalshi 50\.1%/);
+    expect(market).toMatch(/nothing about lineups on its own/i);
+    expect(market).not.toMatch(/my call:/);
     expect(market).not.toMatch(/because.*lineup/i);
     expect(resolveRequestedScoreline("Chelsea to win 2-0", match)).toEqual({
       score: "0-2", orientation: "named-away",
@@ -1163,7 +1163,7 @@ describe("V2 conversational architecture", () => {
       bare,
       planResponse("Where do you disagree with the available 1X2 market?", { groundingKind: "match" })
     );
-    expect(refusal).toMatch(/No live market line for this fixture yet\./);
+    expect(refusal).toMatch(/I don’t have a complete, same-source and same-time 1X2 market/);
   });
 
   // Production regression (featured-totals-honesty / featured-o25-scoreline-follow-up):

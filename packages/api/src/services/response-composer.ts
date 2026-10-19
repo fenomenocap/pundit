@@ -156,8 +156,72 @@ function composeTotalsLead(question: string, grounding: Grounding): string {
 const NO_BTTS_MARKET_LINE =
   "I don't have a live BTTS market line on this fixture — these are model-only BTTS probabilities.";
 
+const TOTALS_COIN_FLIP_GAP = 0.05;
+
+function totalsCallHeadline(question: string, grounding: Grounding): string {
+  const fixture = `${grounding.home} v ${grounding.away}`;
+  const prefix = asksUnder25Only(question)
+    ? `Under/over 2.5 on ${fixture}`
+    : `Over/under 2.5 on ${fixture}`;
+  const over = grounding.pOver2_5;
+  const under = grounding.pUnder2_5;
+  const pickOver = over >= under;
+  const callLabel = pickOver ? "over 2.5" : "under 2.5";
+  const callP = pickOver ? over : under;
+  let headline = `${prefix} — I have ${callLabel} at ${pct(callP)}.`;
+  if (Math.abs(over - under) <= TOTALS_COIN_FLIP_GAP) {
+    headline += " Both sides sit within five points, so I'd treat the line as a coin flip.";
+  }
+  return headline;
+}
+
+function bttsCallHeadline(grounding: Grounding): string {
+  const fixture = `${grounding.home} v ${grounding.away}`;
+  const yes = grounding.pBttsYes;
+  const no = grounding.pBttsNo;
+  const pickYes = yes >= no;
+  const callLabel = pickYes ? "BTTS yes" : "BTTS no";
+  const callP = pickYes ? yes : no;
+  let headline = `Both teams to score on ${fixture} — I have ${callLabel} at ${pct(callP)}.`;
+  if (Math.abs(yes - no) <= TOTALS_COIN_FLIP_GAP) {
+    headline += " Both sides sit within five points, so I'd treat it as a coin flip.";
+  }
+  return headline;
+}
+
+function asksMarketGapFocusQuestion(question: string): boolean {
+  const q = question.toLowerCase();
+  if (/\bgap\b/.test(q) && /\bprove\b/.test(q)) return true;
+  if (/\bwhere\b.{0,60}\bdisagree\b/.test(q)) return true;
+  if (/\bdisagree\b.{0,40}\b(?:most|biggest|largest)\b/.test(q)) return true;
+  if (/\b(?:does|do)\b.{0,40}\b(?:the )?gap\b/.test(q) && /\bprove\b/.test(q)) return true;
+  return false;
+}
+
+function composeMarketGapFocusAnswer(grounding: Grounding): string {
+  const divergence = grounding.marketDivergence[0]!;
+  const leg = divergence.largest;
+  const label = displayOutcomeLabel(grounding, leg.outcome);
+  const modelPct = pct(leg.modelPercent / 100);
+  const marketPct = pct(leg.marketPercent / 100);
+  const source = capitalizeSource(divergence.source);
+  const marketTime = formatTimestampSgt(divergence.observedAt);
+  const headline = `${grounding.home} v ${grounding.away} — the largest gap is on ${label}: `
+    + `I have ${modelPct} vs ${source} ${marketPct} (no-vig, ${marketTime}).`;
+  return joinBasicsAnswer({
+    headline,
+    supports: [
+      "A price gap only marks a disagreement between my read and the market; it does not explain the cause and says nothing about lineups on its own.",
+    ],
+    provenance: deskProvenanceLine(grounding, {
+      source: divergence.source,
+      observedAt: divergence.observedAt,
+    }),
+  });
+}
+
 function composeBttsBasics(_question: string, grounding: Grounding): string {
-  const headline = `Both teams to score on ${grounding.home} v ${grounding.away} — here's the BTTS split.`;
+  const headline = bttsCallHeadline(grounding);
   return joinBasicsAnswer({
     headline,
     supports: [
@@ -171,9 +235,7 @@ function composeBttsBasics(_question: string, grounding: Grounding): string {
 }
 
 function composeTotalsBasics(question: string, grounding: Grounding): string {
-  const headline = asksUnder25Only(question)
-    ? `Under/over 2.5 on ${grounding.home} v ${grounding.away} — here's the totals split.`
-    : `Over/under 2.5 on ${grounding.home} v ${grounding.away} — here's the totals split.`;
+  const headline = totalsCallHeadline(question, grounding);
   const complement = /\b(?:sum|add|complementary|complement)\b/i.test(question)
     ? "Under covers fewer than three goals; over covers three or more. There is no push at a half-goal line, so their probabilities sum to one. Decimal odds are the reciprocals of those probabilities."
     : undefined;
@@ -419,9 +481,14 @@ function formatOneXTwoSide(
 
 /** Independent model take first, single market reference block, no Lean line. */
 export function composeMarketComparisonAnswer(question: string, grounding: Grounding): string | null {
-  void question;
-  if (!grounding.marketDivergence[0] && grounding.externalMarketConsensus) {
-    return null;
+  const divergence = grounding.marketDivergence[0];
+  if (!divergence) {
+    return grounding.externalMarketConsensus
+      ? null
+      : "I don’t have a complete, same-source and same-time 1X2 market to compare with this fixture, so I can’t claim a pricing disagreement.";
+  }
+  if (asksMarketGapFocusQuestion(question)) {
+    return composeMarketGapFocusAnswer(grounding);
   }
   return composeIndependentMarketTakeAnswer(grounding, "full");
 }
