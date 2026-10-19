@@ -9,6 +9,7 @@ import {
   validateAnswerStructure,
   validateCitationContract,
   validateDatedClubNewsConsistency,
+  answerQuotesMarketPrice,
   validateGrounding,
   validateNoDraftLeak,
   validatePositiveCurrentManager,
@@ -54,7 +55,11 @@ export function gradeRecordedJsonScenario(scenario, recordedTurns, { evaluationN
     result.verification = verification;
     result.grounding = grounding;
 
-    const groundingValidation = validateGrounding(grounding, turn);
+    const groundingValidation = validateGrounding(grounding, {
+      ...turn,
+      expectOddsSources: Boolean(turn.expectOddsSources)
+        || (grounding?.kind === "match" && answerQuotesMarketPrice(answer)),
+    });
     for (const [name, passed] of Object.entries(groundingValidation.assertions)) {
       result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
     }
@@ -71,6 +76,7 @@ export function gradeRecordedJsonScenario(scenario, recordedTurns, { evaluationN
     const structureValidation = validateAnswerStructure(answer, {
       expectHeadlineOneXTwo: grounding?.kind === "match"
         && Boolean(turn.expectHeadlineOneXTwo ?? scenario.expectHeadlineOneXTwo),
+      grounding: grounding?.kind === "match" ? grounding : undefined,
     });
     Object.assign(result.assertions, structureValidation.assertions);
 

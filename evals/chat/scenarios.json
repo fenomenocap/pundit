@@ -15,7 +15,8 @@
           "expectFootballTake": true,
           "expectConditionalTactics": true,
           "expectBriefingConditionalMechanism": true,
-          "expectDecisiveRoles": true
+          "expectDecisiveRoles": true,
+          "expectModelProbabilityOrFairOdds": true
         },
         {
           "question": "What about over and under 2.5? Why do they add to 100%?",
@@ -2357,6 +2358,7 @@
       "expectFootballTake": true,
       "expectConditionalTactics": true,
       "expectBriefingConditionalMechanism": true,
+      "expectModelProbabilityOrFairOdds": true,
       "forbidText": [
         "captured decimal line",
         "Current reports conflict on one or more requested facts"
@@ -2372,6 +2374,7 @@
       "expectDirectAnswer": true,
       "expectFootballTake": true,
       "expectConditionalTactics": true,
+      "expectModelProbabilityOrFairOdds": true,
       "forbidText": [
         "captured decimal line",
         "Current reports conflict on one or more requested facts"

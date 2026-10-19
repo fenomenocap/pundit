@@ -38,7 +38,10 @@ import {
   selectTwoLeggedTie,
   snapshotAskRequest,
   snapshotSseReproduction,
+  answerIncludesGroundedModelNumbers,
+  answerQuotesMarketPrice,
   validateGrounding,
+  validateMatchAnswerProvenance,
   validateSse,
   validateAnswerCopy,
   validateAnalystExpression,
@@ -1759,11 +1762,36 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     "The prices are close, but I wouldn't call that a value bet.",
     { expectNoUnsupportedMarketCausality: true }
   ).passed, true);
-  const desk = "My 1X2 is Arsenal 56.3% (fair 1.78), draw 23.4% (fair 4.27) and Chelsea 20.3% (fair 4.93). I need a captured decimal line before I can print EV% or pass or play.";
-  assert.equal(validateAnalystExpression(desk, { expectPricingDesk: true }).passed, true);
+  const pricingGrounding = {
+    kind: "match",
+    home: "Arsenal",
+    away: "Chelsea",
+    pHome: 0.563,
+    pDraw: 0.234,
+    pAway: 0.203,
+    pricing: {
+      modelVersion: "clubelo@1:1da9aa95abcd1234",
+      pricedAt: "2026-09-11T03:00:00.000Z",
+    },
+    oddsSources: [{
+      source: "kalshi",
+      observedAt: "2026-09-11T03:00:00.000Z",
+      pHome: 0.5,
+      pDraw: 0.25,
+      pAway: 0.25,
+    }],
+  };
+  const desk = "Kalshi 11 September 2026. clubelo@1:1da9aa95abcd1234. My 1X2 is Arsenal 56.3% (fair 1.78), draw 23.4% (fair 4.27) and Chelsea 20.3% (fair 4.93). I need a captured decimal line before I can print EV% or pass or play.";
+  assert.equal(validateAnalystExpression(desk, { expectPricingDesk: true }, pricingGrounding).passed, true);
+  assert.equal(validateAnalystExpression(
+    "My 1X2 is Arsenal 56.3% (fair 1.78), draw 23.4% (fair 4.27) and Chelsea 20.3% (fair 4.93).",
+    { expectPricingDesk: true },
+    pricingGrounding
+  ).passed, false);
   assert.equal(validateAnalystExpression(
     "I make Arsenal the likeliest outcome at 56.3%.\n\nOver 2.5 is 50.6%.\n\nThe leading scorelines are 1-1.\n\nI would revisit the read.",
-    { expectPricingDesk: true }
+    { expectPricingDesk: true },
+    pricingGrounding
   ).passed, false);
   const totals = "I have over 2.5 at 50.6%; under 2.5 is 49.4%. I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
   assert.equal(validateAnalystExpression(totals, { expectTotalsHonesty: true }).passed, true);
@@ -4375,4 +4403,42 @@ test("totals honesty follows the server-bound calibrated distribution", () => {
     { ...grounding.goalCalibration, artifactId: `${methodId}:${"b".repeat(64)}` },
     { ...grounding.goalCalibration, methodId: "other" },
   ]) assert.equal(check(calibrated, { goalCalibration: bad }), false);
+});
+
+test("match answer provenance must mirror grounding feed, model version, and as-of", () => {
+  const grounding = {
+    kind: "match",
+    pHome: 0.6,
+    pDraw: 0.2,
+    pAway: 0.2,
+    pricing: {
+      modelVersion: "clubelo@1:deadbeefcafebabe",
+      pricedAt: "2026-09-22T12:00:00.000Z",
+    },
+    oddsSources: [{
+      source: "polymarket",
+      observedAt: "2026-09-22T12:00:00.000Z",
+      pHome: 0.55,
+      pDraw: 0.25,
+      pAway: 0.2,
+    }],
+  };
+  const good = "Polymarket 22 September 2026. clubelo@1:deadbeefcafebabe. Home 60.0%, draw 20.0%, away 20.0%.";
+  const badFeed = "Kalshi 22 September 2026. clubelo@1:deadbeefcafebabe. Home 60.0%, draw 20.0%, away 20.0%.";
+  assert.equal(validateMatchAnswerProvenance(good, grounding).passed, true);
+  assert.equal(validateMatchAnswerProvenance(badFeed, grounding).passed, false);
+  assert.equal(answerQuotesMarketPrice("On Chelsea at 7.00, I pass."), true);
+  assert.equal(
+    validateGrounding(grounding, { expectGrounding: "match", expectOddsSources: true }).assertions.oddsSourcesPopulated,
+    true
+  );
+  assert.equal(
+    validateGrounding({ ...grounding, oddsSources: [] }, {
+      expectGrounding: "match",
+      expectOddsSources: answerQuotesMarketPrice("Kalshi line at 2.10 decimal."),
+    }).passed,
+    false
+  );
+  assert.equal(answerIncludesGroundedModelNumbers("Arsenal lean 75.9% with fair 1.32.", grounding), false);
+  assert.equal(answerIncludesGroundedModelNumbers("Home 60.0% is my lean.", { kind: "match", pHome: 0.6, pDraw: 0.2, pAway: 0.2 }), true);
 });
