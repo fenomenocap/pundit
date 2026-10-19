@@ -35,9 +35,8 @@ jobs:
       - name: Verify dependency security regressions
         run: pnpm test:dependency-security
 
-      - name: Type-check API
-        working-directory: packages/api
-        run: npx tsc --noEmit
+      - name: Type-check API (emit; matches Railway build)
+        run: pnpm test:api-tsc-emit
 
       - name: Verify pinned club-strength artifact
         run: pnpm --filter @sports-predict/api verify:club-strength-artifact data/model-artifacts/clubelo/production.json
