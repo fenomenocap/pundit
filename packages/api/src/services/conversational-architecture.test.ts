@@ -138,7 +138,7 @@ describe("V2 conversational architecture", () => {
       ["Who is most likely to score?", "player-or-scorer"],
       ["Who will most likely score for Liverpool?", "player-or-scorer"],
       ["What if Saka misses out?", "lineup-counterfactual"],
-      ["Why?", "match-follow-up"],
+      ["Why?", "priced-why"],
     ] as const) {
       const plan = planResponse(question, { groundingKind: "match", hasHistory: true });
       expect(plan.mode).toBe(mode);
