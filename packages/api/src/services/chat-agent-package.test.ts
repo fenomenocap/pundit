@@ -14,8 +14,29 @@ import {
   finalizeAgentPackagedAnswer,
   trimAgentDeliveryForPlan,
 } from "./chat-agent-package";
-import { validateAnalystExpression } from "../../../../scripts/chat-battle-test-lib.mjs";
 import { parseHistory } from "../routes/ask";
+
+/** Test-only mirror of Schema-17 directAnswerFirst — not used in delivery code. */
+function directAnswerFirstForTest(answer: string): boolean {
+  const text = answer.trim().replace(/[’‘]/g, "'");
+  const firstSubstantive = text.split("\n")
+    .filter((line) => !/^\s*\*\*[^*]+\*\*:?\s*$/.test(line))
+    .filter((line) => !/^\s*#{1,6}\s/.test(line))
+    .filter((line) => !/^\s*\|/.test(line))
+    .filter((line) => !/^---+\s*$/.test(line.trim()))
+    .map((line) => line.replace(/^\s*[-*#]+\s*/, "").trim())
+    .find(Boolean) ?? "";
+  const lead = firstSubstantive.slice(0, 280);
+  if (/^I\s+(?:will|'ll|can)\s+(?:explain|outline|walk|break|look|start|begin|analyse|analyze|consider)\b/i.test(lead)) {
+    return false;
+  }
+  return (
+    /\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s+(?:decimal|odds)|^\s*\d+\s*[.)]/i.test(lead)
+    || /^\s*(?:Back|Lean|Avoid|No bet)\b/i.test(lead)
+    || /^\s*(?:I|I'm|I've|I'd)\s+(?:make|have|rate|see|favour|favor|lean|land|cannot|can't|do not|don't|would not|wouldn't|am unable|could not|couldn't)\b/i.test(lead)
+    || /^\s*(?:no comparable|not enough|unable|cannot|can't|the table|standings|[\p{L}][\p{L} .'-]{1,60}\s+(?:lead(?:s|ing)?|is first|are first))\b/iu.test(lead)
+  );
+}
 
 const matchGrounding = {
   kind: "match",
@@ -210,12 +231,8 @@ describe("trimAgentDeliveryForPlan", () => {
     );
     expect(out.length).toBeLessThanOrEqual(AGENT_NARROW_DELIVERY_MAX);
     expect(agentDeliveryStructurallyComplete(out)).toBe(true);
-    const expression = validateAnalystExpression(out, {
-      expectDirectAnswer: true,
-      expectNarrowFollowup: true,
-    });
-    expect(expression.assertions.narrowFollowup).toBe(true);
-    expect(expression.assertions.directAnswerFirst).toBe(true);
+    expect(out.split("\n").filter((line) => /^\s*\*\*[^*\n]+\*\*:?\s*$/.test(line)).length).toBeLessThanOrEqual(1);
+    expect(directAnswerFirstForTest(out)).toBe(true);
   });
 });
 
