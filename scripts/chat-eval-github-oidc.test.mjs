@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
   actionsOidcMintEnvPresent,
+  getLoggedJudgeTokenSourceForTests,
   mintGitHubActionsOidcToken,
+  resetJudgeTokenSourceLogForTests,
   resolveRemoteJudgeBearerToken,
   remoteJudgeConfiguredSync,
 } from "./chat-eval-github-oidc.mjs";
@@ -11,6 +13,7 @@ let savedFetch;
 
 afterEach(() => {
   globalThis.fetch = savedFetch;
+  resetJudgeTokenSourceLogForTests();
   delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
   delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   delete process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN;
@@ -34,6 +37,16 @@ test("mintGitHubActionsOidcToken requests audience pundit-judge", async () => {
     return new Response(JSON.stringify({ value: "fresh-jwt" }), { status: 200 });
   };
   assert.equal(await mintGitHubActionsOidcToken(), "fresh-jwt");
+});
+
+test("resolveRemoteJudgeBearerToken logs fresh_actions_mint once per process", async () => {
+  savedFetch = globalThis.fetch;
+  process.env.ACTIONS_ID_TOKEN_REQUEST_URL = "https://example.test/oidc";
+  process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = "req-token";
+  globalThis.fetch = async () => new Response(JSON.stringify({ value: "fresh-jwt" }), { status: 200 });
+  await resolveRemoteJudgeBearerToken();
+  await resolveRemoteJudgeBearerToken();
+  assert.equal(getLoggedJudgeTokenSourceForTests(), "fresh_actions_mint");
 });
 
 test("resolveRemoteJudgeBearerToken prefers fresh mint over fallback env", async () => {

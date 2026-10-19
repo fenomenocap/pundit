@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
+import { resetJudgeTokenSourceLogForTests } from "./chat-eval-github-oidc.mjs";
 import {
   judgeEvalTurnsRemote,
   resolveJudgeEvalTurns,
@@ -24,9 +25,12 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = savedFetch;
+  resetJudgeTokenSourceLogForTests();
   delete process.env.CHAT_EVAL_JUDGE_MODE;
   delete process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN;
   delete process.env.OPENROUTER_API_KEY;
+  delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
 });
 
 test("resolveJudgeMode defaults to remote", () => {

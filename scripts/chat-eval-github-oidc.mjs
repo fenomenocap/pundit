@@ -5,6 +5,24 @@
 
 export const CHAT_EVAL_JUDGE_OIDC_AUDIENCE = "pundit-judge";
 
+/** @type {"fresh_actions_mint" | "fallback_pre_mint_env" | null} */
+let loggedJudgeTokenSource = null;
+
+/** Test hook: reset once-per-process token source logging. */
+export function resetJudgeTokenSourceLogForTests() {
+  loggedJudgeTokenSource = null;
+}
+
+export function logJudgeTokenSourceOnce(source) {
+  if (loggedJudgeTokenSource) return;
+  loggedJudgeTokenSource = source;
+  console.error(`[chat-eval-judge] remote OIDC bearer source: ${source}`);
+}
+
+export function getLoggedJudgeTokenSourceForTests() {
+  return loggedJudgeTokenSource;
+}
+
 export function actionsOidcMintEnvPresent() {
   return Boolean(
     process.env.ACTIONS_ID_TOKEN_REQUEST_URL?.trim()
@@ -46,15 +64,20 @@ export async function mintGitHubActionsOidcToken(
 
 /** Prefer a fresh Actions mint; use pre-minted workflow token only as fallback. */
 export async function resolveRemoteJudgeBearerToken(options = {}) {
-  if (options.oidcToken?.trim()) return options.oidcToken.trim();
   const audience = options.audience ?? CHAT_EVAL_JUDGE_OIDC_AUDIENCE;
   const minted = await mintGitHubActionsOidcToken(audience);
-  if (minted) return minted;
-  return process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN?.trim() ?? null;
+  if (minted) {
+    logJudgeTokenSourceOnce("fresh_actions_mint");
+    return minted;
+  }
+  const fallback = process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN?.trim() ?? null;
+  if (fallback) {
+    logJudgeTokenSourceOnce("fallback_pre_mint_env");
+  }
+  return fallback;
 }
 
-export function remoteJudgeConfiguredSync(options = {}) {
-  if (options.oidcToken?.trim()) return true;
+export function remoteJudgeConfiguredSync() {
   if (actionsOidcMintEnvPresent()) return true;
   return Boolean(process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN?.trim());
 }

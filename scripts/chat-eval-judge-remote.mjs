@@ -8,6 +8,7 @@ import {
   skippedUnavailableJudge,
 } from "./chat-eval-judge-core.mjs";
 import {
+  logJudgeTokenSourceOnce,
   mintGitHubActionsOidcToken,
   resolveRemoteJudgeBearerToken,
   remoteJudgeConfiguredSync,
@@ -27,14 +28,12 @@ function defaultJudgeUrl(apiUrl) {
 }
 
 /** @deprecated use resolveRemoteJudgeBearerToken — sync fallback check only */
-export function remoteJudgeBearerToken(options = {}) {
-  return options.oidcToken
-    ?? process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN?.trim()
-    ?? null;
+export function remoteJudgeBearerToken() {
+  return process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN?.trim() ?? null;
 }
 
-export function remoteJudgeConfigured(options = {}) {
-  return remoteJudgeConfiguredSync(options);
+export function remoteJudgeConfigured() {
+  return remoteJudgeConfiguredSync();
 }
 
 async function postRemoteJudge(judgeUrl, token, payloadTurns, maxTurns) {
@@ -76,6 +75,7 @@ export async function judgeEvalTurnsRemote(turns, options = {}) {
       const reminted = await mintGitHubActionsOidcToken(options.audience);
       if (reminted) {
         token = reminted;
+        logJudgeTokenSourceOnce("fresh_actions_mint");
         response = await postRemoteJudge(judgeUrl, token, payloadTurns, maxTurns);
       }
     }
