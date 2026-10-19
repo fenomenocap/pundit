@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildGrounding } from "../ask";
-import { eloToLambdas } from "../dixon-coles";
 import { buildMatchPricing } from "../response-correctness";
 import { sampleMatchContextFields } from "../match-context";
 import { sampleAgentFreshness } from "../../config/freshness-policy";
@@ -97,10 +96,6 @@ function spursCoventryGrounding() {
     ...sampleMatchContextFields({
       homeElo: 1799,
       awayElo: 1706,
-      ...(() => {
-        const [lambdaHome, lambdaAway] = eloToLambdas(1799, 1706, 42);
-        return { lambdaHome, lambdaAway, totalXg: lambdaHome + lambdaAway };
-      })(),
       homeTable: { position: 20, points: 3, goalDifference: -12, playedGames: 8 },
       awayTable: { position: 16, points: 6, goalDifference: -4, playedGames: 8 },
     }),
@@ -210,10 +205,12 @@ describe("Pundit Take v2 style pack (PR1)", () => {
     const plan = planResponse(prompts[0], { groundingKind: "match", hasCompleteMarket1x2: true });
     const delivery = composePunditTakeDelivery(prompts[0], grounding, plan)!;
     expect(delivery.plan.contradicting.some((p) => p.id === "fact-injuries")).toBe(false);
+    expect(delivery.plan.supporting.some((p) => p.id === "fact-table-standings")).toBe(true);
     expect(delivery.answer).toMatch(/20th on 3 points/);
       expect(delivery.answer).not.toMatch(/\bstill\b/i);
       expect(delivery.answer).not.toMatch(/sharper than my read/i);
-      expect(delivery.answer).not.toMatch(/applied in this forecast|sits at/i);
+      expect(delivery.answer).not.toMatch(/applied in this forecast|sits at|home backing/i);
+      expect(delivery.answer).toMatch(/42-point home bump/);
   });
 
   it("take v2 BTTS and totals avoid Lean labels", () => {
@@ -229,8 +226,7 @@ describe("Pundit Take v2 style pack (PR1)", () => {
       expect(delivery.answer).not.toMatch(/^Lean:/m);
       expect(delivery.answer).toMatch(/BTTS yes at 52%|Over 2\.5 at 55%/);
       expect(delivery.answer).toContain("| Outcome | Ours |");
-      expect(delivery.answer).toMatch(/xG/);
-      expect(delivery.answer).not.toMatch(/1\.35 xG and .* 1\.35|on this read|low-score correction/i);
+      expect(delivery.answer).not.toMatch(/1\.35 xG|1\.85 xG|on this read|low-score correction|home backing/i);
       expect(delivery.plan.marketKind).toBe(mode === "btts" ? "btts" : "totals");
     }
   });

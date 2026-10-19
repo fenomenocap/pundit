@@ -1,17 +1,15 @@
 import type { Grounding } from "../ask";
-import { BASE_GOALS } from "../dixon-coles";
+import { DEFAULT_HOME_ADVANTAGE_ELO } from "../dixon-coles";
 import type { MatchDossier } from "../match-dossier/types";
 import { compactTeamLabel } from "../basics-answer-voice";
 import type { TakePlanPoint } from "./types";
 
-function goalRatesAreInformative(grounding: Grounding): boolean {
-  if (grounding.goalCalibration) return true;
-  const { lambdaHome: lh, lambdaAway: la, totalXg: tx } = grounding;
-  if (!Number.isFinite(lh) || !Number.isFinite(la) || !Number.isFinite(tx)) return false;
-  const equalDefault = Math.abs(lh - BASE_GOALS) < 0.02
-    && Math.abs(la - BASE_GOALS) < 0.02
-    && Math.abs(tx - 2 * BASE_GOALS) < 0.05;
-  return !equalDefault;
+/** Goal-rate copy must match calibrated grid means on the same row as pBTTS / totals. */
+function calibratedGoalRatesOnRow(grounding: Grounding): boolean {
+  return Boolean(grounding.goalCalibration)
+    && Number.isFinite(grounding.lambdaHome)
+    && Number.isFinite(grounding.lambdaAway)
+    && Number.isFinite(grounding.totalXg);
 }
 
 export function buildGoalReasonPoints(
@@ -22,7 +20,7 @@ export function buildGoalReasonPoints(
 ): TakePlanPoint[] {
   const points: TakePlanPoint[] = [];
 
-  if (!goalRatesAreInformative(grounding)) {
+  if (!calibratedGoalRatesOnRow(grounding)) {
     return points;
   }
 
@@ -94,8 +92,8 @@ export function build1x2SupportingPoints(
     points.push({
       id: "fact-home-advantage",
       role: "support",
-      text: `${homeShort} have home backing in this match-up.`,
-      fieldPath: "fixture.homeFieldAdvantage",
+      text: `${homeShort} get a ${DEFAULT_HOME_ADVANTAGE_ELO}-point home bump on the rating sheet (${Math.round(grounding.homeElo)} v ${Math.round(grounding.awayElo)} for ${awayShort}).`,
+      fieldPath: "fixture.homeFieldAdvantage,homeElo,awayElo",
     });
   }
 

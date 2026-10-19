@@ -6,6 +6,8 @@ export function allowedNumbersFromPlan(plan: PunditTakePlan): Set<string> {
 
   const ingest = (text: string) => {
     for (const m of text.matchAll(/(\d+(?:\.\d+)?)\s*%/g)) allowed.add(m[1]!);
+    for (const m of text.matchAll(/\b(\d+(?:\.\d+)?)(?=(?:st|nd|rd|th)\b)/g)) allowed.add(m[1]!);
+    for (const m of text.matchAll(/\b(\d+(?:\.\d+)?)-point\b/g)) allowed.add(m[1]!);
     for (const m of text.matchAll(/(?<![./])\b(\d+(?:\.\d+)?)\b/g)) allowed.add(m[1]!);
   };
 
