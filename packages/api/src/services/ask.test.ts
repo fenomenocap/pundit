@@ -1756,7 +1756,10 @@ describe("current-news evidence hardening", () => {
     expect(checked.answer).not.toContain("transformation of the club");
     expect(checked.answer.includes("The cited report states:")).toBe(quote);
     expect(checked.answer.includes("I haven’t verified the club’s stated reason")).toBe(!quote);
-    if (quote) expect(checked.answer).toContain(reason);
+    if (quote) {
+      const norm = (value: string) => value.replace(/[\u2018\u2019]/g, "'");
+      expect(norm(checked.answer)).toContain(norm(reason));
+    }
     expect(checked.verification).toEqual({ status: "verified", supportedClaimCount: quote ? 2 : 1, removedClaimCount: 1 });
   });
 

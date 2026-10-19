@@ -1431,10 +1431,21 @@ const managerIdentityAbstention = (scope: { wantsReason?: boolean }) => scope.wa
 
 const managerFactPlainText = (text: string) => text.replace(/[*_`]/g, "");
 
+/** Normalise live publisher HTML so manager name/role regexes see plain text. */
+function normalizeManagerPublisherText(text: string): string {
+  return text
+    .normalize("NFC")
+    .replace(/&(?:nbsp|#160|#x0*A0);/gi, " ")
+    .replace(/\u00a0|\u202f|\u2007/g, " ")
+    .replace(/[\u2018\u2019\u2032`´]/g, "'")
+    .replace(/[\u201c\u201d\u2033]/g, '"')
+    .replace(/[–—―]/g, "-");
+}
+
 // Quotes retain their range across nested HTML paragraphs. A statement
 // inside a quotation cannot establish the publisher's own role assertion.
 function publisherOwnedManagerBody(page: { text: string }): string {
-  const body = page.text.split(/\b(?:Your views|Reader comments|User comments)\s*:/i)[0]
+  const body = normalizeManagerPublisherText(page.text).split(/\b(?:Your views|Reader comments|User comments)\s*:/i)[0]
     .replace(/“[^”]*(?:”|$)/g, " ");
   let quoted = false;
   return body.split(/\n{2,}/).map((block) => {
@@ -1457,7 +1468,7 @@ function publisherOwnedManagerBody(page: { text: string }): string {
 const MANAGER_PERSON_NAME_PARTICLE =
   "\\b(?:[Dd]e|[Dd]el|[Dd]a|[Dd]i|[Dd]u|[Ll]a|[Ll]e|[Vv]an|[Vv]on|[Tt]er|[Dd]en|[Dd]er|[Dd]os|[Dd]as|[Bb]in|[Mm]ac|[Mm]c)\\b";
 const MANAGER_PERSON_FULL_NAME =
-  `[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+(?:${MANAGER_PERSON_NAME_PARTICLE}|\\p{Lu}[\\p{L}\\p{M}'’.-]+)){1,3}`;
+  `[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+(?:${MANAGER_PERSON_NAME_PARTICLE}|\\p{Lu}[\\p{L}\\p{M}'’.-]+)){1,2}`;
 const MANAGER_ROLE_WORD = "(?:head[- ]coach|first[- ]team coach|manager|boss)";
 const MANAGER_ROLE_WORD_PATTERN = new RegExp(`\\b${MANAGER_ROLE_WORD}\\b`, "iu");
 const MANAGER_REPORTING_TAIL =
@@ -1623,6 +1634,31 @@ export function managerStructuralRoleOwnership(
   return describeManagerStructuralRoleMatch(clubName, personName, body, options) !== null;
 }
 
+/** Names anchored by club+role structure (not only generic person regex). */
+function managerStructuralRoleNameCandidates(clubName: string, body: string): string[] {
+  const club = managerClubPattern(clubName);
+  const role = MANAGER_ROLE_WORD;
+  const named = MANAGER_PERSON_FULL_NAME;
+  const patterns = [
+    new RegExp(`\\b(?:${club})(?:['’]s)?\\s+${role}\\s+(${named})\\b`, "giu"),
+    new RegExp(`\\b(?:${club})(?:['’]s)?\\s+${role}\\s+(${named})\\s+${MANAGER_REPORTING_TAIL}\\b`, "giu"),
+    new RegExp(`\\b${role}\\s+(${named})\\s+${MANAGER_REPORTING_TAIL}\\b`, "giu"),
+    new RegExp(`\\b(${named})\\s*[,\\-]\\s*${role}\\b`, "giu"),
+    new RegExp(`\\b(${named})\\s+(?:is|remains)\\s+(?:the\\s+)?(?:${club})(?:['’]s)?\\s+(?:current\\s+)?${role}\\b`, "giu"),
+  ];
+  const names: string[] = [];
+  for (const sentence of managerStatements(body)) {
+    if (managerRoleSentenceRejected(sentence)) continue;
+    for (const pattern of patterns) {
+      for (const match of sentence.matchAll(pattern)) {
+        const candidate = managerTrimCapturedName(match[1]?.trim().replace(/[.!?]+$/, "") ?? "");
+        if (candidate && managerPlausiblePersonName(candidate)) names.push(candidate);
+      }
+    }
+  }
+  return names;
+}
+
 export function publisherOwnedManagerBodyForTests(page: { text: string }): string {
   return publisherOwnedManagerBody(page);
 }
@@ -1703,8 +1739,29 @@ function isManagerDurableIdentitySource(
   return false;
 }
 
+function managerTrimCapturedName(raw: string): string {
+  const stop = new Set([
+    "has", "have", "had", "is", "are", "was", "were", "been", "being",
+    "says", "said", "speaking", "spoke", "speaks", "told", "revealed", "confirmed",
+  ]);
+  const parts = raw.trim().split(/\s+/);
+  while (parts.length > 2 && stop.has(parts[parts.length - 1].toLocaleLowerCase("en"))) {
+    parts.pop();
+  }
+  return parts.join(" ");
+}
+
+function managerPlausiblePersonName(name: string): boolean {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length < 2 || parts.length > 4) return false;
+  if (!/^[\p{Lu}]/u.test(parts[0])) return false;
+  const skip = new Set(["is", "are", "was", "were", "the", "our", "manager", "coach", "boss", "head"]);
+  return !skip.has(parts[0].toLocaleLowerCase("en"));
+}
+
 function managerIdentityExcludedName(name: string, scopeClub: string): boolean {
   const key = managerNameKey(name);
+  if (!managerPlausiblePersonName(name)) return true;
   if (/^(?:our|the|old)\s+/i.test(name)) return true;
   if (managerClubAliases(scopeClub).some((alias) => managerNameKey(alias) === key)) return true;
   for (const [alias, canonical] of getTeamNameAliases()) {
@@ -1718,7 +1775,7 @@ function managerOfficialAdjacentNames(
   body: string,
   fullName: string,
 ): string[] {
-  const paragraphs = body.split(/\n{2,}/).map((row) => row.trim()).filter(Boolean);
+  const paragraphs = normalizeManagerPublisherText(body).split(/\n{2,}/).map((row) => row.trim()).filter(Boolean);
   const names: string[] = [];
   for (let index = 0; index < paragraphs.length; index += 1) {
     if (!/\bour\s+(?:head[- ]coach|manager|boss)\b/i.test(paragraphs[index])) continue;
@@ -1744,20 +1801,24 @@ function managerIdentityNamesOnPage(
 ): string[] {
   const body = publisherOwnedManagerBody(page);
   const articleBody = managerArticleBody(body);
+  const scanBodies = articleBody === body ? [body] : [articleBody, body];
   const officialSite = evidenceAuthority(`${page.finalUrl || page.url}`) === "official";
-  const candidates = [...new Set([
-    ...(officialSite ? managerOfficialAdjacentNames(scope, articleBody, fullName) : []),
-    ...splitAnswerSentences(articleBody).flatMap((sentence) => sentence.split(/[;\n]/))
+  const acceptName = (name: string, scanBody: string) => !managerIdentityExcludedName(name, scope.club)
+    && playerNamedInNewsBody(name, scanBody, { fixtureId: "", home: "", away: "", kickoff: "" })
+    && (ownsCurrentRole(name, scanBody, officialSite)
+      || (officialSite && managerOfficialOurRoleAdjacent(scope.club, name, scanBody)));
+  const regexSpans = (scanBody: string) => splitAnswerSentences(scanBody).flatMap((sentence) => sentence.split(/[;\n]/))
     .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
     .flatMap((match) => {
       const words = match[0].split(/\s+/);
       return words.flatMap((_word, start) => words.slice(start + 1).map((_next, offset) =>
-        words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
-    }).filter((name) => !managerIdentityExcludedName(name, scope.club)
-      && playerNamedInNewsBody(name, articleBody, { fixtureId: "", home: "", away: "", kickoff: "" })
-      && (ownsCurrentRole(name, articleBody, officialSite)
-        || (officialSite && managerOfficialOurRoleAdjacent(scope.club, name, articleBody)))),
-  ])];
+        managerTrimCapturedName(words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, ""))));
+    });
+  const candidates = [...new Set([
+    ...scanBodies.flatMap((scanBody) => managerStructuralRoleNameCandidates(scope.club, scanBody)),
+    ...scanBodies.flatMap((scanBody) => (officialSite ? managerOfficialAdjacentNames(scope, scanBody, fullName) : [])),
+    ...scanBodies.flatMap((scanBody) => regexSpans(scanBody).filter((name) => acceptName(name, scanBody))),
+  ].filter((name) => scanBodies.some((scanBody) => acceptName(name, scanBody))))];
   // Particle surnames ("de Zerbi") yield both "Roberto de" and "Roberto de Zerbi"
   // from the same publisher span; keep only maximal names so one identity survives.
   const maximal = candidates.filter((name) => !candidates.some((other) => other !== name
@@ -1880,6 +1941,11 @@ export function extractManagerIdentityCandidates(
       continue;
     }
     const unique = managerIdentityNamesOnPage(scope, page, ownsCurrentRole, fullName);
+    const strippedBody = publisherOwnedManagerBody(page);
+    const articleScan = managerArticleBody(strippedBody);
+    const scanBodies = articleScan === strippedBody ? [strippedBody] : [articleScan, strippedBody];
+    const nameLikeInBody = scanBodies.some((scanBody) => managerStructuralRoleNameCandidates(scope.club, scanBody).length > 0
+      || new RegExp(fullName, "gu").test(scanBody));
     candidates.push({
       pageId: page.id,
       sourceId: source.id,
@@ -1887,7 +1953,9 @@ export function extractManagerIdentityCandidates(
       ownsRole: unique.length > 0,
       publishedDate,
       urlHost,
-      ...(unique.length ? {} : { rejectedReason: "owns_current_role_failed" }),
+      ...(unique.length ? {} : {
+        rejectedReason: nameLikeInBody ? "owns_current_role_failed" : "no_identity_names_in_body",
+      }),
     });
     for (const name of unique) {
       factRows.push({ name, sourceId: source.id, durableOld });

@@ -22,6 +22,30 @@ const fixtures = readdirSync(fixtureDir)
   .filter((name) => name.endsWith(".json"))
   .map((name) => JSON.parse(readFileSync(path.join(fixtureDir, name), "utf8")) as Fixture);
 
+describe("manager publisher normalization", () => {
+  it("extracts identity when hydrated HTML uses NBSP and curly apostrophes", () => {
+    const text = "Tottenham\u00a0Hotspur head coach Roberto\u00a0De\u00a0Zerbi is holding his press conference ahead of Coventry.";
+    const source = {
+      id: "S1",
+      title: "Presser",
+      url: "https://www.football.london/tottenham-hotspur-fc/news/live",
+      date: "2026-10-18T10:18:54Z",
+      snippet: "",
+      tier: "news" as const,
+    };
+    const page = {
+      ...source,
+      authority: "reputable" as const,
+      finalUrl: source.url,
+      text,
+      retrievedAt: source.date,
+    };
+    const bundle = { queries: [], providerCalls: 0, results: [source] };
+    const extraction = extractManagerIdentityCandidates({ club: "Tottenham" }, bundle, [page], now);
+    expect(extraction.facts.map((fact) => fact.name)).toContain("Roberto De Zerbi");
+  });
+});
+
 describe("manager publisher fixtures (Oct 2026 live text)", () => {
   it.each(fixtures.map((row) => [row.club, row.expectedManager, row.url, row]))(
     "%s names %s from %s",
