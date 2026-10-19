@@ -180,14 +180,16 @@ export function formatWhoWinsOpening(
 
 export function formatModelFavouriteHeadline(
   grounding: Grounding,
-  divergence: MarketDivergence,
-  sourceLabel: string,
+  _divergence: MarketDivergence,
+  _sourceLabel: string,
 ): string {
   const favourite = modelFavouriteOutcome(grounding);
-  const leg = divergence.legs.find((row) => row.outcome === favourite.outcome)!;
   const label = displayOutcomeLabel(grounding, favourite.outcome);
-  const verb = favourite.outcome === "draw" ? "Draw is" : `${label} are`;
-  return `${verb} my favourite on this read; ${sourceLabel} is the market side on 1X2.`;
+  const modelPct = deskPercentDisplay(favourite.p);
+  if (favourite.outcome === "draw") {
+    return `Draw is my favourite at ${modelPct}.`;
+  }
+  return `${label} are my favourite at ${modelPct}.`;
 }
 
 export function formatMarketActionLean(
@@ -384,23 +386,27 @@ export function composeWhyAfterPricedTurn(grounding: Grounding): string {
   const favLabel = favourite.outcome === "draw"
     ? "Draw"
     : displayOutcomeLabel(grounding, favourite.outcome);
-  const parts: string[] = [
-    `Reviewed ratings have ${compactTeamLabel(grounding.home)} at ${Math.round(grounding.homeElo)} `
-    + `and ${compactTeamLabel(grounding.away)} at ${Math.round(grounding.awayElo)} Elo.`,
-  ];
-  if (grounding.homeFieldAdvantage) {
-    parts.push(`${compactTeamLabel(grounding.home)} get home-field advantage in this competition.`);
-  }
   const tableLine = tableVsModelFavoriteExplainLine(grounding);
-  if (tableLine) parts.push(tableLine.replace(/^Caveat:\s*/, ""));
-  const divergence = grounding.marketDivergence[0];
-  if (divergence) {
-    const leg = divergence.legs.find((row) => row.outcome === favourite.outcome);
-    const source = labelMarketSource(divergence.source);
-    if (leg) {
-      parts.push(`${source} no-vig 1X2 implies ${deskPercentDisplay(leg.marketPercent / 100)} on ${favLabel}.`);
+  const parts: string[] = [];
+  if (tableLine) {
+    parts.push(tableLine.replace(/^Caveat:\s*/, ""));
+  } else {
+    parts.push(
+      `Elo has ${compactTeamLabel(grounding.home)} ${Math.round(grounding.homeElo)}, `
+      + `${compactTeamLabel(grounding.away)} ${Math.round(grounding.awayElo)}.`,
+    );
+    if (grounding.homeFieldAdvantage) {
+      parts.push(`${compactTeamLabel(grounding.home)} get home-field advantage in this competition.`);
+    }
+    const divergence = grounding.marketDivergence[0];
+    if (divergence) {
+      const leg = divergence.legs.find((row) => row.outcome === favourite.outcome);
+      const source = labelMarketSource(divergence.source);
+      if (leg) {
+        parts.push(`${source} no-vig 1X2 implies ${deskPercentDisplay(leg.marketPercent / 100)} on ${favLabel}.`);
+      }
     }
   }
-  parts.push(`${favLabel} is my favourite at ${deskPercentDisplay(favourite.p)} on that strength read.`);
+  parts.push(favourite.outcome === "draw" ? "Draw is my favourite." : `${favLabel} are my favourite.`);
   return parts.join(" ");
 }

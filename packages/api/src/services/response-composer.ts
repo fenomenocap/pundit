@@ -490,11 +490,13 @@ export function composeSlateBestGapAnswer(now = new Date()): string {
   const ratingFixture = cache.fixtures.find((row) =>
     `${row.home} v ${row.away}` === highlight.fixtureLabel);
   const prov = ratingFixture?.forecastProvenance;
-  const modelVersion = prov?.modelVersion ?? prov?.contributorVersion ?? "clubelo@1:unknown";
+  const modelVersionPin = prov?.contributorVersion
+    ? `clubelo@1:${prov.contributorVersion}`
+    : "clubelo@1:unknown";
   const ratingsIso = prov?.ratingSnapshotAt
     ?? ratingFixture?.forecastInputs?.ratingSnapshotAt
     ?? highlight.observedAt;
-  const modelLabel = shortModelVersionLabel(modelVersion);
+  const modelLabel = shortModelVersionLabel(modelVersionPin);
   const modelTime = formatTimestampSgt(ratingsIso);
   return joinBasicsAnswer({
     headline,
@@ -539,7 +541,6 @@ export function composeOddsProvenanceAnswer(grounding: Grounding): string {
   const headline = `Fundamental 1X2 from ${modelLabel}, ratings ${modelTime}. Live no-vig 1X2 from ${feedText}, refreshed ${marketTime}.`;
   return joinBasicsAnswer({
     headline,
-    lean: "Lean: cite the ratings date for the model and the feed timestamp for the market line.",
     provenance: deskProvenanceLine(
       grounding,
       divergence ? { source: divergence.source, observedAt: divergence.observedAt } : undefined,
