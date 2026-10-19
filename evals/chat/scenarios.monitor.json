@@ -2,6 +2,57 @@
   "schemaVersion": 17,
   "fixed": [
     {
+      "id": "pinned-current-manager-and-result-evidence",
+      "description": "Required current-manager turns deliver a named role for the requested club with a supported, recent dated citation; a generic abstention alone cannot certify usefulness. A latest result settles from fresh completed ESPN records with a dated event citation and an explicit coverage boundary, without using forecast facts to explain the outcome. Agent critic independently checks publisher role ownership and the event score/date.",
+      "kind": "featured-turns",
+      "voice": "desk",
+      "turns": [
+        {
+          "questionTemplate": "What's {home}'s manager today?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "expectVerification": ["verified", "conflict"],
+          "expectCurrentManager": {"team": "{home}"}
+        },
+        {
+          "questionTemplate": "Who is {home}'s manager and why?",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "expectVerification": ["verified", "conflict"],
+          "expectCurrentManager": {"team": "{home}"}
+        },
+        {
+          "questionTemplate": "What is {home}'s latest result and why?",
+          "expectGrounding": null,
+          "requireCitation": true,
+          "expectVerification": ["verified"],
+          "expectLatestResult": {
+            "team": "{home}",
+            "competition": "Premier League",
+            "coveredCompetitions": true,
+            "explanationBoundary": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "dated-club-news-delivers-supported-update",
+      "description": "Current dated club injury reports need not name a future fixture. At least one supported dated update must be delivered; an abstention alone does not certify usable news coverage. Agent critic checks publication date, exact player/club/status and future-availability boundaries against the publisher body.",
+      "kind": "featured-turns",
+      "voice": "desk",
+      "turns": [
+        {
+          "questionTemplate": "What are the latest dated club injury updates for {home} and {away}? Keep current reports distinct from future kickoff availability.",
+          "expectGrounding": "match",
+          "requireCitation": true,
+          "expectVerification": ["verified", "conflict"],
+          "requirePositiveDatedClubNews": true,
+          "requireSourcedTeamNews": true,
+          "expectNoUnsupportedLineupEffect": true
+        }
+      ]
+    },
+    {
       "id": "active-match-grounding",
       "description": "A model-backed active club fixture receives match grounding and delivers a complete headline win/draw/win line under a section label that is not left empty. A provider-labelled normal end_turn still fails if the answer ends in a numeric or Markdown fragment.",
       "kind": "featured",

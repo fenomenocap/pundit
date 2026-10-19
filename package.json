@@ -10,7 +10,9 @@
     "completion:status": "node scripts/verify-request-completion.mjs --status",
     "test:completion": "node --test scripts/verify-request-completion.test.mjs",
     "chat-eval:dry-run": "node scripts/chat-battle-test.mjs --dry-run",
-    "chat-eval:test": "node --test scripts/chat-battle-test.test.mjs scripts/capture-chat-eval-browser.test.mjs scripts/render-chat-transcript.test.mjs",
+    "chat-eval:gate": "node scripts/chat-eval-pinned-gate.mjs --assert-only",
+    "chat-eval:build-gate-fixture": "node scripts/build-monitor-gate-fixture.mjs",
+    "chat-eval:test": "node --test scripts/chat-battle-test.test.mjs scripts/chat-battle-test-eval-headers.test.mjs scripts/capture-chat-eval-browser.test.mjs scripts/render-chat-transcript.test.mjs scripts/chat-eval-gate.test.mjs scripts/chat-eval-quality-metrics.test.mjs scripts/chat-eval-llm-judge.test.mjs scripts/merge-dual-engine-chat-eval.test.mjs",
     "chat-eval:production": "node scripts/chat-battle-test.mjs",
     "chat-eval:browser": "node scripts/capture-chat-eval-browser.mjs",
     "chat-eval:finalize": "node scripts/finalize-chat-report.mjs",
@@ -22,7 +24,12 @@
     "clean": "pnpm -r clean",
     "verify:prod": "bash scripts/verify-prod.sh",
     "verify:local": "bash scripts/verify-local.sh",
-    "test:dependency-security": "node --test scripts/braces-security.test.mjs scripts/dependency-security.test.mjs"
+    "test:dependency-security": "node --test scripts/braces-security.test.mjs scripts/dependency-security.test.mjs",
+    "backtest:install": "pip install -e './model/backtest[dev]'",
+    "backtest:ci": "pnpm backtest:install && python3 -m pytest -q model/backtest/tests && python3 -m backtest.cli run --phase baseline --fast",
+    "backtest:download": "python3 -m backtest.cli download-data",
+    "backtest:download-xg": "python3 -m backtest.cli download-xg",
+    "backtest:run": "python3 -m backtest.cli run --phase all"
   },
   "engines": {
     "node": "22.x"

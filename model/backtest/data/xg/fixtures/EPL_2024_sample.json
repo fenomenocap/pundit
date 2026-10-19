@@ -1,0 +1,3806 @@
+{
+  "league": "EPL",
+  "matches": [
+    {
+      "away": "Fulham",
+      "away_goals": 0,
+      "away_xg": 0.418711,
+      "datetime": "2024-08-16 19:00:00",
+      "home": "Manchester United",
+      "home_goals": 1,
+      "home_xg": 2.04268,
+      "match_id": "26602"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 3.92906,
+      "datetime": "2024-08-17 11:30:00",
+      "home": "Ipswich",
+      "home_goals": 0,
+      "home_xg": 0.342601,
+      "match_id": "26603"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 0,
+      "away_xg": 0.575835,
+      "datetime": "2024-08-17 14:00:00",
+      "home": "Arsenal",
+      "home_goals": 2,
+      "home_xg": 1.6283,
+      "match_id": "26604"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 3,
+      "away_xg": 1.79083,
+      "datetime": "2024-08-17 14:00:00",
+      "home": "Everton",
+      "home_goals": 0,
+      "home_xg": 0.405325,
+      "match_id": "26605"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 0,
+      "away_xg": 1.95483,
+      "datetime": "2024-08-17 14:00:00",
+      "home": "Newcastle United",
+      "home_goals": 1,
+      "home_xg": 0.433489,
+      "match_id": "26606"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 1,
+      "away_xg": 1.90915,
+      "datetime": "2024-08-17 14:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 1,
+      "home_xg": 1.24405,
+      "match_id": "26607"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 2,
+      "away_xg": 2.6703,
+      "datetime": "2024-08-17 16:30:00",
+      "home": "West Ham",
+      "home_goals": 1,
+      "home_xg": 2.8047,
+      "match_id": "26608"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 1,
+      "away_xg": 1.14757,
+      "datetime": "2024-08-18 13:00:00",
+      "home": "Brentford",
+      "home_goals": 2,
+      "home_xg": 1.38064,
+      "match_id": "26609"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 2,
+      "away_xg": 1.18038,
+      "datetime": "2024-08-18 15:30:00",
+      "home": "Chelsea",
+      "home_goals": 0,
+      "home_xg": 1.06123,
+      "match_id": "26610"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 1,
+      "away_xg": 1.40775,
+      "datetime": "2024-08-19 19:00:00",
+      "home": "Leicester",
+      "home_goals": 1,
+      "home_xg": 1.02614,
+      "match_id": "26611"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 1,
+      "away_xg": 1.28556,
+      "datetime": "2024-08-24 11:30:00",
+      "home": "Brighton",
+      "home_goals": 2,
+      "home_xg": 2.14153,
+      "match_id": "26612"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 2,
+      "away_xg": 1.53421,
+      "datetime": "2024-08-24 14:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 0,
+      "home_xg": 1.3761,
+      "match_id": "26613"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 1,
+      "away_xg": 0.857005,
+      "datetime": "2024-08-24 14:00:00",
+      "home": "Fulham",
+      "home_goals": 2,
+      "home_xg": 1.96218,
+      "match_id": "26614"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 1,
+      "away_xg": 0.479999,
+      "datetime": "2024-08-24 14:00:00",
+      "home": "Manchester City",
+      "home_goals": 4,
+      "home_xg": 3.07818,
+      "match_id": "26615"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 1,
+      "away_xg": 2.86475,
+      "datetime": "2024-08-24 14:00:00",
+      "home": "Southampton",
+      "home_goals": 0,
+      "home_xg": 0.214952,
+      "match_id": "26616"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 0,
+      "away_xg": 0.648869,
+      "datetime": "2024-08-24 14:00:00",
+      "home": "Tottenham",
+      "home_goals": 4,
+      "home_xg": 2.61143,
+      "match_id": "26617"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 2,
+      "away_xg": 1.41399,
+      "datetime": "2024-08-24 16:30:00",
+      "home": "Aston Villa",
+      "home_goals": 0,
+      "home_xg": 1.31664,
+      "match_id": "26618"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 6,
+      "away_xg": 2.02935,
+      "datetime": "2024-08-25 13:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 2,
+      "home_xg": 2.4181,
+      "match_id": "26619"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 1,
+      "away_xg": 1.89287,
+      "datetime": "2024-08-25 13:00:00",
+      "home": "Bournemouth",
+      "home_goals": 1,
+      "home_xg": 2.53513,
+      "match_id": "26620"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 0,
+      "away_xg": 0.457239,
+      "datetime": "2024-08-25 15:30:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 2.71877,
+      "match_id": "26621"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 1,
+      "away_xg": 1.81748,
+      "datetime": "2024-08-31 11:30:00",
+      "home": "Arsenal",
+      "home_goals": 1,
+      "home_xg": 2.41798,
+      "match_id": "26622"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 1,
+      "away_xg": 1.64713,
+      "datetime": "2024-08-31 14:00:00",
+      "home": "Brentford",
+      "home_goals": 3,
+      "home_xg": 3.86281,
+      "match_id": "26623"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 3,
+      "away_xg": 2.95688,
+      "datetime": "2024-08-31 14:00:00",
+      "home": "Everton",
+      "home_goals": 2,
+      "home_xg": 2.55629,
+      "match_id": "26624"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 1,
+      "away_xg": 1.18883,
+      "datetime": "2024-08-31 14:00:00",
+      "home": "Ipswich",
+      "home_goals": 1,
+      "home_xg": 0.707048,
+      "match_id": "26625"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 2,
+      "away_xg": 2.16385,
+      "datetime": "2024-08-31 14:00:00",
+      "home": "Leicester",
+      "home_goals": 1,
+      "home_xg": 0.774741,
+      "match_id": "26626"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 1,
+      "away_xg": 0.937632,
+      "datetime": "2024-08-31 14:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 1,
+      "home_xg": 1.41069,
+      "match_id": "26627"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 3,
+      "away_xg": 3.19297,
+      "datetime": "2024-08-31 16:30:00",
+      "home": "West Ham",
+      "home_goals": 1,
+      "home_xg": 0.947201,
+      "match_id": "26628"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 1,
+      "away_xg": 1.63304,
+      "datetime": "2024-09-01 12:30:00",
+      "home": "Newcastle United",
+      "home_goals": 2,
+      "home_xg": 1.58694,
+      "match_id": "26629"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 1,
+      "away_xg": 0.459708,
+      "datetime": "2024-09-01 12:30:00",
+      "home": "Chelsea",
+      "home_goals": 1,
+      "home_xg": 2.97743,
+      "match_id": "26630"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 3,
+      "away_xg": 2.10397,
+      "datetime": "2024-09-01 15:00:00",
+      "home": "Manchester United",
+      "home_goals": 0,
+      "home_xg": 1.50087,
+      "match_id": "26631"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 3,
+      "away_xg": 3.02693,
+      "datetime": "2024-09-14 11:30:00",
+      "home": "Southampton",
+      "home_goals": 0,
+      "home_xg": 1.35593,
+      "match_id": "26632"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 0,
+      "away_xg": 0.721323,
+      "datetime": "2024-09-14 14:00:00",
+      "home": "Brighton",
+      "home_goals": 0,
+      "home_xg": 1.75696,
+      "match_id": "26633"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 0.682719,
+      "datetime": "2024-09-14 14:00:00",
+      "home": "Fulham",
+      "home_goals": 1,
+      "home_xg": 2.88601,
+      "match_id": "26634"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 1,
+      "away_xg": 0.589532,
+      "datetime": "2024-09-14 14:00:00",
+      "home": "Liverpool",
+      "home_goals": 0,
+      "home_xg": 1.17044,
+      "match_id": "26635"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 2,
+      "away_xg": 1.65187,
+      "datetime": "2024-09-14 14:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 2,
+      "home_xg": 2.88716,
+      "match_id": "26636"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 1.05094,
+      "datetime": "2024-09-14 14:00:00",
+      "home": "Manchester City",
+      "home_goals": 2,
+      "home_xg": 1.55279,
+      "match_id": "26637"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 2,
+      "away_xg": 0.852158,
+      "datetime": "2024-09-14 16:30:00",
+      "home": "Aston Villa",
+      "home_goals": 3,
+      "home_xg": 3.15876,
+      "match_id": "26638"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 1,
+      "away_xg": 0.932726,
+      "datetime": "2024-09-14 19:00:00",
+      "home": "Bournemouth",
+      "home_goals": 0,
+      "home_xg": 1.53731,
+      "match_id": "26639"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 1,
+      "away_xg": 1.1209,
+      "datetime": "2024-09-15 13:00:00",
+      "home": "Tottenham",
+      "home_goals": 0,
+      "home_xg": 0.792595,
+      "match_id": "26640"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 2,
+      "away_xg": 1.48343,
+      "datetime": "2024-09-15 15:30:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 1,
+      "home_xg": 1.46969,
+      "match_id": "26641"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 3,
+      "away_xg": 2.39727,
+      "datetime": "2024-09-21 11:30:00",
+      "home": "West Ham",
+      "home_goals": 0,
+      "home_xg": 0.758267,
+      "match_id": "26642"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 1,
+      "away_xg": 1.645,
+      "datetime": "2024-09-21 14:00:00",
+      "home": "Southampton",
+      "home_goals": 1,
+      "home_xg": 2.89813,
+      "match_id": "26643"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 1,
+      "away_xg": 1.82377,
+      "datetime": "2024-09-21 14:00:00",
+      "home": "Leicester",
+      "home_goals": 1,
+      "home_xg": 1.33793,
+      "match_id": "26644"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 0,
+      "away_xg": 1.46979,
+      "datetime": "2024-09-21 14:00:00",
+      "home": "Liverpool",
+      "home_goals": 3,
+      "home_xg": 2.43731,
+      "match_id": "26645"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 1,
+      "away_xg": 1.09768,
+      "datetime": "2024-09-21 14:00:00",
+      "home": "Fulham",
+      "home_goals": 3,
+      "home_xg": 3.21141,
+      "match_id": "26646"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 1,
+      "away_xg": 0.520117,
+      "datetime": "2024-09-21 14:00:00",
+      "home": "Aston Villa",
+      "home_goals": 3,
+      "home_xg": 2.37351,
+      "match_id": "26647"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 0.893565,
+      "datetime": "2024-09-21 14:00:00",
+      "home": "Tottenham",
+      "home_goals": 3,
+      "home_xg": 3.89481,
+      "match_id": "26648"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 0,
+      "away_xg": 2.35056,
+      "datetime": "2024-09-21 16:30:00",
+      "home": "Crystal Palace",
+      "home_goals": 0,
+      "home_xg": 1.66928,
+      "match_id": "26649"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 2,
+      "away_xg": 1.36923,
+      "datetime": "2024-09-22 13:00:00",
+      "home": "Brighton",
+      "home_goals": 2,
+      "home_xg": 1.56836,
+      "match_id": "26650"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 2,
+      "away_xg": 1.28411,
+      "datetime": "2024-09-22 15:30:00",
+      "home": "Manchester City",
+      "home_goals": 2,
+      "home_xg": 2.75588,
+      "match_id": "26651"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 1,
+      "away_xg": 1.26516,
+      "datetime": "2024-09-28 11:30:00",
+      "home": "Newcastle United",
+      "home_goals": 1,
+      "home_xg": 1.34344,
+      "match_id": "26652"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 1,
+      "away_xg": 1.43592,
+      "datetime": "2024-09-28 14:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 0,
+      "home_xg": 0.614351,
+      "match_id": "26653"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 1,
+      "away_xg": 1.12358,
+      "datetime": "2024-09-28 14:00:00",
+      "home": "Everton",
+      "home_goals": 2,
+      "home_xg": 1.10959,
+      "match_id": "26654"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 2,
+      "away_xg": 0.337909,
+      "datetime": "2024-09-28 14:00:00",
+      "home": "Arsenal",
+      "home_goals": 4,
+      "home_xg": 6.05305,
+      "match_id": "26655"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 0.878617,
+      "datetime": "2024-09-28 14:00:00",
+      "home": "Brentford",
+      "home_goals": 1,
+      "home_xg": 0.370222,
+      "match_id": "26656"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 2,
+      "away_xg": 1.20712,
+      "datetime": "2024-09-28 14:00:00",
+      "home": "Chelsea",
+      "home_goals": 4,
+      "home_xg": 3.65839,
+      "match_id": "26657"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 2.11724,
+      "datetime": "2024-09-28 16:30:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 1,
+      "home_xg": 0.748925,
+      "match_id": "26658"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 2,
+      "away_xg": 1.14494,
+      "datetime": "2024-09-29 13:00:00",
+      "home": "Ipswich",
+      "home_goals": 2,
+      "home_xg": 1.84608,
+      "match_id": "26659"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 3,
+      "away_xg": 5.4072,
+      "datetime": "2024-09-29 15:30:00",
+      "home": "Manchester United",
+      "home_goals": 0,
+      "home_xg": 0.600721,
+      "match_id": "26660"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 1,
+      "away_xg": 0.696068,
+      "datetime": "2024-09-30 19:00:00",
+      "home": "Bournemouth",
+      "home_goals": 3,
+      "home_xg": 1.44215,
+      "match_id": "26661"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 1,
+      "away_xg": 2.07332,
+      "datetime": "2024-10-05 11:30:00",
+      "home": "Crystal Palace",
+      "home_goals": 0,
+      "home_xg": 0.609481,
+      "match_id": "26662"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 0,
+      "away_xg": 1.94963,
+      "datetime": "2024-10-05 14:00:00",
+      "home": "Leicester",
+      "home_goals": 1,
+      "home_xg": 0.912063,
+      "match_id": "26663"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 2,
+      "away_xg": 2.75846,
+      "datetime": "2024-10-05 14:00:00",
+      "home": "Manchester City",
+      "home_goals": 3,
+      "home_xg": 1.36684,
+      "match_id": "26664"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 1,
+      "away_xg": 1.18463,
+      "datetime": "2024-10-05 14:00:00",
+      "home": "West Ham",
+      "home_goals": 4,
+      "home_xg": 4.39402,
+      "match_id": "26665"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 1,
+      "away_xg": 1.27313,
+      "datetime": "2024-10-05 14:00:00",
+      "home": "Arsenal",
+      "home_goals": 3,
+      "home_xg": 3.25165,
+      "match_id": "26666"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 3,
+      "away_xg": 0.696254,
+      "datetime": "2024-10-05 14:00:00",
+      "home": "Brentford",
+      "home_goals": 5,
+      "home_xg": 4.13513,
+      "match_id": "26667"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 0,
+      "away_xg": 1.79048,
+      "datetime": "2024-10-05 16:30:00",
+      "home": "Everton",
+      "home_goals": 0,
+      "home_xg": 0.692214,
+      "match_id": "26669"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 1,
+      "away_xg": 1.66654,
+      "datetime": "2024-10-06 13:00:00",
+      "home": "Chelsea",
+      "home_goals": 1,
+      "home_xg": 2.27752,
+      "match_id": "26668"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 0,
+      "away_xg": 0.448537,
+      "datetime": "2024-10-06 13:00:00",
+      "home": "Aston Villa",
+      "home_goals": 0,
+      "home_xg": 0.532809,
+      "match_id": "26670"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 2,
+      "away_xg": 1.09279,
+      "datetime": "2024-10-06 15:30:00",
+      "home": "Brighton",
+      "home_goals": 3,
+      "home_xg": 1.97217,
+      "match_id": "26671"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 0.858803,
+      "datetime": "2024-10-19 11:30:00",
+      "home": "Tottenham",
+      "home_goals": 4,
+      "home_xg": 1.44052,
+      "match_id": "26672"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 3,
+      "away_xg": 1.43595,
+      "datetime": "2024-10-19 14:00:00",
+      "home": "Fulham",
+      "home_goals": 1,
+      "home_xg": 2.63074,
+      "match_id": "26673"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 2,
+      "away_xg": 1.60804,
+      "datetime": "2024-10-19 14:00:00",
+      "home": "Ipswich",
+      "home_goals": 0,
+      "home_xg": 1.174,
+      "match_id": "26674"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 0.892843,
+      "datetime": "2024-10-19 14:00:00",
+      "home": "Manchester United",
+      "home_goals": 2,
+      "home_xg": 1.76555,
+      "match_id": "26675"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 1,
+      "away_xg": 1.6779,
+      "datetime": "2024-10-19 14:00:00",
+      "home": "Newcastle United",
+      "home_goals": 0,
+      "home_xg": 1.93657,
+      "match_id": "26676"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 3,
+      "away_xg": 2.83826,
+      "datetime": "2024-10-19 14:00:00",
+      "home": "Southampton",
+      "home_goals": 2,
+      "home_xg": 2.42776,
+      "match_id": "26678"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 0,
+      "away_xg": 0.740758,
+      "datetime": "2024-10-19 16:30:00",
+      "home": "Bournemouth",
+      "home_goals": 2,
+      "home_xg": 2.18419,
+      "match_id": "26680"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 2,
+      "away_xg": 1.36569,
+      "datetime": "2024-10-20 13:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 1,
+      "home_xg": 0.761217,
+      "match_id": "26681"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 1,
+      "away_xg": 1.33904,
+      "datetime": "2024-10-20 15:30:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 2.22517,
+      "match_id": "26679"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 0,
+      "away_xg": 0.835001,
+      "datetime": "2024-10-21 19:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 1,
+      "home_xg": 1.88573,
+      "match_id": "26677"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 3,
+      "away_xg": 2.54488,
+      "datetime": "2024-10-25 19:00:00",
+      "home": "Leicester",
+      "home_goals": 1,
+      "home_xg": 0.832415,
+      "match_id": "26682"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 0,
+      "away_xg": 0.369989,
+      "datetime": "2024-10-26 14:00:00",
+      "home": "Manchester City",
+      "home_goals": 1,
+      "home_xg": 3.16286,
+      "match_id": "26683"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 1,
+      "away_xg": 0.328651,
+      "datetime": "2024-10-26 14:00:00",
+      "home": "Aston Villa",
+      "home_goals": 1,
+      "home_xg": 1.974,
+      "match_id": "26684"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 3,
+      "away_xg": 1.65698,
+      "datetime": "2024-10-26 14:00:00",
+      "home": "Brentford",
+      "home_goals": 4,
+      "home_xg": 4.09663,
+      "match_id": "26685"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 2,
+      "away_xg": 1.11074,
+      "datetime": "2024-10-26 14:00:00",
+      "home": "Brighton",
+      "home_goals": 2,
+      "home_xg": 1.51347,
+      "match_id": "26686"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 1,
+      "away_xg": 1.49531,
+      "datetime": "2024-10-26 16:30:00",
+      "home": "Everton",
+      "home_goals": 1,
+      "home_xg": 0.884845,
+      "match_id": "26687"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 1,
+      "away_xg": 1.74225,
+      "datetime": "2024-10-27 14:00:00",
+      "home": "Chelsea",
+      "home_goals": 2,
+      "home_xg": 1.61794,
+      "match_id": "26688"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 0,
+      "away_xg": 1.0192,
+      "datetime": "2024-10-27 14:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 1,
+      "home_xg": 0.978611,
+      "match_id": "26689"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 1,
+      "away_xg": 2.62598,
+      "datetime": "2024-10-27 14:00:00",
+      "home": "West Ham",
+      "home_goals": 2,
+      "home_xg": 2.99312,
+      "match_id": "26690"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 1.35346,
+      "datetime": "2024-10-27 16:30:00",
+      "home": "Arsenal",
+      "home_goals": 2,
+      "home_xg": 1.0883,
+      "match_id": "26691"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 0,
+      "away_xg": 0.911305,
+      "datetime": "2024-11-02 12:30:00",
+      "home": "Newcastle United",
+      "home_goals": 1,
+      "home_xg": 0.859715,
+      "match_id": "26694"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 1,
+      "away_xg": 2.3527,
+      "datetime": "2024-11-02 15:00:00",
+      "home": "Bournemouth",
+      "home_goals": 2,
+      "home_xg": 2.4493,
+      "match_id": "26692"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 1,
+      "away_xg": 2.33858,
+      "datetime": "2024-11-02 15:00:00",
+      "home": "Ipswich",
+      "home_goals": 1,
+      "home_xg": 1.33617,
+      "match_id": "26695"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 1,
+      "away_xg": 1.01568,
+      "datetime": "2024-11-02 15:00:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 1.81037,
+      "match_id": "26696"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 0,
+      "away_xg": 0.132317,
+      "datetime": "2024-11-02 15:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 3,
+      "home_xg": 2.35011,
+      "match_id": "26698"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 0,
+      "away_xg": 1.78581,
+      "datetime": "2024-11-02 15:00:00",
+      "home": "Southampton",
+      "home_goals": 1,
+      "home_xg": 0.540345,
+      "match_id": "26699"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 2,
+      "away_xg": 2.64849,
+      "datetime": "2024-11-02 17:30:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 2,
+      "home_xg": 1.65018,
+      "match_id": "26701"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 1,
+      "away_xg": 2.48749,
+      "datetime": "2024-11-03 14:00:00",
+      "home": "Tottenham",
+      "home_goals": 4,
+      "home_xg": 2.09751,
+      "match_id": "26700"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 1,
+      "away_xg": 1.21071,
+      "datetime": "2024-11-03 16:30:00",
+      "home": "Manchester United",
+      "home_goals": 1,
+      "home_xg": 2.1605,
+      "match_id": "26697"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 0.739231,
+      "datetime": "2024-11-04 20:00:00",
+      "home": "Fulham",
+      "home_goals": 2,
+      "home_xg": 1.43017,
+      "match_id": "26693"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 2,
+      "away_xg": 2.49234,
+      "datetime": "2024-11-09 15:00:00",
+      "home": "Brentford",
+      "home_goals": 3,
+      "home_xg": 1.56474,
+      "match_id": "26702"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 2,
+      "away_xg": 2.25331,
+      "datetime": "2024-11-09 15:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 0,
+      "home_xg": 1.96037,
+      "match_id": "26706"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 0,
+      "away_xg": 0.865983,
+      "datetime": "2024-11-09 15:00:00",
+      "home": "West Ham",
+      "home_goals": 0,
+      "home_xg": 1.1237,
+      "match_id": "26710"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 0,
+      "away_xg": 0.792655,
+      "datetime": "2024-11-09 15:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 2,
+      "home_xg": 0.912781,
+      "match_id": "26711"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 1,
+      "away_xg": 2.60334,
+      "datetime": "2024-11-09 17:30:00",
+      "home": "Brighton",
+      "home_goals": 2,
+      "home_xg": 2.87116,
+      "match_id": "26703"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 0,
+      "away_xg": 1.66337,
+      "datetime": "2024-11-09 20:00:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 2.68196,
+      "match_id": "26707"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 3,
+      "away_xg": 1.86904,
+      "datetime": "2024-11-10 14:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 1,
+      "home_xg": 1.17852,
+      "match_id": "26704"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 0,
+      "away_xg": 0.417295,
+      "datetime": "2024-11-10 14:00:00",
+      "home": "Manchester United",
+      "home_goals": 3,
+      "home_xg": 1.2369,
+      "match_id": "26708"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 2,
+      "away_xg": 2.18392,
+      "datetime": "2024-11-10 14:00:00",
+      "home": "Tottenham",
+      "home_goals": 1,
+      "home_xg": 1.75088,
+      "match_id": "26709"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 1,
+      "away_xg": 1.9605,
+      "datetime": "2024-11-10 16:30:00",
+      "home": "Chelsea",
+      "home_goals": 1,
+      "home_xg": 1.24067,
+      "match_id": "26705"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 2,
+      "away_xg": 2.81658,
+      "datetime": "2024-11-23 12:30:00",
+      "home": "Leicester",
+      "home_goals": 1,
+      "home_xg": 0.967987,
+      "match_id": "26719"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 2,
+      "away_xg": 1.23059,
+      "datetime": "2024-11-23 15:00:00",
+      "home": "Bournemouth",
+      "home_goals": 1,
+      "home_xg": 1.91157,
+      "match_id": "26712"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 0,
+      "away_xg": 0.403136,
+      "datetime": "2024-11-23 15:00:00",
+      "home": "Arsenal",
+      "home_goals": 3,
+      "home_xg": 1.66016,
+      "match_id": "26714"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 0,
+      "away_xg": 1.34314,
+      "datetime": "2024-11-23 15:00:00",
+      "home": "Everton",
+      "home_goals": 0,
+      "home_xg": 1.5951,
+      "match_id": "26715"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 2,
+      "away_xg": 1.61437,
+      "datetime": "2024-11-23 15:00:00",
+      "home": "Aston Villa",
+      "home_goals": 2,
+      "home_xg": 3.04455,
+      "match_id": "26716"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 4,
+      "away_xg": 1.33903,
+      "datetime": "2024-11-23 15:00:00",
+      "home": "Fulham",
+      "home_goals": 1,
+      "home_xg": 0.717158,
+      "match_id": "26717"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 4,
+      "away_xg": 3.30449,
+      "datetime": "2024-11-23 17:30:00",
+      "home": "Manchester City",
+      "home_goals": 0,
+      "home_xg": 2.15899,
+      "match_id": "26720"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 3,
+      "away_xg": 3.18835,
+      "datetime": "2024-11-24 14:00:00",
+      "home": "Southampton",
+      "home_goals": 2,
+      "home_xg": 1.53985,
+      "match_id": "26721"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 1,
+      "away_xg": 1.26912,
+      "datetime": "2024-11-24 16:30:00",
+      "home": "Ipswich",
+      "home_goals": 1,
+      "home_xg": 1.98714,
+      "match_id": "26718"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 2,
+      "away_xg": 0.942824,
+      "datetime": "2024-11-25 20:00:00",
+      "home": "Newcastle United",
+      "home_goals": 0,
+      "home_xg": 1.49781,
+      "match_id": "26713"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 1,
+      "away_xg": 0.934969,
+      "datetime": "2024-11-29 20:00:00",
+      "home": "Brighton",
+      "home_goals": 1,
+      "home_xg": 1.86986,
+      "match_id": "26723"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 1,
+      "away_xg": 0.907555,
+      "datetime": "2024-11-30 15:00:00",
+      "home": "Brentford",
+      "home_goals": 4,
+      "home_xg": 2.21885,
+      "match_id": "26722"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 1,
+      "away_xg": 0.020989,
+      "datetime": "2024-11-30 15:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 1,
+      "home_xg": 2.29595,
+      "match_id": "26725"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 0,
+      "away_xg": 0.462771,
+      "datetime": "2024-11-30 15:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 1,
+      "home_xg": 1.76587,
+      "match_id": "26728"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 4,
+      "away_xg": 3.07901,
+      "datetime": "2024-11-30 15:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 2,
+      "home_xg": 0.866034,
+      "match_id": "26731"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 5,
+      "away_xg": 3.99935,
+      "datetime": "2024-11-30 17:30:00",
+      "home": "West Ham",
+      "home_goals": 2,
+      "home_xg": 1.23539,
+      "match_id": "26730"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 0,
+      "away_xg": 0.875443,
+      "datetime": "2024-12-01 13:30:00",
+      "home": "Chelsea",
+      "home_goals": 3,
+      "home_xg": 1.94939,
+      "match_id": "26724"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 0,
+      "away_xg": 0.766749,
+      "datetime": "2024-12-01 13:30:00",
+      "home": "Manchester United",
+      "home_goals": 4,
+      "home_xg": 1.76161,
+      "match_id": "26727"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 1,
+      "away_xg": 1.57274,
+      "datetime": "2024-12-01 13:30:00",
+      "home": "Tottenham",
+      "home_goals": 1,
+      "home_xg": 1.01086,
+      "match_id": "26729"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 0,
+      "away_xg": 0.745015,
+      "datetime": "2024-12-01 16:00:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 3.70054,
+      "match_id": "26726"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 1,
+      "away_xg": 1.65422,
+      "datetime": "2024-12-03 19:30:00",
+      "home": "Ipswich",
+      "home_goals": 0,
+      "home_xg": 0.471708,
+      "match_id": "26737"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 2.87716,
+      "datetime": "2024-12-03 20:15:00",
+      "home": "Leicester",
+      "home_goals": 3,
+      "home_xg": 2.78061,
+      "match_id": "26738"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 0,
+      "away_xg": 0.847724,
+      "datetime": "2024-12-04 19:30:00",
+      "home": "Everton",
+      "home_goals": 4,
+      "home_xg": 1.49904,
+      "match_id": "26735"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 0,
+      "away_xg": 0.802155,
+      "datetime": "2024-12-04 19:30:00",
+      "home": "Manchester City",
+      "home_goals": 3,
+      "home_xg": 3.20169,
+      "match_id": "26739"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 3,
+      "away_xg": 2.22766,
+      "datetime": "2024-12-04 19:30:00",
+      "home": "Newcastle United",
+      "home_goals": 3,
+      "home_xg": 1.52057,
+      "match_id": "26740"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 5,
+      "away_xg": 5.8331,
+      "datetime": "2024-12-04 19:30:00",
+      "home": "Southampton",
+      "home_goals": 1,
+      "home_xg": 1.91014,
+      "match_id": "26741"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 0,
+      "away_xg": 0.256083,
+      "datetime": "2024-12-04 20:15:00",
+      "home": "Arsenal",
+      "home_goals": 2,
+      "home_xg": 2.96684,
+      "match_id": "26733"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 1.13266,
+      "datetime": "2024-12-04 20:15:00",
+      "home": "Aston Villa",
+      "home_goals": 3,
+      "home_xg": 3.21673,
+      "match_id": "26734"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 1,
+      "away_xg": 1.09939,
+      "datetime": "2024-12-05 19:30:00",
+      "home": "Fulham",
+      "home_goals": 3,
+      "home_xg": 0.666644,
+      "match_id": "26736"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 0,
+      "away_xg": 0.623934,
+      "datetime": "2024-12-05 20:15:00",
+      "home": "Bournemouth",
+      "home_goals": 1,
+      "home_xg": 3.27716,
+      "match_id": "26732"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 0,
+      "away_xg": 0.385832,
+      "datetime": "2024-12-07 15:00:00",
+      "home": "Aston Villa",
+      "home_goals": 1,
+      "home_xg": 2.51338,
+      "match_id": "26742"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 2,
+      "away_xg": 1.95645,
+      "datetime": "2024-12-07 15:00:00",
+      "home": "Brentford",
+      "home_goals": 4,
+      "home_xg": 1.746,
+      "match_id": "26743"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 2,
+      "away_xg": 1.5846,
+      "datetime": "2024-12-07 15:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 2,
+      "home_xg": 1.21476,
+      "match_id": "26747"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 3,
+      "away_xg": 0.651217,
+      "datetime": "2024-12-07 17:30:00",
+      "home": "Manchester United",
+      "home_goals": 2,
+      "home_xg": 1.4697,
+      "match_id": "26744"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 1,
+      "away_xg": 2.4333,
+      "datetime": "2024-12-08 14:00:00",
+      "home": "Fulham",
+      "home_goals": 1,
+      "home_xg": 0.150988,
+      "match_id": "26749"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 2,
+      "away_xg": 3.49127,
+      "datetime": "2024-12-08 14:00:00",
+      "home": "Ipswich",
+      "home_goals": 1,
+      "home_xg": 1.5668,
+      "match_id": "26750"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 2,
+      "away_xg": 1.12184,
+      "datetime": "2024-12-08 14:00:00",
+      "home": "Leicester",
+      "home_goals": 2,
+      "home_xg": 1.42438,
+      "match_id": "26751"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 4,
+      "away_xg": 2.57326,
+      "datetime": "2024-12-08 16:30:00",
+      "home": "Tottenham",
+      "home_goals": 3,
+      "home_xg": 3.25488,
+      "match_id": "26745"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 1,
+      "away_xg": 1.47567,
+      "datetime": "2024-12-09 20:00:00",
+      "home": "West Ham",
+      "home_goals": 2,
+      "home_xg": 1.19808,
+      "match_id": "26746"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 2,
+      "away_xg": 1.2862,
+      "datetime": "2024-12-14 15:00:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 2.09698,
+      "match_id": "26752"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 0,
+      "away_xg": 0.132166,
+      "datetime": "2024-12-14 15:00:00",
+      "home": "Arsenal",
+      "home_goals": 0,
+      "home_xg": 1.30865,
+      "match_id": "26755"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 2,
+      "away_xg": 1.73349,
+      "datetime": "2024-12-14 15:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 1,
+      "home_xg": 1.23748,
+      "match_id": "26758"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 0,
+      "away_xg": 0.186759,
+      "datetime": "2024-12-14 15:00:00",
+      "home": "Newcastle United",
+      "home_goals": 4,
+      "home_xg": 3.95461,
+      "match_id": "26760"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 1,
+      "away_xg": 0.389423,
+      "datetime": "2024-12-14 17:30:00",
+      "home": "Nottingham Forest",
+      "home_goals": 2,
+      "home_xg": 2.2861,
+      "match_id": "26761"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 3,
+      "away_xg": 3.00618,
+      "datetime": "2024-12-15 14:00:00",
+      "home": "Brighton",
+      "home_goals": 1,
+      "home_xg": 1.32323,
+      "match_id": "26756"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 2,
+      "away_xg": 2.04662,
+      "datetime": "2024-12-15 16:30:00",
+      "home": "Manchester City",
+      "home_goals": 1,
+      "home_xg": 0.638103,
+      "match_id": "26753"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 1.65861,
+      "datetime": "2024-12-15 19:00:00",
+      "home": "Chelsea",
+      "home_goals": 2,
+      "home_xg": 2.59146,
+      "match_id": "26757"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 5,
+      "away_xg": 3.89322,
+      "datetime": "2024-12-15 19:00:00",
+      "home": "Southampton",
+      "home_goals": 0,
+      "home_xg": 1.27356,
+      "match_id": "26759"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 1.81827,
+      "datetime": "2024-12-16 20:00:00",
+      "home": "Bournemouth",
+      "home_goals": 1,
+      "home_xg": 2.04842,
+      "match_id": "26754"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 1,
+      "away_xg": 1.09627,
+      "datetime": "2024-12-21 12:30:00",
+      "home": "Aston Villa",
+      "home_goals": 2,
+      "home_xg": 2.05988,
+      "match_id": "26762"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 2,
+      "away_xg": 0.964897,
+      "datetime": "2024-12-21 15:00:00",
+      "home": "Brentford",
+      "home_goals": 0,
+      "home_xg": 0.769004,
+      "match_id": "26766"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 1,
+      "away_xg": 1.34379,
+      "datetime": "2024-12-21 15:00:00",
+      "home": "West Ham",
+      "home_goals": 1,
+      "home_xg": 1.22937,
+      "match_id": "26767"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 4,
+      "away_xg": 3.23386,
+      "datetime": "2024-12-21 15:00:00",
+      "home": "Ipswich",
+      "home_goals": 0,
+      "home_xg": 1.06427,
+      "match_id": "26771"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 5,
+      "away_xg": 3.05434,
+      "datetime": "2024-12-21 17:30:00",
+      "home": "Crystal Palace",
+      "home_goals": 1,
+      "home_xg": 1.6052,
+      "match_id": "26765"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 0,
+      "away_xg": 0.280031,
+      "datetime": "2024-12-22 14:00:00",
+      "home": "Fulham",
+      "home_goals": 0,
+      "home_xg": 1.25255,
+      "match_id": "26763"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 0,
+      "away_xg": 1.51591,
+      "datetime": "2024-12-22 14:00:00",
+      "home": "Everton",
+      "home_goals": 0,
+      "home_xg": 1.07081,
+      "match_id": "26764"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 3,
+      "away_xg": 1.82831,
+      "datetime": "2024-12-22 14:00:00",
+      "home": "Manchester United",
+      "home_goals": 0,
+      "home_xg": 2.28533,
+      "match_id": "26769"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 3,
+      "away_xg": 1.13531,
+      "datetime": "2024-12-22 14:00:00",
+      "home": "Leicester",
+      "home_goals": 0,
+      "home_xg": 0.78868,
+      "match_id": "26770"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 6,
+      "away_xg": 5.20214,
+      "datetime": "2024-12-22 16:30:00",
+      "home": "Tottenham",
+      "home_goals": 3,
+      "home_xg": 1.20245,
+      "match_id": "26768"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 1,
+      "away_xg": 0.653289,
+      "datetime": "2024-12-26 12:30:00",
+      "home": "Manchester City",
+      "home_goals": 1,
+      "home_xg": 2.51965,
+      "match_id": "26777"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 0,
+      "away_xg": 0.500066,
+      "datetime": "2024-12-26 15:00:00",
+      "home": "Bournemouth",
+      "home_goals": 0,
+      "home_xg": 1.20189,
+      "match_id": "26772"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 2,
+      "away_xg": 1.77929,
+      "datetime": "2024-12-26 15:00:00",
+      "home": "Chelsea",
+      "home_goals": 1,
+      "home_xg": 1.55626,
+      "match_id": "26775"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 0,
+      "away_xg": 0.225522,
+      "datetime": "2024-12-26 15:00:00",
+      "home": "Newcastle United",
+      "home_goals": 3,
+      "home_xg": 2.82867,
+      "match_id": "26778"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 0,
+      "away_xg": 1.05758,
+      "datetime": "2024-12-26 15:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 1,
+      "home_xg": 1.30018,
+      "match_id": "26779"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 1.90111,
+      "datetime": "2024-12-26 15:00:00",
+      "home": "Southampton",
+      "home_goals": 0,
+      "home_xg": 2.19833,
+      "match_id": "26780"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 0,
+      "away_xg": 0.358876,
+      "datetime": "2024-12-26 17:30:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 2,
+      "home_xg": 0.826489,
+      "match_id": "26781"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 1,
+      "away_xg": 0.22097,
+      "datetime": "2024-12-26 20:00:00",
+      "home": "Liverpool",
+      "home_goals": 3,
+      "home_xg": 1.89935,
+      "match_id": "26776"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 0,
+      "away_xg": 0.961233,
+      "datetime": "2024-12-27 19:30:00",
+      "home": "Brighton",
+      "home_goals": 0,
+      "home_xg": 1.33538,
+      "match_id": "26774"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 0,
+      "away_xg": 0.0783327,
+      "datetime": "2024-12-27 20:15:00",
+      "home": "Arsenal",
+      "home_goals": 1,
+      "home_xg": 2.16462,
+      "match_id": "26773"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 2,
+      "away_xg": 1.58002,
+      "datetime": "2024-12-29 14:30:00",
+      "home": "Leicester",
+      "home_goals": 0,
+      "home_xg": 1.84208,
+      "match_id": "26788"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 1,
+      "away_xg": 1.21853,
+      "datetime": "2024-12-29 15:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 2,
+      "home_xg": 3.05417,
+      "match_id": "26784"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 2,
+      "away_xg": 2.02753,
+      "datetime": "2024-12-29 15:00:00",
+      "home": "Everton",
+      "home_goals": 0,
+      "home_xg": 0.615191,
+      "match_id": "26785"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 2,
+      "away_xg": 1.70692,
+      "datetime": "2024-12-29 15:00:00",
+      "home": "Fulham",
+      "home_goals": 2,
+      "home_xg": 0.961566,
+      "match_id": "26786"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 2,
+      "away_xg": 0.640697,
+      "datetime": "2024-12-29 15:00:00",
+      "home": "Tottenham",
+      "home_goals": 2,
+      "home_xg": 2.28433,
+      "match_id": "26790"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 5,
+      "away_xg": 3.29868,
+      "datetime": "2024-12-29 17:15:00",
+      "home": "West Ham",
+      "home_goals": 0,
+      "home_xg": 0.518279,
+      "match_id": "26791"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 2,
+      "away_xg": 0.938042,
+      "datetime": "2024-12-30 19:45:00",
+      "home": "Aston Villa",
+      "home_goals": 2,
+      "home_xg": 1.87997,
+      "match_id": "26782"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 0,
+      "away_xg": 1.60622,
+      "datetime": "2024-12-30 19:45:00",
+      "home": "Ipswich",
+      "home_goals": 2,
+      "home_xg": 1.50093,
+      "match_id": "26787"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 2,
+      "away_xg": 2.2424,
+      "datetime": "2024-12-30 20:00:00",
+      "home": "Manchester United",
+      "home_goals": 0,
+      "home_xg": 1.00073,
+      "match_id": "26789"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 3,
+      "away_xg": 1.99848,
+      "datetime": "2025-01-01 17:30:00",
+      "home": "Brentford",
+      "home_goals": 1,
+      "home_xg": 0.272604,
+      "match_id": "26783"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 2,
+      "away_xg": 2.42963,
+      "datetime": "2025-01-04 12:30:00",
+      "home": "Tottenham",
+      "home_goals": 1,
+      "home_xg": 1.00333,
+      "match_id": "26800"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 0,
+      "away_xg": 0.561015,
+      "datetime": "2025-01-04 15:00:00",
+      "home": "Bournemouth",
+      "home_goals": 1,
+      "home_xg": 2.61852,
+      "match_id": "26792"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 1,
+      "away_xg": 0.81548,
+      "datetime": "2025-01-04 15:00:00",
+      "home": "Aston Villa",
+      "home_goals": 2,
+      "home_xg": 2.3456,
+      "match_id": "26793"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 1,
+      "away_xg": 1.51541,
+      "datetime": "2025-01-04 15:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 1,
+      "home_xg": 1.2766,
+      "match_id": "26795"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 1.53286,
+      "datetime": "2025-01-04 15:00:00",
+      "home": "Manchester City",
+      "home_goals": 4,
+      "home_xg": 1.97986,
+      "match_id": "26798"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 5,
+      "away_xg": 5.54874,
+      "datetime": "2025-01-04 15:00:00",
+      "home": "Southampton",
+      "home_goals": 0,
+      "home_xg": 0.249614,
+      "match_id": "26799"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 1,
+      "away_xg": 1.81142,
+      "datetime": "2025-01-04 17:30:00",
+      "home": "Brighton",
+      "home_goals": 1,
+      "home_xg": 1.76513,
+      "match_id": "26794"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 2,
+      "away_xg": 1.4434,
+      "datetime": "2025-01-05 14:00:00",
+      "home": "Fulham",
+      "home_goals": 2,
+      "home_xg": 2.65469,
+      "match_id": "26796"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 2,
+      "away_xg": 1.67469,
+      "datetime": "2025-01-05 16:30:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 2.862,
+      "match_id": "26797"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 3,
+      "away_xg": 2.57227,
+      "datetime": "2025-01-06 20:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 0,
+      "home_xg": 1.90463,
+      "match_id": "26801"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 2,
+      "away_xg": 2.65315,
+      "datetime": "2025-01-14 19:30:00",
+      "home": "Brentford",
+      "home_goals": 2,
+      "home_xg": 2.39088,
+      "match_id": "26803"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 2,
+      "away_xg": 2.83581,
+      "datetime": "2025-01-14 19:30:00",
+      "home": "West Ham",
+      "home_goals": 3,
+      "home_xg": 0.937322,
+      "match_id": "26808"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 2,
+      "away_xg": 1.14845,
+      "datetime": "2025-01-14 19:30:00",
+      "home": "Chelsea",
+      "home_goals": 2,
+      "home_xg": 2.53808,
+      "match_id": "26809"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 1,
+      "away_xg": 2.72291,
+      "datetime": "2025-01-14 20:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 1,
+      "home_xg": 0.5292,
+      "match_id": "26807"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 1,
+      "away_xg": 1.28522,
+      "datetime": "2025-01-15 19:30:00",
+      "home": "Everton",
+      "home_goals": 0,
+      "home_xg": 1.23126,
+      "match_id": "26804"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 2,
+      "away_xg": 2.2647,
+      "datetime": "2025-01-15 19:30:00",
+      "home": "Leicester",
+      "home_goals": 0,
+      "home_xg": 2.09904,
+      "match_id": "26806"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 0,
+      "away_xg": 1.47433,
+      "datetime": "2025-01-15 19:30:00",
+      "home": "Newcastle United",
+      "home_goals": 3,
+      "home_xg": 2.13327,
+      "match_id": "26810"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 1,
+      "away_xg": 0.777071,
+      "datetime": "2025-01-15 20:00:00",
+      "home": "Arsenal",
+      "home_goals": 2,
+      "home_xg": 2.25501,
+      "match_id": "26802"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 2,
+      "away_xg": 1.06343,
+      "datetime": "2025-01-16 19:30:00",
+      "home": "Ipswich",
+      "home_goals": 0,
+      "home_xg": 0.268127,
+      "match_id": "26805"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 1,
+      "away_xg": 1.36705,
+      "datetime": "2025-01-16 20:00:00",
+      "home": "Manchester United",
+      "home_goals": 3,
+      "home_xg": 3.10847,
+      "match_id": "26811"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 4,
+      "away_xg": 2.70174,
+      "datetime": "2025-01-18 12:30:00",
+      "home": "Newcastle United",
+      "home_goals": 1,
+      "home_xg": 0.837801,
+      "match_id": "26819"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 4.16249,
+      "datetime": "2025-01-18 15:00:00",
+      "home": "Brentford",
+      "home_goals": 0,
+      "home_xg": 1.20021,
+      "match_id": "26813"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 2,
+      "away_xg": 2.36823,
+      "datetime": "2025-01-18 15:00:00",
+      "home": "Leicester",
+      "home_goals": 0,
+      "home_xg": 0.676934,
+      "match_id": "26817"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 2,
+      "away_xg": 1.62561,
+      "datetime": "2025-01-18 15:00:00",
+      "home": "West Ham",
+      "home_goals": 0,
+      "home_xg": 0.221062,
+      "match_id": "26821"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 2,
+      "away_xg": 1.20602,
+      "datetime": "2025-01-18 17:30:00",
+      "home": "Arsenal",
+      "home_goals": 2,
+      "home_xg": 1.64458,
+      "match_id": "26812"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 2,
+      "away_xg": 1.35719,
+      "datetime": "2025-01-19 14:00:00",
+      "home": "Everton",
+      "home_goals": 3,
+      "home_xg": 2.56089,
+      "match_id": "26815"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 3,
+      "away_xg": 2.17172,
+      "datetime": "2025-01-19 14:00:00",
+      "home": "Manchester United",
+      "home_goals": 1,
+      "home_xg": 1.31823,
+      "match_id": "26818"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 2,
+      "away_xg": 1.25922,
+      "datetime": "2025-01-19 14:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 3,
+      "home_xg": 2.36419,
+      "match_id": "26820"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 6,
+      "away_xg": 3.20228,
+      "datetime": "2025-01-19 16:30:00",
+      "home": "Ipswich",
+      "home_goals": 0,
+      "home_xg": 0.795637,
+      "match_id": "26816"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 1,
+      "away_xg": 1.06726,
+      "datetime": "2025-01-20 20:00:00",
+      "home": "Chelsea",
+      "home_goals": 3,
+      "home_xg": 3.14882,
+      "match_id": "26814"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 0,
+      "away_xg": 0.996166,
+      "datetime": "2025-01-25 15:00:00",
+      "home": "Bournemouth",
+      "home_goals": 5,
+      "home_xg": 2.8254,
+      "match_id": "26822"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 1,
+      "away_xg": 0.870883,
+      "datetime": "2025-01-25 15:00:00",
+      "home": "Brighton",
+      "home_goals": 0,
+      "home_xg": 0.64378,
+      "match_id": "26824"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 1,
+      "away_xg": 0.804707,
+      "datetime": "2025-01-25 15:00:00",
+      "home": "Liverpool",
+      "home_goals": 4,
+      "home_xg": 2.16809,
+      "match_id": "26827"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 3,
+      "away_xg": 3.08319,
+      "datetime": "2025-01-25 15:00:00",
+      "home": "Southampton",
+      "home_goals": 1,
+      "home_xg": 0.825621,
+      "match_id": "26829"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 1,
+      "away_xg": 0.887358,
+      "datetime": "2025-01-25 15:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 0,
+      "home_xg": 0.514724,
+      "match_id": "26831"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 1,
+      "away_xg": 1.49843,
+      "datetime": "2025-01-25 17:30:00",
+      "home": "Manchester City",
+      "home_goals": 3,
+      "home_xg": 2.23213,
+      "match_id": "26828"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 2,
+      "away_xg": 1.92037,
+      "datetime": "2025-01-26 14:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 1,
+      "home_xg": 1.23177,
+      "match_id": "26825"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 2,
+      "away_xg": 1.40469,
+      "datetime": "2025-01-26 14:00:00",
+      "home": "Tottenham",
+      "home_goals": 1,
+      "home_xg": 1.27483,
+      "match_id": "26830"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 1.67886,
+      "datetime": "2025-01-26 16:30:00",
+      "home": "Aston Villa",
+      "home_goals": 1,
+      "home_xg": 0.907851,
+      "match_id": "26823"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 1,
+      "away_xg": 0.201988,
+      "datetime": "2025-01-26 19:00:00",
+      "home": "Fulham",
+      "home_goals": 0,
+      "home_xg": 0.560571,
+      "match_id": "26826"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 0,
+      "away_xg": 0.756296,
+      "datetime": "2025-02-01 12:30:00",
+      "home": "Nottingham Forest",
+      "home_goals": 7,
+      "home_xg": 4.0677,
+      "match_id": "26840"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 2.7219,
+      "datetime": "2025-02-01 15:00:00",
+      "home": "Bournemouth",
+      "home_goals": 0,
+      "home_xg": 1.65273,
+      "match_id": "26832"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 0,
+      "away_xg": 0.447136,
+      "datetime": "2025-02-01 15:00:00",
+      "home": "Everton",
+      "home_goals": 4,
+      "home_xg": 3.11261,
+      "match_id": "26836"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 2,
+      "away_xg": 1.17566,
+      "datetime": "2025-02-01 15:00:00",
+      "home": "Ipswich",
+      "home_goals": 1,
+      "home_xg": 1.94845,
+      "match_id": "26837"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 2,
+      "away_xg": 1.60881,
+      "datetime": "2025-02-01 15:00:00",
+      "home": "Newcastle United",
+      "home_goals": 1,
+      "home_xg": 1.22716,
+      "match_id": "26839"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 0,
+      "away_xg": 0.742809,
+      "datetime": "2025-02-01 17:30:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 2,
+      "home_xg": 2.00146,
+      "match_id": "26841"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 2,
+      "away_xg": 0.945355,
+      "datetime": "2025-02-02 14:00:00",
+      "home": "Brentford",
+      "home_goals": 0,
+      "home_xg": 1.66475,
+      "match_id": "26834"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 2,
+      "away_xg": 2.44633,
+      "datetime": "2025-02-02 14:00:00",
+      "home": "Manchester United",
+      "home_goals": 0,
+      "home_xg": 1.50706,
+      "match_id": "26838"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 1,
+      "away_xg": 0.743191,
+      "datetime": "2025-02-02 16:30:00",
+      "home": "Arsenal",
+      "home_goals": 5,
+      "home_xg": 1.53202,
+      "match_id": "26833"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 1.1868,
+      "datetime": "2025-02-03 20:00:00",
+      "home": "Chelsea",
+      "home_goals": 2,
+      "home_xg": 1.39066,
+      "match_id": "26835"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 0.929103,
+      "datetime": "2025-02-12 19:30:00",
+      "home": "Everton",
+      "home_goals": 2,
+      "home_xg": 0.910523,
+      "match_id": "26748"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 0,
+      "away_xg": 0.649788,
+      "datetime": "2025-02-14 20:00:00",
+      "home": "Brighton",
+      "home_goals": 3,
+      "home_xg": 2.06892,
+      "match_id": "26843"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 2,
+      "away_xg": 1.75,
+      "datetime": "2025-02-15 12:30:00",
+      "home": "Leicester",
+      "home_goals": 0,
+      "home_xg": 0.233209,
+      "match_id": "26846"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 1,
+      "away_xg": 0.332864,
+      "datetime": "2025-02-15 15:00:00",
+      "home": "Aston Villa",
+      "home_goals": 1,
+      "home_xg": 2.89841,
+      "match_id": "26842"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 1,
+      "away_xg": 0.331301,
+      "datetime": "2025-02-15 15:00:00",
+      "home": "Fulham",
+      "home_goals": 2,
+      "home_xg": 2.20993,
+      "match_id": "26845"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 0,
+      "away_xg": 0.157211,
+      "datetime": "2025-02-15 15:00:00",
+      "home": "Manchester City",
+      "home_goals": 4,
+      "home_xg": 2.12004,
+      "match_id": "26848"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 3,
+      "away_xg": 2.08722,
+      "datetime": "2025-02-15 15:00:00",
+      "home": "Southampton",
+      "home_goals": 1,
+      "home_xg": 0.974418,
+      "match_id": "26849"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 1.96499,
+      "datetime": "2025-02-15 15:00:00",
+      "home": "West Ham",
+      "home_goals": 0,
+      "home_xg": 0.673466,
+      "match_id": "26851"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 2,
+      "away_xg": 1.01565,
+      "datetime": "2025-02-15 17:30:00",
+      "home": "Crystal Palace",
+      "home_goals": 1,
+      "home_xg": 2.30646,
+      "match_id": "26844"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 1,
+      "away_xg": 1.05329,
+      "datetime": "2025-02-16 14:00:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 1.86758,
+      "match_id": "26847"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 0,
+      "away_xg": 1.42652,
+      "datetime": "2025-02-16 16:30:00",
+      "home": "Tottenham",
+      "home_goals": 1,
+      "home_xg": 1.97109,
+      "match_id": "26850"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 2.04279,
+      "datetime": "2025-02-19 15:00:00",
+      "home": "Aston Villa",
+      "home_goals": 2,
+      "home_xg": 1.02269,
+      "match_id": "26884"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 4,
+      "away_xg": 2.03465,
+      "datetime": "2025-02-21 20:00:00",
+      "home": "Leicester",
+      "home_goals": 0,
+      "home_xg": 0.727901,
+      "match_id": "26858"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 2,
+      "away_xg": 0.645685,
+      "datetime": "2025-02-22 12:30:00",
+      "home": "Everton",
+      "home_goals": 2,
+      "home_xg": 2.10444,
+      "match_id": "26855"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 1,
+      "away_xg": 2.10124,
+      "datetime": "2025-02-22 15:00:00",
+      "home": "Bournemouth",
+      "home_goals": 0,
+      "home_xg": 0.629691,
+      "match_id": "26852"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 1.02684,
+      "datetime": "2025-02-22 15:00:00",
+      "home": "Arsenal",
+      "home_goals": 0,
+      "home_xg": 1.37264,
+      "match_id": "26853"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 2,
+      "away_xg": 1.46203,
+      "datetime": "2025-02-22 15:00:00",
+      "home": "Fulham",
+      "home_goals": 0,
+      "home_xg": 0.23426,
+      "match_id": "26856"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 4,
+      "away_xg": 1.58741,
+      "datetime": "2025-02-22 15:00:00",
+      "home": "Ipswich",
+      "home_goals": 1,
+      "home_xg": 1.15389,
+      "match_id": "26857"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 4,
+      "away_xg": 5.12018,
+      "datetime": "2025-02-22 15:00:00",
+      "home": "Southampton",
+      "home_goals": 0,
+      "home_xg": 0.154147,
+      "match_id": "26861"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 1,
+      "away_xg": 2.17418,
+      "datetime": "2025-02-22 17:30:00",
+      "home": "Aston Villa",
+      "home_goals": 2,
+      "home_xg": 2.69413,
+      "match_id": "26854"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 3,
+      "away_xg": 2.38603,
+      "datetime": "2025-02-23 14:00:00",
+      "home": "Newcastle United",
+      "home_goals": 4,
+      "home_xg": 3.45858,
+      "match_id": "26860"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 0.807058,
+      "datetime": "2025-02-23 16:30:00",
+      "home": "Manchester City",
+      "home_goals": 0,
+      "home_xg": 0.58248,
+      "match_id": "26859"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 1,
+      "away_xg": 1.70169,
+      "datetime": "2025-02-25 19:30:00",
+      "home": "Brighton",
+      "home_goals": 2,
+      "home_xg": 2.57927,
+      "match_id": "26863"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 2,
+      "away_xg": 1.43473,
+      "datetime": "2025-02-25 19:30:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 1,
+      "home_xg": 0.928973,
+      "match_id": "26867"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 1,
+      "away_xg": 0.667217,
+      "datetime": "2025-02-25 19:30:00",
+      "home": "Crystal Palace",
+      "home_goals": 4,
+      "home_xg": 4.02522,
+      "match_id": "26868"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 0,
+      "away_xg": 0.845039,
+      "datetime": "2025-02-25 20:15:00",
+      "home": "Chelsea",
+      "home_goals": 4,
+      "home_xg": 2.98234,
+      "match_id": "26869"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 1,
+      "away_xg": 1.44955,
+      "datetime": "2025-02-26 19:30:00",
+      "home": "Brentford",
+      "home_goals": 1,
+      "home_xg": 1.34009,
+      "match_id": "26862"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 0,
+      "away_xg": 1.31766,
+      "datetime": "2025-02-26 19:30:00",
+      "home": "Nottingham Forest",
+      "home_goals": 0,
+      "home_xg": 0.508611,
+      "match_id": "26864"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 1,
+      "away_xg": 2.38641,
+      "datetime": "2025-02-26 19:30:00",
+      "home": "Tottenham",
+      "home_goals": 0,
+      "home_xg": 1.28426,
+      "match_id": "26865"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 2,
+      "away_xg": 1.04498,
+      "datetime": "2025-02-26 19:30:00",
+      "home": "Manchester United",
+      "home_goals": 3,
+      "home_xg": 1.40202,
+      "match_id": "26871"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 0,
+      "away_xg": 0.45882,
+      "datetime": "2025-02-26 20:15:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 1.40027,
+      "match_id": "26870"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 0,
+      "away_xg": 0.289578,
+      "datetime": "2025-02-27 20:00:00",
+      "home": "West Ham",
+      "home_goals": 2,
+      "home_xg": 1.70437,
+      "match_id": "26866"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 0,
+      "away_xg": 0.721234,
+      "datetime": "2025-03-08 12:30:00",
+      "home": "Nottingham Forest",
+      "home_goals": 1,
+      "home_xg": 0.501476,
+      "match_id": "26878"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 1,
+      "away_xg": 0.708227,
+      "datetime": "2025-03-08 15:00:00",
+      "home": "Brighton",
+      "home_goals": 2,
+      "home_xg": 1.94417,
+      "match_id": "26873"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 0,
+      "away_xg": 1.63282,
+      "datetime": "2025-03-08 15:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 1,
+      "home_xg": 3.13879,
+      "match_id": "26875"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 1,
+      "away_xg": 0.511566,
+      "datetime": "2025-03-08 15:00:00",
+      "home": "Liverpool",
+      "home_goals": 3,
+      "home_xg": 4.98996,
+      "match_id": "26876"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 1,
+      "away_xg": 1.29638,
+      "datetime": "2025-03-08 17:30:00",
+      "home": "Brentford",
+      "home_goals": 0,
+      "home_xg": 0.637743,
+      "match_id": "26872"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 1,
+      "away_xg": 1.3672,
+      "datetime": "2025-03-08 20:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 1,
+      "home_xg": 0.812432,
+      "match_id": "26881"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 0,
+      "away_xg": 0.108487,
+      "datetime": "2025-03-09 14:00:00",
+      "home": "Chelsea",
+      "home_goals": 1,
+      "home_xg": 1.76844,
+      "match_id": "26874"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 2,
+      "away_xg": 2.22536,
+      "datetime": "2025-03-09 14:00:00",
+      "home": "Tottenham",
+      "home_goals": 2,
+      "home_xg": 1.35053,
+      "match_id": "26879"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 1,
+      "away_xg": 1.82996,
+      "datetime": "2025-03-09 16:30:00",
+      "home": "Manchester United",
+      "home_goals": 1,
+      "home_xg": 1.31107,
+      "match_id": "26877"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 1,
+      "away_xg": 1.62976,
+      "datetime": "2025-03-10 20:00:00",
+      "home": "West Ham",
+      "home_goals": 0,
+      "home_xg": 0.823986,
+      "match_id": "26880"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 0.516029,
+      "datetime": "2025-03-15 15:00:00",
+      "home": "Everton",
+      "home_goals": 1,
+      "home_xg": 1.189,
+      "match_id": "26885"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 4,
+      "away_xg": 1.30722,
+      "datetime": "2025-03-15 15:00:00",
+      "home": "Ipswich",
+      "home_goals": 2,
+      "home_xg": 0.520839,
+      "match_id": "26887"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 2,
+      "away_xg": 2.11119,
+      "datetime": "2025-03-15 15:00:00",
+      "home": "Manchester City",
+      "home_goals": 2,
+      "home_xg": 2.02642,
+      "match_id": "26889"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 2,
+      "away_xg": 0.540718,
+      "datetime": "2025-03-15 15:00:00",
+      "home": "Southampton",
+      "home_goals": 1,
+      "home_xg": 1.2821,
+      "match_id": "26891"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 2,
+      "away_xg": 1.60321,
+      "datetime": "2025-03-15 17:30:00",
+      "home": "Bournemouth",
+      "home_goals": 1,
+      "home_xg": 2.02714,
+      "match_id": "26882"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 0,
+      "away_xg": 0.286036,
+      "datetime": "2025-03-16 13:30:00",
+      "home": "Arsenal",
+      "home_goals": 1,
+      "home_xg": 0.695725,
+      "match_id": "26883"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 0,
+      "away_xg": 1.40865,
+      "datetime": "2025-03-16 13:30:00",
+      "home": "Fulham",
+      "home_goals": 2,
+      "home_xg": 1.03966,
+      "match_id": "26886"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 3,
+      "away_xg": 1.13892,
+      "datetime": "2025-03-16 19:00:00",
+      "home": "Leicester",
+      "home_goals": 0,
+      "home_xg": 1.30455,
+      "match_id": "26888"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 1,
+      "away_xg": 1.44206,
+      "datetime": "2025-04-01 19:45:00",
+      "home": "Arsenal",
+      "home_goals": 2,
+      "home_xg": 2.30189,
+      "match_id": "26892"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 0,
+      "away_xg": 1.73057,
+      "datetime": "2025-04-01 19:45:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 1,
+      "home_xg": 1.10359,
+      "match_id": "26895"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 0,
+      "away_xg": 1.86688,
+      "datetime": "2025-04-01 20:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 1,
+      "home_xg": 0.512063,
+      "match_id": "26894"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 3,
+      "away_xg": 1.20715,
+      "datetime": "2025-04-02 19:45:00",
+      "home": "Brighton",
+      "home_goals": 0,
+      "home_xg": 0.558009,
+      "match_id": "26893"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 2,
+      "away_xg": 1.41263,
+      "datetime": "2025-04-02 19:45:00",
+      "home": "Bournemouth",
+      "home_goals": 1,
+      "home_xg": 1.99637,
+      "match_id": "26896"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 0,
+      "away_xg": 0.104741,
+      "datetime": "2025-04-02 19:45:00",
+      "home": "Manchester City",
+      "home_goals": 2,
+      "home_xg": 2.07165,
+      "match_id": "26898"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 1.53201,
+      "datetime": "2025-04-02 19:45:00",
+      "home": "Newcastle United",
+      "home_goals": 2,
+      "home_xg": 2.26584,
+      "match_id": "26899"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 1,
+      "away_xg": 0.93776,
+      "datetime": "2025-04-02 19:45:00",
+      "home": "Southampton",
+      "home_goals": 1,
+      "home_xg": 0.687304,
+      "match_id": "26900"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 0,
+      "away_xg": 0.823136,
+      "datetime": "2025-04-02 20:00:00",
+      "home": "Liverpool",
+      "home_goals": 1,
+      "home_xg": 1.29718,
+      "match_id": "26901"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 0,
+      "away_xg": 1.40274,
+      "datetime": "2025-04-03 19:00:00",
+      "home": "Chelsea",
+      "home_goals": 1,
+      "home_xg": 1.30443,
+      "match_id": "26897"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 1,
+      "away_xg": 1.4031,
+      "datetime": "2025-04-05 11:30:00",
+      "home": "Everton",
+      "home_goals": 1,
+      "home_xg": 1.22875,
+      "match_id": "26905"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 1,
+      "away_xg": 1.27226,
+      "datetime": "2025-04-05 14:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 2,
+      "home_xg": 0.443965,
+      "match_id": "26904"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 2,
+      "away_xg": 2.8096,
+      "datetime": "2025-04-05 14:00:00",
+      "home": "Ipswich",
+      "home_goals": 1,
+      "home_xg": 0.872356,
+      "match_id": "26907"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 2,
+      "away_xg": 1.94869,
+      "datetime": "2025-04-05 14:00:00",
+      "home": "West Ham",
+      "home_goals": 2,
+      "home_xg": 0.907832,
+      "match_id": "26911"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 1,
+      "away_xg": 0.96769,
+      "datetime": "2025-04-05 16:30:00",
+      "home": "Aston Villa",
+      "home_goals": 2,
+      "home_xg": 2.63349,
+      "match_id": "26902"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 0,
+      "away_xg": 1.47829,
+      "datetime": "2025-04-06 13:00:00",
+      "home": "Brentford",
+      "home_goals": 0,
+      "home_xg": 1.36123,
+      "match_id": "26903"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 1.40638,
+      "datetime": "2025-04-06 13:00:00",
+      "home": "Fulham",
+      "home_goals": 3,
+      "home_xg": 1.72764,
+      "match_id": "26906"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 1,
+      "away_xg": 0.780439,
+      "datetime": "2025-04-06 13:00:00",
+      "home": "Tottenham",
+      "home_goals": 3,
+      "home_xg": 2.648,
+      "match_id": "26910"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 0,
+      "away_xg": 0.687894,
+      "datetime": "2025-04-06 15:30:00",
+      "home": "Manchester United",
+      "home_goals": 0,
+      "home_xg": 1.23317,
+      "match_id": "26909"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 3,
+      "away_xg": 3.44111,
+      "datetime": "2025-04-07 19:00:00",
+      "home": "Leicester",
+      "home_goals": 0,
+      "home_xg": 0.354575,
+      "match_id": "26908"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 2,
+      "away_xg": 1.33808,
+      "datetime": "2025-04-12 11:30:00",
+      "home": "Manchester City",
+      "home_goals": 5,
+      "home_xg": 4.59724,
+      "match_id": "26917"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 2,
+      "away_xg": 1.98444,
+      "datetime": "2025-04-12 14:00:00",
+      "home": "Brighton",
+      "home_goals": 2,
+      "home_xg": 3.6978,
+      "match_id": "26914"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 1,
+      "away_xg": 1.26036,
+      "datetime": "2025-04-12 14:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 0,
+      "home_xg": 0.423949,
+      "match_id": "26920"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 3,
+      "away_xg": 2.99927,
+      "datetime": "2025-04-12 14:00:00",
+      "home": "Southampton",
+      "home_goals": 0,
+      "home_xg": 0.412256,
+      "match_id": "26921"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 0.588583,
+      "datetime": "2025-04-12 16:30:00",
+      "home": "Arsenal",
+      "home_goals": 1,
+      "home_xg": 0.767369,
+      "match_id": "26913"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 2,
+      "away_xg": 1.60301,
+      "datetime": "2025-04-13 13:00:00",
+      "home": "Chelsea",
+      "home_goals": 2,
+      "home_xg": 2.90758,
+      "match_id": "26915"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 1,
+      "away_xg": 1.46598,
+      "datetime": "2025-04-13 13:00:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 1.42902,
+      "match_id": "26916"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 2,
+      "away_xg": 1.62887,
+      "datetime": "2025-04-13 13:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 4,
+      "home_xg": 2.22977,
+      "match_id": "26919"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 1,
+      "away_xg": 0.786568,
+      "datetime": "2025-04-13 15:30:00",
+      "home": "Newcastle United",
+      "home_goals": 4,
+      "home_xg": 2.6383,
+      "match_id": "26918"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 0,
+      "away_xg": 1.07203,
+      "datetime": "2025-04-14 19:00:00",
+      "home": "Bournemouth",
+      "home_goals": 1,
+      "home_xg": 1.8577,
+      "match_id": "26912"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 0,
+      "away_xg": 2.37548,
+      "datetime": "2025-04-16 18:30:00",
+      "home": "Newcastle United",
+      "home_goals": 5,
+      "home_xg": 2.32947,
+      "match_id": "26890"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 2,
+      "away_xg": 1.24107,
+      "datetime": "2025-04-19 14:00:00",
+      "home": "Brentford",
+      "home_goals": 4,
+      "home_xg": 2.95516,
+      "match_id": "26923"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 0,
+      "away_xg": 0.664093,
+      "datetime": "2025-04-19 14:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 0,
+      "home_xg": 0.337818,
+      "match_id": "26924"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 2,
+      "away_xg": 1.87989,
+      "datetime": "2025-04-19 14:00:00",
+      "home": "Everton",
+      "home_goals": 0,
+      "home_xg": 0.81683,
+      "match_id": "26925"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 1,
+      "away_xg": 0.922877,
+      "datetime": "2025-04-19 14:00:00",
+      "home": "West Ham",
+      "home_goals": 1,
+      "home_xg": 0.98423,
+      "match_id": "26931"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 1,
+      "away_xg": 1.27176,
+      "datetime": "2025-04-19 16:30:00",
+      "home": "Aston Villa",
+      "home_goals": 4,
+      "home_xg": 3.05371,
+      "match_id": "26922"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 2,
+      "away_xg": 0.75172,
+      "datetime": "2025-04-20 13:00:00",
+      "home": "Fulham",
+      "home_goals": 1,
+      "home_xg": 0.306122,
+      "match_id": "26926"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 4,
+      "away_xg": 2.81362,
+      "datetime": "2025-04-20 13:00:00",
+      "home": "Ipswich",
+      "home_goals": 0,
+      "home_xg": 0.192879,
+      "match_id": "26927"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 1,
+      "away_xg": 0.187814,
+      "datetime": "2025-04-20 13:00:00",
+      "home": "Manchester United",
+      "home_goals": 0,
+      "home_xg": 1.13966,
+      "match_id": "26929"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 1,
+      "away_xg": 4.52706,
+      "datetime": "2025-04-20 15:30:00",
+      "home": "Leicester",
+      "home_goals": 0,
+      "home_xg": 0.232205,
+      "match_id": "26928"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 2,
+      "away_xg": 0.557682,
+      "datetime": "2025-04-21 19:00:00",
+      "home": "Tottenham",
+      "home_goals": 1,
+      "home_xg": 2.4024,
+      "match_id": "26930"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 1,
+      "away_xg": 1.85906,
+      "datetime": "2025-04-22 19:00:00",
+      "home": "Manchester City",
+      "home_goals": 2,
+      "home_xg": 1.36232,
+      "match_id": "26937"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 2,
+      "away_xg": 2.50515,
+      "datetime": "2025-04-23 19:00:00",
+      "home": "Arsenal",
+      "home_goals": 2,
+      "home_xg": 1.92149,
+      "match_id": "26933"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 0,
+      "away_xg": 0.916838,
+      "datetime": "2025-04-26 11:30:00",
+      "home": "Chelsea",
+      "home_goals": 1,
+      "home_xg": 0.768313,
+      "match_id": "26935"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 2,
+      "away_xg": 1.24134,
+      "datetime": "2025-04-26 14:00:00",
+      "home": "Brighton",
+      "home_goals": 3,
+      "home_xg": 1.29433,
+      "match_id": "26934"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 0,
+      "away_xg": 0.127203,
+      "datetime": "2025-04-26 14:00:00",
+      "home": "Newcastle United",
+      "home_goals": 3,
+      "home_xg": 4.11539,
+      "match_id": "26938"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 2,
+      "away_xg": 1.9956,
+      "datetime": "2025-04-26 14:00:00",
+      "home": "Southampton",
+      "home_goals": 1,
+      "home_xg": 0.935581,
+      "match_id": "26940"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 0,
+      "away_xg": 1.04978,
+      "datetime": "2025-04-26 14:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 3,
+      "home_xg": 2.57666,
+      "match_id": "26941"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 1,
+      "away_xg": 1.91039,
+      "datetime": "2025-04-27 13:00:00",
+      "home": "Bournemouth",
+      "home_goals": 1,
+      "home_xg": 0.60995,
+      "match_id": "26932"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 1,
+      "away_xg": 0.512812,
+      "datetime": "2025-04-27 15:30:00",
+      "home": "Liverpool",
+      "home_goals": 5,
+      "home_xg": 2.51104,
+      "match_id": "26936"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 2,
+      "away_xg": 1.52054,
+      "datetime": "2025-05-01 18:30:00",
+      "home": "Nottingham Forest",
+      "home_goals": 0,
+      "home_xg": 0.670607,
+      "match_id": "26939"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 0,
+      "away_xg": 0.622455,
+      "datetime": "2025-05-02 19:00:00",
+      "home": "Manchester City",
+      "home_goals": 1,
+      "home_xg": 0.859463,
+      "match_id": "26942"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 0,
+      "away_xg": 0.702787,
+      "datetime": "2025-05-03 11:30:00",
+      "home": "Aston Villa",
+      "home_goals": 1,
+      "home_xg": 1.29013,
+      "match_id": "26946"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 2,
+      "away_xg": 1.14351,
+      "datetime": "2025-05-03 14:00:00",
+      "home": "Everton",
+      "home_goals": 2,
+      "home_xg": 0.808481,
+      "match_id": "26950"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 0,
+      "away_xg": 0.550774,
+      "datetime": "2025-05-03 14:00:00",
+      "home": "Leicester",
+      "home_goals": 2,
+      "home_xg": 1.60739,
+      "match_id": "26951"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 2,
+      "away_xg": 1.41783,
+      "datetime": "2025-05-03 16:30:00",
+      "home": "Arsenal",
+      "home_goals": 1,
+      "home_xg": 2.05484,
+      "match_id": "26945"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 1,
+      "away_xg": 0.847022,
+      "datetime": "2025-05-04 13:00:00",
+      "home": "West Ham",
+      "home_goals": 1,
+      "home_xg": 1.15166,
+      "match_id": "26943"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 1,
+      "away_xg": 1.63777,
+      "datetime": "2025-05-04 13:00:00",
+      "home": "Brighton",
+      "home_goals": 1,
+      "home_xg": 0.687863,
+      "match_id": "26944"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 3,
+      "away_xg": 1.13404,
+      "datetime": "2025-05-04 13:00:00",
+      "home": "Brentford",
+      "home_goals": 4,
+      "home_xg": 3.58737,
+      "match_id": "26947"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 1,
+      "away_xg": 1.4267,
+      "datetime": "2025-05-04 15:30:00",
+      "home": "Chelsea",
+      "home_goals": 3,
+      "home_xg": 3.51944,
+      "match_id": "26948"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 1,
+      "away_xg": 0.63684,
+      "datetime": "2025-05-05 19:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 1,
+      "home_xg": 2.34037,
+      "match_id": "26949"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 3,
+      "away_xg": 1.32604,
+      "datetime": "2025-05-10 14:00:00",
+      "home": "Fulham",
+      "home_goals": 1,
+      "home_xg": 1.20869,
+      "match_id": "26953"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 1.32077,
+      "datetime": "2025-05-10 14:00:00",
+      "home": "Ipswich",
+      "home_goals": 0,
+      "home_xg": 0.717433,
+      "match_id": "26954"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 0,
+      "away_xg": 1.58463,
+      "datetime": "2025-05-10 14:00:00",
+      "home": "Southampton",
+      "home_goals": 0,
+      "home_xg": 0.136995,
+      "match_id": "26959"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 2,
+      "away_xg": 1.41254,
+      "datetime": "2025-05-10 14:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 0,
+      "home_xg": 0.73395,
+      "match_id": "26961"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 1,
+      "away_xg": 1.12376,
+      "datetime": "2025-05-10 16:30:00",
+      "home": "Bournemouth",
+      "home_goals": 0,
+      "home_xg": 1.02272,
+      "match_id": "26955"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 0,
+      "away_xg": 0.646426,
+      "datetime": "2025-05-11 11:00:00",
+      "home": "Newcastle United",
+      "home_goals": 2,
+      "home_xg": 1.6703,
+      "match_id": "26957"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 2,
+      "away_xg": 2.15985,
+      "datetime": "2025-05-11 13:15:00",
+      "home": "Manchester United",
+      "home_goals": 0,
+      "home_xg": 2.31287,
+      "match_id": "26956"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 2,
+      "away_xg": 1.22949,
+      "datetime": "2025-05-11 13:15:00",
+      "home": "Nottingham Forest",
+      "home_goals": 2,
+      "home_xg": 1.76909,
+      "match_id": "26958"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 2,
+      "away_xg": 3.98546,
+      "datetime": "2025-05-11 13:15:00",
+      "home": "Tottenham",
+      "home_goals": 0,
+      "home_xg": 0.806792,
+      "match_id": "26960"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 2,
+      "away_xg": 2.18795,
+      "datetime": "2025-05-11 15:30:00",
+      "home": "Liverpool",
+      "home_goals": 2,
+      "home_xg": 2.74682,
+      "match_id": "26952"
+    },
+    {
+      "away": "Tottenham",
+      "away_goals": 0,
+      "away_xg": 0.523016,
+      "datetime": "2025-05-16 18:30:00",
+      "home": "Aston Villa",
+      "home_goals": 2,
+      "home_xg": 1.69061,
+      "match_id": "26963"
+    },
+    {
+      "away": "Manchester United",
+      "away_goals": 0,
+      "away_xg": 0.337632,
+      "datetime": "2025-05-16 19:15:00",
+      "home": "Chelsea",
+      "home_goals": 1,
+      "home_xg": 1.29571,
+      "match_id": "26966"
+    },
+    {
+      "away": "Southampton",
+      "away_goals": 0,
+      "away_xg": 1.05025,
+      "datetime": "2025-05-18 11:00:00",
+      "home": "Everton",
+      "home_goals": 2,
+      "home_xg": 2.67793,
+      "match_id": "26968"
+    },
+    {
+      "away": "Nottingham Forest",
+      "away_goals": 2,
+      "away_xg": 2.14756,
+      "datetime": "2025-05-18 13:15:00",
+      "home": "West Ham",
+      "home_goals": 1,
+      "home_xg": 0.850457,
+      "match_id": "26971"
+    },
+    {
+      "away": "Fulham",
+      "away_goals": 3,
+      "away_xg": 1.61741,
+      "datetime": "2025-05-18 14:00:00",
+      "home": "Brentford",
+      "home_goals": 2,
+      "home_xg": 2.43045,
+      "match_id": "26964"
+    },
+    {
+      "away": "Ipswich",
+      "away_goals": 0,
+      "away_xg": 1.36957,
+      "datetime": "2025-05-18 14:00:00",
+      "home": "Leicester",
+      "home_goals": 2,
+      "home_xg": 0.788544,
+      "match_id": "26969"
+    },
+    {
+      "away": "Newcastle United",
+      "away_goals": 0,
+      "away_xg": 2.24634,
+      "datetime": "2025-05-18 15:30:00",
+      "home": "Arsenal",
+      "home_goals": 1,
+      "home_xg": 1.15958,
+      "match_id": "26962"
+    },
+    {
+      "away": "Liverpool",
+      "away_goals": 2,
+      "away_xg": 3.065,
+      "datetime": "2025-05-19 19:00:00",
+      "home": "Brighton",
+      "home_goals": 3,
+      "home_xg": 2.17789,
+      "match_id": "26965"
+    },
+    {
+      "away": "Wolverhampton Wanderers",
+      "away_goals": 2,
+      "away_xg": 1.42886,
+      "datetime": "2025-05-20 19:00:00",
+      "home": "Crystal Palace",
+      "home_goals": 4,
+      "home_xg": 1.68451,
+      "match_id": "26967"
+    },
+    {
+      "away": "Bournemouth",
+      "away_goals": 1,
+      "away_xg": 0.962014,
+      "datetime": "2025-05-20 19:00:00",
+      "home": "Manchester City",
+      "home_goals": 3,
+      "home_xg": 1.59779,
+      "match_id": "26970"
+    },
+    {
+      "away": "Chelsea",
+      "away_goals": 1,
+      "away_xg": 1.30874,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Nottingham Forest",
+      "home_goals": 0,
+      "home_xg": 1.58014,
+      "match_id": "26972"
+    },
+    {
+      "away": "Everton",
+      "away_goals": 1,
+      "away_xg": 1.07279,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Newcastle United",
+      "home_goals": 0,
+      "home_xg": 1.1591,
+      "match_id": "26973"
+    },
+    {
+      "away": "Aston Villa",
+      "away_goals": 0,
+      "away_xg": 0.335222,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Manchester United",
+      "home_goals": 2,
+      "home_xg": 2.96259,
+      "match_id": "26974"
+    },
+    {
+      "away": "Crystal Palace",
+      "away_goals": 1,
+      "away_xg": 1.4144,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Liverpool",
+      "home_goals": 1,
+      "home_xg": 1.92122,
+      "match_id": "26975"
+    },
+    {
+      "away": "Brighton",
+      "away_goals": 4,
+      "away_xg": 3.11624,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Tottenham",
+      "home_goals": 1,
+      "home_xg": 1.85265,
+      "match_id": "26976"
+    },
+    {
+      "away": "Arsenal",
+      "away_goals": 2,
+      "away_xg": 2.40711,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Southampton",
+      "home_goals": 1,
+      "home_xg": 0.598144,
+      "match_id": "26977"
+    },
+    {
+      "away": "Brentford",
+      "away_goals": 1,
+      "away_xg": 1.97196,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Wolverhampton Wanderers",
+      "home_goals": 1,
+      "home_xg": 1.10889,
+      "match_id": "26978"
+    },
+    {
+      "away": "Leicester",
+      "away_goals": 0,
+      "away_xg": 0.156702,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Bournemouth",
+      "home_goals": 2,
+      "home_xg": 2.72449,
+      "match_id": "26979"
+    },
+    {
+      "away": "West Ham",
+      "away_goals": 3,
+      "away_xg": 0.967379,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Ipswich",
+      "home_goals": 1,
+      "home_xg": 0.893095,
+      "match_id": "26980"
+    },
+    {
+      "away": "Manchester City",
+      "away_goals": 2,
+      "away_xg": 2.45923,
+      "datetime": "2025-05-25 15:00:00",
+      "home": "Fulham",
+      "home_goals": 0,
+      "home_xg": 2.21797,
+      "match_id": "26981"
+    }
+  ],
+  "seasonYear": 2024
+}

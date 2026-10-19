@@ -3,6 +3,10 @@ import { getCachedModelData } from "../services/model-data";
 import { clubRatingsAreCurrent } from "../services/club-ratings";
 import { publicModelFixtures } from "../services/model-market-odds";
 import { getEplGoalCalibrationReadiness } from "../services/epl-goal-calibration-artifact";
+import {
+  backtestPromotedModelEnabled,
+  loadBacktestGateArtifact,
+} from "../services/backtest-gate";
 
 const router: Router = Router();
 
@@ -66,6 +70,14 @@ router.get("/fixtures", (req: Request, res: Response, next: NextFunction) => {
   } catch (err) {
     next(err);
   }
+});
+
+router.get("/backtest-gate", (_req: Request, res: Response) => {
+  const artifact = loadBacktestGateArtifact();
+  res.set("Cache-Control", "public, max-age=300").json({
+    ...artifact,
+    promotedModelEnabled: backtestPromotedModelEnabled(),
+  });
 });
 
 export default router;

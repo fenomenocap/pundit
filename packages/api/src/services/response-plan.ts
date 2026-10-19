@@ -27,9 +27,9 @@ const ASKS_OVER_25 = /\bover\s*2\.5\b|\bo\s*2\.5\b/i;
 const ASKS_UNDER_25 = /\bunder\s*2\.5\b|\bu\s*2\.5\b/i;
 const ASKS_SCORELINE_BOARD =
   /\b(?:possible|likely|top|correct|exact)\s+(?:scores?|scorelines?)\b|\bscorelines?\b|\bscore\s+probabilit/i;
-const ASKS_BTTS = /\bbtts\b|both teams to score/i;
+const ASKS_BTTS = /\bbtts\b|\bboth teams (?:to )?score\b|\bboth sides (?:to )?score\b|\bwill both (?:teams |sides )?score\b/i;
 const ASKS_PROJECTED_SCORE =
-  /\b(?:projected|likely|correct|most likely)\s+score\b|\bcorrect score\b/i;
+  /\b(?:projected|predicted|likely|correct|most likely)\s+score\b|\bcorrect score\b|\bscore\s+(?:prediction|forecast|projection)\b|\bpredict\w*\s+(?:the\s+)?(?:final\s+)?score\b|\bwhat(?:'s| is| will)\s+(?:the\s+)?(?:final\s+)?score\b/i;
 const ASKS_TACTICAL_TAKE =
   /\btactical matchup\b|\bwho decides\b|\bhow do .{1,60} win (?:this|it)\b/i;
 const ASKS_ODDS_BOARD =

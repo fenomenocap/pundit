@@ -7,8 +7,8 @@ import {
   formatTableLine,
 } from "./match-context";
 import { managersNamedInEvidence, stripUnlistedManagers } from "./pl-managers";
-import type { EvidenceTier } from "./evidence-authority";
-import type { RetrievedEvidencePage } from "./evidence-page-retrieval";
+import { evidenceAuthority, type EvidenceTier } from "./evidence-authority";
+import { sameEvidenceHost, type RetrievedEvidencePage } from "./evidence-page-retrieval";
 import {
   MAX_FEDERATED_QUERIES,
   mergeSearchResults,
@@ -69,17 +69,26 @@ Never put dates, days, months, relative event timing, durations, quantities, pub
 // excludes temporal/numeric fields and additional subjects by construction.
 const CLUB_NEWS_BODY_PART = "(?:neural hamstring|hamstring|groin|calf|knee|ankle|muscle|back|thigh|adductor|achilles|foot|hip|shoulder|ligament|tendon)";
 const CLUB_NEWS_CONDITION = `${CLUB_NEWS_BODY_PART} (?:injury|issue|problem|strain|pain|tear)`;
-const CLUB_NEWS_STATE = "(?:injured|sidelined|unavailable|doubtful|suspended|back in training|in training|in rehabilitation|undergoing assessment|awaiting assessment)";
+const CLUB_NEWS_STATE = "(?:injured|sidelined|unavailable|doubtful|suspended|back in training|in training|in rehabilitation|undergoing assessment|awaiting assessment|ruled out|out)";
 const CLUB_NEWS_STATUS = new RegExp("^(?:"
   + `(?:(?:was|is)(?: reported)?|has been|had been|remains|may be|might be|could be) ${CLUB_NEWS_STATE}(?: with (?:a |an )?${CLUB_NEWS_CONDITION})?`
   + `|(?:was reported to have|has|had|has been dealing with|is dealing with|was dealing with) (?:a |an )?${CLUB_NEWS_CONDITION}(?: pending (?:further )?assessment)?`
   + `|(?:sustained|suffered|has sustained|has suffered|had sustained|had suffered) (?:a |an )?${CLUB_NEWS_CONDITION}`
+  + "|(?:is|was|remains|has) (?:a )?fitness doubt"
   + "|has (?:returned to|resumed|continued) training|has been spotted back in training"
   + "|(?:withdrew|had withdrawn|was reported to have withdrawn) from international duty"
   + "|(?:was|is|was reported to be) progressing(?: well)? in rehabilitation"
   + ")$", "i");
 
 export type DatedNewsRejection = "invalid_json" | "shape" | "source_id" | "club" | "player_body" | "date" | "status_grammar" | "duplicate";
+
+const DATED_CLUB_NEWS_ROW_KEYS = ["club", "playerName", "sourceId", "statusText"] as const;
+
+function datedClubNewsJsonPayload(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i.exec(trimmed);
+  return fenced ? fenced[1].trim() : trimmed;
+}
 
 export function renderDatedClubNewsRecords(
   raw: string, evidence: readonly DeskEvidenceRow[], grounding: Grounding, nowMs = Date.now(),
@@ -88,7 +97,7 @@ export function renderDatedClubNewsRecords(
   const reject = (reason: DatedNewsRejection): null => { onReject?.(reason); return null; };
   if (raw.length > 12_000) return reject("shape");
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); } catch { return reject("invalid_json"); }
+  try { parsed = JSON.parse(datedClubNewsJsonPayload(raw)); } catch { return reject("invalid_json"); }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
     || Object.keys(parsed).some((key) => key !== "updates")) return reject("shape");
   const rows = (parsed as { updates?: unknown }).updates;
@@ -97,21 +106,41 @@ export function renderDatedClubNewsRecords(
   const rendered: string[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
-    if (!row || typeof row !== "object" || Array.isArray(row)
-      || Object.keys(row).sort().join(",") !== "club,playerName,sourceId,statusText") return reject("shape");
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      onReject?.("shape");
+      continue;
+    }
+    const keys = Object.keys(row as Record<string, unknown>);
+    if (keys.sort().join(",") !== DATED_CLUB_NEWS_ROW_KEYS.join(",")) {
+      onReject?.("shape");
+      continue;
+    }
     const { sourceId, club, playerName, statusText } = row as Record<string, unknown>;
     if (typeof sourceId !== "string" || !/^S\d+$/.test(sourceId) || typeof club !== "string"
       || typeof playerName !== "string" || playerName.length > 80 || typeof statusText !== "string"
-      || !statusText.trim() || statusText.length > 220) return reject("shape");
+      || !statusText.trim() || statusText.length > 220) {
+      onReject?.("shape");
+      continue;
+    }
     const source = evidence.find((entry) => entry.id === sourceId);
     const ownedClub = [grounding.home, grounding.away].find((side) => normalizeTeamName(side) === normalizeTeamName(club));
     const published = source ? Date.parse(source.date) : NaN;
     if (!source) return reject("source_id");
-    if (!ownedClub) return reject("club");
+    if (!ownedClub) {
+      onReject?.("club");
+      continue;
+    }
     const publicationDay = /^\d{4}-\d{2}-\d{2}/.exec(source.date.trim())?.[0];
     if (!Number.isFinite(published) || published > nowMs || nowMs - published > 7 * 24 * 60 * 60 * 1000
-      || !publicationDay || new Date(`${publicationDay}T00:00:00Z`).toISOString().slice(0, 10) !== publicationDay) return reject("date");
-    if (!playerNamedInNewsBody(playerName, source.snippet, fixture)) return reject("player_body");
+      || !publicationDay || new Date(`${publicationDay}T00:00:00Z`).toISOString().slice(0, 10) !== publicationDay) {
+      onReject?.("date");
+      continue;
+    }
+    const publisherBody = `${source.title}\n${datedClubNewsExcerpt(source.snippet)}`;
+    if (!playerNamedInNewsBody(playerName, publisherBody, fixture)) {
+      onReject?.("player_body");
+      continue;
+    }
     const status = statusText.trim();
     // Narrative event dates and future availability cannot be rescued by a
     // citation. Those fields are deliberately absent from the record schema.
@@ -125,7 +154,10 @@ export function renderDatedClubNewsRecords(
     }
     const fullName = playerName.trim().replace(/\s+/g, " ");
     const key = `${ownedClub}:${fullName.toLocaleLowerCase()}`;
-    if (seen.has(key)) return reject("duplicate");
+    if (seen.has(key)) {
+      onReject?.("duplicate");
+      continue;
+    }
     seen.add(key);
     // Preserve the publisher's calendar day, also used by the citation label;
     // an offset near midnight must not silently move it to another UTC day.
@@ -396,12 +428,30 @@ export function formatSearchEvidence(results: readonly DeskEvidenceRow[]): strin
  * verification still reads the original cached source independently. */
 export function formatManagerEvidence(
   rows: readonly DeskEvidenceRow[], club: string,
-  pages: readonly Pick<RetrievedEvidencePage, "id" | "url" | "date" | "text">[], nowMs = Date.now()
+  pages: readonly (Pick<RetrievedEvidencePage, "id" | "url" | "date" | "text"> & { finalUrl?: string })[], nowMs = Date.now()
 ): string {
   const sources = rows.slice(0, 8).map((row) => {
-    const page = pages.find((source) => source.id === row.id && source.url === row.url && source.date === row.date);
-    const date = page ? Date.parse(page.date) : NaN;
-    if (!page || !Number.isFinite(date) || date > nowMs || nowMs - date > DESK_EVIDENCE_MAX_AGE_MS) return row;
+    const page = pages.find((source) => {
+      if (source.id !== row.id) return false;
+      const rowUrl = row.url || row.link || "";
+      if (!rowUrl) return false;
+      if (source.url === rowUrl) return true;
+      try {
+        const searched = new URL(rowUrl);
+        const retrieved = new URL(source.url);
+        return sameEvidenceHost(searched.hostname, retrieved.hostname)
+          && searched.pathname.replace(/\/$/, "") === retrieved.pathname.replace(/\/$/, "");
+      } catch {
+        return false;
+      }
+    });
+    if (!page) return row;
+    const rowDay = /^\d{4}-\d{2}-\d{2}/.exec(row.date.trim())?.[0];
+    const pageDay = /^\d{4}-\d{2}-\d{2}/.exec(page.date.trim())?.[0];
+    if (rowDay && pageDay && rowDay !== pageDay) return row;
+    const pageDate = page.date.trim() ? page.date : row.date;
+    const date = Date.parse(pageDate);
+    if (!Number.isFinite(date) || date > nowMs || nowMs - date > DESK_EVIDENCE_MAX_AGE_MS) return row;
     const passages = page.text.split(/\n{2,}/).map((text) => text.trim()).filter((text) =>
       text.length >= 20 && text.length <= 2400 && textMentionsClub(text.replace(/(?<=[\p{L}])['’]s\b/gu, ""), club)
       && /\b(?:manager|head coach|coach|boss)\b/i.test(text)
@@ -487,11 +537,22 @@ function deskEvidenceRowIsCurrent(
   nowMs: number,
   question?: string
 ): boolean {
+  const url = row.url || row.link || "";
+  const authority = url ? evidenceAuthority(url) : "other";
   const dated = Date.parse(row.date);
   if (Number.isFinite(dated) && nowMs - dated > DESK_EVIDENCE_MAX_AGE_MS) return false;
   const clubFact = question ? singleClubCurrentFactScope(question, grounding) : null;
   if (clubFact?.kind === "manager" && Number.isFinite(dated) && dated > nowMs) return false;
-  if (clubFact) return textMentionsClub(`${row.title} ${row.snippet}`, clubFact.club);
+  if (clubFact) {
+    if (!textMentionsClub(`${row.title} ${row.snippet}`, clubFact.club)) return false;
+    if (!Number.isFinite(dated) && authority !== "other") return true;
+    return true;
+  }
+  if (!Number.isFinite(dated) && authority !== "other") {
+    // Official club and approved beat pages may arrive undated from search;
+    // hydration or snippet parsing backfills before manager rendering.
+    return true;
+  }
   const sides = deskEvidenceSides(grounding);
   if (!sides) return true;
   const haystack = `${row.title} ${row.snippet}`;
@@ -536,6 +597,15 @@ function deskRowsFromBundle(bundle: EvidenceBundle | undefined): DeskEvidenceRow
     url: row.url,
     tier: row.tier,
   }));
+}
+
+export function countDatedEvidenceSources(
+  sources: readonly { date: string }[]
+): number {
+  return sources.filter((source) => {
+    const published = Date.parse(source.date);
+    return source.date.trim().length > 0 && Number.isFinite(published);
+  }).length;
 }
 
 export function filterDeskEvidenceBundle(
@@ -653,7 +723,20 @@ export async function writeDeskProse(
   const datedClubNews = options?.datedClubNews === true;
   const fallback = !datedClubNews && grounding?.kind === "match" && !clubFact ? composeDeskFootballTake(grounding) : null;
   const inference = resolveInference();
-  if (!inference.apiKey) return fallback;
+  const bundleSourceCount = bundle?.results.length ?? 0;
+  const bundleDatedCount = countDatedEvidenceSources(bundle?.results ?? []);
+  if (!inference.apiKey) {
+    if (clubFact?.kind === "manager") {
+      console.info(JSON.stringify({
+        event: "manager_lookup_skipped",
+        reason: "inference_not_configured",
+        club: clubFact.club,
+        sourcesBeforeFilter: bundleSourceCount,
+        datedSourcesBeforeFilter: bundleDatedCount,
+      }));
+    }
+    return fallback;
+  }
   const client = new Anthropic({ apiKey: inference.apiKey, baseURL: inference.baseURL, maxRetries: 0 });
   const model = inference.model;
   const thinkingControl = reasoningOff();
@@ -667,6 +750,18 @@ export async function writeDeskProse(
     : filterDeskEvidenceRows(deskRowsFromBundle(bundle), grounding, Date.now(), question);
   if (datedClubNews && !evidence.length) {
     console.info(JSON.stringify({ event: "desk_prose_skipped", mode: "dated-club-news", reason: "no_eligible_evidence" }));
+    return null;
+  }
+  if (clubFact?.kind === "manager" && !evidence.length) {
+    console.info(JSON.stringify({
+      event: "manager_lookup_skipped",
+      reason: "no_eligible_evidence_after_filter",
+      club: clubFact.club,
+      sourcesBeforeFilter: bundleSourceCount,
+      datedSourcesBeforeFilter: bundleDatedCount,
+      sourcesAfterFilter: 0,
+      datedSourcesAfterFilter: 0,
+    }));
     return null;
   }
   const generalConcept = options?.generalConcept === true && grounding === null;
@@ -715,6 +810,17 @@ export async function writeDeskProse(
     },
   ];
   const mode = datedClubNews ? "dated-club-news" : generalConcept ? "general-concept" : clubFact?.kind ?? "football-take";
+  const evidenceDatedCount = countDatedEvidenceSources(evidence);
+  if (clubFact?.kind === "manager") {
+    console.info(JSON.stringify({
+      event: "manager_lookup_evidence",
+      club: clubFact.club,
+      sourcesBeforeFilter: bundleSourceCount,
+      datedSourcesBeforeFilter: bundleDatedCount,
+      sourcesAfterFilter: evidence.length,
+      datedSourcesAfterFilter: evidenceDatedCount,
+    }));
+  }
   console.info(JSON.stringify({ event: "desk_prose_started", mode, provider: inference.provider,
     evidenceIds: evidence.map((row) => row.id), evidenceChars: evidence.reduce((sum, row) => sum + row.snippet.length, 0) }));
   // Both attempts share the original writer timeout and request deadline.

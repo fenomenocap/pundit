@@ -17,7 +17,7 @@ not serve search.
 | **Match grounding context** | Server-owned form (last five), table snippet, ClubElo ratings, and expected-goals split attached to priced fixtures — used before external search | Recomputed with the model cache; `freshness` metadata on each match payload |
 | **Federated analytics retrieval** | Search fan-out across analytics and news sources (FBref, The Analyst, Whoscored, Fotmob, Transfermarkt, BBC, Goal, and other listed publishers). Search calls OpenRouter chat completions with `openrouter:web_search` (Exa), keeps `url_citation` pages, and discards model prose. Results are tier-tagged and cited, never blended into Pundit probabilities | Per evidence-required request |
 | **Deterministic grounded responses** | Renders complete server-owned match, season, table, and non-priced capability facts without asking a language model to recreate them. “Current” alone does not require external search for these owned facts. An all-zero table requested as the only evidence refuses to rank teams rather than borrowing probabilities from ratings and the schedule. | Per eligible request |
-| **MiniMax M3** | Handles evidence-required current analysis and general/ungrounded open-ended questions; every complete server-grounded no-search response bypasses it. Pundit pre-searches injury, squad, manager, transfer, odds and similar external-current questions via federated retrieval and can make one bounded search fallback for ambiguous requests. If market verification supports nothing, generated prose is discarded in favour of complete market rows already in grounding. | Per non-deterministic request |
+| **OpenRouter (pinned answer model)** | Handles evidence-required current analysis and general/ungrounded open-ended questions when `OPENROUTER_API_KEY` is set; every complete server-grounded no-search response bypasses it. MiniMax M3 is the fallback when OpenRouter is unset (answers only). Pundit pre-searches injury, squad, manager, transfer, odds and similar external-current questions via federated retrieval and can make one bounded search fallback for ambiguous requests. If market verification supports nothing, generated prose is discarded in favour of complete market rows already in grounding. | Per non-deterministic request |
 
 If ESPN or a refreshable model input is temporarily unavailable, Pundit keeps
 serving a validated last-known-good snapshot where one exists, so those figures
@@ -38,11 +38,17 @@ Recognition is distinct from capability. A recognized fixture may be priced, tem
 
 **Model probabilities** are computed locally from ClubElo ratings and the Dixon-Coles engine — they are Pundit's independent estimate.
 
-**Market comparison odds** are reference prices fetched from Stake, Kalshi, and Polymarket public endpoints, normalized to no-vig 1X2 probabilities. They show where public markets disagree with the model; Pundit does not execute trades on any platform.
+**Market comparison odds** are reference prices fetched from Stake, Kalshi, and Polymarket public endpoints, normalized to no-vig 1X2 probabilities. They show where public markets disagree with the model; Pundit does not execute trades on any platform. When several complete sources exist, chat and the agent engine can also surface a **volume-weighted external consensus** line — still labelled as market comparison, never as Pundit Fundamental.
+
+**Labelled Pundit Consensus** (research/production boundary) shrinks 1X2 toward one complete same-source no-vig market and refits lambdas so totals and scorelines stay coherent. It is never presented as Fundamental.
 
 **Third-party analytics** (xG tables, Opta predictions, form ratings from FBref, The Analyst, Whoscored, and similar) arrive through OpenRouter citation search (`openrouter:web_search` / Exa) only. They are labelled external evidence and are never relabelled as Pundit's model.
 
 Research roster (not runtime config): `packages/api/data/research/agent-data-sources/agent-data-sources.json`.
+
+### Typed data layer (agent & tooling)
+
+Read accessors under `packages/api/src/services/data-layer/` wrap the same caches as production (`getFixtures`, `getModelForecast`, `getMarketOdds`, `getForm`, `getStandings`, federated `getTeamNews`, and related helpers). Responses include **freshness metadata** (`packages/api/src/config/freshness-policy.ts`) so callers do not imply realtime beyond cache timestamps. The **legacy** chat path uses grounding built in `ask.ts`; the **agent** engine calls these accessors via tool handlers. Snapshots for eval/research live under `packages/api/data/research/` where noted in-repo.
 
 ### Legacy endpoints
 

@@ -50,6 +50,7 @@ import {
   prefetchEvidencePages,
   createEvidencePageCache,
   extractPlainTextPublicationDate,
+  sameEvidenceHost,
   type EvidencePageCache,
   type RetrievedEvidencePage,
 } from "./evidence-page-retrieval";
@@ -64,10 +65,16 @@ import {
   type FederatedGrounding,
 } from "./federated-evidence";
 import {
+  appendManagerSearchResults,
   appendTeamNewsSearchResults,
   injuryOnlyTeamNewsNeedsSiteBeatRetry,
+  injurySiteBeatFallbackOrder,
   injurySiteBeatQueries,
-  INJURY_ONLY_SITE_BEAT_FALLBACK_ORDER,
+  managerLookupNeedsSiteBeatRetry,
+  managerSiteBeatFallbackOrder,
+  managerSiteBeatQueries,
+  SITE_BEAT_RETRY_PROVIDER_CALLS,
+  siteBeatRetryWouldExceedBudget,
 } from "./team-news-evidence-retrieval";
 import {
   SECTION_LABEL_LINE,
@@ -123,15 +130,18 @@ import {
   composeDatedClubAvailabilityAnswer,
   composeDeskTakeOutline,
   composeMatchResponse,
+  composeTeamNewsAnswer,
 } from "./response-composer";
 import {
   DESK_BOARD_FALLBACK,
   DESK_GENERAL_CONCEPT_SYSTEM,
   composeDeskFootballTake,
+  countDatedEvidenceSources,
   deskProseIsCurrentNewsRemainder,
   filterDeskEvidenceBundle,
   stripSurplusCurrentNewsNotices,
   humaniseDeskCitationDates,
+  formatDeskCitationDate,
   sanitizeDeskModelProse,
   shouldRestoreDeskFootballTake,
   stripDeskBoardRecitals,
@@ -164,6 +174,30 @@ import {
   type FixtureCapability,
   type RecognizedFixture,
 } from "./fixture-registry";
+import {
+  buildExternalMarketConsensus,
+  type ExternalMarketConsensus,
+} from "./external-market-consensus";
+import { chatEngineMode, isChatAgentEngine } from "./chat-engine";
+import { chatAgentGroundingEligible, runChatAgent } from "./chat-agent";
+import {
+  AGENT_GENERATION_BUDGET_MS,
+  emptyChatAgentTurnMetrics,
+  logChatAgentTurn,
+  type ChatAgentTurnMetrics,
+} from "./chat-agent-limits";
+import {
+  composeAgentEvidenceFallback,
+  containsAgentInternalWording,
+  sanitizeAgentUserText,
+} from "./chat-agent-fallback";
+import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
+import {
+  enrichAgentTeamNewsAttribution,
+  finalizeAgentPackagedAnswer,
+  sanitizeAgentCitationArtifacts,
+} from "./chat-agent-package";
+import type { ChatEngineMode } from "./chat-engine";
 import { selectRecognizedLeg } from "./fixture-leg-selection";
 import {
   isSeasonOutlookQuestion,
@@ -252,6 +286,8 @@ export interface Grounding {
    * server-owned figure to guarantee it with when the model still omits it.
    */
   marketDivergence: MarketDivergence[];
+  /** Volume-weighted median of complete de-margined external 1X2 sources (not Pundit Consensus). */
+  externalMarketConsensus?: ExternalMarketConsensus;
   /** When each upstream cache was last refreshed — agent must not imply realtime beyond this. */
   freshness: AgentFreshnessMetadata;
   homeElo: number;
@@ -333,6 +369,7 @@ export function getAnalystResponseStatus() {
   return {
     version: ANALYST_RESPONSE_V2 ? "v2" as const : "legacy" as const,
     enabled: ANALYST_RESPONSE_V2,
+    chatEngine: chatEngineMode(),
     ...analystResponseMetrics,
   };
 }
@@ -396,6 +433,19 @@ export interface AskVerification {
 // Inference turns, their retries, and searches all draw on one budget, so a
 // request cannot spiral in cost or latency however badly the provider behaves.
 export const PROVIDER_CALL_BUDGET = 10;
+
+/** Initial federated search count when a site-beat retry must stay within budget. */
+export function initialEvidenceQueryCap(options: {
+  injuryOnlyTeamNews?: boolean;
+  managerLookup?: boolean;
+}): number {
+  const reserve = (options.injuryOnlyTeamNews || options.managerLookup)
+    ? SITE_BEAT_RETRY_PROVIDER_CALLS
+    : 0;
+  // Keep the six-query execution cap so inference retains budget; never spend
+  // the reserved site-beat calls on the first federated pass.
+  return Math.min(MAX_EVIDENCE_QUERIES, PROVIDER_CALL_BUDGET - reserve);
+}
 
 function providerCallsLeft(bundle?: EvidenceBundle): number {
   return bundle
@@ -1146,7 +1196,16 @@ async function buildEvidenceBundle(
     managerFact?: { question: string; grounding: AskGrounding };
   }
 ): Promise<EvidenceBundle> {
-  const planned = (Array.isArray(queries) ? queries : [queries]).slice(0, MAX_EVIDENCE_QUERIES);
+  const injuryOnlyTeamNews = Boolean(
+    mergeOptions?.teamNewsFixture
+    && mergeOptions?.teamNewsQuestion
+    && asksInjuryUpdatesWithoutLineups(mergeOptions.teamNewsQuestion)
+  );
+  const managerLookup = Boolean(mergeOptions?.managerFact);
+  const planned = (Array.isArray(queries) ? queries : [queries]).slice(0, initialEvidenceQueryCap({
+    injuryOnlyTeamNews,
+    managerLookup,
+  }));
   // Run together: they are independent lookups, and a researched answer should
   // not cost the reader one round trip per question it needs answered. A
   // failing search degrades that angle, never the whole bundle.
@@ -1171,16 +1230,27 @@ async function buildEvidenceBundle(
       && asksInjuryUpdatesWithoutLineups(mergeOptions.teamNewsQuestion)
       && injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, mergeOptions.teamNewsFixture)) {
       const fixture = mergeOptions.teamNewsFixture;
-      const day = new Date().toISOString().slice(0, 10);
-      for (const beat of INJURY_ONLY_SITE_BEAT_FALLBACK_ORDER) {
+      for (const beat of injurySiteBeatFallbackOrder(fixture.home, fixture.away)) {
         if (!injuryOnlyTeamNewsNeedsSiteBeatRetry(bundle.results, fixture)) break;
-        const beatQueries = [...injurySiteBeatQueries(beat, fixture.home, fixture.away, day)];
-        if ((bundle.providerCalls ?? 0) + beatQueries.length > PROVIDER_CALL_BUDGET) break;
+        const beatQueries = [...injurySiteBeatQueries(beat, fixture.home, fixture.away)];
+        const providerCallsUsed = bundle.providerCalls ?? 0;
+        if (siteBeatRetryWouldExceedBudget(providerCallsUsed, beatQueries.length, PROVIDER_CALL_BUDGET)) {
+          console.info(JSON.stringify({
+            event: "injury_only_team_news_site_beat_retry_skipped",
+            reason: "provider_budget",
+            beat,
+            providerCallBudget: PROVIDER_CALL_BUDGET,
+            providerCallsUsed,
+            queriesNeeded: beatQueries.length,
+            siteBeatRetryReserved: SITE_BEAT_RETRY_PROVIDER_CALLS,
+          }));
+          break;
+        }
         const before = bundle.results.length;
         const outcomes = await searchWebBatch(beatQueries, signal);
         for (const outcome of outcomes) noteSearchOutcome(bundle, outcome);
         bundle.queries.push(...beatQueries);
-        bundle.providerCalls = (bundle.providerCalls ?? 0) + beatQueries.length;
+        bundle.providerCalls = providerCallsUsed + beatQueries.length;
         bundle.results = appendTeamNewsSearchResults(
           bundle.results,
           outcomes,
@@ -1201,6 +1271,47 @@ async function buildEvidenceBundle(
   if (mergeOptions?.managerFact) {
     const { question, grounding } = mergeOptions.managerFact;
     bundle.results = filterDeskEvidenceBundle(bundle, grounding, Date.now(), question).results;
+    const clubScope = singleClubCurrentFactScope(question, grounding);
+    if (clubScope?.kind === "manager"
+      && managerLookupNeedsSiteBeatRetry(bundle.results, clubScope.club)) {
+      for (const beat of managerSiteBeatFallbackOrder(clubScope.club)) {
+        if (!managerLookupNeedsSiteBeatRetry(bundle.results, clubScope.club)) break;
+        const beatQueries = [...managerSiteBeatQueries(beat, clubScope.club)];
+        const providerCallsUsed = bundle.providerCalls ?? 0;
+        if (siteBeatRetryWouldExceedBudget(providerCallsUsed, beatQueries.length, PROVIDER_CALL_BUDGET)) {
+          console.info(JSON.stringify({
+            event: "current_manager_site_beat_retry_skipped",
+            reason: "provider_budget",
+            beat,
+            club: clubScope.club,
+            providerCallBudget: PROVIDER_CALL_BUDGET,
+            providerCallsUsed,
+            queriesNeeded: beatQueries.length,
+            siteBeatRetryReserved: SITE_BEAT_RETRY_PROVIDER_CALLS,
+          }));
+          break;
+        }
+        const before = bundle.results.length;
+        const outcomes = await searchWebBatch(beatQueries, signal);
+        for (const outcome of outcomes) noteSearchOutcome(bundle, outcome);
+        bundle.queries.push(...beatQueries);
+        bundle.providerCalls = providerCallsUsed + beatQueries.length;
+        bundle.results = appendManagerSearchResults(
+          bundle.results,
+          outcomes,
+          MAX_EVIDENCE_RESULTS
+        );
+        console.info(JSON.stringify({
+          event: "current_manager_site_beat_retry",
+          beat,
+          club: clubScope.club,
+          queries: beatQueries.length,
+          resultsBefore: before,
+          resultsAfter: bundle.results.length,
+          needsRetry: managerLookupNeedsSiteBeatRetry(bundle.results, clubScope.club),
+        }));
+      }
+    }
   }
   bundle.retrievalMeta = {
     queriesRun: planned.length,
@@ -1333,15 +1444,25 @@ function publisherOwnedManagerBody(page: { text: string }): string {
   }).join("\n\n");
 }
 
+// Beat copy often lowercases surname particles ("Roberto de Zerbi"). The
+// manager identity path must still read the full publisher-owned name.
+const MANAGER_PERSON_NAME_PARTICLE =
+  "\\b(?:de|del|da|di|du|la|le|van|von|ter|den|der|dos|das|bin|mac|mc)\\b";
+const MANAGER_PERSON_FULL_NAME =
+  `[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+(?:${MANAGER_PERSON_NAME_PARTICLE}|\\p{Lu}[\\p{L}\\p{M}'’.-]+)){1,3}`;
+
 function managerRoleGrammar(clubName: string) {
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const fullName = "[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+[\\p{Lu}][\\p{L}\\p{M}'’.-]+){1,3}";
+  const fullName = MANAGER_PERSON_FULL_NAME;
   const aliases = [clubName, ...getTeamNameAliases().filter(([, name]) => normalizeTeamName(name) === normalizeTeamName(clubName)).map(([alias]) => alias)];
   const club = `(?:${[...new Set(aliases)].map(escape).join("|")})`;
   const role = new RegExp(`(?:${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)(?:\\s+today)?\\s+is\\s+(${fullName})|(${fullName})\\s+(?:is|remains)\\s+(?:the\\s+)?(?:current\\s+)?${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)|(?:the\\s+)?(?:current\\s+)?(?:manager|head coach|coach)\\s+(?:of|for)\\s+${club}\\s+is\\s+(${fullName}))`, "u");
   const ownsCurrentRole = (name: string, body: string) => {
     const named = escape(name);
+    const surname = escape(name.split(/\s+/).pop() ?? name);
     const currentRole = `(?:current\\s+)?(?:manager|head coach|coach|boss)`;
+    const reporting = "(?:has\\s+(?:been\\s+speaking|said|confirmed|told|revealed|warned|admitted|insisted|explained|discussed|spoken|commented|updated|outlined)|says|said|insists|added|was\\s+speaking)";
+    const rejectsIncumbent = (sentence: string) => /\b(?:former|ex[-\s]|sacked|dismissed|departs|has left|will leave|was replaced|linked with|set to replace|in the frame to replace)\b/i.test(sentence);
     // A bare affiliation can describe a former manager. Require a complete
     // present-tense role statement or an explicit ongoing contract action.
     // Editorial prefixes and trailing retired/return qualifiers cannot fill
@@ -1351,15 +1472,264 @@ function managerRoleGrammar(clubName: string) {
     const alignment = new RegExp(`^${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+says\\s+he\\s+and\\s+the\\s+club\\s+are\\s+(?:very\\s+much\\s+)?aligned\\b[^.!?;\\n]{0,100}\\bsigning\\s+a\\s+new\\s+contract\\b`, "iu");
     // Beat reporting often names the incumbent in apposition ("Everton boss
     // David Moyes has been speaking") rather than with an explicit "is".
-    const appositiveReporting = new RegExp(`^(?:The\\s+)?(?!(?:Former|Ex[-\\s])\\s)${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+(?:has\\s+(?:been\\s+speaking|said|confirmed|told)|says|said|insists|added|was\\s+speaking)\\b`, "iu");
+    const appositiveReporting = new RegExp(`^(?:The\\s+)?(?!(?:Former|Ex[-\\s])\\s)${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+${reporting}\\b`, "iu");
+    // Sky and club sites often lead with "manager Eddie Howe said" once the
+    // club is named elsewhere in the same publisher sentence.
+    const roleFirstReporting = new RegExp(`(?=.*\\b${club}\\b).*\\b(?!(?:Former|Ex[-\\s])\\s)${currentRole}\\s+${named}\\s+${reporting}\\b`, "iu");
+    // Official staff profiles and mastheads ("Eddie Howe - Head Coach").
+    const staffProfile = new RegExp(`^${named}\\s*[,–—-]\\s*(?:${club}(?:['’]s)?\\s+)?${currentRole}\\b`, "iu");
+    const staffHeading = new RegExp(`^${currentRole}\\s*[:–—-]\\s*${named}\\b`, "iu");
+    // Beat shorthand once the club is in the same sentence ("Howe's side").
+    const possessiveSide = new RegExp(`(?=.*\\b${club}\\b).*\\b${surname}(?:['’]s)?\\s+side\\b`, "iu");
     // Publisher blocks retain their boundaries; these explicit tenure
     // propositions must start their own statement. A quoted, negated or
     // editorial prefix cannot establish the role.
     return splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
-      .map((sentence) => sentence.trim()).some((sentence) => direct.test(sentence) || contract.test(sentence)
-        || alignment.test(sentence) || appositiveReporting.test(sentence));
+      .map((sentence) => sentence.trim()).some((sentence) => !rejectsIncumbent(sentence) && (
+        direct.test(sentence) || contract.test(sentence) || alignment.test(sentence)
+        || appositiveReporting.test(sentence) || roleFirstReporting.test(sentence)
+        || staffProfile.test(sentence) || staffHeading.test(sentence) || possessiveSide.test(sentence)
+      ));
   };
   return { fullName, role, ownsCurrentRole };
+}
+
+function managerBundleSourceForPage(
+  bundle: EvidenceBundle,
+  page: Pick<RetrievedEvidencePage, "id" | "url">
+): EvidenceBundle["results"][number] | undefined {
+  const matches = bundle.results.filter((row) => row.id === page.id);
+  if (matches.length !== 1) return undefined;
+  const source = matches[0];
+  return managerSearchedUrlAligns(source, page) ? source : undefined;
+}
+
+function managerSearchedUrlAligns(
+  source: { url: string },
+  page: Pick<RetrievedEvidencePage, "url">
+): boolean {
+  if (source.url === page.url) return true;
+  try {
+    return sameEvidenceHost(new URL(source.url).hostname, new URL(page.url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+const MANAGER_RECENT_WINDOW_MS = 21 * 86_400_000;
+
+export type ManagerExtractionCandidate = {
+  pageId: string;
+  sourceId?: string;
+  names: string[];
+  ownsRole: boolean;
+  rejectedReason?: string;
+  publishedDate?: string | null;
+  urlHost?: string | null;
+};
+
+function managerPageUrlHost(page: Pick<RetrievedEvidencePage, "url" | "finalUrl">): string | null {
+  const raw = page.finalUrl?.trim() || page.url?.trim() || "";
+  if (!raw) return null;
+  try {
+    return new URL(raw).hostname.replace(/^www\./i, "");
+  } catch {
+    return null;
+  }
+}
+
+function isManagerDurableIdentitySource(
+  source: EvidenceBundle["results"][number],
+  page: RetrievedEvidencePage,
+): boolean {
+  const authority = evidenceAuthority(source.url);
+  const url = `${page.finalUrl || source.url}`.toLowerCase();
+  const body = publisherOwnedManagerBody(page);
+  const title = source.title.toLowerCase();
+  if (authority === "official") {
+    if (/(coach|manager|staff|management|head-coach|first-team)/.test(url)) return true;
+    if (/\b(?:head coach|first[- ]team coach|manager)\b/i.test(body.slice(0, 1200))) return true;
+  }
+  if (authority === "reputable") {
+    const hay = `${title} ${body}`.toLowerCase();
+    if (/\b(?:appoint\w*|named as|unveil\w*|replace\w*|new head coach|new manager)\b/.test(hay)
+      && /\b(?:manager|head coach|coach)\b/.test(hay)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function managerIdentityNamesOnPage(
+  page: RetrievedEvidencePage,
+  ownsCurrentRole: (name: string, body: string) => boolean,
+  fullName: string,
+): string[] {
+  const body = publisherOwnedManagerBody(page);
+  return [...new Set(splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
+    .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
+    .flatMap((match) => {
+      const words = match[0].split(/\s+/);
+      return words.flatMap((_word, start) => words.slice(start + 1).map((_next, offset) =>
+        words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
+    }).filter((name) => playerNamedInNewsBody(name, body,
+      { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, body)))];
+}
+
+function managerNameKey(name: string): string {
+  return name.normalize("NFC").toLocaleLowerCase("en").replace(/\s+/g, " ");
+}
+
+function managerRecentIdentityConflict(
+  scope: { club: string },
+  pages: readonly RetrievedEvidencePage[],
+  bundle: EvidenceBundle,
+  candidateName: string,
+  now: number,
+  ownsCurrentRole: (name: string, body: string) => boolean,
+  fullName: string,
+): boolean {
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const aliases = [scope.club, ...getTeamNameAliases()
+    .filter(([, name]) => normalizeTeamName(name) === normalizeTeamName(scope.club))
+    .map(([alias]) => alias)];
+  const club = `(?:${[...new Set(aliases)].map(escape).join("|")})`;
+  const candidate = escape(candidateName);
+  for (const page of pages) {
+    const source = managerBundleSourceForPage(bundle, page);
+    if (!source) continue;
+    const publishedText = page.date.trim() || source.date.trim();
+    const published = Date.parse(publishedText);
+    if (!Number.isFinite(published) || published > now || now - published > MANAGER_RECENT_WINDOW_MS) continue;
+    const body = publisherOwnedManagerBody(page);
+    const recentNames = managerIdentityNamesOnPage(page, ownsCurrentRole, fullName);
+    if (recentNames.some((name) => managerNameKey(name) !== managerNameKey(candidateName))) return true;
+    if (new RegExp(`${club}[^.!?\\n]{0,140}\\b(?:sack\\w*|dismiss\\w*|replace\\w*|part(?:ed|s)? company with)\\b`, "iu").test(body)) {
+      return true;
+    }
+    if (new RegExp(`${candidate}[^.!?\\n]{0,80}\\b(?:sacked|dismissed|departs|has left|will leave|was replaced)`, "iu").test(body)) {
+      return true;
+    }
+    if (new RegExp(`\\b(?:appoint\\w*|name\\w*)[^.!?\\n]{0,60}\\bas (?:${club}['’]?s )?(?:manager|head coach|coach)\\b`, "iu").test(body)
+      && !recentNames.some((name) => managerNameKey(name) === managerNameKey(candidateName))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Hydrated publisher pages are the authority for manager extraction. */
+export function extractManagerIdentityCandidates(
+  scope: { club: string },
+  bundle: EvidenceBundle,
+  pages: readonly RetrievedEvidencePage[],
+  now = Date.now()
+): { facts: { name: string; sourceId: string }[]; candidates: ManagerExtractionCandidate[] } {
+  const { fullName, ownsCurrentRole } = managerRoleGrammar(scope.club);
+  const candidates: ManagerExtractionCandidate[] = [];
+  const factRows: { name: string; sourceId: string; durableOld: boolean }[] = [];
+  for (const page of pages) {
+    const source = managerBundleSourceForPage(bundle, page);
+    const hydratedDay = /^\d{4}-\d{2}-\d{2}/.exec(page.date.trim())?.[0];
+    const publishedText = page.date.trim() || (source ? evidenceSourceDate(source, new Date(now)) : "");
+    const day = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(publishedText);
+    const calendar = day && new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
+    const published = Date.parse(publishedText);
+    const sourceDay = source && !hydratedDay
+      ? /^\d{4}-\d{2}-\d{2}/.exec(source.date.trim())?.[0] : undefined;
+    const publishedDate = page.date.trim() || source?.date.trim() || null;
+    const urlHost = managerPageUrlHost(page);
+    const reject = (reason: string) => {
+      candidates.push({
+        pageId: page.id,
+        sourceId: source?.id,
+        names: [],
+        ownsRole: false,
+        rejectedReason: reason,
+        publishedDate,
+        urlHost,
+      });
+    };
+    if (!source) {
+      reject(bundle.results.filter((row) => row.id === page.id).length > 1
+        ? "ambiguous_bundle_source" : "no_bundle_source");
+      continue;
+    }
+    if (!managerSearchedUrlAligns(source, page)) {
+      reject("url_host_mismatch");
+      continue;
+    }
+    if (sourceDay && day && sourceDay !== day[0].slice(0, 10)) {
+      reject("provider_date_mismatch");
+      continue;
+    }
+    if (evidenceAuthority(source.url) === "other" || evidenceAuthority(page.finalUrl) === "other") {
+      reject("authority_other");
+      continue;
+    }
+    if (!day || calendar!.toISOString().slice(0, 10) !== day[0].slice(0, 10)) {
+      reject("invalid_calendar_day");
+      continue;
+    }
+    if (!Number.isFinite(published) || !Number.isFinite(now)) {
+      reject("invalid_published_instant");
+      continue;
+    }
+    if (published > now) {
+      reject("stale_or_future");
+      continue;
+    }
+    const isRecent = now - published <= MANAGER_RECENT_WINDOW_MS;
+    const durableOld = !isRecent && isManagerDurableIdentitySource(source, page);
+    if (!isRecent && !durableOld) {
+      reject("stale_or_future");
+      continue;
+    }
+    const unique = managerIdentityNamesOnPage(page, ownsCurrentRole, fullName);
+    candidates.push({
+      pageId: page.id,
+      sourceId: source.id,
+      names: unique,
+      ownsRole: unique.length > 0,
+      publishedDate,
+      urlHost,
+      ...(unique.length ? {} : { rejectedReason: "owns_current_role_failed" }),
+    });
+    for (const name of unique) {
+      factRows.push({ name, sourceId: source.id, durableOld });
+    }
+  }
+  const facts = factRows.filter((row) => !row.durableOld
+    || !managerRecentIdentityConflict(scope, pages, bundle, row.name, now, ownsCurrentRole, fullName))
+    .map((row) => ({ name: row.name, sourceId: row.sourceId }));
+  return { facts, candidates };
+}
+
+export function logManagerIdentityExtraction(
+  club: string,
+  pages: readonly RetrievedEvidencePage[],
+  extraction: ReturnType<typeof extractManagerIdentityCandidates>,
+  draft: string | undefined
+): void {
+  console.info(JSON.stringify({
+    event: "manager_lookup_evidence",
+    phase: "extraction",
+    club,
+    hydratedPages: pages.length,
+    candidatePages: extraction.candidates.length,
+    acceptedFacts: extraction.facts.length,
+    distinctNames: [...new Set(extraction.facts.map((fact) => fact.name))],
+    candidates: extraction.candidates.map((row) => ({
+      pageId: row.pageId,
+      sourceId: row.sourceId ?? null,
+      names: row.names,
+      ownsRole: row.ownsRole,
+      rejectedReason: row.rejectedReason ?? null,
+      publishedDate: row.publishedDate ?? null,
+      urlHost: row.urlHost ?? null,
+    })),
+    draftKind: draft === undefined ? "none" : draft.includes("’s manager is") ? "identity" : "abstention",
+  }));
 }
 
 /** A current-role question has one small source-owned fact. Keep extra
@@ -1371,36 +1741,17 @@ export function sourceOwnedManagerDraft(
 ): string | undefined {
   // Appointment history retains the existing source-precision contract.
   if (scope.retainAppointment) return undefined;
-  const { fullName, ownsCurrentRole } = managerRoleGrammar(scope.club);
-  const facts = pages.flatMap((page) => {
-    const sources = bundle.results.filter((row) => row.id === page.id);
-    const source = sources.length === 1 ? sources[0] : undefined;
-    const day = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(page.date);
-    const calendar = day && new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
-    const published = Date.parse(page.date);
-    if (!source || source.url !== page.url || source.date !== page.date
-      || evidenceAuthority(source.url) === "other" || evidenceAuthority(page.finalUrl) === "other"
-      || !day || calendar!.toISOString().slice(0, 10) !== day[0].slice(0, 10)
-      || !Number.isFinite(published) || !Number.isFinite(now)
-      || published > now || now - published > 21 * 86_400_000) return [];
-    const body = publisherOwnedManagerBody(page);
-    // Keep discovery inside the same statement boundaries used by the role
-    // guard. Otherwise punctuation in a capitalized name run can consume the
-    // next club statement and hide a conflicting identity on the same page.
-    const names = splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
-      .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
-      .flatMap((match) => {
-        const words = match[0].split(/\s+/);
-        return words.flatMap((_word, start) => words.slice(start + 1).map((_next, offset) =>
-          words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
-      }).filter((name) => playerNamedInNewsBody(name, body,
-      { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, body));
-    return [...new Set(names)].map((name) => ({ name, sourceId: source.id }));
-  });
+  const extraction = extractManagerIdentityCandidates(scope, bundle, pages, now);
+  const facts = extraction.facts;
   const nameKey = (name: string) => name.normalize("NFC").toLocaleLowerCase("en").replace(/\s+/g, " ");
-  if (new Set(facts.map((fact) => nameKey(fact.name))).size !== 1) return managerIdentityAbstention(scope);
+  if (new Set(facts.map((fact) => nameKey(fact.name))).size !== 1) {
+    logManagerIdentityExtraction(scope.club, pages, extraction, undefined);
+    return managerIdentityAbstention(scope);
+  }
   const ids = [...new Set(facts.map((fact) => fact.sourceId))];
-  return `${scope.club}’s manager is ${facts[0].name} ${ids.map((id) => `[[${id}]]`).join(" ")}.`;
+  const draft = `${scope.club}’s manager is ${facts[0].name} ${ids.map((id) => `[[${id}]]`).join(" ")}.`;
+  logManagerIdentityExtraction(scope.club, pages, extraction, draft);
+  return draft;
 }
 
 /** Manager+why is a small fact contract, not free-form causal prose. A direct
@@ -1602,6 +1953,8 @@ export async function verifyCurrentClaims(
     retrieve?: typeof retrieveEvidencePages;
     verify?: typeof verifyClaimsOnce;
     managerWhy?: { club: string; retainAppointment?: boolean; wantsReason?: boolean };
+    /** Hydrated publisher bodies already used for source-owned manager drafts. */
+    prefetchedPages?: readonly RetrievedEvidencePage[];
   } = {}
 ): Promise<{ answer: string; verification: AskVerification }> {
   const claims = verifiableCurrentClaims(answer);
@@ -1645,12 +1998,21 @@ export async function verifyCurrentClaims(
     ...candidates.filter((candidate) => citedIds.has(candidate.id)),
     ...candidates.filter((candidate) => !citedIds.has(candidate.id)),
   ];
+  const prefetchedById = new Map((dependencies.prefetchedPages ?? []).map((page) => [page.id, page]));
   const fetched = await (dependencies.retrieve ?? retrieveEvidencePages)(
     ordered,
     signal,
     { cache: bundle.pageCache }
   );
-  writeRetrievedDatesOntoBundle(bundle, fetched);
+  const hydratedFetched = fetched.map((page) => prefetchedById.get(page.id) ?? page);
+  const prefetchedOnly = [...citedIds]
+    .filter((id) => !hydratedFetched.some((page) => page.id === id))
+    .flatMap((id) => {
+      const page = prefetchedById.get(id);
+      return page ? [page] : [];
+    });
+  const mergedFetched = [...hydratedFetched, ...prefetchedOnly];
+  writeRetrievedDatesOntoBundle(bundle, mergedFetched);
   // Most publishers block a server-side fetch, so verification ran against one
   // retrieved page out of thirty sources and abstained on nearly everything --
   // the same question answering with cited team news or with the notice
@@ -1664,7 +2026,7 @@ export async function verifyCurrentClaims(
   // the claim matches its source rather than independently corroborating it.
   // It still catches the failure that matters most -- a claim no source
   // supports at all -- and the reader gets the citation either way.
-  const fetchedIds = new Set(fetched.map((page) => page.id));
+  const fetchedIds = new Set(mergedFetched.map((page) => page.id));
   const snippetBacked = bundle.results
     .filter((source) => citedIds.has(source.id)
       && !fetchedIds.has(source.id)
@@ -1680,7 +2042,7 @@ export async function verifyCurrentClaims(
       text: `${source.title}\n${source.snippet}`,
       retrievedAt: new Date().toISOString(),
     }));
-  const pages = [...fetched, ...snippetBacked];
+  const pages = [...mergedFetched, ...snippetBacked];
   if (!pages.length || !reserveProviderCall(bundle)) {
     // The stage had no observability at all, which is why the same fixture
     // could answer with cited team news or with the abstention and nothing
@@ -1692,7 +2054,8 @@ export async function verifyCurrentClaims(
       sources: candidates.length,
       fetchable,
       pages: pages.length,
-      fetched: fetched.length,
+      fetched: mergedFetched.length,
+      prefetched: prefetchedOnly.length,
       reason: pages.length ? "provider_budget" : fetchable ? "fetch_failed" : "no_eligible_source",
     }));
     return {
@@ -1736,7 +2099,8 @@ export async function verifyCurrentClaims(
     sources: candidates.length,
     fetchable,
     pages: pages.length,
-    fetched: fetched.length,
+    fetched: mergedFetched.length,
+    prefetched: prefetchedOnly.length,
     snippetBacked: snippetBacked.length,
     supported: managerFacts?.supported ?? applied.supported.length,
     removed: managerFacts?.removed ?? applied.removedClaimIds.length,
@@ -3780,8 +4144,11 @@ const GENERAL_SYSTEM_PROMPT = `You are Pundit, speaking as a first-person genera
 based on one of your match forecasts. Say that naturally in first person when the distinction matters;
 never say "Pundit model", "Pundit's model", "the model" or "model-driven read". Use the web_search tool for current
 facts when helpful, and never fabricate a statistic, injury, squad update, or result.
-For historical World Cup 2026 backtest statistics, you may mention Pundit's frozen evaluation at
-/evaluation/wc-2026 but do not invent numbers from it unless search returns them.
+Do not state which division a club plays in, its current form, defensive record, league position or
+manager unless a source in this request establishes it; promotions and relegations change every season,
+so describe a side by style and structure rather than by league or recent results you cannot verify.
+For historical World Cup 2026 questions, point to the frozen archive at /evaluation/wc-2026 only
+when asked; do not cite it as proof of current model quality or live accuracy.
 For player-level questions (goalscorer, assists, cards, player props), use web_search for current
 player-prop odds and player news, and present anything found as market- or search-sourced with its
 source and date. If search returns nothing solid, say no verified player data is available.
@@ -4035,6 +4402,17 @@ function hasExplicitMatchupCue(question: string): boolean {
 function hasUnresolvedFixtureShape(question: string): boolean {
   return /\b[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}\s+(?:vs?\.?|versus|against)\s+[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}(?:[?!.,]|$)/iu
     .test(question);
+}
+
+/**
+ * "Haaland vs Salah, who is better?" has the shape of a fixture but names no
+ * club and asks for a verdict on people. It is general analysis, not an
+ * unconfirmed matchup, so it must not receive the fixture-discovery notice.
+ */
+function comparesPeopleNotClubs(question: string, teamsMentioned: number): boolean {
+  if (teamsMentioned > 0) return false;
+  return /\b(?:better|best|compare|comparison|greater|goat|stronger|more complete|who(?:'s|\s+is)\s+(?:the\s+)?(?:better|best))\b/i.test(question)
+    && !/\b(?:predict|prediction|odds|score|scoreline|lineup|preview|tip|bet|win|beat|fixture|match|game)\b/i.test(question);
 }
 
 function comparesTacticalConcepts(question: string): boolean {
@@ -4516,6 +4894,16 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
       })
     : null;
 
+  const externalMarketConsensus = buildExternalMarketConsensus(
+    oddsSources.map((source) => ({
+      source: source.source,
+      observedAt: source.observedAt,
+      pHome: source.pHome,
+      pDraw: source.pDraw ?? NaN,
+      pAway: source.pAway,
+    })),
+  );
+
   return {
     kind: "match",
     fixtureId,
@@ -4544,6 +4932,7 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
     ...(stakeObservedAt ? { stakeObservedAt } : {}),
     oddsSources,
     ...(consensus ? { consensus } : {}),
+    ...(externalMarketConsensus ? { externalMarketConsensus } : {}),
     marketDivergence: computeMarketDivergence(fixture, oddsSources),
     pricing: buildMatchPricing({
       fixtureId,
@@ -4798,6 +5187,9 @@ export function resolveAskContext(
       && mentionedTeamPositions(question, searchableFixtures).size === 0) {
       return { tier: "general" };
     }
+    if (comparesPeopleNotClubs(question, mentionedTeamPositions(question, searchableFixtures).size)) {
+      return { tier: "general" };
+    }
     return { tier: "candidate" };
   }
 
@@ -4911,7 +5303,10 @@ function toMessageParams(messages: ConversationTurn[]): Anthropic.MessageParam[]
   return messages.map(({ role, content }) => ({ role, content }));
 }
 
-function mapTimeoutError(error: unknown): never {
+function mapTimeoutError(error: unknown, signal?: AbortSignal): never {
+  if (isCancellation(error, signal)) {
+    throw new AppError(504, "Analysis service timed out. Please try again.");
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (/timed?\s*out|timeout/i.test(message)) {
     throw new AppError(504, "Analysis service timed out. Please try again.");
@@ -6611,6 +7006,9 @@ export function dropEmptyEmphasis(answer: string): string {
     // The parenthesis a removed citation or aside was sitting in: live output
     // read "Hull are without Jack Butland ()".
     .replace(/[ \t]*\([ \t]*\)/g, "")
+    // A parenthesis holding only the separators and date a removed citation
+    // left behind: live output read "(,, 17 Oct 2026)" beside the real link.
+    .replace(/[ \t]*\([ \t]*(?:[,;][ \t]*)+(?:\d{1,2}[ \t]+)?(?:[A-Z][a-z]{2,8}[ \t]+)?(?:\d{4})?[ \t]*\)/g, "")
     // The same source rendered twice back to back, when two markers in one
     // sentence resolved to it.
     .replace(/(\((\[[^\]]+\]\([^)]+\))[^)]*\))[ \t]*\1/g, "$1")
@@ -7372,9 +7770,9 @@ export async function generateAnalysis(
             { timeout: remainingMs, signal: bounded }
           )), signal);
       } catch (error) {
-        if (signal?.aborted || retried || !isRetryableStreamError(error)
+        if (isCancellation(error, signal) || retried || !isRetryableStreamError(error)
           || Date.now() - startedAt >= OVERALL_DEADLINE_MS) {
-          mapTimeoutError(error);
+          mapTimeoutError(error, signal);
         }
         retried = true;
       }
@@ -7506,7 +7904,7 @@ export async function generateAnalysisStream(
       } catch (error) {
         if (!shouldContinue()) throw new AppError(499, "Client disconnected.");
         if (deltaSeen || anyDeltaSeen || retried || !isRetryableStreamError(error)) {
-          mapTimeoutError(error);
+          mapTimeoutError(error, signal);
         }
         retried = true;
       }
@@ -7723,7 +8121,9 @@ export async function trackedInference<T>(
 function isCancellation(error: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true;
   if (error instanceof Anthropic.APIUserAbortError) return true;
-  return error instanceof Error && error.name === "AbortError";
+  if (error instanceof Error && error.name === "AbortError") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /request was aborted|aborted before completion|the operation was aborted/i.test(message);
 }
 
 /**
@@ -7744,8 +8144,20 @@ const FALLBACK_RESERVE_MS = 12_000;
  * Zero means the reserve is already spent: generation is skipped outright.
  */
 export function matchGenerationBudgetMs(requestStartedAt: number, now: number = Date.now()): number {
+  return generationBudgetCapMs(requestStartedAt, MATCH_GENERATION_BUDGET_MS, now);
+}
+
+export function agentGenerationBudgetMs(requestStartedAt: number, now: number = Date.now()): number {
+  return generationBudgetCapMs(requestStartedAt, AGENT_GENERATION_BUDGET_MS, now);
+}
+
+export function generationBudgetCapMs(
+  requestStartedAt: number,
+  capMs: number,
+  now: number = Date.now(),
+): number {
   const remaining = REQUEST_DEADLINE_MS - FALLBACK_RESERVE_MS - (now - requestStartedAt);
-  return Math.max(0, Math.min(MATCH_GENERATION_BUDGET_MS, remaining));
+  return Math.max(0, Math.min(capMs, remaining));
 }
 
 /**
@@ -7759,10 +8171,14 @@ export async function generateOrDegradeToGrounding(
   grounding: AskGrounding,
   signal: AbortSignal | undefined,
   requestStartedAt: number,
-  generate: (signal: AbortSignal | undefined) => Promise<string>
+  generate: (signal: AbortSignal | undefined) => Promise<string>,
+  options?: { budgetCapMs?: number },
 ): Promise<string> {
   if (grounding?.kind !== "match") return generate(signal);
-  const budgetMs = matchGenerationBudgetMs(requestStartedAt);
+  const budgetMs = generationBudgetCapMs(
+    requestStartedAt,
+    options?.budgetCapMs ?? MATCH_GENERATION_BUDGET_MS,
+  );
   if (budgetMs <= 0 && signal?.aborted !== true) {
     console.warn(JSON.stringify({ event: "generation_degraded_to_grounding", reason: "no_budget_left" }));
     return "";
@@ -7797,11 +8213,13 @@ export async function generateOrDegradeToGrounding(
   }
 }
 
-function mapAnalysisError(err: unknown): never {
+function mapAnalysisError(err: unknown, signal?: AbortSignal): never {
   if (err instanceof AppError) throw err;
+  if (isCancellation(err, signal)) {
+    throw new AppError(504, "Analysis service timed out. Please try again.");
+  }
   const message = err instanceof Error ? err.message : String(err);
-  if (/timed?\s*out|timeout|deadline exceeded/i.test(message)
-    || (err instanceof Error && err.name === "AbortError")) {
+  if (/timed?\s*out|timeout|deadline exceeded/i.test(message)) {
     throw new AppError(504, "Analysis service timed out. Please try again.");
   }
   if (err instanceof Anthropic.APIError && err.status === 429) {
@@ -8759,6 +9177,17 @@ function evidenceBundleForMatch(
   });
 }
 
+/** Publisher HTML bodies for manager verification on the agent path (not snippet-only). */
+export async function fetchManagerPublisherPages(
+  bundle: EvidenceBundle,
+  signal?: AbortSignal,
+): Promise<RetrievedEvidencePage[]> {
+  if (!bundle.results.length) return [];
+  if (!bundle.pageCache) bundle.pageCache = createEvidencePageCache();
+  const pages = await hydrateBundlePublicationDates(bundle, signal);
+  return pages.map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
+}
+
 async function hydrateBundlePublicationDates(
   bundle: EvidenceBundle,
   signal?: AbortSignal
@@ -8904,10 +9333,14 @@ async function settleTeamNewsFromBundle(
       fixtureId: grounding.fixtureId, home: grounding.home, away: grounding.away, kickoff: grounding.date,
     });
     if (updates.observations.length) {
-      const datedAnswer = composeDatedClubAvailabilityAnswer(updates);
+      const datedAnswer = asksInjuryUpdates
+        ? composeDatedClubAvailabilityAnswer(updates)
+        : composeTeamNewsAnswer(grounding, updates);
       const composed = datedAnswer ?? composeMatchResponse(question, grounding, plan, updates);
       const datedClubNews = composed + (datedAnswer
-        ? " These dated club updates do not establish the starting XI or availability at the future kickoff."
+        ? asksInjuryUpdates
+          ? " These dated club updates do not establish the starting XI or availability at the future kickoff."
+          : " These updates do not establish the starting XI or availability at the future kickoff."
         : " These are dated club updates; they do not establish the starting XI or availability at the future kickoff.");
       return withTeamNewsCoverage(await verifySettledEvidence(datedClubNews, grounding, bundle, client,
         TEAM_NEWS_COMPOSE_ABSTENTION, signal), question, grounding);
@@ -9273,6 +9706,10 @@ export async function deliverAnswer(args: {
   signal?: AbortSignal;
   voice?: "desk";
   history?: ConversationTurn[];
+  /** Hydrated publisher bodies for manager turns; must feed desk prose when generation runs. */
+  managerPages?: readonly RetrievedEvidencePage[];
+  /** Source-owned manager draft already selected from hydrated pages. */
+  sourceOwnedManagerDraft?: boolean;
 }): Promise<{ answer: string; citations: AskCitation[]; verification: AskVerification }> {
   const {
     answer: rawAnswer,
@@ -9288,9 +9725,23 @@ export async function deliverAnswer(args: {
     signal,
     voice,
     history = [],
+    managerPages,
+    sourceOwnedManagerDraft: sourceOwnedManagerPath = false,
   } = args;
   const deskVoice = voice === "desk";
+  const clubFactDelivery = singleClubCurrentFactScope(question, grounding);
   const deliveryPlan = planResponse(question, { groundingKind: grounding?.kind ?? null, hasHistory });
+  if (clubFactDelivery?.kind === "manager") {
+    console.info(JSON.stringify({
+      event: "manager_lookup_evidence",
+      phase: "composer_input",
+      club: clubFactDelivery.club,
+      sourceOwnedDraft: sourceOwnedManagerPath,
+      answerChars: rawAnswer.length,
+      hasManagerPages: Boolean(managerPages?.length),
+      bundleSources: bundle.results.length,
+    }));
+  }
   if (grounding?.kind === "match" && isClosedTacticalRequest(question)
     && deliveryPlan.mode === "match-follow-up" && !deliveryPlan.evidenceRequired && !evidenceRequired
     && !deterministicSearchQuery(question, "", grounding)
@@ -9343,8 +9794,9 @@ export async function deliverAnswer(args: {
       || (!rawLooksLikeDraft && prepared ? prepared : "")
       || await writeDeskProse(question, grounding, history, signal, evidenceBundle, {
         generalConcept: grounding === null && !evidenceRequired && evidenceBundle.queries.length === 0,
+        managerPages,
       })
-      || (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)
+      || (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question) && !clubFactDelivery
         ? composeDeskFootballTake(grounding)
         : "");
     if (prose) {
@@ -9363,6 +9815,9 @@ export async function deliverAnswer(args: {
           }
         : await verifyCurrentClaims(prose, evidenceBundle, client, signal, false, {
           managerWhy: managerWhyScope(question, grounding),
+          ...(sourceOwnedManagerPath && managerPages?.length
+            ? { prefetchedPages: managerPages }
+            : {}),
         });
       const checkedEvidenceAnswer = failClosedEmptyCurrentVerification(
         checked.answer,
@@ -9375,7 +9830,7 @@ export async function deliverAnswer(args: {
           ? stripUncitedOddsClaims(stripUncitedResultClaims(checkedEvidenceAnswer))
           : checkedEvidenceAnswer)
         : checkedEvidenceAnswer;
-      if (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question)) {
+      if (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question) && !clubFactDelivery) {
         // Assemble outline before citation render so a sourced wrinkle's [[S1]]
         // expands. Server 1X2 must not pass through stripDeskBoardRecitals.
         const outlined = deskSchematicOutline(evidenceSafeAnswer);
@@ -9392,6 +9847,18 @@ export async function deliverAnswer(args: {
           citations: rendered.citations,
           verification: checked.verification,
         };
+      }
+      if (clubFactDelivery?.kind === "manager") {
+        console.info(JSON.stringify({
+          event: "manager_lookup_evidence",
+          phase: "composer_output",
+          club: clubFactDelivery.club,
+          sourceOwnedDraft: sourceOwnedManagerPath,
+          verificationStatus: checked.verification.status,
+          supportedClaims: checked.verification.supportedClaimCount,
+          answerChars: evidenceSafeAnswer.length,
+          includesManagerRole: /\b(?:manager|head coach|coach)\b/i.test(evidenceSafeAnswer),
+        }));
       }
       const rendered = renderEvidenceCitations(evidenceSafeAnswer, evidenceBundle,
         evidenceRequired || evidenceBundle.queries.length > 0 || grounding !== null);
@@ -9825,7 +10292,22 @@ export function sanitizeDeliveredAnswer(
   return normalizeAnalystIdentity(sanitized);
 }
 
+// "the model" in a paragraph explaining xG or another public statistic is that
+// statistic's model, not Pundit's: live output read "I considers several
+// factors" and "all affect I." in an expected-goals explainer.
+const GENERIC_MODEL_CONTEXT = /\b(?:xG|xGOT|expected goals|Opta|StatsBomb|Understat|FBref)\b/i;
+const GENERIC_MODEL_GUARD = "\u0001";
+
 export function normalizeAnalystIdentity(answer: string): string {
+  const guarded = answer.split(/(\n{2,})/).map((paragraph) =>
+    GENERIC_MODEL_CONTEXT.test(paragraph) && !/\bPundit\b/i.test(paragraph)
+      ? paragraph.replace(/\bthe model\b/gi, (match) => match.replace(" ", ` ${GENERIC_MODEL_GUARD}`))
+      : paragraph
+  ).join("");
+  return rewriteAnalystIdentity(guarded).split(GENERIC_MODEL_GUARD).join("");
+}
+
+function rewriteAnalystIdentity(answer: string): string {
   return answer
     .replace(/\bmy pre-training knowledge of fixtures is out of date\b/gi, "No fixture was named")
     .replace(/\bgrounding data\b/gi, "fixture details")
@@ -9917,12 +10399,24 @@ export interface AskResult {
   citations?: AskCitation[];
   verification: AskVerification;
   presentation: ResponsePresentation;
+  /** Effective chat engine for this response (env or eval-only header override). */
+  engine: ChatEngineMode;
+  /** True when the answer path invoked the inference client (agent or legacy prose). */
+  usedLlm: boolean;
 }
+
+type ScopedAskPayload = {
+  answer: string;
+  grounding: AskGrounding;
+  citations?: AskCitation[];
+  verification: AskVerification;
+  usedLlm?: boolean;
+};
 
 function withPresentation(
   question: string,
   hasHistory: boolean,
-  result: Omit<AskResult, "presentation">
+  result: ScopedAskPayload,
 ): AskResult {
   const plan = planResponse(question, {
     hasHistory,
@@ -9933,12 +10427,242 @@ function withPresentation(
     ...result,
     answer: finalizeDeliveredText(result.answer, result.grounding, ANALYST_RESPONSE_V2),
     presentation: responsePresentation(plan),
+    engine: chatEngineMode(),
+    usedLlm: result.usedLlm === true,
   };
 }
 
 function withOptionalUserLine(grounding: AskGrounding, userLine?: UserLine): AskGrounding {
   if (!userLine || grounding?.kind !== "match") return grounding;
   return { ...grounding, pricing: attachUserLine(grounding.pricing, userLine) };
+}
+
+/** Short server-owned answer when the agent path yields no prose (e.g. budget_exceeded). */
+export function agentNonEmptyGroundedFallback(
+  question: string,
+  grounding: AskGrounding,
+  hasHistory: boolean,
+): string {
+  if (grounding?.kind === "match") {
+    const headline = renderGroundedMatchFallback(grounding).trim();
+    if (headline) return headline;
+  }
+  const deterministic = deterministicGroundedResponse(question, grounding);
+  if (deterministic?.trim()) return deterministic;
+  const closed = closedGroundedAnswer(question, grounding, hasHistory);
+  if (closed?.trim()) return closed;
+  return "No bet — I'll keep this to the model sheet and verified sources only.";
+}
+
+function resolveAgentUserAnswer(
+  question: string,
+  grounding: AskGrounding,
+  bundle: EvidenceBundle,
+  hasHistory: boolean,
+  agentText: string,
+): string {
+  const cleaned = sanitizeAgentUserText(agentText);
+  if (cleaned) return cleaned;
+  const fromEvidence = composeAgentEvidenceFallback(question, grounding, bundle, hasHistory).trim();
+  if (fromEvidence) return fromEvidence;
+  return agentNonEmptyGroundedFallback(question, grounding, hasHistory);
+}
+
+function logAgentEngineSkip(requestStartedAt: number, skipReason: string): void {
+  if (!isChatAgentEngine()) return;
+  logChatAgentTurn({
+    ...emptyChatAgentTurnMetrics(),
+    latencyMs: Date.now() - requestStartedAt,
+    outcome: "skipped",
+    capHit: null,
+    skipReason,
+  });
+}
+
+export function normalizeAgentManagerAnswer(
+  question: string,
+  grounding: AskGrounding,
+  prose: string,
+  citations: AskCitation[],
+  bundle: EvidenceBundle,
+  managerPages: readonly RetrievedEvidencePage[] | undefined,
+  nowMs = Date.now(),
+): { prose: string; verification: AskVerification } {
+  const notRequired: AskVerification = {
+    status: "not-required",
+    supportedClaimCount: 0,
+    removedClaimCount: 0,
+  };
+  const scope = singleClubCurrentFactScope(question, grounding);
+  if (scope?.kind !== "manager" || !managerPages?.length) {
+    return { prose, verification: notRequired };
+  }
+  const extraction = extractManagerIdentityCandidates(scope, bundle, managerPages, nowMs);
+  if (extraction.facts.length !== 1) {
+    return { prose, verification: notRequired };
+  }
+  const { name, sourceId } = extraction.facts[0];
+  const citation = citations.find((row) => row.id === sourceId)
+    ?? bundle.results.find((row) => row.id === sourceId);
+  if (!citation) {
+    return { prose, verification: notRequired };
+  }
+  const displayDate = formatDeskCitationDate(citation.date);
+  const title = citation.title.replace(/[\[\]]/g, "").trim();
+  const lead = `${scope.club}'s manager is ${name} ([${title}](${citation.url}) · ${displayDate}).`;
+  const tail = prose
+    .replace(/^\s*\*{0,2}[^*\n]+manager[^*\n]*\*{0,2}[^.!?]*[.!?]\s*/i, "")
+    .trim();
+  const merged = tail && !tail.toLowerCase().startsWith(name.toLowerCase())
+    ? `${lead} ${tail}`.trim()
+    : lead;
+  return {
+    prose: merged,
+    verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 },
+  };
+}
+
+/** #301-style agent delivery: agent prose + citation rendering, no deliverAnswer re-verify. */
+function packageAgentDirectAnswer(
+  question: string,
+  grounding: AskGrounding,
+  bundle: EvidenceBundle,
+  prose: string,
+  hasHistory: boolean,
+  usedLlm: boolean,
+  voice?: "desk",
+  managerPages?: readonly RetrievedEvidencePage[],
+): ScopedAskPayload {
+  let prepared = sanitizeAgentCitationArtifacts(prose);
+  if (planResponse(question, { groundingKind: grounding?.kind ?? null }).mode === "team-news") {
+    prepared = enrichAgentTeamNewsAttribution(prepared, bundle, grounding);
+  }
+  const { answer: rendered, citations } = renderEvidenceCitations(prepared, bundle, false);
+  const answer = rendered.trim()
+    ? rendered
+    : resolveAgentUserAnswer(question, grounding, bundle, hasHistory, "");
+  const shaped = finalizeAgentPackagedAnswer(answer, { voice });
+  const manager = normalizeAgentManagerAnswer(
+    question,
+    grounding,
+    shaped,
+    citations,
+    bundle,
+    managerPages,
+  );
+  return {
+    answer: manager.prose,
+    grounding,
+    verification: manager.verification,
+    usedLlm,
+    ...(citations.length ? { citations } : {}),
+  };
+}
+
+async function deliverChatAgentTurn(
+  question: string,
+  grounding: AskGrounding,
+  history: ConversationTurn[],
+  prepared: {
+    tier: AnalysisTier;
+    client: Pick<Anthropic, "messages">;
+    candidateUnrecognized: boolean;
+  },
+  signal: AbortSignal | undefined,
+  requestStartedAt: number,
+  voice?: "desk",
+): Promise<ScopedAskPayload> {
+  let bundle: EvidenceBundle = { queries: [], results: [], providerCalls: 0 };
+  let agentText = "";
+  const turnStartedAt = Date.now();
+  const metrics: ChatAgentTurnMetrics = emptyChatAgentTurnMetrics();
+  let pendingError: unknown = null;
+  let generationBudgetHit = false;
+  try {
+    if (grounding?.kind === "match") {
+      agentText = await generateOrDegradeToGrounding(
+        grounding,
+        signal,
+        requestStartedAt,
+        async (genSignal) => {
+          const result = await runChatAgent(question, grounding, prepared.client, genSignal, {
+            hardBudgetMs: agentGenerationBudgetMs(requestStartedAt),
+          });
+          bundle = result.bundle;
+          Object.assign(metrics, result.metrics);
+          return result.text;
+        },
+        { budgetCapMs: AGENT_GENERATION_BUDGET_MS },
+      );
+      if (!agentText.trim()) generationBudgetHit = true;
+    } else {
+      const result = await runChatAgent(question, grounding, prepared.client, signal, {
+        hardBudgetMs: AGENT_GENERATION_BUDGET_MS,
+      });
+      bundle = result.bundle;
+      agentText = result.text;
+      Object.assign(metrics, result.metrics);
+    }
+  } catch (error) {
+    const timedOut = error instanceof AppError && error.statusCode === 504;
+    const cancelled = isCancellation(error, signal);
+    metrics.outcome = cancelled ? "cancelled" : timedOut ? "timeout" : "error";
+    if (timedOut) metrics.capHit = metrics.capHit ?? "time";
+    if (!timedOut && !cancelled) pendingError = error;
+    agentText = "";
+  } finally {
+    metrics.latencyMs = Date.now() - turnStartedAt;
+    metrics.publisherFetches = bundle.providerCalls ?? metrics.publisherFetches;
+    if (generationBudgetHit && !metrics.capHit) metrics.capHit = "generation_budget";
+    if ((!agentText.trim() || containsAgentInternalWording(agentText))
+      && metrics.outcome === "success") {
+      metrics.outcome = "fallback";
+    }
+    logChatAgentTurn(metrics);
+  }
+  if (pendingError) mapAnalysisError(pendingError);
+
+  let managerPages: RetrievedEvidencePage[] | undefined;
+  const managerScope = singleClubCurrentFactScope(question, grounding);
+  if (managerScope?.kind === "manager" && bundle.results.length && !signal?.aborted) {
+    try {
+      managerPages = await fetchManagerPublisherPages(bundle, signal);
+    } catch (error) {
+      if (!isCancellation(error, signal)) managerPages = [];
+    }
+  }
+
+  if (!agentText.trim() || containsAgentInternalWording(agentText)) {
+    metrics.outcome = metrics.outcome === "success" ? "fallback" : metrics.outcome;
+    const fallbackProse = resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, agentText);
+    return packageAgentDirectAnswer(
+      question,
+      grounding,
+      bundle,
+      fallbackProse,
+      history.length > 0,
+      metrics.toolSteps > 0,
+      voice,
+      managerPages,
+    );
+  }
+
+  let prose = envelopChatAgentAnswer(agentText, question, grounding, {
+    hasHistory: history.length > 0,
+    voice,
+  });
+  prose = finalizeChatAgentAnswer(prose, grounding);
+
+  return packageAgentDirectAnswer(
+    question,
+    grounding,
+    bundle,
+    prose,
+    history.length > 0,
+    true,
+    voice,
+    managerPages,
+  );
 }
 
 export async function answerQuestion(
@@ -9967,12 +10691,7 @@ async function answerQuestionScoped(
   fixtureContext?: FixtureContext,
   userLine?: UserLine,
   voice?: "desk"
-): Promise<{
-  answer: string;
-  grounding: AskGrounding;
-  citations?: AskCitation[];
-  verification: AskVerification;
-}> {
+): Promise<ScopedAskPayload> {
   const requestStartedAt = Date.now();
   const resultRecord = ownedLatestResult(question);
   if (resultRecord) {
@@ -9988,11 +10707,13 @@ async function answerQuestionScoped(
   );
   const grounding = withOptionalUserLine(prepared.grounding, userLine);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
+  const agentEngineActive = isChatAgentEngine() && Boolean(client);
   try {
     const evidenceFollowUp = promptExtractionResponse(question)
       ?? worldCupRetiredResponse(question, grounding)
       ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_evidence_follow_up");
       return {
         answer: evidenceFollowUp,
         grounding,
@@ -10008,6 +10729,7 @@ async function answerQuestionScoped(
         const scopeQuery = deterministicSearchQuery(question, correctionSearchContext(history, grounding), grounding);
         if (scopeQuery) await buildEvidenceBundle(scopeQuery, signal);
       }
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_analysis");
       return {
         answer: deterministicAnalysis,
         grounding,
@@ -10016,6 +10738,7 @@ async function answerQuestionScoped(
     }
     const clarification = deterministicUngroundedClarification(question, grounding);
     if (clarification) {
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_clarification");
       return {
         answer: clarification,
         grounding,
@@ -10035,12 +10758,25 @@ async function answerQuestionScoped(
       // so the closed notice is returned after the lookup without giving the
       // provider or generated prose authority over fixture identity.
       if (query) await buildEvidenceBundle(query, signal);
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "coverage_closed");
       return {
         answer: coverageClosed,
         grounding,
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
+    if (isChatAgentEngine() && client && chatAgentGroundingEligible(grounding)) {
+      return deliverChatAgentTurn(
+        question,
+        grounding,
+        history,
+        { tier, client, candidateUnrecognized },
+        signal,
+        requestStartedAt,
+        voice,
+      );
+    }
+    if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "grounding_ineligible_legacy_path");
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     const deskPlan = planResponse(question, {
       groundingKind: grounding?.kind ?? undefined,
@@ -10084,8 +10820,26 @@ async function answerQuestionScoped(
       : prioritizedBundle;
     let managerPages: RetrievedEvidencePage[] | undefined;
     if (clubFact?.kind === "manager") {
+      console.info(JSON.stringify({
+        event: "manager_lookup_evidence",
+        phase: "post_search_pre_hydrate",
+        club: clubFact.club,
+        sourcesBeforeFilter: rawBundle.results.length,
+        datedSourcesBeforeFilter: countDatedEvidenceSources(rawBundle.results),
+        sourcesAfterFilter: bundle.results.length,
+        datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+      }));
       managerPages = (await hydrateBundlePublicationDates(bundle, signal))
         .map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
+      console.info(JSON.stringify({
+        event: "manager_lookup_evidence",
+        phase: "post_hydrate",
+        club: clubFact.club,
+        sourcesAfterFilter: bundle.results.length,
+        datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+        hydratedPages: managerPages.length,
+        datedHydratedPages: managerPages.filter((page) => Number.isFinite(Date.parse(page.date))).length,
+      }));
     }
     // Desk team-news and scorer turns use the typed evidence path after search, whether
     // it yields a cited observation or a narrow abstention.
@@ -10097,13 +10851,33 @@ async function answerQuestionScoped(
     if (clubFact || (voice === "desk" && !deskUsesMatchEvidencePath)) {
       const managerDraft = managerScope && managerPages
         ? sourceOwnedManagerDraft(managerScope, bundle, managerPages) : undefined;
+      const sourceOwnedIdentity = Boolean(managerDraft?.includes("’s manager is"));
+      if (managerDraft) {
+        console.info(JSON.stringify({
+          event: "manager_lookup_evidence",
+          phase: "draft_selected",
+          club: clubFact?.club ?? managerScope?.club,
+          sourceOwnedIdentity,
+          usedGenerativeProse: false,
+        }));
+      }
       const prose = managerDraft ?? await writeDeskProse(question, grounding, history, signal, bundle, {
         generalConcept: grounding === null && query === null && bundle.queries.length === 0,
         managerPages,
       });
+      if (!prose && clubFact?.kind === "manager") {
+        console.info(JSON.stringify({
+          event: "manager_lookup_skipped",
+          reason: "no_desk_prose",
+          club: clubFact.club,
+          sourcesAfterFilter: bundle.results.length,
+          datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+        }));
+      }
       if (prose) {
-        const deliveryBundle = managerDraft === undefined ? bundle : { ...bundle,
-          results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) };
+        const deliveryBundle = sourceOwnedIdentity && managerDraft
+          ? { ...bundle, results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) }
+          : bundle;
         const delivered = await deliverAnswer({
           answer: prose,
           tier,
@@ -10118,11 +10892,14 @@ async function answerQuestionScoped(
           signal,
           voice,
           history,
+          managerPages,
+          sourceOwnedManagerDraft: sourceOwnedIdentity,
         });
         return {
           answer: delivered.answer,
           grounding,
           verification: delivered.verification,
+          usedLlm: true,
           ...(delivered.citations.length ? { citations: delivered.citations } : {}),
         };
       }
@@ -10135,6 +10912,7 @@ async function answerQuestionScoped(
         answer: scorerSettled.answer,
         grounding,
         verification: scorerSettled.verification,
+        usedLlm: true,
         ...(scorerSettled.citations.length ? { citations: scorerSettled.citations } : {}),
       };
     }
@@ -10171,10 +10949,11 @@ async function answerQuestionScoped(
       answer: delivered.answer,
       grounding,
       verification: delivered.verification,
+      usedLlm: true,
       ...(delivered.citations.length ? { citations: delivered.citations } : {}),
     };
   } catch (err) {
-    mapAnalysisError(err);
+    mapAnalysisError(err, signal);
   }
 }
 
@@ -10219,12 +10998,7 @@ async function answerQuestionStreamScoped(
   handlers: AskStreamHandlers,
   fixtureContext?: FixtureContext,
   userLine?: UserLine
-): Promise<{
-  answer: string;
-  grounding: AskGrounding;
-  citations?: AskCitation[];
-  verification: AskVerification;
-}> {
+): Promise<ScopedAskPayload> {
   const requestStartedAt = Date.now();
   const resultRecord = ownedLatestResult(question);
   if (resultRecord) {
@@ -10242,12 +11016,14 @@ async function answerQuestionStreamScoped(
   );
   const grounding = withOptionalUserLine(prepared.grounding, userLine);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
+  const agentEngineActive = isChatAgentEngine() && Boolean(client);
   handlers.onGrounding(grounding);
   try {
     const evidenceFollowUp = promptExtractionResponse(question)
       ?? worldCupRetiredResponse(question, grounding)
       ?? deterministicUngroundedEvidenceFollowUp(question, history, grounding);
     if (evidenceFollowUp) {
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_evidence_follow_up");
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(evidenceFollowUp);
       return {
         answer: evidenceFollowUp,
@@ -10264,6 +11040,7 @@ async function answerQuestionStreamScoped(
         const scopeQuery = deterministicSearchQuery(question, correctionSearchContext(history, grounding), grounding);
         if (scopeQuery) await buildEvidenceBundle(scopeQuery, handlers.signal);
       }
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_analysis");
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(deterministicAnalysis);
       return {
         answer: deterministicAnalysis,
@@ -10273,6 +11050,7 @@ async function answerQuestionStreamScoped(
     }
     const clarification = deterministicUngroundedClarification(question, grounding);
     if (clarification) {
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "deterministic_clarification");
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(clarification);
       return {
         answer: clarification,
@@ -10291,6 +11069,7 @@ async function answerQuestionStreamScoped(
       const settledCoverage = ANALYST_RESPONSE_V2
         ? normalizeAnalystIdentity(coverageClosed)
         : coverageClosed;
+      if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "coverage_closed");
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(settledCoverage);
       return {
         answer: settledCoverage,
@@ -10298,6 +11077,19 @@ async function answerQuestionStreamScoped(
         verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
       };
     }
+    if (isChatAgentEngine() && client && chatAgentGroundingEligible(grounding)) {
+      const delivered = await deliverChatAgentTurn(
+        question,
+        grounding,
+        history,
+        { tier, client, candidateUnrecognized },
+        handlers.signal,
+        requestStartedAt,
+      );
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(delivered.answer);
+      return delivered;
+    }
+    if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "grounding_ineligible_legacy_path");
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     if (closedAnswer) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(closedAnswer);
@@ -10327,23 +11119,65 @@ async function answerQuestionStreamScoped(
       : prioritizedBundle;
     let managerPages: RetrievedEvidencePage[] | undefined;
     if (clubFact?.kind === "manager") {
+      console.info(JSON.stringify({
+        event: "manager_lookup_evidence",
+        phase: "post_search_pre_hydrate",
+        club: clubFact.club,
+        sourcesBeforeFilter: rawBundle.results.length,
+        datedSourcesBeforeFilter: countDatedEvidenceSources(rawBundle.results),
+        sourcesAfterFilter: bundle.results.length,
+        datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+      }));
       managerPages = (await hydrateBundlePublicationDates(bundle, handlers.signal))
         .map((page) => ({ ...page, text: publisherOwnedManagerBody(page) }));
+      console.info(JSON.stringify({
+        event: "manager_lookup_evidence",
+        phase: "post_hydrate",
+        club: clubFact.club,
+        sourcesAfterFilter: bundle.results.length,
+        datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+        hydratedPages: managerPages.length,
+        datedHydratedPages: managerPages.filter((page) => Number.isFinite(Date.parse(page.date))).length,
+      }));
     }
     // A direct club identity/result is evidence prose, not a forecast draft.
     // Hold every delta until its dated claims have passed the same verifier.
     if (clubFact) {
       const managerDraft = managerScope && managerPages
         ? sourceOwnedManagerDraft(managerScope, bundle, managerPages) : undefined;
+      const sourceOwnedIdentity = Boolean(managerDraft?.includes("’s manager is"));
+      if (managerDraft) {
+        console.info(JSON.stringify({
+          event: "manager_lookup_evidence",
+          phase: "draft_selected",
+          club: clubFact.club,
+          sourceOwnedIdentity,
+          usedGenerativeProse: false,
+        }));
+      }
       const prose = managerDraft ?? await writeDeskProse(question, grounding, history, handlers.signal, bundle, { managerPages });
+      if (!prose && clubFact.kind === "manager") {
+        console.info(JSON.stringify({
+          event: "manager_lookup_skipped",
+          reason: "no_desk_prose",
+          club: clubFact.club,
+          sourcesAfterFilter: bundle.results.length,
+          datedSourcesAfterFilter: countDatedEvidenceSources(bundle.results),
+        }));
+      }
       if (prose) {
-        const deliveryBundle = managerDraft === undefined ? bundle : { ...bundle,
-          results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) };
+        const deliveryBundle = sourceOwnedIdentity && managerDraft
+          ? { ...bundle, results: bundle.results.filter((source) => evidenceMarkerIds(managerDraft).includes(source.id)) }
+          : bundle;
         const delivered = await deliverAnswer({
           answer: prose, tier, grounding, bundle: deliveryBundle, client, question,
           evidenceRequired: Boolean(query || bundle.queries.length),
           candidateUnrecognized, hasHistory: history.length > 0,
           structuredDraftExpected: false, signal: handlers.signal,
+          voice: "desk",
+          history,
+          managerPages,
+          sourceOwnedManagerDraft: sourceOwnedIdentity,
         });
         if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(delivered.answer);
         return {
@@ -10427,6 +11261,6 @@ async function answerQuestionStreamScoped(
       ...(delivered.citations.length ? { citations: delivered.citations } : {}),
     };
   } catch (err) {
-    mapAnalysisError(err);
+    mapAnalysisError(err, handlers.signal);
   }
 }

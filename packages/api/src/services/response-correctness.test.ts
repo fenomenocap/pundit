@@ -134,7 +134,7 @@ describe("pricing math", () => {
     expect(pricing.markets[0].legs.home.impliedP).toBeCloseTo(1 / 7);
     expect(pricing.markets[0].legs.draw.evPct).toBeNull();
     expect(pricing.markets[0].legs.away.evPct).toBeCloseTo(-0.1);
-    expect(pricing.markets[0].edgeBand).toBe("fat-and-fragile");
+    expect(pricing.markets[0].edgeBand).toBeNull();
   });
 
   it("fills userLine from modelP * decimal - 1 and leaves stakeFrac null", () => {

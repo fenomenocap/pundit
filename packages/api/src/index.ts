@@ -37,6 +37,7 @@ import { getWebSearchStatus } from "./services/web-search";
 import { getAnalystResponseStatus, getInferenceStatus } from "./services/ask";
 import { getRuntimeVersion } from "./services/runtime-version";
 import { getEplGoalCalibrationReadiness } from "./services/epl-goal-calibration-artifact";
+import { loadBacktestGateArtifact, backtestPromotedModelEnabled } from "./services/backtest-gate";
 import {
   getFixtureRegistryStatus,
   getRecognizedFixtureSnapshot,
@@ -171,6 +172,11 @@ app.get("/ready", (_req, res) => {
       ratingArtifactId: ratings.artifactId,
       ratingArtifactSha256: ratings.artifactSha256,
       goalCalibration,
+      backtestGate: {
+        edgeValidationActive: loadBacktestGateArtifact().edgeValidationActive,
+        promotedModel: loadBacktestGateArtifact().promotedModel,
+        promotedModelEnabled: backtestPromotedModelEnabled(),
+      },
     },
     football: {
       ready: readiness.footballReady,

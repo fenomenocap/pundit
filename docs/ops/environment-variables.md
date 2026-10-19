@@ -1,0 +1,74 @@
+# Environment variables
+
+Names only — never commit secret **values**. Production secrets live in Railway and Vercel. Local development uses a gitignored repo-root `.env` (see [README](../../README.md)); the web app receives only `NEXT_PUBLIC_*` keys via `packages/web/next.config.mjs`.
+
+## API — core
+
+| Variable | Purpose |
+| --- | --- |
+| `API_PORT` | Local listen port (default 3001) |
+| `API_URL` | Base URL for internal references |
+| `PORT` | Railway/Heroku-style port override |
+| `ALLOWED_ORIGINS` | Comma-separated CORS origins; empty = open (dev only) |
+| `PUNDIT_DATA_DIR` | Writable durable state (`/data` in prod; else `packages/api/data`) |
+
+## API — model & fixtures policy
+
+| Variable | Purpose |
+| --- | --- |
+| `FIXTURE_REGISTRY_ENABLED` | Expanded recognized-fixture routing (default false) |
+| `FRIENDLY_SHADOW_ENABLED` | Private friendly-shadow ledger (default false) |
+| `PROSPECTIVE_MODEL_CAPTURE` | Retired prospective collector; keep `false` for v3 |
+| `BACKTEST_PROMOTED_MODEL_ENABLED` | Allow backtest-promoted model path (default false) |
+
+## API — inference & chat
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENROUTER_API_KEY` | Answers + search (production primary) |
+| `OPENROUTER_MODEL` | Optional override; auto/online lists ignored |
+| `OPENROUTER_BASE_URL` | OpenRouter API host |
+| `MINIMAX_API_KEY` | Answer fallback when OpenRouter unset |
+| `MINIMAX_MODEL` | MiniMax model id |
+| `MINIMAX_BASE_URL` | Region-scoped Anthropic-compatible host |
+| `PUNDIT_REASONING` | Set `off` to disable reasoning on OpenRouter (default off in prod) |
+| `CHAT_ENGINE` | `agent` for tool-calling engine; default `legacy` |
+| `ANALYST_RESPONSE_V2` | Response-facts architecture; set exactly `false` for emergency rollback |
+
+## API — search & rate limits
+
+| Variable | Purpose |
+| --- | --- |
+| `WEB_SEARCH_PROVIDER_ORDER` | Provider preference list |
+| `WEB_SEARCH_CONCURRENCY` | In-flight search cap (default 4, max 8) |
+| `WEB_SEARCH_REPLAY_RECORD` | Record search payloads for replay id (eval tooling) |
+| `ASK_RATE_LIMIT_PER_MINUTE` | Deployment-wide `/api/ask` limit |
+| `API_REPLICAS` | Divides rate limit across processes |
+
+## API — build / ops metadata
+
+| Variable | Purpose |
+| --- | --- |
+| `BUILD_SHA` | Served build identifier when not injected by platform |
+
+## Chat eval (CLI / CI, not production Railway defaults)
+
+| Variable | Purpose |
+| --- | --- |
+| `CHAT_EVAL_SEARCH_REPLAY_DIR` | Directory of recorded search fixtures |
+| `CHAT_EVAL_SEARCH_REPLAY_ID` | Select replay bundle for a run |
+| `CHAT_EVAL_ENGINE` | `agent` or legacy for battle-test |
+| `PUNDIT_DEPLOYMENT_ID` | Bind eval artifact to deployment |
+| `PUNDIT_SOURCE_SHA` | Expected source SHA for eval run |
+
+## Web (Next.js)
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | Browser API base |
+| `NEXT_PUBLIC_USE_MOCK` | `true` = mock fixtures; `false` = live API |
+| `NEXT_PUBLIC_DOCS_URL` | Public GitBook URL for in-app doc links |
+| `VERCEL_GIT_COMMIT_SHA` | Set by Vercel for `/api/version` |
+| `BUILD_SHA` | Fallback build SHA on web |
+
+Template with comments: [`.env.example`](../../.env.example). Agent-oriented summary: [`CLAUDE.md`](../../CLAUDE.md).

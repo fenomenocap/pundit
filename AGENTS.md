@@ -89,7 +89,11 @@ packages/api/src/
   index.ts                         — Express routes, readiness, ordered cache bootstrap
   routes/ask.ts                    — validation, history limits, 10/min limiter
   services/
-    ask.ts                         — four-tier MiniMax orchestration and grounding
+    ask.ts                         — four-tier grounding and answer orchestration
+    chat-engine.ts                 — legacy vs agent mode; eval header override
+    chat-agent.ts                  — eval-only tool-calling engine
+    external-market-consensus.ts   — volume-weighted market consensus line
+    backtest-gate.ts               — pinned walk-forward gate artifact
     club-strength-artifact.ts      — pinned artifact schema/hash/freshness validation
     club-ratings.ts                — local artifact adapter by rating profile
     dixon-coles.ts                 — preserved rating/HFA baseline and score-grid primitives
