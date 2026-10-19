@@ -24,8 +24,6 @@ import {
   asksUnpricedMarket,
   asksParlayQuestion,
   mentionsBankroll,
-  asksMatchWinnerQuestion,
-  asksFixturePriceBoard,
   BANKROLL_UNIT_GUIDANCE,
   planResponse,
   pricedGridMarketsAsked,
@@ -38,11 +36,9 @@ import {
   deskProvenanceLine,
   deskProbabilityDisplay,
   displayOutcomeLabel,
-  formatBiggestGapHeadline,
+  composeIndependentMarketTakeAnswer,
   formatBttsSideRow,
   formatCompact1x2SideRow,
-  formatMarketActionLean,
-  formatWhoWinsOpening,
   composeWhyAfterPricedTurn,
   compactTeamLabel,
   formatModelOnlySideRows,
@@ -191,10 +187,6 @@ function composeTotalsBasics(question: string, grounding: Grounding): string {
     ].filter(Boolean) as string[],
     provenance: deskProvenanceLine(grounding),
   });
-}
-
-function include1x2TableCaveat(question: string): boolean {
-  return asksMatchWinnerQuestion(question) || asksFixturePriceBoard(question);
 }
 
 function slateGapRowLabel(highlight: SlateGapHighlight): string {
@@ -424,44 +416,13 @@ function formatOneXTwoSide(
   }).join(", ").replace(/, ([^,]+)$/, " and $1");
 }
 
-/** Full three-way model vs market comparison; optional side lead from the question. */
+/** Independent model take first, single market reference block, no Lean line. */
 export function composeMarketComparisonAnswer(question: string, grounding: Grounding): string | null {
-  const divergence = grounding.marketDivergence[0];
-  if (!divergence) {
-    return grounding.externalMarketConsensus
-      ? null
-      : "I don’t have a complete, same-source and same-time 1X2 market to compare with this fixture, so I can’t claim a pricing disagreement.";
+  void question;
+  if (!grounding.marketDivergence[0] && grounding.externalMarketConsensus) {
+    return null;
   }
-  const source = capitalizeSource(divergence.source);
-  const focus = focusOneXTwoOutcome(question, grounding);
-  const valueLeg = selectValueLeg(divergence.legs);
-  const headline = asksMatchWinnerQuestion(question)
-    ? formatWhoWinsOpening(grounding, divergence, valueLeg, source)
-    : formatBiggestGapHeadline(grounding, valueLeg, source);
-  const pricingRow = grounding.pricing.markets.find((row) => row.source === divergence.source);
-  const beforeFees = divergence.source === "kalshi" || divergence.source === "polymarket";
-  const sideRows = orderOutcomes(focus).map((outcome) => {
-    const leg = divergence.legs.find((row) => row.outcome === outcome)!;
-    const marketDec = pricingRow?.legs[outcome].decimalOdds ?? null;
-    return formatCompact1x2SideRow({
-      label: displayOutcomeLabel(grounding, outcome),
-      modelP: leg.modelPercent / 100,
-      marketDecimal: marketDec,
-      marketP: leg.marketPercent / 100,
-      gapPoints: leg.gapPoints,
-      sourceLabel: source,
-      beforeFees,
-    });
-  });
-  const caveat = include1x2TableCaveat(question) ? tableVsModelFavoriteExplainLine(grounding) : null;
-  const valueMarketDec = pricingRow?.legs[valueLeg.outcome].decimalOdds
-    ?? (valueLeg.marketPercent > 0 ? 100 / valueLeg.marketPercent : null);
-  return joinBasicsAnswer({
-    headline,
-    supports: [caveat, ...sideRows].filter(Boolean) as string[],
-    lean: valueMarketDec != null ? formatMarketActionLean(grounding, valueLeg, valueMarketDec) : undefined,
-    provenance: deskProvenanceLine(grounding, { source: divergence.source, observedAt: divergence.observedAt }),
-  });
+  return composeIndependentMarketTakeAnswer(grounding, "full");
 }
 
 function capitalizeSource(source: string): string {
@@ -845,14 +806,7 @@ export function composeMatchResponse(
     });
   }
   if (plan.mode === "priced-why") {
-    const market = grounding.marketDivergence[0];
-    return joinBasicsAnswer({
-      headline: composeWhyAfterPricedTurn(grounding),
-      provenance: deskProvenanceLine(
-        grounding,
-        market ? { source: market.source, observedAt: market.observedAt } : undefined,
-      ),
-    });
+    return composeWhyAfterPricedTurn(grounding);
   }
   if (plan.mode === "market-comparison") {
     return composeMarketComparisonAnswer(question, grounding)
