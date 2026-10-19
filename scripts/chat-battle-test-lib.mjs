@@ -415,11 +415,24 @@ export function isKnownTeam(team) {
     && !/\b(?:winner|loser)\b/i.test(team);
 }
 
+const FEATURED_COMPETITION_PRIORITY = {
+  "eng.1": 1,
+  "uefa.champions_qual": 2,
+};
+
+/** Same lead ordering as homepage featured chips and `getLeadFeaturedModelFixture`. */
 export function selectFeaturedMatch(matches = []) {
-  return matches.find((match) =>
+  const priced = matches.filter((match) =>
     isKnownTeam(match.home)
     && isKnownTeam(match.away)
-  ) ?? null;
+  );
+  if (priced.length === 0) return null;
+  return [...priced].sort((left, right) => {
+    const priorityDiff = (FEATURED_COMPETITION_PRIORITY[left.competitionId] ?? 99)
+      - (FEATURED_COMPETITION_PRIORITY[right.competitionId] ?? 99);
+    if (priorityDiff !== 0) return priorityDiff;
+    return new Date(left.utcDate).getTime() - new Date(right.utcDate).getTime();
+  })[0];
 }
 
 function clubPairKey(match) {

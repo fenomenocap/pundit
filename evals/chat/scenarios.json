@@ -994,6 +994,49 @@
       ]
     },
     {
+      "id": "featured-match-deictic-routing",
+      "description": "Runtime routing contract: deictic homepage featured-match wording resolves to the lead featured priced fixture instead of an unconfirmed-fixture candidate.",
+      "kind": "runtime-helper",
+      "helper": "resolveFixtureRoutingSequence",
+      "args": {
+        "modelFixtures": [
+          {"competitionId": "uefa.champions_qual", "competition": "UEFA Champions League Qualifiers", "fixtureId": 7001, "utcDate": "2026-10-19T17:00:00.000Z", "date": "2026-10-19", "group": null, "stage": "qualifying", "home": "Riga", "away": "Zagreb", "homeElo": 1500, "awayElo": 1520, "pHome": 0.4, "pDraw": 0.25, "pAway": 0.35, "pOver2_5": 0.5, "pUnder2_5": 0.5, "pBttsYes": 0.5, "pBttsNo": 0.5, "topScores": [], "scorelines": [], "stakePHome": null, "stakePDraw": null, "stakePAway": null, "result": null},
+          {"competitionId": "eng.1", "competition": "Premier League", "fixtureId": 7002, "utcDate": "2026-10-19T19:00:00.000Z", "date": "2026-10-19", "group": null, "stage": "match", "home": "Tottenham Hotspur", "away": "Coventry City", "homeElo": 1800, "awayElo": 1600, "pHome": 0.7, "pDraw": 0.18, "pAway": 0.12, "pOver2_5": 0.55, "pUnder2_5": 0.45, "pBttsYes": 0.48, "pBttsNo": 0.52, "topScores": [], "scorelines": [], "stakePHome": null, "stakePDraw": null, "stakePAway": null, "result": null}
+        ],
+        "routingState": {
+          "modelInitialized": true,
+          "ratingsAvailable": true,
+          "featuredLeadFixture": {"competitionId": "eng.1", "competition": "Premier League", "fixtureId": 7002, "utcDate": "2026-10-19T19:00:00.000Z", "date": "2026-10-19", "group": null, "stage": "match", "home": "Tottenham Hotspur", "away": "Coventry City", "homeElo": 1800, "awayElo": 1600, "pHome": 0.7, "pDraw": 0.18, "pAway": 0.12, "pOver2_5": 0.55, "pUnder2_5": 0.45, "pBttsYes": 0.48, "pBttsNo": 0.52, "topScores": [], "scorelines": [], "stakePHome": null, "stakePDraw": null, "stakePAway": null, "result": null}
+        },
+        "steps": [
+          {"question": "What's the fair price on today's featured match and is there any edge vs the market?"},
+          {"question": "Fair price on the featured game?"},
+          {"question": "What about today's game on the desk?"}
+        ]
+      },
+      "expect": [
+        {"tier": "match", "fixtureId": "eng.1:7002", "capability": null},
+        {"tier": "match", "fixtureId": "eng.1:7002", "capability": null},
+        {"tier": "match", "fixtureId": "eng.1:7002", "capability": null}
+      ],
+      "forbidText": ["candidate"]
+    },
+    {
+      "id": "featured-match-fair-price-vs-market",
+      "description": "Homepage deictic featured match resolves to the lead priced fixture and answers fair price vs market without an unconfirmed-fixture notice.",
+      "kind": "featured-deictic",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
+        {
+          "question": "What's the fair price on today's featured match and is there any edge vs the market?",
+          "expectGrounding": "match",
+          "expectPricingDesk": true,
+          "forbidText": ["couldn't confirm", "unconfirmed fixture"]
+        }
+      ]
+    },
+    {
       "id": "contextual-follow-up",
       "description": "A pronoun follow-up retains the dynamically discovered featured match context.",
       "kind": "featured-follow-up"

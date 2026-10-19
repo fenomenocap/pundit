@@ -132,6 +132,8 @@ import {
   composeMatchResponse,
   composeTeamNewsAnswer,
 } from "./response-composer";
+import { getLeadFeaturedModelFixture } from "./featured-fixtures";
+import { isNonFixtureVersusTarget, referencesFeaturedMatchDeictic } from "./featured-match-deictic";
 import {
   DESK_BOARD_FALLBACK,
   DESK_GENERAL_CONCEPT_SYSTEM,
@@ -478,6 +480,8 @@ type TeamFixture = Pick<ModelFixture, "home" | "away">;
 export interface FixtureRoutingState {
   recognizedFixtures?: RecognizedFixture[];
   fixtureContext?: FixtureContext;
+  /** Test override for the homepage featured fixture (deictic "featured match"). */
+  featuredLeadFixture?: ModelFixture;
   modelInitialized?: boolean;
   modelRefreshing?: boolean;
   ratingsAvailable?: boolean;
@@ -4416,8 +4420,12 @@ function hasExplicitMatchupCue(question: string): boolean {
 }
 
 function hasUnresolvedFixtureShape(question: string): boolean {
-  return /\b[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}\s+(?:vs?\.?|versus|against)\s+[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}(?:[?!.,]|$)/iu
-    .test(question);
+  const match = /\b[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}\s+(?:vs?\.?|versus|against)\s+([\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100})(?:[?!.,]|$)/iu
+    .exec(question);
+  if (!match) return false;
+  const rightSide = normalizeTeamText(match[1] ?? "");
+  if (isNonFixtureVersusTarget(rightSide)) return false;
+  return true;
 }
 
 /**
@@ -5182,6 +5190,11 @@ export function resolveAskContext(
 
   if (explicitFixture && (!competitionId || hasExplicitMatchupCue(question))) {
     return { tier: "match", fixture: explicitFixture };
+  }
+
+  if (!teams && !competitionId && referencesFeaturedMatchDeictic(question)) {
+    const lead = routing.featuredLeadFixture ?? getLeadFeaturedModelFixture();
+    if (lead) return { tier: "match", fixture: lead };
   }
 
   if (!competitionId) {
