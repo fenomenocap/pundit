@@ -6,6 +6,8 @@ export type PunditTakeMode = "legacy" | "v2";
 
 interface TakeRequestScope {
   mode: PunditTakeMode;
+  /** True only when `x-pundit-take: v2` was explicitly supplied for this request. */
+  headerExplicitV2: boolean;
   delivery: PunditTakeDelivery | null;
   dossier: MatchDossier | null;
   prefetchedDelivery: PunditTakeDelivery | null;
@@ -56,6 +58,13 @@ export function punditTakeV2Active(): boolean {
   return configuredPunditTakeV2();
 }
 
+/** Internal-only dossier facts (FPL bootstrap) — header override only, never env default. */
+export function punditTakeV2HeaderOverrideActive(): boolean {
+  const scoped = takeRequestScope.getStore();
+  if (scoped) return scoped.mode === "v2" && scoped.headerExplicitV2;
+  return false;
+}
+
 export function stashPunditTakeDelivery(delivery: PunditTakeDelivery): void {
   const scoped = takeRequestScope.getStore();
   if (scoped) scoped.delivery = delivery;
@@ -97,6 +106,19 @@ export function withPunditTakeRequestScope<T>(
   if (effective !== "v2") return fn();
   return takeRequestScope.run({
     mode: "v2",
+    headerExplicitV2: headerOverride === "v2",
+    delivery: null,
+    dossier: null,
+    prefetchedDelivery: null,
+  }, fn);
+}
+
+/** Test/production seam when take v2 is enabled via env without a header override. */
+export function withConfiguredPunditTakeV2Scope<T>(fn: () => T): T {
+  if (!configuredPunditTakeV2()) return fn();
+  return takeRequestScope.run({
+    mode: "v2",
+    headerExplicitV2: false,
     delivery: null,
     dossier: null,
     prefetchedDelivery: null,

@@ -1,8 +1,9 @@
 import type { Grounding } from "../ask";
-import type { MatchDossier } from "../match-dossier/types";
+import { isFplBootstrapInjuryItem, type MatchDossier } from "../match-dossier/types";
 import { compactTeamLabel } from "../basics-answer-voice";
 import type { TakePlanPoint } from "./types";
 import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
+import { buildFplInternalInjuryPoints } from "./take-fpl-injuries";
 
 /** Goal-rate copy must match calibrated grid means on the same row as pBTTS / totals. */
 function calibratedGoalRatesOnRow(grounding: Grounding): boolean {
@@ -141,6 +142,8 @@ export function buildContradictingPointsShared(
 ): TakePlanPoint[] {
   const points: TakePlanPoint[] = [];
 
+  points.push(...buildFplInternalInjuryPoints(grounding, dossier));
+
   const homeForm = dossier?.form.homeLast5.value;
   if (homeForm && homeForm.played >= 3 && favSide === "home") {
     points.push({
@@ -151,7 +154,9 @@ export function buildContradictingPointsShared(
     });
   }
 
-  const injuryItems = (dossier?.injuries.value.items ?? []).filter(takeEligibleDossierEvidence);
+  const injuryItems = (dossier?.injuries.value.items ?? [])
+    .filter((item) => !isFplBootstrapInjuryItem(item))
+    .filter(takeEligibleDossierEvidence);
   if (injuryItems.length) {
     points.push({
       id: "fact-injuries",

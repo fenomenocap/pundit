@@ -15,7 +15,7 @@ import { renderTakeProse } from "./take-llm";
 import { renderTakeProseDeterministic } from "./take-prose";
 import { formatPassPlayLineTable } from "./take-pass-play-table";
 import { formatTakeOddsTable } from "./take-table";
-import { buildTakeSourcesFooter } from "./take-sources";
+import { buildTakeSourcesFooter, formatTakeSourcesFooterBlock } from "./take-sources";
 import {
   renderDrawFocusTakeProse,
   renderOddsProvenanceTakeProse,
@@ -78,11 +78,14 @@ function assembleDelivery(
     : passPlay
       ? formatPassPlayLineTable(grounding)
       : formatTakeOddsTable(planJson);
-  const answer = table ? `${prose.trim()}\n\n${table}`.trim() : prose.trim();
+  const sources = buildTakeSourcesFooter(grounding, resolvedDossier);
+  const footer = formatTakeSourcesFooterBlock(sources);
+  const body = table ? `${prose.trim()}\n\n${table}`.trim() : prose.trim();
+  const answer = footer ? `${body}\n\n${footer}`.trim() : body;
   return {
     answer,
     plan: planJson,
-    sources: buildTakeSourcesFooter(grounding, resolvedDossier),
+    sources,
   };
 }
 
