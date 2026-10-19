@@ -132,7 +132,7 @@ import {
   composeMatchResponse,
   composeTeamNewsAnswer,
 } from "./response-composer";
-import { getFeaturedModelFixtures } from "./featured-fixtures";
+import { getLeadFeaturedModelFixture } from "./featured-fixtures";
 import {
   composeSlateParlayAnswer,
   isNonFixtureVersusTarget,
@@ -486,8 +486,8 @@ type TeamFixture = Pick<ModelFixture, "home" | "away">;
 export interface FixtureRoutingState {
   recognizedFixtures?: RecognizedFixture[];
   fixtureContext?: FixtureContext;
-  /** Test override; production resolves from the active featured slate. */
-  featuredModelFixtures?: ModelFixture[];
+  /** Test override for the homepage featured fixture (deictic "featured match"). */
+  featuredLeadFixture?: ModelFixture;
   modelInitialized?: boolean;
   modelRefreshing?: boolean;
   ratingsAvailable?: boolean;
@@ -5199,8 +5199,7 @@ export function resolveAskContext(
   }
 
   if (!teams && !competitionId && referencesFeaturedMatchDeictic(question)) {
-    const featured = routing.featuredModelFixtures ?? getFeaturedModelFixtures();
-    const lead = featured[0];
+    const lead = routing.featuredLeadFixture ?? getLeadFeaturedModelFixture();
     if (lead) return { tier: "match", fixture: lead };
   }
 

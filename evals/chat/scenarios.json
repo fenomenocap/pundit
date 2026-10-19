@@ -1020,7 +1020,7 @@
         {
           "question": "Build me a 2-leg parlay from today's matches with the combined price",
           "expectGrounding": null,
-          "expectBettingMaths": { "kind": "slate-parlay", "minLegs": 2 },
+          "expectBettingMaths": { "kind": "slate-parlay", "minLegs": 2, "forbidEdgeWording": true },
           "forbidText": ["Brighton", "Nottingham Forest", "Forest's full-backs"]
         }
       ]
@@ -1040,7 +1040,8 @@
             "kind": "slate-acca",
             "minLegs": 2,
             "requestedLegs": 5,
-            "expectKickoffFallbackNotice": true
+            "expectKickoffFallbackNotice": true,
+            "forbidEdgeWording": true
           },
           "forbidText": ["Brighton", "Nottingham Forest"]
         }

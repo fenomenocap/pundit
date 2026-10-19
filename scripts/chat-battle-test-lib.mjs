@@ -444,10 +444,11 @@ function slateClubNames(slate = []) {
 function parseLegLines(answer) {
   const legs = [];
   for (const line of String(answer).split("\n")) {
-    const match = /^(.+?)\s+v\s+(.+?):\s+.+?\s+at\s+(\d+(?:\.\d+)?)\s*%\s*\(fair\s+(\d+(?:\.\d+)?)\)/i.exec(line.trim());
+    const match = /(?:^|·\s*)(.+?)\s+v\s+(.+?):\s+.+?\bmodel\s+(\d+(?:\.\d+)?)\s*%\s*\(fair\s+(\d+(?:\.\d+)?)\)/i.exec(line.trim())
+      ?? /^(.+?)\s+v\s+(.+?):\s+.+?\s+at\s+(\d+(?:\.\d+)?)\s*%\s*\(fair\s+(\d+(?:\.\d+)?)\)/i.exec(line.trim());
     if (!match) continue;
     legs.push({
-      home: match[1].trim(),
+      home: match[1].trim().replace(/^.*·\s*/, ""),
       away: match[2].trim(),
       probability: Number.parseFloat(match[3]) / 100,
       fair: Number.parseFloat(match[4]),
@@ -463,7 +464,8 @@ function parseCombinedProbability(answer) {
 }
 
 function parseCombinedFairDecimal(answer) {
-  const match = /fair combined decimal about\s+(\d+(?:\.\d+)?)/i.exec(answer);
+  const match = /fair combined decimal about\s+(\d+(?:\.\d+)?)/i.exec(answer)
+    ?? /combined fair ~(\d+(?:\.\d+)?)/i.exec(answer);
   return match ? Number.parseFloat(match[1]) : null;
 }
 
@@ -510,13 +512,17 @@ export function validateBettingMaths(answer, slate = [], expectation = {}) {
     );
     const product = legs.reduce((acc, leg) => acc * leg.probability, 1);
     const stated = parseCombinedProbability(text);
-    assertions.combinedProductCorrect = legs.length >= 2
-      && stated != null
-      && Math.abs(stated - product) <= 0.002;
     const statedFair = parseCombinedFairDecimal(text);
+    assertions.combinedProductCorrect = legs.length >= 2 && (
+      (stated != null && Math.abs(stated - product) <= 0.002)
+      || (statedFair != null && Math.abs(statedFair - (1 / product)) <= 0.08)
+    );
     assertions.combinedFairDecimal = statedFair != null
       && Math.abs(statedFair - (1 / product)) <= 0.08;
     assertions.correlationNote = /\b(?:not independent|correlation)\b/i.test(text);
+    if (expectation.forbidEdgeWording) {
+      assertions.noEdgeWording = !/\bedge\b/i.test(text);
+    }
     if (kind === "slate-acca" && expectation.expectKickoffFallbackNotice) {
       assertions.kickoffFallbackOrMatch = /\bno\s+3\s*pm\s+kick[\s-]?offs?\b/i.test(text)
         || legs.length >= Math.min(expectation.requestedLegs ?? 5, slate.length);

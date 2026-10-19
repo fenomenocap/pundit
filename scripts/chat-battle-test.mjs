@@ -28,7 +28,7 @@ import {
   recordOptionalScenarioFailure,
   sanitizeEvidence,
   selectFeaturedMatch,
-  selectFeaturedSlate,
+  isKnownTeam,
   validateBettingMaths,
   selectSuggestionChips,
   selectTwoLeggedTie,
@@ -1101,8 +1101,8 @@ async function runScenario(
   // label plus the identity of the fixture it was rendered from. A chip must
   // land on that fixture and no other.
   if (scenario.kind === "betting-maths-slate") {
-    const slate = selectFeaturedSlate(activeFixtures);
-    const lead = slate[0];
+    const slate = activeFixtures.filter((row) => isKnownTeam(row.home) && isKnownTeam(row.away));
+    const lead = selectFeaturedMatch(activeFixtures);
     if (!lead) {
       return {
         ...baseResult(scenario),

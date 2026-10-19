@@ -545,11 +545,10 @@ test("validateBettingMaths rejects off-slate parlay legs and checks combined pro
     { home: "Arsenal", away: "Crystal Palace", pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
   ];
   const good = [
-    "Here is a two-leg model read from today's priced desk slate — fair prices from my 1X2, not a bookmaker ticket.",
-    "Tottenham Hotspur v Coventry City: Tottenham Hotspur at 62.0% (fair 1.61) — ratings.",
-    "Arsenal v Crystal Palace: Arsenal at 58.0% (fair 1.72) — ratings.",
-    "Combined model probability 36.0% (fair combined decimal about 2.78).",
-    "These legs are not independent; correlation is material.",
+    "My two-leg: Tottenham Hotspur (Tottenham Hotspur v Coventry City), Arsenal (Arsenal v Crystal Palace), combined fair ~2.78.",
+    "Sun, 19 Oct, 15:00 UK · Tottenham Hotspur v Coventry City: Tottenham Hotspur model 62.0% (fair 1.61) — ratings.",
+    "Mon, 20 Oct, 15:00 UK · Arsenal v Crystal Palace: Arsenal model 58.0% (fair 1.72) — ratings.",
+    "Correlation: same-day and league context can move these legs together.",
   ].join("\n");
   assert.equal(validateBettingMaths(good, slate, { kind: "slate-parlay", minLegs: 2 }).passed, true);
   const bad = `${good}\nBrighton v Nottingham Forest: Brighton at 50.0% (fair 2.00) — tactical edge.`;

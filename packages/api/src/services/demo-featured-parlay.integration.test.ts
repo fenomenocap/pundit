@@ -34,7 +34,7 @@ describe("demo featured match and slate parlay", () => {
       lastUpdated: new Date(),
       error: null,
     });
-    const featured = vi.spyOn(featuredFixtures, "getFeaturedModelFixtures").mockReturnValue([spurs, arsenal]);
+    vi.spyOn(featuredFixtures, "getLeadFeaturedModelFixture").mockReturnValue(spurs);
     try {
       const featuredTurn = await answerQuestion(
         "What's the fair price on today's featured match and is there any edge vs the market?",
@@ -61,10 +61,10 @@ describe("demo featured match and slate parlay", () => {
       expect(parlayTurn.answer).toContain("Tottenham Hotspur v Coventry City");
       expect(parlayTurn.answer).toContain("Arsenal v Crystal Palace");
       expect(parlayTurn.answer).not.toMatch(/Brighton|Forest/i);
-      expect(parlayTurn.answer).toMatch(/Combined model probability/i);
+      expect(parlayTurn.answer).toMatch(/combined fair ~/i);
     } finally {
       cached.mockRestore();
-      featured.mockRestore();
+      vi.restoreAllMocks();
     }
   });
 });
