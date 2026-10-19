@@ -194,7 +194,8 @@ export function formatFixtureMyCallHeadline(grounding: Grounding): string {
   if (favourite.outcome === "draw") call = "draw";
   else if (favourite.outcome === "home") call = `${compactTeamLabel(grounding.home)} win`;
   else call = `${compactTeamLabel(grounding.away)} win`;
-  return `${grounding.home} v ${grounding.away} — my call: ${call}.`;
+  const modelPct = deskPercentDisplay(favourite.p);
+  return `${grounding.home} v ${grounding.away} — my call: ${call} at ${modelPct}.`;
 }
 
 export function formatModelOneXTwoCompactLine(grounding: Grounding): string {

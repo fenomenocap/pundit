@@ -319,9 +319,9 @@ describe("V2 deterministic fact delivery", () => {
 
   it("preserves a complete server-composed model-market comparison", async () => {
     const delivered = await deliverFallback("Where do you disagree most with the available 1X2 market?");
-    expect(delivered.answer).toMatch(/Arsenal.*40\.0%.*fair/i);
-    expect(delivered.answer).toMatch(/Market \(Kalshi no-vig,/i);
-    expect(delivered.answer).toMatch(/Biggest gap vs market:/i);
+    expect(delivered.answer).toMatch(/largest gap is on/i);
+    expect(delivered.answer).toMatch(/40\.0%.*Kalshi/i);
+    expect(delivered.answer).toMatch(/nothing about lineups on its own/i);
     expect(delivered.answer).not.toMatch(/^Lean:/m);
     expect(delivered.answer).not.toContain("omitted those numbers");
   });
