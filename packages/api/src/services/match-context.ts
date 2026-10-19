@@ -5,6 +5,7 @@ import {
   type ClubScorer,
   type ResultMark,
 } from "./club-form";
+import { getCachedMatchesForCompetition } from "./football-data";
 import { DEFAULT_HOME_ADVANTAGE_ELO, eloToLambdas } from "./dixon-coles";
 import { getResolvedActiveScoreModel } from "./active-score-model";
 import { EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN } from "./epl-goal-calibration-artifact";
@@ -61,6 +62,28 @@ function tableFromRow(row: {
 
 function teamRow(snapshot: ReturnType<typeof getClubFormSnapshot>, team: string) {
   return snapshot.teams.find((row) => sameClub(row.team, team));
+}
+
+function tableFromStandings(competitionId: string, team: string): MatchTableContext {
+  const row = getCachedMatchesForCompetition(competitionId).standings
+    .find((standing) => sameClub(standing.team, team));
+  if (!row) return emptyMatchTableContext();
+  return {
+    position: row.position,
+    points: row.points,
+    goalDifference: row.goalDifference,
+    playedGames: row.playedGames,
+  };
+}
+
+function resolveTeamTable(
+  competitionId: string,
+  team: string,
+  clubRow: ReturnType<typeof teamRow>,
+): MatchTableContext {
+  const fromClub = tableFromRow(clubRow);
+  if (fromClub.position != null && fromClub.points != null) return fromClub;
+  return tableFromStandings(competitionId, team);
 }
 
 function exactForecastInputs(fixture: ModelFixture): [number, number, number] {
@@ -159,8 +182,8 @@ export function buildMatchContext(fixture: ModelFixture): MatchContext {
     totalXg: lambdaHome + lambdaAway,
     homeForm: homeRow?.form ?? [],
     awayForm: awayRow?.form ?? [],
-    homeTable: tableFromRow(homeRow),
-    awayTable: tableFromRow(awayRow),
+    homeTable: resolveTeamTable(fixture.competitionId, fixture.home, homeRow),
+    awayTable: resolveTeamTable(fixture.competitionId, fixture.away, awayRow),
     homeScorers: homeRow?.scorers ?? [],
     awayScorers: awayRow?.scorers ?? [],
   };

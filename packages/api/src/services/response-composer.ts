@@ -3,7 +3,7 @@ import type { Grounding } from "./ask";
 import { sanitizeDeskFootballHypotheses, composeDeskFootballTake } from "./desk-voice";
 import { PUNDIT_CONSENSUS_LABEL, PUNDIT_FUNDAMENTAL_LABEL } from "./pundit-consensus";
 import type { OneXTwoOutcome } from "./response-correctness";
-import { parseScoreline } from "./response-correctness";
+import { parseScoreline, resolveUserLineDecision, userLineGapPoints } from "./response-correctness";
 
 const ONE_X_TWO_OUTCOMES: OneXTwoOutcome[] = ["home", "draw", "away"];
 import {
@@ -372,13 +372,9 @@ export function composeUserLineAnswer(grounding: Grounding): string {
   const label = displayOutcomeLabel(grounding, line.outcome);
   const modelP = grounding.pricing.model[line.outcome].p;
   const impliedP = 1 / line.decimalOdds;
-  const gapPoints = Math.round((modelP - impliedP) * 1000) / 10;
+  const gapPoints = userLineGapPoints(modelP, line.decimalOdds);
   const decimal = line.decimalOdds.toFixed(2);
-  const decision = line.decimalOdds >= line.playPrice
-    ? "play"
-    : line.decimalOdds < line.passPrice
-      ? "pass"
-      : "abstain";
+  const decision = resolveUserLineDecision(line, gapPoints);
   const impliedPct = deskPercentDisplay(impliedP);
   return joinBasicsAnswer({
     headline: `${label} at ${decimal} implies ${impliedPct} (1/${decimal}).`,

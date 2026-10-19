@@ -91,6 +91,9 @@ export interface PunditTakeSourcesFooter {
   modelPricedAt: string;
   modelPricedAtSgt: string;
   ratingsAsOf: string | null;
+  tableSource: string;
+  tableAsOf: string | null;
+  tableAsOfSgt: string | null;
   odds: PunditTakeSourceOdds[];
   evidenceUrls: Array<{ id: string; url: string; publisher: string }>;
 }

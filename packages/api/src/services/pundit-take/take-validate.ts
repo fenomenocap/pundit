@@ -8,7 +8,7 @@ export const TAKE_TEMPLATE_BANNED_PATTERN =
   /\bbadge suggests\b|\btop-flight experience\b|\bcrisis mode\b|\bbanker\b|\bsharper than my read\b|\bstill a top-half\b|\bstill points to\b|\bstill scream\b|\bstill treats\b|\bstill a live worry\b|\bcloser than the badge\b/i;
 
 export const TAKE_AUDIT_SPEAK_PATTERN =
-  /\bapplied in this forecast\b|\bin this forecast\b|\bin this model\b|\bthis model\b|\bsits at\b|\bforecast says\b|\bthe model has\b/i;
+  /\bapplied in this forecast\b|\bin this forecast\b|\bin this model\b|\bthis model\b|\bsits at\b|\bforecast says\b|\bthe model has\b|\bon this read\b|\bbefore the low-score correction\b|\blow-score correction\b/i;
 
 export function countMarkdownTables(text: string): number {
   const lines = text.split("\n");
@@ -82,10 +82,22 @@ export function filterUnmappedSentences(prose: string, plan: PunditTakePlan): st
 }
 
 export function postCheckTakeProse(prose: string, plan: PunditTakePlan): string {
+  return postCheckTakeProseWithReport(prose, plan).prose;
+}
+
+export function postCheckTakeProseWithReport(
+  prose: string,
+  plan: PunditTakePlan,
+): { prose: string; dropped: string[] } {
   const errors = validateTakeProseAgainstPlan(prose, plan);
+  const dropped = errors.filter((e) => e.startsWith("unmapped-sentence:")
+    || e.startsWith("disallowed-number:")
+    || e === "banned-token"
+    || e === "template-line"
+    || e === "audit-speak");
   if (errors.some((e) => e.startsWith("unmapped") || e.startsWith("disallowed-number")
     || e === "banned-token" || e === "template-line" || e === "audit-speak")) {
-    return filterUnmappedSentences(prose, plan);
+    return { prose: filterUnmappedSentences(prose, plan), dropped };
   }
-  return prose;
+  return { prose, dropped: [] };
 }

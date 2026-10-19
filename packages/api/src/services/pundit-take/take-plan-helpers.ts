@@ -1,7 +1,18 @@
 import type { Grounding } from "../ask";
+import { BASE_GOALS } from "../dixon-coles";
 import type { MatchDossier } from "../match-dossier/types";
 import { compactTeamLabel } from "../basics-answer-voice";
 import type { TakePlanPoint } from "./types";
+
+function goalRatesAreInformative(grounding: Grounding): boolean {
+  if (grounding.goalCalibration) return true;
+  const { lambdaHome: lh, lambdaAway: la, totalXg: tx } = grounding;
+  if (!Number.isFinite(lh) || !Number.isFinite(la) || !Number.isFinite(tx)) return false;
+  const equalDefault = Math.abs(lh - BASE_GOALS) < 0.02
+    && Math.abs(la - BASE_GOALS) < 0.02
+    && Math.abs(tx - 2 * BASE_GOALS) < 0.05;
+  return !equalDefault;
+}
 
 export function buildGoalReasonPoints(
   grounding: Grounding,
@@ -11,11 +22,15 @@ export function buildGoalReasonPoints(
 ): TakePlanPoint[] {
   const points: TakePlanPoint[] = [];
 
+  if (!goalRatesAreInformative(grounding)) {
+    return points;
+  }
+
   if (Number.isFinite(grounding.totalXg) && grounding.totalXg > 0) {
     points.push({
       id: "fact-total-xg",
       role: "support",
-      text: `I make it about ${grounding.totalXg.toFixed(1)} expected goals in total on this read.`,
+      text: `Combined expected goals come out near ${grounding.totalXg.toFixed(1)}.`,
       fieldPath: "totalXg",
     });
   }
@@ -24,7 +39,7 @@ export function buildGoalReasonPoints(
     points.push({
       id: "fact-lambda-split",
       role: "support",
-      text: `${homeShort} carry ${grounding.lambdaHome.toFixed(2)} xG and ${awayShort} ${grounding.lambdaAway.toFixed(2)} before the low-score correction.`,
+      text: `${homeShort} are on ${grounding.lambdaHome.toFixed(2)} xG and ${awayShort} ${grounding.lambdaAway.toFixed(2)} in the score grid.`,
       fieldPath: "lambdaHome,lambdaAway",
     });
   }
@@ -62,11 +77,10 @@ export function build1x2SupportingPoints(
   const points: TakePlanPoint[] = [];
   const favSide = callOutcome;
 
-  const homePos = dossier?.table.home.value.position ?? grounding.homeTable.position;
-  const awayPos = dossier?.table.away.value.position ?? grounding.awayTable.position;
-  const homePts = dossier?.table.home.value.points
-    ?? (grounding.homeTable.position != null ? grounding.homeTable.points : null);
-  const awayPts = dossier?.table.away.value.points ?? grounding.awayTable.points;
+  const homePos = grounding.homeTable.position ?? dossier?.table.home.value.position;
+  const awayPos = grounding.awayTable.position ?? dossier?.table.away.value.position;
+  const homePts = grounding.homeTable.points ?? dossier?.table.home.value.points;
+  const awayPts = grounding.awayTable.points ?? dossier?.table.away.value.points;
   if (homePos != null && awayPos != null && homePts != null && awayPts != null) {
     points.push({
       id: "fact-table-standings",

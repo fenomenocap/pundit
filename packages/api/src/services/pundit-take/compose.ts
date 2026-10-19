@@ -12,6 +12,7 @@ import { buildPunditTakePlan } from "./take-plan";
 import { renderPassPlayTakeProse } from "./take-grid-prose";
 import { renderTakeProse } from "./take-llm";
 import { renderTakeProseDeterministic } from "./take-prose";
+import { formatPassPlayLineTable } from "./take-pass-play-table";
 import { formatTakeOddsTable } from "./take-table";
 import { buildTakeSourcesFooter } from "./take-sources";
 import { postCheckTakeProse, TAKE_AUDIT_SPEAK_PATTERN, TAKE_PROSE_BANNED_PATTERN } from "./take-validate";
@@ -55,8 +56,9 @@ function assembleDelivery(
   resolvedDossier: MatchDossier | null,
 ): PunditTakeDelivery {
   const passPlay = plan.mode === "user-line" && /\bpass or play\b/i.test(question);
-  const includeTable = !passPlay;
-  const table = includeTable ? formatTakeOddsTable(planJson) : "";
+  const table = passPlay
+    ? formatPassPlayLineTable(grounding)
+    : formatTakeOddsTable(planJson);
   const answer = table ? `${prose.trim()}\n\n${table}`.trim() : prose.trim();
   return {
     answer,

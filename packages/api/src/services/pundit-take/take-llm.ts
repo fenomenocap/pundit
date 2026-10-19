@@ -2,7 +2,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { reasoningOff, resolveInference } from "../inference-config";
 import type { PunditTakePlan } from "./types";
 import { allowedNumbersFromPlan } from "./take-allowed-numbers";
-import { postCheckTakeProse, TAKE_AUDIT_SPEAK_PATTERN, TAKE_PROSE_BANNED_PATTERN, TAKE_TEMPLATE_BANNED_PATTERN } from "./take-validate";
+import {
+  postCheckTakeProseWithReport,
+  TAKE_AUDIT_SPEAK_PATTERN,
+  TAKE_PROSE_BANNED_PATTERN,
+  TAKE_TEMPLATE_BANNED_PATTERN,
+} from "./take-validate";
 import { renderTakeProseDeterministic } from "./take-prose";
 
 const TAKE_SYSTEM = `You are Pundit, a football analyst writing a short desk take.
@@ -46,12 +51,18 @@ function stripBadLines(text: string): string {
     .trim();
 }
 
-export async function renderTakeProseWithLlm(
+export type TakeLlmRenderResult = {
+  prose: string | null;
+  dropped: string[];
+  source: "llm" | "none";
+};
+
+export async function renderTakeProseWithLlmDetailed(
   plan: PunditTakePlan,
   variant: "full" | "why" = "full",
-): Promise<string | null> {
+): Promise<TakeLlmRenderResult> {
   const inference = resolveInference();
-  if (!inference.apiKey) return null;
+  if (!inference.apiKey) return { prose: null, dropped: [], source: "none" };
 
   const allowed = [...allowedNumbersFromPlan(plan)].sort((a, b) => b.length - a.length).join(", ");
   const user = [
@@ -86,14 +97,24 @@ export async function renderTakeProseWithLlm(
         .trim(),
     );
     if (!raw || TAKE_PROSE_BANNED_PATTERN.test(raw) || TAKE_TEMPLATE_BANNED_PATTERN.test(raw) || TAKE_AUDIT_SPEAK_PATTERN.test(raw)) {
-      return null;
+      return { prose: null, dropped: ["llm-rejected:pattern"], source: "none" };
     }
-    const checked = postCheckTakeProse(raw, plan);
-    if (!checked.trim()) return null;
-    return checked;
+    const checked = postCheckTakeProseWithReport(raw, plan);
+    if (!checked.prose.trim()) {
+      return { prose: null, dropped: checked.dropped.length ? checked.dropped : ["llm-rejected:empty-after-postcheck"], source: "none" };
+    }
+    return { prose: checked.prose, dropped: checked.dropped, source: "llm" };
   } catch {
-    return null;
+    return { prose: null, dropped: ["llm-rejected:error"], source: "none" };
   }
+}
+
+export async function renderTakeProseWithLlm(
+  plan: PunditTakePlan,
+  variant: "full" | "why" = "full",
+): Promise<string | null> {
+  const result = await renderTakeProseWithLlmDetailed(plan, variant);
+  return result.prose;
 }
 
 export async function renderTakeProse(

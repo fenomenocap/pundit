@@ -2,8 +2,8 @@ import type { Grounding } from "../ask";
 import {
   deskPercentDisplay,
   displayOutcomeLabel,
-  formatUserLineSideRow,
 } from "../basics-answer-voice";
+import { resolveUserLineDecision, userLineGapPoints } from "../response-correctness";
 import type { PunditTakePlan } from "./types";
 import { renderTakeProseDeterministic } from "./take-prose";
 
@@ -14,14 +14,9 @@ export function renderPassPlayTakeProse(plan: PunditTakePlan, grounding: Groundi
   }
   const label = displayOutcomeLabel(grounding, line.outcome);
   const modelP = grounding.pricing.model[line.outcome].p;
-  const impliedP = 1 / line.decimalOdds;
-  const gapPoints = Math.round((modelP - impliedP) * 1000) / 10;
+  const gapPoints = userLineGapPoints(modelP, line.decimalOdds);
   const decimal = line.decimalOdds.toFixed(2);
-  const decision = line.decimalOdds >= line.playPrice
-    ? "play"
-    : line.decimalOdds < line.passPrice
-      ? "pass"
-      : "abstain";
+  const decision = resolveUserLineDecision(line, gapPoints);
   const leanLabel = line.outcome === "draw" ? "the draw" : label;
   let callLine: string;
   if (decision === "pass") {
@@ -33,9 +28,9 @@ export function renderPassPlayTakeProse(plan: PunditTakePlan, grounding: Groundi
     callLine = `${leanLabel} at ${decimal}, ${size} — I play.`;
   }
   const opener = `${plan.fixtureLabel} — ${callLine}`;
-  const implied = deskPercentDisplay(impliedP);
+  const implied = deskPercentDisplay(1 / line.decimalOdds);
   const modelPct = deskPercentDisplay(modelP);
-  const context = `That price implies ${implied}; I have ${label} at ${modelPct}. ${formatUserLineSideRow(grounding, line.outcome, line.decimalOdds, gapPoints)}`;
+  const context = `That price implies ${implied}; I have ${label} at ${modelPct}.`;
   const body = plan.supporting[0]?.text;
   return [opener, context, body].filter(Boolean).join("\n\n");
 }
