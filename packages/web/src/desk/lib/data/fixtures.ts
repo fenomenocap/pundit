@@ -1,4 +1,5 @@
 import type { GoalCalibration } from "@/lib/api";
+import type { DeskMarketQuote } from "../market-quote";
 import type { TeamId } from "./teams";
 import { capturedRecord } from "../slate-selection";
 
@@ -23,6 +24,8 @@ export type Fixture = {
   goalCalibration?: GoalCalibration;
   model: { home: number; draw: number; away: number; over25: number; btts: number } | null;
   odds: Odds | null;
+  /** Fresh no-vig 1X2 comparison line from the API (not paper prices). */
+  marketQuote?: DeskMarketQuote | null;
   brief: string;
   modelPick: MarketKey | null;
   modelHit?: boolean;

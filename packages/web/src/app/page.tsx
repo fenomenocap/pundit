@@ -10,7 +10,7 @@ export default function HomePage() {
         </div>
       }
     >
-      <div className="bg-bg text-fg min-h-[calc(100dvh-2.75rem)]">
+      <div className="bg-bg text-fg min-h-[calc(100dvh-2.75rem)] flex flex-col">
         <Desk />
       </div>
     </Suspense>

@@ -7,6 +7,8 @@ import { useDesk } from "@/desk/lib/store";
 import { cn } from "@/lib/utils";
 import { FormDots } from "@/desk/components/form-dots";
 import { KitPip, TeamMark } from "@/desk/components/kit";
+import { MarketQuoteLine } from "@/desk/components/market-quote-line";
+import { settledWithCapturedForecast } from "@/desk/lib/settled-forecast";
 import { useLiveSlate } from "@/desk/components/use-live-slate";
 
 export function SlateRail() {
@@ -14,6 +16,7 @@ export function SlateRail() {
   const select = useDesk((s) => s.selectFixture);
   const scores = useDesk((s) => s.scores);
   const { open, settled, source } = useLiveSlate();
+  const scoredSettled = settledWithCapturedForecast(settled);
 
   return (
     <section className="hidden lg:flex flex-col border-r border-border min-w-0 bg-surface lg:h-[calc(100dvh-7.5rem)]">
@@ -79,6 +82,10 @@ export function SlateRail() {
                         {fmtPct(p)}
                       </div>
                       <div className="text-2xs text-quiet mt-0.5">{selectionLabel(f, f.modelPick)}</div>
+                      <MarketQuoteLine
+                        fixture={f}
+                        className="block text-2xs text-quiet mt-0.5 tabular-nums"
+                      />
                     </div>
                   )}
                 </div>
@@ -90,11 +97,13 @@ export function SlateRail() {
           );
         })}
       </ul>
+      {scoredSettled.length > 0 ? (
       <header className="flex items-center justify-between px-3 py-2 border-y border-border">
         <h2 className="eyebrow">{source === "static" ? "Mock settled" : "Recent settled"}</h2>
       </header>
+      ) : null}
       <ul className="max-h-48 overflow-y-auto">
-        {settled.map((f) => (
+        {scoredSettled.map((f) => (
           <li
             key={f.id}
             className="flex items-center gap-2 px-3 py-1.5 border-b border-border text-sm"
@@ -159,7 +168,10 @@ export function SlateChips() {
                 <KitPip team={f.away} size="sm" />
               </div>
               {!score ? (
-                <div className="mt-1 text-2xs text-accent tabular-nums">{fmtPct(p)} lean</div>
+                <div className="mt-1 space-y-0.5">
+                  <div className="text-2xs text-accent tabular-nums">{fmtPct(p)} lean</div>
+                  <MarketQuoteLine fixture={f} className="block text-2xs text-quiet tabular-nums" />
+                </div>
               ) : null}
             </button>
           );

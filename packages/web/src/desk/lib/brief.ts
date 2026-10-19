@@ -90,12 +90,14 @@ export function weekendNote() {
     return `${i + 1}. ${TEAMS[f.home].short} vs ${TEAMS[f.away].short} — ${selectionLabel(f, f.modelPick)}, model ${fmtPct(t.p)}. ${f.brief}`;
   });
   const missNote = rec.pct === null
-    ? "There is no captured settled sample to score yet."
+    ? null
     : rec.pct < 0.5
       ? "The misses were the games that died — 0-0s and late steals. Bankers paid; coin-flips did not."
       : "The model cleared the weekend on the sides it was supposed to.";
   return [
-    rec.pct === null ? missNote : `The captured model went ${rec.hits} from ${rec.n} on 1X2. ${missNote}`,
+    rec.pct === null
+      ? null
+      : `The captured model went ${rec.hits} from ${rec.n} on 1X2. ${missNote}`,
     "",
     "Current priced fixtures, in order of conviction:",
     ...lines,
