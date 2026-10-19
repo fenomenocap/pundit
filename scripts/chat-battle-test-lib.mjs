@@ -459,13 +459,15 @@ function parseLegLines(answer) {
 }
 
 function parseCombinedProbability(answer) {
-  const match = /Combined model probability\s+(\d+(?:\.\d+)?)\s*%/i.exec(answer);
+  const match = /Combined model probability\s+(\d+(?:\.\d+)?)\s*%/i.exec(answer)
+    ?? /combined model\s+(\d+(?:\.\d+)?)\s*%\s*\(fair/i.exec(answer);
   return match ? Number.parseFloat(match[1]) / 100 : null;
 }
 
 function parseCombinedFairDecimal(answer) {
   const match = /fair combined decimal about\s+(\d+(?:\.\d+)?)/i.exec(answer)
-    ?? /combined fair ~(\d+(?:\.\d+)?)/i.exec(answer);
+    ?? /combined fair ~(\d+(?:\.\d+)?)/i.exec(answer)
+    ?? /combined model\s+\d+(?:\.\d+)?%\s*\(fair\s+(\d+(?:\.\d+)?)\)/i.exec(answer);
   return match ? Number.parseFloat(match[1]) : null;
 }
 

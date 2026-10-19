@@ -556,7 +556,7 @@ function composeParlayAnswerBody(
   const pickSummary = legOutcomes.map(({ fixture, fav }) =>
     `${fav.label} (${fixture.home} v ${fixture.away})`
   ).join(", ");
-  const lead = `My ${foldLabel}: ${pickSummary}, combined fair ~${fairDecimal(combined)}. ${metaParts.join(" · ")}.`;
+  const lead = `My ${foldLabel}: ${pickSummary}, combined model ${pct(combined)} (fair ${fairDecimal(combined)}). ${metaParts.join(" · ")}.`;
 
   const legLines = marketRows.map(({ fixture, fav, market }) => {
     const kickoff = formatKickoffUk(fixture.utcDate);
@@ -590,7 +590,8 @@ function composeParlayAnswerBody(
 
 export function composeCrossGameParlayAnswer(
   question: string,
-  slate: ModelFixture[] = getDeskPricedSlate()
+  slate: ModelFixture[] = getDeskPricedSlate(),
+  now: Date = new Date()
 ): string | null {
   if (!isCrossGameParlayRequest(question, slate)) return null;
   const parsed = parseCrossGameLegs(question);
@@ -607,7 +608,10 @@ export function composeCrossGameParlayAnswer(
     legOutcomes.push({ fixture, fav: outcome });
   }
   const foldLabel = legOutcomes.length === 2 ? "two-leg" : `${legOutcomes.length}-fold`;
-  return composeParlayAnswerBody(question, legOutcomes.map((row) => row.fixture), legOutcomes, null, null, foldLabel);
+  const fixtures = legOutcomes.map((row) => row.fixture);
+  const scopeLead = buildSlateScopeLead(question, fixtures, now)
+    ?? `This uses ${formatDateRangeFromLegs(fixtures)}.`;
+  return composeParlayAnswerBody(question, fixtures, legOutcomes, scopeLead, null, foldLabel);
 }
 
 export function composeGuaranteedWinnerAccaAnswer(

@@ -61,7 +61,7 @@ describe("demo featured match and slate parlay", () => {
       expect(parlayTurn.answer).toContain("Tottenham Hotspur v Coventry City");
       expect(parlayTurn.answer).toContain("Arsenal v Everton");
       expect(parlayTurn.answer).not.toMatch(/Brighton|Forest/i);
-      expect(parlayTurn.answer).toMatch(/combined fair ~/i);
+      expect(parlayTurn.answer).toMatch(/combined model \d+\.\d%/i);
 
       const crossGame = await answerQuestion(
         "Spurs to beat Coventry and Arsenal to beat Everton",

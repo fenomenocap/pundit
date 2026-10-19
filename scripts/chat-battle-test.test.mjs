@@ -545,7 +545,7 @@ test("validateBettingMaths rejects off-slate parlay legs and checks combined pro
     { home: "Arsenal", away: "Crystal Palace", pHome: 0.58, pDraw: 0.24, pAway: 0.18 },
   ];
   const good = [
-    "My two-leg: Tottenham Hotspur (Tottenham Hotspur v Coventry City), Arsenal (Arsenal v Crystal Palace), combined fair ~2.78.",
+    "My two-leg: Tottenham Hotspur (Tottenham Hotspur v Coventry City), Arsenal (Arsenal v Crystal Palace), combined model 35.9% (fair 2.78).",
     "Sun, 19 Oct, 15:00 UK · Tottenham Hotspur v Coventry City: Tottenham Hotspur model 62.0% (fair 1.61) — ratings.",
     "Mon, 20 Oct, 15:00 UK · Arsenal v Crystal Palace: Arsenal model 58.0% (fair 1.72) — ratings.",
     "Correlation: same-day and league context can move these legs together.",

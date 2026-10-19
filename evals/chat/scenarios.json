@@ -1074,6 +1074,28 @@
       ]
     },
     {
+      "id": "desk-five-fold-next-slate",
+      "description": "Demo five-fold acca from the next desk slate (23–25 Oct window) leads with date scope and full per-leg model/market maths.",
+      "category": "betting-maths",
+      "kind": "betting-maths-slate",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
+        {
+          "question": "Pick me a 5-fold acca from the next slate",
+          "expectGrounding": null,
+          "expectBettingMaths": {
+            "kind": "slate-acca",
+            "minLegs": 5,
+            "requestedLegs": 5,
+            "forbidEdgeWording": true
+          },
+          "expectText": ["Next desk slate", "combined model", "market implied", "decimal"],
+          "forbidText": ["edge", "one match at a time"]
+        }
+      ]
+    },
+    {
       "id": "desk-slate-five-fold-acca-3pm",
       "description": "A five-fold acca request filters 3pm kick-offs when present; otherwise states that in one line and uses today's priced slate. Hard-fails on fixtures off the slate.",
       "category": "betting-maths",

@@ -230,6 +230,23 @@ describe("slate parlay and deictic helpers", () => {
     expect(isSlateParlayRequest(q)).toBe(false);
   });
 
+  it("composes demo five-fold next-slate acca with scope lead and combined model line", () => {
+    const now = new Date("2026-10-19T12:00:00.000Z");
+    const slate = [
+      fixture("Arsenal", "Everton", { fixtureId: 2, utcDate: "2026-10-23T14:00:00.000Z", pHome: 0.58, pDraw: 0.24, pAway: 0.18 }),
+      fixture("Liverpool", "Chelsea", { fixtureId: 3, utcDate: "2026-10-23T14:00:00.000Z", pHome: 0.5, pDraw: 0.25, pAway: 0.25 }),
+      fixture("Manchester City", "Bournemouth", { fixtureId: 4, utcDate: "2026-10-23T14:00:00.000Z", pHome: 0.72, pDraw: 0.18, pAway: 0.1 }),
+      fixture("Newcastle United", "Brighton & Hove Albion", { fixtureId: 5, utcDate: "2026-10-24T15:00:00.000Z", pHome: 0.52, pDraw: 0.26, pAway: 0.22 }),
+      fixture("Aston Villa", "West Ham United", { fixtureId: 6, utcDate: "2026-10-24T15:00:00.000Z", pHome: 0.55, pDraw: 0.25, pAway: 0.2 }),
+      fixture("Fulham", "Wolverhampton Wanderers", { fixtureId: 7, utcDate: "2026-10-25T15:00:00.000Z", pHome: 0.48, pDraw: 0.27, pAway: 0.25 }),
+    ];
+    const answer = composeSlateParlayAnswer("Pick me a 5-fold acca from the next slate", slate, now);
+    expect(answer).toMatch(/^Next desk slate/);
+    expect(answer).toMatch(/5-fold/);
+    expect(answer).toMatch(/combined model \d+\.\d%/);
+    expect(answer).toMatch(/model \d+\.\d% \(fair \d+\.\d{2}\)/);
+  });
+
   it("composes a two-leg cross-game parlay from named picks", () => {
     const slate = [
       fixture("Tottenham Hotspur", "Coventry City", {
@@ -255,7 +272,8 @@ describe("slate parlay and deictic helpers", () => {
       slate
     );
     expect(answer).toMatch(/two-leg/i);
-    expect(answer).toMatch(/combined fair ~/);
+    expect(answer).toMatch(/combined model \d+\.\d%/);
+    expect(answer).toMatch(/This uses /);
     expect(answer).toMatch(/Tottenham Hotspur v Coventry City/);
     expect(answer).toMatch(/Arsenal v Everton/);
   });
