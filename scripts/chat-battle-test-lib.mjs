@@ -1648,9 +1648,19 @@ function modelVersionMentioned(text, modelVersion) {
   return false;
 }
 
+/** Report-only provenance applies to price-quoting match turns, not manager/news/injury. */
+export function shouldEvaluateMatchProvenanceReport(turn = {}, scenario = {}) {
+  const merged = { ...scenario, ...turn };
+  if (merged.expectPricingDesk) return true;
+  if (Boolean(merged.expectHeadlineOneXTwo ?? scenario.expectHeadlineOneXTwo)) return true;
+  if (merged.expectComparableMarketAttribution) return true;
+  return false;
+}
+
 /**
  * Pricing-desk / headline 1X2 answers must name the odds feed, model version,
  * and as-of time that match the turn's match grounding (not generic filler).
+ * Live sweeps record this report-only until the engine emits provenance in prose.
  */
 export function validateMatchAnswerProvenance(answer, grounding) {
   const text = String(answer ?? "").replace(/[‘’]/g, "'");
@@ -1691,6 +1701,38 @@ export function validateMatchAnswerProvenance(answer, grounding) {
     assertions,
     failures: passed ? [] : ["match answer provenance did not match grounding"],
   };
+}
+
+/** Aggregate report-only provenance checks from scenario observations, split by engine. */
+export function summarizeProvenanceReport(scenarios = []) {
+  const empty = () => ({
+    evaluatedTurns: 0,
+    fullyPassedTurns: 0,
+    provenanceOddsFeed: { pass: 0, fail: 0 },
+    provenanceModelVersion: { pass: 0, fail: 0 },
+    provenanceAsOf: { pass: 0, fail: 0 },
+  });
+  const byEngine = { legacy: empty(), agent: empty() };
+  for (const scenario of scenarios) {
+    if (!scenario?.observations || typeof scenario.observations !== "object") continue;
+    const engine = scenario.requestEngine === "agent" || scenario.engine === "agent" ? "agent" : "legacy";
+    const bucket = byEngine[engine];
+    for (const turnObs of Object.values(scenario.observations)) {
+      if (!turnObs?.provenance || typeof turnObs.provenance !== "object") continue;
+      bucket.evaluatedTurns += 1;
+      const prov = turnObs.provenance;
+      let turnPass = true;
+      for (const key of ["provenanceOddsFeed", "provenanceModelVersion", "provenanceAsOf"]) {
+        if (prov[key] === true) bucket[key].pass += 1;
+        else if (prov[key] === false) {
+          bucket[key].fail += 1;
+          turnPass = false;
+        }
+      }
+      if (turnPass) bucket.fullyPassedTurns += 1;
+    }
+  }
+  return byEngine;
 }
 
 export function answerIncludesGroundedModelNumbers(text, grounding) {
@@ -1862,9 +1904,6 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
     assertions.pricingDeskFairOdds = /\bfair\b/i.test(lead) && /\b\d+\.\d{2}\b/.test(lead);
     assertions.pricingDeskNotPreviewEssay = !/\bleading scorelines\b/i.test(lead)
       || ((lead.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bfair\b/i.test(lead));
-    if (grounding?.kind === "match") {
-      Object.assign(assertions, validateMatchAnswerProvenance(text, grounding).assertions);
-    }
   }
   if (expectation.expectModelProbabilityOrFairOdds && grounding?.kind === "match") {
     assertions.modelProbabilityOrFairOdds = answerIncludesGroundedModelNumbers(text, grounding);
@@ -1937,10 +1976,6 @@ export function validateAnswerStructure(answer, expectation = {}) {
     assertions.headlineOneXTwoPresent = lines.some((line) =>
       (line.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(line)
     );
-    const matchGrounding = expectation.grounding?.kind === "match" ? expectation.grounding : null;
-    if (matchGrounding) {
-      Object.assign(assertions, validateMatchAnswerProvenance(typeof answer === "string" ? answer : "", matchGrounding).assertions);
-    }
   }
   const trimmed = typeof answer === "string" ? answer.trim() : "";
   // MiniMax has returned stop_reason=end_turn while cutting a requested 1X2

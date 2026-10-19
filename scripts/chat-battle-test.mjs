@@ -43,6 +43,9 @@ import {
   requireAvailableRecognizedScenarios,
   selectRecognizedScenarioEntry,
   answerQuotesMarketPrice,
+  shouldEvaluateMatchProvenanceReport,
+  summarizeProvenanceReport,
+  validateMatchAnswerProvenance,
   validateGrounding,
   validateSse,
   validateAnswerCopy,
@@ -502,6 +505,17 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     assertionFailures.push(...expressionValidation.failures.map((failure) =>
       `turn ${turnNumber}: ${failure}`
     ));
+    if (grounding?.kind === "match" && shouldEvaluateMatchProvenanceReport(turn, scenario)) {
+      const provenanceReport = validateMatchAnswerProvenance(result.answer, grounding);
+      result.observations = {
+        ...result.observations,
+        [`turn${turnNumber}`]: {
+          ...(result.observations?.[`turn${turnNumber}`] ?? {}),
+          provenance: provenanceReport.assertions,
+          provenancePassed: provenanceReport.passed,
+        },
+      };
+    }
     assertionFailures.push(...citationValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
@@ -1383,6 +1397,7 @@ async function main() {
   report.qualityMetrics = computeTurnQualityMetrics(allTurns);
   report.qualityMetricsByCategory = computeTurnQualityMetricsByCategory(allTurns);
   report.byCategory = summarizeScenarioOutcomesByCategory(report.scenarios);
+  report.provenanceReport = summarizeProvenanceReport(report.scenarios);
   report.liveBettingMaths = summarizeLiveBettingMaths(report.scenarios);
   report.llmJudge = await resolveJudgeEvalTurns(allTurns, {
     maxTurns: 24,

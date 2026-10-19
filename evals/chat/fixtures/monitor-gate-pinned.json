@@ -17,7 +17,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. Everton's manager is Sean Dyche ([Everton manager update](https://publisher.example/everton/manager), 22 Sep 2026).",
+          "answer": "Everton's manager is Sean Dyche ([Everton manager update](https://publisher.example/everton/manager), 22 Sep 2026).",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -53,19 +53,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [
             {
@@ -86,7 +74,7 @@
         },
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. Everton's manager is Sean Dyche ([Everton manager update](https://publisher.example/everton/manager), 22 Sep 2026). I haven't verified the club's stated reason for retaining him.",
+          "answer": "Everton's manager is Sean Dyche ([Everton manager update](https://publisher.example/everton/manager), 22 Sep 2026). I haven't verified the club's stated reason for retaining him.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -122,19 +110,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [
             {
@@ -181,7 +157,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. In an update published on 2026-10-07, Everton's James Garner was reported doubtful ([Everton injury update](https://publisher.example/everton/injuries), 2026-10-07T12:01:41+01:00). In an update published on 2026-10-06, Chelsea's Cole Palmer sustained a hamstring issue ([Chelsea FC injury update](https://publisher.example/chelsea/injuries), 2026-10-06T13:20:06.000Z). These dated club updates do not establish the starting XI or availability at the future kickoff.",
+          "answer": "In an update published on 2026-10-07, Everton's James Garner was reported doubtful ([Everton injury update](https://publisher.example/everton/injuries), 2026-10-07T12:01:41+01:00). In an update published on 2026-10-06, Chelsea's Cole Palmer sustained a hamstring issue ([Chelsea FC injury update](https://publisher.example/chelsea/injuries), 2026-10-06T13:20:06.000Z). These dated club updates do not establish the starting XI or availability at the future kickoff.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -217,19 +193,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [
             {
@@ -261,7 +225,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -297,19 +261,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -328,7 +280,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -364,19 +316,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -390,7 +330,7 @@
         },
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. For Everton vs Chelsea, I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%**.",
+          "answer": "**Verdict**\nFor Everton vs Chelsea, I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%**.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -426,19 +366,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -457,7 +385,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%**. Fair decimals: Everton **4.55**, draw **4.17**, Chelsea **1.85**.",
+          "answer": "I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%**. Fair decimals: Everton **4.55**, draw **4.17**, Chelsea **1.85**.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -493,19 +421,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -524,7 +440,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "I lean Chelsea at 54.0% with Everton at 22.0%. I see Chelsea carrying more control in the build-up, but Everton can still compress the half-spaces when they win the second ball. I would not treat either side as a guarantee.",
+          "answer": "I see Chelsea carrying more control in the build-up, but Everton can still compress the half-spaces when they win the second ball. I would not treat either side as a guarantee.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -560,19 +476,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -591,7 +495,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "I see Chelsea pushing the wide forwards high while Everton sit slightly deeper; the trade-off is space in behind versus control in the centre. Chelsea’s model lean is 54.0%.",
+          "answer": "I see Chelsea pushing the wide forwards high while Everton sit slightly deeper; the trade-off is space in behind versus control in the centre.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -627,19 +531,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -658,7 +550,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. Over 2.5 is **52.0%** and under 2.5 is **48.0%** for Everton vs Chelsea. I use a fixed total-goals assumption in the rating baseline, so this cannot tell me whether this particular match will be more open or tighter than that baseline. These are forecasts, not guarantees.",
+          "answer": "Over 2.5 is **52.0%** and under 2.5 is **48.0%** for Everton vs Chelsea. I use a fixed total-goals assumption in the rating baseline, so this cannot tell me whether this particular match will be more open or tighter than that baseline. These are forecasts, not guarantees.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -694,19 +586,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -725,7 +605,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -761,19 +641,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -787,7 +655,7 @@
         },
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. Over 2.5 is **52.0%** and under 2.5 is **48.0%**. Likely scorelines include **1-1 (11.0%)**, **0-1 (9.0%)**, and **1-2 (8.0%)**. I use a fixed total-goals assumption in the rating baseline, so this cannot tell me whether this particular match will be more open or tighter than that baseline.",
+          "answer": "Over 2.5 is **52.0%** and under 2.5 is **48.0%**. Likely scorelines include **1-1 (11.0%)**, **0-1 (9.0%)**, and **1-2 (8.0%)**. I use a fixed total-goals assumption in the rating baseline, so this cannot tell me whether this particular match will be more open or tighter than that baseline.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -823,19 +691,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -854,7 +710,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -890,19 +746,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -916,7 +760,7 @@
         },
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. On Chelsea at 7.00, I make it 54.0% against that line, model vs that line +278.0% (real). That clears the play price, so I play. Risk is medium: neither the lower-risk nor higher-risk conditions apply; losses are still possible.",
+          "answer": "On Chelsea at 7.00, I make it 54.0% against that line, model vs that line +278.0% (real). That clears the play price, so I play. Risk is medium: neither the lower-risk nor higher-risk conditions apply; losses are still possible.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -952,19 +796,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -983,7 +815,7 @@
       "turns": [
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -1019,19 +851,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
@@ -1045,7 +865,7 @@
         },
         {
           "status": 200,
-          "answer": "Polymarket 18 October 2026. ratings@1:1da9aa95abcd0001. I can print the price. I will not size a stake without a bankroll and a risk band.",
+          "answer": "I can print the price. I will not size a stake without a bankroll and a risk band.",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
@@ -1081,19 +901,7 @@
                 "probability": 0.08
               }
             ],
-            "oddsSources": [
-              {
-                "source": "polymarket",
-                "observedAt": "2026-10-18T10:00:00.000Z",
-                "pHome": 0.22,
-                "pDraw": 0.24,
-                "pAway": 0.54
-              }
-            ],
-            "pricing": {
-              "modelVersion": "ratings@1:1da9aa95abcd0001",
-              "pricedAt": "2026-10-18T10:00:00.000Z"
-            }
+            "oddsSources": []
           },
           "citations": [],
           "verification": {
