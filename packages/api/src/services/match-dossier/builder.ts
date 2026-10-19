@@ -101,9 +101,9 @@ export function buildMatchDossierForFixture(
   const marketRows = grounding.pricing.markets.map((row) => ({
     source: row.source,
     observedAt: row.observedAt,
-    pHome: row.pHome,
-    pDraw: row.pDraw,
-    pAway: row.pAway,
+    pHome: row.legs.home.impliedP ?? row.legs.home.modelP,
+    pDraw: row.legs.draw.impliedP ?? row.legs.draw.modelP,
+    pAway: row.legs.away.impliedP ?? row.legs.away.modelP,
   }));
 
   const modelProv = clubEloProvenance(
