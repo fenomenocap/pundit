@@ -322,7 +322,7 @@ describe("V2 deterministic fact delivery", () => {
     expect(delivered.answer).toMatch(/Arsenal.*40\.0%.*fair/i);
     expect(delivered.answer).toMatch(/Kalshi 2\.00 \(50\.0%\)/i);
     expect(delivered.answer).toMatch(/gap [+-]?\d+\.?\d* pts/i);
-    expect(delivered.answer).toMatch(/Lean:.*pts vs Kalshi/i);
+    expect(delivered.answer).toMatch(/Lean: .* at \d+\.\d{2}, (?:small play|play|strong play|no play)\./i);
     expect(delivered.answer).not.toContain("omitted those numbers");
   });
 

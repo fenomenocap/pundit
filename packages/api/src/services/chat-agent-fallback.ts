@@ -1,5 +1,6 @@
 import type { AskGrounding, EvidenceBundle } from "./ask";
 import { envelopChatAgentAnswer } from "./chat-agent-guard";
+import { stripInternalPromptVocabulary } from "./internal-prompt-vocabulary";
 
 /** User-visible copy must never expose internal agent/runtime wording. */
 export const AGENT_USER_BANNED_PHRASES: readonly RegExp[] = [
@@ -54,7 +55,8 @@ export function composeAgentEvidenceFallback(
 }
 
 export function sanitizeAgentUserText(text: string): string {
-  if (!text.trim()) return "";
-  if (!containsAgentInternalWording(text)) return text.trim();
+  const stripped = stripInternalPromptVocabulary(text);
+  if (!stripped) return "";
+  if (!containsAgentInternalWording(stripped)) return stripped;
   return "";
 }

@@ -12,7 +12,7 @@ import { PARLAY_OUT_OF_SCOPE } from "./basics-answer-voice";
 import { buildMatchPricing } from "./response-correctness";
 import { sampleMatchContextFields } from "./match-context";
 import {
-  deliveryPolicyLinesAfterTrace,
+  bankrollStakePolicyAppendix,
   planResponse,
 } from "./response-plan";
 import { stripUntraceableMatchPercentages } from "./response-correctness";
@@ -121,12 +121,12 @@ function spursCoventryGrounding(): Grounding {
 describe("investor demo composer fixes", () => {
   const grounding = spursCoventryGrounding();
 
-  it("1) market comparison uses value call, compact side rows, and desk provenance", () => {
+  it("1) market comparison uses biggest-gap headline, compact side rows, and desk provenance", () => {
     const after = composeMarketComparisonAnswer("How does your 1X2 compare to Polymarket?", grounding)!;
-    expect(after).toMatch(/Draw is the value: I make it 24\.4%, Polymarket 20\.5%\./);
+    expect(after).toMatch(/Biggest gap: Draw \(\+3\.9 pts vs Polymarket\)\./);
     expect(after).toContain("Spurs  59.9% | fair 1.67 | Polymarket 1.56 (64.0%) (before fees) | gap -4.1 pts");
     expect(after).toContain("Draw  24.4% | fair 4.10 | Polymarket 4.88 (20.5%) (before fees) | gap +3.9 pts");
-    expect(after).toContain("Lean: Draw, +3.9 pts vs Polymarket.");
+    expect(after).toMatch(/Lean: draw at 4\.88, small play\./);
     expect(after).toMatch(/Model: Elo ratings v1/);
     expect(after).toMatch(/Odds: Polymarket no-vig/);
     expect(after).not.toMatch(/\bEV\b/);
@@ -141,23 +141,26 @@ describe("investor demo composer fixes", () => {
     const after = composeOddsProvenanceAnswer(grounding);
     expect(after.split("\n")).toHaveLength(3);
     expect(after).toMatch(/Fundamental 1X2 from Elo ratings v1/);
+    expect(after).toMatch(/ratings 13 Sep/);
     expect(after).toMatch(/Live no-vig 1X2 from Polymarket/);
     expect(after).toMatch(/SGT/);
     expect(after).not.toMatch(/Cache tier/i);
     expect(after).toMatch(/Model: Elo ratings v1/);
+    expect(after).not.toMatch(/Kalshi\/Polymarket/);
   });
 
   it("3) BTTS and likeliest score use basics voice (headline, lean, provenance)", () => {
     const bttsAfter = composeMatchResponse("Both teams to score?", grounding, planResponse("Both teams to score?", { groundingKind: "match" }));
-    expect(bttsAfter).toContain("BTTS yes is 52.0% (fair 1.92)");
-    expect(bttsAfter).toContain("BTTS no is 48.0% (fair 2.08)");
-    expect(bttsAfter).toContain("Lean:");
+    expect(bttsAfter).toContain("BTTS yes  52.0% | fair 1.92");
+    expect(bttsAfter).toContain("BTTS no  48.0% | fair 2.08");
+    expect(bttsAfter).toMatch(/Lean: BTTS yes, small play\./);
     expect(bttsAfter).toMatch(/Model: Elo ratings v1/);
     expect(bttsAfter).not.toContain("Gamble responsibly");
 
     const scoreAfter = composeMatchResponse("What is the most likely score?", grounding, planResponse("What is the most likely score?", { groundingKind: "match" }));
-    expect(scoreAfter).toContain("1-1 the likeliest scoreline at 11.6% (fair 8.62)");
-    expect(scoreAfter).toContain("Lean:");
+    expect(scoreAfter).toContain("The likeliest scoreline on Tottenham v Coventry is 1-1.");
+    expect(scoreAfter).toContain("1-1  11.6% | fair 8.62");
+    expect(scoreAfter).toMatch(/Lean: 1-1, small play\./);
   });
 
   it("adds one table-vs-Elo line when league rank contradicts the model favourite", () => {
@@ -175,8 +178,8 @@ describe("investor demo composer fixes", () => {
     expect(planResponse("what about the draw?", followUp).mode).toBe("pricing-desk");
     expect(planResponse("What about over 2.5?", followUp).mode).toBe("totals");
     const answer = composeMatchResponse("what about the draw?", grounding, planResponse("what about the draw?", followUp));
-    expect(answer).toContain("The draw is 24.4% (fair 4.10)");
-    expect(answer).toContain("Lean:");
+    expect(answer).toContain("Draw  24.4% | fair 4.10");
+    expect(answer).toMatch(/Lean: Spurs, small play\./);
   });
 
   it("CTO A) Kalshi/Polymarket pricing legs carry before-fees decimals without EV", () => {
@@ -210,7 +213,7 @@ describe("investor demo composer fixes", () => {
       .toBe("slate-best-gap");
     expect(answer).toContain("today (18 October 2026)");
     expect(answer).toContain("Tottenham v Coventry");
-    expect(answer).toMatch(/Lean: Tottenham, -4\.1 pts/);
+    expect(answer).toMatch(/Lean: Tottenham, small play\./);
     expect(answer).not.toMatch(/\bedge\b/i);
     vi.restoreAllMocks();
   });
@@ -231,7 +234,7 @@ describe("investor demo composer fixes", () => {
       planResponse("Guarantee me a winner", { groundingKind: "match" }),
     );
     expect(answer).toMatch(/can.t guarantee a winner/i);
-    expect(answer).toMatch(/59\.9%|Tottenham/);
+    expect(answer).toContain("Spurs  59.9% | fair 1.67");
     expect(answer).not.toMatch(/Accas multiply risk/i);
     expect(answer).toMatch(/18\+/);
   });
@@ -241,7 +244,8 @@ describe("investor demo composer fixes", () => {
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
     expect(plan.mode).toBe("stake-refusal");
     const composed = composeMatchResponse(question, grounding, plan);
-    expect(composed).toMatch(/flat unit stakes only/i);
+    expect(composed).toMatch(/\$1,000 bankroll/i);
+    expect(composed).not.toMatch(/flat unit stakes only/i);
     expect(composed).toMatch(/Caveat: Spurs 20th on 3 pts/);
     expect(composed).not.toMatch(/^Lean:\s*$/m);
     expect(composed).not.toContain(STAKE_REFUSAL_SENTENCE);
@@ -252,6 +256,11 @@ describe("investor demo composer fixes", () => {
       grounding.pOver2_5, grounding.pUnder2_5, grounding.pBttsYes, grounding.pBttsNo,
       ...grounding.scorelines.map((row) => row.probability),
     ];
+    expect(composed).toMatch(/\$10–\$20 on \$1,000/);
+    expect(composed).toMatch(/1–2% per bet/i);
+    expect(composed).toMatch(/accas/i);
+    expect(composed).toMatch(/never chase/i);
+    expect(composed).toMatch(/do not Kelly-size/i);
     const traced = stripUntraceableMatchPercentages(composed, {
       probabilities: [
         ...modelProbabilities,
@@ -262,14 +271,8 @@ describe("investor demo composer fixes", () => {
         market.legs.map((leg) => leg.gapPoints)),
       fairDecimalOdds: modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
     });
-    const delivered = `${traced.trim()}\n${deliveryPolicyLinesAfterTrace(question, plan.mode).join("\n")}`;
-    expect(delivered).toMatch(/\$1,000 bankroll/i);
-    expect(delivered).toMatch(/\$10–\$20 on \$1,000/);
-    expect(delivered).toMatch(/1–2% per bet/i);
-    expect(delivered).toMatch(/accas/i);
-    expect(delivered).toMatch(/never chase/i);
-    expect(delivered).toMatch(/do not Kelly-size/i);
-    expect(delivered).toMatch(/Caveat: Spurs 20th on 3 pts/);
+    expect(traced.trim()).toMatch(/Caveat: Spurs 20th on 3 pts/);
+    expect(bankrollStakePolicyAppendix(question)).toMatch(/\$1,000 bankroll/i);
   });
 
   it("6) who wins and price-tonight route to priced 1X2 market comparison", () => {
@@ -277,13 +280,15 @@ describe("investor demo composer fixes", () => {
     const whoWins = "Who wins Tottenham v Coventry?";
     expect(planResponse(whoWins, ctx).mode).toBe("market-comparison");
     const whoAnswer = composeMatchResponse(whoWins, grounding, planResponse(whoWins, ctx))!;
-    expect(whoAnswer).toMatch(/Draw is the value:/);
+    expect(whoAnswer).toMatch(/Spurs are my favourite at 59\.9%;/);
+    expect(whoAnswer).toMatch(/Biggest gap: Draw \(\+3\.9 pts vs Polymarket\)\./);
     expect(whoAnswer).toContain("Spurs  59.9% | fair 1.67 | Polymarket 1.56 (64.0%)");
     expect(whoAnswer).not.toContain("I need a captured decimal line");
 
     const priceTonight = "Price tonight's match for me";
     expect(planResponse(priceTonight, ctx).mode).toBe("market-comparison");
     const priceAnswer = composeMatchResponse(priceTonight, grounding, planResponse(priceTonight, ctx))!;
+    expect(priceAnswer).toMatch(/Biggest gap:/);
     expect(priceAnswer).toContain("Spurs  59.9% | fair 1.67 | Polymarket 1.56 (64.0%)");
     expect(priceAnswer).not.toContain("EV% or pass or play");
   });
