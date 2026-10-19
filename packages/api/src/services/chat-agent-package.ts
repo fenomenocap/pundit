@@ -8,6 +8,15 @@ import type { ChatAgentCapHit } from "./chat-agent-limits";
 /** Must stay aligned with `MAX_HISTORY_CONTENT_LENGTH` in routes/ask.ts */
 export const AGENT_HISTORY_CONTENT_MAX = 4_000;
 
+/** Agent delivery last resort when recovery and grounding copy are both empty. */
+export const AGENT_DELIVERY_LAST_RESORT =
+  "No bet — I'll keep this to the model sheet and verified sources only.";
+
+export type AgentDeliveredProseRepair = {
+  text: string;
+  emptyAfterRecovery: boolean;
+};
+
 const SOURCE_AND_DATE = new RegExp([
   /\([^)]*,[^)]*\d[^)]*\)/.source,
   /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/.source,
@@ -199,17 +208,27 @@ export function repairAgentDeliveredProse(
     voice?: "desk";
     capHit?: ChatAgentCapHit | null;
     recover: () => string;
+    groundedFallback?: () => string;
   },
   trimStructuralTail: (text: string) => string,
-): string {
+): AgentDeliveredProseRepair {
   let text = polishAgentDeliveredProse(prose, options, trimStructuralTail);
   if (!text.trim() || !agentDeliveryStructurallyComplete(text)) {
     text = polishAgentDeliveredProse(options.recover(), options, trimStructuralTail);
   }
   if (!text.trim()) {
-    text = "No bet — I'll keep this to the model sheet and verified sources only.";
+    const grounded = options.groundedFallback?.().trim() ?? "";
+    if (grounded) {
+      text = polishAgentDeliveredProse(grounded, options, trimStructuralTail);
+    }
   }
-  return text;
+  if (!text.trim()) {
+    text = AGENT_DELIVERY_LAST_RESORT;
+  }
+  return {
+    text,
+    emptyAfterRecovery: text === AGENT_DELIVERY_LAST_RESORT,
+  };
 }
 
 export function finalizeAgentPackagedAnswer(

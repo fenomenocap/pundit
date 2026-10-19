@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AskGrounding, EvidenceBundle } from "./ask";
 import { dropStructurallyIncompleteTail } from "./ask";
 import {
+  AGENT_DELIVERY_LAST_RESORT,
   agentDeliveryStructurallyComplete,
   capAgentAnswerForHistory,
   completeAgentAnswerEnding,
@@ -49,12 +50,13 @@ function repair(
   prose: string,
   capHit: ChatAgentCapHit = null,
   recover = recoverFromBundle,
+  groundedFallback?: () => string,
 ): string {
   return repairAgentDeliveredProse(
     prose,
-    { capHit, recover },
+    { capHit, recover, groundedFallback },
     dropStructurallyIncompleteTail,
-  );
+  ).text;
 }
 
 describe("agent cap delivery repair", () => {
@@ -104,5 +106,36 @@ describe("completeAgentAnswerEnding", () => {
   it("does not append a fake period to a mid-sentence fragment", () => {
     expect(completeAgentAnswerEnding("They could overwhelm the press if")).toBe("");
     expect(repair("They could overwhelm the press if", "generation_budget")).not.toMatch(/press if\./);
+  });
+});
+
+describe("repairAgentDeliveredProse empty_after_recovery marker", () => {
+  it("prefers grounded fallback copy over the fixed last resort when grounding exists", () => {
+    const grounded = "Everton 22.0%, draw 24.0%, Chelsea 54.0% on the model sheet.";
+    const result = repairAgentDeliveredProse(
+      "",
+      {
+        capHit: "generation_budget",
+        recover: () => "",
+        groundedFallback: () => grounded,
+      },
+      dropStructurallyIncompleteTail,
+    );
+    expect(result.text).toContain("22.0%");
+    expect(result.emptyAfterRecovery).toBe(false);
+  });
+
+  it("sets emptyAfterRecovery when only the last-resort boilerplate remains", () => {
+    const result = repairAgentDeliveredProse(
+      "",
+      {
+        capHit: "tokens",
+        recover: () => "",
+        groundedFallback: () => "",
+      },
+      dropStructurallyIncompleteTail,
+    );
+    expect(result.text).toBe(AGENT_DELIVERY_LAST_RESORT);
+    expect(result.emptyAfterRecovery).toBe(true);
   });
 });

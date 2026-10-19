@@ -186,6 +186,7 @@ import {
   logChatAgentTurn,
   type ChatAgentCapHit,
   type ChatAgentTurnMetrics,
+  type ChatAgentTurnReport,
 } from "./chat-agent-limits";
 import {
   composeAgentEvidenceFallback,
@@ -195,6 +196,7 @@ import {
 import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
 import {
   enrichAgentTeamNewsAttribution,
+  AGENT_DELIVERY_LAST_RESORT,
   repairAgentDeliveredProse,
   sanitizeAgentCitationArtifacts,
 } from "./chat-agent-package";
@@ -10401,6 +10403,8 @@ export interface AskResult {
   engine: ChatEngineMode;
   /** True when the answer path invoked the inference client (agent or legacy prose). */
   usedLlm: boolean;
+  /** Agent-path delivery marker for eval (empty_after_recovery last resort). */
+  agentTurn?: ChatAgentTurnReport;
 }
 
 type ScopedAskPayload = {
@@ -10409,6 +10413,7 @@ type ScopedAskPayload = {
   citations?: AskCitation[];
   verification: AskVerification;
   usedLlm?: boolean;
+  agentTurn?: ChatAgentTurnReport;
 };
 
 function withPresentation(
@@ -10427,6 +10432,7 @@ function withPresentation(
     presentation: responsePresentation(plan),
     engine: chatEngineMode(),
     usedLlm: result.usedLlm === true,
+    ...(result.agentTurn ? { agentTurn: result.agentTurn } : {}),
   };
 }
 
@@ -10449,7 +10455,7 @@ export function agentNonEmptyGroundedFallback(
   if (deterministic?.trim()) return deterministic;
   const closed = closedGroundedAnswer(question, grounding, hasHistory);
   if (closed?.trim()) return closed;
-  return "No bet — I'll keep this to the model sheet and verified sources only.";
+  return AGENT_DELIVERY_LAST_RESORT;
 }
 
 function resolveAgentUserAnswer(
@@ -10546,24 +10552,54 @@ function packageAgentDirectAnswer(
       voice,
       capHit,
       recover: () => resolveAgentUserAnswer(question, grounding, bundle, hasHistory, prose),
+      groundedFallback: () => agentNonEmptyGroundedFallback(question, grounding, hasHistory),
     },
     dropStructurallyIncompleteTail,
   );
   const manager = normalizeAgentManagerAnswer(
     question,
     grounding,
-    shaped,
+    shaped.text,
     citations,
     bundle,
     managerPages,
   );
+  const emptyAfterRecovery = shaped.emptyAfterRecovery;
+  const verification: AskVerification = emptyAfterRecovery
+    ? {
+      status: "abstain",
+      supportedClaimCount: 0,
+      removedClaimCount: Math.max(manager.verification.removedClaimCount, 1),
+    }
+    : manager.verification;
   return {
     answer: manager.prose,
     grounding,
-    verification: manager.verification,
+    verification,
     usedLlm,
     ...(citations.length ? { citations } : {}),
+    ...(emptyAfterRecovery
+      ? {
+        agentTurn: {
+          outcome: "fallback",
+          skipReason: "empty_after_recovery",
+          capHit,
+        },
+      }
+      : {}),
   };
+}
+
+function finishChatAgentDelivery(
+  metrics: ChatAgentTurnMetrics,
+  payload: ScopedAskPayload,
+): ScopedAskPayload {
+  if (payload.agentTurn?.skipReason === "empty_after_recovery") {
+    metrics.skipReason = "empty_after_recovery";
+    if (metrics.outcome === "success") metrics.outcome = "fallback";
+  }
+  logChatAgentTurn(metrics);
+  return payload;
 }
 
 async function deliverChatAgentTurn(
@@ -10625,7 +10661,6 @@ async function deliverChatAgentTurn(
       && metrics.outcome === "success") {
       metrics.outcome = "fallback";
     }
-    logChatAgentTurn(metrics);
   }
   if (pendingError) mapAnalysisError(pendingError);
 
@@ -10642,16 +10677,19 @@ async function deliverChatAgentTurn(
   if (!agentText.trim() || containsAgentInternalWording(agentText)) {
     metrics.outcome = metrics.outcome === "success" ? "fallback" : metrics.outcome;
     const fallbackProse = resolveAgentUserAnswer(question, grounding, bundle, history.length > 0, agentText);
-    return packageAgentDirectAnswer(
-      question,
-      grounding,
-      bundle,
-      fallbackProse,
-      history.length > 0,
-      metrics.toolSteps > 0,
-      voice,
-      managerPages,
-      metrics.capHit,
+    return finishChatAgentDelivery(
+      metrics,
+      packageAgentDirectAnswer(
+        question,
+        grounding,
+        bundle,
+        fallbackProse,
+        history.length > 0,
+        metrics.toolSteps > 0,
+        voice,
+        managerPages,
+        metrics.capHit,
+      ),
     );
   }
 
@@ -10661,16 +10699,19 @@ async function deliverChatAgentTurn(
   });
   prose = finalizeChatAgentAnswer(prose, grounding);
 
-  return packageAgentDirectAnswer(
-    question,
-    grounding,
-    bundle,
-    prose,
-    history.length > 0,
-    true,
-    voice,
-    managerPages,
-    metrics.capHit,
+  return finishChatAgentDelivery(
+    metrics,
+    packageAgentDirectAnswer(
+      question,
+      grounding,
+      bundle,
+      prose,
+      history.length > 0,
+      true,
+      voice,
+      managerPages,
+      metrics.capHit,
+    ),
   );
 }
 

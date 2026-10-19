@@ -30,6 +30,9 @@ export interface ChatAgentTurnMetrics {
   skipReason?: string;
 }
 
+/** Subset of turn metrics exposed on `/api/ask` for eval when delivery used a last resort. */
+export type ChatAgentTurnReport = Pick<ChatAgentTurnMetrics, "outcome" | "skipReason" | "capHit">;
+
 export function emptyChatAgentTurnMetrics(): ChatAgentTurnMetrics {
   return {
     latencyMs: 0,
