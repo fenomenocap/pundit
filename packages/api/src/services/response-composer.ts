@@ -14,6 +14,7 @@ import {
   type PlayerEvidenceBundle,
 } from "./player-evidence";
 import { buildResponseFacts, factById } from "./response-facts";
+import { composeSameGameParlayAnswer } from "./same-game-parlay";
 import {
   asksOver25Only,
   asksScorelineBoard,
@@ -472,6 +473,10 @@ export function composeMatchResponse(
   plan: ResponsePlan = planResponse(question, { groundingKind: "match" }),
   playerEvidence: PlayerEvidenceBundle | null = null
 ): string {
+  if (plan.mode === "same-game-parlay") {
+    return composeSameGameParlayAnswer(question, grounding)
+      ?? composePricedGridAnswer(question, grounding);
+  }
   if (plan.mode === "totals" || plan.mode === "btts") {
     return composePricedGridAnswer(question, grounding);
   }

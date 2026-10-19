@@ -19,7 +19,7 @@ describe("demo featured match and slate parlay", () => {
       homeElo: 1850,
       awayElo: 1600,
     });
-    const arsenal = fixture("Arsenal", "Crystal Palace", {
+    const arsenal = fixture("Arsenal", "Everton", {
       fixtureId: 2,
       utcDate: kickoff,
       date: kickoff.slice(0, 10),
@@ -59,9 +59,22 @@ describe("demo featured match and slate parlay", () => {
         "desk"
       );
       expect(parlayTurn.answer).toContain("Tottenham Hotspur v Coventry City");
-      expect(parlayTurn.answer).toContain("Arsenal v Crystal Palace");
+      expect(parlayTurn.answer).toContain("Arsenal v Everton");
       expect(parlayTurn.answer).not.toMatch(/Brighton|Forest/i);
       expect(parlayTurn.answer).toMatch(/combined fair ~/i);
+
+      const crossGame = await answerQuestion(
+        "Spurs to beat Coventry and Arsenal to beat Everton",
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "desk"
+      );
+      expect(crossGame.grounding).toBeNull();
+      expect(crossGame.answer).toMatch(/two-leg/i);
+      expect(crossGame.answer).not.toMatch(/one match at a time/i);
     } finally {
       cached.mockRestore();
       vi.restoreAllMocks();

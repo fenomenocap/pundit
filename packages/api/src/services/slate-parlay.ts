@@ -1,3 +1,4 @@
+import { getTeamNameAliases, normalizeTeamName, normalizeTeamText } from "../lib/team-names";
 import { MODEL_EDGE_CLAIMS_ALLOWED } from "../config/backtest-gate";
 import { PUNDIT_FUNDAMENTAL_MODEL_VERSION } from "./model-contributors";
 import type { ModelFixture } from "./model-data";
@@ -27,6 +28,98 @@ export function isSlateParlayRequest(question: string): boolean {
     || /\b(?:five|four|three|two)[\s-]*fold\b/i.test(question);
   if (!bettingShape) return false;
   return /\b(?:today|tonight|slate|card|desk|kick[\s-]?offs?|matches?|fixtures?|combined|price|prices|odds|\d+\s*pm)\b/i.test(question);
+}
+
+function teamSearchTerms(fixtures: ModelFixture[]): Array<[string, string]> {
+  const teams = new Set<string>();
+  for (const fixture of fixtures) {
+    teams.add(fixture.home);
+    teams.add(fixture.away);
+  }
+  const searchTerms = new Map<string, string>();
+  for (const team of teams) {
+    const canonical = normalizeTeamName(team);
+    searchTerms.set(normalizeTeamText(team), team);
+    searchTerms.set(canonical, team);
+    for (const [alias, aliasCanonical] of getTeamNameAliases()) {
+      if (normalizeTeamName(aliasCanonical) === canonical) {
+        searchTerms.set(normalizeTeamText(alias), team);
+      }
+    }
+  }
+  return [...searchTerms.entries()].sort(([a], [b]) => b.length - a.length);
+}
+
+function mentionedTeams(question: string, fixtures: ModelFixture[]): string[] {
+  const normalizedQuestion = normalizeTeamText(question);
+  const teamPositions = new Map<string, number>();
+  for (const [term, team] of teamSearchTerms(fixtures)) {
+    const position = normalizedQuestion.indexOf(term);
+    if (position === -1) continue;
+    const previous = teamPositions.get(team);
+    if (previous === undefined || position < previous) teamPositions.set(team, position);
+  }
+  return [...teamPositions.entries()]
+    .sort(([, a], [, b]) => a - b)
+    .map(([team]) => team);
+}
+
+function findPricedFixture(teamA: string, teamB: string, fixtures: ModelFixture[]): ModelFixture | undefined {
+  const a = normalizeTeamName(teamA);
+  const b = normalizeTeamName(teamB);
+  return fixtures.find((fixture) => {
+    const home = normalizeTeamName(fixture.home);
+    const away = normalizeTeamName(fixture.away);
+    return (home === a && away === b) || (home === b && away === a);
+  });
+}
+
+/** Named multi-match acca, e.g. "Spurs to beat Coventry and Arsenal to beat Everton". */
+export function isCrossGameParlayRequest(question: string, slate: ModelFixture[] = getDeskPricedSlate()): boolean {
+  if (/\bin general\b/i.test(question)) return false;
+  const segments = question.split(/\band\b/i).filter((part) => /\bto\s+(?:beat|win)\b/i.test(part));
+  if (segments.length >= 2) return true;
+  if (/\b(?:parlay|acca|accumulator)\b/i.test(question) && mentionedTeams(question, slate).length >= 4) {
+    return true;
+  }
+  return false;
+}
+
+export function isDeskParlayRequest(question: string): boolean {
+  return isSlateParlayRequest(question) || isCrossGameParlayRequest(question);
+}
+
+interface ParsedCrossLeg {
+  pick: string;
+  opponent: string;
+}
+
+export function resolveClubNameOnSlate(raw: string, slate: ModelFixture[]): string | null {
+  const normalized = normalizeTeamText(raw.trim());
+  for (const [term, team] of teamSearchTerms(slate)) {
+    if (term === normalized) return team;
+  }
+  let best: string | null = null;
+  let bestLen = 0;
+  for (const [term, team] of teamSearchTerms(slate)) {
+    if (normalized.includes(term) && term.length > bestLen) {
+      best = team;
+      bestLen = term.length;
+    }
+  }
+  return best;
+}
+
+function parseCrossGameLegs(question: string): ParsedCrossLeg[] {
+  const legs: ParsedCrossLeg[] = [];
+  const segmentPattern = /^(.*?)\s+to\s+(?:beat|win(?:\s+against)?)\s+(.+)$/i;
+  for (const segment of question.split(/\band\b/i)) {
+    const match = segmentPattern.exec(segment.trim());
+    if (match) {
+      legs.push({ pick: match[1].trim(), opponent: match[2].trim().replace(/[?.!,]+$/g, "") });
+    }
+  }
+  return legs;
 }
 
 export function londonCalendarDate(value: string | Date): string {
@@ -182,6 +275,30 @@ function marketQuoteForFavourite(fixture: ModelFixture, outcome: OutcomeKey): Ma
   };
 }
 
+function outcomeForPick(
+  fixture: ModelFixture,
+  pick: string
+): { label: string; p: number; outcome: OutcomeKey } | null {
+  const pickKey = normalizeTeamName(pick);
+  if (pickKey === normalizeTeamName(fixture.home)) {
+    return { label: fixture.home, p: fixture.pHome, outcome: "home" };
+  }
+  if (pickKey === normalizeTeamName(fixture.away)) {
+    return { label: fixture.away, p: fixture.pAway, outcome: "away" };
+  }
+  return null;
+}
+
+function fixtureHasAnyMarketQuote(fixture: ModelFixture): boolean {
+  if (marketQuoteForFavourite(fixture, "home")
+    || marketQuoteForFavourite(fixture, "draw")
+    || marketQuoteForFavourite(fixture, "away")) {
+    return true;
+  }
+  const cached = getCachedFixtureMarketOdds(fixture);
+  return Boolean(cached?.stake || cached?.kalshi || cached?.polymarket);
+}
+
 function oneLineReason(fixture: ModelFixture, favourite: { label: string; p: number }): string {
   const gap = Math.abs(fixture.homeElo - fixture.awayElo);
   const stronger = fixture.homeElo >= fixture.awayElo ? fixture.home : fixture.away;
@@ -210,17 +327,22 @@ export function selectSlateLegsForParlay(
   now: Date = new Date()
 ): SlateLegSelection | null {
   const requestedLegs = parseParlayLegCount(question);
-  let pool = slate.filter(isPricedFixture).sort(
+  const fullPool = slate.filter(isPricedFixture).sort(
     (left, right) => new Date(left.utcDate).getTime() - new Date(right.utcDate).getTime()
   );
+  let pool = fullPool;
   let kickoffHourNotice: string | null = null;
   const kickoffHour = requestedKickoffHourLondon(question);
   if (kickoffHour != null) {
-    const atKickoff = pool.filter((row) => kickoffHourLondon(row.utcDate) === kickoffHour);
+    const label = kickoffHour === 15 ? "3pm" : `${kickoffHour}:00`;
+    const atKickoff = fullPool.filter((row) => kickoffHourLondon(row.utcDate) === kickoffHour);
     if (atKickoff.length === 0) {
-      const label = kickoffHour === 15 ? "3pm" : `${kickoffHour}:00`;
       kickoffHourNotice = `There are no ${label} kick-offs on the desk; legs use the next priced fixtures instead.`;
-      pool = pool;
+    } else if (atKickoff.length < requestedLegs) {
+      const seen = new Set(atKickoff.map((row) => row.fixtureId));
+      const extra = fullPool.filter((row) => !seen.has(row.fixtureId));
+      pool = [...atKickoff, ...extra];
+      kickoffHourNotice = `Only ${atKickoff.length} ${label} kick-off${atKickoff.length === 1 ? "" : "s"}; legs ${atKickoff.length + 1}–${requestedLegs} are from the next fixtures.`;
     } else {
       pool = atKickoff;
     }
@@ -272,13 +394,24 @@ export function composeSlateParlayAnswer(
   const selection = selectSlateLegsForParlay(question, slate, now);
   if (!selection) return null;
   const { legs, fillNotice } = selection;
-  const legCount = legs.length;
-  const combined = legs.reduce((product, fixture) => product * favouriteOutcome(fixture).p, 1);
+  const legOutcomes = legs.map((fixture) => ({ fixture, fav: favouriteOutcome(fixture) }));
+  const foldLabel = legs.length === 2 ? "two-leg" : `${legs.length}-fold`;
+  return composeParlayAnswerBody(question, legs, legOutcomes, fillNotice, foldLabel);
+}
 
-  const marketRows = legs.map((fixture) => {
-    const fav = favouriteOutcome(fixture);
-    return { fixture, fav, market: marketQuoteForFavourite(fixture, fav.outcome) };
-  });
+function composeParlayAnswerBody(
+  question: string,
+  legs: ModelFixture[],
+  legOutcomes: Array<{ fixture: ModelFixture; fav: { label: string; p: number; outcome: OutcomeKey } }>,
+  fillNotice: string | null,
+  foldLabel: string
+): string {
+  const combined = legOutcomes.reduce((product, row) => product * row.fav.p, 1);
+  const marketRows = legOutcomes.map(({ fixture, fav }) => ({
+    fixture,
+    fav,
+    market: marketQuoteForFavourite(fixture, fav.outcome),
+  }));
   const withMarket = marketRows.filter((row) => row.market != null);
   const sharedMarket = withMarket.length === legs.length
     && withMarket.every((row) => row.market!.source === withMarket[0].market!.source
@@ -293,15 +426,13 @@ export function composeSlateParlayAnswer(
   ];
   if (sharedMarket) {
     metaParts.push(`${sharedMarket.source} as of ${formatObservedUk(sharedMarket.observedAt)} UK`);
-  } else if (withMarket.length === 0) {
+  } else if (withMarket.length === 0 && !legs.some(fixtureHasAnyMarketQuote)) {
     metaParts.push("fair price only (no live market quote)");
   }
 
-  const pickSummary = legs.map((fixture) => {
-    const fav = favouriteOutcome(fixture);
-    return `${fav.label} (${fixture.home} v ${fixture.away})`;
-  }).join(", ");
-  const foldLabel = legCount === 2 ? "two-leg" : `${legCount}-fold`;
+  const pickSummary = legOutcomes.map(({ fixture, fav }) =>
+    `${fav.label} (${fixture.home} v ${fixture.away})`
+  ).join(", ");
   const lead = `My ${foldLabel}: ${pickSummary}, combined fair ~${fairDecimal(combined)}. ${metaParts.join(" · ")}.`;
 
   const legLines = marketRows.map(({ fixture, fav, market }) => {
@@ -318,13 +449,51 @@ export function composeSlateParlayAnswer(
     return `${kickoff} · ${fixture.home} v ${fixture.away}: ${fav.label} ${modelBit}${marketBit} — ${oneLineReason(fixture, fav)}.`;
   });
 
+  let marketCombined: string | null = null;
+  if (withMarket.length === legs.length) {
+    const marketProduct = marketRows.reduce((product, row) => product * (row.market?.p ?? 1), 1);
+    marketCombined = `Market combined ~${fairDecimal(marketProduct)} (${pct(marketProduct)}).`;
+  }
+
   const tail = "Correlation: same-day and league context can move these legs together.";
-  const blocks = [fillNotice, lead, ...legLines, tail].filter(Boolean);
-  const answer = blocks.join("\n");
+  const blocks = [fillNotice, lead, ...legLines, marketCombined, tail].filter(Boolean);
+  let answer = blocks.join("\n");
   if (!MODEL_EDGE_CLAIMS_ALLOWED && /\bedge\b/i.test(answer)) {
-    return answer.replace(/\bedge\b/gi, "gap");
+    answer = answer.replace(/\bedge\b/gi, "gap");
   }
   return answer;
+}
+
+export function composeCrossGameParlayAnswer(
+  question: string,
+  slate: ModelFixture[] = getDeskPricedSlate()
+): string | null {
+  if (!isCrossGameParlayRequest(question, slate)) return null;
+  const parsed = parseCrossGameLegs(question);
+  if (parsed.length < 2) return null;
+  const legOutcomes: Array<{ fixture: ModelFixture; fav: { label: string; p: number; outcome: OutcomeKey } }> = [];
+  for (const leg of parsed) {
+    const pick = resolveClubNameOnSlate(leg.pick, slate) ?? leg.pick;
+    const opponent = resolveClubNameOnSlate(leg.opponent, slate) ?? leg.opponent;
+    const fixture = findPricedFixture(pick, opponent, slate)
+      ?? findPricedFixture(opponent, pick, slate);
+    if (!fixture) return null;
+    const outcome = outcomeForPick(fixture, pick);
+    if (!outcome) return null;
+    legOutcomes.push({ fixture, fav: outcome });
+  }
+  const foldLabel = legOutcomes.length === 2 ? "two-leg" : `${legOutcomes.length}-fold`;
+  return composeParlayAnswerBody(question, legOutcomes.map((row) => row.fixture), legOutcomes, null, foldLabel);
+}
+
+export function composeDeskParlayAnswer(
+  question: string,
+  slate: ModelFixture[] = getDeskPricedSlate(),
+  now: Date = new Date()
+): string | null {
+  const cross = composeCrossGameParlayAnswer(question, slate);
+  if (cross) return cross;
+  return composeSlateParlayAnswer(question, slate, now);
 }
 
 export function slateParlayFailClosedAnswer(): string {

@@ -676,7 +676,8 @@ describe("desk take outline", () => {
 
 describe("desk qualitative voice", () => {
   it("forbids MiniMax from printing the board, 2.70, or a stadium", () => {
-    expect(DESK_SYSTEM).toMatch(/Do not print probabilities/);
+    expect(DESK_SYSTEM).toMatch(/For tactical takes, do not print probabilities/);
+    expect(DESK_SYSTEM).not.toMatch(/Never discuss staking, parlays/);
     expect(DESK_SYSTEM).toMatch(/Do not name a stadium/);
     expect(DESK_SYSTEM).not.toMatch(/Put a number on it/);
     expect(DESK_SYSTEM).toMatch(/"2\.70"/);

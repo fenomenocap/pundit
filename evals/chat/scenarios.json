@@ -1026,6 +1026,38 @@
       ]
     },
     {
+      "id": "desk-cross-game-two-leg-parlay",
+      "description": "A named two-match parlay routes before multi-fixture rejection and prices each leg from the desk slate.",
+      "category": "betting-maths",
+      "kind": "betting-maths-slate",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
+        {
+          "question": "Spurs to beat Coventry and Arsenal to beat Everton — combined fair price?",
+          "expectGrounding": null,
+          "expectBettingMaths": { "kind": "slate-parlay", "minLegs": 2, "forbidEdgeWording": true },
+          "forbidText": ["one match at a time", "Brighton", "Nottingham Forest"]
+        }
+      ]
+    },
+    {
+      "id": "desk-same-game-parlay-spurs",
+      "description": "Same-game parlay uses the score grid joint probability, not the product of marginals.",
+      "category": "betting-maths",
+      "kind": "featured-turns",
+      "voice": "desk",
+      "requiredForCertification": true,
+      "turns": [
+        {
+          "questionTemplate": "Spurs win + over 2.5 + BTTS on {home} vs {away}.",
+          "expectGrounding": "match",
+          "forbidText": ["multiplied the separate legs"],
+          "expectText": ["same-game parlay", "Correlation:", "fair"]
+        }
+      ]
+    },
+    {
       "id": "desk-slate-five-fold-acca-3pm",
       "description": "A five-fold acca request filters 3pm kick-offs when present; otherwise states that in one line and uses today's priced slate. Hard-fails on fixtures off the slate.",
       "category": "betting-maths",

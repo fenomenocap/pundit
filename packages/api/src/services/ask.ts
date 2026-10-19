@@ -133,10 +133,11 @@ import {
   composeTeamNewsAnswer,
 } from "./response-composer";
 import { getLeadFeaturedModelFixture } from "./featured-fixtures";
+import { composeDeskSameGameParlayAnswer, isSameGameParlayQuestion } from "./same-game-parlay";
 import {
-  composeSlateParlayAnswer,
+  composeDeskParlayAnswer,
+  isDeskParlayRequest,
   isNonFixtureVersusTarget,
-  isSlateParlayRequest,
   referencesFeaturedMatchDeictic,
   slateParlayFailClosedAnswer,
 } from "./slate-parlay";
@@ -10787,13 +10788,23 @@ async function answerQuestionScoped(
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
   }
-  if (isSlateParlayRequest(question)) {
-    const slateParlay = composeSlateParlayAnswer(question) ?? slateParlayFailClosedAnswer();
+  if (isDeskParlayRequest(question)) {
+    const slateParlay = composeDeskParlayAnswer(question) ?? slateParlayFailClosedAnswer();
     return {
       answer: voice === "desk" ? humaniseDeskCitationDates(slateParlay) : slateParlay,
       grounding: null,
       verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
     };
+  }
+  if (isSameGameParlayQuestion(question)) {
+    const sgp = composeDeskSameGameParlayAnswer(question);
+    if (sgp) {
+      return {
+        answer: voice === "desk" ? humaniseDeskCitationDates(sgp) : sgp,
+        grounding: null,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
   }
   const prepared = prepareAsk(
     question,
@@ -11104,8 +11115,8 @@ async function answerQuestionStreamScoped(
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
   }
-  if (isSlateParlayRequest(question)) {
-    const slateParlay = composeSlateParlayAnswer(question) ?? slateParlayFailClosedAnswer();
+  if (isDeskParlayRequest(question)) {
+    const slateParlay = composeDeskParlayAnswer(question) ?? slateParlayFailClosedAnswer();
     handlers.onGrounding(null);
     if ((handlers.shouldContinue ?? (() => true))()) {
       handlers.onDelta(slateParlay);
@@ -11115,6 +11126,18 @@ async function answerQuestionStreamScoped(
       grounding: null,
       verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
     };
+  }
+  if (isSameGameParlayQuestion(question)) {
+    const sgp = composeDeskSameGameParlayAnswer(question);
+    if (sgp) {
+      handlers.onGrounding(null);
+      if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(sgp);
+      return {
+        answer: sgp,
+        grounding: null,
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
   }
   const prepared = prepareAsk(
     question,

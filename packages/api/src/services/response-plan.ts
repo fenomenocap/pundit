@@ -1,7 +1,10 @@
+import { isSameGameParlayQuestion } from "./same-game-parlay";
+
 export type ResponseMode =
   | "match-preview"
   | "match-follow-up"
   | "pricing-desk"
+  | "same-game-parlay"
   | "totals"
   | "btts"
   | "exact-score"
@@ -146,6 +149,7 @@ export const DESK_COMPOSER_MODES: ReadonlySet<ResponseMode> = new Set([
   "lineup-counterfactual",
   "totals",
   "btts",
+  "same-game-parlay",
   "pricing-desk",
 ]);
 
@@ -194,6 +198,7 @@ export function planResponse(
     mode = "team-news";
   } else if (/\b(?:table|standings?)\b/i.test(q)) mode = "table";
   else if (/\b(?:title race|top[- ]four|season outlook|champion)\b/i.test(q)) mode = "season";
+  else if (match && isSameGameParlayQuestion(q)) mode = "same-game-parlay";
   else if (match && asksTotalsQuestion(q)) mode = "totals";
   else if (match && asksBttsQuestion(q)) mode = "btts";
   else if (match && /\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(q)) mode = "match-follow-up";

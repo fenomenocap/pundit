@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { fixture } from "./__fixtures__/model-fixture";
 import {
+  composeCrossGameParlayAnswer,
   composeSlateParlayAnswer,
+  isCrossGameParlayRequest,
+  isDeskParlayRequest,
   isNonFixtureVersusTarget,
   isSlateParlayRequest,
   londonCalendarDate,
@@ -149,6 +152,43 @@ describe("slate parlay and deictic helpers", () => {
     );
     expect(answer).toMatch(/market \d+\.\d%/);
     expect(answer).toMatch(/Stake/);
+  });
+
+  it("detects cross-game named parlays without slate keywords", () => {
+    const q = "Spurs to beat Coventry and Arsenal to beat Everton — what's the combined fair price?";
+    expect(isCrossGameParlayRequest(q)).toBe(true);
+    expect(isDeskParlayRequest(q)).toBe(true);
+    expect(isSlateParlayRequest(q)).toBe(false);
+  });
+
+  it("composes a two-leg cross-game parlay from named picks", () => {
+    const slate = [
+      fixture("Tottenham Hotspur", "Coventry City", {
+        fixtureId: 1,
+        utcDate: "2026-10-19T19:00:00.000Z",
+        pHome: 0.62,
+        pDraw: 0.22,
+        pAway: 0.16,
+      }),
+      fixture("Arsenal", "Everton", {
+        fixtureId: 2,
+        utcDate: "2026-10-20T19:00:00.000Z",
+        pHome: 0.58,
+        pDraw: 0.24,
+        pAway: 0.18,
+        stakePHome: 0.56,
+        stakePDraw: 0.25,
+        stakePAway: 0.19,
+      }),
+    ];
+    const answer = composeCrossGameParlayAnswer(
+      "Spurs to beat Coventry and Arsenal to beat Everton",
+      slate
+    );
+    expect(answer).toMatch(/two-leg/i);
+    expect(answer).toMatch(/combined fair ~/);
+    expect(answer).toMatch(/Tottenham Hotspur v Coventry City/);
+    expect(answer).toMatch(/Arsenal v Everton/);
   });
 
   it("detects slate parlay requests but not general slate essays", () => {
