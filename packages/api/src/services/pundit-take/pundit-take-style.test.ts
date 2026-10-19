@@ -206,8 +206,9 @@ describe("Pundit Take v2 style pack (PR1)", () => {
     const delivery = composePunditTakeDelivery(prompts[0], grounding, plan)!;
     expect(delivery.plan.contradicting.some((p) => p.id === "fact-injuries")).toBe(false);
     expect(delivery.answer).toMatch(/20th on 3 points/);
-    expect(delivery.answer).not.toMatch(/\bstill\b/i);
-    expect(delivery.answer).not.toMatch(/sharper than my read/i);
+      expect(delivery.answer).not.toMatch(/\bstill\b/i);
+      expect(delivery.answer).not.toMatch(/sharper than my read/i);
+      expect(delivery.answer).not.toMatch(/applied in this forecast|sits at/i);
   });
 
   it("take v2 BTTS and totals avoid Lean labels", () => {
@@ -222,6 +223,8 @@ describe("Pundit Take v2 style pack (PR1)", () => {
         composePunditTakeDelivery(q, grounding, plan)!);
       expect(delivery.answer).not.toMatch(/^Lean:/m);
       expect(delivery.answer).toMatch(/BTTS yes at 52%|Over 2\.5 at 55%/);
+      expect(delivery.answer).toContain("| Outcome | Ours |");
+      expect(delivery.plan.marketKind).toBe(mode === "btts" ? "btts" : "totals");
     }
   });
 

@@ -57,7 +57,12 @@ import {
 } from "./basics-answer-voice";
 import { largestSlateModelMarketGapForDemo, type SlateGapHighlight } from "./slate-market-scan";
 import { getCachedModelData } from "./model-data";
-import { punditTakeV2Active, stashPunditTakeDelivery, stashTakeDossier } from "./pundit-take/flags";
+import {
+  consumePrefetchedTakeDelivery,
+  punditTakeV2Active,
+  stashPunditTakeDelivery,
+  stashTakeDossier,
+} from "./pundit-take/flags";
 import { composePunditTakeDelivery } from "./pundit-take/compose";
 import { prefetchStoredTakeDossier } from "./pundit-take/take-dossier";
 
@@ -781,7 +786,8 @@ export function composeMatchResponse(
     if (grounding.kind === "match") {
       stashTakeDossier(prefetchStoredTakeDossier(grounding));
     }
-    const take = composePunditTakeDelivery(question, grounding, plan);
+    const prefetched = consumePrefetchedTakeDelivery();
+    const take = prefetched ?? composePunditTakeDelivery(question, grounding, plan);
     if (take) {
       stashPunditTakeDelivery(take);
       return take.answer;

@@ -8,6 +8,7 @@ interface TakeRequestScope {
   mode: PunditTakeMode;
   delivery: PunditTakeDelivery | null;
   dossier: MatchDossier | null;
+  prefetchedDelivery: PunditTakeDelivery | null;
 }
 
 const takeRequestScope = new AsyncLocalStorage<TakeRequestScope>();
@@ -76,11 +77,28 @@ export function consumeTakeDossier(): MatchDossier | null {
   return scoped?.dossier ?? null;
 }
 
+export function stashPrefetchedTakeDelivery(delivery: PunditTakeDelivery | null): void {
+  const scoped = takeRequestScope.getStore();
+  if (scoped) scoped.prefetchedDelivery = delivery;
+}
+
+export function consumePrefetchedTakeDelivery(): PunditTakeDelivery | null {
+  const scoped = takeRequestScope.getStore();
+  const delivery = scoped?.prefetchedDelivery ?? null;
+  if (scoped) scoped.prefetchedDelivery = null;
+  return delivery;
+}
+
 export function withPunditTakeRequestScope<T>(
   headerOverride: PunditTakeMode | null,
   fn: () => T,
 ): T {
   const effective = effectivePunditTakeMode(headerOverride);
   if (effective !== "v2") return fn();
-  return takeRequestScope.run({ mode: "v2", delivery: null, dossier: null }, fn);
+  return takeRequestScope.run({
+    mode: "v2",
+    delivery: null,
+    dossier: null,
+    prefetchedDelivery: null,
+  }, fn);
 }

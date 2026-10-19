@@ -348,12 +348,12 @@ export interface ModelFixtureLookupHint {
  * canonical ESPN identity (`espn:comp:id`), cached spine id (`comp:id`), the
  * internal model fixture key, or team hints from active match grounding.
  */
-export function findModelFixtureByPublicRef(
+export function findModelFixtureInList(
   ref: string,
+  fixtures: ModelFixture[],
   hint?: ModelFixtureLookupHint,
 ): ModelFixture | undefined {
   const trimmed = ref.trim();
-  const fixtures = getCachedModelData().fixtures;
   if (!trimmed) {
     if (hint?.competitionId && hint.date && hint.home && hint.away) {
       const key = modelFixtureKey(hint.competitionId, hint.date, hint.home, hint.away);
@@ -398,6 +398,13 @@ export function findModelFixtureByPublicRef(
   }
 
   return undefined;
+}
+
+export function findModelFixtureByPublicRef(
+  ref: string,
+  hint?: ModelFixtureLookupHint,
+): ModelFixture | undefined {
+  return findModelFixtureInList(ref, getCachedModelData().fixtures, hint);
 }
 
 function activeFixtureIdentity(

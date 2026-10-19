@@ -122,20 +122,10 @@ function printCase(title: string, question: string, grounding: Grounding, hasHis
 seedModel("Tottenham", "Coventry", 401879257, { pHome: 0.599, pDraw: 0.244, pAway: 0.157 });
 printCase("Who wins Tottenham v Coventry?", "Who wins Tottenham v Coventry?", buildGrounding({ home: "Tottenham", away: "Coventry", pHome: 0.599, pDraw: 0.244, pAway: 0.157 }));
 
-seedModel("Chelsea", "Tottenham", 401879999, { pHome: 0.45, pDraw: 0.28, pAway: 0.27 });
 printCase(
-  "Fair odds vs market Chelsea v Spurs",
-  "Fair odds vs market for Chelsea v Tottenham on Saturday?",
-  buildGrounding({
-    home: "Chelsea",
-    away: "Tottenham",
-    fixtureId: "espn:eng.1:401879999",
-    pHome: 0.45,
-    pDraw: 0.28,
-    pAway: 0.27,
-    homeElo: 1820,
-    awayElo: 1799,
-  }),
+  "Fair odds vs market Tottenham v Coventry",
+  "Fair odds vs market for Tottenham v Coventry?",
+  buildGrounding({ home: "Tottenham", away: "Coventry", pHome: 0.599, pDraw: 0.244, pAway: 0.157 }),
 );
 
 seedModel("Tottenham", "Coventry", 401879257, { pHome: 0.599, pDraw: 0.244, pAway: 0.157 });
@@ -153,6 +143,6 @@ passPlayGrounding.pricing.userLine = {
   passPrice: 1.56,
   capturedAt: "2026-10-18T09:30:00.000Z",
 };
-printCase("Pass or play (user line)", "Pass or play on Spurs at 1.55?", passPlayGrounding);
+printCase("Pass or play (user line)", "pass or play?", passPlayGrounding);
 printCase("BTTS", "BTTS for Tottenham v Coventry?", buildGrounding({ home: "Tottenham", away: "Coventry", pHome: 0.599, pDraw: 0.244, pAway: 0.157 }));
 printCase("Over 2.5", "Over 2.5 Tottenham v Coventry?", buildGrounding({ home: "Tottenham", away: "Coventry", pHome: 0.599, pDraw: 0.244, pAway: 0.157 }));

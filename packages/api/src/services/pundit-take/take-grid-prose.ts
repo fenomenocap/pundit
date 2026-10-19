@@ -5,29 +5,7 @@ import {
   formatUserLineSideRow,
 } from "../basics-answer-voice";
 import type { PunditTakePlan } from "./types";
-import { joinBodySentencesFromPlan } from "./take-prose";
-
-function pctInt(p: number): number {
-  return Math.round(p * 100);
-}
-
-export function renderBttsTakeProse(plan: PunditTakePlan, grounding: Grounding): string {
-  const opener = `${plan.fixtureLabel} — BTTS yes at ${pctInt(grounding.pBttsYes)}%.`;
-  const split = `BTTS no sits at ${pctInt(grounding.pBttsNo)}%.`;
-  const body = joinBodySentencesFromPlan(plan, 2);
-  return [opener, split, body].filter(Boolean).join("\n\n");
-}
-
-export function renderTotalsTakeProse(plan: PunditTakePlan, grounding: Grounding, underFocus: boolean): string {
-  const lead = underFocus ? "Under 2.5" : "Over 2.5";
-  const leadP = underFocus ? grounding.pUnder2_5 : grounding.pOver2_5;
-  const otherP = underFocus ? grounding.pOver2_5 : grounding.pUnder2_5;
-  const otherLabel = underFocus ? "Over 2.5" : "Under 2.5";
-  const opener = `${plan.fixtureLabel} — ${lead} at ${pctInt(leadP)}%.`;
-  const split = `${otherLabel} sits at ${pctInt(otherP)}%.`;
-  const body = joinBodySentencesFromPlan(plan, 2);
-  return [opener, split, body].filter(Boolean).join("\n\n");
-}
+import { renderTakeProseDeterministic } from "./take-prose";
 
 export function renderPassPlayTakeProse(plan: PunditTakePlan, grounding: Grounding): string | null {
   const line = grounding.pricing.userLine;
@@ -55,9 +33,14 @@ export function renderPassPlayTakeProse(plan: PunditTakePlan, grounding: Groundi
     callLine = `${leanLabel} at ${decimal}, ${size} — I play.`;
   }
   const opener = `${plan.fixtureLabel} — ${callLine}`;
-  const modelRow = formatUserLineSideRow(grounding, line.outcome, line.decimalOdds, gapPoints);
   const implied = deskPercentDisplay(impliedP);
-  const context = `That line implies ${implied}; my model has ${label} at ${deskPercentDisplay(modelP)}. ${modelRow}`;
-  const body = joinBodySentencesFromPlan(plan, 1);
+  const modelPct = deskPercentDisplay(modelP);
+  const context = `That price implies ${implied}; I have ${label} at ${modelPct}. ${formatUserLineSideRow(grounding, line.outcome, line.decimalOdds, gapPoints)}`;
+  const body = plan.supporting[0]?.text;
   return [opener, context, body].filter(Boolean).join("\n\n");
+}
+
+/** Grid markets use the same renderer path as 1X2 once the plan carries `gridCall`. */
+export function renderGridTakeProse(plan: PunditTakePlan, variant: "full" | "why" = "full"): string {
+  return renderTakeProseDeterministic(plan, variant);
 }
