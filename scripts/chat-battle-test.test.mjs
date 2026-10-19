@@ -1740,8 +1740,9 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
   assert.equal(validateAnalystExpression("Kelly 4% of bankroll.", { expectStakeRefusal: true }).passed, false);
   const userLinePlayEv = "On Chelsea at 7.00, I make it 10.0% against that line, EV +40.0% (fat-and-fragile). That clears the play price of 10.30, so I play. Risk is high.";
   const userLinePlayHonest = [
-    "Coventry at 7.00 implies 14.3% (1/7.00); I make Coventry 15.7% (fair 6.37).",
-    "Lean: Coventry at 7.00, small play — I play, gap +1.4 pts over my price.",
+    "Coventry at 7.00 implies 14.3% (1/7.00).",
+    "Coventry  15.7% | fair 6.37 | line 7.00 (14.3%) | gap +1.4 pts",
+    "Lean: Coventry at 7.00, small play.",
     "Model: Elo ratings v1 (1da9aa9), 18 Oct 20:00 SGT · Odds: Polymarket no-vig, 18 Oct 20:00 SGT",
   ].join("\n");
   assert.equal(validateAnalystExpression(userLinePlayHonest, { expectUserLinePassPlay: true }).passed, true);
