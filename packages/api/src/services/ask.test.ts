@@ -2859,7 +2859,7 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("Coventry 0.4%");
       expect(answer).toContain("My 1X2 is Arsenal");
       expect(answer).toContain("Kalshi no-vig");
-      expect(answer).toContain("percentage points");
+      expect(answer).toMatch(/gap [+-]?\d+\.?\d* pts/i);
       expect(answer).toMatch(/states the disagreement, not a bet to place|not its cause or a bet to place/i);
       expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(answer).not.toMatch(/Over 2\.5 is \d/);
@@ -2910,7 +2910,7 @@ describe("current-news evidence hardening", () => {
       expect(closedGroundedAnswer("BTTS?", model(), true))
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
-        .toMatch(/Kalshi no-vig.*percentage points/i);
+        .toMatch(/Kalshi no-vig.*gap [+-]?\d+\.?\d* pts/i);
       expect(closedGroundedAnswer("What will the 1X2 be?", model(), true))
         .toMatch(/My 1X2 is Arsenal 97\.3%.*draw.*Coventry/i);
       expect(closedGroundedAnswer("Tactical matchup", model(), true)).toMatch(/less cover against a counterattack/i);
@@ -4137,8 +4137,14 @@ describe("buildGrounding", () => {
     for (const market of grounding.pricing.markets) {
       expect(market.edgeBand).toBeNull();
       for (const outcome of ["home", "draw", "away"] as const) {
-        expect(market.legs[outcome].decimalOdds).toBeNull();
-        expect(market.legs[outcome].impliedP).toBeNull();
+        if (market.source === "stake") {
+          expect(market.legs[outcome].decimalOdds).toBeNull();
+          expect(market.legs[outcome].impliedP).toBeNull();
+        } else {
+          const impliedP = market.legs[outcome].impliedP;
+          expect(impliedP).not.toBeNull();
+          expect(market.legs[outcome].decimalOdds).toBeCloseTo(1 / impliedP!);
+        }
         expect(market.legs[outcome].evPct).toBeNull();
       }
     }

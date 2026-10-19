@@ -96,6 +96,7 @@ import {
   validateCompleteOneXTwoMarket,
   stripUntraceableMatchPercentages,
   buildMatchPricing,
+  impliedDecimalOddsFromNoVig,
   attachUserLine,
   type DirectionalRationale,
   type ManagerTenure,
@@ -4890,16 +4891,27 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
           pDraw: stakePDraw,
           pAway: stakePAway,
           decimalOdds: null,
+          impliedDisplayDecimals: false,
         }]
       : []),
-    ...oddsSources.map((source) => ({
-      source: source.source,
-      observedAt: source.observedAt,
-      pHome: source.pHome,
-      pDraw: source.pDraw,
-      pAway: source.pAway,
-      decimalOdds: null,
-    })),
+    ...oddsSources.map((source) => {
+      const completeDraw = source.pDraw != null
+        && Number.isFinite(source.pDraw)
+        && source.pDraw > 0
+        && source.pDraw < 1;
+      const probabilities = completeDraw
+        ? { home: source.pHome, draw: source.pDraw!, away: source.pAway } as Record<OneXTwoOutcome, number>
+        : null;
+      return {
+        source: source.source,
+        observedAt: source.observedAt,
+        pHome: source.pHome,
+        pDraw: source.pDraw,
+        pAway: source.pAway,
+        decimalOdds: probabilities ? impliedDecimalOddsFromNoVig(probabilities) : null,
+        impliedDisplayDecimals: true,
+      };
+    }),
   ];
   const consensusMarket = firstCompleteNoVigMarket(pricingMarkets);
   const matchContext = buildMatchContext(fixture);

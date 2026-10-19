@@ -63,9 +63,11 @@ export interface MatchPricingMarketInput {
   pDraw: number | null;
   pAway: number;
   /**
-   * Real captured decimals only. A no-vig p is not a decimal — never pass `1/p`.
+   * Captured or display decimals. Kalshi/Polymarket no-vig rows may pass `1/p`
+   * with `impliedDisplayDecimals: true` (before fees, no EV/pass-play).
    */
   decimalOdds?: Partial<Record<OneXTwoOutcome, number | null>> | null;
+  impliedDisplayDecimals?: boolean;
 }
 
 export interface UserLineInput {
@@ -215,7 +217,12 @@ export function attachUserLine(
   };
 }
 
-function pricingLeg(outcome: OneXTwoOutcome, modelP: number, decimal: number | null): PricingLeg {
+function pricingLeg(
+  outcome: OneXTwoOutcome,
+  modelP: number,
+  decimal: number | null,
+  displayOnlyDecimal: boolean,
+): PricingLeg {
   const realDecimal = capturedDecimal(decimal);
   return {
     outcome,
@@ -223,8 +230,20 @@ function pricingLeg(outcome: OneXTwoOutcome, modelP: number, decimal: number | n
     fairOdds: requiredFairOdds(modelP),
     decimalOdds: realDecimal,
     impliedP: realDecimal === null ? null : impliedP(realDecimal),
-    evPct: evPct(modelP, realDecimal),
+    evPct: displayOnlyDecimal ? null : evPct(modelP, realDecimal),
   };
+}
+
+/** Implied decimal odds from no-vig probabilities (Kalshi/Polymarket display; before fees). */
+export function impliedDecimalOddsFromNoVig(
+  probabilities: Record<OneXTwoOutcome, number>,
+): Partial<Record<OneXTwoOutcome, number>> {
+  const out: Partial<Record<OneXTwoOutcome, number>> = {};
+  for (const outcome of OUTCOMES) {
+    const p = probabilities[outcome];
+    if (p > 0 && p < 1) out[outcome] = 1 / p;
+  }
+  return out;
 }
 
 function completeMarketProbabilities(row: MatchPricingMarketInput): Record<OneXTwoOutcome, number> | null {
@@ -237,9 +256,8 @@ function completeMarketProbabilities(row: MatchPricingMarketInput): Record<OneXT
 }
 
 /**
- * Server-owned match pricing. `evPct` / `decimalOdds` fill only when a real
- * captured decimal exists. No-vig rows keep `null` — do not pass reconstructed
- * `1/p` legs from `groundingOneXTwoMarketLegs`.
+ * Server-owned match pricing. `evPct` fills only for real captured decimals.
+ * No-vig Kalshi/Polymarket rows may carry display `1/p` decimals when flagged.
  */
 export function buildMatchPricing(input: MatchPricingInput): PricingObject {
   const modelP: Record<OneXTwoOutcome, number> = {
@@ -252,8 +270,14 @@ export function buildMatchPricing(input: MatchPricingInput): PricingObject {
     if (!completeMarketProbabilities(row)) continue;
     const legs = {} as Record<OneXTwoOutcome, PricingLeg>;
     const printableEv: number[] = [];
+    const displayOnly = Boolean(row.impliedDisplayDecimals);
     for (const outcome of OUTCOMES) {
-      const leg = pricingLeg(outcome, modelP[outcome], row.decimalOdds?.[outcome] ?? null);
+      const leg = pricingLeg(
+        outcome,
+        modelP[outcome],
+        row.decimalOdds?.[outcome] ?? null,
+        displayOnly,
+      );
       legs[outcome] = leg;
       if (leg.evPct != null) printableEv.push(leg.evPct);
     }

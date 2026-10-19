@@ -12,11 +12,14 @@ import { getModelForecast, getModelForecastByKey } from "./data-layer/getModelFo
 import {
   findModelFixtureByPublicRef,
   getModelFixtureKey,
+  type ModelFixture,
   type ModelFixtureLookupHint,
 } from "./model-data";
 import { resolveInference } from "./inference-config";
 import type { FederatedGrounding } from "./federated-evidence";
 import { STAKE_REFUSAL_SENTENCE } from "./response-composer";
+import { BANKROLL_UNIT_GUIDANCE } from "./response-plan";
+import { repairMalformedCitationMarkers } from "./chat-agent-package";
 import {
   AGENT_MAX_CUMULATIVE_LLM_TOKENS,
   AGENT_MAX_OUTPUT_TOKENS_PER_STEP,
@@ -119,6 +122,8 @@ If a search tool returns no rows, say you could not verify that fact — do not 
 When Fundamental disagrees with market consensus, say so plainly using the supplied gaps — never call it "edge" or "value"${MODEL_EDGE_CLAIMS_ALLOWED ? "" : " until the backtest gate passes"}.
 Never say lock, guaranteed, or can't lose. On explicit betting calls only, mention small stakes and 18+ / gamble responsibly.
 If asked to size a stake without a bankroll, refuse with exactly: "${STAKE_REFUSAL_SENTENCE}"
+If the user states a bankroll and asks how much to stake, acknowledge it and reply with exactly: "${BANKROLL_UNIT_GUIDANCE}" — no Kelly or edge-based sizing.
+When seeded oddsSources or get_market_odds returns Kalshi/Polymarket quotes, never say none priced or no odds.
 Do not leave empty **Section** headers. Finish every sentence; do not trail off mid-thought. Avoid markdown tables for team news — use short prose sentences.
 Refuse anything aimed at problem gambling. Vary phrasing; avoid repeating the same section headers every turn.`;
 
@@ -160,6 +165,47 @@ function resolveCachedFixture(
   if (fixtureId) return findModelFixtureByPublicRef(fixtureId, hint);
   if (hint?.home && hint?.away) return findModelFixtureByPublicRef("", hint);
   return null;
+}
+
+function completeCachedMarketOdds(
+  markets: ReturnType<typeof getMarketOdds>["data"]["markets"],
+): boolean {
+  if (!markets) return false;
+  for (const row of [markets.kalshi, markets.polymarket]) {
+    if (!row) continue;
+    if (row.pDraw != null && Number.isFinite(row.pHome) && Number.isFinite(row.pAway)) return true;
+  }
+  return false;
+}
+
+/** Tool payload for get_market_odds; falls back to match grounding quotes when cache is empty. */
+export function marketOddsToolPayload(
+  fixture: ModelFixture,
+  grounding: AskGrounding,
+): Record<string, unknown> {
+  const data = getMarketOdds(fixture).data;
+  if (completeCachedMarketOdds(data.markets)) return data as Record<string, unknown>;
+  if (grounding?.kind !== "match" || !grounding.oddsSources?.length) {
+    return data as Record<string, unknown>;
+  }
+  const quotes = grounding.oddsSources.map((row) => ({
+    source: row.source,
+    observedAt: row.observedAt,
+    pHome: row.pHome,
+    pDraw: row.pDraw,
+    pAway: row.pAway,
+    decimalBeforeFees: {
+      home: 1 / row.pHome,
+      draw: row.pDraw != null ? 1 / row.pDraw : null,
+      away: 1 / row.pAway,
+    },
+  }));
+  return {
+    ...data,
+    oddsSources: grounding.oddsSources,
+    quotes,
+    note: "quotes from match grounding when live cache was empty",
+  };
 }
 
 function matchSeedBlock(grounding: Extract<AskGrounding, { kind: "match" }>): string {
@@ -262,7 +308,7 @@ async function runAgentTool(
       return modelRow?.data ?? (fixtureId ? { error: "model_fixture_not_found", fixtureId } : { error: "fixture_id_required" });
     case "get_market_odds":
       if (!cached) return { error: "model_fixture_not_found", fixtureId };
-      return getMarketOdds(cached).data;
+      return marketOddsToolPayload(cached, grounding);
     case "get_form":
       return getForm({ competitionId: competitionId ?? "eng.1" }).data;
     case "get_standings":
@@ -439,7 +485,9 @@ export async function runChatAgent(
   }
 
   return {
-    text: text.trim() ? normalizeAgentMarkers(text, bundle) : "",
+    text: text.trim()
+      ? repairMalformedCitationMarkers(normalizeAgentMarkers(text, bundle), bundle)
+      : "",
     bundle,
     metrics,
   };

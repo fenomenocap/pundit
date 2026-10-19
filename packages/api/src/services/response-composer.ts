@@ -22,6 +22,8 @@ import {
   asksTacticalTake,
   asksUnder25Only,
   asksUnpricedMarket,
+  mentionsBankroll,
+  BANKROLL_UNIT_GUIDANCE,
   planResponse,
   pricedGridMarketsAsked,
   resolveRequestedScoreline,
@@ -291,11 +293,35 @@ function orderOutcomes(focus: OneXTwoOutcome | null): OneXTwoOutcome[] {
   return [focus, ...ONE_X_TWO_OUTCOMES.filter((outcome) => outcome !== focus)];
 }
 
-function neutralGapPhrase(gapPoints: number, label: string): string {
-  const magnitude = Math.abs(gapPoints).toFixed(1);
-  if (Math.abs(gapPoints) < 0.05) return `${label} aligns with the market`;
-  return `on ${label} I am ${magnitude} percentage points `
-    + `${gapPoints >= 0 ? "higher" : "lower"} than the market`;
+function labeledGapPhrase(gapPoints: number, label: string): string {
+  if (Math.abs(gapPoints) < 0.05) return `${label} gap ~0 pts`;
+  const sign = gapPoints >= 0 ? "+" : "";
+  return `${label} gap ${sign}${gapPoints.toFixed(1)} pts`;
+}
+
+function marketDecimalSuffix(source: string): string {
+  return source === "kalshi" || source === "polymarket" ? " (before fees)" : "";
+}
+
+function perSideMarketComparison(
+  grounding: Grounding,
+  divergence: NonNullable<Grounding["marketDivergence"][number]>,
+  focus: OneXTwoOutcome | null,
+): string {
+  const pricingRow = grounding.pricing.markets.find((row) => row.source === divergence.source);
+  const beforeFees = marketDecimalSuffix(divergence.source);
+  const parts = orderOutcomes(focus).map((outcome) => {
+    const leg = divergence.legs.find((row) => row.outcome === outcome)!;
+    const label = outcomeLabelForComparison(grounding, outcome);
+    const modelPct = pct(leg.modelPercent / 100);
+    const impliedPct = pct(leg.marketPercent / 100);
+    const fairModel = fairDecimal(leg.modelPercent / 100);
+    const marketDec = pricingRow?.legs[outcome].decimalOdds != null
+      ? pricingRow.legs[outcome].decimalOdds!.toFixed(2)
+      : fairDecimal(leg.marketPercent / 100);
+    return `${label}: model ${modelPct} vs implied ${impliedPct}, fair ${fairModel} vs market ${marketDec}${beforeFees}, ${labeledGapPhrase(leg.gapPoints, label)}`;
+  });
+  return parts.join("; ");
 }
 
 function formatOneXTwoSide(
@@ -333,13 +359,8 @@ export function composeMarketComparisonAnswer(question: string, grounding: Groun
     away: divergence.legs.find((leg) => leg.outcome === "away")!.marketPercent / 100,
   }, true)}.`;
   const focus = focusOneXTwoOutcome(question, grounding);
-  const gapParts = orderOutcomes(focus).map((outcome) => {
-    const leg = divergence.legs.find((row) => row.outcome === outcome)!;
-    return neutralGapPhrase(leg.gapPoints, outcomeLabelForComparison(grounding, outcome));
-  });
-  const gapLine = MODEL_EDGE_CLAIMS_ALLOWED
-    ? `Gaps vs ${source}: ${gapParts.join("; ")}.`
-    : `Vs ${source}, ${gapParts.join("; ")}.`;
+  const perSide = perSideMarketComparison(grounding, divergence, focus);
+  const beforeFeesLabel = marketDecimalSuffix(divergence.source);
   const consensus = grounding.externalMarketConsensus
     ? ` Market consensus (${dateLabel(grounding.externalMarketConsensus.asOf)}): ${formatOneXTwoSide(grounding, {
       home: grounding.externalMarketConsensus.pHome,
@@ -347,9 +368,10 @@ export function composeMarketComparisonAnswer(question: string, grounding: Groun
       away: grounding.externalMarketConsensus.pAway,
     }, true)}.`
     : "";
+  const sideBlock = `Per side vs ${source}${beforeFeesLabel ? " (market decimal before fees)" : ""}: ${perSide}.`;
   const lead = focus
-    ? `${gapParts[0]}. ${modelLine} ${marketLine}${consensus}`
-    : `${modelLine} ${marketLine}${consensus} ${gapLine}`;
+    ? `${labeledGapPhrase(divergence.legs.find((row) => row.outcome === focus)!.gapPoints, outcomeLabelForComparison(grounding, focus))}. ${modelLine} ${marketLine}${consensus} ${sideBlock}`
+    : `${modelLine} ${marketLine}${consensus} ${sideBlock}`;
   return `${lead.trim()} That states the disagreement, not a bet to place.`;
 }
 
@@ -626,7 +648,10 @@ export function composeMatchResponse(
     const priced = grounding.pricing.userLine
       ? composeUserLineAnswer(grounding)
       : `My 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`;
-    return `${priced}\n\n${STAKE_REFUSAL_SENTENCE}`;
+    const sizing = mentionsBankroll(question)
+      ? BANKROLL_UNIT_GUIDANCE
+      : STAKE_REFUSAL_SENTENCE;
+    return `${priced}\n\n${sizing}`;
   }
   if (plan.mode === "market-comparison") {
     return composeMarketComparisonAnswer(question, grounding)

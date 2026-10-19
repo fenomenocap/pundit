@@ -321,7 +321,7 @@ describe("V2 deterministic fact delivery", () => {
     const delivered = await deliverFallback("Where do you disagree most with the available 1X2 market?");
     expect(delivered.answer).toMatch(/My 1X2 is Arsenal.*40\.0%.*fair/i);
     expect(delivered.answer).toMatch(/Kalshi no-vig.*50\.0%/i);
-    expect(delivered.answer).toMatch(/percentage points/i);
+    expect(delivered.answer).toMatch(/gap [+-]?\d+\.?\d* pts/i);
     expect(delivered.answer).toMatch(/not a bet to place|not its cause/i);
     expect(delivered.answer).not.toContain("omitted those numbers");
   });

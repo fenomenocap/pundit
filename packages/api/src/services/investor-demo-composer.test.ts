@@ -5,6 +5,7 @@ import {
   composeMarketComparisonAnswer,
   composeMatchResponse,
   composeOddsProvenanceAnswer,
+  STAKE_REFUSAL_SENTENCE,
 } from "./response-composer";
 import { buildMatchPricing } from "./response-correctness";
 import { sampleMatchContextFields } from "./match-context";
@@ -89,7 +90,12 @@ function spursCoventryGrounding(): Grounding {
         pHome: source.pHome,
         pDraw: source.pDraw,
         pAway: source.pAway,
-        decimalOdds: null,
+        impliedDisplayDecimals: true,
+        decimalOdds: {
+          home: 1 / source.pHome,
+          draw: source.pDraw != null ? 1 / source.pDraw : null,
+          away: 1 / source.pAway,
+        },
       })),
     }),
     freshness: sampleAgentFreshness({
@@ -113,7 +119,9 @@ describe("investor demo composer fixes", () => {
     expect(after).toContain("Coventry 15.7% (fair 6.37)");
     expect(after).toContain("Polymarket no-vig, as of 18 October 2026");
     expect(after).toContain("Tottenham 64.0% (fair 1.56)");
-    expect(after).toContain("on Tottenham I am 4.1 percentage points lower than the market");
+    expect(after).toContain("Per side vs Polymarket (market decimal before fees)");
+    expect(after).toContain("fair 1.67 vs market 1.56 (before fees)");
+    expect(after).toContain("Tottenham gap -4.1 pts");
     expect(after).not.toMatch(/\bEV\b/);
     expect(after).not.toMatch(/\bedge\b/i);
     const focused = composeMarketComparisonAnswer("What is the edge on Coventry?", grounding)!;
@@ -150,6 +158,26 @@ describe("investor demo composer fixes", () => {
     expect(planResponse("What about over 2.5?", followUp).mode).toBe("totals");
     const answer = composeMatchResponse("what about the draw?", grounding, planResponse("what about the draw?", followUp));
     expect(answer).toContain("the draw at 24.4% (fair 4.10)");
+  });
+
+  it("CTO A) Kalshi/Polymarket pricing legs carry before-fees decimals without EV", () => {
+    const poly = grounding.pricing.markets.find((row) => row.source === "polymarket")!;
+    expect(poly.legs.home.decimalOdds).toBeCloseTo(1 / 0.64);
+    expect(poly.legs.home.evPct).toBeNull();
+    expect(poly.legs.draw.impliedP).toBeCloseTo(0.205);
+  });
+
+  it("CTO B) bankroll stake questions get generic unit guidance, not Kelly", () => {
+    const answer = composeMatchResponse(
+      "I have $1,000 — how much should I stake on Tottenham?",
+      grounding,
+      planResponse("I have $1,000 — how much should I stake on Tottenham?", { groundingKind: "match" }),
+    );
+    expect(answer).toMatch(/hear the bankroll/i);
+    expect(answer).toMatch(/1[–-]2%/);
+    expect(answer).toMatch(/accas|accumulator/i);
+    expect(answer).not.toMatch(/\bkelly\b/i);
+    expect(answer).not.toContain(STAKE_REFUSAL_SENTENCE);
   });
 
   it("5) rewriteAnalystIdentity avoids broken subject rewrites", () => {

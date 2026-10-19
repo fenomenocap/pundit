@@ -187,6 +187,16 @@ export function asksStakeSizeQuestion(question: string): boolean {
   );
 }
 
+export function mentionsBankroll(question: string): boolean {
+  const q = question.trim();
+  if (/\b(?:bankroll|bank roll)\b/i.test(q)) return true;
+  if (/\$\s*[\d,]+(?:\.\d{2})?/.test(q) || /£\s*[\d,]+(?:\.\d{2})?/.test(q)) return true;
+  return /\b(?:i have|i've got|with)\s+(?:a\s+)?(?:\$|£|usd|gbp)?\s*[\d,]+(?:\.\d{2})?\b/i.test(q);
+}
+
+export const BANKROLL_UNIT_GUIDANCE =
+  "I hear the bankroll. As generic unit guidance only — not a bet recommendation — use flat stakes around 1–2% of that bankroll per bet, smaller on accas, and never chase losses.";
+
 export function planResponse(
   question: string,
   context: { hasHistory?: boolean; groundingKind?: string | null; hasUserLine?: boolean } = {}

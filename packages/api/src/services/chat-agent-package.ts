@@ -73,6 +73,27 @@ export function sanitizeAgentCitationArtifacts(text: string): string {
     .trim();
 }
 
+/**
+ * Close or drop broken `[[S#(` citation markers. Valid ids become `[[S#]]`;
+ * unknown ids are removed rather than shipped raw.
+ */
+export function repairMalformedCitationMarkers(text: string, bundle: EvidenceBundle): string {
+  const validIds = new Set((bundle.results ?? []).map((source) => source.id));
+  const toMarker = (num: string) => {
+    const id = `S${Number(num)}`;
+    return validIds.has(id) ? `[[${id}]]` : "";
+  };
+  let repaired = text;
+  repaired = repaired.replace(/\[\[S(\d+)\([^[\]]*?\]\]?/gi, (_, num: string) => toMarker(num));
+  repaired = repaired.replace(/\[\[S(\d+)\(/gi, (_, num: string) => toMarker(num));
+  repaired = repaired.replace(/\[\[S(\d+)(?!\]\])/g, (match, num: string, offset: number, whole: string) => {
+    const tail = whole.slice(offset + match.length, offset + match.length + 2);
+    if (tail.startsWith("]]")) return match;
+    return toMarker(num);
+  });
+  return repaired.replace(/\s{2,}/g, " ").trim();
+}
+
 /** Pre-render only: requires an explicit [[S#]] marker tied to source text that names the player. */
 export function enrichAgentTeamNewsAttribution(
   answer: string,
