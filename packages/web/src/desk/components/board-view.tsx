@@ -21,6 +21,7 @@ import { OddsBtn } from "./odds-btn";
 import { ProbBar } from "./prob-bar";
 import { Ticker } from "./ticker";
 import { Button } from "./ui/button";
+import { settledWithCapturedForecast } from "@/desk/lib/settled-forecast";
 import { useLiveSlate } from "./use-live-slate";
 
 const ONE_X_TWO: { key: MarketKey; label: string }[] = [
@@ -94,6 +95,7 @@ function MarketList() {
   const addLeg = useDesk((s) => s.addLeg);
   const slip = useDesk((s) => s.slip);
   const { open, settled, source } = useLiveSlate();
+  const scoredSettled = settledWithCapturedForecast(settled);
 
   return (
     <section className="border-b lg:border-b-0 lg:border-r border-border min-w-0">
@@ -188,11 +190,13 @@ function MarketList() {
           );
         })}
       </ul>
+      {scoredSettled.length > 0 ? (
       <header className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border mt-2">
         <h2 className="eyebrow">Recent results</h2>
       </header>
+      ) : null}
       <ul>
-        {settled.map((f) => (
+        {scoredSettled.map((f) => (
           <li
             key={f.id}
             className="flex items-center gap-2 px-3 sm:px-4 py-2 border-b border-border text-sm"

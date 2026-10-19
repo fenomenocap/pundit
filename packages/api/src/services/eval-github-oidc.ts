@@ -12,6 +12,9 @@ export const CHAT_EVAL_JUDGE_OIDC_AUDIENCE = "pundit-judge";
 export const CHAT_EVAL_JUDGE_REPOSITORY = "fenomenocap/pundit";
 export const CHAT_EVAL_DAILY_WORKFLOW_SUFFIX = ".github/workflows/chat-eval-daily.yml";
 
+/** Small skew allowance for GitHub Actions runner ↔ Railway clock drift and nbf/iat. */
+export const CHAT_EVAL_JUDGE_OIDC_CLOCK_TOLERANCE_SEC = 60;
+
 const ALLOWED_EVENT_NAMES = new Set(["schedule", "workflow_dispatch", "repository_dispatch"]);
 
 export type GitHubActionsOidcClaims = {
@@ -67,6 +70,7 @@ export function createGitHubActionsOidcVerifier(jwks?: JWTVerifyGetKey): OidcVer
     const { payload } = await jwtVerify(token, keySet, {
       issuer: GITHUB_ACTIONS_OIDC_ISSUER,
       audience: CHAT_EVAL_JUDGE_OIDC_AUDIENCE,
+      clockTolerance: CHAT_EVAL_JUDGE_OIDC_CLOCK_TOLERANCE_SEC,
     });
     return payload as GitHubActionsOidcClaims;
   };

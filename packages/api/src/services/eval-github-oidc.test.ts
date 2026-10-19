@@ -2,6 +2,7 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CHAT_EVAL_JUDGE_OIDC_AUDIENCE,
+  CHAT_EVAL_JUDGE_OIDC_CLOCK_TOLERANCE_SEC,
   CHAT_EVAL_JUDGE_REPOSITORY,
   createGitHubActionsOidcVerifier,
   createLocalJwksFromRsaPublicJwk,
@@ -89,9 +90,39 @@ describe("chat eval GitHub OIDC claims", () => {
       .setIssuer(GITHUB_ACTIONS_OIDC_ISSUER)
       .setAudience(CHAT_EVAL_JUDGE_OIDC_AUDIENCE)
       .setIssuedAt()
-      .setExpirationTime("-10s")
+      .setExpirationTime(`-${CHAT_EVAL_JUDGE_OIDC_CLOCK_TOLERANCE_SEC + 120}s`)
       .sign(privateKey);
     await expect(verify(expired)).rejects.toThrow();
+  });
+
+  it("accepts job_workflow_ref when workflow_ref is absent", () => {
+    expect(workflowRefAuthorizesDailyEval({
+      repository: CHAT_EVAL_JUDGE_REPOSITORY,
+      ref: "refs/heads/main",
+      job_workflow_ref: VALID_WORKFLOW_REF,
+    })).toBe(true);
+  });
+
+  it(`allows ${CHAT_EVAL_JUDGE_OIDC_CLOCK_TOLERANCE_SEC}s clock skew on nbf/iat`, async () => {
+    const { publicKey, privateKey } = await generateKeyPair("RS256");
+    const publicJwk = await exportJWK(publicKey);
+    const verify = createGitHubActionsOidcVerifier(createLocalJwksFromRsaPublicJwk(publicJwk));
+    const skewSec = Math.min(30, CHAT_EVAL_JUDGE_OIDC_CLOCK_TOLERANCE_SEC - 5);
+    const token = await new SignJWT({
+      repository: CHAT_EVAL_JUDGE_REPOSITORY,
+      ref: "refs/heads/main",
+      event_name: "schedule",
+      workflow_ref: VALID_WORKFLOW_REF,
+    })
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(GITHUB_ACTIONS_OIDC_ISSUER)
+      .setAudience(CHAT_EVAL_JUDGE_OIDC_AUDIENCE)
+      .setIssuedAt()
+      .setNotBefore(Math.floor(Date.now() / 1000) + skewSec)
+      .setExpirationTime("10m")
+      .sign(privateKey);
+    const claims = await verify(token);
+    expect(claims.repository).toBe(CHAT_EVAL_JUDGE_REPOSITORY);
   });
 
   it("verifies a locally signed JWT against a local JWKS", async () => {

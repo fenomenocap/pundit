@@ -2860,9 +2860,10 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("Arsenal 97.3%");
       expect(answer).toContain("draw 2.3%");
       expect(answer).toContain("Coventry 0.4%");
-      expect(answer).toContain("Kalshi market-implied probabilities:");
-      expect(answer).toContain("Arsenal 82.2%, draw 11.9%, Coventry 5.9%");
-      expect(answer).toContain("establishes the disagreement, not its cause or a bet to place");
+      expect(answer).toMatch(/Arsenal 97\.3%|I make Arsenal/);
+      expect(answer).toContain("Kalshi no-vig");
+      expect(answer).toMatch(/gap [+-]?\d+\.?\d* pts/i);
+      expect(answer).toMatch(/Lean:|not a pick to place|not its cause/i);
       expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(answer).not.toMatch(/Over 2\.5 is \d/);
       expect(answer).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
@@ -2908,11 +2909,11 @@ describe("current-news evidence hardening", () => {
       expect(closedGroundedAnswer("Is Arsenal vs Coventry over 2.5?", model()))
         .toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(closedGroundedAnswer("BTTS?", model(), true))
-        .toMatch(/I have BTTS yes at /i);
+        .toMatch(/BTTS yes is /i);
       expect(closedGroundedAnswer("BTTS?", model(), true))
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
-        .toMatch(/I am at .*Kalshi is at .*percentage points/i);
+        .toMatch(/Kalshi no-vig|gap [+-]?\d+\.?\d* pts/i);
       expect(closedGroundedAnswer("What will the 1X2 be?", model(), true))
         .toMatch(/My 1X2 is Arsenal 97\.3%.*draw.*Coventry/i);
       expect(closedGroundedAnswer("Tactical matchup", model(), true)).toMatch(/less cover against a counterattack/i);
@@ -2943,8 +2944,10 @@ describe("current-news evidence hardening", () => {
       expect(grounded.pricing.stakeFrac).toBeNull();
       const answer = closedGroundedAnswer("I found Arsenal at 7 — pass or play?", grounded);
       expect(answer).toMatch(/Coventry at 7\.00/);
+      expect(answer).toMatch(/implies 14\.3%/);
+      expect(answer).toMatch(/gap [+-]?\d+\.?\d* pts/);
       expect(answer).toMatch(/I pass|I play|will not call it/);
-      expect(answer).toMatch(/Risk is/);
+      expect(answer).not.toMatch(/\bEV\b/);
       expect(answer).not.toMatch(/\block\b/i);
     });
 
@@ -4139,8 +4142,14 @@ describe("buildGrounding", () => {
     for (const market of grounding.pricing.markets) {
       expect(market.edgeBand).toBeNull();
       for (const outcome of ["home", "draw", "away"] as const) {
-        expect(market.legs[outcome].decimalOdds).toBeNull();
-        expect(market.legs[outcome].impliedP).toBeNull();
+        if (market.source === "stake") {
+          expect(market.legs[outcome].decimalOdds).toBeNull();
+          expect(market.legs[outcome].impliedP).toBeNull();
+        } else {
+          const impliedP = market.legs[outcome].impliedP;
+          expect(impliedP).not.toBeNull();
+          expect(market.legs[outcome].decimalOdds).toBeCloseTo(1 / impliedP!);
+        }
         expect(market.legs[outcome].evPct).toBeNull();
       }
     }
@@ -4591,6 +4600,18 @@ describe("resolveAskContext", () => {
   ])("keeps tactical concepts general: %s", (question) => {
     expect(resolveAskContext(question, [], undefined, [], [], []))
       .toEqual({ tier: "general" });
+  });
+
+  it("resolves today's featured match deictic to the homepage lead featured fixture", () => {
+    const spurs = fixture("Tottenham Hotspur", "Coventry City", { fixtureId: 99 });
+    const other = fixture("Arsenal", "Crystal Palace", { fixtureId: 100 });
+    const question = "What's the fair price on today's featured match and is there any edge vs the market?";
+    expect(resolveAskContext(question, [], undefined, [other, spurs], [], [], {
+      featuredLeadFixture: spurs,
+    })).toEqual({ tier: "match", fixture: spurs });
+    expect(resolveAskContext(question, [], undefined, [other, spurs], [], [], {
+      featuredLeadFixture: other,
+    })).toEqual({ tier: "match", fixture: other });
   });
 
   it.each([

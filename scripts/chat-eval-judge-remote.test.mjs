@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
+import { resetJudgeTokenSourceLogForTests } from "./chat-eval-github-oidc.mjs";
 import {
   judgeEvalTurnsRemote,
   resolveJudgeEvalTurns,
@@ -24,9 +25,12 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = savedFetch;
+  resetJudgeTokenSourceLogForTests();
   delete process.env.CHAT_EVAL_JUDGE_MODE;
   delete process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN;
   delete process.env.OPENROUTER_API_KEY;
+  delete process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  delete process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
 });
 
 test("resolveJudgeMode defaults to remote", () => {
@@ -41,7 +45,7 @@ test("resolveJudgeEvalTurns local mode skips when OpenRouter key is unset", asyn
 test("judgeEvalTurnsRemote reports skipped_unavailable when OIDC token is unset", async () => {
   const remote = await judgeEvalTurnsRemote(sampleTurns);
   assert.equal(remote.status, "skipped_unavailable");
-  assert.match(remote.turns[0].reason, /CHAT_EVAL_GITHUB_OIDC_TOKEN unset/);
+  assert.match(remote.turns[0].reason, /GitHub OIDC unavailable/);
 });
 
 test("judgeEvalTurnsRemote maps Railway 503 to skipped_unavailable", async () => {
@@ -68,6 +72,37 @@ test("judgeEvalTurnsRemote maps network errors to judge_unavailable", async () =
   const remote = await judgeEvalTurnsRemote(sampleTurns, { apiUrl: "https://example.test" });
   assert.equal(remote.status, "skipped_unavailable");
   assert.equal(remote.turns[0].reason, "judge_unavailable");
+});
+
+test("judgeEvalTurnsRemote remints on 401 and retries once", async () => {
+  process.env.ACTIONS_ID_TOKEN_REQUEST_URL = "https://example.test/oidc";
+  process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = "req-token";
+  process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN = "stale-token";
+  let judgeCalls = 0;
+  let mintCalls = 0;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("/oidc")) {
+      mintCalls += 1;
+      return new Response(JSON.stringify({ value: `fresh-${mintCalls}` }), { status: 200 });
+    }
+    judgeCalls += 1;
+    if (judgeCalls === 1) {
+      assert.equal(init.headers.Authorization, "Bearer fresh-1");
+      return new Response("Unauthorized", { status: 401 });
+    }
+    assert.equal(init.headers.Authorization, "Bearer fresh-2");
+    return new Response(JSON.stringify({
+      judgedTurns: 1,
+      scoredTurns: 1,
+      skippedTurns: 0,
+      averages: { overall: 0.5 },
+      turns: [{ skipped: false, scores: { overall: 0.5 } }],
+    }), { status: 200 });
+  };
+  const remote = await judgeEvalTurnsRemote(sampleTurns, { apiUrl: "https://example.test" });
+  assert.equal(remote.scoredTurns, 1);
+  assert.equal(judgeCalls, 2);
+  assert.equal(mintCalls, 2);
 });
 
 test("judgeEvalTurnsRemote forwards turns with OIDC bearer and returns scores", async () => {

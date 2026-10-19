@@ -981,6 +981,29 @@ async function runScenario(
       }]
     }, options, pacer, onRequestStart);
   }
+  if (scenario.kind === "featured-deictic") {
+    if (!featured) {
+      return {
+        ...baseResult(scenario),
+        outcome: "INCONCLUSIVE",
+        evidence: "No model-backed active club fixture with known teams.",
+      };
+    }
+    const recognizedFixtureId = featured.recognizedFixtureId
+      ?? `espn:${featured.competitionId}:${featured.fixtureId}`;
+    return runJsonScenario({
+      ...scenario,
+      kind: "json",
+      turns: scenario.turns.map((turn) => ({
+        ...turn,
+        ...(turn.expectGrounding === "match" ? {
+          expectTeams: [featured.home, featured.away],
+          expectFixtureId: recognizedFixtureId,
+          expectCompetitionId: featured.competitionId,
+        } : {}),
+      })),
+    }, options, pacer, onRequestStart);
+  }
   if (scenario.kind === "featured-follow-up") {
     if (!featured) {
       return {

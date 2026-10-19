@@ -7,6 +7,7 @@ import {
 import { applyLiveForm, FORM, type ResultMark } from "./data/form";
 import type { TeamId } from "./data/teams";
 import { TEAM_LIST, TEAMS } from "./data/teams";
+import { pickDeskMarketQuote } from "./market-quote";
 import { deskNumbersFromModelRow, type ModelRowLambdas } from "./grid";
 
 export const LIVE_API =
@@ -185,16 +186,12 @@ function pickLean(pHome: number, pDraw: number, pAway: number, pBtts: number): M
   return oneXTwo[0].key;
 }
 
-function comparisonOdds(row: LiveModelRow): Fixture["odds"] {
-  const market = row.oddsSources?.find((source) => (
-    source.pHome > 0.02 && source.pDraw > 0.02 && source.pAway > 0.02
-  ));
-  if (!market) return null;
-  const implied = (p: number) => 1 / p;
+function comparisonOdds(quote: ReturnType<typeof pickDeskMarketQuote>): Fixture["odds"] {
+  if (!quote) return null;
   return {
-    home: implied(market.pHome),
-    draw: implied(market.pDraw),
-    away: implied(market.pAway),
+    home: quote.decimals.home,
+    draw: quote.decimals.draw,
+    away: quote.decimals.away,
     over25: null,
     under25: null,
     bttsY: null,
@@ -232,6 +229,7 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
   if (!home || !away) return null;
   const { xg, over25: over } = deskNumbersFromModelRow(row);
   const lean = pickLean(row.pHome, row.pDraw, row.pAway, row.pBttsYes);
+  const marketQuote = pickDeskMarketQuote(row.oddsSources);
   return {
     id: espnId(row.competitionId, row.fixtureId),
     gw: 4,
@@ -250,7 +248,8 @@ function toOpen(row: LiveModelRow, venue?: string | null): Fixture | null {
       over25: over,
       btts: row.pBttsYes,
     },
-    odds: comparisonOdds(row),
+    odds: comparisonOdds(marketQuote),
+    marketQuote,
     brief: briefFor(row, home, away, lean, over, xg),
     modelPick: lean,
   };

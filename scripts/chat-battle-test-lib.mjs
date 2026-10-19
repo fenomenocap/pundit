@@ -415,11 +415,24 @@ export function isKnownTeam(team) {
     && !/\b(?:winner|loser)\b/i.test(team);
 }
 
+const FEATURED_COMPETITION_PRIORITY = {
+  "eng.1": 1,
+  "uefa.champions_qual": 2,
+};
+
+/** Same lead ordering as homepage featured chips and `getLeadFeaturedModelFixture`. */
 export function selectFeaturedMatch(matches = []) {
-  return matches.find((match) =>
+  const priced = matches.filter((match) =>
     isKnownTeam(match.home)
     && isKnownTeam(match.away)
-  ) ?? null;
+  );
+  if (priced.length === 0) return null;
+  return [...priced].sort((left, right) => {
+    const priorityDiff = (FEATURED_COMPETITION_PRIORITY[left.competitionId] ?? 99)
+      - (FEATURED_COMPETITION_PRIORITY[right.competitionId] ?? 99);
+    if (priorityDiff !== 0) return priorityDiff;
+    return new Date(left.utcDate).getTime() - new Date(right.utcDate).getTime();
+  })[0];
 }
 
 function clubPairKey(match) {
@@ -1735,16 +1748,11 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
   }
   if (expectation.expectUserLinePassPlay) {
     assertions.userLineDecimalPresent = /\bat 7\.00\b/.test(text);
-    const modelEdgeAllowed = expectation.modelEdgeClaimsAllowed ?? MODEL_EDGE_CLAIMS_ALLOWED;
-    if (modelEdgeAllowed) {
-      assertions.userLineEvPresent = /\bEV [+-]\d+(?:\.\d+)?%/.test(text);
-      assertions.userLineHonestGapPresent = !/\bmodel vs that line\b/i.test(text);
-    } else {
-      assertions.userLineEvPresent = !/\bEV [+-]\d+(?:\.\d+)?%/.test(text);
-      assertions.userLineHonestGapPresent = /\bmodel vs that line [+-]\d+(?:\.\d+)?%/i.test(text);
-    }
+    assertions.userLineImpliedPresent = /\bimplies 14\.3%|\b1\/7\b/i.test(text);
+    assertions.userLineEvPresent = !/\bEV [+-]\d+(?:\.\d+)?%/.test(text);
+    assertions.userLineHonestGapPresent = /\bgap [+-]?\d+(?:\.\d+)? pts\b/i.test(text);
     assertions.userLineDecision = /\bI (?:play|pass)\b|\bI will not call it\b/.test(text);
-    assertions.userLineRiskBand = /\bRisk is (?:low|medium|high)\b/.test(text);
+    assertions.userLineFairDecimal = /\bfair \d+\.\d{2}\b/i.test(text);
     assertions.noKellySizing = !/\bkelly\b/i.test(text);
   }
   if (expectation.expectPricingDesk) {
