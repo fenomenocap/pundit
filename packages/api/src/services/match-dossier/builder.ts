@@ -36,7 +36,8 @@ import {
   headToHeadMeetings,
   homeAwaySplit,
 } from "./form-stats";
-import { MATCH_DOSSIER_BUILDER_VERSION } from "./flags";
+import { MATCH_DOSSIER_BUILDER_VERSION, matchDossierFplEnabled } from "./flags";
+import { fplInjuryEvidenceForFixtureIfCached } from "./fpl-bootstrap-injuries";
 import { writeMatchDossier } from "./storage";
 
 function espnProvenance(asOf: string): DossierProvenance {
@@ -60,11 +61,12 @@ function federatedEvidenceProvenance(asOf: string): DossierProvenance {
   };
 }
 
-/** Injuries / lineups / manager slots accept only page-verified evidence (or synthetic CI cited). */
+/** Injuries / lineups / manager slots accept page-verified evidence, synthetic CI, or internal FPL injuries. */
 function evidenceEligibleForSlots(items: DossierEvidenceItem[]): DossierEvidenceItem[] {
   return items.filter(
     (item) => item.verification === "page-verified"
-      || (item.verification === "cited" && isSyntheticDossierEvidenceHost(item.sourceUrl)),
+      || (item.verification === "cited" && isSyntheticDossierEvidenceHost(item.sourceUrl))
+      || (item.internalOnly === true && item.source === "fpl-bootstrap-static" && item.category === "injuries"),
   );
 }
 
@@ -153,13 +155,17 @@ export function buildMatchDossierForFixture(
   );
 
   const evidenceMeta = options.evidence;
-  const evidenceItems = rejectSyntheticEvidenceForRealFixture(
+  const federatedItems = rejectSyntheticEvidenceForRealFixture(
     fixture,
     (evidenceMeta?.items ?? []).filter(
       (item) => item.verification === "page-verified"
         || (item.verification === "cited" && isSyntheticDossierEvidenceHost(item.sourceUrl)),
     ),
   );
+  const fplItems = matchDossierFplEnabled()
+    ? fplInjuryEvidenceForFixtureIfCached(fixture, builtAt)
+    : [];
+  const evidenceItems = [...federatedItems, ...fplItems];
   const evidenceProv = federatedEvidenceProvenance(builtAt);
   const partitioned = partitionEvidence(evidenceItems);
 
@@ -293,6 +299,10 @@ export async function buildMatchDossierForFixtureAsync(
   fixture: ModelFixture,
   options: BuildDossierOptions = {},
 ): Promise<MatchDossier> {
+  if (matchDossierFplEnabled()) {
+    const { prefetchFplBootstrapForBuildPass } = await import("./fpl-bootstrap-injuries");
+    await prefetchFplBootstrapForBuildPass();
+  }
   let evidence: DossierEvidenceCollectResult | undefined = options.evidence
     ? {
       items: options.evidence.items,

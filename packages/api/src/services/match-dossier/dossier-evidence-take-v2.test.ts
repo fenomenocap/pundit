@@ -78,6 +78,26 @@ describe("take v2 dossier evidence contract (#341)", () => {
     expect(verifiedItems.every((i) => i.freshnessVerified === true)).toBe(true);
   });
 
+  it("isTakeV2DossierEvidence rejects internalOnly FPL rows", () => {
+    const item: DossierEvidenceItem = {
+      id: "fpl",
+      claim: "Saka: knock",
+      sourceUrl: "https://fantasy.premierleague.com/api/bootstrap-static/",
+      publisher: "fantasy.premierleague.com",
+      publishedAt: "2026-10-18T10:00:00.000Z",
+      retrievedAt: "2026-10-19T00:00:00.000Z",
+      trustTier: "interim",
+      verification: "cited",
+      direction: "neutral",
+      relatedFactor: "injuries",
+      category: "injuries",
+      origin: "scheduled",
+      source: "fpl-bootstrap-static",
+      internalOnly: true,
+    };
+    expect(isTakeV2DossierEvidence(item)).toBe(false);
+  });
+
   it("isTakeV2DossierEvidence rejects cited or partially flagged items", () => {
     const base: DossierEvidenceItem = {
       id: "x",

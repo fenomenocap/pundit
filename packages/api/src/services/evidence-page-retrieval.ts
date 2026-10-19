@@ -3,7 +3,11 @@ import { lookup } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import { Readable } from "node:stream";
+import { extractArticleBodyFromHtml } from "./article-body-extract";
 import { evidenceTier, type EvidenceAuthority, type EvidenceTier } from "./evidence-authority";
+import { plainTextFromPage } from "./html-plain-text";
+
+export { plainTextFromPage } from "./html-plain-text";
 
 // Three pages against a bundle of thirty sources meant verification usually
 // ran on one fetched page: claims citing anything else could not be supported,
@@ -35,6 +39,8 @@ export interface RetrievedEvidencePage extends EvidencePageCandidate {
   text: string;
   retrievedAt: string;
   dateSource?: PagePublicationDateSource;
+  /** Headline extracted from article body (og:title / h1 / Readability). */
+  articleHeadline?: string;
 }
 
 type AddressRecord = { address: string; family: number };
@@ -61,6 +67,7 @@ interface FetchedPageBody {
    */
   date: string;
   dateSource?: PagePublicationDateSource;
+  articleHeadline?: string;
 }
 
 /**
@@ -449,32 +456,6 @@ function pinAddress(addresses: AddressRecord[]): AddressRecord {
   return addresses.find((record) => record.family === 4) ?? addresses[0];
 }
 
-function plainTextFromPage(raw: string, contentType: string, maxChars: number): string {
-  const withoutNonContent = raw
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ");
-  const text = contentType.includes("html")
-    ? withoutNonContent
-      .replace(/<(?:blockquote|q)\b[^>]*>/gi, "\n“")
-      .replace(/<\/(?:blockquote|q)\s*>/gi, "”\n")
-      .replace(/<\/?(?:p|h[1-6]|li|ul|ol|div|section|article|header|footer|aside|nav|br|figure|figcaption)\b[^>]*>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
-    : withoutNonContent;
-  return text
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, "\"")
-    .replace(/[^\S\r\n]+/g, " ")
-    .replace(/ *\r?\n */g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, maxChars);
-}
-
 async function retrieveOne(
   candidate: EvidencePageCandidate,
   requestSignal: AbortSignal | undefined,
@@ -527,7 +508,19 @@ async function retrieveOne(
   const extracted = kind === "html"
     ? extractPublicationDateWithSource(raw, options.now())
     : null;
-  const text = plainTextFromPage(raw, kind === "html" ? "text/html" : "text/plain", options.maxTextChars);
+  let text = "";
+  let articleHeadline = "";
+  if (kind === "html") {
+    const article = extractArticleBodyFromHtml(raw, url.toString(), options.maxTextChars);
+    if (article) {
+      text = article.text;
+      articleHeadline = article.headline;
+    } else {
+      text = plainTextFromPage(raw, "text/html", options.maxTextChars);
+    }
+  } else {
+    text = plainTextFromPage(raw, "text/plain", options.maxTextChars);
+  }
   if (!text) throw new Error("evidence page contained no readable text");
   return {
     ...candidate,
@@ -535,6 +528,7 @@ async function retrieveOne(
     dateSource: extracted?.source,
     finalUrl: url.toString(),
     text,
+    articleHeadline: articleHeadline || undefined,
     retrievedAt: options.now().toISOString(),
   };
 }
@@ -594,6 +588,7 @@ export async function retrieveEvidencePages(
         ...body,
         date: pageDate || providerDate,
         dateSource: body.dateSource,
+        articleHeadline: body.articleHeadline,
       };
     } catch (error) {
       if (signal?.aborted) throw error;
@@ -643,6 +638,7 @@ async function retrieveBody(
       retrievedAt: page.retrievedAt,
       date: page.date,
       dateSource: page.dateSource,
+      articleHeadline: page.articleHeadline,
     };
   } catch (error) {
     if (!signal?.aborted) logEvidenceFetchFailure(candidate.url, error);

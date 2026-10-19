@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { getMatchDossier, matchDossierEnabled, dossierCronStatus, listStoredDossierFixtureIds } from "../services/match-dossier";
+import { publicMatchDossierView } from "../services/match-dossier/types";
 
 const router: Router = Router();
 
@@ -34,7 +35,7 @@ router.get("/:fixtureKey", async (req: Request, res: Response, next: NextFunctio
       return;
     }
     res.set("Cache-Control", "no-store").json({
-      ...result.dossier,
+      ...publicMatchDossierView(result.dossier),
       _meta: { servedFrom: result.source },
     });
   } catch (err) {

@@ -29,6 +29,8 @@ export type DossierEvidenceCategory =
 
 export type DossierEvidenceVerification = "cited" | "unverified" | "page-verified";
 
+export type DossierEvidenceTrustTier = EvidenceTier | "interim";
+
 export interface DossierEvidenceItem {
   id: string;
   claim: string;
@@ -36,7 +38,7 @@ export interface DossierEvidenceItem {
   publisher: string;
   publishedAt: string | null;
   retrievedAt: string;
-  trustTier: EvidenceTier;
+  trustTier: DossierEvidenceTrustTier;
   verification: DossierEvidenceVerification;
   direction: EvidenceDirection;
   relatedFactor: ModelFactorId;
@@ -51,10 +53,15 @@ export interface DossierEvidenceItem {
   fixtureMatchVerified?: boolean;
   /** Take v2 (#341): current season + category recency (and stale preview) gates passed. */
   freshnessVerified?: boolean;
+  /** Provenance id for non-search sources (e.g. fpl-bootstrap-static). */
+  source?: string;
+  /** Internal-only rows (FPL interim) — excluded from take v2 and public dossier API. */
+  internalOnly?: boolean;
 }
 
 /** Evidence eligible for desk take v2 (#341 @ccd8b9a). */
 export function isTakeV2DossierEvidence(item: DossierEvidenceItem): boolean {
+  if (item.internalOnly) return false;
   return item.verification === "page-verified"
     && item.fixtureMatchVerified === true
     && item.freshnessVerified === true;
@@ -272,4 +279,21 @@ export interface BuildDossierOptions {
 export interface DossierBuildWindow {
   kickoffFromInclusive: string;
   kickoffToExclusive: string;
+}
+
+/** Strip internal-only evidence before public `/api/match-dossier` responses. */
+export function publicMatchDossierView(dossier: MatchDossier): MatchDossier {
+  const strip = (items: DossierEvidenceItem[]) => items.filter((item) => !item.internalOnly);
+  return {
+    ...dossier,
+    evidence: strip(dossier.evidence),
+    injuries: {
+      ...dossier.injuries,
+      value: { items: strip(dossier.injuries.value.items) },
+    },
+    lineups: {
+      ...dossier.lineups,
+      value: { items: strip(dossier.lineups.value.items) },
+    },
+  };
 }

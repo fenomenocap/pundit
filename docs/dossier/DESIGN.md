@@ -110,6 +110,15 @@ Federated retrieval follows **#188** (grounding, freshness/trust tiers, `agent-d
 
 Build path: `planDossierEvidenceQueries` → replay or `searchWebBatch` → `federatedResultsToEvidenceItems` → `evidence[]` plus partitioned `injuries` / `lineups` / `manager` slots.
 
+### FPL bootstrap-static (interim, internal only)
+
+Optional path when `MATCH_DOSSIER_FPL_ENABLED=true` (default **off**, EPL only):
+
+- Fetches `https://fantasy.premierleague.com/api/bootstrap-static/` once per build pass (cached in-process).
+- Maps `status`, `news`, `chance_of_playing_next_round`, and `news_added` → `publishedAt` for players on the two fixture clubs.
+- Emits `DossierEvidenceItem` rows with `source: "fpl-bootstrap-static"`, `trustTier: "interim"`, `internalOnly: true`.
+- **Licensing:** FPL site/API terms are unclear for automated reuse; treat as **internal-only** until legal/product sign-off. Public `/api/match-dossier` strips `internalOnly` rows; take v2 must not render them. Do not add “availability: FPL (interim)” footer copy until CTO explicitly allows it.
+
 Web search jobs:
 
 1. **Corroborate/challenge** the model (injuries, rotation, manager, motivation, tactics, travel/congestion).

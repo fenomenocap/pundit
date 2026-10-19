@@ -1,0 +1,35 @@
+{
+  "teams": [
+    { "id": 1, "name": "Arsenal", "short_name": "ARS" },
+    { "id": 15, "name": "Newcastle", "short_name": "NEW" }
+  ],
+  "elements": [
+    {
+      "id": 101,
+      "web_name": "Saka",
+      "team": 1,
+      "status": "d",
+      "news": "Knock - 75% chance of playing",
+      "news_added": "2026-10-18T10:00:00.000Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 202,
+      "web_name": "Isak",
+      "team": 15,
+      "status": "i",
+      "news": "Knee injury - Unknown return date",
+      "news_added": "2026-10-17T09:30:00.000Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 203,
+      "web_name": "Available",
+      "team": 15,
+      "status": "a",
+      "news": "",
+      "news_added": null,
+      "chance_of_playing_next_round": 100
+    }
+  ]
+}

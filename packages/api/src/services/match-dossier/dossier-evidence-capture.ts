@@ -17,12 +17,16 @@ import {
 } from "./dossier-evidence";
 import { verifyClaimAgainstPageText } from "./dossier-claim-page-verify";
 import {
-  findBodySentenceForSnippet,
+  decodeEvidenceClaimText,
   gateFixtureMatchEvidence,
   gateFreshnessEvidence,
+  gateHeadlineMismatch,
   gatePageBodyMatch,
   gatePreFetch,
+  gateTeamScope,
+  gateUpcomingMatchContext,
   resolveEvidencePublishedAt,
+  selectVerifiedBodyClaim,
   type EvidenceGateContext,
 } from "./dossier-evidence-gate";
 import { logDossierFederatedSearchStack } from "./dossier-federated-search-meta";
@@ -196,6 +200,7 @@ export async function verifySearchCandidatesForFixture(
     publishedAtSource: DossierEvidenceItem["publishedAtSource"];
     tier: EvidenceTier;
     pageSnippet: string;
+    bodyClaim: string;
     contentSha256: string;
   }> = [];
   const queryByUrl = new Map<string, string>();
@@ -298,7 +303,37 @@ export async function verifySearchCandidatesForFixture(
       continue;
     }
 
-    const bodyReason = gatePageBodyMatch(page.text, candidate.snippet);
+    const category = categoryForQuery(candidate.query);
+    const scopeReason = gateTeamScope(candidate.title, page.text);
+    if (scopeReason) {
+      verifications.push({
+        url: candidate.url,
+        claim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: scopeReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: scopeReason, query: candidate.query });
+      continue;
+    }
+    const headlineReason = gateHeadlineMismatch(candidate.title, page.articleHeadline ?? "");
+    if (headlineReason) {
+      verifications.push({
+        url: candidate.url,
+        claim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: headlineReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: headlineReason, query: candidate.query });
+      continue;
+    }
+
+    const bodyReason = gatePageBodyMatch(page.text, candidate.snippet, fixture, category);
     if (bodyReason) {
       verifications.push({
         url: candidate.url,
@@ -313,8 +348,8 @@ export async function verifySearchCandidatesForFixture(
       continue;
     }
 
-    const bodySentence = findBodySentenceForSnippet(page.text, candidate.snippet)!;
-    const verifyClaim = bodySentence.slice(0, 480);
+    const bodyClaim = selectVerifiedBodyClaim(fixture, category, page.text, candidate.snippet)!;
+    const verifyClaim = bodyClaim.slice(0, 480);
     const check = verifyClaimAgainstPageText(verifyClaim, page.text, fixture);
     if (!check.ok) {
       verifications.push({
@@ -327,6 +362,21 @@ export async function verifySearchCandidatesForFixture(
         httpStatus: 200,
       });
       pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: check.reason, query: candidate.query });
+      continue;
+    }
+
+    const matchContextReason = gateUpcomingMatchContext(fixture, bodyClaim, category);
+    if (matchContextReason) {
+      verifications.push({
+        url: candidate.url,
+        claim: bodyClaim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: matchContextReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim: bodyClaim, reason: matchContextReason, query: candidate.query });
       continue;
     }
 
@@ -359,26 +409,28 @@ export async function verifySearchCandidatesForFixture(
       continue;
     }
 
+    const storedClaim = decodeEvidenceClaimText(bodyClaim);
     verifications.push({
       url: candidate.url,
-      claim,
+      claim: storedClaim,
       query: candidate.query,
       tier: candidate.tier,
       outcome: "verified",
       httpStatus: 200,
       contentSha256: check.contentSha256,
-      matchedSnippet: check.matchedSnippet,
+      matchedSnippet: storedClaim,
     });
 
     queryByUrl.set(candidate.url.toLocaleLowerCase(), candidate.query);
     verifiedMerged.push({
       title: candidate.title,
       link: candidate.url,
-      snippet: check.matchedSnippet,
+      snippet: storedClaim,
       date: resolvedDate!.iso,
       publishedAtSource: resolvedDate!.source,
       tier: candidate.tier,
-      pageSnippet: check.matchedSnippet,
+      pageSnippet: storedClaim,
+      bodyClaim: storedClaim,
       contentSha256: check.contentSha256,
     });
   }
@@ -389,6 +441,7 @@ export async function verifySearchCandidatesForFixture(
       title: row.title,
       link: row.link,
       snippet: row.snippet,
+      claim: row.bodyClaim,
       date: row.date,
       tier: row.tier,
     })),
@@ -408,6 +461,7 @@ export async function verifySearchCandidatesForFixture(
         verification: "page-verified" as const,
         fixtureMatchVerified: true,
         freshnessVerified: true,
+        claim: row?.bodyClaim ?? item.claim,
         snippet: row?.pageSnippet ?? item.snippet,
         contentSha256: row?.contentSha256,
       };
