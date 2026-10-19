@@ -63,7 +63,7 @@ export function formatTimestampSgt(iso: string): string {
   return `${day} ${month} ${hour}:${minute} SGT`;
 }
 
-function capitalizeSource(source: string): string {
+function labelMarketSource(source: string): string {
   if (source === "kalshi") return "Kalshi";
   if (source === "polymarket") return "Polymarket";
   if (source === "stake") return "Stake";
@@ -87,13 +87,13 @@ export function deskProvenanceLine(
 ): string {
   const modelLabel = shortModelVersionLabel(grounding.pricing.modelVersion);
   const modelTime = formatTimestampSgt(grounding.pricing.pricedAt);
-  const feedSources = new Set(
+  const feedSources = new Set<string>(
     grounding.oddsSources
       .filter((row) => row.pDraw !== null)
       .map((row) => row.source),
   );
   if (market) feedSources.add(market.source);
-  const oddsNames = [...feedSources].map(capitalizeSource).join("/") || "none";
+  const oddsNames = [...feedSources].map(labelMarketSource).join("/") || "none";
   const oddsIso = market?.observedAt
     ?? grounding.freshness.marketOddsLastUpdated
     ?? grounding.pricing.pricedAt;
@@ -285,8 +285,10 @@ export function tableVsModelFavoriteExplainLine(grounding: Grounding): string | 
 
   const marketP = marketImpliedForSide(grounding, side);
   const marketHigher = marketP != null && marketP > modelP + 0.005;
+  const feedName = grounding.oddsSources[0]?.source;
+  const feedLabel = feedName ? labelMarketSource(feedName) : "Market";
   const marketClause = marketHigher
-    ? `; ${capitalizeSource(grounding.oddsSources[0]?.source ?? "Market")} is higher at ${deskPercentDisplay(marketP)}`
+    ? `; ${feedLabel} is higher at ${deskPercentDisplay(marketP)}`
     : "";
 
   return `Caveat: ${tablePhrase}, but ${eloPhrase}${hfaPhrase}${marketClause}.`;
