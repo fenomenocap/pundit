@@ -9805,6 +9805,7 @@ function matchFollowUpSettlesWithoutGeneration(question: string, grounding: Grou
   if (/\bwhy\b[^?\n]{0,40}\b(?:favou?r|back|lean|prefer|like|rate|pick|fancy)\b|\bhow come\b|\bwhat makes you\b/i.test(question)) {
     return true;
   }
+  if (/^why\??[.!]*$/i.test(question.trim())) return true;
   return false;
 }
 
@@ -10747,6 +10748,18 @@ export function dropRepeatedParagraphs(text: string): string {
   }).join("\n\n");
 }
 
+function replaceInternalPromptLeaks(text: string): string {
+  return text
+    .replace(
+      /The SEARCH EVIDENCE contains no news for this fixture[^\n]*/gi,
+      "I don't have verified team news for this fixture in this turn, so I'll stick to the priced strength read above.",
+    )
+    .replace(/Based solely on supplied SEARCH EVIDENCE:[^\n]*/gi, "")
+    .replace(/\bSEARCH EVIDENCE contains no news\b[^\n]*/gi,
+      "I don't have verified team news for this fixture in this turn, so I'll stick to the priced strength read above.")
+    .trim();
+}
+
 function scrubEmptyStructuralLines(text: string): string {
   return text
     .split("\n")
@@ -10781,7 +10794,7 @@ function finalizeDeliveredText(
     analystResponseMetrics.numericGuardInterventions += 1;
     console.warn(JSON.stringify({ event: "analyst_numeric_guard_intervened" }));
   }
-  const scrubbed = scrubEmptyStructuralLines(traced);
+  const scrubbed = scrubEmptyStructuralLines(replaceInternalPromptLeaks(traced));
   const policyLines = grounding?.kind === "match" && delivery?.question
     ? deliveryPolicyLinesAfterTrace(
       delivery.question,

@@ -258,9 +258,9 @@ export function bankrollStakePolicyAppendix(question: string): string {
   return `${BANKROLL_UNIT_GUIDANCE} I do not Kelly-size.`;
 }
 
-export function deliveryPolicyLinesAfterTrace(question: string, mode: ResponseMode): string[] {
-  if (mode !== "stake-refusal" || !mentionsBankroll(question)) return [];
-  return [bankrollStakePolicyAppendix(question)];
+export function deliveryPolicyLinesAfterTrace(_question: string, _mode: ResponseMode): string[] {
+  // Bankroll copy is composed in the stake-refusal preamble (before the headline).
+  return [];
 }
 
 /** Fixture winner ask on an active match (not a season/title outlook). */
@@ -335,6 +335,9 @@ export function planResponse(
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
   else if (match && asksOddsBoard(q)) mode = "pricing-desk";
   else if (match && context.hasCompleteMarket1x2 && (asksMatchWinnerQuestion(q) || asksFixturePriceBoard(q))) {
+    mode = "market-comparison";
+  } else if (match && hasHistory && context.hasCompleteMarket1x2
+    && /^and the (?:away|home) side\??[.!]*$/i.test(q)) {
     mode = "market-comparison";
   } else if (match && hasHistory && asksPricingFollowUp(q)) {
     if (asksTotalsQuestion(q)) mode = "totals";

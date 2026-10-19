@@ -12,6 +12,8 @@ export const AGENT_USER_BANNED_PHRASES: readonly RegExp[] = [
   /\btool-calling agent\b/i,
   /\bwhat I already have on record\b/i,
   /\bsticking to what we already pulled\b/i,
+  /\bSEARCH EVIDENCE contains no news\b/i,
+  /\bBased solely on supplied SEARCH EVIDENCE\b/i,
 ];
 
 export function containsAgentInternalWording(text: string): boolean {

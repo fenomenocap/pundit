@@ -4,14 +4,16 @@ import type { OneXTwoOutcome } from "./response-correctness";
 export function joinBasicsAnswer(parts: {
   headline: string;
   supports?: string[];
-  lean: string;
+  lean?: string;
   provenance: string;
   responsibleGambling?: boolean;
+  preamble?: string[];
 }): string {
   const blocks = [
+    ...(parts.preamble ?? []).map((line) => line.trim()).filter(Boolean),
     parts.headline.trim(),
     ...(parts.supports ?? []).map((line) => line.trim()).filter(Boolean),
-    parts.lean.trim(),
+    ...(parts.lean?.trim() ? [parts.lean.trim()] : []),
     parts.provenance.trim(),
   ];
   if (parts.responsibleGambling) {
@@ -86,15 +88,12 @@ export function deskProvenanceLine(
   market?: { source: string; observedAt: string },
 ): string {
   const modelLabel = shortModelVersionLabel(grounding.pricing.modelVersion);
-  const modelTime = formatTimestampSgt(grounding.pricing.pricedAt);
-  const feedSources = new Set<string>(
-    grounding.oddsSources
-      .filter((row) => row.pDraw !== null)
-      .map((row) => row.source),
-  );
-  if (market) feedSources.add(market.source);
-  const oddsNames = [...feedSources].map(labelMarketSource).join("/") || "none";
+  const ratingsIso = grounding.freshness.ratingsAsOf ?? grounding.pricing.pricedAt;
+  const modelTime = formatTimestampSgt(ratingsIso);
+  const oddsSource = market?.source ?? grounding.marketDivergence[0]?.source;
+  const oddsNames = oddsSource ? labelMarketSource(oddsSource) : "none";
   const oddsIso = market?.observedAt
+    ?? grounding.marketDivergence[0]?.observedAt
     ?? grounding.freshness.marketOddsLastUpdated
     ?? grounding.pricing.pricedAt;
   const oddsTime = formatTimestampSgt(oddsIso);
@@ -155,31 +154,59 @@ export function selectValueLeg(legs: MarketDivergence["legs"]): MarketDivergence
   return [...legs].sort((a, b) => Math.abs(b.gapPoints) - Math.abs(a.gapPoints))[0];
 }
 
-export function formatValueCallHeadline(
-  grounding: Grounding,
-  leg: MarketDivergence["legs"][number],
-  sourceLabel: string,
-): string {
-  const label = displayOutcomeLabel(grounding, leg.outcome);
-  const modelPct = deskPercentDisplay(leg.modelPercent / 100);
-  const marketPct = deskPercentDisplay(leg.marketPercent / 100);
-  if (leg.gapPoints > 0.05) {
-    return `${label} is the value: I make it ${modelPct}, ${sourceLabel} ${marketPct}.`;
-  }
-  if (leg.gapPoints < -0.05) {
-    return `${label} looks rich on ${sourceLabel}: I make it ${modelPct}, ${sourceLabel} ${marketPct}.`;
-  }
-  return `${label} is aligned: I make it ${modelPct}, ${sourceLabel} ${marketPct}.`;
-}
-
-export function formatMarketGapLean(
+export function formatBiggestGapHeadline(
   grounding: Grounding,
   leg: MarketDivergence["legs"][number],
   sourceLabel: string,
 ): string {
   const label = displayOutcomeLabel(grounding, leg.outcome);
   const sign = leg.gapPoints >= 0 ? "+" : "";
-  return `Lean: ${label}, ${sign}${leg.gapPoints.toFixed(1)} pts vs ${sourceLabel}.`;
+  return `Biggest gap: ${label} (${sign}${leg.gapPoints.toFixed(1)} pts vs ${sourceLabel}).`;
+}
+
+export function formatModelFavouriteHeadline(
+  grounding: Grounding,
+  divergence: MarketDivergence,
+  sourceLabel: string,
+): string {
+  const favourite = modelFavouriteOutcome(grounding);
+  const leg = divergence.legs.find((row) => row.outcome === favourite.outcome)!;
+  const label = displayOutcomeLabel(grounding, favourite.outcome);
+  const modelPct = deskPercentDisplay(favourite.p);
+  const marketPct = deskPercentDisplay(leg.marketPercent / 100);
+  const verb = favourite.outcome === "draw" ? "Draw is" : `${label} are`;
+  return `${verb} my favourite at ${modelPct}; ${sourceLabel} has ${marketPct}.`;
+}
+
+export function formatMarketActionLean(
+  grounding: Grounding,
+  leg: MarketDivergence["legs"][number],
+  marketDecimal: number | null,
+): string {
+  const label = displayOutcomeLabel(grounding, leg.outcome);
+  const leanLabel = leg.outcome === "draw" ? "draw" : label;
+  const dec = marketDecimal != null ? marketDecimal.toFixed(2) : deskFairFromProb(leg.marketPercent / 100);
+  const size = Math.abs(leg.gapPoints) >= 15 ? "strong play"
+    : Math.abs(leg.gapPoints) >= 5 ? "play"
+      : Math.abs(leg.gapPoints) >= 0.05 ? "small play"
+        : "no play";
+  return `Lean: ${leanLabel} at ${dec}, ${size}.`;
+}
+
+export function formatUserLineSideRow(
+  grounding: Grounding,
+  outcome: OneXTwoOutcome,
+  decimalOdds: number,
+  gapPoints: number,
+): string {
+  const label = displayOutcomeLabel(grounding, outcome);
+  const modelP = grounding.pricing.model[outcome].p;
+  const impliedP = 1 / decimalOdds;
+  const { displayPct, fairDecimal } = deskProbabilityDisplay(modelP);
+  const impliedPct = deskPercentDisplay(impliedP);
+  const dec = decimalOdds.toFixed(2);
+  const gapSign = gapPoints >= 0 ? "+" : "";
+  return `${label}  ${displayPct} | fair ${fairDecimal} | line ${dec} (${impliedPct}) | gap ${gapSign}${gapPoints.toFixed(1)} pts`;
 }
 
 export function formatUserLineLean(
@@ -190,25 +217,68 @@ export function formatUserLineLean(
   decision: "play" | "pass" | "abstain",
 ): string {
   const label = displayOutcomeLabel(grounding, outcome);
+  const leanLabel = outcome === "draw" ? "draw" : label;
   const dec = decimalOdds.toFixed(2);
-  const sign = gapPoints >= 0 ? "+" : "";
   if (decision === "pass") {
-    return `Lean: I pass on ${label} at ${dec} — gap ${sign}${Math.abs(gapPoints).toFixed(1)} pts vs my price.`;
+    return `Lean: I pass on ${leanLabel} at ${dec}.`;
   }
   if (decision === "abstain") {
-    return `Lean: I will not call ${label} at ${dec} — line sits in the abstain band.`;
+    return `Lean: I will not call ${leanLabel} at ${dec}.`;
   }
   const size = Math.abs(gapPoints) >= 15 ? "strong play" : Math.abs(gapPoints) >= 5 ? "play" : "small play";
-  return `Lean: ${label} at ${dec}, ${size} — I play, gap ${sign}${Math.abs(gapPoints).toFixed(1)} pts over my price.`;
+  return `Lean: ${leanLabel} at ${dec}, ${size} — I play.`;
+}
+
+export function modelFavouriteOutcome(grounding: Grounding): {
+  outcome: OneXTwoOutcome;
+  p: number;
+} {
+  const sides: Array<{ outcome: OneXTwoOutcome; p: number }> = [
+    { outcome: "home", p: grounding.pHome },
+    { outcome: "draw", p: grounding.pDraw },
+    { outcome: "away", p: grounding.pAway },
+  ];
+  return sides.sort((a, b) => b.p - a.p)[0];
+}
+
+export function formatModelOnlySideRow(
+  grounding: Grounding,
+  outcome: OneXTwoOutcome,
+): string {
+  const p = outcome === "home" ? grounding.pHome : outcome === "draw" ? grounding.pDraw : grounding.pAway;
+  const { displayPct, fairDecimal } = deskProbabilityDisplay(p);
+  const label = displayOutcomeLabel(grounding, outcome);
+  return `${label}  ${displayPct} | fair ${fairDecimal}`;
+}
+
+export function formatModelOnlySideRows(grounding: Grounding): string[] {
+  return (["home", "draw", "away"] as const).map((outcome) => formatModelOnlySideRow(grounding, outcome));
+}
+
+export function formatBttsSideRow(label: string, probability: number): string {
+  const { displayPct, fairDecimal } = deskProbabilityDisplay(probability);
+  return `${label}  ${displayPct} | fair ${fairDecimal}`;
+}
+
+export function formatTotalsSideRow(label: string, probability: number): string {
+  const { displayPct, fairDecimal } = deskProbabilityDisplay(probability);
+  return `${label}  ${displayPct} | fair ${fairDecimal}`;
 }
 
 export function basicsFavouriteLean(grounding: Grounding): string {
-  const sides = [
-    { label: displayOutcomeLabel(grounding, "home"), p: grounding.pHome },
-    { label: "Draw", p: grounding.pDraw },
-    { label: displayOutcomeLabel(grounding, "away"), p: grounding.pAway },
-  ].sort((a, b) => b.p - a.p)[0];
-  return `Lean: ${sides.label} at ${deskPercentDisplay(sides.p)} is my strongest 1X2 read.`;
+  const favourite = modelFavouriteOutcome(grounding);
+  const label = displayOutcomeLabel(grounding, favourite.outcome);
+  const leanLabel = favourite.outcome === "draw" ? "draw" : label;
+  return `Lean: ${leanLabel}, small play.`;
+}
+
+export function formatMarketGapLean(
+  grounding: Grounding,
+  leg: MarketDivergence["legs"][number],
+  _sourceLabel: string,
+  marketDecimal: number | null = null,
+): string {
+  return formatMarketActionLean(grounding, leg, marketDecimal);
 }
 
 export function basicsLargestGapLean(
@@ -223,8 +293,6 @@ export const PARLAY_OUT_OF_SCOPE =
   "Parlays are outside what I answer on this desk right now; ask for a single-fixture 1X2, totals, or BTTS read instead.";
 
 const TABLE_VS_MODEL_MIN_FAV_P = 0.55;
-const TABLE_VS_MODEL_MIN_POSITION_GAP = 6;
-const TABLE_VS_MODEL_MIN_ELO_GAP = 25;
 
 function ordinalPosition(position: number): string {
   const mod100 = position % 100;
@@ -270,11 +338,10 @@ export function tableVsModelFavoriteExplainLine(grounding: Grounding): string | 
   const oppTable = side === "home" ? grounding.awayTable : grounding.homeTable;
   if (favTable.position == null || favTable.points == null || oppTable.position == null) return null;
   if (favTable.position <= oppTable.position) return null;
-  if (favTable.position - oppTable.position < TABLE_VS_MODEL_MIN_POSITION_GAP) return null;
 
   const favElo = side === "home" ? grounding.homeElo : grounding.awayElo;
   const oppElo = side === "home" ? grounding.awayElo : grounding.homeElo;
-  if (!Number.isFinite(favElo) || !Number.isFinite(oppElo) || favElo - oppElo < TABLE_VS_MODEL_MIN_ELO_GAP) {
+  if (!Number.isFinite(favElo) || !Number.isFinite(oppElo)) {
     return null;
   }
 
