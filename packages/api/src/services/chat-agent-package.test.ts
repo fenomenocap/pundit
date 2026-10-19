@@ -6,14 +6,15 @@ import {
   AGENT_HISTORY_CONTENT_MAX,
   AGENT_NARROW_DELIVERY_MAX,
   agentDeliveryStructurallyComplete,
-  agentDirectAnswerLeadPasses,
   capAgentAnswerForHistory,
+  capAgentNarrowDelivery,
   completeAgentAnswerEnding,
   ensureAgentDirectAnswerLead,
   enrichAgentTeamNewsAttribution,
   finalizeAgentPackagedAnswer,
   trimAgentDeliveryForPlan,
 } from "./chat-agent-package";
+import { validateAnalystExpression } from "../../../../scripts/chat-battle-test-lib.mjs";
 import { parseHistory } from "../routes/ask";
 
 const matchGrounding = {
@@ -158,20 +159,36 @@ describe("normalizeAgentManagerAnswer", () => {
 });
 
 describe("ensureAgentDirectAnswerLead", () => {
-  it("prepends a table leader instead of a Here's-how preface", () => {
+  it("strips a Here's-how table meta-preface without injecting copy", () => {
     const raw = `Here's how the Premier League table looks through the opening weeks (taken from the ESPN feed): **Top five**
-1. **Man City** — 7-0-0, 21 pts, +12 GD
-2. **Arsenal** — 5-0-1, 15 pts, +5 GD`;
-    const out = ensureAgentDirectAnswerLead(raw, "Quick detour: what does the current Premier League table show?");
-    expect(agentDirectAnswerLeadPasses(out)).toBe(true);
-    expect(out).toMatch(/^I make Man City the current leaders on 21 points\./);
+1. **Man City** — 7-0-0, 21 pts, +12 GD`;
+    const out = ensureAgentDirectAnswerLead(raw);
+    expect(out).not.toMatch(/^Here's how/i);
+    expect(out).toMatch(/^\*\*Top five\*\*/);
+    expect(out).not.toMatch(/I make Man City the current leaders/i);
   });
 
-  it("unwraps a bold No — before I can't guarantee on season follow-ups", () => {
+  it("unwraps a bold No — before I can't guarantee without adding template prose", () => {
     const raw = "**No — I can't guarantee it, and neither should anyone else.** The leader is Man City, and the numbers are ominous for the chasing pack.";
-    const out = ensureAgentDirectAnswerLead(raw, "Can you guarantee the leader will win, or what would change that view?");
-    expect(agentDirectAnswerLeadPasses(out)).toBe(true);
-    expect(out).toMatch(/^I can't guarantee/i);
+    const out = ensureAgentDirectAnswerLead(raw);
+    expect(out).toMatch(/^I can't guarantee it, and neither should anyone else\./);
+    expect(out).not.toMatch(/season outlook alone/i);
+  });
+});
+
+describe("capAgentNarrowDelivery", () => {
+  it("ends on a complete sentence within the narrow limit", () => {
+    const raw = `I can't guarantee it. ${"Man City lead the table on 21 points with perfect form. ".repeat(80)}`;
+    const out = capAgentNarrowDelivery(raw, AGENT_NARROW_DELIVERY_MAX);
+    expect(out.length).toBeLessThanOrEqual(AGENT_NARROW_DELIVERY_MAX);
+    expect(out.length).toBeGreaterThan(0);
+    expect(agentDeliveryStructurallyComplete(out)).toBe(true);
+    expect(out.endsWith(".")).toBe(true);
+  });
+
+  it("does not return empty when the cap cannot find a safe prefix", () => {
+    const raw = "A".repeat(950);
+    expect(capAgentNarrowDelivery(raw, AGENT_NARROW_DELIVERY_MAX).length).toBeGreaterThan(0);
   });
 });
 
@@ -192,7 +209,13 @@ describe("trimAgentDeliveryForPlan", () => {
       { hasHistory: true, groundingKind: "season" },
     );
     expect(out.length).toBeLessThanOrEqual(AGENT_NARROW_DELIVERY_MAX);
-    expect(agentDirectAnswerLeadPasses(out)).toBe(true);
+    expect(agentDeliveryStructurallyComplete(out)).toBe(true);
+    const expression = validateAnalystExpression(out, {
+      expectDirectAnswer: true,
+      expectNarrowFollowup: true,
+    });
+    expect(expression.assertions.narrowFollowup).toBe(true);
+    expect(expression.assertions.directAnswerFirst).toBe(true);
   });
 });
 

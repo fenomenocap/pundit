@@ -172,75 +172,70 @@ export function completeAgentAnswerEnding(text: string): string {
   return trimmed.trim();
 }
 
-function firstAgentSubstantiveLine(text: string): string {
-  return text.split("\n")
-    .filter((line) => !SECTION_LABEL_LINE.test(line))
-    .filter((line) => !/^\s*#{1,6}\s/.test(line))
-    .filter((line) => !/^\s*\|/.test(line))
-    .filter((line) => !/^---+\s*$/.test(line.trim()))
-    .map((line) => line.replace(/^\s*[-*#]+\s*/, "").trim())
-    .find(Boolean) ?? "";
-}
-
-/** Mirrors Schema-17 `directAnswerFirst` for agent packaging repair. */
-export function agentDirectAnswerLeadPasses(text: string): boolean {
-  const lead = firstAgentSubstantiveLine(text).slice(0, 280);
-  if (!lead) return false;
-  if (/^I\s+(?:will|'ll|can)\s+(?:explain|outline|walk|break|look|start|begin|analyse|analyze|consider)\b/i.test(lead)) {
-    return false;
-  }
-  return (
-    /\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s+(?:decimal|odds)|^\s*\d+\s*[.)]/i.test(lead)
-    || /^\s*(?:Back|Lean|Avoid|No bet)\b/i.test(lead)
-    || /^\s*(?:I|I'm|I've|I'd)\s+(?:make|have|rate|see|favour|favor|lean|land|cannot|can't|do not|don't|would not|wouldn't|am unable|could not|couldn't)\b/i.test(lead)
-    || /^\s*(?:no comparable|not enough|unable|cannot|can't|the table|standings|[\p{L}][\p{L} .'-]{1,60}\s+(?:lead(?:s|ing)?|is first|are first))\b/iu.test(lead)
-  );
-}
-
-function prependTableLeaderLead(text: string): string | null {
-  const leader = text.match(/(?:^|\n)\s*1\.\s*\*\*([^*]+)\*\*[^\n]*?\b(\d+)\s*pts\b/im);
-  if (!leader) return null;
-  return `I make ${leader[1].trim()} the current leaders on ${leader[2]} points. ${text.trim()}`;
-}
-
-function unwrapAgentGuaranteeLead(text: string, question: string): string {
+function unwrapAgentGuaranteeBoldWrapper(text: string): string {
   let trimmed = text.trim();
   trimmed = trimmed.replace(
     /^\*\*No\s*[—–-]\s*\*\*\s*(I\s+(?:can'?t|cannot)\s+guarantee[^.!?]*[.!?])\s*/i,
     "$1 ",
   );
-  if (/\b(?:guarantee|guaranteed)\b/i.test(question) && !agentDirectAnswerLeadPasses(trimmed)) {
-    const body = trimmed.replace(/^\*\*No\s*[—–-]\s*\*\*\s*/i, "").trim();
-    if (!/^I\s+(?:can'?t|cannot)\b/i.test(firstAgentSubstantiveLine(body))) {
-      return `I can't guarantee that from the season outlook alone — no one should. ${body}`.trim();
-    }
-    return body;
-  }
-  return trimmed;
+  trimmed = trimmed.replace(
+    /^\*\*No\s*[—–-]\s*([^*]+)\*\*\s*/i,
+    "$1 ",
+  );
+  trimmed = trimmed.replace(/^\*\*No\s*[—–-]\s*\*\*\s*/i, "");
+  return trimmed.trim();
 }
 
-/** Agent-only: lead with the answer, not meta prefaces or bold wrappers. */
-export function ensureAgentDirectAnswerLead(text: string, question: string): string {
+/** Agent-only formatting: drop meta table prefaces and bold guarantee wrappers. */
+export function ensureAgentDirectAnswerLead(text: string, _question?: string): string {
   let trimmed = text.trim();
   trimmed = trimmed.replace(
     /^Here(?:'|')?s how the (?:current )?(?:Premier League )?table looks[^:]*:\s*/i,
     "",
   );
-  const tableQuestion = /\b(?:table|standings?)\b/i.test(question);
-  const leadSnippet = firstAgentSubstantiveLine(trimmed).slice(0, 160);
-  if (
-    tableQuestion
-    && !/\b(?:lead(?:s|ing)?|is first|are first)\b/i.test(leadSnippet)
-    && !/^I\s+make\b/i.test(leadSnippet)
-  ) {
-    const withLeader = prependTableLeaderLead(trimmed);
-    if (withLeader) trimmed = withLeader;
+  return unwrapAgentGuaranteeBoldWrapper(trimmed);
+}
+
+/**
+ * Narrow delivery cap: sentence boundaries only — never mid-clause chop.
+ * Falls back to the input when no structurally complete prefix fits.
+ */
+export function capAgentNarrowDelivery(text: string, maxLen = AGENT_NARROW_DELIVERY_MAX): string {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length <= maxLen) return trimmed;
+
+  let working = completeAgentAnswerEnding(trimmed);
+  let slice = working.slice(0, maxLen);
+  const lastSentenceEnd = Math.max(
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf("! "),
+    slice.lastIndexOf("? "),
+  );
+  if (lastSentenceEnd > maxLen * 0.45) slice = slice.slice(0, lastSentenceEnd + 1);
+  working = completeAgentAnswerEnding(slice.trim());
+  if (working.length > 0 && working.length <= maxLen && agentDeliveryStructurallyComplete(working)) {
+    return working;
   }
-  trimmed = unwrapAgentGuaranteeLead(trimmed, question);
-  if (agentDirectAnswerLeadPasses(trimmed)) return trimmed.trim();
-  const withLeader = prependTableLeaderLead(trimmed);
-  if (withLeader && agentDirectAnswerLeadPasses(withLeader)) return withLeader.trim();
-  return trimmed.trim();
+
+  const sentenceOnly = trimToLastCompleteSentence(working.slice(0, maxLen));
+  if (
+    sentenceOnly.length > 0
+    && sentenceOnly.length <= maxLen
+    && agentDeliveryStructurallyComplete(sentenceOnly)
+  ) {
+    return sentenceOnly;
+  }
+
+  const fromFull = trimToLastCompleteSentence(trimmed.slice(0, maxLen));
+  if (
+    fromFull.length > 0
+    && fromFull.length <= maxLen
+    && agentDeliveryStructurallyComplete(fromFull)
+  ) {
+    return fromFull;
+  }
+
+  return trimmed;
 }
 
 const NARROW_AGENT_MODES: ReadonlySet<ResponseMode> = new Set([
@@ -294,7 +289,7 @@ export function trimAgentDeliveryForPlan(
   trimmed = collapseExtraAgentSectionLabels(trimmed, plan.maxSections);
   const narrow = Boolean(options.hasHistory) || NARROW_AGENT_MODES.has(plan.mode);
   if (narrow && trimmed.length > AGENT_NARROW_DELIVERY_MAX) {
-    trimmed = capAgentAnswerForHistory(trimmed, AGENT_NARROW_DELIVERY_MAX);
+    trimmed = capAgentNarrowDelivery(trimmed, AGENT_NARROW_DELIVERY_MAX);
   }
   return trimmed.trim();
 }
