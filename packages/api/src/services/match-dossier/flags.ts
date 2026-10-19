@@ -7,6 +7,11 @@ export function matchDossierEvidenceEnabled(): boolean {
   return process.env.MATCH_DOSSIER_EVIDENCE_ENABLED === "true";
 }
 
+/** When true, evidence requires page fetch + on-page claim verification (capture pipeline). */
+export function matchDossierEvidenceVerifyEnabled(): boolean {
+  return process.env.MATCH_DOSSIER_EVIDENCE_VERIFY === "true";
+}
+
 export const MATCH_DOSSIER_BUILDER_VERSION = "phase2-2026-10-19";
 
 export const DOSSIER_INTERVAL_MS = 6 * 60 * 60 * 1000;

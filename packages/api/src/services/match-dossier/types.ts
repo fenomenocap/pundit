@@ -27,7 +27,7 @@ export type DossierEvidenceCategory =
   | "tactics"
   | "travel-congestion";
 
-export type DossierEvidenceVerification = "cited" | "unverified";
+export type DossierEvidenceVerification = "cited" | "unverified" | "page-verified";
 
 export interface DossierEvidenceItem {
   id: string;
@@ -44,6 +44,8 @@ export interface DossierEvidenceItem {
   origin: "scheduled" | "on-demand";
   /** Optional snippet for audit; not shown in chat without citation contract. */
   snippet?: string;
+  /** SHA-256 of normalized page excerpt when verification is page-verified. */
+  contentSha256?: string;
 }
 
 export interface ProvenanceField<T> {
@@ -213,9 +215,11 @@ export interface MatchDossier {
 
   evidenceBuild?: {
     replayId: string | null;
+    captureId: string | null;
     queryCount: number;
     resultCount: number;
     droppedCount: number;
+    verifiedCount?: number;
   };
 
   /** Fields eligible for future calibration-track features (not active model inputs). */
@@ -231,6 +235,7 @@ export interface DossierEvidenceBuildMeta {
   droppedCount: number;
   queryCount: number;
   replayId: string | null;
+  captureId?: string | null;
   syntheticReplayBlocked?: boolean;
 }
 

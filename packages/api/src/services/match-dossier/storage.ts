@@ -27,6 +27,16 @@ export function versionedDossierPath(fixtureId: string, builtAt: string): string
   return path.join(fixtureDir(fixtureId), `${safeAsOf}.json`);
 }
 
+export function dossierCapturePath(fixtureId: string, capturedAt: string): string {
+  const safeTs = capturedAt.replace(/[:.]/g, "-");
+  return path.join(fixtureDir(fixtureId), "captures", `${safeTs}.json`);
+}
+
+export function writeDossierCapture(filePath: string, capture: unknown): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  writeJsonFileAtomic(filePath, capture);
+}
+
 export function writeMatchDossier(dossier: MatchDossier): void {
   if (dossier.schemaVersion !== MATCH_DOSSIER_SCHEMA_VERSION) {
     throw new Error(`Unsupported dossier schema ${dossier.schemaVersion}`);

@@ -22,9 +22,12 @@ import {
   rejectSyntheticEvidenceForRealFixture,
   type DossierEvidenceCollectResult,
 } from "./dossier-evidence";
+import { isSyntheticDossierEvidenceHost } from "./dossier-synthetic-fixture";
+import { collectVerifiedDossierEvidence } from "./dossier-evidence-capture";
 import {
   DOSSIER_EVIDENCE_REPLAY_ID,
   matchDossierEvidenceEnabled,
+  matchDossierEvidenceVerifyEnabled,
 } from "./flags";
 import { buildModelFactorBreakdown } from "./model-factor-breakdown";
 import {
@@ -57,15 +60,24 @@ function federatedEvidenceProvenance(asOf: string): DossierProvenance {
   };
 }
 
+/** Injuries / lineups / manager slots accept only page-verified evidence (or synthetic CI cited). */
+function evidenceEligibleForSlots(items: DossierEvidenceItem[]): DossierEvidenceItem[] {
+  return items.filter(
+    (item) => item.verification === "page-verified"
+      || (item.verification === "cited" && isSyntheticDossierEvidenceHost(item.sourceUrl)),
+  );
+}
+
 function partitionEvidence(items: DossierEvidenceItem[]): {
   injuries: DossierEvidenceItem[];
   rotation: DossierEvidenceItem[];
   manager: DossierEvidenceItem[];
 } {
+  const slotted = evidenceEligibleForSlots(items);
   return {
-    injuries: items.filter((item) => item.category === "injuries"),
-    rotation: items.filter((item) => item.category === "rotation"),
-    manager: items.filter((item) => item.category === "manager"),
+    injuries: slotted.filter((item) => item.category === "injuries"),
+    rotation: slotted.filter((item) => item.category === "rotation"),
+    manager: slotted.filter((item) => item.category === "manager"),
   };
 }
 
@@ -143,7 +155,10 @@ export function buildMatchDossierForFixture(
   const evidenceMeta = options.evidence;
   const evidenceItems = rejectSyntheticEvidenceForRealFixture(
     fixture,
-    evidenceMeta?.items ?? [],
+    (evidenceMeta?.items ?? []).filter(
+      (item) => item.verification === "page-verified"
+        || (item.verification === "cited" && isSyntheticDossierEvidenceHost(item.sourceUrl)),
+    ),
   );
   const evidenceProv = federatedEvidenceProvenance(builtAt);
   const partitioned = partitionEvidence(evidenceItems);
@@ -256,9 +271,11 @@ export function buildMatchDossierForFixture(
     ...(evidenceMeta && !evidenceMeta.syntheticReplayBlocked ? {
       evidenceBuild: {
         replayId: evidenceMeta.replayId,
+        captureId: evidenceMeta.captureId ?? null,
         queryCount: evidenceMeta.queryCount,
         resultCount: evidenceItems.length,
         droppedCount: evidenceMeta.droppedCount,
+        verifiedCount: evidenceItems.filter((i) => i.verification === "page-verified").length,
       },
     } : {}),
     featureCandidates,
@@ -285,11 +302,26 @@ export async function buildMatchDossierForFixtureAsync(
     }
     : undefined;
   if (!evidence && matchDossierEvidenceEnabled()) {
-    evidence = await collectDossierEvidence(fixture, {
-      now: options.now,
-      origin: options.scheduleReason === "on-demand" ? "on-demand" : "scheduled",
-      replayScope: dossierEvidenceReplayScope(),
-    });
+    if (matchDossierEvidenceVerifyEnabled()) {
+      const verified = await collectVerifiedDossierEvidence(fixture, {
+        now: options.now,
+        origin: options.scheduleReason === "on-demand" ? "on-demand" : "scheduled",
+        persistCapture: true,
+      });
+      evidence = {
+        items: verified.items,
+        droppedCount: verified.droppedCount,
+        queryCount: verified.queryCount,
+        replayId: null,
+        captureId: verified.captureId ?? null,
+      };
+    } else {
+      evidence = await collectDossierEvidence(fixture, {
+        now: options.now,
+        origin: options.scheduleReason === "on-demand" ? "on-demand" : "scheduled",
+        replayScope: dossierEvidenceReplayScope(),
+      });
+    }
   }
   return buildMatchDossierForFixture(fixture, {
     ...options,

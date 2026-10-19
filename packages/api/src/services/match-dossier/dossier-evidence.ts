@@ -32,6 +32,7 @@ export interface DossierEvidenceCollectResult {
   droppedCount: number;
   queryCount: number;
   replayId: string | null;
+  captureId?: string | null;
   /** Synthetic replay refused for a real fixture — dossier must stay evidence-empty. */
   syntheticReplayBlocked?: boolean;
 }

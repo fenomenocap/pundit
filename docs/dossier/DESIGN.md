@@ -191,9 +191,24 @@ Phase 1 builder uses only **ESPN + ClubElo pin + existing market cache + local m
 
 ### Phase 2 eval gate
 
-- **No fabricated “real” evidence.** Committed EPL samples keep `evidence[]` empty until search results are captured, URLs resolve (HTTP 200), and claim text is verified on-page.
-- CI uses **`synthetic: true`** replays for **North Testborough FC vs South Example City** only; synthetic replays are **refused** for real fixture ids (`dossier-evidence.test.ts`).
-- When live capture ships: store raw provider responses with `retrieved_at` per query; only promote rows that pass URL + on-page verification.
+- **No fabricated “real” evidence.** Committed EPL samples are filled only by the **verified capture pipeline** (`dossier-evidence-capture.ts`).
+- CI uses **`synthetic: true`** replays + mocked page fetch on **North Testborough FC vs South Example City** only; **no network** in CI.
+- Synthetic replays are **refused** for real fixture ids (`dossier-evidence.test.ts`).
+
+### Verified capture pipeline (P0)
+
+1. `planDossierEvidenceQueries` → `searchWebBatch` (#188 / OpenRouter+Exa, existing secrets only).
+2. Persist raw rows under `match-dossiers/{fixtureId}/captures/{as_of}.json` (and `docs/dossier/captures/` for committed sample runs).
+3. For each search hit: `retrieveEvidencePages` (HTTP **200** only), then `verifyClaimAgainstPageText` (entities + material numbers on page).
+4. **Only `page-verified`** rows enter `evidence[]`; injuries / lineups / manager slots use those categories only.
+5. Drop reasons recorded in capture `verifications[]`.
+
+Offline sample refresh:
+
+```bash
+OPENROUTER_API_KEY=… pnpm exec tsx scripts/capture-verified-dossier-samples.ts
+```
+
 - Model block (`pHome` / factor breakdown) unchanged by evidence merge (asserted in tests).
 
 ---

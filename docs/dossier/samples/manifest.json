@@ -81,7 +81,7 @@
     "ESPN public scoreboard (table, form, rest, H2H)",
     "Pinned clubelo@1 artifact (model strengths + factor breakdown)",
     "Stake/Kalshi/Polymarket bounded fetch where available (market reference only)",
-      "Committed samples have evidence[] empty — no verified live search capture yet (Phase 2 CI uses synthetic-dossier-evidence-v1 on fake teams only)",
+      "Evidence: run scripts/capture-verified-dossier-samples.ts (OPENROUTER_API_KEY) for page-verified rows; see docs/dossier/captures/capture-summary.json when present",
     "Stake: disabled (Cloudflare 403 on public GraphQL); Kalshi + Polymarket best-effort in market.rows",
     "Regenerate: packages/api/scripts/build-dossier-samples.ts (+ optional refresh-dossier-sample-markets.ts)"
   ]
