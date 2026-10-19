@@ -8,7 +8,13 @@ import {
   computeTurnQualityMetrics,
   summarizeLlmJudge,
 } from "./chat-eval-quality-metrics.mjs";
-import { judgeEvalTurns, skippedNoKeyJudge } from "./chat-eval-llm-judge.mjs";
+import {
+  resolveJudgeEvalTurns,
+  skippedNoKeyJudge,
+  skippedUnavailableJudge,
+  resolveJudgeMode,
+  remoteJudgeConfigured,
+} from "./chat-eval-llm-judge.mjs";
 import { writeReport } from "./chat-battle-test-lib.mjs";
 
 function flattenReportTurns(report) {
@@ -53,20 +59,30 @@ export async function mergeDualEngineChatEvalReports(legacy, agent, outputPath) 
   const judgeNeedsRerun = (judge) => !judge?.scoredTurns
     || (judge.judgedTurns > 0 && judge.scoredTurns === 0);
 
-  const hasJudgeKey = Boolean(process.env.OPENROUTER_API_KEY?.trim());
+  const judgeMode = resolveJudgeMode(process.env.CHAT_EVAL_JUDGE_MODE);
+  const hasLocalJudgeKey = Boolean(process.env.OPENROUTER_API_KEY?.trim());
+  const judgeAvailable = judgeMode === "off"
+    ? false
+    : judgeMode === "remote"
+      ? remoteJudgeConfigured()
+      : hasLocalJudgeKey;
+  const judgeOptions = { maxTurns: 24, paceMs: 250, judgeMode };
+  const skippedJudge = judgeMode === "local"
+    ? (turns) => skippedNoKeyJudge(turns, { maxTurns: 24 })
+    : (turns) => skippedUnavailableJudge(turns, { maxTurns: 24 });
 
-  if (!hasJudgeKey) {
-    merged.llmJudge = skippedNoKeyJudge(legacyTurns, { maxTurns: 24 });
+  if (!judgeAvailable) {
+    merged.llmJudge = skippedJudge(legacyTurns);
     merged.llmJudgeSummary = summarizeLlmJudge(merged);
-    merged.agentEval.llmJudge = skippedNoKeyJudge(agentTurns, { maxTurns: 24 });
+    merged.agentEval.llmJudge = skippedJudge(agentTurns);
     merged.agentEval.llmJudgeSummary = summarizeLlmJudge({ llmJudge: merged.agentEval.llmJudge });
   } else {
     if (judgeNeedsRerun(legacy.llmJudge)) {
-      merged.llmJudge = await judgeEvalTurns(legacyTurns, { maxTurns: 24, paceMs: 250 });
+      merged.llmJudge = await resolveJudgeEvalTurns(legacyTurns, judgeOptions);
       merged.llmJudgeSummary = summarizeLlmJudge(merged);
     }
     if (judgeNeedsRerun(agent.llmJudge)) {
-      merged.agentEval.llmJudge = await judgeEvalTurns(agentTurns, { maxTurns: 24, paceMs: 250 });
+      merged.agentEval.llmJudge = await resolveJudgeEvalTurns(agentTurns, judgeOptions);
       merged.agentEval.llmJudgeSummary = summarizeLlmJudge({ llmJudge: merged.agentEval.llmJudge });
     }
   }

@@ -9,6 +9,8 @@ import polymarketRoutes from "./routes/polymarkets";
 import modelRoutes from "./routes/model";
 import askRoutes, { askRateLimitConfig } from "./routes/ask";
 import evaluationRoutes from "./routes/evaluation";
+import internalEvalRoutes from "./routes/internal-eval";
+import { getChatEvalRemoteJudgeReadiness } from "./services/eval-internal-auth";
 import {
   clubRatingsAgeDays,
   clubRatingsAreCurrent,
@@ -252,6 +254,7 @@ app.get("/ready", (_req, res) => {
       };
     })(),
     fixtureRegistry: getFixtureRegistryStatus(),
+    chatEvalRemoteJudge: getChatEvalRemoteJudgeReadiness(),
   });
 });
 
@@ -260,6 +263,7 @@ app.use("/api/polymarkets", polymarketRoutes);
 app.use("/api/model", modelRoutes);
 app.use("/api/ask", askRoutes);
 app.use("/api/evaluation", evaluationRoutes);
+app.use("/internal/eval", internalEvalRoutes);
 
 // ─── Error Handling ─────────────────────────────────────────────────────────
 

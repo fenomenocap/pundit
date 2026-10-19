@@ -239,6 +239,8 @@ export function renderTranscript(report, summary = summarizeTranscript(report)) 
       ? `- LLM judge overall: ${summary.llmJudgeSummary.score}`
       : summary.llmJudgeSummary?.status === "skipped_no_key"
         ? `- ${summary.llmJudgeSummary.note ?? "judge: skipped (no key)"} (skipped ${summary.llmJudgeSummary.skippedTurns ?? 0} turn(s))`
+        : summary.llmJudgeSummary?.status === "skipped_unavailable"
+          ? `- ${summary.llmJudgeSummary.note ?? "judge: skipped (unavailable)"} (skipped ${summary.llmJudgeSummary.skippedTurns ?? 0} turn(s))`
         : null,
     summary.engineQualityComparison
       ? `- Engine comparison (legacy vs agent): template ${summary.engineQualityComparison.legacy.templateShare?.toFixed(2)} → ${summary.engineQualityComparison.agent.templateShare?.toFixed(2)}, citations ${summary.engineQualityComparison.legacy.citationCoverage?.toFixed(2)} → ${summary.engineQualityComparison.agent.citationCoverage?.toFixed(2)}`
@@ -247,6 +249,8 @@ export function renderTranscript(report, summary = summarizeTranscript(report)) 
       ? `- Agent LLM judge overall: ${report.agentEval.llmJudgeSummary.score}`
       : report?.agentEval?.llmJudgeSummary?.status === "skipped_no_key"
         ? `- Agent ${report.agentEval.llmJudgeSummary.note ?? "judge: skipped (no key)"} (skipped ${report.agentEval.llmJudgeSummary.skippedTurns ?? 0} turn(s))`
+        : report?.agentEval?.llmJudgeSummary?.status === "skipped_unavailable"
+          ? `- Agent ${report.agentEval.llmJudgeSummary.note ?? "judge: skipped (unavailable)"} (skipped ${report.agentEval.llmJudgeSummary.skippedTurns ?? 0} turn(s))`
         : null,
     "",
     "## Findings",
