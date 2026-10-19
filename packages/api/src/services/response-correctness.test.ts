@@ -109,6 +109,31 @@ describe("pricing math", () => {
     });
   });
 
+  it("fills display decimals from no-vig without evPct when flagged", () => {
+    const pricing = buildMatchPricing({
+      fixtureId: "espn:eng.1:1",
+      home: "Arsenal",
+      away: "Everton",
+      kickoff: "2026-10-18",
+      pricedAt: "2026-10-18T12:00:00.000Z",
+      pHome: 0.62,
+      pDraw: 0.22,
+      pAway: 0.16,
+      markets: [{
+        source: "polymarket",
+        observedAt: "2026-10-18T12:00:00.000Z",
+        pHome: 0.6,
+        pDraw: 0.24,
+        pAway: 0.16,
+        impliedDisplayDecimals: true,
+        decimalOdds: { home: 1 / 0.6, draw: 1 / 0.24, away: 1 / 0.16 },
+      }],
+    });
+    expect(pricing.markets[0].legs.home.decimalOdds).toBeCloseTo(1 / 0.6);
+    expect(pricing.markets[0].legs.home.evPct).toBeNull();
+    expect(pricing.markets[0].legs.home.impliedP).toBeCloseTo(0.6);
+  });
+
   it("fills evPct only when a real decimal exists", () => {
     const pricing = buildMatchPricing({
       fixtureId: "espn:eng.1:1",

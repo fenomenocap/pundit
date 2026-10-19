@@ -675,8 +675,10 @@ describe("desk take outline", () => {
 });
 
 describe("desk qualitative voice", () => {
-  it("forbids MiniMax from printing the board, 2.70, or a stadium", () => {
-    expect(DESK_SYSTEM).toMatch(/Do not print probabilities/);
+  it("allows MATCH CARD numbers but forbids edge claims, staking advice, 2.70, or a stadium", () => {
+    expect(DESK_SYSTEM).toMatch(/you may quote probabilities, fair prices, BTTS or over\/under from the MATCH CARD/i);
+    expect(DESK_SYSTEM).toMatch(/Do not author EV%/i);
+    expect(DESK_SYSTEM).toMatch(/gamble responsibly/i);
     expect(DESK_SYSTEM).toMatch(/Do not name a stadium/);
     expect(DESK_SYSTEM).not.toMatch(/Put a number on it/);
     expect(DESK_SYSTEM).toMatch(/"2\.70"/);
