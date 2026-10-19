@@ -149,6 +149,9 @@ jobs:
         continue-on-error: true
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CHAT_EVAL_JUDGE_MODE: ${{ vars.CHAT_EVAL_JUDGE_MODE }}
+          CHAT_EVAL_INTERNAL_TOKEN: ${{ secrets.CHAT_EVAL_INTERNAL_TOKEN }}
+          CHAT_EVAL_JUDGE_URL: ${{ vars.CHAT_EVAL_JUDGE_URL }}
         run: |
           set -o pipefail
           node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine legacy \
@@ -160,6 +163,9 @@ jobs:
         continue-on-error: true
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CHAT_EVAL_JUDGE_MODE: ${{ vars.CHAT_EVAL_JUDGE_MODE }}
+          CHAT_EVAL_INTERNAL_TOKEN: ${{ secrets.CHAT_EVAL_INTERNAL_TOKEN }}
+          CHAT_EVAL_JUDGE_URL: ${{ vars.CHAT_EVAL_JUDGE_URL }}
         run: |
           set -o pipefail
           node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine agent --non-gating \
@@ -169,6 +175,9 @@ jobs:
         if: steps.engine.outputs.mode == 'both'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CHAT_EVAL_JUDGE_MODE: ${{ vars.CHAT_EVAL_JUDGE_MODE }}
+          CHAT_EVAL_INTERNAL_TOKEN: ${{ secrets.CHAT_EVAL_INTERNAL_TOKEN }}
+          CHAT_EVAL_JUDGE_URL: ${{ vars.CHAT_EVAL_JUDGE_URL }}
         run: |
           node scripts/merge-dual-engine-chat-eval.mjs \
             "$EVAL_DIR/legacy/latest-run.json" \
