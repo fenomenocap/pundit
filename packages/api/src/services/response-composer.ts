@@ -4,6 +4,8 @@ import { sanitizeDeskFootballHypotheses, composeDeskFootballTake } from "./desk-
 import { PUNDIT_CONSENSUS_LABEL, PUNDIT_FUNDAMENTAL_LABEL } from "./pundit-consensus";
 import type { OneXTwoOutcome } from "./response-correctness";
 import { parseScoreline } from "./response-correctness";
+
+const ONE_X_TWO_OUTCOMES: OneXTwoOutcome[] = ["home", "draw", "away"];
 import {
   PLAYER_SCORER_ABSTENTION,
   TEAM_NEWS_COMPOSE_ABSTENTION,
@@ -121,14 +123,9 @@ function composeTotalsLead(question: string, grounding: Grounding): string {
   return `${lead}${complement} ${totalsAssumptionSentence(grounding)}`;
 }
 
-function composeBttsLead(question: string, grounding: Grounding): string {
-  const includeFair = /\bodds?\b/i.test(question);
-  const yes = includeFair
-    ? `${pct(grounding.pBttsYes)} (fair ${fairDecimal(grounding.pBttsYes)})`
-    : pct(grounding.pBttsYes);
-  const no = includeFair
-    ? `${pct(grounding.pBttsNo)} (fair ${fairDecimal(grounding.pBttsNo)})`
-    : pct(grounding.pBttsNo);
+function composeBttsLead(_question: string, grounding: Grounding): string {
+  const yes = `${pct(grounding.pBttsYes)} (fair ${fairDecimal(grounding.pBttsYes)})`;
+  const no = `${pct(grounding.pBttsNo)} (fair ${fairDecimal(grounding.pBttsNo)})`;
   return `I have BTTS yes at ${yes}; BTTS no is ${no}.`;
 }
 
@@ -272,16 +269,119 @@ function revisitAfterNews(grounding: Grounding): string {
   return `I would revisit the read only after ${news}; I can’t assign a lineup effect from these facts alone.`;
 }
 
-export function composeMarketDivergenceHeadline(grounding: Grounding): string | null {
-  const row = grounding.marketDivergence
-    .flatMap((market) => market.legs.map((leg) => ({ market, leg })))
-    .sort((a, b) => Math.abs(b.leg.gapPoints) - Math.abs(a.leg.gapPoints))[0];
-  if (!row) return null;
-  const source = row.market.source[0].toUpperCase() + row.market.source.slice(1);
-  return `On ${row.leg.label}, I am at ${row.leg.modelPercent.toFixed(1)}% and ${source} is at `
-    + `${row.leg.marketPercent.toFixed(1)}%: I am ${Math.abs(row.leg.gapPoints).toFixed(1)} percentage points `
-    + `${row.leg.gapPoints >= 0 ? "higher" : "lower"} on ${row.leg.label}. `
-    + "That establishes the disagreement, not its cause or a bet to place.";
+function outcomeLabelForComparison(grounding: Grounding, outcome: OneXTwoOutcome): string {
+  return outcome === "draw" ? "the draw" : grounding[outcome];
+}
+
+function focusOneXTwoOutcome(question: string, grounding: Grounding): OneXTwoOutcome | null {
+  const lower = question.toLowerCase();
+  const home = grounding.home.toLowerCase();
+  const away = grounding.away.toLowerCase();
+  const namesSide = /\b(?:edge|gap|value|price|odds|on|for)\b/.test(lower);
+  if (lower.includes(away) && (!lower.includes(home) || lower.lastIndexOf(away) > lower.lastIndexOf(home))) {
+    if (namesSide || /\b(?:away|visitor)\b/.test(lower)) return "away";
+  }
+  if (lower.includes(home) && !lower.includes(away) && (namesSide || /\bhome\b/.test(lower))) return "home";
+  if (/\b(?:the )?draw\b/.test(lower) && (namesSide || /\b(?:what about|how about)\b/.test(lower))) return "draw";
+  return null;
+}
+
+function orderOutcomes(focus: OneXTwoOutcome | null): OneXTwoOutcome[] {
+  if (!focus) return ONE_X_TWO_OUTCOMES;
+  return [focus, ...ONE_X_TWO_OUTCOMES.filter((outcome) => outcome !== focus)];
+}
+
+function neutralGapPhrase(gapPoints: number, label: string): string {
+  const magnitude = Math.abs(gapPoints).toFixed(1);
+  if (Math.abs(gapPoints) < 0.05) return `${label} aligns with the market`;
+  return `on ${label} I am ${magnitude} percentage points `
+    + `${gapPoints >= 0 ? "higher" : "lower"} than the market`;
+}
+
+function formatOneXTwoSide(
+  grounding: Grounding,
+  probabilities: Record<OneXTwoOutcome, number>,
+  withFair: boolean,
+): string {
+  return ONE_X_TWO_OUTCOMES.map((outcome) => {
+    const p = probabilities[outcome];
+    const label = outcomeLabelForComparison(grounding, outcome);
+    return withFair
+      ? `${label} ${pct(p)} (fair ${fairDecimal(p)})`
+      : `${label} ${pct(p)}`;
+  }).join(", ").replace(/, ([^,]+)$/, " and $1");
+}
+
+/** Full three-way model vs market comparison; optional side lead from the question. */
+export function composeMarketComparisonAnswer(question: string, grounding: Grounding): string | null {
+  const divergence = grounding.marketDivergence[0];
+  if (!divergence) {
+    return grounding.externalMarketConsensus
+      ? null
+      : "I don’t have a complete, same-source and same-time 1X2 market to compare with this fixture, so I can’t claim a pricing disagreement.";
+  }
+  const model = grounding.pricing.model;
+  const modelLine = `My 1X2 is ${formatOneXTwoSide(grounding, {
+    home: model.home.p,
+    draw: model.draw.p,
+    away: model.away.p,
+  }, true)}.`;
+  const source = divergence.source[0].toUpperCase() + divergence.source.slice(1);
+  const marketLine = `${source} no-vig, as of ${dateLabel(divergence.observedAt)}: ${formatOneXTwoSide(grounding, {
+    home: divergence.legs.find((leg) => leg.outcome === "home")!.marketPercent / 100,
+    draw: divergence.legs.find((leg) => leg.outcome === "draw")!.marketPercent / 100,
+    away: divergence.legs.find((leg) => leg.outcome === "away")!.marketPercent / 100,
+  }, true)}.`;
+  const focus = focusOneXTwoOutcome(question, grounding);
+  const gapParts = orderOutcomes(focus).map((outcome) => {
+    const leg = divergence.legs.find((row) => row.outcome === outcome)!;
+    return neutralGapPhrase(leg.gapPoints, outcomeLabelForComparison(grounding, outcome));
+  });
+  const gapLine = MODEL_EDGE_CLAIMS_ALLOWED
+    ? `Gaps vs ${source}: ${gapParts.join("; ")}.`
+    : `Vs ${source}, ${gapParts.join("; ")}.`;
+  const consensus = grounding.externalMarketConsensus
+    ? ` Market consensus (${dateLabel(grounding.externalMarketConsensus.asOf)}): ${formatOneXTwoSide(grounding, {
+      home: grounding.externalMarketConsensus.pHome,
+      draw: grounding.externalMarketConsensus.pDraw,
+      away: grounding.externalMarketConsensus.pAway,
+    }, true)}.`
+    : "";
+  const lead = focus
+    ? `${gapParts[0]}. ${modelLine} ${marketLine}${consensus}`
+    : `${modelLine} ${marketLine}${consensus} ${gapLine}`;
+  return `${lead.trim()} That states the disagreement, not a bet to place.`;
+}
+
+export function composeMarketDivergenceHeadline(grounding: Grounding, question = ""): string | null {
+  return composeMarketComparisonAnswer(question, grounding);
+}
+
+export function composeOddsProvenanceAnswer(grounding: Grounding): string {
+  const feeds = grounding.oddsSources
+    .filter((row) => row.pDraw !== null && Number.isFinite(row.pHome) && Number.isFinite(row.pAway))
+    .map((row) => {
+      const source = row.source[0].toUpperCase() + row.source.slice(1);
+      return `${source} (${dateLabel(row.observedAt)})`;
+    });
+  const feedText = feeds.length
+    ? feeds.join(", ")
+    : "no complete external 1X2 feed on this fixture right now";
+  const modelVersion = grounding.pricing.modelVersion;
+  const pricedAt = dateLabel(grounding.pricing.pricedAt);
+  const { freshness } = grounding;
+  return [
+    `My 1X2 uses ${modelVersion}, priced ${pricedAt}.`,
+    `No-vig market lines come from ${feedText}.`,
+    `Cache refresh: tier ${freshness.tier} (${freshness.reason}); ESPN ${freshness.espnLastUpdated ? dateLabel(freshness.espnLastUpdated) : "unknown"}, model cache ${freshness.modelLastUpdated ? dateLabel(freshness.modelLastUpdated) : "unknown"}, market odds ${freshness.marketOddsLastUpdated ? dateLabel(freshness.marketOddsLastUpdated) : "unknown"}.`,
+    `Strength ratings as-of ${freshness.ratingsAsOf ? dateLabel(freshness.ratingsAsOf) : "unknown"}.`,
+  ].join(" ");
+}
+
+function topScorelineRow(grounding: Grounding): { score: string; probability: number } | null {
+  const rows = grounding.scorelines?.length ? grounding.scorelines : grounding.topScores;
+  if (!rows?.length) return null;
+  return [...rows].sort((a, b) => b.probability - a.probability)[0];
 }
 
 export function composePlayerScorerAnswer(
@@ -476,6 +576,9 @@ export function composeMatchResponse(
     return composePricedGridAnswer(question, grounding);
   }
   if (plan.mode === "pricing-desk") {
+    if (/\b(?:what about|how about)\b/i.test(question) && /\b(?:the )?draw\b/i.test(question)) {
+      return `I have the draw at ${pct(grounding.pDraw)} (fair ${fairDecimal(grounding.pDraw)}) in ${grounding.home} v ${grounding.away}.`;
+    }
     return composePricingDeskAnswer(grounding, question);
   }
   if (plan.mode === "player-or-scorer") {
@@ -504,7 +607,17 @@ export function composeMatchResponse(
       : `${scoreRequest?.orientation === "home-away-default" ? `Reading ${score} in home-away order, I` : "I"} make ${grounding.home} ${score} ${grounding.away} ${pct(fact.numeric.value)} for this fixture.`;
   }
   if (plan.mode === "exact-score") {
+    const singularScoreAsk = /\b(?:most likely|correct|projected|predicted)\s+score\b|\bwhat(?:'s| is) the (?:final )?score\b/i.test(question);
+    if (singularScoreAsk && !score) {
+      const top = topScorelineRow(grounding);
+      if (top) {
+        return `I make ${top.score} the likeliest scoreline at ${pct(top.probability)} (fair ${fairDecimal(top.probability)}).`;
+      }
+    }
     return composeScorelineBoard(question, grounding);
+  }
+  if (plan.mode === "odds-provenance") {
+    return composeOddsProvenanceAnswer(grounding);
   }
   if (plan.mode === "user-line") {
     return composeUserLineAnswer(grounding);
@@ -516,7 +629,7 @@ export function composeMatchResponse(
     return `${priced}\n\n${STAKE_REFUSAL_SENTENCE}`;
   }
   if (plan.mode === "market-comparison") {
-    return composeMarketDivergenceHeadline(grounding)
+    return composeMarketComparisonAnswer(question, grounding)
       ?? "I don’t have a complete, same-source and same-time 1X2 market to compare with this fixture, so I can’t claim a pricing disagreement.";
   }
   if (plan.mode === "match-follow-up") {
@@ -558,7 +671,7 @@ export function composeMatchResponse(
 
   const scores = grounding.topScores.slice(0, 3)
     .map((row) => `${row.score} (${pct(row.probability)})`).join(", ");
-  const market = composeMarketDivergenceHeadline(grounding);
+  const market = composeMarketComparisonAnswer(question, grounding);
   const marketRows = grounding.oddsSources
     .filter((row) => row.pDraw !== null)
     .map((row) => {

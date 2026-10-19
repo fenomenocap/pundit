@@ -157,7 +157,7 @@ describe("V2 conversational architecture", () => {
       grounding(),
       planResponse("Projected score", { groundingKind: "match" })
     );
-    expect(projected).toMatch(/I make the leading scorelines/);
+    expect(projected).toMatch(/I make 2-1 the likeliest scoreline at/);
     expect(projected).not.toMatch(/team news|2\.70|Etihad/i);
     expect(planResponse("Who scores?", { groundingKind: "match" }).evidenceRequired).toBe(true);
     expect(planResponse("Anytime scorer?", { groundingKind: "match" }).mode).toBe("player-or-scorer");
@@ -1138,9 +1138,10 @@ describe("V2 conversational architecture", () => {
     );
     expect(previewCopy).toMatch(/full 1X2/);
     expect(previewCopy).toContain(SHARED_TOTAL_XG_SENTENCE);
-    expect(previewCopy).toMatch(/market-implied probabilities/i);
+    expect(previewCopy).toMatch(/My 1X2 is Arsenal/);
+    expect(previewCopy).toMatch(/Kalshi no-vig/i);
     expect(previewCopy).toMatch(/percentage points/i);
-    expect(previewCopy).toMatch(/source named above/);
+    expect(previewCopy).toMatch(/states the disagreement, not a bet/i);
     expect(previewCopy).not.toMatch(/market snapshot/);
     expect(previewCopy).not.toMatch(/Over 2\.5 is 58\.9%/);
 
@@ -1151,7 +1152,7 @@ describe("V2 conversational architecture", () => {
       planResponse("Analyse Arsenal vs Chelsea.", { groundingKind: "match" })
     );
     expect(emptyPreview).toMatch(/likeliest outcome/);
-    expect(emptyPreview).not.toMatch(/\b(?:market|odds|price|gap)\b/i);
+    expect(emptyPreview).not.toMatch(/\b(?:Kalshi|Polymarket|market-implied|percentage points)\b/i);
     expect(emptyPreview).toMatch(/verified team news/);
     const refusal = composeMatchResponse(
       "Where do you disagree with the available 1X2 market?",

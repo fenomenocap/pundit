@@ -7,6 +7,7 @@ export type ResponseMode =
   | "exact-score"
   | "fair-price"
   | "market-comparison"
+  | "odds-provenance"
   | "user-line"
   | "stake-refusal"
   | "player-or-scorer"
@@ -34,6 +35,8 @@ const ASKS_TACTICAL_TAKE =
   /\btactical matchup\b|\bwho decides\b|\bhow do .{1,60} win (?:this|it)\b/i;
 const ASKS_ODDS_BOARD =
   /\bwhat(?:'s| is| are) (?:the )?(?:odds|line)\b|\bshow me the board\b|\bthe board\b|\bmatch odds\b/i;
+const ASKS_ODDS_PROVENANCE =
+  /\bwhere do (?:your )?odds come from\b|\bhow fresh\b|\bhow old\b|\b(?:what|which) (?:feed|source)s?\b.{0,40}\b(?:odds|market|line)\b|\b(?:odds|market) (?:source|sources|feed|feeds)\b|\bwhere(?:'s| is) (?:the )?(?:market|line) from\b/i;
 const ASKS_EXPECTED_VALUE =
   /\+ev\b|\bev%\b|\bexpected value\b|\bplus[\s-]?ev\b|\ba \+ev bet\b|\bedge vs(?:\s+the)?\s+(?:book|market|line)\b/i;
 const ASKS_RESULT_CUE = /\b(?:win|wins|beat|beats|winner|to win)\b/i;
@@ -127,6 +130,16 @@ export function asksOddsBoard(question: string): boolean {
   return ASKS_ODDS_BOARD.test(question);
 }
 
+export function asksOddsProvenance(question: string): boolean {
+  return ASKS_ODDS_PROVENANCE.test(question);
+}
+
+/** Numeric follow-ups after an earlier priced turn (draw, totals, market gap, etc.). */
+export function asksPricingFollowUp(question: string): boolean {
+  return /\b(?:what about|how about)\b.{0,60}\b(?:the )?(?:draw|home|away|1x2|odds|price|market|fair|edge|gap|over|under|btts|both teams)\b/i.test(question)
+    || (/\b(?:what about|how about)\b/i.test(question) && /\b(?:draw|the draw)\b/i.test(question));
+}
+
 export function asksExpectedValueQuestion(question: string): boolean {
   return ASKS_EXPECTED_VALUE.test(question);
 }
@@ -147,6 +160,7 @@ export const DESK_COMPOSER_MODES: ReadonlySet<ResponseMode> = new Set([
   "totals",
   "btts",
   "pricing-desk",
+  "odds-provenance",
 ]);
 
 /** True when the user named the over side of 2.5 without also naming under. */
@@ -206,9 +220,15 @@ export function planResponse(
   else if (match && asksProjectedScore(q)) mode = "exact-score";
   else if (match && asksScorelineBoard(q)) mode = "exact-score";
   else if (match && asksTacticalTake(q)) mode = "match-follow-up";
+  else if (match && asksOddsProvenance(q)) mode = "odds-provenance";
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
   else if (match && asksOddsBoard(q)) mode = "pricing-desk";
-  else if (match && !hasHistory) mode = "pricing-desk";
+  else if (match && hasHistory && asksPricingFollowUp(q)) {
+    if (asksTotalsQuestion(q)) mode = "totals";
+    else if (asksBttsQuestion(q)) mode = "btts";
+    else if (/\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
+    else mode = "pricing-desk";
+  } else if (match && !hasHistory) mode = "pricing-desk";
   else if (match) mode = "match-follow-up";
   else mode = "general";
 
