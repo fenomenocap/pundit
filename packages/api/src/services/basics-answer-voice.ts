@@ -158,38 +158,108 @@ export function selectValueLeg(legs: MarketDivergence["legs"]): MarketDivergence
   return [...legs].sort((a, b) => Math.abs(b.gapPoints) - Math.abs(a.gapPoints))[0];
 }
 
-export function formatBiggestGapHeadline(
-  grounding: Grounding,
-  leg: MarketDivergence["legs"][number],
-  sourceLabel: string,
-): string {
-  const label = displayOutcomeLabel(grounding, leg.outcome);
-  const sign = leg.gapPoints >= 0 ? "+" : "";
-  return `Biggest gap: ${label} (${sign}${leg.gapPoints.toFixed(1)} pts vs ${sourceLabel}).`;
+export function deskModelOnlyProvenanceLine(grounding: Grounding): string {
+  const modelLabel = shortModelVersionLabel(grounding.pricing.modelVersion);
+  const ratingsIso = grounding.freshness.ratingsAsOf ?? grounding.pricing.pricedAt;
+  const modelTime = formatTimestampSgt(ratingsIso);
+  return `Model: ${modelLabel}, ${modelTime}`;
 }
 
-export function formatWhoWinsOpening(
-  grounding: Grounding,
-  divergence: MarketDivergence,
-  valueLeg: MarketDivergence["legs"][number],
-  sourceLabel: string,
-): string {
-  return `${formatModelFavouriteHeadline(grounding, divergence, sourceLabel)}\n`
-    + `${formatBiggestGapHeadline(grounding, valueLeg, sourceLabel)}`;
-}
-
-export function formatModelFavouriteHeadline(
-  grounding: Grounding,
-  _divergence: MarketDivergence,
-  _sourceLabel: string,
-): string {
-  const favourite = modelFavouriteOutcome(grounding);
-  const label = displayOutcomeLabel(grounding, favourite.outcome);
-  const modelPct = deskPercentDisplay(favourite.p);
-  if (favourite.outcome === "draw") {
-    return `Draw is my favourite at ${modelPct}.`;
+function favouriteFormRiskClause(grounding: Grounding): string | null {
+  let side: "home" | "away";
+  let modelP: number;
+  if (grounding.pHome >= grounding.pDraw && grounding.pHome >= grounding.pAway) {
+    if (grounding.pHome < TABLE_VS_MODEL_MIN_FAV_P) return null;
+    side = "home";
+    modelP = grounding.pHome;
+  } else if (grounding.pAway >= grounding.pDraw && grounding.pAway > grounding.pHome) {
+    if (grounding.pAway < TABLE_VS_MODEL_MIN_FAV_P) return null;
+    side = "away";
+    modelP = grounding.pAway;
+  } else {
+    return null;
   }
-  return `${label} are my favourite at ${modelPct}.`;
+  const favTable = side === "home" ? grounding.homeTable : grounding.awayTable;
+  const oppTable = side === "home" ? grounding.awayTable : grounding.homeTable;
+  if (favTable.position == null || favTable.points == null || oppTable.position == null) return null;
+  if (favTable.position <= oppTable.position) return null;
+  if (!Number.isFinite(grounding.homeElo) || !Number.isFinite(grounding.awayElo)) return null;
+  void modelP;
+  return `${ordinalPosition(favTable.position)} on ${favTable.points} pts`;
+}
+
+export function formatFixtureMyCallHeadline(grounding: Grounding): string {
+  const favourite = modelFavouriteOutcome(grounding);
+  let call: string;
+  if (favourite.outcome === "draw") call = "draw";
+  else if (favourite.outcome === "home") call = `${compactTeamLabel(grounding.home)} win`;
+  else call = `${compactTeamLabel(grounding.away)} win`;
+  return `${grounding.home} v ${grounding.away} — my call: ${call}.`;
+}
+
+export function formatModelOneXTwoCompactLine(grounding: Grounding): string {
+  const outcomes: Array<{ outcome: OneXTwoOutcome; p: number }> = [
+    { outcome: "home", p: grounding.pHome },
+    { outcome: "draw", p: grounding.pDraw },
+    { outcome: "away", p: grounding.pAway },
+  ];
+  return outcomes.map(({ outcome, p }) => {
+    const { displayPct, fairDecimal } = deskProbabilityDisplay(p);
+    const label = displayOutcomeLabel(grounding, outcome);
+    return `${label} ${displayPct} (fair ${fairDecimal})`;
+  }).join(" · ");
+}
+
+export function formatIndependentTakeWhyLine(grounding: Grounding): string {
+  const favourite = modelFavouriteOutcome(grounding);
+  const homeElo = Math.round(grounding.homeElo);
+  const awayElo = Math.round(grounding.awayElo);
+  let line = `Why: stronger side on Elo (${homeElo} v ${awayElo})`;
+  if (favourite.outcome === "home" && grounding.homeFieldAdvantage) {
+    line += " plus home advantage";
+  }
+  const formRisk = favouriteFormRiskClause(grounding);
+  if (formRisk) line += `; the risk is form, ${formRisk}`;
+  return `${line}.`;
+}
+
+export function formatMarketReferenceLine(grounding: Grounding, divergence: MarketDivergence): string {
+  const source = labelMarketSource(divergence.source);
+  const marketTime = formatTimestampSgt(divergence.observedAt);
+  const pricingRow = grounding.pricing.markets.find((row) => row.source === divergence.source);
+  const legs = (["home", "draw", "away"] as const).map((outcome) => {
+    const leg = divergence.legs.find((row) => row.outcome === outcome)!;
+    const label = displayOutcomeLabel(grounding, outcome);
+    const decimal = pricingRow?.legs[outcome].decimalOdds
+      ?? (leg.marketPercent > 0 ? 100 / leg.marketPercent : null);
+    const decText = decimal != null ? decimal.toFixed(2) : deskFairFromProb(leg.marketPercent / 100);
+    return `${label} ${decText}`;
+  });
+  return `Market (${source} no-vig, ${marketTime}): ${legs.join(" · ")}`;
+}
+
+export function composeIndependentMarketTakeAnswer(
+  grounding: Grounding,
+  variant: "full" | "why" = "full",
+): string {
+  const divergence = grounding.marketDivergence[0];
+  const blocks: string[] = [];
+  if (variant === "full") {
+    blocks.push(formatFixtureMyCallHeadline(grounding));
+    blocks.push(formatModelOneXTwoCompactLine(grounding));
+  }
+  blocks.push(formatIndependentTakeWhyLine(grounding));
+  if (divergence) {
+    blocks.push(formatMarketReferenceLine(grounding, divergence));
+    const valueLeg = selectValueLeg(divergence.legs);
+    const gapLabel = displayOutcomeLabel(grounding, valueLeg.outcome);
+    const sign = valueLeg.gapPoints >= 0 ? "+" : "";
+    blocks.push(`Biggest gap vs market: ${gapLabel}, ${sign}${valueLeg.gapPoints.toFixed(1)} pts.`);
+  } else {
+    blocks.push("No live market line for this fixture yet.");
+  }
+  blocks.push(deskModelOnlyProvenanceLine(grounding));
+  return blocks.join("\n");
 }
 
 export function formatMarketActionLean(
@@ -380,33 +450,7 @@ export function appendTableVsFavoriteExplain(grounding: Grounding, answer: strin
   return line ? `${answer.trim()}\n${line}` : answer;
 }
 
-/** Data reasons after a priced turn — no full 1X2 table repeat. */
+/** Priced-turn Why follow-up: reasons first, then a single market reference block. */
 export function composeWhyAfterPricedTurn(grounding: Grounding): string {
-  const favourite = modelFavouriteOutcome(grounding);
-  const favLabel = favourite.outcome === "draw"
-    ? "Draw"
-    : displayOutcomeLabel(grounding, favourite.outcome);
-  const tableLine = tableVsModelFavoriteExplainLine(grounding);
-  const parts: string[] = [];
-  if (tableLine) {
-    parts.push(tableLine.replace(/^Caveat:\s*/, ""));
-  } else {
-    parts.push(
-      `Elo has ${compactTeamLabel(grounding.home)} ${Math.round(grounding.homeElo)}, `
-      + `${compactTeamLabel(grounding.away)} ${Math.round(grounding.awayElo)}.`,
-    );
-    if (grounding.homeFieldAdvantage) {
-      parts.push(`${compactTeamLabel(grounding.home)} get home-field advantage in this competition.`);
-    }
-    const divergence = grounding.marketDivergence[0];
-    if (divergence) {
-      const leg = divergence.legs.find((row) => row.outcome === favourite.outcome);
-      const source = labelMarketSource(divergence.source);
-      if (leg) {
-        parts.push(`${source} no-vig 1X2 implies ${deskPercentDisplay(leg.marketPercent / 100)} on ${favLabel}.`);
-      }
-    }
-  }
-  parts.push(favourite.outcome === "draw" ? "Draw is my favourite." : `${favLabel} are my favourite.`);
-  return parts.join(" ");
+  return composeIndependentMarketTakeAnswer(grounding, "why");
 }

@@ -120,18 +120,21 @@ function spursCoventryGrounding(): Grounding {
 describe("investor demo composer fixes", () => {
   const grounding = spursCoventryGrounding();
 
-  it("1) market comparison uses biggest-gap headline, compact side rows, and desk provenance", () => {
+  it("1) market comparison uses independent take layout with a single market block", () => {
     const after = composeMarketComparisonAnswer("How does your 1X2 compare to Polymarket?", grounding)!;
-    expect(after).toMatch(/Biggest gap: Draw \(\+3\.9 pts vs Polymarket\)\./);
-    expect(after).toContain("Spurs  59.9% | fair 1.67 | Polymarket 1.56 (64.0%) (before fees) | gap -4.1 pts");
-    expect(after).toContain("Draw  24.4% | fair 4.10 | Polymarket 4.88 (20.5%) (before fees) | gap +3.9 pts");
-    expect(after).toMatch(/Lean: draw at 4\.88, small play\./);
-    expect(after).toMatch(/Model: Elo ratings v1/);
-    expect(after).toMatch(/Odds: Polymarket no-vig/);
+    expect(after).toMatch(/Tottenham v Coventry — my call: Spurs win\./);
+    expect(after).toContain("Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)");
+    expect(after).toMatch(/Why: stronger side on Elo \(1799 v 1706\) plus home advantage/);
+    expect(after).toMatch(/the risk is form, 20th on 3 pts/);
+    expect(after).toMatch(/Market \(Polymarket no-vig,/);
+    expect(after).toMatch(/Biggest gap vs market: Draw, \+3\.9 pts\./);
+    expect(after).toMatch(/^Model: Elo ratings v1/m);
+    expect(after).not.toMatch(/^Lean:/m);
+    expect(after).not.toMatch(/Odds: Polymarket no-vig/);
     expect(after).not.toMatch(/\bEV\b/);
     expect(after).not.toMatch(/\bedge\b/i);
     const focused = composeMarketComparisonAnswer("What is the edge on Coventry?", grounding)!;
-    expect(focused.indexOf("Coventry  ")).toBeLessThan(focused.indexOf("Spurs  "));
+    expect(focused).toContain("Coventry 15.7% (fair 6.37)");
   });
 
   it("2) odds provenance is three lines without cache-tier noise", () => {
@@ -179,9 +182,9 @@ describe("investor demo composer fixes", () => {
     expect(planResponse("what about the draw?", followUp).mode).toBe("market-comparison");
     expect(planResponse("What about over 2.5?", followUp).mode).toBe("totals");
     const answer = composeMatchResponse("what about the draw?", grounding, planResponse("what about the draw?", followUp));
-    expect(answer).toContain("Draw  24.4% | fair 4.10");
-    expect(answer).toMatch(/Lean: draw at 4\.88, small play\./);
-    expect(answer).not.toMatch(/Lean: Spurs/);
+    expect(answer).toContain("Draw 24.4% (fair 4.10)");
+    expect(answer).toMatch(/Biggest gap vs market: Draw/);
+    expect(answer).not.toMatch(/^Lean:/m);
   });
 
   it("CTO A) Kalshi/Polymarket pricing legs carry before-fees decimals without EV", () => {
@@ -271,17 +274,17 @@ describe("investor demo composer fixes", () => {
     const whoWins = "Who wins Tottenham v Coventry?";
     expect(planResponse(whoWins, ctx).mode).toBe("market-comparison");
     const whoAnswer = composeMatchResponse(whoWins, grounding, planResponse(whoWins, ctx))!;
-    expect(whoAnswer).toMatch(/Spurs are my favourite at 59\.9%\./);
-    expect(whoAnswer).not.toMatch(/59\.9%.*59\.9%.*59\.9%/);
-    expect(whoAnswer).toMatch(/Biggest gap: Draw \(\+3\.9 pts vs Polymarket\)\./);
-    expect(whoAnswer).toContain("Spurs  59.9% | fair 1.67 | Polymarket 1.56 (64.0%)");
-    expect(whoAnswer).not.toContain("I need a captured decimal line");
+    expect(whoAnswer).toMatch(/my call: Spurs win\./);
+    expect(whoAnswer).toContain("Spurs 59.9% (fair 1.67)");
+    expect(whoAnswer).toMatch(/Biggest gap vs market: Draw, \+3\.9 pts\./);
+    expect(whoAnswer).toMatch(/Market \(Polymarket no-vig,/);
+    expect(whoAnswer).not.toMatch(/^Lean:/m);
 
     const priceTonight = "Price tonight's match for me";
     expect(planResponse(priceTonight, ctx).mode).toBe("market-comparison");
     const priceAnswer = composeMatchResponse(priceTonight, grounding, planResponse(priceTonight, ctx))!;
-    expect(priceAnswer).toMatch(/Biggest gap:/);
-    expect(priceAnswer).toContain("Spurs  59.9% | fair 1.67 | Polymarket 1.56 (64.0%)");
+    expect(priceAnswer).toMatch(/Biggest gap vs market:/);
+    expect(priceAnswer).toContain("Spurs 59.9% (fair 1.67)");
     expect(priceAnswer).not.toContain("EV% or pass or play");
   });
 
