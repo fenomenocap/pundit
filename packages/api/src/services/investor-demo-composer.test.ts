@@ -122,7 +122,7 @@ describe("investor demo composer fixes", () => {
 
   it("1) market comparison uses independent take layout with a single market block", () => {
     const after = composeMarketComparisonAnswer("How does your 1X2 compare to Polymarket?", grounding)!;
-    expect(after).toMatch(/Tottenham v Coventry — my call: Spurs win\./);
+    expect(after).toMatch(/Tottenham v Coventry — my call: Spurs win at 59\.9%\./);
     expect(after).toContain("Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)");
     expect(after).toMatch(/Why: stronger side on Elo \(1799 v 1706\) plus home advantage/);
     expect(after).toMatch(/the risk is form, 20th on 3 pts/);
@@ -274,7 +274,7 @@ describe("investor demo composer fixes", () => {
     const whoWins = "Who wins Tottenham v Coventry?";
     expect(planResponse(whoWins, ctx).mode).toBe("market-comparison");
     const whoAnswer = composeMatchResponse(whoWins, grounding, planResponse(whoWins, ctx))!;
-    expect(whoAnswer).toMatch(/my call: Spurs win\./);
+    expect(whoAnswer).toMatch(/my call: Spurs win at 59\.9%\./);
     expect(whoAnswer).toContain("Spurs 59.9% (fair 1.67)");
     expect(whoAnswer).toMatch(/Biggest gap vs market: Draw, \+3\.9 pts\./);
     expect(whoAnswer).toMatch(/Market \(Polymarket no-vig,/);
