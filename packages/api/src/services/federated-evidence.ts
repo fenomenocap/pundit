@@ -85,7 +85,7 @@ function isMatchGrounding(grounding: FederatedGrounding): grounding is Federated
 }
 
 /** Injury-only team-news asks (eval dated-club-news scenario). Lineup asks keep fixture fan-out. */
-function asksInjuryUpdatesWithoutLineups(question: string): boolean {
+export function asksInjuryUpdatesWithoutLineups(question: string): boolean {
   return /\binjur(?:y|ies)\b/i.test(question)
     && !/\b(?:line-?ups?|starting xi|starters?|start(?:s|ing)?|xi)\b/i.test(question);
 }
@@ -284,15 +284,15 @@ export function planFederatedQueries(
     const monthLabel = (date: Date) => date.toLocaleDateString("en-GB", {
       month: "long", year: "numeric", timeZone: "UTC",
     });
-    const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const targeted = clubFact.kind === "manager"
       ? [`${clubFact.club} current manager head coach official club ${day}`,
-        `site:skysports.com/football/news ${clubFact.club} manager contract ${monthLabel(previousMonth)}`,
-        `site:bbc.com/sport/football ${clubFact.club} manager head coach ${monthLabel(now)}`,
-        `site:football.london ${clubFact.club} manager ${monthLabel(now)}`]
+        `site:skysports.com/football/news ${clubFact.club} head coach press conference ${monthLabel(now)}`,
+        `site:skysports.com/football/news ${clubFact.club} manager pre-match preview ${monthLabel(now)}`,
+        `site:bbc.com/sport/football ${clubFact.club} manager head coach ${season}`,
+        `${clubFact.club} head coach staff profile official ${season}`]
       : [`${clubFact.club} latest completed match result official report ${season} ${day}`,
         `${clubFact.club} latest match final score post match report ${day}`];
-    return [...new Set([...targeted, ...planned])].slice(0, clubFact.kind === "manager" ? 5 : MAX_FEDERATED_QUERIES);
+    return [...new Set([...targeted, ...planned])].slice(0, clubFact.kind === "manager" ? 6 : MAX_FEDERATED_QUERIES);
   }
   if (asksStats && slice.length >= 3) {
     planned.push(`${slice} stats ${season}`);

@@ -54,6 +54,10 @@ Active fixtures with model probabilities. Optional filter: `?competition=eng.1`.
 
 Same payload as `/active`. Optional `?competition=` filter. Full scoreline matrices are omitted from the HTTP response (available internally for chat grounding).
 
+### `GET /api/model/backtest-gate`
+
+Read-only pinned result of the EPL walk-forward backtest harness. Includes `edgeValidationActive` (false while the model has not beat market closes under declared criteria), artifact metadata, and `promotedModelEnabled` reflecting `BACKTEST_PROMOTED_MODEL_ENABLED`. See [Model backtest](../how-it-works/model-backtest.md).
+
 ### Retired: `GET /api/model/wc`
 
 Returns **410 Gone**. The live World Cup tournament model is retired. See [Evaluation](evaluation.md) for the frozen WC 2026 backtest.

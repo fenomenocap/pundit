@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "replayId": "monitor-gate-v1",
+  "recordedAt": "2026-10-07T11:20:00.000Z",
+  "queries": {
+    "everton manager today": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Everton manager update",
+          "link": "https://publisher.example/everton/manager",
+          "snippet": "Sean Dyche remains Everton manager.",
+          "date": "2026-09-22"
+        }
+      ],
+      "provider": "openrouter",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": [
+        {
+          "provider": "openrouter",
+          "outcome": "ok",
+          "reason": null,
+          "attempts": 1
+        }
+      ]
+    },
+    "everton injury update": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Everton injury update",
+          "link": "https://publisher.example/everton/injuries",
+          "snippet": "James Garner doubtful.",
+          "date": "2026-10-07"
+        }
+      ],
+      "provider": "openrouter",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": [
+        {
+          "provider": "openrouter",
+          "outcome": "ok",
+          "reason": null,
+          "attempts": 1
+        }
+      ]
+    },
+    "chelsea injury update": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Chelsea FC injury update",
+          "link": "https://publisher.example/chelsea/injuries",
+          "snippet": "Cole Palmer hamstring.",
+          "date": "2026-10-06"
+        }
+      ],
+      "provider": "openrouter",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": [
+        {
+          "provider": "openrouter",
+          "outcome": "ok",
+          "reason": null,
+          "attempts": 1
+        }
+      ]
+    }
+  }
+}

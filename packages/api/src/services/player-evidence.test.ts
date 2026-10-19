@@ -108,6 +108,34 @@ describe("dated club updates before fixture previews", () => {
       "In an update published on 2026-10-09, Leeds’s Daniel James is ruled out [[S1]].",
     );
   });
+
+  it("formats general team-news answers differently from explicit dated injury-update asks", () => {
+    const fixtureRef = {
+      fixtureId: "espn:eng.1:401879262",
+      home: "Brentford",
+      away: "Liverpool",
+      kickoff: "2026-10-17T14:00:00Z",
+    };
+    const report = update("Cody Gakpo (Liverpool) is injured.", {
+      title: "Liverpool fitness update",
+      url: "https://www.liverpoolfc.com/news/fitness-update",
+      date: "2026-10-15",
+    });
+    const bundle = extractDatedClubAvailability([report], fixtureRef, Date.parse("2026-10-17T12:00:00Z"));
+    const injuryAsk = composeDatedClubAvailabilityAnswer(bundle);
+    const grounding = {
+      kind: "match",
+      fixtureId: fixtureRef.fixtureId,
+      home: fixtureRef.home,
+      away: fixtureRef.away,
+      date: "2026-10-17",
+    } as never;
+    const generalAsk = composeTeamNewsAnswer(grounding, bundle);
+    expect(injuryAsk).toMatch(/^In an update published on/);
+    expect(generalAsk).toMatch(/listed as injured/);
+    expect(generalAsk).not.toMatch(/^In an update published on/);
+    expect(generalAsk).toContain("match-context team news");
+  });
 });
 
 const fixture: PlayerFixtureRef = {
@@ -430,7 +458,7 @@ describe("player evidence adapter", () => {
     } as never, evidence);
     expect(answer).toMatch(/Cole Palmer/);
     expect(answer).toMatch(/unavailable/);
-    expect(answer).toMatch(/not a revised match forecast/i);
+    expect(answer).toMatch(/match-context team news, not a revised forecast/i);
     expect(composeTeamNewsAnswer({
       kind: "match",
       fixtureId: fixture.fixtureId,

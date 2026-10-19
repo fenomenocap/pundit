@@ -699,6 +699,11 @@ export function resetWebSearchStatus(): void {
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { openRouterModelId } from "./inference-config";
+import {
+  activeWebSearchReplayId,
+  lookupWebSearchReplay,
+  recordWebSearchReplayIfEnabled,
+} from "./web-search-replay";
 
 /**
  * One user question's searches, so breaker accounting can ask "did this
@@ -943,6 +948,28 @@ async function searchUncached(
   const scope = questionScope.getStore();
   if (scope) scope.searches += 1;
 
+  const replayId = activeWebSearchReplayId();
+  if (replayId) {
+    const replayed = lookupWebSearchReplay(trimmed, replayId);
+    if (replayed) {
+      console.log(JSON.stringify({
+        event: "web_search_replay_hit",
+        replayId,
+        query: trimmed.slice(0, 80),
+        status: replayed.status,
+        results: replayed.results.length,
+      }));
+      recordWebSearchReplayIfEnabled(trimmed, replayed);
+      return replayed;
+    }
+    console.warn(JSON.stringify({
+      event: "web_search_replay_miss",
+      replayId,
+      query: trimmed.slice(0, 80),
+    }));
+    return emitRecordedSearchOutcome(degraded("providers_exhausted", []), trimmed);
+  }
+
   const chain = enabledChain();
   const attempts: ProviderAttempt[] = [];
   if (chain.length === 0) {
@@ -1046,7 +1073,10 @@ async function searchUncached(
           usedFallback,
           ...(usedFallback ? { primaryProvider: primary } : {}),
         }));
-        return { status: "ok", results, provider: provider.name, reason: null, usedFallback, attempts };
+        return emitRecordedSearchOutcome(
+          { status: "ok", results, provider: provider.name, reason: null, usedFallback, attempts },
+          trimmed
+        );
       }
 
       const error = failure as ProviderError;
@@ -1089,7 +1119,10 @@ async function searchUncached(
       outcome: "empty",
       durationMs: Date.now() - startedAt,
     }));
-    return { status: "empty", results: [], provider: null, reason: null, usedFallback: false, attempts };
+    return emitRecordedSearchOutcome(
+      { status: "empty", results: [], provider: null, reason: null, usedFallback: false, attempts },
+      trimmed
+    );
   }
 
   const everySkipped = attempts.length > 0 && attempts.every((a) => a.outcome === "skipped");
@@ -1099,6 +1132,11 @@ async function searchUncached(
       ? "providers_exhausted"
       : (attempts.find((a) => a.outcome === "failed")?.reason ?? "providers_exhausted");
   return finishDegraded(reason, attempts, trimmed, startedAt);
+}
+
+function emitRecordedSearchOutcome(outcome: WebSearchOutcome, query: string): WebSearchOutcome {
+  recordWebSearchReplayIfEnabled(query, outcome);
+  return outcome;
 }
 
 function finishDegraded(
@@ -1122,5 +1160,5 @@ function finishDegraded(
     attempts,
     enabledProviders: enabledChain().map((provider) => provider.name),
   }));
-  return degraded(reason, attempts);
+  return emitRecordedSearchOutcome(degraded(reason, attempts), query);
 }

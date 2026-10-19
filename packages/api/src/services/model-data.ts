@@ -336,6 +336,70 @@ export function getModelFixtureKey(fixture: ModelFixture): string {
   return modelFixtureKey(fixture.competitionId, fixture.date, fixture.home, fixture.away);
 }
 
+export interface ModelFixtureLookupHint {
+  competitionId?: string;
+  date?: string;
+  home?: string;
+  away?: string;
+}
+
+/**
+ * Resolve a client or grounding fixture ref to a cached model row. Accepts the
+ * canonical ESPN identity (`espn:comp:id`), cached spine id (`comp:id`), the
+ * internal model fixture key, or team hints from active match grounding.
+ */
+export function findModelFixtureByPublicRef(
+  ref: string,
+  hint?: ModelFixtureLookupHint,
+): ModelFixture | undefined {
+  const trimmed = ref.trim();
+  const fixtures = getCachedModelData().fixtures;
+  if (!trimmed) {
+    if (hint?.competitionId && hint.date && hint.home && hint.away) {
+      const key = modelFixtureKey(hint.competitionId, hint.date, hint.home, hint.away);
+      const byKey = fixtures.find((fixture) => getModelFixtureKey(fixture) === key);
+      if (byKey) return byKey;
+    }
+    if (hint?.home && hint?.away) {
+      return findModelFixtureByTeams(hint.home, hint.away, fixtures);
+    }
+    return undefined;
+  }
+
+  const direct = fixtures.find((fixture) => getModelFixtureKey(fixture) === trimmed);
+  if (direct) return direct;
+
+  const espn = fixtures.find((fixture) => espnFixtureIdentity(fixture) === trimmed);
+  if (espn) return espn;
+
+  const spine = fixtures.find(
+    (fixture) => `${fixture.competitionId}:${fixture.fixtureId}` === trimmed,
+  );
+  if (spine) return spine;
+
+  const parsed = /^espn:([^:]+):(.+)$/.exec(trimmed);
+  if (parsed) {
+    const [, competitionId, fixtureId] = parsed;
+    const byParts = fixtures.find(
+      (fixture) => fixture.competitionId === competitionId
+        && String(fixture.fixtureId) === fixtureId,
+    );
+    if (byParts) return byParts;
+  }
+
+  if (hint?.competitionId && hint.date && hint.home && hint.away) {
+    const key = modelFixtureKey(hint.competitionId, hint.date, hint.home, hint.away);
+    const byKey = fixtures.find((fixture) => getModelFixtureKey(fixture) === key);
+    if (byKey) return byKey;
+  }
+
+  if (hint?.home && hint.away) {
+    return findModelFixtureByTeams(hint.home, hint.away, fixtures);
+  }
+
+  return undefined;
+}
+
 function activeFixtureIdentity(
   fixture: Pick<ActiveFixture, "competitionId" | "id">
 ): string {

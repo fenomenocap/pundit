@@ -581,7 +581,7 @@ export function selectTeamNewsSources<T extends PlayerEvidenceSource>(
 
 /** Candidate prose only; every resulting claim still faces the verifier. */
 export function datedClubNewsSources(
-  sources: PlayerEvidenceSource[], fixture: PlayerFixtureRef, now = Date.now()
+  sources: readonly PlayerEvidenceSource[], fixture: PlayerFixtureRef, now = Date.now()
 ): PlayerEvidenceSource[] {
   return sources.filter((source) => {
     const published = Date.parse(source.date);

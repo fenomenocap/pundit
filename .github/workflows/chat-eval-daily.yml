@@ -1,24 +1,31 @@
 name: Daily Chat Eval
 
-# Runs the production chat battle test once a day and keeps every transcript on
-# the chat-eval-data branch. The runner has the network access to reach the
-# deployed API and web app that sandboxed agent sessions do not, and the data
-# branch carries latest.json forward so each run is graded against the last.
-#
-# Production traffic: roughly 60-80 /api/ask requests paced at the harness's
-# 13 s minimum. That is under half of ASK_RATE_LIMIT_PER_MINUTE, which is one
-# process-wide bucket shared with real readers, so the schedule sits in the
-# European early morning.
+# Two jobs share one schedule:
+#   gate  — deterministic monitor assertions against pinned fixture + replayed
+#           web-search recordings (hard fail when regressions land).
+#   sweep — live production battle test for monitoring only (never fails the
+#           workflow; findings live in the summary and chat-eval-data branch).
 
-# No push trigger: a sweep grades production, not the pushed diff, so a push
-# run would put production's findings on an unrelated pull request's checks.
 on:
   schedule:
-    - cron: "17 4 * * *"
+    - cron: "23 8 * * *"
+    - cron: "47 11 * * *"
   workflow_dispatch:
+    inputs:
+      engine:
+        description: Live sweep engine mode (both = legacy certification + agent report)
+        type: choice
+        options:
+          - both
+          - legacy
+          - agent
+        default: both
+  repository_dispatch:
+    types: [chat-eval-daily]
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: chat-eval-daily
@@ -29,8 +36,68 @@ env:
   EVAL_DIR: artifacts/chat-evals
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+    steps:
+      - name: Decide scheduled-run dedupe
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TODAY=$(date -u +%F)
+          TOMORROW=$(date -u -d "${TODAY} + 1 day" +%F)
+          REPO="${{ github.repository }}"
+          RUN_ID="${{ github.run_id }}"
+          MATCH=$(
+            gh api \
+              "/repos/${REPO}/actions/workflows/chat-eval-daily.yml/runs?per_page=100" \
+              --jq "[.workflow_runs[] | select(
+                .created_at >= \"${TODAY}T00:00:00Z\"
+                and .created_at < \"${TOMORROW}T00:00:00Z\"
+                and .id != ${RUN_ID}
+                and (.conclusion == \"success\" or .status == \"in_progress\" or .status == \"queued\" or .status == \"waiting\")
+              )] | length"
+          )
+          if [ "${MATCH}" != "0" ]; then
+            echo "Another chat-eval-daily run today already succeeded or is active; skipping duplicate schedule."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  gate:
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.skip != 'true'
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run pinned monitor gate
+        run: pnpm chat-eval:gate
+
   sweep:
     runs-on: ubuntu-latest
+    needs: [preflight, gate]
+    if: needs.preflight.outputs.skip != 'true'
     timeout-minutes: 150
     steps:
       - name: Checkout
@@ -58,20 +125,64 @@ jobs:
           fi
           ls -la "$EVAL_DIR"
 
-      # The deployed code comes from main, so main is the SHA floor even when
-      # this workflow runs from another branch.
       - name: Resolve deployed source SHA
         id: sha
         run: |
           git fetch origin main
           echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
 
-      - name: Run production chat battle test
-        id: sweep
+      - name: Resolve sweep engine mode
+        id: engine
+        run: |
+          MODE="both"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MODE="${{ inputs.engine }}"
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            MODE="${{ github.event.client_payload.engine }}"
+          fi
+          MODE="${MODE:-both}"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Run production chat battle test (legacy)
+        id: sweep_legacy
+        if: steps.engine.outputs.mode == 'both' || steps.engine.outputs.mode == 'legacy'
         continue-on-error: true
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           set -o pipefail
-          node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" 2>&1 | tee sweep.log
+          node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine legacy \
+            --output-dir "$EVAL_DIR/legacy" 2>&1 | tee sweep-legacy.log
+
+      - name: Run production chat battle test (agent, non-gating)
+        id: sweep_agent
+        if: steps.engine.outputs.mode == 'both' || steps.engine.outputs.mode == 'agent'
+        continue-on-error: true
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -o pipefail
+          node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine agent --non-gating \
+            --output-dir "$EVAL_DIR/agent" 2>&1 | tee sweep-agent.log
+
+      - name: Merge dual-engine eval report
+        if: steps.engine.outputs.mode == 'both'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          node scripts/merge-dual-engine-chat-eval.mjs \
+            "$EVAL_DIR/legacy/latest-run.json" \
+            "$EVAL_DIR/agent/latest-run.json" \
+            "$EVAL_DIR/latest-run.json"
+          cp sweep-legacy.log sweep.log
+          tail -n 40 sweep-agent.log >> sweep.log
+
+      - name: Promote single-engine sweep report
+        if: steps.engine.outputs.mode != 'both'
+        run: |
+          SRC="$EVAL_DIR/${{ steps.engine.outputs.mode }}/latest-run.json"
+          cp "$SRC" "$EVAL_DIR/latest-run.json"
+          cp "sweep-${{ steps.engine.outputs.mode }}.log" sweep.log
 
       - name: Render transcript and summary
         id: render
@@ -81,8 +192,6 @@ jobs:
           if [ -f "$EVAL_DIR/latest-run.json" ]; then
             node scripts/render-chat-transcript.mjs "$EVAL_DIR/latest-run.json" transcript.md summary.json "$RUN_DATE"
           else
-            # The harness aborts before any scenario when preflight fails
-            # (health, readiness, version). That is itself the finding.
             REASON=$(grep -m1 "chat battle test failed" sweep.log || tail -n 1 sweep.log)
             node -e '
               const [date, reason] = process.argv.slice(1);
@@ -93,6 +202,8 @@ jobs:
             ' "$RUN_DATE" "$REASON"
           fi
           head -n 12 transcript.md >> "$GITHUB_STEP_SUMMARY"
+          echo "## Live sweep (report only)" >> "$GITHUB_STEP_SUMMARY"
+          node -p '"Status: " + require("./summary.json").status + " · progress: " + require("./summary.json").progress' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload full report
         uses: actions/upload-artifact@v4
@@ -101,6 +212,8 @@ jobs:
           path: |
             ${{ env.EVAL_DIR }}/*.json
             ${{ env.EVAL_DIR }}/*.md
+            ${{ env.EVAL_DIR }}/legacy/**
+            ${{ env.EVAL_DIR }}/agent/**
             sweep.log
             transcript.md
             summary.json
@@ -126,8 +239,6 @@ jobs:
           DEST="$WORKTREE/runs/$RUN_DATE"
           mkdir -p "$DEST"
           cp transcript.md summary.json sweep.log "$DEST/"
-          # Only a complete run becomes tomorrow's baseline; a run that stopped
-          # early would grade every unreached scenario as newly passing.
           if [ "$(node -p 'require("./summary.json").progress')" = "complete" ]; then
             cp "$EVAL_DIR/latest.json" "$WORKTREE/latest.json"
             cp "$EVAL_DIR/latest.md" "$DEST/report.md"
@@ -147,13 +258,14 @@ jobs:
           done
           exit 1
 
-      # A completed harness run exits 0 whatever it graded, so the summary is
-      # what decides. Red here is how a finding reaches the repo's notifications.
-      - name: Fail the job when the sweep needs attention
+      - name: Live sweep report (never fails the job)
+        if: always()
         run: |
           STATUS=$(node -p 'require("./summary.json").status')
-          echo "Sweep status: $STATUS (harness step: ${{ steps.sweep.outcome }})"
-          if [ "$STATUS" != "clean" ] || [ "${{ steps.sweep.outcome }}" = "failure" ]; then
+          LEGACY="${{ steps.sweep_legacy.outcome }}"
+          AGENT="${{ steps.sweep_agent.outcome }}"
+          echo "Live sweep status: $STATUS (legacy harness: ${LEGACY:-skipped}, agent harness: ${AGENT:-skipped})"
+          echo "This job is report-only; see gate job for hard pass/fail."
+          if [ "$STATUS" != "clean" ] || [ "$LEGACY" = "failure" ] || [ "$AGENT" = "failure" ]; then
             echo "Transcript: $DATA_BRANCH:runs/${{ steps.render.outputs.date }}/transcript.md"
-            exit 1
           fi

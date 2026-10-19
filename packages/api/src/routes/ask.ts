@@ -9,6 +9,17 @@ import {
   TeamContext,
   UserLine,
 } from "../services/ask";
+import {
+  isChatEvalEngineOverrideGuardActive,
+  logAskChatEngineTurn,
+  resolveChatEvalEngineOverride,
+  resolveEffectiveChatEngine,
+  withChatEngineRequestScope,
+} from "../services/chat-engine";
+import {
+  parseChatEvalSearchReplayHeader,
+  withWebSearchReplayScope,
+} from "../services/web-search-replay";
 
 const router: Router = Router();
 const MAX_HISTORY_TURNS = 12;
@@ -171,9 +182,20 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     req.once("aborted", abortOnDisconnect);
     res.once("close", abortOnDisconnect);
 
+    const searchReplayScope = parseChatEvalSearchReplayHeader(
+      req.headers["x-pundit-chat-eval-search-replay"]
+    );
+    const evalGuardActive = isChatEvalEngineOverrideGuardActive(searchReplayScope !== null);
+    const engineOverride = resolveChatEvalEngineOverride(
+      req.headers["x-pundit-chat-engine"],
+      evalGuardActive,
+    );
+    const runAsk = <T>(fn: () => Promise<T>) => withWebSearchReplayScope(searchReplayScope, () =>
+      withChatEngineRequestScope(engineOverride, fn));
+
     if (req.body?.stream !== true) {
       try {
-        const result = await answerQuestion(
+        const result = await runAsk(() => answerQuestion(
           trimmedQuestion,
           history,
           teamContext,
@@ -181,7 +203,11 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           fixtureContext,
           userLine,
           voice
-        );
+        ));
+        logAskChatEngineTurn({
+          effectiveEngine: result.engine,
+          engineFromHeaderOverride: engineOverride !== null,
+        });
         res.json(result);
       } finally {
         clearTimeout(deadline);
@@ -211,7 +237,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     req.on("close", onClose);
     res.on("close", onClose);
     try {
-      const { answer, grounding, citations, verification, presentation } = await answerQuestionStream(
+      const { answer, grounding, citations, verification, presentation } = await runAsk(() => answerQuestionStream(
         trimmedQuestion,
         history,
         teamContext,
@@ -243,9 +269,13 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
         },
         fixtureContext,
         userLine
-      );
+      ));
       stopHeartbeat();
       if (!clientGone && !res.writableEnded) {
+        logAskChatEngineTurn({
+          effectiveEngine: resolveEffectiveChatEngine(engineOverride),
+          engineFromHeaderOverride: engineOverride !== null,
+        });
         sseSend(res, "done", {
           answer,
           grounding,

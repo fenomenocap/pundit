@@ -1,6 +1,7 @@
 # Table of contents
 
 * [Welcome to Pundit](README.md)
+* [Documentation index](index.md)
 
 ## Getting Started
 
@@ -11,6 +12,8 @@
 
 * [The Model](how-it-works/the-model.md)
 * [Data Sources](how-it-works/data-sources.md)
+* [Chat Engine](how-it-works/chat-engine.md)
+* [Model Backtest](how-it-works/model-backtest.md)
 
 ## API Reference
 
@@ -21,6 +24,13 @@
 * [Evaluation](api-reference/evaluation.md)
 * [Polymarket Reference Odds](api-reference/polymarkets.md)
 
+## Operations
+
+* [Environment Variables](ops/environment-variables.md)
+* [Chat Eval Runbook](ops/chat-eval.md)
+* [Cloud Monitor & Verification](ops/cloud-monitor.md)
+* [Vercel Access](ops/vercel-access.md)
+
 ## Overview
 
 * [Product Vision](overview/product-vision.md)
@@ -29,3 +39,10 @@
 
 * [FAQ](support/faq.md)
 * [Disclaimer](support/disclaimer.md)
+
+## Architecture (research)
+
+* [EPL Walk-Forward Backtest (2026-10-16)](architecture/model-backtest-2026-10-16.md)
+* [Backtest xG Pipeline (2026-10-16)](architecture/model-backtest-xg-2026-10-16.md)
+* [Multi-Source Model Foundation](architecture/multi-source-model-foundation.md)
+* [Prediction Model Improvement Brief](architecture/prediction-model-improvement-brief.md)

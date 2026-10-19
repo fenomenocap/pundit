@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { compareEngineQuality, computeTurnQualityMetrics, summarizeLlmJudge } from "./chat-eval-quality-metrics.mjs";
+import { judgeEvalTurns } from "./chat-eval-llm-judge.mjs";
 import {
   EVAL_SCHEMA_VERSION,
   MIN_REQUEST_INTERVAL_MS,
@@ -74,6 +76,12 @@ function parseArgs(argv) {
     dryRun: false,
     deploymentId: process.env.PUNDIT_DEPLOYMENT_ID ?? null,
     sourceSha: process.env.PUNDIT_SOURCE_SHA ?? null,
+    searchReplayId: process.env.CHAT_EVAL_SEARCH_REPLAY_ID ?? null,
+    engine: process.env.CHAT_EVAL_ENGINE?.trim().toLowerCase() === "agent" ? "agent" : "legacy",
+    evalReplayGuardId: "monitor-gate-v1",
+    pinnedGateFixture: null,
+    gateOnly: false,
+    nonGating: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -87,6 +95,15 @@ function parseArgs(argv) {
     else if (argument === "--timeout-ms") options.timeoutMs = Number(argv[++index]);
     else if (argument === "--deployment-id") options.deploymentId = argv[++index];
     else if (argument === "--source-sha") options.sourceSha = argv[++index];
+    else if (argument === "--search-replay-id") options.searchReplayId = argv[++index];
+    else if (argument === "--engine") {
+      const value = argv[++index]?.trim().toLowerCase();
+      if (value !== "legacy" && value !== "agent") throw new Error("--engine must be legacy or agent.");
+      options.engine = value;
+    }
+    else if (argument === "--pinned-gate-fixture") options.pinnedGateFixture = path.resolve(argv[++index]);
+    else if (argument === "--gate-only") options.gateOnly = true;
+    else if (argument === "--non-gating") options.nonGating = true;
     else throw new Error(`Unknown argument: ${argument}`);
   }
   if (!Number.isFinite(options.intervalMs) || options.intervalMs < 0) {
@@ -97,6 +114,42 @@ function parseArgs(argv) {
 
 function timestampId(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, "-");
+}
+
+export function resolveEvalSearchReplayId(options) {
+  if (options.searchReplayId) return options.searchReplayId;
+  if (options.gateOnly || options.pinnedGateFixture) return options.evalReplayGuardId;
+  return null;
+}
+
+export function buildAskEvalHeaders(options) {
+  const headers = { "content-type": "application/json" };
+  const replayId = resolveEvalSearchReplayId(options);
+  if (replayId) headers["x-pundit-chat-eval-search-replay"] = replayId;
+  if (options.engine === "agent" || options.engine === "legacy") {
+    headers["x-pundit-chat-engine"] = options.engine;
+  }
+  return headers;
+}
+
+function flattenReportTurns(report, scenarioId = null) {
+  const turns = [];
+  for (const scenario of report?.scenarios ?? []) {
+    for (const turn of scenario.turnResults ?? []) {
+      turns.push({
+        scenarioId: scenarioId ?? scenario.id,
+        turn: turn.turn,
+        question: turn.request?.question ?? null,
+        httpStatus: turn.status,
+        answer: turn.answer,
+        verification: turn.verification,
+        citations: turn.citations,
+        usedLlm: turn.usedLlm,
+        engine: turn.engine,
+      });
+    }
+  }
+  return turns;
 }
 
 async function fetchJson(url, init, timeoutMs) {
@@ -273,9 +326,10 @@ async function jsonTurn(
     startedAt: start,
     reproduction: { method: "POST", path: "/api/ask", body: requestBody },
   });
+  const askHeaders = buildAskEvalHeaders(options);
   let response = await fetchJson(`${options.apiUrl}/api/ask`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: askHeaders,
     body: JSON.stringify(requestBody)
   }, options.timeoutMs);
   let gateway502Retried = false;
@@ -285,7 +339,7 @@ async function jsonTurn(
     const retryStart = pacer.starts.at(-1);
     response = await fetchJson(`${options.apiUrl}/api/ask`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: askHeaders,
       body: JSON.stringify(requestBody)
     }, options.timeoutMs);
     gateway502Retried = true;
@@ -486,6 +540,8 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       citations: result.citations,
       verification: result.verification,
       answer: result.answer,
+      engine: response.body?.engine ?? options.engine,
+      usedLlm: response.body?.usedLlm === true,
       assertions: Object.fromEntries(Object.entries(result.assertions).filter(([name]) => name.startsWith(`turn${turnNumber}`))),
     });
   }
@@ -1035,6 +1091,23 @@ async function runScenario(
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (options.pinnedGateFixture) {
+    const { spawnSync } = await import("node:child_process");
+    const args = [
+      path.join(ROOT, "scripts/chat-eval-pinned-gate.mjs"),
+      "--assert-only",
+      "--fixture",
+      options.pinnedGateFixture,
+    ];
+    if (options.gateOnly) {
+      args.push("--scenarios", options.scenariosPath);
+    } else {
+      args.push("--scenarios", path.join(ROOT, "evals/chat/scenarios.monitor.json"));
+    }
+    const child = spawnSync(process.execPath, args, { stdio: "inherit" });
+    process.exitCode = child.status ?? 1;
+    return;
+  }
   const scenarioConfig = JSON.parse(await readFile(options.scenariosPath, "utf8"));
   if (scenarioConfig.schemaVersion !== EVAL_SCHEMA_VERSION) {
     throw new Error(`Scenario schema ${scenarioConfig.schemaVersion} does not match evaluator schema ${EVAL_SCHEMA_VERSION}.`);
@@ -1095,7 +1168,10 @@ async function main() {
   const seed = runId.slice(0, 10);
   const adversarial = generateAdversarialScenarios(seed, exactFeatured)
     .map((scenario) => ({ ...scenario, requiredForCertification: false }));
-  const scenarios = requireAvailableRecognizedScenarios([...scenarioConfig.fixed, ...adversarial], routableRecognized);
+  let scenarios = requireAvailableRecognizedScenarios([...scenarioConfig.fixed, ...adversarial], routableRecognized);
+  if (options.nonGating) {
+    scenarios = scenarios.map((scenario) => ({ ...scenario, requiredForCertification: false }));
+  }
   const pacer = createPacer(options.intervalMs);
   const deploymentFromVersion = typeof preflightResult.apiVersion.body?.deploymentId === "string"
     ? preflightResult.apiVersion.body.deploymentId.trim()
@@ -1258,6 +1334,17 @@ async function main() {
   await capturePostRunReadiness(report, options, preflightResult.ready.body);
   report.completedAt = new Date().toISOString();
   finalizeClassifications(report, previous);
+  report.requestEngine = options.engine;
+  const allTurns = flattenReportTurns(report);
+  report.qualityMetrics = computeTurnQualityMetrics(allTurns);
+  report.llmJudge = await judgeEvalTurns(allTurns, { maxTurns: 24, paceMs: 250 });
+  report.llmJudgeSummary = summarizeLlmJudge(report);
+  const previousTurns = previous ? flattenReportTurns(previous) : [];
+  if (previous?.requestEngine && previous.requestEngine !== report.requestEngine) {
+    report.engineQualityComparison = previous.requestEngine === "legacy"
+      ? compareEngineQuality(previousTurns, allTurns)
+      : compareEngineQuality(allTurns, previousTurns);
+  }
   await writeCheckpoint(report, options.outputDir);
   const paths = await writeReport(report, options.outputDir);
   console.log(JSON.stringify({
@@ -1269,7 +1356,12 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(`chat battle test failed: ${error.message}`);
-  process.exitCode = 1;
-});
+const executedDirectly = import.meta.url === `file://${process.argv[1]}`
+  || process.argv[1]?.endsWith("chat-battle-test.mjs");
+
+if (executedDirectly) {
+  main().catch((error) => {
+    console.error(`chat battle test failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}

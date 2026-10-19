@@ -135,7 +135,15 @@ describe("bounded dated club-news expression", () => {
     const row = { ...newsRow, club: "Man City", playerName: " Joe   Example ", statusText: "may be doubtful" };
     const grounding = match({ date: "2026-10-10" });
     expect(renderDatedClubNewsRecords(newsJson(row), [source], grounding, newsNow)).toContain("Manchester City’s Joe Example may be doubtful");
-    expect(renderDatedClubNewsRecords(JSON.stringify({ updates: [row, { ...row, playerName: "Joe Example" }] }), [source], grounding, newsNow)).toBeNull();
+    expect(renderDatedClubNewsRecords(JSON.stringify({ updates: [row, { ...row, playerName: "Joe Example" }] }), [source], grounding, newsNow))
+      .toContain("Manchester City’s Joe Example may be doubtful");
+  });
+
+  it("keeps the first record when the model returns duplicate rows for the same player", () => {
+    const rejected = vi.fn();
+    const answer = renderDatedClubNewsRecords(JSON.stringify({ updates: [newsRow, newsRow] }), newsSources, newsGrounding, newsNow, rejected);
+    expect(answer).toContain("Arsenal’s Christos Tzolis");
+    expect(rejected).toHaveBeenCalledExactlyOnceWith("duplicate");
   });
 
   it("keeps the publisher calendar date consistent with its citation at a timezone boundary", () => {
@@ -176,15 +184,42 @@ describe("bounded dated club-news expression", () => {
     expect(renderDatedClubNewsRecords(newsJson(), [{ ...newsSources[0], date }], newsGrounding, newsNow)).toBeNull();
   });
 
-  it("requires the full player identity in the same source body, rather than its title or another page", () => {
-    expect(renderDatedClubNewsRecords(newsJson(), [{ ...newsSources[0], title: "Christos Tzolis injury", snippet: "Arsenal injury news." },
+  it("accepts a full name in the publisher title when the search snippet omitted it", () => {
+    const grounding = match({ home: "Bournemouth", away: "Sunderland", date: "2026-10-18" });
+    const source = { ...newsSources[0], id: "S1", date: "2026-10-17T09:00:00Z",
+      title: "Bournemouth head coach Rose confirms Alex Scott injury is better than expected",
+      snippet: "The midfielder was reported injured ahead of the weekend." };
+    const row = { sourceId: "S1", club: "Bournemouth", playerName: "Alex Scott", statusText: "was reported injured" };
+    const now = Date.parse("2026-10-17T12:00:00Z");
+    expect(renderDatedClubNewsRecords(JSON.stringify({ updates: [row] }), [source], grounding, now)).toContain("Alex Scott was reported injured [[S1]]");
+  });
+
+  it("withholds a player name that appears on neither the title nor the bounded excerpt", () => {
+    expect(renderDatedClubNewsRecords(newsJson(), [{ ...newsSources[0], title: "Injury bulletin", snippet: "Arsenal team news without a named player." },
       { ...newsSources[0], id: "S11" }], newsGrounding, newsNow)).toBeNull();
+  });
+
+  it("keeps valid rows when another row has an extra field or a missing player body", () => {
+    const rejected = vi.fn();
+    const valid = { sourceId: "S10", club: "Arsenal", playerName: "Ben White", statusText: "has been spotted back in training" };
+    const answer = renderDatedClubNewsRecords(JSON.stringify({
+      updates: [
+        valid,
+        { ...newsRow, statusText: "was reported injured", confidence: "high" },
+        { ...newsRow, playerName: "Absent Player", statusText: "was reported injured" },
+      ],
+    }), newsSources, newsGrounding, newsNow, rejected);
+    expect(answer).toContain("Ben White has been spotted back in training [[S10]]");
+    expect(rejected).toHaveBeenCalledWith("shape");
+    expect(rejected).toHaveBeenCalledWith("player_body");
   });
 
   it.each([
     "was reported injured", "was sidelined with a hamstring injury", "was reported doubtful", "may be doubtful",
     "Has Been Spotted Back In Training", "has a Neural Hamstring pain",
     "was suspended", "was back in training", "has been spotted back in training", "has continued training",
+    "was ruled out", "is ruled out with a knee injury", "is out with a knee injury", "remains a fitness doubt",
+    "has a fitness doubt",
     "has returned to training", "withdrew from international duty", "was undergoing assessment", "was in rehabilitation",
     "had a hamstring issue pending assessment", "has been dealing with neural hamstring pain",
     "sustained a hamstring issue", "suffered an ankle injury", "has sustained a calf strain", "had suffered a knee problem",
@@ -202,7 +237,6 @@ describe("bounded dated club-news expression", () => {
     { raw: newsJson({ ...newsRow, playerName: "Private Player" }), sources: newsSources, reason: "player_body" },
     { raw: newsJson(), sources: [{ ...newsSources[0], date: "" }], reason: "date" },
     { raw: newsJson({ ...newsRow, statusText: "private event context" }), sources: newsSources, reason: "status_grammar" },
-    { raw: JSON.stringify({ updates: [newsRow, newsRow] }), sources: newsSources, reason: "duplicate" },
   ])("reports only a safe rejection enum: $reason", ({ raw, sources, reason }) => {
     const rejected = vi.fn();
     expect(renderDatedClubNewsRecords(raw, sources, newsGrounding, newsNow, rejected)).toBeNull();
@@ -257,7 +291,7 @@ describe("bounded dated club-news expression", () => {
     }
   );
 
-  it.each(["recover", "second-invalid", "repair-source", "repair-status", "empty", "source", "club", "player", "date", "future", "status", "shape", "duplicate",
+  it.each(["recover", "second-invalid", "repair-source", "repair-status", "empty", "source", "club", "player", "date", "future", "status", "shape",
     "budget", "abort", "abort-on-reserve", "truncated", "error", "other-mode"] as const)(
     "bounds a dated-news JSON syntax repair without promoting unsupported records: %s", async (mode) => {
       const saved = process.env.OPENROUTER_API_KEY; process.env.OPENROUTER_API_KEY = "test-only";
@@ -275,7 +309,7 @@ describe("bounded dated club-news expression", () => {
       if (mode === "date") source.date = "2026-09-01";
       if (mode === "future") source.date = "2026-10-07";
       if (mode === "status" || mode === "repair-status") row.statusText = "will start for Arsenal";
-      const valid = JSON.stringify({ updates: mode === "duplicate" ? [row, row] : [row] });
+      const valid = JSON.stringify({ updates: [row] });
       const invalid = "private malformed draft: {updates:";
       const signals: (AbortSignal | null | undefined)[] = [];
       let calls = 0;
@@ -287,7 +321,7 @@ describe("bounded dated club-news expression", () => {
         if (calls === 2) expect(String(input.messages.at(-1)?.content)).toContain("Formatting reminder:");
         if (mode === "error") throw new Error("private provider body");
         if (mode === "abort") controller.abort();
-        const semantic = ["empty", "source", "club", "player", "status", "shape", "duplicate"].includes(mode);
+        const semantic = ["empty", "source", "club", "player", "status", "shape"].includes(mode);
         const text = mode === "empty" ? '{"updates":[]}' : mode === "shape" ? '{"wrong":[]}'
           : semantic ? valid : calls === 1 || mode === "second-invalid" ? invalid : valid;
         return Promise.resolve({ content: [{ type: "text", text }], stop_reason: mode === "truncated" ? "max_tokens" : "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
@@ -308,9 +342,41 @@ describe("bounded dated club-news expression", () => {
       }
     }
   );
+
+  it("delivers one supported record when duplicate rows are returned on JSON repair", async () => {
+    const saved = process.env.OPENROUTER_API_KEY; process.env.OPENROUTER_API_KEY = "test-only";
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-06T02:00:00Z"));
+    const source = { id: "S9", title: "Arsenal injury bulletin", url: "https://www.arsenal.com/news/fitness",
+      date: "2026-10-05", tier: "official" as const, snippet: "Joe Example (Arsenal) is injured." };
+    const row = { sourceId: "S9", club: "Arsenal", playerName: "Joe Example", statusText: "was reported injured" };
+    const duplicatePayload = JSON.stringify({ updates: [row, row] });
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation((params) => {
+      const input = params as Anthropic.MessageCreateParamsNonStreaming;
+      const repair = String(input.messages.at(-1)?.content).includes("Formatting reminder:");
+      return Promise.resolve({ content: [{ type: "text", text: repair ? duplicatePayload : "private malformed draft: {updates:" }],
+        stop_reason: "end_turn" } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>;
+    });
+    try {
+      const result = await writeDeskProse("Latest Arsenal injury news?", match({ home: "Arsenal", away: "Leeds", date: "2026-10-10" }), [], undefined,
+        { queries: ["q"], results: [source] }, { datedClubNews: true, reserveRepairCall: () => true });
+      expect(result).toBe("In an update published on 2026-10-05, Arsenal’s Joe Example was reported injured [[S9]].");
+      expect(create).toHaveBeenCalledTimes(2);
+    } finally {
+      create.mockRestore(); vi.useRealTimers();
+      if (saved === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = saved;
+    }
+  });
 });
 
 describe("filterDeskEvidenceRows", () => {
+  it("keeps undated official club sources for manager lookups until hydration backfills the date", () => {
+    const row = { id: "S1", title: "Arsenal manager update", snippet: "Arsenal manager Mikel Arteta spoke to reporters.",
+      date: "", url: "https://www.arsenal.com/news/manager", tier: "official" as const };
+    const kept = filterDeskEvidenceRows([row], null, Date.parse("2026-10-07T12:00:00Z"),
+      "Who is Arsenal's manager today?");
+    expect(kept).toHaveLength(1);
+  });
+
   it("exposes a literal same-source current-role passage after navigation without inventing source metadata", () => {
     const row = { id: "S10", title: "Arsenal manager report", snippet: "Contract reporting.", date: "2026-09-22", tier: "news" as const, url: "https://www.skysports.com/report" };
     const role = "Arsenal manager Mikel Arteta has agreed a new contract with the club.";

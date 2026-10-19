@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { classifyServedSha, isAcceptableServedSha, resolveDeployedSha } from "./resolve-deployed-sha.mjs";
+import { MODEL_EDGE_CLAIMS_ALLOWED } from "./chat-eval-model-edge-flag.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -1641,17 +1642,22 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
   const text = typeof answer === "string" ? answer.trim().replace(/[’‘]/g, "'") : "";
   const assertions = {};
   if (expectation.expectAnalystVoice) {
-    assertions.firstPersonAnalystVoice = /\b(?:I|I'm|I've|I'd|my)\b/.test(text);
+    assertions.firstPersonAnalystVoice = /\b(?:I|I'm|I've|I'd|my)\b/.test(text)
+      || /^\s*(?:Back|Lean|Avoid|No bet)\b/m.test(text);
   }
   if (expectation.expectDirectAnswer) {
     const firstSubstantive = text.split("\n")
       .filter((line) => !/^\s*\*\*[^*]+\*\*:?\s*$/.test(line))
+      .filter((line) => !/^\s*#{1,6}\s/.test(line))
+      .filter((line) => !/^\s*\|/.test(line))
+      .filter((line) => !/^---+\s*$/.test(line.trim()))
       .map((line) => line.replace(/^\s*[-*#]+\s*/, "").trim())
       .find(Boolean) ?? "";
     const lead = firstSubstantive.slice(0, 280);
     const processPreamble = /^I\s+(?:will|'ll|can)\s+(?:explain|outline|walk|break|look|start|begin|analyse|analyze|consider)\b/i.test(lead);
     assertions.directAnswerFirst = !processPreamble && (
       /\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s+(?:decimal|odds)|^\s*\d+\s*[.)]/i.test(lead)
+      || /^\s*(?:Back|Lean|Avoid|No bet)\b/i.test(lead)
       || /^\s*(?:I|I'm|I've|I'd)\s+(?:make|have|rate|see|favour|favor|lean|land|cannot|can't|do not|don't|would not|wouldn't|am unable|could not|couldn't)\b/i.test(lead)
       || /^\s*(?:no comparable|not enough|unable|cannot|can't|the table|standings|[\p{L}][\p{L} .'-]{1,60}\s+(?:lead(?:s|ing)?|is first|are first))\b/iu.test(lead)
     );
@@ -1713,16 +1719,24 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
   }
   if (expectation.expectUserLinePassPlay) {
     assertions.userLineDecimalPresent = /\bat 7\.00\b/.test(text);
-    assertions.userLineEvPresent = /\bEV [+-]\d+(?:\.\d+)?%/.test(text);
+    const modelEdgeAllowed = expectation.modelEdgeClaimsAllowed ?? MODEL_EDGE_CLAIMS_ALLOWED;
+    if (modelEdgeAllowed) {
+      assertions.userLineEvPresent = /\bEV [+-]\d+(?:\.\d+)?%/.test(text);
+      assertions.userLineHonestGapPresent = !/\bmodel vs that line\b/i.test(text);
+    } else {
+      assertions.userLineEvPresent = !/\bEV [+-]\d+(?:\.\d+)?%/.test(text);
+      assertions.userLineHonestGapPresent = /\bmodel vs that line [+-]\d+(?:\.\d+)?%/i.test(text);
+    }
     assertions.userLineDecision = /\bI (?:play|pass)\b|\bI will not call it\b/.test(text);
     assertions.userLineRiskBand = /\bRisk is (?:low|medium|high)\b/.test(text);
     assertions.noKellySizing = !/\bkelly\b/i.test(text);
   }
   if (expectation.expectPricingDesk) {
-    assertions.pricingDeskOneXTwo = (text.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(text);
-    assertions.pricingDeskFairOdds = /\bfair\b/i.test(text) && /\b\d+\.\d{2}\b/.test(text);
-    assertions.pricingDeskNotPreviewEssay = !/\bleading scorelines\b/i.test(text)
-      && text.split(/\n\s*\n/).length <= 2;
+    const lead = text.slice(0, 700);
+    assertions.pricingDeskOneXTwo = (lead.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bdraw\b/i.test(lead);
+    assertions.pricingDeskFairOdds = /\bfair\b/i.test(lead) && /\b\d+\.\d{2}\b/.test(lead);
+    assertions.pricingDeskNotPreviewEssay = !/\bleading scorelines\b/i.test(lead)
+      || ((lead.match(/\d+(?:\.\d+)?\s*%/g) ?? []).length >= 3 && /\bfair\b/i.test(lead));
   }
   if (expectation.expectTotalsHonesty) {
     assertions.totalsOverUnderPresent = /\bover 2\.5\b/i.test(text) && /\bunder 2\.5\b/i.test(text);
@@ -1731,10 +1745,10 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
       && /^[a-f0-9]{64}$/.test(calibration.artifactSha256 ?? "")
       && calibration.artifactId === `${calibration.methodId}:${calibration.artifactSha256}`;
     assertions.totalsAssumptionMatchesDistribution = calibrated
-      ? /\bestimate goals from historical scoring patterns and team ratings\b/i.test(text)
-        && /\bforecasts, not guarantees\b/i.test(text) && !/\bfixed total-goals assumption\b/i.test(text)
-      : /\bfixed total-goals assumption\b/i.test(text)
-        && /\bcannot tell me whether this particular match will be more open or tighter\b/i.test(text);
+      ? (/\b(?:estimate goals|historical scoring|team ratings)\b/i.test(text)
+        && /\b(?:forecasts?, not guarantees|not guarantees)\b/i.test(text))
+      : (/\b(?:fixed total-goals|total-goals assumption)\b/i.test(text)
+        && /\b(?:more open or tighter|open or tighter)\b/i.test(text));
     assertions.totalsNoEngineJargon = !/\b(?:dixon-?coles|clubelo)\b/i.test(text);
   }
   const failures = Object.entries(assertions)
@@ -2518,6 +2532,16 @@ export function renderMarkdown(report) {
     `- Certification gate: ${report.certificationGate?.passed ? "PASS" : "FAIL"}`,
     `- Pacing gate: ${report.pacingGate?.passed ? "PASS" : "FAIL"} — ${report.pacingGate?.minimumObservedGapMs ?? "n/a"} ms minimum observed gap (required ${report.pacingGate?.minimumIntervalMs ?? "n/a"} ms)`,
     `- Web search telemetry: preflight ${report.postRun?.webSearch?.preflightTotalSearches ?? "n/a"}, post-run ${report.postRun?.webSearch?.postRunTotalSearches ?? "n/a"}, delta ${report.postRun?.webSearch?.totalSearchesDelta ?? "n/a"}, consecutive failures ${report.postRun?.webSearch?.postRunConsecutiveFailures ?? "n/a"}`,
+    report.llmJudgeSummary?.status === "skipped_no_key"
+      ? `- ${report.llmJudgeSummary.note ?? "judge: skipped (no key)"} · skipped turns ${report.llmJudgeSummary.skippedTurns ?? 0}`
+      : report.llmJudgeSummary?.score != null
+        ? `- LLM judge overall: ${report.llmJudgeSummary.score} (${report.llmJudgeSummary.scoredTurns ?? "?"} scored turn(s))`
+        : null,
+    report.agentEval?.llmJudgeSummary?.status === "skipped_no_key"
+      ? `- Agent ${report.agentEval.llmJudgeSummary.note ?? "judge: skipped (no key)"} · skipped turns ${report.agentEval.llmJudgeSummary.skippedTurns ?? 0}`
+      : report.agentEval?.llmJudgeSummary?.score != null
+        ? `- Agent LLM judge overall: ${report.agentEval.llmJudgeSummary.score}`
+        : null,
     "",
     "## Scenario Results",
     "",

@@ -1,0 +1,919 @@
+{
+  "schemaVersion": 1,
+  "searchReplayId": "monitor-gate-v1",
+  "recordedAt": "2026-10-07T11:20:00.000Z",
+  "evaluationNow": "2026-10-07T11:20:00.000Z",
+  "pinnedFeatured": {
+    "home": "Everton",
+    "away": "Chelsea",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "recognizedFixtureId": "eng.1:401878771",
+    "utcDate": "2026-10-18T15:00:00.000Z"
+  },
+  "scenarios": [
+    {
+      "id": "pinned-current-manager-and-result-evidence",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "Everton's manager is Sean Dyche ([Everton manager update](https://publisher.example/everton/manager), 22 Sep 2026).",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [
+            {
+              "id": "S10",
+              "title": "Everton manager update",
+              "date": "2026-09-22T18:26:00+00:00",
+              "url": "https://publisher.example/everton/manager"
+            }
+          ],
+          "verification": {
+            "status": "verified",
+            "supportedClaimCount": 1,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "What's Everton's manager today?"
+          }
+        },
+        {
+          "status": 200,
+          "answer": "Everton's manager is Sean Dyche ([Everton manager update](https://publisher.example/everton/manager), 22 Sep 2026). I haven't verified the club's stated reason for retaining him.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [
+            {
+              "id": "S10",
+              "title": "Everton manager update",
+              "date": "2026-09-22T18:26:00+00:00",
+              "url": "https://publisher.example/everton/manager"
+            }
+          ],
+          "verification": {
+            "status": "verified",
+            "supportedClaimCount": 1,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "Who is Everton's manager and why?"
+          }
+        },
+        {
+          "status": 200,
+          "answer": "The latest completed Premier League result I have for Everton is **Everton 1–1 Chelsea** (Premier League, 2026-10-05). [Everton 1–1 Chelsea — ESPN match record](https://www.espn.com/soccer/match/_/gameId/401878771), 2026-10-05. Covered competitions: Premier League only here; another cup match may be more recent. I would need a verified match report before I could explain why the match finished that way.",
+          "grounding": null,
+          "citations": [
+            {
+              "id": "S1",
+              "title": "Everton 1–1 Chelsea — ESPN match record",
+              "url": "https://www.espn.com/soccer/match/_/gameId/401878771",
+              "date": "2026-10-05"
+            }
+          ],
+          "verification": {
+            "status": "verified",
+            "supportedClaimCount": 1,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "What is Everton's latest result and why?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dated-club-news-delivers-supported-update",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "In an update published on 2026-10-07, Everton's James Garner was reported doubtful ([Everton injury update](https://publisher.example/everton/injuries), 2026-10-07T12:01:41+01:00). In an update published on 2026-10-06, Chelsea's Cole Palmer sustained a hamstring issue ([Chelsea FC injury update](https://publisher.example/chelsea/injuries), 2026-10-06T13:20:06.000Z). These dated club updates do not establish the starting XI or availability at the future kickoff.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [
+            {
+              "id": "S7",
+              "title": "Everton injury update",
+              "url": "https://publisher.example/everton/injuries",
+              "date": "2026-10-07T12:01:41+01:00"
+            },
+            {
+              "id": "S29",
+              "title": "Chelsea FC injury update",
+              "url": "https://publisher.example/chelsea/injuries",
+              "date": "2026-10-06T13:20:06.000Z"
+            }
+          ],
+          "verification": {
+            "status": "verified",
+            "supportedClaimCount": 2,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "What are the latest dated club injury updates for Everton and Chelsea? Keep current reports distinct from future kickoff availability."
+          }
+        }
+      ]
+    },
+    {
+      "id": "active-match-grounding",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "pinned gate turn"
+          }
+        }
+      ]
+    },
+    {
+      "id": "priced-fixture-retains-1x2-context",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "Analyse Everton vs Chelsea."
+          }
+        },
+        {
+          "status": 200,
+          "answer": "**Verdict**\nFor Everton vs Chelsea, I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%**.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "What will the 1X2 be?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "featured-fixture-opens-pricing-desk",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "I make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%**. Fair decimals: Everton **4.55**, draw **4.17**, Chelsea **1.85**.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "What about Everton vs Chelsea?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "featured-match-briefing-is-not-pricing-desk",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "I see Chelsea carrying more control in the build-up, but Everton can still compress the half-spaces when they win the second ball. I would not treat either side as a guarantee.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "Give me the match briefing for Everton vs Chelsea."
+          }
+        }
+      ]
+    },
+    {
+      "id": "featured-tactical-matchup-keeps-a-take",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "I see Chelsea pushing the wide forwards high while Everton sit slightly deeper; the trade-off is space in behind versus control in the centre.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "Tactical matchup"
+          }
+        }
+      ]
+    },
+    {
+      "id": "featured-totals-honesty",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "Over 2.5 is **52.0%** and under 2.5 is **48.0%** for Everton vs Chelsea. I use a fixed total-goals assumption in the rating baseline, so this cannot tell me whether this particular match will be more open or tighter than that baseline. These are forecasts, not guarantees.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "Is Everton vs Chelsea over or under 2.5?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "featured-o25-scoreline-follow-up",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "What about Everton vs Chelsea?"
+          }
+        },
+        {
+          "status": 200,
+          "answer": "Over 2.5 is **52.0%** and under 2.5 is **48.0%**. Likely scorelines include **1-1 (11.0%)**, **0-1 (9.0%)**, and **1-2 (8.0%)**. I use a fixed total-goals assumption in the rating baseline, so this cannot tell me whether this particular match will be more open or tighter than that baseline.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "what are the possible scorelines and odds for o2.5"
+          }
+        }
+      ]
+    },
+    {
+      "id": "user-line-pass-play",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "Analyse Everton vs Chelsea."
+          }
+        },
+        {
+          "status": 200,
+          "answer": "On Chelsea at 7.00, I make it 54.0% against that line, model vs that line +278.0% (real). That clears the play price, so I play. Risk is medium: neither the lower-risk nor higher-risk conditions apply; losses are still possible.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "I found the away side at 7 — pass or play?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "stake-refusal-without-bankroll",
+      "turns": [
+        {
+          "status": 200,
+          "answer": "**Verdict**\nI make Everton **22.0%**, the draw **24.0%** and Chelsea **54.0%** for this fixture.\n\n**Goals**\nOver 2.5 lands at **52.0%**, BTTS yes at **55.0%**.\n\n**Likely scorelines**\n**1-1 (11.0%)** leads, with **0-1 (9.0%)** next.\n\n**Team news**\nNo verified team-news update was established.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "Analyse Everton vs Chelsea."
+          }
+        },
+        {
+          "status": 200,
+          "answer": "I can print the price. I will not size a stake without a bankroll and a risk band.",
+          "grounding": {
+            "kind": "match",
+            "fixtureId": "eng.1:401878771",
+            "competitionId": "eng.1",
+            "competition": "Premier League",
+            "home": "Everton",
+            "away": "Chelsea",
+            "date": "2026-10-18",
+            "pHome": 0.22,
+            "pDraw": 0.24,
+            "pAway": 0.54,
+            "pOver2_5": 0.52,
+            "pUnder2_5": 0.48,
+            "pBttsYes": 0.55,
+            "pBttsNo": 0.45,
+            "topScores": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              }
+            ],
+            "scorelines": [
+              {
+                "score": "1-1",
+                "probability": 0.11
+              },
+              {
+                "score": "0-1",
+                "probability": 0.09
+              },
+              {
+                "score": "1-2",
+                "probability": 0.08
+              }
+            ],
+            "oddsSources": []
+          },
+          "citations": [],
+          "verification": {
+            "status": "not-required",
+            "supportedClaimCount": 0,
+            "removedClaimCount": 0
+          },
+          "request": {
+            "question": "How much should I stake?"
+          }
+        }
+      ]
+    }
+  ]
+}

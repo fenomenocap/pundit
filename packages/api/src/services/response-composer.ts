@@ -1,3 +1,4 @@
+import { MODEL_EDGE_CLAIMS_ALLOWED } from "../config/backtest-gate";
 import type { Grounding } from "./ask";
 import { sanitizeDeskFootballHypotheses, composeDeskFootballTake } from "./desk-voice";
 import { PUNDIT_CONSENSUS_LABEL, PUNDIT_FUNDAMENTAL_LABEL } from "./pundit-consensus";
@@ -192,8 +193,10 @@ function composePricingDeskAnswer(grounding: Grounding, question = ""): string {
     const subject = outcomeLabel(grounding, captured.outcome);
     const source = captured.source[0].toUpperCase() + captured.source.slice(1);
     const band = captured.edgeBand ? ` (${explainEdgeBand(captured.edgeBand)})` : "";
-    return `${oneXTwo} Against the captured ${source} decimal of ${captured.decimalOdds.toFixed(2)} on ${subject}, `
-      + `EV is ${signedEvPct(captured.evPct)}${band}.`;
+    const gapLine = MODEL_EDGE_CLAIMS_ALLOWED
+      ? `EV is ${signedEvPct(captured.evPct)}${band}.`
+      : `My model vs that captured price is ${signedEvPct(captured.evPct)} on probability${band}.`;
+    return `${oneXTwo} Against the captured ${source} decimal of ${captured.decimalOdds.toFixed(2)} on ${subject}, ${gapLine}`;
   }
   if (TYPED_DECIMAL_PRICE.test(question)) {
     return `${oneXTwo} I only price a line you enter in the line field, not one typed into the question, so add it there and I will print EV% and pass or play.`;
@@ -211,7 +214,7 @@ function explainEdgeBand(band: string): string {
   return `${band}: ${explanations[band] ?? "an estimated price gap"}`;
 }
 
-function composeUserLineAnswer(grounding: Grounding): string {
+export function composeUserLineAnswer(grounding: Grounding): string {
   const line = grounding.pricing.userLine;
   if (!line) {
     return "I need a decimal line on home, draw, or away before I can pass or play.";
@@ -234,7 +237,10 @@ function composeUserLineAnswer(grounding: Grounding): string {
     : line.riskBand === "low"
       ? "a higher chance of winning and a small price gap; losses are still possible"
       : "neither the lower-risk nor higher-risk conditions apply; losses are still possible";
-  return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)}). ${call} Risk is ${line.riskBand}: ${riskExplanation}.`;
+  const gapPhrase = MODEL_EDGE_CLAIMS_ALLOWED
+    ? `EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`
+    : `model vs that line ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`;
+  return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, ${gapPhrase}. ${call} Risk is ${line.riskBand}: ${riskExplanation}.`;
 }
 
 function pct(value: number): string {
@@ -266,7 +272,7 @@ function revisitAfterNews(grounding: Grounding): string {
   return `I would revisit the read only after ${news}; I can’t assign a lineup effect from these facts alone.`;
 }
 
-function headlineMarket(grounding: Grounding): string | null {
+export function composeMarketDivergenceHeadline(grounding: Grounding): string | null {
   const row = grounding.marketDivergence
     .flatMap((market) => market.legs.map((leg) => ({ market, leg })))
     .sort((a, b) => Math.abs(b.leg.gapPoints) - Math.abs(a.leg.gapPoints))[0];
@@ -370,7 +376,7 @@ export function composeTeamNewsAnswer(
     const status = row.evidenceType === "confirmed-lineup" ? "confirmed" : "expected";
     return `${row.playerName}${team} is ${status} to start according to a source [[${row.sourceId}]] (${date}).`;
   });
-  lines.push("That is sourced availability, not a revised match forecast.");
+  lines.push("That is match-context team news, not a revised forecast.");
   return lines.join(" ");
 }
 
@@ -510,7 +516,7 @@ export function composeMatchResponse(
     return `${priced}\n\n${STAKE_REFUSAL_SENTENCE}`;
   }
   if (plan.mode === "market-comparison") {
-    return headlineMarket(grounding)
+    return composeMarketDivergenceHeadline(grounding)
       ?? "I don’t have a complete, same-source and same-time 1X2 market to compare with this fixture, so I can’t claim a pricing disagreement.";
   }
   if (plan.mode === "match-follow-up") {
@@ -552,7 +558,7 @@ export function composeMatchResponse(
 
   const scores = grounding.topScores.slice(0, 3)
     .map((row) => `${row.score} (${pct(row.probability)})`).join(", ");
-  const market = headlineMarket(grounding);
+  const market = composeMarketDivergenceHeadline(grounding);
   const marketRows = grounding.oddsSources
     .filter((row) => row.pDraw !== null)
     .map((row) => {

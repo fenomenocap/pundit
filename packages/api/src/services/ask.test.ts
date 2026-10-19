@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { DESK_GENERAL_CONCEPT_SYSTEM, DESK_CURRENT_FACT_SYSTEM, DESK_DATED_CLUB_NEWS_SYSTEM } from "./desk-voice";
+import {
+  DESK_GENERAL_CONCEPT_SYSTEM,
+  DESK_CURRENT_FACT_SYSTEM,
+  DESK_DATED_CLUB_NEWS_SYSTEM,
+} from "./desk-voice";
+import { singleClubCurrentFactScope } from "./federated-evidence";
+import { planResponse } from "./response-plan";
 import * as evidencePages from "./evidence-page-retrieval";
 import { sampleAgentFreshness } from "../config/freshness-policy";
 import { AppError } from "../middleware";
@@ -11,6 +17,7 @@ import * as modelData from "./model-data";
 import { fixture } from "./__fixtures__/model-fixture";
 import { attachUserLine, buildMatchPricing } from "./response-correctness";
 import { SHARED_TOTAL_XG_SENTENCE, STAKE_REFUSAL_SENTENCE } from "./response-composer";
+import { ownedLatestResult } from "./structured-results";
 import { SEASON_OUTLOOK_UNAVAILABLE } from "./season-simulator";
 import * as seasonSimulator from "./season-simulator";
 import {
@@ -51,6 +58,8 @@ import {
   sanitizeFixtureCoverageAnswer,
   generateOrDegradeToGrounding,
   matchGenerationBudgetMs,
+  agentGenerationBudgetMs,
+  agentNonEmptyGroundedFallback,
   sanitizeFootballGeometry,
   sanitizeGroundedMatchNarrative,
   sanitizeContradictoryRationales,
@@ -68,6 +77,7 @@ import {
   verifiableCurrentClaims,
   verifyCurrentClaims,
   sourceOwnedManagerDraft,
+  extractManagerIdentityCandidates,
   type FixtureGrounding,
   type AskGrounding,
   shouldHoldCoverageDeltas,
@@ -643,6 +653,12 @@ describe("complete standalone football lessons", () => {
     expect(result.verification.status).not.toBe("not-required");
   });
 
+  it("strips uncited 'ended 2-2' result claims", () => {
+    const bare = "Chelsea's last match ended 2–2, a draw away from home.";
+    expect(stripUncitedResultClaims(bare)).not.toContain("2–2");
+    expect(stripUncitedResultClaims("Chelsea's last match ended in a draw.")).not.toContain("draw");
+  });
+
   it("keeps sourced current identities/results/prices, refusals and general hypotheticals while removing bare claims", () => {
     for (const [guard, bare, sourced] of [
       [stripUncitedManagerClaims, "Pat Doe is Arsenal's current manager.", "Pat Doe is Arsenal's current manager [[S1]]."],
@@ -811,11 +827,11 @@ describe("complete standalone football lessons", () => {
       for (const voice of [undefined, "desk"] as const) {
         hydrated = false; searchWeb.mockClear();
         checkDelivery(await answerQuestion("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], controller.signal, context, undefined, voice));
-        expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(5);
+        expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(6);
       }
       hydrated = false; searchWeb.mockClear(); const deltas: string[] = [];
       const streamed = await answerQuestionStream("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], { signal: controller.signal, onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
-      checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(5);
+      checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(6);
       expect(create.mock.calls.every(([params]) => String((params as Anthropic.MessageCreateParamsNonStreaming).system)
         .startsWith("You are Pundit's bounded factual claim verifier."))).toBe(true);
     } finally {
@@ -1006,8 +1022,24 @@ describe("source-owned manager identity drafts", () => {
     "Joe Example remains the current Arsenal manager.",
     "Football News\nArsenal manager Joe Example says he and the club are very much aligned when it comes to signing a new contract.",
     "Joe Example has agreed a new contract as Arsenal manager following their league title.",
+    "Everton boss David Moyes has been speaking to the media before Sunday's Premier League game.",
+    "Everton manager David Moyes says he is surprised that the club has been put up for sale.",
+    "The Everton boss David Moyes has been speaking to the media.",
+    "Newcastle United head coach Eddie Howe has revealed his plans for Aston Villa.",
+    "Newcastle boss Eddie Howe said his side must improve defensively.",
+    "Ahead of Aston Villa, manager Eddie Howe said Newcastle United need a fast start.",
+    "Eddie Howe - Head Coach\nNewcastle United first-team staff profile.",
+    "Newcastle United | Eddie Howe, head coach — Howe's side face Aston Villa on Saturday.",
+    "Tottenham boss Roberto de Zerbi has been speaking to the media before Monday's Premier League game against Coventry City.",
+    "Tottenham's manager is Roberto de Zerbi.",
   ])("builds only the strict dynamic current identity: %s", (text) => {
-    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text }], now)).toBe("Arsenal’s manager is Joe Example [[S7]].");
+    const clubScope = /Everton/.test(text) ? { ...scope, club: "Everton" }
+      : /Newcastle/.test(text) ? { ...scope, club: "Newcastle" }
+      : /Tottenham/.test(text) ? { ...scope, club: "Tottenham" } : scope;
+    const name = /David Moyes/.test(text) ? "David Moyes"
+      : /Eddie Howe/.test(text) ? "Eddie Howe"
+      : /de Zerbi/i.test(text) ? "Roberto de Zerbi" : "Joe Example";
+    expect(sourceOwnedManagerDraft(clubScope, bundle, [{ ...page, text }], now)).toBe(`${clubScope.club}’s manager is ${name} [[S7]].`);
   });
   it.each([
     "Arsenal manager Joe Example retired in 2020.",
@@ -1022,8 +1054,16 @@ describe("source-owned manager identity drafts", () => {
     "Arsenal will appoint Joe Example as manager.",
     "Arsenal’s manager is not Joe Example.",
     "Arsenal’s manager may be Joe Example.",
+    "Former Everton boss David Moyes says he will leave.",
+    "Everton manager David Moyes will be replaced this week.",
+    "Former Newcastle head coach Eddie Howe has been linked with the England job.",
+    "Newcastle sacked Eddie Howe after a poor run of results.",
+    "Eddie Howe was Newcastle's manager before the takeover.",
+    "Newcastle are linked with Jane Example as their next manager.",
   ])("cannot promote a rejected role statement: %s", (text) => {
-    expect(sourceOwnedManagerDraft(scope, bundle, [{ ...page, text }], now)).not.toContain("Joe Example");
+    const clubScope = /Newcastle|Eddie Howe/.test(text) ? { ...scope, club: "Newcastle" } : scope;
+    const forbidden = /Eddie Howe/.test(text) ? "Eddie Howe" : "Joe Example";
+    expect(sourceOwnedManagerDraft(clubScope, bundle, [{ ...page, text }], now)).not.toContain(forbidden);
   });
   it.each(["", "2026-02-30", "2026-09-16T11:59:59.999Z", "2026-10-07T12:00:00.001Z"])("rejects invalid, stale or future metadata %s", (date) => {
     const rows = { ...bundle, results: [{ ...source, date }] };
@@ -1031,9 +1071,11 @@ describe("source-owned manager identity drafts", () => {
   });
   it("requires exact unique ID/URL/date binding and a retrieved eligible publisher", () => {
     for (const pages of [[], [{ ...page, id: "S8" }], [{ ...page, url: "https://www.bbc.com/sport/other" }],
-      [{ ...page, date: "2026-10-05" }], [{ ...page, finalUrl: "https://untrusted.example/role" }]]) {
+      [{ ...page, finalUrl: "https://untrusted.example/role" }]]) {
       expect(sourceOwnedManagerDraft(scope, bundle, pages, now)).not.toContain("Joe Example");
     }
+    expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [{ ...source, date: "2026-10-06T12:00:00Z" }] },
+      [{ ...page, date: "2026-10-05T12:00:00Z", text: "Arsenal’s manager is Joe Example." }], now)).toContain("Joe Example");
     expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [source, { ...source, url: "https://www.bbc.com/sport/other" }] }, [page], now)).not.toContain("Joe Example");
   });
   it("abstains on two fresh current identities but excludes stale conflicts", () => {
@@ -1059,6 +1101,165 @@ describe("source-owned manager identity drafts", () => {
     const date = "2026-09-16T12:00:00Z";
     expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [{ ...source, date }] }, [{ ...page, date }], now)).toContain("Joe Example");
     expect(sourceOwnedManagerDraft({ ...scope, retainAppointment: true }, bundle, [page], now)).toBeUndefined();
+  });
+  it("accepts an older official appointment story when no newer manager conflict exists", () => {
+    const now = Date.parse("2026-10-17T12:00:00Z");
+    const source = {
+      id: "S9",
+      title: "Brentford appoint Keith Andrews as head coach",
+      url: "https://www.brentfordfc.com/en/news/2025/june/andrews-appointed",
+      date: "2025-06-27",
+      snippet: "Appointment story.",
+      tier: "official" as const,
+    };
+    const page = {
+      ...source,
+      authority: "official" as const,
+      finalUrl: source.url,
+      text: "Brentford’s manager is Keith Andrews.",
+      retrievedAt: "2026-10-17T11:00:00Z",
+    };
+    expect(sourceOwnedManagerDraft(
+      { club: "Brentford", wantsReason: false },
+      { queries: [], providerCalls: 0, results: [source] },
+      [page],
+      now,
+    )).toBe("Brentford’s manager is Keith Andrews [[S9]].");
+  });
+
+  it("rejects a durable old appointment when a recent page reports a different manager", () => {
+    const now = Date.parse("2026-10-17T12:00:00Z");
+    const oldSource = {
+      id: "S9",
+      title: "Brentford appoint Keith Andrews as head coach",
+      url: "https://www.brentfordfc.com/en/news/2025/june/andrews-appointed",
+      date: "2025-06-27",
+      snippet: "Old appointment.",
+      tier: "official" as const,
+    };
+    const recentSource = {
+      id: "S2",
+      title: "Brentford sack Andrews and appoint Jane Example",
+      url: "https://www.bbc.com/sport/football/brentford-manager-change",
+      date: "2026-10-10T09:00:00Z",
+      snippet: "Recent change.",
+      tier: "news" as const,
+    };
+    const pages = [
+      {
+        ...oldSource,
+        authority: "official" as const,
+        finalUrl: oldSource.url,
+        text: "Brentford’s manager is Keith Andrews.",
+        retrievedAt: "2026-10-17T11:00:00Z",
+      },
+      {
+        ...recentSource,
+        authority: "reputable" as const,
+        finalUrl: recentSource.url,
+        text: "Brentford’s manager is Jane Example.",
+        retrievedAt: "2026-10-10T10:00:00Z",
+      },
+    ];
+    expect(sourceOwnedManagerDraft(
+      { club: "Brentford", wantsReason: false },
+      { queries: [], providerCalls: 0, results: [oldSource, recentSource] },
+      pages,
+      now,
+    )).not.toContain("Keith Andrews");
+    expect(sourceOwnedManagerDraft(
+      { club: "Brentford", wantsReason: false },
+      { queries: [], providerCalls: 0, results: [oldSource, recentSource] },
+      pages,
+      now,
+    )).toContain("Jane Example");
+  });
+
+  it("names the manager from a hydrated dated page when the search row was undated", () => {
+    const undatedSource = { ...source, date: "" };
+    const hydrated = {
+      ...page,
+      date: "2026-10-06T09:00:00.000Z",
+      text: "Everton’s manager is David Moyes.",
+      finalUrl: "https://www.skysports.com/football/news/everton-manager",
+    };
+    const evertonScope = { club: "Everton", wantsReason: false };
+    const rows = { ...bundle, results: [undatedSource] };
+    expect(sourceOwnedManagerDraft(evertonScope, rows, [hydrated], now)).toBe("Everton’s manager is David Moyes [[S7]].");
+    const extraction = extractManagerIdentityCandidates(evertonScope, rows, [hydrated], now);
+    expect(extraction.facts).toEqual([{ name: "David Moyes", sourceId: "S7" }]);
+  });
+  it("accepts apex/www host alignment between bundle and hydrated pages", () => {
+    const searched = { ...source, url: "https://www.bbc.com/sport/football/manager-story" };
+    const hydrated = {
+      ...page,
+      id: "S7",
+      url: searched.url,
+      finalUrl: "https://bbc.com/sport/football/manager-story",
+      date: "2026-10-06T12:00:00Z",
+      text: "Arsenal’s manager is Joe Example.",
+    };
+    expect(sourceOwnedManagerDraft(scope, { ...bundle, results: [searched] }, [hydrated], now)).toContain("Joe Example");
+  });
+});
+
+describe("manager delivery composer", () => {
+  it("scopes manager turns as direct club facts that must not use the desk 1X2 outline path", () => {
+    const grounding = buildGrounding(fixture("Everton", "Hull", {
+      utcDate: "2026-10-12T14:00:00Z",
+      date: "2026-10-12",
+    }));
+    const question = "Who is Everton's manager and why?";
+    expect(singleClubCurrentFactScope(question, grounding)).toEqual({ kind: "manager", club: "Everton" });
+    expect(planResponse(question, { groundingKind: "match", hasHistory: true }).mode).toBe("match-follow-up");
+  });
+
+  it("delivers manager identity and a cited latest result when both are source-owned", () => {
+    const manager = sourceOwnedManagerDraft(
+      { club: "Everton", wantsReason: false },
+      {
+        queries: [], providerCalls: 0, results: [{
+          id: "S1", title: "Role", url: "https://www.skysports.com/role", date: "", snippet: "", tier: "news",
+        }],
+      },
+      [{
+        id: "S1", url: "https://www.skysports.com/role", title: "Role", date: "2026-10-06T12:00:00Z",
+        authority: "reputable", finalUrl: "https://www.skysports.com/role",
+        text: "Everton’s manager is David Moyes.", retrievedAt: "2026-10-07T11:00:00Z",
+      }],
+      Date.parse("2026-10-07T12:00:00Z")
+    );
+    const evalNow = Date.parse("2026-10-07T12:00:00Z");
+    const hullEverton = {
+      id: 401879900,
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeTeam: "Hull",
+      awayTeam: "Everton",
+      status: "FINISHED",
+      utcDate: "2026-10-05T15:00:00Z",
+      stage: null,
+      matchday: 8,
+      group: null,
+      score: { home: 2, away: 2 },
+    };
+    const cache = {
+      upcoming: [],
+      recent: [hullEverton],
+      standings: [],
+      lastUpdated: new Date(evalNow),
+      error: null,
+      competitionErrors: {},
+      byCompetition: {
+        "eng.1": { upcoming: [], recent: [hullEverton], standings: [], error: null },
+        "uefa.champions_qual": { upcoming: [], recent: [], standings: [], error: null },
+      },
+    };
+    const result = ownedLatestResult("What is Everton's latest result?", cache as never, evalNow);
+    expect(manager).toContain("David Moyes");
+    expect(result?.answer).toMatch(/Hull 2[–-]2 Everton/);
+    expect(`${manager} ${result?.answer ?? ""}`).toMatch(/manager/i);
+    expect(`${manager} ${result?.answer ?? ""}`).toMatch(/2[–-]2/);
   });
 });
 
@@ -1110,8 +1311,8 @@ describe("current verification failure preserves supplied history scope", () => 
       expect(streamed.verification?.supportedClaimCount).toBe(0);
       expect(streamed.verification?.removedClaimCount).toBe(1);
       expect(deltas).toEqual([streamed.answer]);
-      // Each of the three formats performs the bounded five-query manager evidence plan.
-      expect(searchWeb).toHaveBeenCalledTimes(15);
+      // Each of the three formats performs the bounded six-query manager evidence plan.
+      expect(searchWeb).toHaveBeenCalledTimes(18);
     } finally {
       cached.mockRestore(); prefetch.mockRestore(); retrieve.mockRestore(); create.mockRestore();
       if (saved === undefined) delete process.env.MINIMAX_API_KEY; else process.env.MINIMAX_API_KEY = saved;
@@ -1477,6 +1678,45 @@ describe("current-news evidence hardening", () => {
     expect(verifiableCurrentClaims(abbreviated)).toEqual([{ id: "C1", text: abbreviated }]);
   });
 
+  it("legacy manager path keeps a publisher-confirmed current manager as verified", async () => {
+    const body = "Leeds United have confirmed Marco Rose as their head coach ahead of the weekend fixture.";
+    const answer = "Leeds United's manager is Marco Rose [[S1]].";
+    const checked = await verifyCurrentClaims(answer, {
+      queries: [],
+      providerCalls: 0,
+      results: [{
+        id: "S1",
+        title: "Leeds confirm head coach",
+        url: "https://www.leedsunited.com/news/manager",
+        date: "2026-10-12",
+        snippet: body,
+        tier: "official",
+      }],
+    }, {} as Parameters<typeof verifyCurrentClaims>[2], undefined, false, {
+      retrieve: async (candidates) => candidates.map((candidate) => ({
+        ...candidate,
+        finalUrl: candidate.url,
+        text: body,
+        retrievedAt: "2026-10-12T12:00:00Z",
+      })),
+      verify: async (_client, claims) => ({
+        status: "verified",
+        decisions: claims.map((claim) => ({
+          claimId: claim.id,
+          outcome: "supported",
+          evidenceIds: ["S1"],
+        })),
+        summary: "Publisher-owned manager confirmed.",
+      }),
+    });
+    expect(checked.answer).toMatch(/Marco Rose/i);
+    expect(checked.verification).toEqual({
+      status: "verified",
+      supportedClaimCount: 1,
+      removedClaimCount: 0,
+    });
+  });
+
   it.each([
     { label: "actual Sky analysis", reason: "His achievements transformed the club. The agreement reflects the club’s belief in his leadership.", quote: false },
     { label: "explicit appointment", reason: "Arsenal appointed Mikel Arteta because his coaching gives the club stability.", quote: true },
@@ -1742,6 +1982,65 @@ describe("current-news evidence hardening", () => {
       removedClaimCount: 0,
     });
     expect(bundle.providerCalls).toBe(1);
+  });
+
+  it("verifies source-owned manager drafts against prefetched publisher pages when fetch text would fail", async () => {
+    const answer = "Brentford’s manager is Keith Andrews [[S1]].";
+    const bundle: EvidenceBundle = {
+      queries: ["Brentford manager"],
+      providerCalls: 1,
+      results: [{
+        id: "S1",
+        title: "Brentford boss",
+        url: "https://www.bbc.com/sport/football/brentford-manager",
+        date: "2026-10-10",
+        snippet: "A search snippet without the full role sentence.",
+        tier: "news",
+      }],
+    };
+    const hydrated = {
+      id: "S1",
+      url: bundle.results[0].url,
+      title: "Brentford boss",
+      date: "2026-10-10T09:00:00.000Z",
+      authority: "reputable" as const,
+      finalUrl: bundle.results[0].url,
+      text: "Brentford’s manager is Keith Andrews.",
+      retrievedAt: "2026-10-10T10:00:00.000Z",
+    };
+    const checked = await verifyCurrentClaims(
+      answer,
+      bundle,
+      {} as Parameters<typeof verifyCurrentClaims>[2],
+      undefined,
+      false,
+      {
+        managerWhy: { club: "Brentford", wantsReason: false },
+        prefetchedPages: [hydrated],
+        retrieve: async () => [{
+          ...hydrated,
+          text: "Fetched body that does not establish Keith Andrews as manager.",
+        }],
+        verify: async (_client, claims, pages) => {
+          expect(pages[0]?.text).toContain("Keith Andrews");
+          return {
+            status: "verified",
+            decisions: claims.map((claim) => ({
+              claimId: claim.id,
+              outcome: "supported",
+              evidenceIds: ["S1"],
+            })),
+            summary: "supported",
+          };
+        },
+      }
+    );
+    expect(checked.answer).toContain("Keith Andrews");
+    expect(checked.verification).toEqual({
+      status: "verified",
+      supportedClaimCount: 1,
+      removedClaimCount: 0,
+    });
   });
 
   it("writes extracted publication dates back onto matching bundle results", async () => {
@@ -2446,6 +2745,42 @@ describe("current-news evidence hardening", () => {
     });
   });
 
+  it("agentNonEmptyGroundedFallback never returns empty on a priced match", () => {
+    const grounding = {
+      kind: "match",
+      fixtureId: "401",
+      competitionId: "eng.1",
+      competition: "Premier League",
+      homeFieldAdvantage: true,
+      date: "2026-10-18",
+      home: "Everton",
+      away: "Chelsea",
+      pHome: 0.22,
+      pDraw: 0.24,
+      pAway: 0.54,
+      pOver2_5: 0.52,
+      pUnder2_5: 0.48,
+      pBttsYes: 0.55,
+      pBttsNo: 0.45,
+      topScores: [{ score: "1-1", probability: 0.11 }],
+      pricing: { model: { home: 0.22, draw: 0.24, away: 0.54 } },
+    } as unknown as AskGrounding;
+    const fallback = agentNonEmptyGroundedFallback("Why do you lean Chelsea?", grounding, true);
+    expect(fallback.trim().length).toBeGreaterThan(20);
+    expect(fallback).toMatch(/22\.0%|Chelsea|54\.0%/);
+  });
+
+  it("raises the agent generation budget cap above the legacy match budget", () => {
+    const start = 1_000_000;
+    expect(agentGenerationBudgetMs(start, start)).toBeGreaterThan(matchGenerationBudgetMs(start, start));
+    expect(agentGenerationBudgetMs(start, start)).toBe(72_000);
+  });
+
+  it("uses a 40k per-turn cumulative LLM token cap", async () => {
+    const { AGENT_MAX_CUMULATIVE_LLM_TOKENS } = await import("./chat-agent-limits");
+    expect(AGENT_MAX_CUMULATIVE_LLM_TOKENS).toBe(40_000);
+  });
+
   it("keeps an unrecognized matchup candidate ungrounded and strips invented output", () => {
     expect(resolveAskContext(
       "Northbridge Athletic vs Southbank Rovers tomorrow",
@@ -3109,6 +3444,28 @@ describe("current-news evidence hardening", () => {
     expect(rendered.citations).toEqual([expect.objectContaining({ id: "S1" })]);
   });
 
+  it("never ships a bare or parenthetical source id to the reader", () => {
+    const bundle = {
+      queries: ["bet"],
+      results: [{
+        id: "S1", title: "Market report", url: "https://www.linegauge.com/wire/report",
+        date: "2026-10-13", snippet: "One arb window.", tier: "news" as const,
+      }, {
+        id: "S5", title: "Arb scanner", url: "https://arb-bet.com/",
+        date: "2026-10-12", snippet: "Scanner.", tier: "news" as const,
+      }],
+    };
+    const rendered = renderEvidenceCitations(
+      "S1 reports a single arb window. Sure bets are marketing (S5). Bayern are strong (S99).",
+      bundle,
+      false
+    );
+    expect(rendered.answer).not.toMatch(/\bS\d+\b/);
+    expect(rendered.answer).toContain("linegauge.com reports a single arb window");
+    expect(rendered.answer).toContain("[Arb scanner](https://arb-bet.com/)");
+    expect(rendered.answer).not.toContain("Bayern");
+  });
+
   it("abstains when a positive current claim has no provenance marker", () => {
     const rendered = renderEvidenceCitations(
       "The player is ruled out for Sunday.",
@@ -3672,6 +4029,13 @@ describe("resolveTeams", () => {
       .toEqual(["Brighton & Hove Albion", "Tottenham Hotspur"]);
   });
 
+  it("resolves common nicknames to the canonical fixture names", () => {
+    expect(resolveTeams("Brighton against Spurs", fixtures))
+      .toEqual(["Brighton & Hove Albion", "Tottenham Hotspur"]);
+    expect(resolveTeams("Man Utd vs Liverpool, what are the odds?", fixtures))
+      .toEqual(["Manchester United", "Liverpool"]);
+  });
+
   it("rejects questions naming more than one matchup", () => {
     expect(() => resolveTeams("Arsenal vs Liverpool, then Brighton", fixtures))
       .toThrowError(AppError);
@@ -4176,6 +4540,16 @@ describe("resolveAskContext", () => {
     expect(worldCupRetiredResponse("Who won the 2022 World Cup?", null, now)).toBeNull();
     expect(worldCupRetiredResponse("Who will win the Club World Cup?", null, now)).toBeNull();
     expect(worldCupRetiredResponse("Arsenal vs Leeds", null, now)).toBeNull();
+  });
+
+  it("routes a player comparison to general analysis, not the unconfirmed-matchup notice", () => {
+    const fixtures = [fixture("Liverpool", "Man City")];
+    expect(resolveAskContext("Haaland vs Salah who is better", [], undefined, fixtures, [], []))
+      .toEqual({ tier: "general" });
+    expect(resolveAskContext("Haaland vs Salah prediction", [], undefined, fixtures, [], []))
+      .toEqual({ tier: "candidate" });
+    expect(resolveAskContext("Liverpool vs Fulham who is better", [], undefined, fixtures, [], []))
+      .toEqual({ tier: "candidate" });
   });
 
   it("treats two known clubs with no fixture between them as an unconfirmed matchup", () => {

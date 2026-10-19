@@ -1,6 +1,6 @@
 # API Reference — Overview
 
-Pundit's backend is a small read-mostly REST API. All documented endpoints below are public — no API key or authentication required (except `POST /api/ask`, which requires `MINIMAX_API_KEY` on the server).
+Pundit's backend is a small read-mostly REST API. All documented endpoints below are public — no API key or authentication required on the client. **`POST /api/ask`** needs server-side inference: **`OPENROUTER_API_KEY`** in production (answers and search), or **`MINIMAX_API_KEY`** as the answer-only fallback when OpenRouter is unset.
 
 **Base URL:** the Pundit API deployment (production: `https://thepundit.up.railway.app`).
 
@@ -27,7 +27,7 @@ Exceeding a limit returns an HTTP error with a JSON body like `{ "error": "Too m
 
 * [Matches](matches.md) — `GET /api/matches/*`
 * [Recognized fixtures](matches.md#recognized-fixtures) — `GET /api/fixtures/recognized`
-* [Model](model.md) — `GET /api/model/active`, `GET /api/model/fixtures`
+* [Model](model.md) — `GET /api/model/active`, `GET /api/model/fixtures`, `GET /api/model/backtest-gate`
 * [Ask](ask.md) — `POST /api/ask`
 * [Evaluation](evaluation.md) — `GET /api/evaluation/*`
 * [Polymarket Reference Odds](polymarkets.md) — legacy WC reference (`GET /api/polymarkets/*`)
