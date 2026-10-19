@@ -4530,6 +4530,16 @@ describe("resolveAskContext", () => {
     expect(worldCupRetiredResponse("Arsenal vs Leeds", null, now)).toBeNull();
   });
 
+  it("routes a player comparison to general analysis, not the unconfirmed-matchup notice", () => {
+    const fixtures = [fixture("Liverpool", "Man City")];
+    expect(resolveAskContext("Haaland vs Salah who is better", [], undefined, fixtures, [], []))
+      .toEqual({ tier: "general" });
+    expect(resolveAskContext("Haaland vs Salah prediction", [], undefined, fixtures, [], []))
+      .toEqual({ tier: "candidate" });
+    expect(resolveAskContext("Liverpool vs Fulham who is better", [], undefined, fixtures, [], []))
+      .toEqual({ tier: "candidate" });
+  });
+
   it("treats two known clubs with no fixture between them as an unconfirmed matchup", () => {
     const fixtures = [fixture("Liverpool", "Man City"), fixture("Arsenal", "Fulham", { fixtureId: 2 })];
     expect(resolveAskContext("Liverpool vs Fulham", [], undefined, fixtures, [], []))

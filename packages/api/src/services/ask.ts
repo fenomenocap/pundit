@@ -4394,6 +4394,17 @@ function hasUnresolvedFixtureShape(question: string): boolean {
     .test(question);
 }
 
+/**
+ * "Haaland vs Salah, who is better?" has the shape of a fixture but names no
+ * club and asks for a verdict on people. It is general analysis, not an
+ * unconfirmed matchup, so it must not receive the fixture-discovery notice.
+ */
+function comparesPeopleNotClubs(question: string, teamsMentioned: number): boolean {
+  if (teamsMentioned > 0) return false;
+  return /\b(?:better|best|compare|comparison|greater|goat|stronger|more complete|who(?:'s|\s+is)\s+(?:the\s+)?(?:better|best))\b/i.test(question)
+    && !/\b(?:predict|prediction|odds|score|scoreline|lineup|preview|tip|bet|win|beat|fixture|match|game)\b/i.test(question);
+}
+
 function comparesTacticalConcepts(question: string): boolean {
   const sides = question.split(/\b(?:vs?\.?|versus|against)\b/i);
   if (sides.length !== 2) return false;
@@ -5164,6 +5175,9 @@ export function resolveAskContext(
     if (comparesTacticalConcepts(question)
       && !hasMatchOutcomeIntent(question)
       && mentionedTeamPositions(question, searchableFixtures).size === 0) {
+      return { tier: "general" };
+    }
+    if (comparesPeopleNotClubs(question, mentionedTeamPositions(question, searchableFixtures).size)) {
       return { tier: "general" };
     }
     return { tier: "candidate" };
@@ -6982,6 +6996,9 @@ export function dropEmptyEmphasis(answer: string): string {
     // The parenthesis a removed citation or aside was sitting in: live output
     // read "Hull are without Jack Butland ()".
     .replace(/[ \t]*\([ \t]*\)/g, "")
+    // A parenthesis holding only the separators and date a removed citation
+    // left behind: live output read "(,, 17 Oct 2026)" beside the real link.
+    .replace(/[ \t]*\([ \t]*(?:[,;][ \t]*)+(?:\d{1,2}[ \t]+)?(?:[A-Z][a-z]{2,8}[ \t]+)?(?:\d{4})?[ \t]*\)/g, "")
     // The same source rendered twice back to back, when two markers in one
     // sentence resolved to it.
     .replace(/(\((\[[^\]]+\]\([^)]+\))[^)]*\))[ \t]*\1/g, "$1")
@@ -10265,7 +10282,22 @@ export function sanitizeDeliveredAnswer(
   return normalizeAnalystIdentity(sanitized);
 }
 
+// "the model" in a paragraph explaining xG or another public statistic is that
+// statistic's model, not Pundit's: live output read "I considers several
+// factors" and "all affect I." in an expected-goals explainer.
+const GENERIC_MODEL_CONTEXT = /\b(?:xG|xGOT|expected goals|Opta|StatsBomb|Understat|FBref)\b/i;
+const GENERIC_MODEL_GUARD = "\u0001";
+
 export function normalizeAnalystIdentity(answer: string): string {
+  const guarded = answer.split(/(\n{2,})/).map((paragraph) =>
+    GENERIC_MODEL_CONTEXT.test(paragraph) && !/\bPundit\b/i.test(paragraph)
+      ? paragraph.replace(/\bthe model\b/gi, (match) => match.replace(" ", ` ${GENERIC_MODEL_GUARD}`))
+      : paragraph
+  ).join("");
+  return rewriteAnalystIdentity(guarded).split(GENERIC_MODEL_GUARD).join("");
+}
+
+function rewriteAnalystIdentity(answer: string): string {
   return answer
     .replace(/\bmy pre-training knowledge of fixtures is out of date\b/gi, "No fixture was named")
     .replace(/\bgrounding data\b/gi, "fixture details")
