@@ -174,7 +174,7 @@ Phase 1 builder uses only **ESPN + ClubElo pin + existing market cache + local m
 | Scheduler | `schedule.ts` — 6h + T−90m poll when flag on (sync build unless evidence flag on) |
 | Read API | `GET /api/match-dossier/:fixtureKey` — **404 unless `MATCH_DOSSIER_ENABLED=true`** |
 | Tests | `match-dossier.test.ts`, `dossier-evidence.test.ts` (replay, no network) |
-| Search replay fixture | `packages/api/data/research/match-dossier/search-replays/chelsea-tottenham-weekend-v1.json` |
+| Synthetic search replay (CI only) | `search-replays/synthetic-dossier-evidence-v1.json` (`synthetic: true`, `*.example.test` URLs) |
 
 **Build window (Phase 1):** EPL kickoffs `2026-10-23T00:00:00Z` ≤ kickoff < `2026-10-26T00:00:00Z` (23–25 Oct weekend).
 
@@ -184,15 +184,16 @@ Phase 1 builder uses only **ESPN + ClubElo pin + existing market cache + local m
 |---|---|---|
 | `MATCH_DOSSIER_ENABLED` | off | API + cron |
 | `MATCH_DOSSIER_EVIDENCE_ENABLED` | off | Federated evidence write-back |
-| `MATCH_DOSSIER_EVIDENCE_REPLAY` | `chelsea-tottenham-weekend-v1` | Deterministic replay id |
+| `MATCH_DOSSIER_EVIDENCE_REPLAY` | `synthetic-dossier-evidence-v1` | CI replay id (blocked on real fixtures) |
 | `CHAT_EVAL_SEARCH_REPLAY_DIR` | — | Set in tests to research replays |
 
 **Production safety:** Dossier and evidence flags default OFF; no `ask.ts` / chat wiring; no env changes on Railway/Vercel for demo freeze.
 
 ### Phase 2 eval gate
 
-- Every evidence row in `evidence[]` has `verification: "cited"`, non-empty `claim`, and `sourceUrl` starting with `https://`.
-- Build is **deterministic** given cached search: `dossier-evidence.test.ts` runs against `chelsea-tottenham-weekend-v1` with **no live network in CI**.
+- **No fabricated “real” evidence.** Committed EPL samples keep `evidence[]` empty until search results are captured, URLs resolve (HTTP 200), and claim text is verified on-page.
+- CI uses **`synthetic: true`** replays for **North Testborough FC vs South Example City** only; synthetic replays are **refused** for real fixture ids (`dossier-evidence.test.ts`).
+- When live capture ships: store raw provider responses with `retrieved_at` per query; only promote rows that pass URL + on-page verification.
 - Model block (`pHome` / factor breakdown) unchanged by evidence merge (asserted in tests).
 
 ---

@@ -19,6 +19,7 @@ import type {
 import { MATCH_DOSSIER_SCHEMA_VERSION } from "./types";
 import {
   collectDossierEvidence,
+  rejectSyntheticEvidenceForRealFixture,
   type DossierEvidenceCollectResult,
 } from "./dossier-evidence";
 import {
@@ -140,7 +141,10 @@ export function buildMatchDossierForFixture(
   );
 
   const evidenceMeta = options.evidence;
-  const evidenceItems = evidenceMeta?.items ?? [];
+  const evidenceItems = rejectSyntheticEvidenceForRealFixture(
+    fixture,
+    evidenceMeta?.items ?? [],
+  );
   const evidenceProv = federatedEvidenceProvenance(builtAt);
   const partitioned = partitionEvidence(evidenceItems);
 
@@ -249,7 +253,7 @@ export function buildMatchDossierForFixture(
       marketProvenance(markets?.observedAt ?? builtAt),
     ),
     evidence: evidenceItems,
-    ...(evidenceMeta ? {
+    ...(evidenceMeta && !evidenceMeta.syntheticReplayBlocked ? {
       evidenceBuild: {
         replayId: evidenceMeta.replayId,
         queryCount: evidenceMeta.queryCount,
@@ -277,6 +281,7 @@ export async function buildMatchDossierForFixtureAsync(
       droppedCount: options.evidence.droppedCount,
       queryCount: options.evidence.queryCount,
       replayId: options.evidence.replayId,
+      syntheticReplayBlocked: options.evidence.syntheticReplayBlocked,
     }
     : undefined;
   if (!evidence && matchDossierEvidenceEnabled()) {

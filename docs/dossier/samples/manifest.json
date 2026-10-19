@@ -81,7 +81,7 @@
     "ESPN public scoreboard (table, form, rest, H2H)",
     "Pinned clubelo@1 artifact (model strengths + factor breakdown)",
     "Stake/Kalshi/Polymarket bounded fetch where available (market reference only)",
-      "Phase 2 evidence on espn-eng.1-401878767.json via search replay (chelsea-tottenham-weekend-v1); other samples Phase 1 spine only",
+      "Committed samples have evidence[] empty — no verified live search capture yet (Phase 2 CI uses synthetic-dossier-evidence-v1 on fake teams only)",
     "Stake: disabled (Cloudflare 403 on public GraphQL); Kalshi + Polymarket best-effort in market.rows",
     "Regenerate: packages/api/scripts/build-dossier-samples.ts (+ optional refresh-dossier-sample-markets.ts)"
   ]

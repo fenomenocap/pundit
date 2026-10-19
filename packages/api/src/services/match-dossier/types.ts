@@ -231,6 +231,7 @@ export interface DossierEvidenceBuildMeta {
   droppedCount: number;
   queryCount: number;
   replayId: string | null;
+  syntheticReplayBlocked?: boolean;
 }
 
 export interface BuildDossierOptions {

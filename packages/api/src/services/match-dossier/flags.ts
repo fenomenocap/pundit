@@ -13,5 +13,5 @@ export const DOSSIER_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const DOSSIER_PRE_KICKOFF_MS = 90 * 60 * 1000;
 export const DOSSIER_PRE_KICKOFF_POLL_MS = 15 * 60 * 1000;
 
-/** Default replay fixture for deterministic CI evidence builds. */
-export const DOSSIER_EVIDENCE_REPLAY_ID = "chelsea-tottenham-weekend-v1";
+/** Default CI replay — synthetic teams + example.test URLs only (`synthetic: true`). */
+export { DOSSIER_SYNTHETIC_EVIDENCE_REPLAY_ID as DOSSIER_EVIDENCE_REPLAY_ID } from "./dossier-synthetic-fixture";

@@ -2,11 +2,16 @@ import { createHash } from "node:crypto";
 import { evidenceTier, type EvidenceTier } from "../evidence-authority";
 import { searchWebBatch, type WebSearchOutcome } from "../web-search";
 import {
+  isSyntheticWebSearchReplay,
   lookupWebSearchReplay,
   normalizeSearchReplayQuery,
   withWebSearchReplayScope,
   type WebSearchReplayScope,
 } from "../web-search-replay";
+import {
+  isDossierSyntheticTestFixture,
+  isSyntheticDossierEvidenceHost,
+} from "./dossier-synthetic-fixture";
 import type { ModelFixture } from "../model-data";
 import type {
   DossierEvidenceCategory,
@@ -27,6 +32,8 @@ export interface DossierEvidenceCollectResult {
   droppedCount: number;
   queryCount: number;
   replayId: string | null;
+  /** Synthetic replay refused for a real fixture — dossier must stay evidence-empty. */
+  syntheticReplayBlocked?: boolean;
 }
 
 function currentSeasonLabel(now: Date): string {
@@ -141,6 +148,22 @@ function tierAcceptable(tier: EvidenceTier): boolean {
   return tier !== "other";
 }
 
+function tierForSearchResult(
+  url: string,
+  syntheticEvidenceContext: boolean,
+): EvidenceTier {
+  if (syntheticEvidenceContext && isSyntheticDossierEvidenceHost(url)) return "news";
+  return evidenceTier(url);
+}
+
+export function rejectSyntheticEvidenceForRealFixture(
+  fixture: ModelFixture,
+  items: DossierEvidenceItem[],
+): DossierEvidenceItem[] {
+  if (isDossierSyntheticTestFixture(fixture)) return items;
+  return items.filter((item) => !isSyntheticDossierEvidenceHost(item.sourceUrl));
+}
+
 export function federatedResultsToEvidenceItems(
   fixture: ModelFixture,
   merged: Array<{ title: string; link: string; snippet: string; date: string; tier: EvidenceTier }>,
@@ -218,7 +241,22 @@ export async function collectDossierEvidence(
   const origin = options.origin ?? "scheduled";
   const replayScope = options.replayScope ?? null;
 
+  if (replayScope?.replayId && isSyntheticWebSearchReplay(replayScope.replayId)) {
+    if (!isDossierSyntheticTestFixture(fixture)) {
+      return {
+        items: [],
+        droppedCount: 0,
+        queryCount: queries.length,
+        replayId: null,
+        syntheticReplayBlocked: true,
+      };
+    }
+  }
+
   const run = async (): Promise<DossierEvidenceCollectResult> => {
+    const syntheticEvidenceContext = Boolean(
+      replayScope?.replayId && isSyntheticWebSearchReplay(replayScope.replayId),
+    );
     const outcomes = await searchQueries(queries, replayScope);
     const seen = new Set<string>();
     const merged: Array<{ title: string; link: string; snippet: string; date: string; tier: EvidenceTier }> = [];
@@ -239,7 +277,7 @@ export async function collectDossierEvidence(
           link: url,
           snippet: result.snippet,
           date: result.date,
-          tier: evidenceTier(url),
+          tier: tierForSearchResult(url, syntheticEvidenceContext),
         });
       }
     }
@@ -253,9 +291,10 @@ export async function collectDossierEvidence(
     );
     const citedOnly = items.filter((item) => item.verification === "cited");
     const unverifiedDropped = items.length - citedOnly.length;
+    const allowed = rejectSyntheticEvidenceForRealFixture(fixture, citedOnly);
     return {
-      items: citedOnly,
-      droppedCount: dropped + unverifiedDropped,
+      items: allowed,
+      droppedCount: dropped + unverifiedDropped + (citedOnly.length - allowed.length),
       queryCount: queries.length,
       replayId: replayScope?.replayId ?? null,
     };
