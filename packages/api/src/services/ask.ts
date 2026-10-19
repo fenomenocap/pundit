@@ -205,6 +205,10 @@ import {
   containsAgentInternalWording,
   sanitizeAgentUserText,
 } from "./chat-agent-fallback";
+import {
+  containsInternalPromptVocabulary,
+  stripInternalPromptVocabulary,
+} from "./internal-prompt-vocabulary";
 import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
 import {
   enrichAgentTeamNewsAttribution,
@@ -9805,6 +9809,7 @@ function matchFollowUpSettlesWithoutGeneration(question: string, grounding: Grou
   if (/\bwhy\b[^?\n]{0,40}\b(?:favou?r|back|lean|prefer|like|rate|pick|fancy)\b|\bhow come\b|\bwhat makes you\b/i.test(question)) {
     return true;
   }
+  if (/^why\??[.!]*$/i.test(question.trim())) return true;
   return false;
 }
 
@@ -10664,7 +10669,7 @@ export function sanitizeDeliveredAnswer(
   // Citation markers may still be unresolved when evaluator/runtime helpers
   // call this pure guard. The universal marker sweep belongs after
   // renderEvidenceCitations, in finalizeDeliveredText.
-  return normalizeAnalystIdentity(sanitized);
+  return stripInternalPromptVocabulary(normalizeAnalystIdentity(sanitized));
 }
 
 // "the model" in a paragraph explaining xG or another public statistic is that
@@ -10781,7 +10786,7 @@ function finalizeDeliveredText(
     analystResponseMetrics.numericGuardInterventions += 1;
     console.warn(JSON.stringify({ event: "analyst_numeric_guard_intervened" }));
   }
-  const scrubbed = scrubEmptyStructuralLines(traced);
+  const scrubbed = scrubEmptyStructuralLines(stripInternalPromptVocabulary(traced));
   const policyLines = grounding?.kind === "match" && delivery?.question
     ? deliveryPolicyLinesAfterTrace(
       delivery.question,
@@ -10881,7 +10886,7 @@ function resolveAgentUserAnswer(
   agentText: string,
 ): string {
   const cleaned = sanitizeAgentUserText(agentText);
-  if (cleaned) return cleaned;
+  if (cleaned && !containsInternalPromptVocabulary(cleaned)) return cleaned;
   const fromEvidence = composeAgentEvidenceFallback(question, grounding, bundle, hasHistory).trim();
   if (fromEvidence) return fromEvidence;
   return agentNonEmptyGroundedFallback(question, grounding, hasHistory);

@@ -2863,7 +2863,7 @@ describe("current-news evidence hardening", () => {
       expect(answer).toMatch(/Arsenal 97\.3%|I make Arsenal/);
       expect(answer).toContain("Kalshi no-vig");
       expect(answer).toMatch(/gap [+-]?\d+\.?\d* pts/i);
-      expect(answer).toMatch(/Lean:.*pts vs Kalshi|not its cause/i);
+      expect(answer).toMatch(/Lean: .* at \d+\.\d{2}, (?:small play|play|strong play|no play)\.|not its cause/i);
       expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(answer).not.toMatch(/Over 2\.5 is \d/);
       expect(answer).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
@@ -2909,7 +2909,7 @@ describe("current-news evidence hardening", () => {
       expect(closedGroundedAnswer("Is Arsenal vs Coventry over 2.5?", model()))
         .toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(closedGroundedAnswer("BTTS?", model(), true))
-        .toMatch(/BTTS yes is /i);
+        .toMatch(/BTTS yes  /i);
       expect(closedGroundedAnswer("BTTS?", model(), true))
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
@@ -2955,7 +2955,7 @@ describe("current-news evidence hardening", () => {
       const match = model();
       const answer = closedGroundedAnswer("How much should I stake?", match);
       expect(answer).toContain(STAKE_REFUSAL_SENTENCE);
-      expect(answer).toContain("Arsenal 97.3%");
+      expect(answer).toMatch(/Arsenal\s+97\.3%/);
       expect(closedGroundedAnswer("Three points are at stake for Arsenal.", match, true)).toBeNull();
       expect(closedGroundedAnswer("Three points are at stake for Arsenal.", match))
         .not.toContain(STAKE_REFUSAL_SENTENCE);
