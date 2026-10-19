@@ -7,6 +7,12 @@ import {
   skippedNoKeyJudge,
   skippedUnavailableJudge,
 } from "./chat-eval-judge-core.mjs";
+import {
+  logJudgeTokenSourceOnce,
+  mintGitHubActionsOidcToken,
+  resolveRemoteJudgeBearerToken,
+  remoteJudgeConfiguredSync,
+} from "./chat-eval-github-oidc.mjs";
 
 export function resolveJudgeMode(explicit) {
   const raw = explicit ?? process.env.CHAT_EVAL_JUDGE_MODE?.trim().toLowerCase() ?? "remote";
@@ -21,26 +27,36 @@ function defaultJudgeUrl(apiUrl) {
   return `${base}/internal/eval/judge`;
 }
 
-export function remoteJudgeBearerToken(options = {}) {
-  return options.oidcToken
-    ?? process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN?.trim()
-    ?? null;
+/** @deprecated use resolveRemoteJudgeBearerToken — sync fallback check only */
+export function remoteJudgeBearerToken() {
+  return process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN?.trim() ?? null;
 }
 
-export function remoteJudgeConfigured(options = {}) {
-  return Boolean(remoteJudgeBearerToken(options));
+export function remoteJudgeConfigured() {
+  return remoteJudgeConfiguredSync();
+}
+
+async function postRemoteJudge(judgeUrl, token, payloadTurns, maxTurns) {
+  return fetch(judgeUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ turns: payloadTurns, maxTurns }),
+  });
 }
 
 export async function judgeEvalTurnsRemote(turns, options = {}) {
   const sample = turns.filter((turn) => turn.httpStatus === 200 && turn.answer?.trim());
   const maxTurns = options.maxTurns ?? 24;
   const selected = options.sampleAll ? sample : sample.slice(0, maxTurns);
-  const token = remoteJudgeBearerToken(options);
   const judgeUrl = defaultJudgeUrl(options.apiUrl);
+  let token = await resolveRemoteJudgeBearerToken(options);
   if (!token) {
     return skippedUnavailableJudge(turns, {
       ...options,
-      skipReason: "CHAT_EVAL_GITHUB_OIDC_TOKEN unset",
+      skipReason: "GitHub OIDC unavailable (Actions mint env and CHAT_EVAL_GITHUB_OIDC_TOKEN unset)",
     });
   }
   const payloadTurns = selected.map((turn) => ({
@@ -54,14 +70,15 @@ export async function judgeEvalTurnsRemote(turns, options = {}) {
   }));
   let response;
   try {
-    response = await fetch(judgeUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ turns: payloadTurns, maxTurns }),
-    });
+    response = await postRemoteJudge(judgeUrl, token, payloadTurns, maxTurns);
+    if (response.status === 401) {
+      const reminted = await mintGitHubActionsOidcToken(options.audience);
+      if (reminted) {
+        token = reminted;
+        logJudgeTokenSourceOnce("fresh_actions_mint");
+        response = await postRemoteJudge(judgeUrl, token, payloadTurns, maxTurns);
+      }
+    }
   } catch {
     return skippedUnavailableJudge(turns, { ...options, skipReason: "judge_unavailable" });
   }
