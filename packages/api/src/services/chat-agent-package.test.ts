@@ -4,11 +4,15 @@ import { normalizeAgentManagerAnswer } from "./ask";
 import type { RetrievedEvidencePage } from "./evidence-page-retrieval";
 import {
   AGENT_HISTORY_CONTENT_MAX,
+  AGENT_NARROW_DELIVERY_MAX,
   agentDeliveryStructurallyComplete,
+  agentDirectAnswerLeadPasses,
   capAgentAnswerForHistory,
   completeAgentAnswerEnding,
+  ensureAgentDirectAnswerLead,
   enrichAgentTeamNewsAttribution,
   finalizeAgentPackagedAnswer,
+  trimAgentDeliveryForPlan,
 } from "./chat-agent-package";
 import { parseHistory } from "../routes/ask";
 
@@ -150,6 +154,45 @@ describe("normalizeAgentManagerAnswer", () => {
       supportedClaimCount: 1,
       removedClaimCount: 0,
     });
+  });
+});
+
+describe("ensureAgentDirectAnswerLead", () => {
+  it("prepends a table leader instead of a Here's-how preface", () => {
+    const raw = `Here's how the Premier League table looks through the opening weeks (taken from the ESPN feed): **Top five**
+1. **Man City** — 7-0-0, 21 pts, +12 GD
+2. **Arsenal** — 5-0-1, 15 pts, +5 GD`;
+    const out = ensureAgentDirectAnswerLead(raw, "Quick detour: what does the current Premier League table show?");
+    expect(agentDirectAnswerLeadPasses(out)).toBe(true);
+    expect(out).toMatch(/^I make Man City the current leaders on 21 points\./);
+  });
+
+  it("unwraps a bold No — before I can't guarantee on season follow-ups", () => {
+    const raw = "**No — I can't guarantee it, and neither should anyone else.** The leader is Man City, and the numbers are ominous for the chasing pack.";
+    const out = ensureAgentDirectAnswerLead(raw, "Can you guarantee the leader will win, or what would change that view?");
+    expect(agentDirectAnswerLeadPasses(out)).toBe(true);
+    expect(out).toMatch(/^I can't guarantee/i);
+  });
+});
+
+describe("trimAgentDeliveryForPlan", () => {
+  it("keeps pricing-desk turns compact and drops unsolicited team-news essays", () => {
+    const raw = `${"My 1X2 is Forest 9.6%, draw 20.8% and Arsenal 69.6%. ".repeat(2)}**Back Arsenal** — lean rather than full stake.\n## Team News\nLong injury packet.`;
+    const out = trimAgentDeliveryForPlan(raw, "What about Forest vs Arsenal?", { groundingKind: "match" });
+    expect(out.length).toBeLessThanOrEqual(AGENT_NARROW_DELIVERY_MAX);
+    expect(out).not.toMatch(/## Team News/i);
+    expect(out).toMatch(/Back Arsenal/i);
+  });
+
+  it("caps long season certainty follow-ups for narrow delivery", () => {
+    const raw = `I can't guarantee it, and neither should anyone else. ${"Man City lead the table on 21 points with perfect form. ".repeat(80)}`;
+    const out = trimAgentDeliveryForPlan(
+      raw,
+      "Can you guarantee the leader will win, or what would change that view?",
+      { hasHistory: true, groundingKind: "season" },
+    );
+    expect(out.length).toBeLessThanOrEqual(AGENT_NARROW_DELIVERY_MAX);
+    expect(agentDirectAnswerLeadPasses(out)).toBe(true);
   });
 });
 

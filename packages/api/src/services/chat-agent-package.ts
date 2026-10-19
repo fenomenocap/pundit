@@ -4,9 +4,15 @@ import type { RetrievedEvidencePage } from "./evidence-page-retrieval";
 import { formatDeskCitationDate, rewriteDeskCitationMarkdown } from "./desk-voice";
 import { playerNamedInNewsBody } from "./player-evidence";
 import type { ChatAgentCapHit } from "./chat-agent-limits";
+import { planResponse, type ResponseMode } from "./response-plan";
 
 /** Must stay aligned with `MAX_HISTORY_CONTENT_LENGTH` in routes/ask.ts */
 export const AGENT_HISTORY_CONTENT_MAX = 4_000;
+
+/** Aligns with Schema-17 `expectNarrowFollowup` length gate for agent delivery. */
+export const AGENT_NARROW_DELIVERY_MAX = 900;
+
+const SECTION_LABEL_LINE = /^\s*\*\*[^*\n]+\*\*:?\s*$/;
 
 /** Agent delivery last resort when recovery and grounding copy are both empty. */
 export const AGENT_DELIVERY_LAST_RESORT =
@@ -166,6 +172,133 @@ export function completeAgentAnswerEnding(text: string): string {
   return trimmed.trim();
 }
 
+function firstAgentSubstantiveLine(text: string): string {
+  return text.split("\n")
+    .filter((line) => !SECTION_LABEL_LINE.test(line))
+    .filter((line) => !/^\s*#{1,6}\s/.test(line))
+    .filter((line) => !/^\s*\|/.test(line))
+    .filter((line) => !/^---+\s*$/.test(line.trim()))
+    .map((line) => line.replace(/^\s*[-*#]+\s*/, "").trim())
+    .find(Boolean) ?? "";
+}
+
+/** Mirrors Schema-17 `directAnswerFirst` for agent packaging repair. */
+export function agentDirectAnswerLeadPasses(text: string): boolean {
+  const lead = firstAgentSubstantiveLine(text).slice(0, 280);
+  if (!lead) return false;
+  if (/^I\s+(?:will|'ll|can)\s+(?:explain|outline|walk|break|look|start|begin|analyse|analyze|consider)\b/i.test(lead)) {
+    return false;
+  }
+  return (
+    /\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s+(?:decimal|odds)|^\s*\d+\s*[.)]/i.test(lead)
+    || /^\s*(?:Back|Lean|Avoid|No bet)\b/i.test(lead)
+    || /^\s*(?:I|I'm|I've|I'd)\s+(?:make|have|rate|see|favour|favor|lean|land|cannot|can't|do not|don't|would not|wouldn't|am unable|could not|couldn't)\b/i.test(lead)
+    || /^\s*(?:no comparable|not enough|unable|cannot|can't|the table|standings|[\p{L}][\p{L} .'-]{1,60}\s+(?:lead(?:s|ing)?|is first|are first))\b/iu.test(lead)
+  );
+}
+
+function prependTableLeaderLead(text: string): string | null {
+  const leader = text.match(/(?:^|\n)\s*1\.\s*\*\*([^*]+)\*\*[^\n]*?\b(\d+)\s*pts\b/im);
+  if (!leader) return null;
+  return `I make ${leader[1].trim()} the current leaders on ${leader[2]} points. ${text.trim()}`;
+}
+
+function unwrapAgentGuaranteeLead(text: string, question: string): string {
+  let trimmed = text.trim();
+  trimmed = trimmed.replace(
+    /^\*\*No\s*[—–-]\s*\*\*\s*(I\s+(?:can'?t|cannot)\s+guarantee[^.!?]*[.!?])\s*/i,
+    "$1 ",
+  );
+  if (/\b(?:guarantee|guaranteed)\b/i.test(question) && !agentDirectAnswerLeadPasses(trimmed)) {
+    const body = trimmed.replace(/^\*\*No\s*[—–-]\s*\*\*\s*/i, "").trim();
+    if (!/^I\s+(?:can'?t|cannot)\b/i.test(firstAgentSubstantiveLine(body))) {
+      return `I can't guarantee that from the season outlook alone — no one should. ${body}`.trim();
+    }
+    return body;
+  }
+  return trimmed;
+}
+
+/** Agent-only: lead with the answer, not meta prefaces or bold wrappers. */
+export function ensureAgentDirectAnswerLead(text: string, question: string): string {
+  let trimmed = text.trim();
+  trimmed = trimmed.replace(
+    /^Here(?:'|')?s how the (?:current )?(?:Premier League )?table looks[^:]*:\s*/i,
+    "",
+  );
+  const tableQuestion = /\b(?:table|standings?)\b/i.test(question);
+  const leadSnippet = firstAgentSubstantiveLine(trimmed).slice(0, 160);
+  if (
+    tableQuestion
+    && !/\b(?:lead(?:s|ing)?|is first|are first)\b/i.test(leadSnippet)
+    && !/^I\s+make\b/i.test(leadSnippet)
+  ) {
+    const withLeader = prependTableLeaderLead(trimmed);
+    if (withLeader) trimmed = withLeader;
+  }
+  trimmed = unwrapAgentGuaranteeLead(trimmed, question);
+  if (agentDirectAnswerLeadPasses(trimmed)) return trimmed.trim();
+  const withLeader = prependTableLeaderLead(trimmed);
+  if (withLeader && agentDirectAnswerLeadPasses(withLeader)) return withLeader.trim();
+  return trimmed.trim();
+}
+
+const NARROW_AGENT_MODES: ReadonlySet<ResponseMode> = new Set([
+  "pricing-desk",
+  "totals",
+  "btts",
+  "exact-score",
+  "fair-price",
+  "match-follow-up",
+  "player-or-scorer",
+  "table",
+  "season",
+  "market-comparison",
+  "stake-refusal",
+  "user-line",
+]);
+
+function stripUnrequestedPricingEssay(text: string, mode: ResponseMode, question: string): string {
+  if (mode !== "pricing-desk") return text;
+  if (/\b(?:injur|team news|line-?up|availability)\b/i.test(question)) return text;
+  const cut = text.search(/\n(?:##\s|\*\*(?:Team News|Form(?: Check)?)\*\*)/i);
+  return cut >= 0 ? text.slice(0, cut).trim() : text;
+}
+
+function collapseExtraAgentSectionLabels(text: string, maxSections: number): string {
+  if (maxSections >= 2) return text;
+  const lines = text.split("\n");
+  let labelsSeen = 0;
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (SECTION_LABEL_LINE.test(line)) {
+      labelsSeen += 1;
+      if (labelsSeen > maxSections) break;
+    }
+    kept.push(line);
+  }
+  return kept.join("\n").trim();
+}
+
+export function trimAgentDeliveryForPlan(
+  text: string,
+  question: string,
+  options: { hasHistory?: boolean; groundingKind?: string | null } = {},
+): string {
+  const plan = planResponse(question, {
+    hasHistory: Boolean(options.hasHistory),
+    groundingKind: options.groundingKind ?? null,
+  });
+  let trimmed = ensureAgentDirectAnswerLead(text, question);
+  trimmed = stripUnrequestedPricingEssay(trimmed, plan.mode, question);
+  trimmed = collapseExtraAgentSectionLabels(trimmed, plan.maxSections);
+  const narrow = Boolean(options.hasHistory) || NARROW_AGENT_MODES.has(plan.mode);
+  if (narrow && trimmed.length > AGENT_NARROW_DELIVERY_MAX) {
+    trimmed = capAgentAnswerForHistory(trimmed, AGENT_NARROW_DELIVERY_MAX);
+  }
+  return trimmed.trim();
+}
+
 export function capAgentAnswerForHistory(text: string, maxLen = AGENT_HISTORY_CONTENT_MAX): string {
   let trimmed = completeAgentAnswerEnding(text.trim());
   if (trimmed.length <= maxLen) return trimmed;
@@ -188,12 +321,23 @@ export function capAgentAnswerForHistory(text: string, maxLen = AGENT_HISTORY_CO
 
 function polishAgentDeliveredProse(
   prose: string,
-  options: { voice?: "desk" },
+  options: {
+    voice?: "desk";
+    question?: string;
+    hasHistory?: boolean;
+    groundingKind?: string | null;
+  },
   trimStructuralTail: (text: string) => string,
 ): string {
   let text = trimStructuralTail(prose.trim());
   if (options.voice === "desk") text = rewriteDeskCitationMarkdown(text);
   text = completeAgentAnswerEnding(text);
+  if (options.question) {
+    text = trimAgentDeliveryForPlan(text, options.question, {
+      hasHistory: options.hasHistory,
+      groundingKind: options.groundingKind,
+    });
+  }
   return capAgentAnswerForHistory(text);
 }
 
@@ -207,6 +351,9 @@ export function repairAgentDeliveredProse(
   options: {
     voice?: "desk";
     capHit?: ChatAgentCapHit | null;
+    question?: string;
+    hasHistory?: boolean;
+    groundingKind?: string | null;
     recover: () => string;
     groundedFallback?: () => string;
   },
@@ -233,7 +380,12 @@ export function repairAgentDeliveredProse(
 
 export function finalizeAgentPackagedAnswer(
   prose: string,
-  options: { voice?: "desk" } = {},
+  options: {
+    voice?: "desk";
+    question?: string;
+    hasHistory?: boolean;
+    groundingKind?: string | null;
+  } = {},
   trimStructuralTail: (text: string) => string = (text) => text,
 ): string {
   return polishAgentDeliveredProse(prose, options, trimStructuralTail);
