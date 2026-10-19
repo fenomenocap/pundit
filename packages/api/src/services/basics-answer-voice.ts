@@ -90,6 +90,10 @@ export function deskProvenanceLine(
   const modelLabel = shortModelVersionLabel(grounding.pricing.modelVersion);
   const ratingsIso = grounding.freshness.ratingsAsOf ?? grounding.pricing.pricedAt;
   const modelTime = formatTimestampSgt(ratingsIso);
+  const userLine = grounding.pricing?.userLine;
+  if (userLine && !market) {
+    return `Model: ${modelLabel}, ${modelTime} · Odds: your line ${userLine.decimalOdds.toFixed(2)}`;
+  }
   const oddsSource = market?.source ?? grounding.marketDivergence[0]?.source;
   const oddsNames = oddsSource ? labelMarketSource(oddsSource) : "none";
   const oddsIso = market?.observedAt
@@ -234,7 +238,7 @@ export function formatUserLineLean(
     return `Lean: I will not call ${leanLabel} at ${dec}.`;
   }
   const size = Math.abs(gapPoints) >= 15 ? "strong play" : Math.abs(gapPoints) >= 5 ? "play" : "small play";
-  return `Lean: ${leanLabel} at ${dec}, ${size}.`;
+  return `Lean: ${leanLabel} at ${dec}, ${size} — I play.`;
 }
 
 export function modelFavouriteOutcome(grounding: Grounding): {

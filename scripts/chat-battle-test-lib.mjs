@@ -1751,7 +1751,7 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
     assertions.userLineImpliedPresent = /\bimplies 14\.3%|\b1\/7\b/i.test(text);
     assertions.userLineEvPresent = !/\bEV [+-]\d+(?:\.\d+)?%/.test(text);
     assertions.userLineHonestGapPresent = /\bgap [+-]?\d+(?:\.\d+)? pts\b/i.test(text);
-    assertions.userLineDecision = /\bI (?:play|pass)\b|\bI will not call it\b|Lean: .* at \d+\.\d{2}, (?:small )?(?:play|pass|strong play|no play)\./.test(text);
+    assertions.userLineDecision = /\bI (?:play|pass)\b|\bI will not call it\b/.test(text);
     assertions.userLineFairDecimal = /\bfair \d+\.\d{2}\b/i.test(text);
     assertions.noKellySizing = !/\bkelly\b/i.test(text);
   }
