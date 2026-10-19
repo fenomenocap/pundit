@@ -1032,12 +1032,22 @@ describe("source-owned manager identity drafts", () => {
     "Newcastle United | Eddie Howe, head coach — Howe's side face Aston Villa on Saturday.",
     "Tottenham boss Roberto de Zerbi has been speaking to the media before Monday's Premier League game against Coventry City.",
     "Tottenham's manager is Roberto de Zerbi.",
+    // BBC Sport live phrasing (Oct 2026 prod eval): MOTD intro, shorthand boss + surname, capitalised De.
+    "Tottenham boss Roberto de Zerbi speaking to BBC Match of the Day: \"The game was finished before we scored.\"",
+    "Tottenham manager Roberto de Zerbi said he was \"not angry\" and there was \"no panic\" after his side's loss.",
+    "Tottenham head coach Roberto De Zerbi has revealed his plans for Coventry.",
+    "Spurs head coach Roberto De Zerbi has been speaking to the media before Monday's game.",
+    "Tottenham manager De Zerbi said the team must improve before Coventry.",
+    "£300m spent, bottom of the table... but Spurs boss De Zerbi 'not angry'",
   ])("builds only the strict dynamic current identity: %s", (text) => {
     const clubScope = /Everton/.test(text) ? { ...scope, club: "Everton" }
       : /Newcastle/.test(text) ? { ...scope, club: "Newcastle" }
-      : /Tottenham/.test(text) ? { ...scope, club: "Tottenham" } : scope;
+      : /Tottenham|Spurs|de Zerbi/i.test(text) ? { ...scope, club: "Tottenham" } : scope;
     const name = /David Moyes/.test(text) ? "David Moyes"
       : /Eddie Howe/.test(text) ? "Eddie Howe"
+      : /\bRoberto De Zerbi\b/.test(text) ? "Roberto De Zerbi"
+      : /\bRoberto\b/i.test(text) ? "Roberto de Zerbi"
+      : /De Zerbi/i.test(text) ? "De Zerbi"
       : /de Zerbi/i.test(text) ? "Roberto de Zerbi" : "Joe Example";
     expect(sourceOwnedManagerDraft(clubScope, bundle, [{ ...page, text }], now)).toBe(`${clubScope.club}’s manager is ${name} [[S7]].`);
   });

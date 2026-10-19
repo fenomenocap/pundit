@@ -1452,7 +1452,7 @@ function publisherOwnedManagerBody(page: { text: string }): string {
 // Beat copy often lowercases surname particles ("Roberto de Zerbi"). The
 // manager identity path must still read the full publisher-owned name.
 const MANAGER_PERSON_NAME_PARTICLE =
-  "\\b(?:de|del|da|di|du|la|le|van|von|ter|den|der|dos|das|bin|mac|mc)\\b";
+  "\\b(?:[Dd]e|[Dd]el|[Dd]a|[Dd]i|[Dd]u|[Ll]a|[Ll]e|[Vv]an|[Vv]on|[Tt]er|[Dd]en|[Dd]er|[Dd]os|[Dd]as|[Bb]in|[Mm]ac|[Mm]c)\\b";
 const MANAGER_PERSON_FULL_NAME =
   `[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+(?:${MANAGER_PERSON_NAME_PARTICLE}|\\p{Lu}[\\p{L}\\p{M}'’.-]+)){1,3}`;
 
@@ -1466,8 +1466,8 @@ function managerRoleGrammar(clubName: string) {
     const named = escape(name);
     const surname = escape(name.split(/\s+/).pop() ?? name);
     const currentRole = `(?:current\\s+)?(?:manager|head coach|coach|boss)`;
-    const reporting = "(?:has\\s+(?:been\\s+speaking|said|confirmed|told|revealed|warned|admitted|insisted|explained|discussed|spoken|commented|updated|outlined)|says|said|insists|added|was\\s+speaking)";
-    const rejectsIncumbent = (sentence: string) => /\b(?:former|ex[-\s]|sacked|dismissed|departs|has left|will leave|was replaced|linked with|set to replace|in the frame to replace)\b/i.test(sentence);
+    const reporting = "(?:has\\s+(?:been\\s+)?speaking(?:\\s+to)?|has\\s+(?:been\\s+speaking|said|confirmed|told|revealed|warned|admitted|insisted|explained|discussed|spoken|commented|updated|outlined)|speaking(?:\\s+to)?|reports(?:\\s+that)?|says|said|insists|added|was\\s+speaking)";
+    const rejectsIncumbent = (sentence: string) => /\b(?:former|ex[-\s]|sacked|dismissed|departs|has left|will leave|was replaced|linked with|set to replace|in the frame to replace|retired)\b/i.test(sentence);
     // A bare affiliation can describe a former manager. Require a complete
     // present-tense role statement or an explicit ongoing contract action.
     // Editorial prefixes and trailing retired/return qualifiers cannot fill
@@ -1478,6 +1478,11 @@ function managerRoleGrammar(clubName: string) {
     // Beat reporting often names the incumbent in apposition ("Everton boss
     // David Moyes has been speaking") rather than with an explicit "is".
     const appositiveReporting = new RegExp(`^(?:The\\s+)?(?!(?:Former|Ex[-\\s])\\s)${club}(?:['’]s)?\\s+${currentRole}\\s+${named}\\s+${reporting}\\b`, "iu");
+    // Beat headlines and MOTD intros often use "<club> boss <Name>" with no
+    // finite "is" or reporting verb on the same fragment ("Spurs boss De Zerbi").
+    const appositiveRoleTitleAfter = "(?!\\s+(?:will\\s+be\\s+replaced|retired|was\\b|no\\s+longer|should\\b))";
+    const appositiveRoleTitleLead = new RegExp(`^(?:The\\s+)?(?!(?:Former|Ex[-\\s])\\s)${club}(?:['’]s)?\\s+${currentRole}\\s+${named}${appositiveRoleTitleAfter}`, "iu");
+    const appositiveRoleTitleHeadline = new RegExp(`(?:^|(?<=\\.\\.\\.\\s)|\\bbut\\s+)${club}(?:['’]s)?\\s+${currentRole}\\s+${named}${appositiveRoleTitleAfter}`, "iu");
     // Sky and club sites often lead with "manager Eddie Howe said" once the
     // club is named elsewhere in the same publisher sentence.
     const roleFirstReporting = new RegExp(`(?=.*\\b${club}\\b).*\\b(?!(?:Former|Ex[-\\s])\\s)${currentRole}\\s+${named}\\s+${reporting}\\b`, "iu");
@@ -1492,7 +1497,9 @@ function managerRoleGrammar(clubName: string) {
     return splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
       .map((sentence) => sentence.trim()).some((sentence) => !rejectsIncumbent(sentence) && (
         direct.test(sentence) || contract.test(sentence) || alignment.test(sentence)
-        || appositiveReporting.test(sentence) || roleFirstReporting.test(sentence)
+        || appositiveReporting.test(sentence) || appositiveRoleTitleLead.test(sentence)
+        || appositiveRoleTitleHeadline.test(sentence)
+        || roleFirstReporting.test(sentence)
         || staffProfile.test(sentence) || staffHeading.test(sentence) || possessiveSide.test(sentence)
       ));
   };
@@ -1571,7 +1578,7 @@ function managerIdentityNamesOnPage(
   fullName: string,
 ): string[] {
   const body = publisherOwnedManagerBody(page);
-  return [...new Set(splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
+  const candidates = [...new Set(splitAnswerSentences(body).flatMap((sentence) => sentence.split(/[;\n]/))
     .flatMap((statement) => [...statement.matchAll(new RegExp(fullName, "gu"))])
     .flatMap((match) => {
       const words = match[0].split(/\s+/);
@@ -1579,6 +1586,10 @@ function managerIdentityNamesOnPage(
         words.slice(start, start + offset + 2).join(" ").replace(/[.!?]+$/, "")));
     }).filter((name) => playerNamedInNewsBody(name, body,
       { fixtureId: "", home: "", away: "", kickoff: "" }) && ownsCurrentRole(name, body)))];
+  // Particle surnames ("de Zerbi") yield both "Roberto de" and "Roberto de Zerbi"
+  // from the same publisher span; keep only maximal names so one identity survives.
+  return candidates.filter((name) => !candidates.some((other) => other !== name
+    && managerNameKey(other).startsWith(`${managerNameKey(name)} `)));
 }
 
 function managerNameKey(name: string): string {
