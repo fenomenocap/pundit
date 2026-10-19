@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sampleAgentFreshness } from "../../config/freshness-policy";
 import { buildMatchPricing } from "../response-correctness";
 import { attachUserLine, resolveUserLineDecision, userLineGapPoints } from "../response-correctness";
 import { renderPassPlayTakeProse } from "./take-grid-prose";
@@ -46,15 +47,12 @@ function minimalGrounding(modelPHome = 0.599): Grounding {
     oddsSources: [],
     marketDivergence: [],
     pricing,
-    freshness: {
-      tier: "fresh",
-      reason: "test",
+    freshness: sampleAgentFreshness({
       espnLastUpdated: "2026-10-18T09:00:00.000Z",
       modelLastUpdated: "2026-10-18T09:00:00.000Z",
-      marketOddsLastUpdated: null,
       ratingsAsOf: "2026-10-13T01:46:00.000Z",
       generatedAt: "2026-10-18T09:00:00.000Z",
-    },
+    }),
     homeElo: 1799,
     awayElo: 1706,
     lambdaHome: 1.85,
