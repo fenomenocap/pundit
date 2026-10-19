@@ -447,7 +447,9 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       result.evidence = `Turn ${history.length / 2} returned an empty answer.`;
       return result;
     }
-    const copyValidation = validateAnswerCopy(result.answer);
+    const copyValidation = validateAnswerCopy(result.answer, {
+      grounding: grounding?.kind === "match" ? grounding : undefined,
+    });
     result.assertions.plainLanguageCopy = copyValidation.passed;
     // A guard that empties a section leaves a label with nothing under it, and
     // a match answer can lose its headline 1X2 line while every content check

@@ -17,33 +17,59 @@ function jaccard(a, b) {
   return inter / (left.size + right.size - inter);
 }
 
-const STRUCTURAL_TEMPLATE_MARKERS = [
-  "model vs market",
-  "my 1x2 is",
-  "fair decimal",
-];
-
-const LEGACY_TEMPLATE_MARKERS = [
-  ...STRUCTURAL_TEMPLATE_MARKERS,
+const CANNED_PROSE_TEMPLATE_MARKERS = [
   "no bet",
   "gamble responsibly",
   "18+",
 ];
 
-function templateMarkersForTurn(turn) {
-  if (turn.engine === "agent") return STRUCTURAL_TEMPLATE_MARKERS;
-  return LEGACY_TEMPLATE_MARKERS;
+const LEGACY_TEMPLATE_MARKERS = [
+  "model vs market",
+  "my 1x2 is",
+  "fair decimal",
+  ...CANNED_PROSE_TEMPLATE_MARKERS,
+];
+
+function templateMarkersForTurn(turn, { metricsVersion = 2 } = {}) {
+  if (metricsVersion === 1) {
+    if (turn.engine === "agent") {
+      return ["model vs market", "my 1x2 is", "fair decimal"];
+    }
+    return LEGACY_TEMPLATE_MARKERS;
+  }
+  return CANNED_PROSE_TEMPLATE_MARKERS;
 }
 
-export function computeTurnQualityMetrics(turns) {
+function isWholeReplyAbstain(turn) {
+  const answer = String(turn.answer ?? "").trim();
+  const hasNumbers = /\d/.test(answer);
+  if (turn.verification?.status === "abstain" && !hasNumbers) return true;
+  if (/could not verify/i.test(answer) && !hasNumbers) return true;
+  return false;
+}
+
+function isPartialDropTurn(turn) {
+  const answer = String(turn.answer ?? "");
+  if (!/\d/.test(answer)) return false;
+  return (Number(turn.verification?.removedClaimCount) > 0)
+    || /left those claims out/i.test(answer);
+}
+
+export function computeTurnQualityMetrics(turns, options = {}) {
+  const metricsVersion = options.metricsVersion ?? 2;
   const successful = turns.filter((turn) => turn.httpStatus === 200 && turn.answer);
   const llmTurns = successful.filter((turn) => turn.engine === "agent" || turn.usedLlm === true);
   const templateTurns = successful.filter((turn) =>
-    templateMarkersForTurn(turn).some((marker) => normalize(turn.answer).includes(marker)));
+    templateMarkersForTurn(turn, { metricsVersion }).some((marker) => normalize(turn.answer).includes(marker)));
   const citationTurns = successful.filter((turn) => /\]\(https?:\/\//.test(turn.answer ?? ""));
-  const abstainTurns = successful.filter((turn) =>
-    turn.verification?.status === "abstain"
-    || /could not verify|left those claims out/i.test(turn.answer ?? ""));
+  const abstainTurns = metricsVersion === 1
+    ? successful.filter((turn) =>
+      turn.verification?.status === "abstain"
+      || /could not verify|left those claims out/i.test(turn.answer ?? ""))
+    : successful.filter((turn) => isWholeReplyAbstain(turn));
+  const partialDropTurns = metricsVersion === 1
+    ? []
+    : successful.filter((turn) => isPartialDropTurn(turn));
 
   let nearDuplicatePairs = 0;
   for (let i = 0; i < successful.length; i += 1) {
@@ -58,6 +84,7 @@ export function computeTurnQualityMetrics(turns) {
     nearDuplicateRate: nearDuplicatePairs / Math.max(1, (successful.length * (successful.length - 1)) / 2),
     llmCallRate: llmTurns.length / n,
     abstainRate: abstainTurns.length / n,
+    partialDropRate: partialDropTurns.length / n,
     citationCoverage: citationTurns.length / n,
   };
 }
@@ -65,10 +92,10 @@ export function computeTurnQualityMetrics(turns) {
 /**
  * Side-by-side quality summary for legacy vs agent engine runs.
  */
-export function compareEngineQuality(legacyTurns, agentTurns) {
+export function compareEngineQuality(legacyTurns, agentTurns, options = {}) {
   return {
-    legacy: computeTurnQualityMetrics(legacyTurns),
-    agent: computeTurnQualityMetrics(agentTurns),
+    legacy: computeTurnQualityMetrics(legacyTurns, options),
+    agent: computeTurnQualityMetrics(agentTurns, options),
   };
 }
 

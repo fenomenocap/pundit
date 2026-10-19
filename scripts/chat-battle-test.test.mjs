@@ -1716,6 +1716,10 @@ test("answer copy guard rejects internal methodology jargon", () => {
   assert.equal(validateAnswerCopy("The grounded forecast uses these model inputs.").passed, false);
   assert.equal(validateAnswerCopy("Using Dixon-Coles probabilities here.").passed, false);
   assert.equal(validateAnswerCopy("ClubElo ratings drive the edge.").passed, false);
+  assert.equal(validateAnswerCopy(
+    "clubelo@1:1da9aa95abcd1234 drives the edge.",
+    { grounding: { kind: "match", pricing: { modelVersion: "clubelo@1:1da9aa95abcd1234", pricedAt: "2026-09-11T03:00:00.000Z" } } },
+  ).passed, true);
   assert.equal(validateAnswerCopy("This is model-grounded analysis.").passed, false);
   assert.equal(validateAnswerCopy("so no my probabilities or scoreline estimates are available.").passed, false);
 });
@@ -1740,6 +1744,10 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
   ).passed, false);
   const stakeRefusal = "I can print the price. I will not size a stake without a bankroll and a risk band.";
   assert.equal(validateAnalystExpression(stakeRefusal, { expectStakeRefusal: true }).passed, true);
+  assert.equal(validateAnalystExpression(
+    "I could print the price, but I won't recommend a stake without your bankroll and a stated risk band.",
+    { expectStakeRefusal: true },
+  ).passed, true);
   assert.equal(validateAnalystExpression("Kelly 4% of bankroll.", { expectStakeRefusal: true }).passed, false);
   const userLinePlayEv = "On Chelsea at 7.00, I make it 10.0% against that line, EV +40.0% (fat-and-fragile). That clears the play price of 10.30, so I play. Risk is high.";
   assert.equal(validateAnalystExpression(userLinePlayEv, {

@@ -69,7 +69,9 @@ export function gradeRecordedJsonScenario(scenario, recordedTurns, { evaluationN
 
     history.push({ role: "user", content: turn.question }, { role: "assistant", content: answer });
 
-    const copyValidation = validateAnswerCopy(answer);
+    const copyValidation = validateAnswerCopy(answer, {
+      grounding: grounding?.kind === "match" ? grounding : undefined,
+    });
     result.assertions.plainLanguageCopy = copyValidation.passed;
     const structureValidation = validateAnswerStructure(answer, {
       expectHeadlineOneXTwo: grounding?.kind === "match"

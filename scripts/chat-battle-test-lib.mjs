@@ -1791,13 +1791,28 @@ export const FORBIDDEN_ERROR_TERMS = [
   "must be an array",
 ];
 
-export function validateAnswerCopy(answer) {
+function forbiddenTermAllowed(term, normalized, answer, grounding) {
+  if (grounding?.kind !== "match") return false;
+  const modelVersion = String(grounding.pricing?.modelVersion ?? "").trim();
+  if (term === "clubelo") {
+    return modelVersion.toLowerCase().includes("clubelo")
+      && modelVersionMentioned(answer, modelVersion);
+  }
+  if (["the model", "pundit's model", "pundit’s model", "pundit model", "the model says"].includes(term)) {
+    return Boolean(modelVersion) && modelVersionMentioned(answer, modelVersion);
+  }
+  return false;
+}
+
+export function validateAnswerCopy(answer, options = {}) {
   if (typeof answer !== "string" || !answer.trim()) {
     return { passed: false, failures: ["answer is empty"] };
   }
   const normalized = answer.toLowerCase();
+  const grounding = options.grounding;
   const failures = FORBIDDEN_ANSWER_TERMS
-    .filter((term) => normalized.includes(term))
+    .filter((term) => normalized.includes(term)
+      && !forbiddenTermAllowed(term, normalized, answer, grounding))
     .map((term) => `answer contains forbidden term: ${term}`);
   return { passed: failures.length === 0, failures };
 }
@@ -1881,7 +1896,10 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
     assertions.noUnsupportedLineupEffect = !inventedLineupEffect;
   }
   if (expectation.expectStakeRefusal) {
-    assertions.stakeRefusalSentence = /I can print the price\.\s*I will not size a stake without a bankroll and a risk band\./i.test(text);
+    assertions.stakeRefusalSentence = /\b(?:can|could)\s+print\s+the\s+price\b/i.test(text)
+      && /\b(?:will not|won't|would not)\s+(?:size|recommend|suggest)\s+(?:a\s+)?stake\b/i.test(text)
+      && /\bbankroll\b/i.test(text)
+      && /\brisk band\b/i.test(text);
     assertions.noStakeSizing = !/\b(?:kelly|stakefrac|stake frac|bankroll fraction|%\s+of (?:your |the )?bankroll)\b/i.test(text);
   }
   if (expectation.expectUserLinePassPlay) {
@@ -2259,17 +2277,33 @@ export function validatePositiveCurrentManager(answer, citations, verification, 
       && new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) === day;
   });
   const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const club = escape(scopeValid ? team.trim() : "");
-  const role = "(?:current\\s+)?(?:manager|head coach|coach|boss)";
-  const name = "([\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+[\\p{Lu}][\\p{L}\\p{M}'’.-]+){1,3})";
-  const endings = "(?=\\s*(?:today|currently)?\\s*(?:[,.;!(]|$))";
-  const patterns = [
-    new RegExp(`^${club}(?:['’]s|['’])?\\s+${role}\\s+is\\s+${name}${endings}`, "iu"),
-    new RegExp(`^${name}\\s+(?:is|remains|continues as)\\s+(?:the\\s+)?${club}(?:['’]s|['’])?\\s+${role}${endings}`, "iu"),
-    new RegExp(`^${name}\\s+(?:is|remains|continues as)\\s+(?:the\\s+)?${role}\\s+(?:of|for)\\s+${club}${endings}`, "iu"),
-    new RegExp(`^${club}(?:['’]s|['’])?\\s+${role}\\s+${name}\\s+has\\s+(?:agreed|signed)\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?(?:contract|deal)\\b`, "iu"),
-    new RegExp(`^${name}\\s+has\\s+(?:agreed|signed)\\s+(?:an?\\s+)?(?:new\\s+|improved\\s+)?(?:contract|deal)\\s+(?:as|to remain as)\\s+${club}(?:['’]s|['’])?\\s+${role}\\b`, "iu"),
-  ];
+  const clubName = scopeValid ? team.trim() : "";
+  const club = escape(clubName);
+  const rolePattern = /(?:current\s+)?(?:manager|head coach|coach|boss)/i;
+  const expectedManagerName = typeof expectation?.managerName === "string"
+    ? expectation.managerName.trim()
+    : typeof expectation?.name === "string"
+      ? expectation.name.trim()
+      : "";
+  function managerNameFromProse(prose) {
+    if (!scopeValid || !rolePattern.test(prose) || !new RegExp(`\\b${club}\\b`, "iu").test(prose)) return null;
+    if (/\b(?:former|formerly|retired|no longer|not\b|cannot|could|might|would|rumou?r|if)\b/i.test(prose)
+      || /\bwas\b[^.!?\n]{0,50}\b(?:manager|head coach|coach|boss)\b/i.test(prose)
+      || /[?]/.test(prose) || /^["“]/.test(prose)) return null;
+    const blocklist = new Set([
+      "The", "Current", "Unknown", "Unverified", "Manager", "Coach", "Football", "Premier", "League",
+      ...clubName.split(/\s+/),
+    ]);
+    const names = [...prose.matchAll(/([\p{Lu}][\p{L}\p{M}'’.-]+(?:\s+[\p{Lu}][\p{L}\p{M}'’.-]+){1,3})/gu)]
+      .map((match) => match[1].replace(/\s+(?:today|currently)$/i, ""))
+      .filter((name) => name.split(/\s+/).every((part) => /^\p{Lu}/u.test(part))
+        && !blocklist.has(name)
+        && !blocklist.has(name.split(/\s+/)[0]));
+    const identity = names[0] ?? null;
+    if (!identity) return null;
+    if (expectedManagerName && identity.toLowerCase() !== expectedManagerName.toLowerCase()) return null;
+    return identity;
+  }
   // Protect complete links before sentence splitting: punctuation in a source
   // title or URL cannot detach the citation from its role assertion.
   const links = [];
@@ -2279,11 +2313,8 @@ export function validatePositiveCurrentManager(answer, citations, verification, 
   const regions = protectedText.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
   const identities = regions.flatMap((region) => {
     const prose = region.replace(/@@CITE\d+@@/g, "").replace(/\*\*|__/g, "").replace(/^\s*[-*+]\s+/, "").trim();
-    const identity = scopeValid && patterns.map((pattern) => pattern.exec(prose)?.[1]?.replace(/\s+(?:today|currently)$/i, "")).find((value) => value
-      && value.split(/\s+/).every((part) => /^\p{Lu}/u.test(part))
-      && !/\b(?:The|Current|Unknown|Unverified|Manager|Coach)\b/i.test(value));
-    if (!identity || /\b(?:former|formerly|retired|no longer|not|cannot|could|might|would|rumou?r|if)\b/i.test(prose)
-      || /[?]/.test(prose) || /^["“]/.test(prose)) return [];
+    const identity = managerNameFromProse(prose);
+    if (!identity) return [];
     const regionLinks = [...region.matchAll(/@@CITE(\d+)@@/g)].map((match) => ({ ...links[Number(match[1])], index: match.index, marker: match[0] }));
     const matched = sourceRows.some((source) => {
       const sourceLinks = regionLinks.filter((link) => link?.url === source.url);
@@ -2405,8 +2436,12 @@ export function validateAbstainedCounterfactualDiscipline(answer, verificationSt
   const inputCue = /\b(?:if\b[^.!?\n]{0,100}\b(?:lineup|rotation|rotated|rests?|missing|absent|low block|press(?:es|ing)?|formation|tactic)|lineup changes?|rotation|rotated|low block|parks?\s+(?:a\s+)?low block|tactical (?:change|switch))\b/i;
   const probabilityCue = /\b(?:model(?:'s)?\s+(?:edge|probabilit|forecast)|probabilit(?:y|ies)|home[- ]win|away[- ]win|draw|edge|forecast|chance)\b/i;
   const movementCue = /\b(?:move|moves|moved|shift|shifts|rise|rises|increase|increases|fall|falls|drop|drops|shrink|shrinks|widen|widens|narrow|narrows|reduce|reduces|cut|cuts|boost|boosts|change|changes|toward|closer|higher|lower|more likely|less likely|likelier)\b/i;
+  const conditionalSafe = (region) =>
+    /\b(?:if|would|could|might|assuming|hypothetically)\b/i.test(region)
+    && /\b(?:cannot|can't|would not|won't|not verified|not establish|uncertain|unverified|no verified|hypothetical|conditional|caveat|would be wrong|can't quantify|cannot quantify)\b/i.test(region);
   const unsafe = regions.filter((region) =>
     inputCue.test(region) && probabilityCue.test(region) && movementCue.test(region)
+    && !conditionalSafe(region)
   );
   const passed = unsafe.length === 0;
   return {
