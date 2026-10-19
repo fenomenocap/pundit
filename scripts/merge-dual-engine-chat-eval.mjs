@@ -8,7 +8,13 @@ import {
   computeTurnQualityMetrics,
   summarizeLlmJudge,
 } from "./chat-eval-quality-metrics.mjs";
-import { resolveJudgeEvalTurns, skippedNoKeyJudge, resolveJudgeMode } from "./chat-eval-llm-judge.mjs";
+import {
+  resolveJudgeEvalTurns,
+  skippedNoKeyJudge,
+  skippedUnavailableJudge,
+  resolveJudgeMode,
+  remoteJudgeConfigured,
+} from "./chat-eval-llm-judge.mjs";
 import { writeReport } from "./chat-battle-test-lib.mjs";
 
 function flattenReportTurns(report) {
@@ -55,19 +61,20 @@ export async function mergeDualEngineChatEvalReports(legacy, agent, outputPath) 
 
   const judgeMode = resolveJudgeMode(process.env.CHAT_EVAL_JUDGE_MODE);
   const hasLocalJudgeKey = Boolean(process.env.OPENROUTER_API_KEY?.trim());
-  const hasRemoteJudge = judgeMode === "remote"
-    && Boolean(process.env.CHAT_EVAL_INTERNAL_TOKEN?.trim());
   const judgeAvailable = judgeMode === "off"
     ? false
     : judgeMode === "remote"
-      ? hasRemoteJudge
+      ? remoteJudgeConfigured()
       : hasLocalJudgeKey;
   const judgeOptions = { maxTurns: 24, paceMs: 250, judgeMode };
+  const skippedJudge = judgeMode === "local"
+    ? (turns) => skippedNoKeyJudge(turns, { maxTurns: 24 })
+    : (turns) => skippedUnavailableJudge(turns, { maxTurns: 24 });
 
   if (!judgeAvailable) {
-    merged.llmJudge = skippedNoKeyJudge(legacyTurns, { maxTurns: 24 });
+    merged.llmJudge = skippedJudge(legacyTurns);
     merged.llmJudgeSummary = summarizeLlmJudge(merged);
-    merged.agentEval.llmJudge = skippedNoKeyJudge(agentTurns, { maxTurns: 24 });
+    merged.agentEval.llmJudge = skippedJudge(agentTurns);
     merged.agentEval.llmJudgeSummary = summarizeLlmJudge({ llmJudge: merged.agentEval.llmJudge });
   } else {
     if (judgeNeedsRerun(legacy.llmJudge)) {

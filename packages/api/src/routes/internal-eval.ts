@@ -3,7 +3,8 @@ import rateLimit from "express-rate-limit";
 import express from "express";
 import { AppError } from "../middleware";
 import {
-  authorizeChatEvalInternalRequest,
+  authorizeChatEvalJudgeRequest,
+  CHAT_EVAL_JUDGE_REQUEST_TIMEOUT_MS,
   CHAT_EVAL_REMOTE_JUDGE_MAX_ANSWER_CHARS,
   CHAT_EVAL_REMOTE_JUDGE_MAX_BODY_BYTES,
   CHAT_EVAL_REMOTE_JUDGE_MAX_TURNS,
@@ -59,15 +60,35 @@ function sanitizeTurns(raw: unknown): JudgeTurnInput[] {
   });
 }
 
+function withRequestTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("judge_request_timeout")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 router.post("/judge", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const auth = authorizeChatEvalInternalRequest(req);
-    if (auth === "disabled") {
-      res.status(404).json({ error: "Not found" });
+    const auth = await authorizeChatEvalJudgeRequest(req);
+    if (auth === "unavailable") {
+      res.status(503).json({ error: "judge_unavailable" });
       return;
     }
     if (auth === "unauthorized") {
       res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    if (auth === "forbidden") {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
     const body = req.body as { turns?: unknown; maxTurns?: unknown; paceMs?: unknown };
@@ -84,9 +105,16 @@ router.post("/judge", async (req: Request, res: Response, next: NextFunction) =>
       ? Math.min(Math.max(0, Math.floor(paceMsRaw)), 2000)
       : 250;
     const core = getChatEvalJudgeCore();
-    const result = await core.judgeEvalTurnPayloads(turns, { maxTurns, paceMs });
+    const result = await withRequestTimeout(
+      core.judgeEvalTurnPayloads(turns, { maxTurns, paceMs }),
+      CHAT_EVAL_JUDGE_REQUEST_TIMEOUT_MS,
+    );
     res.json(result);
   } catch (error) {
+    if (error instanceof Error && error.message === "judge_request_timeout") {
+      res.status(504).json({ error: "judge_timeout" });
+      return;
+    }
     next(error);
   }
 });

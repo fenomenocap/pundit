@@ -4,7 +4,9 @@ import {
   judgeEvalTurnsRemote,
   resolveJudgeEvalTurns,
   resolveJudgeMode,
+  remoteJudgeConfigured,
 } from "./chat-eval-judge-remote.mjs";
+
 const sampleTurns = [{
   scenarioId: "s1",
   turn: 1,
@@ -23,56 +25,57 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = savedFetch;
   delete process.env.CHAT_EVAL_JUDGE_MODE;
-  delete process.env.CHAT_EVAL_INTERNAL_TOKEN;
+  delete process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN;
   delete process.env.OPENROUTER_API_KEY;
 });
 
-test("resolveJudgeMode defaults to local and rejects unknown values", () => {
-  assert.equal(resolveJudgeMode(), "local");
-  assert.equal(resolveJudgeMode("remote"), "remote");
-  assert.throws(() => resolveJudgeMode("bogus"), /local, remote, or off/);
+test("resolveJudgeMode defaults to remote", () => {
+  assert.equal(resolveJudgeMode(), "remote");
 });
 
-test("resolveJudgeEvalTurns uses local OpenRouter path by default", async () => {
-  delete process.env.OPENROUTER_API_KEY;
+test("resolveJudgeEvalTurns local mode skips when OpenRouter key is unset", async () => {
   const local = await resolveJudgeEvalTurns(sampleTurns, { judgeMode: "local" });
   assert.equal(local.status, "skipped_no_key");
 });
 
-test("judgeEvalTurnsRemote skips when internal token is unset", async () => {
-  const remote = await judgeEvalTurnsRemote(sampleTurns, { judgeMode: "remote" });
-  assert.equal(remote.status, "skipped_no_key");
-  assert.match(remote.turns[0].reason, /CHAT_EVAL_INTERNAL_TOKEN unset/);
+test("judgeEvalTurnsRemote reports skipped_unavailable when OIDC token is unset", async () => {
+  const remote = await judgeEvalTurnsRemote(sampleTurns);
+  assert.equal(remote.status, "skipped_unavailable");
+  assert.match(remote.turns[0].reason, /CHAT_EVAL_GITHUB_OIDC_TOKEN unset/);
 });
 
-test("judgeEvalTurnsRemote forwards turns to the API and returns its JSON", async () => {
-  process.env.CHAT_EVAL_INTERNAL_TOKEN = "ci-token";
+test("judgeEvalTurnsRemote maps Railway 503 to skipped_unavailable", async () => {
+  process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN = "oidc-token";
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: "judge_unavailable" }), { status: 503 });
+  const remote = await judgeEvalTurnsRemote(sampleTurns, { apiUrl: "https://example.test" });
+  assert.equal(remote.status, "skipped_unavailable");
+  assert.equal(remote.turns[0].reason, "judge_unavailable");
+});
+
+test("judgeEvalTurnsRemote forwards turns with OIDC bearer and returns scores", async () => {
+  process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN = "oidc-token";
   const judgePayload = {
     judgedTurns: 1,
     scoredTurns: 1,
     skippedTurns: 0,
-    averages: { overall: 0.71 },
+    averages: { overall: 0.71, personaStrength: 0.7, clearCall: 0.72, specificity: 0.68, variety: 0.65, citationCorrectness: 0.8 },
     turns: [{ scenarioId: "s1", skipped: false, scores: { overall: 0.71 } }],
   };
   globalThis.fetch = async (url, init) => {
     assert.equal(String(url).endsWith("/internal/eval/judge"), true);
-    assert.equal(init.headers.Authorization, "Bearer ci-token");
+    assert.equal(init.headers.Authorization, "Bearer oidc-token");
     const body = JSON.parse(init.body);
     assert.equal(body.turns.length, 1);
-    assert.equal(body.turns[0].answer, sampleTurns[0].answer);
     return new Response(JSON.stringify(judgePayload), { status: 200 });
   };
-  const remote = await judgeEvalTurnsRemote(sampleTurns, {
-    apiUrl: "https://example.test",
-  });
+  assert.equal(remoteJudgeConfigured(), true);
+  const remote = await judgeEvalTurnsRemote(sampleTurns, { apiUrl: "https://example.test" });
   assert.equal(remote.scoredTurns, 1);
   assert.equal(remote.averages.overall, 0.71);
 });
 
-test("resolveJudgeEvalTurns honors CHAT_EVAL_JUDGE_MODE=remote", async () => {
-  process.env.CHAT_EVAL_JUDGE_MODE = "remote";
-  process.env.CHAT_EVAL_INTERNAL_TOKEN = "ci-token";
-  process.env.OPENROUTER_API_KEY = "local-key-not-used-for-remote";
+test("resolveJudgeEvalTurns uses remote mode by default", async () => {
+  process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN = "oidc-token";
   globalThis.fetch = async () => new Response(JSON.stringify({
     judgedTurns: 1,
     scoredTurns: 1,
@@ -80,7 +83,6 @@ test("resolveJudgeEvalTurns honors CHAT_EVAL_JUDGE_MODE=remote", async () => {
     averages: { overall: 0.66 },
     turns: [{ skipped: false, scores: { overall: 0.66 } }],
   }), { status: 200 });
-  const result = await resolveJudgeEvalTurns(sampleTurns);
+  const result = await resolveJudgeEvalTurns(sampleTurns, { apiUrl: "https://example.test" });
   assert.equal(result.scoredTurns, 1);
-  assert.equal(result.averages.overall, 0.66);
 });

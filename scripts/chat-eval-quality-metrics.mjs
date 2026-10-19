@@ -2,7 +2,7 @@
  * Quality metrics for chat eval runs (template share, near-duplicates, LLM rate, etc.).
  */
 
-import { JUDGE_SKIPPED_NO_KEY_NOTE } from "./chat-eval-llm-judge.mjs";
+import { JUDGE_SKIPPED_NO_KEY_NOTE, JUDGE_SKIPPED_UNAVAILABLE_NOTE } from "./chat-eval-llm-judge.mjs";
 
 function normalize(text) {
   return String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -89,6 +89,16 @@ export function summarizeLlmJudge(report) {
       score: null,
       status: "skipped_no_key",
       note: JUDGE_SKIPPED_NO_KEY_NOTE,
+      judgedTurns: 0,
+      scoredTurns: 0,
+      skippedTurns: judge.skippedTurns ?? judge.turns?.length ?? 0,
+    };
+  }
+  if (judge.status === "skipped_unavailable") {
+    return {
+      score: null,
+      status: "skipped_unavailable",
+      note: JUDGE_SKIPPED_UNAVAILABLE_NOTE,
       judgedTurns: 0,
       scoredTurns: 0,
       skippedTurns: judge.skippedTurns ?? judge.turns?.length ?? 0,
