@@ -31,6 +31,9 @@ export type DossierEvidenceVerification = "cited" | "unverified" | "page-verifie
 
 export type DossierEvidenceTrustTier = EvidenceTier | "interim";
 
+/** FPL bootstrap-static player availability codes. */
+export type FplPlayerAvailabilityStatus = "d" | "i" | "s" | "u" | "n";
+
 export interface DossierEvidenceItem {
   id: string;
   claim: string;
@@ -55,13 +58,32 @@ export interface DossierEvidenceItem {
   freshnessVerified?: boolean;
   /** Provenance id for non-search sources (e.g. fpl-bootstrap-static). */
   source?: string;
-  /** Internal-only rows (FPL interim) — excluded from take v2 and public dossier API. */
+  /** Internal-only rows (FPL interim) — excluded from public dossier API; take header path only. */
   internalOnly?: boolean;
+  /** Parallel tier label for structured sources (e.g. FPL interim rows). */
+  tier?: "interim";
+  /** FPL bootstrap-static contract (injuries[] only). */
+  player?: string;
+  club?: string;
+  status?: FplPlayerAvailabilityStatus;
+  chanceOfPlaying?: number | null;
+  newsAddedAt?: string | null;
+  /** Audit-only; must not be rendered on public surfaces (take renders from structured fields). */
+  newsText?: string;
 }
 
-/** Evidence eligible for desk take v2 (#341 @ccd8b9a). */
+export function isFplBootstrapInjuryItem(item: DossierEvidenceItem): boolean {
+  return item.source === "fpl-bootstrap-static"
+    && item.tier === "interim"
+    && item.internalOnly === true
+    && item.category === "injuries"
+    && typeof item.player === "string"
+    && typeof item.club === "string";
+}
+
+/** Federated page-verified evidence for take v2 prose (not FPL structured rows). */
 export function isTakeV2DossierEvidence(item: DossierEvidenceItem): boolean {
-  if (item.internalOnly) return false;
+  if (item.internalOnly || isFplBootstrapInjuryItem(item)) return false;
   return item.verification === "page-verified"
     && item.fixtureMatchVerified === true
     && item.freshnessVerified === true;

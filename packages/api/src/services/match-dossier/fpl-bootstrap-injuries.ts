@@ -2,18 +2,18 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ModelFixture } from "../model-data";
-import type { DossierEvidenceItem } from "./types";
+import type { DossierEvidenceItem, FplPlayerAvailabilityStatus } from "./types";
 import { matchDossierFplEnabled } from "./flags";
 
 const FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/";
 
-interface FplBootstrapTeam {
+export interface FplBootstrapTeam {
   id: number;
   name: string;
   short_name: string;
 }
 
-interface FplBootstrapElement {
+export interface FplBootstrapElement {
   id: number;
   web_name: string;
   team: number;
@@ -23,14 +23,14 @@ interface FplBootstrapElement {
   chance_of_playing_next_round: number | null;
 }
 
-interface FplBootstrapSnapshot {
+export interface FplBootstrapSnapshot {
   teams: FplBootstrapTeam[];
   elements: FplBootstrapElement[];
 }
 
 let buildPassCache: { snapshot: FplBootstrapSnapshot; fetchedAt: string } | null = null;
 
-const CLUB_TO_FPL: Record<string, string[]> = {
+const FIXTURE_TO_FPL_TEAM_NAMES: Record<string, string[]> = {
   Arsenal: ["Arsenal"],
   "Aston Villa": ["Aston Villa"],
   Bournemouth: ["Bournemouth", "AFC Bournemouth"],
@@ -53,18 +53,37 @@ const CLUB_TO_FPL: Record<string, string[]> = {
   Wolves: ["Wolves"],
 };
 
-function fixtureTeamIds(snapshot: FplBootstrapSnapshot, fixture: ModelFixture): Set<number> {
+function fplTeamMatchesFixtureSide(team: FplBootstrapTeam, fixtureSide: string): boolean {
+  const aliases = FIXTURE_TO_FPL_TEAM_NAMES[fixtureSide] ?? [fixtureSide];
+  const norm = (s: string) => s.trim().toLocaleLowerCase();
+  return aliases.some((a) => norm(a) === norm(team.name) || norm(a) === norm(team.short_name));
+}
+
+/** Resolve bootstrap team id → fixture home/away label when matched. */
+export function clubLabelForFplTeam(
+  fixture: ModelFixture,
+  team: FplBootstrapTeam,
+): string {
+  if (fplTeamMatchesFixtureSide(team, fixture.home)) return fixture.home;
+  if (fplTeamMatchesFixtureSide(team, fixture.away)) return fixture.away;
+  return team.name;
+}
+
+export function fixtureFplTeamIds(snapshot: FplBootstrapSnapshot, fixture: ModelFixture): Set<number> {
   const ids = new Set<number>();
-  for (const side of [fixture.home, fixture.away]) {
-    const names = CLUB_TO_FPL[side] ?? [side];
-    for (const team of snapshot.teams) {
-      if (names.some((n) => n.toLocaleLowerCase() === team.name.toLocaleLowerCase()
-        || n.toLocaleLowerCase() === team.short_name.toLocaleLowerCase())) {
-        ids.add(team.id);
-      }
+  for (const team of snapshot.teams) {
+    if (fplTeamMatchesFixtureSide(team, fixture.home) || fplTeamMatchesFixtureSide(team, fixture.away)) {
+      ids.add(team.id);
     }
   }
   return ids;
+}
+
+function normalizeFplStatus(raw: string, hasNews: boolean): FplPlayerAvailabilityStatus {
+  const code = raw.trim().toLocaleLowerCase();
+  if (code === "d" || code === "i" || code === "s" || code === "u" || code === "n") return code;
+  if (hasNews) return "n";
+  return "n";
 }
 
 function evidenceIdForFpl(playerId: number, fixture: ModelFixture): string {
@@ -104,24 +123,26 @@ export function buildFplInjuryEvidenceForFixture(
   snapshot: FplBootstrapSnapshot,
 ): DossierEvidenceItem[] {
   if (fixture.competitionId !== "eng.1") return [];
-  const teamIds = fixtureTeamIds(snapshot, fixture);
+  const teamIds = fixtureFplTeamIds(snapshot, fixture);
   if (!teamIds.size) return [];
   const items: DossierEvidenceItem[] = [];
   for (const player of snapshot.elements) {
     if (!teamIds.has(player.team)) continue;
-    const hasNews = Boolean(player.news?.trim());
+    const newsText = player.news?.trim() ?? "";
+    const hasNews = newsText.length > 0;
     if (player.status === "a" && !hasNews) continue;
     const team = snapshot.teams.find((t) => t.id === player.team);
-    const chance = player.chance_of_playing_next_round;
-    const chanceNote = chance != null && chance < 100 ? ` (${chance}% chance next round)` : "";
-    const claim = `${player.web_name} (${team?.name ?? "club"}): ${hasNews ? player.news.trim() : `status ${player.status}`}${chanceNote}`;
-    const publishedAt = player.news_added ?? retrievedAt;
+    if (!team) continue;
+    const club = clubLabelForFplTeam(fixture, team);
+    const status = normalizeFplStatus(player.status, hasNews);
+    const newsAddedAt = player.news_added ?? null;
+    const chanceOfPlaying = player.chance_of_playing_next_round ?? null;
     items.push({
       id: evidenceIdForFpl(player.id, fixture),
-      claim: claim.slice(0, 480),
+      claim: `${player.web_name} (${club})`,
       sourceUrl: FPL_BOOTSTRAP_URL,
       publisher: "fantasy.premierleague.com",
-      publishedAt,
+      publishedAt: newsAddedAt ?? retrievedAt,
       retrievedAt,
       trustTier: "interim",
       verification: "cited",
@@ -130,7 +151,14 @@ export function buildFplInjuryEvidenceForFixture(
       category: "injuries",
       origin: "scheduled",
       source: "fpl-bootstrap-static",
+      tier: "interim",
       internalOnly: true,
+      player: player.web_name,
+      club,
+      status,
+      chanceOfPlaying,
+      newsAddedAt,
+      newsText: hasNews ? newsText : undefined,
     });
   }
   return items;
