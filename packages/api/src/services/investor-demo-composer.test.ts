@@ -15,8 +15,7 @@ import {
   bankrollStakePolicyAppendix,
   planResponse,
 } from "./response-plan";
-import { stripUntraceableMatchPercentages } from "./response-correctness";
-import { normalizeAnalystIdentity } from "./ask";
+import { finalizeMatchDeliveredTextForTests, normalizeAnalystIdentity } from "./ask";
 
 function spursCoventryGrounding(): Grounding {
   const pHome = 0.599;
@@ -153,7 +152,8 @@ describe("investor demo composer fixes", () => {
     const bttsAfter = composeMatchResponse("Both teams to score?", grounding, planResponse("Both teams to score?", { groundingKind: "match" }));
     expect(bttsAfter).toContain("BTTS yes  52.0% | fair 1.92");
     expect(bttsAfter).toContain("BTTS no  48.0% | fair 2.08");
-    expect(bttsAfter).toMatch(/Lean: BTTS yes, small play\./);
+    expect(bttsAfter).not.toMatch(/^Lean:/m);
+    expect(bttsAfter).toMatch(/BTTS market line/i);
     expect(bttsAfter).toMatch(/Model: Elo ratings v1/);
     expect(bttsAfter).not.toContain("Gamble responsibly");
 
@@ -174,12 +174,13 @@ describe("investor demo composer fixes", () => {
   });
 
   it("4) pricing follow-ups with history stay on the composer, not tactics LLM route", () => {
-    const followUp = { groundingKind: "match" as const, hasHistory: true };
-    expect(planResponse("what about the draw?", followUp).mode).toBe("pricing-desk");
+    const followUp = { groundingKind: "match" as const, hasHistory: true, hasCompleteMarket1x2: true };
+    expect(planResponse("what about the draw?", followUp).mode).toBe("market-comparison");
     expect(planResponse("What about over 2.5?", followUp).mode).toBe("totals");
     const answer = composeMatchResponse("what about the draw?", grounding, planResponse("what about the draw?", followUp));
     expect(answer).toContain("Draw  24.4% | fair 4.10");
-    expect(answer).toMatch(/Lean: Spurs, small play\./);
+    expect(answer).toMatch(/Lean: draw at 4\.88, small play\./);
+    expect(answer).not.toMatch(/Lean: Spurs/);
   });
 
   it("CTO A) Kalshi/Polymarket pricing legs carry before-fees decimals without EV", () => {
@@ -213,7 +214,7 @@ describe("investor demo composer fixes", () => {
       .toBe("slate-best-gap");
     expect(answer).toContain("today (18 October 2026)");
     expect(answer).toContain("Tottenham v Coventry");
-    expect(answer).toMatch(/Lean: Tottenham, small play\./);
+    expect(answer).toMatch(/Lean: Spurs, small play\./);
     expect(answer).not.toMatch(/\bedge\b/i);
     vi.restoreAllMocks();
   });
@@ -235,7 +236,8 @@ describe("investor demo composer fixes", () => {
     );
     expect(answer).toMatch(/can.t guarantee a winner/i);
     expect(answer).toContain("Spurs  59.9% | fair 1.67");
-    expect(answer).not.toMatch(/Accas multiply risk/i);
+    expect(answer).toMatch(/Nothing is guaranteed; accas multiply risk/i);
+    expect(answer).not.toMatch(/^Lean:/m);
     expect(answer).toMatch(/18\+/);
   });
 
@@ -244,34 +246,22 @@ describe("investor demo composer fixes", () => {
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
     expect(plan.mode).toBe("stake-refusal");
     const composed = composeMatchResponse(question, grounding, plan);
-    expect(composed).toMatch(/\$1,000 bankroll/i);
-    expect(composed).not.toMatch(/flat unit stakes only/i);
-    expect(composed).toMatch(/Caveat: Spurs 20th on 3 pts/);
+    expect(composed).not.toMatch(/\$1,000 bankroll/i);
+    expect(composed).not.toMatch(/1–2% per bet/i);
+    expect(composed).not.toMatch(/Caveat: Spurs 20th on 3 pts/);
     expect(composed).not.toMatch(/^Lean:\s*$/m);
     expect(composed).not.toContain(STAKE_REFUSAL_SENTENCE);
     expect(composed).toMatch(/Model: Elo ratings v1/);
 
-    const modelProbabilities = [
-      grounding.pHome, grounding.pDraw, grounding.pAway,
-      grounding.pOver2_5, grounding.pUnder2_5, grounding.pBttsYes, grounding.pBttsNo,
-      ...grounding.scorelines.map((row) => row.probability),
-    ];
-    expect(composed).toMatch(/\$10–\$20 on \$1,000/);
-    expect(composed).toMatch(/1–2% per bet/i);
-    expect(composed).toMatch(/accas/i);
-    expect(composed).toMatch(/never chase/i);
-    expect(composed).toMatch(/do not Kelly-size/i);
-    const traced = stripUntraceableMatchPercentages(composed, {
-      probabilities: [
-        ...modelProbabilities,
-        ...grounding.oddsSources.flatMap((source) =>
-          [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
-      ],
-      percentagePointGaps: grounding.marketDivergence.flatMap((market) =>
-        market.legs.map((leg) => leg.gapPoints)),
-      fairDecimalOdds: modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
-    });
-    expect(traced.trim()).toMatch(/Caveat: Spurs 20th on 3 pts/);
+    const delivered = finalizeMatchDeliveredTextForTests(composed, grounding, question);
+    expect(delivered).toMatch(/\$1,000 bankroll/i);
+    expect(delivered).toMatch(/\$10–\$20 on \$1,000/);
+    expect(delivered).toMatch(/1–2% per bet/i);
+    expect(delivered).toMatch(/accas/i);
+    expect(delivered).toMatch(/never chase/i);
+    expect(delivered).toMatch(/do not Kelly-size/i);
+    expect(delivered).toMatch(/Gamble responsibly, 18\+\./);
+    expect(delivered.lastIndexOf("Gamble responsibly")).toBeGreaterThan(delivered.indexOf("$1,000 bankroll"));
     expect(bankrollStakePolicyAppendix(question)).toMatch(/\$1,000 bankroll/i);
   });
 
@@ -280,7 +270,8 @@ describe("investor demo composer fixes", () => {
     const whoWins = "Who wins Tottenham v Coventry?";
     expect(planResponse(whoWins, ctx).mode).toBe("market-comparison");
     const whoAnswer = composeMatchResponse(whoWins, grounding, planResponse(whoWins, ctx))!;
-    expect(whoAnswer).toMatch(/Spurs are my favourite at 59\.9%;/);
+    expect(whoAnswer).toMatch(/Spurs are my favourite on this read;/);
+    expect(whoAnswer).not.toMatch(/59\.9%.*59\.9%.*59\.9%/);
     expect(whoAnswer).toMatch(/Biggest gap: Draw \(\+3\.9 pts vs Polymarket\)\./);
     expect(whoAnswer).toContain("Spurs  59.9% | fair 1.67 | Polymarket 1.56 (64.0%)");
     expect(whoAnswer).not.toContain("I need a captured decimal line");
