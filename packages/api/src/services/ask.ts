@@ -184,6 +184,7 @@ import {
   AGENT_GENERATION_BUDGET_MS,
   emptyChatAgentTurnMetrics,
   logChatAgentTurn,
+  type ChatAgentCapHit,
   type ChatAgentTurnMetrics,
 } from "./chat-agent-limits";
 import {
@@ -194,7 +195,7 @@ import {
 import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
 import {
   enrichAgentTeamNewsAttribution,
-  finalizeAgentPackagedAnswer,
+  repairAgentDeliveredProse,
   sanitizeAgentCitationArtifacts,
 } from "./chat-agent-package";
 import type { ChatEngineMode } from "./chat-engine";
@@ -10529,6 +10530,7 @@ function packageAgentDirectAnswer(
   usedLlm: boolean,
   voice?: "desk",
   managerPages?: readonly RetrievedEvidencePage[],
+  capHit: ChatAgentCapHit = null,
 ): ScopedAskPayload {
   let prepared = sanitizeAgentCitationArtifacts(prose);
   if (planResponse(question, { groundingKind: grounding?.kind ?? null }).mode === "team-news") {
@@ -10538,7 +10540,15 @@ function packageAgentDirectAnswer(
   const answer = rendered.trim()
     ? rendered
     : resolveAgentUserAnswer(question, grounding, bundle, hasHistory, "");
-  const shaped = finalizeAgentPackagedAnswer(answer, { voice });
+  const shaped = repairAgentDeliveredProse(
+    answer,
+    {
+      voice,
+      capHit,
+      recover: () => resolveAgentUserAnswer(question, grounding, bundle, hasHistory, prose),
+    },
+    dropStructurallyIncompleteTail,
+  );
   const manager = normalizeAgentManagerAnswer(
     question,
     grounding,
@@ -10641,6 +10651,7 @@ async function deliverChatAgentTurn(
       metrics.toolSteps > 0,
       voice,
       managerPages,
+      metrics.capHit,
     );
   }
 
@@ -10659,6 +10670,7 @@ async function deliverChatAgentTurn(
     true,
     voice,
     managerPages,
+    metrics.capHit,
   );
 }
 

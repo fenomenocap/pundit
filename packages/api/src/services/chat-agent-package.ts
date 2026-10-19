@@ -3,6 +3,7 @@ import { assertsSquadAvailability } from "./answer-provenance";
 import type { RetrievedEvidencePage } from "./evidence-page-retrieval";
 import { formatDeskCitationDate, rewriteDeskCitationMarkdown } from "./desk-voice";
 import { playerNamedInNewsBody } from "./player-evidence";
+import type { ChatAgentCapHit } from "./chat-agent-limits";
 
 /** Must stay aligned with `MAX_HISTORY_CONTENT_LENGTH` in routes/ask.ts */
 export const AGENT_HISTORY_CONTENT_MAX = 4_000;
@@ -90,6 +91,47 @@ export function enrichAgentTeamNewsAttribution(
   return enriched.join(" ");
 }
 
+const AGENT_PROBABILITY_TAIL = /\b(?:(?:[Hh]ome|[Aa]way|[Dd]raw)\s+(?:(?:is|are|at)\s+)?|[A-Z][A-Za-z.'’-]{1,30}(?:\s+[A-Z][A-Za-z.'’-]{1,30}){0,3}\s+(?:is|are|at)\s+)\*{0,2}\d{1,3}(?:\.\d*)?\*{0,2}\.?\s*$/;
+
+/** Mirrors Schema-17 structural ending checks for agent-packaged answers. */
+export function agentDeliveryStructurallyComplete(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length < 2) return false;
+  if ((trimmed.match(/\*\*/g) ?? []).length % 2 !== 0) return false;
+  const probabilityTail = AGENT_PROBABILITY_TAIL.exec(trimmed);
+  if (probabilityTail?.index !== undefined) {
+    const clause = trimmed.slice(Math.max(
+      trimmed.lastIndexOf(".", probabilityTail.index - 1),
+      trimmed.lastIndexOf("!", probabilityTail.index - 1),
+      trimmed.lastIndexOf("?", probabilityTail.index - 1),
+      trimmed.lastIndexOf("\n", probabilityTail.index - 1),
+    ) + 1, probabilityTail.index);
+    const externalPrice = /\b(?:bet365|bookmakers?|bookies?|kalshi|polymarket|stake)\b[^.!?\n]{0,80}\b(?:has|have|price[sd]?|offers?|quotes?)\b/i.test(clause);
+    if (trimmed.slice(Math.max(0, probabilityTail.index - 160), probabilityTail.index).includes("%") && !externalPrice) {
+      return false;
+    }
+  }
+  return /[.!?]["'”)]*\s*$/.test(trimmed);
+}
+
+function trimToLastCompleteSentence(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  if (/[.!?]["'”)]*\s*$/.test(trimmed)) return trimmed;
+  const lastEnd = Math.max(
+    trimmed.lastIndexOf(". "),
+    trimmed.lastIndexOf("! "),
+    trimmed.lastIndexOf("? "),
+    trimmed.lastIndexOf(".\n"),
+    trimmed.lastIndexOf("!\n"),
+    trimmed.lastIndexOf("?\n"),
+  );
+  if (lastEnd >= 0) return trimmed.slice(0, lastEnd + 1).trim();
+  const loneEnd = Math.max(trimmed.lastIndexOf("."), trimmed.lastIndexOf("!"), trimmed.lastIndexOf("?"));
+  if (loneEnd > trimmed.length * 0.45) return trimmed.slice(0, loneEnd + 1).trim();
+  return "";
+}
+
 export function completeAgentAnswerEnding(text: string): string {
   let trimmed = text.trim();
   if (!trimmed) return trimmed;
@@ -98,7 +140,7 @@ export function completeAgentAnswerEnding(text: string): string {
     const lastOpen = trimmed.lastIndexOf("**");
     if (lastOpen > 0) trimmed = trimmed.slice(0, lastOpen).trim();
   }
-  const probabilityTail = /\b(?:(?:[Hh]ome|[Aa]way|[Dd]raw)\s+(?:(?:is|are|at)\s+)?|[A-Z][A-Za-z.'’-]{1,30}(?:\s+[A-Z][A-Za-z.'’-]{1,30}){0,3}\s+(?:is|are|at)\s+)\*{0,2}\d{1,3}(?:\.\d*)?\*{0,2}\.?\s*$/.exec(trimmed);
+  const probabilityTail = AGENT_PROBABILITY_TAIL.exec(trimmed);
   if (probabilityTail?.index !== undefined && probabilityTail.index > 0) {
     const clause = trimmed.slice(Math.max(0, probabilityTail.index - 160), probabilityTail.index);
     if (clause.includes("%") && !/\b(?:bet365|bookmakers?|kalshi|polymarket|stake)\b/i.test(clause)) {
@@ -109,12 +151,10 @@ export function completeAgentAnswerEnding(text: string): string {
     /\.\s+(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+)?(?:is|are|at)\s+\d{1,3}(?:\.\d+)?\.?\s*$/,
     ".",
   );
-  if (!/[.!?]["'”)]*\s*$/.test(trimmed) && trimmed.length > 20) {
-    const lastEnd = Math.max(trimmed.lastIndexOf("."), trimmed.lastIndexOf("!"), trimmed.lastIndexOf("?"));
-    if (lastEnd > trimmed.length * 0.55) trimmed = trimmed.slice(0, lastEnd + 1).trim();
-    else trimmed = `${trimmed.replace(/[,;:]\s*$/, "")}.`;
+  if (!/[.!?]["'”)]*\s*$/.test(trimmed)) {
+    trimmed = trimToLastCompleteSentence(trimmed);
   }
-  return trimmed;
+  return trimmed.trim();
 }
 
 export function capAgentAnswerForHistory(text: string, maxLen = AGENT_HISTORY_CONTENT_MAX): string {
@@ -124,17 +164,58 @@ export function capAgentAnswerForHistory(text: string, maxLen = AGENT_HISTORY_CO
   const lastSentenceEnd = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
   if (lastSentenceEnd > maxLen * 0.45) slice = slice.slice(0, lastSentenceEnd + 1);
   trimmed = completeAgentAnswerEnding(slice.trim());
-  if (trimmed.length <= maxLen) return trimmed;
-  const hard = trimmed.slice(0, maxLen).replace(/\s+\S+$/, "").trim();
-  return hard.length > 0 ? hard : trimmed.slice(0, maxLen);
+  if (trimmed.length <= maxLen && agentDeliveryStructurallyComplete(trimmed)) return trimmed;
+  const sentenceOnly = trimToLastCompleteSentence(trimmed.slice(0, maxLen));
+  if (sentenceOnly.length > 0 && sentenceOnly.length <= maxLen && agentDeliveryStructurallyComplete(sentenceOnly)) {
+    return sentenceOnly;
+  }
+  if (trimmed.length <= maxLen && agentDeliveryStructurallyComplete(trimmed)) return trimmed;
+  const fallback = sentenceOnly.length > 0 ? sentenceOnly : trimmed.slice(0, maxLen).trim();
+  if (fallback.length > maxLen) {
+    return (trimToLastCompleteSentence(fallback.slice(0, maxLen)) || fallback.slice(0, maxLen).trim()).slice(0, maxLen);
+  }
+  return fallback.length > 0 ? fallback : text.trim().slice(0, maxLen).trim();
+}
+
+function polishAgentDeliveredProse(
+  prose: string,
+  options: { voice?: "desk" },
+  trimStructuralTail: (text: string) => string,
+): string {
+  let text = trimStructuralTail(prose.trim());
+  if (options.voice === "desk") text = rewriteDeskCitationMarkdown(text);
+  text = completeAgentAnswerEnding(text);
+  return capAgentAnswerForHistory(text);
+}
+
+/**
+ * Agent delivery must never return empty or mid-sentence prose after a cap or
+ * truncated generation. Structural tail repair runs first; incomplete output
+ * falls back to server-owned evidence or grounding copy.
+ */
+export function repairAgentDeliveredProse(
+  prose: string,
+  options: {
+    voice?: "desk";
+    capHit?: ChatAgentCapHit | null;
+    recover: () => string;
+  },
+  trimStructuralTail: (text: string) => string,
+): string {
+  let text = polishAgentDeliveredProse(prose, options, trimStructuralTail);
+  if (!text.trim() || !agentDeliveryStructurallyComplete(text)) {
+    text = polishAgentDeliveredProse(options.recover(), options, trimStructuralTail);
+  }
+  if (!text.trim()) {
+    text = "No bet — I'll keep this to the model sheet and verified sources only.";
+  }
+  return text;
 }
 
 export function finalizeAgentPackagedAnswer(
   prose: string,
   options: { voice?: "desk" } = {},
+  trimStructuralTail: (text: string) => string = (text) => text,
 ): string {
-  let text = prose;
-  if (options.voice === "desk") text = rewriteDeskCitationMarkdown(text);
-  text = completeAgentAnswerEnding(text);
-  return capAgentAnswerForHistory(text);
+  return polishAgentDeliveredProse(prose, options, trimStructuralTail);
 }
