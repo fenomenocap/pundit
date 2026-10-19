@@ -10,6 +10,7 @@ import {
   injurySiteBeatFallbackOrder,
   injurySiteBeatQueries,
   managerLookupNeedsSiteBeatRetry,
+  managerNarrowRetryQueries,
   managerSiteBeatFallbackOrder,
   managerSiteBeatQueries,
   NATIONAL_NEWS_SITE_BEAT_DEFAULTS,
@@ -97,6 +98,14 @@ describe("manager site beat helpers", () => {
       snippet: "Arsenal manager Mikel Arteta spoke to reporters.",
     };
     expect(managerLookupNeedsSiteBeatRetry([beat], "Arsenal")).toBe(false);
+  });
+
+  it("builds a narrow head-coach retry with the official club site when known", () => {
+    expect(managerNarrowRetryQueries("Everton")).toEqual([
+      "Everton head coach",
+      "site:evertonfc.com head coach manager",
+    ]);
+    expect(managerNarrowRetryQueries("Coventry City")).toEqual(["Coventry City head coach"]);
   });
 });
 

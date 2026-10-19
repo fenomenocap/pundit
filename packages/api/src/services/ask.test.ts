@@ -827,11 +827,11 @@ describe("complete standalone football lessons", () => {
       for (const voice of [undefined, "desk"] as const) {
         hydrated = false; searchWeb.mockClear();
         checkDelivery(await answerQuestion("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], controller.signal, context, undefined, voice));
-        expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(6);
+        expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(8);
       }
       hydrated = false; searchWeb.mockClear(); const deltas: string[] = [];
       const streamed = await answerQuestionStream("Who is Arsenal’s manager today?", [], ["Arsenal", "Leeds"], { signal: controller.signal, onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
-      checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(6);
+      checkDelivery(streamed); expect(deltas).toEqual([streamed.answer]); expect(searchWeb.mock.calls.length).toBeLessThanOrEqual(8);
       expect(create.mock.calls.every(([params]) => String((params as Anthropic.MessageCreateParamsNonStreaming).system)
         .startsWith("You are Pundit's bounded factual claim verifier."))).toBe(true);
     } finally {

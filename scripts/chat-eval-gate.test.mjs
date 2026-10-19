@@ -55,3 +55,30 @@ test("monitor gate fixture revalidates manager and dated club news turns", () =>
   assert.equal(gradeRecordedJsonScenario(resolvedManager, managerRecording.turns, { evaluationNow: now }).outcome, "PASS");
   assert.equal(gradeRecordedJsonScenario(resolvedNews, newsRecording.turns, { evaluationNow: now }).outcome, "PASS");
 });
+
+test("Everton structural manager replay grades fixed-club scenario", () => {
+  const fixturePath = path.resolve(import.meta.dirname, "../evals/chat/fixtures/monitor-gate-everton-structural-v1.json");
+  const scenariosPath = path.resolve(import.meta.dirname, "../evals/chat/scenarios.json");
+  const fixture = JSON.parse(readFileSync(fixturePath, "utf8"));
+  const { fixed } = JSON.parse(readFileSync(scenariosPath, "utf8"));
+  const scenario = fixed.find((row) => row.id === "pinned-current-manager-everton-fixed");
+  const recording = fixture.scenarios.find((row) => row.id === scenario.id);
+  const home = fixture.pinnedFeatured.home;
+  const resolved = {
+    ...scenario,
+    kind: "json",
+    __home: home,
+    turns: scenario.turns.map((turn) => ({
+      expectGrounding: turn.expectGrounding === "match" ? "match" : turn.expectGrounding,
+      expectTeams: [home, fixture.pinnedFeatured.away],
+      expectFixtureId: fixture.pinnedFeatured.recognizedFixtureId,
+      expectCompetitionId: fixture.pinnedFeatured.competitionId,
+      ...turn,
+      expectCurrentManager: turn.expectCurrentManager
+        ? { team: home }
+        : undefined,
+    })),
+  };
+  const now = Date.parse(fixture.evaluationNow);
+  assert.equal(gradeRecordedJsonScenario(resolved, recording.turns, { evaluationNow: now }).outcome, "PASS");
+});
