@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "fixture": {
     "fixtureId": "espn:eng.1:401878767",
     "espnEventId": 401878767,
@@ -9,8 +9,8 @@
     "home": "Chelsea",
     "away": "Tottenham"
   },
-  "builtAt": "2026-10-19T10:27:38.999Z",
-  "builderVersion": "phase1-2026-10-19",
+  "builtAt": "2026-10-19T10:40:00.000Z",
+  "builderVersion": "phase2-2026-10-19",
   "scheduleReason": "manual",
   "table": {
     "home": {
@@ -21,9 +21,10 @@
       },
       "provenance": {
         "sourceId": "espn-public-scoreboard",
-        "label": "ESPN",
-        "trustTier": "fixture-spine",
-        "asOf": "2026-10-19T10:27:38.942Z",
+        "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+        "trustTier": "interim-spine",
+        "sourceRole": "interim",
+        "asOf": "2026-10-19T10:40:20.002Z",
         "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
       }
     },
@@ -35,9 +36,10 @@
       },
       "provenance": {
         "sourceId": "espn-public-scoreboard",
-        "label": "ESPN",
-        "trustTier": "fixture-spine",
-        "asOf": "2026-10-19T10:27:38.942Z",
+        "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+        "trustTier": "interim-spine",
+        "sourceRole": "interim",
+        "asOf": "2026-10-19T10:40:20.002Z",
         "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
       }
     }
@@ -58,9 +60,10 @@
       },
       "provenance": {
         "sourceId": "espn-public-scoreboard",
-        "label": "ESPN",
-        "trustTier": "fixture-spine",
-        "asOf": "2026-10-19T10:27:38.942Z",
+        "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+        "trustTier": "interim-spine",
+        "sourceRole": "interim",
+        "asOf": "2026-10-19T10:40:20.002Z",
         "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
       }
     },
@@ -79,9 +82,10 @@
       },
       "provenance": {
         "sourceId": "espn-public-scoreboard",
-        "label": "ESPN",
-        "trustTier": "fixture-spine",
-        "asOf": "2026-10-19T10:27:38.942Z",
+        "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+        "trustTier": "interim-spine",
+        "sourceRole": "interim",
+        "asOf": "2026-10-19T10:40:20.002Z",
         "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
       }
     },
@@ -105,9 +109,10 @@
       },
       "provenance": {
         "sourceId": "espn-public-scoreboard",
-        "label": "ESPN",
-        "trustTier": "fixture-spine",
-        "asOf": "2026-10-19T10:27:38.942Z",
+        "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+        "trustTier": "interim-spine",
+        "sourceRole": "interim",
+        "asOf": "2026-10-19T10:40:20.002Z",
         "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
       }
     },
@@ -131,9 +136,10 @@
       },
       "provenance": {
         "sourceId": "espn-public-scoreboard",
-        "label": "ESPN",
-        "trustTier": "fixture-spine",
-        "asOf": "2026-10-19T10:27:38.942Z",
+        "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+        "trustTier": "interim-spine",
+        "sourceRole": "interim",
+        "asOf": "2026-10-19T10:40:20.002Z",
         "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
       }
     }
@@ -203,9 +209,10 @@
       },
       "provenance": {
         "sourceId": "espn-public-scoreboard",
-        "label": "ESPN",
-        "trustTier": "fixture-spine",
-        "asOf": "2026-10-19T10:27:38.942Z",
+        "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+        "trustTier": "interim-spine",
+        "sourceRole": "interim",
+        "asOf": "2026-10-19T10:40:20.002Z",
         "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
       }
     },
@@ -272,9 +279,10 @@
       },
       "provenance": {
         "sourceId": "espn-public-scoreboard",
-        "label": "ESPN",
-        "trustTier": "fixture-spine",
-        "asOf": "2026-10-19T10:27:38.942Z",
+        "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+        "trustTier": "interim-spine",
+        "sourceRole": "interim",
+        "asOf": "2026-10-19T10:40:20.002Z",
         "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
       }
     }
@@ -288,9 +296,10 @@
     },
     "provenance": {
       "sourceId": "espn-public-scoreboard",
-      "label": "ESPN",
-      "trustTier": "fixture-spine",
-      "asOf": "2026-10-19T10:27:38.942Z",
+      "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+      "trustTier": "interim-spine",
+      "sourceRole": "interim",
+      "asOf": "2026-10-19T10:40:20.002Z",
       "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
     }
   },
@@ -320,9 +329,10 @@
     },
     "provenance": {
       "sourceId": "espn-public-scoreboard",
-      "label": "ESPN",
-      "trustTier": "fixture-spine",
-      "asOf": "2026-10-19T10:27:38.942Z",
+      "label": "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+      "trustTier": "interim-spine",
+      "sourceRole": "interim",
+      "asOf": "2026-10-19T10:40:20.002Z",
       "url": "https://site.api.espn.com/apis/site/v2/sports/soccer"
     }
   },
@@ -332,47 +342,112 @@
       "sourceId": "rolling-xg-unavailable",
       "label": "Not ingested in Phase 1",
       "trustTier": "fixture-spine",
-      "asOf": "2026-10-19T10:27:38.999Z"
+      "asOf": "2026-10-19T10:40:00.000Z"
     }
   },
   "injuries": {
     "value": {
-      "items": []
+      "items": [
+        {
+          "id": "9833fd5de7f5a636",
+          "claim": "Chelsea vs Tottenham team news — Cole Palmer is a doubt for Chelsea with a hamstring issue; Tottenham miss James Maddison (knee).",
+          "sourceUrl": "https://www.bbc.co.uk/sport/football/articles/chelsea-tottenham-team-news",
+          "publisher": "bbc.co.uk",
+          "publishedAt": "2026-10-18T00:00:00.000Z",
+          "retrievedAt": "2026-10-19T10:40:00.000Z",
+          "trustTier": "news",
+          "verification": "cited",
+          "direction": "neutral",
+          "relatedFactor": "injuries",
+          "category": "injuries",
+          "origin": "scheduled",
+          "snippet": "Cole Palmer is a doubt for Chelsea with a hamstring issue; Tottenham miss James Maddison (knee)."
+        },
+        {
+          "id": "6a517c829d9773c4",
+          "claim": "Chelsea injury latest — Enzo Fernandez trained but Cole Palmer did not complete the session.",
+          "sourceUrl": "https://www.skysports.com/football/news/chelsea-injuries-oct-2026",
+          "publisher": "skysports.com",
+          "publishedAt": "2026-10-19T00:00:00.000Z",
+          "retrievedAt": "2026-10-19T10:40:00.000Z",
+          "trustTier": "news",
+          "verification": "cited",
+          "direction": "supports-away",
+          "relatedFactor": "injuries",
+          "category": "injuries",
+          "origin": "scheduled",
+          "snippet": "Enzo Fernandez trained but Cole Palmer did not complete the session."
+        },
+        {
+          "id": "12a3bd40eceb4df2",
+          "claim": "Tottenham injury news — Tottenham confirm James Maddison and Richarlison remain sidelined ahead of Chelsea.",
+          "sourceUrl": "https://www.theguardian.com/football/2026/oct/19/tottenham-injuries",
+          "publisher": "theguardian.com",
+          "publishedAt": "2026-10-19T00:00:00.000Z",
+          "retrievedAt": "2026-10-19T10:40:00.000Z",
+          "trustTier": "news",
+          "verification": "cited",
+          "direction": "neutral",
+          "relatedFactor": "injuries",
+          "category": "injuries",
+          "origin": "scheduled",
+          "snippet": "Tottenham confirm James Maddison and Richarlison remain sidelined ahead of Chelsea."
+        }
+      ]
     },
     "provenance": {
-      "sourceId": "injuries-placeholder",
-      "label": "Phase 2 federated corroboration",
+      "sourceId": "federated-web-search",
+      "label": "Federated retrieval (#188 grounding)",
       "trustTier": "news",
-      "asOf": "2026-10-19T10:27:38.999Z"
+      "sourceRole": "reference-only",
+      "asOf": "2026-10-19T10:40:00.000Z"
     }
   },
   "lineups": {
     "value": {
-      "items": []
+      "items": [
+        {
+          "id": "a3ff0667fc3a7d52",
+          "claim": "Predicted Chelsea XI vs Tottenham — Rotation expected in midfield; Chelsea may start Caicedo and Fernandez with Palmer benched if unfit.",
+          "sourceUrl": "https://www.fotmob.com/matches/chelsea-tottenham-lineups",
+          "publisher": "fotmob.com",
+          "publishedAt": "2026-10-19T00:00:00.000Z",
+          "retrievedAt": "2026-10-19T10:40:00.000Z",
+          "trustTier": "analytics",
+          "verification": "cited",
+          "direction": "neutral",
+          "relatedFactor": "lineups",
+          "category": "rotation",
+          "origin": "scheduled",
+          "snippet": "Rotation expected in midfield; Chelsea may start Caicedo and Fernandez with Palmer benched if unfit."
+        }
+      ]
     },
     "provenance": {
-      "sourceId": "lineups-placeholder",
-      "label": "Phase 2 pre-kickoff search",
+      "sourceId": "federated-web-search",
+      "label": "Federated retrieval (#188 grounding)",
       "trustTier": "news",
-      "asOf": "2026-10-19T10:27:38.999Z"
+      "sourceRole": "reference-only",
+      "asOf": "2026-10-19T10:40:00.000Z"
     }
   },
   "manager": {
     "value": {
       "home": {
-        "name": null,
-        "tenureNote": null
+        "name": "Chelsea head coach — Enzo Maresca remains Chelsea head coach for the 2026-27 Premier League season.",
+        "tenureNote": "Chelsea head coach — Enzo Maresca remains Chelsea head coach for the 2026-27 Premier League season."
       },
       "away": {
-        "name": null,
-        "tenureNote": null
+        "name": "Tottenham manager update — Ange Postecoglou continues as Tottenham head coach despite early-season results.",
+        "tenureNote": "Tottenham manager update — Ange Postecoglou continues as Tottenham head coach despite early-season results."
       }
     },
     "provenance": {
-      "sourceId": "manager-placeholder",
-      "label": "Phase 2 manager evidence",
+      "sourceId": "federated-web-search",
+      "label": "Federated retrieval (#188 grounding)",
       "trustTier": "news",
-      "asOf": "2026-10-19T10:27:38.999Z"
+      "sourceRole": "reference-only",
+      "asOf": "2026-10-19T10:40:00.000Z"
     }
   },
   "model": {
@@ -442,37 +517,194 @@
       "sourceId": "clubelo-artifact",
       "label": "Pinned ClubElo artifact",
       "trustTier": "model-pin",
-      "asOf": "2026-10-19T10:27:38.974Z",
+      "asOf": "2026-10-19T10:40:20.029Z",
       "url": "clubelo@1:e92896a0c08bf99a5ab548df41a9b1529c267b15f46f15eef84ab35ff883cb83"
     }
   },
   "market": {
     "value": {
-      "rows": [
-        {
-          "source": "kalshi",
-          "observedAt": "2026-10-19T10:29:34.300Z",
-          "pHome": 0.5544554455445545,
-          "pDraw": 0.22772277227722773,
-          "pAway": 0.21782178217821782
-        },
-        {
-          "source": "polymarket",
-          "observedAt": "2026-10-19T10:29:34.300Z",
-          "pHome": 0.5594059405940593,
-          "pDraw": 0.22277227722772278,
-          "pAway": 0.21782178217821782
-        }
-      ]
+      "rows": []
     },
     "provenance": {
       "sourceId": "fixture-market-sources",
       "label": "Stake / Kalshi / Polymarket (no-vig)",
       "trustTier": "market-fetch",
-      "asOf": "2026-10-19T10:29:34.300Z"
+      "asOf": "2026-10-19T10:40:00.000Z"
     }
   },
-  "evidence": [],
+  "evidence": [
+    {
+      "id": "9833fd5de7f5a636",
+      "claim": "Chelsea vs Tottenham team news — Cole Palmer is a doubt for Chelsea with a hamstring issue; Tottenham miss James Maddison (knee).",
+      "sourceUrl": "https://www.bbc.co.uk/sport/football/articles/chelsea-tottenham-team-news",
+      "publisher": "bbc.co.uk",
+      "publishedAt": "2026-10-18T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "news",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "injuries",
+      "category": "injuries",
+      "origin": "scheduled",
+      "snippet": "Cole Palmer is a doubt for Chelsea with a hamstring issue; Tottenham miss James Maddison (knee)."
+    },
+    {
+      "id": "6a517c829d9773c4",
+      "claim": "Chelsea injury latest — Enzo Fernandez trained but Cole Palmer did not complete the session.",
+      "sourceUrl": "https://www.skysports.com/football/news/chelsea-injuries-oct-2026",
+      "publisher": "skysports.com",
+      "publishedAt": "2026-10-19T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "news",
+      "verification": "cited",
+      "direction": "supports-away",
+      "relatedFactor": "injuries",
+      "category": "injuries",
+      "origin": "scheduled",
+      "snippet": "Enzo Fernandez trained but Cole Palmer did not complete the session."
+    },
+    {
+      "id": "12a3bd40eceb4df2",
+      "claim": "Tottenham injury news — Tottenham confirm James Maddison and Richarlison remain sidelined ahead of Chelsea.",
+      "sourceUrl": "https://www.theguardian.com/football/2026/oct/19/tottenham-injuries",
+      "publisher": "theguardian.com",
+      "publishedAt": "2026-10-19T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "news",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "injuries",
+      "category": "injuries",
+      "origin": "scheduled",
+      "snippet": "Tottenham confirm James Maddison and Richarlison remain sidelined ahead of Chelsea."
+    },
+    {
+      "id": "a3ff0667fc3a7d52",
+      "claim": "Predicted Chelsea XI vs Tottenham — Rotation expected in midfield; Chelsea may start Caicedo and Fernandez with Palmer benched if unfit.",
+      "sourceUrl": "https://www.fotmob.com/matches/chelsea-tottenham-lineups",
+      "publisher": "fotmob.com",
+      "publishedAt": "2026-10-19T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "analytics",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "lineups",
+      "category": "rotation",
+      "origin": "scheduled",
+      "snippet": "Rotation expected in midfield; Chelsea may start Caicedo and Fernandez with Palmer benched if unfit."
+    },
+    {
+      "id": "b44e95721d19ec4f",
+      "claim": "Chelsea head coach — Enzo Maresca remains Chelsea head coach for the 2026-27 Premier League season.",
+      "sourceUrl": "https://www.chelseafc.com/en/news/chelsea-manager-2026",
+      "publisher": "chelseafc.com",
+      "publishedAt": "2026-08-01T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "official",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "other",
+      "category": "manager",
+      "origin": "scheduled",
+      "snippet": "Enzo Maresca remains Chelsea head coach for the 2026-27 Premier League season."
+    },
+    {
+      "id": "19aa5d8e4a487bea",
+      "claim": "Tottenham manager update — Ange Postecoglou continues as Tottenham head coach despite early-season results.",
+      "sourceUrl": "https://www.tottenhamhotspur.com/news/ange-postecoglou-2026",
+      "publisher": "tottenhamhotspur.com",
+      "publishedAt": "2026-09-15T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "official",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "other",
+      "category": "manager",
+      "origin": "scheduled",
+      "snippet": "Ange Postecoglou continues as Tottenham head coach despite early-season results."
+    },
+    {
+      "id": "e7ab115ac7ec2707",
+      "claim": "Chelsea vs Tottenham tactical preview — Chelsea's high press against Tottenham's build-up through the flanks shapes as the key matchup.",
+      "sourceUrl": "https://theanalyst.com/articles/chelsea-tottenham-tactics-2026",
+      "publisher": "theanalyst.com",
+      "publishedAt": "2026-10-19T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "analytics",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "tactics",
+      "category": "tactics",
+      "origin": "scheduled",
+      "snippet": "Chelsea's high press against Tottenham's build-up through the flanks shapes as the key matchup."
+    },
+    {
+      "id": "da62a7d97bd68321",
+      "claim": "Chelsea chasing top four — Chelsea sit fourth and need a win to stay in the title-race conversation after inconsistent form.",
+      "sourceUrl": "https://www.bbc.co.uk/sport/football/chelsea-top-four-2026",
+      "publisher": "bbc.co.uk",
+      "publishedAt": "2026-10-17T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "news",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "motivation",
+      "category": "motivation",
+      "origin": "scheduled",
+      "snippet": "Chelsea sit fourth and need a win to stay in the title-race conversation after inconsistent form."
+    },
+    {
+      "id": "8c15100ef7597021",
+      "claim": "Tottenham bottom-three pressure — Tottenham are 20th on three points and face Chelsea in a six-pointer for survival momentum.",
+      "sourceUrl": "https://www.skysports.com/football/news/tottenham-relegation-fight",
+      "publisher": "skysports.com",
+      "publishedAt": "2026-10-18T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "news",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "motivation",
+      "category": "motivation",
+      "origin": "scheduled",
+      "snippet": "Tottenham are 20th on three points and face Chelsea in a six-pointer for survival momentum."
+    },
+    {
+      "id": "d92b47baccdb5b4a",
+      "claim": "Fixture congestion before Chelsea vs Tottenham — Tottenham had 14 days since their last league match; Chelsea played seven days ago with no midweek European tie.",
+      "sourceUrl": "https://www.espn.co.uk/football/story/chelsea-tottenham-schedule",
+      "publisher": "espn.co.uk",
+      "publishedAt": "2026-10-19T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "news",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "rest-congestion",
+      "category": "travel-congestion",
+      "origin": "scheduled",
+      "snippet": "Tottenham had 14 days since their last league match; Chelsea played seven days ago with no midweek European tie."
+    },
+    {
+      "id": "67d7e302eb121d1a",
+      "claim": "Chelsea vs Tottenham xG snapshot — Chelsea average 1.9 xG per home match; Tottenham concede 1.6 xG away in 2026-27.",
+      "sourceUrl": "https://fbref.com/en/matches/chelsea-tottenham-2026",
+      "publisher": "fbref.com",
+      "publishedAt": "2026-10-15T00:00:00.000Z",
+      "retrievedAt": "2026-10-19T10:40:00.000Z",
+      "trustTier": "analytics",
+      "verification": "cited",
+      "direction": "neutral",
+      "relatedFactor": "tactics",
+      "category": "tactics",
+      "origin": "scheduled",
+      "snippet": "Chelsea average 1.9 xG per home match; Tottenham concede 1.6 xG away in 2026-27."
+    }
+  ],
+  "evidenceBuild": {
+    "replayId": "chelsea-tottenham-weekend-v1",
+    "queryCount": 11,
+    "resultCount": 11,
+    "droppedCount": 0
+  },
   "featureCandidates": [
     {
       "fieldPath": "form.homeLast5",

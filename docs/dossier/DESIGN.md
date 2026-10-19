@@ -1,6 +1,6 @@
 # Match dossier — design and phased plan
 
-**Status:** Phase 1 draft (schema + builder + storage + gated API). Chat does **not** read the dossier until a later phase behind explicit wiring.
+**Status:** Phase 2 draft (schema v2 + federated evidence write-back + dated retention). Chat does **not** read the dossier until Phase 3 behind `MATCH_DOSSIER_CHAT` (not shipped; default OFF).
 
 **Date:** 2026-10-19
 
@@ -52,9 +52,9 @@ Today the **model** sees ClubElo + HFA (+ EPL calibration shape) and **chat** pu
 
 ---
 
-## 2. Dossier shape (Phase 1 schema)
+## 2. Dossier shape (schema v2)
 
-One JSON document per fixture (`schemaVersion: 1`), rebuilt on a schedule:
+One JSON document per fixture (`schemaVersion: 2`), rebuilt on a schedule. **Retention:** every build is written to `$PUNDIT_DATA_DIR/match-dossiers/{fixtureId}/{as_of}.json` (ISO `builtAt` with `:` / `.` → `-`) **and** `latest.json`. Historical copies support backtests and corroboration replay; nothing is latest-only on disk.
 
 | Schedule | Trigger |
 |---|---|
@@ -68,35 +68,52 @@ Every populated field uses **`ProvenanceField<T>`**: `{ value, provenance: { sou
 
 | Section | Fields | Phase 1 source |
 |---|---|---|
-| Identity | ESPN ids, kickoff, teams | Model + ESPN |
+| Identity | ESPN ids, kickoff, teams | Model + ESPN (**interim** — see §2.1) |
 | Table | position, points, GD | ESPN standings via `club-form` |
 | Form | last 5 / 10 (WDL + GF/GA) | ESPN season schedule |
 | Splits | home/away form windows | ESPN |
 | Rest | rest days, matches in 14d | ESPN |
 | H2H | recent meetings, W-D-L | ESPN |
 | Rolling xG | per-game xG/xGA | **Not ingested** (null + candidate flag) |
-| Injuries / lineups / manager | evidence items | **Empty placeholders** (Phase 2 search write-back) |
+| Injuries / lineups / manager | evidence items | **Phase 2** federated search write-back (when `MATCH_DOSSIER_EVIDENCE_ENABLED=true`) |
 | Model | 1X2, O2.5, BTTS + **factor breakdown** | Pundit Fundamental + counterfactual Elo/HFA steps |
 | Market | no-vig 1X2 rows | Stake / Kalshi / Polymarket cache (**reference only**) |
-| Evidence | structured items | `[]` in Phase 1 |
+| Evidence | structured items | Federated fan-out (#188); cited-only in output |
 | Feature candidates | paths → calibration track | Interface only |
 
-### Evidence items (Phase 2+)
+### 2.1 ESPN — interim source (CTO)
+
+Disney/ESPN site terms restrict automated extraction; the public scoreboard JSON is **not** a licensed data product. Until legal/product sign-off:
+
+- Schema: `DossierSourceRole = "interim"` and `trustTier: "interim-spine"` on ESPN-backed fields (`espnProvenance` in `builder.ts`).
+- **Do not** expand public product surface area on ESPN (new competitions, commercial reuse, or “official data” marketing).
+- Existing PL/UCL server-owned integration remains; dossier labels it explicitly.
+
+### Evidence items (Phase 2)
+
+Each item is structured and **never** blended into Fundamental probabilities:
 
 ```ts
 {
-  id, capturedAt, headline, detail?, url?,
-  trustTier: EvidenceTier,
+  id, claim, sourceUrl, publisher,
+  publishedAt, retrievedAt,
+  trustTier: EvidenceTier,          // from evidence-authority.ts (#188)
+  verification: "cited" | "unverified",  // unverified dropped from dossier output
+  category: "injuries" | "rotation" | "manager" | "motivation" | "tactics" | "travel-congestion",
   direction: "supports-home" | "supports-away" | "supports-draw" | "neutral" | "contradicts-model",
   relatedFactor: ModelFactorId,
   origin: "scheduled" | "on-demand"
 }
 ```
 
+Federated retrieval follows **#188** (grounding, freshness/trust tiers, `agent-data-sources.json` roster). **No Brave.** No new fixed domain allowlists beyond existing `evidence-authority.ts` tiering.
+
+Build path: `planDossierEvidenceQueries` → replay or `searchWebBatch` → `federatedResultsToEvidenceItems` → `evidence[]` plus partitioned `injuries` / `lineups` / `manager` slots.
+
 Web search jobs:
 
-1. **Corroborate/challenge** the model (injuries, rotation, manager, congestion, tactics).
-2. **Explain** why our price and the market’s differ — stored as evidence, **never** as model input.
+1. **Corroborate/challenge** the model (injuries, rotation, manager, motivation, tactics, travel/congestion).
+2. **Explain** market gaps in prose later (Phase 4) — stored as evidence, **never** as model input.
 
 ### Model factor breakdown (Phase 1)
 
@@ -129,7 +146,7 @@ Derived from `agent-data-sources.json` + existing production adapters.
 
 | Source | Cost | Access in Pundit | Dossier role | Rate / terms (summary) |
 |---|---|---|---|---|
-| **ESPN scoreboard** | Free (keyless) | Server-owned, ~30m adaptive | Table, form, rest, H2H | Undocumented JSON; Disney ToU restrict automated extraction — existing integration only |
+| **ESPN scoreboard** | Free (keyless) | Server-owned, ~30m adaptive | Table, form, rest, H2H | **INTERIM** — Disney ToU restrict automated extraction; label in schema; no new public ESPN surface |
 | **ClubElo artifact** | Free (snapshot) | Server-owned release pin | Model strength / factor breakdown | No runtime scrape; 30d fail-closed |
 | **Stake / Kalshi / Polymarket** | Free public endpoints | Bounded fetch ~30m | Market snapshot (compare-only) | Best-effort; Stake often blocked |
 | **FBref, FotMob, SofaScore, WhoScored, FootyStats, Statbunker** | Free to read | Search citations only today | Rolling xG, style (Phase 2 evidence) | No API; scraping ToU vary |
@@ -146,21 +163,37 @@ Phase 1 builder uses only **ESPN + ClubElo pin + existing market cache + local m
 
 ---
 
-## 4. Phase 1 implementation (this draft PR)
+## 4. Implementation (draft PR)
 
 | Deliverable | Location |
 |---|---|
-| Typed schema | `packages/api/src/services/match-dossier/types.ts` |
+| Typed schema v2 | `packages/api/src/services/match-dossier/types.ts` |
 | Factor breakdown | `model-factor-breakdown.ts` |
-| Builder | `builder.ts`, `form-stats.ts` |
-| Persistence | `storage.ts` → `$PUNDIT_DATA_DIR/match-dossiers/{fixtureId}/latest.json` |
-| Scheduler | `schedule.ts` — 6h + T−90m poll when flag on |
+| Builder + async evidence | `builder.ts`, `dossier-evidence.ts`, `form-stats.ts` |
+| Persistence | `storage.ts` → `{fixtureId}/{as_of}.json` + `latest.json` |
+| Scheduler | `schedule.ts` — 6h + T−90m poll when flag on (sync build unless evidence flag on) |
 | Read API | `GET /api/match-dossier/:fixtureKey` — **404 unless `MATCH_DOSSIER_ENABLED=true`** |
-| Tests | `match-dossier.test.ts` |
+| Tests | `match-dossier.test.ts`, `dossier-evidence.test.ts` (replay, no network) |
+| Search replay fixture | `packages/api/data/research/match-dossier/search-replays/chelsea-tottenham-weekend-v1.json` |
 
 **Build window (Phase 1):** EPL kickoffs `2026-10-23T00:00:00Z` ≤ kickoff < `2026-10-26T00:00:00Z` (23–25 Oct weekend).
 
-**Production safety:** Default OFF flag; no `ask.ts` changes; no env changes on Railway/Vercel for demo freeze.
+**Flags (local / CI only unless explicitly enabled in prod):**
+
+| Variable | Default | Role |
+|---|---|---|
+| `MATCH_DOSSIER_ENABLED` | off | API + cron |
+| `MATCH_DOSSIER_EVIDENCE_ENABLED` | off | Federated evidence write-back |
+| `MATCH_DOSSIER_EVIDENCE_REPLAY` | `chelsea-tottenham-weekend-v1` | Deterministic replay id |
+| `CHAT_EVAL_SEARCH_REPLAY_DIR` | — | Set in tests to research replays |
+
+**Production safety:** Dossier and evidence flags default OFF; no `ask.ts` / chat wiring; no env changes on Railway/Vercel for demo freeze.
+
+### Phase 2 eval gate
+
+- Every evidence row in `evidence[]` has `verification: "cited"`, non-empty `claim`, and `sourceUrl` starting with `https://`.
+- Build is **deterministic** given cached search: `dossier-evidence.test.ts` runs against `chelsea-tottenham-weekend-v1` with **no live network in CI**.
+- Model block (`pHome` / factor breakdown) unchanged by evidence merge (asserted in tests).
 
 ---
 
@@ -168,8 +201,8 @@ Phase 1 builder uses only **ESPN + ClubElo pin + existing market cache + local m
 
 | Phase | Ships | Eval gate | Xavi decision |
 |---|---|---|---|
-| **1** (this PR) | Schema, builder, storage, gated API, model factor export, unit tests | API Vitest green; gate file untouched | — |
-| **2** | Federated search → dossier write-back (injuries, manager, rotation); pre-kickoff lineup slot | Insight scenarios: facts ⊆ dossier | — |
+| **1** | Schema, builder, storage, gated API, model factor export | API Vitest green; gate file untouched | — |
+| **2** (this PR) | Federated search → dossier write-back; dated retention; ESPN interim labels | Replay determinism + cited evidence gate (`dossier-evidence.test.ts`) | — |
 | **3** | On-demand search tops up dossier; chat reads dossier behind `MATCH_DOSSIER_CHAT=true` (default OFF) | Schema-17 insight scenarios + citation checks | — |
 | **4** | Answer shape: call → factor reasoning → corroboration → market reference | Daily eval insight pack PASS | — |
 | **5** | Feature candidate export → offline calibration track | Held-out log loss gate per field | Approve each promoted feature |
@@ -191,10 +224,10 @@ New chat-eval scenarios (future):
 
 ## 7. Open questions (stop until answered)
 
-1. **ESPN expanded ingestion** — Legal/product sign-off for any server-side fetch beyond current PL/UCL scope?
+1. **ESPN expanded ingestion** — Interim label shipped; legal/product sign-off still required before any **new** public ESPN surface or commercial reuse.
 2. **API-Football or The Odds API** — Budget and priority vs improving Stake/Kalshi/Polymarket coverage?
 3. **Opta/StatsPerform** — Is enterprise xG/event data on the roadmap for Phase 2 DC, or stay search-only?
-4. **Dossier retention** — How many historical builds per fixture on Railway `/data` (latest-only vs version chain)?
+4. **Dossier retention** — **Decided:** version chain per fixture (`{as_of}.json` + `latest.json`). Optional cap/TTL for Railway volume TBD.
 5. **Chat flag rollout** — Single `MATCH_DOSSIER_CHAT` vs gradual tier (match-only first)?
 6. **Investor demo** — Confirm zero Railway env toggles until after tonight’s main freeze (assume yes).
 

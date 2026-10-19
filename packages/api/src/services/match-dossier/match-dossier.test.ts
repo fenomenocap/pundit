@@ -11,7 +11,7 @@ import {
 import { replaceModelDataForTests } from "../model-data";
 import { buildMatchDossierForFixture, filterFixturesInKickoffWindow, PHASE1_WEEKEND_WINDOW, publicFixtureId } from "./builder";
 import { buildModelFactorBreakdown } from "./model-factor-breakdown";
-import { readMatchDossier, writeMatchDossier } from "./storage";
+import { listDossierVersions, readMatchDossier, readMatchDossierVersion, writeMatchDossier } from "./storage";
 import { matchDossierEnabled } from "./flags";
 import { getMatchDossier } from "./index";
 
@@ -149,9 +149,10 @@ describe("match dossier", () => {
       now: new Date("2026-10-19T09:00:00.000Z"),
     });
 
-    expect(dossier.schemaVersion).toBe(1);
+    expect(dossier.schemaVersion).toBe(2);
     expect(dossier.fixture.fixtureId).toBe(publicFixtureId(modelRow));
-    expect(dossier.table.home.provenance.trustTier).toBe("fixture-spine");
+    expect(dossier.table.home.provenance.trustTier).toBe("interim-spine");
+    expect(dossier.table.home.provenance.sourceRole).toBe("interim");
     expect(dossier.model.value.factorBreakdown.shipped.pHome).toBe(0.599);
     expect(dossier.form.homeLast5.provenance.sourceId).toBe("espn-public-scoreboard");
     expect(dossier.market.provenance.trustTier).toBe("market-fetch");
@@ -161,6 +162,9 @@ describe("match dossier", () => {
     writeMatchDossier(dossier);
     const loaded = readMatchDossier(dossier.fixture.fixtureId);
     expect(loaded?.builtAt).toBe(dossier.builtAt);
+    const versions = listDossierVersions(dossier.fixture.fixtureId);
+    expect(versions.length).toBe(1);
+    expect(readMatchDossierVersion(dossier.fixture.fixtureId, dossier.builtAt)?.schemaVersion).toBe(2);
   });
 
   it("filters Phase 1 weekend EPL window", () => {
@@ -171,9 +175,9 @@ describe("match dossier", () => {
     expect(filtered[0].home).toBe("A");
   });
 
-  it("getMatchDossier returns null when flag is off", () => {
+  it("getMatchDossier returns null when flag is off", async () => {
     process.env.MATCH_DOSSIER_ENABLED = "false";
     expect(matchDossierEnabled()).toBe(false);
-    expect(getMatchDossier("espn:eng.1:1")).toBeNull();
+    expect(await getMatchDossier("espn:eng.1:1")).toBeNull();
   });
 });

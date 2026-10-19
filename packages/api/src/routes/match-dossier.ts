@@ -22,10 +22,10 @@ router.get("/status", (_req: Request, res: Response) => {
   });
 });
 
-router.get("/:fixtureKey", (req: Request, res: Response, next: NextFunction) => {
+router.get("/:fixtureKey", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const rebuild = req.query.rebuild === "true";
-    const result = getMatchDossier(req.params.fixtureKey, { rebuild });
+    const result = await getMatchDossier(req.params.fixtureKey, { rebuild });
     if (!result) {
       res.status(404).json({
         error: "Fixture not found or dossier unavailable.",

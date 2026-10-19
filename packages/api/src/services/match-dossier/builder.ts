@@ -11,10 +11,20 @@ import { espnFixtureIdentity } from "../fixture-registry";
 import type {
   BuildDossierOptions,
   DossierBuildWindow,
+  DossierEvidenceItem,
   DossierProvenance,
   MatchDossier,
   ProvenanceField,
 } from "./types";
+import { MATCH_DOSSIER_SCHEMA_VERSION } from "./types";
+import {
+  collectDossierEvidence,
+  type DossierEvidenceCollectResult,
+} from "./dossier-evidence";
+import {
+  DOSSIER_EVIDENCE_REPLAY_ID,
+  matchDossierEvidenceEnabled,
+} from "./flags";
 import { buildModelFactorBreakdown } from "./model-factor-breakdown";
 import {
   buildRestCongestion,
@@ -28,10 +38,33 @@ import { writeMatchDossier } from "./storage";
 function espnProvenance(asOf: string): DossierProvenance {
   return {
     sourceId: "espn-public-scoreboard",
-    label: "ESPN",
-    trustTier: "fixture-spine",
+    label: "ESPN (interim — Disney ToU restrict automated extraction; see DESIGN.md)",
+    trustTier: "interim-spine",
+    sourceRole: "interim",
     asOf,
     url: "https://site.api.espn.com/apis/site/v2/sports/soccer",
+  };
+}
+
+function federatedEvidenceProvenance(asOf: string): DossierProvenance {
+  return {
+    sourceId: "federated-web-search",
+    label: "Federated retrieval (#188 grounding)",
+    trustTier: "news",
+    sourceRole: "reference-only",
+    asOf,
+  };
+}
+
+function partitionEvidence(items: DossierEvidenceItem[]): {
+  injuries: DossierEvidenceItem[];
+  rotation: DossierEvidenceItem[];
+  manager: DossierEvidenceItem[];
+} {
+  return {
+    injuries: items.filter((item) => item.category === "injuries"),
+    rotation: items.filter((item) => item.category === "rotation"),
+    manager: items.filter((item) => item.category === "manager"),
   };
 }
 
@@ -106,6 +139,11 @@ export function buildMatchDossierForFixture(
     fixture.forecastProvenance?.ratingArtifactId,
   );
 
+  const evidenceMeta = options.evidence;
+  const evidenceItems = evidenceMeta?.items ?? [];
+  const evidenceProv = federatedEvidenceProvenance(builtAt);
+  const partitioned = partitionEvidence(evidenceItems);
+
   const featureCandidates: MatchDossier["featureCandidates"] = [
     {
       fieldPath: "form.homeLast5",
@@ -125,7 +163,7 @@ export function buildMatchDossierForFixture(
   ];
 
   return {
-    schemaVersion: 1,
+    schemaVersion: MATCH_DOSSIER_SCHEMA_VERSION,
     fixture: {
       fixtureId: publicFixtureId(fixture),
       espnEventId: fixture.fixtureId,
@@ -180,29 +218,20 @@ export function buildMatchDossierForFixture(
       trustTier: "fixture-spine",
       asOf: builtAt,
     }),
-    injuries: field({ items: [] }, {
-      sourceId: "injuries-placeholder",
-      label: "Phase 2 federated corroboration",
-      trustTier: "news",
-      asOf: builtAt,
-    }),
-    lineups: field({ items: [] }, {
-      sourceId: "lineups-placeholder",
-      label: "Phase 2 pre-kickoff search",
-      trustTier: "news",
-      asOf: builtAt,
-    }),
+    injuries: field({ items: partitioned.injuries }, evidenceProv),
+    lineups: field({ items: partitioned.rotation }, evidenceProv),
     manager: field(
       {
-        home: { name: null, tenureNote: null },
-        away: { name: null, tenureNote: null },
+        home: {
+          name: partitioned.manager.find((item) => item.claim.toLocaleLowerCase().includes(fixture.home.toLocaleLowerCase()))?.claim ?? null,
+          tenureNote: partitioned.manager[0]?.claim ?? null,
+        },
+        away: {
+          name: partitioned.manager.find((item) => item.claim.toLocaleLowerCase().includes(fixture.away.toLocaleLowerCase()))?.claim ?? null,
+          tenureNote: partitioned.manager[1]?.claim ?? null,
+        },
       },
-      {
-        sourceId: "manager-placeholder",
-        label: "Phase 2 manager evidence",
-        trustTier: "news",
-        asOf: builtAt,
-      },
+      evidenceProv,
     ),
     model: field(
       {
@@ -219,9 +248,48 @@ export function buildMatchDossierForFixture(
       { rows: marketRows },
       marketProvenance(markets?.observedAt ?? builtAt),
     ),
-    evidence: [],
+    evidence: evidenceItems,
+    ...(evidenceMeta ? {
+      evidenceBuild: {
+        replayId: evidenceMeta.replayId,
+        queryCount: evidenceMeta.queryCount,
+        resultCount: evidenceItems.length,
+        droppedCount: evidenceMeta.droppedCount,
+      },
+    } : {}),
     featureCandidates,
   };
+}
+
+function dossierEvidenceReplayScope(): { replayId: string; recordPath: null } | null {
+  const replayId = process.env.MATCH_DOSSIER_EVIDENCE_REPLAY?.trim() || DOSSIER_EVIDENCE_REPLAY_ID;
+  if (!matchDossierEvidenceEnabled()) return null;
+  return { replayId, recordPath: null };
+}
+
+export async function buildMatchDossierForFixtureAsync(
+  fixture: ModelFixture,
+  options: BuildDossierOptions = {},
+): Promise<MatchDossier> {
+  let evidence: DossierEvidenceCollectResult | undefined = options.evidence
+    ? {
+      items: options.evidence.items,
+      droppedCount: options.evidence.droppedCount,
+      queryCount: options.evidence.queryCount,
+      replayId: options.evidence.replayId,
+    }
+    : undefined;
+  if (!evidence && matchDossierEvidenceEnabled()) {
+    evidence = await collectDossierEvidence(fixture, {
+      now: options.now,
+      origin: options.scheduleReason === "on-demand" ? "on-demand" : "scheduled",
+      replayScope: dossierEvidenceReplayScope(),
+    });
+  }
+  return buildMatchDossierForFixture(fixture, {
+    ...options,
+    evidence,
+  });
 }
 
 export function filterFixturesInKickoffWindow(

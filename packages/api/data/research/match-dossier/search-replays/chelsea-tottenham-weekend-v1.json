@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "replayId": "chelsea-tottenham-weekend-v1",
+  "recordedAt": "2026-10-19T10:40:00.000Z",
+  "queries": {
+    "chelsea vs tottenham team news injuries suspensions availability 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Chelsea vs Tottenham team news",
+          "link": "https://www.bbc.co.uk/sport/football/articles/chelsea-tottenham-team-news",
+          "snippet": "Cole Palmer is a doubt for Chelsea with a hamstring issue; Tottenham miss James Maddison (knee).",
+          "date": "2026-10-18"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "chelsea injury suspension update 2026-10-19": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Chelsea injury latest",
+          "link": "https://www.skysports.com/football/news/chelsea-injuries-oct-2026",
+          "snippet": "Enzo Fernandez trained but Cole Palmer did not complete the session.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "tottenham injury suspension update 2026-10-19": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Tottenham injury news",
+          "link": "https://www.theguardian.com/football/2026/oct/19/tottenham-injuries",
+          "snippet": "Tottenham confirm James Maddison and Richarlison remain sidelined ahead of Chelsea.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "chelsea vs tottenham predicted lineup rotation starting xi 2026-10-19": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Predicted Chelsea XI vs Tottenham",
+          "link": "https://www.fotmob.com/matches/chelsea-tottenham-lineups",
+          "snippet": "Rotation expected in midfield; Chelsea may start Caicedo and Fernandez with Palmer benched if unfit.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "chelsea manager head coach appointment 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Chelsea head coach",
+          "link": "https://www.chelseafc.com/en/news/chelsea-manager-2026",
+          "snippet": "Enzo Maresca remains Chelsea head coach for the 2026-27 Premier League season.",
+          "date": "2026-08-01"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "tottenham manager head coach appointment 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Tottenham manager update",
+          "link": "https://www.tottenhamhotspur.com/news/ange-postecoglou-2026",
+          "snippet": "Ange Postecoglou continues as Tottenham head coach despite early-season results.",
+          "date": "2026-09-15"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "chelsea vs tottenham tactical preview matchup style pressing 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Chelsea vs Tottenham tactical preview",
+          "link": "https://theanalyst.com/articles/chelsea-tottenham-tactics-2026",
+          "snippet": "Chelsea's high press against Tottenham's build-up through the flanks shapes as the key matchup.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "chelsea motivation title race relegation form 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Chelsea chasing top four",
+          "link": "https://www.bbc.co.uk/sport/football/chelsea-top-four-2026",
+          "snippet": "Chelsea sit fourth and need a win to stay in the title-race conversation after inconsistent form.",
+          "date": "2026-10-17"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "tottenham motivation title race relegation form 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Tottenham bottom-three pressure",
+          "link": "https://www.skysports.com/football/news/tottenham-relegation-fight",
+          "snippet": "Tottenham are 20th on three points and face Chelsea in a six-pointer for survival momentum.",
+          "date": "2026-10-18"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "chelsea vs tottenham travel fatigue fixture congestion schedule 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Fixture congestion before Chelsea vs Tottenham",
+          "link": "https://www.espn.co.uk/football/story/chelsea-tottenham-schedule",
+          "snippet": "Tottenham had 14 days since their last league match; Chelsea played seven days ago with no midweek European tie.",
+          "date": "2026-10-19"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    },
+    "chelsea vs tottenham advanced stats xg fbref whoscored fotmob transfermarkt 2026/27": {
+      "status": "ok",
+      "results": [
+        {
+          "title": "Chelsea vs Tottenham xG snapshot",
+          "link": "https://fbref.com/en/matches/chelsea-tottenham-2026",
+          "snippet": "Chelsea average 1.9 xG per home match; Tottenham concede 1.6 xG away in 2026-27.",
+          "date": "2026-10-15"
+        }
+      ],
+      "provider": "replay",
+      "reason": null,
+      "usedFallback": false,
+      "attempts": []
+    }
+  }
+}

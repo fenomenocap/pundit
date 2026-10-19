@@ -2,10 +2,13 @@ import type { EvidenceTier } from "../evidence-authority";
 import type { DataTrustTier } from "../data-layer/types";
 import type { ResultMark } from "../club-form";
 
-export const MATCH_DOSSIER_SCHEMA_VERSION = 1 as const;
+export const MATCH_DOSSIER_SCHEMA_VERSION = 2 as const;
 
 /** Trust tier for dossier fields — extends evidence tiers with server-owned spines. */
-export type DossierTrustTier = DataTrustTier;
+export type DossierTrustTier = DataTrustTier | "interim-spine";
+
+/** ESPN and other spines with unresolved automated-use terms carry interim role. */
+export type DossierSourceRole = "approved" | "interim" | "reference-only";
 
 export interface DossierProvenance {
   sourceId: string;
@@ -13,6 +16,34 @@ export interface DossierProvenance {
   trustTier: DossierTrustTier;
   asOf: string;
   url?: string;
+  sourceRole?: DossierSourceRole;
+}
+
+export type DossierEvidenceCategory =
+  | "injuries"
+  | "rotation"
+  | "manager"
+  | "motivation"
+  | "tactics"
+  | "travel-congestion";
+
+export type DossierEvidenceVerification = "cited" | "unverified";
+
+export interface DossierEvidenceItem {
+  id: string;
+  claim: string;
+  sourceUrl: string;
+  publisher: string;
+  publishedAt: string | null;
+  retrievedAt: string;
+  trustTier: EvidenceTier;
+  verification: DossierEvidenceVerification;
+  direction: EvidenceDirection;
+  relatedFactor: ModelFactorId;
+  category: DossierEvidenceCategory;
+  origin: "scheduled" | "on-demand";
+  /** Optional snippet for audit; not shown in chat without citation contract. */
+  snippet?: string;
 }
 
 export interface ProvenanceField<T> {
@@ -39,19 +70,6 @@ export type EvidenceDirection =
   | "supports-draw"
   | "neutral"
   | "contradicts-model";
-
-export interface DossierEvidenceItem {
-  id: string;
-  capturedAt: string;
-  headline: string;
-  detail?: string;
-  url?: string;
-  trustTier: EvidenceTier;
-  direction: EvidenceDirection;
-  relatedFactor: ModelFactorId;
-  /** On-demand search writes back; scheduled layer may pre-populate later phases. */
-  origin: "scheduled" | "on-demand";
-}
 
 export interface FormWindow {
   results: ResultMark[];
@@ -193,6 +211,13 @@ export interface MatchDossier {
 
   evidence: DossierEvidenceItem[];
 
+  evidenceBuild?: {
+    replayId: string | null;
+    queryCount: number;
+    resultCount: number;
+    droppedCount: number;
+  };
+
   /** Fields eligible for future calibration-track features (not active model inputs). */
   featureCandidates: Array<{
     fieldPath: string;
@@ -201,9 +226,17 @@ export interface MatchDossier {
   }>;
 }
 
+export interface DossierEvidenceBuildMeta {
+  items: DossierEvidenceItem[];
+  droppedCount: number;
+  queryCount: number;
+  replayId: string | null;
+}
+
 export interface BuildDossierOptions {
   scheduleReason?: MatchDossier["scheduleReason"];
   now?: Date;
+  evidence?: DossierEvidenceBuildMeta;
 }
 
 export interface DossierBuildWindow {

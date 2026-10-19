@@ -7,6 +7,7 @@ export * from "./schedule";
 
 import {
   buildMatchDossierForFixture,
+  buildMatchDossierForFixtureAsync,
   findModelFixtureByDossierId,
   resolveFixtureFromRequestKey,
 } from "./builder";
@@ -19,7 +20,10 @@ export interface GetMatchDossierResult {
   source: "storage" | "built";
 }
 
-export function getMatchDossier(fixtureKey: string, options?: { rebuild?: boolean }): GetMatchDossierResult | null {
+export async function getMatchDossier(
+  fixtureKey: string,
+  options?: { rebuild?: boolean },
+): Promise<GetMatchDossierResult | null> {
   if (!matchDossierEnabled()) return null;
   const fixture = resolveFixtureFromRequestKey(fixtureKey) ?? findModelFixtureByDossierId(fixtureKey);
   if (!fixture) return null;
@@ -28,6 +32,6 @@ export function getMatchDossier(fixtureKey: string, options?: { rebuild?: boolea
     const stored = readMatchDossier(fixtureId);
     if (stored) return { dossier: stored, source: "storage" };
   }
-  const dossier = buildMatchDossierForFixture(fixture, { scheduleReason: "on-demand" });
+  const dossier = await buildMatchDossierForFixtureAsync(fixture, { scheduleReason: "on-demand" });
   return { dossier, source: "built" };
 }
