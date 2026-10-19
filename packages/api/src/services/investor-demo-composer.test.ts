@@ -8,6 +8,7 @@ import {
   composeOddsProvenanceAnswer,
   STAKE_REFUSAL_SENTENCE,
 } from "./response-composer";
+import { PARLAY_OUT_OF_SCOPE } from "./basics-answer-voice";
 import { buildMatchPricing } from "./response-correctness";
 import { sampleMatchContextFields } from "./match-context";
 import { planResponse } from "./response-plan";
@@ -111,46 +112,44 @@ function spursCoventryGrounding(): Grounding {
 describe("investor demo composer fixes", () => {
   const grounding = spursCoventryGrounding();
 
-  it("1) market comparison answers with all three sides, fair decimals, gaps, and source as-of", () => {
-    const before = "On Tottenham, I am at 59.9% and Polymarket is at 64.2%…";
+  it("1) market comparison answers with headline numbers, per-side gaps, and provenance", () => {
     const after = composeMarketComparisonAnswer("How does your 1X2 compare to Polymarket?", grounding)!;
-    expect(before).toMatch(/On Tottenham, I am at 59\.9%/);
-    expect(after).toContain("My 1X2 is Tottenham 59.9% (fair 1.67)");
+    expect(after).toContain("Tottenham v Coventry:");
+    expect(after).toContain("Tottenham 59.9% (fair 1.67)");
     expect(after).toContain("the draw 24.4% (fair 4.10)");
     expect(after).toContain("Coventry 15.7% (fair 6.37)");
-    expect(after).toContain("Polymarket no-vig, as of 18 October 2026");
+    expect(after).toContain("Polymarket no-vig as of 18 October 2026");
     expect(after).toContain("Tottenham 64.0% (fair 1.56)");
-    expect(after).toContain("Per side vs Polymarket (market decimal before fees)");
     expect(after).toContain("fair 1.67 vs market 1.56 (before fees)");
-    expect(after).toContain("Tottenham gap -4.1 pts");
+    expect(after).toContain("gap -4.1 pts");
+    expect(after).toContain("Provenance:");
     expect(after).not.toMatch(/\bEV\b/);
     expect(after).not.toMatch(/\bedge\b/i);
     const focused = composeMarketComparisonAnswer("What is the edge on Coventry?", grounding)!;
-    expect(focused.indexOf("Coventry")).toBeLessThan(focused.indexOf("My 1X2 is"));
+    expect(focused.indexOf("Coventry:")).toBeLessThan(focused.indexOf("Tottenham:"));
   });
 
   it("2) odds provenance route names feeds, model version, and as-of times", () => {
     const question = "Where do your odds come from and how fresh are they?";
     expect(planResponse(question, { groundingKind: "match" }).mode).toBe("odds-provenance");
-    const before = "On Tottenham, I am at 59.9% and Polymarket is at 64.2%…";
-    expect(before).toMatch(/On Tottenham, I am at 59\.9%/);
     const after = composeOddsProvenanceAnswer(grounding);
     expect(after).toContain("clubelo@1:1da9aa95abcd0001");
     expect(after).toContain("Polymarket (18 October 2026)");
     expect(after).toContain("market odds 18 October 2026");
+    expect(after).toContain("Lean:");
+    expect(after).toContain("Provenance:");
   });
 
-  it("3) BTTS includes fair prices and likeliest score uses the top grid row", () => {
-    const bttsBefore = "I have BTTS yes at 52.0%; BTTS no is 48.0%.";
-    expect(bttsBefore).not.toContain("(fair");
+  it("3) BTTS and likeliest score use basics voice (headline, lean, provenance)", () => {
     const bttsAfter = composeMatchResponse("Both teams to score?", grounding, planResponse("Both teams to score?", { groundingKind: "match" }));
-    expect(bttsAfter).toContain("BTTS yes at 52.0% (fair 1.92)");
+    expect(bttsAfter).toContain("BTTS yes is 52.0% (fair 1.92)");
     expect(bttsAfter).toContain("BTTS no is 48.0% (fair 2.08)");
+    expect(bttsAfter).toContain("Lean:");
+    expect(bttsAfter).toContain("Provenance:");
 
-    const scoreBefore = "I make the leading scorelines 2-1 at 10.2% (fair 9.80) and 1-1 at 11.6% (fair 8.62).";
-    expect(scoreBefore.startsWith("I make the leading scorelines 2-1")).toBe(true);
     const scoreAfter = composeMatchResponse("What is the most likely score?", grounding, planResponse("What is the most likely score?", { groundingKind: "match" }));
     expect(scoreAfter).toContain("1-1 the likeliest scoreline at 11.6% (fair 8.62)");
+    expect(scoreAfter).toContain("Lean:");
   });
 
   it("4) pricing follow-ups with history stay on the composer, not tactics LLM route", () => {
@@ -158,7 +157,8 @@ describe("investor demo composer fixes", () => {
     expect(planResponse("what about the draw?", followUp).mode).toBe("pricing-desk");
     expect(planResponse("What about over 2.5?", followUp).mode).toBe("totals");
     const answer = composeMatchResponse("what about the draw?", grounding, planResponse("what about the draw?", followUp));
-    expect(answer).toContain("the draw at 24.4% (fair 4.10)");
+    expect(answer).toContain("The draw is 24.4% (fair 4.10)");
+    expect(answer).toContain("Lean:");
   });
 
   it("CTO A) Kalshi/Polymarket pricing legs carry before-fees decimals without EV", () => {
@@ -169,15 +169,19 @@ describe("investor demo composer fixes", () => {
   });
 
   it("best value today uses the largest slate gap without edge language", () => {
-    vi.spyOn(slateScan, "largestSlateModelMarketGap").mockReturnValue({
-      fixtureLabel: "Tottenham v Coventry",
-      source: "polymarket",
-      observedAt: "2026-10-18T12:00:00.000Z",
-      outcome: "home",
-      label: "Tottenham",
-      modelPercent: 59.9,
-      marketPercent: 64,
-      gapPoints: -4.1,
+    vi.spyOn(slateScan, "largestSlateModelMarketGapForDemo").mockReturnValue({
+      slateLabel: "today (18 October 2026)",
+      highlight: {
+        fixtureLabel: "Tottenham v Coventry",
+        fixtureDay: "2026-10-18",
+        source: "polymarket",
+        observedAt: "2026-10-18T12:00:00.000Z",
+        outcome: "home",
+        label: "Tottenham",
+        modelPercent: 59.9,
+        marketPercent: 64,
+        gapPoints: -4.1,
+      },
     });
     const answer = composeMatchResponse(
       "What is the best value today on the slate?",
@@ -186,21 +190,31 @@ describe("investor demo composer fixes", () => {
     );
     expect(planResponse("What is the best value today on the slate?", { groundingKind: "match" }).mode)
       .toBe("slate-best-gap");
+    expect(answer).toContain("today (18 October 2026)");
     expect(answer).toContain("Tottenham v Coventry");
     expect(answer).toContain("gap -4.1 pts");
     expect(answer).not.toMatch(/\bedge\b/i);
     vi.restoreAllMocks();
   });
 
-  it("guarantee winner demand shows probabilities and honest accas risk", () => {
+  it("parlay or acca questions are out of scope on this desk", () => {
     const answer = composeMatchResponse(
       "Guarantee me a winner on this acca",
       grounding,
       planResponse("Guarantee me a winner on this acca", { groundingKind: "match" }),
     );
+    expect(answer).toBe(PARLAY_OUT_OF_SCOPE);
+  });
+
+  it("guarantee winner demand shows probabilities without parlay copy", () => {
+    const answer = composeMatchResponse(
+      "Guarantee me a winner",
+      grounding,
+      planResponse("Guarantee me a winner", { groundingKind: "match" }),
+    );
     expect(answer).toMatch(/can.t guarantee a winner/i);
     expect(answer).toMatch(/59\.9%|Tottenham/);
-    expect(answer).toMatch(/Accas multiply risk/i);
+    expect(answer).not.toMatch(/Accas multiply risk/i);
     expect(answer).toMatch(/18\+/);
   });
 
@@ -215,6 +229,7 @@ describe("investor demo composer fixes", () => {
     expect(answer).toMatch(/accas|accumulator/i);
     expect(answer).not.toMatch(/\bkelly\b/i);
     expect(answer).not.toContain(STAKE_REFUSAL_SENTENCE);
+    expect(answer).toContain("Provenance:");
   });
 
   it("5) rewriteAnalystIdentity avoids broken subject rewrites", () => {

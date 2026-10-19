@@ -142,9 +142,14 @@ export function asksBestValueToday(question: string): boolean {
 }
 
 export function asksHonestWinnerGuarantee(question: string): boolean {
+  if (/\b(?:acca|accumulator|parlay)\b/i.test(question)) return false;
   return /\bguarantee me (?:a )?winner\b/i.test(question)
     || (/\b(?:guarantee|certain|100%|promise)\b/i.test(question)
-      && /\b(?:win|winner|acca|accumulator|parlay)\b/i.test(question));
+      && /\b(?:win|winner)\b/i.test(question));
+}
+
+export function asksParlayQuestion(question: string): boolean {
+  return /\b(?:acca|accumulator|parlay)\b/i.test(question);
 }
 
 /** Numeric follow-ups after an earlier priced turn (draw, totals, market gap, etc.). */

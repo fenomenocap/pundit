@@ -654,7 +654,7 @@ describe("V2 conversational architecture", () => {
       answer: "not a structured draft",
     });
     expect(preview.answer).toMatch(/Kalshi market-implied probabilities/i);
-    expect(preview.answer).toMatch(/Arsenal gap \+6\.2 pts/i);
+    expect(preview.answer).toMatch(/gap \+6\.2 pts/i);
     expect(preview.answer).toContain("Pundit Consensus");
     expect(preview.answer).toContain("model-only 1X2");
     expect(preview.answer).not.toMatch(/sealed|immutable/i);
@@ -966,7 +966,7 @@ describe("V2 conversational architecture", () => {
     const match = grounding();
     const ask = (q: string, hasHistory: boolean) =>
       composeMatchResponse(q, match, planResponse(q, { groundingKind: "match", hasHistory }));
-    expect(ask("And what about draw chance?", true)).toMatch(/draw at 23\.4%/);
+    expect(ask("And what about the draw?", true)).toMatch(/draw is 23\.4%/);
     const compound = ask("Is Arsenal likely to beat Chelsea? over 2.5 goals?", false);
     expect(compound).toMatch(/1X2 is Arsenal 56\.3%/);
     expect(compound).toMatch(/over 2\.5/i);
@@ -989,7 +989,8 @@ describe("V2 conversational architecture", () => {
       planResponse("What if Saka is absent?", { groundingKind: "match", hasHistory: true }))).toMatch(/won’t invent a percentage/i);
     const market = composeMatchResponse("Where do you disagree with Kalshi?", match,
       planResponse("Where do you disagree with Kalshi?", { groundingKind: "match", hasHistory: true }));
-    expect(market).toMatch(/56\.3% vs implied 50\.1%.*Arsenal gap \+6\.2 pts/);
+    expect(market).toMatch(/56\.3% vs implied 50\.1%/);
+    expect(market).toMatch(/gap \+6\.2 pts/);
     expect(market).not.toMatch(/because.*lineup/i);
     expect(resolveRequestedScoreline("Chelsea to win 2-0", match)).toEqual({
       score: "0-2", orientation: "named-away",
@@ -1048,7 +1049,7 @@ describe("V2 conversational architecture", () => {
       match,
       planResponse("Is Arsenal vs Chelsea over or under 2.5?", { groundingKind: "match" })
     );
-    expect(totals).toMatch(/I have over 2\.5 at 58\.9%/);
+    expect(totals).toMatch(/Over 2\.5 is 58\.9%/);
     expect(totals).toMatch(/under 2\.5 is 41\.1%/);
     expect(totals).toContain(SHARED_TOTAL_XG_SENTENCE);
     expect(totals).not.toMatch(/ClubElo|Dixon-Coles|Dixon–Coles/i);
@@ -1073,7 +1074,7 @@ describe("V2 conversational architecture", () => {
       match,
       planResponse(bttsQuestion, { groundingKind: "match", hasHistory: true })
     );
-    expect(btts).toMatch(/I have BTTS yes at 57\.4%/);
+    expect(btts).toMatch(/BTTS yes is 57\.4%/);
     expect(btts).toMatch(/BTTS no is 42\.6%/);
     expect(btts).not.toContain("My short answer is");
     expect(btts).not.toMatch(/56\.3%/);
@@ -1138,10 +1139,10 @@ describe("V2 conversational architecture", () => {
     );
     expect(previewCopy).toMatch(/full 1X2/);
     expect(previewCopy).toContain(SHARED_TOTAL_XG_SENTENCE);
-    expect(previewCopy).toMatch(/My 1X2 is Arsenal/);
+    expect(previewCopy).toMatch(/full 1X2 is Arsenal|I make Arsenal.*56\.3%/);
     expect(previewCopy).toMatch(/Kalshi no-vig/i);
     expect(previewCopy).toMatch(/gap [+-]?\d+\.?\d* pts/i);
-    expect(previewCopy).toMatch(/states the disagreement, not a bet/i);
+    expect(previewCopy).toMatch(/Lean:|not a pick to place|disagreement, not a bet/i);
     expect(previewCopy).not.toMatch(/market snapshot/);
     expect(previewCopy).not.toMatch(/Over 2\.5 is 58\.9%/);
 

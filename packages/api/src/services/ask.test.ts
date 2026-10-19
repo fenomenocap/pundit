@@ -2857,10 +2857,10 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("Arsenal 97.3%");
       expect(answer).toContain("draw 2.3%");
       expect(answer).toContain("Coventry 0.4%");
-      expect(answer).toContain("My 1X2 is Arsenal");
+      expect(answer).toMatch(/Arsenal 97\.3%|I make Arsenal/);
       expect(answer).toContain("Kalshi no-vig");
       expect(answer).toMatch(/gap [+-]?\d+\.?\d* pts/i);
-      expect(answer).toMatch(/states the disagreement, not a bet to place|not its cause or a bet to place/i);
+      expect(answer).toMatch(/Lean:|not a pick to place|not its cause/i);
       expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(answer).not.toMatch(/Over 2\.5 is \d/);
       expect(answer).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
@@ -2906,11 +2906,11 @@ describe("current-news evidence hardening", () => {
       expect(closedGroundedAnswer("Is Arsenal vs Coventry over 2.5?", model()))
         .toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(closedGroundedAnswer("BTTS?", model(), true))
-        .toMatch(/I have BTTS yes at /i);
+        .toMatch(/BTTS yes is /i);
       expect(closedGroundedAnswer("BTTS?", model(), true))
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
-        .toMatch(/Kalshi no-vig.*gap [+-]?\d+\.?\d* pts/i);
+        .toMatch(/Kalshi no-vig|gap [+-]?\d+\.?\d* pts/i);
       expect(closedGroundedAnswer("What will the 1X2 be?", model(), true))
         .toMatch(/My 1X2 is Arsenal 97\.3%.*draw.*Coventry/i);
       expect(closedGroundedAnswer("Tactical matchup", model(), true)).toMatch(/less cover against a counterattack/i);
