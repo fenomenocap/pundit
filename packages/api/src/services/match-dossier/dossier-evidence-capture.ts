@@ -16,8 +16,19 @@ import {
   rejectSyntheticEvidenceForRealFixture,
 } from "./dossier-evidence";
 import { verifyClaimAgainstPageText } from "./dossier-claim-page-verify";
+import {
+  findBodySentenceForSnippet,
+  gateFixtureMatchEvidence,
+  gateFreshnessEvidence,
+  gatePageBodyMatch,
+  gatePreFetch,
+  resolveEvidencePublishedAt,
+  type EvidenceGateContext,
+} from "./dossier-evidence-gate";
+import { logDossierFederatedSearchStack } from "./dossier-federated-search-meta";
+import { categoryForQuery } from "./dossier-evidence";
 import { isDossierSyntheticTestFixture, isSyntheticDossierEvidenceHost } from "./dossier-synthetic-fixture";
-import type { DossierEvidenceItem } from "./types";
+import type { DossierEvidenceDroppedItem, DossierEvidenceItem } from "./types";
 import { searchWebBatch } from "../web-search";
 import { dossierCapturePath, writeDossierCapture } from "./storage";
 import type { DossierEvidenceCollectResult } from "./dossier-evidence";
@@ -116,16 +127,32 @@ function buildSearchRows(
   });
 }
 
+function pushDropped(
+  list: DossierEvidenceDroppedItem[],
+  row: Omit<DossierEvidenceDroppedItem, "category"> & { query: string },
+): void {
+  list.push({
+    ...row,
+    category: categoryForQuery(row.query),
+  });
+}
+
 export async function verifySearchCandidatesForFixture(
   fixture: ModelFixture,
   queries: string[],
   outcomes: WebSearchOutcome[],
   retrievedAt: string,
   pageRetrieval: RetrievalOptions = {},
+  gateCtx?: EvidenceGateContext,
 ): Promise<{
   verifications: DossierEvidenceCaptureVerificationRow[];
   verifiedItems: DossierEvidenceItem[];
+  dropped: DossierEvidenceDroppedItem[];
 }> {
+  const ctx: EvidenceGateContext = gateCtx ?? {
+    asOf: new Date(retrievedAt),
+    kickoffUtc: fixture.utcDate,
+  };
   const seen = new Set<string>();
   const candidates: Array<{
     url: string;
@@ -160,11 +187,13 @@ export async function verifySearchCandidatesForFixture(
   }
 
   const verifications: DossierEvidenceCaptureVerificationRow[] = [];
+  const dropped: DossierEvidenceDroppedItem[] = [];
   const verifiedMerged: Array<{
     title: string;
     link: string;
     snippet: string;
     date: string;
+    publishedAtSource: DossierEvidenceItem["publishedAtSource"];
     tier: EvidenceTier;
     pageSnippet: string;
     contentSha256: string;
@@ -182,6 +211,32 @@ export async function verifySearchCandidatesForFixture(
         outcome: "dropped",
         reason: "claim_too_short",
       });
+      pushDropped(dropped, {
+        sourceUrl: candidate.url,
+        claim,
+        reason: "claim_too_short",
+        query: candidate.query,
+      });
+      continue;
+    }
+
+    const pre = gatePreFetch(fixture, {
+      title: candidate.title,
+      snippet: candidate.snippet,
+      url: candidate.url,
+      publishedAtRaw: candidate.date,
+      query: candidate.query,
+    }, ctx);
+    if (pre) {
+      verifications.push({
+        url: candidate.url,
+        claim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: pre,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: pre, query: candidate.query });
       continue;
     }
 
@@ -210,11 +265,57 @@ export async function verifySearchCandidatesForFixture(
         reason: "fetch_failed_or_non_200",
         httpStatus: undefined,
       });
+      pushDropped(dropped, {
+        sourceUrl: candidate.url,
+        claim,
+        reason: "fetch_failed_or_non_200",
+        query: candidate.query,
+      });
       continue;
     }
 
     const page = pages[0]!;
-    const check = verifyClaimAgainstPageText(claim, page.text, fixture);
+    const gateInput = {
+      title: candidate.title,
+      snippet: candidate.snippet,
+      url: candidate.url,
+      publishedAtRaw: candidate.date,
+      query: candidate.query,
+    };
+    const resolvedDate = resolveEvidencePublishedAt(candidate.date, page.date, page.dateSource);
+    const dateReason = gateFreshnessEvidence(fixture, gateInput, resolvedDate, ctx);
+    if (dateReason) {
+      verifications.push({
+        url: candidate.url,
+        claim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: dateReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: dateReason, query: candidate.query });
+      continue;
+    }
+
+    const bodyReason = gatePageBodyMatch(page.text, candidate.snippet);
+    if (bodyReason) {
+      verifications.push({
+        url: candidate.url,
+        claim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: bodyReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: bodyReason, query: candidate.query });
+      continue;
+    }
+
+    const bodySentence = findBodySentenceForSnippet(page.text, candidate.snippet)!;
+    const verifyClaim = bodySentence.slice(0, 480);
+    const check = verifyClaimAgainstPageText(verifyClaim, page.text, fixture);
     if (!check.ok) {
       verifications.push({
         url: candidate.url,
@@ -225,6 +326,36 @@ export async function verifySearchCandidatesForFixture(
         reason: check.reason,
         httpStatus: 200,
       });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: check.reason, query: candidate.query });
+      continue;
+    }
+
+    const fixtureMatchReason = gateFixtureMatchEvidence(fixture, gateInput);
+    if (fixtureMatchReason) {
+      verifications.push({
+        url: candidate.url,
+        claim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: fixtureMatchReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: fixtureMatchReason, query: candidate.query });
+      continue;
+    }
+    const freshnessReason = gateFreshnessEvidence(fixture, gateInput, resolvedDate, ctx);
+    if (freshnessReason) {
+      verifications.push({
+        url: candidate.url,
+        claim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: freshnessReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim, reason: freshnessReason, query: candidate.query });
       continue;
     }
 
@@ -244,7 +375,8 @@ export async function verifySearchCandidatesForFixture(
       title: candidate.title,
       link: candidate.url,
       snippet: check.matchedSnippet,
-      date: candidate.date || page.date,
+      date: resolvedDate!.iso,
+      publishedAtSource: resolvedDate!.source,
       tier: candidate.tier,
       pageSnippet: check.matchedSnippet,
       contentSha256: check.contentSha256,
@@ -271,14 +403,17 @@ export async function verifySearchCandidatesForFixture(
       const row = verifiedMerged.find((v) => v.link === item.sourceUrl);
       return {
         ...item,
+        publishedAt: row?.date ?? item.publishedAt,
+        publishedAtSource: row?.publishedAtSource,
         verification: "page-verified" as const,
+        fixtureMatchVerified: true,
+        freshnessVerified: true,
         snippet: row?.pageSnippet ?? item.snippet,
         contentSha256: row?.contentSha256,
       };
     }),
   );
-
-  return { verifications, verifiedItems };
+  return { verifications, verifiedItems, dropped };
 }
 
 export async function runDossierEvidenceCapture(
@@ -287,6 +422,7 @@ export async function runDossierEvidenceCapture(
 ): Promise<{
   capture: DossierEvidenceCaptureFile;
   verifiedItems: DossierEvidenceItem[];
+  dropped: DossierEvidenceDroppedItem[];
   capturePath: string | null;
 }> {
   const now = options.now ?? new Date();
@@ -297,12 +433,13 @@ export async function runDossierEvidenceCapture(
   const outcomes = options.searchOutcomes;
 
   const search = buildSearchRows(queries, outcomes, retrievedAt);
-  const { verifications, verifiedItems } = await verifySearchCandidatesForFixture(
+  const { verifications, verifiedItems, dropped } = await verifySearchCandidatesForFixture(
     fixture,
     queries,
     outcomes,
     retrievedAt,
     options.pageRetrieval ?? {},
+    { asOf: now, kickoffUtc: fixture.utcDate },
   );
 
   const capture: DossierEvidenceCaptureFile = {
@@ -337,7 +474,7 @@ export async function runDossierEvidenceCapture(
     }
   }
 
-  return { capture, verifiedItems, capturePath };
+  return { capture, verifiedItems, dropped, capturePath };
 }
 
 export async function collectVerifiedDossierEvidence(
@@ -351,10 +488,11 @@ export async function collectVerifiedDossierEvidence(
   } = {},
 ): Promise<DossierEvidenceCollectResult & { capture: DossierEvidenceCaptureFile; capturePath: string | null }> {
   const now = options.now ?? new Date();
+  logDossierFederatedSearchStack();
   const queries = planDossierEvidenceQueries(fixture, now);
   const outcomes = await searchWebBatch(queries);
   const fixtureId = dossierFixtureId(fixture);
-  const { capture, verifiedItems, capturePath } = await runDossierEvidenceCapture(fixture, {
+  const { capture, verifiedItems, dropped, capturePath } = await runDossierEvidenceCapture(fixture, {
     fixtureId,
     queries,
     searchOutcomes: outcomes,
@@ -366,7 +504,8 @@ export async function collectVerifiedDossierEvidence(
   });
   return {
     items: verifiedItems,
-    droppedCount: capture.summary.dropped,
+    dropped,
+    droppedCount: dropped.length,
     queryCount: queries.length,
     replayId: null,
     captureId: capture.capturedAt,
