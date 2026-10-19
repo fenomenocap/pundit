@@ -11,7 +11,11 @@ import {
 import { PARLAY_OUT_OF_SCOPE } from "./basics-answer-voice";
 import { buildMatchPricing } from "./response-correctness";
 import { sampleMatchContextFields } from "./match-context";
-import { planResponse } from "./response-plan";
+import {
+  deliveryPolicyLinesAfterTrace,
+  planResponse,
+} from "./response-plan";
+import { stripUntraceableMatchPercentages } from "./response-correctness";
 import { normalizeAnalystIdentity } from "./ask";
 
 function spursCoventryGrounding(): Grounding {
@@ -235,17 +239,56 @@ describe("investor demo composer fixes", () => {
   });
 
   it("CTO B) bankroll stake questions get generic unit guidance, not Kelly", () => {
-    const answer = composeMatchResponse(
-      "I have $1,000 — how much should I stake on Tottenham?",
-      grounding,
-      planResponse("I have $1,000 — how much should I stake on Tottenham?", { groundingKind: "match" }),
-    );
-    expect(answer).toMatch(/hear the bankroll/i);
-    expect(answer).toMatch(/1[–-]2%/);
-    expect(answer).toMatch(/accas|accumulator/i);
-    expect(answer).not.toMatch(/\bkelly\b/i);
-    expect(answer).not.toContain(STAKE_REFUSAL_SENTENCE);
-    expect(answer).toContain("Provenance:");
+    const question = "I have a $1,000 bankroll, how much should I stake on Tottenham v Coventry?";
+    const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
+    expect(plan.mode).toBe("stake-refusal");
+    const composed = composeMatchResponse(question, grounding, plan);
+    expect(composed).toMatch(/flat unit stakes only/i);
+    expect(composed).toMatch(/20th on 3 pts/);
+    expect(composed).not.toMatch(/^Lean:\s*$/m);
+    expect(composed).not.toContain(STAKE_REFUSAL_SENTENCE);
+    expect(composed).toContain("Provenance:");
+
+    const modelProbabilities = [
+      grounding.pHome, grounding.pDraw, grounding.pAway,
+      grounding.pOver2_5, grounding.pUnder2_5, grounding.pBttsYes, grounding.pBttsNo,
+      ...grounding.scorelines.map((row) => row.probability),
+    ];
+    const traced = stripUntraceableMatchPercentages(composed, {
+      probabilities: [
+        ...modelProbabilities,
+        ...grounding.oddsSources.flatMap((source) =>
+          [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
+      ],
+      percentagePointGaps: grounding.marketDivergence.flatMap((market) =>
+        market.legs.map((leg) => leg.gapPoints)),
+      fairDecimalOdds: modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
+    });
+    const delivered = `${traced.trim()}\n${deliveryPolicyLinesAfterTrace(question, plan.mode).join("\n")}`;
+    expect(delivered).toMatch(/\$1,000 bankroll/i);
+    expect(delivered).toMatch(/\$10–\$20 on \$1,000/);
+    expect(delivered).toMatch(/1–2% per bet/i);
+    expect(delivered).toMatch(/accas/i);
+    expect(delivered).toMatch(/never chase/i);
+    expect(delivered).toMatch(/do not Kelly-size/i);
+    expect(delivered).toMatch(/20th on 3 pts/);
+  });
+
+  it("6) who wins and price-tonight route to priced 1X2 market comparison", () => {
+    const ctx = { groundingKind: "match" as const, hasCompleteMarket1x2: true };
+    const whoWins = "Who wins Tottenham v Coventry?";
+    expect(planResponse(whoWins, ctx).mode).toBe("market-comparison");
+    const whoAnswer = composeMatchResponse(whoWins, grounding, planResponse(whoWins, ctx))!;
+    expect(whoAnswer).toContain("Polymarket no-vig as of 18 October 2026");
+    expect(whoAnswer).toContain("gap -4.1 pts");
+    expect(whoAnswer).not.toContain("I need a captured decimal line");
+
+    const priceTonight = "Price tonight's match for me";
+    expect(planResponse(priceTonight, ctx).mode).toBe("market-comparison");
+    const priceAnswer = composeMatchResponse(priceTonight, grounding, planResponse(priceTonight, ctx))!;
+    expect(priceAnswer).toContain("Tottenham 59.9% (fair 1.67)");
+    expect(priceAnswer).toContain("fair 1.67 vs market 1.56 (before fees)");
+    expect(priceAnswer).not.toContain("EV% or pass or play");
   });
 
   it("5) rewriteAnalystIdentity avoids broken subject rewrites", () => {

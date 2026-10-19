@@ -702,7 +702,10 @@ function composeFavouriteReason(
 export function composeMatchResponse(
   question: string,
   grounding: Grounding,
-  plan: ResponsePlan = planResponse(question, { groundingKind: "match" }),
+  plan: ResponsePlan = planResponse(question, {
+    groundingKind: "match",
+    hasCompleteMarket1x2: grounding.marketDivergence.length > 0,
+  }),
   playerEvidence: PlayerEvidenceBundle | null = null
 ): string {
   if (asksParlayQuestion(question)) {
@@ -781,7 +784,7 @@ export function composeMatchResponse(
       : `${grounding.home} v ${grounding.away}: my 1X2 is ${grounding.home} ${pct(model.home.p)} (fair ${model.home.fairOdds.toFixed(2)}), `
         + `draw ${pct(model.draw.p)} (fair ${model.draw.fairOdds.toFixed(2)}) and ${grounding.away} ${pct(model.away.p)} (fair ${model.away.fairOdds.toFixed(2)}).`;
     const lean = mentionsBankroll(question)
-      ? `Lean: ${BANKROLL_UNIT_GUIDANCE}`
+      ? "Lean: flat unit stakes only — bankroll guidance follows (not Kelly or edge sizing)."
       : `Lean: ${STAKE_REFUSAL_SENTENCE}`;
     return joinBasicsAnswer({
       headline,

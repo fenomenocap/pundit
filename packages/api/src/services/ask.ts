@@ -166,8 +166,10 @@ import {
   asksPricingFollowUp,
   asksTacticalTake,
   asksUnpricedMarket,
+  deliveryPolicyLinesAfterTrace,
   DESK_COMPOSER_MODES,
   isSchematicMatchTake,
+  matchPlanContext,
   planResponse,
   pricedGridMarketsAsked,
   responsePresentation,
@@ -9507,9 +9509,7 @@ export function closedGroundedAnswer(
     if (directFact === CURRENT_CLAIM_ABSTENTION || directFact === RESULT_CLAIM_ABSTENTION
       || directFact === STATS_CLAIM_ABSTENTION || asksExplicitExternalPrice(question)) return null;
     const plan = planResponse(question, {
-      groundingKind: "match",
-      hasHistory,
-      hasUserLine: grounding.pricing.userLine != null,
+      ...matchPlanContext(grounding, hasHistory),
     });
     // A briefing may also ask for current external facts. Its owned football
     // take cannot settle that request before the mandatory evidence lookup.
@@ -10068,9 +10068,10 @@ export async function deliverAnswer(args: {
           checked.verification.status === "unavailable"
             ? "I couldn’t verify a dated team-news update because verification was unavailable, so I won’t make an availability claim."
             : composeMatchResponse(question, grounding,
-              planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })),
+              planResponse(question, matchPlanContext(grounding, hasHistory))),
           grounding,
-          useV2
+          useV2,
+          { question, hasHistory },
         )
         : `${renderGroundedModelOnlyAnswer(grounding, false)}\n\n**Team news**\n${abstention}`,
       citations: [],
@@ -10097,8 +10098,8 @@ export async function deliverAnswer(args: {
         ? finalizeDeliveredText(composeMatchResponse(
           question,
           grounding,
-          planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
-        ), grounding, useV2)
+          planResponse(question, matchPlanContext(grounding, hasHistory)),
+        ), grounding, useV2, { question, hasHistory })
         : renderGroundedMatchAnswer(grounding),
       citations: [],
       verification: checked.verification,
@@ -10176,7 +10177,8 @@ export async function deliverAnswer(args: {
     const delivered = finalizeDeliveredText(
       sanitizeRequestFidelity(completeAnswer, question, hasHistory),
       grounding,
-      useV2
+      useV2,
+      { question, hasHistory },
     );
     return {
       // The general-tier label is added during generation, and every guard
@@ -10257,7 +10259,7 @@ function groundedMatchFallback(
     ? composeMatchResponse(
       question,
       grounding,
-      planResponse(question, { groundingKind: "match", hasHistory, hasUserLine: grounding.pricing.userLine != null })
+      planResponse(question, matchPlanContext(grounding, hasHistory))
     )
     : renderGroundedMatchFallback(grounding);
   const completeFallback = useV2
@@ -10266,7 +10268,8 @@ function groundedMatchFallback(
   return finalizeDeliveredText(
     sanitizeRequestFidelity(completeFallback, question, hasHistory),
     grounding,
-    useV2
+    useV2,
+    { question, hasHistory },
   );
 }
 
@@ -10430,10 +10433,27 @@ export function dropRepeatedParagraphs(text: string): string {
   }).join("\n\n");
 }
 
+function scrubEmptyStructuralLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !/^Lean:\s*$/.test(line.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function appendDeliveryPolicyLines(answer: string, lines: readonly string[]): string {
+  if (!lines.length) return answer;
+  const trimmed = answer.trim();
+  const block = lines.map((line) => line.trim()).filter(Boolean).join("\n");
+  return trimmed ? `${trimmed}\n${block}` : block;
+}
+
 function finalizeDeliveredText(
   answer: string,
   grounding?: AskGrounding,
-  enforceNumericTrace = false
+  enforceNumericTrace = false,
+  delivery?: { question?: string; hasHistory?: boolean },
 ): string {
   const voiced = normalizeAnalystIdentity(answer);
   // The appropriate prose guard has already run in deliverAnswer. This final
@@ -10447,7 +10467,16 @@ function finalizeDeliveredText(
     analystResponseMetrics.numericGuardInterventions += 1;
     console.warn(JSON.stringify({ event: "analyst_numeric_guard_intervened" }));
   }
-  return dropRepeatedParagraphs(stripUnresolvedResponseMarkers(traced));
+  const scrubbed = scrubEmptyStructuralLines(traced);
+  const policyLines = grounding?.kind === "match" && delivery?.question
+    ? deliveryPolicyLinesAfterTrace(
+      delivery.question,
+      planResponse(delivery.question, matchPlanContext(grounding, delivery.hasHistory)).mode,
+    )
+    : [];
+  return dropRepeatedParagraphs(stripUnresolvedResponseMarkers(
+    appendDeliveryPolicyLines(scrubbed, policyLines),
+  ));
 }
 
 /**
@@ -10486,13 +10515,14 @@ function withPresentation(
   result: ScopedAskPayload,
 ): AskResult {
   const plan = planResponse(question, {
-    hasHistory,
-    groundingKind: result.grounding?.kind ?? null,
-    hasUserLine: result.grounding?.kind === "match" && result.grounding.pricing.userLine != null,
+    ...matchPlanContext(result.grounding, hasHistory),
   });
   return {
     ...result,
-    answer: finalizeDeliveredText(result.answer, result.grounding, ANALYST_RESPONSE_V2),
+    answer: finalizeDeliveredText(result.answer, result.grounding, ANALYST_RESPONSE_V2, {
+      question,
+      hasHistory,
+    }),
     presentation: responsePresentation(plan),
     engine: chatEngineMode(),
     usedLlm: result.usedLlm === true,
