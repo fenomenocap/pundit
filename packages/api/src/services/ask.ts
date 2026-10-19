@@ -169,8 +169,10 @@ import {
   asksUnpricedMarket,
   deliveryPolicyLinesAfterTrace,
   DESK_COMPOSER_MODES,
+  isPricedComposerFollowUp,
   isSchematicMatchTake,
   matchPlanContext,
+  mentionsBankroll,
   planResponse,
   pricedGridMarketsAsked,
   responsePresentation,
@@ -9821,7 +9823,13 @@ export function closedGroundedAnswer(
   if (grounding?.kind === "match"
     && !isModelOnlyRequest(question)
     && !asksModelInputQuestion(question)) {
-    if (!ANALYST_RESPONSE_V2) return null;
+    const planCtx = matchPlanContext(grounding, hasHistory);
+    const legacyPricedFollowUp = isPricedComposerFollowUp(
+      question,
+      hasHistory,
+      planCtx.hasCompleteMarket1x2,
+    );
+    if (!ANALYST_RESPONSE_V2 && !legacyPricedFollowUp) return null;
     // A pinned forecast contains no manager identity or dated match result.
     // Its numeric board cannot settle either before the required search.
     const directFact = directCurrentFactAbstention(question);
@@ -9853,6 +9861,7 @@ export function closedGroundedAnswer(
         "odds-provenance",
         "slate-best-gap",
         "winner-guarantee-honesty",
+        "priced-why",
         // The long read is the server's 1X2, scorelines and market rows. Sending
         // "Analyse" to the model spent the 90s deadline and returned 502 before
         // this text could ship. Current team news still requires evidence.
@@ -10787,15 +10796,27 @@ function finalizeDeliveredText(
     console.warn(JSON.stringify({ event: "analyst_numeric_guard_intervened" }));
   }
   const scrubbed = scrubEmptyStructuralLines(stripInternalPromptVocabulary(traced));
-  const policyLines = grounding?.kind === "match" && delivery?.question
-    ? deliveryPolicyLinesAfterTrace(
-      delivery.question,
-      planResponse(delivery.question, matchPlanContext(grounding, delivery.hasHistory)).mode,
-    )
+  const deliveryMode = grounding?.kind === "match" && delivery?.question
+    ? planResponse(delivery.question, matchPlanContext(grounding, delivery.hasHistory)).mode
+    : null;
+  const policyLines = deliveryMode && delivery?.question
+    ? deliveryPolicyLinesAfterTrace(delivery.question, deliveryMode)
     : [];
-  return dropRepeatedParagraphs(stripUnresolvedResponseMarkers(
-    appendDeliveryPolicyLines(scrubbed, policyLines),
-  ));
+  let delivered = appendDeliveryPolicyLines(scrubbed, policyLines);
+  if (deliveryMode === "stake-refusal" && delivery?.question && mentionsBankroll(delivery.question)) {
+    delivered = appendDeliveryPolicyLines(delivered, ["Gamble responsibly, 18+."]);
+  }
+  return dropRepeatedParagraphs(stripUnresolvedResponseMarkers(delivered));
+}
+
+/** Test seam: traceability, post-trace stake policy, and responsible-gambling ordering. */
+export function finalizeMatchDeliveredTextForTests(
+  answer: string,
+  grounding: Grounding,
+  question: string,
+  hasHistory = false,
+): string {
+  return finalizeDeliveredText(answer, grounding, true, { question, hasHistory });
 }
 
 /**

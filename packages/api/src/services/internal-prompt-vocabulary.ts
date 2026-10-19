@@ -27,6 +27,14 @@ const LEAK_REPLACEMENTS: ReadonlyArray<{ pattern: RegExp; replacement: string }>
     pattern: /^\s*SEARCH EVIDENCE \(this turn only[^\n]*\n?/gim,
     replacement: "",
   },
+  {
+    pattern: /The evidence contains no current-world facts about this fixture[^\n]*/gi,
+    replacement: INTERNAL_PROMPT_LEAK_REPLACEMENT,
+  },
+  {
+    pattern: /\bevidence contains no current-world facts\b[^\n]*/gi,
+    replacement: INTERNAL_PROMPT_LEAK_REPLACEMENT,
+  },
 ];
 
 export function stripInternalPromptVocabulary(text: string): string {

@@ -138,7 +138,7 @@ describe("V2 conversational architecture", () => {
       ["Who is most likely to score?", "player-or-scorer"],
       ["Who will most likely score for Liverpool?", "player-or-scorer"],
       ["What if Saka misses out?", "lineup-counterfactual"],
-      ["Why?", "match-follow-up"],
+      ["Why?", "priced-why"],
     ] as const) {
       const plan = planResponse(question, { groundingKind: "match", hasHistory: true });
       expect(plan.mode).toBe(mode);
@@ -1022,7 +1022,7 @@ describe("V2 conversational architecture", () => {
     expect(userLine).toMatch(/Chelsea at 7\.00/);
     expect(userLine).toMatch(/implies 14\.3%/);
     expect(userLine).toMatch(/gap \+?\d+\.?\d* pts/);
-    expect(userLine).toMatch(/I play/);
+    expect(userLine).toMatch(/Lean: Chelsea at 7\.00, (?:small )?play\./);
     expect(userLine).not.toMatch(/\bEV\b/);
     expect(userLine).not.toMatch(/\block\b/i);
     const pass = composeMatchResponse(
@@ -1043,7 +1043,7 @@ describe("V2 conversational architecture", () => {
       planResponse("How much should I stake?", { groundingKind: "match", hasUserLine: true })
     );
     expect(stake).toContain(STAKE_REFUSAL_SENTENCE);
-    expect(stake).toMatch(/I play/);
+    expect(stake).not.toMatch(/I play/);
     expect(stake).not.toMatch(/kelly|unit size/i);
 
     const totals = composeMatchResponse(
@@ -1252,7 +1252,7 @@ it("explains fixed totals and risk labels without inventing fixture-specific ins
     planResponse("pass or play?", { groundingKind: "match", hasUserLine: true }));
   expect(answer).toMatch(/implies 14\.3%/);
   expect(answer).toMatch(/gap \+?\d+\.?\d* pts/);
-  expect(answer).toMatch(/I play/);
+  expect(answer).toMatch(/Lean: Chelsea at 7\.00, (?:small )?play\./);
   expect(answer).not.toMatch(/\bEV\b/);
   expect(answer).not.toMatch(/payload|grounding|JSON|Dixon.Coles|ClubElo/i);
 });

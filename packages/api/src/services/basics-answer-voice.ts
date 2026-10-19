@@ -182,10 +182,8 @@ export function formatModelFavouriteHeadline(
   const favourite = modelFavouriteOutcome(grounding);
   const leg = divergence.legs.find((row) => row.outcome === favourite.outcome)!;
   const label = displayOutcomeLabel(grounding, favourite.outcome);
-  const modelPct = deskPercentDisplay(favourite.p);
-  const marketPct = deskPercentDisplay(leg.marketPercent / 100);
   const verb = favourite.outcome === "draw" ? "Draw is" : `${label} are`;
-  return `${verb} my favourite at ${modelPct}; ${sourceLabel} has ${marketPct}.`;
+  return `${verb} my favourite on this read; ${sourceLabel} is the market side on 1X2.`;
 }
 
 export function formatMarketActionLean(
@@ -236,7 +234,7 @@ export function formatUserLineLean(
     return `Lean: I will not call ${leanLabel} at ${dec}.`;
   }
   const size = Math.abs(gapPoints) >= 15 ? "strong play" : Math.abs(gapPoints) >= 5 ? "play" : "small play";
-  return `Lean: ${leanLabel} at ${dec}, ${size} — I play.`;
+  return `Lean: ${leanLabel} at ${dec}, ${size}.`;
 }
 
 export function modelFavouriteOutcome(grounding: Grounding): {
@@ -374,4 +372,31 @@ export function tableVsModelFavoriteExplainLine(grounding: Grounding): string | 
 export function appendTableVsFavoriteExplain(grounding: Grounding, answer: string): string {
   const line = tableVsModelFavoriteExplainLine(grounding);
   return line ? `${answer.trim()}\n${line}` : answer;
+}
+
+/** Data reasons after a priced turn — no full 1X2 table repeat. */
+export function composeWhyAfterPricedTurn(grounding: Grounding): string {
+  const favourite = modelFavouriteOutcome(grounding);
+  const favLabel = favourite.outcome === "draw"
+    ? "Draw"
+    : displayOutcomeLabel(grounding, favourite.outcome);
+  const parts: string[] = [
+    `Reviewed ratings have ${compactTeamLabel(grounding.home)} at ${Math.round(grounding.homeElo)} `
+    + `and ${compactTeamLabel(grounding.away)} at ${Math.round(grounding.awayElo)} Elo.`,
+  ];
+  if (grounding.homeFieldAdvantage) {
+    parts.push(`${compactTeamLabel(grounding.home)} get home-field advantage in this competition.`);
+  }
+  const tableLine = tableVsModelFavoriteExplainLine(grounding);
+  if (tableLine) parts.push(tableLine.replace(/^Caveat:\s*/, ""));
+  const divergence = grounding.marketDivergence[0];
+  if (divergence) {
+    const leg = divergence.legs.find((row) => row.outcome === favourite.outcome);
+    const source = labelMarketSource(divergence.source);
+    if (leg) {
+      parts.push(`${source} no-vig 1X2 implies ${deskPercentDisplay(leg.marketPercent / 100)} on ${favLabel}.`);
+    }
+  }
+  parts.push(`${favLabel} is my favourite at ${deskPercentDisplay(favourite.p)} on that strength read.`);
+  return parts.join(" ");
 }

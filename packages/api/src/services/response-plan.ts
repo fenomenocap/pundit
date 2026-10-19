@@ -18,6 +18,7 @@ export type ResponseMode =
   | "coverage"
   | "slate-best-gap"
   | "winner-guarantee-honesty"
+  | "priced-why"
   | "general";
 
 const ASKS_MATCH_PREVIEW =
@@ -181,6 +182,7 @@ export const DESK_COMPOSER_MODES: ReadonlySet<ResponseMode> = new Set([
   "odds-provenance",
   "slate-best-gap",
   "winner-guarantee-honesty",
+  "priced-why",
 ]);
 
 /** True when the user named the over side of 2.5 without also naming under. */
@@ -258,9 +260,23 @@ export function bankrollStakePolicyAppendix(question: string): string {
   return `${BANKROLL_UNIT_GUIDANCE} I do not Kelly-size.`;
 }
 
-export function deliveryPolicyLinesAfterTrace(_question: string, _mode: ResponseMode): string[] {
-  // Bankroll copy is composed in the stake-refusal preamble (before the headline).
-  return [];
+export function deliveryPolicyLinesAfterTrace(question: string, mode: ResponseMode): string[] {
+  if (mode !== "stake-refusal" || !mentionsBankroll(question)) return [];
+  return [bankrollStakePolicyAppendix(question)];
+}
+
+/** Bare priced-turn follow-ups that must settle on the composer (legacy + V2). */
+export function isPricedComposerFollowUp(
+  question: string,
+  hasHistory: boolean,
+  hasCompleteMarket1x2: boolean,
+): boolean {
+  if (!hasHistory) return false;
+  const q = question.trim();
+  if (/^why\??[.!]*$/i.test(q)) return true;
+  if (hasCompleteMarket1x2 && /^and the (?:away|home) side\??[.!]*$/i.test(q)) return true;
+  if (/\b(?:what about|how about)\b/i.test(q) && /\b(?:the )?draw\b/i.test(q)) return true;
+  return false;
 }
 
 /** Fixture winner ask on an active match (not a season/title outlook). */
@@ -339,8 +355,10 @@ export function planResponse(
   } else if (match && hasHistory && context.hasCompleteMarket1x2
     && /^and the (?:away|home) side\??[.!]*$/i.test(q)) {
     mode = "market-comparison";
+  } else if (match && hasHistory && /^why\??[.!]*$/i.test(q)) {
+    mode = "priced-why";
   } else if (match && hasHistory && context.hasCompleteMarket1x2
-    && /^why\??[.!]*$/i.test(q)) {
+    && /\b(?:what about|how about)\b/i.test(q) && /\b(?:the )?draw\b/i.test(q)) {
     mode = "market-comparison";
   } else if (match && hasHistory && asksPricingFollowUp(q)) {
     if (asksTotalsQuestion(q)) mode = "totals";

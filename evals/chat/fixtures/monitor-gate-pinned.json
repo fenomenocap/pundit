@@ -760,7 +760,7 @@
         },
         {
           "status": 200,
-          "answer": "Chelsea at 7.00 implies 14.3% (1/7.00).\nChelsea  54.0% | fair 1.85 | line 7.00 (14.3%) | gap +39.7 pts\nLean: Chelsea at 7.00, strong play — I play.\nModel: Fundamental v1 (monitor), 13 Sept 08:00 SGT · Odds: none no-vig, 18 Oct 20:00 SGT",
+          "answer": "Chelsea at 7.00 implies 14.3% (1/7.00).\nChelsea  54.0% | fair 1.85 | line 7.00 (14.3%) | gap +39.7 pts\nLean: Chelsea at 7.00, strong play.\nModel: Fundamental v1 (monitor), 13 Sept 08:00 SGT · Odds: none no-vig, 18 Oct 20:00 SGT",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
