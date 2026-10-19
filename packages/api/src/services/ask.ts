@@ -132,6 +132,12 @@ import {
   composeMatchResponse,
   composeTeamNewsAnswer,
 } from "./response-composer";
+import { getLeadFeaturedModelFixture } from "./featured-fixtures";
+import { isNonFixtureVersusTarget, referencesFeaturedMatchDeictic } from "./featured-match-deictic";
+import {
+  composeMultiLegPricingDeclineAnswer,
+  isMultiLegPricingQuestion,
+} from "./multi-leg-pricing-decline";
 import {
   DESK_BOARD_FALLBACK,
   DESK_GENERAL_CONCEPT_SYSTEM,
@@ -478,6 +484,8 @@ type TeamFixture = Pick<ModelFixture, "home" | "away">;
 export interface FixtureRoutingState {
   recognizedFixtures?: RecognizedFixture[];
   fixtureContext?: FixtureContext;
+  /** Test override for the homepage featured fixture (deictic "featured match"). */
+  featuredLeadFixture?: ModelFixture;
   modelInitialized?: boolean;
   modelRefreshing?: boolean;
   ratingsAvailable?: boolean;
@@ -4416,8 +4424,12 @@ function hasExplicitMatchupCue(question: string): boolean {
 }
 
 function hasUnresolvedFixtureShape(question: string): boolean {
-  return /\b[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}\s+(?:vs?\.?|versus|against)\s+[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}(?:[?!.,]|$)/iu
-    .test(question);
+  const match = /\b[\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100}\s+(?:vs?\.?|versus|against)\s+([\p{L}\p{N}][\p{L}\p{N} .'’‘:–-]{1,100})(?:[?!.,]|$)/iu
+    .exec(question);
+  if (!match) return false;
+  const rightSide = normalizeTeamText(match[1] ?? "");
+  if (isNonFixtureVersusTarget(rightSide)) return false;
+  return true;
 }
 
 /**
@@ -5182,6 +5194,11 @@ export function resolveAskContext(
 
   if (explicitFixture && (!competitionId || hasExplicitMatchupCue(question))) {
     return { tier: "match", fixture: explicitFixture };
+  }
+
+  if (!teams && !competitionId && referencesFeaturedMatchDeictic(question)) {
+    const lead = routing.featuredLeadFixture ?? getLeadFeaturedModelFixture();
+    if (lead) return { tier: "match", fixture: lead };
   }
 
   if (!competitionId) {
@@ -10734,6 +10751,14 @@ async function deliverChatAgentTurn(
   );
 }
 
+function multiLegPricingDeclinePayload(): ScopedAskPayload {
+  return {
+    answer: composeMultiLegPricingDeclineAnswer(),
+    grounding: null,
+    verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+  };
+}
+
 export async function answerQuestion(
   question: string,
   history: ConversationTurn[] = [],
@@ -10767,6 +10792,9 @@ async function answerQuestionScoped(
     if (signal?.aborted) throw signal.reason;
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
+  }
+  if (isMultiLegPricingQuestion(question)) {
+    return multiLegPricingDeclinePayload();
   }
   const prepared = prepareAsk(
     question,
@@ -11076,6 +11104,12 @@ async function answerQuestionStreamScoped(
     if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(resultRecord.answer);
     return { ...resultRecord, grounding: null,
       verification: { status: "verified", supportedClaimCount: 1, removedClaimCount: 0 } };
+  }
+  if (isMultiLegPricingQuestion(question)) {
+    const decline = multiLegPricingDeclinePayload();
+    handlers.onGrounding(null);
+    if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(decline.answer);
+    return decline;
   }
   const prepared = prepareAsk(
     question,

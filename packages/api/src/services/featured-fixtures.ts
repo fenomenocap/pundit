@@ -74,6 +74,11 @@ export function getFeaturedModelFixtures(): ModelFixture[] {
   return getFeaturedFixtures().map((fixture) => fixture.model);
 }
 
+/** Homepage / desk featured card — first joined featured row, not arbitrary slate order. */
+export function getLeadFeaturedModelFixture(): ModelFixture | undefined {
+  return getFeaturedFixtures()[0]?.model;
+}
+
 // Backward-compatible export for tests expecting WC stage filter removal.
 export function isFeaturedFootballMatch(match: FootballMatch): boolean {
   return (match.status === "SCHEDULED" || match.status === "IN_PLAY")

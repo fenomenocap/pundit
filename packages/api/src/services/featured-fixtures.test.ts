@@ -78,4 +78,14 @@ describe("featured fixtures", () => {
     expect(selectFeaturedFixtures([footballMatch], [model("eng.1", "Arsenal", "Coventry City")]))
       .toHaveLength(1);
   });
+
+  it("orders the homepage featured lead ahead of UCL qualifiers on the same window", () => {
+    const ucl = football("uefa.champions_qual", "2026-08-03T15:00:00.000Z", "SCHEDULED", "Riga", "Zagreb");
+    const pl = football("eng.1", "2026-10-19T19:00:00.000Z", "SCHEDULED", "Tottenham Hotspur", "Coventry City");
+    const joined = selectFeaturedFixtures([ucl, pl], [
+      model("uefa.champions_qual", "Riga", "Zagreb"),
+      { ...model("eng.1", "Tottenham Hotspur", "Coventry City"), fixtureId: 2, utcDate: pl.utcDate },
+    ]);
+    expect(joined[0]?.model.home).toBe("Tottenham Hotspur");
+  });
 });
