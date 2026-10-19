@@ -27,7 +27,17 @@ export function isSlateParlayRequest(question: string): boolean {
     || /\b\d+[\s-]*fold\b/i.test(question)
     || /\b(?:five|four|three|two)[\s-]*fold\b/i.test(question);
   if (!bettingShape) return false;
-  return /\b(?:today|tonight|slate|card|desk|kick[\s-]?offs?|matches?|fixtures?|combined|price|prices|odds|\d+\s*pm)\b/i.test(question);
+  return /\b(?:today|tonight|this\s+weekend|(?:the\s+)?next\s+slate|slate|card|desk|kick[\s-]?offs?|matches?|fixtures?|combined|price|prices|odds|\d+\s*pm)\b/i.test(question);
+}
+
+export function isGuaranteedWinnerAccaRequest(question: string): boolean {
+  if (/\bin general\b/i.test(question)) return false;
+  if (/\bclosest\b[^?.!]{0,40}\bsure\s+thing\b/i.test(question)) return true;
+  if (/\b(?:sure\s+thing|banker\s+acca|safe\s+(?:bet|acca)|can'?t\s+lose|cannot\s+lose)\b/i.test(question)) {
+    return true;
+  }
+  return /\bguarantee\w*\b/i.test(question)
+    && /\b(?:winner|win(?:ner)?|acca|parlay|accumulator|fold)\b/i.test(question);
 }
 
 function teamSearchTerms(fixtures: ModelFixture[]): Array<[string, string]> {
@@ -86,7 +96,108 @@ export function isCrossGameParlayRequest(question: string, slate: ModelFixture[]
 }
 
 export function isDeskParlayRequest(question: string): boolean {
-  return isSlateParlayRequest(question) || isCrossGameParlayRequest(question);
+  return isSlateParlayRequest(question)
+    || isCrossGameParlayRequest(question)
+    || isGuaranteedWinnerAccaRequest(question);
+}
+
+export type SlateTimeScope = "today" | "weekend" | "next-slate" | "desk";
+
+export function detectSlateTimeScope(question: string): SlateTimeScope {
+  if (/\b(?:the\s+)?next\s+slate\b/i.test(question)) return "next-slate";
+  if (/\bthis\s+weekend\b/i.test(question)) return "weekend";
+  if (/\b(?:today|tonight)\b/i.test(question)) return "today";
+  return "desk";
+}
+
+function londonWeekdayLong(value: string | Date): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "Europe/London" }).format(date);
+}
+
+function addCalendarDays(calendarKey: string, days: number): string {
+  const date = new Date(`${calendarKey}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return londonCalendarDate(date);
+}
+
+export function formatUkCalendarLabel(calendarKey: string): string {
+  const date = new Date(`${calendarKey}T12:00:00.000Z`);
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "Europe/London",
+  }).format(date);
+}
+
+export function formatDateRangeFromLegs(legs: ModelFixture[]): string {
+  const keys = [...new Set(legs.map((row) => londonCalendarDate(row.utcDate)))].sort();
+  if (keys.length === 0) return "the desk";
+  if (keys.length === 1) return formatUkCalendarLabel(keys[0]);
+  const first = formatUkCalendarLabel(keys[0]);
+  const last = formatUkCalendarLabel(keys[keys.length - 1]);
+  const firstParts = first.split(" ");
+  const lastParts = last.split(" ");
+  if (firstParts.length >= 3 && lastParts.length >= 3 && firstParts[2] === lastParts[2]) {
+    return `${firstParts[0]} ${firstParts[1]}–${lastParts[0]} ${lastParts[1]} ${lastParts[2]}`;
+  }
+  return `${first}–${last}`;
+}
+
+function upcomingWeekendDateKeys(now: Date): string[] {
+  const keys: string[] = [];
+  for (let offset = 0; offset < 14; offset += 1) {
+    const day = new Date(now.getTime() + offset * 86_400_000);
+    const weekday = londonWeekdayLong(day);
+    if (weekday === "Saturday") {
+      keys.push(londonCalendarDate(day));
+      keys.push(addCalendarDays(londonCalendarDate(day), 1));
+      return keys;
+    }
+  }
+  return keys;
+}
+
+function poolForNextSlate(fullPool: ModelFixture[], now: Date): ModelFixture[] {
+  const todayKey = londonCalendarDate(now);
+  const upcoming = fullPool.filter((row) => londonCalendarDate(row.utcDate) >= todayKey);
+  if (upcoming.length === 0) return fullPool;
+  const distinctDates = [...new Set(upcoming.map((row) => londonCalendarDate(row.utcDate)))].sort();
+  const anchor = distinctDates.find((key) => key > todayKey) ?? distinctDates[distinctDates.length - 1];
+  const endKey = addCalendarDays(anchor, 2);
+  return upcoming.filter((row) => {
+    const key = londonCalendarDate(row.utcDate);
+    return key >= anchor && key <= endKey;
+  });
+}
+
+export function buildSlateScopeLead(
+  question: string,
+  legs: ModelFixture[],
+  now: Date = new Date()
+): string | null {
+  if (legs.length === 0) return null;
+  const scope = detectSlateTimeScope(question);
+  const todayKey = londonCalendarDate(now);
+  const todayLegs = legs.filter((row) => londonCalendarDate(row.utcDate) === todayKey);
+  if (scope === "today" && todayLegs.length === 1 && legs.length > 1) {
+    const fillLegs = legs.filter((row) => londonCalendarDate(row.utcDate) !== todayKey);
+    return `Today has one match, so this uses ${formatDateRangeFromLegs(fillLegs)}.`;
+  }
+  if (scope === "today" && todayLegs.length === 0) {
+    return `No matches today; this uses ${formatDateRangeFromLegs(legs)}.`;
+  }
+  if (scope === "weekend") {
+    return `This weekend’s priced fixtures (${formatDateRangeFromLegs(legs)}).`;
+  }
+  if (scope === "next-slate") {
+    return `Next desk slate (${formatDateRangeFromLegs(legs)}).`;
+  }
+  if (scope === "today" && todayLegs.length > 1) {
+    return `Today’s matches (${formatDateRangeFromLegs(todayLegs)}).`;
+  }
+  return null;
 }
 
 interface ParsedCrossLeg {
@@ -250,14 +361,14 @@ function completeThreeWay(
 function marketQuoteForFavourite(fixture: ModelFixture, outcome: OutcomeKey): MarketLegQuote | null {
   const cached = getCachedFixtureMarketOdds(fixture);
   const candidates: Array<MarketThreeWay | null> = [];
-  if (cached?.stake) {
-    candidates.push(completeThreeWay("Stake", cached.observedAt, cached.stake.pHome, cached.stake.pDraw, cached.stake.pAway));
-  }
   if (cached?.kalshi) {
     candidates.push(completeThreeWay("Kalshi", cached.observedAt, cached.kalshi.pHome, cached.kalshi.pDraw, cached.kalshi.pAway));
   }
   if (cached?.polymarket) {
     candidates.push(completeThreeWay("Polymarket", cached.observedAt, cached.polymarket.pHome, cached.polymarket.pDraw, cached.polymarket.pAway));
+  }
+  if (cached?.stake) {
+    candidates.push(completeThreeWay("Stake", cached.observedAt, cached.stake.pHome, cached.stake.pDraw, cached.stake.pAway));
   }
   if (fixture.stakePHome != null && fixture.stakePDraw != null && fixture.stakePAway != null) {
     const observedAt = cached?.observedAt ?? fixture.forecastProvenance?.forecastAt ?? fixture.utcDate;
@@ -319,6 +430,7 @@ export interface SlateLegSelection {
   legs: ModelFixture[];
   fillNotice: string | null;
   kickoffHourNotice: string | null;
+  scopeLead: string | null;
 }
 
 export function selectSlateLegsForParlay(
@@ -348,12 +460,19 @@ export function selectSlateLegsForParlay(
     }
   }
 
-  const wantsToday = /\b(?:today|tonight)\b/i.test(question);
+  const scope = detectSlateTimeScope(question);
   const todayKey = londonCalendarDate(now);
   let fillNotice: string | null = kickoffHourNotice;
   let legs: ModelFixture[] = [];
 
-  if (wantsToday) {
+  if (scope === "weekend") {
+    const weekendKeys = new Set(upcomingWeekendDateKeys(now));
+    pool = pool.filter((row) => weekendKeys.has(londonCalendarDate(row.utcDate)));
+    legs = pool.slice(0, requestedLegs);
+  } else if (scope === "next-slate") {
+    pool = poolForNextSlate(fullPool, now);
+    legs = pool.slice(0, requestedLegs);
+  } else if (scope === "today") {
     const todayMatches = pool.filter((row) => londonCalendarDate(row.utcDate) === todayKey);
     const later = pool.filter((row) => londonCalendarDate(row.utcDate) !== todayKey);
     legs = [...todayMatches];
@@ -362,15 +481,10 @@ export function selectSlateLegsForParlay(
       legs.push(row);
     }
     legs = legs.slice(0, requestedLegs);
-    if (todayMatches.length > 0 && legs.length > todayMatches.length) {
+    if (todayMatches.length > 1 && legs.length > todayMatches.length) {
       fillNotice = [
         fillNotice,
-        `Only ${todayMatches.length} match${todayMatches.length === 1 ? "" : "es"} today; legs ${todayMatches.length + 1}–${legs.length} are from the next fixtures.`,
-      ].filter(Boolean).join(" ");
-    } else if (todayMatches.length === 0 && legs.length > 0) {
-      fillNotice = [
-        fillNotice,
-        "No matches kick off today; all legs are from the next fixtures on the desk.",
+        `Only ${todayMatches.length} matches today; legs ${todayMatches.length + 1}–${legs.length} are from the next fixtures.`,
       ].filter(Boolean).join(" ");
     }
   } else {
@@ -378,7 +492,8 @@ export function selectSlateLegsForParlay(
   }
 
   if (legs.length < 2) return null;
-  return { legs, fillNotice, kickoffHourNotice };
+  const scopeLead = buildSlateScopeLead(question, legs, now);
+  return { legs, fillNotice, kickoffHourNotice, scopeLead };
 }
 
 function pricedAtLabel(fixture: ModelFixture): string {
@@ -393,18 +508,26 @@ export function composeSlateParlayAnswer(
   if (!isSlateParlayRequest(question)) return null;
   const selection = selectSlateLegsForParlay(question, slate, now);
   if (!selection) return null;
-  const { legs, fillNotice } = selection;
+  const { legs, fillNotice, scopeLead } = selection;
   const legOutcomes = legs.map((fixture) => ({ fixture, fav: favouriteOutcome(fixture) }));
   const foldLabel = legs.length === 2 ? "two-leg" : `${legs.length}-fold`;
-  return composeParlayAnswerBody(question, legs, legOutcomes, fillNotice, foldLabel);
+  return composeParlayAnswerBody(question, legs, legOutcomes, scopeLead, fillNotice, foldLabel);
+}
+
+function gapPoints(modelP: number, marketP: number): string {
+  const delta = (modelP - marketP) * 100;
+  const rounded = Math.abs(delta) < 0.05 ? "0.0" : delta.toFixed(1);
+  return delta > 0 ? `+${rounded}` : rounded;
 }
 
 function composeParlayAnswerBody(
   question: string,
   legs: ModelFixture[],
   legOutcomes: Array<{ fixture: ModelFixture; fav: { label: string; p: number; outcome: OutcomeKey } }>,
+  scopeLead: string | null,
   fillNotice: string | null,
-  foldLabel: string
+  foldLabel: string,
+  preamble: string | null = null
 ): string {
   const combined = legOutcomes.reduce((product, row) => product * row.fav.p, 1);
   const marketRows = legOutcomes.map(({ fixture, fav }) => ({
@@ -440,10 +563,11 @@ function composeParlayAnswerBody(
     const modelBit = `model ${pct(fav.p)} (fair ${fairDecimal(fav.p)})`;
     let marketBit = "";
     if (market) {
+      const gapBit = ` · gap ${gapPoints(fav.p, market.p)} pts`;
       if (!sharedMarket) {
-        marketBit = ` · market ${pct(market.p)} (${market.decimal.toFixed(2)}) ${market.source} as of ${formatObservedUk(market.observedAt)} UK`;
+        marketBit = ` · market implied ${pct(market.p)} (decimal ${market.decimal.toFixed(2)})${gapBit} · ${market.source} as of ${formatObservedUk(market.observedAt)} UK`;
       } else {
-        marketBit = ` · market ${pct(market.p)} (${market.decimal.toFixed(2)})`;
+        marketBit = ` · market implied ${pct(market.p)} (decimal ${market.decimal.toFixed(2)})${gapBit}`;
       }
     }
     return `${kickoff} · ${fixture.home} v ${fixture.away}: ${fav.label} ${modelBit}${marketBit} — ${oneLineReason(fixture, fav)}.`;
@@ -456,7 +580,7 @@ function composeParlayAnswerBody(
   }
 
   const tail = "Correlation: same-day and league context can move these legs together.";
-  const blocks = [fillNotice, lead, ...legLines, marketCombined, tail].filter(Boolean);
+  const blocks = [scopeLead, preamble, fillNotice, lead, ...legLines, marketCombined, tail].filter(Boolean);
   let answer = blocks.join("\n");
   if (!MODEL_EDGE_CLAIMS_ALLOWED && /\bedge\b/i.test(answer)) {
     answer = answer.replace(/\bedge\b/gi, "gap");
@@ -483,7 +607,36 @@ export function composeCrossGameParlayAnswer(
     legOutcomes.push({ fixture, fav: outcome });
   }
   const foldLabel = legOutcomes.length === 2 ? "two-leg" : `${legOutcomes.length}-fold`;
-  return composeParlayAnswerBody(question, legOutcomes.map((row) => row.fixture), legOutcomes, null, foldLabel);
+  return composeParlayAnswerBody(question, legOutcomes.map((row) => row.fixture), legOutcomes, null, null, foldLabel);
+}
+
+export function composeGuaranteedWinnerAccaAnswer(
+  question: string,
+  slate: ModelFixture[] = getDeskPricedSlate(),
+  now: Date = new Date()
+): string | null {
+  if (!isGuaranteedWinnerAccaRequest(question)) return null;
+  const withSlate = /\bnext\s+slate\b/i.test(question) ? question : `${question} from the next slate`;
+  const parlayQuestion = /\b(?:parlay|acca|accumulator|\d+[\s-]*fold)\b/i.test(withSlate)
+    ? withSlate
+    : `${withSlate} Build a 3-fold favourites acca.`;
+  const selection = selectSlateLegsForParlay(parlayQuestion, slate, now);
+  if (!selection) return null;
+  const { legs, fillNotice, scopeLead } = selection;
+  const legOutcomes = legs.map((fixture) => ({ fixture, fav: favouriteOutcome(fixture) }));
+  const combined = legOutcomes.reduce((product, row) => product * row.fav.p, 1);
+  const preamble = "I can't guarantee a winner — nothing in football is certain, and accas multiply risk because every leg must land. "
+    + `The model's combined probability for these favourites is ${pct(combined)} (fair ${fairDecimal(combined)}), not a sure thing.`;
+  const foldLabel = legOutcomes.length === 2 ? "two-leg" : `${legOutcomes.length}-fold`;
+  return composeParlayAnswerBody(
+    parlayQuestion,
+    legs,
+    legOutcomes,
+    scopeLead,
+    fillNotice,
+    foldLabel,
+    preamble
+  );
 }
 
 export function composeDeskParlayAnswer(
@@ -491,6 +644,9 @@ export function composeDeskParlayAnswer(
   slate: ModelFixture[] = getDeskPricedSlate(),
   now: Date = new Date()
 ): string | null {
+  if (isGuaranteedWinnerAccaRequest(question)) {
+    return composeGuaranteedWinnerAccaAnswer(question, slate, now);
+  }
   const cross = composeCrossGameParlayAnswer(question, slate);
   if (cross) return cross;
   return composeSlateParlayAnswer(question, slate, now);

@@ -10,6 +10,7 @@ import {
   londonCalendarDate,
   referencesFeaturedMatchDeictic,
   selectSlateLegsForParlay,
+  composeGuaranteedWinnerAccaAnswer,
 } from "./slate-parlay";
 import { MODEL_EDGE_CLAIMS_ALLOWED } from "../config/backtest-gate";
 
@@ -55,7 +56,74 @@ describe("slate parlay and deictic helpers", () => {
       now
     );
     expect(selection?.legs.map((row) => row.fixtureId)).toEqual([1, 2]);
-    expect(selection?.fillNotice).toMatch(/Only 1 match today/);
+    expect(selection?.scopeLead).toMatch(/Today has one match/);
+  });
+
+  it("scopes next-slate accas to the upcoming desk window", () => {
+    const now = new Date("2026-10-19T12:00:00.000Z");
+    const slate = [
+      fixture("Tottenham Hotspur", "Coventry City", {
+        fixtureId: 1,
+        utcDate: "2026-10-19T19:00:00.000Z",
+        pHome: 0.62,
+        pDraw: 0.22,
+        pAway: 0.16,
+      }),
+      fixture("Arsenal", "Everton", {
+        fixtureId: 2,
+        utcDate: "2026-10-23T14:00:00.000Z",
+        pHome: 0.58,
+        pDraw: 0.24,
+        pAway: 0.18,
+      }),
+      fixture("Liverpool", "Chelsea", {
+        fixtureId: 3,
+        utcDate: "2026-10-24T15:00:00.000Z",
+        pHome: 0.5,
+        pDraw: 0.25,
+        pAway: 0.25,
+      }),
+    ];
+    const selection = selectSlateLegsForParlay("3-fold acca from the next slate", slate, now);
+    expect(selection?.legs.every((row) => row.fixtureId !== 1)).toBe(true);
+    expect(selection?.scopeLead).toMatch(/Next desk slate/);
+  });
+
+  it("refuses sure-thing accas with combined favourite probability", () => {
+    const now = new Date("2026-10-19T12:00:00.000Z");
+    const slate = [
+      fixture("Tottenham Hotspur", "Coventry City", {
+        fixtureId: 1,
+        utcDate: "2026-10-19T19:00:00.000Z",
+        pHome: 0.62,
+        pDraw: 0.22,
+        pAway: 0.16,
+      }),
+      fixture("Arsenal", "Everton", {
+        fixtureId: 2,
+        utcDate: "2026-10-23T14:00:00.000Z",
+        pHome: 0.58,
+        pDraw: 0.24,
+        pAway: 0.18,
+        stakePHome: 0.56,
+        stakePDraw: 0.25,
+        stakePAway: 0.19,
+      }),
+      fixture("Liverpool", "Chelsea", {
+        fixtureId: 3,
+        utcDate: "2026-10-23T14:00:00.000Z",
+        pHome: 0.5,
+        pDraw: 0.25,
+        pAway: 0.25,
+      }),
+    ];
+    const answer = composeGuaranteedWinnerAccaAnswer("Guarantee me a winner on a desk acca", slate, now);
+    expect(answer).toMatch(/can't guarantee/i);
+    expect(answer).toMatch(/multiply risk/i);
+    expect(answer).toMatch(/combined probability/i);
+    expect(answer).toMatch(/not a sure thing/i);
+    expect(answer).not.toMatch(/closest to a sure thing/i);
+    expect(answer).toMatch(/gap [+-]?\d+\.\d pts/);
   });
 
   it("composes kickoff labels and fair-only framing when no market", () => {
@@ -150,7 +218,8 @@ describe("slate parlay and deictic helpers", () => {
       slate,
       now
     );
-    expect(answer).toMatch(/market \d+\.\d%/);
+    expect(answer).toMatch(/market implied \d+\.\d%/);
+    expect(answer).toMatch(/gap [+-]?\d+\.\d pts/);
     expect(answer).toMatch(/Stake/);
   });
 
