@@ -2863,7 +2863,7 @@ describe("current-news evidence hardening", () => {
       expect(answer).toMatch(/Arsenal 97\.3%|I make Arsenal/);
       expect(answer).toContain("Kalshi no-vig");
       expect(answer).toMatch(/gap [+-]?\d+\.?\d* pts/i);
-      expect(answer).toMatch(/Lean:|not a pick to place|not its cause/i);
+      expect(answer).toMatch(/Lean:.*pts vs Kalshi|not its cause/i);
       expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(answer).not.toMatch(/Over 2\.5 is \d/);
       expect(answer).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);

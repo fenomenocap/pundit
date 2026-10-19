@@ -217,9 +217,88 @@ export function mentionsBankroll(question: string): boolean {
 export const BANKROLL_UNIT_GUIDANCE =
   "I hear the bankroll. As generic unit guidance only — not a bet recommendation — use flat stakes around 1–2% of that bankroll per bet, smaller on accas, and never chase losses.";
 
+/** Complete same-source 1X2 divergence rows — required for market-comparison composer. */
+export function hasCompleteMarket1x2ForComparison(grounding: {
+  marketDivergence?: readonly unknown[];
+}): boolean {
+  return Boolean(grounding.marketDivergence?.length);
+}
+
+export function parseBankrollAmount(question: string): number | null {
+  const q = question.trim();
+  const dollar = /\$\s*([\d,]+(?:\.\d{1,2})?)/.exec(q);
+  if (dollar) {
+    const value = Number(dollar[1].replace(/,/g, ""));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  const pounds = /£\s*([\d,]+(?:\.\d{1,2})?)/.exec(q);
+  if (pounds) {
+    const value = Number(pounds[1].replace(/,/g, ""));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  return null;
+}
+
+function formatBankrollCurrency(amount: number, symbol: "$" | "£"): string {
+  const rounded = Math.round(amount);
+  return `${symbol}${rounded.toLocaleString("en-US")}`;
+}
+
+/** CTO policy copy appended after numeric traceability — not model probabilities. */
+export function bankrollStakePolicyAppendix(question: string): string {
+  const amount = parseBankrollAmount(question);
+  const symbol = /£/.test(question) ? "£" as const : "$" as const;
+  if (amount != null) {
+    const low = Math.max(1, Math.round(amount * 0.01));
+    const high = Math.max(low + 1, Math.round(amount * 0.02));
+    const bankrollLabel = formatBankrollCurrency(amount, symbol);
+    const stakeRange = `${formatBankrollCurrency(low, symbol)}–${formatBankrollCurrency(high, symbol)} on ${bankrollLabel}`;
+    return `I hear the ${bankrollLabel} bankroll. As generic unit guidance only — not a bet recommendation — use flat stakes around 1–2% per bet (${stakeRange}), smaller on accas, and never chase losses; I do not Kelly-size.`;
+  }
+  return `${BANKROLL_UNIT_GUIDANCE} I do not Kelly-size.`;
+}
+
+export function deliveryPolicyLinesAfterTrace(question: string, mode: ResponseMode): string[] {
+  if (mode !== "stake-refusal" || !mentionsBankroll(question)) return [];
+  return [bankrollStakePolicyAppendix(question)];
+}
+
+/** Fixture winner ask on an active match (not a season/title outlook). */
+export function asksMatchWinnerQuestion(question: string): boolean {
+  const q = question.trim();
+  if (!/\bwho\b/i.test(q) || !ASKS_RESULT_CUE.test(q)) return false;
+  return !/\b(?:league|season|title|top[- ]four|champion|premier league title)\b/i.test(q);
+}
+
+/** Desk phrasing for a full priced 1X2 read without naming Kalshi/Polymarket explicitly. */
+export function asksFixturePriceBoard(question: string): boolean {
+  const q = question.trim();
+  return /\bprice(?:\s+tonight'?s?|\s+this\s+evening)?\s+(?:the\s+)?match\b/i.test(q)
+    || /\bprice\s+tonight(?:'s)?\s+(?:fixture|game|match)\b/i.test(q)
+    || /\b(?:print|show)\s+(?:me\s+)?(?:tonight'?s?\s+)?(?:match\s+)?(?:odds|prices?|1x2)\b/i.test(q);
+}
+
+export function matchPlanContext(
+  grounding: { kind?: string; marketDivergence?: readonly unknown[]; pricing?: { userLine?: unknown } } | null | undefined,
+  hasHistory = false,
+): { hasHistory: boolean; groundingKind: string | null; hasUserLine: boolean; hasCompleteMarket1x2: boolean } {
+  const match = grounding?.kind === "match";
+  return {
+    hasHistory,
+    groundingKind: match ? "match" : grounding?.kind ?? null,
+    hasUserLine: match && Boolean(grounding.pricing?.userLine),
+    hasCompleteMarket1x2: match && hasCompleteMarket1x2ForComparison(grounding),
+  };
+}
+
 export function planResponse(
   question: string,
-  context: { hasHistory?: boolean; groundingKind?: string | null; hasUserLine?: boolean } = {}
+  context: {
+    hasHistory?: boolean;
+    groundingKind?: string | null;
+    hasUserLine?: boolean;
+    hasCompleteMarket1x2?: boolean;
+  } = {}
 ): ResponsePlan {
   const q = question.trim();
   const match = context.groundingKind === "match";
@@ -255,7 +334,9 @@ export function planResponse(
   else if (match && asksHonestWinnerGuarantee(q)) mode = "winner-guarantee-honesty";
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
   else if (match && asksOddsBoard(q)) mode = "pricing-desk";
-  else if (match && hasHistory && asksPricingFollowUp(q)) {
+  else if (match && context.hasCompleteMarket1x2 && (asksMatchWinnerQuestion(q) || asksFixturePriceBoard(q))) {
+    mode = "market-comparison";
+  } else if (match && hasHistory && asksPricingFollowUp(q)) {
     if (asksTotalsQuestion(q)) mode = "totals";
     else if (asksBttsQuestion(q)) mode = "btts";
     else if (/\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";

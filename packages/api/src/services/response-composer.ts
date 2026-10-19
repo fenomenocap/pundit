@@ -32,11 +32,21 @@ import {
 } from "./response-plan";
 import {
   basicsFavouriteLean,
-  basicsLargestGapLean,
-  basicsProvenanceLine,
+  deskFairFromProb,
+  deskPercentDisplay,
+  deskProvenanceLine,
+  deskProbabilityDisplay,
+  displayOutcomeLabel,
+  formatCompact1x2SideRow,
+  formatTimestampSgt,
+  formatUserLineLean,
+  formatMarketGapLean,
+  formatValueCallHeadline,
   appendTableVsFavoriteExplain,
   joinBasicsAnswer,
   PARLAY_OUT_OF_SCOPE,
+  selectValueLeg,
+  shortModelVersionLabel,
   tableVsModelFavoriteExplainLine,
 } from "./basics-answer-voice";
 import { largestSlateModelMarketGapForDemo } from "./slate-market-scan";
@@ -78,7 +88,7 @@ function signedEvPct(evPct: number): string {
 }
 
 function fairDecimal(probability: number): string {
-  return (1 / probability).toFixed(2);
+  return deskFairFromProb(probability);
 }
 
 function formatScorelineList(
@@ -147,7 +157,7 @@ function composeBttsBasics(_question: string, grounding: Grounding): string {
     headline,
     supports: [totalsAssumptionSentence(grounding)],
     lean,
-    provenance: basicsProvenanceLine(grounding),
+    provenance: deskProvenanceLine(grounding),
   });
 }
 
@@ -172,7 +182,7 @@ function composeTotalsBasics(question: string, grounding: Grounding): string {
     headline,
     supports: [complement, totalsAssumptionSentence(grounding)].filter(Boolean) as string[],
     lean,
-    provenance: basicsProvenanceLine(grounding),
+    provenance: deskProvenanceLine(grounding),
   });
 }
 
@@ -275,35 +285,30 @@ export function composeUserLineAnswer(grounding: Grounding): string {
     return joinBasicsAnswer({
       headline: "I need a decimal line on home, draw, or away before I can compare it to my model.",
       lean: "Lean: add the line in the price field or name home, draw, or away with a decimal in your question.",
-      provenance: basicsProvenanceLine(grounding),
+      provenance: deskProvenanceLine(grounding),
     });
   }
-  const subject = outcomeLabel(grounding, line.outcome);
+  const label = displayOutcomeLabel(grounding, line.outcome);
   const modelP = grounding.pricing.model[line.outcome].p;
   const impliedP = 1 / line.decimalOdds;
   const gapPoints = Math.round((modelP - impliedP) * 1000) / 10;
-  const gapSign = gapPoints >= 0 ? "+" : "";
   const decimal = line.decimalOdds.toFixed(2);
   const decision = line.decimalOdds >= line.playPrice
     ? "play"
     : line.decimalOdds < line.passPrice
       ? "pass"
       : "abstain";
-  const decisionLean = decision === "play"
-    ? "I play on this read — a probability check, not a bet to place."
-    : decision === "pass"
-      ? "I pass — the line is short of my model on this side."
-      : "I will not call it — the line sits in the abstain band.";
+  const { displayPct: modelPct, fairDecimal } = deskProbabilityDisplay(modelP);
+  const impliedPct = deskPercentDisplay(impliedP);
   return joinBasicsAnswer({
-    headline: `${subject} at ${decimal} implies ${pct(impliedP)} (1/${decimal}); I make ${subject} ${pct(modelP)} (fair ${fairDecimal(modelP)}).`,
-    supports: [`Implied ${pct(impliedP)} vs my ${pct(modelP)} on the same side.`],
-    lean: `Lean: gap ${gapSign}${gapPoints.toFixed(1)} pts vs your line — ${decisionLean}`,
-    provenance: basicsProvenanceLine(grounding),
+    headline: `${label} at ${decimal} implies ${impliedPct} (1/${decimal}); I make ${label} ${modelPct} (fair ${fairDecimal}).`,
+    lean: formatUserLineLean(grounding, line.outcome, line.decimalOdds, gapPoints, decision),
+    provenance: deskProvenanceLine(grounding),
   });
 }
 
 function pct(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+  return deskPercentDisplay(value);
 }
 
 function dateLabel(value: string): string {
@@ -406,45 +411,39 @@ export function composeMarketComparisonAnswer(question: string, grounding: Groun
       ? null
       : "I don’t have a complete, same-source and same-time 1X2 market to compare with this fixture, so I can’t claim a pricing disagreement.";
   }
-  const model = grounding.pricing.model;
-  const source = divergence.source[0].toUpperCase() + divergence.source.slice(1);
-  const modelSide = formatOneXTwoSide(grounding, {
-    home: model.home.p,
-    draw: model.draw.p,
-    away: model.away.p,
-  }, true);
-  const marketSide = formatOneXTwoSide(grounding, {
-    home: divergence.legs.find((leg) => leg.outcome === "home")!.marketPercent / 100,
-    draw: divergence.legs.find((leg) => leg.outcome === "draw")!.marketPercent / 100,
-    away: divergence.legs.find((leg) => leg.outcome === "away")!.marketPercent / 100,
-  }, true);
+  const source = capitalizeSource(divergence.source);
   const focus = focusOneXTwoOutcome(question, grounding);
-  const headline = `${grounding.home} v ${grounding.away}: I make ${modelSide}; ${source} no-vig as of ${dateLabel(divergence.observedAt)} has ${marketSide}.`;
-  const beforeFees = marketDecimalSuffix(divergence.source);
-  const supports = orderOutcomes(focus).map((outcome) => {
+  const valueLeg = selectValueLeg(divergence.legs);
+  const headline = formatValueCallHeadline(grounding, valueLeg, source);
+  const pricingRow = grounding.pricing.markets.find((row) => row.source === divergence.source);
+  const beforeFees = divergence.source === "kalshi" || divergence.source === "polymarket";
+  const sideRows = orderOutcomes(focus).map((outcome) => {
     const leg = divergence.legs.find((row) => row.outcome === outcome)!;
-    const pricingRow = grounding.pricing.markets.find((row) => row.source === divergence.source);
-    const label = outcomeLabelForComparison(grounding, outcome);
-    const marketDec = pricingRow?.legs[outcome].decimalOdds != null
-      ? pricingRow.legs[outcome].decimalOdds!.toFixed(2)
-      : fairDecimal(leg.marketPercent / 100);
-    return `${label}: model ${pct(leg.modelPercent / 100)} vs implied ${pct(leg.marketPercent / 100)}, fair ${fairDecimal(leg.modelPercent / 100)} vs market ${marketDec}${beforeFees}.`;
+    const marketDec = pricingRow?.legs[outcome].decimalOdds ?? null;
+    return formatCompact1x2SideRow({
+      label: displayOutcomeLabel(grounding, outcome),
+      modelP: leg.modelPercent / 100,
+      marketDecimal: marketDec,
+      marketP: leg.marketPercent / 100,
+      gapPoints: leg.gapPoints,
+      sourceLabel: source,
+      beforeFees,
+    });
   });
-  if (grounding.externalMarketConsensus) {
-    supports.push(`Market consensus (${dateLabel(grounding.externalMarketConsensus.asOf)}): ${formatOneXTwoSide(grounding, {
-      home: grounding.externalMarketConsensus.pHome,
-      draw: grounding.externalMarketConsensus.pDraw,
-      away: grounding.externalMarketConsensus.pAway,
-    }, true)}.`);
-  }
-  const tableExplain = tableVsModelFavoriteExplainLine(grounding);
-  if (tableExplain) supports.unshift(tableExplain);
+  const caveat = tableVsModelFavoriteExplainLine(grounding);
   return joinBasicsAnswer({
     headline,
-    supports,
-    lean: basicsLargestGapLean(divergence, source),
-    provenance: basicsProvenanceLine(grounding, { source: divergence.source, observedAt: divergence.observedAt }),
+    supports: [caveat, ...sideRows].filter(Boolean) as string[],
+    lean: formatMarketGapLean(grounding, valueLeg, source),
+    provenance: deskProvenanceLine(grounding, { source: divergence.source, observedAt: divergence.observedAt }),
   });
+}
+
+function capitalizeSource(source: string): string {
+  if (source === "kalshi") return "Kalshi";
+  if (source === "polymarket") return "Polymarket";
+  if (source === "stake") return "Stake";
+  return source.charAt(0).toUpperCase() + source.slice(1);
 }
 
 export function composeMarketDivergenceHeadline(grounding: Grounding, question = ""): string | null {
@@ -464,8 +463,8 @@ export function composeSlateBestGapAnswer(now = new Date()): string {
   return joinBasicsAnswer({
     headline,
     supports: [`That read uses the priced fixtures on ${slateLabel}, not every league match.`],
-    lean: `Lean: gap ${sign}${highlight.gapPoints.toFixed(1)} pts on ${highlight.label} — a disagreement, not a bet to place.`,
-    provenance: `Provenance: ${source} as of ${dateLabel(highlight.observedAt)}; Fundamental model from pinned club-strength artifact.`,
+    lean: `Lean: ${highlight.label}, ${sign}${highlight.gapPoints.toFixed(1)} pts vs ${source} on ${slateLabel}.`,
+    provenance: `Model: pinned strength artifact · Odds: ${source} no-vig, ${formatTimestampSgt(highlight.observedAt)}`,
   });
 }
 
@@ -480,7 +479,7 @@ export function composeWinnerGuaranteeHonestyAnswer(_question: string, grounding
     headline,
     supports,
     lean: basicsFavouriteLean(grounding),
-    provenance: basicsProvenanceLine(grounding),
+    provenance: deskProvenanceLine(grounding),
     responsibleGambling: true,
   });
 }
@@ -488,26 +487,18 @@ export function composeWinnerGuaranteeHonestyAnswer(_question: string, grounding
 export function composeOddsProvenanceAnswer(grounding: Grounding): string {
   const feeds = grounding.oddsSources
     .filter((row) => row.pDraw !== null && Number.isFinite(row.pHome) && Number.isFinite(row.pAway))
-    .map((row) => {
-      const source = row.source[0].toUpperCase() + row.source.slice(1);
-      return `${source} (${dateLabel(row.observedAt)})`;
-    });
-  const feedText = feeds.length
-    ? feeds.join(", ")
-    : "no complete external 1X2 feed on this fixture right now";
-  const modelVersion = grounding.pricing.modelVersion;
-  const pricedAt = dateLabel(grounding.pricing.pricedAt);
-  const { freshness } = grounding;
-  const headline = `Fundamental 1X2 uses ${modelVersion}, priced ${pricedAt}; no-vig markets from ${feedText}.`;
+    .map((row) => capitalizeSource(row.source));
+  const feedText = feeds.length ? feeds.join(" and ") : "no complete external 1X2 feed on this fixture";
+  const modelLabel = shortModelVersionLabel(grounding.pricing.modelVersion);
+  const modelTime = formatTimestampSgt(grounding.pricing.pricedAt);
+  const marketTime = formatTimestampSgt(
+    grounding.freshness.marketOddsLastUpdated ?? grounding.pricing.pricedAt,
+  );
+  const headline = `Fundamental 1X2 from ${modelLabel}, refreshed ${modelTime}. Live no-vig 1X2 from ${feedText}, refreshed ${marketTime}.`;
   return joinBasicsAnswer({
     headline,
-    supports: [
-      `Cache tier ${freshness.tier} (${freshness.reason}).`,
-      `ESPN ${freshness.espnLastUpdated ? dateLabel(freshness.espnLastUpdated) : "unknown"}; model cache ${freshness.modelLastUpdated ? dateLabel(freshness.modelLastUpdated) : "unknown"}; market odds ${freshness.marketOddsLastUpdated ? dateLabel(freshness.marketOddsLastUpdated) : "unknown"}.`,
-      `Strength ratings as-of ${freshness.ratingsAsOf ? dateLabel(freshness.ratingsAsOf) : "unknown"}.`,
-    ],
-    lean: "Lean: quote the model version and feed as-of whenever you repeat these numbers.",
-    provenance: basicsProvenanceLine(grounding),
+    lean: "Lean: repeat the model and odds timestamps whenever you cite these prices.",
+    provenance: deskProvenanceLine(grounding),
   });
 }
 
@@ -702,7 +693,10 @@ function composeFavouriteReason(
 export function composeMatchResponse(
   question: string,
   grounding: Grounding,
-  plan: ResponsePlan = planResponse(question, { groundingKind: "match" }),
+  plan: ResponsePlan = planResponse(question, {
+    groundingKind: "match",
+    hasCompleteMarket1x2: grounding.marketDivergence.length > 0,
+  }),
   playerEvidence: PlayerEvidenceBundle | null = null
 ): string {
   if (asksParlayQuestion(question)) {
@@ -717,7 +711,7 @@ export function composeMatchResponse(
         headline: `The draw is ${pct(grounding.pDraw)} (fair ${fairDecimal(grounding.pDraw)}) in ${grounding.home} v ${grounding.away}.`,
         supports: [tableVsModelFavoriteExplainLine(grounding)].filter(Boolean) as string[],
         lean: basicsFavouriteLean(grounding),
-        provenance: basicsProvenanceLine(grounding),
+        provenance: deskProvenanceLine(grounding),
       });
     }
     return composePricingDeskAnswer(grounding, question);
@@ -756,7 +750,7 @@ export function composeMatchResponse(
           headline: `I make ${top.score} the likeliest scoreline at ${pct(top.probability)} (fair ${fairDecimal(top.probability)}) on ${grounding.home} v ${grounding.away}.`,
           supports: ["Scorelines come from the same Poisson grid as 1X2, totals, and BTTS."],
           lean: `Lean: ${top.score} leads the grid at ${pct(top.probability)} — a forecast, not a result to guarantee.`,
-          provenance: basicsProvenanceLine(grounding),
+          provenance: deskProvenanceLine(grounding),
         });
       }
     }
@@ -781,13 +775,13 @@ export function composeMatchResponse(
       : `${grounding.home} v ${grounding.away}: my 1X2 is ${grounding.home} ${pct(model.home.p)} (fair ${model.home.fairOdds.toFixed(2)}), `
         + `draw ${pct(model.draw.p)} (fair ${model.draw.fairOdds.toFixed(2)}) and ${grounding.away} ${pct(model.away.p)} (fair ${model.away.fairOdds.toFixed(2)}).`;
     const lean = mentionsBankroll(question)
-      ? `Lean: ${BANKROLL_UNIT_GUIDANCE}`
+      ? "Lean: flat unit stakes only — bankroll guidance follows (not Kelly or edge sizing)."
       : `Lean: ${STAKE_REFUSAL_SENTENCE}`;
     return joinBasicsAnswer({
       headline,
       supports: [tableVsModelFavoriteExplainLine(grounding)].filter(Boolean) as string[],
       lean,
-      provenance: basicsProvenanceLine(grounding),
+      provenance: deskProvenanceLine(grounding),
       responsibleGambling: mentionsBankroll(question),
     });
   }
