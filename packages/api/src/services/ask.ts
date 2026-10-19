@@ -10556,6 +10556,9 @@ function packageAgentDirectAnswer(
     {
       voice,
       capHit,
+      question,
+      hasHistory,
+      groundingKind: grounding?.kind ?? null,
       recover: () => resolveAgentUserAnswer(question, grounding, bundle, hasHistory, prose),
       groundedFallback: () => agentNonEmptyGroundedFallback(question, grounding, hasHistory),
     },
