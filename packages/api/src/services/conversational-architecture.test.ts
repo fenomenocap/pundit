@@ -989,7 +989,7 @@ describe("V2 conversational architecture", () => {
       planResponse("What if Saka is absent?", { groundingKind: "match", hasHistory: true }))).toMatch(/won’t invent a percentage/i);
     const market = composeMatchResponse("Where do you disagree with Kalshi?", match,
       planResponse("Where do you disagree with Kalshi?", { groundingKind: "match", hasHistory: true }));
-    expect(market).toMatch(/56\.3% vs implied 50\.1%/);
+    expect(market).toMatch(/Arsenal is the value: I make it 56\.3%, Kalshi 50\.1%/);
     expect(market).toMatch(/gap \+6\.2 pts/);
     expect(market).not.toMatch(/because.*lineup/i);
     expect(resolveRequestedScoreline("Chelsea to win 2-0", match)).toEqual({
@@ -1021,7 +1021,7 @@ describe("V2 conversational architecture", () => {
     );
     expect(userLine).toMatch(/Chelsea at 7\.00/);
     expect(userLine).toMatch(/implies 14\.3%/);
-    expect(userLine).toMatch(/gap \+?\d+\.?\d* pts/);
+    expect(userLine).toMatch(/gap \+?\d+\.?\d* pts over my price/);
     expect(userLine).toMatch(/I play/);
     expect(userLine).not.toMatch(/\bEV\b/);
     expect(userLine).not.toMatch(/\block\b/i);
@@ -1036,7 +1036,7 @@ describe("V2 conversational architecture", () => {
       { ...match, pricing: attachUserLine(match.pricing, { outcome: "home", decimalOdds: 1.8 }) },
       planResponse("I found Arsenal at 1.80 — pass or play?", { groundingKind: "match", hasUserLine: true })
     );
-    expect(abstain).toMatch(/will not call it/);
+    expect(abstain).toMatch(/will not call Arsenal/);
     const stake = composeMatchResponse(
       "How much should I stake?",
       lined,
@@ -1251,7 +1251,7 @@ it("explains fixed totals and risk labels without inventing fixture-specific ins
   const answer = composeMatchResponse("pass or play?", lined,
     planResponse("pass or play?", { groundingKind: "match", hasUserLine: true }));
   expect(answer).toMatch(/implies 14\.3%/);
-  expect(answer).toMatch(/gap \+?\d+\.?\d* pts/);
+  expect(answer).toMatch(/gap \+?\d+\.?\d* pts over my price/);
   expect(answer).toMatch(/I play/);
   expect(answer).not.toMatch(/\bEV\b/);
   expect(answer).not.toMatch(/payload|grounding|JSON|Dixon.Coles|ClubElo/i);

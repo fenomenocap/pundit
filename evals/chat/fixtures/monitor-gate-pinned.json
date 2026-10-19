@@ -760,7 +760,7 @@
         },
         {
           "status": 200,
-          "answer": "Chelsea at 7.00 implies 14.3% (1/7.00); I make Chelsea 54.0% (fair 1.85).\nImplied 14.3% vs my 54.0% on the same side.\nLean: gap +39.7 pts vs your line — I play on this read — a probability check, not a bet to place.\nProvenance: Fundamental fundamental@1:monitor-gate-pinned, model priced 18 October 2026",
+          "answer": "Chelsea at 7.00 implies 14.3% (1/7.00); I make Chelsea 54.0% (fair 1.85).\nLean: Chelsea at 7.00, strong play — I play, gap +39.7 pts over my price.\nModel: Fundamental v1 (monitor), 18 Oct 20:00 SGT · Odds: none no-vig, 18 Oct 20:00 SGT",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",
