@@ -138,7 +138,8 @@ describe("investor demo composer fixes", () => {
     const question = "Where do your odds come from and how fresh are they?";
     expect(planResponse(question, { groundingKind: "match" }).mode).toBe("odds-provenance");
     const after = composeOddsProvenanceAnswer(grounding);
-    expect(after.split("\n")).toHaveLength(3);
+    expect(after.split("\n")).toHaveLength(2);
+    expect(after).not.toMatch(/^Lean:/m);
     expect(after).toMatch(/Fundamental 1X2 from Elo ratings v1/);
     expect(after).toMatch(/ratings 13 Sep/);
     expect(after).toMatch(/Live no-vig 1X2 from Polymarket/);
@@ -270,7 +271,7 @@ describe("investor demo composer fixes", () => {
     const whoWins = "Who wins Tottenham v Coventry?";
     expect(planResponse(whoWins, ctx).mode).toBe("market-comparison");
     const whoAnswer = composeMatchResponse(whoWins, grounding, planResponse(whoWins, ctx))!;
-    expect(whoAnswer).toMatch(/Spurs are my favourite on this read;/);
+    expect(whoAnswer).toMatch(/Spurs are my favourite at 59\.9%\./);
     expect(whoAnswer).not.toMatch(/59\.9%.*59\.9%.*59\.9%/);
     expect(whoAnswer).toMatch(/Biggest gap: Draw \(\+3\.9 pts vs Polymarket\)\./);
     expect(whoAnswer).toContain("Spurs  59.9% | fair 1.67 | Polymarket 1.56 (64.0%)");
