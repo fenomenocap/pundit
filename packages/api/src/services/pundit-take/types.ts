@@ -99,6 +99,7 @@ export interface PunditTakeSourcesFooter {
   tableAsOfSgt: string | null;
   odds: PunditTakeSourceOdds[];
   evidenceUrls: Array<{ id: string; url: string; publisher: string }>;
+  fplInjuryStatusAsOfSgt: string | null;
 }
 
 export interface PunditTakeDelivery {

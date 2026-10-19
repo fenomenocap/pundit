@@ -20,6 +20,11 @@ import {
   parseChatEvalSearchReplayHeader,
   withWebSearchReplayScope,
 } from "../services/web-search-replay";
+import {
+  isPunditTakeEvalOverrideGuardActive,
+  resolvePunditTakeOverride,
+  withPunditTakeRequestScope,
+} from "../services/pundit-take/flags";
 
 const router: Router = Router();
 const MAX_HISTORY_TURNS = 12;
@@ -186,12 +191,15 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       req.headers["x-pundit-chat-eval-search-replay"]
     );
     const evalGuardActive = isChatEvalEngineOverrideGuardActive(searchReplayScope !== null);
+    const takeEvalGuardActive = isPunditTakeEvalOverrideGuardActive(searchReplayScope !== null);
+    const takeOverride = resolvePunditTakeOverride(req.headers["x-pundit-take"], takeEvalGuardActive);
     const engineOverride = resolveChatEvalEngineOverride(
       req.headers["x-pundit-chat-engine"],
       evalGuardActive,
     );
     const runAsk = <T>(fn: () => Promise<T>) => withWebSearchReplayScope(searchReplayScope, () =>
-      withChatEngineRequestScope(engineOverride, fn));
+      withChatEngineRequestScope(engineOverride, () =>
+        withPunditTakeRequestScope(takeOverride, fn)));
 
     if (req.body?.stream !== true) {
       try {
