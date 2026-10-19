@@ -43,7 +43,7 @@ import {
   formatBttsSideRow,
   formatCompact1x2SideRow,
   formatMarketActionLean,
-  formatModelFavouriteHeadline,
+  formatWhoWinsOpening,
   formatModelOnlySideRows,
   formatTimestampSgt,
   formatTotalsSideRow,
@@ -430,7 +430,7 @@ export function composeMarketComparisonAnswer(question: string, grounding: Groun
   const focus = focusOneXTwoOutcome(question, grounding);
   const valueLeg = selectValueLeg(divergence.legs);
   const headline = asksMatchWinnerQuestion(question)
-    ? formatModelFavouriteHeadline(grounding, divergence, source)
+    ? formatWhoWinsOpening(grounding, divergence, valueLeg, source)
     : formatBiggestGapHeadline(grounding, valueLeg, source);
   const pricingRow = grounding.pricing.markets.find((row) => row.source === divergence.source);
   const beforeFees = divergence.source === "kalshi" || divergence.source === "polymarket";

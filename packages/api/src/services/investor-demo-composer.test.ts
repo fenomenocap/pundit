@@ -281,6 +281,7 @@ describe("investor demo composer fixes", () => {
     expect(planResponse(whoWins, ctx).mode).toBe("market-comparison");
     const whoAnswer = composeMatchResponse(whoWins, grounding, planResponse(whoWins, ctx))!;
     expect(whoAnswer).toMatch(/Spurs are my favourite at 59\.9%;/);
+    expect(whoAnswer).toMatch(/Biggest gap: Draw \(\+3\.9 pts vs Polymarket\)\./);
     expect(whoAnswer).toContain("Spurs  59.9% | fair 1.67 | Polymarket 1.56 (64.0%)");
     expect(whoAnswer).not.toContain("I need a captured decimal line");
 

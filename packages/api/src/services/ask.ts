@@ -205,6 +205,10 @@ import {
   containsAgentInternalWording,
   sanitizeAgentUserText,
 } from "./chat-agent-fallback";
+import {
+  containsInternalPromptVocabulary,
+  stripInternalPromptVocabulary,
+} from "./internal-prompt-vocabulary";
 import { envelopChatAgentAnswer, finalizeChatAgentAnswer } from "./chat-agent-guard";
 import {
   enrichAgentTeamNewsAttribution,
@@ -10665,7 +10669,7 @@ export function sanitizeDeliveredAnswer(
   // Citation markers may still be unresolved when evaluator/runtime helpers
   // call this pure guard. The universal marker sweep belongs after
   // renderEvidenceCitations, in finalizeDeliveredText.
-  return normalizeAnalystIdentity(sanitized);
+  return stripInternalPromptVocabulary(normalizeAnalystIdentity(sanitized));
 }
 
 // "the model" in a paragraph explaining xG or another public statistic is that
@@ -10748,18 +10752,6 @@ export function dropRepeatedParagraphs(text: string): string {
   }).join("\n\n");
 }
 
-function replaceInternalPromptLeaks(text: string): string {
-  return text
-    .replace(
-      /The SEARCH EVIDENCE contains no news for this fixture[^\n]*/gi,
-      "I don't have verified team news for this fixture in this turn, so I'll stick to the priced strength read above.",
-    )
-    .replace(/Based solely on supplied SEARCH EVIDENCE:[^\n]*/gi, "")
-    .replace(/\bSEARCH EVIDENCE contains no news\b[^\n]*/gi,
-      "I don't have verified team news for this fixture in this turn, so I'll stick to the priced strength read above.")
-    .trim();
-}
-
 function scrubEmptyStructuralLines(text: string): string {
   return text
     .split("\n")
@@ -10794,7 +10786,7 @@ function finalizeDeliveredText(
     analystResponseMetrics.numericGuardInterventions += 1;
     console.warn(JSON.stringify({ event: "analyst_numeric_guard_intervened" }));
   }
-  const scrubbed = scrubEmptyStructuralLines(replaceInternalPromptLeaks(traced));
+  const scrubbed = scrubEmptyStructuralLines(stripInternalPromptVocabulary(traced));
   const policyLines = grounding?.kind === "match" && delivery?.question
     ? deliveryPolicyLinesAfterTrace(
       delivery.question,
@@ -10894,7 +10886,7 @@ function resolveAgentUserAnswer(
   agentText: string,
 ): string {
   const cleaned = sanitizeAgentUserText(agentText);
-  if (cleaned) return cleaned;
+  if (cleaned && !containsInternalPromptVocabulary(cleaned)) return cleaned;
   const fromEvidence = composeAgentEvidenceFallback(question, grounding, bundle, hasHistory).trim();
   if (fromEvidence) return fromEvidence;
   return agentNonEmptyGroundedFallback(question, grounding, hasHistory);

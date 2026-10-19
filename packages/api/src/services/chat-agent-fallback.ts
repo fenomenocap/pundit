@@ -1,5 +1,6 @@
 import type { AskGrounding, EvidenceBundle } from "./ask";
 import { envelopChatAgentAnswer } from "./chat-agent-guard";
+import { stripInternalPromptVocabulary } from "./internal-prompt-vocabulary";
 
 /** User-visible copy must never expose internal agent/runtime wording. */
 export const AGENT_USER_BANNED_PHRASES: readonly RegExp[] = [
@@ -12,8 +13,6 @@ export const AGENT_USER_BANNED_PHRASES: readonly RegExp[] = [
   /\btool-calling agent\b/i,
   /\bwhat I already have on record\b/i,
   /\bsticking to what we already pulled\b/i,
-  /\bSEARCH EVIDENCE contains no news\b/i,
-  /\bBased solely on supplied SEARCH EVIDENCE\b/i,
 ];
 
 export function containsAgentInternalWording(text: string): boolean {
@@ -56,7 +55,8 @@ export function composeAgentEvidenceFallback(
 }
 
 export function sanitizeAgentUserText(text: string): string {
-  if (!text.trim()) return "";
-  if (!containsAgentInternalWording(text)) return text.trim();
+  const stripped = stripInternalPromptVocabulary(text);
+  if (!stripped) return "";
+  if (!containsAgentInternalWording(stripped)) return stripped;
   return "";
 }

@@ -164,6 +164,16 @@ export function formatBiggestGapHeadline(
   return `Biggest gap: ${label} (${sign}${leg.gapPoints.toFixed(1)} pts vs ${sourceLabel}).`;
 }
 
+export function formatWhoWinsOpening(
+  grounding: Grounding,
+  divergence: MarketDivergence,
+  valueLeg: MarketDivergence["legs"][number],
+  sourceLabel: string,
+): string {
+  return `${formatModelFavouriteHeadline(grounding, divergence, sourceLabel)}\n`
+    + `${formatBiggestGapHeadline(grounding, valueLeg, sourceLabel)}`;
+}
+
 export function formatModelFavouriteHeadline(
   grounding: Grounding,
   divergence: MarketDivergence,

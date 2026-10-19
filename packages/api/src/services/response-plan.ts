@@ -339,6 +339,9 @@ export function planResponse(
   } else if (match && hasHistory && context.hasCompleteMarket1x2
     && /^and the (?:away|home) side\??[.!]*$/i.test(q)) {
     mode = "market-comparison";
+  } else if (match && hasHistory && context.hasCompleteMarket1x2
+    && /^why\??[.!]*$/i.test(q)) {
+    mode = "market-comparison";
   } else if (match && hasHistory && asksPricingFollowUp(q)) {
     if (asksTotalsQuestion(q)) mode = "totals";
     else if (asksBttsQuestion(q)) mode = "btts";
