@@ -52,6 +52,14 @@ test("judgeEvalTurnsRemote maps Railway 503 to skipped_unavailable", async () =>
   assert.equal(remote.turns[0].reason, "judge_unavailable");
 });
 
+test("judgeEvalTurnsRemote maps missing route 404 to skipped_unavailable before deploy", async () => {
+  process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN = "oidc-token";
+  globalThis.fetch = async () => new Response("Not Found", { status: 404 });
+  const remote = await judgeEvalTurnsRemote(sampleTurns, { apiUrl: "https://example.test" });
+  assert.equal(remote.status, "skipped_unavailable");
+  assert.equal(remote.turns[0].reason, "judge_unavailable");
+});
+
 test("judgeEvalTurnsRemote forwards turns with OIDC bearer and returns scores", async () => {
   process.env.CHAT_EVAL_GITHUB_OIDC_TOKEN = "oidc-token";
   const judgePayload = {

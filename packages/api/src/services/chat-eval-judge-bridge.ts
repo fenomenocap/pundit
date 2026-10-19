@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 
-const require = createRequire(__filename);
+const requireCjs = createRequire(__filename);
 
 export type JudgeEvalPayload = {
   scenarioId?: string | null;
@@ -32,7 +32,7 @@ let cached: JudgeCoreModule | null = null;
 export function getChatEvalJudgeCore(): JudgeCoreModule {
   if (!cached) {
     const corePath = path.resolve(__dirname, "../../../../scripts/chat-eval-judge-core.mjs");
-    cached = require(corePath) as JudgeCoreModule;
+    cached = requireCjs(corePath) as JudgeCoreModule;
   }
   return cached;
 }

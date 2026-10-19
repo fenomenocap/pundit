@@ -36,8 +36,7 @@ jobs:
         run: pnpm test:dependency-security
 
       - name: Type-check API
-        working-directory: packages/api
-        run: npx tsc --noEmit
+        run: pnpm --filter @sports-predict/api exec tsc
 
       - name: Verify pinned club-strength artifact
         run: pnpm --filter @sports-predict/api verify:club-strength-artifact data/model-artifacts/clubelo/production.json
