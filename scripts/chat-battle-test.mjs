@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { compareEngineQuality, computeTurnQualityMetrics, summarizeLlmJudge } from "./chat-eval-quality-metrics.mjs";
-import { judgeEvalTurns } from "./chat-eval-llm-judge.mjs";
+import { resolveJudgeEvalTurns, resolveJudgeMode } from "./chat-eval-llm-judge.mjs";
 import {
   EVAL_SCHEMA_VERSION,
   MIN_REQUEST_INTERVAL_MS,
@@ -84,6 +84,7 @@ function parseArgs(argv) {
     pinnedGateFixture: null,
     gateOnly: false,
     nonGating: false,
+    judgeMode: resolveJudgeMode(process.env.CHAT_EVAL_JUDGE_MODE),
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -106,6 +107,9 @@ function parseArgs(argv) {
     else if (argument === "--pinned-gate-fixture") options.pinnedGateFixture = path.resolve(argv[++index]);
     else if (argument === "--gate-only") options.gateOnly = true;
     else if (argument === "--non-gating") options.nonGating = true;
+    else if (argument === "--judge-mode") {
+      options.judgeMode = resolveJudgeMode(argv[++index]);
+    }
     else throw new Error(`Unknown argument: ${argument}`);
   }
   if (!Number.isFinite(options.intervalMs) || options.intervalMs < 0) {
@@ -1359,7 +1363,12 @@ async function main() {
   report.requestEngine = options.engine;
   const allTurns = flattenReportTurns(report);
   report.qualityMetrics = computeTurnQualityMetrics(allTurns);
-  report.llmJudge = await judgeEvalTurns(allTurns, { maxTurns: 24, paceMs: 250 });
+  report.llmJudge = await resolveJudgeEvalTurns(allTurns, {
+    maxTurns: 24,
+    paceMs: 250,
+    judgeMode: options.judgeMode,
+    apiUrl: options.apiUrl,
+  });
   report.llmJudgeSummary = summarizeLlmJudge(report);
   const previousTurns = previous ? flattenReportTurns(previous) : [];
   if (previous?.requestEngine && previous.requestEngine !== report.requestEngine) {

@@ -99,6 +99,10 @@ jobs:
     needs: [preflight, gate]
     if: needs.preflight.outputs.skip != 'true'
     timeout-minutes: 150
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -131,6 +135,14 @@ jobs:
           git fetch origin main
           echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
 
+      - name: Mint GitHub OIDC token for Railway judge
+        id: judge_oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('pundit-judge');
+            core.setOutput('token', token);
+
       - name: Resolve sweep engine mode
         id: engine
         run: |
@@ -148,7 +160,8 @@ jobs:
         if: steps.engine.outputs.mode == 'both' || steps.engine.outputs.mode == 'legacy'
         continue-on-error: true
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CHAT_EVAL_GITHUB_OIDC_TOKEN: ${{ steps.judge_oidc.outputs.token }}
+          CHAT_EVAL_JUDGE_MODE: remote
         run: |
           set -o pipefail
           node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine legacy \
@@ -159,7 +172,8 @@ jobs:
         if: steps.engine.outputs.mode == 'both' || steps.engine.outputs.mode == 'agent'
         continue-on-error: true
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CHAT_EVAL_GITHUB_OIDC_TOKEN: ${{ steps.judge_oidc.outputs.token }}
+          CHAT_EVAL_JUDGE_MODE: remote
         run: |
           set -o pipefail
           node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine agent --non-gating \
@@ -168,7 +182,8 @@ jobs:
       - name: Merge dual-engine eval report
         if: steps.engine.outputs.mode == 'both'
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CHAT_EVAL_GITHUB_OIDC_TOKEN: ${{ steps.judge_oidc.outputs.token }}
+          CHAT_EVAL_JUDGE_MODE: remote
         run: |
           node scripts/merge-dual-engine-chat-eval.mjs \
             "$EVAL_DIR/legacy/latest-run.json" \
