@@ -1387,6 +1387,22 @@ export function establishedNothing(verification) {
     && (ABSTAINED_VERIFICATION.has(verification?.status) || verification?.status === "conflict");
 }
 
+export function isAgentEmptyAfterRecovery(agentTurn) {
+  return agentTurn?.skipReason === "empty_after_recovery";
+}
+
+/** Agent eval: last-resort boilerplate is an abstain, not a substantive pass. */
+export function validateAgentDeliveryRecovered(agentTurn) {
+  const emptyAfterRecovery = isAgentEmptyAfterRecovery(agentTurn);
+  return {
+    passed: !emptyAfterRecovery,
+    assertions: { agentDeliverySubstantive: !emptyAfterRecovery },
+    failures: emptyAfterRecovery
+      ? ["agent delivery empty_after_recovery: last-resort boilerplate only (count as abstain)"]
+      : [],
+  };
+}
+
 /** A scoped news scenario may retain supported claims after removing a
  * conflict. Its positive delivery still needs the strict source/date/count
  * checks; an explicit verification expectation always takes priority. */

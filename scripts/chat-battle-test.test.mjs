@@ -59,6 +59,8 @@ import {
   deriveTurnVerificationExpectation,
   ABSTAINED_VERIFICATION,
   establishedNothing,
+  isAgentEmptyAfterRecovery,
+  validateAgentDeliveryRecovered,
   writeCheckpoint,
   writeFailureReport,
   writeReport
@@ -3681,6 +3683,17 @@ test("schema-17 treats unavailable verification as an abstention, like abstain",
   // "verified" with zero supported claims is incoherent and must not be
   // laundered into an abstention.
   assert.equal(establishedNothing({ status: "verified", supportedClaimCount: 0, removedClaimCount: 0 }), false);
+});
+
+test("schema-17 treats agent empty_after_recovery as abstain (not a substantive pass)", () => {
+  const marker = { outcome: "fallback", skipReason: "empty_after_recovery", capHit: "generation_budget" };
+  assert.equal(isAgentEmptyAfterRecovery(marker), true);
+  assert.equal(isAgentEmptyAfterRecovery({ outcome: "success" }), false);
+  const validation = validateAgentDeliveryRecovered(marker);
+  assert.equal(validation.passed, false);
+  assert.equal(validation.assertions.agentDeliverySubstantive, false);
+  assert.match(validation.failures[0], /empty_after_recovery/);
+  assert.equal(validateAgentDeliveryRecovered(null).passed, true);
 });
 
 test("schema-17 certification cannot pass required inconclusive or unsupported correctness", () => {

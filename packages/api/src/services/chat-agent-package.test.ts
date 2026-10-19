@@ -4,6 +4,7 @@ import { normalizeAgentManagerAnswer } from "./ask";
 import type { RetrievedEvidencePage } from "./evidence-page-retrieval";
 import {
   AGENT_HISTORY_CONTENT_MAX,
+  agentDeliveryStructurallyComplete,
   capAgentAnswerForHistory,
   completeAgentAnswerEnding,
   enrichAgentTeamNewsAttribution,
@@ -57,8 +58,9 @@ const managerPages: RetrievedEvidencePage[] = [{
 
 describe("capAgentAnswerForHistory", () => {
   it("keeps answers within the desk history limit", () => {
-    const long = `${"Word ".repeat(900)}Done.`;
+    const long = `${"Complete sentence about the match shape and tempo. ".repeat(400)}Final thought.`;
     const capped = capAgentAnswerForHistory(long);
+    expect(capped.length).toBeGreaterThan(0);
     expect(capped.length).toBeLessThanOrEqual(AGENT_HISTORY_CONTENT_MAX);
     expect(() => parseHistory([
       { role: "user", content: "Brief me on the match." },
@@ -160,8 +162,9 @@ describe("finalizeAgentPackagedAnswer", () => {
   });
 
   it("caps homepage-scale briefings for the next turn", () => {
-    const prose = "x".repeat(5000);
+    const prose = `${"Complete briefing sentence. ".repeat(400)}Final thought.`;
     const out = finalizeAgentPackagedAnswer(prose, { voice: "desk" });
     expect(out.length).toBeLessThanOrEqual(AGENT_HISTORY_CONTENT_MAX);
+    expect(agentDeliveryStructurallyComplete(out)).toBe(true);
   });
 });
