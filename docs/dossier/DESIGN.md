@@ -20,11 +20,27 @@
 | `packages/api/src/config/freshness-policy.ts` | Adaptive refresh tiers (`live` / `matchday` / `normal`) dossier schedules should align with. |
 | `packages/api/src/services/match-context.ts` | Server-owned table/form/xG split already joined for grounding; dossier extends and persists this. |
 
-### Prior agent / PR notes
+### Prior agent / PR notes (GitHub / `gh` search)
 
-- **#188 federated search:** Evidence layer for chat; grounding + freshness + trust tiers. Dossier **stores** the same class of items on a fixture schedule instead of re-searching per turn.
-- **Cloud agent bc-019f8ddf:** No transcript found in this environment; the roster above (`agent-data-sources.json`, dated 2026-09-15) is the durable research output to reuse.
-- **Prediction brief / Phase 0–3:** Market stays comparison-only; evidence never moves probabilities; fitted DC remains registered-not-activated.
+| Ref | What dossier reuses |
+|---|---|
+| **[PR #188](https://github.com/fenomenocap/pundit/pull/188)** (`cursor/agent-data-rich-ad35`, merged 2026-09-15, cloud agent **bc-019f8ddf**) | Adaptive **freshness** tiers; server-owned **match grounding** (form, table, Elo, λ); **`agent-data-sources.json`** roster (23 sources); **`evidence-authority.ts`** tiers; **`federated-evidence.ts`** fan-out; desk evidence labelling. Dossier persists the same trust model on a schedule instead of per-turn search. |
+| **[PR #289](https://github.com/fenomenocap/pundit/pull/289)** (`cursor/data-layer-b46e`, merged 2026-10-16, bc-90ba4309) | Typed **`data-layer/`** accessors (`getForm`, `getModelForecast`, `getTeamNews`, …) with `{ data, sources, asOf, stale }` — dossier builder calls the same caches directly in Phase 1. |
+| **PR #180** (closed) | Early freshness-policy spike; superseded by #188 policy in `freshness-policy.ts`. |
+| **Prediction brief / Phase 0–3** | Market compare-only; evidence never moves probabilities; fitted DC registered-not-activated. |
+
+### Model factor breakdown (Phase 1 maths)
+
+Counterfactuals use the same **`getResolvedActiveScoreModel`** path as `buildModelFixtureFromActive` / `/api/model/active`:
+
+1. **Baseline** — equal strength at the midpoint of carried `forecastInputs`, neutral venue (`computeMatchModel`).
+2. **Elo gap** — actual strengths, 0 HFA.
+3. **Home advantage** — actual strengths + provenance HFA (champion grid).
+4. **Calibration** — delta from champion HFA grid to resolved model (1X2 preserved; ≈0).
+
+Chained `deltaPHomePct` values **sum to** `(pricingExact.pHome − baseline.pHome) × 100` (`reconciliation.deltaPHomePctResidual === 0`). Public `shipped.pHome` is the rounded fixture row; parity test locks **Tottenham vs Coventry** at **59.92%** from strengths **1799.0 vs 1706.0** (+42 HFA).
+
+Committed samples: **`docs/dossier/samples/`** (10 fixtures, 23–25 Oct 2026 EPL), built via `pnpm exec tsx scripts/build-dossier-samples.ts` (local VM, no prod env).
 
 ---
 

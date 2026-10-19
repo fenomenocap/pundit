@@ -15,10 +15,7 @@ import type {
   MatchDossier,
   ProvenanceField,
 } from "./types";
-import {
-  buildModelFactorBreakdown,
-  defaultHomeAdvantageElo,
-} from "./model-factor-breakdown";
+import { buildModelFactorBreakdown } from "./model-factor-breakdown";
 import {
   buildRestCongestion,
   formWindowFromMatches,
@@ -44,7 +41,7 @@ function clubEloProvenance(asOf: string, artifactId?: string | null): DossierPro
     label: "Pinned ClubElo artifact",
     trustTier: "model-pin",
     asOf,
-    url: artifactId ? `clubelo@${artifactId}` : undefined,
+    url: artifactId ?? undefined,
   };
 }
 
@@ -88,10 +85,8 @@ export function buildMatchDossierForFixture(
     ?? builtAt;
 
   const context = buildMatchContext(fixture);
-  const hfa = defaultHomeAdvantageElo(fixture);
   const factorBreakdown = buildModelFactorBreakdown(
     fixture,
-    hfa,
     context.lambdaHome,
     context.lambdaAway,
   );

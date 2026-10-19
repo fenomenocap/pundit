@@ -70,8 +70,8 @@ describe("match dossier", () => {
       pDraw: 0.22,
       pAway: 0.181,
     });
-    const breakdown = buildModelFactorBreakdown(row, 42, 1.5, 1.2);
-    expect(breakdown.eloGapEffective).toBeCloseTo(1850 + 42 - 1620, 0);
+    const breakdown = buildModelFactorBreakdown(row, 1.5, 1.2);
+    expect(breakdown.reconciliation.deltaPHomePctResidual).toBe(0);
     expect(breakdown.counterfactualSteps.length).toBeGreaterThanOrEqual(2);
     const hfa = breakdown.counterfactualSteps.find((s) => s.factorId === "home-advantage");
     expect(hfa?.deltaPHomePct).not.toBe(0);

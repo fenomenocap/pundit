@@ -92,8 +92,19 @@ export interface ModelFactorContribution {
 }
 
 export interface ModelFactorBreakdown {
+  /** Public fixture probabilities (rounded), same as /api/model. */
   shipped: { pHome: number; pDraw: number; pAway: number };
+  /** Full-precision output of getResolvedActiveScoreModel before display rounding. */
+  pricingExact: { pHome: number; pDraw: number; pAway: number };
+  /** Symmetric equal-strength neutral-venue counterfactual. */
+  baseline: { pHome: number; pDraw: number; pAway: number };
   counterfactualSteps: ModelFactorContribution[];
+  reconciliation: {
+    deltaPHomePctSum: number;
+    expectedDeltaPHomePct: number;
+    deltaPHomePctResidual: number;
+  };
+  eloGapRaw: number;
   eloGapEffective: number;
   homeAdvantageElo: number;
   lambdaHome: number;

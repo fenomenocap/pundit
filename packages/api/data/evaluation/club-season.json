@@ -1,16 +1,138 @@
 {
-  "competitions": ["eng.1", "uefa.champions_qual"],
+  "schemaVersion": 2,
+  "competitions": [
+    "eng.1",
+    "uefa.champions_qual"
+  ],
   "method": "snapshot",
   "builtAt": "2026-01-01T00:00:00.000Z",
-  "updatedAt": "2026-01-01T00:00:00.000Z",
-  "disclaimer": "Pre-kickoff probabilities captured when fixtures leave the scheduled window. Rolling club-season calibration — not a frozen backtest.",
+  "updatedAt": "2026-10-19T10:09:13.012Z",
+  "disclaimer": "Immutable pre-kickoff Pundit Fundamental forecasts captured by a deterministic checkpoint policy. Market rows are timestamped comparison evidence, not inputs.",
   "fixtures": [],
+  "missedCheckpoints": [
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401878769,
+      "utcDate": "2026-10-18T15:30Z",
+      "home": "Forest",
+      "away": "Arsenal",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    },
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401879263,
+      "utcDate": "2026-10-18T13:00Z",
+      "home": "Bournemouth",
+      "away": "Sunderland",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    },
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401879261,
+      "utcDate": "2026-10-18T13:00Z",
+      "home": "Brighton",
+      "away": "Crystal Palace",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    },
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401879260,
+      "utcDate": "2026-10-18T13:00Z",
+      "home": "Leeds",
+      "away": "Man United",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    },
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401879258,
+      "utcDate": "2026-10-17T16:30Z",
+      "home": "Newcastle",
+      "away": "Aston Villa",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    },
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401879262,
+      "utcDate": "2026-10-17T14:00Z",
+      "home": "Brentford",
+      "away": "Liverpool",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    },
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401878770,
+      "utcDate": "2026-10-17T14:00Z",
+      "home": "Fulham",
+      "away": "Hull",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    },
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401879259,
+      "utcDate": "2026-10-17T14:00Z",
+      "home": "Man City",
+      "away": "Ipswich",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    },
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401878771,
+      "utcDate": "2026-10-17T11:30Z",
+      "home": "Everton",
+      "away": "Chelsea",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    },
+    {
+      "competitionId": "eng.1",
+      "fixtureId": 401879267,
+      "utcDate": "2026-10-12T19:00Z",
+      "home": "Coventry",
+      "away": "Newcastle",
+      "checkpointPolicyId": "pre-kickoff-90m-v1",
+      "recordedAt": "2026-10-19T10:09:13.012Z",
+      "reason": "never_observed_scheduled"
+    }
+  ],
   "metrics": {
     "fixtureCount": 0,
-    "brierScore": 0,
-    "logLoss": 0,
-    "winnerAccuracy": 0,
+    "calibrationForecastCount": 0,
+    "forecastsPerFixture": 3,
+    "calibrationMethod": "one-vs-rest-1x2",
+    "brierScore": null,
+    "logLoss": null,
+    "winnerAccuracy": null,
     "drawCount": 0,
     "calibration": []
+  },
+  "evaluation": {
+    "metricVersion": "multiclass-v1",
+    "segments": [],
+    "exclusions": {
+      "total": 0,
+      "byReason": {
+        "legacyPartialProvenance": 0,
+        "incompleteInputProvenance": 0,
+        "postKickoffForecast": 0,
+        "invalidForecastTimestamp": 0
+      }
+    }
   }
 }
