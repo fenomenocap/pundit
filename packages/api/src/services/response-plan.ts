@@ -7,6 +7,7 @@ export type ResponseMode =
   | "exact-score"
   | "fair-price"
   | "market-comparison"
+  | "odds-provenance"
   | "user-line"
   | "stake-refusal"
   | "player-or-scorer"
@@ -15,6 +16,8 @@ export type ResponseMode =
   | "table"
   | "season"
   | "coverage"
+  | "slate-best-gap"
+  | "winner-guarantee-honesty"
   | "general";
 
 const ASKS_MATCH_PREVIEW =
@@ -34,6 +37,8 @@ const ASKS_TACTICAL_TAKE =
   /\btactical matchup\b|\bwho decides\b|\bhow do .{1,60} win (?:this|it)\b/i;
 const ASKS_ODDS_BOARD =
   /\bwhat(?:'s| is| are) (?:the )?(?:odds|line)\b|\bshow me the board\b|\bthe board\b|\bmatch odds\b/i;
+const ASKS_ODDS_PROVENANCE =
+  /\bwhere do (?:your )?odds come from\b|\bhow fresh\b|\bhow old\b|\b(?:what|which) (?:feed|source)s?\b.{0,40}\b(?:odds|market|line)\b|\b(?:odds|market) (?:source|sources|feed|feeds)\b|\bwhere(?:'s| is) (?:the )?(?:market|line) from\b/i;
 const ASKS_EXPECTED_VALUE =
   /\+ev\b|\bev%\b|\bexpected value\b|\bplus[\s-]?ev\b|\ba \+ev bet\b|\bedge vs(?:\s+the)?\s+(?:book|market|line)\b/i;
 const ASKS_RESULT_CUE = /\b(?:win|wins|beat|beats|winner|to win)\b/i;
@@ -127,6 +132,32 @@ export function asksOddsBoard(question: string): boolean {
   return ASKS_ODDS_BOARD.test(question);
 }
 
+export function asksOddsProvenance(question: string): boolean {
+  return ASKS_ODDS_PROVENANCE.test(question);
+}
+
+export function asksBestValueToday(question: string): boolean {
+  return /\bbest value(?:\s+today|\s+on the slate|\s+this weekend)?\b/i.test(question)
+    || /\b(?:biggest|largest)\b.{0,30}\b(?:gap|disagreement)\b.{0,30}\b(?:today|slate|weekend|fixtures)\b/i.test(question);
+}
+
+export function asksHonestWinnerGuarantee(question: string): boolean {
+  if (/\b(?:acca|accumulator|parlay)\b/i.test(question)) return false;
+  return /\bguarantee me (?:a )?winner\b/i.test(question)
+    || (/\b(?:guarantee|certain|100%|promise)\b/i.test(question)
+      && /\b(?:win|winner)\b/i.test(question));
+}
+
+export function asksParlayQuestion(question: string): boolean {
+  return /\b(?:acca|accumulator|parlay)\b/i.test(question);
+}
+
+/** Numeric follow-ups after an earlier priced turn (draw, totals, market gap, etc.). */
+export function asksPricingFollowUp(question: string): boolean {
+  return /\b(?:what about|how about)\b.{0,60}\b(?:the )?(?:draw|home|away|1x2|odds|price|market|fair|edge|gap|over|under|btts|both teams)\b/i.test(question)
+    || (/\b(?:what about|how about)\b/i.test(question) && /\b(?:draw|the draw)\b/i.test(question));
+}
+
 export function asksExpectedValueQuestion(question: string): boolean {
   return ASKS_EXPECTED_VALUE.test(question);
 }
@@ -147,6 +178,9 @@ export const DESK_COMPOSER_MODES: ReadonlySet<ResponseMode> = new Set([
   "totals",
   "btts",
   "pricing-desk",
+  "odds-provenance",
+  "slate-best-gap",
+  "winner-guarantee-honesty",
 ]);
 
 /** True when the user named the over side of 2.5 without also naming under. */
@@ -172,6 +206,16 @@ export function asksStakeSizeQuestion(question: string): boolean {
     || /\b(?:size|amount)\s+(?:of\s+)?(?:the\s+)?(?:stake|wager)\b/i.test(q)
   );
 }
+
+export function mentionsBankroll(question: string): boolean {
+  const q = question.trim();
+  if (/\b(?:bankroll|bank roll)\b/i.test(q)) return true;
+  if (/\$\s*[\d,]+(?:\.\d{2})?/.test(q) || /£\s*[\d,]+(?:\.\d{2})?/.test(q)) return true;
+  return /\b(?:i have|i've got|with)\s+(?:a\s+)?(?:\$|£|usd|gbp)?\s*[\d,]+(?:\.\d{2})?\b/i.test(q);
+}
+
+export const BANKROLL_UNIT_GUIDANCE =
+  "I hear the bankroll. As generic unit guidance only — not a bet recommendation — use flat stakes around 1–2% of that bankroll per bet, smaller on accas, and never chase losses.";
 
 export function planResponse(
   question: string,
@@ -206,9 +250,17 @@ export function planResponse(
   else if (match && asksProjectedScore(q)) mode = "exact-score";
   else if (match && asksScorelineBoard(q)) mode = "exact-score";
   else if (match && asksTacticalTake(q)) mode = "match-follow-up";
+  else if (match && asksOddsProvenance(q)) mode = "odds-provenance";
+  else if (match && asksBestValueToday(q)) mode = "slate-best-gap";
+  else if (match && asksHonestWinnerGuarantee(q)) mode = "winner-guarantee-honesty";
   else if (match && /\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
   else if (match && asksOddsBoard(q)) mode = "pricing-desk";
-  else if (match && !hasHistory) mode = "pricing-desk";
+  else if (match && hasHistory && asksPricingFollowUp(q)) {
+    if (asksTotalsQuestion(q)) mode = "totals";
+    else if (asksBttsQuestion(q)) mode = "btts";
+    else if (/\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
+    else mode = "pricing-desk";
+  } else if (match && !hasHistory) mode = "pricing-desk";
   else if (match) mode = "match-follow-up";
   else mode = "general";
 

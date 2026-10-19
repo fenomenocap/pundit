@@ -96,7 +96,9 @@ import {
   validateCompleteOneXTwoMarket,
   stripUntraceableMatchPercentages,
   buildMatchPricing,
+  impliedDecimalOddsFromNoVig,
   attachUserLine,
+  inferUserLineFromQuestion,
   type DirectionalRationale,
   type ManagerTenure,
   type OneXTwoMarketLeg,
@@ -161,6 +163,7 @@ import {
 } from "./analyst-draft";
 import { buildResponseFacts } from "./response-facts";
 import {
+  asksPricingFollowUp,
   asksTacticalTake,
   asksUnpricedMarket,
   DESK_COMPOSER_MODES,
@@ -3473,6 +3476,9 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
     ...(grounding.scorelines ?? []).map((row) => row.probability),
   ];
   const userLine = grounding.pricing?.userLine;
+  const userLineGapPoints = userLine
+    ? Math.round((grounding.pricing.model[userLine.outcome].p - 1 / userLine.decimalOdds) * 1000) / 10
+    : null;
   const consensusProbabilities = grounding.consensus
     ? [grounding.consensus.pHome, grounding.consensus.pDraw, grounding.consensus.pAway]
     : [];
@@ -3482,10 +3488,13 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
       ...(grounding.oddsSources ?? []).flatMap((source) =>
         [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
       ...consensusProbabilities,
-      ...(userLine ? [Math.abs(userLine.evPct), 1 / userLine.decimalOdds] : []),
+      ...(userLine ? [1 / userLine.decimalOdds] : []),
     ],
-    percentagePointGaps: (grounding.marketDivergence ?? []).flatMap((market) =>
-      market.legs.map((leg) => leg.gapPoints)),
+    percentagePointGaps: [
+      ...(grounding.marketDivergence ?? []).flatMap((market) =>
+        market.legs.map((leg) => leg.gapPoints)),
+      ...(userLineGapPoints != null ? [userLineGapPoints, -userLineGapPoints] : []),
+    ],
     fairDecimalOdds: [
       ...modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
       ...consensusProbabilities.filter((value) => value > 0).map((value) => 1 / value),
@@ -4901,16 +4910,27 @@ export function buildGrounding(fixture: ModelFixture): Grounding {
           pDraw: stakePDraw,
           pAway: stakePAway,
           decimalOdds: null,
+          impliedDisplayDecimals: false,
         }]
       : []),
-    ...oddsSources.map((source) => ({
-      source: source.source,
-      observedAt: source.observedAt,
-      pHome: source.pHome,
-      pDraw: source.pDraw,
-      pAway: source.pAway,
-      decimalOdds: null,
-    })),
+    ...oddsSources.map((source) => {
+      const completeDraw = source.pDraw != null
+        && Number.isFinite(source.pDraw)
+        && source.pDraw > 0
+        && source.pDraw < 1;
+      const probabilities = completeDraw
+        ? { home: source.pHome, draw: source.pDraw!, away: source.pAway } as Record<OneXTwoOutcome, number>
+        : null;
+      return {
+        source: source.source,
+        observedAt: source.observedAt,
+        pHome: source.pHome,
+        pDraw: source.pDraw,
+        pAway: source.pAway,
+        decimalOdds: probabilities ? impliedDecimalOddsFromNoVig(probabilities) : null,
+        impliedDisplayDecimals: true,
+      };
+    }),
   ];
   const consensusMarket = firstCompleteNoVigMarket(pricingMarkets);
   const matchContext = buildMatchContext(fixture);
@@ -9455,6 +9475,8 @@ function matchFollowUpSettlesWithoutGeneration(question: string, grounding: Grou
   const priced = pricedGridMarketsAsked(question);
   if (priced.some((market) => market !== "1x2")) return true;
   if (asksUnpricedMarket(question)) return true;
+  if (asksPricingFollowUp(question)) return true;
+  if (/\b(?:what about|how about)\b/i.test(question) && /\b(?:draw|the draw)\b/i.test(question)) return true;
   if (/\b1x2\b/i.test(question)) return true;
   if (/\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(question)) {
     return true;
@@ -9509,6 +9531,9 @@ export function closedGroundedAnswer(
         "totals",
         "btts",
         "pricing-desk",
+        "odds-provenance",
+        "slate-best-gap",
+        "winner-guarantee-honesty",
         // The long read is the server's 1X2, scorelines and market rows. Sending
         // "Analyse" to the model spent the 90s deadline and returned 502 before
         // this text could ship. Current team news still requires evidence.
@@ -10341,6 +10366,8 @@ export function normalizeAnalystIdentity(answer: string): string {
 }
 
 function rewriteAnalystIdentity(answer: string): string {
+  const objectOfModel = /\b(against|versus|than|with|to|from|on|of|beat|beats|about|for|by|at|trust|if you trust)\s+(?:the model|Pundit['’]s model)\b/gi;
+  const subjectModel = /\b(?:the model|Pundit['’]s model)\s+(is|has|sees|prefers|makes|gives|rates|agrees|still gives|lands|reads|favours|favors|does|did|will|would|can|could)\b/gi;
   return answer
     .replace(/\bmy pre-training knowledge of fixtures is out of date\b/gi, "No fixture was named")
     .replace(/\bgrounding data\b/gi, "fixture details")
@@ -10353,11 +10380,11 @@ function rewriteAnalystIdentity(answer: string): string {
     .replace(/\bI reads\b/g, "I read")
     .replace(/outside Pundit['’]s model coverage/gi, "outside my forecasting coverage")
     .replace(/Pundit probabilities/gi, "my probabilities")
-    // "I" only fits where the model is a subject. As an object or a modifier it
-    // produced "against I." and "I-based forecasts".
-    .replace(/\b(against|versus|than|with|to|from|on|of|beat|beats|about|for|by|at) (?:the model|Pundit['’]s model)(?=\s*(?:[.,;:!?)]|$)|\s+(?:and|or|but)\b)/gi, "$1 my model")
+    .replace(/\bhigher than the model does\b/gi, "higher than I do")
+    .replace(/\blower than the model does\b/gi, "lower than I do")
+    .replace(objectOfModel, "$1 my model")
     .replace(/\b(?:the model|Pundit['’]s model)(?=-\w)/gi, "my model")
-    .replace(/Pundit['’]s model at\s+(.{1,40}?)\s+is\b/gi, "my $1 estimate is")
+    .replace(/Pundit['’]s model at\s+(.{1,40}?)\s+is\b/gi, "my estimate at $1 is")
     .replace(/Pundit['’]s model makes/gi, "I make")
     .replace(/Pundit['’]s model gives/gi, "I make")
     .replace(/Pundit['’]s model favou?rs/gi, "I favour")
@@ -10365,22 +10392,26 @@ function rewriteAnalystIdentity(answer: string): string {
     .replace(/Pundit['’]s model sees/gi, "I see")
     .replace(/Pundit['’]s model lands/gi, "I land")
     .replace(/Pundit['’]s model reads/gi, "I use")
-    .replace(/Pundit['’]s model at/gi, "I am at")
-    .replace(/Pundit['’]s model/gi, "I")
+    .replace(/Pundit['’]s model at/gi, "my estimate at")
+    .replace(/\bPundit['’]s model\b/gi, "my model")
     .replace(/\bthe model rates\b/gi, "I rate")
-    .replace(/\bthe model is\b/gi, "I am")
-    .replace(/\bthe model has\b/gi, "I have")
-    .replace(/\bthe model sees\b/gi, "I see")
-    .replace(/\bthe model prefers\b/gi, "I prefer")
-    .replace(/\bthe model still gives\b/gi, "I still give")
-    .replace(/\bthe model makes\b/gi, "I make")
-    .replace(/\bthe model gives\b/gi, "I make")
-    .replace(/\bthe model agrees\b/gi, "I agree")
-    .replace(/\bhigher than the model does\b/gi, "higher than I do")
-    .replace(/\blower than the model does\b/gi, "lower than I do")
+    .replace(subjectModel, (_match, verb: string) => {
+      const v = verb.toLowerCase();
+      if (v === "is") return "I am";
+      if (v === "has") return "I have";
+      if (v === "does") return "I do";
+      if (v === "sees") return "I see";
+      if (v === "makes" || v === "gives") return "I make";
+      if (v === "prefers") return "I prefer";
+      if (v === "rates") return "I rate";
+      if (v === "agrees") return "I agree";
+      if (v === "reads") return "I use";
+      if (v === "favours" || v === "favors") return "I favour";
+      return `I ${v}`;
+    })
     .replace(/\bthe model and the market\b/gi, "my view and the market")
     .replace(/\bthe model['’]s\b/gi, "my")
-    .replace(/\bthe model\b/gi, "I")
+    .replace(/\bthe model\b/gi, "my model")
     .replace(/\bI I work with\b/g, "I")
     .replace(/\bI penalises\b/g, "I penalise")
     .replace(/\bthis payload\b/gi, "this evidence")
@@ -10469,9 +10500,16 @@ function withPresentation(
   };
 }
 
-function withOptionalUserLine(grounding: AskGrounding, userLine?: UserLine): AskGrounding {
-  if (!userLine || grounding?.kind !== "match") return grounding;
-  return { ...grounding, pricing: attachUserLine(grounding.pricing, userLine) };
+function withOptionalUserLine(
+  grounding: AskGrounding,
+  userLine?: UserLine,
+  question = "",
+): AskGrounding {
+  if (grounding?.kind !== "match") return grounding;
+  const resolved = userLine
+    ?? inferUserLineFromQuestion(question, grounding.home, grounding.away);
+  if (!resolved) return grounding;
+  return { ...grounding, pricing: attachUserLine(grounding.pricing, resolved) };
 }
 
 /** Short server-owned answer when the agent path yields no prose (e.g. budget_exceeded). */
@@ -10651,6 +10689,22 @@ async function deliverChatAgentTurn(
   requestStartedAt: number,
   voice?: "desk",
 ): Promise<ScopedAskPayload> {
+  const composed = closedGroundedAnswer(question, grounding, history.length > 0);
+  if (composed?.trim()) {
+    const metrics = emptyChatAgentTurnMetrics();
+    metrics.outcome = "skipped";
+    metrics.skipReason = "desk_composer";
+    metrics.latencyMs = Date.now() - requestStartedAt;
+    logChatAgentTurn(metrics);
+    return {
+      answer: voice === "desk" ? humaniseDeskCitationDates(composed) : composed,
+      grounding,
+      verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      usedLlm: false,
+      agentTurn: { outcome: "skipped", skipReason: "desk_composer", capHit: null },
+    };
+  }
+
   let bundle: EvidenceBundle = { queries: [], results: [], providerCalls: 0 };
   let agentText = "";
   const turnStartedAt = Date.now();
@@ -10733,7 +10787,7 @@ async function deliverChatAgentTurn(
     hasHistory: history.length > 0,
     voice,
   });
-  prose = finalizeChatAgentAnswer(prose, grounding);
+  prose = normalizeAnalystIdentity(finalizeChatAgentAnswer(prose, grounding));
 
   return finishChatAgentDelivery(
     metrics,
@@ -10802,7 +10856,7 @@ async function answerQuestionScoped(
     teamContext,
     fixtureContext
   );
-  const grounding = withOptionalUserLine(prepared.grounding, userLine);
+  const grounding = withOptionalUserLine(prepared.grounding, userLine, question);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   const agentEngineActive = isChatAgentEngine() && Boolean(client);
   try {
@@ -11117,7 +11171,7 @@ async function answerQuestionStreamScoped(
     teamContext,
     fixtureContext
   );
-  const grounding = withOptionalUserLine(prepared.grounding, userLine);
+  const grounding = withOptionalUserLine(prepared.grounding, userLine, question);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   const agentEngineActive = isChatAgentEngine() && Boolean(client);
   handlers.onGrounding(grounding);

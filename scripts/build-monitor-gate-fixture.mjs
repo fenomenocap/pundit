@@ -69,7 +69,13 @@ const totalsAnswer = `Over 2.5 is **52.0%** and under 2.5 is **48.0%** for ${hom
 
 const o25FollowUp = `Over 2.5 is **52.0%** and under 2.5 is **48.0%**. Likely scorelines include **1-1 (11.0%)**, **0-1 (9.0%)**, and **1-2 (8.0%)**. I use a fixed total-goals assumption in the rating baseline, so this cannot tell me whether this particular match will be more open or tighter than that baseline.`;
 
-const userLineAnswer = "I make the away win **54.0%**. at 7.00 decimal that is **EV +278.0%**. I play it. Risk is medium. I will not size a stake without a bankroll and a risk band.";
+// Keep in sync via: pnpm chat-eval:recapture-monitor-user-line
+const userLineAnswer = [
+  "Chelsea at 7.00 implies 14.3% (1/7.00); I make Chelsea 54.0% (fair 1.85).",
+  "Implied 14.3% vs my 54.0% on the same side.",
+  "Lean: gap +39.7 pts vs your line — I play on this read — a probability check, not a bet to place.",
+  "Provenance: Fundamental fundamental@1:monitor-gate-pinned, model priced 18 October 2026",
+].join("\n");
 
 const stakeRefusalAnswer = "I can print the price. I will not size a stake without a bankroll and a risk band.";
 

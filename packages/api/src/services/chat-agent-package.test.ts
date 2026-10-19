@@ -13,6 +13,7 @@ import {
   enrichAgentTeamNewsAttribution,
   finalizeAgentPackagedAnswer,
   trimAgentDeliveryForPlan,
+  stripRawRetrievedPageText,
 } from "./chat-agent-package";
 import { parseHistory } from "../routes/ask";
 
@@ -210,6 +211,13 @@ describe("capAgentNarrowDelivery", () => {
   it("does not return empty when the cap cannot find a safe prefix", () => {
     const raw = "A".repeat(950);
     expect(capAgentNarrowDelivery(raw, AGENT_NARROW_DELIVERY_MAX).length).toBeGreaterThan(0);
+  });
+});
+
+describe("stripRawRetrievedPageText", () => {
+  it("removes pasted publisher page headers after the priced read", () => {
+    const raw = "My 1X2 is Arsenal 56.3%, draw 23.4% and Chelsea 20.3%.\n# Team news | Example\nPublished: 18 Oct 2026 Source: example.com Language: en";
+    expect(stripRawRetrievedPageText(raw)).toBe("My 1X2 is Arsenal 56.3%, draw 23.4% and Chelsea 20.3%.");
   });
 });
 

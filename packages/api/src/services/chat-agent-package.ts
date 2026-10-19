@@ -73,6 +73,27 @@ export function sanitizeAgentCitationArtifacts(text: string): string {
     .trim();
 }
 
+/**
+ * Close or drop broken `[[S#(` citation markers. Valid ids become `[[S#]]`;
+ * unknown ids are removed rather than shipped raw.
+ */
+export function repairMalformedCitationMarkers(text: string, bundle: EvidenceBundle): string {
+  const validIds = new Set((bundle.results ?? []).map((source) => source.id));
+  const toMarker = (num: string) => {
+    const id = `S${Number(num)}`;
+    return validIds.has(id) ? `[[${id}]]` : "";
+  };
+  let repaired = text;
+  repaired = repaired.replace(/\[\[S(\d+)\([^[\]]*?\]\]?/gi, (_, num: string) => toMarker(num));
+  repaired = repaired.replace(/\[\[S(\d+)\(/gi, (_, num: string) => toMarker(num));
+  repaired = repaired.replace(/\[\[S(\d+)(?!\]\])/g, (match, num: string, offset: number, whole: string) => {
+    const tail = whole.slice(offset + match.length, offset + match.length + 2);
+    if (tail.startsWith("]]")) return match;
+    return toMarker(num);
+  });
+  return repaired.replace(/\s{2,}/g, " ").trim();
+}
+
 /** Pre-render only: requires an explicit [[S#]] marker tied to source text that names the player. */
 export function enrichAgentTeamNewsAttribution(
   answer: string,
@@ -251,7 +272,23 @@ const NARROW_AGENT_MODES: ReadonlySet<ResponseMode> = new Set([
   "market-comparison",
   "stake-refusal",
   "user-line",
+  "slate-best-gap",
+  "winner-guarantee-honesty",
 ]);
+
+/** Drop raw publisher HTML/Markdown the agent pasted after the priced read. */
+export function stripRawRetrievedPageText(text: string): string {
+  const lines = text.split("\n");
+  const cutIndex = lines.findIndex((line) => {
+    const trimmed = line.trim();
+    return /^#\s+/.test(trimmed)
+      || /^Published:\s*\d/i.test(trimmed)
+      || /\|\s*Published:/i.test(trimmed)
+      || /^Source:\s*\S+.*Language:/i.test(trimmed);
+  });
+  if (cutIndex >= 0) return lines.slice(0, cutIndex).join("\n").trim();
+  return text;
+}
 
 function stripUnrequestedPricingEssay(text: string, mode: ResponseMode, question: string): string {
   if (mode !== "pricing-desk") return text;
@@ -284,7 +321,8 @@ export function trimAgentDeliveryForPlan(
     hasHistory: Boolean(options.hasHistory),
     groundingKind: options.groundingKind ?? null,
   });
-  let trimmed = ensureAgentDirectAnswerLead(text, question);
+  let trimmed = stripRawRetrievedPageText(text);
+  trimmed = ensureAgentDirectAnswerLead(trimmed, question);
   trimmed = stripUnrequestedPricingEssay(trimmed, plan.mode, question);
   trimmed = collapseExtraAgentSectionLabels(trimmed, plan.maxSections);
   const narrow = Boolean(options.hasHistory) || NARROW_AGENT_MODES.has(plan.mode);

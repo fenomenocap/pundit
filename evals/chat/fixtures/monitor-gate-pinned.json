@@ -760,7 +760,7 @@
         },
         {
           "status": 200,
-          "answer": "On Chelsea at 7.00, I make it 54.0% against that line, model vs that line +278.0% (real). That clears the play price, so I play. Risk is medium: neither the lower-risk nor higher-risk conditions apply; losses are still possible.",
+          "answer": "Chelsea at 7.00 implies 14.3% (1/7.00); I make Chelsea 54.0% (fair 1.85).\nImplied 14.3% vs my 54.0% on the same side.\nLean: gap +39.7 pts vs your line — I play on this read — a probability check, not a bet to place.\nProvenance: Fundamental fundamental@1:monitor-gate-pinned, model priced 18 October 2026",
           "grounding": {
             "kind": "match",
             "fixtureId": "eng.1:401878771",

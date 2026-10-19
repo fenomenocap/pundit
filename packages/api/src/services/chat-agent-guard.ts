@@ -106,6 +106,19 @@ function ensureMatchHeadline(
   return `${matchHeadlineLine(grounding)} ${text.trim()}`.trim();
 }
 
+/** Agent must not deny market quotes when match grounding already carries oddsSources. */
+export function correctAgentFalseNoOddsClaims(answer: string, grounding: AskGrounding): string {
+  if (grounding?.kind !== "match" || !grounding.oddsSources?.length) return answer;
+  if (!/\b(?:none priced|no odds|not priced|there are no odds)\b/i.test(answer)) return answer;
+  const feeds = [...new Set(grounding.oddsSources.map((row) => row.source))]
+    .map((source) => source[0].toUpperCase() + source.slice(1))
+    .join(" and ");
+  return answer.replace(
+    /\b(?:none priced|no odds|not priced|there are no odds)\b[^.!?]*/gi,
+    `${feeds} no-vig 1X2 quotes are on this fixture`,
+  );
+}
+
 /** Drop LLM-invented probabilities on priced fixtures; keep honest abstains. */
 export function finalizeChatAgentAnswer(answer: string, grounding: AskGrounding): string {
   const trimmed = answer.trim();
@@ -118,7 +131,7 @@ export function finalizeChatAgentAnswer(answer: string, grounding: AskGrounding)
   if (!allowed.length) return trimmed;
 
   const sanitized = stripUnsupportedPercentages(trimmed, allowed);
-  if (sanitized) return sanitized;
+  if (sanitized) return correctAgentFalseNoOddsClaims(sanitized, grounding);
 
   return [
     "No bet — I couldn't tie every number in that take to the Fundamental model or verified sources.",
