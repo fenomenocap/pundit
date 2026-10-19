@@ -272,30 +272,34 @@ function explainEdgeBand(band: string): string {
 export function composeUserLineAnswer(grounding: Grounding): string {
   const line = grounding.pricing.userLine;
   if (!line) {
-    return "I need a decimal line on home, draw, or away before I can pass or play.";
+    return joinBasicsAnswer({
+      headline: "I need a decimal line on home, draw, or away before I can compare it to my model.",
+      lean: "Lean: add the line in the price field or name home, draw, or away with a decimal in your question.",
+      provenance: basicsProvenanceLine(grounding),
+    });
   }
   const subject = outcomeLabel(grounding, line.outcome);
   const modelP = grounding.pricing.model[line.outcome].p;
+  const impliedP = 1 / line.decimalOdds;
+  const gapPoints = Math.round((modelP - impliedP) * 1000) / 10;
+  const gapSign = gapPoints >= 0 ? "+" : "";
   const decimal = line.decimalOdds.toFixed(2);
   const decision = line.decimalOdds >= line.playPrice
     ? "play"
     : line.decimalOdds < line.passPrice
       ? "pass"
       : "abstain";
-  const call = decision === "play"
-    ? `That clears the play price of ${line.playPrice.toFixed(2)}, so I play.`
+  const decisionLean = decision === "play"
+    ? "I play on this read — a probability check, not a bet to place."
     : decision === "pass"
-      ? `That is below the pass price of ${line.passPrice.toFixed(2)}, so I pass.`
-      : `That sits between the pass price of ${line.passPrice.toFixed(2)} and the play price of ${line.playPrice.toFixed(2)}, so I will not call it.`;
-  const riskExplanation = line.riskBand === "high"
-    ? "a low chance of winning or a large price gap makes the estimate more vulnerable"
-    : line.riskBand === "low"
-      ? "a higher chance of winning and a small price gap; losses are still possible"
-      : "neither the lower-risk nor higher-risk conditions apply; losses are still possible";
-  const gapPhrase = MODEL_EDGE_CLAIMS_ALLOWED
-    ? `EV ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`
-    : `model vs that line ${signedEvPct(line.evPct)} (${explainEdgeBand(line.edgeBand)})`;
-  return `On ${subject} at ${decimal}, I make it ${pct(modelP)} against that line, ${gapPhrase}. ${call} Risk is ${line.riskBand}: ${riskExplanation}.`;
+      ? "I pass — the line is short of my model on this side."
+      : "I will not call it — the line sits in the abstain band.";
+  return joinBasicsAnswer({
+    headline: `${subject} at ${decimal} implies ${pct(impliedP)} (1/${decimal}); I make ${subject} ${pct(modelP)} (fair ${fairDecimal(modelP)}).`,
+    supports: [`Implied ${pct(impliedP)} vs my ${pct(modelP)} on the same side.`],
+    lean: `Lean: gap ${gapSign}${gapPoints.toFixed(1)} pts vs your line — ${decisionLean}`,
+    provenance: basicsProvenanceLine(grounding),
+  });
 }
 
 function pct(value: number): string {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tableVsModelFavoriteExplainLine } from "./basics-answer-voice";
 import type { Grounding } from "./ask";
+import { sampleAgentFreshness } from "../config/freshness-policy";
 import { buildMatchPricing } from "./response-correctness";
 import { sampleMatchContextFields } from "./match-context";
 
@@ -49,14 +50,11 @@ function minimalGrounding(overrides: Partial<Grounding> = {}): Grounding {
       pAway: 0.157,
       markets: [],
     }),
-    freshness: {
-      tier: "fresh",
-      reason: "test",
-      espnLastUpdated: observedAt,
-      modelLastUpdated: observedAt,
+    freshness: sampleAgentFreshness({
       marketOddsLastUpdated: observedAt,
+      modelLastUpdated: observedAt,
       ratingsAsOf: observedAt,
-    },
+    }),
     ...sampleMatchContextFields({
       homeElo: 1799,
       awayElo: 1706,

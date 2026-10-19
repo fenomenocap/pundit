@@ -1743,10 +1743,10 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     expectUserLinePassPlay: true,
     modelEdgeClaimsAllowed: true,
   }).passed, true);
-  const userLinePlayHonest = "On Chelsea at 7.00, I make it 10.0% against that line, model vs that line +40.0% (fat-and-fragile). That clears the play price of 10.30, so I play. Risk is high.";
+  const userLinePlayHonest = "Chelsea at 7.00 implies 14.3% (1/7.00); I make Chelsea 20.3% (fair 4.93).\nLean: gap +6.0 pts vs your line — I play on this read — a probability check, not a bet to place.";
   assert.equal(validateAnalystExpression(userLinePlayHonest, { expectUserLinePassPlay: true }).passed, true);
   assert.equal(validateAnalystExpression(userLinePlayEv, { expectUserLinePassPlay: true }).passed, false);
-  assert.equal(validateAnalystExpression(userLinePlayHonest, {
+  assert.equal(validateAnalystExpression(userLinePlayEv, {
     expectUserLinePassPlay: true,
     modelEdgeClaimsAllowed: true,
   }).passed, false);

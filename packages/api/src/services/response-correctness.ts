@@ -70,6 +70,34 @@ export interface MatchPricingMarketInput {
   impliedDisplayDecimals?: boolean;
 }
 
+/** Parse "away side at 7 — pass or play?" when the client did not post structured userLine. */
+export function inferUserLineFromQuestion(
+  question: string,
+  home: string,
+  away: string,
+): UserLineInput | undefined {
+  if (!/\bpass or play\b/i.test(question)) return undefined;
+  const generic = question.match(
+    /\b(?:the\s+)?(home|away|draw)(?:\s+side|\s+win)?\s+at\s+(\d+(?:\.\d+)?)\b/i,
+  );
+  if (generic) {
+    const outcome = generic[1].toLowerCase();
+    if (outcome === "home" || outcome === "away" || outcome === "draw") {
+      return { outcome, decimalOdds: Number(generic[2]) };
+    }
+  }
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const [outcome, team] of [["home", home], ["away", away]] as const) {
+    const pattern = new RegExp(
+      `\\b${escape(team)}\\b[^.\\n]{0,40}\\bat\\s+(\\d+(?:\\.\\d+)?)\\b`,
+      "i",
+    );
+    const named = question.match(pattern);
+    if (named) return { outcome, decimalOdds: Number(named[1]) };
+  }
+  return undefined;
+}
+
 export interface UserLineInput {
   outcome: OneXTwoOutcome;
   decimalOdds: number;

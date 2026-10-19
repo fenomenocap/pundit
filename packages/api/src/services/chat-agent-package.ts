@@ -276,6 +276,20 @@ const NARROW_AGENT_MODES: ReadonlySet<ResponseMode> = new Set([
   "winner-guarantee-honesty",
 ]);
 
+/** Drop raw publisher HTML/Markdown the agent pasted after the priced read. */
+export function stripRawRetrievedPageText(text: string): string {
+  const lines = text.split("\n");
+  const cutIndex = lines.findIndex((line) => {
+    const trimmed = line.trim();
+    return /^#\s+/.test(trimmed)
+      || /^Published:\s*\d/i.test(trimmed)
+      || /\|\s*Published:/i.test(trimmed)
+      || /^Source:\s*\S+.*Language:/i.test(trimmed);
+  });
+  if (cutIndex >= 0) return lines.slice(0, cutIndex).join("\n").trim();
+  return text;
+}
+
 function stripUnrequestedPricingEssay(text: string, mode: ResponseMode, question: string): string {
   if (mode !== "pricing-desk") return text;
   if (/\b(?:injur|team news|line-?up|availability)\b/i.test(question)) return text;
@@ -307,7 +321,8 @@ export function trimAgentDeliveryForPlan(
     hasHistory: Boolean(options.hasHistory),
     groundingKind: options.groundingKind ?? null,
   });
-  let trimmed = ensureAgentDirectAnswerLead(text, question);
+  let trimmed = stripRawRetrievedPageText(text);
+  trimmed = ensureAgentDirectAnswerLead(trimmed, question);
   trimmed = stripUnrequestedPricingEssay(trimmed, plan.mode, question);
   trimmed = collapseExtraAgentSectionLabels(trimmed, plan.maxSections);
   const narrow = Boolean(options.hasHistory) || NARROW_AGENT_MODES.has(plan.mode);

@@ -98,6 +98,7 @@ import {
   buildMatchPricing,
   impliedDecimalOddsFromNoVig,
   attachUserLine,
+  inferUserLineFromQuestion,
   type DirectionalRationale,
   type ManagerTenure,
   type OneXTwoMarketLeg,
@@ -3467,6 +3468,9 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
     ...(grounding.scorelines ?? []).map((row) => row.probability),
   ];
   const userLine = grounding.pricing?.userLine;
+  const userLineGapPoints = userLine
+    ? Math.round((grounding.pricing.model[userLine.outcome].p - 1 / userLine.decimalOdds) * 1000) / 10
+    : null;
   const consensusProbabilities = grounding.consensus
     ? [grounding.consensus.pHome, grounding.consensus.pDraw, grounding.consensus.pAway]
     : [];
@@ -3476,10 +3480,13 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
       ...(grounding.oddsSources ?? []).flatMap((source) =>
         [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
       ...consensusProbabilities,
-      ...(userLine ? [Math.abs(userLine.evPct), 1 / userLine.decimalOdds] : []),
+      ...(userLine ? [1 / userLine.decimalOdds] : []),
     ],
-    percentagePointGaps: (grounding.marketDivergence ?? []).flatMap((market) =>
-      market.legs.map((leg) => leg.gapPoints)),
+    percentagePointGaps: [
+      ...(grounding.marketDivergence ?? []).flatMap((market) =>
+        market.legs.map((leg) => leg.gapPoints)),
+      ...(userLineGapPoints != null ? [userLineGapPoints, -userLineGapPoints] : []),
+    ],
     fairDecimalOdds: [
       ...modelProbabilities.filter((value) => value > 0).map((value) => 1 / value),
       ...consensusProbabilities.filter((value) => value > 0).map((value) => 1 / value),
@@ -10476,9 +10483,16 @@ function withPresentation(
   };
 }
 
-function withOptionalUserLine(grounding: AskGrounding, userLine?: UserLine): AskGrounding {
-  if (!userLine || grounding?.kind !== "match") return grounding;
-  return { ...grounding, pricing: attachUserLine(grounding.pricing, userLine) };
+function withOptionalUserLine(
+  grounding: AskGrounding,
+  userLine?: UserLine,
+  question = "",
+): AskGrounding {
+  if (grounding?.kind !== "match") return grounding;
+  const resolved = userLine
+    ?? inferUserLineFromQuestion(question, grounding.home, grounding.away);
+  if (!resolved) return grounding;
+  return { ...grounding, pricing: attachUserLine(grounding.pricing, resolved) };
 }
 
 /** Short server-owned answer when the agent path yields no prose (e.g. budget_exceeded). */
@@ -10658,6 +10672,22 @@ async function deliverChatAgentTurn(
   requestStartedAt: number,
   voice?: "desk",
 ): Promise<ScopedAskPayload> {
+  const composed = closedGroundedAnswer(question, grounding, history.length > 0);
+  if (composed?.trim()) {
+    const metrics = emptyChatAgentTurnMetrics();
+    metrics.outcome = "skipped";
+    metrics.skipReason = "desk_composer";
+    metrics.latencyMs = Date.now() - requestStartedAt;
+    logChatAgentTurn(metrics);
+    return {
+      answer: voice === "desk" ? humaniseDeskCitationDates(composed) : composed,
+      grounding,
+      verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      usedLlm: false,
+      agentTurn: { outcome: "skipped", skipReason: "desk_composer", capHit: null },
+    };
+  }
+
   let bundle: EvidenceBundle = { queries: [], results: [], providerCalls: 0 };
   let agentText = "";
   const turnStartedAt = Date.now();
@@ -10798,7 +10828,7 @@ async function answerQuestionScoped(
     teamContext,
     fixtureContext
   );
-  const grounding = withOptionalUserLine(prepared.grounding, userLine);
+  const grounding = withOptionalUserLine(prepared.grounding, userLine, question);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   const agentEngineActive = isChatAgentEngine() && Boolean(client);
   try {
@@ -11107,7 +11137,7 @@ async function answerQuestionStreamScoped(
     teamContext,
     fixtureContext
   );
-  const grounding = withOptionalUserLine(prepared.grounding, userLine);
+  const grounding = withOptionalUserLine(prepared.grounding, userLine, question);
   const { systemPrompt, messages, tier, client, candidateUnrecognized } = prepared;
   const agentEngineActive = isChatAgentEngine() && Boolean(client);
   handlers.onGrounding(grounding);

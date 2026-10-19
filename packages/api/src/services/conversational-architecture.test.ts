@@ -1020,8 +1020,10 @@ describe("V2 conversational architecture", () => {
       planResponse("I found Arsenal at 7 — pass or play?", { groundingKind: "match", hasUserLine: true })
     );
     expect(userLine).toMatch(/Chelsea at 7\.00/);
+    expect(userLine).toMatch(/implies 14\.3%/);
+    expect(userLine).toMatch(/gap \+?\d+\.?\d* pts/);
     expect(userLine).toMatch(/I play/);
-    expect(userLine).toMatch(/Risk is high/);
+    expect(userLine).not.toMatch(/\bEV\b/);
     expect(userLine).not.toMatch(/\block\b/i);
     const pass = composeMatchResponse(
       "I found Arsenal at 1.10 — pass or play?",
@@ -1248,7 +1250,9 @@ it("explains fixed totals and risk labels without inventing fixture-specific ins
   const lined = { ...match, pricing: attachUserLine(match.pricing, { outcome: "away", decimalOdds: 7 }) };
   const answer = composeMatchResponse("pass or play?", lined,
     planResponse("pass or play?", { groundingKind: "match", hasUserLine: true }));
-  expect(answer).toContain("fat-and-fragile: a large estimated price gap that is sensitive to forecast error");
-  expect(answer).toContain("Risk is high: a low chance of winning or a large price gap makes the estimate more vulnerable");
+  expect(answer).toMatch(/implies 14\.3%/);
+  expect(answer).toMatch(/gap \+?\d+\.?\d* pts/);
+  expect(answer).toMatch(/I play/);
+  expect(answer).not.toMatch(/\bEV\b/);
   expect(answer).not.toMatch(/payload|grounding|JSON|Dixon.Coles|ClubElo/i);
 });

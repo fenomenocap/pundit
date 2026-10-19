@@ -2941,8 +2941,10 @@ describe("current-news evidence hardening", () => {
       expect(grounded.pricing.stakeFrac).toBeNull();
       const answer = closedGroundedAnswer("I found Arsenal at 7 — pass or play?", grounded);
       expect(answer).toMatch(/Coventry at 7\.00/);
+      expect(answer).toMatch(/implies 14\.3%/);
+      expect(answer).toMatch(/gap [+-]?\d+\.?\d* pts/);
       expect(answer).toMatch(/I pass|I play|will not call it/);
-      expect(answer).toMatch(/Risk is/);
+      expect(answer).not.toMatch(/\bEV\b/);
       expect(answer).not.toMatch(/\block\b/i);
     });
 
