@@ -43,7 +43,7 @@ export function Desk() {
   }, [params, select, queueAsk]);
 
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="flex flex-col min-h-0 flex-1">
       <Ticker />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border bg-surface px-3 sm:px-4 py-2 text-xs">
         <span className="eyebrow">
@@ -66,7 +66,7 @@ export function Desk() {
         <span className="text-quiet">{KICKOFF_TIME_NOTE}</span>
       </div>
       <SlateChips />
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,300px)_minmax(0,1.2fr)_minmax(280px,340px)] min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,300px)_minmax(0,1.2fr)_minmax(280px,340px)] min-h-0 flex-1">
         <SlateRail />
         <AgentPane />
         <MatchIntel />
