@@ -1977,6 +1977,8 @@ export function validateAnswerStructure(answer, expectation = {}) {
         ? "answer begins with a malformed closing fragment"
       : name === "headlineOneXTwoPresent"
         ? "match answer is missing its headline win/draw/win line"
+      : name.startsWith("provenance")
+        ? `match answer provenance failed ${name}`
       : name === "tacticalComparisonAnswered"
         ? "tactical comparison does not supply a complete, relevant pressing-trap explanation"
         : "answer ends with a structurally incomplete fragment"));
