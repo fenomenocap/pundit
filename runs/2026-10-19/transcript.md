@@ -1,35 +1,31 @@
 # Pundit chat transcript — 2026-10-19
 
-- Run `2026-10-19T16-42-14-292Z` · overall **ISSUES FOUND** · progress complete
-- API `cb28e64` · scenarios 77 (pass 66, inconclusive 5, fail 6)
-- Turns 74 · answered 74 · with citations 4 · median latency 131 ms
+- Run `2026-10-19T17-51-15-221Z` · overall **ISSUES FOUND** · progress complete
+- API `e468753` · scenarios 77 (pass 70, inconclusive 5, fail 2)
+- Turns 75 · answered 75 · with citations 4 · median latency 192 ms
 - Quality signals: 0 repeated sentence(s), 0 near-duplicate answer pair(s), 0 uncited current-news turn(s)
 - Request engine: **both**
-- Eval quality: template 14%, LLM rate 8%, citations 5%
+- Eval quality: template 13%, LLM rate 9%, citations 5%
 - judge: skipped (unavailable) (skipped 24 turn(s))
-- Engine comparison (legacy vs agent): template 0.14 → 0.15, citations 0.05 → 0.03
+- Engine comparison (legacy vs agent): template 0.13 → 0.15, citations 0.05 → 0.04
 - Agent judge: skipped (unavailable) (skipped 24 turn(s))
 
 ## Findings
 
-1. **homepage-desk-output** — FAIL: turn 2: analyst expression failed directAnswerFirst
-2. **pinned-current-manager-and-result-evidence** — FAIL: turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 2: positive current manager failed positiveCurrentManagerVerification; turn 2: positive current manager failed currentManagerIdentityDelivered; turn 2: positive current mana
-3. **pinned-current-manager-everton-fixed** — FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri
-4. **dated-club-news-delivers-supported-update** — FAIL: HTTP 502: {"status":"error","code":502,"message":"Application failed to respond","request_id":"XJ7Ttfb1QOqYY4eUCYBc-A"} (retried once after Railway gateway 502)
-5. **analyst-conversation-golden-path** — FAIL: turn 6: analyst expression failed directAnswerFirst
-6. **featured-totals-honesty** — FAIL: turn 1: analyst expression failed directAnswerFirst
+1. **pinned-current-manager-and-result-evidence** — FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri
+2. **pinned-current-manager-everton-fixed** — FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri
 
 ## Conversations
 
-### homepage-desk-output — FAIL (fixed)
+### homepage-desk-output — PASS (fixed)
 
 **Turn 1 · Q:** Give me the match briefing for Tottenham vs Coventry. Tactics, who decides it, and the model lean.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 259 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 64 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > I lean to Tottenham at home. If Tottenham draw Coventry's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Coventry close the central passing lanes, Tottenham could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
 > 
@@ -37,52 +33,48 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:38 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:49 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What about over and under 2.5? Why do they add to 100%?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 181 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 177 ms_
 
-> Over/under 2.5 on Tottenham v Coventry — here's the totals split.
+> Over/under 2.5 on Tottenham v Coventry — I have over 2.5 at 51.9%. Both sides sit within five points, so I'd treat the line as a coin flip.
 > Over 2.5 51.9% | fair 1.93
 > Under 2.5 48.1% | fair 2.08
 > I don't have a live over/under 2.5 market line on this fixture — these are model-only totals.
 > Under covers fewer than three goals; over covers three or more. There is no push at a half-goal line, so their probabilities sum to one. Decimal odds are the reciprocals of those probabilities.
 > I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
-> Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT · Odds: Kalshi no-vig, 20 Oct 00:38 SGT
-
-Failed assertions: turn2DirectAnswerFirst
+> Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT · Odds: Kalshi no-vig, 20 Oct 01:49 SGT
 
 ### pinned-current-manager-and-result-evidence — FAIL (fixed)
 
 **Turn 1 · Q:** What's Tottenham's manager today?
 
-_grounding=match · capability=priced · citations=1 · verification=verified · HTTP 200 · 15749 ms_
-
-> Tottenham’s manager is Roberto de Zerbi (['I kissed Rodrigo' - Roberto de Zerbi praises Bentancur's red card against Manchester United - BBC Sport](https://www.bbc.com/sport/football/articles/cqn73g3pvezdo) · 10 Oct).
-
-Failed assertions: turn1CurrentManagerIdentityDelivered, turn1EveryCurrentManagerIdentityCited, turn1CurrentManagerIdentityUnambiguous
-
-**Turn 2 · Q:** Who is Tottenham's manager and why?
-
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 15514 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 23497 ms_
 
 > I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.
 
-Failed assertions: turn2PositiveCurrentManagerVerification, turn2CurrentManagerIdentityDelivered, turn2EveryCurrentManagerIdentityCited, turn2CurrentManagerIdentityUnambiguous, turn2VerificationStatus
+Failed assertions: turn1PositiveCurrentManagerVerification, turn1CurrentManagerIdentityDelivered, turn1EveryCurrentManagerIdentityCited, turn1CurrentManagerIdentityUnambiguous, turn1VerificationStatus
+
+**Turn 2 · Q:** Who is Tottenham's manager and why?
+
+_grounding=match · capability=priced · citations=1 · verification=verified · HTTP 200 · 7030 ms_
+
+> Tottenham’s manager is Martin Ho ([Martin Ho: Tottenham Women boss on summer signings, WSL start and facing Chelsea and Arsenal | Football News | Sky Sports](https://www.skysports.com/football/news/13598902/martin-ho-tottenham-women-head-coach-on-summer-transfer-window-wsl-start-and-facing-chelsea-and-arsenal) · 15 Oct). I haven’t verified the club’s stated reason for choosing or retaining him.
 
 **Turn 3 · Q:** What is Tottenham's latest result and why?
 
-_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 65 ms_
+_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 159 ms_
 
 > The latest completed result I have for Tottenham in my covered competitions is **Man United 1–1 Tottenham** (Premier League, 2026-10-10): a draw. ([ESPN match record, 2026-10-10](https://www.espn.com/soccer/match/_/gameId/401878773)). I cover the Premier League and Champions League qualifiers here; another cup match may be more recent. The score establishes the outcome; I would need a verified match report to explain why it happened.
 
@@ -90,7 +82,7 @@ _grounding=none · capability=n/a · citations=1 · verification=verified · HTT
 
 **Turn 1 · Q:** What's Everton's manager today?
 
-_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 8797 ms_
+_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 29679 ms_
 
 > I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.
 
@@ -98,7 +90,7 @@ Failed assertions: turn1GroundingKind, turn1OneXTwoProbabilities, turn1TotalsPro
 
 **Turn 2 · Q:** Who is Everton's manager and why?
 
-_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 9804 ms_
+_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 21067 ms_
 
 > I couldn’t verify that current claim from the sources available for this answer, so I won’t state it.
 
@@ -108,45 +100,53 @@ Failed assertions: turn2GroundingKind, turn2OneXTwoProbabilities, turn2TotalsPro
 
 **Turn 1 · Q:** What is Arsenal's latest Premier League result?
 
-_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 86 ms_
+_grounding=none · capability=n/a · citations=1 · verification=verified · HTTP 200 · 46 ms_
 
 > The latest completed Premier League result I have for Arsenal is **Forest 0–1 Arsenal** (Premier League, 2026-10-18): Arsenal won. ([ESPN match record, 2026-10-18](https://www.espn.com/soccer/match/_/gameId/401878769)).
+
+### dated-club-news-delivers-supported-update — PASS (fixed)
+
+**Turn 1 · Q:** What are the latest dated club injury updates for Tottenham and Coventry? Keep current reports distinct from future kickoff availability.
+
+_grounding=match · capability=priced · citations=1 · verification=conflict · HTTP 200 · 31067 ms_
+
+> In an update published on 2026-10-19, Tottenham’s Xavi Simons has returned to training ([Tottenham get exciting injury update as new training footage revealed | The Standard](https://www.standard.co.uk/sport/football/tottenham-xavi-simons-injury-latest-b1301403.html) · 19 Oct). Current reports conflict on one or more requested facts, so I’ve left those claims out. These dated club updates do not establish the starting XI or availability at the future kickoff. I couldn’t establish a verified, dated Coventry club update.
 
 ### active-match-grounding — PASS (fixed)
 
 **Turn 1 · Q:** What does Pundit's model say about Tottenham vs Coventry?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 300 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 270 ms_
 
 > My 1X2 is Tottenham 59.9% (fair 1.67), draw 24.4% (fair 4.11) and Coventry 15.7% (fair 6.36). I need a captured decimal line before I can print EV% or pass or play.
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 
 ### priced-fixture-retains-1x2-context — PASS (fixed)
 
 **Turn 1 · Q:** Analyse Tottenham vs Coventry.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 143 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 218 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:44 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:49 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What will the 1X2 be?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 142 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 423 ms_
 
 > My 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 
@@ -154,28 +154,28 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Analyse Tottenham vs Coventry.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 123 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 432 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:44 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:49 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 82 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 192 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -188,54 +188,54 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 3 · Q:** Back to that match: what will the 1X2 be?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 96 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 195 ms_
 
 > My 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 
-### analyst-conversation-golden-path — FAIL (fixed)
+### analyst-conversation-golden-path — PASS (fixed)
 
 **Turn 1 · Q:** Give me your full preview of Tottenham vs Coventry, including the 1X2, likely scorelines and any comparable market disagreement.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 327 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 216 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:44 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:49 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** What is your fair decimal price for an exact 2-1 score?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 135 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 173 ms_
 
 > Reading 2-1 in home-away order, for Tottenham 2-1 Coventry, I make it 11.0%, or about 9.10 in fair decimal odds. I don’t have a comparable live exact-score quote here, so that is a fair price, not a claim that the market is wrong.
 
 **Turn 3 · Q:** Who will most likely score for Liverpool?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 336 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 411 ms_
 
 > I can’t name Liverpool’s most likely scorer from the match forecast because I don’t have player-level projections. I need Liverpool’s opponent before I can switch fixtures, so I’m keeping Tottenham vs Coventry in view until then. A dated scorer market and confirmed starters would let me assess the options.
 
 **Turn 4 · Q:** If the home striker is ruled out, exactly how many percentage points would you take off the home win?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 158 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 236 ms_
 
 > I can’t quantify that lineup effect without verified team news and a revised forecast. A confirmed change could alter my read, but I won’t invent a percentage adjustment.
 
 **Turn 5 · Q:** Quick detour: what does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 299 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 173 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -248,22 +248,17 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 6 · Q:** Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 165 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 210 ms_
 
-> Tottenham v Coventry — my call: Spurs win.
-> Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
-> Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:44 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
-> Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
-
-Failed assertions: turn6DirectAnswerFirst
+> Tottenham v Coventry — the largest gap is on Draw: I have 24.4% vs Kalshi 20.8% (no-vig, 20 Oct 01:49 SGT).
+> A price gap only marks a disagreement between my read and the market; it does not explain the cause and says nothing about lineups on its own.
+> Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT · Odds: Kalshi no-vig, 20 Oct 01:49 SGT
 
 ### replacing-is-not-epl — PASS (fixed)
 
 **Turn 1 · Q:** Who is replacing the injured manager?
 
-_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 308 ms_
+_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 154 ms_
 
 > I need the manager and club before I can identify a replacement. Tell me both, and I’ll check the current evidence.
 
@@ -271,7 +266,7 @@ _grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP
 
 **Turn 1 · Q:** What are Pundit's probabilities for Northbridge Athletic vs Southbank Rovers tomorrow?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 6019 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 5902 ms_
 
 > I couldn't confirm that matchup. Please share the teams, competition and date; I can't give probabilities for an unconfirmed fixture.
 
@@ -279,19 +274,19 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Man City vs Fulham
 
-_grounding=fixture · capability=insufficient-model-input · citations=0 · verification=not-required · HTTP 200 · 301 ms_
+_grounding=fixture · capability=insufficient-model-input · citations=0 · verification=not-required · HTTP 200 · 150 ms_
 
 > I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities.
 
 **Turn 2 · Q:** What about that fixture's 1X2?
 
-_grounding=fixture · capability=insufficient-model-input · citations=0 · verification=not-required · HTTP 200 · 131 ms_
+_grounding=fixture · capability=insufficient-model-input · citations=0 · verification=not-required · HTTP 200 · 152 ms_
 
 > I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities.
 
 **Turn 3 · Q:** Tottenham vs Ipswich
 
-_grounding=fixture · capability=insufficient-model-input · citations=0 · verification=not-required · HTTP 200 · 84 ms_
+_grounding=fixture · capability=insufficient-model-input · citations=0 · verification=not-required · HTTP 200 · 146 ms_
 
 > I recognize this fixture, but I don't have the required pricing inputs for it yet, so I can't estimate probabilities.
 
@@ -299,45 +294,45 @@ _grounding=fixture · capability=insufficient-model-input · citations=0 · veri
 
 **Turn 1 · Q:** Tottenham vs Coventry · PL · Mon
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 110 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 174 ms_
 
 > My 1X2 is Tottenham 59.9% (fair 1.67), draw 24.4% (fair 4.11) and Coventry 15.7% (fair 6.36). I need a captured decimal line before I can print EV% or pass or play.
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 
 ### team-news-sourcing — PASS (fixed)
 
 **Turn 1 · Q:** Any injury or lineup news for Tottenham vs Coventry?
 
-_grounding=match · capability=priced · citations=1 · verification=verified · HTTP 200 · 18688 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 21379 ms_
 
-> In an update published on 2026-10-18, Tottenham’s Pedro Porro was sidelined with a hamstring injury ([Team news | Bergvall, Savio out of Coventry clash, Porro update](https://www.tottenhamhotspur.com/news/1178730/team-news-bergvall-savio-out-of-coventry-clash-porro-update), 2026-10-18T09:10:26Z). These dated club updates do not establish the starting XI or availability at the future kickoff. I couldn’t establish a verified, dated Coventry club update.
+> I couldn’t establish a verified, dated team-news update for this fixture, so I won’t make an availability claim.
 
 ### table-detour-then-scorer-retention — PASS (fixed)
 
 **Turn 1 · Q:** Analyse Tottenham vs Coventry.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 60 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 280 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:44 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:49 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** Quick detour: what does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 100 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 402 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -350,7 +345,7 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 3 · Q:** Who is most likely to score?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 13675 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 14781 ms_
 
 > I don’t have player-level projections for this fixture, so I can’t name a most likely scorer from match probabilities. For recent scoring context, ESPN records Ellis Simms, Jack Rudoni, Sidiki Cherif scoring for Coventry across the last 1 available matches in this competition through 2026-10-12. That history is not a projection or evidence that they will start. Confirmed starters, expected minutes and a dated scorer market would help me assess the options.
 
@@ -358,28 +353,28 @@ _grounding=match · capability=priced · citations=0 · verification=abstain · 
 
 **Turn 1 · Q:** Analyse Tottenham vs Coventry.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 273 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 288 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:44 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:49 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** Who will most likely score for Liverpool?
 
-_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 397 ms_
+_grounding=match · capability=priced · citations=0 · verification=abstain · HTTP 200 · 390 ms_
 
 > I can’t name Liverpool’s most likely scorer from the match forecast because I don’t have player-level projections. I need Liverpool’s opponent before I can switch fixtures, so I’m keeping Tottenham vs Coventry in view until then. A dated scorer market and confirmed starters would let me assess the options.
 
@@ -387,20 +382,20 @@ _grounding=match · capability=priced · citations=0 · verification=abstain · 
 
 **Turn 1 · Q:** How do the market prices for Tottenham vs Coventry compare with your view?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 362 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 381 ms_
 
-> Tottenham v Coventry — my call: Spurs win.
+> Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:44 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:59 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 
 ### competition-grounding — PASS (fixed)
 
 **Turn 1 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 147 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 401 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -415,7 +410,7 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 90 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 189 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -428,19 +423,19 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 2 · Q:** Real Madrid title chances?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 86 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 157 ms_
 
 > My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.
 
 **Turn 3 · Q:** Can Arsenal win the league cup?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 97 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 159 ms_
 
 > My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.
 
 **Turn 4 · Q:** What about Bayern's Bundesliga relegation battle?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 89 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 240 ms_
 
 > My season forecasts cover the Premier League only. I don’t have a supported season forecast for this request, so I won’t give a title or relegation probability. I can explain the football factors that matter without inventing a current ranking.
 
@@ -448,7 +443,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Who is leading the Premier League title race?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1084 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1245 ms_
 
 > **Title race**
 > 1. **Man City 57.7%**
@@ -466,7 +461,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 2 · Q:** What is the strongest caveat to that table-based ranking?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 107 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 154 ms_
 
 > Man City are first in the supplied table with 21 points. Listed clubs have played between 6 and 7 matches. The strongest caveat is sample size: at most 7 of 38 matches are in the table, so a 3-point lead is not decisive. That establishes the current standings, not title probabilities. While fixtures remain, the current ordering is not a guarantee of the final positions; a forecast would also need club strengths and the remaining fixture schedule.
 
@@ -474,7 +469,7 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** Who is leading the Premier League title race right now?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 949 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1151 ms_
 
 > **Title race**
 > 1. **Man City 57.7%**
@@ -492,7 +487,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 2 · Q:** Can you guarantee the leader will win, or what would change that view?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1005 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 968 ms_
 
 > I can’t guarantee a winner. Man City is the most likely champion at 57.7%, not a certainty.
 > 
@@ -504,7 +499,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 1 · Q:** How does a high defensive line change a team's pressing risks?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 82 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 147 ms_
 
 > I see the trade-off clearly: a high defensive line compresses space in front of the defence, but leaves more space behind it for opponents to attack.
 > 
@@ -516,7 +511,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Explain the trade-offs of pressing traps against a narrow midfield in detail.
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 83 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 168 ms_
 
 > I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.
 > 
@@ -528,7 +523,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 2 · Q:** What are the trade-offs of pressing traps against a narrow midfield?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 75 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 143 ms_
 
 > I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.
 > 
@@ -540,7 +535,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 3 · Q:** Why are pressing traps against a narrow midfield more effective?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 80 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 167 ms_
 
 > I’d judge the pressing trap by the pass it invites and the exits it closes. Against a narrow midfield, one option is to leave a central receiver apparently free, then press as the pass travels: one player attacks the receiver, another blocks the return pass, and the nearest midfielder closes the next central outlet. The pressing angle matters because it steers the receiver towards the area the pressing team has covered.
 > 
@@ -554,7 +549,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, how do you assess a slate of football fixtures without treating any outcome as guaranteed?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 302 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 409 ms_
 
 > I’d compare each fixture separately, starting with relative team strength, home advantage and the possible effect of rest on the demands of the game. Then I’d examine how each side could create and prevent chances: a press may disrupt build-up, but an opponent that escapes it can attack the space left behind; width and cut-backs can test a compact defence, while set pieces offer another route to goal.
 > 
@@ -564,7 +559,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, why should a strong favourite never be treated as a guaranteed win?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 118 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 191 ms_
 
 > A strong favourite can still lose because the opponent retains ways to create and finish chances. A well-timed counterattack, a set piece or a defensive mistake can produce a decisive opportunity even when the favourite controls most of the territory.
 > 
@@ -574,7 +569,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, how can a derby change the tactical trade-offs and game management?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 79 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 160 ms_
 
 > A derby can change the tactical trade-offs if emotional pressure affects composure and how the teams manage tempo and risk. A side that presses more aggressively may win the ball higher up, but an uncoordinated jump can open space behind it. Slowing the game can help restore shape, while also giving the opponent time to organise.
 > 
@@ -584,7 +579,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** In general, what makes a good chance for a striker, beyond past goal totals?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 89 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 150 ms_
 
 > I’d judge a chance by distance and angle to goal, defensive pressure, the goalkeeper’s position and whether a defender blocks the shooting lane. A close central shot with time to set the body is generally easier than a distant attempt from a tight angle under pressure.
 > 
@@ -594,16 +589,16 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** What's the fair price on today's featured match and is there any edge vs the market?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 102 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 177 ms_
 
 > My 1X2 is Tottenham 59.9% (fair 1.67), draw 24.4% (fair 4.11) and Coventry 15.7% (fair 6.36). I need a captured decimal line before I can print EV% or pass or play.
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 
 ### desk-cross-game-parlay-decline — PASS (fixed)
 
 **Turn 1 · Q:** Spurs to beat Coventry and Arsenal to beat Everton — combined fair price?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 105 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 188 ms_
 
 > I price single matches for now; multi-leg pricing is coming soon. Want the numbers on Tottenham vs Coventry?
 
@@ -611,14 +606,14 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Compare Tottenham and Coventry.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 98 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 196 ms_
 
 > My 1X2 is Tottenham 59.9% (fair 1.67), draw 24.4% (fair 4.11) and Coventry 15.7% (fair 6.36). I need a captured decimal line before I can print EV% or pass or play.
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 
 **Turn 2 · Q:** Which side has the stronger model case, and why?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 320 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 194 ms_
 
 > **My view**
 > I make **Tottenham 59.9%**, the **draw 24.4%** and **Coventry 15.7%** for the 19 October 2026 fixture.
@@ -633,28 +628,28 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Analyse Tottenham vs Coventry.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 324 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 173 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:44 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:59 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** I found the away side at 7 — pass or play?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 326 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 190 ms_
 
 > Coventry at 7.00 implies 14.3% (1/7.00).
 > Coventry 15.7% | fair 6.37 | line 7.00 (14.3%) | gap +1.4 pts
@@ -665,72 +660,70 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Analyse Tottenham vs Coventry.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 348 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 224 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:55 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:59 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
 **Turn 2 · Q:** How much should I stake?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 141 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 202 ms_
 
 > Tottenham v Coventry: my 1X2 read.
 > Spurs 59.9% | fair 1.67
 > Draw 24.4% | fair 4.10
 > Coventry 15.7% | fair 6.37
 > Lean: I can print the price. I will not size a stake without a bankroll and a risk band.
-> Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT · Odds: Kalshi no-vig, 20 Oct 00:55 SGT
+> Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT · Odds: Kalshi no-vig, 20 Oct 01:59 SGT
 
 ### featured-fixture-opens-pricing-desk — PASS (fixed)
 
 **Turn 1 · Q:** What about Tottenham vs Coventry?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 100 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 165 ms_
 
 > My 1X2 is Tottenham 59.9% (fair 1.67), draw 24.4% (fair 4.11) and Coventry 15.7% (fair 6.36). I need a captured decimal line before I can print EV% or pass or play.
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 
-### featured-totals-honesty — FAIL (fixed)
+### featured-totals-honesty — PASS (fixed)
 
 **Turn 1 · Q:** Is Tottenham vs Coventry over or under 2.5?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 109 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 173 ms_
 
-> Over/under 2.5 on Tottenham v Coventry — here's the totals split.
+> Over/under 2.5 on Tottenham v Coventry — I have over 2.5 at 51.9%. Both sides sit within five points, so I'd treat the line as a coin flip.
 > Over 2.5 51.9% | fair 1.93
 > Under 2.5 48.1% | fair 2.08
 > I don't have a live over/under 2.5 market line on this fixture — these are model-only totals.
 > I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
-> Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT · Odds: Kalshi no-vig, 20 Oct 00:55 SGT
-
-Failed assertions: turn1DirectAnswerFirst
+> Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT · Odds: Kalshi no-vig, 20 Oct 01:59 SGT
 
 ### featured-o25-scoreline-follow-up — PASS (fixed)
 
 **Turn 1 · Q:** What about Tottenham vs Coventry?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 124 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 168 ms_
 
 > My 1X2 is Tottenham 59.9% (fair 1.67), draw 24.4% (fair 4.11) and Coventry 15.7% (fair 6.36). I need a captured decimal line before I can print EV% or pass or play.
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 
 **Turn 2 · Q:** what are the possible scorelines and odds for o2.5
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 109 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 189 ms_
 
 > I have over 2.5 at 51.9% (fair 1.93); under 2.5 is 48.1% (fair 2.08). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > I make the leading over 2.5 scoreline 2-1 at 11.0% (fair 9.09).
@@ -739,11 +732,11 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Give me the match briefing for Tottenham vs Coventry.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 99 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 185 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > I lean to Tottenham at home. If Tottenham draw Coventry's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Coventry close the central passing lanes, Tottenham could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
 > 
@@ -751,14 +744,14 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:55 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:59 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
@@ -766,7 +759,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Tactical matchup
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 116 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 180 ms_
 
 > My 1X2 is Tottenham 59.9% (fair 1.67), draw 24.4% (fair 4.11) and Coventry 15.7% (fair 6.36). I lean to Tottenham at home. If Tottenham draw Coventry's first press towards the ball, a supporting receiver could become free beyond it; a late or poorly directed pass could instead invite a turnover. If Coventry close the central passing lanes, Tottenham could use width to pull a defender out and seek a cut-back, while committing both full-backs would leave less cover against a counterattack. If either side escapes the press with a switch or a pass behind the defence, the players who stayed back would need to cover the runner and delay the attack. Those are tactical possibilities, not confirmed selections or playing styles.
 
@@ -774,22 +767,22 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Give me your full preview of Tottenham vs Coventry, including the 1X2, likely scorelines and any comparable market disagreement.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 104 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 168 ms_
 
 > I make Tottenham the likeliest outcome at 59.9%. For 19 October 2026, my full 1X2 is Tottenham 59.9%, draw 24.4% and Coventry 15.7%.
 > 
-> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.7%.
+> Caveat: Spurs 20th on 3 pts, but Elo still favours them (1799 v 1706) with home advantage; Kalshi is higher at 62.4%.
 > 
 > Both teams to score is 52.1%. The leading scorelines are 1-1 (11.6%), 1-0 (11.5%), 2-0 (11.1%). I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.
 > 
-> Kalshi market-implied probabilities: Tottenham 62.7%, draw 20.6%, Coventry 16.7%. Polymarket market-implied probabilities: Tottenham 63.8%, draw 20.6%, Coventry 15.6%. Tottenham v Coventry — my call: Spurs win.
+> Kalshi market-implied probabilities: Tottenham 62.4%, draw 20.8%, Coventry 16.8%. Polymarket market-implied probabilities: Tottenham 62.2%, draw 21.4%, Coventry 16.4%. Tottenham v Coventry — my call: Spurs win at 59.9%.
 > Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)
 > Why: stronger side on Elo (1799 v 1706) plus home advantage; the risk is form, 20th on 3 pts.
-> Market (Kalshi no-vig, 20 Oct 00:55 SGT): Spurs 1.59 · Draw 4.86 · Coventry 6.00
-> Biggest gap vs market: Draw, +3.8 pts.
+> Market (Kalshi no-vig, 20 Oct 01:59 SGT): Spurs 1.60 · Draw 4.81 · Coventry 5.94
+> Biggest gap vs market: Draw, +3.6 pts.
 > Model: Elo ratings v1 (e92896a), 13 Oct 09:46 SGT
 > 
-> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.3%, draw 22.5% and Coventry 16.2%.
+> Pundit Fundamental is my model-only 1X2 above. Pundit Consensus, a separate view shrunk toward Kalshi market (no-vig), is Tottenham 61.1%, draw 22.6% and Coventry 16.3%.
 > 
 > I would revisit the read only after verified team news or a materially different line from the source named above; I can’t assign a lineup effect from these facts alone.
 
@@ -797,7 +790,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** What does the current Premier League table show?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 81 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 246 ms_
 
 > Man City lead with 21 points from 7 matches. The current top five are:
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -812,13 +805,13 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** Who has the edge in that match?
 
-_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 82 ms_
+_grounding=none · capability=n/a · citations=0 · verification=abstain · HTTP 200 · 147 ms_
 
 > I need the two teams before I can give you a match view. Which fixture do you mean?
 
 **Turn 2 · Q:** What evidence would change that answer?
 
-_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 101 ms_
+_grounding=none · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 377 ms_
 
 > Name the fixture first. Then verified, dated team news can change my qualitative read, while a complete same-source, same-time 1X2 market lets me compare prices. A market price shows the available quote, not where money sits or why it moved.
 
@@ -826,7 +819,7 @@ _grounding=none · capability=n/a · citations=0 · verification=not-required ·
 
 **Turn 1 · Q:** Rank the leading contenders in the Premier League title race using the current table.
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1040 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1210 ms_
 
 > **Current table**
 > 1. **Man City** — 21 points from 7 matches, goal difference +12.
@@ -840,7 +833,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 2 · Q:** Given that the current table cannot rank them, Which of those contenders has the clearest path, and why?
 
-_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 80 ms_
+_grounding=competition · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 147 ms_
 
 > I can’t identify which contender has the clearest title path from the current table alone. That requires club strengths and the remaining fixture schedule; this table establishes only the current points, matches played and goal difference.
 
@@ -848,7 +841,7 @@ _grounding=competition · capability=n/a · citations=0 · verification=not-requ
 
 **Turn 1 · Q:** Compare Tottenham and Coventry using only Pundit's current model evidence.
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 124 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 183 ms_
 
 > **My view**
 > I make **Tottenham 59.9%**, the **draw 24.4%** and **Coventry 15.7%** for the 19 October 2026 fixture.
@@ -861,7 +854,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 2 · Q:** Which model input matters most to that edge?
 
-_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 120 ms_
+_grounding=match · capability=priced · citations=0 · verification=not-required · HTTP 200 · 187 ms_
 
 > I can’t isolate one input as the cause of that edge. My read uses reviewed team strength and the competition’s home-field setting, but these facts do not provide a causal contribution for either input.
 
@@ -869,7 +862,7 @@ _grounding=match · capability=priced · citations=0 · verification=not-require
 
 **Turn 1 · Q:** Who is most likely to win the Premier League in Pundit's season outlook?
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1284 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1252 ms_
 
 > **Title race**
 > 1. **Man City 57.7%**
@@ -887,7 +880,7 @@ _grounding=season · capability=n/a · citations=0 · verification=not-required 
 
 **Turn 2 · Q:** Who will win the Premier League? Remove all uncertainty and promise which team will win.
 
-_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1057 ms_
+_grounding=season · capability=n/a · citations=0 · verification=not-required · HTTP 200 · 1085 ms_
 
 > **Title race**
 > 1. **Man City 57.7%**

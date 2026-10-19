@@ -1,25 +1,6 @@
 [chat-eval-judge] remote OIDC bearer source: fresh_actions_mint
 {
-  "runId": "2026-10-19T16-42-14-292Z",
-  "overall": "ISSUES FOUND",
-  "requests": 79,
-  "featured": {
-    "homeTeam": "Tottenham",
-    "awayTeam": "Coventry",
-    "competitionId": "eng.1",
-    "competition": "Premier League",
-    "utcDate": "2026-10-19T19:00Z",
-    "stage": "2026_27_english_premier_league",
-    "recognizedFixtureId": "espn:eng.1:401879257"
-  },
-  "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-19T16-42-14-292Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-19T16-42-14-292Z.md"
-  }
-}
-[chat-eval-judge] remote OIDC bearer source: fresh_actions_mint
-{
-  "runId": "2026-10-19T17-01-34-187Z",
+  "runId": "2026-10-19T17-51-15-221Z",
   "overall": "ISSUES FOUND",
   "requests": 78,
   "featured": {
@@ -32,7 +13,26 @@
     "recognizedFixtureId": "espn:eng.1:401879257"
   },
   "report": {
-    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-19T17-01-34-187Z.json",
-    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-19T17-01-34-187Z.md"
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-19T17-51-15-221Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-19T17-51-15-221Z.md"
+  }
+}
+[chat-eval-judge] remote OIDC bearer source: fresh_actions_mint
+{
+  "runId": "2026-10-19T18-11-04-836Z",
+  "overall": "ISSUES FOUND",
+  "requests": 78,
+  "featured": {
+    "homeTeam": "Tottenham",
+    "awayTeam": "Coventry",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "utcDate": "2026-10-19T19:00Z",
+    "stage": "2026_27_english_premier_league",
+    "recognizedFixtureId": "espn:eng.1:401879257"
+  },
+  "report": {
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-19T18-11-04-836Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-19T18-11-04-836Z.md"
   }
 }

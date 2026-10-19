@@ -1,27 +1,27 @@
 {
   "date": "2026-10-19",
-  "runId": "2026-10-19T16-42-14-292Z",
+  "runId": "2026-10-19T17-51-15-221Z",
   "status": "attention",
   "overall": "ISSUES FOUND",
   "progress": "complete",
   "scenariosRun": 77,
-  "passed": 66,
+  "passed": 70,
   "inconclusive": 5,
-  "failed": 6,
-  "turns": 74,
-  "answeredTurns": 74,
+  "failed": 2,
+  "turns": 75,
+  "answeredTurns": 75,
   "turnsWithCitations": 4,
-  "medianLatencyMs": 131,
+  "medianLatencyMs": 192,
   "repeatedSentences": 0,
   "nearDuplicatePairs": 0,
   "uncitedCurrentNews": 0,
   "requestEngine": "both",
   "qualityMetrics": {
-    "templateShare": 0.13513513513513514,
-    "nearDuplicateRate": 0.028878193261754906,
-    "llmCallRate": 0.08108108108108109,
-    "abstainRate": 0.10810810810810811,
-    "citationCoverage": 0.05405405405405406
+    "templateShare": 0.13333333333333333,
+    "nearDuplicateRate": 0.02774774774774775,
+    "llmCallRate": 0.09333333333333334,
+    "abstainRate": 0.13333333333333333,
+    "citationCoverage": 0.05333333333333334
   },
   "llmJudgeSummary": {
     "score": null,
@@ -33,47 +33,31 @@
   },
   "engineQualityComparison": {
     "legacy": {
-      "templateShare": 0.13513513513513514,
-      "nearDuplicateRate": 0.028878193261754906,
-      "llmCallRate": 0.08108108108108109,
-      "abstainRate": 0.10810810810810811,
-      "citationCoverage": 0.05405405405405406
+      "templateShare": 0.13333333333333333,
+      "nearDuplicateRate": 0.02774774774774775,
+      "llmCallRate": 0.09333333333333334,
+      "abstainRate": 0.13333333333333333,
+      "citationCoverage": 0.05333333333333334
     },
     "agent": {
       "templateShare": 0.14666666666666667,
-      "nearDuplicateRate": 0.02702702702702703,
+      "nearDuplicateRate": 0.02666666666666667,
       "llmCallRate": 0.9866666666666667,
       "abstainRate": 0.05333333333333334,
-      "citationCoverage": 0.02666666666666667
+      "citationCoverage": 0.04
     }
   },
   "findings": [
     {
-      "scenario": "homepage-desk-output",
-      "summary": "FAIL: turn 2: analyst expression failed directAnswerFirst"
-    },
-    {
       "scenario": "pinned-current-manager-and-result-evidence",
-      "summary": "FAIL: turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 2: positive current manager failed positiveCurrentManagerVerification; turn 2: positive current manager failed currentManagerIdentityDelivered; turn 2: positive current mana"
+      "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
     },
     {
       "scenario": "pinned-current-manager-everton-fixed",
       "summary": "FAIL: turn 1: positive current manager failed positiveCurrentManagerVerification; turn 1: positive current manager failed currentManagerIdentityDelivered; turn 1: positive current manager failed everyCurrentManagerIdentityCited; turn 1: positive current manager failed currentManagerIdentityUnambiguous; turn 1: verification failed verificationStatus; turn 1: verification failed positiveCurrentManagerVeri"
-    },
-    {
-      "scenario": "dated-club-news-delivers-supported-update",
-      "summary": "FAIL: HTTP 502: {\"status\":\"error\",\"code\":502,\"message\":\"Application failed to respond\",\"request_id\":\"XJ7Ttfb1QOqYY4eUCYBc-A\"} (retried once after Railway gateway 502)"
-    },
-    {
-      "scenario": "analyst-conversation-golden-path",
-      "summary": "FAIL: turn 6: analyst expression failed directAnswerFirst"
-    },
-    {
-      "scenario": "featured-totals-honesty",
-      "summary": "FAIL: turn 1: analyst expression failed directAnswerFirst"
     }
   ],
-  "sourceCommit": "cb28e64",
-  "apiSha": "cb28e64",
-  "ranAt": "2026-10-19T16:42:14.292Z"
+  "sourceCommit": "e468753",
+  "apiSha": "e468753",
+  "ranAt": "2026-10-19T17:51:15.221Z"
 }
