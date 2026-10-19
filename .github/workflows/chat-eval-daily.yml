@@ -135,7 +135,7 @@ jobs:
           git fetch origin main
           echo "sha=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
 
-      - name: Mint GitHub OIDC token for Railway judge
+      - name: Mint GitHub OIDC token for Railway judge (fallback)
         id: judge_oidc
         uses: actions/github-script@v7
         with:
@@ -162,6 +162,8 @@ jobs:
         env:
           CHAT_EVAL_GITHUB_OIDC_TOKEN: ${{ steps.judge_oidc.outputs.token }}
           CHAT_EVAL_JUDGE_MODE: remote
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
         run: |
           set -o pipefail
           node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine legacy \
@@ -174,6 +176,8 @@ jobs:
         env:
           CHAT_EVAL_GITHUB_OIDC_TOKEN: ${{ steps.judge_oidc.outputs.token }}
           CHAT_EVAL_JUDGE_MODE: remote
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
         run: |
           set -o pipefail
           node scripts/chat-battle-test.mjs --source-sha "${{ steps.sha.outputs.sha }}" --engine agent --non-gating \
@@ -184,6 +188,8 @@ jobs:
         env:
           CHAT_EVAL_GITHUB_OIDC_TOKEN: ${{ steps.judge_oidc.outputs.token }}
           CHAT_EVAL_JUDGE_MODE: remote
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
         run: |
           node scripts/merge-dual-engine-chat-eval.mjs \
             "$EVAL_DIR/legacy/latest-run.json" \
