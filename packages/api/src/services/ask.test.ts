@@ -1029,11 +1029,15 @@ describe("source-owned manager identity drafts", () => {
     "Ahead of Aston Villa, manager Eddie Howe said Newcastle United need a fast start.",
     "Eddie Howe - Head Coach\nNewcastle United first-team staff profile.",
     "Newcastle United | Eddie Howe, head coach — Howe's side face Aston Villa on Saturday.",
+    "Tottenham boss Roberto de Zerbi has been speaking to the media before Monday's Premier League game against Coventry City.",
+    "Tottenham's manager is Roberto de Zerbi.",
   ])("builds only the strict dynamic current identity: %s", (text) => {
     const clubScope = /Everton/.test(text) ? { ...scope, club: "Everton" }
-      : /Newcastle/.test(text) ? { ...scope, club: "Newcastle" } : scope;
+      : /Newcastle/.test(text) ? { ...scope, club: "Newcastle" }
+      : /Tottenham/.test(text) ? { ...scope, club: "Tottenham" } : scope;
     const name = /David Moyes/.test(text) ? "David Moyes"
-      : /Eddie Howe/.test(text) ? "Eddie Howe" : "Joe Example";
+      : /Eddie Howe/.test(text) ? "Eddie Howe"
+      : /de Zerbi/i.test(text) ? "Roberto de Zerbi" : "Joe Example";
     expect(sourceOwnedManagerDraft(clubScope, bundle, [{ ...page, text }], now)).toBe(`${clubScope.club}’s manager is ${name} [[S7]].`);
   });
   it.each([

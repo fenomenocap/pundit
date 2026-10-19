@@ -1444,9 +1444,16 @@ function publisherOwnedManagerBody(page: { text: string }): string {
   }).join("\n\n");
 }
 
+// Beat copy often lowercases surname particles ("Roberto de Zerbi"). The
+// manager identity path must still read the full publisher-owned name.
+const MANAGER_PERSON_NAME_PARTICLE =
+  "\\b(?:de|del|da|di|du|la|le|van|von|ter|den|der|dos|das|bin|mac|mc)\\b";
+const MANAGER_PERSON_FULL_NAME =
+  `[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+(?:${MANAGER_PERSON_NAME_PARTICLE}|\\p{Lu}[\\p{L}\\p{M}'’.-]+)){1,3}`;
+
 function managerRoleGrammar(clubName: string) {
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const fullName = "[\\p{Lu}][\\p{L}\\p{M}'’.-]+(?:\\s+[\\p{Lu}][\\p{L}\\p{M}'’.-]+){1,3}";
+  const fullName = MANAGER_PERSON_FULL_NAME;
   const aliases = [clubName, ...getTeamNameAliases().filter(([, name]) => normalizeTeamName(name) === normalizeTeamName(clubName)).map(([alias]) => alias)];
   const club = `(?:${[...new Set(aliases)].map(escape).join("|")})`;
   const role = new RegExp(`(?:${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)(?:\\s+today)?\\s+is\\s+(${fullName})|(${fullName})\\s+(?:is|remains)\\s+(?:the\\s+)?(?:current\\s+)?${club}(?:['’]s)?\\s+(?:current\\s+)?(?:manager|head coach|coach)|(?:the\\s+)?(?:current\\s+)?(?:manager|head coach|coach)\\s+(?:of|for)\\s+${club}\\s+is\\s+(${fullName}))`, "u");
