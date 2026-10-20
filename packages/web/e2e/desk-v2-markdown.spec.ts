@@ -87,14 +87,39 @@ test.describe("desk v2 take markdown rendering", () => {
     await page.screenshot({ path: testInfo.outputPath("desk-v2-sources-open.png"), fullPage: false });
   });
 
-  test("without opt-in keeps plain pipe text (no table element)", async ({ page }) => {
+  test("default route renders GFM table and collapses sources", async ({ page }) => {
+    await routeDeskSlate(page);
+    let askHeaders: Record<string, string> = {};
+    await page.route("**/api/ask", (route) => {
+      askHeaders = route.request().headers();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ answer: V2_TAKE_ANSWER_FIXTURE, grounding: null }),
+      });
+    });
+    await page.goto("/");
+    await page.getByRole("textbox", { name: "Ask a question" }).fill("Who wins?");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const bubble = page.getByTestId("desk-pundit-bubble");
+    await expect(bubble.getByTestId("desk-take-v2-markdown")).toBeVisible();
+    await expect(bubble.locator("table")).toBeVisible();
+    await expect(bubble.getByText("| Outcome | Ours |", { exact: false })).toHaveCount(0);
+    const sources = bubble.getByTestId("desk-take-v2-sources");
+    await expect(sources).toBeVisible();
+    await expect(sources.locator("summary")).toHaveText("Sources");
+    await expect(sources.getByTestId("desk-take-v2-source-line").first()).not.toBeVisible();
+    expect(askHeaders["x-pundit-take"]).toBeUndefined();
+  });
+
+  test("?take=legacy keeps plain pipe text (no table element)", async ({ page }) => {
     await routeDeskSlate(page);
     await page.route("**/api/ask", (route) => route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ answer: V2_TAKE_ANSWER_FIXTURE, grounding: null }),
     }));
-    await page.goto("/");
+    await page.goto("/?take=legacy");
     await page.getByRole("textbox", { name: "Ask a question" }).fill("Who wins?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     const bubble = page.getByTestId("desk-pundit-bubble");
@@ -103,5 +128,40 @@ test.describe("desk v2 take markdown rendering", () => {
     await expect(bubble.locator("table")).toHaveCount(0);
     await expect(bubble.getByText("| Outcome | Ours | Kalshi | Poly | Best |", { exact: false })).toBeVisible();
     await expect(bubble).toContainText("Model unknown (priced 18 Oct 17:30 SGT).");
+  });
+});
+
+test.describe("legacy chat v2 take markdown", () => {
+  test("default /legacy renders GFM table and collapsed sources", async ({ page }) => {
+    await page.route("**/api/ask", (route) => route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: `event: grounding\ndata: {"grounding":null}\n\nevent: delta\ndata: {"text":${JSON.stringify(V2_TAKE_ANSWER_FIXTURE)}}\n\nevent: done\ndata: ${JSON.stringify({ answer: V2_TAKE_ANSWER_FIXTURE, grounding: null, verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 } })}\n\n`,
+    }));
+    await page.goto("/legacy");
+    await page.getByPlaceholder("Ask about a match or the Premier League table").fill("Who wins?");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const markdown = page.getByTestId("desk-take-v2-markdown");
+    await expect(markdown).toBeVisible();
+    await expect(markdown.locator("table")).toBeVisible();
+    await expect(page.getByText("| Outcome | Ours |", { exact: false })).toHaveCount(0);
+    const sources = page.getByTestId("desk-take-v2-sources");
+    await expect(sources.locator("summary")).toHaveText("Sources");
+    await expect(sources.getByTestId("desk-take-v2-source-line").first()).not.toBeVisible();
+  });
+
+  test("?take=legacy on /legacy keeps plain pipe text", async ({ page }) => {
+    await page.route("**/api/ask", (route) => route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: `event: grounding\ndata: {"grounding":null}\n\nevent: delta\ndata: {"text":${JSON.stringify(V2_TAKE_ANSWER_FIXTURE)}}\n\nevent: done\ndata: ${JSON.stringify({ answer: V2_TAKE_ANSWER_FIXTURE, grounding: null, verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 } })}\n\n`,
+    }));
+    await page.goto("/legacy?take=legacy");
+    await page.getByPlaceholder("Ask about a match or the Premier League table").fill("Who wins?");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByTestId("desk-take-v2-markdown")).toHaveCount(0);
+    await expect(page.getByTestId("desk-take-v2-sources")).toHaveCount(0);
+    await expect(page.locator("table")).toHaveCount(0);
+    await expect(page.getByText("| Outcome | Ours | Kalshi | Poly | Best |", { exact: false })).toBeVisible();
   });
 });

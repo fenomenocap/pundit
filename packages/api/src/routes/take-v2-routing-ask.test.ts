@@ -126,7 +126,7 @@ describe("POST /api/ask v2 policy routing (sweep wording)", () => {
     }
   }
 
-  it("default path without v2 header stays byte-identical on a priced fixture", () => {
+  it("legacy header stays byte-identical to the unscoped composer on a priced fixture", () => {
     const question = "Who wins Tottenham v Coventry?";
     const grounding = spursCoventryGrounding();
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
@@ -134,7 +134,7 @@ describe("POST /api/ask v2 policy routing (sweep wording)", () => {
     delete process.env.PUNDIT_TAKE_V2;
     try {
       const legacy = composeMatchResponse(question, grounding, plan);
-      const scoped = withPunditTakeRequestScope(null, () => composeMatchResponse(question, grounding, plan));
+      const scoped = withPunditTakeRequestScope("legacy", () => composeMatchResponse(question, grounding, plan));
       expect(scoped).toBe(legacy);
     } finally {
       if (prev === undefined) delete process.env.PUNDIT_TAKE_V2;

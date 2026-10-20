@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { sampleAgentFreshness } from "../../config/freshness-policy";
 import type { Grounding } from "../ask";
 import { attachUserLine, buildMatchPricing } from "../response-correctness";
+import { planResponse } from "../response-plan";
+import { composePunditTakeDelivery } from "./compose";
+import { withPunditTakeRequestScope, type PunditTakeMode } from "./flags";
 import { formatPassPlayLineTable } from "./take-pass-play-table";
 import { applyV2TakeProseGuards } from "./take-number-check";
 import { buildPunditTakePlan } from "./take-plan";
@@ -219,5 +222,80 @@ describe("Take v2 play/pass opener survives numeric guards", () => {
     const prose = passPlayProseAfterGuards(grounding);
     expect(prose).toMatch(opener);
     expect(prose).toMatch(/That price implies/i);
+  });
+});
+
+function deliveredPassPlay(question: string, grounding: Grounding, scope: PunditTakeMode | null): string {
+  return withPunditTakeRequestScope(scope, () => {
+    const plan = planResponse(question, {
+      groundingKind: "match",
+      hasCompleteMarket1x2: grounding.marketDivergence.length > 0,
+      hasUserLine: true,
+      v2PlayPassResolver: scope !== "legacy",
+    });
+    return composePunditTakeDelivery(question, grounding, plan)!.answer;
+  });
+}
+
+describe("Take v2 play/pass verdicts on the default request path", () => {
+  it.each([
+    {
+      label: "Pass band Chelsea at 1.70",
+      question: "Chelsea at 1.70, pass or play?",
+      grounding: chelseaSpursGrounding(0.594, 1.7),
+      hold: /I pass on Chelsea at 1\.70/i,
+      absent: /\bI play\b|no call on/i,
+    },
+    {
+      label: "No call band Chelsea at 1.33",
+      question: "Chelsea at 1.33, pass or play?",
+      grounding: chelseaSpursGrounding(0.7629, 1.33),
+      hold: /No call on Chelsea at 1\.33/i,
+      absent: /\bI play\b/i,
+    },
+    {
+      label: "Play band Chelsea at 1.75",
+      question: "Chelsea at 1.75, pass or play?",
+      grounding: chelseaSpursGrounding(0.594, 1.75),
+      hold: /Chelsea at 1\.75.*I play/i,
+      absent: /I pass on|No call on/i,
+    },
+    {
+      label: "Arsenal home 1.33 opener",
+      question: "Arsenal at 1.33, pass or play?",
+      grounding: matchGrounding("eng.1:401878768", "Arsenal", "Everton", 0.763, 0.15, {
+        outcome: "home",
+        decimalOdds: 1.33,
+      }),
+      hold: /Arsenal v Everton — No call on Arsenal at 1\.33/i,
+      absent: /\bI play\b/i,
+    },
+    {
+      label: "Fulham 2.24 opener",
+      question: "Fulham at 2.24, pass or play?",
+      grounding: matchGrounding("eng.1:401878999", "Fulham", "Wolves", 0.455, 0.28, {
+        outcome: "home",
+        decimalOdds: 2.24,
+      }),
+      hold: /Fulham v Wolves — No call on Fulham at 2\.24/i,
+      absent: /\bI play\b/i,
+    },
+    {
+      label: "Brentford 1.51 opener",
+      question: "Brentford at 1.51, pass or play?",
+      grounding: matchGrounding("eng.1:401878888", "Brentford", "West Ham", 0.67, 0.22, {
+        outcome: "home",
+        decimalOdds: 1.51,
+      }),
+      hold: /Brentford v West Ham — No call on Brentford at 1\.51/i,
+      absent: /\bI play\b/i,
+    },
+  ])("$label holds with no header and matches the v2 header", ({ question, grounding, hold, absent }) => {
+    const fromHeader = deliveredPassPlay(question, grounding, "v2");
+    const fromDefault = deliveredPassPlay(question, grounding, null);
+    expect(fromDefault).toBe(fromHeader);
+    expect(fromDefault).toMatch(hold);
+    expect(fromDefault).not.toMatch(absent);
+    expect(fromDefault).toMatch(/That price implies/i);
   });
 });
