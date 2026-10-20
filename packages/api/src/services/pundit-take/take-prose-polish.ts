@@ -6,6 +6,9 @@ const SENTENCE_SPLIT = /(?<=[.!?])\s+/;
 const BROKEN_MODEL_SCRUB =
   /\bAccording to I\b|\baccording to I\b|\bI's \w+\b|\bI trust I\b|\bOur our\b|\bour our\b/i;
 
+const THESE_NUMBERS_SINGULAR_VERB =
+  /\bthese numbers (?:is|was|has|does|sees|goes|says|looks|feels|suggests|shows|finds|thinks|expects)\b/i;
+
 export function capitalizeTakeProse(prose: string): string {
   return prose
     .split("\n\n")
@@ -101,7 +104,11 @@ export function scrubModelWordFromProse(text: string): string {
     .replace(/\bthe model expects\b/gi, "I expect")
     .replace(/\bthe model thinks\b/gi, "I think")
     .replace(/\bthe model has\b/gi, "I have")
-    .replace(/\bthe model rates\b/gi, "I rate");
+    .replace(/\bthe model rates\b/gi, "I rate")
+    .replace(/\bthe model is\b/gi, "I am")
+    .replace(/\bthe model was\b/gi, "I was")
+    .replace(/\bthe model sees\b/gi, "I see")
+    .replace(/\bthe model saw\b/gi, "I saw");
 
   out = out.replace(
     /\bthe model's ([a-z]+)\b/gi,
@@ -112,6 +119,22 @@ export function scrubModelWordFromProse(text: string): string {
     .replace(/\bmodel\b/gi, "read");
 
   out = out
+    .replace(/\bthese numbers is\b/gi, "these numbers are")
+    .replace(/\bThese numbers is\b/g, "These numbers are")
+    .replace(/\bthese numbers was\b/gi, "these numbers were")
+    .replace(/\bThese numbers was\b/g, "These numbers were")
+    .replace(/\bthese numbers has\b/gi, "these numbers have")
+    .replace(/\bthese numbers does\b/gi, "these numbers do")
+    .replace(/\bthese numbers sees\b/gi, "these numbers see")
+    .replace(/\bthese numbers goes\b/gi, "these numbers go")
+    .replace(/\bthese numbers says\b/gi, "these numbers say")
+    .replace(/\bthese numbers looks\b/gi, "these numbers look")
+    .replace(/\bthese numbers feels\b/gi, "these numbers feel")
+    .replace(/\bthese numbers suggests\b/gi, "these numbers suggest")
+    .replace(/\bthese numbers shows\b/gi, "these numbers show")
+    .replace(/\bthese numbers finds\b/gi, "these numbers find")
+    .replace(/\bthese numbers thinks\b/gi, "these numbers think")
+    .replace(/\bthese numbers expects\b/gi, "these numbers expect")
     .replace(/\bI thinks\b/gi, "I think")
     .replace(/\bI rates\b/gi, "I rate")
     .replace(/\bI has\b/gi, "I have")
@@ -121,7 +144,7 @@ export function scrubModelWordFromProse(text: string): string {
     .replace(/\s+([,.])/g, "$1")
     .trim();
 
-  if (BROKEN_MODEL_SCRUB.test(out)) return original;
+  if (BROKEN_MODEL_SCRUB.test(out) || THESE_NUMBERS_SINGULAR_VERB.test(out)) return original;
   return out;
 }
 

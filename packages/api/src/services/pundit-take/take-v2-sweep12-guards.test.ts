@@ -149,6 +149,17 @@ describe("Sweep 12 guards", () => {
       .toBe("I trust these numbers here.");
     expect(polishTakeProseLine("Our model-only totals say over."))
       .toBe("Our totals say over.");
+    expect(polishTakeProseLine("The model is confident here."))
+      .toBe("I am confident here.");
+    expect(polishTakeProseLine("The model sees value in the draw."))
+      .toBe("I see value in the draw.");
+  });
+
+  it("does not strip Yet when it is not a leading contrast comma", () => {
+    expect(stripLeadingContrastConnective("Yet to win away, Forest need a clean sheet."))
+      .toBe("Yet to win away, Forest need a clean sheet.");
+    expect(stripLeadingContrastConnective("Yet, Forest have been sharper."))
+      .toBe("Forest have been sharper.");
   });
 
   it("strips a leading However when the prior contrast sentence was dropped", () => {
@@ -165,10 +176,12 @@ describe("Sweep 12 guards", () => {
     const plan = buildPunditTakePlan(grounding, null);
     const upset =
       "Ipswich are 10th on 9 points, while Forest are 18th on 5, so the league table suggests an upset brewing.";
-    const follow = "However, Forest have taken points on the road in three of their last five.";
-    const cleaned = applyV2ProseHygiene(`${upset} ${follow}`, plan);
-    expect(cleaned).not.toMatch(/^However,/i);
-    expect(cleaned).toMatch(/^Forest have taken points in three of their last five/i);
+    const headline = "Ipswich v Forest — Forest at 46%.";
+    const follow = "However, Ipswich have scored 7 goals in their last five league games.";
+    const cleaned = applyV2ProseHygiene(`${headline} ${upset} ${follow}`, plan);
+    expect(cleaned).toMatch(/^Ipswich v Forest — Forest at 46%\./);
+    expect(cleaned).not.toMatch(/\bHowever,/i);
+    expect(cleaned).toMatch(/Ipswich have scored 7 goals in their last five league games\.$/);
     expect(stripLeadingContrastConnective("However, Forest press high.")).toBe("Forest press high.");
   });
 });

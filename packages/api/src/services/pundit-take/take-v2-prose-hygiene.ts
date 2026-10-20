@@ -538,31 +538,36 @@ function sanitizeLlmTakeSentence(
   return rewriteVenueInventedFormSentence(next, venueSplit);
 }
 
-const LEADING_CONTRAST_CONNECTIVE = /^(However|But|Yet|Still),?\s+/i;
-
-/** After a guard drop, the next sentence may open with a dangling contrast word. */
+/** After a guard drop, the next body sentence may open with a dangling contrast word. */
 export function stripLeadingContrastConnective(sentence: string): string {
   const trimmed = sentence.trim();
-  const stripped = trimmed.replace(LEADING_CONTRAST_CONNECTIVE, "");
+  let stripped = trimmed.replace(/^(However|But),?\s+/i, "");
+  stripped = stripped.replace(/^(Yet|Still),\s+/i, "");
   if (!stripped || stripped === trimmed) return trimmed;
   return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
+function keptHasOnlyHeadlineOrEmpty(kept: string[], plan: PunditTakePlan): boolean {
+  if (!kept.length) return true;
+  return kept.every((s) => isProtectedTakeSentence(s, plan));
 }
 
 export function applyVenueFormHygiene(prose: string, plan: PunditTakePlan): string {
   const venueSplit = formDataHasVenueSplit(plan);
   const sentences = prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
   const kept: string[] = [];
-  let droppedAny = false;
+  let previousDropped = false;
   for (const sentence of sentences) {
     const sanitized = sanitizeLlmTakeSentence(sentence, plan, venueSplit);
     if (!sanitized) {
-      droppedAny = true;
+      previousDropped = true;
       continue;
     }
     let next = sanitized;
-    if (kept.length === 0 && droppedAny) {
+    if (previousDropped && keptHasOnlyHeadlineOrEmpty(kept, plan)) {
       next = stripLeadingContrastConnective(next);
     }
+    previousDropped = false;
     if (next) kept.push(next);
   }
   return kept.join(" ").trim();
