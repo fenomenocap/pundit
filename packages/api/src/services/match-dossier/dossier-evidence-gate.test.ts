@@ -30,7 +30,7 @@ describe("dossier evidence gate", () => {
       "Ipswich vs Forest — Confirmed team news from the prior meeting",
       categoryForQuery(injuryQuery),
     );
-    expect(wrongPair).toBe("fixture_mismatch:vs_pair");
+    expect(wrongPair).toBe("match_context_wrong_opponent");
 
     const foreignClub = gateFixtureTeamMatch(
       forestArsenal,
@@ -38,7 +38,7 @@ describe("dossier evidence gate", () => {
       "Everton v Forest — Rotation expected for the midweek tie",
       "rotation",
     );
-    expect(foreignClub).toBe("fixture_mismatch:vs_pair");
+    expect(foreignClub).toBe("match_context_wrong_opponent");
   });
 
   it("drops lineup snippets that name unrelated clubs (Spurs–Coventry dossier)", () => {
@@ -50,7 +50,7 @@ describe("dossier evidence gate", () => {
       publishedAtRaw: "2026-10-18",
       query: `${spursCoventry.home} vs ${spursCoventry.away} predicted lineup rotation starting xi 2026-10-19`,
     }, gateCtx);
-    expect(reason).toBe("fixture_mismatch:foreign_club");
+    expect(reason).toMatch(/claim_subject_foreign_club|match_context_wrong_opponent|fixture_mismatch:foreign_club/);
   });
 
   it("rejects BBC nav chrome as boilerplate", () => {

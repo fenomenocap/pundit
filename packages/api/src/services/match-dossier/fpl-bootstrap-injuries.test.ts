@@ -1,8 +1,10 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { fixture } from "../__fixtures__/model-fixture";
 import {
   buildFplInjuryEvidenceForFixture,
   loadFplBootstrapFromRecordedFixture,
+  logDossierFplFetch,
+  prefetchFplBootstrapForBuildPass,
   resetFplBootstrapCacheForTests,
   setFplBootstrapCacheForTests,
 } from "./fpl-bootstrap-injuries";
@@ -50,6 +52,33 @@ describe("FPL bootstrap-static injuries (interim)", () => {
     const row = fixture("Arsenal", "Newcastle", { utcDate: "2026-10-24T15:00:00.000Z" });
     const arsenal = snapshot.teams.find((t) => t.name === "Arsenal")!;
     expect(clubLabelForFplTeam(row, arsenal)).toBe("Arsenal");
+  });
+
+  it("logs dossier_fpl_fetch with browser-like headers and timeout on failure", async () => {
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line) => {
+      logs.push(String(line));
+    });
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.headers).toMatchObject({
+        Accept: "application/json",
+        "User-Agent": expect.stringContaining("Mozilla/5.0"),
+      });
+      expect(init?.signal).toBeTruthy();
+      return new Response("blocked", { status: 403 });
+    });
+    const snapshot = await prefetchFplBootstrapForBuildPass(fetchFn as typeof fetch);
+    expect(snapshot).toBeNull();
+    const line = logs.find((l) => l.includes("dossier_fpl_fetch"));
+    expect(line).toBeTruthy();
+    expect(JSON.parse(line!)).toMatchObject({
+      event: "dossier_fpl_fetch",
+      status: 403,
+      ok: false,
+      durationMs: expect.any(Number),
+    });
+    spy.mockRestore();
+    logDossierFplFetch({ status: 200, error: null, durationMs: 1, ok: true });
   });
 
   it("merges into dossier injuries when cache warm; public view strips internalOnly", () => {

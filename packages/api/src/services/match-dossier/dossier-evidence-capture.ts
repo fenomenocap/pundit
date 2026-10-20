@@ -24,6 +24,7 @@ import {
   gatePageBodyMatch,
   gatePreFetch,
   gateTeamScope,
+  gateClaimSubjectScope,
   gateUpcomingMatchContext,
   resolveEvidencePublishedAt,
   selectVerifiedBodyClaim,
@@ -368,7 +369,25 @@ export async function verifySearchCandidatesForFixture(
       continue;
     }
 
-    const matchContextReason = gateUpcomingMatchContext(fixture, bodyClaim, category);
+    const subjectReason = gateClaimSubjectScope(fixture, bodyClaim, candidate.title, category);
+    if (subjectReason) {
+      verifications.push({
+        url: candidate.url,
+        claim: bodyClaim,
+        query: candidate.query,
+        tier: candidate.tier,
+        outcome: "dropped",
+        reason: subjectReason,
+        httpStatus: 200,
+      });
+      pushDropped(dropped, { sourceUrl: candidate.url, claim: bodyClaim, reason: subjectReason, query: candidate.query });
+      continue;
+    }
+
+    const matchContextReason = gateUpcomingMatchContext(fixture, bodyClaim, category, {
+      title: candidate.title,
+      url: candidate.url,
+    });
     if (matchContextReason) {
       verifications.push({
         url: candidate.url,

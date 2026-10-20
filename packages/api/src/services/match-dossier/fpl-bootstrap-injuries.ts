@@ -6,6 +6,24 @@ import type { DossierEvidenceItem, FplPlayerAvailabilityStatus } from "./types";
 import { matchDossierFplEnabled } from "./flags";
 
 const FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/";
+const FPL_BOOTSTRAP_TIMEOUT_MS = 10_000;
+const FPL_BOOTSTRAP_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+export function logDossierFplFetch(payload: {
+  status: number | null;
+  error: string | null;
+  durationMs: number;
+  ok: boolean;
+}): void {
+  console.log(JSON.stringify({
+    event: "dossier_fpl_fetch",
+    status: payload.status,
+    error: payload.error,
+    durationMs: payload.durationMs,
+    ok: payload.ok,
+  }));
+}
 
 export interface FplBootstrapTeam {
   id: number;
@@ -104,13 +122,44 @@ export async function prefetchFplBootstrapForBuildPass(
 ): Promise<FplBootstrapSnapshot | null> {
   if (!matchDossierFplEnabled()) return null;
   if (buildPassCache) return buildPassCache.snapshot;
-  const response = await fetchFn(FPL_BOOTSTRAP_URL, {
-    headers: { accept: "application/json", "user-agent": "Mozilla/5.0 (compatible; pundit/1.0)" },
-  });
-  if (!response.ok) return null;
-  const snapshot = await response.json() as FplBootstrapSnapshot;
-  buildPassCache = { snapshot, fetchedAt: new Date().toISOString() };
-  return snapshot;
+  const started = Date.now();
+  let status: number | null = null;
+  try {
+    const response = await fetchFn(FPL_BOOTSTRAP_URL, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": FPL_BOOTSTRAP_USER_AGENT,
+      },
+      signal: AbortSignal.timeout(FPL_BOOTSTRAP_TIMEOUT_MS),
+    });
+    status = response.status;
+    if (!response.ok) {
+      logDossierFplFetch({
+        status,
+        error: `http_${status}`,
+        durationMs: Date.now() - started,
+        ok: false,
+      });
+      return null;
+    }
+    const snapshot = await response.json() as FplBootstrapSnapshot;
+    buildPassCache = { snapshot, fetchedAt: new Date().toISOString() };
+    logDossierFplFetch({
+      status,
+      error: null,
+      durationMs: Date.now() - started,
+      ok: true,
+    });
+    return snapshot;
+  } catch (error) {
+    logDossierFplFetch({
+      status,
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - started,
+      ok: false,
+    });
+    return null;
+  }
 }
 
 export function setFplBootstrapCacheForTests(snapshot: FplBootstrapSnapshot, fetchedAt = new Date().toISOString()): void {
