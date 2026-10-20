@@ -29,13 +29,18 @@ import { appendWhatFlipsItClosing } from "./take-flip-prose";
 import {
   asksDrawSideTakeQuestion,
   asksMatchWhyTakeQuestion,
+  asksTakeV2PolicyPrompt,
   asksWhatFlipsItQuestion,
   punditTakeV2AppliesToPlan,
 } from "./take-routing";
+import { applyV2TakeProseGuards } from "./take-number-check";
 import { postCheckTakeProse, scrubForbiddenTakeProse } from "./take-validate";
 import type { PunditTakeDelivery } from "./types";
 
+export const PUNDIT_TAKE_V2_COMPOSE_TIMEOUT_MS = 30_000;
+
 function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
+  if (asksTakeV2PolicyPrompt(question)) return true;
   if (punditTakeV2AppliesToPlan(plan, question)) return true;
   if (asksParlayQuestion(question)) return true;
   if (plan.mode === "stake-refusal") return true;
@@ -130,7 +135,7 @@ function assembleDelivery(
     if (postCheckMode === "full") {
       proseOut = postCheckTakeProse(proseOut, planJson);
     } else if (postCheckMode === "forbidden") {
-      proseOut = scrubForbiddenTakeProse(proseOut);
+      proseOut = applyV2TakeProseGuards(scrubForbiddenTakeProse(proseOut), planJson);
     }
   }
   if (!proseOut.trim() && !asksParlayQuestion(question)) {
@@ -218,14 +223,37 @@ export function composePunditTakeDelivery(
     });
   }
   const prose = composeTakeProseDeterministic(question, grounding, plan, planJson, variant);
-  return assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier);
+  const delivery = assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier);
+  if (!delivery.answer.trim()) {
+    return composeMinimalTakeDelivery(question, grounding, plan, dossier);
+  }
+  return delivery;
 }
 
-export async function composePunditTakeDeliveryAsync(
+function composeMinimalTakeDelivery(
   question: string,
   grounding: Grounding,
   plan: ResponsePlan,
-  dossier: MatchDossier | null = null,
+  dossier: MatchDossier | null,
+): PunditTakeDelivery | null {
+  if (!punditTakeApplies(plan, question)) return null;
+  const resolvedDossier = resolveTakeDossier(grounding, dossier);
+  const underFocus = asksUnder25Only(question);
+  const planJson = buildPunditTakePlan(grounding, resolvedDossier, {
+    marketKind: marketKindForPlan(plan),
+    underFocus,
+  });
+  const headline = minimalV2Headline(planJson, question);
+  return assembleDelivery(question, grounding, plan, planJson, headline, resolvedDossier, {
+    prosePostCheck: "none",
+  });
+}
+
+async function composePunditTakeDeliveryAsyncInner(
+  question: string,
+  grounding: Grounding,
+  plan: ResponsePlan,
+  dossier: MatchDossier | null,
 ): Promise<PunditTakeDelivery | null> {
   if (!punditTakeApplies(plan, question)) return null;
   const resolvedDossier = resolveTakeDossier(grounding, dossier);
@@ -248,4 +276,25 @@ export async function composePunditTakeDeliveryAsync(
     ? composeTakeProseDeterministic(question, grounding, plan, planJson, variant)
     : postCheckTakeProse(await renderTakeProse(planJson, variant), planJson);
   return assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier);
+}
+
+export async function composePunditTakeDeliveryAsync(
+  question: string,
+  grounding: Grounding,
+  plan: ResponsePlan,
+  dossier: MatchDossier | null = null,
+): Promise<PunditTakeDelivery | null> {
+  if (!punditTakeApplies(plan, question)) return null;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timeout">((resolve) => {
+    timeoutId = setTimeout(() => resolve("timeout"), PUNDIT_TAKE_V2_COMPOSE_TIMEOUT_MS);
+  });
+  const composed = composePunditTakeDeliveryAsyncInner(question, grounding, plan, dossier);
+  const result = await Promise.race([composed, timeout]);
+  if (timeoutId) clearTimeout(timeoutId);
+  if (result === "timeout") {
+    return composeMinimalTakeDelivery(question, grounding, plan, dossier);
+  }
+  if (result?.answer.trim()) return result;
+  return composeMinimalTakeDelivery(question, grounding, plan, dossier);
 }

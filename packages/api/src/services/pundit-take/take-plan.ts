@@ -27,6 +27,7 @@ import { buildTakeFlipCondition } from "./take-flip-condition";
 import { fairDecimalFromRawProb } from "./take-maths";
 import { filterGoalPointsForGridLead } from "./take-prose-polish";
 import { pickHigherGridSide } from "./take-headline";
+import { buildTakeNumericFacts } from "./take-number-check";
 
 const OUTCOMES: OneXTwoOutcome[] = ["home", "draw", "away"];
 
@@ -133,6 +134,23 @@ function makeGridCall(lead: { sideKey: string; label: string; p: number; coinFli
   };
 }
 
+function withNumericFacts(
+  grounding: Grounding,
+  dossier: MatchDossier | null,
+  plan: Omit<PunditTakePlan, "numericFacts">,
+): PunditTakePlan {
+  return {
+    ...plan,
+    numericFacts: buildTakeNumericFacts(
+      grounding,
+      dossier,
+      plan.rows,
+      plan.gridCall,
+      plan.gridRows,
+    ),
+  };
+}
+
 export function buildPunditTakePlan(
   grounding: Grounding,
   dossier: MatchDossier | null,
@@ -163,7 +181,7 @@ export function buildPunditTakePlan(
     );
     const call = favoriteOutcome(grounding);
     const marketBundle = buildMarketRows(grounding, nowMs);
-    return {
+    return withNumericFacts(grounding, dossier, {
       schemaVersion: 1,
       marketKind: "btts",
       fixtureLabel,
@@ -177,7 +195,7 @@ export function buildPunditTakePlan(
       hasCompleteMarket: marketBundle.hasCompleteMarket,
       rows: marketBundle.rows,
       marketColumns: marketBundle.columns,
-    };
+    });
   }
 
   if (marketKind === "totals") {
@@ -199,7 +217,7 @@ export function buildPunditTakePlan(
     );
     const call = favoriteOutcome(grounding);
     const marketBundle = buildMarketRows(grounding, nowMs);
-    return {
+    return withNumericFacts(grounding, dossier, {
       schemaVersion: 1,
       marketKind: "totals",
       fixtureLabel,
@@ -213,7 +231,7 @@ export function buildPunditTakePlan(
       hasCompleteMarket: marketBundle.hasCompleteMarket,
       rows: marketBundle.rows,
       marketColumns: marketBundle.columns,
-    };
+    });
   }
 
   const call = favoriteOutcome(grounding);
@@ -221,7 +239,7 @@ export function buildPunditTakePlan(
   const { rows, columns, hasCompleteMarket } = buildMarketRows(grounding, nowMs);
   const valueLeg = buildValueLeg(grounding, rows);
 
-  return {
+  return withNumericFacts(grounding, dossier, {
     schemaVersion: 1,
     marketKind: "1x2",
     fixtureLabel,
@@ -235,5 +253,5 @@ export function buildPunditTakePlan(
     hasCompleteMarket,
     rows,
     marketColumns: columns,
-  };
+  });
 }
