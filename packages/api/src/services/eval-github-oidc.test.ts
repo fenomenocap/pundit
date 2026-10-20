@@ -10,11 +10,15 @@ import {
   refAuthorizesDailyEval,
   setGitHubActionsOidcVerifierForTests,
   validateChatEvalDailyOidcClaims,
+  validateDossierRebuildOidcClaims,
   workflowRefAuthorizesDailyEval,
+  workflowRefAuthorizesDossierRebuild,
 } from "./eval-github-oidc";
 
 const VALID_WORKFLOW_REF =
   `${CHAT_EVAL_JUDGE_REPOSITORY}/.github/workflows/chat-eval-daily.yml@refs/heads/main`;
+const DOSSIER_REBUILD_WORKFLOW_REF =
+  `${CHAT_EVAL_JUDGE_REPOSITORY}/.github/workflows/dossier-rebuild.yml@refs/heads/main`;
 
 import type { KeyLike } from "jose";
 
@@ -93,6 +97,18 @@ describe("chat eval GitHub OIDC claims", () => {
       .setExpirationTime(`-${CHAT_EVAL_JUDGE_OIDC_CLOCK_TOLERANCE_SEC + 120}s`)
       .sign(privateKey);
     await expect(verify(expired)).rejects.toThrow();
+  });
+
+  it("accepts the dossier rebuild workflow on main", () => {
+    const claims = {
+      repository: CHAT_EVAL_JUDGE_REPOSITORY,
+      ref: "refs/heads/main",
+      event_name: "workflow_dispatch",
+      job_workflow_ref: DOSSIER_REBUILD_WORKFLOW_REF,
+    };
+    expect(workflowRefAuthorizesDossierRebuild(claims)).toBe(true);
+    expect(validateDossierRebuildOidcClaims(claims)).toBeNull();
+    expect(validateChatEvalDailyOidcClaims(claims)).toBe("workflow_mismatch");
   });
 
   it("accepts job_workflow_ref when workflow_ref is absent", () => {
