@@ -1,5 +1,6 @@
 import type { Grounding } from "../ask";
 import { displayOutcomeLabel } from "../basics-answer-voice";
+import { modelGapPointsVsBestDecimal } from "./take-maths";
 import type { PunditTakePlan } from "./types";
 export function asksFairOddsFixtureQuestion(question: string): boolean {
   const q = question.trim();
@@ -10,13 +11,12 @@ export function asksFairOddsFixtureQuestion(question: string): boolean {
 export function renderFairOddsTakeProse(plan: PunditTakePlan, grounding: Grounding): string {
   const lines: string[] = [];
   lines.push(`${plan.fixtureLabel} — fair 1X2 vs the best prices I have:`);
-  const divergence = grounding.marketDivergence[0];
   for (const row of plan.rows) {
     const label = displayOutcomeLabel(grounding, row.outcome);
-    const leg = divergence?.legs.find((l) => l.outcome === row.outcome);
     const best = row.bestDecimal;
     if (best) {
-      const gap = leg?.gapPoints;
+      const p = row.outcome === "home" ? grounding.pHome : row.outcome === "draw" ? grounding.pDraw : grounding.pAway;
+      const gap = modelGapPointsVsBestDecimal(p, best);
       const gapText = gap != null
         ? `${gap >= 0 ? "+" : ""}${gap.toFixed(1)} pts vs best offered`
         : "no gap computed";

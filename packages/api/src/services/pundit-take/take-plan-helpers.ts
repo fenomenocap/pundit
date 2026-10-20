@@ -102,6 +102,7 @@ export function build1x2SupportingPoints(
 
   for (const item of dossier?.evidence ?? []) {
     if (!takeEligibleDossierEvidence(item)) continue;
+    if (/\bhold a lead\b|\balways win\b|\bcan win\b/i.test(item.claim) && item.verification !== "page-verified") continue;
     if (item.direction === "supports-home" && favSide === "home") {
       points.push({
         id: `support-ev-${item.id}`,
@@ -171,6 +172,7 @@ export function buildContradictingPointsShared(
 
   for (const item of dossier?.evidence ?? []) {
     if (!takeEligibleDossierEvidence(item)) continue;
+    if (/\bhold a lead\b|\balways win\b|\bcan win\b/i.test(item.claim) && item.verification !== "page-verified") continue;
     if (item.direction === "contradicts-model") {
       points.push({
         id: `contradict-ev-${item.id}`,

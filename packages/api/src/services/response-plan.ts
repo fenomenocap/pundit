@@ -163,9 +163,14 @@ export function asksExpectedValueQuestion(question: string): boolean {
   return ASKS_EXPECTED_VALUE.test(question);
 }
 
+export function asksPassOrPlayQuestion(question: string, v2PlayPassResolver = false): boolean {
+  if (v2PlayPassResolver) return /\b(?:pass or play|play or pass)\b/i.test(question);
+  return /\bpass or play\b/i.test(question);
+}
+
 /** Structured `userLine` is only consumed on +EV / pass-or-play turns. */
-export function questionAcceptsUserLine(question: string): boolean {
-  return asksExpectedValueQuestion(question) || /\b(?:pass or play|play or pass)\b/i.test(question);
+export function questionAcceptsUserLine(question: string, v2PlayPassResolver = false): boolean {
+  return asksExpectedValueQuestion(question) || asksPassOrPlayQuestion(question, v2PlayPassResolver);
 }
 
 /** Desk numeric questions the server already composes. MiniMax must not narrate these. */
@@ -297,13 +302,21 @@ export function asksFixturePriceBoard(question: string): boolean {
 export function matchPlanContext(
   grounding: { kind?: string; marketDivergence?: readonly unknown[]; pricing?: { userLine?: unknown } } | null | undefined,
   hasHistory = false,
-): { hasHistory: boolean; groundingKind: string | null; hasUserLine: boolean; hasCompleteMarket1x2: boolean } {
+  v2PlayPassResolver = false,
+): {
+  hasHistory: boolean;
+  groundingKind: string | null;
+  hasUserLine: boolean;
+  hasCompleteMarket1x2: boolean;
+  v2PlayPassResolver: boolean;
+} {
   const match = grounding?.kind === "match";
   return {
     hasHistory,
     groundingKind: match ? "match" : grounding?.kind ?? null,
     hasUserLine: match && Boolean(grounding.pricing?.userLine),
     hasCompleteMarket1x2: match && hasCompleteMarket1x2ForComparison(grounding),
+    v2PlayPassResolver,
   };
 }
 
@@ -314,8 +327,10 @@ export function planResponse(
     groundingKind?: string | null;
     hasUserLine?: boolean;
     hasCompleteMarket1x2?: boolean;
+    v2PlayPassResolver?: boolean;
   } = {}
 ): ResponsePlan {
+  const v2PlayPassResolver = Boolean(context.v2PlayPassResolver);
   const q = question.trim();
   const match = context.groundingKind === "match";
   const hasHistory = Boolean(context.hasHistory);
@@ -337,7 +352,7 @@ export function planResponse(
   else if (match && asksBttsQuestion(q)) mode = "btts";
   else if (match && /\b(?:which|what)\b.{0,40}\b(?:input|factor|driver)\b.{0,30}\b(?:matters? most|most important|drives?|explains?)\b|\b(?:most important|main)\b.{0,20}\b(?:input|factor|driver)\b/i.test(q)) mode = "match-follow-up";
   else if (match && asksStakeSizeQuestion(q)) mode = "stake-refusal";
-  else if (match && /\b(?:pass or play|play or pass)\b/i.test(q)) mode = "user-line";
+  else if (match && asksPassOrPlayQuestion(q, v2PlayPassResolver)) mode = "user-line";
   else if (match && hasUserLine && asksExpectedValueQuestion(q)) mode = "user-line";
   else if (match && asksExpectedValueQuestion(q)) mode = "pricing-desk";
   else if (match && SCORELINE.test(q) && /\b(?:fair|price|odds?|decimal|implied)\b/i.test(q)) mode = "fair-price";

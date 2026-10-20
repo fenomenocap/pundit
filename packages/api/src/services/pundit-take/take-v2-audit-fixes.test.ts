@@ -72,13 +72,19 @@ describe("Take v2 prod audit fixes", () => {
       pricing: attachUserLine(base.pricing, { outcome: "home", decimalOdds: 1.7 }),
     };
     const question = "Chelsea at 1.70, play or pass?";
-    expect(inferUserLineFromQuestion(question, grounding.home, grounding.away)).toEqual({
+    expect(inferUserLineFromQuestion(question, grounding.home, grounding.away, { v2PlayPassResolver: true })).toEqual({
       outcome: "home",
       decimalOdds: 1.7,
     });
-    const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true, hasUserLine: true });
-    const delivery = withPunditTakeRequestScope("v2", () =>
-      composePunditTakeDelivery(question, grounding, plan)!);
+    const delivery = withPunditTakeRequestScope("v2", () => {
+      const plan = planResponse(question, {
+        groundingKind: "match",
+        hasCompleteMarket1x2: true,
+        hasUserLine: true,
+        v2PlayPassResolver: true,
+      });
+      return composePunditTakeDelivery(question, grounding, plan)!;
+    });
     expect(delivery.answer).toMatch(/implies/i);
     expect(delivery.answer).toMatch(/\b(I pass|I play)\b/i);
     expect(delivery.answer).not.toMatch(/won't size a stake|can't answer|I need a captured decimal/i);
@@ -113,19 +119,21 @@ describe("Take v2 prod audit fixes", () => {
         result: null,
       },
     ];
-    const ctx = resolveAskContext(
-      "Fulham at 2.10, play or pass?",
-      [],
-      undefined,
-      fixtures,
-      [],
-      [],
-      { now: Date.parse("2026-10-20T12:00:00.000Z") },
-    );
-    expect(ctx.tier).toBe("match");
-    if (ctx.tier === "match") {
-      expect([ctx.fixture.home, ctx.fixture.away]).toContain("Fulham");
-    }
+    withPunditTakeRequestScope("v2", () => {
+      const ctx = resolveAskContext(
+        "Fulham at 2.10, play or pass?",
+        [],
+        undefined,
+        fixtures,
+        [],
+        [],
+        { now: Date.parse("2026-10-20T12:00:00.000Z") },
+      );
+      expect(ctx.tier).toBe("match");
+      if (ctx.tier === "match") {
+        expect([ctx.fixture.home, ctx.fixture.away]).toContain("Fulham");
+      }
+    });
     expect(findNextPricedModelFixtureForClub("Fulham", fixtures, Date.parse("2026-10-20T12:00:00.000Z"))?.home).toBe("Fulham");
   });
 
@@ -175,7 +183,7 @@ describe("Take v2 prod audit fixes", () => {
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery(question, grounding, plan)!);
-    expect(delivery.answer).toMatch(/What flips it:/i);
+    expect(delivery.answer).toMatch(/I'd shift if/i);
   });
 
   it("odds table lists every live source, drops stale quotes, and footer matches live set", () => {
@@ -214,7 +222,7 @@ describe("Take v2 prod audit fixes", () => {
     const plan = buildPunditTakePlan(grounding, dossier);
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery("Who wins Chelsea v Tottenham?", grounding, planResponse("Who wins Chelsea v Tottenham?", { groundingKind: "match", hasCompleteMarket1x2: true }), dossier)!);
-    expect(delivery.answer).toMatch(/What flips it:/i);
+    expect(delivery.answer).toMatch(/I'd shift if/i);
     expect(delivery.answer).toMatch(/travelling squad/i);
   });
 

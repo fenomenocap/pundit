@@ -10,6 +10,7 @@ import {
 } from "../response-plan";
 import { resolveTakeDossier } from "./take-dossier";
 import { buildPunditTakePlan } from "./take-plan";
+import { gridHeadlineOpener } from "./take-headline";
 import { renderPassPlayTakeProse } from "./take-grid-prose";
 import { renderTakeProse } from "./take-llm";
 import { renderTakeProseDeterministic } from "./take-prose";
@@ -25,17 +26,22 @@ import {
 } from "./take-policy-prose";
 import { asksFairOddsFixtureQuestion, renderFairOddsTakeProse } from "./take-fair-odds-prose";
 import { appendWhatFlipsItClosing } from "./take-flip-prose";
+import {
+  asksDrawSideTakeQuestion,
+  asksMatchWhyTakeQuestion,
+  asksWhatFlipsItQuestion,
+  punditTakeV2AppliesToPlan,
+} from "./take-routing";
 import { postCheckTakeProse, scrubForbiddenTakeProse } from "./take-validate";
 import type { PunditTakeDelivery } from "./types";
 
 function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
+  if (punditTakeV2AppliesToPlan(plan, question)) return true;
   if (asksParlayQuestion(question)) return true;
   if (plan.mode === "stake-refusal") return true;
   if (plan.mode === "winner-guarantee-honesty") return true;
   if (plan.mode === "odds-provenance") return true;
-  if (/\b(?:what about|how about)\b/i.test(question) && /\b(?:the )?draw\b/i.test(question)) {
-    return true;
-  }
+  if (asksDrawSideTakeQuestion(question)) return true;
   if (plan.mode === "totals" || plan.mode === "btts") return true;
   if (plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question)) return true;
   if (plan.mode === "market-comparison") return true;
@@ -48,7 +54,7 @@ function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
       || asksOddsBoard(question)
       || /\b1x2\b/i.test(question);
   }
-  if (plan.mode === "priced-why" && /\bwhy\b/i.test(question.trim())) return true;
+  if (asksMatchWhyTakeQuestion(question, plan)) return true;
   if (plan.mode === "match-follow-up") {
     if (/\bwhy\b/i.test(question)) return true;
     if (/\b1x2\b/i.test(question)) return true;
@@ -58,6 +64,39 @@ function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
 
 export function punditTakeApplies(plan: ResponsePlan, question: string): boolean {
   return isTakeV2Mode(plan, question);
+}
+
+function minimalV2Headline(
+  planJson: ReturnType<typeof buildPunditTakePlan>,
+  question: string,
+): string {
+  const variant = /\bwhy\b/i.test(question.trim()) ? "why" as const : "full";
+  return gridHeadlineOpener(planJson, variant)
+    ?? `${planJson.fixtureLabel} — ${planJson.call.headlineLabel}.`;
+}
+
+function assembleV2AnswerBody(
+  proseOut: string,
+  planJson: ReturnType<typeof buildPunditTakePlan>,
+  question: string,
+  table: string,
+  footer: string,
+  grounding: Grounding,
+): string {
+  let prose = proseOut.trim();
+  if (!prose) {
+    prose = renderTakeProseDeterministic(
+      planJson,
+      /\bwhy\b/i.test(question.trim()) ? "why" : "full",
+      grounding,
+    ).trim() || minimalV2Headline(planJson, question);
+  }
+  const body = table ? `${prose}\n\n${table}`.trim() : prose;
+  const withFooter = footer ? `${body}\n\n${footer}`.trim() : body;
+  if (withFooter.trim()) return withFooter;
+  const headline = minimalV2Headline(planJson, question);
+  const fallbackBody = table ? `${headline}\n\n${table}`.trim() : headline;
+  return footer ? `${fallbackBody}\n\n${footer}`.trim() : fallbackBody;
 }
 
 function marketKindForPlan(plan: ResponsePlan): "1x2" | "btts" | "totals" {
@@ -94,8 +133,15 @@ function assembleDelivery(
       proseOut = scrubForbiddenTakeProse(proseOut);
     }
   }
-  const body = table ? `${proseOut.trim()}\n\n${table}`.trim() : proseOut.trim();
-  const answer = footer ? `${body}\n\n${footer}`.trim() : body;
+  if (!proseOut.trim() && !asksParlayQuestion(question)) {
+    proseOut = postCheckTakeProse(
+      renderTakeProseDeterministic(planJson, /\bwhy\b/i.test(question.trim()) ? "why" : "full", grounding),
+      planJson,
+    ) || minimalV2Headline(planJson, question);
+  }
+  const answer = asksParlayQuestion(question)
+    ? (footer ? `${proseOut.trim()}\n\n${footer}`.trim() : proseOut.trim())
+    : assembleV2AnswerBody(proseOut, planJson, question, table, footer, grounding);
   return {
     answer,
     plan: planJson,
@@ -121,8 +167,11 @@ function resolvePolicyProse(
   if (plan.mode === "odds-provenance") {
     return { prose: renderOddsProvenanceTakeProse(grounding), includeTable: false };
   }
-  if (/\b(?:what about|how about)\b/i.test(question) && /\b(?:the )?draw\b/i.test(question)) {
+  if (asksDrawSideTakeQuestion(question)) {
     return { prose: renderDrawFocusTakeProse(planJson, grounding), includeTable: true };
+  }
+  if (asksWhatFlipsItQuestion(question)) {
+    return null;
   }
   if (asksFairOddsFixtureQuestion(question)) {
     return { prose: renderFairOddsTakeProse(planJson, grounding), includeTable: true };
