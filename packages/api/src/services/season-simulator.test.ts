@@ -189,22 +189,40 @@ describe("season simulator", () => {
   });
 
   it("fails closed when surplus future fixtures cannot be reconciled", () => {
-    const now = new Date("2026-08-01T12:00:00.000Z");
-    const remaining = { ...scheduled[0], id: 201, utcDate: "2026-10-20T14:00:00.000Z", status: "SCHEDULED" as const };
-    const extra = { ...scheduled[0], id: 202, utcDate: "2026-10-27T14:00:00.000Z", status: "SCHEDULED" as const };
-    expect(reconcileRemainingToStandings(standings, [remaining, extra], now)).toBeNull();
-    expect(hasCompleteLeagueSchedule(standings, [remaining, extra])).toBe(false);
-    expect(simulateSeasonOutlook(
-      "eng.1",
-      standings,
-      [remaining, extra],
-      {
-        world: new Map<string, number>(),
-        "eng-clubs": new Map([["Arsenal", 1850], ["Liverpool", 1840]]),
-        "uefa-clubs": new Map<string, number>(),
-      },
-      10
-    )).toBeNull();
+    // simulateSeasonOutlook reconciles with wall-clock `now`; freeze time so
+    // future kickoffs cannot be dropped as surplus past-kickoff fixtures.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-01T12:00:00.000Z"));
+    try {
+      const now = new Date("2026-08-01T12:00:00.000Z");
+      const remaining = {
+        ...scheduled[0],
+        id: 201,
+        utcDate: new Date(now.getTime() + 80 * 24 * 60 * 60 * 1000).toISOString(),
+        status: "SCHEDULED" as const,
+      };
+      const extra = {
+        ...scheduled[0],
+        id: 202,
+        utcDate: new Date(now.getTime() + 87 * 24 * 60 * 60 * 1000).toISOString(),
+        status: "SCHEDULED" as const,
+      };
+      expect(reconcileRemainingToStandings(standings, [remaining, extra], now)).toBeNull();
+      expect(hasCompleteLeagueSchedule(standings, [remaining, extra])).toBe(false);
+      expect(simulateSeasonOutlook(
+        "eng.1",
+        standings,
+        [remaining, extra],
+        {
+          world: new Map<string, number>(),
+          "eng-clubs": new Map([["Arsenal", 1850], ["Liverpool", 1840]]),
+          "uefa-clubs": new Map<string, number>(),
+        },
+        10
+      )).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("orders simultaneous remaining fixtures by stable source ID", () => {
