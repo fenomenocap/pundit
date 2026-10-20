@@ -203,7 +203,7 @@ describe("Take v2 play/pass opener survives numeric guards", () => {
     },
     {
       label: "Brentford 1.51",
-      grounding: matchGrounding("eng.1:401878888", "Brentford", "West Ham", 0.655, 0.22, {
+      grounding: matchGrounding("eng.1:401878888", "Brentford", "West Ham", 0.67, 0.22, {
         outcome: "home",
         decimalOdds: 1.51,
       }),
