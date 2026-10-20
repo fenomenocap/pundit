@@ -1,5 +1,6 @@
 import type { Grounding } from "../ask";
-import type { MatchDossier } from "../match-dossier/types";
+import type { ResultMark } from "../club-form";
+import type { FormWindow, MatchDossier } from "../match-dossier/types";
 import { allowedNumbersFromPlan, sentenceUsesDisallowedNumber } from "./take-allowed-numbers";
 import type { PunditTakePlan, TakePlanGridCall, TakePlanNumericFacts, TakePlanRow } from "./types";
 
@@ -36,6 +37,31 @@ function parseGapToken(token: string): number | null {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+export function leaguePointsFromResultMarks(marks: ResultMark[]): number {
+  return marks.reduce((sum, mark) => sum + (mark === "W" ? 3 : mark === "D" ? 1 : 0), 0);
+}
+
+export function last5LeaguePointsFromFormWindow(form: FormWindow | null | undefined): number | null {
+  if (!form || form.played < 3 || form.results.length < 3) return null;
+  return leaguePointsFromResultMarks(form.results.slice(0, 5));
+}
+
+export function last5LeaguePointsFromGroundingForm(marks: ResultMark[]): number | null {
+  if (marks.length < 3) return null;
+  return leaguePointsFromResultMarks(marks.slice(-5));
+}
+
+export function buildFormLast5Points(
+  grounding: Grounding,
+  dossier: MatchDossier | null,
+): { homePoints: number | null; awayPoints: number | null } {
+  const homePoints = last5LeaguePointsFromFormWindow(dossier?.form.homeLast5.value)
+    ?? last5LeaguePointsFromGroundingForm(grounding.homeForm);
+  const awayPoints = last5LeaguePointsFromFormWindow(dossier?.form.awayLast5.value)
+    ?? last5LeaguePointsFromGroundingForm(grounding.awayForm);
+  return { homePoints, awayPoints };
+}
+
 export function topTwoOutcomeGapPoints(
   rows: TakePlanRow[],
   gridCall: TakePlanGridCall | null,
@@ -68,6 +94,7 @@ export function buildTakeNumericFacts(
     : null;
   const topTwoGapPoints = topTwoOutcomeGapPoints(rows, gridCall, gridRows);
   const coinFlip = gridCall?.coinFlip ?? topTwoGapPoints < 2;
+  const formLast5 = buildFormLast5Points(grounding, dossier);
   return {
     table: {
       homePosition,
@@ -79,6 +106,7 @@ export function buildTakeNumericFacts(
     },
     topTwoGapPoints,
     coinFlip,
+    formLast5,
   };
 }
 
