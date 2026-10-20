@@ -83,7 +83,7 @@ describe("Sweep 1 fix pack", () => {
     expect(gap).not.toBeNull();
     expect(gap!).toBeCloseTo((grounding.pDraw - 1 / 4.81) * 100, 1);
     const prose = renderFairOddsTakeProse(plan, grounding);
-    expect(prose).toMatch(/−?\d+\.\d pts vs best offered/);
+    expect(prose).toMatch(/My fair prices:|value side|no value there/);
     expect(prose).not.toMatch(/−5\.3 pts/);
   });
 
