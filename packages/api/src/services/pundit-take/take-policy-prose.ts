@@ -1,15 +1,16 @@
 import type { Grounding } from "../ask";
-import { PARLAY_OUT_OF_SCOPE } from "../basics-answer-voice";
-import { formatTimestampSgt, shortModelVersionLabel } from "../basics-answer-voice";
-import { capitalizeSource, STAKE_REFUSAL_SENTENCE } from "../response-composer";
+import { STAKE_REFUSAL_SENTENCE } from "../response-composer";
 import {
   bankrollStakePolicyAppendix,
   mentionsBankroll,
 } from "../response-plan";
 import type { PunditTakePlan } from "./types";
 
+const TAKE_V2_PARLAY_DECLINE =
+  "Parlays are outside what I answer here right now; ask for a single-fixture 1X2, totals, or BTTS read instead.";
+
 export function renderParlayDeclineProse(): string {
-  return PARLAY_OUT_OF_SCOPE;
+  return TAKE_V2_PARLAY_DECLINE;
 }
 
 export function renderStakeRefusalTakeProse(
@@ -40,24 +41,9 @@ export function renderWinnerGuaranteeTakeProse(plan: PunditTakePlan): string {
 }
 
 export function renderOddsProvenanceTakeProse(grounding: Grounding): string {
-  const divergence = grounding.marketDivergence[0];
-  const primary = divergence
-    ? capitalizeSource(divergence.source)
-    : grounding.oddsSources
-      .filter((row) => row.pDraw !== null && Number.isFinite(row.pHome) && Number.isFinite(row.pAway))
-      .map((row) => capitalizeSource(row.source))[0];
-  const feedText = primary ?? "no complete external 1X2 feed on this fixture";
-  const modelLabel = shortModelVersionLabel(grounding.pricing.modelVersion);
-  const modelTime = formatTimestampSgt(grounding.freshness.ratingsAsOf ?? grounding.pricing.pricedAt);
-  const marketTime = formatTimestampSgt(
-    divergence?.observedAt
-    ?? grounding.freshness.marketOddsLastUpdated
-    ?? grounding.pricing.pricedAt,
-  );
   return [
     `${grounding.home} v ${grounding.away} — where the numbers come from.`,
-    `Fundamental 1X2 from ${modelLabel}, ratings as of ${modelTime}.`,
-    `Live no-vig 1X2 from ${feedText}, refreshed ${marketTime}.`,
+    "Our 1X2 probabilities are in the table when one is shown; model, table, form, and market feed timestamps are listed in the footer.",
   ].join("\n\n");
 }
 
