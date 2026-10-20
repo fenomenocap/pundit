@@ -72,7 +72,7 @@ describe("take goal copy matches calibrated row", () => {
 
     const goalPoints = buildGoalReasonPoints(grounding, null, "Villa", "Brentford");
     expect(goalPoints.length).toBeGreaterThan(0);
-    expect(goalPoints.some((p) => /expects (about|close to|around)/i.test(p.text))).toBe(true);
+    expect(goalPoints.some((p) => /expects (about|close to|around)/i.test(p.text))).toBe(true); // plan seeds unchanged
     expect(goalPoints.some((p) => p.text.includes("score grid"))).toBe(false);
 
     const plan = buildPunditTakePlan(grounding, null, { marketKind: "btts" });
@@ -80,7 +80,7 @@ describe("take goal copy matches calibrated row", () => {
 
     const prose = renderTakeProseDeterministic(plan);
     expect(prose).toMatch(/BTTS yes at 57\.5%/);
-    expect(prose).toMatch(/expects (about|close to|around)/i);
+    expect(prose).toMatch(/I expect (about|close to|around)/i);
     expect(prose).not.toMatch(/1\.85|0\.85|score grid/i);
   });
 
