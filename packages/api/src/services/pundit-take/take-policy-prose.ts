@@ -1,5 +1,4 @@
 import type { Grounding } from "../ask";
-import { PARLAY_OUT_OF_SCOPE } from "../basics-answer-voice";
 import { STAKE_REFUSAL_SENTENCE } from "../response-composer";
 import {
   bankrollStakePolicyAppendix,
@@ -7,8 +6,11 @@ import {
 } from "../response-plan";
 import type { PunditTakePlan } from "./types";
 
+const TAKE_V2_PARLAY_DECLINE =
+  "Parlays are outside what I answer here right now; ask for a single-fixture 1X2, totals, or BTTS read instead.";
+
 export function renderParlayDeclineProse(): string {
-  return PARLAY_OUT_OF_SCOPE;
+  return TAKE_V2_PARLAY_DECLINE;
 }
 
 export function renderStakeRefusalTakeProse(
