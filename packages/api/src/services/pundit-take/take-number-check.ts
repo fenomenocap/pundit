@@ -9,6 +9,7 @@ import type {
   TakePlanNumericFacts,
   TakePlanRow,
 } from "./types";
+import { isExactDeterministicPassPlayOpener } from "./take-pass-play-opener";
 
 const GAP_INT_TO_WORD = [
   "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
@@ -191,14 +192,11 @@ export function sentenceHasForbiddenTossUpLanguage(sentence: string, coinFlip: b
 
 /** Deterministic pricing/policy lines carry their own vetted numbers. */
 function sentenceSkipsNumericAndGapGuard(sentence: string): boolean {
+  if (isExactDeterministicPassPlayOpener(sentence)) return true;
   return /^That price implies /i.test(sentence)
-    || /\bI pass on /i.test(sentence)
-    || /\bI play\b/i.test(sentence)
-    || / — I play\.$/.test(sentence)
     || /^Draw: our fair /i.test(sentence)
     || /fair 1X2 vs the best prices/i.test(sentence)
     || /^The value is /i.test(sentence)
-    || /\bNo call on /i.test(sentence)
     || /^What flips it:/i.test(sentence)
     || /^I'd shift if /i.test(sentence)
     || /^I'd revisit if /i.test(sentence)
