@@ -1,3 +1,5 @@
+import { buildPunditAskJsonHeaders } from "./pundit-take-v2-opt-in";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -692,7 +694,7 @@ export async function askQuestionStream(
   signal?.throwIfAborted();
   const res = await fetch(`${API_URL}/api/ask`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildPunditAskJsonHeaders(),
     body: JSON.stringify({
       question,
       history,
