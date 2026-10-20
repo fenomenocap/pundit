@@ -17,6 +17,45 @@ const OVER_LAST_N_VENUE =
 const MANAGED_GOALS_AWAY =
   /\b(managed\s+\d+\s+goals?\s+in their last (?:five|5|\d+)) (?:away from home|on the road|at home)\b/gi;
 
+const VENUE_PERFORMANCE_PLACE =
+  /\b(?:at home|away from home|on the road|on their travels|home form|away form)\b/i;
+
+const VENUE_PERFORMANCE_ACTION =
+  /\b(?:conceded|conceding|scored|scoring|won|wins|winning|lost|losing|grind|grinding|struggled|struggling|struggle)\b/i;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Headline and structured flip — never drop in hygiene passes. */
+export function isProtectedTakeSentence(sentence: string, plan: PunditTakePlan): boolean {
+  const t = sentence.trim();
+  if (/^I'd shift if\b/i.test(t)) return true;
+  if (new RegExp(`^${escapeRegExp(plan.fixtureLabel)}\\s*[—-]`).test(t)) return true;
+  if (new RegExp(`^On ${escapeRegExp(plan.fixtureLabel)}, I have`).test(t)) return true;
+  return false;
+}
+
+export function rewriteWinProbabilityPhrase(text: string): string {
+  return text
+    .replace(/\bwin probabilities\b/gi, "win chances")
+    .replace(/\bwin probability\b/gi, "win chance");
+}
+
+/** Venue-tied performance narrative without split data (not neutral home-advantage copy). */
+export function sentenceMakesVenuePerformanceClaim(sentence: string): boolean {
+  if (/\bhome[- ]field advantage\b/i.test(sentence)) return false;
+  const withoutAdvantage = sentence.replace(/\bhome advantage\b/gi, "");
+  if (!VENUE_PERFORMANCE_PLACE.test(withoutAdvantage)) return false;
+  if (/\bconceded\b[\w\s,'’-]{0,48}\bat home\b/i.test(sentence)) return true;
+  if (/\bgrind(?:ing)?\s+results\b[\w\s,'’-]{0,24}\bon the road\b/i.test(sentence)) return true;
+  if (/\bon the road\b/i.test(sentence) && VENUE_PERFORMANCE_ACTION.test(sentence)) return true;
+  if (/\bat home\b/i.test(sentence) && VENUE_PERFORMANCE_ACTION.test(sentence)) return true;
+  if (/\bon their travels\b/i.test(sentence) && VENUE_PERFORMANCE_ACTION.test(sentence)) return true;
+  if (/\b(?:home|away) form\b/i.test(sentence) && VENUE_PERFORMANCE_ACTION.test(sentence)) return true;
+  return false;
+}
+
 export function rewriteVenueInventedFormSentence(sentence: string, venueSplitAvailable: boolean): string | null {
   if (venueSplitAvailable || !VENUE_FORM_CLAIM.test(sentence) || !FORM_STAT_CLAIM.test(sentence)) {
     return sentence;
@@ -38,13 +77,28 @@ export function rewriteVenueInventedFormSentence(sentence: string, venueSplitAva
   return out || null;
 }
 
+function sanitizeLlmTakeSentence(
+  sentence: string,
+  plan: PunditTakePlan,
+  venueSplit: boolean,
+): string | null {
+  if (isProtectedTakeSentence(sentence, plan)) {
+    return rewriteWinProbabilityPhrase(sentence);
+  }
+  let next = rewriteWinProbabilityPhrase(sentence);
+  if (!venueSplit && sentenceMakesVenuePerformanceClaim(next)) {
+    return null;
+  }
+  return rewriteVenueInventedFormSentence(next, venueSplit);
+}
+
 export function applyVenueFormHygiene(prose: string, plan: PunditTakePlan): string {
   const venueSplit = formDataHasVenueSplit(plan);
   const sentences = prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
   const kept: string[] = [];
   for (const sentence of sentences) {
-    const rewritten = rewriteVenueInventedFormSentence(sentence, venueSplit);
-    if (rewritten) kept.push(rewritten);
+    const sanitized = sanitizeLlmTakeSentence(sentence, plan, venueSplit);
+    if (sanitized) kept.push(sanitized);
   }
   return kept.join(" ").trim();
 }
