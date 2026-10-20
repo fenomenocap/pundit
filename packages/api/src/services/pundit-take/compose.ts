@@ -25,7 +25,7 @@ import {
 } from "./take-policy-prose";
 import { asksFairOddsFixtureQuestion, renderFairOddsTakeProse } from "./take-fair-odds-prose";
 import { appendWhatFlipsItClosing } from "./take-flip-prose";
-import { postCheckTakeProse } from "./take-validate";
+import { postCheckTakeProse, scrubForbiddenTakeProse } from "./take-validate";
 import type { PunditTakeDelivery } from "./types";
 
 function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
@@ -73,7 +73,7 @@ function assembleDelivery(
   planJson: ReturnType<typeof buildPunditTakePlan>,
   prose: string,
   resolvedDossier: MatchDossier | null,
-  options?: { includeTable?: boolean },
+  options?: { includeTable?: boolean; prosePostCheck?: "full" | "forbidden" | "none" },
 ): PunditTakeDelivery {
   const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
   const includeTable = options?.includeTable ?? !asksParlayQuestion(question);
@@ -84,10 +84,17 @@ function assembleDelivery(
       : formatTakeOddsTable(planJson);
   const sources = buildTakeSourcesFooter(grounding, resolvedDossier, Date.now());
   const footer = formatTakeSourcesFooterBlock(sources);
-  const proseWithFlip = asksParlayQuestion(question)
-    ? prose.trim()
-    : appendWhatFlipsItClosing(planJson, prose, grounding);
-  const body = table ? `${proseWithFlip.trim()}\n\n${table}`.trim() : proseWithFlip.trim();
+  const postCheckMode = options?.prosePostCheck ?? (passPlay ? "forbidden" : "full");
+  let proseOut = prose.trim();
+  if (!asksParlayQuestion(question)) {
+    proseOut = appendWhatFlipsItClosing(planJson, proseOut, grounding);
+    if (postCheckMode === "full") {
+      proseOut = postCheckTakeProse(proseOut, planJson);
+    } else if (postCheckMode === "forbidden") {
+      proseOut = scrubForbiddenTakeProse(proseOut);
+    }
+  }
+  const body = table ? `${proseOut.trim()}\n\n${table}`.trim() : proseOut.trim();
   const answer = footer ? `${body}\n\n${footer}`.trim() : body;
   return {
     answer,
@@ -158,6 +165,7 @@ export function composePunditTakeDelivery(
   if (policy) {
     return assembleDelivery(question, grounding, plan, planJson, policy.prose, resolvedDossier, {
       includeTable: policy.includeTable,
+      prosePostCheck: "forbidden",
     });
   }
   const prose = composeTakeProseDeterministic(question, grounding, plan, planJson, variant);
@@ -182,6 +190,7 @@ export async function composePunditTakeDeliveryAsync(
   if (policy) {
     return assembleDelivery(question, grounding, plan, planJson, policy.prose, resolvedDossier, {
       includeTable: policy.includeTable,
+      prosePostCheck: "forbidden",
     });
   }
   const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
