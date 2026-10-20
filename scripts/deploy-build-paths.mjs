@@ -26,6 +26,7 @@ export const WEB_BUILD_PATHS = [
   ...ROOT_TOOLCHAIN_PATHS,
   // The ignore rule decides its own future: changing it must produce a build.
   /^scripts\/vercel-ignore-build\.mjs$/,
+  /^scripts\/vercel-ignore\.sh$/,
   /^scripts\/deploy-build-paths\.mjs$/,
 ];
 
