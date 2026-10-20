@@ -28,6 +28,8 @@ const RAW_CLUB_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["Man U", "Man United"],
   ["Manchester Utd", "Man United"],
   ["Spurs", "Tottenham"],
+  ["Palace", "Crystal Palace"],
+  ["Villa", "Aston Villa"],
   ["Nott'm Forest", "Forest"],
   ["Notts Forest", "Forest"],
   ["Newcastle Utd", "Newcastle"],
