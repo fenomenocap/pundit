@@ -25,6 +25,7 @@ import {
   asksParlayQuestion,
   mentionsBankroll,
   BANKROLL_UNIT_GUIDANCE,
+  matchPlanContext,
   planResponse,
   pricedGridMarketsAsked,
   resolveRequestedScoreline,
@@ -63,7 +64,7 @@ import {
   stashPunditTakeDelivery,
   stashTakeDossier,
 } from "./pundit-take/flags";
-import { composePunditTakeDelivery } from "./pundit-take/compose";
+import { composePunditTakeDelivery, punditTakeApplies } from "./pundit-take/compose";
 import { prefetchStoredTakeDossier } from "./pundit-take/take-dossier";
 
 /** A briefing includes football and deciding roles, not just the numeric board. */
@@ -773,18 +774,21 @@ export function composeMatchResponse(
   question: string,
   grounding: Grounding,
   plan: ResponsePlan = planResponse(question, {
-    groundingKind: "match",
-    hasCompleteMarket1x2: grounding.marketDivergence.length > 0,
+    ...matchPlanContext(grounding, false, false),
   }),
-  playerEvidence: PlayerEvidenceBundle | null = null
+  playerEvidence: PlayerEvidenceBundle | null = null,
+  hasHistory = false,
 ): string {
   if (punditTakeV2Active()) {
     if (grounding.kind === "match") {
       stashTakeDossier(prefetchStoredTakeDossier(grounding));
     }
     const prefetched = consumePrefetchedTakeDelivery();
-    const take = prefetched ?? composePunditTakeDelivery(question, grounding, plan);
-    if (take) {
+    let take = prefetched ?? composePunditTakeDelivery(question, grounding, plan);
+    if (!take?.answer?.trim() && punditTakeApplies(plan, question)) {
+      take = composePunditTakeDelivery(question, grounding, plan);
+    }
+    if (take?.answer?.trim()) {
       stashPunditTakeDelivery(take);
       return take.answer;
     }

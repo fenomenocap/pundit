@@ -72,5 +72,12 @@ export function renderTakeProseDeterministic(
   const blocks = [scrubMyModelPhrasing(opener)];
   if (body.trim()) blocks.push(scrubMyModelPhrasing(body.trim()));
   if (valueSentence) blocks.push(valueSentence);
-  return capitalizeTakeProse(appendWhatFlipsItClosing(plan, blocks.join("\n\n"), grounding));
+  let out = capitalizeTakeProse(appendWhatFlipsItClosing(plan, blocks.join("\n\n"), grounding));
+  if (grounding && !plan.gridCall?.coinFlip) {
+    const segments = out.split("\n\n");
+    const head = segments[0] ?? "";
+    const tail = segments.slice(1).map((part) => stripFalseTossUpLanguage(part, grounding)).join("\n\n");
+    out = tail ? `${head}\n\n${tail}` : head;
+  }
+  return out;
 }

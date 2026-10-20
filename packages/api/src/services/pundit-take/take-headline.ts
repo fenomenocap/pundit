@@ -1,7 +1,7 @@
 import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
 
-const COIN_FLIP_GAP_POINTS = 2;
+const COIN_FLIP_GAP_POINTS = 5;
 
 export function gridHeadlineOpener(plan: PunditTakePlan, variant: "full" | "why"): string | null {
   if (!plan.gridCall) return null;
@@ -38,8 +38,11 @@ export function stripFalseTossUpLanguage(text: string, grounding: Grounding): st
   if (isGenuineTossUp1x2(grounding)) return text;
   return text
     .replace(/\bessentially a toss-up\b/gi, "")
+    .replace(/\ba genuine toss-up\b/gi, "")
     .replace(/\ba toss-up\b/gi, "")
     .replace(/\btoss-up\b/gi, "")
+    .replace(/\bcoin-flip\b/gi, "")
+    .replace(/\bcoin flip\b/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }

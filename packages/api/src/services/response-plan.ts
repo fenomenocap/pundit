@@ -1,3 +1,5 @@
+import { asksDrawSideTakeQuestion } from "./pundit-take/take-routing";
+
 export type ResponseMode =
   | "match-preview"
   | "match-follow-up"
@@ -375,12 +377,13 @@ export function planResponse(
   } else if (match && hasHistory && context.hasCompleteMarket1x2
     && /\b(?:what about|how about)\b/i.test(q) && /\b(?:the )?draw\b/i.test(q)) {
     mode = "market-comparison";
-  } else if (match && hasHistory && asksPricingFollowUp(q)) {
+  }   else if (match && hasHistory && asksPricingFollowUp(q)) {
     if (asksTotalsQuestion(q)) mode = "totals";
     else if (asksBttsQuestion(q)) mode = "btts";
     else if (/\b(?:market|kalshi|polymarket|divergen|disagree|gap|value|edge|priced)\b/i.test(q)) mode = "market-comparison";
     else mode = "pricing-desk";
-  } else if (match && !hasHistory) mode = "pricing-desk";
+  } else if (match && asksDrawSideTakeQuestion(q)) mode = "match-follow-up";
+  else if (match && !hasHistory) mode = "pricing-desk";
   else if (match) mode = "match-follow-up";
   else mode = "general";
 

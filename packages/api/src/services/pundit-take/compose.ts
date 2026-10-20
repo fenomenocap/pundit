@@ -35,6 +35,22 @@ import {
 import { postCheckTakeProse, scrubForbiddenTakeProse } from "./take-validate";
 import type { PunditTakeDelivery } from "./types";
 
+const TAKE_COMPOSE_LLM_TIMEOUT_MS = 25_000;
+
+async function withTakeComposeTimeout<T>(promise: Promise<T>, fallback: () => T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback()), TAKE_COMPOSE_LLM_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
   if (punditTakeV2AppliesToPlan(plan, question)) return true;
   if (asksParlayQuestion(question)) return true;
@@ -246,6 +262,9 @@ export async function composePunditTakeDeliveryAsync(
   const fairOdds = asksFairOddsFixtureQuestion(question);
   const prose = passPlay || fairOdds
     ? composeTakeProseDeterministic(question, grounding, plan, planJson, variant)
-    : postCheckTakeProse(await renderTakeProse(planJson, variant), planJson);
+    : await withTakeComposeTimeout(
+      renderTakeProse(planJson, variant).then((raw) => postCheckTakeProse(raw, planJson)),
+      () => composeTakeProseDeterministic(question, grounding, plan, planJson, variant),
+    );
   return assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier);
 }

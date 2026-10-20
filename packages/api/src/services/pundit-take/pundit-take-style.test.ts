@@ -214,7 +214,7 @@ describe("Pundit Take v2 style pack (PR1)", () => {
     const delivery = composePunditTakeDelivery(prompts[0], grounding, plan)!;
     expect(delivery.plan.contradicting.some((p) => p.id === "fact-injuries")).toBe(false);
     expect(delivery.plan.supporting.some((p) => p.id === "fact-table-standings")).toBe(true);
-    expect(delivery.answer).toMatch(/20th on 3 points/);
+    expect(delivery.answer).toMatch(/20th.*3 points|three clear of 20th-placed/i);
       expect(delivery.answer).not.toMatch(/\bstill\b/i);
       expect(delivery.answer).not.toMatch(/sharper than my read/i);
       const proseBody = delivery.answer.split("\n\n| Outcome |")[0].split("\n\nModel ")[0];

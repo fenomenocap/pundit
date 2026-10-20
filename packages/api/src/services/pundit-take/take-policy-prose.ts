@@ -57,7 +57,7 @@ export function renderDrawFocusTakeProse(plan: PunditTakePlan, grounding: Ground
   if (drawLeg && drawLeg.gapPoints >= 2) {
     chunks.push(`The market prices the draw lower than I do (${Math.round(drawLeg.marketPercent)}% v ${Math.round(drawLeg.modelPercent)}%).`);
   } else if (!divergence) {
-    chunks.push("No complete market line on the draw here — these are model-only draw probabilities.");
+    chunks.push("No complete market line on the draw here — these are our draw probabilities only.");
   }
   const body = plan.supporting[0]?.text;
   if (body) chunks.push(body);

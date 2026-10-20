@@ -36,13 +36,13 @@ export function filterGoalPointsForGridLead(
   const totalXg = grounding.totalXg;
   if (gridCall.sideKey === "under") {
     return points.filter((p) => {
-      if (!/expects (about|close to|around)/i.test(p.text)) return true;
+      if (!/\bexpect(?:s)? (about|close to|around)/i.test(p.text)) return true;
       if (Number.isFinite(totalXg) && totalXg <= 2.45) return true;
       return false;
     });
   }
   if (gridCall.sideKey === "no") {
-    return points.filter((p) => !/expects (about|close to|around) (?:three|four|five)/i.test(p.text));
+    return points.filter((p) => !/\bexpect(?:s)? (about|close to|around) (?:three|four|five)/i.test(p.text));
   }
   return points;
 }

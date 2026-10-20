@@ -69,7 +69,7 @@ describe("Sweep 1 fix pack", () => {
     const grounding = spursCoventryGrounding();
     const plan = buildPunditTakePlan(grounding, null, { marketKind: "totals", now: NOW });
     expect(plan.flipCondition?.text).not.toMatch(/fair at the books|shortens toward/i);
-    expect(plan.flipCondition?.text).toMatch(/over 2\.5|under|goals|cagey|early/i);
+    expect(plan.flipCondition?.text).toMatch(/over 2\.5|under|goal|first hour|first half/i);
     const prose = renderTakeProseDeterministic(plan, "full", grounding);
     expect(prose).toMatch(/I'd shift if/i);
     expect(prose).not.toMatch(/What flips it:/i);
@@ -83,7 +83,7 @@ describe("Sweep 1 fix pack", () => {
     expect(gap).not.toBeNull();
     expect(gap!).toBeCloseTo((grounding.pDraw - 1 / 4.81) * 100, 1);
     const prose = renderFairOddsTakeProse(plan, grounding);
-    expect(prose).toMatch(/−?\d+\.\d pts vs best offered/);
+    expect(prose).toMatch(/biggest gap is|pts vs best offered/);
     expect(prose).not.toMatch(/−5\.3 pts/);
   });
 

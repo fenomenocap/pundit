@@ -5,6 +5,7 @@ import type { TakePlanPoint } from "./types";
 import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
 import { buildFplInternalInjuryPoints } from "./take-fpl-injuries";
 import { isGenuineTossUp1x2 } from "./take-headline";
+import { claimHasInvalidPointsGap, fixtureTableGapSentence } from "./take-table-standings";
 
 /** Goal-rate copy must match calibrated grid means on the same row as pBTTS / totals. */
 function calibratedGoalRatesOnRow(grounding: Grounding): boolean {
@@ -40,7 +41,7 @@ export function buildGoalReasonPoints(
     points.push({
       id: "fact-total-xg",
       role: "support",
-      text: `The model expects ${goalPhrase} in the match.`,
+      text: `I expect ${goalPhrase} in the match.`,
       fieldPath: "totalXg",
     });
   }
@@ -83,10 +84,12 @@ export function build1x2SupportingPoints(
   const homePts = grounding.homeTable.points ?? dossier?.table.home.value.points;
   const awayPts = grounding.awayTable.points ?? dossier?.table.away.value.points;
   if (homePos != null && awayPos != null && homePts != null && awayPts != null) {
+    const gapText = fixtureTableGapSentence(homeShort, homePos, homePts, awayShort, awayPos, awayPts);
     points.push({
       id: "fact-table-standings",
       role: "support",
-      text: `${homeShort} are ${ordinal(homePos)} on ${homePts} points; ${awayShort} are ${ordinal(awayPos)} on ${awayPts}.`,
+      text: gapText
+        ?? `${homeShort} are ${ordinal(homePos)} on ${homePts} points; ${awayShort} are ${ordinal(awayPos)} on ${awayPts}.`,
       fieldPath: "table.home,table.away",
     });
   }
@@ -102,6 +105,7 @@ export function build1x2SupportingPoints(
 
   for (const item of dossier?.evidence ?? []) {
     if (!takeEligibleDossierEvidence(item)) continue;
+    if (claimHasInvalidPointsGap(item.claim) || /\bclear of\b/i.test(item.claim)) continue;
     if (/\bhold a lead\b|\balways win\b|\bcan win\b/i.test(item.claim) && item.verification !== "page-verified") continue;
     if (item.direction === "supports-home" && favSide === "home") {
       points.push({
@@ -172,6 +176,8 @@ export function buildContradictingPointsShared(
 
   for (const item of dossier?.evidence ?? []) {
     if (!takeEligibleDossierEvidence(item)) continue;
+    if (claimHasInvalidPointsGap(item.claim) || /\bclear of\b/i.test(item.claim)) continue;
+    if (/\bat this venue\b|\bat this venue stretch\b/i.test(item.claim)) continue;
     if (/\bhold a lead\b|\balways win\b|\bcan win\b/i.test(item.claim) && item.verification !== "page-verified") continue;
     if (item.direction === "contradicts-model") {
       points.push({
@@ -200,6 +206,7 @@ export function buildContradictingPointsShared(
   }
 
   return points
-    .filter((point) => isGenuineTossUp1x2(grounding) || !/\btoss-up\b/i.test(point.text))
+    .filter((point) => isGenuineTossUp1x2(grounding)
+      || (!/\btoss-up\b/i.test(point.text) && !/\bcoin-flip\b/i.test(point.text) && !/\bcoin flip\b/i.test(point.text)))
     .slice(0, 3);
 }
