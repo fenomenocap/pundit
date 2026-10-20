@@ -245,14 +245,33 @@ export function userLineGapPoints(modelP: number, decimalOdds: number): number {
   return Math.round((modelP - 1 / decimalOdds) * 1000) / 10;
 }
 
+export type UserLinePassPlayDecision = "play" | "pass" | "abstain";
+
+/**
+ * Pass / play / no-call bands for a captured user decimal (table Call column + composer lean).
+ *
+ * - **Pass:** model-implied edge is negative (`gapPoints < 0`), or the offered decimal is strictly
+ *   below `passPrice` (= fair × (1 + {@link PASS_PRICE_MARKUP})).
+ * - **Play:** offered decimal is at or above `playPrice` (= fair × (1 + {@link PLAY_PRICE_MARKUP}))
+ *   with non-negative edge.
+ * - **No call (`abstain`):** non-negative edge and `passPrice <= offered decimal < playPrice`.
+ */
 export function resolveUserLineDecision(
   line: Pick<NonNullable<PricingObject["userLine"]>, "decimalOdds" | "passPrice" | "playPrice">,
   gapPoints: number,
-): "play" | "pass" | "abstain" {
+): UserLinePassPlayDecision {
   if (gapPoints < 0) return "pass";
   if (line.decimalOdds >= line.playPrice) return "play";
   if (line.decimalOdds < line.passPrice) return "pass";
   return "abstain";
+}
+
+export function userLinePassPlayTableCall(
+  decision: UserLinePassPlayDecision,
+): "Play" | "Pass" | "No call" {
+  if (decision === "play") return "Play";
+  if (decision === "pass") return "Pass";
+  return "No call";
 }
 
 export function riskBand(modelP: number, ev: number | null | undefined): RiskBand | null {

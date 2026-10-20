@@ -21,6 +21,7 @@ import {
   withWebSearchReplayScope,
 } from "../services/web-search-replay";
 import {
+  effectivePunditTakeMode,
   isPunditTakeEvalOverrideGuardActive,
   resolvePunditTakeOverride,
   withPunditTakeRequestScope,
@@ -171,22 +172,25 @@ export function createAskRateLimiter(config = askRateLimitConfig) {
 
 router.use(createAskRateLimiter());
 
-/** Header v2 only: never ship HTTP 200 with an empty match take body. */
+/** V2 take (explicit header or code default): never ship HTTP 200 with an empty match body. */
 export function ensureHeaderV2AskAnswerNonEmpty(
   question: string,
   takeOverride: PunditTakeMode | null,
   result: AskResult,
 ): AskResult {
-  if (takeOverride !== "v2" || result.grounding?.kind !== "match" || result.answer?.trim()) {
+  const grounding = result.grounding;
+  if (effectivePunditTakeMode(takeOverride) !== "v2" || grounding?.kind !== "match" || result.answer?.trim()) {
     return result;
   }
-  const planCtx = matchPlanContext(result.grounding, false, true);
-  const plan = planResponse(question, planCtx);
-  let answer = composeMatchResponse(question, result.grounding, plan).trim();
-  if (!answer) {
-    answer = composePunditTakeDelivery(question, result.grounding, plan)?.answer.trim() ?? "";
-  }
-  return answer ? { ...result, answer } : result;
+  return withPunditTakeRequestScope(takeOverride, () => {
+    const planCtx = matchPlanContext(grounding, false, true);
+    const plan = planResponse(question, planCtx);
+    let answer = composeMatchResponse(question, grounding, plan).trim();
+    if (!answer) {
+      answer = composePunditTakeDelivery(question, grounding, plan)?.answer.trim() ?? "";
+    }
+    return answer ? { ...result, answer } : result;
+  });
 }
 
 function sseSend(res: Response, event: string, data: unknown): void {

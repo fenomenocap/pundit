@@ -240,7 +240,7 @@ describe("Take v2 prod audit fixes", () => {
     expect(fact).not.toMatch(/Leeds|blunt/i);
   });
 
-  it("legacy default path stays byte-identical without v2 header", () => {
+  it("legacy header path stays byte-identical to the unscoped composer", () => {
     const question = "Fair odds for Chelsea v Tottenham?";
     const grounding = chelseaTottenhamGrounding();
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
@@ -248,7 +248,7 @@ describe("Take v2 prod audit fixes", () => {
     delete process.env.PUNDIT_TAKE_V2;
     try {
       const legacy = composeMatchResponse(question, grounding, plan);
-      const scoped = withPunditTakeRequestScope(null, () => composeMatchResponse(question, grounding, plan));
+      const scoped = withPunditTakeRequestScope("legacy", () => composeMatchResponse(question, grounding, plan));
       expect(scoped).toBe(legacy);
       expect(legacy).toMatch(/captured decimal line/i);
     } finally {

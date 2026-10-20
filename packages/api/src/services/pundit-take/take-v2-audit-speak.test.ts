@@ -90,7 +90,7 @@ describe("Take v2 audit-speak guard", () => {
     });
   }
 
-  it("legacy default path stays byte-identical without v2 header", () => {
+  it("legacy header path stays byte-identical to the unscoped composer", () => {
     const question = "Who wins Tottenham v Coventry?";
     const grounding = spursCoventryGrounding();
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
@@ -98,7 +98,7 @@ describe("Take v2 audit-speak guard", () => {
     delete process.env.PUNDIT_TAKE_V2;
     try {
       const legacy = composeMatchResponse(question, grounding, plan);
-      const scoped = withPunditTakeRequestScope(null, () => composeMatchResponse(question, grounding, plan));
+      const scoped = withPunditTakeRequestScope("legacy", () => composeMatchResponse(question, grounding, plan));
       expect(scoped).toBe(legacy);
       expect(legacy).toMatch(/Model:/);
     } finally {
