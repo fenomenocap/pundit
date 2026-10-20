@@ -5,6 +5,11 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { compareEngineQuality, computeTurnQualityMetrics, summarizeLlmJudge } from "./chat-eval-quality-metrics.mjs";
+import {
+  computeTurnQualityMetricsByCategory,
+  summarizeLiveBettingMaths,
+  summarizeScenarioOutcomesByCategory,
+} from "./chat-eval-category-reporting.mjs";
 import { resolveJudgeEvalTurns, resolveJudgeMode } from "./chat-eval-llm-judge.mjs";
 import {
   EVAL_SCHEMA_VERSION,
@@ -144,6 +149,7 @@ function flattenReportTurns(report, scenarioId = null) {
     for (const turn of scenario.turnResults ?? []) {
       turns.push({
         scenarioId: scenarioId ?? scenario.id,
+        category: scenario.category ?? "fixed",
         turn: turn.turn,
         question: turn.request?.question ?? null,
         httpStatus: turn.status,
@@ -263,6 +269,7 @@ function baseResult(scenario) {
   return {
     id: scenario.id,
     category: scenario.category ?? "fixed",
+    kind: scenario.kind ?? null,
     passed: false,
     outcome: "FAIL",
     classification: null,
@@ -1386,6 +1393,9 @@ async function main() {
   report.requestEngine = options.engine;
   const allTurns = flattenReportTurns(report);
   report.qualityMetrics = computeTurnQualityMetrics(allTurns);
+  report.qualityMetricsByCategory = computeTurnQualityMetricsByCategory(allTurns);
+  report.byCategory = summarizeScenarioOutcomesByCategory(report.scenarios);
+  report.liveBettingMaths = summarizeLiveBettingMaths(report.scenarios);
   report.llmJudge = await resolveJudgeEvalTurns(allTurns, {
     maxTurns: 24,
     paceMs: 250,
