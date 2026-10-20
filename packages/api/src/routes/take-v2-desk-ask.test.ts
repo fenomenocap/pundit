@@ -177,7 +177,14 @@ describe("POST /api/ask desk + history with x-pundit-take v2", () => {
     }
   });
 
-  it("without v2 header the same desk conversation stays byte-identical across replays", async () => {
+  it("no header desk who-wins uses the v2 take surface", async () => {
+    const result = await deskAsk("Who wins Chelsea v Tottenham?", [], null);
+    const answer = result.answer ?? "";
+    expect(answer).toMatch(/\|\s*Outcome\s*\|/);
+    expect(answer).not.toMatch(LEGACY_DESK_MARKERS);
+  });
+
+  it("no header desk conversation stays byte-identical across replays", async () => {
     const runOnce = async () => {
       const history: HistoryTurn[] = [];
       const answers: string[] = [];

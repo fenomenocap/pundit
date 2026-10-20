@@ -22,7 +22,7 @@ describe("Take v2 play/pass resolver gating (header only)", () => {
     delete process.env.PUNDIT_TAKE_V2;
     try {
       const legacy = composeMatchResponse(question, grounding, plan);
-      const scoped = withPunditTakeRequestScope(null, () => composeMatchResponse(question, grounding, plan));
+      const scoped = withPunditTakeRequestScope("legacy", () => composeMatchResponse(question, grounding, plan));
       expect(scoped).toBe(legacy);
       expect(legacy).toMatch(/I only price a line you enter in the line field/i);
       expect(legacy).not.toMatch(/\bI pass on\b|\bI play\b/i);
@@ -42,5 +42,16 @@ describe("Take v2 play/pass resolver gating (header only)", () => {
         decimalOdds: 1.7,
       });
     });
+  });
+
+  it("no header enables the same play-or-pass resolver as an explicit v2 header", () => {
+    const question = "Chelsea at 1.70, play or pass?";
+    const grounding = chelseaTottenhamGrounding();
+    const fromHeader = withPunditTakeRequestScope("v2", () =>
+      inferUserLineFromQuestion(question, grounding.home, grounding.away));
+    const fromDefault = withPunditTakeRequestScope(null, () =>
+      inferUserLineFromQuestion(question, grounding.home, grounding.away));
+    expect(fromDefault).toEqual({ outcome: "home", decimalOdds: 1.7 });
+    expect(fromDefault).toEqual(fromHeader);
   });
 });

@@ -4,7 +4,9 @@ import { attachUserLine } from "../response-correctness";
 import { planResponse } from "../response-plan";
 import { composePunditTakeDelivery } from "./compose";
 import {
+  DEFAULT_TAKE,
   punditTakeV2Active,
+  punditTakeV2HeaderOverrideActive,
   resolvePunditTakeOverride,
   withPunditTakeRequestScope,
 } from "./flags";
@@ -29,16 +31,39 @@ describe("x-pundit-take request scope (POST /api/ask wiring)", () => {
     expect(resolvePunditTakeOverride("legacy", false)).toBe("legacy");
   });
 
-  it("without header, compose stays legacy byte-identical to unscoped path", () => {
+  it("code default is v2", () => {
+    expect(DEFAULT_TAKE).toBe("v2");
+  });
+
+  it("legacy header compose stays byte-identical to the unscoped path", () => {
     const question = "Who wins Tottenham v Coventry?";
     const grounding = spursCoventryGrounding();
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
     const legacy = composeMatchResponse(question, grounding, plan);
-    const scopedNull = withPunditTakeRequestScope(null, () => {
+    const scopedLegacy = withPunditTakeRequestScope("legacy", () => {
       expect(punditTakeV2Active()).toBe(false);
       return composeMatchResponse(question, grounding, plan);
     });
-    expect(scopedNull).toBe(legacy);
+    expect(scopedLegacy).toBe(legacy);
+  });
+
+  it("no header uses the same v2 composer as an explicit v2 header", () => {
+    const question = "Who wins Tottenham v Coventry?";
+    const grounding = spursCoventryGrounding();
+    const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
+    const fromHeader = withPunditTakeRequestScope("v2", () => {
+      expect(punditTakeV2Active()).toBe(true);
+      expect(punditTakeV2HeaderOverrideActive()).toBe(true);
+      return composeMatchResponse(question, grounding, plan);
+    });
+    const fromDefault = withPunditTakeRequestScope(null, () => {
+      expect(punditTakeV2Active()).toBe(true);
+      expect(punditTakeV2HeaderOverrideActive()).toBe(true);
+      return composeMatchResponse(question, grounding, plan);
+    });
+    expect(fromDefault).toBe(fromHeader);
+    expect(fromDefault).toContain("| Outcome | Ours |");
+    expect(fromDefault).not.toBe(composeMatchResponse(question, grounding, plan));
   });
 
   it("v2 header activates take delivery (same seam as withPunditTakeRequestScope on /api/ask)", () => {
