@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MARKET_STALE_MS } from "../external-market-consensus";
+import { isLiveMarketObservedAt } from "./take-plan-live-markets";
+import { formatTakeOddsTable } from "./take-table";
 import type { DossierEvidenceItem, MatchDossier } from "../match-dossier/types";
 import { attachUserLine, buildMatchPricing, inferUserLineFromQuestion } from "../response-correctness";
 import { composeMatchResponse } from "../response-composer";
@@ -40,7 +43,16 @@ function fplRow(overrides: Partial<DossierEvidenceItem>): DossierEvidenceItem {
   };
 }
 
+const AUDIT_NOW = new Date("2026-10-18T10:00:00.000Z");
+
 describe("Take v2 prod audit fixes", () => {
+  beforeEach(() => {
+    vi.setSystemTime(AUDIT_NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("fair odds for Chelsea v Tottenham uses v2 fair-vs-best prose and table, not captured-line legacy", () => {
     const question = "Fair odds for Chelsea v Tottenham?";
     const grounding = chelseaTottenhamGrounding();
@@ -123,11 +135,12 @@ describe("Take v2 prod audit fixes", () => {
       pOver2_5: 0.498,
       pUnder2_5: 0.502,
     };
-    const plan = buildPunditTakePlan(grounding, null, { marketKind: "totals" });
+    const plan = buildPunditTakePlan(grounding, null, { marketKind: "totals", now: AUDIT_NOW });
     expect(plan.gridCall?.headlineLabel).toBe("Under 2.5");
     expect(plan.gridCall?.coinFlip).toBe(true);
+    expect(plan.gridCall?.modelPctDisplay).toBe("50.2%");
     const prose = renderTakeProseDeterministic(plan, "full", grounding);
-    expect(prose).toMatch(/coin flip, lean Under 2\.5/);
+    expect(prose).toMatch(/coin flip, lean Under 2\.5 at 50\.2%/);
     expect(prose).not.toMatch(/Over 2\.5 at 50%/);
   });
 
@@ -154,6 +167,45 @@ describe("Take v2 prod audit fixes", () => {
     const prose = renderTakeProseDeterministic(plan, "full", grounding);
     expect(prose).toMatch(/expects (about|close to|around)/i);
     expect(prose).not.toMatch(/score grid|1\.94|1\.00 xG/i);
+  });
+
+  it("fair odds take without dossier still closes with what flips it", () => {
+    const question = "Fair odds for Chelsea v Tottenham?";
+    const grounding = chelseaTottenhamGrounding();
+    const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
+    const delivery = withPunditTakeRequestScope("v2", () =>
+      composePunditTakeDelivery(question, grounding, plan)!);
+    expect(delivery.answer).toMatch(/What flips it:/i);
+  });
+
+  it("odds table lists every live source, drops stale quotes, and footer matches live set", () => {
+    const freshAt = "2026-10-18T09:30:00.000Z";
+    const staleAt = new Date(AUDIT_NOW.getTime() - MARKET_STALE_MS - 60_000).toISOString();
+    expect(isLiveMarketObservedAt(freshAt, AUDIT_NOW.getTime())).toBe(true);
+    expect(isLiveMarketObservedAt(staleAt, AUDIT_NOW.getTime())).toBe(false);
+
+    const base = chelseaTottenhamGrounding();
+    const grounding = {
+      ...base,
+      pricing: {
+        ...base.pricing,
+        markets: base.pricing.markets.map((row) => (
+          row.source === "polymarket"
+            ? { ...row, observedAt: staleAt }
+            : row
+        )),
+      },
+    };
+    const plan = buildPunditTakePlan(grounding, null, { now: AUDIT_NOW });
+    expect(plan.marketColumns.map((c) => c.sourceKey)).toEqual(["kalshi"]);
+    const table = formatTakeOddsTable(plan);
+    expect(table).toMatch(/\| Kalshi \|/);
+    expect(table).not.toMatch(/\| Poly \|/);
+    expect(table).toMatch(/\| Best \|/);
+
+    const footer = formatTakeSourcesFooterBlock(buildTakeSourcesFooter(grounding, null, AUDIT_NOW.getTime()));
+    expect(footer).toMatch(/Kalshi as of/);
+    expect(footer).not.toMatch(/Polymarket as of/);
   });
 
   it("ends with a grounded what flips it sentence", () => {

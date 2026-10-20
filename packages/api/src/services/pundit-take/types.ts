@@ -59,6 +59,8 @@ export interface TakePlanGridCall {
   sideKey: string;
   headlineLabel: string;
   modelPctInt: number;
+  /** Desk-rounded percent label for headlines (matches model row). */
+  modelPctDisplay: string;
   fairDecimal: string;
   /** True when the top two grid sides are within 2 probability points. */
   coinFlip?: boolean;

@@ -82,7 +82,7 @@ function assembleDelivery(
     : passPlay
       ? formatPassPlayLineTable(grounding)
       : formatTakeOddsTable(planJson);
-  const sources = buildTakeSourcesFooter(grounding, resolvedDossier);
+  const sources = buildTakeSourcesFooter(grounding, resolvedDossier, Date.now());
   const footer = formatTakeSourcesFooterBlock(sources);
   const proseWithFlip = asksParlayQuestion(question)
     ? prose.trim()

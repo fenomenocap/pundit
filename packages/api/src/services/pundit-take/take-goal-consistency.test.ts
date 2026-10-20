@@ -79,7 +79,7 @@ describe("take goal copy matches calibrated row", () => {
     expect(plan.gridCall?.modelPctInt).toBe(Math.round(grounding.pBttsYes * 100));
 
     const prose = renderTakeProseDeterministic(plan);
-    expect(prose).toMatch(/BTTS yes at 57%/);
+    expect(prose).toMatch(/BTTS yes at 57\.5%/);
     expect(prose).toMatch(/expects (about|close to|around)/i);
     expect(prose).not.toMatch(/1\.85|0\.85|score grid/i);
   });

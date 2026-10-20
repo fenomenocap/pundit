@@ -5,6 +5,7 @@ import type { MatchDossier } from "../match-dossier/types";
 import type { PunditTakeSourcesFooter } from "./types";
 import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
 import { fplInjuryStatusFooterAsOfSgt } from "./take-fpl-injuries";
+import { livePricingMarkets } from "./take-plan-live-markets";
 
 function labelSource(source: string): string {
   if (source === "kalshi") return "Kalshi";
@@ -16,10 +17,9 @@ function labelSource(source: string): string {
 export function buildTakeSourcesFooter(
   grounding: Grounding,
   dossier: MatchDossier | null,
+  nowMs = Date.now(),
 ): PunditTakeSourcesFooter {
-  const odds = grounding.pricing.markets
-    .filter((row) => row.legs.draw.impliedP != null || row.legs.draw.decimalOdds != null)
-    .map((row) => ({
+  const odds = livePricingMarkets(grounding, nowMs).map((row) => ({
       source: row.source,
       label: labelSource(row.source),
       observedAt: row.observedAt,

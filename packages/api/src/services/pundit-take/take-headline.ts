@@ -5,16 +5,16 @@ const COIN_FLIP_GAP_POINTS = 2;
 
 export function gridHeadlineOpener(plan: PunditTakePlan, variant: "full" | "why"): string | null {
   if (!plan.gridCall) return null;
-  const pct = plan.gridCall.modelPctInt;
+  const pct = plan.gridCall.modelPctDisplay;
   const label = plan.gridCall.headlineLabel;
   if (plan.gridCall.coinFlip) {
     return variant === "why"
-      ? `On ${plan.fixtureLabel}, it's a coin flip — I lean ${label} at ${pct}%.`
-      : `${plan.fixtureLabel} — coin flip, lean ${label} at ${pct}%.`;
+      ? `On ${plan.fixtureLabel}, it's a coin flip — I lean ${label} at ${pct}.`
+      : `${plan.fixtureLabel} — coin flip, lean ${label} at ${pct}.`;
   }
   return variant === "why"
-    ? `On ${plan.fixtureLabel}, I have ${label} at ${pct}%.`
-    : `${plan.fixtureLabel} — ${label} at ${pct}%.`;
+    ? `On ${plan.fixtureLabel}, I have ${label} at ${pct}.`
+    : `${plan.fixtureLabel} — ${label} at ${pct}.`;
 }
 
 export function pickHigherGridSide(
