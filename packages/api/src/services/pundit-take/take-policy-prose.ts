@@ -6,6 +6,7 @@ import {
 } from "../response-plan";
 import type { PunditTakePlan, PunditTakeSourcesFooter } from "./types";
 import { provenanceBodyFromFooter } from "./take-provenance-voice";
+import { dedupePolicyProseBlocks } from "./take-v2-prose-hygiene";
 
 const TAKE_V2_PARLAY_DECLINE =
   "Parlays are outside what I answer here right now; ask for a single-fixture 1X2, totals, or BTTS read instead.";
@@ -27,7 +28,7 @@ export function renderStakeRefusalTakeProse(
   }
   const context = plan.supporting[0]?.text;
   if (context) lines.push(context);
-  return lines.join("\n\n");
+  return dedupePolicyProseBlocks(lines.join("\n\n"));
 }
 
 export function renderWinnerGuaranteeTakeProse(plan: PunditTakePlan): string {

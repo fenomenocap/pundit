@@ -1,6 +1,7 @@
 import type { PunditTakePlan } from "./types";
 import { sentenceUsesDisallowedNumber } from "./take-allowed-numbers";
 import { applyV2TakeProseGuards, collectAllowedNumbers } from "./take-number-check";
+import { applyV2ProseHygiene } from "./take-v2-prose-hygiene";
 
 export const TAKE_PROSE_BANNED_PATTERN =
   /\b(?:Elo|ClubElo|Kalshi|Polymarket|Dixon-Coles|model-grounded)\b|Why:|Risk:|Lean:|Model:|#\s*[a-f0-9]{6,}|SGT\b|\b\d{1,2}\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i;
@@ -135,7 +136,8 @@ export function postCheckTakeProseWithReport(
   prose: string,
   plan: PunditTakePlan,
 ): { prose: string; dropped: string[] } {
-  const guarded = applyV2TakeProseGuards(prose, plan);
+  const hygiened = applyV2ProseHygiene(prose, plan);
+  const guarded = applyV2TakeProseGuards(hygiened, plan);
   const errors = validateTakeProseAgainstPlan(guarded, plan);
   const dropped = errors.filter((e) => e.startsWith("unmapped-sentence:")
     || e.startsWith("disallowed-number:")
