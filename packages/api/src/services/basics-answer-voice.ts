@@ -5,7 +5,7 @@ export function joinBasicsAnswer(parts: {
   headline: string;
   supports?: string[];
   lean?: string;
-  provenance: string;
+  provenance?: string;
   responsibleGambling?: boolean;
   preamble?: string[];
 }): string {
@@ -14,7 +14,7 @@ export function joinBasicsAnswer(parts: {
     parts.headline.trim(),
     ...(parts.supports ?? []).map((line) => line.trim()).filter(Boolean),
     ...(parts.lean?.trim() ? [parts.lean.trim()] : []),
-    parts.provenance.trim(),
+    ...(parts.provenance?.trim() ? [parts.provenance.trim()] : []),
   ];
   if (parts.responsibleGambling) {
     blocks.push("Gamble responsibly, 18+.");
@@ -211,22 +211,50 @@ export function formatModelOneXTwoCompactLine(grounding: Grounding): string {
   }).join(" · ");
 }
 
+const WHY_LINE_SMALL_RATING_GAP_ELO = 50;
+
+function ratingsGapElo(grounding: Grounding): number {
+  if (!Number.isFinite(grounding.homeElo) || !Number.isFinite(grounding.awayElo)) return 0;
+  return Math.abs(grounding.homeElo - grounding.awayElo);
+}
+
+/** e.g. "slightly " for a tight ratings gap, empty when the gap is large. */
+function ratingsStrengthAdverb(gapElo: number): string {
+  return gapElo < WHY_LINE_SMALL_RATING_GAP_ELO ? "slightly " : "";
+}
+
 export function formatIndependentTakeWhyLine(grounding: Grounding): string {
   const favourite = modelFavouriteOutcome(grounding);
-  const homeElo = Math.round(grounding.homeElo);
-  const awayElo = Math.round(grounding.awayElo);
-  let line = `Why: stronger side on Elo (${homeElo} v ${awayElo})`;
+  const homeStronger = grounding.homeElo >= grounding.awayElo;
+  const homeLabel = compactTeamLabel(grounding.home);
+  const awayLabel = compactTeamLabel(grounding.away);
+  const strongerLabel = homeStronger ? homeLabel : awayLabel;
+  const gapElo = ratingsGapElo(grounding);
+
+  let line: string;
   if (favourite.outcome === "home" && grounding.homeFieldAdvantage) {
-    line += " plus home advantage";
+    if (homeStronger) {
+      line = `${homeLabel} are the stronger side on our ratings, and home advantage helps`;
+    } else {
+      const adv = ratingsStrengthAdverb(gapElo);
+      line = `${awayLabel} rate ${adv}stronger, but home advantage tips it to ${homeLabel}`;
+    }
+  } else if (
+    favourite.outcome === "away"
+    && grounding.homeFieldAdvantage
+    && homeStronger
+  ) {
+    line = `${awayLabel} are the stronger side on our ratings, enough to outweigh home advantage`;
+  } else {
+    line = `${strongerLabel} are the stronger side on our ratings`;
   }
+
   const formRisk = favouriteFormRiskClause(grounding);
   if (formRisk) line += `; the risk is form, ${formRisk}`;
   return `${line}.`;
 }
 
 export function formatMarketReferenceLine(grounding: Grounding, divergence: MarketDivergence): string {
-  const source = labelMarketSource(divergence.source);
-  const marketTime = formatTimestampSgt(divergence.observedAt);
   const pricingRow = grounding.pricing.markets.find((row) => row.source === divergence.source);
   const legs = (["home", "draw", "away"] as const).map((outcome) => {
     const leg = divergence.legs.find((row) => row.outcome === outcome)!;
@@ -236,7 +264,7 @@ export function formatMarketReferenceLine(grounding: Grounding, divergence: Mark
     const decText = decimal != null ? decimal.toFixed(2) : deskFairFromProb(leg.marketPercent / 100);
     return `${label} ${decText}`;
   });
-  return `Market (${source} no-vig, ${marketTime}): ${legs.join(" · ")}`;
+  return `Market: ${legs.join(" · ")}`;
 }
 
 export function composeIndependentMarketTakeAnswer(
@@ -259,7 +287,6 @@ export function composeIndependentMarketTakeAnswer(
   } else {
     blocks.push("No live market line for this fixture yet.");
   }
-  blocks.push(deskModelOnlyProvenanceLine(grounding));
   return blocks.join("\n");
 }
 
@@ -431,19 +458,18 @@ export function tableVsModelFavoriteExplainLine(grounding: Grounding): string | 
   }
 
   const favLabel = side === "home" ? compactTeamLabel(grounding.home) : compactTeamLabel(grounding.away);
+  const oppLabel = side === "home" ? compactTeamLabel(grounding.away) : compactTeamLabel(grounding.home);
   const tablePhrase = `${favLabel} ${ordinalPosition(favTable.position)} on ${favTable.points} pts`;
-  const eloPhrase = `Elo still favours them (${Math.round(favElo)} v ${Math.round(oppElo)})`;
+  const strengthPhrase = `${favLabel} are still rated stronger than ${oppLabel} on our numbers`;
   const hfaPhrase = side === "home" && grounding.homeFieldAdvantage ? " with home advantage" : "";
 
   const marketP = marketImpliedForSide(grounding, side);
   const marketHigher = marketP != null && marketP > modelP + 0.005;
-  const feedName = grounding.oddsSources[0]?.source;
-  const feedLabel = feedName ? labelMarketSource(feedName) : "Market";
   const marketClause = marketHigher
-    ? `; ${feedLabel} is higher at ${deskPercentDisplay(marketP)}`
+    ? `; the market price is higher at ${deskPercentDisplay(marketP)}`
     : "";
 
-  return `Caveat: ${tablePhrase}, but ${eloPhrase}${hfaPhrase}${marketClause}.`;
+  return `Caveat: ${tablePhrase}, but ${strengthPhrase}${hfaPhrase}${marketClause}.`;
 }
 
 export function appendTableVsFavoriteExplain(grounding: Grounding, answer: string): string {

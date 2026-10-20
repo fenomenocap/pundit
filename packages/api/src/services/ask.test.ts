@@ -2862,9 +2862,9 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("draw 2.3%");
       expect(answer).toContain("Coventry 0.4%");
       expect(answer).toMatch(/Arsenal 97\.3%|I make Arsenal/);
-      expect(answer).toContain("Kalshi no-vig");
+      expect(answer).toMatch(/Market-implied 1X2|Market: Arsenal/i);
       expect(answer).toMatch(/Biggest gap vs market: Arsenal, \+15\.1 pts\./);
-      expect(answer).toMatch(/Market \(Kalshi no-vig,|not its cause/i);
+      expect(answer).not.toMatch(/\bKalshi\b|no-vig/i);
       expect(answer).not.toMatch(/^Lean:/m);
       expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(answer).not.toMatch(/Over 2\.5 is \d/);
@@ -2915,7 +2915,9 @@ describe("current-news evidence hardening", () => {
       expect(closedGroundedAnswer("BTTS?", model(), true))
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
-        .toMatch(/Kalshi no-vig|gap [+-]?\d+\.?\d* pts/i);
+        .toMatch(/Biggest gap vs market|gap [+-]?\d+\.?\d* pts/i);
+      expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
+        .not.toMatch(/\bKalshi\b|no-vig/i);
       expect(closedGroundedAnswer("What will the 1X2 be?", model(), true))
         .toMatch(/My 1X2 is Arsenal 97\.3%.*draw.*Coventry/i);
       expect(closedGroundedAnswer("Tactical matchup", model(), true)).toMatch(/less cover against a counterattack/i);

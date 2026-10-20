@@ -218,7 +218,8 @@ describe("labelled Pundit Consensus", () => {
     expect(preview).toContain(`${(fundamental.pHome * 100).toFixed(1)}%`);
     expect(preview).toContain(PUNDIT_CONSENSUS_LABEL);
     expect(preview).toContain(PUNDIT_FUNDAMENTAL_LABEL);
-    expect(preview).toContain("Stake market (no-vig)");
+    expect(preview).toContain("shrunk toward the market");
+    expect(preview).not.toMatch(/\bStake\b|no-vig/i);
     expect(preview).not.toMatch(/the model is \d/i);
   });
 });
