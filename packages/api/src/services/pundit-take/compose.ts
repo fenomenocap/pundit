@@ -110,6 +110,30 @@ function marketKindForPlan(plan: ResponsePlan): "1x2" | "btts" | "totals" {
   return "1x2";
 }
 
+function shouldAppendFlipClosing(question: string, plan: ResponsePlan): boolean {
+  if (asksParlayQuestion(question)) return false;
+  if (plan.mode === "stake-refusal") return false;
+  if (plan.mode === "winner-guarantee-honesty") return false;
+  if (plan.mode === "odds-provenance") return false;
+  return true;
+}
+
+function ensureGridMarketHeadline(
+  prose: string,
+  planJson: ReturnType<typeof buildPunditTakePlan>,
+  question: string,
+): string {
+  if (!planJson.gridCall) return prose.trim();
+  const variant = /\bwhy\b/i.test(question.trim()) ? "why" as const : "full";
+  const headline = gridHeadlineOpener(planJson, variant)
+    ?? `${planJson.fixtureLabel} — ${planJson.gridCall.headlineLabel} at ${planJson.gridCall.modelPctInt}%.`;
+  const trimmed = prose.trim();
+  if (!trimmed) return headline;
+  const escaped = planJson.fixtureLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`^${escaped}\\s*[—-]`).test(trimmed)) return trimmed;
+  return `${headline}\n\n${trimmed}`.trim();
+}
+
 function assembleDelivery(
   question: string,
   grounding: Grounding,
@@ -131,11 +155,16 @@ function assembleDelivery(
   const postCheckMode = options?.prosePostCheck ?? (passPlay ? "forbidden" : "full");
   let proseOut = prose.trim();
   if (!asksParlayQuestion(question)) {
-    proseOut = appendWhatFlipsItClosing(planJson, proseOut, grounding);
+    if (shouldAppendFlipClosing(question, plan)) {
+      proseOut = appendWhatFlipsItClosing(planJson, proseOut, grounding);
+    }
     if (postCheckMode === "full") {
       proseOut = postCheckTakeProse(proseOut, planJson);
     } else if (postCheckMode === "forbidden") {
       proseOut = applyV2TakeProseGuards(scrubForbiddenTakeProse(proseOut), planJson);
+    }
+    if (shouldAppendFlipClosing(question, plan)) {
+      proseOut = ensureGridMarketHeadline(proseOut, planJson, question);
     }
   }
   if (!proseOut.trim() && !asksParlayQuestion(question)) {
@@ -159,6 +188,7 @@ function resolvePolicyProse(
   grounding: Grounding,
   plan: ResponsePlan,
   planJson: ReturnType<typeof buildPunditTakePlan>,
+  resolvedDossier: MatchDossier | null,
 ): { prose: string; includeTable: boolean } | null {
   if (asksParlayQuestion(question)) {
     return { prose: renderParlayDeclineProse(), includeTable: false };
@@ -170,7 +200,8 @@ function resolvePolicyProse(
     return { prose: renderWinnerGuaranteeTakeProse(planJson), includeTable: false };
   }
   if (plan.mode === "odds-provenance") {
-    return { prose: renderOddsProvenanceTakeProse(grounding), includeTable: false };
+    const footer = buildTakeSourcesFooter(grounding, resolvedDossier, Date.now());
+    return { prose: renderOddsProvenanceTakeProse(planJson, footer), includeTable: false };
   }
   if (asksDrawSideTakeQuestion(question)) {
     return { prose: renderDrawFocusTakeProse(planJson, grounding), includeTable: true };
@@ -196,7 +227,7 @@ function composeTakeProseDeterministic(
     return renderPassPlayTakeProse(planJson, grounding)
       ?? renderTakeProseDeterministic(planJson, variant, grounding);
   }
-  let prose = renderTakeProseDeterministic(planJson, variant, grounding);
+  let prose = renderTakeProseDeterministic(planJson, variant, grounding, { appendFlip: false });
   prose = postCheckTakeProse(prose, planJson);
   return prose;
 }
@@ -215,11 +246,15 @@ export function composePunditTakeDelivery(
     underFocus,
   });
   const variant = /\bwhy\b/i.test(question.trim()) ? "why" : "full";
-  const policy = resolvePolicyProse(question, grounding, plan, planJson);
+  const policy = resolvePolicyProse(question, grounding, plan, planJson, resolvedDossier);
   if (policy) {
+    const policyPostCheck =
+      plan.mode === "odds-provenance" || plan.mode === "winner-guarantee-honesty"
+        ? "none"
+        : "forbidden";
     return assembleDelivery(question, grounding, plan, planJson, policy.prose, resolvedDossier, {
       includeTable: policy.includeTable,
-      prosePostCheck: "forbidden",
+      prosePostCheck: policyPostCheck,
     });
   }
   const prose = composeTakeProseDeterministic(question, grounding, plan, planJson, variant);
@@ -263,11 +298,15 @@ async function composePunditTakeDeliveryAsyncInner(
     underFocus,
   });
   const variant = /\bwhy\b/i.test(question.trim()) ? "why" : "full";
-  const policy = resolvePolicyProse(question, grounding, plan, planJson);
+  const policy = resolvePolicyProse(question, grounding, plan, planJson, resolvedDossier);
   if (policy) {
+    const policyPostCheck =
+      plan.mode === "odds-provenance" || plan.mode === "winner-guarantee-honesty"
+        ? "none"
+        : "forbidden";
     return assembleDelivery(question, grounding, plan, planJson, policy.prose, resolvedDossier, {
       includeTable: policy.includeTable,
-      prosePostCheck: "forbidden",
+      prosePostCheck: policyPostCheck,
     });
   }
   const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
