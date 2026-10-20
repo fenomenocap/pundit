@@ -104,4 +104,10 @@ describe("normalizeTeamName", () => {
       expect(canonicalClubName(espnName)).toBe(clubEloName);
     }
   });
+
+  it("resolves common short club names to the ESPN fixture names", () => {
+    expect(canonicalClubName("Palace")).toBe("Crystal Palace");
+    expect(canonicalClubName("Villa")).toBe("Aston Villa");
+    expect(normalizeTeamName("Palace")).toBe(normalizeTeamName("Crystal Palace"));
+  });
 });
