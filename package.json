@@ -18,7 +18,7 @@
     "chat-eval:browser": "node scripts/capture-chat-eval-browser.mjs",
     "chat-eval:finalize": "node scripts/finalize-chat-report.mjs",
     "test:braces-security": "node --test scripts/braces-security.test.mjs",
-    "test:vercel-ignore": "node --test scripts/vercel-ignore-build.test.mjs",
+    "test:vercel-ignore": "node --test scripts/vercel-ignore-build.test.mjs scripts/vercel-ignore.test.mjs",
     "test:deployed-sha": "node --test scripts/resolve-deployed-sha.test.mjs",
     "test:api-tsc-emit": "node --test scripts/api-tsc-emit.test.mjs",
     "test:verify-prod": "node --test scripts/verify-prod.test.mjs",
