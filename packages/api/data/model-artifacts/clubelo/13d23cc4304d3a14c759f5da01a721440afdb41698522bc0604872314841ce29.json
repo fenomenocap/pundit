@@ -17,132 +17,154 @@
     "capture": {
       "rankingPage": {
         "url": "https://clubelo.com/Ranking",
-        "fetchedAt": "2026-10-20T11:52:36.605Z",
+        "fetchedAt": "2026-10-20T12:36:26.415Z",
         "method": "clubelo-ranking-html",
-        "pageSha256": "25ab96915ef70033ea8ed8590a952b82f7989d95e05245d0cd926d1a0fb1f157"
+        "pageSha256": "25ab96915ef70033ea8ed8590a952b82f7989d95e05245d0cd926d1a0fb1f157",
+        "httpStatus": 200
       },
       "clubPages": [
         {
           "url": "https://clubelo.com/Arsenal",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:28.055Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "4ecf35df2f03b014f8c9651c853ef9bb3988d47f2741959e87c1049590361e92"
+          "pageSha256": "4ecf35df2f03b014f8c9651c853ef9bb3988d47f2741959e87c1049590361e92",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/ManCity",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:30.000Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "d1ab6c1075335b74703490a1e464add3241e0c8547e41fbf8bb2aa05de9d0e00"
+          "pageSha256": "d1ab6c1075335b74703490a1e464add3241e0c8547e41fbf8bb2aa05de9d0e00",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Liverpool",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:31.063Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "e3658759c4b314aa4ba979b7babe31b94c1cc2d10605058823e33a6ea2d99bf4"
+          "pageSha256": "e3658759c4b314aa4ba979b7babe31b94c1cc2d10605058823e33a6ea2d99bf4",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Brighton",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:32.525Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "25558560bc2bc716092cbc0f20b624124a7d3452ce0400fcbe3a82f65184f7fb"
+          "pageSha256": "25558560bc2bc716092cbc0f20b624124a7d3452ce0400fcbe3a82f65184f7fb",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/AstonVilla",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:33.827Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "0f6c9a527d8a841732f98078bcc2b8d0dfe43f42a37ef10a41f470c25dcc2d32"
+          "pageSha256": "0f6c9a527d8a841732f98078bcc2b8d0dfe43f42a37ef10a41f470c25dcc2d32",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Chelsea",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:35.324Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "cdecefdc53ccde003a0307d0035654cb3348521919c6a7e40da4938c9b252405"
+          "pageSha256": "cdecefdc53ccde003a0307d0035654cb3348521919c6a7e40da4938c9b252405",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/ManUnited",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:36.822Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "541dcea9b8513bbf6025b1980234486d9d1ba363811765846872dd028e6eb29f"
+          "pageSha256": "541dcea9b8513bbf6025b1980234486d9d1ba363811765846872dd028e6eb29f",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Newcastle",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:38.330Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "d46938e57143787770eb54caf8d13773e1fae0e5d6b663248e9dc6a2531cf50e"
+          "pageSha256": "d46938e57143787770eb54caf8d13773e1fae0e5d6b663248e9dc6a2531cf50e",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Brentford",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:39.816Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "9dcfaee366a98f7189da7385b7ccc40559d4156a960fa1f3a318869bab749355"
+          "pageSha256": "9dcfaee366a98f7189da7385b7ccc40559d4156a960fa1f3a318869bab749355",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Bournemouth",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:41.272Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "7d06f96d54befe3a8e3dcd31e756508f481ec7450ae0b5c99edbbb096d7cf40d"
+          "pageSha256": "7d06f96d54befe3a8e3dcd31e756508f481ec7450ae0b5c99edbbb096d7cf40d",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/CrystalPalace",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:42.720Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "42ec71b3123a824bb24c90fe3995ada0a8fa8a593e5501c734062abe08e17078"
+          "pageSha256": "42ec71b3123a824bb24c90fe3995ada0a8fa8a593e5501c734062abe08e17078",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Everton",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:44.161Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "5c89c8e9bff94521ddd3333cb14759e52b5faabd5f8bd33b94dff1b8621e12c8"
+          "pageSha256": "5c89c8e9bff94521ddd3333cb14759e52b5faabd5f8bd33b94dff1b8621e12c8",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Leeds",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:45.656Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "16d7513d3b8669bd2809e0d7b14418e7d45ee9ac6198877c3865066de0e1da6d"
+          "pageSha256": "16d7513d3b8669bd2809e0d7b14418e7d45ee9ac6198877c3865066de0e1da6d",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Tottenham",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:47.080Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "ec53ecf2cf519a71119fd5743c0c4fbabff2d6d1b50af93dc85b47758c239249"
+          "pageSha256": "ec53ecf2cf519a71119fd5743c0c4fbabff2d6d1b50af93dc85b47758c239249",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Forest",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:48.812Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "1f3da34973663efc201edb1e63b03985140883daa80d1fddee41ac4073f7e14a"
+          "pageSha256": "1f3da34973663efc201edb1e63b03985140883daa80d1fddee41ac4073f7e14a",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Fulham",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:50.502Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "2a62d16a4f97be154922a17539e475ebeb19eb311013506accfb5d35d4282998"
-        },
-        {
-          "url": "https://clubelo.com/WestHam",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
-          "method": "clubelo-club-page-html",
-          "pageSha256": "6d4af588753316fe945cbfa1237fe142e73636eb07d55175052e7696f1cb1abb"
+          "pageSha256": "2a62d16a4f97be154922a17539e475ebeb19eb311013506accfb5d35d4282998",
+          "httpStatus": 200
         },
         {
           "url": "https://clubelo.com/Sunderland",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "fetchedAt": "2026-10-20T12:36:52.197Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "da1b8b7474f36ad44bc2cb5a2e49a2b24fca1a392c4d40281ca0bfaae2f3e5af"
+          "pageSha256": "da1b8b7474f36ad44bc2cb5a2e49a2b24fca1a392c4d40281ca0bfaae2f3e5af",
+          "httpStatus": 200
         },
         {
-          "url": "https://clubelo.com/Wolves",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "url": "https://clubelo.com/Coventry",
+          "fetchedAt": "2026-10-20T12:36:53.712Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "280b33a4e5c20f051fb6f69041e26441692e42fbc3717cf04e4292ad991e186e"
+          "pageSha256": "8202a747e73f21b1958f42b66cb6ef5e8947c0465d4352113769902fc682fd62",
+          "httpStatus": 200
         },
         {
-          "url": "https://clubelo.com/Burnley",
-          "fetchedAt": "2026-10-20T11:52:31.100Z",
+          "url": "https://clubelo.com/Ipswich",
+          "fetchedAt": "2026-10-20T12:36:55.183Z",
           "method": "clubelo-club-page-html",
-          "pageSha256": "71bd495989d160c2118ad46a1262e950d7485bbfa3e7d0816c3e5cc9e603c7c1"
+          "pageSha256": "7fc5c7870d2602fae694e30de51680e228821fdbdf4e7df42de1194b0a28def1",
+          "httpStatus": 200
+        },
+        {
+          "url": "https://clubelo.com/Hull",
+          "fetchedAt": "2026-10-20T12:36:56.606Z",
+          "method": "clubelo-club-page-html",
+          "pageSha256": "f9c22c2fbfef9fb776c55163940d7eff7a37815bef64870e6d7659a9841975f2",
+          "httpStatus": 200
         }
-      ]
+      ],
+      "note": "Shipped eng-clubs values are the ClubElo published ranking page integers (ranking date 2026-10-19). Twenty 2026-27 Premier League club pages were re-fetched live with 1s spacing; each record carries its own fetchedAt, httpStatus, and pageSha256. Cross-check vs those club pages: max absolute gap 0 Elo (within 1 Elo: yes)."
     }
   },
   "manifest": {

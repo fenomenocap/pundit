@@ -26,10 +26,10 @@ export const EPL_CLUB_PAGE_SLUGS: Array<{ slug: string; name: string }> = [
   { slug: "Tottenham", name: "Tottenham" },
   { slug: "Forest", name: "Forest" },
   { slug: "Fulham", name: "Fulham" },
-  { slug: "WestHam", name: "West Ham" },
   { slug: "Sunderland", name: "Sunderland" },
-  { slug: "Wolves", name: "Wolves" },
-  { slug: "Burnley", name: "Burnley" },
+  { slug: "Coventry", name: "Coventry" },
+  { slug: "Ipswich", name: "Ipswich" },
+  { slug: "Hull", name: "Hull" },
 ];
 
 function slugToClubEloName(slug: string): string {
