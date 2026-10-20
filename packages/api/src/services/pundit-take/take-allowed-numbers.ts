@@ -32,6 +32,7 @@ export function allowedNumbersFromPlan(plan: PunditTakePlan): Set<string> {
 
   if (plan.gridCall) {
     allowed.add(String(plan.gridCall.modelPctInt));
+    ingest(plan.gridCall.modelPctDisplay);
     ingest(plan.gridCall.fairDecimal);
     ingest(plan.gridCall.headlineLabel);
   }

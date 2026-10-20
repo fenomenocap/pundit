@@ -5,6 +5,7 @@ import type { MatchDossier } from "../match-dossier/types";
 import type { PunditTakeSourcesFooter } from "./types";
 import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
 import { fplInjuryStatusFooterAsOfSgt } from "./take-fpl-injuries";
+import { livePricingMarkets } from "./take-plan-live-markets";
 
 function labelSource(source: string): string {
   if (source === "kalshi") return "Kalshi";
@@ -16,10 +17,9 @@ function labelSource(source: string): string {
 export function buildTakeSourcesFooter(
   grounding: Grounding,
   dossier: MatchDossier | null,
+  nowMs = Date.now(),
 ): PunditTakeSourcesFooter {
-  const odds = grounding.pricing.markets
-    .filter((row) => row.legs.draw.impliedP != null || row.legs.draw.decimalOdds != null)
-    .map((row) => ({
+  const odds = livePricingMarkets(grounding, nowMs).map((row) => ({
       source: row.source,
       label: labelSource(row.source),
       observedAt: row.observedAt,
@@ -36,6 +36,7 @@ export function buildTakeSourcesFooter(
 
   const formSnap = getClubFormSnapshot(grounding.competitionId);
   const tableAsOf = formSnap.lastUpdated ?? grounding.freshness.espnLastUpdated ?? null;
+  const formAsOf = grounding.freshness.espnLastUpdated ?? formSnap.lastUpdated ?? null;
 
   return {
     modelVersion: grounding.pricing.modelVersion,
@@ -50,6 +51,9 @@ export function buildTakeSourcesFooter(
     tableSource: "ESPN standings (club-form snapshot)",
     tableAsOf,
     tableAsOfSgt: tableAsOf ? formatTimestampSgt(tableAsOf) : null,
+    formSource: "ESPN results (club-form snapshot)",
+    formAsOf,
+    formAsOfSgt: formAsOf ? formatTimestampSgt(formAsOf) : null,
     odds,
     evidenceUrls,
     fplInjuryStatusAsOfSgt: fplInjuryStatusFooterAsOfSgt(grounding, dossier),
@@ -57,6 +61,19 @@ export function buildTakeSourcesFooter(
 }
 
 export function formatTakeSourcesFooterBlock(footer: PunditTakeSourcesFooter): string {
-  if (!footer.fplInjuryStatusAsOfSgt) return "";
-  return `FPL injury status (as of ${footer.fplInjuryStatusAsOfSgt})`;
+  const lines: string[] = [];
+  lines.push(`Model ${shortModelVersionLabel(footer.modelVersion)} (priced ${footer.modelPricedAtSgt}).`);
+  if (footer.tableAsOfSgt) {
+    lines.push(`${footer.tableSource} as of ${footer.tableAsOfSgt}.`);
+  }
+  if (footer.formAsOfSgt) {
+    lines.push(`${footer.formSource} as of ${footer.formAsOfSgt}.`);
+  }
+  for (const row of footer.odds) {
+    lines.push(`${row.label} as of ${row.observedAtSgt}.`);
+  }
+  if (footer.fplInjuryStatusAsOfSgt) {
+    lines.push(`FPL injury status (as of ${footer.fplInjuryStatusAsOfSgt}).`);
+  }
+  return lines.join("\n");
 }

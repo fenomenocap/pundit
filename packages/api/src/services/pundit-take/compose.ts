@@ -23,7 +23,9 @@ import {
   renderStakeRefusalTakeProse,
   renderWinnerGuaranteeTakeProse,
 } from "./take-policy-prose";
-import { postCheckTakeProse, TAKE_AUDIT_SPEAK_PATTERN, TAKE_PROSE_BANNED_PATTERN } from "./take-validate";
+import { asksFairOddsFixtureQuestion, renderFairOddsTakeProse } from "./take-fair-odds-prose";
+import { appendWhatFlipsItClosing } from "./take-flip-prose";
+import { postCheckTakeProse } from "./take-validate";
 import type { PunditTakeDelivery } from "./types";
 
 function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
@@ -35,9 +37,11 @@ function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
     return true;
   }
   if (plan.mode === "totals" || plan.mode === "btts") return true;
-  if (plan.mode === "user-line" && /\bpass or play\b/i.test(question)) return true;
+  if (plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question)) return true;
   if (plan.mode === "market-comparison") return true;
+  if (asksFairOddsFixtureQuestion(question)) return true;
   if (plan.mode === "fair-price" && !/\d{1,2}\s*-\s*\d{1,2}/.test(question)) return true;
+  if (plan.mode === "pricing-desk" && asksFairOddsFixtureQuestion(question)) return true;
   if (plan.mode === "pricing-desk") {
     return asksMatchWinnerQuestion(question)
       || asksFixturePriceBoard(question)
@@ -71,16 +75,19 @@ function assembleDelivery(
   resolvedDossier: MatchDossier | null,
   options?: { includeTable?: boolean },
 ): PunditTakeDelivery {
-  const passPlay = plan.mode === "user-line" && /\bpass or play\b/i.test(question);
+  const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
   const includeTable = options?.includeTable ?? !asksParlayQuestion(question);
   const table = !includeTable
     ? ""
     : passPlay
       ? formatPassPlayLineTable(grounding)
       : formatTakeOddsTable(planJson);
-  const sources = buildTakeSourcesFooter(grounding, resolvedDossier);
+  const sources = buildTakeSourcesFooter(grounding, resolvedDossier, Date.now());
   const footer = formatTakeSourcesFooterBlock(sources);
-  const body = table ? `${prose.trim()}\n\n${table}`.trim() : prose.trim();
+  const proseWithFlip = asksParlayQuestion(question)
+    ? prose.trim()
+    : appendWhatFlipsItClosing(planJson, prose, grounding);
+  const body = table ? `${proseWithFlip.trim()}\n\n${table}`.trim() : proseWithFlip.trim();
   const answer = footer ? `${body}\n\n${footer}`.trim() : body;
   return {
     answer,
@@ -110,7 +117,27 @@ function resolvePolicyProse(
   if (/\b(?:what about|how about)\b/i.test(question) && /\b(?:the )?draw\b/i.test(question)) {
     return { prose: renderDrawFocusTakeProse(planJson, grounding), includeTable: true };
   }
+  if (asksFairOddsFixtureQuestion(question)) {
+    return { prose: renderFairOddsTakeProse(planJson, grounding), includeTable: true };
+  }
   return null;
+}
+
+function composeTakeProseDeterministic(
+  question: string,
+  grounding: Grounding,
+  plan: ResponsePlan,
+  planJson: ReturnType<typeof buildPunditTakePlan>,
+  variant: "full" | "why",
+): string {
+  const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
+  if (passPlay) {
+    return renderPassPlayTakeProse(planJson, grounding)
+      ?? renderTakeProseDeterministic(planJson, variant, grounding);
+  }
+  let prose = renderTakeProseDeterministic(planJson, variant, grounding);
+  prose = postCheckTakeProse(prose, planJson);
+  return prose;
 }
 
 export function composePunditTakeDelivery(
@@ -133,17 +160,7 @@ export function composePunditTakeDelivery(
       includeTable: policy.includeTable,
     });
   }
-  const passPlay = plan.mode === "user-line" && /\bpass or play\b/i.test(question);
-  let prose: string;
-  if (passPlay) {
-    prose = renderPassPlayTakeProse(planJson, grounding) ?? renderTakeProseDeterministic(planJson, variant);
-    if (TAKE_PROSE_BANNED_PATTERN.test(prose) || TAKE_AUDIT_SPEAK_PATTERN.test(prose)) {
-      prose = renderPassPlayTakeProse(planJson, grounding) ?? renderTakeProseDeterministic(planJson, variant);
-    }
-  } else {
-    prose = renderTakeProseDeterministic(planJson, variant);
-    prose = postCheckTakeProse(prose, planJson);
-  }
+  const prose = composeTakeProseDeterministic(question, grounding, plan, planJson, variant);
   return assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier);
 }
 
@@ -167,16 +184,10 @@ export async function composePunditTakeDeliveryAsync(
       includeTable: policy.includeTable,
     });
   }
-  const passPlay = plan.mode === "user-line" && /\bpass or play\b/i.test(question);
-  let prose: string;
-  if (passPlay) {
-    prose = renderPassPlayTakeProse(planJson, grounding) ?? await renderTakeProse(planJson, variant);
-    if (TAKE_PROSE_BANNED_PATTERN.test(prose) || TAKE_AUDIT_SPEAK_PATTERN.test(prose)) {
-      prose = renderPassPlayTakeProse(planJson, grounding) ?? await renderTakeProse(planJson, variant);
-    }
-  } else {
-    prose = await renderTakeProse(planJson, variant);
-    prose = postCheckTakeProse(prose, planJson);
-  }
+  const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
+  const fairOdds = asksFairOddsFixtureQuestion(question);
+  const prose = passPlay || fairOdds
+    ? composeTakeProseDeterministic(question, grounding, plan, planJson, variant)
+    : postCheckTakeProse(await renderTakeProse(planJson, variant), planJson);
   return assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier);
 }

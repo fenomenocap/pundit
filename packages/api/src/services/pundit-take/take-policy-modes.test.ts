@@ -16,7 +16,7 @@ describe("Pundit Take v2 policy modes", () => {
 
   it("declines parlays without a table", () => {
     const delivery = deliver("Build me a 2-leg parlay on Spurs and Coventry");
-    expect(delivery.answer).toBe(PARLAY_OUT_OF_SCOPE);
+    expect(delivery.answer).toContain(PARLAY_OUT_OF_SCOPE);
     expect(delivery.answer).not.toContain("| Outcome |");
   });
 

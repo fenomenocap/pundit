@@ -4,6 +4,7 @@ import { compactTeamLabel } from "../basics-answer-voice";
 import type { TakePlanPoint } from "./types";
 import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
 import { buildFplInternalInjuryPoints } from "./take-fpl-injuries";
+import { isGenuineTossUp1x2 } from "./take-headline";
 
 /** Goal-rate copy must match calibrated grid means on the same row as pBTTS / totals. */
 function calibratedGoalRatesOnRow(grounding: Grounding): boolean {
@@ -26,20 +27,21 @@ export function buildGoalReasonPoints(
   }
 
   if (Number.isFinite(grounding.totalXg) && grounding.totalXg > 0) {
+    const rounded = Math.round(grounding.totalXg);
+    const goalPhrase = rounded <= 1
+      ? "about one goal"
+      : rounded === 2
+        ? "about two goals"
+        : rounded === 3
+          ? "close to three goals"
+          : rounded === 4
+            ? "around four goals"
+            : `around ${rounded} goals`;
     points.push({
       id: "fact-total-xg",
       role: "support",
-      text: `Combined expected goals come out near ${grounding.totalXg.toFixed(1)}.`,
+      text: `The model expects ${goalPhrase} in the match.`,
       fieldPath: "totalXg",
-    });
-  }
-
-  if (Number.isFinite(grounding.lambdaHome) && Number.isFinite(grounding.lambdaAway)) {
-    points.push({
-      id: "fact-lambda-split",
-      role: "support",
-      text: `${homeShort} are on ${grounding.lambdaHome.toFixed(2)} xG and ${awayShort} ${grounding.lambdaAway.toFixed(2)} in the score grid.`,
-      fieldPath: "lambdaHome,lambdaAway",
     });
   }
 
@@ -195,5 +197,7 @@ export function buildContradictingPointsShared(
     }
   }
 
-  return points.slice(0, 3);
+  return points
+    .filter((point) => isGenuineTossUp1x2(grounding) || !/\btoss-up\b/i.test(point.text))
+    .slice(0, 3);
 }

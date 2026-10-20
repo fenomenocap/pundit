@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildGrounding } from "../ask";
 import { buildMatchPricing } from "../response-correctness";
 import { sampleMatchContextFields } from "../match-context";
@@ -128,6 +128,7 @@ describe("Pundit Take v2 style pack (PR1)", () => {
       error: null,
       servingLastGood: false,
     });
+    vi.setSystemTime(new Date("2026-10-18T10:00:00.000Z"));
     replaceFootballDataForTests({
       byCompetition: {
         "eng.1": {
@@ -155,6 +156,7 @@ describe("Pundit Take v2 style pack (PR1)", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     process.env = prevEnv;
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
@@ -189,7 +191,13 @@ describe("Pundit Take v2 style pack (PR1)", () => {
         expect(direct?.answer).toBe(fromComposer);
         return direct!;
       });
-      const prose = delivery.answer.split("\n\n")[0];
+      if (q.includes("Fair odds")) {
+        expect(delivery.answer).toMatch(/fair 1X2 vs the best prices/i);
+        expect(delivery.answer).toContain("| Outcome | Ours |");
+        return;
+      }
+      const proseBlock = delivery.answer.split("\n\n| Outcome |")[0].split("\n\nModel ")[0];
+      const prose = proseBlock.split("\n\n")[0];
       expect(TAKE_PROSE_BANNED_PATTERN.test(prose)).toBe(false);
       expect(prose).not.toMatch(/^Why:/m);
       expect(prose).not.toMatch(/^Lean:/m);
@@ -209,7 +217,8 @@ describe("Pundit Take v2 style pack (PR1)", () => {
     expect(delivery.answer).toMatch(/20th on 3 points/);
       expect(delivery.answer).not.toMatch(/\bstill\b/i);
       expect(delivery.answer).not.toMatch(/sharper than my read/i);
-      expect(delivery.answer).not.toMatch(/applied in this forecast|sits at|home backing|rating sheet|\bElo\b/i);
+      const proseBody = delivery.answer.split("\n\n| Outcome |")[0].split("\n\nModel ")[0];
+      expect(proseBody).not.toMatch(/applied in this forecast|sits at|home backing|rating sheet|\bElo\b/i);
       expect(delivery.answer).toMatch(/at home/);
   });
 
@@ -224,7 +233,7 @@ describe("Pundit Take v2 style pack (PR1)", () => {
       const delivery = withPunditTakeRequestScope("v2", () =>
         composePunditTakeDelivery(q, grounding, plan)!);
       expect(delivery.answer).not.toMatch(/^Lean:/m);
-      expect(delivery.answer).toMatch(/BTTS yes at 52%|Over 2\.5 at 55%/);
+      expect(delivery.answer).toMatch(/BTTS yes at 52\.0%|Over 2\.5 at 55\.0%/);
       expect(delivery.answer).toContain("| Outcome | Ours |");
       expect(delivery.answer).not.toMatch(/1\.35 xG|1\.85 xG|on this read|low-score correction|home backing/i);
       expect(delivery.plan.marketKind).toBe(mode === "btts" ? "btts" : "totals");
