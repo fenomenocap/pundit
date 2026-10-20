@@ -253,7 +253,8 @@ export function simulateSeasonOutlook(
   ratings: ClubRatingsCache["byProfile"],
   runs = SEASON_SIM_RUNS,
   random?: () => number,
-  contributor: ForecastContributor = ELO_CHAMPION
+  contributor: ForecastContributor = ELO_CHAMPION,
+  now = new Date()
 ): SeasonOutlook | null {
   const competition = getCompetitionById(competitionId);
   if (!competition || competition.type !== "league") return null;
@@ -267,7 +268,8 @@ export function simulateSeasonOutlook(
   const fixtures = reconcileRemainingToStandings(
     competitionStandings,
     scheduledFixtures
-      .filter((fixture) => baseState.has(fixture.homeTeam) && baseState.has(fixture.awayTeam))
+      .filter((fixture) => baseState.has(fixture.homeTeam) && baseState.has(fixture.awayTeam)),
+    now
   );
   if (!fixtures || fixtures.length === 0 || !hasCompleteLeagueSchedule(competitionStandings, fixtures)) {
     return null;
