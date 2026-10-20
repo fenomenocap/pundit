@@ -1,10 +1,11 @@
 import {
-  buildAndPersistDossiersForWindow,
+  buildAndPersistDossiersForWindowAsync,
   buildMatchDossierForFixture,
   filterFixturesInKickoffWindow,
   publicFixtureId,
   PHASE1_WEEKEND_WINDOW,
 } from "./builder";
+import { getDossierFplStatus } from "./fpl-bootstrap-injuries";
 import {
   DOSSIER_INTERVAL_MS,
   DOSSIER_PRE_KICKOFF_MS,
@@ -28,8 +29,7 @@ async function prefetchFplBootstrapIfEnabled(): Promise<void> {
 export async function runScheduledDossierBuild(
   reason: "interval-6h" | "manual" = "interval-6h",
 ): Promise<number> {
-  await prefetchFplBootstrapIfEnabled();
-  const dossiers = buildAndPersistDossiersForWindow(PHASE1_WEEKEND_WINDOW, {
+  const dossiers = await buildAndPersistDossiersForWindowAsync(PHASE1_WEEKEND_WINDOW, {
     scheduleReason: reason === "interval-6h" ? "interval-6h" : "manual",
   });
   return dossiers.length;
@@ -97,6 +97,7 @@ export function dossierCronStatus(): {
   preKickoffPollMs: number;
   activeWindow: typeof PHASE1_WEEKEND_WINDOW;
   slateRebuild: ReturnType<typeof getDossierSlateRebuildProgress>;
+  fplStatus: ReturnType<typeof getDossierFplStatus>;
 } {
   return {
     enabled: matchDossierEnabled(),
@@ -104,6 +105,7 @@ export function dossierCronStatus(): {
     preKickoffPollMs: DOSSIER_PRE_KICKOFF_POLL_MS,
     activeWindow: PHASE1_WEEKEND_WINDOW,
     slateRebuild: getDossierSlateRebuildProgress(),
+    fplStatus: getDossierFplStatus(),
   };
 }
 

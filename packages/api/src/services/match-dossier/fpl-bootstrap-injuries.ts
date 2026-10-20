@@ -4,6 +4,11 @@ import path from "node:path";
 import type { ModelFixture } from "../model-data";
 import type { DossierEvidenceItem, FplPlayerAvailabilityStatus } from "./types";
 import { matchDossierFplEnabled } from "./flags";
+import {
+  findFplTeamByFixtureSide,
+  fixtureFplTeamIdsFromMap,
+  fixtureSideLabelForFplTeam,
+} from "./fpl-team-map";
 
 const FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/";
 const FPL_BOOTSTRAP_TIMEOUT_MS = 10_000;
@@ -11,25 +16,11 @@ const FPL_BOOTSTRAP_MAX_ATTEMPTS = 2;
 const FPL_BOOTSTRAP_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-export function logDossierFplFetch(payload: {
-  status: number | null;
-  error: string | null;
-  ms: number;
-  players: number | null;
-}): void {
-  console.log(JSON.stringify({
-    event: "dossier_fpl_fetch",
-    status: payload.status,
-    error: payload.error,
-    ms: payload.ms,
-    players: payload.players,
-  }));
-}
-
 export interface FplBootstrapTeam {
   id: number;
   name: string;
   short_name: string;
+  code?: number;
 }
 
 export interface FplBootstrapElement {
@@ -47,55 +38,58 @@ export interface FplBootstrapSnapshot {
   elements: FplBootstrapElement[];
 }
 
-let buildPassCache: { snapshot: FplBootstrapSnapshot; fetchedAt: string } | null = null;
+export interface DossierFplFetchStatus {
+  ok: boolean;
+  status: number | null;
+  error: string | null;
+  fetchedAt: string | null;
+}
 
-const FIXTURE_TO_FPL_TEAM_NAMES: Record<string, string[]> = {
-  Arsenal: ["Arsenal"],
-  "Aston Villa": ["Aston Villa"],
-  Bournemouth: ["Bournemouth", "AFC Bournemouth"],
-  Brentford: ["Brentford"],
-  Brighton: ["Brighton", "Brighton and Hove Albion"],
-  Chelsea: ["Chelsea"],
-  "Crystal Palace": ["Crystal Palace"],
-  Everton: ["Everton"],
-  Fulham: ["Fulham"],
-  Ipswich: ["Ipswich"],
-  Leeds: ["Leeds"],
-  Liverpool: ["Liverpool"],
-  "Man City": ["Man City", "Manchester City"],
-  "Man United": ["Man Utd", "Manchester United"],
-  Newcastle: ["Newcastle"],
-  Forest: ["Nott'm Forest", "Nottingham Forest"],
-  Sunderland: ["Sunderland"],
-  Tottenham: ["Spurs", "Tottenham"],
-  "West Ham": ["West Ham"],
-  Wolves: ["Wolves"],
+let buildPassCache: { snapshot: FplBootstrapSnapshot; fetchedAt: string } | null = null;
+let lastFplFetchStatus: DossierFplFetchStatus = {
+  ok: false,
+  status: null,
+  error: null,
+  fetchedAt: null,
 };
 
-function fplTeamMatchesFixtureSide(team: FplBootstrapTeam, fixtureSide: string): boolean {
-  const aliases = FIXTURE_TO_FPL_TEAM_NAMES[fixtureSide] ?? [fixtureSide];
-  const norm = (s: string) => s.trim().toLocaleLowerCase();
-  return aliases.some((a) => norm(a) === norm(team.name) || norm(a) === norm(team.short_name));
+export function logDossierFplFetch(payload: {
+  status: number | null;
+  error: string | null;
+  ms: number;
+  players: number | null;
+}): void {
+  console.log(JSON.stringify({
+    event: "dossier_fpl_fetch",
+    status: payload.status,
+    error: payload.error,
+    ms: payload.ms,
+    players: payload.players,
+  }));
 }
 
-/** Resolve bootstrap team id → fixture home/away label when matched. */
-export function clubLabelForFplTeam(
-  fixture: ModelFixture,
-  team: FplBootstrapTeam,
-): string {
-  if (fplTeamMatchesFixtureSide(team, fixture.home)) return fixture.home;
-  if (fplTeamMatchesFixtureSide(team, fixture.away)) return fixture.away;
-  return team.name;
+function setLastFplFetchStatus(status: number | null, error: string | null, fetchedAt: string | null): void {
+  lastFplFetchStatus = {
+    ok: false,
+    status,
+    error,
+    fetchedAt,
+  };
 }
 
-export function fixtureFplTeamIds(snapshot: FplBootstrapSnapshot, fixture: ModelFixture): Set<number> {
-  const ids = new Set<number>();
-  for (const team of snapshot.teams) {
-    if (fplTeamMatchesFixtureSide(team, fixture.home) || fplTeamMatchesFixtureSide(team, fixture.away)) {
-      ids.add(team.id);
-    }
+export function getDossierFplStatus(): DossierFplFetchStatus {
+  if (!matchDossierFplEnabled()) {
+    return { ok: false, status: null, error: "fpl_disabled", fetchedAt: null };
   }
-  return ids;
+  if (buildPassCache) {
+    return {
+      ok: true,
+      status: 200,
+      error: null,
+      fetchedAt: buildPassCache.fetchedAt,
+    };
+  }
+  return { ...lastFplFetchStatus };
 }
 
 function normalizeFplStatus(raw: string, hasNews: boolean): FplPlayerAvailabilityStatus {
@@ -111,6 +105,7 @@ function evidenceIdForFpl(playerId: number, fixture: ModelFixture): string {
 
 export function resetFplBootstrapCacheForTests(): void {
   buildPassCache = null;
+  lastFplFetchStatus = { ok: false, status: null, error: null, fetchedAt: null };
 }
 
 export function loadFplBootstrapFromRecordedFixture(): FplBootstrapSnapshot {
@@ -122,6 +117,7 @@ async function fetchFplBootstrapSnapshot(
   fetchFn: typeof fetch,
 ): Promise<FplBootstrapSnapshot | null> {
   let lastStatus: number | null = null;
+  let lastError: string | null = null;
   for (let attempt = 0; attempt < FPL_BOOTSTRAP_MAX_ATTEMPTS; attempt += 1) {
     const started = Date.now();
     try {
@@ -134,12 +130,14 @@ async function fetchFplBootstrapSnapshot(
       });
       lastStatus = response.status;
       if (!response.ok) {
+        lastError = `http_${lastStatus}`;
         logDossierFplFetch({
           status: lastStatus,
-          error: `http_${lastStatus}`,
+          error: lastError,
           ms: Date.now() - started,
           players: null,
         });
+        setLastFplFetchStatus(lastStatus, lastError, null);
         continue;
       }
       const snapshot = await response.json() as FplBootstrapSnapshot;
@@ -152,12 +150,14 @@ async function fetchFplBootstrapSnapshot(
       });
       return snapshot;
     } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
       logDossierFplFetch({
         status: lastStatus,
-        error: error instanceof Error ? error.message : String(error),
+        error: lastError,
         ms: Date.now() - started,
         players: null,
       });
+      setLastFplFetchStatus(lastStatus, lastError, null);
     }
   }
   return null;
@@ -171,13 +171,30 @@ export async function prefetchFplBootstrapForBuildPass(
   if (buildPassCache) return buildPassCache.snapshot;
   const snapshot = await fetchFplBootstrapSnapshot(fetchFn);
   if (!snapshot) return null;
-  buildPassCache = { snapshot, fetchedAt: new Date().toISOString() };
+  const fetchedAt = new Date().toISOString();
+  buildPassCache = { snapshot, fetchedAt };
+  lastFplFetchStatus = { ok: true, status: 200, error: null, fetchedAt };
   return snapshot;
 }
 
 export function setFplBootstrapCacheForTests(snapshot: FplBootstrapSnapshot, fetchedAt = new Date().toISOString()): void {
   buildPassCache = { snapshot, fetchedAt };
+  lastFplFetchStatus = { ok: true, status: 200, error: null, fetchedAt };
 }
+
+/** Resolve bootstrap team id → fixture home/away label when matched. */
+export function clubLabelForFplTeam(
+  fixture: ModelFixture,
+  team: FplBootstrapTeam,
+): string {
+  return fixtureSideLabelForFplTeam(fixture.home, fixture.away, team);
+}
+
+export function fixtureFplTeamIds(snapshot: FplBootstrapSnapshot, fixture: ModelFixture): Set<number> {
+  return fixtureFplTeamIdsFromMap(snapshot, fixture.home, fixture.away);
+}
+
+export { findFplTeamByFixtureSide, resolveFplTeamIdForFixtureSide } from "./fpl-team-map";
 
 export function buildFplInjuryEvidenceForFixture(
   fixture: ModelFixture,

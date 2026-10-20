@@ -2,11 +2,13 @@ import { describe, expect, it, beforeEach, vi, afterEach } from "vitest";
 import { fixture } from "../__fixtures__/model-fixture";
 import {
   buildFplInjuryEvidenceForFixture,
+  getDossierFplStatus,
   loadFplBootstrapFromRecordedFixture,
   prefetchFplBootstrapForBuildPass,
   resetFplBootstrapCacheForTests,
   setFplBootstrapCacheForTests,
 } from "./fpl-bootstrap-injuries";
+import { dossierCronStatus } from "./schedule";
 import {
   isFplBootstrapInjuryItem,
   isTakeV2DossierEvidence,
@@ -100,6 +102,33 @@ describe("FPL bootstrap-static injuries (interim)", () => {
     const dossier = buildMatchDossierForFixture(row, { now: asOfDate() });
     expect(dossier.injuries.value.items.some((i) => i.source === "fpl-bootstrap-static")).toBe(false);
     expect(dossier.evidence.some((i) => i.source === "fpl-bootstrap-static")).toBe(false);
+  });
+
+  it("surfaces failed fetch on dossier status fplStatus", async () => {
+    const fetchFn = vi.fn(async () => new Response("blocked", { status: 503 }));
+    await prefetchFplBootstrapForBuildPass(fetchFn as typeof fetch);
+    expect(getDossierFplStatus()).toMatchObject({
+      ok: false,
+      status: 503,
+      error: "http_503",
+      fetchedAt: null,
+    });
+    process.env.MATCH_DOSSIER_ENABLED = "true";
+    expect(dossierCronStatus().fplStatus).toMatchObject({
+      ok: false,
+      status: 503,
+      error: "http_503",
+    });
+  });
+
+  it("builds Coventry and Hull injury rows via FPL team id map", () => {
+    const snapshot = loadFplBootstrapFromRecordedFixture();
+    const coventryFulham = fixture("Coventry", "Fulham", { utcDate: "2026-10-24T15:00:00.000Z" });
+    const items = buildFplInjuryEvidenceForFixture(coventryFulham, "2026-10-19T12:00:00.000Z", snapshot);
+    expect(items.some((i) => i.player === "Hamer" && i.club === "Coventry")).toBe(true);
+    const hullEverton = fixture("Everton", "Hull", { utcDate: "2026-10-24T15:00:00.000Z" });
+    expect(buildFplInjuryEvidenceForFixture(hullEverton, "2026-10-19T12:00:00.000Z", snapshot)
+      .some((i) => i.player === "HullStriker" && i.club === "Hull")).toBe(true);
   });
 
   it("failed fetch logs each attempt and fails closed with no injuries", async () => {

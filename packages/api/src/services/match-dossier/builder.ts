@@ -383,6 +383,18 @@ export function buildAndPersistDossiersForWindow(
   return dossiers;
 }
 
+/** Scheduled slate build: one FPL prefetch (cached) then sync dossier builds for every fixture. */
+export async function buildAndPersistDossiersForWindowAsync(
+  window: DossierBuildWindow = PHASE1_WEEKEND_WINDOW,
+  options: BuildDossierOptions = {},
+): Promise<MatchDossier[]> {
+  if (matchDossierFplEnabled()) {
+    const { prefetchFplBootstrapForBuildPass } = await import("./fpl-bootstrap-injuries");
+    await prefetchFplBootstrapForBuildPass();
+  }
+  return buildAndPersistDossiersForWindow(window, options);
+}
+
 export function findModelFixtureByDossierId(fixtureId: string): ModelFixture | null {
   const model = getCachedModelData();
   const direct = model.fixtures.find((f) => publicFixtureId(f) === fixtureId);
