@@ -1,0 +1,14 @@
+---
+description: Vercel Hobby build quota. Load before any deploy, push, or web-build change.
+alwaysApply: true
+---
+
+# Build & deploy quota
+
+Hobby is about 100 Vercel deploys a day. `packages/web/vercel.json` runs `scripts/vercel-ignore.sh` (exit 0 skips). Every LLM, agent, and harness:
+
+1. No PR preview builds. Playwright smoke in GitHub CI covers pull requests.
+2. Vercel builds only on `main`, and only when `packages/web/**`, a workspace package the web app imports, the lockfile, or the Vercel ignore config changes.
+3. Skip API-only or docs-only changes. A missing or unknown previous SHA still builds, and only on `main`.
+4. Batch pushes. Never push per tiny commit.
+5. Check remaining deploy quota before heavy merge days.

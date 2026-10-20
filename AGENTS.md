@@ -49,6 +49,16 @@ The reviewed release fit remains 3,090 goal outcomes and 996 dated-rating alloca
 
 Preserve every earlier result: V1 failed its 1X2 gate; V2's 341-fixture 2023–24 and 580-fixture secondary development cohorts were exposed (secondary totals interval crosses zero); the first family-unexposed 353-fixture 2017–18 reserve **failed**, with score-loss interval upper +0.006864 and BTTS upper +0.005759 above the +0.005 margin. No method was retuned after that failure. The later five-season cohort was unexposed during family development and fixed before acquisition, but all results remain retrospective with source-calendar availability proxies and no sequential-cohort research adjustment. Do not claim prospective superiority, guaranteed future accuracy, best possible performance, or a merged/deployed release from these tests. See [`docs/how-it-works/the-model.md`](docs/how-it-works/the-model.md).
 
+## Build & deploy quota
+
+Hobby is about 100 Vercel deploys a day. `packages/web/vercel.json` runs `scripts/vercel-ignore.sh` (exit 0 skips). Every LLM, agent, and harness:
+
+1. No PR preview builds. Playwright smoke in GitHub CI covers pull requests.
+2. Vercel builds only on `main`, and only when `packages/web/**`, a workspace package the web app imports, the lockfile, or the Vercel ignore config changes.
+3. Skip API-only or docs-only changes. A missing or unknown previous SHA still builds, and only on `main`.
+4. Batch pushes. Never push per tiny commit.
+5. Check remaining deploy quota before heavy merge days.
+
 ## Production verification
 
 ### Whole-request completion

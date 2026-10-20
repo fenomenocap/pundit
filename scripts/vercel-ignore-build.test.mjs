@@ -14,6 +14,7 @@ test("builds web and shared-root changes", () => {
     ".node-version",
     ".nvmrc",
     "scripts/vercel-ignore-build.mjs",
+    "scripts/vercel-ignore.sh",
     // The rule module both the ignore step and the deploy-SHA resolver import.
     "scripts/deploy-build-paths.mjs",
   ]) {
@@ -38,8 +39,19 @@ test("builds when any file in a mixed change affects the web", () => {
   ]), true);
 });
 
-test("fails safe to a build when Vercel commit metadata is unavailable", () => {
+test("skips when the ref is not main, even with no commit metadata", () => {
   assert.deepEqual(decideIgnoredBuild({}), {
+    build: false,
+    reason: "ref is not main",
+  });
+  assert.deepEqual(decideIgnoredBuild({ VERCEL_GIT_COMMIT_REF: "chat-eval-data" }), {
+    build: false,
+    reason: "ref is not main",
+  });
+});
+
+test("fails open to a build on main when the commit range is unavailable", () => {
+  assert.deepEqual(decideIgnoredBuild({ VERCEL_GIT_COMMIT_REF: "main" }), {
     build: true,
     reason: "commit range unavailable",
   });
