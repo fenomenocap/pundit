@@ -1,6 +1,7 @@
 import type { Request } from "express";
 import {
   authorizeChatEvalGithubOidcBearer,
+  validateDossierRebuildOidcClaims,
   type OidcVerifier,
 } from "./eval-github-oidc";
 
@@ -26,6 +27,20 @@ export async function authorizeChatEvalJudgeRequest(
 ): Promise<"unavailable" | "unauthorized" | "forbidden" | "authorized"> {
   if (!chatEvalJudgeOpenRouterAvailable()) return "unavailable";
   const auth = await authorizeChatEvalGithubOidcBearer(readBearerToken(req), verify);
+  if (auth === "missing" || auth === "invalid") return "unauthorized";
+  if (auth === "forbidden") return "forbidden";
+  return "authorized";
+}
+
+export async function authorizeDossierRebuildRequest(
+  req: Request,
+  verify?: OidcVerifier,
+): Promise<"unauthorized" | "forbidden" | "authorized"> {
+  const auth = await authorizeChatEvalGithubOidcBearer(
+    readBearerToken(req),
+    verify,
+    validateDossierRebuildOidcClaims,
+  );
   if (auth === "missing" || auth === "invalid") return "unauthorized";
   if (auth === "forbidden") return "forbidden";
   return "authorized";
