@@ -33,8 +33,11 @@ days; forecasts continue until day 30. A Monday GitHub Action fails if the
 committed pin is 7 or more days old so an ageing snapshot cannot stay silent.
 
 The capture prefers ClubElo's documented CSV API and falls back to the
-published ranking page when that API is unavailable. Neither path is imported
-by runtime model code. The builder never overwrites an existing
+published ranking page when that API is unavailable. `refresh:clubelo-snapshot`
+also passes `--club-pages` so the twenty current Premier League club pages
+override ranking-table Elos for those clubs. Offline `source.capture` records
+per-page URLs, fetch times, methods and page hashes outside the payload hash.
+Neither path is imported by runtime model code. The builder never overwrites an existing
 content-addressed artifact. Commit the new immutable artifact and selector
 together. CI validates hash, identity, minimum coverage, a defensive 500–3,000
 Elo plausibility range, the declared profile counts/unique-club manifest,
