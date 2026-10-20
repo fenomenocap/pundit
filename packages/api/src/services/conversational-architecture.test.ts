@@ -653,10 +653,11 @@ describe("V2 conversational architecture", () => {
       hasHistory: false,
       answer: "not a structured draft",
     });
-    expect(preview.answer).toMatch(/Kalshi market-implied probabilities/i);
+    expect(preview.answer).toMatch(/Market-implied 1X2/i);
     expect(preview.answer).toMatch(/Biggest gap vs market: Arsenal, \+6\.2 pts\./);
     expect(preview.answer).toContain("Pundit Consensus");
-    expect(preview.answer).toContain("model-only 1X2");
+    expect(preview.answer).toContain("our standalone 1X2");
+    expect(preview.answer).not.toMatch(/\bKalshi\b|no-vig/i);
     expect(preview.answer).not.toMatch(/sealed|immutable/i);
     expect(preview.answer).toMatch(new RegExp(`${(match.consensus!.pHome * 100).toFixed(1)}%`));
 
@@ -989,7 +990,8 @@ describe("V2 conversational architecture", () => {
       planResponse("What if Saka is absent?", { groundingKind: "match", hasHistory: true }))).toMatch(/won’t invent a percentage/i);
     const market = composeMatchResponse("Where do you disagree with Kalshi?", match,
       planResponse("Where do you disagree with Kalshi?", { groundingKind: "match", hasHistory: true }));
-    expect(market).toMatch(/largest gap is on Arsenal: I have 56\.3% vs Kalshi 50\.1%/);
+    expect(market).toMatch(/largest gap is on Arsenal: I have 56\.3% vs the market 50\.1%/);
+    expect(market).not.toMatch(/\bKalshi\b|no-vig/i);
     expect(market).toMatch(/nothing about lineups on its own/i);
     expect(market).not.toMatch(/my call:/);
     expect(market).not.toMatch(/because.*lineup/i);
@@ -1143,7 +1145,8 @@ describe("V2 conversational architecture", () => {
     expect(previewCopy).toMatch(/full 1X2/);
     expect(previewCopy).toContain(SHARED_TOTAL_XG_SENTENCE);
     expect(previewCopy).toMatch(/full 1X2 is Arsenal|I make Arsenal.*56\.3%/);
-    expect(previewCopy).toMatch(/Kalshi no-vig/i);
+    expect(previewCopy).toMatch(/Market-implied 1X2|Market: Arsenal/i);
+    expect(previewCopy).not.toMatch(/\bKalshi\b|no-vig/i);
     expect(previewCopy).toMatch(/Biggest gap vs market: Arsenal, \+6\.2 pts\./);
     expect(previewCopy).not.toMatch(/^Lean:/m);
     expect(previewCopy).not.toMatch(/market snapshot/);

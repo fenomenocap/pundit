@@ -173,7 +173,8 @@ describe("Pundit Take v2 style pack (PR1)", () => {
     const plan = planResponse(q, { groundingKind: "match", hasCompleteMarket1x2: true });
     const legacy = composeMatchResponse(q, grounding, plan);
     expect(legacy).toMatch(/59\.9%|Spurs/);
-    expect(legacy).toMatch(/Model:/);
+    expect(legacy).not.toMatch(/^Model:/m);
+    expect(legacy).not.toMatch(/\bElo\b|Kalshi|Polymarket|no-vig/i);
     expect(legacy).not.toContain("| Outcome | Ours |");
   });
 

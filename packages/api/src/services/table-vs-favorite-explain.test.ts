@@ -69,9 +69,10 @@ describe("tableVsModelFavoriteExplainLine", () => {
   it("explains when table rank contradicts a strong Elo-backed home favourite", () => {
     const line = tableVsModelFavoriteExplainLine(minimalGrounding());
     expect(line).toMatch(/20th on 3 pts/);
-    expect(line).toMatch(/Elo still favours them \(1799 v 1706\)/);
+    expect(line).toMatch(/rated stronger than Coventry on our numbers/);
     expect(line).toMatch(/home advantage/);
-    expect(line).toMatch(/Polymarket is higher at 64\.0%/);
+    expect(line).toMatch(/market price is higher at 64\.0%/);
+    expect(line).not.toMatch(/\bElo\b|Polymarket/i);
   });
 
   it("skips when table positions are close", () => {

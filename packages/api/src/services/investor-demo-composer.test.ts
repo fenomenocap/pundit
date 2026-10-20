@@ -124,13 +124,13 @@ describe("investor demo composer fixes", () => {
     const after = composeMarketComparisonAnswer("How does your 1X2 compare to Polymarket?", grounding)!;
     expect(after).toMatch(/Tottenham v Coventry — my call: Spurs win at 59\.9%\./);
     expect(after).toContain("Spurs 59.9% (fair 1.67) · Draw 24.4% (fair 4.10) · Coventry 15.7% (fair 6.37)");
-    expect(after).toMatch(/Why: stronger side on Elo \(1799 v 1706\) plus home advantage/);
+    expect(after).toMatch(/Spurs are the stronger side on our ratings/);
     expect(after).toMatch(/the risk is form, 20th on 3 pts/);
-    expect(after).toMatch(/Market \(Polymarket no-vig,/);
+    expect(after).toMatch(/^Market: Spurs /m);
     expect(after).toMatch(/Biggest gap vs market: Draw, \+3\.9 pts\./);
-    expect(after).toMatch(/^Model: Elo ratings v1/m);
+    expect(after).not.toMatch(/^Model:/m);
+    expect(after).not.toMatch(/\bElo\b|Polymarket|no-vig/i);
     expect(after).not.toMatch(/^Lean:/m);
-    expect(after).not.toMatch(/Odds: Polymarket no-vig/);
     expect(after).not.toMatch(/\bEV\b/);
     expect(after).not.toMatch(/\bedge\b/i);
     const focused = composeMarketComparisonAnswer("What is the edge on Coventry?", grounding)!;
@@ -141,15 +141,12 @@ describe("investor demo composer fixes", () => {
     const question = "Where do your odds come from and how fresh are they?";
     expect(planResponse(question, { groundingKind: "match" }).mode).toBe("odds-provenance");
     const after = composeOddsProvenanceAnswer(grounding);
-    expect(after.split("\n")).toHaveLength(2);
+    expect(after.split("\n")).toHaveLength(1);
     expect(after).not.toMatch(/^Lean:/m);
-    expect(after).toMatch(/Fundamental 1X2 from Elo ratings v1/);
-    expect(after).toMatch(/ratings 13 Sep/);
-    expect(after).toMatch(/Live no-vig 1X2 from Polymarket/);
-    expect(after).toMatch(/SGT/);
+    expect(after).toMatch(/reviewed team strength/i);
+    expect(after).toMatch(/Market line/i);
+    expect(after).not.toMatch(/\bElo\b|Polymarket|no-vig|SGT|^Model:/m);
     expect(after).not.toMatch(/Cache tier/i);
-    expect(after).toMatch(/Model: Elo ratings v1/);
-    expect(after).not.toMatch(/Kalshi\/Polymarket/);
   });
 
   it("3) BTTS and likeliest score use basics voice (headline, lean, provenance)", () => {
@@ -158,7 +155,8 @@ describe("investor demo composer fixes", () => {
     expect(bttsAfter).toContain("BTTS no  48.0% | fair 2.08");
     expect(bttsAfter).not.toMatch(/^Lean:/m);
     expect(bttsAfter).toMatch(/BTTS market line/i);
-    expect(bttsAfter).toMatch(/Model: Elo ratings v1/);
+    expect(bttsAfter).not.toMatch(/^Model:/m);
+    expect(bttsAfter).not.toMatch(/\bElo\b|no-vig/i);
     expect(bttsAfter).not.toContain("Gamble responsibly");
 
     const scoreAfter = composeMatchResponse("What is the most likely score?", grounding, planResponse("What is the most likely score?", { groundingKind: "match" }));
@@ -174,7 +172,8 @@ describe("investor demo composer fixes", () => {
       planResponse("What are the 1X2 odds?", { groundingKind: "match" }),
     );
     expect(answer).toMatch(/Caveat: Spurs 20th on 3 pts/);
-    expect(answer).toMatch(/Elo still favours them \(1799 v 1706\)/);
+    expect(answer).toMatch(/rated stronger than Coventry on our numbers/);
+    expect(answer).not.toMatch(/\bElo\b|\(1799 v 1706\)/);
   });
 
   it("4) pricing follow-ups with history stay on the composer, not tactics LLM route", () => {
@@ -255,7 +254,8 @@ describe("investor demo composer fixes", () => {
     expect(composed).not.toMatch(/Caveat: Spurs 20th on 3 pts/);
     expect(composed).not.toMatch(/^Lean:\s*$/m);
     expect(composed).not.toContain(STAKE_REFUSAL_SENTENCE);
-    expect(composed).toMatch(/Model: Elo ratings v1/);
+    expect(composed).not.toMatch(/^Model:/m);
+    expect(composed).not.toMatch(/\bElo\b|no-vig/i);
 
     const delivered = finalizeMatchDeliveredTextForTests(composed, grounding, question);
     expect(delivered).toMatch(/\$1,000 bankroll/i);
@@ -277,7 +277,8 @@ describe("investor demo composer fixes", () => {
     expect(whoAnswer).toMatch(/my call: Spurs win at 59\.9%\./);
     expect(whoAnswer).toContain("Spurs 59.9% (fair 1.67)");
     expect(whoAnswer).toMatch(/Biggest gap vs market: Draw, \+3\.9 pts\./);
-    expect(whoAnswer).toMatch(/Market \(Polymarket no-vig,/);
+    expect(whoAnswer).toMatch(/^Market: Spurs /m);
+    expect(whoAnswer).not.toMatch(/Polymarket|no-vig/i);
     expect(whoAnswer).not.toMatch(/^Lean:/m);
 
     const priceTonight = "Price tonight's match for me";
