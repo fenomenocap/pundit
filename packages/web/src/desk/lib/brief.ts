@@ -20,7 +20,7 @@ function lineFor(f: ForecastFixture) {
     `${fmtKickoff(f.kickoff)} · ${f.venue}`,
     `form ${formString(f.home)} / ${formString(f.away)}`,
     `xG ${f.xg[0].toFixed(2)}–${f.xg[1].toFixed(2)}`,
-    `model 1X2 ${fmtPct(f.model.home)} / ${fmtPct(f.model.draw)} / ${fmtPct(f.model.away)}`,
+    `our 1X2 ${fmtPct(f.model.home)} / ${fmtPct(f.model.draw)} / ${fmtPct(f.model.away)}`,
     `O2.5 ${fmtPct(f.model.over25)} · BTTS ${fmtPct(f.model.btts)}`,
     `lean ${lean} (${fmtPct(p)})`,
     `in form: ${menH || "—"} · ${menA || "—"}`,
@@ -63,9 +63,9 @@ export function fixtureCard(f: Fixture) {
     .join(", ");
   const forecast = hasCapturedForecast(f) ? [
     `xG ${f.xg[0].toFixed(2)}–${f.xg[1].toFixed(2)}.`,
-    `Model 1X2 ${fmtPct(f.model.home)} / ${fmtPct(f.model.draw)} / ${fmtPct(f.model.away)}.`,
+    `Our 1X2 ${fmtPct(f.model.home)} / ${fmtPct(f.model.draw)} / ${fmtPct(f.model.away)}.`,
     `Over 2.5 ${fmtPct(f.model.over25)}. BTTS ${fmtPct(f.model.btts)}.`,
-    `Model lean: ${selectionLabel(f, f.modelPick)}.`,
+    `Our lean: ${selectionLabel(f, f.modelPick)}.`,
   ] : ["No captured pre-kickoff forecast is available for this result."];
   return [
     `FOCUS: ${home.name} vs ${away.name}${score}`,

@@ -49,8 +49,8 @@ export function DeskBoard({ grounding }: { grounding?: AskGrounding }) {
       data-priced-at={grounding.pricing.pricedAt}
       className="mt-4 rounded-md border border-border bg-elevated/40 px-3 py-3"
     >
-      <div className="eyebrow text-quiet mb-2">Model board</div>
-      <p className="mb-2 text-2xs text-quiet">Model probabilities · fair decimal odds</p>
+      <div className="eyebrow text-quiet mb-2">Our board</div>
+      <p className="mb-2 text-2xs text-quiet">Our probabilities · fair decimal odds</p>
       <ProbBar home={oneXTwo.pHome} draw={oneXTwo.pDraw} away={oneXTwo.pAway} />
       <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
         <Stat k={oneXTwo.home} v={`${fmtPct(oneXTwo.pHome)} · ${formatFairOdds(oneXTwo.fairHome)}`} />

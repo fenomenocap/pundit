@@ -53,7 +53,7 @@ export function Desk() {
               ? "No priced fixtures"
             : source === "static"
               ? "Mock model"
-              : source === "pending" ? "Loading model" : "Model unavailable"}
+              : source === "pending" ? "Loading our prices" : "Our prices unavailable"}
         </span>
         {source === "static" && rec.pct !== null ? (
           <span className="font-display text-base tabular-nums leading-none">
