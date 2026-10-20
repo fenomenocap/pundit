@@ -3,7 +3,7 @@ import {
   deskPercentDisplay,
   displayOutcomeLabel,
 } from "../basics-answer-voice";
-import { resolveUserLineDecision, userLineGapPoints } from "../response-correctness";
+import { userLineGapPoints } from "../response-correctness";
 import type { PunditTakePlan } from "./types";
 import { renderTakeProseDeterministic } from "./take-prose";
 
@@ -16,13 +16,11 @@ export function renderPassPlayTakeProse(plan: PunditTakePlan, grounding: Groundi
   const modelP = grounding.pricing.model[line.outcome].p;
   const gapPoints = userLineGapPoints(modelP, line.decimalOdds);
   const decimal = line.decimalOdds.toFixed(2);
-  const decision = resolveUserLineDecision(line, gapPoints);
+  const decision = gapPoints <= 0 ? "pass" as const : "play" as const;
   const leanLabel = line.outcome === "draw" ? "the draw" : label;
   let callLine: string;
   if (decision === "pass") {
     callLine = `I pass on ${leanLabel} at ${decimal}.`;
-  } else if (decision === "abstain") {
-    callLine = `I will not call ${leanLabel} at ${decimal}.`;
   } else {
     const size = Math.abs(gapPoints) >= 15 ? "strong play" : Math.abs(gapPoints) >= 5 ? "play" : "small play";
     callLine = `${leanLabel} at ${decimal}, ${size} — I play.`;

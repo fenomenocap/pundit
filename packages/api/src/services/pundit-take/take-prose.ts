@@ -1,4 +1,7 @@
+import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
+import { appendWhatFlipsItClosing } from "./take-flip-prose";
+import { gridHeadlineOpener, isGenuineTossUp1x2, stripFalseTossUpLanguage } from "./take-headline";
 
 function callModelPct(plan: PunditTakePlan): number {
   if (plan.gridCall) return plan.gridCall.modelPctInt;
@@ -24,35 +27,38 @@ export function joinBodySentencesFromPlan(plan: PunditTakePlan, max: number): st
   const bodyPoints = [
     ...plan.supporting,
     ...plan.contradicting,
-    ...(plan.flipCondition ? [plan.flipCondition] : []),
   ];
   return joinBodySentences(bodyPoints, max);
 }
 
-function weaveBody(plan: PunditTakePlan): string {
+function weaveBody(plan: PunditTakePlan, grounding: Grounding | null): string {
   const support = plan.supporting.slice(0, 2).map((p) => p.text.trim().replace(/\.$/, ""));
-  const counter = plan.contradicting[0]?.text.trim().replace(/\.$/, "");
-  const flip = plan.flipCondition?.text.trim().replace(/\.$/, "");
+  let counter = plan.contradicting[0]?.text.trim().replace(/\.$/, "");
+  if (counter && grounding && !isGenuineTossUp1x2(grounding)) {
+    counter = stripFalseTossUpLanguage(counter, grounding);
+  }
 
   const chunks: string[] = [];
   if (support.length) chunks.push(support.join("; ") + ".");
   if (counter) {
     chunks.push(counter.endsWith(".") ? counter : `${counter}.`);
   }
-  if (flip) {
-    chunks.push(`I'd revisit if ${flip.charAt(0).toLowerCase()}${flip.slice(1)}${flip.endsWith(".") ? "" : "."}`);
-  }
-  return chunks.slice(0, 3).join(" ");
+  return chunks.slice(0, 2).join(" ");
 }
 
-export function renderTakeProseDeterministic(plan: PunditTakePlan, variant: "full" | "why" = "full"): string {
+export function renderTakeProseDeterministic(
+  plan: PunditTakePlan,
+  variant: "full" | "why" = "full",
+  grounding: Grounding | null = null,
+): string {
+  const gridOpener = gridHeadlineOpener(plan, variant);
   const pct = callModelPct(plan);
   const label = headlineLabel(plan);
-  const opener = variant === "why"
+  const opener = gridOpener ?? (variant === "why"
     ? `On ${plan.fixtureLabel}, I have ${label} at ${pct}%.`
-    : `${plan.fixtureLabel} — ${label} at ${pct}%.`;
+    : `${plan.fixtureLabel} — ${label} at ${pct}%.`);
 
-  const body = weaveBody(plan);
+  const body = weaveBody(plan, grounding);
   const valueSentence = plan.valueLeg?.bestMarketDecimal
     ? `The value is ${plan.valueLeg.label} at ${plan.valueLeg.bestMarketDecimal} against our fair ${plan.valueLeg.fairDecimal}.`
     : null;
@@ -60,5 +66,5 @@ export function renderTakeProseDeterministic(plan: PunditTakePlan, variant: "ful
   const blocks = [opener];
   if (body.trim()) blocks.push(body.trim());
   if (valueSentence) blocks.push(valueSentence);
-  return blocks.join("\n\n");
+  return appendWhatFlipsItClosing(plan, blocks.join("\n\n"), grounding);
 }

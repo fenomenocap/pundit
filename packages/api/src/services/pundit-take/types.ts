@@ -59,7 +59,11 @@ export interface TakePlanGridCall {
   sideKey: string;
   headlineLabel: string;
   modelPctInt: number;
+  /** Desk-rounded percent label for headlines (matches model row). */
+  modelPctDisplay: string;
   fairDecimal: string;
+  /** True when the top two grid sides are within 2 probability points. */
+  coinFlip?: boolean;
 }
 
 export interface PunditTakePlan {
@@ -97,6 +101,9 @@ export interface PunditTakeSourcesFooter {
   tableSource: string;
   tableAsOf: string | null;
   tableAsOfSgt: string | null;
+  formSource: string;
+  formAsOf: string | null;
+  formAsOfSgt: string | null;
   odds: PunditTakeSourceOdds[];
   evidenceUrls: Array<{ id: string; url: string; publisher: string }>;
   fplInjuryStatusAsOfSgt: string | null;

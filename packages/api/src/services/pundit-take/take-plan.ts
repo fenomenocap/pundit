@@ -2,9 +2,11 @@ import type { Grounding } from "../ask";
 import {
   compactTeamLabel,
   deskFairFromProb,
+  deskPercentDisplay,
   displayOutcomeLabel,
   selectValueLeg,
 } from "../basics-answer-voice";
+import { livePricingMarkets } from "./take-plan-live-markets";
 import type { MatchDossier } from "../match-dossier/types";
 import type { OneXTwoOutcome } from "../response-correctness";
 import type {
@@ -23,6 +25,7 @@ import {
   buildGoalReasonPoints,
 } from "./take-plan-helpers";
 import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
+import { isGenuineTossUp1x2, pickHigherGridSide } from "./take-headline";
 
 const OUTCOMES: OneXTwoOutcome[] = ["home", "draw", "away"];
 
@@ -49,7 +52,14 @@ function favoriteOutcome(grounding: Grounding): TakePlanCall {
   return { outcome: top.outcome, sideLabel: label, headlineLabel: headline };
 }
 
-function buildFlipCondition(dossier: MatchDossier | null): TakePlanPoint | null {
+function buildFlipCondition(
+  dossier: MatchDossier | null,
+  grounding: Grounding,
+  valueLeg: TakePlanValueLeg | null,
+  call: TakePlanCall,
+  rows: TakePlanRow[],
+  gridCall: TakePlanGridCall | null,
+): TakePlanPoint | null {
   const lineupItems = (dossier?.lineups.value.items ?? []).filter(takeEligibleDossierEvidence);
   if (lineupItems.length) {
     return {
@@ -60,18 +70,119 @@ function buildFlipCondition(dossier: MatchDossier | null): TakePlanPoint | null 
       evidenceId: lineupItems[0]?.id,
     };
   }
-  return null;
+
+  const injuryItems = (dossier?.injuries.value.items ?? []).filter(takeEligibleDossierEvidence);
+  if (injuryItems.length) {
+    return {
+      id: "flip-injuries",
+      role: "flip",
+      text: injuryItems[0].claim,
+      fieldPath: "injuries",
+      evidenceId: injuryItems[0]?.id,
+    };
+  }
+
+  for (const item of dossier?.evidence ?? []) {
+    if (!takeEligibleDossierEvidence(item)) continue;
+    if (item.category === "injuries" || item.category === "rotation" || item.category === "manager") {
+      if (!isGenuineTossUp1x2(grounding) && /\btoss-up\b/i.test(item.claim)) continue;
+      return {
+        id: `flip-ev-${item.id}`,
+        role: "flip",
+        text: item.claim,
+        evidenceId: item.id,
+        fieldPath: `evidence.${item.id}`,
+      };
+    }
+  }
+
+  const homeForm = dossier?.form.homeLast5.value;
+  const awayForm = dossier?.form.awayLast5.value;
+  if (homeForm && homeForm.played >= 3 && homeForm.goalsAgainst >= homeForm.goalsFor + 3) {
+    return {
+      id: "flip-home-form",
+      role: "flip",
+      text: `${compactTeamLabel(grounding.home)} tighten up defensively over their last ${homeForm.played} league games.`,
+      fieldPath: "form.homeLast5",
+    };
+  }
+  if (awayForm && awayForm.played >= 3 && awayForm.goalsFor >= awayForm.goalsAgainst + 3) {
+    return {
+      id: "flip-away-form",
+      role: "flip",
+      text: `${compactTeamLabel(grounding.away)} keep finding goals over their last ${awayForm.played} league games.`,
+      fieldPath: "form.awayLast5",
+    };
+  }
+
+  if (valueLeg?.bestMarketDecimal) {
+    return {
+      id: "flip-market",
+      role: "flip",
+      text: `${valueLeg.label} shortens toward ${valueLeg.fairDecimal} fair at the books.`,
+      fieldPath: "marketDivergence",
+    };
+  }
+
+  const divergence = grounding.marketDivergence[0];
+  const largest = divergence?.largest;
+  if (largest && Math.abs(largest.gapPoints) >= 3) {
+    return {
+      id: "flip-market-gap",
+      role: "flip",
+      text: `the market moves ${largest.label} toward ${Math.round(largest.marketPercent)}% implied.`,
+      fieldPath: "marketDivergence",
+    };
+  }
+
+  const favRow = rows.find((row) => row.outcome === call.outcome);
+  if (favRow?.bestDecimal) {
+    return {
+      id: "flip-fair-vs-best",
+      role: "flip",
+      text: `${call.headlineLabel} trades at ${favRow.bestDecimal} against our ${favRow.fairDecimal} fair.`,
+      fieldPath: "pricing.markets",
+    };
+  }
+
+  const homePts = dossier?.table.home.value.points;
+  const awayPts = dossier?.table.away.value.points;
+  if (homePts != null && awayPts != null) {
+    return {
+      id: "flip-table",
+      role: "flip",
+      text: `the table moves off ${homePts} and ${awayPts} points before kickoff.`,
+      fieldPath: "table.home,table.away",
+    };
+  }
+
+  if (gridCall) {
+    return {
+      id: "flip-grid-fair",
+      role: "flip",
+      text: `books shorten ${gridCall.headlineLabel} toward our ${gridCall.fairDecimal} fair.`,
+      fieldPath: "gridCall",
+    };
+  }
+
+  const modelFair = rows.find((row) => row.outcome === call.outcome)?.fairDecimal ?? null;
+  return {
+    id: "flip-market-drift",
+    role: "flip",
+    text: modelFair
+      ? `${call.headlineLabel} shortens toward our ${modelFair} fair at the books.`
+      : `late team news or a market move on ${call.headlineLabel} before kickoff.`,
+    fieldPath: "pricing.markets",
+  };
 }
 
-function buildMarketRows(grounding: Grounding): {
+function buildMarketRows(grounding: Grounding, nowMs = Date.now()): {
   rows: TakePlanRow[];
   columns: TakePlanMarketColumn[];
   hasCompleteMarket: boolean;
 } {
-  const markets = grounding.pricing.markets.filter(
-    (row) => row.legs.draw.decimalOdds != null || row.legs.draw.impliedP != null,
-  );
-  const hasCompleteMarket = markets.length > 0 && grounding.marketDivergence.length > 0;
+  const markets = livePricingMarkets(grounding, nowMs);
+  const hasCompleteMarket = markets.length > 0;
   const columns: TakePlanMarketColumn[] = markets.map((row) => ({
     sourceKey: row.source,
     shortLabel: shortSource(row.source),
@@ -134,30 +245,43 @@ function emptyGridCall(): TakePlanGridCall | null {
   return null;
 }
 
+function makeGridCall(lead: { sideKey: string; label: string; p: number; coinFlip: boolean }): TakePlanGridCall {
+  return {
+    sideKey: lead.sideKey,
+    headlineLabel: lead.label,
+    modelPctInt: pctInt(lead.p),
+    modelPctDisplay: deskPercentDisplay(lead.p),
+    fairDecimal: deskFairFromProb(lead.p),
+    coinFlip: lead.coinFlip,
+  };
+}
+
 export function buildPunditTakePlan(
   grounding: Grounding,
   dossier: MatchDossier | null,
-  options?: { marketKind?: "1x2" | "btts" | "totals"; underFocus?: boolean },
+  options?: { marketKind?: "1x2" | "btts" | "totals"; underFocus?: boolean; now?: Date },
 ): PunditTakePlan {
   const marketKind = options?.marketKind ?? "1x2";
+  const nowMs = options?.now?.getTime() ?? Date.now();
   const homeShort = compactTeamLabel(grounding.home);
   const awayShort = compactTeamLabel(grounding.away);
   const fixtureLabel = `${homeShort} v ${awayShort}`;
 
   if (marketKind === "btts") {
     const yesP = grounding.pBttsYes;
+    const noP = grounding.pBttsNo;
+    const lead = pickHigherGridSide([
+      { sideKey: "yes", label: "BTTS yes", p: yesP },
+      { sideKey: "no", label: "BTTS no", p: noP },
+    ]);
     const gridRows = buildGridRows([
       { sideKey: "yes", label: "BTTS yes", p: yesP },
-      { sideKey: "no", label: "BTTS no", p: grounding.pBttsNo },
+      { sideKey: "no", label: "BTTS no", p: noP },
     ]);
-    const gridCall: TakePlanGridCall = {
-      sideKey: "yes",
-      headlineLabel: "BTTS yes",
-      modelPctInt: pctInt(yesP),
-      fairDecimal: deskFairFromProb(yesP),
-    };
+    const gridCall = makeGridCall(lead);
     const goalPoints = buildGoalReasonPoints(grounding, dossier, homeShort, awayShort);
     const call = favoriteOutcome(grounding);
+    const marketBundle = buildMarketRows(grounding, nowMs);
     return {
       schemaVersion: 1,
       marketKind: "btts",
@@ -167,31 +291,29 @@ export function buildPunditTakePlan(
       gridRows,
       supporting: goalPoints,
       contradicting: goalPoints.length ? [] : [],
-      flipCondition: buildFlipCondition(dossier),
+      flipCondition: buildFlipCondition(dossier, grounding, null, call, marketBundle.rows, gridCall),
       valueLeg: null,
-      hasCompleteMarket: false,
-      rows: buildMarketRows(grounding).rows,
-      marketColumns: [],
+      hasCompleteMarket: marketBundle.hasCompleteMarket,
+      rows: marketBundle.rows,
+      marketColumns: marketBundle.columns,
     };
   }
 
   if (marketKind === "totals") {
-    const underFocus = options?.underFocus ?? false;
-    const leadP = underFocus ? grounding.pUnder2_5 : grounding.pOver2_5;
-    const leadLabel = underFocus ? "Under 2.5" : "Over 2.5";
-    const leadKey = underFocus ? "under" : "over";
-    const gridRows = buildGridRows([
-      { sideKey: leadKey, label: leadLabel, p: leadP },
-      { sideKey: underFocus ? "over" : "under", label: underFocus ? "Over 2.5" : "Under 2.5", p: underFocus ? grounding.pOver2_5 : grounding.pUnder2_5 },
+    const overP = grounding.pOver2_5;
+    const underP = grounding.pUnder2_5;
+    const lead = pickHigherGridSide([
+      { sideKey: "over", label: "Over 2.5", p: overP },
+      { sideKey: "under", label: "Under 2.5", p: underP },
     ]);
-    const gridCall: TakePlanGridCall = {
-      sideKey: leadKey,
-      headlineLabel: leadLabel,
-      modelPctInt: pctInt(leadP),
-      fairDecimal: deskFairFromProb(leadP),
-    };
+    const gridRows = buildGridRows([
+      { sideKey: "over", label: "Over 2.5", p: overP },
+      { sideKey: "under", label: "Under 2.5", p: underP },
+    ]);
+    const gridCall = makeGridCall(lead);
     const goalPoints = buildGoalReasonPoints(grounding, dossier, homeShort, awayShort);
     const call = favoriteOutcome(grounding);
+    const marketBundle = buildMarketRows(grounding, nowMs);
     return {
       schemaVersion: 1,
       marketKind: "totals",
@@ -201,17 +323,17 @@ export function buildPunditTakePlan(
       gridRows,
       supporting: goalPoints,
       contradicting: [],
-      flipCondition: buildFlipCondition(dossier),
+      flipCondition: buildFlipCondition(dossier, grounding, null, call, marketBundle.rows, gridCall),
       valueLeg: null,
-      hasCompleteMarket: false,
-      rows: buildMarketRows(grounding).rows,
-      marketColumns: [],
+      hasCompleteMarket: marketBundle.hasCompleteMarket,
+      rows: marketBundle.rows,
+      marketColumns: marketBundle.columns,
     };
   }
 
   const call = favoriteOutcome(grounding);
   const favSide = call.outcome === "draw" ? null : call.outcome;
-  const { rows, columns, hasCompleteMarket } = buildMarketRows(grounding);
+  const { rows, columns, hasCompleteMarket } = buildMarketRows(grounding, nowMs);
   const valueLeg = buildValueLeg(grounding, rows);
 
   return {
@@ -223,7 +345,7 @@ export function buildPunditTakePlan(
     gridRows: [],
     supporting: build1x2SupportingPoints(grounding, dossier, favSide, homeShort, awayShort),
     contradicting: buildContradictingPointsShared(grounding, dossier, favSide, call.headlineLabel),
-    flipCondition: buildFlipCondition(dossier),
+    flipCondition: buildFlipCondition(dossier, grounding, valueLeg, call, rows, null),
     valueLeg,
     hasCompleteMarket,
     rows,

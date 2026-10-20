@@ -72,15 +72,16 @@ describe("take goal copy matches calibrated row", () => {
 
     const goalPoints = buildGoalReasonPoints(grounding, null, "Villa", "Brentford");
     expect(goalPoints.length).toBeGreaterThan(0);
-    expect(goalPoints.some((p) => p.text.includes("1.70") && p.text.includes("1.15"))).toBe(true);
+    expect(goalPoints.some((p) => /expects (about|close to|around)/i.test(p.text))).toBe(true);
+    expect(goalPoints.some((p) => p.text.includes("score grid"))).toBe(false);
 
     const plan = buildPunditTakePlan(grounding, null, { marketKind: "btts" });
     expect(plan.gridCall?.modelPctInt).toBe(Math.round(grounding.pBttsYes * 100));
 
     const prose = renderTakeProseDeterministic(plan);
-    expect(prose).toMatch(/BTTS yes at 57%/);
-    expect(prose).toMatch(/1\.70.*1\.15|1\.15.*1\.70/);
-    expect(prose).not.toMatch(/1\.85|0\.85/);
+    expect(prose).toMatch(/BTTS yes at 57\.5%/);
+    expect(prose).toMatch(/expects (about|close to|around)/i);
+    expect(prose).not.toMatch(/1\.85|0\.85|score grid/i);
   });
 
   it("omits xG sentences when the row has no goal calibration", () => {
