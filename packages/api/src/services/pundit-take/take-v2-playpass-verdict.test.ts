@@ -174,6 +174,11 @@ function matchGrounding(
     awayTable: { position: 8, points: 10, goalDifference: 1, playedGames: 8 },
     homeScorers: [],
     awayScorers: [],
+    homeElo: 1800,
+    awayElo: 1750,
+    lambdaHome: 1.4,
+    lambdaAway: 1.3,
+    totalXg: 2.7,
   };
 }
 
