@@ -177,15 +177,11 @@ describe("POST /api/ask desk + history with x-pundit-take v2", () => {
     }
   });
 
-  it("no header desk who-wins stays on the legacy surface", async () => {
+  it("no header desk who-wins uses the v2 take surface", async () => {
     const result = await deskAsk("Who wins Chelsea v Tottenham?", [], null);
-    const legacy = await deskAsk("Who wins Chelsea v Tottenham?", [], "legacy");
     const answer = result.answer ?? "";
-    expect(answer).toBe(legacy.answer);
-    expect(answer).not.toMatch(/\|\s*Outcome\s*\|/);
-    expect(answer).toBe(
-      "My 1X2 is Chelsea 42.0% (fair 2.38), draw 28.0% (fair 3.57) and Tottenham 30.0% (fair 3.33). I need a captured decimal line before I can print EV% or pass or play.",
-    );
+    expect(answer).toMatch(/\|\s*Outcome\s*\|/);
+    expect(answer).not.toMatch(LEGACY_DESK_MARKERS);
   });
 
   it("no header desk conversation stays byte-identical across replays", async () => {
