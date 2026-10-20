@@ -211,22 +211,44 @@ export function formatModelOneXTwoCompactLine(grounding: Grounding): string {
   }).join(" · ");
 }
 
+const WHY_LINE_SMALL_RATING_GAP_ELO = 50;
+
+function ratingsGapElo(grounding: Grounding): number {
+  if (!Number.isFinite(grounding.homeElo) || !Number.isFinite(grounding.awayElo)) return 0;
+  return Math.abs(grounding.homeElo - grounding.awayElo);
+}
+
+/** e.g. "slightly " for a tight ratings gap, empty when the gap is large. */
+function ratingsStrengthAdverb(gapElo: number): string {
+  return gapElo < WHY_LINE_SMALL_RATING_GAP_ELO ? "slightly " : "";
+}
+
 export function formatIndependentTakeWhyLine(grounding: Grounding): string {
   const favourite = modelFavouriteOutcome(grounding);
   const homeStronger = grounding.homeElo >= grounding.awayElo;
-  const strongerLabel = homeStronger
-    ? compactTeamLabel(grounding.home)
-    : compactTeamLabel(grounding.away);
-  let line = `${strongerLabel} are the stronger side on our ratings`;
+  const homeLabel = compactTeamLabel(grounding.home);
+  const awayLabel = compactTeamLabel(grounding.away);
+  const strongerLabel = homeStronger ? homeLabel : awayLabel;
+  const gapElo = ratingsGapElo(grounding);
+
+  let line: string;
   if (favourite.outcome === "home" && grounding.homeFieldAdvantage) {
-    line += ", and home advantage helps";
+    if (homeStronger) {
+      line = `${homeLabel} are the stronger side on our ratings, and home advantage helps`;
+    } else {
+      const adv = ratingsStrengthAdverb(gapElo);
+      line = `${awayLabel} rate ${adv}stronger, but home advantage tips it to ${homeLabel}`;
+    }
   } else if (
     favourite.outcome === "away"
     && grounding.homeFieldAdvantage
-    && !homeStronger
+    && homeStronger
   ) {
-    line += ", enough to outweigh home advantage";
+    line = `${awayLabel} are the stronger side on our ratings, enough to outweigh home advantage`;
+  } else {
+    line = `${strongerLabel} are the stronger side on our ratings`;
   }
+
   const formRisk = favouriteFormRiskClause(grounding);
   if (formRisk) line += `; the risk is form, ${formRisk}`;
   return `${line}.`;
