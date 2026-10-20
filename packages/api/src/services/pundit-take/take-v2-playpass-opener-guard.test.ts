@@ -84,4 +84,23 @@ describe("Deterministic pass/play opener numeric guard", () => {
       .toContain(exact);
     expect(applyV2TakeProseGuards(polluted, plan)).toBe("");
   });
+
+  it("rejects openers that embed extra digits in the side or play clause", () => {
+    const plan = buildPunditTakePlan(arsenalGrounding(), null);
+    const exactNoCall = "Arsenal v Everton — No call on Arsenal at 1.33.";
+    const nestedNoCall =
+      "Arsenal v Everton — No call on Arsenal (Saka 3.75 to score) at 1.33.";
+    const exactPlay =
+      "Arsenal v Everton — Arsenal at 1.33, small play — I play.";
+    const pollutedPlay =
+      "Arsenal v Everton — Arsenal at 1.33 with Everton winning 37% of duels, small play — I play.";
+    expect(isExactDeterministicPassPlayOpener(exactNoCall)).toBe(true);
+    expect(isExactDeterministicPassPlayOpener(nestedNoCall)).toBe(false);
+    expect(isExactDeterministicPassPlayOpener(exactPlay)).toBe(true);
+    expect(isExactDeterministicPassPlayOpener(pollutedPlay)).toBe(false);
+    expect(applyV2TakeProseGuards(nestedNoCall, plan)).toBe("");
+    expect(applyV2TakeProseGuards(pollutedPlay, plan)).toBe("");
+    expect(applyV2TakeProseGuards(`${exactNoCall} That price implies 75.2%.`, plan)).toContain(exactNoCall);
+    expect(applyV2TakeProseGuards(`${exactPlay} That price implies 75.2%.`, plan)).toContain(exactPlay);
+  });
 });
