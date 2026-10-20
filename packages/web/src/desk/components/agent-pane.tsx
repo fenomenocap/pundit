@@ -11,6 +11,8 @@ import { useDesk, type ChatMsg } from "@/desk/lib/store";
 import type { OneXTwoOutcome } from "@/lib/api";
 import { capabilityLabel, userLinePayloadForAsk } from "@/lib/fixture-presentation";
 import { SafeMarkdown } from "@/lib/safe-markdown";
+import { isPunditTakeV2OptInActive } from "@/lib/pundit-take-v2-opt-in";
+import { DeskTakeV2AnswerMarkdown } from "@/desk/lib/desk-take-v2-answer-markdown";
 import { cn } from "@/lib/utils";
 import { humaniseDeskCitationDates } from "@/desk/lib/prose";
 import { DeskBoard } from "@/desk/components/desk-board";
@@ -441,6 +443,10 @@ export function AgentPane() {
 }
 
 function Bubble({ msg }: { msg: ChatMsg }) {
+  const [takeV2Markdown, setTakeV2Markdown] = useState(false);
+  useEffect(() => {
+    setTakeV2Markdown(isPunditTakeV2OptInActive());
+  }, []);
   const f = msg.fixtureId ? getFixture(msg.fixtureId) : undefined;
   const groundingLabel = msg.sourceLabel ?? (msg.grounding === undefined ? null
     : msg.grounding?.kind === "season" ? `Season outlook · ${msg.grounding.competition}`
@@ -476,12 +482,16 @@ function Bubble({ msg }: { msg: ChatMsg }) {
         ) : null}
       </div>
       <div className="text-sm leading-7 text-fg/90">
-        <SafeMarkdown
-          content={humaniseDeskCitationDates(msg.text)}
-          paragraphClassName="mb-2 last:mb-0"
-          strongClassName="font-semibold"
-          linkClassName="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
-        />
+        {takeV2Markdown ? (
+          <DeskTakeV2AnswerMarkdown content={humaniseDeskCitationDates(msg.text)} />
+        ) : (
+          <SafeMarkdown
+            content={humaniseDeskCitationDates(msg.text)}
+            paragraphClassName="mb-2 last:mb-0"
+            strongClassName="font-semibold"
+            linkClassName="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+          />
+        )}
       </div>
       {msg.grounding?.kind === "match" && msg.presentation?.fixtureCard === "compact" ? (
         <details data-testid="desk-compact-match-context" className="mt-3 rounded-md border border-border px-3 py-2">
