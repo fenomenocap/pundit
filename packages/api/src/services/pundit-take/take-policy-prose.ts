@@ -4,7 +4,8 @@ import {
   bankrollStakePolicyAppendix,
   mentionsBankroll,
 } from "../response-plan";
-import type { PunditTakePlan } from "./types";
+import type { PunditTakePlan, PunditTakeSourcesFooter } from "./types";
+import { provenanceBodyFromFooter } from "./take-provenance-voice";
 
 const TAKE_V2_PARLAY_DECLINE =
   "Parlays are outside what I answer here right now; ask for a single-fixture 1X2, totals, or BTTS read instead.";
@@ -31,7 +32,7 @@ export function renderStakeRefusalTakeProse(
 
 export function renderWinnerGuaranteeTakeProse(plan: PunditTakePlan): string {
   const opener = `${plan.fixtureLabel} — I can't guarantee a winner.`;
-  const sides = plan.rows.map((row) => `${row.label} ${row.modelPctInt}% (fair ${row.fairDecimal})`).join("; ");
+  const sides = `${plan.rows.map((row) => `${row.label} ${row.modelPctInt}% (fair ${row.fairDecimal})`).join("; ")}.`;
   return [
     opener,
     sides,
@@ -40,10 +41,13 @@ export function renderWinnerGuaranteeTakeProse(plan: PunditTakePlan): string {
   ].join("\n\n");
 }
 
-export function renderOddsProvenanceTakeProse(grounding: Grounding): string {
+export function renderOddsProvenanceTakeProse(
+  plan: PunditTakePlan,
+  footer: PunditTakeSourcesFooter,
+): string {
   return [
-    `${grounding.home} v ${grounding.away} — where the numbers come from.`,
-    "Our 1X2 probabilities are in the table when one is shown; model, table, form, and market feed timestamps are listed in the footer.",
+    `${plan.fixtureLabel} — where the numbers come from.`,
+    provenanceBodyFromFooter(footer),
   ].join("\n\n");
 }
 
