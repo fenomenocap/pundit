@@ -80,40 +80,38 @@ function tableCall(grounding: Grounding): string {
   return cells.at(-1) ?? "";
 }
 
-function proseVerdict(prose: string): "Play" | "Pass" {
+function proseBand(prose: string): "Play" | "Pass" | "No call" {
   if (/\bI play\b/i.test(prose)) return "Play";
+  if (/will not call/i.test(prose)) return "No call";
   return "Pass";
 }
 
 describe("Take v2 play/pass verdict alignment", () => {
-  it("passes near-fair Chelsea at 1.70 when model fair is ~1.68 (+0.6 pts)", () => {
+  it("Pass band: near-fair Chelsea at 1.70 (+0.6 pts, decimal below passPrice)", () => {
     const grounding = chelseaSpursGrounding(0.594, 1.7);
-    const verdict = resolvePassPlayVerdict(grounding)!;
-    expect(verdict.tableCall).toBe("Pass");
-    expect(tableCall(grounding)).toBe("Pass");
-    const prose = renderPassPlayTakeProse(planStub, grounding)!;
-    expect(proseVerdict(prose)).toBe("Pass");
-    expect(prose).toMatch(/I pass on Chelsea at 1\.70/i);
-    expect(prose).toMatch(/below my play threshold/i);
-    expect(prose).not.toMatch(/\bI play\b/i);
-  });
-
-  it("passes below-fair Chelsea at 1.55", () => {
-    const grounding = chelseaSpursGrounding(0.594, 1.55);
     expect(resolvePassPlayVerdict(grounding)!.tableCall).toBe("Pass");
     expect(tableCall(grounding)).toBe("Pass");
     const prose = renderPassPlayTakeProse(planStub, grounding)!;
-    expect(proseVerdict(prose)).toBe("Pass");
-    expect(prose).toMatch(/I pass on Chelsea at 1\.55/i);
+    expect(proseBand(prose)).toBe("Pass");
+    expect(prose).toMatch(/I pass on Chelsea at 1\.70/i);
+    expect(prose).not.toMatch(/\bI play\b|will not call/i);
+  });
+
+  it("No call band: short-priced favourite at 1.33 (+1.1 pts, between pass and play prices)", () => {
+    const grounding = chelseaSpursGrounding(0.7629, 1.33);
+    expect(resolvePassPlayVerdict(grounding)!.decision).toBe("abstain");
+    expect(tableCall(grounding)).toBe("No call");
+    const prose = renderPassPlayTakeProse(planStub, grounding)!;
+    expect(proseBand(prose)).toBe("No call");
+    expect(prose).toMatch(/I will not call Chelsea at 1\.33/i);
     expect(prose).not.toMatch(/\bI play\b/i);
   });
 
-  it("plays when the offered price clears the play threshold", () => {
+  it("Play band: Chelsea at 1.75 clears playPrice", () => {
     const grounding = chelseaSpursGrounding(0.594, 1.75);
-    expect(resolvePassPlayVerdict(grounding)!.tableCall).toBe("Play");
     expect(tableCall(grounding)).toBe("Play");
     const prose = renderPassPlayTakeProse(planStub, grounding)!;
-    expect(proseVerdict(prose)).toBe("Play");
+    expect(proseBand(prose)).toBe("Play");
     expect(prose).toMatch(/Chelsea at 1\.75.*I play/i);
   });
 });

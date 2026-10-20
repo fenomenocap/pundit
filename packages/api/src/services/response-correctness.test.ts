@@ -20,6 +20,8 @@ import {
   validateCompleteOneXTwoMarket,
   attachUserLine,
   buildMatchPricing,
+  resolveUserLineDecision,
+  userLinePassPlayTableCall,
 } from "./response-correctness";
 
 const legs = [
@@ -184,6 +186,42 @@ describe("pricing math", () => {
     expect(pricing.userLine?.passPrice).toBeCloseTo(2 * 1.01);
     expect(pricing.userLine?.playPrice).toBeCloseTo(2 * 1.03);
     expect(pricing.stakeFrac).toBeNull();
+  });
+});
+
+describe("user-line pass/play/no-call bands", () => {
+  const passPrice = 1.70;
+  const playPrice = 1.73;
+
+  it("passes on negative model-minus-implied edge", () => {
+    expect(resolveUserLineDecision(
+      { decimalOdds: 2, passPrice, playPrice },
+      -0.1,
+    )).toBe("pass");
+    expect(userLinePassPlayTableCall("pass")).toBe("Pass");
+  });
+
+  it("passes when the offered decimal is strictly below passPrice despite positive edge", () => {
+    expect(resolveUserLineDecision(
+      { decimalOdds: 1.69, passPrice, playPrice },
+      0.6,
+    )).toBe("pass");
+  });
+
+  it("abstains (No call) between passPrice and playPrice", () => {
+    expect(resolveUserLineDecision(
+      { decimalOdds: 1.71, passPrice, playPrice },
+      0.5,
+    )).toBe("abstain");
+    expect(userLinePassPlayTableCall("abstain")).toBe("No call");
+  });
+
+  it("plays when the offered decimal reaches playPrice", () => {
+    expect(resolveUserLineDecision(
+      { decimalOdds: 1.73, passPrice, playPrice },
+      0.5,
+    )).toBe("play");
+    expect(userLinePassPlayTableCall("play")).toBe("Play");
   });
 });
 
