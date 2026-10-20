@@ -1,4 +1,5 @@
 import { parseGapToken } from "./take-number-check";
+import { repairIncompleteEvenClause } from "./take-prose-polish";
 import type { PunditTakePlan, TakePlanNumericFacts } from "./types";
 
 type TableSnapshot = TakePlanNumericFacts["table"] & {
@@ -352,7 +353,7 @@ export function sentenceFailsTableStandingSnapshotCheck(sentence: string, plan: 
 const VAGUE_POSITIVE_FORM =
   /\b(?:competitive in most matches|in (?:good|decent|strong) form|on a good run|playing well lately|finding form)\b/i;
 const VAGUE_NEGATIVE_FORM =
-  /\b(?:struggling for form|in poor form|on a bad run|out of form)\b/i;
+  /\b(?:struggling for(?: form| results)|in poor form|on a bad run|out of form|short of results|results have dried up)\b/i;
 
 export function sentenceStatesVagueFormGenerality(sentence: string): boolean {
   if (/\bgap in form\b/i.test(sentence)) return false;
@@ -413,6 +414,29 @@ export function sentenceFailsLast5FormRecordCheck(sentence: string, plan: Pundit
   }
 
   return false;
+}
+
+const UPSET_FRAMING =
+  /\b(?:(?:an?\s+)?upset\s+is\s+brewing|an upset brewing|spring an upset|an upset is (?:brewing|on the cards|possible)|underdog story)\b/i;
+
+export function sentenceStatesUpsetFraming(sentence: string): boolean {
+  if (UPSET_FRAMING.test(sentence)) return true;
+  return /\b(?:league table|the table|standings)\b/i.test(sentence) && /\bupset\b/i.test(sentence);
+}
+
+/** Drop table-upset hype that does not honestly match the headline pick vs standings. */
+export function sentenceFailsUpsetPickAlignmentCheck(sentence: string, plan: PunditTakePlan): boolean {
+  if (!sentenceStatesUpsetFraming(sentence)) return false;
+  const table = plan.numericFacts?.table;
+  if (!tableSnapshotReady(table)) return true;
+  const outcome = plan.call?.outcome;
+  if (outcome !== "home" && outcome !== "away") return false;
+  const pickPos = outcome === "home" ? table.homePosition : table.awayPosition;
+  const oppPos = outcome === "home" ? table.awayPosition : table.homePosition;
+  if (pickPos == null || oppPos == null) return true;
+  if (pickPos === oppPos) return false;
+  // Pick is either the table favourite or our underdog — generic "upset brewing" copy is misleading.
+  return true;
 }
 
 /** Drop vague form praise/criticism when last-five points contradict the threshold. */
@@ -505,19 +529,46 @@ function sanitizeLlmTakeSentence(
   if (sentenceFailsFormComparisonCheck(next, plan)) {
     return null;
   }
+  if (sentenceFailsUpsetPickAlignmentCheck(next, plan)) {
+    return null;
+  }
   if (!venueSplit && sentenceMakesVenuePerformanceClaim(next)) {
     return null;
   }
   return rewriteVenueInventedFormSentence(next, venueSplit);
 }
 
+/** After a guard drop, the next body sentence may open with a dangling contrast word. */
+export function stripLeadingContrastConnective(sentence: string): string {
+  const trimmed = sentence.trim();
+  let stripped = trimmed.replace(/^(However|But),?\s+/i, "");
+  stripped = stripped.replace(/^(Yet|Still),\s+/i, "");
+  if (!stripped || stripped === trimmed) return trimmed;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
+function keptHasOnlyHeadlineOrEmpty(kept: string[], plan: PunditTakePlan): boolean {
+  if (!kept.length) return true;
+  return kept.every((s) => isProtectedTakeSentence(s, plan));
+}
+
 export function applyVenueFormHygiene(prose: string, plan: PunditTakePlan): string {
   const venueSplit = formDataHasVenueSplit(plan);
   const sentences = prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
   const kept: string[] = [];
+  let previousDropped = false;
   for (const sentence of sentences) {
     const sanitized = sanitizeLlmTakeSentence(sentence, plan, venueSplit);
-    if (sanitized) kept.push(sanitized);
+    if (!sanitized) {
+      previousDropped = true;
+      continue;
+    }
+    let next = sanitized;
+    if (previousDropped && keptHasOnlyHeadlineOrEmpty(kept, plan)) {
+      next = stripLeadingContrastConnective(next);
+    }
+    previousDropped = false;
+    if (next) kept.push(next);
   }
   return kept.join(" ").trim();
 }
@@ -617,6 +668,6 @@ function dedupePolicyProseSentencesGlobally(prose: string): string {
 }
 
 export function applyV2ProseHygiene(prose: string, plan: PunditTakePlan): string {
-  const venueFixed = applyVenueFormHygiene(prose, plan);
-  return dedupeVenueQualifiers(venueFixed);
+  const venueFixed = applyVenueFormHygiene(repairIncompleteEvenClause(prose), plan);
+  return dedupeVenueQualifiers(repairIncompleteEvenClause(venueFixed));
 }
