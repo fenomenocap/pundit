@@ -1,3 +1,4 @@
+import { decodeHtmlEntitiesForEvidence } from "../article-body-extract";
 import type { PagePublicationDateSource } from "../evidence-page-retrieval";
 import type { ModelFixture } from "../model-data";
 import type { DossierEvidenceCategory } from "./types";
@@ -24,7 +25,7 @@ const CLUB_ALIASES: Record<string, string[]> = {
   Brighton: ["brighton", "brighton and hove albion", "brighton & hove albion"],
   Chelsea: ["chelsea"],
   Coventry: ["coventry", "coventry city"],
-  "Crystal Palace": ["crystal palace", "palace"],
+  "Crystal Palace": ["crystal palace", "palace", "cpfc"],
   Everton: ["everton"],
   Fulham: ["fulham"],
   Hull: ["hull", "hull city"],
@@ -44,6 +45,22 @@ const NAV_BOILERPLATE =
 
 const HUB_PAGE =
   /fantasy premier league|\bfpl\b.*hub|\/fantasy\//i;
+
+const PROMO_CHROME =
+  /hospitality on sale|matchday hospitality|shop hospitality|premier league matchday hospitality|search query for search|^search query/i;
+
+const YAHOO_NAV =
+  /search query for search|yahoo\s+home\s+news/i;
+
+const WOMENS_OR_YOUTH =
+  /\b(wsl|women'?s|ladies|uwcl|fawsl|fa wsl)\b|\b(u-?21|under-?21|under 21|u23|under-?23|academy|youth team|development squad)\b/i;
+
+/** Opponents named in injury/lineup pieces that are not this EPL fixture. */
+const OTHER_COMPETITION_OPPONENT =
+  /\b(?:vs\.?|v\.|against|versus)\s+(bayern|villarreal|viking|real madrid|barcelona|juventus|milan|inter milan|psg|paris saint-germain|ajax|benfica|sporting cp)\b/i;
+
+const FOOTBALL_FACT =
+  /\b(injur|doubtful|suspended|ban|available|unavailable|line-?up|starting xi|rotation|manager|head coach|press conference|ruled out|fitness|hamstring|knock|card|sent off|goal|assist|clean sheet|form|relegation|title race|tactic|press|midfield|defence|defense)\b/i;
 
 export type DossierPublishedAtSource = PagePublicationDateSource | "search-result";
 
@@ -256,6 +273,81 @@ export function claimLooksLikeBoilerplate(claim: string, snippet: string): boole
   return false;
 }
 
+export function decodeEvidenceClaimText(text: string): string {
+  return decodeHtmlEntitiesForEvidence(text).replace(/\s+/g, " ").trim();
+}
+
+function sentenceMentionsFixtureClub(fixture: ModelFixture, sentence: string): boolean {
+  if (isDossierSyntheticTestFixture(fixture)) {
+    const lower = sentence.toLocaleLowerCase();
+    return lower.includes(fixture.home.toLocaleLowerCase()) || lower.includes(fixture.away.toLocaleLowerCase());
+  }
+  const { home, away } = fixtureCanonicalTeams(fixture);
+  const mentioned = clubsFoundInText(sentence);
+  return mentioned.has(home) || mentioned.has(away);
+}
+
+export function sentenceLooksLikePromoOrNav(sentence: string): boolean {
+  const text = sentence.trim();
+  if (text.length < 40) return true;
+  if (NAV_BOILERPLATE.test(text)) return true;
+  if (PROMO_CHROME.test(text)) return true;
+  if (YAHOO_NAV.test(text)) return true;
+  if (/^[\w\s'&]+ — [\w\s'&]+$/i.test(text) && text.split("—").every((part) => part.trim().split(/\s+/).length <= 6)) {
+    return true;
+  }
+  return false;
+}
+
+export function sentenceHasFootballFact(sentence: string): boolean {
+  return FOOTBALL_FACT.test(sentence);
+}
+
+export function gateTeamScope(title: string, bodyText: string): string | null {
+  const text = `${title} ${bodyText}`;
+  if (WOMENS_OR_YOUTH.test(text)) return "team_scope_womens_or_youth";
+  return null;
+}
+
+function normalizeHeadlineTokens(text: string): string[] {
+  return text
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !/^(the|and|for|with|from|that|this|have|will|are|was|were|has|had)$/.test(w));
+}
+
+export function gateHeadlineMismatch(searchTitle: string, articleHeadline: string): string | null {
+  if (!articleHeadline.trim()) return null;
+  const personName = /\b([A-Z][a-z]+ [A-Z][a-z]+)\b/.exec(searchTitle)?.[1];
+  if (personName && !articleHeadline.toLocaleLowerCase().includes(personName.toLocaleLowerCase())) {
+    return "headline_mismatch";
+  }
+  const a = normalizeHeadlineTokens(searchTitle);
+  const b = normalizeHeadlineTokens(articleHeadline);
+  if (a.length < 2 || b.length < 2) return null;
+  const setB = new Set(b);
+  const overlap = a.filter((t) => setB.has(t)).length;
+  const ratio = overlap / Math.min(a.length, b.length);
+  if (ratio < 0.34) return "headline_mismatch";
+  return null;
+}
+
+/** Injuries / lineups must target this fixture, not another opponent or prior meeting. */
+export function gateUpcomingMatchContext(
+  fixture: ModelFixture,
+  claim: string,
+  category: DossierEvidenceCategory,
+): string | null {
+  if (!isFixtureSensitiveCategory(category)) return null;
+  if (isDossierSyntheticTestFixture(fixture)) return null;
+  const text = claim.toLocaleLowerCase();
+  if (OTHER_COMPETITION_OPPONENT.test(text)) return "match_context_other_opponent";
+  const fixtureReason = gateFixtureTeamMatch(fixture, "", claim, category);
+  if (fixtureReason) return fixtureReason;
+  return null;
+}
+
 export function findBodySentenceForSnippet(pageText: string, snippet: string): string | null {
   const body = stripNavBoilerplate(pageText);
   const snippetWords = snippet
@@ -274,6 +366,42 @@ export function findBodySentenceForSnippet(pageText: string, snippet: string): s
     }
   }
   return null;
+}
+
+/** Pick one verified body sentence: names a fixture club and states a football fact. */
+export function selectVerifiedBodyClaim(
+  fixture: ModelFixture,
+  category: DossierEvidenceCategory,
+  articleBody: string,
+  searchSnippet: string,
+): string | null {
+  const body = stripNavBoilerplate(articleBody);
+  const snippetWords = searchSnippet
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 4)
+    .slice(0, 12);
+  const sentences = body
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => decodeEvidenceClaimText(s))
+    .filter((s) => s.length >= 40 && s.length <= 480);
+
+  let best: { sentence: string; score: number } | null = null;
+  for (const sentence of sentences) {
+    if (sentenceLooksLikePromoOrNav(sentence)) continue;
+    if (!sentenceMentionsFixtureClub(fixture, sentence)) continue;
+    if (!sentenceHasFootballFact(sentence)) continue;
+    if (gateUpcomingMatchContext(fixture, sentence, category)) continue;
+    const lower = sentence.toLocaleLowerCase();
+    const hits = snippetWords.length >= 3
+      ? snippetWords.filter((w) => lower.includes(w)).length
+      : 0;
+    const score = hits + (sentenceHasFootballFact(sentence) ? 2 : 0);
+    if (!best || score > best.score) best = { sentence, score };
+  }
+  if (best) return best.sentence.slice(0, 480);
+  return findBodySentenceForSnippet(body, searchSnippet);
 }
 
 export function evidenceClaimFromInput(input: EvidenceCandidateInput): string {
@@ -339,9 +467,18 @@ export function gatePostDateResolve(
   return null;
 }
 
-export function gatePageBodyMatch(pageText: string, snippet: string): string | null {
-  const sentence = findBodySentenceForSnippet(pageText, snippet);
+export function gatePageBodyMatch(
+  pageText: string,
+  snippet: string,
+  fixture: ModelFixture,
+  category: DossierEvidenceCategory,
+): string | null {
+  const sentence = selectVerifiedBodyClaim(fixture, category, pageText, snippet);
   if (!sentence) return "boilerplate_no_body_sentence";
-  if (claimLooksLikeBoilerplate(sentence, "")) return "boilerplate_chrome";
+  if (sentenceLooksLikePromoOrNav(sentence)) return "boilerplate_chrome";
+  if (!sentenceMentionsFixtureClub(fixture, sentence)) return "claim_missing_fixture_club";
+  if (!sentenceHasFootballFact(sentence)) return "claim_missing_football_fact";
+  const ctx = gateUpcomingMatchContext(fixture, sentence, category);
+  if (ctx) return ctx;
   return null;
 }

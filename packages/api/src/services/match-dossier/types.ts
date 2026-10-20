@@ -29,6 +29,11 @@ export type DossierEvidenceCategory =
 
 export type DossierEvidenceVerification = "cited" | "unverified" | "page-verified";
 
+export type DossierEvidenceTrustTier = EvidenceTier | "interim";
+
+/** FPL bootstrap-static player availability codes. */
+export type FplPlayerAvailabilityStatus = "d" | "i" | "s" | "u" | "n";
+
 export interface DossierEvidenceItem {
   id: string;
   claim: string;
@@ -36,7 +41,7 @@ export interface DossierEvidenceItem {
   publisher: string;
   publishedAt: string | null;
   retrievedAt: string;
-  trustTier: EvidenceTier;
+  trustTier: DossierEvidenceTrustTier;
   verification: DossierEvidenceVerification;
   direction: EvidenceDirection;
   relatedFactor: ModelFactorId;
@@ -51,10 +56,34 @@ export interface DossierEvidenceItem {
   fixtureMatchVerified?: boolean;
   /** Take v2 (#341): current season + category recency (and stale preview) gates passed. */
   freshnessVerified?: boolean;
+  /** Provenance id for non-search sources (e.g. fpl-bootstrap-static). */
+  source?: string;
+  /** Internal-only rows (FPL interim) — excluded from public dossier API; take header path only. */
+  internalOnly?: boolean;
+  /** Parallel tier label for structured sources (e.g. FPL interim rows). */
+  tier?: "interim";
+  /** FPL bootstrap-static contract (injuries[] only). */
+  player?: string;
+  club?: string;
+  status?: FplPlayerAvailabilityStatus;
+  chanceOfPlaying?: number | null;
+  newsAddedAt?: string | null;
+  /** Audit-only; must not be rendered on public surfaces (take renders from structured fields). */
+  newsText?: string;
 }
 
-/** Evidence eligible for desk take v2 (#341 @ccd8b9a). */
+export function isFplBootstrapInjuryItem(item: DossierEvidenceItem): boolean {
+  return item.source === "fpl-bootstrap-static"
+    && item.tier === "interim"
+    && item.internalOnly === true
+    && item.category === "injuries"
+    && typeof item.player === "string"
+    && typeof item.club === "string";
+}
+
+/** Federated page-verified evidence for take v2 prose (not FPL structured rows). */
 export function isTakeV2DossierEvidence(item: DossierEvidenceItem): boolean {
+  if (item.internalOnly || isFplBootstrapInjuryItem(item)) return false;
   return item.verification === "page-verified"
     && item.fixtureMatchVerified === true
     && item.freshnessVerified === true;
@@ -272,4 +301,21 @@ export interface BuildDossierOptions {
 export interface DossierBuildWindow {
   kickoffFromInclusive: string;
   kickoffToExclusive: string;
+}
+
+/** Strip internal-only evidence before public `/api/match-dossier` responses. */
+export function publicMatchDossierView(dossier: MatchDossier): MatchDossier {
+  const strip = (items: DossierEvidenceItem[]) => items.filter((item) => !item.internalOnly);
+  return {
+    ...dossier,
+    evidence: strip(dossier.evidence),
+    injuries: {
+      ...dossier.injuries,
+      value: { items: strip(dossier.injuries.value.items) },
+    },
+    lineups: {
+      ...dossier.lineups,
+      value: { items: strip(dossier.lineups.value.items) },
+    },
+  };
 }
