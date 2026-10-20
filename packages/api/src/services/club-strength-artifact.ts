@@ -23,6 +23,13 @@ export interface ClubStrengthArtifactPayload {
   byProfile: SerializedClubStrengths;
 }
 
+export interface ClubStrengthCaptureRecord {
+  url: string;
+  fetchedAt: string;
+  method: string;
+  pageSha256: string;
+}
+
 export interface ClubStrengthArtifact {
   schemaVersion: 1;
   artifactId: string;
@@ -39,6 +46,11 @@ export interface ClubStrengthArtifact {
     retrievedAt: string;
     citation: "clubelo-about";
     rightsStatus: "citation-required-use-review";
+    /** Offline capture provenance; excluded from payloadSha256. */
+    capture?: {
+      rankingPage?: ClubStrengthCaptureRecord;
+      clubPages?: ClubStrengthCaptureRecord[];
+    };
   };
   manifest: {
     payloadFormat: "pundit-club-strengths-v1";
@@ -83,7 +95,8 @@ export function clubStrengthPayloadSha256(payload: ClubStrengthArtifactPayload):
 }
 
 export function buildClubStrengthArtifact(
-  payload: ClubStrengthArtifactPayload
+  payload: ClubStrengthArtifactPayload,
+  capture?: ClubStrengthArtifact["source"]["capture"],
 ): ClubStrengthArtifact {
   const payloadSha256 = clubStrengthPayloadSha256(payload);
   const profileCounts = {
@@ -107,6 +120,7 @@ export function buildClubStrengthArtifact(
       retrievedAt: payload.snapshotAt,
       citation: "clubelo-about",
       rightsStatus: "citation-required-use-review",
+      ...(capture ? { capture } : {}),
     },
     manifest: {
       payloadFormat: "pundit-club-strengths-v1",
