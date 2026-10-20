@@ -4,7 +4,7 @@ import {
   parseClubEloClubPageHtml,
   parseClubEloCsv,
   parseClubEloRankingHtml,
-} from "../../scripts/capture-clubelo-snapshot";
+} from "./clubelo-capture-parsers";
 
 describe("capture-clubelo-snapshot parsers", () => {
   it("parses club page Elo and ranking date", () => {
