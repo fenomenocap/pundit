@@ -9870,6 +9870,25 @@ function matchFollowUpSettlesWithoutGeneration(question: string, grounding: Grou
   return false;
 }
 
+/** Desk voice skips server-composed answers unless the mode is desk-composer-settled or v2 take applies. */
+export function deskSkipsClosedGroundedAnswer(
+  voice: "desk" | undefined,
+  question: string,
+  grounding: AskGrounding,
+  hasHistory: boolean,
+): boolean {
+  if (voice !== "desk") return false;
+  if (grounding === null) return true;
+  if (grounding.kind !== "match") return false;
+  const plan = planResponse(question, matchPlanContextForRequest(grounding, hasHistory));
+  if (punditTakeV2Active() && punditTakeApplies(plan, question)) {
+    return false;
+  }
+  return !DESK_COMPOSER_MODES.has(plan.mode)
+    && !asksCompleteMatchBriefing(question)
+    && !(asksTacticalTake(question) && !plan.evidenceRequired);
+}
+
 export function closedGroundedAnswer(
   question: string,
   grounding: AskGrounding,
@@ -9901,6 +9920,10 @@ export function closedGroundedAnswer(
     // take cannot settle that request before the mandatory evidence lookup.
     if (plan.mode === "match-preview" && asksCompleteMatchBriefing(question)
       && deterministicSearchQuery(question, "", grounding)) return null;
+    if (punditTakeV2Active() && punditTakeApplies(plan, question)) {
+      const takeAnswer = composeMatchResponse(question, grounding, plan).trim();
+      if (takeAnswer) return takeAnswer;
+    }
     // These modes are fully settled by typed server facts or a typed
     // limitation. They must not spend a search/model call or broaden into a
     // report. Current team news still reaches evidence/expression.
@@ -11393,16 +11416,11 @@ async function answerQuestionScoped(
       await prefetchPunditTakeDeliveryForMatch(question, grounding, history.length > 0);
     }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
-    const deskPlan = planResponse(question, {
-      groundingKind: grounding?.kind ?? undefined,
-      hasHistory: history.length > 0,
-      hasUserLine: grounding?.kind === "match" && grounding.pricing.userLine != null,
-    });
-    const deskSkipClosed = voice === "desk" && (
-      grounding === null
-      || (grounding.kind === "match" && !DESK_COMPOSER_MODES.has(deskPlan.mode)
-        && !asksCompleteMatchBriefing(question)
-        && !(asksTacticalTake(question) && !deskPlan.evidenceRequired))
+    const deskSkipClosed = deskSkipsClosedGroundedAnswer(
+      voice,
+      question,
+      grounding,
+      history.length > 0,
     );
     if (closedAnswer && !deskSkipClosed) {
       return {
