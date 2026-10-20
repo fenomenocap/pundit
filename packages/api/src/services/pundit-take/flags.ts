@@ -4,9 +4,21 @@ import type { PunditTakeDelivery } from "./types";
 
 export type PunditTakeMode = "legacy" | "v2";
 
+/**
+ * Production default for POST /api/ask when `x-pundit-take` is absent.
+ * One-line switch. Not an env var.
+ * TODO: flip back to "v2" once the #370 web build is deployed on Vercel.
+ * TODO(2026-10-27): remove the legacy take path after 27 Oct 2026.
+ */
+export const DEFAULT_TAKE: PunditTakeMode = "legacy";
+
 interface TakeRequestScope {
   mode: PunditTakeMode;
-  /** True only when `x-pundit-take: v2` was explicitly supplied for this request. */
+  /**
+   * Full v2 composer (desk voice, history, play/pass, FPL facts).
+   * True for an explicit `x-pundit-take: v2` header, and for a missing
+   * header when DEFAULT_TAKE is "v2". The env-only seam stays false.
+   */
   headerExplicitV2: boolean;
   delivery: PunditTakeDelivery | null;
   dossier: MatchDossier | null;
@@ -47,10 +59,15 @@ export function resolvePunditTakeOverride(
 }
 
 export function effectivePunditTakeMode(headerOverride: PunditTakeMode | null): PunditTakeMode {
-  if (headerOverride === "v2") return "v2";
-  if (headerOverride === "legacy") return "legacy";
+  if (headerOverride === "v2" || headerOverride === "legacy") return headerOverride;
   if (configuredPunditTakeV2()) return "v2";
-  return "legacy";
+  return DEFAULT_TAKE;
+}
+
+/** Explicit v2 header and the code default share one composer. Env-only scope does not. */
+function fullV2Composer(headerOverride: PunditTakeMode | null): boolean {
+  if (headerOverride === "v2") return true;
+  return headerOverride === null && DEFAULT_TAKE === "v2";
 }
 
 export function punditTakeV2Active(): boolean {
@@ -59,14 +76,14 @@ export function punditTakeV2Active(): boolean {
   return configuredPunditTakeV2();
 }
 
-/** Internal-only dossier facts (FPL bootstrap) — header override only, never env default. */
+/** FPL bootstrap facts — full v2 composer only, never the env-only seam. */
 export function punditTakeV2HeaderOverrideActive(): boolean {
   const scoped = takeRequestScope.getStore();
   if (scoped) return scoped.mode === "v2" && scoped.headerExplicitV2;
   return false;
 }
 
-/** #351 play/pass resolver (word order, aliases, single-club routing) — header v2 only. */
+/** #351 play/pass resolver (word order, aliases, single-club routing) — full v2 composer. */
 export function punditTakeV2PlayPassResolverEnabled(): boolean {
   return punditTakeV2HeaderOverrideActive();
 }
@@ -112,7 +129,7 @@ export function withPunditTakeRequestScope<T>(
   if (effective !== "v2") return fn();
   return takeRequestScope.run({
     mode: "v2",
-    headerExplicitV2: headerOverride === "v2",
+    headerExplicitV2: fullV2Composer(headerOverride),
     delivery: null,
     dossier: null,
     prefetchedDelivery: null,

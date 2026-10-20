@@ -28,6 +28,8 @@ import { Disclaimer } from "@/components/disclaimer";
 import { ProbabilityBar } from "@/components/probability-bar";
 import { getDocsUrl } from "@/lib/site-links";
 import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
+import { DeskTakeV2AnswerMarkdown } from "@/desk/lib/desk-take-v2-answer-markdown";
+import { isPunditTakeV2RenderingActive } from "@/lib/pundit-take-v2-opt-in";
 import {
   capabilityLabel,
   formatEdgeBand,
@@ -346,6 +348,16 @@ function AssistantMarkdown({ content }: { content: string }) {
   );
 }
 
+/** Default and ?take=v2 use GFM tables plus collapsed Sources. ?take=legacy keeps plain markdown. */
+function TakeAwareAssistantMarkdown({ content }: { content: string }) {
+  const [v2, setV2] = useState(true);
+  useEffect(() => {
+    setV2(isPunditTakeV2RenderingActive());
+  }, []);
+  if (!v2) return <AssistantMarkdown content={content} />;
+  return <DeskTakeV2AnswerMarkdown content={content} />;
+}
+
 function MessageActions({
   content,
   question,
@@ -517,10 +529,10 @@ function MatchFixtureCard({
       <div className="border-t border-card-rim px-3 py-2.5 text-sm leading-relaxed">
         {streaming ? (
           <span className="animate-pulse">
-            <AssistantMarkdown content={content} />
+            <TakeAwareAssistantMarkdown content={content} />
           </span>
         ) : (
-          <AssistantMarkdown content={content} />
+          <TakeAwareAssistantMarkdown content={content} />
         )}
         <div className="mt-2 flex items-center gap-2">
           <GroundingBadge grounding={grounding} />
@@ -1069,10 +1081,10 @@ export function HomeChat() {
                     ? (
                       streaming ? (
                         <span className="animate-pulse">
-                          <AssistantMarkdown content={m.content} />
+                          <TakeAwareAssistantMarkdown content={m.content} />
                         </span>
                       ) : (
-                        <AssistantMarkdown content={m.content} />
+                        <TakeAwareAssistantMarkdown content={m.content} />
                       )
                     )
                     : <div>{m.content}</div>}

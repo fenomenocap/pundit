@@ -11,7 +11,7 @@ import { useDesk, type ChatMsg } from "@/desk/lib/store";
 import type { OneXTwoOutcome } from "@/lib/api";
 import { capabilityLabel, userLinePayloadForAsk } from "@/lib/fixture-presentation";
 import { SafeMarkdown } from "@/lib/safe-markdown";
-import { isPunditTakeV2OptInActive } from "@/lib/pundit-take-v2-opt-in";
+import { isPunditTakeV2RenderingActive } from "@/lib/pundit-take-v2-opt-in";
 import { DeskTakeV2AnswerMarkdown } from "@/desk/lib/desk-take-v2-answer-markdown";
 import { cn } from "@/lib/utils";
 import { humaniseDeskCitationDates } from "@/desk/lib/prose";
@@ -443,9 +443,9 @@ export function AgentPane() {
 }
 
 function Bubble({ msg }: { msg: ChatMsg }) {
-  const [takeV2Markdown, setTakeV2Markdown] = useState(false);
+  const [takeV2Markdown, setTakeV2Markdown] = useState(true);
   useEffect(() => {
-    setTakeV2Markdown(isPunditTakeV2OptInActive());
+    setTakeV2Markdown(isPunditTakeV2RenderingActive());
   }, []);
   const f = msg.fixtureId ? getFixture(msg.fixtureId) : undefined;
   const groundingLabel = msg.sourceLabel ?? (msg.grounding === undefined ? null
