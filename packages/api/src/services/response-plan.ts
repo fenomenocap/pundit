@@ -39,7 +39,7 @@ const ASKS_TACTICAL_TAKE =
 const ASKS_ODDS_BOARD =
   /\bwhat(?:'s| is| are) (?:the )?(?:odds|line)\b|\bshow me the board\b|\bthe board\b|\bmatch odds\b/i;
 const ASKS_ODDS_PROVENANCE =
-  /\bwhere do (?:your )?odds come from\b|\bhow fresh\b|\bhow old\b|\b(?:what|which) (?:feed|source)s?\b.{0,40}\b(?:odds|market|line)\b|\b(?:odds|market) (?:source|sources|feed|feeds)\b|\bwhere(?:'s| is) (?:the )?(?:market|line) from\b/i;
+  /\bwhere do (?:your )?(?:odds|numbers|probabilities)(?:\s+for\b[^?]{0,160})?\s+come from\b|\bwhere do (?:your )?odds come from\b|\bhow fresh\b|\bhow old\b|\b(?:what|which) (?:feed|source)s?\b.{0,40}\b(?:odds|market|line)\b|\b(?:odds|market) (?:source|sources|feed|feeds)\b|\bwhere(?:'s| is) (?:the )?(?:market|line) from\b/i;
 const ASKS_EXPECTED_VALUE =
   /\+ev\b|\bev%\b|\bexpected value\b|\bplus[\s-]?ev\b|\ba \+ev bet\b|\bedge vs(?:\s+the)?\s+(?:book|market|line)\b/i;
 const ASKS_RESULT_CUE = /\b(?:win|wins|beat|beats|winner|to win)\b/i;
@@ -145,7 +145,8 @@ export function asksBestValueToday(question: string): boolean {
 export function asksHonestWinnerGuarantee(question: string): boolean {
   if (/\b(?:acca|accumulator|parlay)\b/i.test(question)) return false;
   return /\bguarantee me (?:a )?winner\b/i.test(question)
-    || (/\b(?:guarantee|certain|100%|promise)\b/i.test(question)
+    || /\b(?:a )?guaranteed win\b/i.test(question)
+    || (/\b(?:guarantee\w*|certain|100%|promise)\b/i.test(question)
       && /\b(?:win|winner)\b/i.test(question));
 }
 
