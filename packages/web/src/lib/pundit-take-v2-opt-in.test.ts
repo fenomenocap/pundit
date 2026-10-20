@@ -42,11 +42,14 @@ describe("pundit take v2 opt-in", () => {
 
   it("buildPunditAskJsonHeaders adds x-pundit-take when session is active", () => {
     mockSessionStorage.setItem("pundit.take.v2.optIn", "1");
-    (globalThis as typeof globalThis & { sessionStorage?: Storage }).sessionStorage =
-      mockSessionStorage as Storage;
-    (globalThis as typeof globalThis & { window?: Window }).window = {
-      location: { search: "" },
-    } as Window;
+    Object.defineProperty(globalThis, "sessionStorage", {
+      configurable: true,
+      value: mockSessionStorage,
+    });
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { location: { search: "" } },
+    });
     syncPunditTakeV2OptInFromUrl();
     assert.deepEqual(buildPunditAskJsonHeaders(), {
       "Content-Type": "application/json",
