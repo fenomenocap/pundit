@@ -23,7 +23,7 @@ function run(script: string, args: string[]): void {
 }
 
 console.log("[refresh] Capturing ClubElo snapshot (offline; not used at runtime).");
-run("capture-clubelo-snapshot.ts", [capturePath]);
+run("capture-clubelo-snapshot.ts", ["--club-pages", capturePath]);
 console.log("[refresh] Building content-addressed clubelo@1 artifact.");
 run("build-club-strength-artifact.ts", [capturePath, productionPath]);
 console.log("[refresh] Verifying hash, coverage, cutover lock, and 30-day gate.");

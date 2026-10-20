@@ -9,6 +9,7 @@ import {
 interface LegacyRatingsSnapshot {
   fetchedAt: string;
   byProfile: ClubStrengthArtifactPayload["byProfile"];
+  capture?: ClubStrengthArtifact["source"]["capture"];
 }
 
 const inputPath = process.argv[2];
@@ -21,7 +22,7 @@ const input = JSON.parse(fs.readFileSync(inputPath, "utf8")) as LegacyRatingsSna
 const artifact = buildClubStrengthArtifact({
   snapshotAt: input.fetchedAt,
   byProfile: input.byProfile,
-});
+}, input.capture);
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 const artifactPath = path.join(path.dirname(outputPath), `${artifact.payloadSha256}.json`);
 const artifactTempPath = `${artifactPath}.${process.pid}.tmp`;
