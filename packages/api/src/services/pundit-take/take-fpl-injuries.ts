@@ -36,15 +36,19 @@ export function formatFplInjuryFact(item: DossierEvidenceItem): string | null {
   if (status === "u" || status === "n") {
     return null;
   }
-  if (status === "i" || status === "s") {
-    return `${player} is out.`;
+  const club = item.club!.trim();
+  if (status === "s") {
+    return `${player} (${club}) is suspended.`;
+  }
+  if (status === "i") {
+    return `${player} (${club}) is injured.`;
   }
   if (status === "d") {
     if (item.chanceOfPlaying != null && Number.isFinite(item.chanceOfPlaying)) {
       const pct = Math.round(item.chanceOfPlaying);
-      return `${player} is doubtful, ${pct}% to play.`;
+      return `${player} (${club}) is doubtful, ${pct}% to play.`;
     }
-    return `${player} is doubtful.`;
+    return `${player} (${club}) is doubtful.`;
   }
   return null;
 }

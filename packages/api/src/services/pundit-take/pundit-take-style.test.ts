@@ -189,7 +189,13 @@ describe("Pundit Take v2 style pack (PR1)", () => {
         expect(direct?.answer).toBe(fromComposer);
         return direct!;
       });
-      const prose = delivery.answer.split("\n\n")[0];
+      if (q.includes("Fair odds")) {
+        expect(delivery.answer).toMatch(/fair 1X2 vs the best prices/i);
+        expect(delivery.answer).toContain("| Outcome | Ours |");
+        return;
+      }
+      const proseBlock = delivery.answer.split("\n\n| Outcome |")[0].split("\n\nModel ")[0];
+      const prose = proseBlock.split("\n\n")[0];
       expect(TAKE_PROSE_BANNED_PATTERN.test(prose)).toBe(false);
       expect(prose).not.toMatch(/^Why:/m);
       expect(prose).not.toMatch(/^Lean:/m);
@@ -209,7 +215,8 @@ describe("Pundit Take v2 style pack (PR1)", () => {
     expect(delivery.answer).toMatch(/20th on 3 points/);
       expect(delivery.answer).not.toMatch(/\bstill\b/i);
       expect(delivery.answer).not.toMatch(/sharper than my read/i);
-      expect(delivery.answer).not.toMatch(/applied in this forecast|sits at|home backing|rating sheet|\bElo\b/i);
+      const proseBody = delivery.answer.split("\n\n| Outcome |")[0].split("\n\nModel ")[0];
+      expect(proseBody).not.toMatch(/applied in this forecast|sits at|home backing|rating sheet|\bElo\b/i);
       expect(delivery.answer).toMatch(/at home/);
   });
 

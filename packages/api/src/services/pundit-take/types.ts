@@ -60,6 +60,8 @@ export interface TakePlanGridCall {
   headlineLabel: string;
   modelPctInt: number;
   fairDecimal: string;
+  /** True when the top two grid sides are within 2 probability points. */
+  coinFlip?: boolean;
 }
 
 export interface PunditTakePlan {
@@ -97,6 +99,9 @@ export interface PunditTakeSourcesFooter {
   tableSource: string;
   tableAsOf: string | null;
   tableAsOfSgt: string | null;
+  formSource: string;
+  formAsOf: string | null;
+  formAsOfSgt: string | null;
   odds: PunditTakeSourceOdds[];
   evidenceUrls: Array<{ id: string; url: string; publisher: string }>;
   fplInjuryStatusAsOfSgt: string | null;

@@ -159,12 +159,12 @@ describe("FPL internal-only dossier injuries in take v2", () => {
     ]);
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery(question, grounding, plan, dossier)!);
-    expect(delivery.answer).toMatch(/Saka is doubtful, 50% to play/);
+    expect(delivery.answer).toMatch(/Saka \(Tottenham\) is doubtful, 50% to play/);
     expect(delivery.answer).toMatch(/FPL injury status \(as of 18 Oct 16:00 SGT\)/);
     expect(delivery.answer).not.toMatch(/Knock - Saka|Hamstring - ruled out|missed training/i);
     expect(delivery.plan.contradicting.some((p) => p.fieldPath?.startsWith("injuries.fpl-bootstrap-static"))).toBe(true);
     const prose = postCheckTakeProse(renderTakeProseDeterministic(delivery.plan), delivery.plan);
-    expect(prose).toMatch(/Saka is doubtful, 50% to play/);
+    expect(prose).toMatch(/Saka \(Tottenham\) is doubtful, 50% to play/);
   });
 
   it("omits FPL facts without header override and under env-default scope", () => {
@@ -193,7 +193,7 @@ describe("FPL internal-only dossier injuries in take v2", () => {
     ]);
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery(question, grounding, plan, dossier)!);
-    expect(delivery.answer).toMatch(/Porro is out/);
+    expect(delivery.answer).toMatch(/Porro \(Tottenham\) is injured/);
     expect(delivery.answer).not.toMatch(/Hamstring|ruled out/i);
   });
 
@@ -206,7 +206,7 @@ describe("FPL internal-only dossier injuries in take v2", () => {
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery(question, grounding, plan, dossier)!);
     expect(delivery.answer).not.toMatch(/Chalobah|On loan/i);
-    expect(delivery.answer).toMatch(/Saka is doubtful, 50% to play/);
+    expect(delivery.answer).toMatch(/Saka \(Tottenham\) is doubtful, 50% to play/);
   });
 
   it("drops wrong-club and stale FPL rows", () => {

@@ -5470,6 +5470,19 @@ export function teamsFromHistory(
   return undefined;
 }
 
+export function findNextPricedModelFixtureForClub(
+  club: string,
+  fixtures: ModelFixture[],
+  nowMs: number,
+): ModelFixture | undefined {
+  const target = normalizeTeamName(club);
+  return fixtures
+    .filter((fixture) => !fixture.result)
+    .filter((fixture) => normalizeTeamName(fixture.home) === target || normalizeTeamName(fixture.away) === target)
+    .filter((fixture) => Date.parse(fixture.utcDate) >= nowMs - 6 * 60 * 60 * 1000)
+    .sort((a, b) => Date.parse(a.utcDate) - Date.parse(b.utcDate))[0];
+}
+
 export function resolveAskContext(
   question: string,
   history: ConversationTurn[],
@@ -5547,6 +5560,13 @@ export function resolveAskContext(
 
   if (explicitFixture && (!competitionId || hasExplicitMatchupCue(question))) {
     return { tier: "match", fixture: explicitFixture };
+  }
+
+  const passPlayMentionEarly = mentionedTeamPositions(question, searchableFixtures);
+  if (/\b(?:pass or play|play or pass)\b/i.test(question) && passPlayMentionEarly.size === 1) {
+    const club = [...passPlayMentionEarly.keys()][0];
+    const priced = findNextPricedModelFixtureForClub(club, fixtures, routing.now ?? Date.now());
+    if (priced) return { tier: "match", fixture: priced };
   }
 
   if (!teams && !competitionId && referencesFeaturedMatchDeictic(question)) {

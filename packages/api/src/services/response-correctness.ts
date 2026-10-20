@@ -1,4 +1,5 @@
 import { MODEL_EDGE_CLAIMS_ALLOWED } from "../config/backtest-gate";
+import { normalizeTeamName, normalizeTeamText } from "../lib/team-names";
 
 export type OneXTwoOutcome = "home" | "draw" | "away";
 
@@ -76,7 +77,7 @@ export function inferUserLineFromQuestion(
   home: string,
   away: string,
 ): UserLineInput | undefined {
-  if (!/\bpass or play\b/i.test(question)) return undefined;
+  if (!/\b(?:pass or play|play or pass)\b/i.test(question)) return undefined;
   const generic = question.match(
     /\b(?:the\s+)?(home|away|draw)(?:\s+side|\s+win)?\s+at\s+(\d+(?:\.\d+)?)\b/i,
   );
@@ -87,13 +88,21 @@ export function inferUserLineFromQuestion(
     }
   }
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const qNorm = normalizeTeamText(question);
   for (const [outcome, team] of [["home", home], ["away", away]] as const) {
-    const pattern = new RegExp(
-      `\\b${escape(team)}\\b[^.\\n]{0,40}\\bat\\s+(\\d+(?:\\.\\d+)?)\\b`,
-      "i",
-    );
-    const named = question.match(pattern);
-    if (named) return { outcome, decimalOdds: Number(named[1]) };
+    const names = new Set([team, normalizeTeamName(team)]);
+    const firstToken = team.split(/\s+/)[0];
+    if (firstToken.length >= 4) names.add(firstToken);
+    for (const name of names) {
+      const term = normalizeTeamText(name);
+      if (term.length < 3 || !qNorm.includes(term)) continue;
+      const pattern = new RegExp(
+        `\\b${escape(name)}\\b[^.\\n]{0,40}\\b(?:at|@)\\s+(\\d+(?:\\.\\d+)?)\\b`,
+        "i",
+      );
+      const named = question.match(pattern);
+      if (named) return { outcome, decimalOdds: Number(named[1]) };
+    }
   }
   return undefined;
 }
