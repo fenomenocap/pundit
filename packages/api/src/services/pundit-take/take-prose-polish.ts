@@ -42,29 +42,47 @@ export function normalizeFormScopeInText(text: string): string {
 
 /** Ban "model" in user-facing take prose (table/footer may still say Model). */
 export function scrubModelWordFromProse(text: string): string {
-  return text
+  let out = text
     .replace(/\bthe model expects\b/gi, "I expect")
-    .replace(/\bthe model\b/gi, "my read")
+    .replace(/\bthe model thinks\b/gi, "I think")
+    .replace(/\bthe model has\b/gi, "I have")
+    .replace(/\bthe model rates\b/gi, "I rate")
+    .replace(/\bthe model's edge\b/gi, "My edge")
+    .replace(/\bthe model\b/gi, "I")
     .replace(/\bmodel-only\b/gi, "our")
-    .replace(/\bmodel\b/gi, "read")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+    .replace(/\bmodel\b/gi, "read");
+  out = out
+    .replace(/\bI's edge\b/gi, "My edge")
+    .replace(/\bI thinks\b/gi, "I think")
+    .replace(/\bI rates\b/gi, "I rate")
+    .replace(/\bI has\b/gi, "I have");
+  return out.replace(/\s{2,}/g, " ").trim();
 }
 
-/** Remove a trailing "even …" clause left incomplete after model scrub (e.g. "find the net even."). */
+/** Remove dangling "find the net even." fragments anywhere in prose (mid-paragraph or end). */
 export function repairIncompleteEvenClause(text: string): string {
-  const trimmed = text.trim().replace(/\s+/g, " ");
-  if (/\bfind the net even\.\s*$/i.test(trimmed)) {
-    return trimmed.replace(/\s+even\.\s*$/i, ".").trim();
-  }
-  const dangling = trimmed.match(/^(.*?\bfind the net)\s+even(?:\s+when|\s+if|\s+though|\s+the|\s+my|\s+read|\s+I)?[^.!?]*$/i);
-  if (dangling?.[1]) return `${dangling[1].trim()}.`;
-  return trimmed;
+  const repaired = text.replace(/(\bfind the net)\s+even\./gi, "$1.");
+  return repaired
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => {
+      const trimmed = sentence.trim().replace(/\s+/g, " ");
+      if (!trimmed) return trimmed;
+      if (/\bfind the net even\.\s*$/i.test(trimmed)) {
+        return trimmed.replace(/\s+even\.\s*$/i, ".").trim();
+      }
+      const dangling = trimmed.match(/^(.*?\bfind the net)\s+even(?:\s+when|\s+if|\s+though|\s+the|\s+I)?[^.!?]*$/i);
+      if (dangling?.[1]) return `${dangling[1].trim()}.`;
+      return trimmed;
+    })
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function polishTakeProseLine(text: string): string {
   const scrubbed = scrubModelWordFromProse(normalizeFormScopeInText(scrubMyModelPhrasing(text)));
-  return repairIncompleteEvenClause(scrubbed);
+  const repaired = repairIncompleteEvenClause(scrubbed);
+  const capitalized = repaired.charAt(0).toUpperCase() + repaired.slice(1);
+  return capitalized;
 }
 
 /** First pass on OpenRouter take copy — before post-check or assembly. */

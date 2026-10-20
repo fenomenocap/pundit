@@ -1,4 +1,5 @@
 import { parseGapToken } from "./take-number-check";
+import { repairIncompleteEvenClause } from "./take-prose-polish";
 import type { PunditTakePlan, TakePlanNumericFacts } from "./types";
 
 type TableSnapshot = TakePlanNumericFacts["table"] & {
@@ -416,14 +417,14 @@ export function sentenceFailsLast5FormRecordCheck(sentence: string, plan: Pundit
 }
 
 const UPSET_FRAMING =
-  /\b(?:upset is brewing|spring an upset|an upset is (?:brewing|on the cards|possible)|underdog story)\b/i;
+  /\b(?:(?:an?\s+)?upset\s+is\s+brewing|an upset brewing|spring an upset|an upset is (?:brewing|on the cards|possible)|underdog story)\b/i;
 
 export function sentenceStatesUpsetFraming(sentence: string): boolean {
   if (UPSET_FRAMING.test(sentence)) return true;
   return /\b(?:league table|the table|standings)\b/i.test(sentence) && /\bupset\b/i.test(sentence);
 }
 
-/** Drop upset/table-underdog hype when the headline pick is already the table favourite. */
+/** Drop table-upset hype that does not honestly match the headline pick vs standings. */
 export function sentenceFailsUpsetPickAlignmentCheck(sentence: string, plan: PunditTakePlan): boolean {
   if (!sentenceStatesUpsetFraming(sentence)) return false;
   const table = plan.numericFacts?.table;
@@ -433,7 +434,9 @@ export function sentenceFailsUpsetPickAlignmentCheck(sentence: string, plan: Pun
   const pickPos = outcome === "home" ? table.homePosition : table.awayPosition;
   const oppPos = outcome === "home" ? table.awayPosition : table.homePosition;
   if (pickPos == null || oppPos == null) return true;
-  return pickPos < oppPos;
+  if (pickPos === oppPos) return false;
+  // Pick is either the table favourite or our underdog — generic "upset brewing" copy is misleading.
+  return true;
 }
 
 /** Drop vague form praise/criticism when last-five points contradict the threshold. */
@@ -641,6 +644,6 @@ function dedupePolicyProseSentencesGlobally(prose: string): string {
 }
 
 export function applyV2ProseHygiene(prose: string, plan: PunditTakePlan): string {
-  const venueFixed = applyVenueFormHygiene(prose, plan);
-  return dedupeVenueQualifiers(venueFixed);
+  const venueFixed = applyVenueFormHygiene(repairIncompleteEvenClause(prose), plan);
+  return dedupeVenueQualifiers(repairIncompleteEvenClause(venueFixed));
 }

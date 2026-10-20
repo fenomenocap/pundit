@@ -22,12 +22,13 @@ function groundingWithTableAndForm(
   homeForm: Array<"W" | "D" | "L">,
   awayForm: Array<"W" | "D" | "L">,
   probs: { pHome: number; pDraw: number; pAway: number },
+  fixtureId = "eng.1:test",
 ): Grounding {
   const { pHome, pDraw, pAway } = probs;
   const observedAt = "2026-10-20T09:00:00.000Z";
   return {
     kind: "match",
-    fixtureId: "espn:eng.1:test",
+    fixtureId: `espn:${fixtureId}`,
     competitionId: "eng.1",
     competition: "Premier League",
     homeFieldAdvantage: true,
@@ -50,7 +51,7 @@ function groundingWithTableAndForm(
     oddsSources: [],
     marketDivergence: [],
     pricing: buildMatchPricing({
-      fixtureId: "eng.1:test",
+      fixtureId,
       home,
       away,
       kickoff: "2026-10-20T15:00:00.000Z",
@@ -90,14 +91,16 @@ describe("Sweep 12 guards", () => {
     expect(applyV2ProseHygiene(`${slip}.`, plan)).toBe("");
   });
 
-  it("repairs incomplete even-clause after model scrub in deterministic body assembly", () => {
+  it("repairs incomplete even-clause mid-paragraph after model scrub", () => {
+    const paragraph =
+      "Ipswich have shown they can find the net even. The value is Forest at 2.43 against our fair 2.10.";
+    expect(repairIncompleteEvenClause(paragraph)).toBe(
+      "Ipswich have shown they can find the net. The value is Forest at 2.43 against our fair 2.10.",
+    );
     const raw = "Ipswich have shown they can find the net even when the model";
     const polished = polishTakeProseLine(raw);
     expect(polished).not.toMatch(/\beven\.\s*$/i);
     expect(polished).toMatch(/find the net\./i);
-    expect(repairIncompleteEvenClause("showing they can find the net even.")).toBe(
-      "showing they can find the net.",
-    );
 
     const plan = {
       fixtureLabel: "Ipswich v Forest",
@@ -105,24 +108,35 @@ describe("Sweep 12 guards", () => {
       contradicting: [],
     } as unknown as PunditTakePlan;
     const body = joinBodySentencesFromPlan(plan, 2);
-    expect(body).not.toMatch(/\beven\.\s*$/i);
+    expect(body).not.toMatch(/\bfind the net even\./i);
     expect(body).toMatch(/find the net/i);
   });
 
-  it("drops upset brewing copy when the headline pick is the table favourite (Ipswich–Forest)", () => {
+  it("drops table upset copy when Forest are the away pick (espn:eng.1:401879253 table)", () => {
     const grounding = groundingWithTableAndForm(
       "Ipswich",
-      "Nottingham Forest",
-      { position: 10, points: 10 },
-      { position: 19, points: 4 },
-      ["W", "L", "D", "W", "L"],
+      "Forest",
+      { position: 10, points: 9 },
+      { position: 18, points: 5 },
+      ["L", "W", "L", "W", "L"],
       ["L", "L", "D", "L", "W"],
-      { pHome: 0.52, pDraw: 0.26, pAway: 0.22 },
+      { pHome: 0.28, pDraw: 0.27, pAway: 0.45 },
+      "eng.1:401879253",
     );
     const plan = buildPunditTakePlan(grounding, null);
-    expect(plan.call.outcome).toBe("home");
-    const slip = "The league table suggests an upset is brewing";
+    expect(plan.call.outcome).toBe("away");
+    const slip =
+      "Ipswich are 10th on 9 points, while Forest are 18th on 5, so the league table suggests an upset brewing.";
     expect(sentenceStatesUpsetFraming(slip)).toBe(true);
-    expect(applyV2ProseHygiene(`${slip}.`, plan)).toBe("");
+    expect(applyV2ProseHygiene(slip, plan)).toBe("");
+  });
+
+  it("rewrites model scrub into natural first-person prose", () => {
+    expect(polishTakeProseLine("My model's edge is small, and the model thinks Spurs are short."))
+      .toBe("My edge is small, and I think Spurs are short.");
+    expect(polishTakeProseLine("They can score even when the model rates them low."))
+      .toBe("They can score even when I rate them low.");
+    expect(polishTakeProseLine("the model has Chelsea at 59%."))
+      .toBe("I have Chelsea at 59%.");
   });
 });
