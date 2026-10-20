@@ -25,7 +25,8 @@ import {
   renderWinnerGuaranteeTakeProse,
 } from "./take-policy-prose";
 import { asksFairOddsFixtureQuestion, renderFairOddsTakeProse } from "./take-fair-odds-prose";
-import { appendWhatFlipsItClosing } from "./take-flip-prose";
+import { appendWhatFlipsItClosing, formatWhatFlipsItSentence } from "./take-flip-prose";
+import { dedupePolicyProseBlocks } from "./take-v2-prose-hygiene";
 import {
   asksDrawSideTakeQuestion,
   asksMatchWhyTakeQuestion,
@@ -118,6 +119,21 @@ function shouldAppendFlipClosing(question: string, plan: ResponsePlan): boolean 
   return true;
 }
 
+function minimalHeadlineAndFlip(
+  planJson: ReturnType<typeof buildPunditTakePlan>,
+  question: string,
+  grounding: Grounding,
+): string {
+  const variant = /\bwhy\b/i.test(question.trim()) ? "why" as const : "full";
+  const headline = gridHeadlineOpener(planJson, variant)
+    ?? (planJson.gridCall
+      ? `${planJson.fixtureLabel} — ${planJson.gridCall.headlineLabel} at ${planJson.gridCall.modelPctInt}%.`
+      : minimalV2Headline(planJson, question));
+  const flip = formatWhatFlipsItSentence(planJson, grounding);
+  if (!flip) return headline;
+  return `${headline}\n\n${flip}`.trim();
+}
+
 function ensureGridMarketHeadline(
   prose: string,
   planJson: ReturnType<typeof buildPunditTakePlan>,
@@ -141,7 +157,11 @@ function assembleDelivery(
   planJson: ReturnType<typeof buildPunditTakePlan>,
   prose: string,
   resolvedDossier: MatchDossier | null,
-  options?: { includeTable?: boolean; prosePostCheck?: "full" | "forbidden" | "none" },
+  options?: {
+    includeTable?: boolean;
+    prosePostCheck?: "full" | "forbidden" | "none";
+    deterministicPath?: boolean;
+  },
 ): PunditTakeDelivery {
   const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
   const includeTable = options?.includeTable ?? !asksParlayQuestion(question);
@@ -153,7 +173,7 @@ function assembleDelivery(
   const sources = buildTakeSourcesFooter(grounding, resolvedDossier, Date.now());
   const footer = formatTakeSourcesFooterBlock(sources);
   const postCheckMode = options?.prosePostCheck ?? (passPlay ? "forbidden" : "full");
-  let proseOut = prose.trim();
+  let proseOut = dedupePolicyProseBlocks(prose.trim());
   if (!asksParlayQuestion(question)) {
     if (shouldAppendFlipClosing(question, plan)) {
       proseOut = appendWhatFlipsItClosing(planJson, proseOut, grounding);
@@ -164,14 +184,22 @@ function assembleDelivery(
       proseOut = applyV2TakeProseGuards(scrubForbiddenTakeProse(proseOut), planJson);
     }
     if (shouldAppendFlipClosing(question, plan)) {
+      const beforeHeadlineFix = proseOut.trim();
       proseOut = ensureGridMarketHeadline(proseOut, planJson, question);
+      if (options?.deterministicPath && !beforeHeadlineFix && proseOut.trim()) {
+        proseOut = appendWhatFlipsItClosing(planJson, proseOut, grounding);
+      }
     }
   }
   if (!proseOut.trim() && !asksParlayQuestion(question)) {
-    proseOut = postCheckTakeProse(
-      renderTakeProseDeterministic(planJson, /\bwhy\b/i.test(question.trim()) ? "why" : "full", grounding),
-      planJson,
-    ) || minimalV2Headline(planJson, question);
+    if (options?.deterministicPath) {
+      proseOut = minimalHeadlineAndFlip(planJson, question, grounding);
+    } else {
+      proseOut = postCheckTakeProse(
+        renderTakeProseDeterministic(planJson, /\bwhy\b/i.test(question.trim()) ? "why" : "full", grounding),
+        planJson,
+      ) || minimalV2Headline(planJson, question);
+    }
   }
   const answer = asksParlayQuestion(question)
     ? (footer ? `${proseOut.trim()}\n\n${footer}`.trim() : proseOut.trim())
@@ -258,7 +286,9 @@ export function composePunditTakeDelivery(
     });
   }
   const prose = composeTakeProseDeterministic(question, grounding, plan, planJson, variant);
-  const delivery = assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier);
+  const delivery = assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier, {
+    deterministicPath: true,
+  });
   if (!delivery.answer.trim()) {
     return composeMinimalTakeDelivery(question, grounding, plan, dossier);
   }
@@ -311,10 +341,13 @@ async function composePunditTakeDeliveryAsyncInner(
   }
   const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
   const fairOdds = asksFairOddsFixtureQuestion(question);
-  const prose = passPlay || fairOdds
+  const deterministicOnly = passPlay || fairOdds;
+  const prose = deterministicOnly
     ? composeTakeProseDeterministic(question, grounding, plan, planJson, variant)
     : postCheckTakeProse(await renderTakeProse(planJson, variant), planJson);
-  return assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier);
+  return assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier, {
+    deterministicPath: deterministicOnly,
+  });
 }
 
 export async function composePunditTakeDeliveryAsync(
