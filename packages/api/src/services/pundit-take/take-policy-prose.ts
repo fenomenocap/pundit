@@ -1,5 +1,4 @@
 import type { Grounding } from "../ask";
-import { STAKE_REFUSAL_SENTENCE } from "../response-composer";
 import {
   bankrollStakePolicyAppendix,
   mentionsBankroll,
@@ -24,7 +23,7 @@ export function renderStakeRefusalTakeProse(
   if (mentionsBankroll(question)) {
     lines.push(bankrollStakePolicyAppendix(question));
   } else {
-    lines.push(STAKE_REFUSAL_SENTENCE);
+    lines.push("I can print the price.");
   }
   const context = plan.supporting[0]?.text;
   if (context) lines.push(context);

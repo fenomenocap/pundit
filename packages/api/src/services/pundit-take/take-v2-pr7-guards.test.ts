@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { STAKE_REFUSAL_SENTENCE } from "../response-composer";
 import { planResponse } from "../response-plan";
 import { composePunditTakeDelivery } from "./compose";
 import { withPunditTakeRequestScope } from "./flags";
@@ -53,14 +52,14 @@ describe("Take v2 PR7 prose guards", () => {
     const plan = buildPunditTakePlan(chelseaTottenhamGrounding(), null);
     const doubled = [
       `${plan.fixtureLabel} — I won't size a stake without a bankroll and a risk band.`,
-      STAKE_REFUSAL_SENTENCE,
-      STAKE_REFUSAL_SENTENCE,
+      "I can print the price.",
+      "I can print the price.",
     ].join("\n\n");
-    expect(dedupePolicyProseBlocks(doubled).split("\n\n").filter((b) => b.includes("I can print the price"))).toHaveLength(1);
+    expect((dedupePolicyProseBlocks(doubled).match(/I can print the price/g) ?? []).length).toBe(1);
 
     const prose = renderStakeRefusalTakeProse("How much should I stake on Chelsea?", plan);
-    expect(prose).toContain(STAKE_REFUSAL_SENTENCE);
-    expect(prose.split(STAKE_REFUSAL_SENTENCE).length - 1).toBe(1);
+    expect(prose).toContain("I can print the price");
+    expect((prose.match(/size a stake without a bankroll and a risk band/gi) ?? []).length).toBe(1);
 
     const delivery = withPunditTakeRequestScope("v2", () => {
       const grounding = chelseaTottenhamGrounding();
@@ -69,7 +68,8 @@ describe("Take v2 PR7 prose guards", () => {
       return composePunditTakeDelivery(question, grounding, responsePlan)!;
     });
     const answerProse = proseFromTakeAnswer(delivery.answer);
-    expect(answerProse.split(STAKE_REFUSAL_SENTENCE).length - 1).toBe(1);
+    expect(answerProse).toContain("I can print the price");
+    expect((answerProse.match(/size a stake without a bankroll and a risk band/gi) ?? []).length).toBe(1);
   });
 
   it("deterministic totals/BTTS never ship table-only when post-check strips body", () => {
