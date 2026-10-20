@@ -94,7 +94,8 @@
           "expectVerification": ["verified", "conflict"],
           "expectCurrentManager": { "team": "Everton" }
         }
-      ]
+      ],
+      "category": "context"
     },
     {
       "id": "owned-premier-league-latest-result",
@@ -2303,7 +2304,8 @@
         {"tier": "match", "fixtureId": "eng.1:7002", "capability": null},
         {"tier": "match", "fixtureId": "eng.1:7002", "capability": null}
       ],
-      "forbidText": ["candidate"]
+      "forbidText": ["candidate"],
+      "category": "infra"
     },
     {
       "id": "featured-match-fair-price-vs-market",
@@ -2318,7 +2320,8 @@
           "expectPricingDesk": true,
           "forbidText": ["couldn't confirm", "unconfirmed fixture"]
         }
-      ]
+      ],
+      "category": "betting-maths"
     },
     {
       "id": "desk-cross-game-parlay-decline",
@@ -2333,7 +2336,8 @@
           "expectText": ["multi-leg pricing is coming soon", "Want the numbers on"],
           "forbidText": ["one match at a time", "pressing trap", "low block", "couldn't confirm"]
         }
-      ]
+      ],
+      "category": "betting-maths"
     },
     {
       "id": "contextual-follow-up",
