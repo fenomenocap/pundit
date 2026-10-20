@@ -66,7 +66,7 @@ describe("Take v2 recent-form comparison hygiene", () => {
       ["D", "W", "L", "L", "L"],
     );
     const plan = buildPunditTakePlan(grounding, null);
-    expect(plan.numericFacts?.formLast5).toEqual({ homePoints: 6, awayPoints: 4 });
+    expect(plan.numericFacts?.formLast5).toMatchObject({ homePoints: 6, awayPoints: 4 });
     const slip =
       "but Forest have the better recent form and I expect them to edge this.";
     expect(applyV2ProseHygiene(slip, plan)).toBe("");
@@ -80,7 +80,7 @@ describe("Take v2 recent-form comparison hygiene", () => {
       ["W", "W", "L", "L", "L"],
     );
     const plan = buildPunditTakePlan(grounding, null);
-    expect(plan.numericFacts?.formLast5).toEqual({ homePoints: 3, awayPoints: 6 });
+    expect(plan.numericFacts?.formLast5).toMatchObject({ homePoints: 3, awayPoints: 6 });
     const line = "the visitors have the stronger recent form";
     expect(applyV2ProseHygiene(line, plan)).toBe(line);
   });

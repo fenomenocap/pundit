@@ -6,6 +6,9 @@ import { sampleAgentFreshness } from "../../config/freshness-policy";
 import { buildPunditTakePlan } from "./take-plan";
 import {
   applyV2ProseHygiene,
+  sentenceComparesRecentForm,
+  sentenceStatesLast5FormRecordClaim,
+  sentenceStatesVagueFormGenerality,
   VAGUE_NEGATIVE_FORM_MAX_LAST5_POINTS,
   VAGUE_POSITIVE_FORM_MIN_LAST5_POINTS,
 } from "./take-v2-prose-hygiene";
@@ -122,6 +125,105 @@ describe("Take v2 table standing snapshot hygiene", () => {
     );
     const plan = buildPunditTakePlan(grounding, null);
     const line = "two spots and one point above";
+    expect(applyV2ProseHygiene(line, plan)).toBe(line);
+  });
+
+  it("drops one place and one point above when Man Utd are two places above Bournemouth", () => {
+    const grounding = groundingWithTableAndForm(
+      "Man Utd",
+      "Bournemouth",
+      { position: 5, points: 15 },
+      { position: 7, points: 14 },
+      ["W", "W", "D", "L", "W"],
+      ["W", "L", "W", "D", "L"],
+    );
+    const plan = buildPunditTakePlan(grounding, null);
+    expect(applyV2ProseHygiene("one place and one point above", plan)).toBe("");
+    expect(applyV2ProseHygiene("one spot and one point above", plan)).toBe("");
+  });
+
+  it("drops possessive Spurs position+points pair when it disagrees with the table", () => {
+    const grounding = groundingWithTableAndForm(
+      "Tottenham",
+      "Coventry",
+      { position: 20, points: 3 },
+      { position: 16, points: 6 },
+      ["L", "L", "L", "D", "W"],
+      ["W", "L", "D", "L", "L"],
+    );
+    const plan = buildPunditTakePlan(grounding, null);
+    expect(plan.fixtureLabel).toMatch(/^Spurs v /);
+    const slip = "Spurs' 16th on 6";
+    expect(applyV2ProseHygiene(`${slip}.`, plan)).toBe("");
+  });
+
+  it("keeps Fulham point-behind clause with correct despite-being table attribution", () => {
+    const grounding = groundingWithTableAndForm(
+      "Coventry",
+      "Fulham",
+      { position: 8, points: 6 },
+      { position: 18, points: 5 },
+      ["W", "D", "L", "W", "L"],
+      ["L", "D", "L", "W", "L"],
+    );
+    const plan = buildPunditTakePlan(grounding, null);
+    const line =
+      "Fulham sit just a point behind Coventry in the table despite being 18th on 5 points";
+    expect(applyV2ProseHygiene(line, plan)).toBe(line);
+  });
+});
+
+describe("Take v2 form phrase false positives", () => {
+  it("does not treat that gap in form as a form comparison or vague-form claim", () => {
+    const line = "that gap in form is the swing factor here";
+    expect(sentenceComparesRecentForm(line)).toBe(false);
+    expect(sentenceStatesVagueFormGenerality(line)).toBe(false);
+    expect(sentenceStatesLast5FormRecordClaim(line)).toBe(false);
+  });
+});
+
+describe("Take v2 last-five W/D/L and streak hygiene", () => {
+  it("drops won three of their last 5 when the snapshot shows two wins", () => {
+    const grounding = groundingWithTableAndForm(
+      "Ipswich",
+      "Forest",
+      { position: 10, points: 10 },
+      { position: 12, points: 9 },
+      ["L", "W", "L", "W", "L"],
+      ["W", "W", "L", "L", "L"],
+    );
+    const plan = buildPunditTakePlan(grounding, null);
+    expect(plan.numericFacts?.formLast5?.away).toMatchObject({ wins: 2, played: 5 });
+    const slip = "Forest have won three of their last 5";
+    expect(applyV2ProseHygiene(`${slip}.`, plan)).toBe("");
+  });
+
+  it("drops unbeaten-in-last-5 when the snapshot includes a loss", () => {
+    const grounding = groundingWithTableAndForm(
+      "Ipswich",
+      "Forest",
+      { position: 10, points: 10 },
+      { position: 12, points: 9 },
+      ["L", "W", "L", "W", "L"],
+      ["D", "W", "L", "L", "L"],
+    );
+    const plan = buildPunditTakePlan(grounding, null);
+    const slip = "Forest have been unbeaten in their last 5";
+    expect(applyV2ProseHygiene(`${slip}.`, plan)).toBe("");
+  });
+
+  it("keeps winless-in-last-5 when the snapshot has zero wins", () => {
+    const grounding = groundingWithTableAndForm(
+      "Ipswich",
+      "Forest",
+      { position: 10, points: 10 },
+      { position: 12, points: 9 },
+      ["L", "W", "L", "W", "L"],
+      ["L", "L", "D", "L", "L"],
+    );
+    const plan = buildPunditTakePlan(grounding, null);
+    expect(plan.numericFacts?.formLast5?.away?.wins).toBe(0);
+    const line = "Forest have been winless in their last 5";
     expect(applyV2ProseHygiene(line, plan)).toBe(line);
   });
 });

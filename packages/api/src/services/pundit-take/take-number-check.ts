@@ -2,7 +2,13 @@ import type { Grounding } from "../ask";
 import type { ResultMark } from "../club-form";
 import type { FormWindow, MatchDossier } from "../match-dossier/types";
 import { allowedNumbersFromPlan, sentenceUsesDisallowedNumber } from "./take-allowed-numbers";
-import type { PunditTakePlan, TakePlanGridCall, TakePlanNumericFacts, TakePlanRow } from "./types";
+import type {
+  PunditTakePlan,
+  TakePlanGridCall,
+  TakePlanLast5FormRecord,
+  TakePlanNumericFacts,
+  TakePlanRow,
+} from "./types";
 
 const GAP_INT_TO_WORD = [
   "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
@@ -51,15 +57,48 @@ export function last5LeaguePointsFromGroundingForm(marks: ResultMark[]): number 
   return leaguePointsFromResultMarks(marks.slice(-5));
 }
 
-export function buildFormLast5Points(
+export function buildLast5FormRecord(marks: ResultMark[]): TakePlanLast5FormRecord | null {
+  const results = marks.slice(-5);
+  if (results.length < 3) return null;
+  let wins = 0;
+  let draws = 0;
+  let losses = 0;
+  for (const mark of results) {
+    if (mark === "W") wins += 1;
+    else if (mark === "D") draws += 1;
+    else losses += 1;
+  }
+  let unbeatenRun = 0;
+  for (let i = results.length - 1; i >= 0; i -= 1) {
+    if (results[i] === "L") break;
+    unbeatenRun += 1;
+  }
+  let winlessRun = 0;
+  for (let i = results.length - 1; i >= 0; i -= 1) {
+    if (results[i] === "W") break;
+    winlessRun += 1;
+  }
+  return { played: results.length, wins, draws, losses, unbeatenRun, winlessRun };
+}
+
+function last5FormRecordFromWindow(form: FormWindow | null | undefined): TakePlanLast5FormRecord | null {
+  if (!form || form.played < 3 || form.results.length < 3) return null;
+  return buildLast5FormRecord(form.results.slice(0, 5));
+}
+
+export function buildFormLast5Snapshot(
   grounding: Grounding,
   dossier: MatchDossier | null,
-): { homePoints: number | null; awayPoints: number | null } {
+): TakePlanNumericFacts["formLast5"] {
   const homePoints = last5LeaguePointsFromFormWindow(dossier?.form.homeLast5.value)
     ?? last5LeaguePointsFromGroundingForm(grounding.homeForm);
   const awayPoints = last5LeaguePointsFromFormWindow(dossier?.form.awayLast5.value)
     ?? last5LeaguePointsFromGroundingForm(grounding.awayForm);
-  return { homePoints, awayPoints };
+  const home = last5FormRecordFromWindow(dossier?.form.homeLast5.value)
+    ?? buildLast5FormRecord(grounding.homeForm);
+  const away = last5FormRecordFromWindow(dossier?.form.awayLast5.value)
+    ?? buildLast5FormRecord(grounding.awayForm);
+  return { homePoints, awayPoints, home, away };
 }
 
 export function topTwoOutcomeGapPoints(
@@ -94,7 +133,7 @@ export function buildTakeNumericFacts(
     : null;
   const topTwoGapPoints = topTwoOutcomeGapPoints(rows, gridCall, gridRows);
   const coinFlip = gridCall?.coinFlip ?? topTwoGapPoints < 2;
-  const formLast5 = buildFormLast5Points(grounding, dossier);
+  const formLast5 = buildFormLast5Snapshot(grounding, dossier);
   return {
     table: {
       homePosition,

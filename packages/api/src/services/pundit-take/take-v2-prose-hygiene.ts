@@ -68,6 +68,7 @@ function fixtureSides(plan: PunditTakePlan): { home: string; away: string } | nu
 }
 
 export function sentenceComparesRecentForm(sentence: string): boolean {
+  if (/\bgap in form\b/i.test(sentence)) return false;
   return RECENT_FORM_COMPARE.test(sentence);
 }
 
@@ -148,6 +149,46 @@ function teamSideFromMention(
   return null;
 }
 
+/** Grammatical subject at the start of the sentence (e.g. "Fulham sit …"). */
+function primarySubjectSide(
+  sentence: string,
+  sides: { home: string; away: string },
+): "home" | "away" | null {
+  const lead = sentence.match(/^\s*([A-Za-z][A-Za-z\s'-]+?)\s+(?:sit|are|have|remain|look|come)\b/i);
+  if (!lead?.[1]) return null;
+  return teamSideFromMention(lead[1], sides);
+}
+
+function lastTeamSideBefore(
+  text: string,
+  sides: { home: string; away: string },
+): "home" | "away" | null {
+  const lower = text.toLowerCase();
+  const homeIdx = lower.lastIndexOf(sides.home.toLowerCase());
+  const awayIdx = lower.lastIndexOf(sides.away.toLowerCase());
+  if (homeIdx === -1 && awayIdx === -1) return null;
+  if (homeIdx >= awayIdx) return "home";
+  return "away";
+}
+
+function sideForTableOrdinalClaim(
+  sentence: string,
+  matchIndex: number,
+  sides: { home: string; away: string },
+): "home" | "away" | null {
+  const before = sentence.slice(0, matchIndex);
+  const possessive = before.match(/([A-Za-z][A-Za-z\s'-]+?)[''\u2019]s\s*$/);
+  if (possessive?.[1]) {
+    const side = teamSideFromMention(possessive[1], sides);
+    if (side) return side;
+  }
+  const primary = primarySubjectSide(sentence, sides);
+  if (primary && /\bdespite being\b/i.test(before)) return primary;
+  const nearest = lastTeamSideBefore(before, sides);
+  if (nearest) return nearest;
+  return primary;
+}
+
 function pointsGapMatches(
   subject: "home" | "away",
   reference: "home" | "away",
@@ -180,7 +221,8 @@ export function sentenceStatesTableStandingClaim(sentence: string): boolean {
     return true;
   }
   if (/\b(?:a|one)\s+(?:spot|place)\s+(?:above|below|ahead|behind)\b/i.test(sentence)) return true;
-  if (/\b\d+(?:st|nd|rd|th)\s+on\s+\d+\s+points?\b/i.test(sentence)) return true;
+  if (/\b\d+(?:st|nd|rd|th)\s+on\s+\d+\b(?:\s+points?)?/i.test(sentence)) return true;
+  if (/\b[A-Za-z][A-Za-z\s'-]+?[''\u2019]s\s+\d+(?:st|nd|rd|th)\s+on\s+\d+\b/i.test(sentence)) return true;
   if (/\b\d+(?:st|nd|rd|th)[- ]placed\b/i.test(sentence)) return true;
   if (/\bwho have \d+\b/i.test(sentence) && /\b(?:spot|place|points?|\d+(?:st|nd|rd|th))/i.test(sentence)) {
     return true;
@@ -200,13 +242,12 @@ export function sentenceFailsTableStandingSnapshotCheck(sentence: string, plan: 
     return true;
   }
 
-  const ordinalOnPoints = /\b(\d+(?:st|nd|rd|th))\s+on\s+(\d+)\s+points?\b/gi;
+  const ordinalOnPoints = /\b(\d+(?:st|nd|rd|th))\s+on\s+(\d+)\b(?:\s+points?)?/gi;
   let ordinalMatch: RegExpExecArray | null;
   while ((ordinalMatch = ordinalOnPoints.exec(sentence)) !== null) {
     const statedPos = parseOrdinalPosition(ordinalMatch[1]!);
     const statedPts = Number(ordinalMatch[2]);
-    const prefix = sentence.slice(Math.max(0, ordinalMatch.index - 60), ordinalMatch.index);
-    const side = teamSideFromMention(prefix, sides);
+    const side = sideForTableOrdinalClaim(sentence, ordinalMatch.index, sides);
     if (!side || statedPos == null || !Number.isFinite(statedPts)) return true;
     if (positionForSide(side, table) !== statedPos || pointsForSide(side, table) !== statedPts) {
       return true;
@@ -292,7 +333,7 @@ export function sentenceFailsTableStandingSnapshotCheck(sentence: string, plan: 
     if (statedGap == null) return true;
     const refName = gapMatch[4]?.trim();
     const prefix = sentence.slice(0, gapMatch.index);
-    let subject = teamSideFromMention(prefix, sides);
+    let subject = primarySubjectSide(sentence, sides) ?? teamSideFromMention(prefix, sides);
     let reference: "home" | "away" | null = refName ? teamSideFromMention(refName, sides) : null;
     if (refName && !reference) return true;
     if (!subject && reference) {
@@ -314,7 +355,64 @@ const VAGUE_NEGATIVE_FORM =
   /\b(?:struggling for form|in poor form|on a bad run|out of form)\b/i;
 
 export function sentenceStatesVagueFormGenerality(sentence: string): boolean {
+  if (/\bgap in form\b/i.test(sentence)) return false;
   return VAGUE_POSITIVE_FORM.test(sentence) || VAGUE_NEGATIVE_FORM.test(sentence);
+}
+
+export function sentenceStatesLast5FormRecordClaim(sentence: string): boolean {
+  if (/\bgap in form\b/i.test(sentence)) return false;
+  return /\b(?:won|winning|wins)\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+of\s+(?:their\s+)?last\s+(?:five|5|\d+)\b/i.test(sentence)
+    || /\bunbeaten\s+in\s+(?:their\s+)?last\s+(?:five|5|\d+)\b/i.test(sentence)
+    || /\b(?:winless|without\s+a\s+win)\s+in\s+(?:their\s+)?last\s+(?:five|5|\d+)\b/i.test(sentence)
+    || /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)[- ]game\s+unbeaten\b/i.test(sentence)
+    || /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)[- ]game\s+winless\b/i.test(sentence);
+}
+
+/** Drop when stated W/D/L or streak claims contradict the last-five form snapshot. */
+export function sentenceFailsLast5FormRecordCheck(sentence: string, plan: PunditTakePlan): boolean {
+  if (!sentenceStatesLast5FormRecordClaim(sentence)) return false;
+  const formLast5 = plan.numericFacts?.formLast5;
+  const sides = fixtureSides(plan);
+  if (!sides) return true;
+  const subject = primarySubjectSide(sentence, sides)
+    ?? sideMentionedInFormSentence(sentence, sides)
+    ?? teamSideFromMention(sentence, sides);
+  if (!subject) return true;
+  const record = subject === "home" ? formLast5?.home : formLast5?.away;
+  if (!record) return true;
+
+  const winsOf = sentence.match(
+    /\b(?:won|winning|wins)\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+of\s+(?:their\s+)?last\s+(five|5|\d+)\b/i,
+  );
+  if (winsOf) {
+    const statedWins = parseGapToken(winsOf[1]!);
+    if (statedWins == null) return true;
+    if (statedWins !== record.wins) return true;
+  }
+
+  const unbeatenIn = sentence.match(/\bunbeaten\s+in\s+(?:their\s+)?last\s+(five|5|\d+)\b/i);
+  if (unbeatenIn) {
+    const window = parseGapToken(unbeatenIn[1]!) ?? 5;
+    const span = Math.min(window, record.played);
+    if (record.unbeatenRun < span || record.losses > 0) return true;
+  }
+
+  const winlessIn = sentence.match(/\b(?:winless|without\s+a\s+win)\s+in\s+(?:their\s+)?last\s+(five|5|\d+)\b/i);
+  if (winlessIn && record.wins > 0) return true;
+
+  const unbeatenRun = sentence.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)[- ]game\s+unbeaten\b/i);
+  if (unbeatenRun) {
+    const stated = parseGapToken(unbeatenRun[1]!);
+    if (stated == null || stated !== record.unbeatenRun) return true;
+  }
+
+  const winlessRun = sentence.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)[- ]game\s+winless\b/i);
+  if (winlessRun) {
+    const stated = parseGapToken(winlessRun[1]!);
+    if (stated == null || stated !== record.winlessRun) return true;
+  }
+
+  return false;
 }
 
 /** Drop vague form praise/criticism when last-five points contradict the threshold. */
@@ -399,6 +497,9 @@ function sanitizeLlmTakeSentence(
     return null;
   }
   if (sentenceFailsVagueFormGeneralityCheck(next, plan)) {
+    return null;
+  }
+  if (sentenceFailsLast5FormRecordCheck(next, plan)) {
     return null;
   }
   if (sentenceFailsFormComparisonCheck(next, plan)) {
