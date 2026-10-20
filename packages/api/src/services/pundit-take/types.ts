@@ -98,7 +98,8 @@ export interface PunditTakePlan {
   hasCompleteMarket: boolean;
   rows: TakePlanRow[];
   marketColumns: TakePlanMarketColumn[];
-  numericFacts: TakePlanNumericFacts;
+  /** Present on plans from `buildPunditTakePlan`; guards tolerate absence in unit fixtures. */
+  numericFacts?: TakePlanNumericFacts;
 }
 
 export interface PunditTakeSourceOdds {

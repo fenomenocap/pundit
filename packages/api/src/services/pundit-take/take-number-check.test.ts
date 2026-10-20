@@ -16,7 +16,7 @@ describe("take v2 number check (b)", () => {
       }),
     };
     const plan = buildPunditTakePlan(grounding, null);
-    expect(plan.numericFacts.table.pointsClear).toBe(1);
+    expect(plan.numericFacts?.table.pointsClear).toBe(1);
     const prose = [
       "Brentford sit 6th on 10 points, three clear of 9th-placed Hull on 9.",
       "Hull travel with something to prove.",
@@ -66,7 +66,7 @@ describe("take v2 toss-up enforcement (c)", () => {
       pAway: 0.33,
     };
     const plan = buildPunditTakePlan(grounding, null);
-    expect(plan.numericFacts.coinFlip).toBe(true);
+    expect(plan.numericFacts?.coinFlip).toBe(true);
     const prose = "On the 1X2 this is a genuine toss-up between the top two.";
     expect(applyV2TakeProseGuards(prose, plan)).toMatch(/toss-up/i);
   });
