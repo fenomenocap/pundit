@@ -61,6 +61,10 @@ export function sentenceUsesDisallowedNumber(sentence: string, allowed: Set<stri
     if (allowed.has(token)) continue;
     const asInt = String(Math.round(Number(token)));
     if (allowed.has(asInt)) continue;
+    const oneDecimal = Number(token).toFixed(1);
+    if (allowed.has(oneDecimal)) continue;
+    const twoDecimal = Number(token).toFixed(2);
+    if (allowed.has(twoDecimal)) continue;
     return true;
   }
   return false;

@@ -1,5 +1,6 @@
 import type { PunditTakePlan } from "./types";
-import { allowedNumbersFromPlan, sentenceUsesDisallowedNumber } from "./take-allowed-numbers";
+import { sentenceUsesDisallowedNumber } from "./take-allowed-numbers";
+import { applyV2TakeProseGuards, collectAllowedNumbers } from "./take-number-check";
 
 export const TAKE_PROSE_BANNED_PATTERN =
   /\b(?:Elo|ClubElo|Kalshi|Polymarket|Dixon-Coles|model-grounded)\b|Why:|Risk:|Lean:|Model:|#\s*[a-f0-9]{6,}|SGT\b|\b\d{1,2}\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i;
@@ -95,7 +96,7 @@ export function validateTakeProseAgainstPlan(prose: string, plan: PunditTakePlan
   if (TAKE_TEMPLATE_BANNED_PATTERN.test(prose)) errors.push("template-line");
   if (TAKE_AUDIT_SPEAK_PATTERN.test(prose)) errors.push("audit-speak");
 
-  const allowed = allowedNumbersFromPlan(plan);
+  const allowed = collectAllowedNumbers(plan);
   const sentences = prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
   for (const sentence of sentences) {
     if (sentenceUsesDisallowedNumber(sentence, allowed)) {
@@ -134,7 +135,8 @@ export function postCheckTakeProseWithReport(
   prose: string,
   plan: PunditTakePlan,
 ): { prose: string; dropped: string[] } {
-  const errors = validateTakeProseAgainstPlan(prose, plan);
+  const guarded = applyV2TakeProseGuards(prose, plan);
+  const errors = validateTakeProseAgainstPlan(guarded, plan);
   const dropped = errors.filter((e) => e.startsWith("unmapped-sentence:")
     || e.startsWith("disallowed-number:")
     || e === "banned-token"
@@ -142,7 +144,7 @@ export function postCheckTakeProseWithReport(
     || e === "audit-speak");
   if (errors.some((e) => e.startsWith("unmapped") || e.startsWith("disallowed-number")
     || e === "banned-token" || e === "template-line" || e === "audit-speak")) {
-    return { prose: filterUnmappedSentences(prose, plan), dropped };
+    return { prose: filterUnmappedSentences(guarded, plan), dropped };
   }
-  return { prose, dropped: [] };
+  return { prose: guarded, dropped: [] };
 }
