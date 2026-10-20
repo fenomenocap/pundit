@@ -10,7 +10,7 @@ export function formatWhatFlipsItSentence(plan: PunditTakePlan, grounding: Groun
     if (!flip.trim()) return null;
   }
   const body = flip.endsWith(".") ? flip.slice(0, -1) : flip;
-  return `What flips it: ${body.charAt(0).toLowerCase()}${body.slice(1)}.`;
+  return `I'd shift if ${body}.`;
 }
 
 export function appendWhatFlipsItClosing(

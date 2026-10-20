@@ -3,7 +3,7 @@ import { composeMatchResponse } from "../response-composer";
 import { attachUserLine } from "../response-correctness";
 import { planResponse } from "../response-plan";
 import { composePunditTakeDelivery } from "./compose";
-import { withPunditTakeRequestScope } from "./flags";
+import { punditTakeV2PlayPassResolverEnabled, withPunditTakeRequestScope } from "./flags";
 import {
   firstForbiddenTokenInTakeProse,
   proseFromTakeAnswer,
@@ -46,13 +46,16 @@ describe("Take v2 audit-speak guard", () => {
     const hasMarket = grounding.pricing.markets.some(
       (row) => row.legs.draw.decimalOdds != null || row.legs.draw.impliedP != null,
     );
-    const plan = planResponse(question, {
-      groundingKind: "match",
-      hasCompleteMarket1x2: hasMarket,
-      hasHistory: question.trim() === "Why?",
-      hasUserLine: Boolean(grounding.pricing.userLine),
+    return withPunditTakeRequestScope("v2", () => {
+      const plan = planResponse(question, {
+        groundingKind: "match",
+        hasCompleteMarket1x2: hasMarket,
+        hasHistory: question.trim() === "Why?",
+        hasUserLine: Boolean(grounding.pricing.userLine),
+        v2PlayPassResolver: punditTakeV2PlayPassResolverEnabled(),
+      });
+      return composePunditTakeDelivery(question, grounding, plan)!;
     });
-    return withPunditTakeRequestScope("v2", () => composePunditTakeDelivery(question, grounding, plan)!);
   }
 
   for (const question of SPURS_PROMPTS) {

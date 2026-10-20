@@ -66,6 +66,11 @@ export function punditTakeV2HeaderOverrideActive(): boolean {
   return false;
 }
 
+/** #351 play/pass resolver (word order, aliases, single-club routing) — header v2 only. */
+export function punditTakeV2PlayPassResolverEnabled(): boolean {
+  return punditTakeV2HeaderOverrideActive();
+}
+
 export function stashPunditTakeDelivery(delivery: PunditTakeDelivery): void {
   const scoped = takeRequestScope.getStore();
   if (scoped) scoped.delivery = delivery;

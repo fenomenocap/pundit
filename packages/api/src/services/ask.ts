@@ -185,10 +185,18 @@ import {
 } from "./pundit-take/compose";
 import {
   punditTakeV2Active,
+  punditTakeV2PlayPassResolverEnabled,
   stashPrefetchedTakeDelivery,
   stashTakeDossier,
 } from "./pundit-take/flags";
 import { prefetchStoredTakeDossier } from "./pundit-take/take-dossier";
+
+function matchPlanContextForRequest(
+  grounding: Parameters<typeof matchPlanContext>[0],
+  hasHistory = false,
+) {
+  return matchPlanContext(grounding, hasHistory, punditTakeV2PlayPassResolverEnabled());
+}
 import {
   evaluateFixtureCapability,
   fixtureRegistryExpansionEnabled,
@@ -5563,7 +5571,9 @@ export function resolveAskContext(
   }
 
   const passPlayMentionEarly = mentionedTeamPositions(question, searchableFixtures);
-  if (/\b(?:pass or play|play or pass)\b/i.test(question) && passPlayMentionEarly.size === 1) {
+  if (punditTakeV2PlayPassResolverEnabled()
+    && /\b(?:pass or play|play or pass)\b/i.test(question)
+    && passPlayMentionEarly.size === 1) {
     const club = [...passPlayMentionEarly.keys()][0];
     const priced = findNextPricedModelFixtureForClub(club, fixtures, routing.now ?? Date.now());
     if (priced) return { tier: "match", fixture: priced };
@@ -9866,7 +9876,7 @@ export function closedGroundedAnswer(
   if (grounding?.kind === "match"
     && !isModelOnlyRequest(question)
     && !asksModelInputQuestion(question)) {
-    const planCtx = matchPlanContext(grounding, hasHistory);
+    const planCtx = matchPlanContextForRequest(grounding, hasHistory);
     const legacyPricedFollowUp = isPricedComposerFollowUp(
       question,
       hasHistory,
@@ -9879,7 +9889,7 @@ export function closedGroundedAnswer(
     if (directFact === CURRENT_CLAIM_ABSTENTION || directFact === RESULT_CLAIM_ABSTENTION
       || directFact === STATS_CLAIM_ABSTENTION || asksExplicitExternalPrice(question)) return null;
     const plan = planResponse(question, {
-      ...matchPlanContext(grounding, hasHistory),
+      ...matchPlanContextForRequest(grounding, hasHistory),
     });
     // A briefing may also ask for current external facts. Its owned football
     // take cannot settle that request before the mandatory evidence lookup.
@@ -10439,7 +10449,7 @@ export async function deliverAnswer(args: {
           checked.verification.status === "unavailable"
             ? "I couldn’t verify a dated team-news update because verification was unavailable, so I won’t make an availability claim."
             : composeMatchResponse(question, grounding,
-              planResponse(question, matchPlanContext(grounding, hasHistory))),
+              planResponse(question, matchPlanContextForRequest(grounding, hasHistory))),
           grounding,
           useV2,
           { question, hasHistory },
@@ -10469,7 +10479,7 @@ export async function deliverAnswer(args: {
         ? finalizeDeliveredText(composeMatchResponse(
           question,
           grounding,
-          planResponse(question, matchPlanContext(grounding, hasHistory)),
+          planResponse(question, matchPlanContextForRequest(grounding, hasHistory)),
         ), grounding, useV2, { question, hasHistory })
         : renderGroundedMatchAnswer(grounding),
       citations: [],
@@ -10630,7 +10640,7 @@ function groundedMatchFallback(
     ? composeMatchResponse(
       question,
       grounding,
-      planResponse(question, matchPlanContext(grounding, hasHistory))
+      planResponse(question, matchPlanContextForRequest(grounding, hasHistory))
     )
     : renderGroundedMatchFallback(grounding);
   const completeFallback = useV2
@@ -10840,7 +10850,7 @@ function finalizeDeliveredText(
   }
   const scrubbed = scrubEmptyStructuralLines(stripInternalPromptVocabulary(traced));
   const deliveryMode = grounding?.kind === "match" && delivery?.question
-    ? planResponse(delivery.question, matchPlanContext(grounding, delivery.hasHistory)).mode
+    ? planResponse(delivery.question, matchPlanContextForRequest(grounding, delivery.hasHistory)).mode
     : null;
   const policyLines = deliveryMode && delivery?.question
     ? deliveryPolicyLinesAfterTrace(delivery.question, deliveryMode)
@@ -10898,7 +10908,7 @@ function withPresentation(
   result: ScopedAskPayload,
 ): AskResult {
   const plan = planResponse(question, {
-    ...matchPlanContext(result.grounding, hasHistory),
+    ...matchPlanContextForRequest(result.grounding, hasHistory),
   });
   return {
     ...result,
@@ -11235,7 +11245,7 @@ async function prefetchPunditTakeDeliveryForMatch(
   hasHistory: boolean,
 ): Promise<void> {
   if (!punditTakeV2Active()) return;
-  const plan = planResponse(question, matchPlanContext(grounding, hasHistory));
+  const plan = planResponse(question, matchPlanContextForRequest(grounding, hasHistory));
   if (!punditTakeApplies(plan, question)) return;
   stashTakeDossier(prefetchStoredTakeDossier(grounding));
   const delivery = await composePunditTakeDeliveryAsync(question, grounding, plan);
