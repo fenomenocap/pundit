@@ -13,7 +13,9 @@ export function asksDrawSideTakeQuestion(question: string): boolean {
   return (/\b(?:what about|how about)\b/i.test(q) && /\b(?:the )?draw\b/i.test(q))
     || /^\s*(?:the\s+)?draw\s*\??\s*$/i.test(q)
     || /^(?:what about |how about )?(?:the )?draw\??\s*$/i.test(q)
-    || /\bdraw (?:side|angle|price|odds)\b/i.test(q);
+    || /\bdraw (?:side|angle|price|odds)\b/i.test(q)
+    || /\bbe a draw\b/i.test(q)
+    || (/\b(?:vs|versus)\b/i.test(q) && /\bdraw\b/i.test(q) && /\b(?:will|could|would|is|are)\b/i.test(q));
 }
 
 /** Draw, guarantee, and provenance prompts always use the v2 take composer. */

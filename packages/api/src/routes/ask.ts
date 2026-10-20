@@ -24,7 +24,12 @@ import {
   isPunditTakeEvalOverrideGuardActive,
   resolvePunditTakeOverride,
   withPunditTakeRequestScope,
+  type PunditTakeMode,
 } from "../services/pundit-take/flags";
+import { composeMatchResponse } from "../services/response-composer";
+import { composePunditTakeDelivery } from "../services/pundit-take/compose";
+import { matchPlanContext, planResponse } from "../services/response-plan";
+import type { AskResult } from "../services/ask";
 
 const router: Router = Router();
 const MAX_HISTORY_TURNS = 12;
@@ -166,6 +171,24 @@ export function createAskRateLimiter(config = askRateLimitConfig) {
 
 router.use(createAskRateLimiter());
 
+/** Header v2 only: never ship HTTP 200 with an empty match take body. */
+export function ensureHeaderV2AskAnswerNonEmpty(
+  question: string,
+  takeOverride: PunditTakeMode | null,
+  result: AskResult,
+): AskResult {
+  if (takeOverride !== "v2" || result.grounding?.kind !== "match" || result.answer?.trim()) {
+    return result;
+  }
+  const planCtx = matchPlanContext(result.grounding, false, true);
+  const plan = planResponse(question, { groundingKind: "match", ...planCtx });
+  let answer = composeMatchResponse(question, result.grounding, plan).trim();
+  if (!answer) {
+    answer = composePunditTakeDelivery(question, result.grounding, plan)?.answer.trim() ?? "";
+  }
+  return answer ? { ...result, answer } : result;
+}
+
 function sseSend(res: Response, event: string, data: unknown): void {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
@@ -203,7 +226,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
 
     if (req.body?.stream !== true) {
       try {
-        const result = await runAsk(() => answerQuestion(
+        let result = await runAsk(() => answerQuestion(
           trimmedQuestion,
           history,
           teamContext,
@@ -212,6 +235,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           userLine,
           voice
         ));
+        result = ensureHeaderV2AskAnswerNonEmpty(trimmedQuestion, takeOverride, result);
         logAskChatEngineTurn({
           effectiveEngine: result.engine,
           engineFromHeaderOverride: engineOverride !== null,
