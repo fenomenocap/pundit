@@ -8,6 +8,7 @@ import { applyLiveForm, FORM, type ResultMark } from "./data/form";
 import type { TeamId } from "./data/teams";
 import { TEAM_LIST, TEAMS } from "./data/teams";
 import { pickDeskMarketQuote } from "./market-quote";
+import { ratingComparison } from "./rating-words";
 import { deskNumbersFromModelRow, type ModelRowLambdas } from "./grid";
 
 export const LIVE_API =
@@ -206,7 +207,7 @@ function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey
   const formA = FORM[away]?.join("") ?? "";
   const top = row.topScores?.[0];
   const parts = [
-    `${TEAMS[home].short} (${row.homeElo.toFixed(0)}) vs ${TEAMS[away].short} (${row.awayElo.toFixed(0)}).`,
+    ratingComparison(TEAMS[home].short, TEAMS[away].short, row.homeElo, row.awayElo),
     `Form ${formH} / ${formA}.`,
     `xG ${xg[0].toFixed(2)}–${xg[1].toFixed(2)}.`,
     `1X2 ${(row.pHome * 100).toFixed(0)}/${(row.pDraw * 100).toFixed(0)}/${(row.pAway * 100).toFixed(0)}.`,

@@ -12,7 +12,7 @@ export function ProbBar({
   return (
     <div>
       <div className="flex justify-between text-2xs uppercase tracking-wider text-quiet mb-1.5">
-        <span>Model 1X2</span>
+        <span>Our 1X2</span>
         <span className="tabular-nums normal-case">
           {fmtPct(home)} / {fmtPct(draw)} / {fmtPct(away)}
         </span>
