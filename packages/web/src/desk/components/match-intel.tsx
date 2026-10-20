@@ -98,7 +98,7 @@ export function MatchIntel() {
               </p>
             ) : null}
             <p className="mt-4 text-sm leading-relaxed text-quiet">
-              {f.status === "ft" ? "Pre-kickoff lean" : "Model lean"}{" "}
+              {f.status === "ft" ? "Pre-kickoff lean" : "Our lean"}{" "}
               <span className="text-fg font-medium">{selectionLabel(f, f.modelPick)}</span> at{" "}
               <span className="text-accent tabular-nums">{leanP === null ? "—" : fmtPct(leanP)}</span>. {f.brief}
             </p>
@@ -144,7 +144,7 @@ export function MatchIntel() {
             variant="accent"
             onClick={() =>
               queueAsk(
-                `Give me the match briefing for ${TEAMS[f.home].name} vs ${TEAMS[f.away].name}. Tactics, who decides it, and the model lean.`,
+                `Give me the match briefing for ${TEAMS[f.home].name} vs ${TEAMS[f.away].name}. Tactics, who decides it, and our lean.`,
               )
             }
           >

@@ -135,6 +135,10 @@ test.describe("QA regressions", () => {
       await page.locator('li [data-testid="desk-slate-fixture"][data-fixture-id="espn:eng.1:901"]').click();
       const xg = exact ? "1.88–0.82" : "1.87–0.83";
       await expect(page.locator("aside").getByText(xg, { exact: true })).toBeVisible();
+      await expect(page.locator("aside")).toContainText("Our lean");
+      await expect(page.locator("aside")).toContainText("Arsenal rate stronger.");
+      await expect(page.locator("aside")).not.toContainText("(1901)");
+      await expect(page.locator("aside")).not.toContainText("(1800)");
       await expect(page.locator("aside")).toContainText(`xG ${xg}.`);
       await expect(page.locator("aside")).toContainText("1X2 50/25/25.");
       await expect(page.locator("aside")).toContainText("BTTS 50 · O2.5 52");
@@ -481,7 +485,7 @@ test.describe("QA regressions", () => {
     await input.fill("Give me the Arsenal vs Chelsea briefing");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByTestId("desk-match-board")).toBeVisible();
-    await expect(page.getByTestId("desk-match-board")).toContainText("Model probabilities · fair decimal odds");
+    await expect(page.getByTestId("desk-match-board")).toContainText("Our probabilities · fair decimal odds");
     await expect(page.getByTestId("desk-totals-honesty")).toContainText("fixed total-goals assumption");
     await expect(page.getByTestId("desk-match-board")).toContainText("sum to 100%");
     const league = page.getByRole("img", { name: "Premier League", exact: true });
