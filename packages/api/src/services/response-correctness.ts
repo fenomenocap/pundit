@@ -191,6 +191,21 @@ export function playPrice(p: number): number | null {
   return fair === null ? null : fair * (1 + PLAY_PRICE_MARKUP);
 }
 
+/** Model minus implied probability, in percentage points (one decimal). */
+export function userLineGapPoints(modelP: number, decimalOdds: number): number {
+  return Math.round((modelP - 1 / decimalOdds) * 1000) / 10;
+}
+
+export function resolveUserLineDecision(
+  line: Pick<NonNullable<PricingObject["userLine"]>, "decimalOdds" | "passPrice" | "playPrice">,
+  gapPoints: number,
+): "play" | "pass" | "abstain" {
+  if (gapPoints < 0) return "pass";
+  if (line.decimalOdds >= line.playPrice) return "play";
+  if (line.decimalOdds < line.passPrice) return "pass";
+  return "abstain";
+}
+
 export function riskBand(modelP: number, ev: number | null | undefined): RiskBand | null {
   if (!Number.isFinite(modelP) || modelP < 0 || modelP > 1) return null;
   const band = edgeBand(ev);

@@ -16,6 +16,7 @@ import {
   normalizeTeamText,
 } from "../lib/team-names";
 import {
+  findModelFixtureInList,
   getCachedModelData,
   getModelRefreshState,
   ModelFixture,
@@ -178,6 +179,16 @@ import {
   responsePresentation,
   type ResponsePresentation,
 } from "./response-plan";
+import {
+  composePunditTakeDeliveryAsync,
+  punditTakeApplies,
+} from "./pundit-take/compose";
+import {
+  punditTakeV2Active,
+  stashPrefetchedTakeDelivery,
+  stashTakeDossier,
+} from "./pundit-take/flags";
+import { prefetchStoredTakeDossier } from "./pundit-take/take-dossier";
 import {
   evaluateFixtureCapability,
   fixtureRegistryExpansionEnabled,
@@ -5492,7 +5503,7 @@ export function resolveAskContext(
   // still land on exactly the fixture the user clicked rather than on whichever
   // leg happens to sort first.
   const contextualModelFixture = routing.fixtureContext && !contextualFixture
-    ? fixtures.find((fixture) => espnFixtureIdentity(fixture) === routing.fixtureContext?.fixtureId)
+    ? findModelFixtureInList(routing.fixtureContext.fixtureId, fixtures)
     : undefined;
   const contextualTeams: TeamContext | undefined = contextualFixture
     ? [contextualFixture.homeTeam.name, contextualFixture.awayTeam.name]
@@ -5591,7 +5602,19 @@ export function resolveAskContext(
 
   // fixtureContext is server-owned identity returned by a previous grounding.
   // It wins over the temporary legacy teamContext when both are supplied.
-  if (!teams && routing.fixtureContext && (!competitionId || hasMatchOutcomeIntent(question))) {
+  //
+  // Pass-or-play-only turns from a desk chip used to surface 502
+  // ("Analysis service is temporarily unavailable") even when production had
+  // OpenRouter configured. Root cause was routing, not a missing key:
+  // (1) competition retention here required hasMatchOutcomeIntent unless
+  // shouldUseMatchGrounding(question) — pass-or-play plans as user-line and
+  // must hit that second branch; (2) spine ids such as eng.1:401879257 failed
+  // contextualModelFixture when lookup used the global model cache instead of
+  // the fixtures list for this request. Either miss kept tier at general, so
+  // closedGroundedAnswer returned null and the first inference call threw
+  // InferenceUnconfiguredError locally (no key) or burned a model turn in prod.
+  if (!teams && routing.fixtureContext
+    && (!competitionId || hasMatchOutcomeIntent(question) || shouldUseMatchGrounding(question))) {
     if (contextualTeams
       && (!leavesMatchContext(question, contextualTeams, searchableFixtures)
         || unresolvedSwitchClub(question, contextualTeams) !== null)) {
@@ -11059,6 +11082,9 @@ async function deliverChatAgentTurn(
   requestStartedAt: number,
   voice?: "desk",
 ): Promise<ScopedAskPayload> {
+  if (grounding?.kind === "match") {
+    await prefetchPunditTakeDeliveryForMatch(question, grounding, history.length > 0);
+  }
   const composed = closedGroundedAnswer(question, grounding, history.length > 0);
   if (composed?.trim()) {
     const metrics = emptyChatAgentTurnMetrics();
@@ -11183,6 +11209,19 @@ function multiLegPricingDeclinePayload(): ScopedAskPayload {
   };
 }
 
+async function prefetchPunditTakeDeliveryForMatch(
+  question: string,
+  grounding: Extract<AskGrounding, { kind: "match" }>,
+  hasHistory: boolean,
+): Promise<void> {
+  if (!punditTakeV2Active()) return;
+  const plan = planResponse(question, matchPlanContext(grounding, hasHistory));
+  if (!punditTakeApplies(plan, question)) return;
+  stashTakeDossier(prefetchStoredTakeDossier(grounding));
+  const delivery = await composePunditTakeDeliveryAsync(question, grounding, plan);
+  stashPrefetchedTakeDelivery(delivery);
+}
+
 export async function answerQuestion(
   question: string,
   history: ConversationTurn[] = [],
@@ -11298,6 +11337,9 @@ async function answerQuestionScoped(
       );
     }
     if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "grounding_ineligible_legacy_path");
+    if (grounding?.kind === "match") {
+      await prefetchPunditTakeDeliveryForMatch(question, grounding, history.length > 0);
+    }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     const deskPlan = planResponse(question, {
       groundingKind: grounding?.kind ?? undefined,
@@ -11624,6 +11666,9 @@ async function answerQuestionStreamScoped(
       return delivered;
     }
     if (agentEngineActive) logAgentEngineSkip(requestStartedAt, "grounding_ineligible_legacy_path");
+    if (grounding?.kind === "match") {
+      await prefetchPunditTakeDeliveryForMatch(question, grounding, history.length > 0);
+    }
     const closedAnswer = closedGroundedAnswer(question, grounding, history.length > 0);
     if (closedAnswer) {
       if ((handlers.shouldContinue ?? (() => true))()) handlers.onDelta(closedAnswer);
