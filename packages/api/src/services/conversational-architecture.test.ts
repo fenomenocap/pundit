@@ -1037,7 +1037,7 @@ describe("V2 conversational architecture", () => {
       { ...match, pricing: attachUserLine(match.pricing, { outcome: "home", decimalOdds: 1.8 }) },
       planResponse("I found Arsenal at 1.80 — pass or play?", { groundingKind: "match", hasUserLine: true })
     );
-    expect(abstain).toMatch(/will not call Arsenal/);
+    expect(abstain).toMatch(/No call on Arsenal/);
     const stake = composeMatchResponse(
       "How much should I stake?",
       lined,

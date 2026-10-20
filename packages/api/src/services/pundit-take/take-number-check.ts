@@ -198,7 +198,7 @@ function sentenceSkipsNumericAndGapGuard(sentence: string): boolean {
     || /^Draw: our fair /i.test(sentence)
     || /fair 1X2 vs the best prices/i.test(sentence)
     || /^The value is /i.test(sentence)
-    || /^I will not call /i.test(sentence)
+    || /\bNo call on /i.test(sentence)
     || /^What flips it:/i.test(sentence)
     || /^I'd shift if /i.test(sentence)
     || /^I'd revisit if /i.test(sentence)
