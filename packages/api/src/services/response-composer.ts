@@ -497,7 +497,7 @@ export function composeMarketComparisonAnswer(question: string, grounding: Groun
   return composeIndependentMarketTakeAnswer(grounding, "full");
 }
 
-function capitalizeSource(source: string): string {
+export function capitalizeSource(source: string): string {
   if (source === "kalshi") return "Kalshi";
   if (source === "polymarket") return "Polymarket";
   if (source === "stake") return "Stake";

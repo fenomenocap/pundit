@@ -4,6 +4,7 @@ import { formatTimestampSgt, shortModelVersionLabel } from "../basics-answer-voi
 import type { MatchDossier } from "../match-dossier/types";
 import type { PunditTakeSourcesFooter } from "./types";
 import { takeEligibleDossierEvidence } from "./take-dossier-evidence";
+import { fplInjuryStatusFooterAsOfSgt } from "./take-fpl-injuries";
 
 function labelSource(source: string): string {
   if (source === "kalshi") return "Kalshi";
@@ -51,5 +52,11 @@ export function buildTakeSourcesFooter(
     tableAsOfSgt: tableAsOf ? formatTimestampSgt(tableAsOf) : null,
     odds,
     evidenceUrls,
+    fplInjuryStatusAsOfSgt: fplInjuryStatusFooterAsOfSgt(grounding, dossier),
   };
+}
+
+export function formatTakeSourcesFooterBlock(footer: PunditTakeSourcesFooter): string {
+  if (!footer.fplInjuryStatusAsOfSgt) return "";
+  return `FPL injury status (as of ${footer.fplInjuryStatusAsOfSgt})`;
 }
