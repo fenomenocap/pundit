@@ -21,7 +21,14 @@ describe("capture-clubelo-snapshot parsers", () => {
 
   it("lists twenty current EPL club page slugs", () => {
     expect(EPL_CLUB_PAGE_SLUGS).toHaveLength(20);
-    expect(EPL_CLUB_PAGE_SLUGS.map((row) => row.slug)).toContain("Forest");
+    const slugs = EPL_CLUB_PAGE_SLUGS.map((row) => row.slug);
+    expect(slugs).toContain("Forest");
+    expect(slugs).toContain("Coventry");
+    expect(slugs).toContain("Ipswich");
+    expect(slugs).toContain("Hull");
+    expect(slugs).not.toContain("WestHam");
+    expect(slugs).not.toContain("Wolves");
+    expect(slugs).not.toContain("Burnley");
   });
 
   it("parses CSV rows", () => {
