@@ -59,8 +59,8 @@ describe("Take v2 prod audit fixes", () => {
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery(question, grounding, plan)!);
-    expect(delivery.answer).toMatch(/looks (light|rich) at/i);
-    expect(delivery.answer).toMatch(/our fair/i);
+    expect(delivery.answer).toMatch(/My fair prices:/);
+    expect(delivery.answer).toMatch(/too short|value side|no value there/);
     expect(delivery.answer).toMatch(/\| Outcome \| Ours \|/);
     expect(delivery.answer).not.toMatch(/captured decimal line/i);
   });

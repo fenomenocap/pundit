@@ -46,12 +46,13 @@ describe("Take v2 flip + fair odds (agent scope)", () => {
     expect(fixed).toMatch(/all venues/i);
   });
 
-  it("fair odds is one value-side sentence without model in prose", () => {
+  it("fair odds leads with fair prices and plain-English value direction", () => {
     const grounding = spursCoventryGrounding();
     const plan = buildPunditTakePlan(grounding, null, { now: NOW });
     const fair = renderFairOddsTakeProse(plan, grounding);
     expect(fair).not.toMatch(/\n/);
-    expect(fair).toMatch(/looks (light|rich) at/);
+    expect(fair).toMatch(/My fair prices:/);
+    expect(fair).toMatch(/value side|no value there/);
     expect(scrubModelWordFromProse(fair)).not.toMatch(/\bmodel\b/i);
     expect(fair).not.toMatch(/\bmodel\b/i);
   });
@@ -71,7 +72,7 @@ describe("Take v2 flip + fair odds (agent scope)", () => {
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery(question, grounding, plan)!);
     const prose = delivery.answer.split("\n\n| Outcome |")[0] ?? "";
-    expect(prose).toMatch(/looks (light|rich) at/);
+    expect(prose).toMatch(/My fair prices:/);
     expect(prose).not.toMatch(/\bmodel\b/i);
   });
 });
