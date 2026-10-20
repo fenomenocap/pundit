@@ -4,7 +4,7 @@ import {
   PHASE1_WEEKEND_WINDOW,
   publicFixtureId,
 } from "./builder";
-import { matchDossierEnabled } from "./flags";
+import { matchDossierEnabled, matchDossierFplEnabled } from "./flags";
 import { writeMatchDossier } from "./storage";
 import { getCachedModelData } from "../model-data";
 import type { ModelFixture } from "../model-data";
@@ -89,6 +89,10 @@ async function runSlateRebuild(): Promise<void> {
   if (!matchDossierEnabled()) {
     progress = { ...idleProgress(), state: "failed", lastError: "match_dossier_disabled" };
     return;
+  }
+  if (matchDossierFplEnabled()) {
+    const { prefetchFplBootstrapForBuildPass } = await import("./fpl-bootstrap-injuries");
+    await prefetchFplBootstrapForBuildPass();
   }
   const fixtures = runnerDeps.listFixtures();
   progress = {
