@@ -1,4 +1,5 @@
 import type { PunditTakePlan } from "./types";
+import { isExactDeterministicPassPlayOpener } from "./take-pass-play-opener";
 import { sentenceUsesDisallowedNumber } from "./take-allowed-numbers";
 import { applyV2TakeProseGuards, collectAllowedNumbers } from "./take-number-check";
 import { applyV2ProseHygiene } from "./take-v2-prose-hygiene";
@@ -63,11 +64,9 @@ function escapeRegExp(value: string): string {
 }
 
 function sentenceMapsToPlan(sentence: string, plan: PunditTakePlan): boolean {
+  if (isExactDeterministicPassPlayOpener(sentence)) return true;
   if (/^The value is /i.test(sentence)) return true;
-  if (/^I pass on /i.test(sentence)) return true;
-  if (/\bNo call on /i.test(sentence)) return true;
   if (/^That price implies /i.test(sentence)) return true;
-  if (/\bI play\.\s*$/i.test(sentence) || / — I play\.$/.test(sentence)) return true;
   if (/^I'd revisit if /i.test(sentence)) return true;
   if (/^What flips it:/i.test(sentence)) return true;
   if (/^I'd shift if /i.test(sentence)) return true;

@@ -28,6 +28,7 @@ export interface ClubStrengthCaptureRecord {
   fetchedAt: string;
   method: string;
   pageSha256: string;
+  httpStatus?: number;
 }
 
 export interface ClubStrengthArtifact {
@@ -50,6 +51,8 @@ export interface ClubStrengthArtifact {
     capture?: {
       rankingPage?: ClubStrengthCaptureRecord;
       clubPages?: ClubStrengthCaptureRecord[];
+      /** Human-readable offline capture notes; excluded from payloadSha256. */
+      note?: string;
     };
   };
   manifest: {
