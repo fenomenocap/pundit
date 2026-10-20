@@ -1050,14 +1050,14 @@ test("recovered intermittent scenarios do not mark the harness overall as issues
   assert.equal(attentionScenarios.length, 0);
 });
 
-test("adversarial generation covers exactly five required categories", () => {
+test("adversarial generation covers exactly five eval categories", () => {
   const scenarios = generateAdversarialScenarios("2026-07-27", null);
   assert.deepEqual(scenarios.map(({ category }) => category), [
-    "ambiguity",
-    "follow-ups",
-    "grounding",
-    "unsupported-certainty",
-    "malformed-inputs"
+    "context",
+    "context",
+    "betting-maths",
+    "betting-maths",
+    "infra",
   ]);
   assert.equal(scenarios[2].kind, "inconclusive");
   assert.equal(JSON.stringify(scenarios).includes("World Cup"), false);
@@ -3780,6 +3780,7 @@ test("schema-17 permanent certification matrix names every authorized regression
   }
   assert.deepEqual(byId.get("sse-ordering"), {
     id: "sse-ordering",
+    category: "infra",
     description: "Streaming emits grounding before deltas and terminates with done.",
     kind: "sse",
     question: "What does the current Premier League table show?",

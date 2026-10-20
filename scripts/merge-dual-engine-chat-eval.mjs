@@ -9,6 +9,11 @@ import {
   summarizeLlmJudge,
 } from "./chat-eval-quality-metrics.mjs";
 import {
+  computeTurnQualityMetricsByCategory,
+  summarizeLiveBettingMaths,
+  summarizeScenarioOutcomesByCategory,
+} from "./chat-eval-category-reporting.mjs";
+import {
   resolveJudgeEvalTurns,
   skippedNoKeyJudge,
   skippedUnavailableJudge,
@@ -23,6 +28,7 @@ function flattenReportTurns(report) {
     for (const turn of scenario.turnResults ?? []) {
       turns.push({
         scenarioId: scenario.id,
+        category: scenario.category ?? "fixed",
         turn: turn.turn,
         question: turn.request?.question ?? null,
         httpStatus: turn.status,
@@ -41,17 +47,27 @@ export async function mergeDualEngineChatEvalReports(legacy, agent, outputPath) 
   const legacyTurns = flattenReportTurns(legacy);
   const agentTurns = flattenReportTurns(agent);
 
+  const legacyQuality = legacy.qualityMetrics ?? computeTurnQualityMetrics(legacyTurns);
+  const agentQuality = agent.qualityMetrics ?? computeTurnQualityMetrics(agentTurns);
   const merged = {
     ...legacy,
     requestEngine: "both",
     agentEval: {
       runId: agent.runId,
       overall: agent.overall,
-      qualityMetrics: agent.qualityMetrics ?? computeTurnQualityMetrics(agentTurns),
+      qualityMetrics: agentQuality,
+      qualityMetricsByCategory: agent.qualityMetricsByCategory
+        ?? computeTurnQualityMetricsByCategory(agentTurns),
+      byCategory: agent.byCategory ?? summarizeScenarioOutcomesByCategory(agent.scenarios),
+      liveBettingMaths: agent.liveBettingMaths ?? summarizeLiveBettingMaths(agent.scenarios),
       llmJudgeSummary: agent.llmJudgeSummary ?? summarizeLlmJudge(agent),
       scenarioCount: agent.scenarios?.length ?? 0,
     },
-    qualityMetrics: legacy.qualityMetrics ?? computeTurnQualityMetrics(legacyTurns),
+    qualityMetrics: legacyQuality,
+    qualityMetricsByCategory: legacy.qualityMetricsByCategory
+      ?? computeTurnQualityMetricsByCategory(legacyTurns),
+    byCategory: legacy.byCategory ?? summarizeScenarioOutcomesByCategory(legacy.scenarios),
+    liveBettingMaths: legacy.liveBettingMaths ?? summarizeLiveBettingMaths(legacy.scenarios),
     llmJudgeSummary: legacy.llmJudgeSummary ?? summarizeLlmJudge(legacy),
     engineQualityComparison: compareEngineQuality(legacyTurns, agentTurns),
   };
