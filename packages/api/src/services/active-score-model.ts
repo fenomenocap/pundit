@@ -7,6 +7,11 @@ import { assertValidatedEplGoalCalibrationArtifact, EPL_GOAL_CALIBRATION_ACTIVAT
   type ValidatedEplGoalCalibrationArtifact } from "./epl-goal-calibration-artifact";
 import { historicalGoalLambdas } from "./historical-goal-calibration";
 import { anchorScoreGridTo1x2 } from "./outcome-anchored-score-grid";
+import {
+  ONE_X_TWO_TEMPERATURE,
+  ONE_X_TWO_TEMPERATURE_ENABLED,
+  scaleOneXTwoProbabilities,
+} from "./one-x-two-temperature";
 
 export interface ActiveScoreModelInput {
   home: string;
@@ -57,7 +62,15 @@ export function resolveActiveScoreModel(
     artifactId = artifact.artifactId;
     artifactSha256 = artifact.artifactSha256;
   }
-  const [pHome, pDraw, pAway] = matrixTo1x2(matrix);
+  const oneXTwoFromMatrix = matrixTo1x2(matrix);
+  let pHome: number;
+  let pDraw: number;
+  let pAway: number;
+  if (ONE_X_TWO_TEMPERATURE_ENABLED && input.competitionId === "eng.1") {
+    [pHome, pDraw, pAway] = scaleOneXTwoProbabilities(oneXTwoFromMatrix, ONE_X_TWO_TEMPERATURE);
+  } else {
+    [pHome, pDraw, pAway] = oneXTwoFromMatrix;
+  }
   const [pOver2_5, pUnder2_5] = matrixToTotals(matrix, 2.5);
   const [pBttsYes, pBttsNo] = matrixToBtts(matrix);
   let expectedHomeGoals = 0, expectedAwayGoals = 0;
