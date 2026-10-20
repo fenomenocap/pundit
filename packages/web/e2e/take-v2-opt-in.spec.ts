@@ -112,10 +112,15 @@ test.describe("take=v2 opt-in header", () => {
     const seen: string[] = [];
     await page.route("**/api/ask", async (route) => {
       seen.push(route.request().headers()["x-pundit-take"] ?? "");
+      // Desk chat is restored from storage across the reload below, so both
+      // turns stay on screen. Identical answer text makes the follow-up
+      // locator match 1 or 2 nodes depending on whether it runs before the
+      // second bubble commits.
+      const answer = seen.length === 1 ? "Legacy header." : "Legacy follow-up.";
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ answer: "Legacy header.", grounding: null }),
+        body: JSON.stringify({ answer, grounding: null }),
       });
     });
     await page.goto("/?take=legacy");
@@ -125,7 +130,9 @@ test.describe("take=v2 opt-in header", () => {
     await page.goto("/");
     await page.getByRole("textbox", { name: "Ask a question" }).fill("And the draw?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.getByText("Legacy header.", { exact: true })).toBeVisible();
+    const followUp = page.getByText("Legacy follow-up.", { exact: true });
+    await expect(followUp).toHaveCount(1);
+    await expect(followUp).toBeVisible();
     expect(seen).toEqual(["legacy", "legacy"]);
   });
 
