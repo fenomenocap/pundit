@@ -6,17 +6,18 @@ export type PunditTakeMode = "legacy" | "v2";
 
 /**
  * Production default for POST /api/ask when `x-pundit-take` is absent.
- * Rollback is this one line (`"legacy"`). Not an env var.
+ * One-line switch. Not an env var.
+ * TODO: flip back to "v2" once the #370 web build is deployed on Vercel.
  * TODO(2026-10-27): remove the legacy take path after 27 Oct 2026.
  */
-export const DEFAULT_TAKE: PunditTakeMode = "v2";
+export const DEFAULT_TAKE: PunditTakeMode = "legacy";
 
 interface TakeRequestScope {
   mode: PunditTakeMode;
   /**
    * Full v2 composer (desk voice, history, play/pass, FPL facts).
-   * True for an explicit `x-pundit-take: v2` header and for the code default.
-   * The env-only seam stays false.
+   * True for an explicit `x-pundit-take: v2` header, and for a missing
+   * header when DEFAULT_TAKE is "v2". The env-only seam stays false.
    */
   headerExplicitV2: boolean;
   delivery: PunditTakeDelivery | null;
