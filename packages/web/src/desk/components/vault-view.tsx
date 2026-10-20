@@ -14,7 +14,7 @@ export function VaultView() {
     <div className="mx-auto max-w-5xl px-4 py-8 sm:py-10">
       <p className="eyebrow">Local practice · illustrative books</p>
       <h1 className="font-display text-5xl sm:text-6xl tracking-wide uppercase mt-2">
-        Model books
+        Our book
       </h1>
       <p className="mt-3 max-w-xl text-quiet leading-relaxed">
         Reserve practice credits in three illustrative buckets. These books do not place positions,
