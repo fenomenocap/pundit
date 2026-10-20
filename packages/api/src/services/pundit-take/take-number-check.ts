@@ -30,7 +30,7 @@ const TOSS_UP_PATTERN = /\b(?:toss-up|coin-flip|coin flip|too close to call)\b/i
 const POINTS_CLEAR_PATTERN = /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+clear\b/i;
 const POINTS_BEHIND_PATTERN = /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+points?\s+behind\b/i;
 
-function parseGapToken(token: string): number | null {
+export function parseGapToken(token: string): number | null {
   const lower = token.toLowerCase();
   if (GAP_WORD_TO_INT[lower] != null) return GAP_WORD_TO_INT[lower]!;
   const n = Number(token);
