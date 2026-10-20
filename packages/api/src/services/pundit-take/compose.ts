@@ -10,6 +10,7 @@ import {
 } from "../response-plan";
 import { resolveTakeDossier } from "./take-dossier";
 import { buildPunditTakePlan } from "./take-plan";
+import { gridHeadlineOpener } from "./take-headline";
 import { renderPassPlayTakeProse } from "./take-grid-prose";
 import { renderTakeProse } from "./take-llm";
 import { renderTakeProseDeterministic } from "./take-prose";
@@ -65,6 +66,39 @@ export function punditTakeApplies(plan: ResponsePlan, question: string): boolean
   return isTakeV2Mode(plan, question);
 }
 
+function minimalV2Headline(
+  planJson: ReturnType<typeof buildPunditTakePlan>,
+  question: string,
+): string {
+  const variant = /\bwhy\b/i.test(question.trim()) ? "why" as const : "full";
+  return gridHeadlineOpener(planJson, variant)
+    ?? `${planJson.fixtureLabel} — ${planJson.call.headlineLabel}.`;
+}
+
+function assembleV2AnswerBody(
+  proseOut: string,
+  planJson: ReturnType<typeof buildPunditTakePlan>,
+  question: string,
+  table: string,
+  footer: string,
+  grounding: Grounding,
+): string {
+  let prose = proseOut.trim();
+  if (!prose) {
+    prose = renderTakeProseDeterministic(
+      planJson,
+      /\bwhy\b/i.test(question.trim()) ? "why" : "full",
+      grounding,
+    ).trim() || minimalV2Headline(planJson, question);
+  }
+  const body = table ? `${prose}\n\n${table}`.trim() : prose;
+  const withFooter = footer ? `${body}\n\n${footer}`.trim() : body;
+  if (withFooter.trim()) return withFooter;
+  const headline = minimalV2Headline(planJson, question);
+  const fallbackBody = table ? `${headline}\n\n${table}`.trim() : headline;
+  return footer ? `${fallbackBody}\n\n${footer}`.trim() : fallbackBody;
+}
+
 function marketKindForPlan(plan: ResponsePlan): "1x2" | "btts" | "totals" {
   if (plan.mode === "btts") return "btts";
   if (plan.mode === "totals") return "totals";
@@ -103,10 +137,11 @@ function assembleDelivery(
     proseOut = postCheckTakeProse(
       renderTakeProseDeterministic(planJson, /\bwhy\b/i.test(question.trim()) ? "why" : "full", grounding),
       planJson,
-    ) || renderTakeProseDeterministic(planJson, "full", grounding);
+    ) || minimalV2Headline(planJson, question);
   }
-  const body = table ? `${proseOut.trim()}\n\n${table}`.trim() : proseOut.trim();
-  const answer = footer ? `${body}\n\n${footer}`.trim() : body;
+  const answer = asksParlayQuestion(question)
+    ? (footer ? `${proseOut.trim()}\n\n${footer}`.trim() : proseOut.trim())
+    : assembleV2AnswerBody(proseOut, planJson, question, table, footer, grounding);
   return {
     answer,
     plan: planJson,

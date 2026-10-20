@@ -40,6 +40,22 @@ describe("Sweep 1 fix pack", () => {
     });
   }
 
+  it("never returns an empty v2 answer (headline, table, footer minimum)", () => {
+    const grounding = spursCoventryGrounding();
+    const question = "Why?";
+    const plan = planResponse(question, {
+      groundingKind: "match",
+      hasCompleteMarket1x2: true,
+      hasHistory: true,
+      v2PlayPassResolver: false,
+    });
+    const delivery = withPunditTakeRequestScope("v2", () =>
+      composePunditTakeDelivery(question, grounding, plan)!);
+    expect(delivery.answer.trim().length).toBeGreaterThan(20);
+    expect(delivery.answer).toMatch(/\| Outcome \| Ours \|/);
+    expect(delivery.answer).toMatch(/\n\nModel /);
+  });
+
   it("never returns empty prose when traceability strips supporting lines", () => {
     const grounding = spursCoventryGrounding();
     const question = "Why?";
