@@ -1,16 +1,12 @@
 import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
-import { isGenuineTossUp1x2, stripFalseTossUpLanguage } from "./take-headline";
 
-export function formatWhatFlipsItSentence(plan: PunditTakePlan, grounding: Grounding | null = null): string | null {
-  let flip = plan.flipCondition?.text?.trim();
+/** Flip is always one pre-built sentence on the plan — never spliced from fragments. */
+export function formatWhatFlipsItSentence(plan: PunditTakePlan, _grounding: Grounding | null = null): string | null {
+  const flip = plan.flipCondition?.text?.trim();
   if (!flip) return null;
-  if (grounding) {
-    flip = stripFalseTossUpLanguage(flip, grounding);
-    if (!flip.trim()) return null;
-  }
-  const body = flip.endsWith(".") ? flip.slice(0, -1) : flip;
-  return `I'd shift if ${body}.`;
+  if (/^I'd shift if/i.test(flip)) return flip.endsWith(".") ? flip : `${flip}.`;
+  return `I'd shift if ${flip.replace(/\.$/, "")}.`;
 }
 
 export function appendWhatFlipsItClosing(

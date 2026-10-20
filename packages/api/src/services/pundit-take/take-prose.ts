@@ -2,7 +2,7 @@ import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
 import { appendWhatFlipsItClosing } from "./take-flip-prose";
 import { gridHeadlineOpener, isGenuineTossUp1x2, stripFalseTossUpLanguage } from "./take-headline";
-import { capitalizeTakeProse, scrubMyModelPhrasing, valueLegMatchesHeadline } from "./take-prose-polish";
+import { capitalizeTakeProse, polishTakeProseLine, valueLegMatchesHeadline } from "./take-prose-polish";
 
 function callModelPct(plan: PunditTakePlan): number {
   if (plan.gridCall) return plan.gridCall.modelPctInt;
@@ -33,8 +33,9 @@ export function joinBodySentencesFromPlan(plan: PunditTakePlan, max: number): st
 }
 
 function weaveBody(plan: PunditTakePlan, grounding: Grounding | null): string {
-  const support = plan.supporting.slice(0, 2).map((p) => p.text.trim().replace(/\.$/, ""));
+  const support = plan.supporting.slice(0, 2).map((p) => polishTakeProseLine(p.text.trim().replace(/\.$/, "")));
   let counter = plan.contradicting[0]?.text.trim().replace(/\.$/, "");
+  if (counter) counter = polishTakeProseLine(counter);
   if (counter && grounding && !isGenuineTossUp1x2(grounding)) {
     counter = stripFalseTossUpLanguage(counter, grounding);
   }
@@ -69,8 +70,8 @@ export function renderTakeProseDeterministic(
     }
   }
 
-  const blocks = [scrubMyModelPhrasing(opener)];
-  if (body.trim()) blocks.push(scrubMyModelPhrasing(body.trim()));
-  if (valueSentence) blocks.push(valueSentence);
+  const blocks = [polishTakeProseLine(opener)];
+  if (body.trim()) blocks.push(body.trim());
+  if (valueSentence) blocks.push(polishTakeProseLine(valueSentence));
   return capitalizeTakeProse(appendWhatFlipsItClosing(plan, blocks.join("\n\n"), grounding));
 }

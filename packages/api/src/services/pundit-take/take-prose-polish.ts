@@ -27,6 +27,34 @@ export function scrubMyModelPhrasing(text: string): string {
     .trim();
 }
 
+/** Dossier last-5 is all venues — never imply a venue split in form copy. */
+export function normalizeFormScopeInText(text: string): string {
+  return text
+    .replace(/\bat this venue stretch\b/gi, "across all venues")
+    .replace(/\bat this venue\b/gi, "across all venues")
+    .replace(
+      /\b(last \d+ league games)(?! \(all venues\))/gi,
+      "$1 (all venues)",
+    )
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/** Ban "model" in user-facing take prose (table/footer may still say Model). */
+export function scrubModelWordFromProse(text: string): string {
+  return text
+    .replace(/\bthe model expects\b/gi, "I expect")
+    .replace(/\bthe model\b/gi, "I")
+    .replace(/\bmodel-only\b/gi, "our")
+    .replace(/\bmodel\b/gi, "read")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+export function polishTakeProseLine(text: string): string {
+  return scrubModelWordFromProse(normalizeFormScopeInText(scrubMyModelPhrasing(text)));
+}
+
 export function filterGoalPointsForGridLead(
   points: TakePlanPoint[],
   gridCall: PunditTakePlan["gridCall"],
