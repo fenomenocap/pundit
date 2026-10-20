@@ -8,6 +8,7 @@ import {
   applyV2ProseHygiene,
   sentenceStatesUpsetFraming,
   sentenceStatesVagueFormGenerality,
+  stripLeadingContrastConnective,
   VAGUE_NEGATIVE_FORM_MAX_LAST5_POINTS,
 } from "./take-v2-prose-hygiene";
 import { polishTakeProseLine, repairIncompleteEvenClause } from "./take-prose-polish";
@@ -138,5 +139,36 @@ describe("Sweep 12 guards", () => {
       .toBe("They can score even when I rate them low.");
     expect(polishTakeProseLine("the model has Chelsea at 59%."))
       .toBe("I have Chelsea at 59%.");
+    expect(polishTakeProseLine("Chelsea are 4th, and the model's edge is small."))
+      .toBe("Chelsea are 4th, and my edge is small.");
+    expect(polishTakeProseLine("According to the model, Forest look live."))
+      .toBe("By my numbers, Forest look live.");
+    expect(polishTakeProseLine("The model's numbers favour Forest."))
+      .toBe("My numbers favour Forest.");
+    expect(polishTakeProseLine("I trust the model here."))
+      .toBe("I trust these numbers here.");
+    expect(polishTakeProseLine("Our model-only totals say over."))
+      .toBe("Our totals say over.");
+  });
+
+  it("strips a leading However when the prior contrast sentence was dropped", () => {
+    const grounding = groundingWithTableAndForm(
+      "Ipswich",
+      "Forest",
+      { position: 10, points: 9 },
+      { position: 18, points: 5 },
+      ["L", "W", "L", "W", "L"],
+      ["L", "L", "D", "L", "W"],
+      { pHome: 0.28, pDraw: 0.27, pAway: 0.45 },
+      "eng.1:401879253",
+    );
+    const plan = buildPunditTakePlan(grounding, null);
+    const upset =
+      "Ipswich are 10th on 9 points, while Forest are 18th on 5, so the league table suggests an upset brewing.";
+    const follow = "However, Forest have taken points on the road in three of their last five.";
+    const cleaned = applyV2ProseHygiene(`${upset} ${follow}`, plan);
+    expect(cleaned).not.toMatch(/^However,/i);
+    expect(cleaned).toMatch(/^Forest have taken points in three of their last five/i);
+    expect(stripLeadingContrastConnective("However, Forest press high.")).toBe("Forest press high.");
   });
 });

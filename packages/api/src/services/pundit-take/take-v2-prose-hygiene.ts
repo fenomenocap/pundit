@@ -538,13 +538,32 @@ function sanitizeLlmTakeSentence(
   return rewriteVenueInventedFormSentence(next, venueSplit);
 }
 
+const LEADING_CONTRAST_CONNECTIVE = /^(However|But|Yet|Still),?\s+/i;
+
+/** After a guard drop, the next sentence may open with a dangling contrast word. */
+export function stripLeadingContrastConnective(sentence: string): string {
+  const trimmed = sentence.trim();
+  const stripped = trimmed.replace(LEADING_CONTRAST_CONNECTIVE, "");
+  if (!stripped || stripped === trimmed) return trimmed;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
 export function applyVenueFormHygiene(prose: string, plan: PunditTakePlan): string {
   const venueSplit = formDataHasVenueSplit(plan);
   const sentences = prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
   const kept: string[] = [];
+  let droppedAny = false;
   for (const sentence of sentences) {
     const sanitized = sanitizeLlmTakeSentence(sentence, plan, venueSplit);
-    if (sanitized) kept.push(sanitized);
+    if (!sanitized) {
+      droppedAny = true;
+      continue;
+    }
+    let next = sanitized;
+    if (kept.length === 0 && droppedAny) {
+      next = stripLeadingContrastConnective(next);
+    }
+    if (next) kept.push(next);
   }
   return kept.join(" ").trim();
 }
