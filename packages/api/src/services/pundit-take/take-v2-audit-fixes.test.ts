@@ -59,7 +59,7 @@ describe("Take v2 prod audit fixes", () => {
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery(question, grounding, plan)!);
-    expect(delivery.answer).toMatch(/fair 1X2 vs the best prices/i);
+    expect(delivery.answer).toMatch(/looks (light|rich) at/i);
     expect(delivery.answer).toMatch(/our fair/i);
     expect(delivery.answer).toMatch(/\| Outcome \| Ours \|/);
     expect(delivery.answer).not.toMatch(/captured decimal line/i);
@@ -137,7 +137,7 @@ describe("Take v2 prod audit fixes", () => {
     expect(findNextPricedModelFixtureForClub("Fulham", fixtures, Date.parse("2026-10-20T12:00:00.000Z"))?.home).toBe("Fulham");
   });
 
-  it("totals headline picks higher side; coin flip when within 5 pts", () => {
+  it("totals headline picks higher side; coin flip when within 2 pts", () => {
     const grounding = {
       ...spursCoventryGrounding(),
       pOver2_5: 0.498,

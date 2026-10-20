@@ -1,7 +1,9 @@
+import type { Grounding } from "../ask";
+import { modelGapPointsVsBestDecimal } from "./take-maths";
 import type { PunditTakePlan } from "./types";
 
 /** Numbers the prose renderer may use (from plan + seeded facts). */
-export function allowedNumbersFromPlan(plan: PunditTakePlan): Set<string> {
+export function allowedNumbersFromPlan(plan: PunditTakePlan, grounding?: Grounding): Set<string> {
   const allowed = new Set<string>();
 
   const ingest = (text: string) => {
@@ -49,6 +51,33 @@ export function allowedNumbersFromPlan(plan: PunditTakePlan): Set<string> {
     ingest(plan.valueLeg.fairDecimal);
     if (plan.valueLeg.bestMarketDecimal) ingest(plan.valueLeg.bestMarketDecimal);
     allowed.add(String(Math.abs(plan.valueLeg.gapPoints)));
+  }
+
+  if (grounding?.pricing.userLine?.decimalOdds != null) {
+    const dec = grounding.pricing.userLine.decimalOdds;
+    allowed.add(String(dec));
+    allowed.add(dec.toFixed(2));
+  }
+
+  if (grounding) {
+    for (const divergence of grounding.marketDivergence) {
+      for (const leg of divergence.legs) {
+        allowed.add(String(Math.round(leg.marketPercent)));
+        allowed.add(String(Math.round(leg.modelPercent)));
+        allowed.add(String(Math.round(Math.abs(leg.gapPoints))));
+        allowed.add(String(Math.abs(leg.gapPoints).toFixed(1)));
+      }
+    }
+    for (const row of plan.rows) {
+      const p = row.outcome === "home" ? grounding.pHome : row.outcome === "draw" ? grounding.pDraw : grounding.pAway;
+      if (row.bestDecimal) {
+        const gap = modelGapPointsVsBestDecimal(p, row.bestDecimal);
+        if (gap != null) {
+          allowed.add(String(Math.abs(gap).toFixed(1)));
+          allowed.add(String(Math.round(Math.abs(gap))));
+        }
+      }
+    }
   }
 
   return allowed;

@@ -1,4 +1,5 @@
 import type { ResponsePlan } from "../response-plan";
+import { asksHonestWinnerGuarantee, asksOddsProvenance } from "../response-plan";
 
 export function asksWhatFlipsItQuestion(question: string): boolean {
   const q = question.trim();
@@ -24,9 +25,11 @@ export function asksMatchWhyTakeQuestion(question: string, plan: ResponsePlan): 
 
 export function punditTakeV2AppliesToPlan(plan: ResponsePlan, question: string): boolean {
   if (asksWhatFlipsItQuestion(question)) return true;
+  if (asksHonestWinnerGuarantee(question)) return true;
+  if (asksOddsProvenance(question)) return true;
+  if (asksDrawSideTakeQuestion(question)) return true;
   if (plan.mode === "winner-guarantee-honesty") return true;
   if (plan.mode === "odds-provenance") return true;
-  if (asksDrawSideTakeQuestion(question)) return true;
   if (asksMatchWhyTakeQuestion(question, plan)) return true;
   return false;
 }

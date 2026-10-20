@@ -1,7 +1,7 @@
 import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
 import { appendWhatFlipsItClosing } from "./take-flip-prose";
-import { gridHeadlineOpener, isGenuineTossUp1x2, stripFalseTossUpLanguage } from "./take-headline";
+import { allowsCoinFlipLanguage, gridHeadlineOpener, stripFalseTossUpLanguage } from "./take-headline";
 import { capitalizeTakeProse, scrubMyModelPhrasing, valueLegMatchesHeadline } from "./take-prose-polish";
 
 function callModelPct(plan: PunditTakePlan): number {
@@ -35,7 +35,7 @@ export function joinBodySentencesFromPlan(plan: PunditTakePlan, max: number): st
 function weaveBody(plan: PunditTakePlan, grounding: Grounding | null): string {
   const support = plan.supporting.slice(0, 2).map((p) => p.text.trim().replace(/\.$/, ""));
   let counter = plan.contradicting[0]?.text.trim().replace(/\.$/, "");
-  if (counter && grounding && !isGenuineTossUp1x2(grounding)) {
+  if (counter && grounding && !allowsCoinFlipLanguage(plan, grounding)) {
     counter = stripFalseTossUpLanguage(counter, grounding);
   }
 
@@ -73,9 +73,9 @@ export function renderTakeProseDeterministic(
   if (body.trim()) blocks.push(scrubMyModelPhrasing(body.trim()));
   if (valueSentence) blocks.push(valueSentence);
   let out = capitalizeTakeProse(appendWhatFlipsItClosing(plan, blocks.join("\n\n"), grounding));
-  if (grounding && !plan.gridCall?.coinFlip) {
+  if (grounding && !allowsCoinFlipLanguage(plan, grounding)) {
     const segments = out.split("\n\n");
-    const head = segments[0] ?? "";
+    const head = stripFalseTossUpLanguage(segments[0] ?? "", grounding);
     const tail = segments.slice(1).map((part) => stripFalseTossUpLanguage(part, grounding)).join("\n\n");
     out = tail ? `${head}\n\n${tail}` : head;
   }

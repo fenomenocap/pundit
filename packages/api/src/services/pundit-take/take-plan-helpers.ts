@@ -51,7 +51,7 @@ export function buildGoalReasonPoints(
     points.push({
       id: "fact-form-home-goals",
       role: "support",
-      text: `${homeShort} have scored ${homeForm.goalsFor} and conceded ${homeForm.goalsAgainst} across their last ${homeForm.played} league games.`,
+      text: `${homeShort} have scored ${homeForm.goalsFor} and conceded ${homeForm.goalsAgainst} across their last ${homeForm.played} league games (all venues).`,
       fieldPath: "form.homeLast5",
     });
   }
@@ -61,7 +61,7 @@ export function buildGoalReasonPoints(
     points.push({
       id: "fact-form-away-goals",
       role: "support",
-      text: `${awayShort} have scored ${awayForm.goalsFor} and conceded ${awayForm.goalsAgainst} across their last ${awayForm.played} league games.`,
+      text: `${awayShort} have scored ${awayForm.goalsFor} and conceded ${awayForm.goalsAgainst} across their last ${awayForm.played} league games (all venues).`,
       fieldPath: "form.awayLast5",
     });
   }

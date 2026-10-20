@@ -9,8 +9,9 @@ export function asksFairOddsFixtureQuestion(question: string): boolean {
   return /\bfair odds?\b/i.test(q);
 }
 
+/** One sentence on the value side; table carries the rest. No "model" in prose. */
 export function renderFairOddsTakeProse(plan: PunditTakePlan, grounding: Grounding): string {
-  let bestLeg: {
+  let valueLeg: {
     label: string;
     fairDecimal: string;
     modelPctInt: number;
@@ -24,8 +25,8 @@ export function renderFairOddsTakeProse(plan: PunditTakePlan, grounding: Groundi
     const p = row.outcome === "home" ? grounding.pHome : row.outcome === "draw" ? grounding.pDraw : grounding.pAway;
     const gap = modelGapPointsVsBestDecimal(p, best);
     if (gap == null) continue;
-    if (!bestLeg || Math.abs(gap) > Math.abs(bestLeg.gap)) {
-      bestLeg = {
+    if (!valueLeg || Math.abs(gap) > Math.abs(valueLeg.gap)) {
+      valueLeg = {
         label: displayOutcomeLabel(grounding, row.outcome),
         fairDecimal: row.fairDecimal,
         modelPctInt: row.modelPctInt,
@@ -35,12 +36,13 @@ export function renderFairOddsTakeProse(plan: PunditTakePlan, grounding: Groundi
     }
   }
 
-  const opener = `${plan.fixtureLabel} — fair 1X2 vs the best prices I have:`;
-  if (!bestLeg) {
-    return `${opener} no complete market line to compare yet — see the table for our fair prices.`;
+  if (!valueLeg) {
+    return `${plan.fixtureLabel} — I don't have a complete market line to compare yet; see the table for our fair 1X2 prices.`;
   }
 
-  const gapText = `${bestLeg.gap >= 0 ? "+" : ""}${bestLeg.gap.toFixed(1)} pts vs best offered`;
-  const edgeSide = bestLeg.gap >= 0 ? "looks light vs our fair price" : "looks rich vs our fair price";
-  return `${opener} the biggest gap is ${bestLeg.label} (${bestLeg.gap >= 0 ? "our" : "market"} side ${edgeSide}: fair ${bestLeg.fairDecimal} (${bestLeg.modelPctInt}%) vs best ${bestLeg.bestDecimal}, ${gapText}).`;
+  const gapText = `${valueLeg.gap >= 0 ? "+" : ""}${valueLeg.gap.toFixed(1)} pts vs best offered`;
+  const edge = valueLeg.gap >= 0
+    ? `${valueLeg.label} looks light at ${valueLeg.bestDecimal} against our fair ${valueLeg.fairDecimal} (${valueLeg.modelPctInt}%, ${gapText}).`
+    : `${valueLeg.label} looks rich at ${valueLeg.bestDecimal} against our fair ${valueLeg.fairDecimal} (${valueLeg.modelPctInt}%, ${gapText}).`;
+  return `${plan.fixtureLabel} — ${edge}`;
 }

@@ -46,7 +46,7 @@ describe("Pundit Take v2 policy modes", () => {
   it("explains odds provenance without Lean labels or vendor names in prose", () => {
     const delivery = deliver("Where do your odds come from?");
     expect(delivery.answer).toMatch(/where the numbers come from/i);
-    expect(delivery.answer).toMatch(/footer/i);
+    expect(delivery.answer).toMatch(/footer|timestamps are listed/i);
     expect(delivery.answer).toMatch(/Kalshi as of/);
     expect(proseFromTakeAnswer(delivery.answer)).not.toMatch(/Kalshi|Polymarket|\bratings\b/i);
     expect(delivery.answer).not.toMatch(/^Lean:/m);

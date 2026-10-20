@@ -43,7 +43,7 @@ export function renderWinnerGuaranteeTakeProse(plan: PunditTakePlan): string {
 export function renderOddsProvenanceTakeProse(grounding: Grounding): string {
   return [
     `${grounding.home} v ${grounding.away} — where the numbers come from.`,
-    "Our 1X2 probabilities are in the table when one is shown; model, table, form, and market feed timestamps are listed in the footer.",
+    "Our 1X2 probabilities are in the table when one is shown; table, form, and market feed timestamps are listed in the footer.",
   ].join("\n\n");
 }
 

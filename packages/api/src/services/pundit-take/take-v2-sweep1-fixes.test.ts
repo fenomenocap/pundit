@@ -83,7 +83,7 @@ describe("Sweep 1 fix pack", () => {
     expect(gap).not.toBeNull();
     expect(gap!).toBeCloseTo((grounding.pDraw - 1 / 4.81) * 100, 1);
     const prose = renderFairOddsTakeProse(plan, grounding);
-    expect(prose).toMatch(/biggest gap is|pts vs best offered/);
+    expect(prose).toMatch(/looks (light|rich) at|pts vs best offered/);
     expect(prose).not.toMatch(/−5\.3 pts/);
   });
 

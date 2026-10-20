@@ -2,15 +2,17 @@ import type { Grounding } from "../ask";
 import type { MatchDossier } from "../match-dossier/types";
 import {
   asksFixturePriceBoard,
+  asksHonestWinnerGuarantee,
   asksMatchWinnerQuestion,
   asksOddsBoard,
+  asksOddsProvenance,
   asksParlayQuestion,
   asksUnder25Only,
   type ResponsePlan,
 } from "../response-plan";
 import { resolveTakeDossier } from "./take-dossier";
 import { buildPunditTakePlan } from "./take-plan";
-import { gridHeadlineOpener } from "./take-headline";
+import { allowsCoinFlipLanguage, gridHeadlineOpener } from "./take-headline";
 import { renderPassPlayTakeProse } from "./take-grid-prose";
 import { renderTakeProse } from "./take-llm";
 import { renderTakeProseDeterministic } from "./take-prose";
@@ -32,10 +34,11 @@ import {
   asksWhatFlipsItQuestion,
   punditTakeV2AppliesToPlan,
 } from "./take-routing";
+import { applyFinalProseGuards } from "./take-prose-number-guard";
 import { postCheckTakeProse, scrubForbiddenTakeProse } from "./take-validate";
 import type { PunditTakeDelivery } from "./types";
 
-const TAKE_COMPOSE_LLM_TIMEOUT_MS = 25_000;
+const TAKE_COMPOSE_LLM_TIMEOUT_MS = 30_000;
 
 async function withTakeComposeTimeout<T>(promise: Promise<T>, fallback: () => T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -53,11 +56,13 @@ async function withTakeComposeTimeout<T>(promise: Promise<T>, fallback: () => T)
 
 function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
   if (punditTakeV2AppliesToPlan(plan, question)) return true;
+  if (asksHonestWinnerGuarantee(question)) return true;
+  if (asksOddsProvenance(question)) return true;
+  if (asksDrawSideTakeQuestion(question)) return true;
   if (asksParlayQuestion(question)) return true;
   if (plan.mode === "stake-refusal") return true;
   if (plan.mode === "winner-guarantee-honesty") return true;
   if (plan.mode === "odds-provenance") return true;
-  if (asksDrawSideTakeQuestion(question)) return true;
   if (plan.mode === "totals" || plan.mode === "btts") return true;
   if (plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question)) return true;
   if (plan.mode === "market-comparison") return true;
@@ -121,6 +126,24 @@ function marketKindForPlan(plan: ResponsePlan): "1x2" | "btts" | "totals" {
   return "1x2";
 }
 
+function finalizeProseBlock(
+  proseOut: string,
+  planJson: ReturnType<typeof buildPunditTakePlan>,
+  grounding: Grounding,
+  question: string,
+): string {
+  let prose = applyFinalProseGuards(
+    proseOut.trim(),
+    planJson,
+    grounding,
+    allowsCoinFlipLanguage(planJson, grounding),
+  );
+  if (!prose.trim()) {
+    prose = minimalV2Headline(planJson, question);
+  }
+  return prose;
+}
+
 function assembleDelivery(
   question: string,
   grounding: Grounding,
@@ -155,11 +178,12 @@ function assembleDelivery(
       planJson,
     ) || minimalV2Headline(planJson, question);
   }
+  proseOut = finalizeProseBlock(proseOut, planJson, grounding, question);
   const answer = asksParlayQuestion(question)
     ? (footer ? `${proseOut.trim()}\n\n${footer}`.trim() : proseOut.trim())
     : assembleV2AnswerBody(proseOut, planJson, question, table, footer, grounding);
   return {
-    answer,
+    answer: answer.trim() || assembleV2AnswerBody(minimalV2Headline(planJson, question), planJson, question, table, footer, grounding),
     plan: planJson,
     sources,
   };
@@ -174,17 +198,17 @@ function resolvePolicyProse(
   if (asksParlayQuestion(question)) {
     return { prose: renderParlayDeclineProse(), includeTable: false };
   }
-  if (plan.mode === "stake-refusal") {
-    return { prose: renderStakeRefusalTakeProse(question, planJson), includeTable: true };
-  }
-  if (plan.mode === "winner-guarantee-honesty") {
+  if (asksHonestWinnerGuarantee(question) || plan.mode === "winner-guarantee-honesty") {
     return { prose: renderWinnerGuaranteeTakeProse(planJson), includeTable: false };
   }
-  if (plan.mode === "odds-provenance") {
+  if (asksOddsProvenance(question) || plan.mode === "odds-provenance") {
     return { prose: renderOddsProvenanceTakeProse(grounding), includeTable: false };
   }
   if (asksDrawSideTakeQuestion(question)) {
     return { prose: renderDrawFocusTakeProse(planJson, grounding), includeTable: true };
+  }
+  if (plan.mode === "stake-refusal") {
+    return { prose: renderStakeRefusalTakeProse(question, planJson), includeTable: true };
   }
   if (asksWhatFlipsItQuestion(question)) {
     return null;
@@ -260,11 +284,12 @@ export async function composePunditTakeDeliveryAsync(
   }
   const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
   const fairOdds = asksFairOddsFixtureQuestion(question);
+  const fallback = () => composeTakeProseDeterministic(question, grounding, plan, planJson, variant);
   const prose = passPlay || fairOdds
-    ? composeTakeProseDeterministic(question, grounding, plan, planJson, variant)
+    ? fallback()
     : await withTakeComposeTimeout(
       renderTakeProse(planJson, variant).then((raw) => postCheckTakeProse(raw, planJson)),
-      () => composeTakeProseDeterministic(question, grounding, plan, planJson, variant),
+      fallback,
     );
   return assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier);
 }

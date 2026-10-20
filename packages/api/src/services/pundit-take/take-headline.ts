@@ -1,7 +1,26 @@
 import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
 
-const COIN_FLIP_GAP_POINTS = 5;
+/** Top-two probability gap (percentage points) below which coin-flip language is allowed. */
+export const COIN_FLIP_GAP_POINTS = 2;
+
+export function topTwoGapPointsFromProbabilities(probabilities: number[]): number {
+  const sorted = probabilities.slice().sort((a, b) => b - a);
+  if (sorted.length < 2) return 100;
+  return Math.abs(sorted[0] - sorted[1]) * 100;
+}
+
+export function topTwoGapPoints1x2(grounding: Grounding): number {
+  return topTwoGapPointsFromProbabilities([grounding.pHome, grounding.pDraw, grounding.pAway]);
+}
+
+export function allowsCoinFlipLanguage(plan: PunditTakePlan, grounding: Grounding): boolean {
+  if (plan.gridCall) {
+    const rows = plan.gridRows.map((r) => r.modelPctInt / 100);
+    return topTwoGapPointsFromProbabilities(rows) < COIN_FLIP_GAP_POINTS;
+  }
+  return topTwoGapPoints1x2(grounding) < COIN_FLIP_GAP_POINTS;
+}
 
 export function gridHeadlineOpener(plan: PunditTakePlan, variant: "full" | "why"): string | null {
   if (!plan.gridCall) return null;
@@ -27,11 +46,9 @@ export function pickHigherGridSide(
   return { ...top, coinFlip: gapPts < COIN_FLIP_GAP_POINTS };
 }
 
+/** @deprecated use allowsCoinFlipLanguage */
 export function isGenuineTossUp1x2(grounding: Grounding): boolean {
-  const sorted = [grounding.pHome, grounding.pDraw, grounding.pAway].slice().sort((a, b) => b - a);
-  if (sorted[0] < 0.4) return true;
-  if (sorted[0] - sorted[1] <= 0.05) return true;
-  return false;
+  return topTwoGapPoints1x2(grounding) < COIN_FLIP_GAP_POINTS;
 }
 
 export function stripFalseTossUpLanguage(text: string, grounding: Grounding): string {
