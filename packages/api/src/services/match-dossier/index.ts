@@ -4,6 +4,11 @@ export * from "./storage";
 export * from "./builder";
 export * from "./model-factor-breakdown";
 export * from "./schedule";
+export {
+  getDossierSlateRebuildProgress,
+  triggerDossierSlateRebuild,
+  DOSSIER_SLATE_FIXTURE_PACE_MS,
+} from "./dossier-slate-rebuild";
 
 import {
   buildMatchDossierForFixture,

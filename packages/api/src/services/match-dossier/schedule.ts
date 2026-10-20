@@ -13,6 +13,7 @@ import {
 } from "./flags";
 import { readMatchDossier, writeMatchDossier } from "./storage";
 import { getCachedModelData } from "../model-data";
+import { getDossierSlateRebuildProgress } from "./dossier-slate-rebuild";
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let preKickoffHandle: ReturnType<typeof setInterval> | null = null;
@@ -86,12 +87,14 @@ export function dossierCronStatus(): {
   intervalMs: number;
   preKickoffPollMs: number;
   activeWindow: typeof PHASE1_WEEKEND_WINDOW;
+  slateRebuild: ReturnType<typeof getDossierSlateRebuildProgress>;
 } {
   return {
     enabled: matchDossierEnabled(),
     intervalMs: DOSSIER_INTERVAL_MS,
     preKickoffPollMs: DOSSIER_PRE_KICKOFF_POLL_MS,
     activeWindow: PHASE1_WEEKEND_WINDOW,
+    slateRebuild: getDossierSlateRebuildProgress(),
   };
 }
 

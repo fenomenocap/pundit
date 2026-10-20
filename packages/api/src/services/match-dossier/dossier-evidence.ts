@@ -168,7 +168,7 @@ export function rejectSyntheticEvidenceForRealFixture(
 
 export function federatedResultsToEvidenceItems(
   fixture: ModelFixture,
-  merged: Array<{ title: string; link: string; snippet: string; date: string; tier: EvidenceTier }>,
+  merged: Array<{ title: string; link: string; snippet: string; date: string; tier: EvidenceTier; claim?: string }>,
   queryByUrl: Map<string, string>,
   retrievedAt: string,
   origin: DossierEvidenceItem["origin"],
@@ -176,7 +176,7 @@ export function federatedResultsToEvidenceItems(
   const items: DossierEvidenceItem[] = [];
   let dropped = 0;
   for (const row of merged) {
-    const claim = claimFromResult(row.title, row.snippet);
+    const claim = row.claim?.trim() || claimFromResult(row.title, row.snippet);
     if (!claim || claim.length < 12) {
       dropped += 1;
       continue;
