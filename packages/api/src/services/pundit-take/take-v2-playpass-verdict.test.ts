@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { sampleAgentFreshness } from "../../config/freshness-policy";
 import type { Grounding } from "../ask";
 import { attachUserLine, buildMatchPricing } from "../response-correctness";
-import { composeMatchResponse } from "../response-composer";
 import { planResponse } from "../response-plan";
-import { punditTakeV2PlayPassResolverEnabled, withPunditTakeRequestScope, type PunditTakeMode } from "./flags";
+import { composePunditTakeDelivery } from "./compose";
+import { withPunditTakeRequestScope, type PunditTakeMode } from "./flags";
 import { formatPassPlayLineTable } from "./take-pass-play-table";
 import { applyV2TakeProseGuards } from "./take-number-check";
 import { buildPunditTakePlan } from "./take-plan";
@@ -231,20 +231,10 @@ function deliveredPassPlay(question: string, grounding: Grounding, scope: Pundit
       groundingKind: "match",
       hasCompleteMarket1x2: grounding.marketDivergence.length > 0,
       hasUserLine: true,
-      v2PlayPassResolver: punditTakeV2PlayPassResolverEnabled(),
+      v2PlayPassResolver: scope !== "legacy",
     });
-    return composeMatchResponse(question, grounding, plan);
+    return composePunditTakeDelivery(question, grounding, plan)!.answer;
   });
-}
-
-function unscopedLegacyPassPlay(question: string, grounding: Grounding): string {
-  const plan = planResponse(question, {
-    groundingKind: "match",
-    hasCompleteMarket1x2: grounding.marketDivergence.length > 0,
-    hasUserLine: true,
-    v2PlayPassResolver: false,
-  });
-  return composeMatchResponse(question, grounding, plan);
 }
 
 describe("Take v2 play/pass verdicts on the default request path", () => {
@@ -300,15 +290,12 @@ describe("Take v2 play/pass verdicts on the default request path", () => {
       hold: /Brentford v West Ham — No call on Brentford at 1\.51/i,
       absent: /\bI play\b/i,
     },
-  ])("$label stays legacy with no header and holds on the v2 header", ({ question, grounding, hold, absent }) => {
+  ])("$label holds with no header and matches the v2 header", ({ question, grounding, hold, absent }) => {
     const fromHeader = deliveredPassPlay(question, grounding, "v2");
     const fromDefault = deliveredPassPlay(question, grounding, null);
-    expect(fromHeader).toMatch(hold);
-    expect(fromHeader).not.toMatch(absent);
-    expect(fromHeader).toMatch(/That price implies/i);
-    expect(fromDefault).toBe(unscopedLegacyPassPlay(question, grounding));
-    expect(fromDefault).not.toBe(fromHeader);
-    expect(fromDefault).not.toMatch(/That price implies/i);
-    expect(fromDefault).not.toMatch(/\|\s*Outcome\s*\|/);
+    expect(fromDefault).toBe(fromHeader);
+    expect(fromDefault).toMatch(hold);
+    expect(fromDefault).not.toMatch(absent);
+    expect(fromDefault).toMatch(/That price implies/i);
   });
 });
