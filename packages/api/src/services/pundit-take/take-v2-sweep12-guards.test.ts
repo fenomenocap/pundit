@@ -103,7 +103,7 @@ describe("Sweep 12 guards", () => {
       fixtureLabel: "Ipswich v Forest",
       supporting: [{ id: "s1", role: "support", text: raw, fieldPath: "test" }],
       contradicting: [],
-    } as PunditTakePlan;
+    } as unknown as PunditTakePlan;
     const body = joinBodySentencesFromPlan(plan, 2);
     expect(body).not.toMatch(/\beven\.\s*$/i);
     expect(body).toMatch(/find the net/i);
