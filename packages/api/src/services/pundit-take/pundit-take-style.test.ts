@@ -192,7 +192,7 @@ describe("Pundit Take v2 style pack (PR1)", () => {
         return direct!;
       });
       if (q.includes("Fair odds")) {
-        expect(delivery.answer).toMatch(/fair 1X2 vs the best prices/i);
+        expect(delivery.answer).toMatch(/looks (light|rich) at/i);
         expect(delivery.answer).toContain("| Outcome | Ours |");
         return;
       }

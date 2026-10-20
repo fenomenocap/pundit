@@ -69,7 +69,7 @@ describe("Sweep 1 fix pack", () => {
     const grounding = spursCoventryGrounding();
     const plan = buildPunditTakePlan(grounding, null, { marketKind: "totals", now: NOW });
     expect(plan.flipCondition?.text).not.toMatch(/fair at the books|shortens toward/i);
-    expect(plan.flipCondition?.text).toMatch(/over 2\.5|under|goals|cagey|early/i);
+    expect(plan.flipCondition?.text).toMatch(/I'd shift if .+(goal|first hour|first half|scoring|league)/i);
     const prose = renderTakeProseDeterministic(plan, "full", grounding);
     expect(prose).toMatch(/I'd shift if/i);
     expect(prose).not.toMatch(/What flips it:/i);
