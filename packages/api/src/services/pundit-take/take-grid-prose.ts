@@ -6,6 +6,7 @@ import {
 import { userLineGapPoints } from "../response-correctness";
 import type { PunditTakePlan } from "./types";
 import { renderTakeProseDeterministic } from "./take-prose";
+import { polishTakeProseLine } from "./take-prose-polish";
 
 export function renderPassPlayTakeProse(plan: PunditTakePlan, grounding: Grounding): string | null {
   const line = grounding.pricing.userLine;
@@ -29,8 +30,8 @@ export function renderPassPlayTakeProse(plan: PunditTakePlan, grounding: Groundi
   const implied = deskPercentDisplay(1 / line.decimalOdds);
   const modelPct = deskPercentDisplay(modelP);
   const context = `That price implies ${implied}; I have ${label} at ${modelPct}.`;
-  const body = plan.supporting[0]?.text;
-  return [opener, context, body].filter(Boolean).join("\n\n");
+  const body = plan.supporting[0]?.text ? polishTakeProseLine(plan.supporting[0].text) : undefined;
+  return [opener, polishTakeProseLine(context), body].filter(Boolean).join("\n\n");
 }
 
 /** Grid markets use the same renderer path as 1X2 once the plan carries `gridCall`. */
