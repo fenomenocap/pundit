@@ -26,7 +26,7 @@ const ASKS_MATCH_PREVIEW =
 // Betting shorthand is first-class: o2.5 / u2.5 / ou 2.5 / o/u 2.5. Keep the
 // letter+line forms tight so "to 2.5" or a stray "o" in "over" cannot match.
 const ASKS_TOTALS =
-  /\b(?:over|under)\s*2\.5\b|\btotals\b|\bover\s*\/\s*under\b|\bo\s*\/\s*u\b|\bou\s*2\.5\b|\b[ou]\s*2\.5\b/i;
+  /\b(?:over|under)\s*2\.5\b|\btotals\b|\bover\s*\/\s*under\b|\bo\s*\/\s*u\b|\bou\s*2\.5\b|\b[ou]\s*2\.5\b|\b(?:bet|back|play|pick)\s+(?:on\s+)?(?:the\s+)?(?:over|under)\b/i;
 const ASKS_OVER_25 = /\bover\s*2\.5\b|\bo\s*2\.5\b/i;
 const ASKS_UNDER_25 = /\bunder\s*2\.5\b|\bu\s*2\.5\b/i;
 const ASKS_SCORELINE_BOARD =
