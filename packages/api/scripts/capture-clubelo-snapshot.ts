@@ -154,6 +154,7 @@ async function captureFromHtml(referenceDate: Date): Promise<{
             fetchedAt: new Date().toISOString(),
             method: "clubelo-ranking-html",
             pageSha256: pageSha256(response.text),
+            httpStatus: response.status,
           },
         };
       }
@@ -165,14 +166,21 @@ async function captureFromHtml(referenceDate: Date): Promise<{
   throw lastError ?? new Error("ClubElo published ranking is unavailable");
 }
 
-async function captureEplClubPages(
-  fetchedAt: string,
-): Promise<{ overrides: Map<string, number>; clubPages: ClubStrengthCaptureRecord[]; rankingDates: string[] }> {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function captureEplClubPages(): Promise<{ overrides: Map<string, number>; clubPages: ClubStrengthCaptureRecord[]; rankingDates: string[] }> {
   const overrides = new Map<string, number>();
   const clubPages: ClubStrengthCaptureRecord[] = [];
   const rankingDates: string[] = [];
-  for (const entry of EPL_CLUB_PAGE_SLUGS) {
+  for (let index = 0; index < EPL_CLUB_PAGE_SLUGS.length; index += 1) {
+    const entry = EPL_CLUB_PAGE_SLUGS[index]!;
+    if (index > 0) await sleep(1000);
     const url = `${CLUBELO_SITE}/${entry.slug}`;
+    const fetchedAt = new Date().toISOString();
     const response = await fetchText(url);
     if (!response.ok) {
       throw new Error(`ClubElo club page ${response.status} for ${url}`);
@@ -189,6 +197,7 @@ async function captureEplClubPages(
       fetchedAt,
       method: "clubelo-club-page-html",
       pageSha256: pageSha256(response.text),
+      httpStatus: response.status,
     });
   }
   return { overrides, clubPages, rankingDates };
@@ -255,7 +264,7 @@ async function main(): Promise<void> {
   const byProfile = buildProfileMaps(rows);
   let clubPageRecords: ClubStrengthCaptureRecord[] | undefined;
   if (clubPages) {
-    const { overrides, clubPages: pages, rankingDates } = await captureEplClubPages(fetchedAt);
+    const { overrides, clubPages: pages, rankingDates } = await captureEplClubPages();
     applyClubPageOverrides(byProfile, overrides);
     clubPageRecords = pages;
     if (rankingDates.length > 0) {
