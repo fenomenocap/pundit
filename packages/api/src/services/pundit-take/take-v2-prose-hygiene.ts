@@ -1,5 +1,8 @@
 import type { PunditTakePlan } from "./types";
 
+const RECENT_FORM_COMPARE =
+  /\b(?:(?:better|stronger|worse|weaker|poorer)\s+(?:recent\s+)?form|(?:recent\s+)?form\s+is\s+with|in\s+(?:better|stronger|worse|weaker)\s+form)\b/i;
+
 /** Club-form windows in the dossier are all-venues; no home/away split in current data. */
 export function formDataHasVenueSplit(_plan: PunditTakePlan): boolean {
   return false;
@@ -43,6 +46,70 @@ export function rewriteWinProbabilityPhrase(text: string): string {
 }
 
 /** Venue-tied performance narrative without split data (not neutral home-advantage copy). */
+function fixtureSides(plan: PunditTakePlan): { home: string; away: string } | null {
+  const parts = plan.fixtureLabel.split(/\s+v\s+/i);
+  if (parts.length !== 2 || !parts[0]?.trim() || !parts[1]?.trim()) return null;
+  return { home: parts[0].trim(), away: parts[1].trim() };
+}
+
+export function sentenceComparesRecentForm(sentence: string): boolean {
+  return RECENT_FORM_COMPARE.test(sentence);
+}
+
+function recentFormComparisonDirection(sentence: string): "better" | "worse" | null {
+  if (/\b(?:worse|weaker|poorer)\s+(?:recent\s+)?form\b/i.test(sentence)) return "worse";
+  if (/\bin\s+(?:worse|weaker|poorer)\s+form\b/i.test(sentence)) return "worse";
+  if (/\b(?:better|stronger)\s+(?:recent\s+)?form\b/i.test(sentence)) return "better";
+  if (/\bin\s+(?:better|stronger)\s+form\b/i.test(sentence)) return "better";
+  if (/\bform\s+is\s+with\b/i.test(sentence)) return "better";
+  return null;
+}
+
+function sideMentionedInFormSentence(
+  sentence: string,
+  sides: { home: string; away: string },
+): "home" | "away" | null {
+  if (/\bthe visitors\b/i.test(sentence)) return "away";
+  if (/\bthe hosts\b/i.test(sentence) || /\bhome side\b/i.test(sentence)) return "home";
+  if (/\baway side\b/i.test(sentence)) return "away";
+  const lower = sentence.toLowerCase();
+  const home = sides.home.toLowerCase();
+  const away = sides.away.toLowerCase();
+  const homeHit = lower.includes(home);
+  const awayHit = lower.includes(away);
+  if (homeHit && !awayHit) return "home";
+  if (awayHit && !homeHit) return "away";
+  const withMatch = sentence.match(
+    /\bform\s+is\s+with\s+(?:the\s+)?([A-Za-z][A-Za-z\s'-]{0,40}?)(?:\s+who|\s+here|[,.!?]|$)/i,
+  );
+  if (withMatch?.[1]) {
+    const name = withMatch[1].trim().toLowerCase();
+    if (name.includes(home) || home.includes(name)) return "home";
+    if (name.includes(away) || away.includes(name)) return "away";
+  }
+  return null;
+}
+
+/** Drop when LLM compares recent form against the last-five points snapshot. */
+export function sentenceFailsFormComparisonCheck(sentence: string, plan: PunditTakePlan): boolean {
+  if (!sentenceComparesRecentForm(sentence)) return false;
+  const formLast5 = plan.numericFacts?.formLast5;
+  const homePts = formLast5?.homePoints ?? null;
+  const awayPts = formLast5?.awayPoints ?? null;
+  if (homePts == null || awayPts == null) return true;
+  if (homePts === awayPts) return true;
+  const sides = fixtureSides(plan);
+  if (!sides) return true;
+  const subject = sideMentionedInFormSentence(sentence, sides);
+  if (!subject) return true;
+  const direction = recentFormComparisonDirection(sentence);
+  if (!direction) return true;
+  const subjectPts = subject === "home" ? homePts : awayPts;
+  const otherPts = subject === "home" ? awayPts : homePts;
+  if (direction === "better") return subjectPts <= otherPts;
+  return subjectPts >= otherPts;
+}
+
 export function sentenceMakesVenuePerformanceClaim(sentence: string): boolean {
   if (/\bhome[- ]field advantage\b/i.test(sentence)) return false;
   const withoutAdvantage = sentence.replace(/\bhome advantage\b/gi, "");
@@ -86,6 +153,9 @@ function sanitizeLlmTakeSentence(
     return rewriteWinProbabilityPhrase(sentence);
   }
   let next = rewriteWinProbabilityPhrase(sentence);
+  if (sentenceFailsFormComparisonCheck(next, plan)) {
+    return null;
+  }
   if (!venueSplit && sentenceMakesVenuePerformanceClaim(next)) {
     return null;
   }

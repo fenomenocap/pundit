@@ -81,6 +81,11 @@ export interface TakePlanNumericFacts {
   topTwoGapPoints: number;
   /** True when `topTwoGapPoints` is strictly under 2. */
   coinFlip: boolean;
+  /** Last-five league points (W=3, D=1) from dossier or grounding form snapshot. */
+  formLast5: {
+    homePoints: number | null;
+    awayPoints: number | null;
+  };
 }
 
 export interface PunditTakePlan {
