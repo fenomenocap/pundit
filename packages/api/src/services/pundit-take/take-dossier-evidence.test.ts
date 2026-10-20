@@ -125,6 +125,7 @@ function dossierWithEvidence(items: DossierEvidenceItem[]): MatchDossier {
     },
     market: { value: { rows: [] }, provenance: prov },
     evidence: items,
+    dropped: [],
     featureCandidates: [],
   };
 }
