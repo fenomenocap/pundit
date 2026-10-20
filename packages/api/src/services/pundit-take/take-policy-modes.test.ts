@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { STAKE_REFUSAL_SENTENCE } from "../response-composer";
 import { planResponse } from "../response-plan";
 import { composePunditTakeDelivery } from "./compose";
 import { withPunditTakeRequestScope } from "./flags";
@@ -30,7 +29,8 @@ describe("Pundit Take v2 policy modes", () => {
   it("refuses stake sizing and keeps the 1X2 table", () => {
     const delivery = deliver("How much should I stake on Spurs?");
     expect(delivery.answer).toMatch(/won't size a stake/i);
-    expect(delivery.answer).toContain(STAKE_REFUSAL_SENTENCE);
+    expect(delivery.answer).toContain("I can print the price");
+    expect((delivery.answer.match(/size a stake without a bankroll and a risk band/gi) ?? []).length).toBe(1);
     expect(delivery.answer).toContain("| Outcome | Ours |");
     expect(delivery.answer).not.toMatch(/^Lean:/m);
   });

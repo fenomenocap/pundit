@@ -59,8 +59,42 @@ export function dedupeVenueQualifiers(text: string): string {
     .trim();
 }
 
+/** Expand common contractions so policy dedupe catches won't / will not pairs. */
+export function expandContractionsForDedupe(text: string): string {
+  return text
+    .replace(/\bI'm\b/gi, "I am")
+    .replace(/\bI've\b/gi, "I have")
+    .replace(/\bI'll\b/gi, "I will")
+    .replace(/\bI'd\b/gi, "I would")
+    .replace(/\bwon't\b/gi, "will not")
+    .replace(/\bcan't\b/gi, "cannot")
+    .replace(/\bdon't\b/gi, "do not")
+    .replace(/\bdoesn't\b/gi, "does not")
+    .replace(/\bdidn't\b/gi, "did not")
+    .replace(/\bisn't\b/gi, "is not")
+    .replace(/\baren't\b/gi, "are not")
+    .replace(/\bwasn't\b/gi, "was not")
+    .replace(/\bweren't\b/gi, "were not")
+    .replace(/\bhasn't\b/gi, "has not")
+    .replace(/\bhaven't\b/gi, "have not")
+    .replace(/\bhadn't\b/gi, "had not")
+    .replace(/\bwouldn't\b/gi, "would not")
+    .replace(/\bshouldn't\b/gi, "should not")
+    .replace(/\bcouldn't\b/gi, "could not")
+    .replace(/\bmustn't\b/gi, "must not")
+    .replace(/\bit's\b/gi, "it is")
+    .replace(/\bthat's\b/gi, "that is")
+    .replace(/\bwhat's\b/gi, "what is")
+    .replace(/\bwho's\b/gi, "who is")
+    .replace(/\blet's\b/gi, "let us");
+}
+
 function normalizeForDedupe(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  return expandContractionsForDedupe(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function blocksNearDuplicate(a: string, b: string): boolean {
@@ -73,15 +107,40 @@ function blocksNearDuplicate(a: string, b: string): boolean {
   return false;
 }
 
-/** Drop repeated paragraphs in policy / refusal answers. */
+function dedupePolicySentences(sentences: string[], seenNormalized: string[]): string[] {
+  const kept: string[] = [];
+  for (const sentence of sentences) {
+    const norm = normalizeForDedupe(sentence);
+    if (!norm) continue;
+    if (seenNormalized.some((prev) => blocksNearDuplicate(prev, norm))) continue;
+    seenNormalized.push(norm);
+    kept.push(sentence);
+  }
+  return kept;
+}
+
+/** Drop repeated paragraphs and near-duplicate sentences within each policy block. */
 export function dedupePolicyProseBlocks(prose: string): string {
   const blocks = prose.split("\n\n").map((b) => b.trim()).filter(Boolean);
-  const kept: string[] = [];
+  const keptBlocks: string[] = [];
   for (const block of blocks) {
-    if (kept.some((prev) => blocksNearDuplicate(prev, block))) continue;
-    kept.push(block);
+    const sentences = block.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+    const seenInBlock: string[] = [];
+    const keptSentences = dedupePolicySentences(sentences, seenInBlock);
+    if (!keptSentences.length) continue;
+    const joined = keptSentences.join(" ");
+    if (keptBlocks.some((prev) => blocksNearDuplicate(prev, joined))) continue;
+    keptBlocks.push(joined);
   }
-  return kept.join("\n\n");
+  const merged = keptBlocks.join("\n\n");
+  return dedupePolicyProseSentencesGlobally(merged.replace(/\n\n+/g, " "));
+}
+
+/** When policy prose is one block (desk flattening), dedupe sentences across the whole string. */
+function dedupePolicyProseSentencesGlobally(prose: string): string {
+  const sentences = prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+  const seen: string[] = [];
+  return dedupePolicySentences(sentences, seen).join(" ");
 }
 
 export function applyV2ProseHygiene(prose: string, plan: PunditTakePlan): string {
