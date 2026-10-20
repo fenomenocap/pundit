@@ -65,7 +65,7 @@ function escapeRegExp(value: string): string {
 function sentenceMapsToPlan(sentence: string, plan: PunditTakePlan): boolean {
   if (/^The value is /i.test(sentence)) return true;
   if (/^I pass on /i.test(sentence)) return true;
-  if (/^No call on /i.test(sentence)) return true;
+  if (/\bNo call on /i.test(sentence)) return true;
   if (/^That price implies /i.test(sentence)) return true;
   if (/\bI play\.\s*$/i.test(sentence) || / — I play\.$/.test(sentence)) return true;
   if (/^I'd revisit if /i.test(sentence)) return true;

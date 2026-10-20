@@ -3,6 +3,8 @@ import { sampleAgentFreshness } from "../../config/freshness-policy";
 import type { Grounding } from "../ask";
 import { attachUserLine, buildMatchPricing } from "../response-correctness";
 import { formatPassPlayLineTable } from "./take-pass-play-table";
+import { applyV2TakeProseGuards } from "./take-number-check";
+import { buildPunditTakePlan } from "./take-plan";
 import { renderPassPlayTakeProse } from "./take-grid-prose";
 import { resolvePassPlayVerdict } from "./take-pass-play-verdict";
 import type { PunditTakePlan } from "./types";
@@ -113,5 +115,104 @@ describe("Take v2 play/pass verdict alignment", () => {
     const prose = renderPassPlayTakeProse(planStub, grounding)!;
     expect(proseBand(prose)).toBe("Play");
     expect(prose).toMatch(/Chelsea at 1\.75.*I play/i);
+  });
+});
+
+function matchGrounding(
+  fixtureId: string,
+  home: string,
+  away: string,
+  pHome: number,
+  pDraw: number,
+  line: { outcome: "home" | "draw" | "away"; decimalOdds: number },
+): Grounding {
+  const pAway = Math.max(0.01, 1 - pHome - pDraw);
+  const pricing = attachUserLine(
+    buildMatchPricing({
+      fixtureId,
+      home,
+      away,
+      kickoff: "2026-10-24T14:00:00.000Z",
+      modelVersion: "clubelo@1:test",
+      pricedAt: "2026-10-20T12:00:00.000Z",
+      pHome,
+      pDraw,
+      pAway,
+      markets: [],
+    }),
+    line,
+  );
+  return {
+    kind: "match",
+    fixtureId: `espn:${fixtureId}`,
+    competitionId: "eng.1",
+    competition: "Premier League",
+    homeFieldAdvantage: true,
+    date: "2026-10-24",
+    stage: "Regular Season",
+    home,
+    away,
+    pHome,
+    pDraw,
+    pAway,
+    pOver2_5: 0.5,
+    pUnder2_5: 0.5,
+    pBttsYes: 0.5,
+    pBttsNo: 0.5,
+    topScores: [],
+    scorelines: [],
+    stakePHome: null,
+    stakePDraw: null,
+    stakePAway: null,
+    oddsSources: [],
+    marketDivergence: [],
+    pricing,
+    freshness: sampleAgentFreshness({ modelLastUpdated: "2026-10-20T12:00:00.000Z" }),
+    homeForm: [],
+    awayForm: [],
+    homeTable: { position: 2, points: 18, goalDifference: 6, playedGames: 8 },
+    awayTable: { position: 8, points: 10, goalDifference: 1, playedGames: 8 },
+    homeScorers: [],
+    awayScorers: [],
+  };
+}
+
+function passPlayProseAfterGuards(grounding: Grounding): string {
+  const plan = buildPunditTakePlan(grounding, null);
+  const raw = renderPassPlayTakeProse(plan, grounding)!;
+  return applyV2TakeProseGuards(raw, plan);
+}
+
+describe("Take v2 play/pass opener survives numeric guards", () => {
+  it.each([
+    {
+      label: "Arsenal home 1.33 (espn:eng.1:401878768)",
+      grounding: matchGrounding("eng.1:401878768", "Arsenal", "Everton", 0.763, 0.15, {
+        outcome: "home",
+        decimalOdds: 1.33,
+      }),
+      opener: /Arsenal v Everton — No call on Arsenal at 1\.33/i,
+    },
+    {
+      label: "Fulham 2.24",
+      grounding: matchGrounding("eng.1:401878999", "Fulham", "Wolves", 0.455, 0.28, {
+        outcome: "home",
+        decimalOdds: 2.24,
+      }),
+      opener: /Fulham v Wolves — No call on Fulham at 2\.24/i,
+    },
+    {
+      label: "Brentford 1.51",
+      grounding: matchGrounding("eng.1:401878888", "Brentford", "West Ham", 0.655, 0.22, {
+        outcome: "home",
+        decimalOdds: 1.51,
+      }),
+      opener: /Brentford v West Ham — No call on Brentford at 1\.51/i,
+    },
+  ])("$label keeps fixture headline with No call verdict", ({ grounding, opener }) => {
+    expect(resolvePassPlayVerdict(grounding)!.tableCall).toBe("No call");
+    const prose = passPlayProseAfterGuards(grounding);
+    expect(prose).toMatch(opener);
+    expect(prose).toMatch(/That price implies/i);
   });
 });
