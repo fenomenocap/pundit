@@ -34,6 +34,24 @@ describe("club strength artifact", () => {
     expect(validated.artifact.artifactId).toBe(`clubelo@1:${validated.artifact.payloadSha256}`);
   });
 
+  it("keeps offline capture provenance outside the payload hash", () => {
+    const payload = {
+      snapshotAt: "2026-08-12T00:00:00.000Z",
+      byProfile: validArtifact().payload.byProfile,
+    };
+    const withoutCapture = buildClubStrengthArtifact(payload);
+    const withCapture = buildClubStrengthArtifact(payload, {
+      clubPages: [{
+        url: "https://clubelo.com/Arsenal",
+        fetchedAt: "2026-08-12T00:00:00.000Z",
+        method: "clubelo-club-page-html",
+        pageSha256: "a".repeat(64),
+      }],
+    });
+    expect(withCapture.payloadSha256).toBe(withoutCapture.payloadSha256);
+    expect(withCapture.source.capture?.clubPages).toHaveLength(1);
+  });
+
   it("fails closed when payload content no longer matches the hash", () => {
     const artifact = validArtifact();
     artifact.payload.byProfile["uefa-clubs"]["Club 1"] = 1999;
