@@ -181,7 +181,7 @@ export function ensureHeaderV2AskAnswerNonEmpty(
     return result;
   }
   const planCtx = matchPlanContext(result.grounding, false, true);
-  const plan = planResponse(question, { groundingKind: "match", ...planCtx });
+  const plan = planResponse(question, planCtx);
   let answer = composeMatchResponse(question, result.grounding, plan).trim();
   if (!answer) {
     answer = composePunditTakeDelivery(question, result.grounding, plan)?.answer.trim() ?? "";
