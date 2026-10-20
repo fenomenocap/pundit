@@ -44,14 +44,11 @@ describe("Take v2 play/pass resolver gating (header only)", () => {
     });
   });
 
-  it("no header enables the same play-or-pass resolver as an explicit v2 header", () => {
+  it("no header keeps the legacy play-or-pass resolver", () => {
     const question = "Chelsea at 1.70, play or pass?";
     const grounding = chelseaTottenhamGrounding();
-    const fromHeader = withPunditTakeRequestScope("v2", () =>
-      inferUserLineFromQuestion(question, grounding.home, grounding.away));
     const fromDefault = withPunditTakeRequestScope(null, () =>
       inferUserLineFromQuestion(question, grounding.home, grounding.away));
-    expect(fromDefault).toEqual({ outcome: "home", decimalOdds: 1.7 });
-    expect(fromDefault).toEqual(fromHeader);
+    expect(fromDefault).toBeUndefined();
   });
 });
