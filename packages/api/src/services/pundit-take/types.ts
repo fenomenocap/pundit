@@ -81,11 +81,24 @@ export interface TakePlanNumericFacts {
   topTwoGapPoints: number;
   /** True when `topTwoGapPoints` is strictly under 2. */
   coinFlip: boolean;
-  /** Last-five league points (W=3, D=1) from dossier or grounding form snapshot. */
+  /** Last-five league form from dossier or grounding form snapshot. */
   formLast5: {
     homePoints: number | null;
     awayPoints: number | null;
+    home: TakePlanLast5FormRecord | null;
+    away: TakePlanLast5FormRecord | null;
   };
+}
+
+export interface TakePlanLast5FormRecord {
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  /** Unbeaten run from the most recent result backward (W/D until first L). */
+  unbeatenRun: number;
+  /** Winless run from the most recent result backward (L/D until first W). */
+  winlessRun: number;
 }
 
 export interface PunditTakePlan {
