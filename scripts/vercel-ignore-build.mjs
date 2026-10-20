@@ -7,7 +7,8 @@ import path from "node:path";
 import { shouldBuildWeb } from "./deploy-build-paths.mjs";
 
 // The path list lives in deploy-build-paths.mjs so the deploy-SHA resolver
-// applies the identical rule. Re-exported for the existing tests and callers.
+// applies the identical rule. packages/web/vercel.json runs scripts/vercel-ignore.sh,
+// which calls decideIgnoredBuild. Re-exported for the existing tests and callers.
 export { shouldBuildWeb };
 
 export function changedPathsBetween(previousSha, commitSha, cwd) {
