@@ -100,7 +100,8 @@ describe("Take v2 audit-speak guard", () => {
       const legacy = composeMatchResponse(question, grounding, plan);
       const scoped = withPunditTakeRequestScope("legacy", () => composeMatchResponse(question, grounding, plan));
       expect(scoped).toBe(legacy);
-      expect(legacy).toMatch(/Model:/);
+      expect(legacy).not.toMatch(/^Model:/m);
+      expect(legacy).not.toMatch(/\bElo\b|Kalshi|Polymarket|no-vig/i);
     } finally {
       if (prev === undefined) delete process.env.PUNDIT_TAKE_V2;
       else process.env.PUNDIT_TAKE_V2 = prev;

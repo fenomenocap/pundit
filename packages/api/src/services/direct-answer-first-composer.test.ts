@@ -116,7 +116,7 @@ describe("directAnswerFirst default-path headlines", () => {
     const question = "Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?";
     const answer = composeMarketComparisonAnswer(question, grounding)!;
     expect(firstLine(answer)).toMatch(
-      /Arsenal v Chelsea — the largest gap is on Arsenal: I have 56\.3% vs Kalshi 50\.1%/,
+      /Arsenal v Chelsea — the largest gap is on Arsenal: I have 56\.3% vs the market 50\.1%/,
     );
     expect(answer).toMatch(/disagreement between my read and the market/);
     expect(answer).toMatch(/nothing about lineups on its own/);
