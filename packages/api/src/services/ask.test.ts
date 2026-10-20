@@ -22,6 +22,7 @@ import { SEASON_OUTLOOK_UNAVAILABLE } from "./season-simulator";
 import * as seasonSimulator from "./season-simulator";
 import {
   espnFixtureIdentity,
+  modelFixtureId,
   recognizeEspnFixture,
   type RecognizedFixture,
 } from "./fixture-registry";
@@ -5140,6 +5141,34 @@ describe("resolveAskContext", () => {
           recognizedFixtures: recognized,
           fixtureContext: { fixtureId: recognized[1].fixtureId },
         }
+      )).toEqual({ tier: "match", fixture: secondLeg });
+    });
+
+    it("keeps pass-or-play on the chip-opened leg without naming teams", () => {
+      const recognized = legs.map((leg) => recognize(leg));
+      expect(resolveAskContext(
+        "pass or play?",
+        [],
+        undefined,
+        legs,
+        [standing()],
+        [],
+        {
+          recognizedFixtures: recognized,
+          fixtureContext: { fixtureId: recognized[1].fixtureId },
+        }
+      )).toEqual({ tier: "match", fixture: secondLeg });
+    });
+
+    it("resolves pass-or-play through spine fixtureContext on model rows", () => {
+      expect(resolveAskContext(
+        "pass or play?",
+        [],
+        undefined,
+        legs,
+        [],
+        [],
+        { fixtureContext: { fixtureId: modelFixtureId(secondLeg) } },
       )).toEqual({ tier: "match", fixture: secondLeg });
     });
 
