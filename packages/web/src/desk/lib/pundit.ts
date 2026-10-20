@@ -1,4 +1,5 @@
 import type { AskGrounding, AskPresentation, AskResult, UserLine } from "@/lib/api";
+import { buildPunditAskJsonHeaders } from "@/lib/pundit-take-v2-opt-in";
 import type { DeskChatTurn } from "./chat-history";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://thepundit.up.railway.app";
@@ -34,7 +35,7 @@ export async function askPundit({
   try {
     const res = await fetch(`${API_URL}/api/ask`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: buildPunditAskJsonHeaders(),
       body: JSON.stringify({
         question,
         history,
