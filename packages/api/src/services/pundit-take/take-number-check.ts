@@ -1,0 +1,172 @@
+import type { Grounding } from "../ask";
+import type { MatchDossier } from "../match-dossier/types";
+import { allowedNumbersFromPlan, sentenceUsesDisallowedNumber } from "./take-allowed-numbers";
+import type { PunditTakePlan, TakePlanGridCall, TakePlanNumericFacts, TakePlanRow } from "./types";
+
+const GAP_INT_TO_WORD = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+] as const;
+
+export function gapCountWord(n: number): string {
+  if (n >= 0 && n < GAP_INT_TO_WORD.length) return GAP_INT_TO_WORD[n]!;
+  return String(n);
+}
+
+const GAP_WORD_TO_INT: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+};
+
+const TOSS_UP_PATTERN = /\b(?:toss-up|coin-flip|coin flip|too close to call)\b/i;
+const POINTS_CLEAR_PATTERN = /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+clear\b/i;
+const POINTS_BEHIND_PATTERN = /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+points?\s+behind\b/i;
+
+function parseGapToken(token: string): number | null {
+  const lower = token.toLowerCase();
+  if (GAP_WORD_TO_INT[lower] != null) return GAP_WORD_TO_INT[lower]!;
+  const n = Number(token);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+export function topTwoOutcomeGapPoints(
+  rows: TakePlanRow[],
+  gridCall: TakePlanGridCall | null,
+  gridRows: PunditTakePlan["gridRows"],
+): number {
+  if (gridCall && gridRows.length >= 2) {
+    const pcts = gridRows.map((r) => r.modelPctInt).sort((a, b) => b - a);
+    return pcts.length >= 2 ? pcts[0]! - pcts[1]! : 100;
+  }
+  const pcts = rows.map((r) => r.modelPctInt).sort((a, b) => b - a);
+  return pcts.length >= 2 ? pcts[0]! - pcts[1]! : 100;
+}
+
+export function buildTakeNumericFacts(
+  grounding: Grounding,
+  dossier: MatchDossier | null,
+  rows: TakePlanRow[],
+  gridCall: TakePlanGridCall | null,
+  gridRows: PunditTakePlan["gridRows"],
+): TakePlanNumericFacts {
+  const homePosition = grounding.homeTable.position ?? dossier?.table.home.value.position ?? null;
+  const awayPosition = grounding.awayTable.position ?? dossier?.table.away.value.position ?? null;
+  const homePoints = grounding.homeTable.points ?? dossier?.table.home.value.points ?? null;
+  const awayPoints = grounding.awayTable.points ?? dossier?.table.away.value.points ?? null;
+  const pointsClear = homePoints != null && awayPoints != null
+    ? Math.abs(homePoints - awayPoints)
+    : null;
+  const positionsApart = homePosition != null && awayPosition != null
+    ? Math.abs(homePosition - awayPosition)
+    : null;
+  const topTwoGapPoints = topTwoOutcomeGapPoints(rows, gridCall, gridRows);
+  const coinFlip = gridCall?.coinFlip ?? topTwoGapPoints < 2;
+  return {
+    table: {
+      homePosition,
+      awayPosition,
+      homePoints,
+      awayPoints,
+      pointsClear,
+      positionsApart,
+    },
+    topTwoGapPoints,
+    coinFlip,
+  };
+}
+
+export function collectAllowedNumbers(plan: PunditTakePlan): Set<string> {
+  const allowed = allowedNumbersFromPlan(plan);
+  const facts = plan.numericFacts;
+  if (!facts) return allowed;
+  const ingest = (n: number | null | undefined) => {
+    if (n == null || !Number.isFinite(n)) return;
+    allowed.add(String(n));
+    allowed.add(String(Math.round(n)));
+  };
+  ingest(facts.table.homePosition);
+  ingest(facts.table.awayPosition);
+  ingest(facts.table.homePoints);
+  ingest(facts.table.awayPoints);
+  ingest(facts.table.pointsClear);
+  ingest(facts.table.positionsApart);
+  ingest(facts.topTwoGapPoints);
+  return allowed;
+}
+
+export function sentenceFailsTableGapCheck(sentence: string, facts: TakePlanNumericFacts): boolean {
+  const expectedClear = facts.table.pointsClear;
+  const clearMatch = sentence.match(POINTS_CLEAR_PATTERN);
+  if (clearMatch) {
+    const stated = parseGapToken(clearMatch[1]!);
+    if (stated != null && expectedClear != null && stated !== expectedClear) return true;
+    if (stated != null && expectedClear === 0 && stated !== 0) return true;
+  }
+  const behindMatch = sentence.match(POINTS_BEHIND_PATTERN);
+  if (behindMatch) {
+    const stated = parseGapToken(behindMatch[1]!);
+    if (stated != null && expectedClear != null && stated !== expectedClear) return true;
+  }
+  return false;
+}
+
+export function sentenceHasForbiddenTossUpLanguage(sentence: string, coinFlip: boolean): boolean {
+  if (coinFlip) return false;
+  return TOSS_UP_PATTERN.test(sentence);
+}
+
+/** Deterministic pricing/policy lines carry their own vetted numbers. */
+function sentenceSkipsNumericAndGapGuard(sentence: string): boolean {
+  return /^That price implies /i.test(sentence)
+    || /\bI pass on /i.test(sentence)
+    || /\bI play\b/i.test(sentence)
+    || / — I play\.$/.test(sentence)
+    || /^Draw: our fair /i.test(sentence)
+    || /fair 1X2 vs the best prices/i.test(sentence)
+    || /^The value is /i.test(sentence)
+    || /^I will not call /i.test(sentence)
+    || /^What flips it:/i.test(sentence)
+    || /^I'd shift if /i.test(sentence)
+    || /^I'd revisit if /i.test(sentence)
+    || /^Separately,/i.test(sentence)
+    || /^On .+?, I have /i.test(sentence)
+    || /^.+ — .+ at \d+(?:\.\d+)?%\.$/.test(sentence)
+    || /^Nothing is guaranteed/i.test(sentence)
+    || /18\+ only/i.test(sentence)
+    || /^Gambling can be addictive/i.test(sentence)
+    || /can't guarantee a winner/i.test(sentence)
+    || /where the numbers come from/i.test(sentence);
+}
+
+function splitGuardSentences(prose: string): string[] {
+  return prose
+    .split(/\n\n+/)
+    .flatMap((paragraph) => paragraph.split(/(?<=[.!?])\s+/))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function applyV2TakeProseGuards(prose: string, plan: PunditTakePlan): string {
+  const allowed = collectAllowedNumbers(plan);
+  const sentences = splitGuardSentences(prose);
+  const kept: string[] = [];
+  for (const sentence of sentences) {
+    const coinFlip = plan.numericFacts?.coinFlip ?? false;
+    if (sentenceHasForbiddenTossUpLanguage(sentence, coinFlip)) continue;
+    if (plan.numericFacts && sentenceFailsTableGapCheck(sentence, plan.numericFacts)) {
+      continue;
+    }
+    if (!sentenceSkipsNumericAndGapGuard(sentence)) {
+      if (sentenceUsesDisallowedNumber(sentence, allowed)) continue;
+    }
+    kept.push(sentence);
+  }
+  return kept.join(" ").trim();
+}

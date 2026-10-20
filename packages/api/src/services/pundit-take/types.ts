@@ -66,6 +66,23 @@ export interface TakePlanGridCall {
   coinFlip?: boolean;
 }
 
+/** Server-computed numbers the prose guard may cite (LLM must not derive gaps). */
+export interface TakePlanNumericFacts {
+  table: {
+    homePosition: number | null;
+    awayPosition: number | null;
+    homePoints: number | null;
+    awayPoints: number | null;
+    /** Absolute points gap between the two clubs when both totals are known. */
+    pointsClear: number | null;
+    positionsApart: number | null;
+  };
+  /** Gap in percentage points between the top two 1X2 (or grid) outcomes. */
+  topTwoGapPoints: number;
+  /** True when `topTwoGapPoints` is strictly under 2. */
+  coinFlip: boolean;
+}
+
 export interface PunditTakePlan {
   schemaVersion: typeof PUNDIT_TAKE_PLAN_SCHEMA_VERSION;
   marketKind: TakePlanMarketKind;
@@ -81,6 +98,8 @@ export interface PunditTakePlan {
   hasCompleteMarket: boolean;
   rows: TakePlanRow[];
   marketColumns: TakePlanMarketColumn[];
+  /** Present on plans from `buildPunditTakePlan`; guards tolerate absence in unit fixtures. */
+  numericFacts?: TakePlanNumericFacts;
 }
 
 export interface PunditTakeSourceOdds {
