@@ -180,9 +180,11 @@ import {
   type ResponsePresentation,
 } from "./response-plan";
 import {
+  composePunditTakeDelivery,
   composePunditTakeDeliveryAsync,
   punditTakeApplies,
 } from "./pundit-take/compose";
+import { asksTakeV2PolicyPrompt } from "./pundit-take/take-routing";
 import {
   punditTakeV2Active,
   punditTakeV2PlayPassResolverEnabled,
@@ -9891,6 +9893,10 @@ export function closedGroundedAnswer(
     const plan = planResponse(question, {
       ...matchPlanContextForRequest(grounding, hasHistory),
     });
+    if (punditTakeV2Active() && asksTakeV2PolicyPrompt(question)) {
+      const policyTake = composeMatchResponse(question, grounding, plan).trim();
+      if (policyTake) return policyTake;
+    }
     // A briefing may also ask for current external facts. Its owned football
     // take cannot settle that request before the mandatory evidence lookup.
     if (plan.mode === "match-preview" && asksCompleteMatchBriefing(question)
@@ -10902,6 +10908,20 @@ type ScopedAskPayload = {
   agentTurn?: ChatAgentTurnReport;
 };
 
+function ensureV2MatchTakeAnswerNonEmpty(
+  answer: string,
+  question: string,
+  grounding: AskGrounding,
+  hasHistory: boolean,
+): string {
+  if (!punditTakeV2Active() || grounding?.kind !== "match" || answer.trim()) return answer;
+  const plan = planResponse(question, matchPlanContextForRequest(grounding, hasHistory));
+  const composed = composeMatchResponse(question, grounding, plan).trim();
+  if (composed) return composed;
+  const delivery = composePunditTakeDelivery(question, grounding, plan);
+  return delivery?.answer.trim() ?? answer;
+}
+
 function withPresentation(
   question: string,
   hasHistory: boolean,
@@ -10910,12 +10930,14 @@ function withPresentation(
   const plan = planResponse(question, {
     ...matchPlanContextForRequest(result.grounding, hasHistory),
   });
+  let delivered = finalizeDeliveredText(result.answer, result.grounding, ANALYST_RESPONSE_V2, {
+    question,
+    hasHistory,
+  });
+  delivered = ensureV2MatchTakeAnswerNonEmpty(delivered, question, result.grounding, hasHistory);
   return {
     ...result,
-    answer: finalizeDeliveredText(result.answer, result.grounding, ANALYST_RESPONSE_V2, {
-      question,
-      hasHistory,
-    }),
+    answer: delivered,
     presentation: responsePresentation(plan),
     engine: chatEngineMode(),
     usedLlm: result.usedLlm === true,
