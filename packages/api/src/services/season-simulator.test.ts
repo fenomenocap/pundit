@@ -171,7 +171,9 @@ describe("season simulator", () => {
       "eng-clubs": new Map([["Arsenal", 1850], ["Liverpool", 1840]]),
       "uefa-clubs": new Map<string, number>(),
     };
-    const outlook = simulateSeasonOutlook("eng.1", standings, [absorbed, remaining], ratings, 20);
+    const outlook = simulateSeasonOutlook(
+      "eng.1", standings, [absorbed, remaining], ratings, 20, undefined, undefined, now
+    );
     expect(outlook).not.toBeNull();
     expect(outlook!.remainingFixtures).toBe(1);
   });
@@ -194,6 +196,9 @@ describe("season simulator", () => {
     const extra = { ...scheduled[0], id: 202, utcDate: "2026-10-27T14:00:00.000Z", status: "SCHEDULED" as const };
     expect(reconcileRemainingToStandings(standings, [remaining, extra], now)).toBeNull();
     expect(hasCompleteLeagueSchedule(standings, [remaining, extra])).toBe(false);
+    // The outlook must use the same clock as the reconcile above. Omitting it
+    // reads the wall clock, so once fixture 201's kickoff passes it is dropped
+    // as stuck surplus and the schedule looks complete.
     expect(simulateSeasonOutlook(
       "eng.1",
       standings,
@@ -203,7 +208,10 @@ describe("season simulator", () => {
         "eng-clubs": new Map([["Arsenal", 1850], ["Liverpool", 1840]]),
         "uefa-clubs": new Map<string, number>(),
       },
-      10
+      10,
+      undefined,
+      undefined,
+      now
     )).toBeNull();
   });
 
