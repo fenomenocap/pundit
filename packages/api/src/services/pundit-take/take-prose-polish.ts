@@ -21,8 +21,8 @@ export function capitalizeTakeProse(prose: string): string {
 
 export function scrubMyModelPhrasing(text: string): string {
   return text
+    .replace(/\bmy model expects\b/gi, "I expect")
     .replace(/\bmy model\b/gi, "I")
-    .replace(/\bMy model\b/g, "I")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -53,6 +53,13 @@ export function scrubModelWordFromProse(text: string): string {
 
 export function polishTakeProseLine(text: string): string {
   return scrubModelWordFromProse(normalizeFormScopeInText(scrubMyModelPhrasing(text)));
+}
+
+/** First pass on OpenRouter take copy — before post-check or assembly. */
+export function polishLlmTakeProse(text: string): string {
+  let out = polishTakeProseLine(text);
+  out = out.replace(/\bI expects\b/gi, "I expect");
+  return capitalizeTakeProse(out);
 }
 
 export function filterGoalPointsForGridLead(

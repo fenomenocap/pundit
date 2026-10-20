@@ -9,6 +9,7 @@ import {
   TAKE_TEMPLATE_BANNED_PATTERN,
 } from "./take-validate";
 import { renderTakeProseDeterministic } from "./take-prose";
+import { polishLlmTakeProse } from "./take-prose-polish";
 
 const TAKE_SYSTEM = `You are Pundit, a football analyst writing a short match take.
 
@@ -16,13 +17,15 @@ Write plain, conversational English — not an audit, not bullet points, no sect
 
 Structure:
 1) First line MUST be the headline call exactly in the form: "{fixture} — {call} at {pct}%."
-2) Then 2–3 sentences weaving supporting reasons AND at least one counter / risk, then what would flip the call (if a flip seed exists).
+2) Then 2–3 sentences weaving supporting reasons AND at least one counter / risk. Do NOT write what would flip the call — the server appends that line separately.
 3) Optional final sentence only if VALUE_SEED is provided: "The value is {side} at {marketDec} against our fair {fairDec}."
 
 Hard rules:
 - Use ONLY facts and numbers from PLAN_SEEDS and ALLOWED_NUMBERS. Do not invent stats.
 - Do not name bookmakers or data vendors (no Kalshi, Polymarket, Stake, ClubElo, Elo).
 - Never use: Model:, Lean:, Why:, Risk:, section labels, "score grid", "xG model", "Poisson", "desk", "ratings", "applied in this forecast", "in this model", "sits at", "the model has".
+- Never write "model", "my model", or "the model". Say "I expect" for goal or outcome forecasts.
+- Never write "I'd shift", "I would shift", or "What flips it".
 - No markdown tables.`;
 
 function planSeedsJson(plan: PunditTakePlan): string {
@@ -96,14 +99,16 @@ export async function renderTakeProseWithLlmDetailed(
         .join("\n")
         .trim(),
     );
-    if (!raw || TAKE_PROSE_BANNED_PATTERN.test(raw) || TAKE_TEMPLATE_BANNED_PATTERN.test(raw) || TAKE_AUDIT_SPEAK_PATTERN.test(raw)) {
+    const polished = raw ? polishLlmTakeProse(raw) : "";
+    if (!polished || TAKE_PROSE_BANNED_PATTERN.test(polished) || TAKE_TEMPLATE_BANNED_PATTERN.test(polished) || TAKE_AUDIT_SPEAK_PATTERN.test(polished)) {
       return { prose: null, dropped: ["llm-rejected:pattern"], source: "none" };
     }
-    const checked = postCheckTakeProseWithReport(raw, plan);
+    const checked = postCheckTakeProseWithReport(polished, plan);
     if (!checked.prose.trim()) {
       return { prose: null, dropped: checked.dropped.length ? checked.dropped : ["llm-rejected:empty-after-postcheck"], source: "none" };
     }
-    return { prose: checked.prose, dropped: checked.dropped, source: "llm" };
+    const finalProse = polishLlmTakeProse(checked.prose);
+    return { prose: finalProse, dropped: checked.dropped, source: "llm" };
   } catch {
     return { prose: null, dropped: ["llm-rejected:error"], source: "none" };
   }
