@@ -82,7 +82,7 @@ function tableCall(grounding: Grounding): string {
 
 function proseBand(prose: string): "Play" | "Pass" | "No call" {
   if (/\bI play\b/i.test(prose)) return "Play";
-  if (/will not call/i.test(prose)) return "No call";
+  if (/no call on/i.test(prose)) return "No call";
   return "Pass";
 }
 
@@ -94,7 +94,7 @@ describe("Take v2 play/pass verdict alignment", () => {
     const prose = renderPassPlayTakeProse(planStub, grounding)!;
     expect(proseBand(prose)).toBe("Pass");
     expect(prose).toMatch(/I pass on Chelsea at 1\.70/i);
-    expect(prose).not.toMatch(/\bI play\b|will not call/i);
+    expect(prose).not.toMatch(/\bI play\b|no call on/i);
   });
 
   it("No call band: short-priced favourite at 1.33 (+1.1 pts, between pass and play prices)", () => {
@@ -103,7 +103,7 @@ describe("Take v2 play/pass verdict alignment", () => {
     expect(tableCall(grounding)).toBe("No call");
     const prose = renderPassPlayTakeProse(planStub, grounding)!;
     expect(proseBand(prose)).toBe("No call");
-    expect(prose).toMatch(/I will not call Chelsea at 1\.33/i);
+    expect(prose).toMatch(/No call on Chelsea at 1\.33/i);
     expect(prose).not.toMatch(/\bI play\b/i);
   });
 

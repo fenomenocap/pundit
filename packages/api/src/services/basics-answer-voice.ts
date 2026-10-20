@@ -308,7 +308,7 @@ export function formatUserLineLean(
     return `Lean: I pass on ${leanLabel} at ${dec}.`;
   }
   if (decision === "abstain") {
-    return `Lean: I will not call ${leanLabel} at ${dec}.`;
+    return `Lean: No call on ${leanLabel} at ${dec}.`;
   }
   const size = Math.abs(gapPoints) >= 15 ? "strong play" : Math.abs(gapPoints) >= 5 ? "play" : "small play";
   return `Lean: ${leanLabel} at ${dec}, ${size} — I play.`;
