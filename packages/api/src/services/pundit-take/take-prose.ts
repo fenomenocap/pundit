@@ -52,6 +52,7 @@ export function renderTakeProseDeterministic(
   plan: PunditTakePlan,
   variant: "full" | "why" = "full",
   grounding: Grounding | null = null,
+  options?: { appendFlip?: boolean },
 ): string {
   const gridOpener = gridHeadlineOpener(plan, variant);
   const pct = callModelPct(plan);
@@ -73,5 +74,7 @@ export function renderTakeProseDeterministic(
   const blocks = [polishTakeProseLine(opener)];
   if (body.trim()) blocks.push(body.trim());
   if (valueSentence) blocks.push(polishTakeProseLine(valueSentence));
-  return capitalizeTakeProse(appendWhatFlipsItClosing(plan, blocks.join("\n\n"), grounding));
+  const joined = capitalizeTakeProse(blocks.join("\n\n"));
+  if (options?.appendFlip === false) return joined;
+  return capitalizeTakeProse(appendWhatFlipsItClosing(plan, joined, grounding));
 }
