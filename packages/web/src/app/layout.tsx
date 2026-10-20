@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Navbar, MobileDock } from "@/components/navbar";
 import { Footer } from "@/components/footer";
+import { PunditTakeV2OptInBootstrap } from "@/components/pundit-take-v2-opt-in-bootstrap";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -46,6 +47,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-bg text-fg font-body antialiased">
+        <PunditTakeV2OptInBootstrap />
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-accent-fg"
