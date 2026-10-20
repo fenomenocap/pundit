@@ -8,7 +8,22 @@ export const TAKE_TEMPLATE_BANNED_PATTERN =
   /\bbadge suggests\b|\btop-flight experience\b|\bcrisis mode\b|\bbanker\b|\bsharper than my read\b|\bstill a top-half\b|\bstill points to\b|\bstill scream\b|\bstill treats\b|\bstill a live worry\b|\bcloser than the badge\b/i;
 
 export const TAKE_AUDIT_SPEAK_PATTERN =
-  /\bapplied in this forecast\b|\bin this forecast\b|\bin this model\b|\bthis model\b|\bsits at\b|\bforecast says\b|\bthe model has\b|\bon this read\b|\bbefore the low-score correction\b|\blow-score correction\b|\brating sheet\b|\bscore grid\b|\b\d\.\d{2}\s+xg\b|\bxg being\b/i;
+  /\bapplied in this forecast\b|\bin this forecast\b|\bin this model\b|\bthis model\b|\bmy model\b|\bsits at\b|\bforecast says\b|\bthe model has\b|\bon this read\b|\bbefore the low-score correction\b|\blow-score correction\b|\brating sheet\b|\bscore grid\b|\bxG model\b|\bPoisson\b|\bdesk\b|\bratings\b|\b\d\.\d{2}\s+xg\b|\bxg being\b/i;
+
+export const TAKE_V2_PROSE_FORBIDDEN_PATTERN = new RegExp(
+  [
+    TAKE_PROSE_BANNED_PATTERN.source,
+    TAKE_AUDIT_SPEAK_PATTERN.source,
+    TAKE_TEMPLATE_BANNED_PATTERN.source,
+  ].join("|"),
+  "i",
+);
+
+export function scrubForbiddenTakeProse(prose: string): string {
+  const sentences = prose.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+  const kept = sentences.filter((sentence) => !TAKE_V2_PROSE_FORBIDDEN_PATTERN.test(sentence));
+  return (kept.length ? kept : sentences.slice(0, 1)).join(" ").trim();
+}
 
 export function countMarkdownTables(text: string): number {
   const lines = text.split("\n");
@@ -32,6 +47,8 @@ function sentenceMapsToPlan(sentence: string, plan: PunditTakePlan): boolean {
   if (/^That price implies /i.test(sentence)) return true;
   if (/^I'd revisit if /i.test(sentence)) return true;
   if (/^What flips it:/i.test(sentence)) return true;
+  if (/^I'd shift if /i.test(sentence)) return true;
+  if (/^Separately,/i.test(sentence)) return true;
   if (/^fair 1X2 vs the best prices/i.test(sentence)) return true;
   if (/ vs best /i.test(sentence) && /our fair /i.test(sentence)) return true;
   if (/ — .+ — I play\.$/.test(sentence)) return true;
@@ -80,6 +97,10 @@ export function filterUnmappedSentences(prose: string, plan: PunditTakePlan): st
     }
     if (check.some((e) => e.startsWith("unmapped"))) continue;
     kept.push(sentence);
+  }
+  if (kept.length === 0 && sentences.length) {
+    const opener = sentences.find((s) => s.startsWith(plan.fixtureLabel) || /^On /.test(s));
+    return opener ?? sentences[0]!;
   }
   return kept.join(" ");
 }

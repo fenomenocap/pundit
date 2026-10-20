@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PARLAY_OUT_OF_SCOPE } from "../basics-answer-voice";
 import { STAKE_REFUSAL_SENTENCE } from "../response-composer";
 import { planResponse } from "../response-plan";
@@ -7,6 +7,9 @@ import { withPunditTakeRequestScope } from "./flags";
 import { spursCoventryGrounding } from "./test-fixtures/spurs-coventry-grounding";
 
 describe("Pundit Take v2 policy modes", () => {
+  beforeEach(() => vi.setSystemTime(new Date("2026-10-18T10:00:00.000Z")));
+  afterEach(() => vi.useRealTimers());
+
   const grounding = spursCoventryGrounding();
 
   function deliver(question: string) {
@@ -36,11 +39,12 @@ describe("Pundit Take v2 policy modes", () => {
     expect(delivery.answer).not.toMatch(/^Lean:/m);
   });
 
-  it("explains odds provenance without Lean labels", () => {
+  it("explains odds provenance without Lean labels or vendor names in prose", () => {
     const delivery = deliver("Where do your odds come from?");
     expect(delivery.answer).toMatch(/where the numbers come from/i);
-    expect(delivery.answer).toMatch(/Fundamental 1X2/);
-    expect(delivery.answer).toMatch(/Kalshi/);
+    expect(delivery.answer).toMatch(/footer/i);
+    expect(delivery.answer).toMatch(/Kalshi as of/);
+    expect(delivery.answer.split("\n\nModel ")[0]).not.toMatch(/\bKalshi\b|\bratings\b/i);
     expect(delivery.answer).not.toMatch(/^Lean:/m);
   });
 

@@ -175,7 +175,7 @@ describe("Take v2 prod audit fixes", () => {
     const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery(question, grounding, plan)!);
-    expect(delivery.answer).toMatch(/What flips it:/i);
+    expect(delivery.answer).toMatch(/I'd shift if/i);
   });
 
   it("odds table lists every live source, drops stale quotes, and footer matches live set", () => {
@@ -214,7 +214,7 @@ describe("Take v2 prod audit fixes", () => {
     const plan = buildPunditTakePlan(grounding, dossier);
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery("Who wins Chelsea v Tottenham?", grounding, planResponse("Who wins Chelsea v Tottenham?", { groundingKind: "match", hasCompleteMarket1x2: true }), dossier)!);
-    expect(delivery.answer).toMatch(/What flips it:/i);
+    expect(delivery.answer).toMatch(/I'd shift if/i);
     expect(delivery.answer).toMatch(/travelling squad/i);
   });
 

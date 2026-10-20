@@ -2,6 +2,7 @@ import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
 import { appendWhatFlipsItClosing } from "./take-flip-prose";
 import { gridHeadlineOpener, isGenuineTossUp1x2, stripFalseTossUpLanguage } from "./take-headline";
+import { capitalizeTakeProse, scrubMyModelPhrasing, valueLegMatchesHeadline } from "./take-prose-polish";
 
 function callModelPct(plan: PunditTakePlan): number {
   if (plan.gridCall) return plan.gridCall.modelPctInt;
@@ -59,12 +60,17 @@ export function renderTakeProseDeterministic(
     : `${plan.fixtureLabel} — ${label} at ${pct}%.`);
 
   const body = weaveBody(plan, grounding);
-  const valueSentence = plan.valueLeg?.bestMarketDecimal
-    ? `The value is ${plan.valueLeg.label} at ${plan.valueLeg.bestMarketDecimal} against our fair ${plan.valueLeg.fairDecimal}.`
-    : null;
+  let valueSentence: string | null = null;
+  if (plan.valueLeg?.bestMarketDecimal) {
+    if (valueLegMatchesHeadline(plan)) {
+      valueSentence = `The value is ${plan.valueLeg.label} at ${plan.valueLeg.bestMarketDecimal} against our fair ${plan.valueLeg.fairDecimal}.`;
+    } else {
+      valueSentence = `Separately, ${plan.valueLeg.label} at ${plan.valueLeg.bestMarketDecimal} looks rich against our fair ${plan.valueLeg.fairDecimal}.`;
+    }
+  }
 
-  const blocks = [opener];
-  if (body.trim()) blocks.push(body.trim());
+  const blocks = [scrubMyModelPhrasing(opener)];
+  if (body.trim()) blocks.push(scrubMyModelPhrasing(body.trim()));
   if (valueSentence) blocks.push(valueSentence);
-  return appendWhatFlipsItClosing(plan, blocks.join("\n\n"), grounding);
+  return capitalizeTakeProse(appendWhatFlipsItClosing(plan, blocks.join("\n\n"), grounding));
 }
