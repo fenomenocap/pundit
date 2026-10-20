@@ -1,0 +1,48 @@
+name: Dossier rebuild
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixtureKey:
+        description: Optional fixture key (omit for full slate rebuild)
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Mint GitHub OIDC token for Railway dossier rebuild
+        id: dossier_oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('pundit-judge');
+            core.setOutput('token', token);
+
+      - name: Trigger dossier rebuild on production API
+        env:
+          DOSSIER_OIDC_TOKEN: ${{ steps.dossier_oidc.outputs.token }}
+          FIXTURE_KEY: ${{ inputs.fixtureKey }}
+        run: |
+          set -euo pipefail
+          AUTH="Authorization: Bearer ${DOSSIER_OIDC_TOKEN}"
+          if [ -n "${FIXTURE_KEY}" ]; then
+            ENC=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "${FIXTURE_KEY}")
+            URL="https://thepundit.up.railway.app/api/match-dossier/${ENC}?rebuild=true"
+          else
+            URL="https://thepundit.up.railway.app/api/match-dossier/status?rebuild=true"
+          fi
+          echo "GET ${URL}"
+          curl -sS -D rebuild-headers.txt -o rebuild-body.json -H "${AUTH}" "${URL}"
+          cat rebuild-headers.txt
+          cat rebuild-body.json
+          echo ""
+
+      - name: Print dossier status
+        run: |
+          curl -sS "https://thepundit.up.railway.app/api/match-dossier/status" | python3 -m json.tool
