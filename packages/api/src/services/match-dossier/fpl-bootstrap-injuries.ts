@@ -6,6 +6,25 @@ import type { DossierEvidenceItem, FplPlayerAvailabilityStatus } from "./types";
 import { matchDossierFplEnabled } from "./flags";
 
 const FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/";
+const FPL_BOOTSTRAP_TIMEOUT_MS = 10_000;
+const FPL_BOOTSTRAP_MAX_ATTEMPTS = 2;
+const FPL_BOOTSTRAP_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+export function logDossierFplFetch(payload: {
+  status: number | null;
+  error: string | null;
+  ms: number;
+  players: number | null;
+}): void {
+  console.log(JSON.stringify({
+    event: "dossier_fpl_fetch",
+    status: payload.status,
+    error: payload.error,
+    ms: payload.ms,
+    players: payload.players,
+  }));
+}
 
 export interface FplBootstrapTeam {
   id: number;
@@ -99,16 +118,59 @@ export function loadFplBootstrapFromRecordedFixture(): FplBootstrapSnapshot {
   return JSON.parse(fs.readFileSync(file, "utf8")) as FplBootstrapSnapshot;
 }
 
+async function fetchFplBootstrapSnapshot(
+  fetchFn: typeof fetch,
+): Promise<FplBootstrapSnapshot | null> {
+  let lastStatus: number | null = null;
+  for (let attempt = 0; attempt < FPL_BOOTSTRAP_MAX_ATTEMPTS; attempt += 1) {
+    const started = Date.now();
+    try {
+      const response = await fetchFn(FPL_BOOTSTRAP_URL, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": FPL_BOOTSTRAP_USER_AGENT,
+        },
+        signal: AbortSignal.timeout(FPL_BOOTSTRAP_TIMEOUT_MS),
+      });
+      lastStatus = response.status;
+      if (!response.ok) {
+        logDossierFplFetch({
+          status: lastStatus,
+          error: `http_${lastStatus}`,
+          ms: Date.now() - started,
+          players: null,
+        });
+        continue;
+      }
+      const snapshot = await response.json() as FplBootstrapSnapshot;
+      const players = Array.isArray(snapshot.elements) ? snapshot.elements.length : null;
+      logDossierFplFetch({
+        status: lastStatus,
+        error: null,
+        ms: Date.now() - started,
+        players,
+      });
+      return snapshot;
+    } catch (error) {
+      logDossierFplFetch({
+        status: lastStatus,
+        error: error instanceof Error ? error.message : String(error),
+        ms: Date.now() - started,
+        players: null,
+      });
+    }
+  }
+  return null;
+}
+
+/** At most one successful fetch per process build pass (shared cache). */
 export async function prefetchFplBootstrapForBuildPass(
   fetchFn: typeof fetch = fetch,
 ): Promise<FplBootstrapSnapshot | null> {
   if (!matchDossierFplEnabled()) return null;
   if (buildPassCache) return buildPassCache.snapshot;
-  const response = await fetchFn(FPL_BOOTSTRAP_URL, {
-    headers: { accept: "application/json", "user-agent": "Mozilla/5.0 (compatible; pundit/1.0)" },
-  });
-  if (!response.ok) return null;
-  const snapshot = await response.json() as FplBootstrapSnapshot;
+  const snapshot = await fetchFplBootstrapSnapshot(fetchFn);
+  if (!snapshot) return null;
   buildPassCache = { snapshot, fetchedAt: new Date().toISOString() };
   return snapshot;
 }

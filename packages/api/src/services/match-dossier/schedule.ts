@@ -10,6 +10,7 @@ import {
   DOSSIER_PRE_KICKOFF_MS,
   DOSSIER_PRE_KICKOFF_POLL_MS,
   matchDossierEnabled,
+  matchDossierFplEnabled,
 } from "./flags";
 import { readMatchDossier, writeMatchDossier } from "./storage";
 import { getCachedModelData } from "../model-data";
@@ -18,14 +19,24 @@ import { getDossierSlateRebuildProgress } from "./dossier-slate-rebuild";
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let preKickoffHandle: ReturnType<typeof setInterval> | null = null;
 
-export function runScheduledDossierBuild(reason: "interval-6h" | "manual" = "interval-6h"): number {
+async function prefetchFplBootstrapIfEnabled(): Promise<void> {
+  if (!matchDossierFplEnabled()) return;
+  const { prefetchFplBootstrapForBuildPass } = await import("./fpl-bootstrap-injuries");
+  await prefetchFplBootstrapForBuildPass();
+}
+
+export async function runScheduledDossierBuild(
+  reason: "interval-6h" | "manual" = "interval-6h",
+): Promise<number> {
+  await prefetchFplBootstrapIfEnabled();
   const dossiers = buildAndPersistDossiersForWindow(PHASE1_WEEKEND_WINDOW, {
     scheduleReason: reason === "interval-6h" ? "interval-6h" : "manual",
   });
   return dossiers.length;
 }
 
-export function runPreKickoffDossierRefresh(now = new Date()): number {
+export async function runPreKickoffDossierRefresh(now = new Date()): Promise<number> {
+  await prefetchFplBootstrapIfEnabled();
   const model = getCachedModelData();
   const nowMs = now.getTime();
   const upper = nowMs + DOSSIER_PRE_KICKOFF_MS;
@@ -55,22 +66,20 @@ export function startMatchDossierCron(): void {
   if (!matchDossierEnabled()) return;
   if (intervalHandle) return;
 
-  void runScheduledDossierBuild("interval-6h");
+  void runScheduledDossierBuild("interval-6h").catch((error) => {
+    console.warn("[MatchDossier] Scheduled build failed:", error);
+  });
   intervalHandle = setInterval(() => {
-    try {
-      runScheduledDossierBuild("interval-6h");
-    } catch (error) {
+    void runScheduledDossierBuild("interval-6h").catch((error) => {
       console.warn("[MatchDossier] Scheduled build failed:", error);
-    }
+    });
   }, DOSSIER_INTERVAL_MS);
   intervalHandle.unref?.();
 
   preKickoffHandle = setInterval(() => {
-    try {
-      runPreKickoffDossierRefresh();
-    } catch (error) {
+    void runPreKickoffDossierRefresh().catch((error) => {
       console.warn("[MatchDossier] Pre-kickoff refresh failed:", error);
-    }
+    });
   }, DOSSIER_PRE_KICKOFF_POLL_MS);
   preKickoffHandle.unref?.();
 }
