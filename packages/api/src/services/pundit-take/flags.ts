@@ -40,9 +40,10 @@ export function resolvePunditTakeOverride(
   raw: string | string[] | undefined,
   evalGuardActive: boolean,
 ): PunditTakeMode | null {
+  const parsed = parsePunditTakeHeaderValue(raw);
+  if (parsed !== null) return parsed;
   if (!evalGuardActive && !configuredPunditTakeV2()) return null;
-  if (!evalGuardActive) return parsePunditTakeHeaderValue(raw);
-  return parsePunditTakeHeaderValue(raw);
+  return null;
 }
 
 export function effectivePunditTakeMode(headerOverride: PunditTakeMode | null): PunditTakeMode {

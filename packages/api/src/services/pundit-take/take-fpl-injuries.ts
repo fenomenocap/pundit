@@ -33,7 +33,10 @@ export function formatFplInjuryFact(item: DossierEvidenceItem): string | null {
   if (!player) return null;
   const status = item.status;
   if (!status) return null;
-  if (status === "u" || status === "i" || status === "s") {
+  if (status === "u" || status === "n") {
+    return null;
+  }
+  if (status === "i" || status === "s") {
     return `${player} is out.`;
   }
   if (status === "d") {

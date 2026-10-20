@@ -186,15 +186,27 @@ describe("FPL internal-only dossier injuries in take v2", () => {
     }
   });
 
-  it("formats unavailable players as out without copying news text", () => {
+  it("formats injured players as out without copying news text", () => {
     const grounding = spursGrounding();
     const dossier = dossierWithInjuries([
-      fplInjury({ player: "P. Porro", club: "Tottenham", status: "u", newsText: "Hamstring - ruled out." }),
+      fplInjury({ player: "P. Porro", club: "Tottenham", status: "i", newsText: "Hamstring - ruled out." }),
     ]);
     const delivery = withPunditTakeRequestScope("v2", () =>
       composePunditTakeDelivery(question, grounding, plan, dossier)!);
     expect(delivery.answer).toMatch(/Porro is out/);
     expect(delivery.answer).not.toMatch(/Hamstring|ruled out/i);
+  });
+
+  it("never renders FPL status u (unavailable — often loan or departed)", () => {
+    const grounding = spursGrounding();
+    const dossier = dossierWithInjuries([
+      fplInjury({ player: "T. Chalobah", club: "Tottenham", status: "u", newsText: "On loan." }),
+      fplInjury({ player: "B. Saka", club: "Tottenham", status: "d", chanceOfPlaying: 50 }),
+    ]);
+    const delivery = withPunditTakeRequestScope("v2", () =>
+      composePunditTakeDelivery(question, grounding, plan, dossier)!);
+    expect(delivery.answer).not.toMatch(/Chalobah|On loan/i);
+    expect(delivery.answer).toMatch(/Saka is doubtful, 50% to play/);
   });
 
   it("drops wrong-club and stale FPL rows", () => {
