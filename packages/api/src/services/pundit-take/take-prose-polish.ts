@@ -44,15 +44,27 @@ export function normalizeFormScopeInText(text: string): string {
 export function scrubModelWordFromProse(text: string): string {
   return text
     .replace(/\bthe model expects\b/gi, "I expect")
-    .replace(/\bthe model\b/gi, "I")
+    .replace(/\bthe model\b/gi, "my read")
     .replace(/\bmodel-only\b/gi, "our")
     .replace(/\bmodel\b/gi, "read")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
+/** Remove a trailing "even …" clause left incomplete after model scrub (e.g. "find the net even."). */
+export function repairIncompleteEvenClause(text: string): string {
+  const trimmed = text.trim().replace(/\s+/g, " ");
+  if (/\bfind the net even\.\s*$/i.test(trimmed)) {
+    return trimmed.replace(/\s+even\.\s*$/i, ".").trim();
+  }
+  const dangling = trimmed.match(/^(.*?\bfind the net)\s+even(?:\s+when|\s+if|\s+though|\s+the|\s+my|\s+read|\s+I)?[^.!?]*$/i);
+  if (dangling?.[1]) return `${dangling[1].trim()}.`;
+  return trimmed;
+}
+
 export function polishTakeProseLine(text: string): string {
-  return scrubModelWordFromProse(normalizeFormScopeInText(scrubMyModelPhrasing(text)));
+  const scrubbed = scrubModelWordFromProse(normalizeFormScopeInText(scrubMyModelPhrasing(text)));
+  return repairIncompleteEvenClause(scrubbed);
 }
 
 /** First pass on OpenRouter take copy — before post-check or assembly. */

@@ -352,7 +352,7 @@ export function sentenceFailsTableStandingSnapshotCheck(sentence: string, plan: 
 const VAGUE_POSITIVE_FORM =
   /\b(?:competitive in most matches|in (?:good|decent|strong) form|on a good run|playing well lately|finding form)\b/i;
 const VAGUE_NEGATIVE_FORM =
-  /\b(?:struggling for form|in poor form|on a bad run|out of form)\b/i;
+  /\b(?:struggling for(?: form| results)|in poor form|on a bad run|out of form|short of results|results have dried up)\b/i;
 
 export function sentenceStatesVagueFormGenerality(sentence: string): boolean {
   if (/\bgap in form\b/i.test(sentence)) return false;
@@ -413,6 +413,27 @@ export function sentenceFailsLast5FormRecordCheck(sentence: string, plan: Pundit
   }
 
   return false;
+}
+
+const UPSET_FRAMING =
+  /\b(?:upset is brewing|spring an upset|an upset is (?:brewing|on the cards|possible)|underdog story)\b/i;
+
+export function sentenceStatesUpsetFraming(sentence: string): boolean {
+  if (UPSET_FRAMING.test(sentence)) return true;
+  return /\b(?:league table|the table|standings)\b/i.test(sentence) && /\bupset\b/i.test(sentence);
+}
+
+/** Drop upset/table-underdog hype when the headline pick is already the table favourite. */
+export function sentenceFailsUpsetPickAlignmentCheck(sentence: string, plan: PunditTakePlan): boolean {
+  if (!sentenceStatesUpsetFraming(sentence)) return false;
+  const table = plan.numericFacts?.table;
+  if (!tableSnapshotReady(table)) return true;
+  const outcome = plan.call?.outcome;
+  if (outcome !== "home" && outcome !== "away") return false;
+  const pickPos = outcome === "home" ? table.homePosition : table.awayPosition;
+  const oppPos = outcome === "home" ? table.awayPosition : table.homePosition;
+  if (pickPos == null || oppPos == null) return true;
+  return pickPos < oppPos;
 }
 
 /** Drop vague form praise/criticism when last-five points contradict the threshold. */
@@ -503,6 +524,9 @@ function sanitizeLlmTakeSentence(
     return null;
   }
   if (sentenceFailsFormComparisonCheck(next, plan)) {
+    return null;
+  }
+  if (sentenceFailsUpsetPickAlignmentCheck(next, plan)) {
     return null;
   }
   if (!venueSplit && sentenceMakesVenuePerformanceClaim(next)) {
