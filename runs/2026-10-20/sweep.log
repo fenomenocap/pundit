@@ -1,0 +1,38 @@
+[chat-eval-judge] remote OIDC bearer source: fresh_actions_mint
+{
+  "runId": "2026-10-20T13-42-18-450Z",
+  "overall": "ISSUES FOUND",
+  "requests": 78,
+  "featured": {
+    "homeTeam": "Ipswich",
+    "awayTeam": "Forest",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "utcDate": "2026-10-23T19:00Z",
+    "stage": "2026_27_english_premier_league",
+    "recognizedFixtureId": "espn:eng.1:401879253"
+  },
+  "report": {
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-20T13-42-18-450Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/legacy/2026-10-20T13-42-18-450Z.md"
+  }
+}
+[chat-eval-judge] remote OIDC bearer source: fresh_actions_mint
+{
+  "runId": "2026-10-20T14-01-29-934Z",
+  "overall": "ISSUES FOUND",
+  "requests": 80,
+  "featured": {
+    "homeTeam": "Ipswich",
+    "awayTeam": "Forest",
+    "competitionId": "eng.1",
+    "competition": "Premier League",
+    "utcDate": "2026-10-23T19:00Z",
+    "stage": "2026_27_english_premier_league",
+    "recognizedFixtureId": "espn:eng.1:401879253"
+  },
+  "report": {
+    "jsonPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-20T14-01-29-934Z.json",
+    "markdownPath": "/home/runner/work/pundit/pundit/artifacts/chat-evals/agent/2026-10-20T14-01-29-934Z.md"
+  }
+}
