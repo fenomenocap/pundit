@@ -21,6 +21,8 @@ export interface FplBootstrapTeam {
   name: string;
   short_name: string;
   code?: number;
+  /** Pulselive team id (matches footballapi fixture team.id). */
+  pulse_id?: number;
 }
 
 export interface FplBootstrapElement {
@@ -110,6 +112,11 @@ export function resetFplBootstrapCacheForTests(): void {
 
 export function loadFplBootstrapFromRecordedFixture(): FplBootstrapSnapshot {
   const file = path.join(__dirname, "__fixtures__", "fpl-bootstrap-static-sample.json");
+  return JSON.parse(fs.readFileSync(file, "utf8")) as FplBootstrapSnapshot;
+}
+
+export function loadFplBootstrap841Slice(): FplBootstrapSnapshot {
+  const file = path.join(__dirname, "__fixtures__", "fpl-bootstrap-static-841-slice.json");
   return JSON.parse(fs.readFileSync(file, "utf8")) as FplBootstrapSnapshot;
 }
 
@@ -204,6 +211,7 @@ export function buildFplInjuryEvidenceForFixture(
   fixture: ModelFixture,
   retrievedAt: string,
   snapshot: FplBootstrapSnapshot,
+  options?: { requireNewsAdded?: boolean },
 ): DossierEvidenceItem[] {
   if (fixture.competitionId !== "eng.1") return [];
   const teamIds = fixtureFplTeamIds(snapshot, fixture);
@@ -219,6 +227,9 @@ export function buildFplInjuryEvidenceForFixture(
     const club = clubLabelForFplTeam(fixture, team);
     const status = normalizeFplStatus(player.status, hasNews);
     const newsAddedAt = player.news_added ?? null;
+    if (options?.requireNewsAdded && !newsAddedAt && status !== "i" && status !== "s" && status !== "u") {
+      continue;
+    }
     const chanceOfPlaying = player.chance_of_playing_next_round ?? null;
     items.push({
       id: evidenceIdForFpl(player.id, fixture),
@@ -241,6 +252,7 @@ export function buildFplInjuryEvidenceForFixture(
       status,
       chanceOfPlaying,
       newsAddedAt,
+      fplTeamId: player.team,
       newsText: hasNews ? newsText : undefined,
     });
   }

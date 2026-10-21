@@ -1,0 +1,931 @@
+{
+  "teams": [
+    {
+      "id": 1,
+      "name": "Arsenal",
+      "short_name": "ARS",
+      "code": 3,
+      "pulse_id": 1
+    },
+    {
+      "id": 6,
+      "name": "Chelsea",
+      "short_name": "CHE",
+      "code": 8,
+      "pulse_id": 4
+    },
+    {
+      "id": 7,
+      "name": "Coventry City",
+      "short_name": "COV",
+      "code": 9,
+      "pulse_id": 5
+    },
+    {
+      "id": 11,
+      "name": "Hull City",
+      "short_name": "HUL",
+      "code": 88,
+      "pulse_id": 41
+    },
+    {
+      "id": 12,
+      "name": "Ipswich Town",
+      "short_name": "IPS",
+      "code": 40,
+      "pulse_id": 8
+    },
+    {
+      "id": 13,
+      "name": "Leeds",
+      "short_name": "LEE",
+      "code": 2,
+      "pulse_id": 9
+    },
+    {
+      "id": 15,
+      "name": "Man City",
+      "short_name": "MCI",
+      "code": 43,
+      "pulse_id": 11
+    },
+    {
+      "id": 16,
+      "name": "Man Utd",
+      "short_name": "MUN",
+      "code": 1,
+      "pulse_id": 12
+    },
+    {
+      "id": 18,
+      "name": "Nott'm Forest",
+      "short_name": "NFO",
+      "code": 17,
+      "pulse_id": 15
+    },
+    {
+      "id": 19,
+      "name": "Spurs",
+      "short_name": "TOT",
+      "code": 6,
+      "pulse_id": 21
+    }
+  ],
+  "elements": [
+    {
+      "id": 6,
+      "web_name": "Saliba",
+      "team": 1,
+      "status": "i",
+      "news": "Back injury - Unknown return date",
+      "news_added": "2026-07-23T12:01:23.289376Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 9,
+      "web_name": "Hincapie",
+      "team": 1,
+      "status": "i",
+      "news": "Ankle injury - Expected back 24 Oct",
+      "news_added": "2026-10-12T15:00:07.550884Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 12,
+      "web_name": "Saka",
+      "team": 1,
+      "status": "a",
+      "news": "",
+      "news_added": null,
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 18,
+      "web_name": "Martinelli",
+      "team": 1,
+      "status": "u",
+      "news": "Has joined Al Hilal permanently",
+      "news_added": "2026-09-04T12:34:46.738449Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 22,
+      "web_name": "Nwaneri",
+      "team": 1,
+      "status": "u",
+      "news": "Has joined Borussia Dortmund on loan for the rest of the season",
+      "news_added": "2026-09-02T16:01:07.058827Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 23,
+      "web_name": "Fábio Vieira",
+      "team": 1,
+      "status": "u",
+      "news": "Has joined Hamburger SV permanently",
+      "news_added": "2026-09-02T16:00:28.446370Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 24,
+      "web_name": "Nelson",
+      "team": 1,
+      "status": "u",
+      "news": "has departed the club as a free agent.",
+      "news_added": "2026-08-29T00:33:08.556767Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 27,
+      "web_name": "G.Jesus",
+      "team": 1,
+      "status": "u",
+      "news": "Has joined FC Barcelona permanently",
+      "news_added": "2026-09-02T16:00:28.475184Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 557,
+      "web_name": "Tzolis",
+      "team": 1,
+      "status": "i",
+      "news": "Hamstring injury - Expected back 1 Nov",
+      "news_added": "2026-10-02T15:00:11.091226Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 28,
+      "web_name": "Martinez",
+      "team": 6,
+      "status": "i",
+      "news": "Head injury - Unknown return date",
+      "news_added": "2026-10-17T13:30:08.724000Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 140,
+      "web_name": "Sánchez",
+      "team": 6,
+      "status": "u",
+      "news": "Has joined Como on loan for the rest of the season",
+      "news_added": "2026-09-02T16:20:41.841936Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 141,
+      "web_name": "Jörgensen",
+      "team": 6,
+      "status": "u",
+      "news": "Has joined RC Strasbourg on loan for the rest of the season",
+      "news_added": "2026-08-12T14:07:02.607115Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 142,
+      "web_name": "James",
+      "team": 6,
+      "status": "i",
+      "news": "Knee injury - Unknown return date",
+      "news_added": "2026-10-10T13:30:08.699019Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 143,
+      "web_name": "Chalobah",
+      "team": 6,
+      "status": "u",
+      "news": "Has joined Como permanently",
+      "news_added": "2026-08-10T14:03:50.769483Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 144,
+      "web_name": "Gusto",
+      "team": 6,
+      "status": "d",
+      "news": "Illness - 75% chance of playing",
+      "news_added": "2026-10-17T18:30:09.695564Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 146,
+      "web_name": "B.Badiashile",
+      "team": 6,
+      "status": "u",
+      "news": "Has joined Napoli on loan for the rest of the season",
+      "news_added": "2026-08-25T14:03:47.079414Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 150,
+      "web_name": "M.Sarr",
+      "team": 6,
+      "status": "u",
+      "news": "Has joined Real Sociedad on loan for the rest of the season",
+      "news_added": "2026-08-29T00:34:23.077418Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 158,
+      "web_name": "Gittens",
+      "team": 6,
+      "status": "i",
+      "news": "Ankle injury - Unknown return date",
+      "news_added": "2026-09-26T05:30:09.245832Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 163,
+      "web_name": "D.Essugo",
+      "team": 6,
+      "status": "u",
+      "news": "Has joined RC Strasbourg on loan for the rest of the season",
+      "news_added": "2026-09-02T16:20:41.865225Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 168,
+      "web_name": "Marc Guiu",
+      "team": 6,
+      "status": "u",
+      "news": "Has joined RB Leipzig permanently",
+      "news_added": "2026-09-01T13:24:48.857362Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 170,
+      "web_name": "Emegha",
+      "team": 6,
+      "status": "i",
+      "news": "Hamstring injury - Unknown return date",
+      "news_added": "2026-09-09T15:00:09.063849Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 583,
+      "web_name": "Chavarria",
+      "team": 6,
+      "status": "d",
+      "news": "Unspecified injury - 75% chance of playing",
+      "news_added": "2026-10-17T12:00:10.154091Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 171,
+      "web_name": "Dovin",
+      "team": 7,
+      "status": "u",
+      "news": "Has joined Leyton Orient on loan for the rest of the season",
+      "news_added": "2026-09-02T15:44:14.839336Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 174,
+      "web_name": "Kitching",
+      "team": 7,
+      "status": "u",
+      "news": "Has joined Sheffield United on loan for the rest of the season",
+      "news_added": "2026-09-02T16:21:03.612394Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 180,
+      "web_name": "Woolfenden",
+      "team": 7,
+      "status": "i",
+      "news": "Knee injury - Unknown return date",
+      "news_added": "2026-08-27T14:56:28.718566Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 181,
+      "web_name": "Brau",
+      "team": 7,
+      "status": "u",
+      "news": "Has joined Academico de Viseu on loan for the rest of the season",
+      "news_added": "2026-08-29T00:35:59.980316Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 182,
+      "web_name": "Amenda",
+      "team": 7,
+      "status": "i",
+      "news": "Calf injury - Unknown return date",
+      "news_added": "2026-09-17T07:30:09.329041Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 187,
+      "web_name": "Eccles",
+      "team": 7,
+      "status": "i",
+      "news": "Ankle injury - Unknown return date",
+      "news_added": "2026-09-10T18:30:08.877110Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 191,
+      "web_name": "Borges Rodrigues",
+      "team": 7,
+      "status": "u",
+      "news": "Has joined Burton Albion on loan for the rest of the season",
+      "news_added": "2026-09-02T15:44:14.868001Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 192,
+      "web_name": "Andrews",
+      "team": 7,
+      "status": "u",
+      "news": "Has joined Oxford United on loan for the rest of the season",
+      "news_added": "2026-08-29T00:35:59.998520Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 193,
+      "web_name": "Wright",
+      "team": 7,
+      "status": "i",
+      "news": "Thigh injury - Unknown return date",
+      "news_added": "2026-08-14T22:00:07.214508Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 196,
+      "web_name": "Markelo",
+      "team": 7,
+      "status": "u",
+      "news": "Has joined Shabab Al-Ahli Dubai permanently",
+      "news_added": "2026-08-17T13:53:55.791223Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 197,
+      "web_name": "Bassette",
+      "team": 7,
+      "status": "u",
+      "news": "Has joined KVC Westerlo on loan for the rest of the season",
+      "news_added": "2026-07-28T12:58:50.001768Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 584,
+      "web_name": "Hamer",
+      "team": 7,
+      "status": "a",
+      "news": "",
+      "news_added": null,
+      "chance_of_playing_next_round": null
+    },
+    {
+      "id": 274,
+      "web_name": "Butland",
+      "team": 11,
+      "status": "i",
+      "news": "Arm injury - Unknown return date",
+      "news_added": "2026-08-08T19:00:05.601633Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 275,
+      "web_name": "Cartwright",
+      "team": 11,
+      "status": "u",
+      "news": "Has joined Grimsby Town on loan for the rest of the season",
+      "news_added": "2026-07-29T13:00:27.959925Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 276,
+      "web_name": "Lo-Tutala",
+      "team": 11,
+      "status": "u",
+      "news": "Has joined Colchester United on loan for the rest of the season",
+      "news_added": "2026-08-17T13:50:27.125537Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 278,
+      "web_name": "Hughes",
+      "team": 11,
+      "status": "i",
+      "news": "Groin injury - Unknown return date",
+      "news_added": "2026-08-02T09:00:11.030017Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 281,
+      "web_name": "Drameh",
+      "team": 11,
+      "status": "u",
+      "news": "Has joined Genoa permanently",
+      "news_added": "2026-09-02T16:09:06.479140Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 283,
+      "web_name": "Jacob",
+      "team": 11,
+      "status": "u",
+      "news": "Has joined Newport County on loan until January",
+      "news_added": "2026-08-02T09:00:11.038361Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 287,
+      "web_name": "Millar",
+      "team": 11,
+      "status": "u",
+      "news": "Has joined Birmingham on loan for the rest of the season",
+      "news_added": "2026-09-02T15:36:41.038103Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 291,
+      "web_name": "Matazo",
+      "team": 11,
+      "status": "i",
+      "news": "Knee injury - Unknown return date",
+      "news_added": "2026-07-23T12:01:23.532635Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 293,
+      "web_name": "Kamara",
+      "team": 11,
+      "status": "u",
+      "news": "Has joined Portsmouth permanently",
+      "news_added": "2026-08-12T14:08:23.542043Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 296,
+      "web_name": "Akintola",
+      "team": 11,
+      "status": "u",
+      "news": "Has joined Omonoia FC permanently",
+      "news_added": "2026-09-11T14:42:38.120231Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 297,
+      "web_name": "Gyabi",
+      "team": 11,
+      "status": "i",
+      "news": "Thigh injury - Unknown return date",
+      "news_added": "2026-08-04T18:30:11.027155Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 298,
+      "web_name": "Destan",
+      "team": 11,
+      "status": "u",
+      "news": "Has joined Konyaspor permanently",
+      "news_added": "2026-08-17T13:50:27.145733Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 299,
+      "web_name": "Burstow",
+      "team": 11,
+      "status": "u",
+      "news": "Has joined Sheffield Wednesday on loan for the rest of the season",
+      "news_added": "2026-08-03T14:05:20.234842Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 556,
+      "web_name": "Targett",
+      "team": 11,
+      "status": "i",
+      "news": "Ankle injury - Unknown return date",
+      "news_added": "2026-09-17T14:00:26.419938Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 586,
+      "web_name": "Mendy",
+      "team": 11,
+      "status": "i",
+      "news": "Groin injury - Expected back 31 Oct",
+      "news_added": "2026-10-16T12:30:09.976274Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 589,
+      "web_name": "Gourna-Douath",
+      "team": 11,
+      "status": "i",
+      "news": "Calf injury - Expected back 25 Oct",
+      "news_added": "2026-10-16T13:00:08.314070Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 617,
+      "web_name": "Cho",
+      "team": 11,
+      "status": "i",
+      "news": "Unspecified injury - Expected back 25 Oct",
+      "news_added": "2026-10-16T17:30:09.623338Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 632,
+      "web_name": "Ansah",
+      "team": 11,
+      "status": "i",
+      "news": "Back injury - Unknown return date",
+      "news_added": "2026-09-09T10:00:08.919489Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 637,
+      "web_name": "Vaz",
+      "team": 11,
+      "status": "d",
+      "news": "Achilles injury - 50% chance of playing",
+      "news_added": "2026-10-17T17:00:08.108262Z",
+      "chance_of_playing_next_round": 50
+    },
+    {
+      "id": 267,
+      "web_name": "Lukić",
+      "team": 12,
+      "status": "d",
+      "news": "Groin injury - 75% chance of playing",
+      "news_added": "2026-10-19T15:30:08.949503Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 307,
+      "web_name": "Johnson",
+      "team": 12,
+      "status": "u",
+      "news": "Has joined Stoke City on loan for the rest of the season",
+      "news_added": "2026-09-04T12:36:56.236331Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 311,
+      "web_name": "Burns",
+      "team": 12,
+      "status": "u",
+      "news": "Has joined Leicester City permanently",
+      "news_added": "2026-08-10T14:02:47.597478Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 314,
+      "web_name": "Ogbene",
+      "team": 12,
+      "status": "u",
+      "news": "Has joined Lincoln City on loan until January",
+      "news_added": "2026-09-02T16:04:17.497385Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 317,
+      "web_name": "Hirst",
+      "team": 12,
+      "status": "u",
+      "news": "Has joined Stoke City permanently",
+      "news_added": "2026-08-21T13:06:08.606019Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 319,
+      "web_name": "Szmodics",
+      "team": 12,
+      "status": "u",
+      "news": "Has joined Derby County on loan for the rest of the season",
+      "news_added": "2026-08-17T13:51:41.713979Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 322,
+      "web_name": "Al-Hamadi",
+      "team": 12,
+      "status": "u",
+      "news": "Has joined Sheffield Wednesday on loan for the rest of the season",
+      "news_added": "2026-08-27T14:54:10.215357Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 554,
+      "web_name": "Van Oevelen",
+      "team": 12,
+      "status": "u",
+      "news": "Has joined Valencia on loan for the rest of the season",
+      "news_added": "2026-08-25T14:04:09.529320Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 602,
+      "web_name": "Humphreys",
+      "team": 12,
+      "status": "u",
+      "news": "Has joined Huddersfield Town on loan for the rest of the season",
+      "news_added": "2026-09-02T16:04:17.524642Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 343,
+      "web_name": "James",
+      "team": 13,
+      "status": "d",
+      "news": "Back injury - 50% chance of playing",
+      "news_added": "2026-10-08T14:00:11.803126Z",
+      "chance_of_playing_next_round": 50
+    },
+    {
+      "id": 387,
+      "web_name": "O'Reilly",
+      "team": 15,
+      "status": "d",
+      "news": "Back injury - 75% chance of playing",
+      "news_added": "2026-10-19T15:30:09.078291Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 389,
+      "web_name": "Matheus N.",
+      "team": 15,
+      "status": "d",
+      "news": "Unspecified injury - 75% chance of playing",
+      "news_added": "2026-10-19T15:30:09.094655Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 394,
+      "web_name": "Alleyne",
+      "team": 15,
+      "status": "u",
+      "news": "Has joined Burnley on loan for the rest of the season",
+      "news_added": "2026-08-18T14:11:56.324656Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 397,
+      "web_name": "Semenyo",
+      "team": 15,
+      "status": "i",
+      "news": "Knee injury - Unknown return date",
+      "news_added": "2026-10-17T17:30:09.977110Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 402,
+      "web_name": "Rodrigo",
+      "team": 15,
+      "status": "u",
+      "news": "Has joined Barcelona permanently",
+      "news_added": "2026-07-23T12:01:23.675537Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 404,
+      "web_name": "Reijnders",
+      "team": 15,
+      "status": "u",
+      "news": "Has joined Al Qadsiah permanently",
+      "news_added": "2026-08-20T14:02:58.154273Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 406,
+      "web_name": "Kovačić",
+      "team": 15,
+      "status": "d",
+      "news": "Unspecified injury - 75% chance of playing",
+      "news_added": "2026-10-19T15:30:09.126343Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 407,
+      "web_name": "Echeverri",
+      "team": 15,
+      "status": "u",
+      "news": "Has joined Benfica on loan for the rest of the season",
+      "news_added": "2026-09-03T15:41:24.710479Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 408,
+      "web_name": "Phillips",
+      "team": 15,
+      "status": "u",
+      "news": "Has joined Sheffield United on loan for the rest of the season",
+      "news_added": "2026-08-18T14:11:56.348781Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 409,
+      "web_name": "Mukasa",
+      "team": 15,
+      "status": "u",
+      "news": "has joined West Ham on loan for the rest of the seaon.",
+      "news_added": "2026-09-03T10:34:10.733520Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 410,
+      "web_name": "Monga",
+      "team": 15,
+      "status": "u",
+      "news": "Has joined Swansea City on loan for the rest of the season",
+      "news_added": "2026-09-02T16:02:01.136760Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 419,
+      "web_name": "Martinez",
+      "team": 16,
+      "status": "d",
+      "news": "Thigh injury - 75% chance of playing",
+      "news_added": "2026-10-18T16:30:09.955038Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 147,
+      "web_name": "Tosin",
+      "team": 19,
+      "status": "d",
+      "news": "Calf injury - 75% chance of playing",
+      "news_added": "2026-10-19T22:30:08.516742Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 401,
+      "web_name": "Marmoush",
+      "team": 19,
+      "status": "d",
+      "news": "Calf injury - 75% chance of playing",
+      "news_added": "2026-10-19T22:30:08.721497Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 403,
+      "web_name": "Sávio",
+      "team": 19,
+      "status": "i",
+      "news": "Muscular injury - Expected back 7 Nov",
+      "news_added": "2026-10-18T13:00:09.266321Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 494,
+      "web_name": "Vicario",
+      "team": 19,
+      "status": "u",
+      "news": "Has joined Juventus on loan for the rest of the season",
+      "news_added": "2026-08-19T13:55:33.193962Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 499,
+      "web_name": "Pedro Porro",
+      "team": 19,
+      "status": "i",
+      "news": "Hamstring injury - Expected back 24 Oct",
+      "news_added": "2026-09-19T12:00:08.823872Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 500,
+      "web_name": "Romero",
+      "team": 19,
+      "status": "u",
+      "news": "Has joined Atletico Madrid permanently",
+      "news_added": "2026-08-17T13:49:05.465401Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 502,
+      "web_name": "Robertson",
+      "team": 19,
+      "status": "d",
+      "news": "Foot injury - 75% chance of playing",
+      "news_added": "2026-10-19T22:30:08.861525Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 505,
+      "web_name": "Spence",
+      "team": 19,
+      "status": "u",
+      "news": "Has joined Internazionale permanently",
+      "news_added": "2026-08-18T14:13:08.454214Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 506,
+      "web_name": "Udogie",
+      "team": 19,
+      "status": "d",
+      "news": "Knee injury - 75% chance of playing",
+      "news_added": "2026-10-19T22:30:08.875960Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 507,
+      "web_name": "Phillips",
+      "team": 19,
+      "status": "u",
+      "news": "Has joined Middlesbrough permanently",
+      "news_added": "2026-08-18T14:13:08.474144Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 511,
+      "web_name": "Souza",
+      "team": 19,
+      "status": "u",
+      "news": "Has joined FC Porto on loan for the rest of the season",
+      "news_added": "2026-09-01T13:24:26.858636Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 513,
+      "web_name": "Xavi",
+      "team": 19,
+      "status": "i",
+      "news": "Knee injury - Unknown return date",
+      "news_added": "2026-07-23T12:01:23.864304Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 516,
+      "web_name": "Bentancur",
+      "team": 19,
+      "status": "s",
+      "news": "Suspended until 7 Nov",
+      "news_added": "2026-10-10T18:30:09.519346Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 517,
+      "web_name": "Odobert",
+      "team": 19,
+      "status": "i",
+      "news": "Knee injury - Unknown return date",
+      "news_added": "2026-07-23T12:01:23.879434Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 518,
+      "web_name": "P.M.Sarr",
+      "team": 19,
+      "status": "u",
+      "news": "Has joined Juventus on loan for the rest of the season",
+      "news_added": "2026-09-02T16:02:43.386849Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 520,
+      "web_name": "Bergvall",
+      "team": 19,
+      "status": "i",
+      "news": "Knee injury - Expected back 31 Oct",
+      "news_added": "2026-10-18T13:00:09.356060Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 523,
+      "web_name": "Moore",
+      "team": 19,
+      "status": "u",
+      "news": "Has joined FC Köln on loan for the rest of the season",
+      "news_added": "2026-09-04T12:39:48.098158Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 527,
+      "web_name": "Richarlison",
+      "team": 19,
+      "status": "u",
+      "news": "not included in squad.",
+      "news_added": "2026-09-04T12:32:39.183614Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 528,
+      "web_name": "Scarlett",
+      "team": 19,
+      "status": "u",
+      "news": "Has joined Leyton Orient permanently",
+      "news_added": "2026-09-02T16:02:43.413625Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 578,
+      "web_name": "Mudryk",
+      "team": 19,
+      "status": "i",
+      "news": "Ankle injury - Unknown return date",
+      "news_added": "2026-09-11T18:00:09.154412Z",
+      "chance_of_playing_next_round": 0
+    }
+  ]
+}

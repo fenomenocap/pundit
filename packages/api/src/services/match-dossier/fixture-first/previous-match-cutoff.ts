@@ -25,23 +25,20 @@ export function previousMatchKickoffUtc(
   return best?.utc ?? null;
 }
 
-/** Source timestamps must be strictly after both clubs' previous matches and before kickoff. */
+/** Source timestamp must be strictly after the player's club previous match and before kickoff. */
 export function passesFixtureFirstFreshness(params: {
   sourceTimestampIso: string | null;
   kickoffUtc: string;
-  homePreviousKickoffUtc: string | null;
-  awayPreviousKickoffUtc: string | null;
+  clubPreviousKickoffUtc: string | null;
 }): boolean {
-  const { sourceTimestampIso, kickoffUtc, homePreviousKickoffUtc, awayPreviousKickoffUtc } = params;
+  const { sourceTimestampIso, kickoffUtc, clubPreviousKickoffUtc } = params;
   if (!sourceTimestampIso) return false;
   const sourceMs = Date.parse(sourceTimestampIso);
   const kickoffMs = Date.parse(kickoffUtc);
   if (!Number.isFinite(sourceMs) || !Number.isFinite(kickoffMs)) return false;
   if (sourceMs >= kickoffMs) return false;
-  for (const prev of [homePreviousKickoffUtc, awayPreviousKickoffUtc]) {
-    if (!prev) continue;
-    const prevMs = Date.parse(prev);
-    if (Number.isFinite(prevMs) && sourceMs <= prevMs) return false;
-  }
+  if (!clubPreviousKickoffUtc) return true;
+  const prevMs = Date.parse(clubPreviousKickoffUtc);
+  if (Number.isFinite(prevMs) && sourceMs <= prevMs) return false;
   return true;
 }

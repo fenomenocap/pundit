@@ -46,7 +46,7 @@ export function resolveFixtureIdentity(params: {
         fetchedAt,
         sourceTimestamp: new Date(row.kickoff.millis).toISOString(),
         query,
-        url: `${ESPN_SCOREBOARD.replace("scoreboard", "fixtures")}?pl_match=${row.id}`,
+        url: `https://footballapi.pulselive.com/football/fixtures/${row.id}`,
       }));
     }
   }

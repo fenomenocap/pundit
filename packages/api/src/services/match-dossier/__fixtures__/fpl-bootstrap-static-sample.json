@@ -1,27 +1,159 @@
 {
   "teams": [
-    { "id": 1, "name": "Arsenal", "short_name": "ARS", "code": 3 },
-    { "id": 2, "name": "Aston Villa", "short_name": "AVL", "code": 7 },
-    { "id": 3, "name": "Bournemouth", "short_name": "BOU", "code": 91 },
-    { "id": 4, "name": "Brentford", "short_name": "BRE", "code": 94 },
-    { "id": 5, "name": "Brighton", "short_name": "BHA", "code": 36 },
-    { "id": 6, "name": "Chelsea", "short_name": "CHE", "code": 8 },
-    { "id": 7, "name": "Coventry", "short_name": "COV", "code": 110 },
-    { "id": 8, "name": "Crystal Palace", "short_name": "CRY", "code": 31 },
-    { "id": 9, "name": "Everton", "short_name": "EVE", "code": 11 },
-    { "id": 10, "name": "Fulham", "short_name": "FUL", "code": 54 },
-    { "id": 11, "name": "Hull", "short_name": "HUL", "code": 111 },
-    { "id": 12, "name": "Ipswich", "short_name": "IPS", "code": 40 },
-    { "id": 13, "name": "Leeds", "short_name": "LEE", "code": 112 },
-    { "id": 14, "name": "Liverpool", "short_name": "LIV", "code": 14 },
-    { "id": 15, "name": "Newcastle", "short_name": "NEW", "code": 4 },
-    { "id": 16, "name": "Nott'm Forest", "short_name": "NFO", "code": 17 },
-    { "id": 17, "name": "Sunderland", "short_name": "SUN", "code": 113 },
-    { "id": 18, "name": "Spurs", "short_name": "TOT", "code": 6 },
-    { "id": 19, "name": "West Ham", "short_name": "WHU", "code": 21 },
-    { "id": 20, "name": "Wolves", "short_name": "WOL", "code": 39 },
-    { "id": 21, "name": "Man City", "short_name": "MCI", "code": 43 },
-    { "id": 22, "name": "Man Utd", "short_name": "MUN", "code": 1 }
+    {
+      "id": 1,
+      "name": "Arsenal",
+      "short_name": "ARS",
+      "code": 3,
+      "pulse_id": 1
+    },
+    {
+      "id": 2,
+      "name": "Aston Villa",
+      "short_name": "AVL",
+      "code": 7,
+      "pulse_id": 2
+    },
+    {
+      "id": 3,
+      "name": "Bournemouth",
+      "short_name": "BOU",
+      "code": 91,
+      "pulse_id": 127
+    },
+    {
+      "id": 4,
+      "name": "Brentford",
+      "short_name": "BRE",
+      "code": 94,
+      "pulse_id": 130
+    },
+    {
+      "id": 5,
+      "name": "Brighton",
+      "short_name": "BHA",
+      "code": 36,
+      "pulse_id": 131
+    },
+    {
+      "id": 6,
+      "name": "Chelsea",
+      "short_name": "CHE",
+      "code": 8,
+      "pulse_id": 4
+    },
+    {
+      "id": 7,
+      "name": "Coventry",
+      "short_name": "COV",
+      "code": 110,
+      "pulse_id": 5
+    },
+    {
+      "id": 8,
+      "name": "Crystal Palace",
+      "short_name": "CRY",
+      "code": 31,
+      "pulse_id": 6
+    },
+    {
+      "id": 9,
+      "name": "Everton",
+      "short_name": "EVE",
+      "code": 11,
+      "pulse_id": 7
+    },
+    {
+      "id": 10,
+      "name": "Fulham",
+      "short_name": "FUL",
+      "code": 54,
+      "pulse_id": 34
+    },
+    {
+      "id": 11,
+      "name": "Hull",
+      "short_name": "HUL",
+      "code": 111,
+      "pulse_id": 41
+    },
+    {
+      "id": 12,
+      "name": "Ipswich",
+      "short_name": "IPS",
+      "code": 40,
+      "pulse_id": 8
+    },
+    {
+      "id": 13,
+      "name": "Leeds",
+      "short_name": "LEE",
+      "code": 112,
+      "pulse_id": 9
+    },
+    {
+      "id": 14,
+      "name": "Liverpool",
+      "short_name": "LIV",
+      "code": 14,
+      "pulse_id": 10
+    },
+    {
+      "id": 15,
+      "name": "Newcastle",
+      "short_name": "NEW",
+      "code": 4,
+      "pulse_id": 23
+    },
+    {
+      "id": 16,
+      "name": "Nott'm Forest",
+      "short_name": "NFO",
+      "code": 17,
+      "pulse_id": 15
+    },
+    {
+      "id": 17,
+      "name": "Sunderland",
+      "short_name": "SUN",
+      "code": 113,
+      "pulse_id": 29
+    },
+    {
+      "id": 18,
+      "name": "Spurs",
+      "short_name": "TOT",
+      "code": 6,
+      "pulse_id": 21
+    },
+    {
+      "id": 19,
+      "name": "West Ham",
+      "short_name": "WHU",
+      "code": 21,
+      "pulse_id": 21
+    },
+    {
+      "id": 20,
+      "name": "Wolves",
+      "short_name": "WOL",
+      "code": 39,
+      "pulse_id": 38
+    },
+    {
+      "id": 21,
+      "name": "Man City",
+      "short_name": "MCI",
+      "code": 43,
+      "pulse_id": 11
+    },
+    {
+      "id": 22,
+      "name": "Man Utd",
+      "short_name": "MUN",
+      "code": 1,
+      "pulse_id": 12
+    }
   ],
   "elements": [
     {
@@ -93,7 +225,7 @@
       "team": 18,
       "status": "i",
       "news": "Hamstring - Unknown return date",
-      "news_added": "2026-10-21T14:30:00.000Z",
+      "news_added": "2026-09-19T12:00:08.823872Z",
       "chance_of_playing_next_round": 0
     },
     {

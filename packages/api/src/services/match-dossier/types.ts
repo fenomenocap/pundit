@@ -68,6 +68,8 @@ export interface DossierEvidenceItem {
   status?: FplPlayerAvailabilityStatus;
   chanceOfPlaying?: number | null;
   newsAddedAt?: string | null;
+  /** FPL bootstrap `elements[].team` (internal join audit for fixture-first). */
+  fplTeamId?: number;
   /** Audit-only; must not be rendered on public surfaces (take renders from structured fields). */
   newsText?: string;
 }

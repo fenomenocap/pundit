@@ -1,8 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixture } from "../../__fixtures__/model-fixture";
 import type { FootballMatch } from "../../football-data";
 import { buildMatchDossierForFixture } from "../builder";
 import {
+  buildFplInjuryEvidenceForFixture,
+  loadFplBootstrap841Slice,
   loadFplBootstrapFromRecordedFixture,
   resetFplBootstrapCacheForTests,
   setFplBootstrapCacheForTests,
@@ -10,14 +12,23 @@ import {
 import { resolveFplTeamIdForFixtureSide } from "../fpl-team-map";
 import { buildFixtureFirstTeamNews } from "./build-team-news";
 import { resolveFixtureIdentity } from "./fixture-identity";
-import { buildInjuriesDoubtsTeamNews } from "./injuries-doubts";
 import {
+  applyFplTeamIdClubGuard,
+  buildInjuriesDoubtsTeamNews,
+} from "./injuries-doubts";
+import {
+  compSeasonLabelMatchesReference,
+  findPlMatchInPayload,
+  findPlMatchInPayloadUsingCodeJoin,
   loadPlFixturesFromRecordedFixture,
+  premierLeagueSeasonStartYear,
   resetPlFixturesCacheForTests,
+  resolvePlCompSeasonIdFromRows,
   setPlFixturesCacheForTests,
 } from "./pl-fixtures-client";
 import { passesFixtureFirstFreshness, previousMatchKickoffUtc } from "./previous-match-cutoff";
 import { sourceGroupForField, getSourceGroup } from "./source-groups";
+import type { DossierEvidenceItem } from "../types";
 
 const ENV_KEYS = [
   "MATCH_DOSSIER_FIXTURE_FIRST_ENABLED",
@@ -87,6 +98,7 @@ describe("fixture-first team news (source groups)", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const key of ENV_KEYS) {
       if (saved[key] === undefined) delete process.env[key];
       else process.env[key] = saved[key];
@@ -118,12 +130,12 @@ describe("fixture-first team news (source groups)", () => {
     expect(bundle.identity.resolvedVia).toBe("espn");
   });
 
-  it("resolves Chelsea v Spurs 24 Oct via pl-api primary", () => {
+  it("resolves Chelsea v Spurs 24 Oct via pl-api primary (real Pulselive ids)", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
     const pl = loadPlFixturesFromRecordedFixture();
     const row = fixture("Chelsea", "Tottenham", {
-      fixtureId: 401879800,
-      utcDate: "2026-10-24T17:30:00.000Z",
+      fixtureId: 401878767,
+      utcDate: "2026-10-24T16:30:00.000Z",
     });
     const { identity, fetchLogs } = resolveFixtureIdentity({
       fixture: row,
@@ -131,16 +143,49 @@ describe("fixture-first team news (source groups)", () => {
       plPayload: pl,
       fetchedAt: "2026-10-21T12:00:00.000Z",
     });
-    expect(identity.plMatchId).toBe("479421");
+    expect(identity.plMatchId).toBe("128995");
     expect(identity.resolvedVia).toBe("pl-api");
-    expect(identity.espnEventId).toBe(401879800);
+    expect(identity.espnEventId).toBe(401878767);
     expect(fetchLogs.some((log) => log.sourceKey === "pl-api")).toBe(true);
+    expect(fetchLogs[0]?.url).toBe("https://footballapi.pulselive.com/football/fixtures/128995");
     expect(fetchLogs[0]?.query).toContain("Chelsea v Tottenham");
   });
 
-  it("drops stale FPL rows before each club's previous match", () => {
+  it("code join regression would match the wrong Pulselive fixture for Everton v Chelsea", () => {
+    const pl = loadPlFixturesFromRecordedFixture();
+    const fpl = loadFplBootstrapFromRecordedFixture();
+    const wrong = findPlMatchInPayloadUsingCodeJoin({
+      payload: pl,
+      home: "Everton",
+      away: "Chelsea",
+      kickoffUtc: "2026-10-17T11:30:00.000Z",
+      fplSnapshot: fpl,
+    });
+    expect(wrong?.id).toBe(128989);
+    const correct = findPlMatchInPayload({
+      payload: pl,
+      home: "Everton",
+      away: "Chelsea",
+      kickoffUtc: "2026-10-17T11:30:00.000Z",
+      fplSnapshot: fpl,
+    });
+    expect(correct?.id).toBe(128986);
+  });
+
+  it("resolves current comp season id 841 for Oct 2026", () => {
+    const ref = new Date("2026-10-21T12:00:00.000Z");
+    expect(premierLeagueSeasonStartYear(ref)).toBe(2026);
+    expect(compSeasonLabelMatchesReference("English Premier League Season 2026/2027", ref)).toBe(true);
+    const id = resolvePlCompSeasonIdFromRows([
+      { id: 841, label: "English Premier League Season 2026/2027" },
+      { id: 719, label: "2024/25" },
+    ], ref);
+    expect(id).toBe(841);
+  });
+
+  it("drops stale doubt rows using only the player's own club previous match", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
-    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T17:30:00.000Z" });
+    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
     const schedule = scheduleWithPrevious({
       home: "Chelsea",
       away: "Tottenham",
@@ -152,13 +197,12 @@ describe("fixture-first team news (source groups)", () => {
     expect(passesFixtureFirstFreshness({
       sourceTimestampIso: "2026-10-10T09:00:00.000Z",
       kickoffUtc: row.utcDate,
-      homePreviousKickoffUtc: "2026-10-19T15:00:00.000Z",
-      awayPreviousKickoffUtc: "2026-10-19T17:30:00.000Z",
+      clubPreviousKickoffUtc: "2026-10-19T15:00:00.000Z",
     })).toBe(false);
     const { items } = buildInjuriesDoubtsTeamNews({
       fixture: row,
       identity: {
-        plMatchId: "479421",
+        plMatchId: "128995",
         espnEventId: row.fixtureId,
         fotmobMatchId: null,
         goalMatchUuid: null,
@@ -176,10 +220,156 @@ describe("fixture-first team news (source groups)", () => {
     expect(items.some((i) => i.player === "Porro")).toBe(true);
   });
 
+  it("keeps Chelsea doubt news after Chelsea's previous match even when before the opponent's", () => {
+    const snapshot = loadFplBootstrap841Slice();
+    const row = fixture("Chelsea", "Tottenham", {
+      fixtureId: 401878767,
+      utcDate: "2026-10-24T16:30:00.000Z",
+    });
+    const schedule: FootballMatch[] = [
+      {
+        id: 1,
+        competitionId: "eng.1",
+        competition: "Premier League",
+        homeTeam: "Chelsea",
+        awayTeam: "Everton",
+        utcDate: "2026-10-17T11:30:00.000Z",
+        status: "FINISHED",
+        stage: null,
+        matchday: 1,
+        group: null,
+        score: { home: 2, away: 0 },
+      },
+      {
+        id: 2,
+        competitionId: "eng.1",
+        competition: "Premier League",
+        homeTeam: "Tottenham",
+        awayTeam: "Liverpool",
+        utcDate: "2026-10-19T19:00:00.000Z",
+        status: "FINISHED",
+        stage: null,
+        matchday: 1,
+        group: null,
+        score: { home: 1, away: 1 },
+      },
+    ];
+    const { items } = buildInjuriesDoubtsTeamNews({
+      fixture: row,
+      identity: {
+        plMatchId: "128995",
+        espnEventId: row.fixtureId,
+        fotmobMatchId: null,
+        goalMatchUuid: null,
+        bbcTipoId: null,
+        homeFplTeamId: 6,
+        awayFplTeamId: 19,
+        resolvedVia: "pl-api",
+      },
+      fplSnapshot: snapshot,
+      schedule,
+      fetchedAt: "2026-10-21T12:00:00.000Z",
+    });
+    expect(items.some((i) => i.player === "Gusto" && i.club === "Chelsea")).toBe(true);
+    expect(items.some((i) => i.player === "Chavarria" && i.club === "Chelsea")).toBe(true);
+  });
+
+  it("keeps ongoing i/s/u absentees regardless of old news_added (Porro-style)", () => {
+    const snapshot = loadFplBootstrapFromRecordedFixture();
+    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
+    const schedule = scheduleWithPrevious({
+      home: "Chelsea",
+      away: "Tottenham",
+      kickoffUtc: row.utcDate,
+      previousHomeKickoff: "2026-10-19T15:00:00.000Z",
+      previousAwayKickoff: "2026-10-19T17:30:00.000Z",
+    });
+    const porro = snapshot.elements.find((e) => e.web_name === "Porro")!;
+    expect(porro.status).toBe("i");
+    expect(porro.news_added).toBe("2026-09-19T12:00:08.823872Z");
+    const { items } = buildInjuriesDoubtsTeamNews({
+      fixture: row,
+      identity: {
+        plMatchId: "128995",
+        espnEventId: row.fixtureId,
+        fotmobMatchId: null,
+        goalMatchUuid: null,
+        bbcTipoId: null,
+        homeFplTeamId: 6,
+        awayFplTeamId: 18,
+        resolvedVia: "pl-api",
+      },
+      fplSnapshot: snapshot,
+      schedule,
+      fetchedAt: "2026-10-21T12:00:00.000Z",
+    });
+    expect(items.some((i) => i.player === "Porro")).toBe(true);
+  });
+
+  it("drops unflagged available players and doubt rows missing news_added", () => {
+    const snapshot = loadFplBootstrapFromRecordedFixture();
+    const row = fixture("Arsenal", "Newcastle", { utcDate: "2026-10-24T15:00:00.000Z" });
+    const raw = buildFplInjuryEvidenceForFixture(row, "2026-10-21T12:00:00.000Z", snapshot, {
+      requireNewsAdded: true,
+    });
+    expect(raw.some((i) => i.player === "Available")).toBe(false);
+    expect(raw.some((i) => i.player === "Saka")).toBe(true);
+  });
+
+  it("drops and logs facts whose fplTeamId does not match the labelled fixture club", () => {
+    const snapshot = loadFplBootstrap841Slice();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
+    const mismatched: DossierEvidenceItem = {
+      id: "test",
+      claim: "Tosin (Chelsea)",
+      sourceUrl: FPL_BOOTSTRAP_URL,
+      publisher: "fantasy.premierleague.com",
+      publishedAt: "2026-10-19T22:30:08.516742Z",
+      retrievedAt: "2026-10-21T12:00:00.000Z",
+      trustTier: "interim",
+      verification: "cited",
+      direction: "neutral",
+      relatedFactor: "injuries",
+      category: "injuries",
+      origin: "scheduled",
+      source: "fpl-bootstrap-static",
+      player: "Tosin",
+      club: "Chelsea",
+      status: "d",
+      fplTeamId: 19,
+      newsAddedAt: "2026-10-19T22:30:08.516742Z",
+    };
+    const kept = applyFplTeamIdClubGuard([mismatched], snapshot);
+    expect(kept).toHaveLength(0);
+    expect(logSpy.mock.calls.some((call) => String(call[0]).includes("fixture_first_wrong_club_drop"))).toBe(true);
+
+    const { items } = buildInjuriesDoubtsTeamNews({
+      fixture: row,
+      identity: {
+        plMatchId: "128995",
+        espnEventId: row.fixtureId,
+        fotmobMatchId: null,
+        goalMatchUuid: null,
+        bbcTipoId: null,
+        homeFplTeamId: 6,
+        awayFplTeamId: 19,
+        resolvedVia: "pl-api",
+      },
+      fplSnapshot: snapshot,
+      schedule: [],
+      fetchedAt: "2026-10-21T12:00:00.000Z",
+    });
+    const tosin = items.find((i) => i.player === "Tosin");
+    expect(tosin?.club).toBe("Tottenham");
+    expect(tosin?.fplTeamId).toBe(19);
+    logSpy.mockRestore();
+  });
+
   it("logs fetchedAt, source timestamp and exact query on team news fetches", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
     const pl = loadPlFixturesFromRecordedFixture();
-    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T17:30:00.000Z" });
+    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
     const bundle = buildFixtureFirstTeamNews({
       fixture: row,
       fplSnapshot: snapshot,
@@ -205,7 +395,7 @@ describe("fixture-first team news (source groups)", () => {
     process.env.MATCH_DOSSIER_FIXTURE_FIRST_ENABLED = "false";
     setFplBootstrapCacheForTests(loadFplBootstrapFromRecordedFixture());
     setPlFixturesCacheForTests(loadPlFixturesFromRecordedFixture(), "2026-10-21T12:00:00.000Z");
-    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T17:30:00.000Z" });
+    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
     const dossier = buildMatchDossierForFixture(row);
     expect(dossier.fixtureIdentity).toBeUndefined();
     expect(dossier.teamNews).toBeUndefined();
@@ -217,13 +407,13 @@ describe("fixture-first team news (source groups)", () => {
     setFplBootstrapCacheForTests(loadFplBootstrapFromRecordedFixture());
     setPlFixturesCacheForTests(loadPlFixturesFromRecordedFixture(), "2026-10-21T12:00:00.000Z");
     const row = fixture("Chelsea", "Tottenham", {
-      fixtureId: 401879800,
-      utcDate: "2026-10-24T17:30:00.000Z",
+      fixtureId: 401878767,
+      utcDate: "2026-10-24T16:30:00.000Z",
     });
     const dossier = buildMatchDossierForFixture(row, {
       now: new Date("2026-10-21T12:00:00.000Z"),
     });
-    expect(dossier.fixtureIdentity?.value.plMatchId).toBe("479421");
+    expect(dossier.fixtureIdentity?.value.plMatchId).toBe("128995");
     expect(dossier.teamNews?.value.fetchLogs.length).toBeGreaterThanOrEqual(2);
     const james = dossier.teamNews!.value.items.find((i) => i.player === "James")!;
     expect(james.status).toBe("d");
@@ -232,3 +422,5 @@ describe("fixture-first team news (source groups)", () => {
     expect(dossier.injuries.value.items.some((i) => i.player === "James")).toBe(true);
   });
 });
+
+const FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/";
