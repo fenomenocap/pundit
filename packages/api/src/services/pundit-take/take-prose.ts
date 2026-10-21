@@ -1,7 +1,12 @@
 import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
 import { appendWhatFlipsItClosing } from "./take-flip-prose";
-import { gridHeadlineOpener, isGenuineTossUp1x2, stripFalseTossUpLanguage } from "./take-headline";
+import {
+  format1x2V2Headline,
+  gridHeadlineOpener,
+  isGenuineTossUp1x2,
+  stripFalseTossUpLanguage,
+} from "./take-headline";
 import { capitalizeTakeProse, polishTakeProseLine, valueLegMatchesHeadline } from "./take-prose-polish";
 
 function callModelPct(plan: PunditTakePlan): number {
@@ -57,9 +62,11 @@ export function renderTakeProseDeterministic(
   const gridOpener = gridHeadlineOpener(plan, variant);
   const pct = callModelPct(plan);
   const label = headlineLabel(plan);
-  const opener = gridOpener ?? (variant === "why"
-    ? `On ${plan.fixtureLabel}, I have ${label} at ${pct}%.`
-    : `${plan.fixtureLabel} — ${label} at ${pct}%.`);
+  const opener = gridOpener ?? (plan.marketKind === "1x2" && grounding
+    ? format1x2V2Headline(plan.fixtureLabel, grounding, variant)
+    : (variant === "why"
+      ? `On ${plan.fixtureLabel}, I have ${label} at ${pct}%.`
+      : `${plan.fixtureLabel} — ${label} at ${pct}%.`));
 
   const body = weaveBody(plan, grounding);
   let valueSentence: string | null = null;

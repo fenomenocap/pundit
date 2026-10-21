@@ -5591,10 +5591,14 @@ export function resolveAskContext(
 
   if (!teams && !competitionId && !hasExplicitMatchupCue(question)) {
     const singleClub = mentionedTeamPositions(question, searchableFixtures);
-    if (singleClub.size === 1 && hasMatchOutcomeIntent(question)) {
-      const club = [...singleClub.keys()][0];
-      const priced = listPricedModelFixturesForClub(club, fixtures, routing.now ?? Date.now());
-      if (priced.length === 1) return { tier: "match", fixture: priced[0] };
+    if (singleClub.size === 1) {
+      const clubNames = [...singleClub.keys()];
+      const clubFact = singleClubCurrentFactScope(question, null, clubNames);
+      if (hasMatchOutcomeIntent(question) || clubFact) {
+        const club = clubNames[0];
+        const priced = listPricedModelFixturesForClub(club, fixtures, routing.now ?? Date.now());
+        if (priced.length === 1) return { tier: "match", fixture: priced[0] };
+      }
     }
   }
 
@@ -9806,7 +9810,9 @@ async function settleTeamNewsFromBundle(
       const candidateBundle = { ...bundle, results: bundle.results.filter((source) => candidateIds.has(source.id))
         .map((source) => ({ ...source, ...candidates.find((candidate) => candidate.id === source.id)! })) };
       const prose = await writeDeskProse(question, grounding, [], signal, candidateBundle, {
-        datedClubNews: true, reserveRepairCall: () => reserveProviderCall(bundle),
+        datedClubNews: true,
+        reserveRepairCall: () => reserveProviderCall(bundle),
+        dossier: prefetchStoredTakeDossier(grounding),
       });
       if (prose) {
         // Generated candidate prose has no authority until each cited claim
@@ -10280,6 +10286,7 @@ export async function deliverAnswer(args: {
       || await writeDeskProse(question, grounding, history, signal, evidenceBundle, {
         generalConcept: grounding === null && !evidenceRequired && evidenceBundle.queries.length === 0,
         managerPages,
+        dossier: grounding?.kind === "match" ? prefetchStoredTakeDossier(grounding) : null,
       })
       || (grounding?.kind === "match" && shouldRestoreDeskFootballTake(question) && !clubFactDelivery
         ? composeDeskFootballTake(grounding)
@@ -11521,6 +11528,7 @@ async function answerQuestionScoped(
       const prose = managerDraft ?? await writeDeskProse(question, grounding, history, signal, bundle, {
         generalConcept: grounding === null && query === null && bundle.queries.length === 0,
         managerPages,
+        dossier: grounding?.kind === "match" ? prefetchStoredTakeDossier(grounding) : null,
       });
       if (!prose && clubFact?.kind === "manager") {
         console.info(JSON.stringify({
@@ -11828,7 +11836,10 @@ async function answerQuestionStreamScoped(
           usedGenerativeProse: false,
         }));
       }
-      const prose = managerDraft ?? await writeDeskProse(question, grounding, history, handlers.signal, bundle, { managerPages });
+      const prose = managerDraft ?? await writeDeskProse(question, grounding, history, handlers.signal, bundle, {
+        managerPages,
+        dossier: grounding?.kind === "match" ? prefetchStoredTakeDossier(grounding) : null,
+      });
       if (!prose && clubFact.kind === "manager") {
         console.info(JSON.stringify({
           event: "manager_lookup_skipped",

@@ -65,7 +65,6 @@ import { buildPunditTakePlan } from "./pundit-take/take-plan";
 import { formatTakeOddsTable } from "./pundit-take/take-table";
 import {
   buildTakeSourcesFooter,
-  formatTakeSourcesDetailsBlock,
   formatTakeSourcesFooterBlock,
 } from "./pundit-take/take-sources";
 
@@ -104,12 +103,14 @@ function biggestMarketGapLine(grounding: Grounding): string | null {
   return `Biggest gap vs market: ${gapLabel}, ${sign}${valueLeg.gapPoints.toFixed(1)} pts.`;
 }
 
-function composeMatchPreviewOddsBlock(grounding: Grounding): string {
+function composeMatchPreviewOddsTable(grounding: Grounding): string {
   const planJson = buildPunditTakePlan(grounding, null, { marketKind: "1x2" });
-  const table = formatTakeOddsTable(planJson);
-  const footerBody = formatTakeSourcesFooterBlock(buildTakeSourcesFooter(grounding, null, Date.now()));
-  const footer = formatTakeSourcesDetailsBlock(footerBody);
-  return [table, footer].filter(Boolean).join("\n\n");
+  return formatTakeOddsTable(planJson);
+}
+
+function composeMatchPreviewSourcesFooter(grounding: Grounding): string {
+  const sources = buildTakeSourcesFooter(grounding, null, Date.now());
+  return formatTakeSourcesFooterBlock(sources, { includeOdds: true });
 }
 
 export const STAKE_REFUSAL_SENTENCE =
@@ -898,7 +899,8 @@ export function composeMatchResponse(
   ].sort((a, b) => b.p - a.p);
   const tableExplain = tableVsModelFavoriteExplainLine(grounding);
   const gapLine = biggestMarketGapLine(grounding);
-  const oddsBlock = composeMatchPreviewOddsBlock(grounding);
+  const oddsTable = composeMatchPreviewOddsTable(grounding);
+  const sourcesFooter = composeMatchPreviewSourcesFooter(grounding);
   const consensus = grounding.consensus
     ? `${PUNDIT_FUNDAMENTAL_LABEL} is our standalone 1X2 above. ${PUNDIT_CONSENSUS_LABEL}, a separate view shrunk toward the market, is ${grounding.home} ${pct(grounding.consensus.pHome)}, draw ${pct(grounding.consensus.pDraw)} and ${grounding.away} ${pct(grounding.consensus.pAway)}.`
     : "";
@@ -908,8 +910,9 @@ export function composeMatchResponse(
     tableExplain ?? "",
     asksCompleteMatchBriefing(question) ? composeBriefingFootball(grounding) : "",
     `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${totalsAssumptionSentence(grounding)}`,
-    oddsBlock,
     consensus,
     revisitAfterNews(grounding),
+    oddsTable,
+    sourcesFooter,
   ].filter(Boolean).join("\n\n");
 }

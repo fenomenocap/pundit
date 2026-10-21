@@ -60,7 +60,11 @@ export function buildTakeSourcesFooter(
   };
 }
 
-export function formatTakeSourcesFooterBlock(footer: PunditTakeSourcesFooter): string {
+export function formatTakeSourcesFooterBlock(
+  footer: PunditTakeSourcesFooter,
+  options?: { includeOdds?: boolean },
+): string {
+  const includeOdds = options?.includeOdds ?? true;
   const lines: string[] = [];
   lines.push(`Model ${shortModelVersionLabel(footer.modelVersion)} (priced ${footer.modelPricedAtSgt}).`);
   if (footer.tableAsOfSgt) {
@@ -69,8 +73,10 @@ export function formatTakeSourcesFooterBlock(footer: PunditTakeSourcesFooter): s
   if (footer.formAsOfSgt) {
     lines.push(`${footer.formSource} as of ${footer.formAsOfSgt}.`);
   }
-  for (const row of footer.odds) {
-    lines.push(`${row.label} as of ${row.observedAtSgt}.`);
+  if (includeOdds) {
+    for (const row of footer.odds) {
+      lines.push(`${row.label} as of ${row.observedAtSgt}.`);
+    }
   }
   if (footer.fplInjuryStatusAsOfSgt) {
     lines.push(`FPL injury status (as of ${footer.fplInjuryStatusAsOfSgt}).`);

@@ -14,13 +14,13 @@ import { asksMarketGapFocusQuestion, composeMarketGapFocusAnswer } from "../mark
 import { totalsAssumptionSentence } from "../totals-assumption";
 import { resolveTakeDossier } from "./take-dossier";
 import { buildPunditTakePlan } from "./take-plan";
-import { gridHeadlineOpener } from "./take-headline";
+import { format1x2V2Headline, gridHeadlineOpener } from "./take-headline";
 import { renderPassPlayTakeProse } from "./take-grid-prose";
 import { renderTakeProse } from "./take-llm";
 import { renderTakeProseDeterministic } from "./take-prose";
 import { formatPassPlayLineTable } from "./take-pass-play-table";
 import { formatTakeOddsTable } from "./take-table";
-import { buildTakeSourcesFooter, formatTakeSourcesDetailsBlock, formatTakeSourcesFooterBlock } from "./take-sources";
+import { buildTakeSourcesFooter, formatTakeSourcesFooterBlock } from "./take-sources";
 import {
   renderDrawFocusTakeProse,
   renderOddsProvenanceTakeProse,
@@ -45,6 +45,7 @@ import type { PunditTakeDelivery } from "./types";
 export const PUNDIT_TAKE_V2_COMPOSE_TIMEOUT_MS = 30_000;
 
 function isTakeV2Mode(plan: ResponsePlan, question: string): boolean {
+  // Temporary stopgap until a v2 scoreline path ships (legacy composer removal ~2026-10-27).
   if (asksScorelineBoard(question) || pricedGridMarketsAsked(question).includes("scorelines")) {
     return false;
   }
@@ -83,10 +84,14 @@ export function punditTakeApplies(plan: ResponsePlan, question: string): boolean
 function minimalV2Headline(
   planJson: ReturnType<typeof buildPunditTakePlan>,
   question: string,
+  grounding: Grounding,
 ): string {
   const variant = /\bwhy\b/i.test(question.trim()) ? "why" as const : "full";
-  return gridHeadlineOpener(planJson, variant)
-    ?? `${planJson.fixtureLabel} — ${planJson.call.headlineLabel}.`;
+  if (gridHeadlineOpener(planJson, variant)) return gridHeadlineOpener(planJson, variant)!;
+  if (planJson.marketKind === "1x2") {
+    return format1x2V2Headline(planJson.fixtureLabel, grounding, variant);
+  }
+  return `${planJson.fixtureLabel} — ${planJson.call.headlineLabel}.`;
 }
 
 function assembleV2AnswerBody(
@@ -103,12 +108,12 @@ function assembleV2AnswerBody(
       planJson,
       /\bwhy\b/i.test(question.trim()) ? "why" : "full",
       grounding,
-    ).trim() || minimalV2Headline(planJson, question);
+    ).trim() || minimalV2Headline(planJson, question, grounding);
   }
   const body = table ? `${prose}\n\n${table}`.trim() : prose;
   const withFooter = footer ? `${body}\n\n${footer}`.trim() : body;
   if (withFooter.trim()) return withFooter;
-  const headline = minimalV2Headline(planJson, question);
+  const headline = minimalV2Headline(planJson, question, grounding);
   const fallbackBody = table ? `${headline}\n\n${table}`.trim() : headline;
   return footer ? `${fallbackBody}\n\n${footer}`.trim() : fallbackBody;
 }
@@ -121,6 +126,7 @@ function marketKindForPlan(plan: ResponsePlan): "1x2" | "btts" | "totals" {
 
 function shouldAppendFlipClosing(question: string, plan: ResponsePlan): boolean {
   if (asksParlayQuestion(question)) return false;
+  if (asksMarketGapFocusQuestion(question)) return false;
   if (plan.mode === "stake-refusal") return false;
   if (plan.mode === "winner-guarantee-honesty") return false;
   if (plan.mode === "odds-provenance") return false;
@@ -136,7 +142,7 @@ function minimalHeadlineAndFlip(
   const headline = gridHeadlineOpener(planJson, variant)
     ?? (planJson.gridCall
       ? `${planJson.fixtureLabel} — ${planJson.gridCall.headlineLabel} at ${planJson.gridCall.modelPctInt}%.`
-      : minimalV2Headline(planJson, question));
+      : minimalV2Headline(planJson, question, grounding));
   const flip = formatWhatFlipsItSentence(planJson, grounding);
   if (!flip) return headline;
   return `${headline}\n\n${flip}`.trim();
@@ -179,7 +185,8 @@ function assembleDelivery(
       ? formatPassPlayLineTable(grounding)
       : formatTakeOddsTable(planJson);
   const sources = buildTakeSourcesFooter(grounding, resolvedDossier, Date.now());
-  const footer = formatTakeSourcesDetailsBlock(formatTakeSourcesFooterBlock(sources));
+  const includeOdds = planJson.hasCompleteMarket || planJson.marketKind === "1x2";
+  const footer = formatTakeSourcesFooterBlock(sources, { includeOdds });
   const postCheckMode = options?.prosePostCheck ?? (passPlay ? "forbidden" : "full");
   let proseOut = dedupePolicyProseBlocks(prose.trim());
   if (!asksParlayQuestion(question)) {
@@ -192,7 +199,11 @@ function assembleDelivery(
       proseOut = applyV2TakeProseGuards(scrubForbiddenTakeProse(proseOut), planJson);
     }
     if (shouldAppendFlipClosing(question, plan)) {
+      const beforeHeadlineFix = proseOut.trim();
       proseOut = ensureGridMarketHeadline(proseOut, planJson, question);
+      if (options?.deterministicPath && !beforeHeadlineFix && proseOut.trim()) {
+        proseOut = appendWhatFlipsItClosing(planJson, proseOut, grounding);
+      }
     }
     if (planJson.marketKind === "totals" || planJson.marketKind === "btts") {
       const assumption = totalsAssumptionSentence(grounding);
@@ -208,7 +219,7 @@ function assembleDelivery(
       proseOut = postCheckTakeProse(
         renderTakeProseDeterministic(planJson, /\bwhy\b/i.test(question.trim()) ? "why" : "full", grounding),
         planJson,
-      ) || minimalV2Headline(planJson, question);
+      ) || minimalV2Headline(planJson, question, grounding);
     }
   }
   const answer = asksParlayQuestion(question)
@@ -321,7 +332,7 @@ function composeMinimalTakeDelivery(
     marketKind: marketKindForPlan(plan),
     underFocus,
   });
-  const headline = minimalV2Headline(planJson, question);
+  const headline = minimalV2Headline(planJson, question, grounding);
   return assembleDelivery(question, grounding, plan, planJson, headline, resolvedDossier, {
     prosePostCheck: "none",
   });

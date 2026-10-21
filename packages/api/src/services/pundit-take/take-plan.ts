@@ -43,12 +43,11 @@ function shortSource(source: string): string {
 }
 
 function favoriteOutcome(grounding: Grounding): TakePlanCall {
-  const tieOrder = { home: 0, draw: 1, away: 2 } as const;
   const sides = ([
     { outcome: "home" as const, p: grounding.pHome },
     { outcome: "draw" as const, p: grounding.pDraw },
     { outcome: "away" as const, p: grounding.pAway },
-  ] as const).slice().sort((a, b) => b.p - a.p || tieOrder[a.outcome] - tieOrder[b.outcome]);
+  ] as const).slice().sort((a, b) => b.p - a.p);
   const top = sides[0];
   const label = displayOutcomeLabel(grounding, top.outcome);
   const headline = top.outcome === "draw" ? "the draw" : label;

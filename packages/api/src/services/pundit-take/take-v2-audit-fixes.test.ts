@@ -148,7 +148,8 @@ describe("Take v2 prod audit fixes", () => {
     expect(plan.gridCall?.coinFlip).toBe(true);
     expect(plan.gridCall?.modelPctDisplay).toBe("50.2%");
     const prose = renderTakeProseDeterministic(plan, "full", grounding);
-    expect(prose).toMatch(/coin flip, lean Under 2\.5 at 50\.2%/);
+    expect(prose).toMatch(/level at 50\.2% each/i);
+    expect(prose).toMatch(/no side/i);
     expect(prose).not.toMatch(/Over 2\.5 at 50%/);
   });
 
@@ -162,7 +163,7 @@ describe("Take v2 prod audit fixes", () => {
     const dossier = minimalDossierWithContradict("essentially a toss-up given the table.");
     const plan = buildPunditTakePlan(grounding, dossier);
     const prose = renderTakeProseDeterministic(plan, "full", grounding);
-    expect(prose).toMatch(/45%/);
+    expect(prose).toMatch(/45\.0%/);
     expect(prose).not.toMatch(/toss-up/i);
   });
 
@@ -251,7 +252,7 @@ describe("Take v2 prod audit fixes", () => {
     expect(delivery.answer).toMatch(/disagreement between my read and the market/i);
   });
 
-  it("verified manager dossier claim survives take post-check", () => {
+  it("manager dossier claims are not woven into 1x2 supporting prose", () => {
     const managerClaim = "Kieran McKenna remains the Ipswich Town head coach.";
     const dossier = minimalDossier([{
       id: "mgr-ipswich",
@@ -271,22 +272,9 @@ describe("Take v2 prod audit fixes", () => {
     }], "");
     const grounding = spursCoventryGrounding();
     const plan = buildPunditTakePlan(grounding, dossier);
-    const prose = renderTakeProseDeterministic(plan, "full", grounding);
-    expect(prose).toMatch(/McKenna/);
-  });
-
-  it("Palace v Newcastle tied model pct picks home deterministically", () => {
-    const grounding = {
-      ...chelseaTottenhamGrounding(),
-      home: "Crystal Palace",
-      away: "Newcastle",
-      pHome: 0.36,
-      pDraw: 0.28,
-      pAway: 0.36,
-    };
-    const plan = buildPunditTakePlan(grounding, null);
-    expect(plan.call.outcome).toBe("home");
-    expect(plan.call.headlineLabel).toBe("Crystal Palace");
+    const prose = renderTakeProseDeterministic(plan, "full", grounding, { appendFlip: false });
+    expect(prose).not.toMatch(/McKenna/);
+    expect(prose).not.toMatch(/head coach/i);
   });
 
   it("legacy header path stays byte-identical to the unscoped composer", () => {

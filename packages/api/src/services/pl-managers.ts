@@ -27,6 +27,8 @@ export const STALE_MANAGER_NAMES = [
   "Pep Guardiola",
 ] as const;
 
+const MANAGER_HOLDER_FROM_CLAIM = /^(.+?)\s+(?:is|remains|continue\s+as|continues\s+as)\s+(?:the\s+)?(?:\w+\s+){0,3}(?:manager|head coach|coach)\b/i;
+
 function surnames(name: string): string[] {
   return name
     .split(/\s+/)
@@ -36,6 +38,28 @@ function surnames(name: string): string[] {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function managerPersonNameFromClaim(claim: string): string | null {
+  const match = MANAGER_HOLDER_FROM_CLAIM.exec(claim.trim());
+  return match?.[1]?.trim() ?? null;
+}
+
+function eligibleStructuredManagerName(
+  dossier: MatchDossier,
+  side: "home" | "away",
+): string | null {
+  const raw = side === "home"
+    ? dossier.manager?.value?.home?.name
+    : dossier.manager?.value?.away?.name;
+  if (!raw?.trim()) return null;
+  const name = managerPersonNameFromClaim(raw) ?? raw.trim();
+  const clubLabel = side === "home" ? dossier.fixture.home : dossier.fixture.away;
+  const hasEligible = (dossier.evidence ?? []).some((item) =>
+    item.category === "manager"
+    && takeEligibleDossierEvidence(item)
+    && (!clubLabel || item.club === clubLabel || item.claim.includes(name)));
+  return hasEligible ? name : null;
 }
 
 /** Stale-list names this turn's search titles/snippets actually established. */
@@ -50,19 +74,20 @@ export function managersNamedInEvidence(
   return [...new Set([...fromSearch, ...managerNamesFromVerifiedDossier(dossier)])];
 }
 
-/** Manager names established by page-verified dossier evidence or structured manager slots. */
+/** Manager person names established by fresh, fixture-matched dossier evidence. */
 export function managerNamesFromVerifiedDossier(dossier: MatchDossier | null): string[] {
   if (!dossier) return [];
   const names: string[] = [];
   for (const item of dossier.evidence ?? []) {
     if (item.category !== "manager" || !takeEligibleDossierEvidence(item)) continue;
-    names.push(item.claim);
+    const person = managerPersonNameFromClaim(item.claim);
+    if (person) names.push(person);
   }
-  const home = dossier.manager?.value?.home?.name;
-  const away = dossier.manager?.value?.away?.name;
+  const home = eligibleStructuredManagerName(dossier, "home");
+  const away = eligibleStructuredManagerName(dossier, "away");
   if (home) names.push(home);
   if (away) names.push(away);
-  return names.filter(Boolean);
+  return [...new Set(names.filter(Boolean))];
 }
 
 export function stripUnlistedManagers(text: string, allowed: readonly string[]): string {

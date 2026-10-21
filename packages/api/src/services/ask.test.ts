@@ -4471,6 +4471,27 @@ describe("resolveAskContext", () => {
     };
   }
 
+  it("routes a single-club manager question to the only priced fixture in window", () => {
+    const evertonNext = fixture("Everton", "Fulham", {
+      fixtureId: 9001,
+      utcDate: "2026-10-25T15:00:00.000Z",
+    });
+    const other = fixture("Arsenal", "Chelsea", {
+      fixtureId: 9002,
+      utcDate: "2026-10-26T15:00:00.000Z",
+    });
+    const ctx = resolveAskContext(
+      "What's Everton's manager today?",
+      [],
+      undefined,
+      [evertonNext, other],
+      [],
+      [],
+      { now: Date.parse("2026-10-21T12:00:00.000Z") },
+    );
+    expect(ctx).toEqual({ tier: "match", fixture: evertonNext });
+  });
+
   it("recognizes an authoritative friendly as outside coverage and retains fixture identity", () => {
     const friendly = recognizedFriendly(800, "Arsenal", "Liverpool");
     const explicit = resolveAskContext(

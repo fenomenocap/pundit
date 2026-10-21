@@ -16,13 +16,23 @@ describe("managerNamesFromVerifiedDossier", () => {
       direction: "neutral",
       relatedFactor: "other",
       category: "manager",
+      club: "Ipswich Town",
       origin: "scheduled",
       fixtureMatchVerified: true,
       freshnessVerified: true,
     };
     const dossier = {
+      fixture: {
+        fixtureId: "test",
+        espnEventId: 1,
+        competitionId: "eng.1",
+        competition: "Premier League",
+        kickoffUtc: "2026-10-24T15:00:00.000Z",
+        home: "Ipswich Town",
+        away: "Forest",
+      },
       evidence: [item],
-      manager: { value: { home: { name: "Kieran McKenna", tenureNote: null }, away: { name: null, tenureNote: null } } },
+      manager: { value: { home: { name: "Kieran McKenna remains Ipswich head coach.", tenureNote: null }, away: { name: null, tenureNote: null } } },
     } as Parameters<typeof managerNamesFromVerifiedDossier>[0];
     const allowed = managerNamesFromVerifiedDossier(dossier);
     const prose = "McKenna has Ipswich organized in a low block. If Postecoglou's lot nick one, the draw grows.";

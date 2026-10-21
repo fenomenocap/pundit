@@ -1747,23 +1747,22 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
     assertions.noUnsupportedLineupEffect = !inventedLineupEffect;
   }
   if (expectation.expectStakeRefusal) {
-    const printPrice = /I can print the price/i.test(text);
-    const noStakeSizing = /I (?:will not|won't) size a stake without a bankroll and a risk band/i.test(text);
-    assertions.stakeRefusalSentence = printPrice && noStakeSizing;
+    const stakeText = text.replace(/[‘’]/g, "'");
+    const refusesStake = /\bI (?:will not|won't) size a stake without a bankroll and a risk band\./i.test(stakeText);
+    const offersPrice = /\bI can print the price\./i.test(stakeText);
+    assertions.stakeRefusalSentence = refusesStake && offersPrice;
     assertions.noStakeSizing = !/\b(?:kelly|stakefrac|stake frac|bankroll fraction|%\s+of (?:your |the )?bankroll)\b/i.test(text);
   }
   if (expectation.expectUserLinePassPlay) {
-    const passPlayTable = /\|\s*Side\s*\|\s*Model\s*\|\s*Fair\s*\|\s*Your line\s*\|\s*Gap\s*\|\s*Call\s*\|/i.test(text);
-    const tableGapCell = passPlayTable
-      && /\|\s*[^|\n]+\|\s*[^|\n]+\|\s*[^|\n]+\|\s*[^|\n]+\|\s*[+-]?\d+(?:\.\d+)?\s+pts\s*\|/i.test(text);
-    const tableFairCell = passPlayTable
-      && /\|\s*[^|\n]+\|\s*[^|\n]+\|\s*\d+\.\d{2}\s*\|\s*[^|\n]+\|\s*[+-]?\d+(?:\.\d+)?\s+pts\s*\|/i.test(text);
     assertions.userLineDecimalPresent = /\bat 7\.00\b/.test(text);
     assertions.userLineImpliedPresent = /\bimplies 14\.3%|\b1\/7\b/i.test(text);
     assertions.userLineEvPresent = !/\bEV [+-]\d+(?:\.\d+)?%/.test(text);
-    assertions.userLineHonestGapPresent = /\bgap [+-]?\d+(?:\.\d+)? pts\b/i.test(text) || tableGapCell;
+    const userLineTable = markdownTableCell(text, "Gap", "Fair");
+    assertions.userLineHonestGapPresent = /\bgap [+-]?\d+(?:\.\d+)? pts\b/i.test(text)
+      || /^[+-]?\d+(?:\.\d+)? pts$/.test(userLineTable.Gap ?? "");
     assertions.userLineDecision = /\bI (?:play|pass)\b|\bI will not call it\b/.test(text);
-    assertions.userLineFairDecimal = /\bfair \d+\.\d{2}\b/i.test(text) || tableFairCell;
+    assertions.userLineFairDecimal = /\bfair \d+\.\d{2}\b/i.test(text)
+      || /^\d+\.\d{2}$/.test(userLineTable.Fair ?? "");
     assertions.noKellySizing = !/\bkelly\b/i.test(text);
   }
   if (expectation.expectPricingDesk) {
@@ -1790,6 +1789,23 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
     .filter(([, passed]) => !passed)
     .map(([name]) => `analyst expression failed ${name}`);
   return { passed: failures.length === 0, assertions, failures };
+}
+
+/**
+ * First data row of the first Markdown table whose header row names every
+ * requested column, keyed by those column names.
+ */
+function markdownTableCell(text, ...columns) {
+  const lines = String(text ?? "").split("\n");
+  for (let index = 0; index + 2 < lines.length; index += 1) {
+    if (!/^\s*\|/.test(lines[index]) || !/^\s*\|[\s|:-]+\|\s*$/.test(lines[index + 1])) continue;
+    const cells = (line) => line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+    const header = cells(lines[index]);
+    if (!columns.every((column) => header.includes(column))) continue;
+    const row = cells(lines[index + 2]);
+    return Object.fromEntries(columns.map((column) => [column, row[header.indexOf(column)]]));
+  }
+  return {};
 }
 
 /** A standalone bold section label, e.g. `**Verdict**`. */

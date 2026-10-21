@@ -1,31 +1,54 @@
 import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
+import { deskPercentDisplay, displayOutcomeLabel } from "../basics-answer-voice";
 
-const COIN_FLIP_GAP_POINTS = 2;
+export const COIN_FLIP_GAP_POINTS = 2;
 
-const GRID_SIDE_TIE_ORDER: Record<string, number> = {
-  home: 0,
-  yes: 0,
-  over: 0,
-  draw: 1,
-  no: 1,
-  under: 1,
-  away: 2,
-};
+export function oneXTwoTopGapPoints(grounding: Grounding): number {
+  const sorted = [grounding.pHome, grounding.pDraw, grounding.pAway].slice().sort((a, b) => b - a);
+  return (sorted[0] - sorted[1]) * 100;
+}
 
-function gridSideTieBreak(aKey: string, bKey: string): number {
-  return (GRID_SIDE_TIE_ORDER[aKey] ?? 99) - (GRID_SIDE_TIE_ORDER[bKey] ?? 99);
+export function is1x2SidePickSuppressed(grounding: Grounding): boolean {
+  return oneXTwoTopGapPoints(grounding) < COIN_FLIP_GAP_POINTS;
+}
+
+export function format1x2V2Headline(
+  fixtureLabel: string,
+  grounding: Grounding,
+  variant: "full" | "why",
+): string {
+  const pct = deskPercentDisplay(
+    Math.max(grounding.pHome, grounding.pDraw, grounding.pAway),
+  );
+  if (is1x2SidePickSuppressed(grounding)) {
+    return variant === "why"
+      ? `On ${fixtureLabel}, the sides are level at ${pct} each; I have no side.`
+      : `${fixtureLabel} — level at ${pct} each; I have no side.`;
+  }
+  const ranked = ([
+    { outcome: "home" as const, p: grounding.pHome },
+    { outcome: "draw" as const, p: grounding.pDraw },
+    { outcome: "away" as const, p: grounding.pAway },
+  ] as const).slice().sort((a, b) => b.p - a.p);
+  const top = ranked[0];
+  const label = displayOutcomeLabel(grounding, top.outcome);
+  const headline = top.outcome === "draw" ? "the draw" : label;
+  const display = deskPercentDisplay(top.p);
+  return variant === "why"
+    ? `On ${fixtureLabel}, I have ${headline} at ${display}.`
+    : `${fixtureLabel} — ${headline} at ${display}.`;
 }
 
 export function gridHeadlineOpener(plan: PunditTakePlan, variant: "full" | "why"): string | null {
   if (!plan.gridCall) return null;
   const pct = plan.gridCall.modelPctDisplay;
-  const label = plan.gridCall.headlineLabel;
   if (plan.gridCall.coinFlip) {
     return variant === "why"
-      ? `On ${plan.fixtureLabel}, it's a coin flip — I lean ${label} at ${pct}.`
-      : `${plan.fixtureLabel} — coin flip, lean ${label} at ${pct}.`;
+      ? `On ${plan.fixtureLabel}, the sides are level at ${pct} each; I have no side.`
+      : `${plan.fixtureLabel} — level at ${pct} each; I have no side.`;
   }
+  const label = plan.gridCall.headlineLabel;
   return variant === "why"
     ? `On ${plan.fixtureLabel}, I have ${label} at ${pct}.`
     : `${plan.fixtureLabel} — ${label} at ${pct}.`;
@@ -34,7 +57,7 @@ export function gridHeadlineOpener(plan: PunditTakePlan, variant: "full" | "why"
 export function pickHigherGridSide(
   sides: Array<{ sideKey: string; label: string; p: number }>,
 ): { sideKey: string; label: string; p: number; coinFlip: boolean } {
-  const sorted = sides.slice().sort((a, b) => b.p - a.p || gridSideTieBreak(a.sideKey, b.sideKey));
+  const sorted = sides.slice().sort((a, b) => b.p - a.p);
   const top = sorted[0];
   const second = sorted[1];
   const gapPts = second ? Math.abs(top.p - second.p) * 100 : 100;

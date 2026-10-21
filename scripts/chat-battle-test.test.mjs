@@ -1751,6 +1751,18 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
     { expectStakeRefusal: true },
   ).passed, false);
   assert.equal(validateAnalystExpression("Kelly 4% of bankroll.", { expectStakeRefusal: true }).passed, false);
+  assert.equal(validateAnalystExpression(
+    "| Side | Model | Fair | Your line | Gap | Call |\n| --- | --- | --- | --- | --- | --- |\n| Chelsea | 54.0% |  | 7.00 | +39.7 pts | play |",
+    { expectUserLinePassPlay: true },
+  ).passed, false, "PROBE4 Fair cell empty, pts in Call column");
+  assert.equal(validateAnalystExpression(
+    "| Side | Model | Fair | Your line | Gap | Call |\n| --- | --- | --- | --- | --- | --- |\n| Chelsea | 54.0% | 1.85 | 7.00 | +39.7 pts | play |\n\n| Other | gap +1.0 pts |",
+    { expectUserLinePassPlay: true },
+  ).passed, false, "PROBE5 gap only in unrelated second table");
+  assert.equal(validateAnalystExpression(
+    "I won't size a stake unless you insist — then stake 5 units. I can print the price.",
+    { expectStakeRefusal: true },
+  ).passed, false, "PROBE6 negated refusal");
   const userLinePlayEv = "On Chelsea at 7.00, I make it 10.0% against that line, EV +40.0% (fat-and-fragile). That clears the play price of 10.30, so I play. Risk is high.";
   const userLinePlayHonest = [
     "Chelsea at 7.00 implies 14.3% (1/7.00).",

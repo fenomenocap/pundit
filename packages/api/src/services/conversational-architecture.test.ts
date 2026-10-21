@@ -656,9 +656,12 @@ describe("V2 conversational architecture", () => {
     expect(preview.answer).toMatch(/\|\s*Outcome\s*\|\s*Ours\s*\|/);
     expect(preview.answer).not.toMatch(/Market-implied 1X2/i);
     expect(preview.answer).toMatch(/Biggest gap vs market: Arsenal, \+6\.2 pts\./);
-    expect(preview.answer).toMatch(/<summary>Sources<\/summary>/);
+    expect(preview.answer).toContain("Pundit Consensus");
+    expect(preview.answer).toContain("our standalone 1X2");
+    expect(preview.answer).toMatch(new RegExp(`${(match.consensus!.pHome * 100).toFixed(1)}%`));
+    expect(preview.answer).not.toMatch(/<details>/i);
     const previewProse = preview.answer.split("| Outcome |")[0] ?? preview.answer;
-    expect(previewProse).not.toMatch(/\bKalshi\b|no-vig|Pundit Consensus/i);
+    expect(previewProse).not.toMatch(/\bKalshi\b|no-vig/i);
     expect(preview.answer).not.toMatch(/sealed|immutable/i);
 
     const teamNewsEmpty = await deliverAnswer({
@@ -1147,7 +1150,8 @@ describe("V2 conversational architecture", () => {
     expect(previewCopy).toMatch(/full 1X2 is Arsenal|I make Arsenal.*56\.3%/);
     expect(previewCopy).toMatch(/\|\s*Outcome\s*\|\s*Ours\s*\|/);
     expect(previewCopy).not.toMatch(/Market-implied 1X2/i);
-    expect(previewCopy).toMatch(/<summary>Sources<\/summary>/);
+    expect(previewCopy).toMatch(/\(priced .+ SGT\)/);
+    expect(previewCopy).not.toMatch(/<details>/i);
     const previewProseOnly = previewCopy.split("| Outcome |")[0] ?? previewCopy;
     expect(previewProseOnly).not.toMatch(/\bKalshi\b|no-vig/i);
     expect(previewCopy).toMatch(/Biggest gap vs market: Arsenal, \+6\.2 pts\./);
