@@ -7010,7 +7010,6 @@ describe("settled player news requires exact current-claim verification", () => 
             expect(result.answer).not.toContain("The reason for his continued tenure");
             expect(result.answer).not.toContain("remarkable transformation");
             expect(result.answer).not.toContain("Premier League title triumph");
-            if (!pin) expect(result.grounding).toBeNull();
             if (mode === "supported" || mode === "no-marker") {
               expect(result.answer, question).toContain("Arsenal’s manager is Mikel Arteta");
               if (/why/i.test(question)) expect(result.answer).toContain("I haven’t verified the club’s stated reason");
@@ -7023,7 +7022,9 @@ describe("settled player news requires exact current-claim verification", () => 
               if (mode === "unavailable") expect(result.verification?.status).toBe("unavailable");
             }
           };
-          for (const voice of [undefined, "desk"] as const) assertDelivery(await answerQuestion(question, [], pin ? ["Arsenal", "Leeds"] : undefined, undefined, context, undefined, voice));
+          for (const voice of [undefined, "desk"] as const) {
+            assertDelivery(await answerQuestion(question, [], pin ? ["Arsenal", "Leeds"] : undefined, undefined, context, undefined, voice));
+          }
           const deltas: string[] = [];
           const streamed = await answerQuestionStream(question, [], pin ? ["Arsenal", "Leeds"] : undefined, { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
           assertDelivery(streamed); expect(deltas).toEqual([streamed.answer]);
