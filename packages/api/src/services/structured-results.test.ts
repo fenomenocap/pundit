@@ -21,6 +21,11 @@ describe("owned latest results", () => {
     expect(result?.citations[0].url).toBe("https://www.espn.com/soccer/match/_/gameId/401879274");
     expect(result?.answer).not.toContain("another cup");
   });
+  it.each(["What was the last Arsenal result?", "what is the latest Arsenal score?", "How did Arsenal do in their last game?", "What was the last Premier League Arsenal result?"])("answers last-club-result word order: %s", (q) => {
+    const result = ownedLatestResult(q, state(), now, season());
+    expect(result?.answer).toContain("Brighton 3–0 Arsenal");
+    expect(result?.citations[0].url).toBe("https://www.espn.com/soccer/match/_/gameId/401879274");
+  });
   it.each(["Did Arsenal win their last game?", "Did Arsenal lose the last match?", "did Arsenal draw their most recent fixture"])("answers yes/no last-game wording from the result: %s", (q) => {
     const result = ownedLatestResult(q, state(), now, season());
     expect(result?.answer).toContain("Brighton 3–0 Arsenal");

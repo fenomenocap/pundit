@@ -65,6 +65,17 @@ describe("Take v2 prod audit fixes", () => {
     expect(delivery.answer).not.toMatch(/captured decimal line/i);
   });
 
+  it("a totals fair-odds question leads with the Over/Under market, not the 1X2 prices", () => {
+    const question = "Over 2.5 goals in Chelsea v Tottenham - fair odds?";
+    const grounding = chelseaTottenhamGrounding();
+    const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
+    const delivery = withPunditTakeRequestScope("v2", () =>
+      composePunditTakeDelivery(question, grounding, plan)!);
+    expect(plan.mode).toBe("totals");
+    expect(delivery.answer).not.toMatch(/My fair prices:/);
+    expect(delivery.answer).toMatch(/Over 2\.5/);
+  });
+
   it("Chelsea at 1.70 pass or play returns maths and play/pass, not refusal", () => {
     const base = chelseaTottenhamGrounding();
     const grounding = {

@@ -237,7 +237,9 @@ function resolvePolicyProse(
   if (asksWhatFlipsItQuestion(question)) {
     return null;
   }
-  if (asksFairOddsFixtureQuestion(question)) {
+  // The fair-odds line is a 1X2 price; a totals or BTTS fair-odds question is
+  // answered from its own market rows instead of leading with the 1X2.
+  if (asksFairOddsFixtureQuestion(question) && plan.mode !== "totals" && plan.mode !== "btts") {
     return { prose: renderFairOddsTakeProse(planJson, grounding), includeTable: true };
   }
   return null;
