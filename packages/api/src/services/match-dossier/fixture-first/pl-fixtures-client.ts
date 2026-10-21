@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { FixtureFirstFetchLog } from "./types";
 import { formatGroupQueryTemplate, getSourceGroup, sourceGroupForField } from "./source-groups";
 import { resolveFplTeamIdForFixtureSide } from "../fpl-team-map";
@@ -31,10 +30,7 @@ export function setPlFixturesCacheForTests(payload: PlFixturesPayload, fetchedAt
 }
 
 export function loadPlFixturesFromRecordedFixture(): PlFixturesPayload {
-  const file = path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../__fixtures__/pl-pulselive-fixtures-sample.json",
-  );
+  const file = path.join(__dirname, "../__fixtures__/pl-pulselive-fixtures-sample.json");
   return JSON.parse(fs.readFileSync(file, "utf8")) as PlFixturesPayload;
 }
 

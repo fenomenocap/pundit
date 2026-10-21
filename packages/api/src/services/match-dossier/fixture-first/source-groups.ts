@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 export interface SourceGroupDefinition {
   primary: string | null;
@@ -11,7 +10,7 @@ export interface SourceGroupDefinition {
 }
 
 const sourceGroupsJson = JSON.parse(fs.readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../data/match-dossier/source-groups.json"),
+  path.join(__dirname, "../../../../data/match-dossier/source-groups.json"),
   "utf8",
 )) as { groups: Record<string, SourceGroupDefinition>; rules: string[]; enforcement: Record<string, string> };
 
