@@ -258,6 +258,7 @@ export function buildFplInjuryEvidenceForFixture(
       status,
       chanceOfPlaying,
       newsAddedAt,
+      fplElementId: player.id,
       fplTeamId: player.team,
       newsText: hasNews ? newsText : undefined,
     });

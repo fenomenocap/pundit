@@ -344,7 +344,7 @@ describe("fixture-first team news (source groups)", () => {
     expect(raw.some((i) => i.player === "Saka")).toBe(true);
   });
 
-  it("drops and logs facts whose fplTeamId does not match the labelled fixture club", () => {
+  it("defensive guard drops and logs when fplTeamId does not match labelled club (no-op on live bootstrap)", () => {
     const snapshot = loadFplBootstrap841Recorded();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
@@ -391,6 +391,7 @@ describe("fixture-first team news (source groups)", () => {
     const tosin = items.find((i) => i.player === "Tosin");
     expect(tosin?.club).toBe("Tottenham");
     expect(tosin?.fplTeamId).toBe(19);
+    expect(tosin?.fplElementId).toBe(147);
     logSpy.mockRestore();
   });
 

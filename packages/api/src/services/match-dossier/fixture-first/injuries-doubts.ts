@@ -92,6 +92,7 @@ export function applyFplTeamIdClubGuard(
         event: "fixture_first_wrong_club_drop",
         player: item.player,
         club: item.club,
+        fplElementId: item.fplElementId ?? null,
         fplTeamId: item.fplTeamId,
         expectedFplTeamId: expected,
       }));
