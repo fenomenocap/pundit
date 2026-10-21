@@ -2880,19 +2880,20 @@ describe("current-news evidence hardening", () => {
 
     it("renders ordinary match facts and a complete third-party market without generated causality", () => {
       const answer = deterministicGroundedResponse("Analyse Arsenal vs Coventry.", model());
-      expect(answer).toContain("Arsenal 97.3%");
-      expect(answer).toContain("draw 2.3%");
-      expect(answer).toContain("Coventry 0.4%");
-      expect(answer).toMatch(/Arsenal 97\.3%|I make Arsenal/);
-      expect(answer).toMatch(/\|\s*Outcome\s*\|\s*Ours\s*\|/);
-      expect(answer).not.toMatch(/Market-implied 1X2/i);
-      expect(answer).toMatch(/Biggest gap vs market: Arsenal, \+15\.1 pts\./);
-      expect(proseFromTakeAnswer(answer)).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
-      expect(answer).not.toMatch(/^Lean:/m);
-      expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
-      expect(answer).not.toMatch(/Over 2\.5 is \d/);
-      expect(answer).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
-      expect(answer).not.toMatch(/Arteta|already been played|result on record|future replay/i);
+      expect(answer).not.toBeNull();
+      expect(answer!).toContain("Arsenal 97.3%");
+      expect(answer!).toContain("draw 2.3%");
+      expect(answer!).toContain("Coventry 0.4%");
+      expect(answer!).toMatch(/Arsenal 97\.3%|I make Arsenal/);
+      expect(answer!).toMatch(/\|\s*Outcome\s*\|\s*Ours\s*\|/);
+      expect(answer!).not.toMatch(/Market-implied 1X2/i);
+      expect(answer!).toMatch(/Biggest gap vs market: Arsenal, \+15\.1 pts\./);
+      expect(proseFromTakeAnswer(answer!)).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
+      expect(answer!).not.toMatch(/^Lean:/m);
+      expect(answer!).toContain(SHARED_TOTAL_XG_SENTENCE);
+      expect(answer!).not.toMatch(/Over 2\.5 is \d/);
+      expect(answer!).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
+      expect(answer!).not.toMatch(/Arteta|already been played|result on record|future replay/i);
     });
 
     it("keeps explicit model-only requests free of every market/value claim", () => {
@@ -2939,8 +2940,9 @@ describe("current-news evidence hardening", () => {
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
         .toMatch(/Biggest gap vs market|gap [+-]?\d+\.?\d* pts/i);
-      expect(proseFromTakeAnswer(closedGroundedAnswer("Why is the model so far from the market?", model()) ?? ""))
-        .not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
+      const marketGapAnswer = closedGroundedAnswer("Why is the model so far from the market?", model());
+      expect(marketGapAnswer).not.toBeNull();
+      expect(proseFromTakeAnswer(marketGapAnswer!)).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
       expect(closedGroundedAnswer("What will the 1X2 be?", model(), true))
         .toMatch(/My 1X2 is Arsenal 97\.3%.*draw.*Coventry/i);
       expect(closedGroundedAnswer("Tactical matchup", model(), true)).toMatch(/less cover against a counterattack/i);
