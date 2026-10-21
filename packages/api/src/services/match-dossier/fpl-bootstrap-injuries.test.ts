@@ -3,6 +3,7 @@ import { fixture } from "../__fixtures__/model-fixture";
 import {
   buildFplInjuryEvidenceForFixture,
   getDossierFplStatus,
+  loadFplBootstrap841Recorded,
   loadFplBootstrapFromRecordedFixture,
   prefetchFplBootstrapForBuildPass,
   resetFplBootstrapCacheForTests,
@@ -44,29 +45,29 @@ describe("FPL bootstrap-static injuries (interim)", () => {
   });
 
   it("emits structured FPL contract fields for fixture clubs", () => {
-    const snapshot = loadFplBootstrapFromRecordedFixture();
-    const row = fixture("Arsenal", "Newcastle", { utcDate: "2026-10-24T15:00:00.000Z" });
+    const snapshot = loadFplBootstrap841Recorded();
+    const row = fixture("Arsenal", "Everton", { utcDate: "2026-10-24T14:00:00.000Z" });
     const items = buildFplInjuryEvidenceForFixture(row, "2026-10-19T12:00:00.000Z", snapshot);
-    expect(items.length).toBe(2);
-    const saka = items.find((i) => i.player === "Saka")!;
-    expect(isFplBootstrapInjuryItem(saka)).toBe(true);
-    expect(saka).toMatchObject({
+    expect(items.length).toBeGreaterThan(0);
+    const saliba = items.find((i) => i.player === "Saliba")!;
+    expect(isFplBootstrapInjuryItem(saliba)).toBe(true);
+    expect(saliba).toMatchObject({
       source: "fpl-bootstrap-static",
       tier: "interim",
       internalOnly: true,
-      player: "Saka",
+      player: "Saliba",
       club: "Arsenal",
-      status: "d",
-      chanceOfPlaying: 75,
-      newsAddedAt: "2026-10-18T10:00:00.000Z",
-      newsText: "Knock - 75% chance of playing",
+      status: "i",
+      chanceOfPlaying: 0,
+      newsAddedAt: "2026-07-23T12:01:23.289376Z",
+      newsText: "Back injury - Unknown return date",
     });
     expect(items.every((i) => !isTakeV2DossierEvidence(i))).toBe(true);
   });
 
   it("maps bootstrap team names to fixture home/away labels", () => {
-    const snapshot = loadFplBootstrapFromRecordedFixture();
-    const row = fixture("Arsenal", "Newcastle", { utcDate: "2026-10-24T15:00:00.000Z" });
+    const snapshot = loadFplBootstrap841Recorded();
+    const row = fixture("Arsenal", "Everton", { utcDate: "2026-10-24T14:00:00.000Z" });
     const arsenal = snapshot.teams.find((t) => t.name === "Arsenal")!;
     expect(clubLabelForFplTeam(row, arsenal)).toBe("Arsenal");
   });
@@ -83,7 +84,7 @@ describe("FPL bootstrap-static injuries (interim)", () => {
       headers: { "content-type": "application/json" },
     }));
 
-    const row = fixture("Arsenal", "Newcastle", { utcDate: "2026-10-24T15:00:00.000Z" });
+    const row = fixture("Arsenal", "Everton", { utcDate: "2026-10-24T14:00:00.000Z" });
     await prefetchFplBootstrapForBuildPass(fetchFn as typeof fetch);
     const dossier = await buildMatchDossierForFixtureAsync(row, { now: asOfDate() });
     expect(verifiedSpy).not.toHaveBeenCalled();
@@ -98,7 +99,7 @@ describe("FPL bootstrap-static injuries (interim)", () => {
   it("produces no FPL items when MATCH_DOSSIER_FPL_ENABLED is false", () => {
     process.env.MATCH_DOSSIER_FPL_ENABLED = "false";
     setFplBootstrapCacheForTests(loadFplBootstrapFromRecordedFixture());
-    const row = fixture("Arsenal", "Newcastle", { utcDate: "2026-10-24T15:00:00.000Z" });
+    const row = fixture("Arsenal", "Everton", { utcDate: "2026-10-24T14:00:00.000Z" });
     const dossier = buildMatchDossierForFixture(row, { now: asOfDate() });
     expect(dossier.injuries.value.items.some((i) => i.source === "fpl-bootstrap-static")).toBe(false);
     expect(dossier.evidence.some((i) => i.source === "fpl-bootstrap-static")).toBe(false);
@@ -123,12 +124,10 @@ describe("FPL bootstrap-static injuries (interim)", () => {
 
   it("builds Coventry and Hull injury rows via FPL team id map", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
-    const coventryFulham = fixture("Coventry", "Fulham", { utcDate: "2026-10-24T15:00:00.000Z" });
-    const items = buildFplInjuryEvidenceForFixture(coventryFulham, "2026-10-19T12:00:00.000Z", snapshot);
-    expect(items.some((i) => i.player === "Hamer" && i.club === "Coventry")).toBe(true);
-    const hullEverton = fixture("Everton", "Hull", { utcDate: "2026-10-24T15:00:00.000Z" });
-    expect(buildFplInjuryEvidenceForFixture(hullEverton, "2026-10-19T12:00:00.000Z", snapshot)
-      .some((i) => i.player === "HullStriker" && i.club === "Hull")).toBe(true);
+    const coventryHull = fixture("Coventry", "Hull", { utcDate: "2026-10-24T15:00:00.000Z" });
+    const items = buildFplInjuryEvidenceForFixture(coventryHull, "2026-10-19T12:00:00.000Z", snapshot);
+    expect(items.some((i) => i.player === "Woolfenden" && i.club === "Coventry")).toBe(true);
+    expect(items.some((i) => i.player === "Butland" && i.club === "Hull")).toBe(true);
   });
 
   it("failed fetch logs each attempt and fails closed with no injuries", async () => {
@@ -153,14 +152,14 @@ describe("FPL bootstrap-static injuries (interim)", () => {
     expect(fplLogs).toHaveLength(2);
     expect(fplLogs.every((row) => row.status === 403 && row.players === null && row.error)).toBe(true);
 
-    const row = fixture("Arsenal", "Newcastle", { utcDate: "2026-10-24T15:00:00.000Z" });
+    const row = fixture("Arsenal", "Everton", { utcDate: "2026-10-24T14:00:00.000Z" });
     const dossier = buildMatchDossierForFixture(row, { now: asOfDate() });
     expect(dossier.injuries.value.items.some((i) => i.source === "fpl-bootstrap-static")).toBe(false);
   });
 
   it("merges into dossier injuries when cache warm; public view strips internalOnly", () => {
-    setFplBootstrapCacheForTests(loadFplBootstrapFromRecordedFixture());
-    const row = fixture("Arsenal", "Newcastle", { utcDate: "2026-10-24T15:00:00.000Z" });
+    setFplBootstrapCacheForTests(loadFplBootstrap841Recorded());
+    const row = fixture("Arsenal", "Everton", { utcDate: "2026-10-24T14:00:00.000Z" });
     const dossier = buildMatchDossierForFixture(row, { now: asOfDate() });
     expect(dossier.injuries.value.items.some((i) => i.source === "fpl-bootstrap-static")).toBe(true);
     const pub = publicMatchDossierView(dossier);

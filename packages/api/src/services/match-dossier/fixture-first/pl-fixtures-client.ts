@@ -27,19 +27,58 @@ interface PlCompSeasonRow {
   label: string;
 }
 
-let buildPassPlCache: { payload: PlFixturesPayload; fetchedAt: string } | null = null;
+let buildPassPlCache: { payload: PlFixturesPayload; fetchedAt: string; compSeasonId: number } | null = null;
 
 export function resetPlFixturesCacheForTests(): void {
   buildPassPlCache = null;
 }
 
-export function setPlFixturesCacheForTests(payload: PlFixturesPayload, fetchedAt: string): void {
-  buildPassPlCache = { payload, fetchedAt };
+/** Comp season id resolved during the current PL fixtures build pass (for staff URLs). */
+export function getPlBuildPassCompSeasonId(): number | null {
+  return buildPassPlCache?.compSeasonId ?? null;
 }
 
+export function setPlBuildPassCompSeasonIdForTests(compSeasonId: number | null): void {
+  if (compSeasonId == null) {
+    if (buildPassPlCache) buildPassPlCache = null;
+    return;
+  }
+  if (buildPassPlCache) {
+    buildPassPlCache = { ...buildPassPlCache, compSeasonId };
+  } else {
+    buildPassPlCache = {
+      payload: { content: [] },
+      fetchedAt: new Date().toISOString(),
+      compSeasonId,
+    };
+  }
+}
+
+export function setPlFixturesCacheForTests(
+  payload: PlFixturesPayload,
+  fetchedAt: string,
+  compSeasonId?: number,
+): void {
+  const resolved = compSeasonId
+    ?? buildPassPlCache?.compSeasonId
+    ?? resolvePlCompSeasonIdFromRows(
+      [{ id: 0, label: "English Premier League Season 2026/2027" }],
+      new Date(fetchedAt),
+    );
+  if (resolved == null) {
+    throw new Error("pl_comp_season_unresolved_for_tests");
+  }
+  buildPassPlCache = { payload, fetchedAt, compSeasonId: resolved };
+}
+
+/** Chelsea v Spurs GW8 row 128995 from the recorded compSeason 841 fixtures slice. */
 export function loadPlFixturesFromRecordedFixture(): PlFixturesPayload {
-  const file = path.join(__dirname, "../__fixtures__/pl-pulselive-fixtures-sample.json");
-  return JSON.parse(fs.readFileSync(file, "utf8")) as PlFixturesPayload;
+  const pl = loadPlFixtures841Recorded();
+  const row = pl.content.find((entry) => entry.id === 128995);
+  if (!row) {
+    throw new Error("recorded_pl_fixture_128995_missing");
+  }
+  return { content: [row], pageInfo: { page: 0, numPages: 1, pageSize: 1, numEntries: 1 } };
 }
 
 /** Real Pulselive compSeason 841 slice (GW8 + Everton v Chelsea regression rows). */
@@ -271,7 +310,7 @@ export async function prefetchPlFixturesForBuildPass(
     logPlFetch({ url, query, fetchedAt, sourceTimestamp: null, ok: false, status: null });
     return null;
   }
-  buildPassPlCache = { payload, fetchedAt };
+  buildPassPlCache = { payload, fetchedAt, compSeasonId };
   logPlFetch({ url, query, fetchedAt, sourceTimestamp: fetchedAt, ok: true, status: 200 });
   return payload;
 }

@@ -112,9 +112,9 @@ export function resetFplBootstrapCacheForTests(): void {
   lastFplFetchStatus = { ok: false, status: null, error: null, fetchedAt: null };
 }
 
+/** Recorded compSeason 841 FPL slice (subset of teams/elements used in dossier tests). */
 export function loadFplBootstrapFromRecordedFixture(): FplBootstrapSnapshot {
-  const file = path.join(__dirname, "__fixtures__", "fpl-bootstrap-static-sample.json");
-  return JSON.parse(fs.readFileSync(file, "utf8")) as FplBootstrapSnapshot;
+  return loadFplBootstrap841Slice();
 }
 
 export function loadFplBootstrap841Slice(): FplBootstrapSnapshot {
