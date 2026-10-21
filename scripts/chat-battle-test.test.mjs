@@ -1737,6 +1737,19 @@ test("analyst expression guard enforces direct, scoped and honest follow-ups", (
   ).passed, false);
   const stakeRefusal = "I can print the price. I will not size a stake without a bankroll and a risk band.";
   assert.equal(validateAnalystExpression(stakeRefusal, { expectStakeRefusal: true }).passed, true);
+  assert.equal(validateAnalystExpression(
+    "I will not size a stake without a bankroll and a risk band. I can print the price.",
+    { expectStakeRefusal: true },
+  ).passed, true);
+  assert.equal(validateAnalystExpression(
+    "I can print the price. I won't size a stake without a bankroll and a risk band.",
+    { expectStakeRefusal: true },
+  ).passed, true);
+  assert.equal(validateAnalystExpression("I can print the price.", { expectStakeRefusal: true }).passed, false);
+  assert.equal(validateAnalystExpression(
+    "I can print the price. Kelly 2% of bankroll.",
+    { expectStakeRefusal: true },
+  ).passed, false);
   assert.equal(validateAnalystExpression("Kelly 4% of bankroll.", { expectStakeRefusal: true }).passed, false);
   const userLinePlayEv = "On Chelsea at 7.00, I make it 10.0% against that line, EV +40.0% (fat-and-fragile). That clears the play price of 10.30, so I play. Risk is high.";
   const userLinePlayHonest = [

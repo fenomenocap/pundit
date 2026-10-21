@@ -1747,16 +1747,23 @@ export function validateAnalystExpression(answer, expectation = {}, grounding = 
     assertions.noUnsupportedLineupEffect = !inventedLineupEffect;
   }
   if (expectation.expectStakeRefusal) {
-    assertions.stakeRefusalSentence = /I can print the price\.\s*I will not size a stake without a bankroll and a risk band\./i.test(text);
+    const printPrice = /I can print the price/i.test(text);
+    const noStakeSizing = /I (?:will not|won't) size a stake without a bankroll and a risk band/i.test(text);
+    assertions.stakeRefusalSentence = printPrice && noStakeSizing;
     assertions.noStakeSizing = !/\b(?:kelly|stakefrac|stake frac|bankroll fraction|%\s+of (?:your |the )?bankroll)\b/i.test(text);
   }
   if (expectation.expectUserLinePassPlay) {
+    const passPlayTable = /\|\s*Side\s*\|\s*Model\s*\|\s*Fair\s*\|\s*Your line\s*\|\s*Gap\s*\|\s*Call\s*\|/i.test(text);
+    const tableGapCell = passPlayTable
+      && /\|\s*[^|\n]+\|\s*[^|\n]+\|\s*[^|\n]+\|\s*[^|\n]+\|\s*[+-]?\d+(?:\.\d+)?\s+pts\s*\|/i.test(text);
+    const tableFairCell = passPlayTable
+      && /\|\s*[^|\n]+\|\s*[^|\n]+\|\s*\d+\.\d{2}\s*\|\s*[^|\n]+\|\s*[+-]?\d+(?:\.\d+)?\s+pts\s*\|/i.test(text);
     assertions.userLineDecimalPresent = /\bat 7\.00\b/.test(text);
     assertions.userLineImpliedPresent = /\bimplies 14\.3%|\b1\/7\b/i.test(text);
     assertions.userLineEvPresent = !/\bEV [+-]\d+(?:\.\d+)?%/.test(text);
-    assertions.userLineHonestGapPresent = /\bgap [+-]?\d+(?:\.\d+)? pts\b/i.test(text);
+    assertions.userLineHonestGapPresent = /\bgap [+-]?\d+(?:\.\d+)? pts\b/i.test(text) || tableGapCell;
     assertions.userLineDecision = /\bI (?:play|pass)\b|\bI will not call it\b/.test(text);
-    assertions.userLineFairDecimal = /\bfair \d+\.\d{2}\b/i.test(text);
+    assertions.userLineFairDecimal = /\bfair \d+\.\d{2}\b/i.test(text) || tableFairCell;
     assertions.noKellySizing = !/\bkelly\b/i.test(text);
   }
   if (expectation.expectPricingDesk) {

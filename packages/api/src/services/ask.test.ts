@@ -2862,7 +2862,8 @@ describe("current-news evidence hardening", () => {
       expect(answer).toContain("draw 2.3%");
       expect(answer).toContain("Coventry 0.4%");
       expect(answer).toMatch(/Arsenal 97\.3%|I make Arsenal/);
-      expect(answer).toMatch(/Market-implied 1X2|Market: Arsenal/i);
+      expect(answer).toMatch(/\|\s*Outcome\s*\|\s*Ours\s*\|/);
+      expect(answer).not.toMatch(/Market-implied 1X2/i);
       expect(answer).toMatch(/Biggest gap vs market: Arsenal, \+15\.1 pts\./);
       expect(answer).not.toMatch(/\bKalshi\b|no-vig/i);
       expect(answer).not.toMatch(/^Lean:/m);

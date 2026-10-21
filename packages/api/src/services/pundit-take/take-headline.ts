@@ -3,6 +3,20 @@ import type { PunditTakePlan } from "./types";
 
 const COIN_FLIP_GAP_POINTS = 2;
 
+const GRID_SIDE_TIE_ORDER: Record<string, number> = {
+  home: 0,
+  yes: 0,
+  over: 0,
+  draw: 1,
+  no: 1,
+  under: 1,
+  away: 2,
+};
+
+function gridSideTieBreak(aKey: string, bKey: string): number {
+  return (GRID_SIDE_TIE_ORDER[aKey] ?? 99) - (GRID_SIDE_TIE_ORDER[bKey] ?? 99);
+}
+
 export function gridHeadlineOpener(plan: PunditTakePlan, variant: "full" | "why"): string | null {
   if (!plan.gridCall) return null;
   const pct = plan.gridCall.modelPctDisplay;
@@ -20,7 +34,7 @@ export function gridHeadlineOpener(plan: PunditTakePlan, variant: "full" | "why"
 export function pickHigherGridSide(
   sides: Array<{ sideKey: string; label: string; p: number }>,
 ): { sideKey: string; label: string; p: number; coinFlip: boolean } {
-  const sorted = sides.slice().sort((a, b) => b.p - a.p);
+  const sorted = sides.slice().sort((a, b) => b.p - a.p || gridSideTieBreak(a.sideKey, b.sideKey));
   const top = sorted[0];
   const second = sorted[1];
   const gapPts = second ? Math.abs(top.p - second.p) * 100 : 100;

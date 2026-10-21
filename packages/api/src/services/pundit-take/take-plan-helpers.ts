@@ -78,6 +78,17 @@ export function build1x2SupportingPoints(
   const points: TakePlanPoint[] = [];
   const favSide = callOutcome;
 
+  for (const item of dossier?.evidence ?? []) {
+    if (item.category !== "manager" || !takeEligibleDossierEvidence(item)) continue;
+    points.push({
+      id: `support-mgr-${item.id}`,
+      role: "support",
+      text: item.claim,
+      evidenceId: item.id,
+      fieldPath: `evidence.${item.id}`,
+    });
+  }
+
   const homePos = grounding.homeTable.position ?? dossier?.table.home.value.position;
   const awayPos = grounding.awayTable.position ?? dossier?.table.away.value.position;
   const homePts = grounding.homeTable.points ?? dossier?.table.home.value.points;
@@ -102,6 +113,7 @@ export function build1x2SupportingPoints(
 
   for (const item of dossier?.evidence ?? []) {
     if (!takeEligibleDossierEvidence(item)) continue;
+    if (item.category === "manager") continue;
     if (/\bhold a lead\b|\balways win\b|\bcan win\b/i.test(item.claim) && item.verification !== "page-verified") continue;
     if (item.direction === "supports-home" && favSide === "home") {
       points.push({

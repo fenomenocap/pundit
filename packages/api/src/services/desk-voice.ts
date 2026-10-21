@@ -716,7 +716,7 @@ export async function writeDeskProse(
   history: ConversationTurn[],
   signal?: AbortSignal,
   bundle?: EvidenceBundle,
-  options?: { generalConcept?: boolean; datedClubNews?: boolean; managerPages?: readonly RetrievedEvidencePage[];
+  options?: { generalConcept?: boolean; datedClubNews?: boolean; dossier?: import("./match-dossier/types").MatchDossier | null; managerPages?: readonly RetrievedEvidencePage[];
     reserveRepairCall?: () => boolean }
 ): Promise<string | null> {
   const clubFact = singleClubCurrentFactScope(question, grounding);
@@ -871,7 +871,7 @@ export async function writeDeskProse(
         }
         return records;
       }
-      const allowed = managersNamedInEvidence(evidence);
+      const allowed = managersNamedInEvidence(evidence, options?.dossier ?? null);
       // Some providers put the adjacent citation after the sentence terminator.
       // Bind that existing marker to the preceding sentence before verification;
       // neither source IDs nor factual text are created by this punctuation fix.

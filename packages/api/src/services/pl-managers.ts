@@ -1,3 +1,6 @@
+import type { MatchDossier } from "./match-dossier/types";
+import { takeEligibleDossierEvidence } from "./pundit-take/take-dossier-evidence";
+
 /**
  * Memory firewall, not a fact source.
  *
@@ -37,12 +40,29 @@ function escapeRegExp(value: string): string {
 
 /** Stale-list names this turn's search titles/snippets actually established. */
 export function managersNamedInEvidence(
-  results: readonly { title: string; snippet: string }[]
+  results: readonly { title: string; snippet: string }[],
+  dossier: MatchDossier | null = null,
 ): string[] {
   const blob = results.map((row) => `${row.title} ${row.snippet}`).join("\n");
-  return STALE_MANAGER_NAMES.filter((name) =>
+  const fromSearch = STALE_MANAGER_NAMES.filter((name) =>
     new RegExp(`\\b${escapeRegExp(name)}\\b`, "i").test(blob)
   );
+  return [...new Set([...fromSearch, ...managerNamesFromVerifiedDossier(dossier)])];
+}
+
+/** Manager names established by page-verified dossier evidence or structured manager slots. */
+export function managerNamesFromVerifiedDossier(dossier: MatchDossier | null): string[] {
+  if (!dossier) return [];
+  const names: string[] = [];
+  for (const item of dossier.evidence ?? []) {
+    if (item.category !== "manager" || !takeEligibleDossierEvidence(item)) continue;
+    names.push(item.claim);
+  }
+  const home = dossier.manager?.value?.home?.name;
+  const away = dossier.manager?.value?.away?.name;
+  if (home) names.push(home);
+  if (away) names.push(away);
+  return names.filter(Boolean);
 }
 
 export function stripUnlistedManagers(text: string, allowed: readonly string[]): string {

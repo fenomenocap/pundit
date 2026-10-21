@@ -240,6 +240,55 @@ describe("Take v2 prod audit fixes", () => {
     expect(fact).not.toMatch(/Leeds|blunt/i);
   });
 
+  it("golden-path gap + lineup question keeps gap focus and lineup boundary", () => {
+    const question = "Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?";
+    const grounding = chelseaTottenhamGrounding();
+    const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true, hasHistory: true });
+    const delivery = withPunditTakeRequestScope("v2", () =>
+      composePunditTakeDelivery(question, grounding, plan)!);
+    expect(delivery.answer).toMatch(/largest gap is on/i);
+    expect(delivery.answer).toMatch(/nothing about lineups on its own/i);
+    expect(delivery.answer).toMatch(/disagreement between my read and the market/i);
+  });
+
+  it("verified manager dossier claim survives take post-check", () => {
+    const managerClaim = "Kieran McKenna remains the Ipswich Town head coach.";
+    const dossier = minimalDossier([{
+      id: "mgr-ipswich",
+      claim: managerClaim,
+      sourceUrl: "https://example.com/manager",
+      publisher: "example.com",
+      publishedAt: "2026-10-18T08:00:00.000Z",
+      retrievedAt: "2026-10-18T09:00:00.000Z",
+      trustTier: "news",
+      verification: "page-verified",
+      direction: "neutral",
+      relatedFactor: "other",
+      category: "manager",
+      origin: "scheduled",
+      fixtureMatchVerified: true,
+      freshnessVerified: true,
+    }], "");
+    const grounding = spursCoventryGrounding();
+    const plan = buildPunditTakePlan(grounding, dossier);
+    const prose = renderTakeProseDeterministic(plan, "full", grounding);
+    expect(prose).toMatch(/McKenna/);
+  });
+
+  it("Palace v Newcastle tied model pct picks home deterministically", () => {
+    const grounding = {
+      ...chelseaTottenhamGrounding(),
+      home: "Crystal Palace",
+      away: "Newcastle",
+      pHome: 0.36,
+      pDraw: 0.28,
+      pAway: 0.36,
+    };
+    const plan = buildPunditTakePlan(grounding, null);
+    expect(plan.call.outcome).toBe("home");
+    expect(plan.call.headlineLabel).toBe("Crystal Palace");
+  });
+
   it("legacy header path stays byte-identical to the unscoped composer", () => {
     const question = "Fair odds for Chelsea v Tottenham?";
     const grounding = chelseaTottenhamGrounding();

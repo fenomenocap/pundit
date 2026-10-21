@@ -5480,17 +5480,25 @@ export function teamsFromHistory(
   return undefined;
 }
 
-export function findNextPricedModelFixtureForClub(
+export function listPricedModelFixturesForClub(
   club: string,
   fixtures: ModelFixture[],
   nowMs: number,
-): ModelFixture | undefined {
+): ModelFixture[] {
   const target = normalizeTeamName(club);
   return fixtures
     .filter((fixture) => !fixture.result)
     .filter((fixture) => normalizeTeamName(fixture.home) === target || normalizeTeamName(fixture.away) === target)
     .filter((fixture) => Date.parse(fixture.utcDate) >= nowMs - 6 * 60 * 60 * 1000)
-    .sort((a, b) => Date.parse(a.utcDate) - Date.parse(b.utcDate))[0];
+    .sort((a, b) => Date.parse(a.utcDate) - Date.parse(b.utcDate));
+}
+
+export function findNextPricedModelFixtureForClub(
+  club: string,
+  fixtures: ModelFixture[],
+  nowMs: number,
+): ModelFixture | undefined {
+  return listPricedModelFixturesForClub(club, fixtures, nowMs)[0];
 }
 
 export function resolveAskContext(
@@ -5577,8 +5585,17 @@ export function resolveAskContext(
     && /\b(?:pass or play|play or pass)\b/i.test(question)
     && passPlayMentionEarly.size === 1) {
     const club = [...passPlayMentionEarly.keys()][0];
-    const priced = findNextPricedModelFixtureForClub(club, fixtures, routing.now ?? Date.now());
-    if (priced) return { tier: "match", fixture: priced };
+    const priced = listPricedModelFixturesForClub(club, fixtures, routing.now ?? Date.now());
+    if (priced.length === 1) return { tier: "match", fixture: priced[0] };
+  }
+
+  if (!teams && !competitionId && !hasExplicitMatchupCue(question)) {
+    const singleClub = mentionedTeamPositions(question, searchableFixtures);
+    if (singleClub.size === 1 && hasMatchOutcomeIntent(question)) {
+      const club = [...singleClub.keys()][0];
+      const priced = listPricedModelFixturesForClub(club, fixtures, routing.now ?? Date.now());
+      if (priced.length === 1) return { tier: "match", fixture: priced[0] };
+    }
   }
 
   if (!teams && !competitionId && referencesFeaturedMatchDeictic(question)) {
