@@ -1,0 +1,20 @@
+{
+  "content": [
+    {
+      "id": 479421,
+      "kickoff": { "millis": 1792863000000 },
+      "teams": [
+        { "team": { "id": 8, "name": "Chelsea" }, "role": "home" },
+        { "team": { "id": 6, "name": "Tottenham Hotspur" }, "role": "away" }
+      ]
+    },
+    {
+      "id": 479400,
+      "kickoff": { "millis": 1760894400000 },
+      "teams": [
+        { "team": { "id": 8, "name": "Chelsea" }, "role": "home" },
+        { "team": { "id": 4, "name": "Newcastle United" }, "role": "away" }
+      ]
+    }
+  ]
+}

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ModelFixture } from "../model-data";
 import type { DossierEvidenceItem, FplPlayerAvailabilityStatus } from "./types";
-import { matchDossierFplEnabled } from "./flags";
+import { matchDossierFplEnabled, matchDossierFplPrefetchEnabled } from "./flags";
 import {
   findFplTeamByFixtureSide,
   fixtureFplTeamIdsFromMap,
@@ -167,7 +167,7 @@ async function fetchFplBootstrapSnapshot(
 export async function prefetchFplBootstrapForBuildPass(
   fetchFn: typeof fetch = fetch,
 ): Promise<FplBootstrapSnapshot | null> {
-  if (!matchDossierFplEnabled()) return null;
+  if (!matchDossierFplPrefetchEnabled()) return null;
   if (buildPassCache) return buildPassCache.snapshot;
   const snapshot = await fetchFplBootstrapSnapshot(fetchFn);
   if (!snapshot) return null;
@@ -180,6 +180,10 @@ export async function prefetchFplBootstrapForBuildPass(
 export function setFplBootstrapCacheForTests(snapshot: FplBootstrapSnapshot, fetchedAt = new Date().toISOString()): void {
   buildPassCache = { snapshot, fetchedAt };
   lastFplFetchStatus = { ok: true, status: 200, error: null, fetchedAt };
+}
+
+export function getCachedFplBootstrapSnapshot(): FplBootstrapSnapshot | null {
+  return buildPassCache?.snapshot ?? null;
 }
 
 /** Resolve bootstrap team id → fixture home/away label when matched. */

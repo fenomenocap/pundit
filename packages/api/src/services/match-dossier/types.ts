@@ -200,6 +200,28 @@ export interface MatchDossierFixtureRef {
   away: string;
 }
 
+/** Cross-provider fixture keys (fixture_identity source group). */
+export interface DossierFixtureIdentityValue {
+  plMatchId: string | null;
+  espnEventId: number;
+  fotmobMatchId: string | null;
+  goalMatchUuid: string | null;
+  bbcTipoId: string | null;
+  homeFplTeamId: number | null;
+  awayFplTeamId: number | null;
+  resolvedVia: "pl-api" | "espn";
+}
+
+export interface DossierFixtureFirstFetchLog {
+  groupKey: string;
+  fieldKey: string;
+  sourceKey: string;
+  fetchedAt: string;
+  sourceTimestamp: string | null;
+  query: string;
+  url: string;
+}
+
 export interface MatchDossier {
   schemaVersion: typeof MATCH_DOSSIER_SCHEMA_VERSION;
   fixture: MatchDossierFixtureRef;
@@ -242,6 +264,13 @@ export interface MatchDossier {
   } | null>;
 
   injuries: ProvenanceField<{ items: DossierEvidenceItem[] }>;
+  /** Present when MATCH_DOSSIER_FIXTURE_FIRST_ENABLED; injuries_doubts source group. */
+  teamNews?: ProvenanceField<{
+    items: DossierEvidenceItem[];
+    fetchLogs: DossierFixtureFirstFetchLog[];
+  }>;
+  /** Present when MATCH_DOSSIER_FIXTURE_FIRST_ENABLED; fixture_identity source group. */
+  fixtureIdentity?: ProvenanceField<DossierFixtureIdentityValue>;
   lineups: ProvenanceField<{ items: DossierEvidenceItem[] }>;
   manager: ProvenanceField<{
     home: { name: string | null; tenureNote: string | null };

@@ -77,6 +77,33 @@
       "news": "",
       "news_added": null,
       "chance_of_playing_next_round": 100
+    },
+    {
+      "id": 401,
+      "web_name": "James",
+      "team": 6,
+      "status": "d",
+      "news": "Muscle injury - 75% chance of playing",
+      "news_added": "2026-10-22T09:00:00.000Z",
+      "chance_of_playing_next_round": 75
+    },
+    {
+      "id": 402,
+      "web_name": "Porro",
+      "team": 18,
+      "status": "i",
+      "news": "Hamstring - Unknown return date",
+      "news_added": "2026-10-21T14:30:00.000Z",
+      "chance_of_playing_next_round": 0
+    },
+    {
+      "id": 403,
+      "web_name": "StaleChe",
+      "team": 6,
+      "status": "d",
+      "news": "Old knock",
+      "news_added": "2026-10-10T09:00:00.000Z",
+      "chance_of_playing_next_round": 50
     }
   ]
 }

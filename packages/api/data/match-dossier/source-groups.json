@@ -1,0 +1,830 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-20T13:30:00+08:00",
+  "owner": "Xavi (fakexavi) via CTO",
+  "rules": [
+    "Group chosen by field, not by query text.",
+    "Primary first, then at most one fallback; corroborateOnly sources may confirm a fact the primary/fallback already has, never add one.",
+    "If primary and fallback lack the fact, say nothing.",
+    "Third-party predictions, xG, ratings and odds never set our probabilities.",
+    "Paid sources are deferred until Xavi says yes.",
+    "Scoped search is allowed only inside a group's searchIncludeDomains and only for groups whose access includes a search template; open web search is out of the fact path.",
+    "Exception: the odds/market group is aggregate-all, not primary/fallback."
+  ],
+  "enforcement": {
+    "groupSelection": "Each dossier field maps to exactly one group key below.",
+    "searchScope": "Pass searchIncludeDomains as the include/allowed-domains filter; no LLM rewriting of the query; log the exact query sent.",
+    "fixtureMatch": "An item is accepted only if it carries the fixture ID (pl_match_id / espn / fotmob / goal uuid / bbc tipo id) or its page content names both clubs and the competition and its date fits the window (published after each club's previous match and before kickoff).",
+    "slotFromContent": "The slot is set from the page/feed field (e.g. FPL status, Goal suspensions[]), never from the query that found it.",
+    "teams": "Join clubs by provider team ID, not name regexes (fixes Coventry/Hull/Ipswich misses and 'city'/'united' collisions).",
+    "freshness": "Record fetchedAt and the source timestamp; drop if the source timestamp predates each club's previous match."
+  },
+  "fixtureIdKeys": [
+    "pl_match_id (=Opta id =FPL fixture code)",
+    "espn_event_id",
+    "fotmob_match_id",
+    "goal_match_uuid",
+    "bbc_tipo_id"
+  ],
+  "groups": {
+    "fixture_identity": {
+      "primary": "pl-api",
+      "fallback": "espn",
+      "corroborateOnly": [
+        "fotmob",
+        "goal",
+        "bbc",
+        "fpl"
+      ],
+      "access": {
+        "pl-api": "structured API: footballapi.pulselive.com/football/fixtures?comps=1&compSeasons={season_id} -> Opta matchId",
+        "espn": "structured API: site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates={yyyymmdd}"
+      },
+      "searchIncludeDomains": [
+        "api.premierleague.com",
+        "bbc.co.uk",
+        "bbc.com",
+        "espn.co.uk",
+        "espn.com",
+        "fantasy.premierleague.com",
+        "footballapi.pulselive.com",
+        "fotmob.com",
+        "goal.com",
+        "premierleague.com",
+        "sdp-prem-prod.premier-league-prod.pulselive.com",
+        "site.api.espn.com"
+      ],
+      "searchAllowed": false,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} (corroborate-only lookup; facts come from structured APIs)",
+      "notes": "Resolve once per fixture, by date + both team IDs. PL matchId = FPL fixture code = Opta id; map ESPN, FotMob, Goal match uuid and BBC tipo id onto it. Every other group joins on these IDs.",
+      "dropped": [],
+      "deferredPaid": [
+        "api-football"
+      ],
+      "blocked": []
+    },
+    "injuries_doubts": {
+      "primary": "fpl",
+      "fallback": "fotmob",
+      "corroborateOnly": [
+        "club-official",
+        "pl-editorial",
+        "goal",
+        "transfermarkt"
+      ],
+      "access": {
+        "fpl": "structured API: fantasy.premierleague.com/api/bootstrap-static/ (status a/d/i/s/u, chance_of_playing_next_round, news, news_added), team by FPL team id",
+        "fotmob": "structured API: fotmob.com/api/data/matchDetails?matchId={fotmob_id} lineup.*.unavailable[]",
+        "club-official": "per-fixture content by match ref where the club is on Pulselive (Spurs: api.thfc.pulselive.com/content/thfc/text/EN/?references=SDP_FOOTBALL_MATCH:{pl_match_id}); else sitemap + slug"
+      },
+      "searchIncludeDomains": [
+        "afcb.co.uk",
+        "api.premierleague.com",
+        "api.thfc.pulselive.com",
+        "arsenal.com",
+        "avfc.co.uk",
+        "brentfordfc.com",
+        "brightonandhovealbion.com",
+        "ccfc.co.uk",
+        "chelseafc.com",
+        "cpfc.co.uk",
+        "evertonfc.com",
+        "fantasy.premierleague.com",
+        "fotmob.com",
+        "fulhamfc.com",
+        "goal.com",
+        "itfc.co.uk",
+        "leedsunited.com",
+        "liverpoolfc.com",
+        "mancity.com",
+        "manutd.com",
+        "newcastleunited.com",
+        "nottinghamforest.co.uk",
+        "premierleague.com",
+        "safc.com",
+        "tottenhamhotspur.com",
+        "transfermarkt.co.uk",
+        "transfermarkt.com",
+        "transfermarkt.us",
+        "wearehullcity.co.uk"
+      ],
+      "searchAllowed": true,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} team news injuries",
+      "notes": "FPL is the only tested source with doubts (%) and fresh timestamps. A club or PL article can confirm an FPL row, never add a player FPL/FotMob don't list.",
+      "dropped": [],
+      "deferredPaid": [
+        "api-football"
+      ],
+      "blocked": [
+        "sofascore",
+        "whoscored"
+      ]
+    },
+    "suspensions": {
+      "primary": "fpl",
+      "fallback": "goal",
+      "corroborateOnly": [
+        "transfermarkt",
+        "statbunker",
+        "pl-editorial"
+      ],
+      "access": {
+        "fpl": "structured API: bootstrap-static status 's'",
+        "goal": "per-fixture page: goal.com/en/match/{home-slug}-vs-{away-slug}/{goal_match_uuid} -> __NEXT_DATA__ content.match.lineups.team{A,B}.suspensions[]"
+      },
+      "searchIncludeDomains": [
+        "api.premierleague.com",
+        "fantasy.premierleague.com",
+        "goal.com",
+        "premierleague.com",
+        "statbunker.com",
+        "transfermarkt.co.uk",
+        "transfermarkt.com",
+        "transfermarkt.us"
+      ],
+      "searchAllowed": true,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} suspended",
+      "notes": "Goal is new as fallback: only source besides FPL that had Bentancur suspended (FotMob missed it).",
+      "dropped": [],
+      "deferredPaid": [
+        "api-football"
+      ],
+      "blocked": []
+    },
+    "confirmed_lineups": {
+      "primary": "pl-api",
+      "fallback": "espn",
+      "corroborateOnly": [
+        "goal",
+        "club-official",
+        "fotmob"
+      ],
+      "access": {
+        "pl-api": "structured API: sdp-prem-prod.../api/v3/matches/{pl_match_id}/lineups",
+        "espn": "structured API: summary?event={espn_id} rosters",
+        "goal": "per-fixture page: content.match.lineups (confirmed=true)"
+      },
+      "searchIncludeDomains": [
+        "afcb.co.uk",
+        "api.premierleague.com",
+        "api.thfc.pulselive.com",
+        "arsenal.com",
+        "avfc.co.uk",
+        "brentfordfc.com",
+        "brightonandhovealbion.com",
+        "ccfc.co.uk",
+        "chelseafc.com",
+        "cpfc.co.uk",
+        "espn.co.uk",
+        "espn.com",
+        "evertonfc.com",
+        "footballapi.pulselive.com",
+        "fotmob.com",
+        "fulhamfc.com",
+        "goal.com",
+        "itfc.co.uk",
+        "leedsunited.com",
+        "liverpoolfc.com",
+        "mancity.com",
+        "manutd.com",
+        "newcastleunited.com",
+        "nottinghamforest.co.uk",
+        "premierleague.com",
+        "safc.com",
+        "sdp-prem-prod.premier-league-prod.pulselive.com",
+        "site.api.espn.com",
+        "tottenhamhotspur.com",
+        "wearehullcity.co.uk"
+      ],
+      "searchAllowed": false,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} (corroborate-only lookup; facts come from structured APIs)",
+      "notes": "Only after official release (~T-60m). No predicted XI from anyone.",
+      "dropped": [
+        "predicted lineups (PL 'Predicted line-ups' articles, WhoScored, Goal, FotMob)"
+      ],
+      "deferredPaid": [
+        "api-football"
+      ],
+      "blocked": []
+    },
+    "manager": {
+      "primary": "pl-api",
+      "fallback": "goal",
+      "corroborateOnly": [
+        "club-official",
+        "pl-editorial"
+      ],
+      "access": {
+        "pl-api": "structured API: v3 lineups managers (match day)",
+        "goal": "per-fixture page: content.match.lineups.team{A,B}.manager (present pre-match)"
+      },
+      "searchIncludeDomains": [
+        "afcb.co.uk",
+        "api.premierleague.com",
+        "api.thfc.pulselive.com",
+        "arsenal.com",
+        "avfc.co.uk",
+        "brentfordfc.com",
+        "brightonandhovealbion.com",
+        "ccfc.co.uk",
+        "chelseafc.com",
+        "cpfc.co.uk",
+        "evertonfc.com",
+        "footballapi.pulselive.com",
+        "fulhamfc.com",
+        "goal.com",
+        "itfc.co.uk",
+        "leedsunited.com",
+        "liverpoolfc.com",
+        "mancity.com",
+        "manutd.com",
+        "newcastleunited.com",
+        "nottinghamforest.co.uk",
+        "premierleague.com",
+        "safc.com",
+        "sdp-prem-prod.premier-league-prod.pulselive.com",
+        "tottenhamhotspur.com",
+        "wearehullcity.co.uk"
+      ],
+      "searchAllowed": false,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} (corroborate-only lookup; facts come from structured APIs)",
+      "notes": "Pre-release, use Goal's per-fixture manager (tested: X. Alonso, R. De Zerbi). PL staff list is NOT a fallback: it listed two Chelsea 'Manager' entries.",
+      "dropped": [],
+      "deferredPaid": [
+        "api-football"
+      ],
+      "blocked": []
+    },
+    "form_table_h2h": {
+      "primary": "espn",
+      "fallback": "fotmob",
+      "corroborateOnly": [
+        "goal",
+        "statbunker",
+        "footystats"
+      ],
+      "access": {
+        "espn": "structured API (already built)",
+        "fotmob": "structured API: matchDetails teamForm/table/h2h",
+        "goal": "per-fixture page: match.form, h2h, summaryStandings (lastUpdatedAt)"
+      },
+      "searchIncludeDomains": [
+        "espn.co.uk",
+        "espn.com",
+        "footystats.org",
+        "fotmob.com",
+        "goal.com",
+        "site.api.espn.com",
+        "statbunker.com"
+      ],
+      "searchAllowed": false,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} (corroborate-only lookup; facts come from structured APIs)",
+      "notes": "Deterministic numbers; no search. If ESPN and fallback disagree on the table, show neither.",
+      "dropped": [],
+      "deferredPaid": [
+        "api-football"
+      ],
+      "blocked": []
+    },
+    "xg_advanced": {
+      "primary": "footystats",
+      "fallback": "fpl",
+      "corroborateOnly": [
+        "understat",
+        "the-analyst"
+      ],
+      "access": {
+        "footystats": "per-fixture page: footystats.org/england/{home-slug}-vs-{away-slug}-h2h-stats (season xG/xGA, home/away split, kickoff shown on page)",
+        "fpl": "structured API: sum of player expected_goals by team (Opta via PL); label as 'player xG total'"
+      },
+      "searchIncludeDomains": [
+        "fantasy.premierleague.com",
+        "footystats.org",
+        "theanalyst.com",
+        "understat.com"
+      ],
+      "searchAllowed": true,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} xG",
+      "notes": "Never mix xG models in one line (20 Oct: Chelsea season xG FootyStats ~11.3, Understat 11.92, FPL player sum 9.98). Name the source with the number. Third-party xG never enters our probabilities.",
+      "dropped": [
+        "The Analyst as data source (JS-only, behind Stats Perform key)"
+      ],
+      "deferredPaid": [
+        "statsperform",
+        "api-football"
+      ],
+      "blocked": [
+        "fbref",
+        "whoscored",
+        "sofascore"
+      ]
+    },
+    "player_stats": {
+      "primary": "fpl",
+      "fallback": null,
+      "corroborateOnly": [
+        "statbunker",
+        "transfermarkt",
+        "the-analyst"
+      ],
+      "access": {
+        "fpl": "structured API: bootstrap-static elements (minutes, goals, assists, expected_goals/assists per 90)"
+      },
+      "searchIncludeDomains": [
+        "fantasy.premierleague.com",
+        "statbunker.com",
+        "theanalyst.com",
+        "transfermarkt.co.uk",
+        "transfermarkt.com",
+        "transfermarkt.us"
+      ],
+      "searchAllowed": true,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} {player} stats",
+      "notes": "No free fallback that passes terms (Understat robots Disallow /; FBref/Sofascore/WhoScored blocked). If FPL lacks it, say nothing.",
+      "dropped": [],
+      "deferredPaid": [
+        "playerstats-football",
+        "statsperform",
+        "api-football"
+      ],
+      "blocked": [
+        "fbref",
+        "sofascore",
+        "whoscored"
+      ]
+    },
+    "previews_quotes_press": {
+      "primary": "pl-editorial",
+      "fallback": "club-official",
+      "corroborateOnly": [
+        "bbc",
+        "goal",
+        "cbs"
+      ],
+      "access": {
+        "pl-editorial": "structured API: api.premierleague.com/content/premierleague/text/EN/?pageSize=20&references=SDP_FOOTBALL_MATCH:{pl_match_id}",
+        "club-official": "Spurs: api.thfc.pulselive.com/content/thfc/text/EN/?references=SDP_FOOTBALL_MATCH:{pl_match_id}; Chelsea: chelseafc.com/en/sitemap.xml lastmod + slugs like alonso-press-conference-pre-{opp}-..., confirmed-chelsea-line-up-vs-{opp}-{ddmmyy}",
+        "bbc": "per-fixture page: bbc.co.uk/sport/football/scores-fixtures/{date} -> /sport/football/live/{tipo_id}"
+      },
+      "searchIncludeDomains": [
+        "afcb.co.uk",
+        "api.premierleague.com",
+        "api.thfc.pulselive.com",
+        "arsenal.com",
+        "avfc.co.uk",
+        "bbc.co.uk",
+        "bbc.com",
+        "brentfordfc.com",
+        "brightonandhovealbion.com",
+        "cbssports.com",
+        "ccfc.co.uk",
+        "chelseafc.com",
+        "cpfc.co.uk",
+        "evertonfc.com",
+        "fulhamfc.com",
+        "goal.com",
+        "itfc.co.uk",
+        "leedsunited.com",
+        "liverpoolfc.com",
+        "mancity.com",
+        "manutd.com",
+        "newcastleunited.com",
+        "nottinghamforest.co.uk",
+        "premierleague.com",
+        "safc.com",
+        "tottenhamhotspur.com",
+        "wearehullcity.co.uk"
+      ],
+      "searchAllowed": true,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} press conference team news preview",
+      "notes": "ID-keyed editorial replaces open search. Reject women's/academy items (Chelsea and Spurs feeds both carry WSL Chelsea v Spurs content). Reject items whose body is about another match even if tagged (PL tagged an Everton-game Chavarria article to Che-Tot).",
+      "dropped": [],
+      "deferredPaid": [],
+      "blocked": [
+        "whoscored"
+      ]
+    },
+    "transfers_market_value": {
+      "primary": "club-official",
+      "fallback": "pl-editorial",
+      "corroborateOnly": [
+        "bbc",
+        "goal",
+        "transfermarkt"
+      ],
+      "access": {
+        "club-official": "scoped search / club content API for official announcements",
+        "pl-editorial": "structured API: content by SDP_FOOTBALL_TEAM:{team_id}"
+      },
+      "searchIncludeDomains": [
+        "afcb.co.uk",
+        "api.premierleague.com",
+        "api.thfc.pulselive.com",
+        "arsenal.com",
+        "avfc.co.uk",
+        "bbc.co.uk",
+        "bbc.com",
+        "brentfordfc.com",
+        "brightonandhovealbion.com",
+        "ccfc.co.uk",
+        "chelseafc.com",
+        "cpfc.co.uk",
+        "evertonfc.com",
+        "fulhamfc.com",
+        "goal.com",
+        "itfc.co.uk",
+        "leedsunited.com",
+        "liverpoolfc.com",
+        "mancity.com",
+        "manutd.com",
+        "newcastleunited.com",
+        "nottinghamforest.co.uk",
+        "premierleague.com",
+        "safc.com",
+        "tottenhamhotspur.com",
+        "transfermarkt.co.uk",
+        "transfermarkt.com",
+        "transfermarkt.us",
+        "wearehullcity.co.uk"
+      ],
+      "searchAllowed": true,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} transfer signing confirmed",
+      "notes": "Completed deals only from club or PL. Market values: Transfermarkt only, cited as 'Transfermarkt estimate', never scraped at volume. Rumours: say nothing.",
+      "dropped": [],
+      "deferredPaid": [
+        "api-football"
+      ],
+      "blocked": []
+    },
+    "odds_market": {
+      "primary": null,
+      "fallback": null,
+      "corroborateOnly": [
+        "football-data",
+        "oddschecker",
+        "oddsportal"
+      ],
+      "access": {
+        "kalshi": "structured API: api.elections.kalshi.com/trade-api/v2/events?series_ticker=KXEPLGAME",
+        "polymarket": "structured API: gamma-api.polymarket.com/events (match by both clubs + date)"
+      },
+      "searchIncludeDomains": [
+        "api.elections.kalshi.com",
+        "football-data.co.uk",
+        "gamma-api.polymarket.com",
+        "kalshi.com",
+        "oddschecker.com",
+        "oddsportal.com",
+        "polymarket.com"
+      ],
+      "searchAllowed": false,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} (corroborate-only lookup; facts come from structured APIs)",
+      "notes": "Shown once, separate Consensus view; never set or blend our probabilities. Ignore odds widgets on FootyStats/Goal/CBS (affiliate). Odds licensing still Xavi's call.",
+      "dropped": [],
+      "deferredPaid": [
+        "api-football"
+      ],
+      "blocked": [
+        "stake"
+      ],
+      "mode": "aggregate",
+      "aggregateSources": [
+        "kalshi",
+        "polymarket"
+      ],
+      "candidateSources": [
+        "stake (blocked by Cloudflare)",
+        "oddschecker (ToS restricts scraping, untested)",
+        "oddsportal (ToS restricts scraping, untested)"
+      ],
+      "historicalOnly": [
+        "football-data"
+      ],
+      "note": "Aggregation group (Xavi 2026-10-20): show EVERY live source's price side by side with timestamps, plus best price and our fair price. No primary/fallback. Add free sources as they're verified; a source that's stale or failing is omitted from the table, never guessed. Market never sets or blends our probabilities. Odds licensing still Xavi's call."
+    },
+    "historical_backtest": {
+      "primary": "football-data",
+      "fallback": "understat",
+      "corroborateOnly": [
+        "clubelo",
+        "statsbomb-open",
+        "fpl"
+      ],
+      "access": {
+        "football-data": "CSV: football-data.co.uk/mmz4281/{yyyy}/E0.csv (results, Pinnacle/B365 closes, now HxG/AxG)",
+        "understat": "JSON getLeagueData/EPL/{season} (offline research only)",
+        "clubelo": "pinned artifact"
+      },
+      "searchIncludeDomains": [
+        "api.clubelo.com",
+        "clubelo.com",
+        "fantasy.premierleague.com",
+        "football-data.co.uk",
+        "understat.com"
+      ],
+      "searchAllowed": false,
+      "queryTemplate": "{home} v {away} {competition} {kickoff_date} (corroborate-only lookup; facts come from structured APIs)",
+      "notes": "Offline only, never in the request path. Respect time order (no future snapshots; the old Elo champion leaked). football-data lags ~1 week (last row 12 Oct on 20 Oct).",
+      "dropped": [],
+      "deferredPaid": [
+        "statsperform"
+      ],
+      "blocked": []
+    }
+  },
+  "sources": {
+    "pl-api": {
+      "name": "Premier League official API (Pulselive)",
+      "domains": [
+        "premierleague.com",
+        "api.premierleague.com",
+        "footballapi.pulselive.com",
+        "sdp-prem-prod.premier-league-prod.pulselive.com"
+      ],
+      "cost": "free",
+      "tos": "Undocumented; needs Origin: https://www.premierleague.com; PL site terms restrict reuse. Commercial use unclear.",
+      "blocked": false
+    },
+    "pl-editorial": {
+      "name": "Premier League editorial content API",
+      "domains": [
+        "premierleague.com",
+        "api.premierleague.com"
+      ],
+      "cost": "free",
+      "tos": "As pl-api. Quote/paraphrase with link; don't republish whole articles.",
+      "blocked": false
+    },
+    "fpl": {
+      "name": "FPL bootstrap-static + fixtures (PL-run)",
+      "domains": [
+        "fantasy.premierleague.com"
+      ],
+      "cost": "free",
+      "tos": "Unofficial public API meant for game use; commercial use unclear (interim).",
+      "blocked": false
+    },
+    "espn": {
+      "name": "ESPN site API",
+      "domains": [
+        "site.api.espn.com",
+        "espn.com",
+        "espn.co.uk"
+      ],
+      "cost": "free",
+      "tos": "Undocumented; Disney terms restrict automated extraction. Already in use.",
+      "blocked": false
+    },
+    "fotmob": {
+      "name": "FotMob",
+      "domains": [
+        "fotmob.com"
+      ],
+      "cost": "free",
+      "tos": "robots.txt disallows /api/* for generic agents; data licensed from enetpulse. Weakest terms.",
+      "blocked": false
+    },
+    "goal": {
+      "name": "Goal.com match page (Perform/Opta-fed __NEXT_DATA__)",
+      "domains": [
+        "goal.com"
+      ],
+      "cost": "free",
+      "tos": "robots.txt allows all; site terms (DAZN/Footballco) likely forbid systematic extraction. Treat as per-fixture page read, low volume.",
+      "blocked": false
+    },
+    "club-official": {
+      "name": "Club official sites (e.g. tottenhamhotspur.com content API, chelseafc.com sitemap+article)",
+      "domains": [
+        "arsenal.com",
+        "avfc.co.uk",
+        "afcb.co.uk",
+        "brentfordfc.com",
+        "brightonandhovealbion.com",
+        "chelseafc.com",
+        "ccfc.co.uk",
+        "cpfc.co.uk",
+        "evertonfc.com",
+        "fulhamfc.com",
+        "wearehullcity.co.uk",
+        "itfc.co.uk",
+        "leedsunited.com",
+        "liverpoolfc.com",
+        "mancity.com",
+        "manutd.com",
+        "newcastleunited.com",
+        "nottinghamforest.co.uk",
+        "safc.com",
+        "tottenhamhotspur.com",
+        "api.thfc.pulselive.com"
+      ],
+      "cost": "free",
+      "tos": "First-party, but club site terms restrict reuse; quote briefly with link. Per-club access method differs; only Spurs and Chelsea tested.",
+      "blocked": false
+    },
+    "bbc": {
+      "name": "BBC Sport fixture + live match page",
+      "domains": [
+        "bbc.co.uk",
+        "bbc.com"
+      ],
+      "cost": "free",
+      "tos": "BBC terms forbid commercial reuse of content; quote briefly with link.",
+      "blocked": false
+    },
+    "cbs": {
+      "name": "CBS Sports soccer",
+      "domains": [
+        "cbssports.com"
+      ],
+      "cost": "free",
+      "tos": "Editorial; terms restrict reuse. Many EPL pages are Kalshi-promo betting picks.",
+      "blocked": false
+    },
+    "footystats": {
+      "name": "FootyStats per-fixture H2H/xG page",
+      "domains": [
+        "footystats.org"
+      ],
+      "cost": "free (premium tiers exist)",
+      "tos": "robots.txt only disallows /api/club*; site sells a paid API, so terms may restrict scraping. Low volume, per-fixture page.",
+      "blocked": false
+    },
+    "statbunker": {
+      "name": "Statbunker",
+      "domains": [
+        "statbunker.com"
+      ],
+      "cost": "free",
+      "tos": "No stated API; HTML only.",
+      "blocked": false,
+      "note": "8-15 s per page from the box"
+    },
+    "the-analyst": {
+      "name": "The Analyst (Opta)",
+      "domains": [
+        "theanalyst.com"
+      ],
+      "cost": "free to read",
+      "tos": "Stats pages are JS-rendered from Stats Perform's api.performfeeds.com with an embedded outlet key; using that key is off-limits. Articles only.",
+      "blocked": false
+    },
+    "understat": {
+      "name": "Understat",
+      "domains": [
+        "understat.com"
+      ],
+      "cost": "free",
+      "tos": "robots.txt: User-agent * Disallow / . Backtest/research only, not runtime.",
+      "blocked": false
+    },
+    "transfermarkt": {
+      "name": "Transfermarkt",
+      "domains": [
+        "transfermarkt.com",
+        "transfermarkt.co.uk",
+        "transfermarkt.us"
+      ],
+      "cost": "free",
+      "tos": "Terms prohibit scraping; injury data lags (missed 3 Spurs injuries 20 Oct).",
+      "blocked": false
+    },
+    "kalshi": {
+      "name": "Kalshi",
+      "domains": [
+        "kalshi.com",
+        "api.elections.kalshi.com"
+      ],
+      "cost": "free",
+      "tos": "Public market data API. Odds licensing decision pending with Xavi.",
+      "blocked": false
+    },
+    "polymarket": {
+      "name": "Polymarket",
+      "domains": [
+        "polymarket.com",
+        "gamma-api.polymarket.com"
+      ],
+      "cost": "free",
+      "tos": "Public gamma API.",
+      "blocked": false
+    },
+    "stake": {
+      "name": "Stake",
+      "domains": [
+        "stake.bet"
+      ],
+      "cost": "free",
+      "tos": "",
+      "blocked": true,
+      "note": "Cloudflare blocks"
+    },
+    "football-data": {
+      "name": "football-data.co.uk",
+      "domains": [
+        "football-data.co.uk"
+      ],
+      "cost": "free",
+      "tos": "Non-commercial licence.",
+      "blocked": false
+    },
+    "clubelo": {
+      "name": "ClubElo",
+      "domains": [
+        "clubelo.com",
+        "api.clubelo.com"
+      ],
+      "cost": "free",
+      "tos": "Pinned artifact only; no runtime fetch.",
+      "blocked": false,
+      "note": "api.clubelo.com timed out from the box 20 Oct"
+    },
+    "statsbomb-open": {
+      "name": "StatsBomb open data",
+      "domains": [
+        "github.com/statsbomb/open-data"
+      ],
+      "cost": "free",
+      "tos": "Research licence with attribution.",
+      "blocked": false
+    },
+    "oddschecker": {
+      "name": "Oddschecker",
+      "domains": [
+        "oddschecker.com"
+      ],
+      "cost": "free",
+      "tos": "Affiliate site; terms restrict scraping. Not tested.",
+      "blocked": false
+    },
+    "oddsportal": {
+      "name": "OddsPortal",
+      "domains": [
+        "oddsportal.com"
+      ],
+      "cost": "free",
+      "tos": "Terms restrict scraping. Not tested.",
+      "blocked": false
+    },
+    "sofascore": {
+      "name": "Sofascore",
+      "domains": [
+        "sofascore.com"
+      ],
+      "cost": "free",
+      "tos": "",
+      "blocked": true,
+      "note": "403 from box"
+    },
+    "whoscored": {
+      "name": "WhoScored",
+      "domains": [
+        "whoscored.com"
+      ],
+      "cost": "free",
+      "tos": "",
+      "blocked": true,
+      "note": "403 Cloudflare"
+    },
+    "fbref": {
+      "name": "FBref",
+      "domains": [
+        "fbref.com"
+      ],
+      "cost": "free",
+      "tos": "",
+      "blocked": true,
+      "note": "403 Cloudflare"
+    },
+    "api-football": {
+      "name": "API-Football",
+      "domains": [
+        "api-football.com"
+      ],
+      "cost": "paid",
+      "status": "deferred (paid)",
+      "tos": "Licensed. Needs Xavi's yes.",
+      "blocked": false
+    },
+    "playerstats-football": {
+      "name": "playerstats.football",
+      "domains": [
+        "playerstats.football"
+      ],
+      "cost": "paid",
+      "status": "deferred (paid)",
+      "tos": "Needs Xavi's yes.",
+      "blocked": false
+    },
+    "statsperform": {
+      "name": "Stats Perform Dynamic Stats API",
+      "domains": [
+        "statsperform.com"
+      ],
+      "cost": "paid",
+      "status": "deferred (paid)",
+      "tos": "Needs Xavi's yes.",
+      "blocked": false
+    }
+  }
+}
