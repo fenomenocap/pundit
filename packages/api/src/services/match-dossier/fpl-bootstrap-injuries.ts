@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ModelFixture } from "../model-data";
 import type { DossierEvidenceItem, FplPlayerAvailabilityStatus } from "./types";
-import { matchDossierFplEnabled } from "./flags";
+import { matchDossierFplEnabled, matchDossierFplPrefetchEnabled } from "./flags";
 import {
   findFplTeamByFixtureSide,
   fixtureFplTeamIdsFromMap,
@@ -21,12 +21,16 @@ export interface FplBootstrapTeam {
   name: string;
   short_name: string;
   code?: number;
+  /** Pulselive team id (matches footballapi fixture team.id). */
+  pulse_id?: number;
 }
 
 export interface FplBootstrapElement {
   id: number;
   web_name: string;
   team: number;
+  /** FPL element code (matches Pulselive staff altIds.opta numeric suffix). */
+  code?: number;
   status: string;
   news: string;
   news_added: string | null;
@@ -108,8 +112,19 @@ export function resetFplBootstrapCacheForTests(): void {
   lastFplFetchStatus = { ok: false, status: null, error: null, fetchedAt: null };
 }
 
+/** Recorded compSeason 841 FPL slice (subset of teams/elements used in dossier tests). */
 export function loadFplBootstrapFromRecordedFixture(): FplBootstrapSnapshot {
-  const file = path.join(__dirname, "__fixtures__", "fpl-bootstrap-static-sample.json");
+  return loadFplBootstrap841Slice();
+}
+
+export function loadFplBootstrap841Slice(): FplBootstrapSnapshot {
+  const file = path.join(__dirname, "__fixtures__", "fpl-bootstrap-static-841-slice.json");
+  return JSON.parse(fs.readFileSync(file, "utf8")) as FplBootstrapSnapshot;
+}
+
+/** Real FPL bootstrap-static snapshot (full teams, flagged elements). */
+export function loadFplBootstrap841Recorded(): FplBootstrapSnapshot {
+  const file = path.join(__dirname, "__fixtures__", "fpl-bootstrap-static-841-recorded.json");
   return JSON.parse(fs.readFileSync(file, "utf8")) as FplBootstrapSnapshot;
 }
 
@@ -167,7 +182,7 @@ async function fetchFplBootstrapSnapshot(
 export async function prefetchFplBootstrapForBuildPass(
   fetchFn: typeof fetch = fetch,
 ): Promise<FplBootstrapSnapshot | null> {
-  if (!matchDossierFplEnabled()) return null;
+  if (!matchDossierFplPrefetchEnabled()) return null;
   if (buildPassCache) return buildPassCache.snapshot;
   const snapshot = await fetchFplBootstrapSnapshot(fetchFn);
   if (!snapshot) return null;
@@ -180,6 +195,10 @@ export async function prefetchFplBootstrapForBuildPass(
 export function setFplBootstrapCacheForTests(snapshot: FplBootstrapSnapshot, fetchedAt = new Date().toISOString()): void {
   buildPassCache = { snapshot, fetchedAt };
   lastFplFetchStatus = { ok: true, status: 200, error: null, fetchedAt };
+}
+
+export function getCachedFplBootstrapSnapshot(): FplBootstrapSnapshot | null {
+  return buildPassCache?.snapshot ?? null;
 }
 
 /** Resolve bootstrap team id → fixture home/away label when matched. */
@@ -200,6 +219,7 @@ export function buildFplInjuryEvidenceForFixture(
   fixture: ModelFixture,
   retrievedAt: string,
   snapshot: FplBootstrapSnapshot,
+  options?: { requireNewsAdded?: boolean; dropUnavailable?: boolean },
 ): DossierEvidenceItem[] {
   if (fixture.competitionId !== "eng.1") return [];
   const teamIds = fixtureFplTeamIds(snapshot, fixture);
@@ -214,7 +234,11 @@ export function buildFplInjuryEvidenceForFixture(
     if (!team) continue;
     const club = clubLabelForFplTeam(fixture, team);
     const status = normalizeFplStatus(player.status, hasNews);
+    if (options?.dropUnavailable && status === "u") continue;
     const newsAddedAt = player.news_added ?? null;
+    if (options?.requireNewsAdded && !newsAddedAt && status !== "i" && status !== "s") {
+      continue;
+    }
     const chanceOfPlaying = player.chance_of_playing_next_round ?? null;
     items.push({
       id: evidenceIdForFpl(player.id, fixture),
@@ -237,6 +261,9 @@ export function buildFplInjuryEvidenceForFixture(
       status,
       chanceOfPlaying,
       newsAddedAt,
+      fplElementId: player.id,
+      fplElementCode: player.code ?? null,
+      fplTeamId: player.team,
       newsText: hasNews ? newsText : undefined,
     });
   }

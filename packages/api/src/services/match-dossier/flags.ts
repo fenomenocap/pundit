@@ -17,6 +17,16 @@ export function matchDossierFplEnabled(): boolean {
   return process.env.MATCH_DOSSIER_FPL_ENABLED === "true";
 }
 
+/** Fixture-first source groups (PL identity + FPL team news); default off — no prod behaviour change. */
+export function matchDossierFixtureFirstEnabled(): boolean {
+  return process.env.MATCH_DOSSIER_FIXTURE_FIRST_ENABLED === "true";
+}
+
+/** FPL bootstrap fetch for dossier builds (legacy FPL flag or fixture-first pipeline). */
+export function matchDossierFplPrefetchEnabled(): boolean {
+  return matchDossierFplEnabled() || matchDossierFixtureFirstEnabled();
+}
+
 export const MATCH_DOSSIER_BUILDER_VERSION = "phase2-2026-10-19";
 
 export const DOSSIER_INTERVAL_MS = 6 * 60 * 60 * 1000;
