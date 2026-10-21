@@ -99,10 +99,14 @@ export function singleClubCurrentFactScope(
   if ((!isMatchGrounding(grounding) && !explicitClubs.length)
     || /\b(?:vs\.?|versus|against)\b|\s+v\s+|\b(?:away|home)\s+to\b/i.test(question)) return null;
   const q = question.trim().replace(/^who['’]s\b/i, "who is").replace(/^what['’]s\b/i, "what is");
-  const manager = (/^(?:who|what)\s+is\b[^?\n]{0,100}\b(?:manager|head coach|coach)\b/i.test(q)
-    || /^who\s+(?:manages|coaches)\b/i.test(q))
+  const sentenceParts = q.split(/(?<=[?.!])\s+/).map((part) => part.trim()).filter(Boolean);
+  const firstSentence = sentenceParts[0] ?? q;
+  const followUpSentences = sentenceParts.slice(1);
+  if (followUpSentences.some((part) => !/^(?:explain|why|how)\b/i.test(part))) return null;
+  const manager = (/^(?:who|what)\s+is\b[^?\n]{0,100}\b(?:manager|head coach|coach)\b/i.test(firstSentence)
+    || /^who\s+(?:manages|coaches)\b/i.test(firstSentence))
     && !/\b(?:space|shape|press|pressing|zones?|width|midfield|defence|defense)\b/i.test(q);
-  const result = /^what\s+(?:is|was)\b[^?\n]{0,100}\b(?:latest|last|most recent|final)\s+(?:result|score)\b/i.test(q);
+  const result = /^what\s+(?:is|was)\b[^?\n]{0,100}\b(?:latest|last|most recent|final)\s+(?:result|score)\b/i.test(firstSentence);
   if (!manager && !result) return null;
   if (/\b(?:19|20)\d{2}\b|\b(?:formerly|former|previous|used to|tomorrow|next (?:week|month|year|season)|last (?:year|season))\b/i.test(q)) return null;
   // Keep compound requests on the normal evidence path, rather than silently
@@ -122,7 +126,7 @@ export function singleClubCurrentFactScope(
     if (words.some((word) => !allowed.has(word))
       || (words.length > 1 && !words.some((word) => topic.split(" ").includes(word)))) return null;
   }
-  const primaryQuestion = reasonMatch ? q.slice(0, reasonMatch.index).trim() : q;
+  const primaryQuestion = reasonMatch ? q.slice(0, reasonMatch.index).trim() : firstSentence;
   const folded = normalizeTeamText(primaryQuestion.replace(/['’]s\b/g, ""));
   const clubs = (isMatchGrounding(grounding) ? [grounding.home, grounding.away] : explicitClubs).filter((club) => {
     const canonical = normalizeTeamName(club);

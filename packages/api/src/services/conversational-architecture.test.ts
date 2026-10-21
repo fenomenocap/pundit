@@ -95,6 +95,43 @@ const grounding = (): Grounding => {
   };
 };
 
+/** Same fixture with fresh Kalshi decimals so preview gap lines and table prices align. */
+const groundingWithLiveKalshiPricing = (): Grounding => {
+  const base = grounding();
+  // Within MARKET_STALE_MS of the describe-block Date.now mock (2026-09-12T12:00:00Z).
+  const observedAt = "2026-09-12T11:30:00Z";
+  const oddsSources = base.oddsSources!.map((source) => ({ ...source, observedAt }));
+  return {
+    ...base,
+    oddsSources,
+    marketDivergence: base.marketDivergence.map((row) => ({ ...row, observedAt })),
+    pricing: buildMatchPricing({
+      fixtureId: base.fixtureId,
+      home: base.home,
+      away: base.away,
+      kickoff: base.date,
+      pricedAt: observedAt,
+      pHome: base.pHome,
+      pDraw: base.pDraw,
+      pAway: base.pAway,
+      markets: oddsSources.map((source) => ({
+        source: source.source,
+        observedAt: source.observedAt,
+        pHome: source.pHome,
+        pDraw: source.pDraw,
+        pAway: source.pAway,
+        impliedDisplayDecimals: true,
+        decimalOdds: {
+          home: 1 / source.pHome,
+          draw: 1 / source.pDraw!,
+          away: 1 / source.pAway,
+        },
+      })),
+      consensus: base.pricing.consensus,
+    }),
+  };
+};
+
 describe("V2 conversational architecture", () => {
   beforeEach(() => {
     // Dated evidence below is relative to this fixture, not the machine clock.
@@ -518,7 +555,7 @@ describe("V2 conversational architecture", () => {
   });
 
   it("uses the structured draft contract in the real delivery boundary and fails closed", async () => {
-    const match = grounding();
+    const match = groundingWithLiveKalshiPricing();
     const client = {} as Parameters<typeof deliverAnswer>[0]["client"];
     const base = {
       tier: "match" as const,
@@ -979,7 +1016,7 @@ describe("V2 conversational architecture", () => {
   });
 
   it("composes direct fair-price, scorer, lineup and market answers", () => {
-    const match = grounding();
+    const match = groundingWithLiveKalshiPricing();
     const fair = composeMatchResponse("Fair odds for 2-1?", match,
       planResponse("Fair odds for 2-1?", { groundingKind: "match", hasHistory: true }));
     expect(fair).toMatch(/11\.4%.*8\.77/);
@@ -1164,11 +1201,65 @@ describe("V2 conversational architecture", () => {
     ].join("\n");
     expect(proseFromTakeAnswer(syntheticBadPreview)).toMatch(VENDOR_WORDING_CHECK_PATTERN);
     expect(previewCopy).toMatch(/Biggest gap vs market: Arsenal, \+6\.2 pts\./);
+
+    const staleObservedAt = "2026-09-01T08:00:00Z";
+    const staleSource = { ...match.oddsSources![0], observedAt: staleObservedAt };
+    const staleOdds = {
+      ...match,
+      oddsSources: [staleSource],
+      pricing: buildMatchPricing({
+        fixtureId: match.fixtureId,
+        home: match.home,
+        away: match.away,
+        kickoff: match.date,
+        pricedAt: staleObservedAt,
+        pHome: match.pHome,
+        pDraw: match.pDraw,
+        pAway: match.pAway,
+        markets: [{
+          source: staleSource.source,
+          observedAt: staleObservedAt,
+          pHome: staleSource.pHome,
+          pDraw: staleSource.pDraw!,
+          pAway: staleSource.pAway,
+          impliedDisplayDecimals: true,
+          decimalOdds: {
+            home: 1 / staleSource.pHome,
+            draw: 1 / staleSource.pDraw!,
+            away: 1 / staleSource.pAway,
+          },
+        }],
+        consensus: match.pricing.consensus,
+      }),
+    };
+    const stalePreview = composeMatchResponse(
+      "Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.",
+      staleOdds,
+      planResponse("Give me your full preview of Arsenal vs Chelsea, including the 1X2, likely scorelines and any comparable market disagreement.", { groundingKind: "match" }),
+    );
+    expect(stalePreview).not.toMatch(/Biggest gap vs market/i);
+    expect(stalePreview).toMatch(/No price yet/i);
     expect(previewCopy).not.toMatch(/^Lean:/m);
     expect(previewCopy).not.toMatch(/market snapshot/);
     expect(previewCopy).not.toMatch(/Over 2\.5 is 58\.9%/);
 
-    const bare = { ...match, oddsSources: [], marketDivergence: [], consensus: undefined };
+    const bare = {
+      ...match,
+      oddsSources: [],
+      marketDivergence: [],
+      consensus: undefined,
+      pricing: buildMatchPricing({
+        fixtureId: match.fixtureId,
+        home: match.home,
+        away: match.away,
+        kickoff: match.date,
+        pricedAt: match.pricing.pricedAt,
+        pHome: match.pHome,
+        pDraw: match.pDraw,
+        pAway: match.pAway,
+        markets: [],
+      }),
+    };
     const emptyPreview = composeMatchResponse(
       "Analyse Arsenal vs Chelsea.",
       bare,

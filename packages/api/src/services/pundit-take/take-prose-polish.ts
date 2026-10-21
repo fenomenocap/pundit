@@ -201,6 +201,7 @@ export function filterGoalPointsForGridLead(
 }
 
 export function valueLegMatchesHeadline(plan: PunditTakePlan): boolean {
+  if (plan.levelNoSide) return false;
   if (!plan.valueLeg) return false;
   if (plan.gridCall) {
     const side = plan.gridCall.sideKey;

@@ -94,7 +94,9 @@ export {
   totalsAssumptionSentence,
 } from "./totals-assumption";
 
-function biggestMarketGapLine(grounding: Grounding): string | null {
+function biggestMarketGapLine(grounding: Grounding, nowMs = Date.now()): string | null {
+  const planJson = buildPunditTakePlan(grounding, null, { marketKind: "1x2", now: new Date(nowMs) });
+  if (!planJson.hasCompleteMarket) return null;
   const divergence = grounding.marketDivergence[0];
   if (!divergence) return null;
   const valueLeg = selectValueLeg(divergence.legs);

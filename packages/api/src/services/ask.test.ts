@@ -2847,14 +2847,40 @@ describe("current-news evidence hardening", () => {
         pDraw: 0.0229,
         pAway: 0.0043,
       }));
+      const observedAt = "2026-10-21T08:00:00.000Z";
       const oddsSources = [{
         source: "kalshi" as const,
-        observedAt: "2026-08-21T07:57:52.359Z",
+        observedAt,
         pHome: 0.8217821782178217,
         pDraw: 0.1188118811881188,
         pAway: 0.0594059405940594,
       }];
-      return { ...base, oddsSources, marketDivergence: computeMarketDivergence(base, oddsSources) };
+      const withSources = { ...base, oddsSources };
+      const marketDivergence = computeMarketDivergence(withSources, oddsSources);
+      const pricing = buildMatchPricing({
+        fixtureId: base.fixtureId,
+        home: base.home,
+        away: base.away,
+        kickoff: base.date,
+        pricedAt: observedAt,
+        pHome: base.pHome,
+        pDraw: base.pDraw,
+        pAway: base.pAway,
+        markets: oddsSources.map((source) => ({
+          source: source.source,
+          observedAt: source.observedAt,
+          pHome: source.pHome,
+          pDraw: source.pDraw,
+          pAway: source.pAway,
+          impliedDisplayDecimals: true,
+          decimalOdds: {
+            home: 1 / source.pHome,
+            draw: 1 / source.pDraw,
+            away: 1 / source.pAway,
+          },
+        })),
+      });
+      return { ...withSources, marketDivergence, pricing };
     };
 
     it("flags Kalshi in prose below the odds table (CTO-approved vendor check scope)", () => {
@@ -7042,18 +7068,10 @@ describe("settled player news requires exact current-claim verification", () => 
             expect(result.answer).not.toContain("The reason for his continued tenure");
             expect(result.answer).not.toContain("remarkable transformation");
             expect(result.answer).not.toContain("Premier League title triumph");
+            if (!pin) {
+              expect(result.grounding, question).toMatchObject({ kind: "match", home: "Arsenal", away: "Leeds" });
+            }
             if (mode === "supported" || mode === "no-marker") {
-              if (!pin && question === "Who is Arsenal\u2019s manager?") {
-                expect(resolveAskContext(
-                  question,
-                  [],
-                  undefined,
-                  [model],
-                  [],
-                  [],
-                  { now: Date.parse("2026-10-06T19:00:00.000Z") },
-                )).toMatchObject({ tier: "match", fixture: model });
-              }
               expect(result.answer, question).toContain("Arsenal’s manager is Mikel Arteta");
               if (/why/i.test(question)) expect(result.answer).toContain("I haven’t verified the club’s stated reason");
               else expect(result.answer).not.toContain("reason");

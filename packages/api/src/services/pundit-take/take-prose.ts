@@ -59,18 +59,23 @@ export function renderTakeProseDeterministic(
   grounding: Grounding | null = null,
   options?: { appendFlip?: boolean },
 ): string {
+  const levelNoSide = plan.levelNoSide === true && plan.marketKind === "1x2";
   const gridOpener = gridHeadlineOpener(plan, variant);
   const pct = callModelPct(plan);
   const label = headlineLabel(plan);
   const opener = gridOpener ?? (plan.marketKind === "1x2" && grounding
     ? format1x2V2Headline(plan.fixtureLabel, grounding, variant)
-    : (variant === "why"
-      ? `On ${plan.fixtureLabel}, I have ${label} at ${pct}%.`
-      : `${plan.fixtureLabel} — ${label} at ${pct}%.`));
+    : levelNoSide
+      ? (variant === "why"
+        ? `On ${plan.fixtureLabel}, the sides are level; I have no side.`
+        : `${plan.fixtureLabel} — level; I have no side.`)
+      : (variant === "why"
+        ? `On ${plan.fixtureLabel}, I have ${label} at ${pct}%.`
+        : `${plan.fixtureLabel} — ${label} at ${pct}%.`));
 
   const body = weaveBody(plan, grounding);
   let valueSentence: string | null = null;
-  if (plan.valueLeg?.bestMarketDecimal) {
+  if (!levelNoSide && plan.valueLeg?.bestMarketDecimal) {
     if (valueLegMatchesHeadline(plan)) {
       valueSentence = `The value is ${plan.valueLeg.label} at ${plan.valueLeg.bestMarketDecimal} against our fair ${plan.valueLeg.fairDecimal}.`;
     } else {
@@ -82,6 +87,6 @@ export function renderTakeProseDeterministic(
   if (body.trim()) blocks.push(body.trim());
   if (valueSentence) blocks.push(polishTakeProseLine(valueSentence));
   const joined = capitalizeTakeProse(blocks.join("\n\n"));
-  if (options?.appendFlip === false) return joined;
+  if (levelNoSide || options?.appendFlip === false) return joined;
   return capitalizeTakeProse(appendWhatFlipsItClosing(plan, joined, grounding));
 }

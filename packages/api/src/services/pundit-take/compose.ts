@@ -136,7 +136,7 @@ function shouldAppendFlipClosing(
   if (plan.mode === "stake-refusal") return false;
   if (plan.mode === "winner-guarantee-honesty") return false;
   if (plan.mode === "odds-provenance") return false;
-  if (planJson.marketKind === "1x2" && is1x2SidePickSuppressed(grounding)) return false;
+  if (planJson.levelNoSide || (planJson.marketKind === "1x2" && is1x2SidePickSuppressed(grounding))) return false;
   return true;
 }
 
@@ -385,7 +385,7 @@ async function composePunditTakeDeliveryAsyncInner(
   const deterministicOnly = passPlay || fairOdds;
   const prose = deterministicOnly
     ? composeTakeProseDeterministic(question, grounding, plan, planJson, variant)
-    : postCheckTakeProse(await renderTakeProse(planJson, variant), planJson);
+    : postCheckTakeProse(await renderTakeProse(planJson, variant, grounding), planJson);
   return assembleDelivery(question, grounding, plan, planJson, prose, resolvedDossier, {
     deterministicPath: deterministicOnly,
   });

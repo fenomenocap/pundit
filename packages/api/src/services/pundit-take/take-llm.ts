@@ -8,6 +8,7 @@ import {
   TAKE_PROSE_BANNED_PATTERN,
   TAKE_TEMPLATE_BANNED_PATTERN,
 } from "./take-validate";
+import type { Grounding } from "../ask";
 import { renderTakeProseDeterministic } from "./take-prose";
 import { polishLlmTakeProse } from "./take-prose-polish";
 
@@ -16,9 +17,9 @@ const TAKE_SYSTEM = `You are Pundit, a football analyst writing a short match ta
 Write plain, conversational English — not an audit, not bullet points, no section labels.
 
 Structure:
-1) First line MUST be the headline call exactly in the form: "{fixture} — {call} at {pct}%."
-2) Then 2–3 sentences weaving supporting reasons AND at least one counter / risk. Do NOT write what would flip the call — the server appends that line separately.
-3) Optional final sentence only if VALUE_SEED is provided: "The value is {side} at {marketDec} against our fair {fairDec}."
+1) First line MUST be the headline call exactly in the form: "{fixture} — {call} at {pct}%." When LEVEL_NO_SIDE is true, use: "{fixture} — level at {pct}% each; I have no side." Do not name a club as the pick.
+2) Then 2–3 sentences weaving supporting reasons AND at least one counter / risk. Do NOT write what would flip the call — the server appends that line separately (never when LEVEL_NO_SIDE).
+3) Optional final sentence only if VALUE_SEED is provided and LEVEL_NO_SIDE is false: "The value is {side} at {marketDec} against our fair {fairDec}."
 
 Hard rules:
 - Use ONLY facts and numbers from PLAN_SEEDS and ALLOWED_NUMBERS. Do not invent stats.
@@ -31,6 +32,7 @@ Hard rules:
 function planSeedsJson(plan: PunditTakePlan): string {
   return JSON.stringify({
     fixture: plan.fixtureLabel,
+    levelNoSide: plan.levelNoSide === true,
     call: plan.gridCall?.headlineLabel ?? plan.call.headlineLabel,
     callPct: plan.gridCall?.modelPctInt ?? plan.rows.find((r) => r.outcome === plan.call.outcome)?.modelPctInt,
     supporting: plan.supporting.map((p) => p.text),
@@ -125,8 +127,9 @@ export async function renderTakeProseWithLlm(
 export async function renderTakeProse(
   plan: PunditTakePlan,
   variant: "full" | "why" = "full",
+  grounding: Grounding | null = null,
 ): Promise<string> {
   const llm = await renderTakeProseWithLlm(plan, variant);
   if (llm && llm.trim()) return llm;
-  return renderTakeProseDeterministic(plan, variant);
+  return renderTakeProseDeterministic(plan, variant, grounding);
 }
