@@ -48,7 +48,7 @@ describe("FPL bootstrap-static injuries (interim)", () => {
     const snapshot = loadFplBootstrap841Recorded();
     const row = fixture("Arsenal", "Everton", { utcDate: "2026-10-24T14:00:00.000Z" });
     const items = buildFplInjuryEvidenceForFixture(row, "2026-10-19T12:00:00.000Z", snapshot);
-    expect(items.length).toBeGreaterThan(0);
+    expect(items).toHaveLength(11);
     const saliba = items.find((i) => i.player === "Saliba")!;
     expect(isFplBootstrapInjuryItem(saliba)).toBe(true);
     expect(saliba).toMatchObject({

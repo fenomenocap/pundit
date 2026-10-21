@@ -155,10 +155,22 @@ describe("fixture-first team news (source groups)", () => {
       schedule: [],
       fetchedAt: STAFF_FETCHED_AT,
     });
-    const players = bundle.items.map((i) => i.player);
-    expect(players).toContain("Butland");
-    expect(players).toContain("Woolfenden");
-    expect(bundle.items.every((i) => i.club === "Coventry" || i.club === "Hull")).toBe(true);
+    expect(bundle.items.map((i) => i.player).sort()).toEqual([
+      "Amenda",
+      "Ansah",
+      "Butland",
+      "Cho",
+      "Eccles",
+      "Gourna-Douath",
+      "Gyabi",
+      "Hughes",
+      "Matazo",
+      "Mendy",
+      "Targett",
+      "Vaz",
+      "Woolfenden",
+      "Wright",
+    ]);
     expect(bundle.identity.resolvedVia).toBe("espn");
   });
 
@@ -396,13 +408,21 @@ describe("fixture-first team news (source groups)", () => {
   });
 
   it("drops unflagged available players and doubt rows missing news_added", () => {
-    const snapshot = loadFplBootstrap841Recorded();
-    const row = fixture("Arsenal", "Everton", { utcDate: "2026-10-24T14:00:00.000Z" });
+    const base = loadFplBootstrapFromRecordedFixture();
+    const snapshot = {
+      ...base,
+      elements: base.elements.map((element) => (
+        element.web_name === "Chavarria" ? { ...element, news_added: null } : element
+      )),
+    };
+    const row = fixture("Arsenal", "Chelsea", { utcDate: "2026-10-24T16:30:00.000Z" });
     const raw = buildFplInjuryEvidenceForFixture(row, STAFF_FETCHED_AT, snapshot, {
       requireNewsAdded: true,
     });
     expect(raw.some((i) => i.player === "Saka")).toBe(false);
+    expect(raw.some((i) => i.player === "Chavarria")).toBe(false);
     expect(raw.some((i) => i.player === "Saliba")).toBe(true);
+    expect(raw.some((i) => i.player === "Gusto")).toBe(true);
   });
 
   it("drops Mateo Joseph when absent from recorded Leeds compSeason 841 staff (Opta join)", () => {
