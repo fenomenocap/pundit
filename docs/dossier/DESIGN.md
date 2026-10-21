@@ -2,6 +2,8 @@
 
 **Status:** Phase 2 draft (schema v2 + federated evidence write-back + dated retention). Chat does **not** read the dossier until Phase 3 behind `MATCH_DOSSIER_CHAT` (not shipped; default OFF).
 
+**Fixture-first team news (2026-10-21):** When `MATCH_DOSSIER_FIXTURE_FIRST_ENABLED=true` (default OFF), dossier builds resolve `fixture_identity` (PL Pulselive primary, ESPN fallback) before `teamNews` / `injuries_doubts` (FPL primary, FotMob fallback). Rules live in `packages/api/data/match-dossier/source-groups.json` and `docs/dossier/data-sources-owner.md`. Legacy `MATCH_DOSSIER_FPL_ENABLED` remains separate and off in production.
+
 **Date:** 2026-10-19
 
 ---

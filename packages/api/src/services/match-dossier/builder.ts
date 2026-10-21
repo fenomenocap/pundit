@@ -36,8 +36,15 @@ import {
   headToHeadMeetings,
   homeAwaySplit,
 } from "./form-stats";
-import { MATCH_DOSSIER_BUILDER_VERSION, matchDossierFplEnabled } from "./flags";
-import { fplInjuryEvidenceForFixtureIfCached } from "./fpl-bootstrap-injuries";
+import {
+  MATCH_DOSSIER_BUILDER_VERSION,
+  matchDossierFixtureFirstEnabled,
+  matchDossierFplEnabled,
+  matchDossierFplPrefetchEnabled,
+} from "./flags";
+import { fplInjuryEvidenceForFixtureIfCached, getCachedFplBootstrapSnapshot } from "./fpl-bootstrap-injuries";
+import { buildFixtureFirstTeamNews } from "./fixture-first/build-team-news";
+import { getPlFixturesCache } from "./fixture-first/pl-fixtures-client";
 import { writeMatchDossier } from "./storage";
 
 function espnProvenance(asOf: string): DossierProvenance {
@@ -162,9 +169,36 @@ export function buildMatchDossierForFixture(
         || (item.verification === "cited" && isSyntheticDossierEvidenceHost(item.sourceUrl)),
     ),
   );
-  const fplItems = matchDossierFplEnabled()
-    ? fplInjuryEvidenceForFixtureIfCached(fixture, builtAt)
-    : [];
+  let fixtureIdentityField: MatchDossier["fixtureIdentity"];
+  let teamNewsField: MatchDossier["teamNews"];
+  let fplItems: DossierEvidenceItem[] = [];
+  if (matchDossierFixtureFirstEnabled()) {
+    const fplSnapshot = getCachedFplBootstrapSnapshot();
+    if (fplSnapshot) {
+      const bundle = buildFixtureFirstTeamNews({
+        fixture,
+        fplSnapshot,
+        plPayload: getPlFixturesCache(),
+        schedule: formFixtures,
+        fetchedAt: builtAt,
+      });
+      const fixtureFirstProv: DossierProvenance = {
+        sourceId: "fixture-first-source-groups",
+        label: "Fixture-first source groups (owner 2026-10-20)",
+        trustTier: "interim-spine",
+        sourceRole: "interim",
+        asOf: builtAt,
+      };
+      fixtureIdentityField = field(bundle.identity, fixtureFirstProv);
+      teamNewsField = field(
+        { items: bundle.items, fetchLogs: bundle.fetchLogs },
+        fixtureFirstProv,
+      );
+      fplItems = bundle.items;
+    }
+  } else if (matchDossierFplEnabled()) {
+    fplItems = fplInjuryEvidenceForFixtureIfCached(fixture, builtAt);
+  }
   const evidenceItems = [...federatedItems, ...fplItems];
   const evidenceProv = federatedEvidenceProvenance(builtAt);
   const partitioned = partitionEvidence(evidenceItems);
@@ -244,6 +278,8 @@ export function buildMatchDossierForFixture(
       asOf: builtAt,
     }),
     injuries: field({ items: partitioned.injuries }, evidenceProv),
+    ...(fixtureIdentityField ? { fixtureIdentity: fixtureIdentityField } : {}),
+    ...(teamNewsField ? { teamNews: teamNewsField } : {}),
     lineups: field({ items: partitioned.rotation }, evidenceProv),
     manager: field(
       {
@@ -299,9 +335,19 @@ export async function buildMatchDossierForFixtureAsync(
   fixture: ModelFixture,
   options: BuildDossierOptions = {},
 ): Promise<MatchDossier> {
-  if (matchDossierFplEnabled()) {
+  if (matchDossierFplPrefetchEnabled()) {
     const { prefetchFplBootstrapForBuildPass } = await import("./fpl-bootstrap-injuries");
     await prefetchFplBootstrapForBuildPass();
+  }
+  if (matchDossierFixtureFirstEnabled()) {
+    const { prefetchPlFixturesForBuildPass } = await import("./fixture-first/pl-fixtures-client");
+    await prefetchPlFixturesForBuildPass();
+    const fplSnapshot = (await import("./fpl-bootstrap-injuries")).getCachedFplBootstrapSnapshot();
+    if (fplSnapshot) {
+      const { prefetchPlStaffForBuildPass } = await import("./fixture-first/pl-staff-client");
+      const fetchedAt = (options.now ?? new Date()).toISOString();
+      await prefetchPlStaffForBuildPass([fixture.home, fixture.away], fplSnapshot, fetchedAt);
+    }
   }
   let evidence: DossierEvidenceCollectResult | undefined = options.evidence
     ? {
@@ -388,9 +434,25 @@ export async function buildAndPersistDossiersForWindowAsync(
   window: DossierBuildWindow = PHASE1_WEEKEND_WINDOW,
   options: BuildDossierOptions = {},
 ): Promise<MatchDossier[]> {
-  if (matchDossierFplEnabled()) {
+  if (matchDossierFplPrefetchEnabled()) {
     const { prefetchFplBootstrapForBuildPass } = await import("./fpl-bootstrap-injuries");
     await prefetchFplBootstrapForBuildPass();
+  }
+  if (matchDossierFixtureFirstEnabled()) {
+    const { prefetchPlFixturesForBuildPass } = await import("./fixture-first/pl-fixtures-client");
+    await prefetchPlFixturesForBuildPass();
+    const fplSnapshot = (await import("./fpl-bootstrap-injuries")).getCachedFplBootstrapSnapshot();
+    if (fplSnapshot) {
+      const model = getCachedModelData();
+      const targets = filterFixturesInKickoffWindow(
+        model.fixtures.filter((f) => f.competitionId === "eng.1"),
+        window,
+      );
+      const sides = targets.flatMap((f) => [f.home, f.away]);
+      const { prefetchPlStaffForBuildPass } = await import("./fixture-first/pl-staff-client");
+      const fetchedAt = (options.now ?? new Date()).toISOString();
+      await prefetchPlStaffForBuildPass(sides, fplSnapshot, fetchedAt);
+    }
   }
   return buildAndPersistDossiersForWindow(window, options);
 }
