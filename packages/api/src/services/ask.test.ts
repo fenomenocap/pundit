@@ -111,6 +111,7 @@ import {
   todayPreamble,
   managerWhyScope,
 } from "./ask";
+import { proseFromTakeAnswer, VENDOR_WORDING_CHECK_PATTERN } from "./pundit-take/take-validate";
 import {
   premierLeagueSeasonWindow,
   replaceFootballDataForTests,
@@ -2856,6 +2857,27 @@ describe("current-news evidence hardening", () => {
       return { ...base, oddsSources, marketDivergence: computeMarketDivergence(base, oddsSources) };
     };
 
+    it("flags Kalshi in prose below the odds table (CTO-approved vendor check scope)", () => {
+      const syntheticBadAnswer = [
+        "I make Arsenal the likeliest outcome at 97.3%.",
+        "",
+        "| Outcome | Ours | Kalshi |",
+        "| --- | --- | --- |",
+        "| Arsenal | 97.3% | 82.2% |",
+        "",
+        "Kalshi has Forest at 41%.",
+        "",
+        "Model Fundamental v3 (priced 21 Oct 15:30 SGT).",
+        "Kalshi as of 21 Oct 12:00 SGT.",
+      ].join("\n");
+      const naiveProseOnly = syntheticBadAnswer.split("| Outcome |")[0] ?? "";
+      expect(naiveProseOnly).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
+      const checkedProse = proseFromTakeAnswer(syntheticBadAnswer);
+      expect(checkedProse).toContain("Kalshi has Forest at 41%.");
+      expect(checkedProse).not.toContain("| --- |");
+      expect(checkedProse).toMatch(VENDOR_WORDING_CHECK_PATTERN);
+    });
+
     it("renders ordinary match facts and a complete third-party market without generated causality", () => {
       const answer = deterministicGroundedResponse("Analyse Arsenal vs Coventry.", model());
       expect(answer).toContain("Arsenal 97.3%");
@@ -2865,7 +2887,7 @@ describe("current-news evidence hardening", () => {
       expect(answer).toMatch(/\|\s*Outcome\s*\|\s*Ours\s*\|/);
       expect(answer).not.toMatch(/Market-implied 1X2/i);
       expect(answer).toMatch(/Biggest gap vs market: Arsenal, \+15\.1 pts\./);
-      expect(answer).not.toMatch(/\bKalshi\b|no-vig/i);
+      expect(proseFromTakeAnswer(answer)).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
       expect(answer).not.toMatch(/^Lean:/m);
       expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
       expect(answer).not.toMatch(/Over 2\.5 is \d/);
@@ -2917,8 +2939,8 @@ describe("current-news evidence hardening", () => {
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
         .toMatch(/Biggest gap vs market|gap [+-]?\d+\.?\d* pts/i);
-      expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
-        .not.toMatch(/\bKalshi\b|no-vig/i);
+      expect(proseFromTakeAnswer(closedGroundedAnswer("Why is the model so far from the market?", model()) ?? ""))
+        .not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
       expect(closedGroundedAnswer("What will the 1X2 be?", model(), true))
         .toMatch(/My 1X2 is Arsenal 97\.3%.*draw.*Coventry/i);
       expect(closedGroundedAnswer("Tactical matchup", model(), true)).toMatch(/less cover against a counterattack/i);

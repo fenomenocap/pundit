@@ -20,6 +20,7 @@ import { asksStakeSizeQuestion, planResponse, resolveRequestedScoreline, respons
 import { attachUserLine, buildMatchPricing, stripUntraceableMatchPercentages } from "./response-correctness";
 import { buildPunditConsensus, pricingConsensusFromBlock } from "./pundit-consensus";
 import { sampleMatchContextFields } from "./match-context";
+import { proseFromTakeAnswer, VENDOR_WORDING_CHECK_PATTERN } from "./pundit-take/take-validate";
 
 const grounding = (): Grounding => {
   const pHome = 0.563;
@@ -660,8 +661,7 @@ describe("V2 conversational architecture", () => {
     expect(preview.answer).toContain("our standalone 1X2");
     expect(preview.answer).toMatch(new RegExp(`${(match.consensus!.pHome * 100).toFixed(1)}%`));
     expect(preview.answer).not.toMatch(/<details>/i);
-    const previewProse = preview.answer.split("| Outcome |")[0] ?? preview.answer;
-    expect(previewProse).not.toMatch(/\bKalshi\b|no-vig/i);
+    expect(proseFromTakeAnswer(preview.answer)).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
     expect(preview.answer).not.toMatch(/sealed|immutable/i);
 
     const teamNewsEmpty = await deliverAnswer({
@@ -994,7 +994,7 @@ describe("V2 conversational architecture", () => {
     const market = composeMatchResponse("Where do you disagree with Kalshi?", match,
       planResponse("Where do you disagree with Kalshi?", { groundingKind: "match", hasHistory: true }));
     expect(market).toMatch(/largest gap is on Arsenal: I have 56\.3% vs the market 50\.1%/);
-    expect(market).not.toMatch(/\bKalshi\b|no-vig/i);
+    expect(proseFromTakeAnswer(market)).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
     expect(market).toMatch(/nothing about lineups on its own/i);
     expect(market).not.toMatch(/my call:/);
     expect(market).not.toMatch(/because.*lineup/i);
@@ -1152,8 +1152,17 @@ describe("V2 conversational architecture", () => {
     expect(previewCopy).not.toMatch(/Market-implied 1X2/i);
     expect(previewCopy).toMatch(/\(priced .+ SGT\)/);
     expect(previewCopy).not.toMatch(/<details>/i);
-    const previewProseOnly = previewCopy.split("| Outcome |")[0] ?? previewCopy;
-    expect(previewProseOnly).not.toMatch(/\bKalshi\b|no-vig/i);
+    expect(proseFromTakeAnswer(previewCopy)).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
+    const syntheticBadPreview = [
+      previewCopy.split("| Outcome |")[0]?.trim() ?? "",
+      "",
+      "| Outcome | Ours | Kalshi |",
+      "| --- | --- | --- |",
+      "| Arsenal | 56.3% | 50.1% |",
+      "",
+      "Kalshi has Forest at 41%.",
+    ].join("\n");
+    expect(proseFromTakeAnswer(syntheticBadPreview)).toMatch(VENDOR_WORDING_CHECK_PATTERN);
     expect(previewCopy).toMatch(/Biggest gap vs market: Arsenal, \+6\.2 pts\./);
     expect(previewCopy).not.toMatch(/^Lean:/m);
     expect(previewCopy).not.toMatch(/market snapshot/);
