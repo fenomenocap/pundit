@@ -382,7 +382,8 @@ async function composePunditTakeDeliveryAsyncInner(
   }
   const passPlay = plan.mode === "user-line" && /\b(?:pass or play|play or pass)\b/i.test(question);
   const fairOdds = asksFairOddsFixtureQuestion(question);
-  const deterministicOnly = passPlay || fairOdds;
+  const level1x2 = planJson.levelNoSide === true && planJson.marketKind === "1x2";
+  const deterministicOnly = passPlay || fairOdds || level1x2;
   const prose = deterministicOnly
     ? composeTakeProseDeterministic(question, grounding, plan, planJson, variant)
     : postCheckTakeProse(await renderTakeProse(planJson, variant, grounding), planJson);

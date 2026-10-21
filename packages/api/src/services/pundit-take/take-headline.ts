@@ -1,5 +1,5 @@
 import type { Grounding } from "../ask";
-import type { PunditTakePlan } from "./types";
+import type { PunditTakePlan, TakePlanRow } from "./types";
 import { displayOutcomeLabel } from "../basics-answer-voice";
 
 function modelPctInt(p: number): number {
@@ -15,6 +15,16 @@ export function oneXTwoTopGapPoints(grounding: Grounding): number {
 
 export function is1x2SidePickSuppressed(grounding: Grounding): boolean {
   return oneXTwoTopGapPoints(grounding) < COIN_FLIP_GAP_POINTS;
+}
+
+/** 1X2 rows to show in a no-market table when the plan has no side pick. */
+export function level1x2RowsForTable(plan: PunditTakePlan): TakePlanRow[] {
+  if (!plan.levelNoSide || !plan.rows.length) return [];
+  const topPct = Math.max(...plan.rows.map((row) => row.modelPctInt));
+  const withinThreshold = plan.rows.filter(
+    (row) => topPct - row.modelPctInt < COIN_FLIP_GAP_POINTS,
+  );
+  return withinThreshold.length > 0 ? withinThreshold : plan.rows;
 }
 
 export function format1x2V2Headline(
