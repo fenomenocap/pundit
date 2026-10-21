@@ -42,6 +42,12 @@ export function loadPlFixturesFromRecordedFixture(): PlFixturesPayload {
   return JSON.parse(fs.readFileSync(file, "utf8")) as PlFixturesPayload;
 }
 
+/** Real Pulselive compSeason 841 slice (GW8 + Everton v Chelsea regression rows). */
+export function loadPlFixtures841Recorded(): PlFixturesPayload {
+  const file = path.join(__dirname, "../__fixtures__/pl-pulselive-fixtures-841-recorded.json");
+  return JSON.parse(fs.readFileSync(file, "utf8")) as PlFixturesPayload;
+}
+
 /** Football season start year for a UTC reference instant (PL season starts in August). */
 export function premierLeagueSeasonStartYear(ref: Date): number {
   const y = ref.getUTCFullYear();

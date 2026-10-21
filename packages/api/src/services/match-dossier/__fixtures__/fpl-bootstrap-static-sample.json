@@ -40,7 +40,7 @@
       "name": "Chelsea",
       "short_name": "CHE",
       "code": 8,
-      "pulse_id": 4
+      "pulse_id": 8
     },
     {
       "id": 7,
@@ -124,7 +124,7 @@
       "name": "Spurs",
       "short_name": "TOT",
       "code": 6,
-      "pulse_id": 21
+      "pulse_id": 6
     },
     {
       "id": 19,

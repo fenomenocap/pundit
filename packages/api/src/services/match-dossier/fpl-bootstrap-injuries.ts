@@ -120,6 +120,12 @@ export function loadFplBootstrap841Slice(): FplBootstrapSnapshot {
   return JSON.parse(fs.readFileSync(file, "utf8")) as FplBootstrapSnapshot;
 }
 
+/** Real FPL bootstrap-static snapshot (full teams, flagged elements). */
+export function loadFplBootstrap841Recorded(): FplBootstrapSnapshot {
+  const file = path.join(__dirname, "__fixtures__", "fpl-bootstrap-static-841-recorded.json");
+  return JSON.parse(fs.readFileSync(file, "utf8")) as FplBootstrapSnapshot;
+}
+
 async function fetchFplBootstrapSnapshot(
   fetchFn: typeof fetch,
 ): Promise<FplBootstrapSnapshot | null> {

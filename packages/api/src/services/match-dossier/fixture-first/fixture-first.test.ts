@@ -4,7 +4,7 @@ import type { FootballMatch } from "../../football-data";
 import { buildMatchDossierForFixture } from "../builder";
 import {
   buildFplInjuryEvidenceForFixture,
-  loadFplBootstrap841Slice,
+  loadFplBootstrap841Recorded,
   loadFplBootstrapFromRecordedFixture,
   resetFplBootstrapCacheForTests,
   setFplBootstrapCacheForTests,
@@ -20,6 +20,7 @@ import {
   compSeasonLabelMatchesReference,
   findPlMatchInPayload,
   findPlMatchInPayloadUsingCodeJoin,
+  loadPlFixtures841Recorded,
   loadPlFixturesFromRecordedFixture,
   premierLeagueSeasonStartYear,
   resetPlFixturesCacheForTests,
@@ -130,12 +131,12 @@ describe("fixture-first team news (source groups)", () => {
     expect(bundle.identity.resolvedVia).toBe("espn");
   });
 
-  it("resolves Chelsea v Spurs 24 Oct via pl-api primary (real Pulselive ids)", () => {
+  it("resolves Chelsea v Spurs 24 Oct via pl-api primary (hand-made recorded fixture)", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
     const pl = loadPlFixturesFromRecordedFixture();
     const row = fixture("Chelsea", "Tottenham", {
-      fixtureId: 401878767,
-      utcDate: "2026-10-24T16:30:00.000Z",
+      fixtureId: 401879800,
+      utcDate: "2026-10-24T17:30:00.000Z",
     });
     const { identity, fetchLogs } = resolveFixtureIdentity({
       fixture: row,
@@ -143,17 +144,44 @@ describe("fixture-first team news (source groups)", () => {
       plPayload: pl,
       fetchedAt: "2026-10-21T12:00:00.000Z",
     });
-    expect(identity.plMatchId).toBe("128995");
+    expect(identity.plMatchId).toBe("479421");
     expect(identity.resolvedVia).toBe("pl-api");
-    expect(identity.espnEventId).toBe(401878767);
+    expect(identity.espnEventId).toBe(401879800);
     expect(fetchLogs.some((log) => log.sourceKey === "pl-api")).toBe(true);
-    expect(fetchLogs[0]?.url).toBe("https://footballapi.pulselive.com/football/fixtures/128995");
+    expect(fetchLogs[0]?.url).toBe("https://footballapi.pulselive.com/football/fixtures/479421");
     expect(fetchLogs[0]?.query).toContain("Chelsea v Tottenham");
   });
 
+  it("resolves GW8 plMatchIds 128993–129002 on real Pulselive 841 recorded slice", () => {
+    const pl = loadPlFixtures841Recorded();
+    const fpl = loadFplBootstrap841Recorded();
+    const cases: Array<{ home: string; away: string; utc: string; plId: number }> = [
+      { home: "Ipswich", away: "Forest", utc: "2026-10-23T19:00:00.000Z", plId: 128999 },
+      { home: "Aston Villa", away: "Man City", utc: "2026-10-24T11:30:00.000Z", plId: 128994 },
+      { home: "Arsenal", away: "Everton", utc: "2026-10-24T14:00:00.000Z", plId: 128993 },
+      { home: "Coventry", away: "Fulham", utc: "2026-10-24T14:00:00.000Z", plId: 128996 },
+      { home: "Chelsea", away: "Tottenham", utc: "2026-10-24T16:30:00.000Z", plId: 128995 },
+      { home: "Crystal Palace", away: "Newcastle", utc: "2026-10-25T14:00:00.000Z", plId: 128997 },
+      { home: "Hull", away: "Brentford", utc: "2026-10-25T14:00:00.000Z", plId: 128998 },
+      { home: "Liverpool", away: "Brighton", utc: "2026-10-25T14:00:00.000Z", plId: 129000 },
+      { home: "Man United", away: "Bournemouth", utc: "2026-10-25T14:00:00.000Z", plId: 129001 },
+      { home: "Sunderland", away: "Leeds", utc: "2026-10-25T16:30:00.000Z", plId: 129002 },
+    ];
+    for (const c of cases) {
+      const row = findPlMatchInPayload({
+        payload: pl,
+        home: c.home,
+        away: c.away,
+        kickoffUtc: c.utc,
+        fplSnapshot: fpl,
+      });
+      expect(row?.id, `${c.home} v ${c.away}`).toBe(c.plId);
+    }
+  });
+
   it("code join regression would match the wrong Pulselive fixture for Everton v Chelsea", () => {
-    const pl = loadPlFixturesFromRecordedFixture();
-    const fpl = loadFplBootstrapFromRecordedFixture();
+    const pl = loadPlFixtures841Recorded();
+    const fpl = loadFplBootstrap841Recorded();
     const wrong = findPlMatchInPayloadUsingCodeJoin({
       payload: pl,
       home: "Everton",
@@ -221,7 +249,7 @@ describe("fixture-first team news (source groups)", () => {
   });
 
   it("keeps Chelsea doubt news after Chelsea's previous match even when before the opponent's", () => {
-    const snapshot = loadFplBootstrap841Slice();
+    const snapshot = loadFplBootstrap841Recorded();
     const row = fixture("Chelsea", "Tottenham", {
       fixtureId: 401878767,
       utcDate: "2026-10-24T16:30:00.000Z",
@@ -317,7 +345,7 @@ describe("fixture-first team news (source groups)", () => {
   });
 
   it("drops and logs facts whose fplTeamId does not match the labelled fixture club", () => {
-    const snapshot = loadFplBootstrap841Slice();
+    const snapshot = loadFplBootstrap841Recorded();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
     const mismatched: DossierEvidenceItem = {
@@ -369,7 +397,7 @@ describe("fixture-first team news (source groups)", () => {
   it("logs fetchedAt, source timestamp and exact query on team news fetches", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
     const pl = loadPlFixturesFromRecordedFixture();
-    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
+    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T17:30:00.000Z" });
     const bundle = buildFixtureFirstTeamNews({
       fixture: row,
       fplSnapshot: snapshot,
@@ -407,13 +435,13 @@ describe("fixture-first team news (source groups)", () => {
     setFplBootstrapCacheForTests(loadFplBootstrapFromRecordedFixture());
     setPlFixturesCacheForTests(loadPlFixturesFromRecordedFixture(), "2026-10-21T12:00:00.000Z");
     const row = fixture("Chelsea", "Tottenham", {
-      fixtureId: 401878767,
-      utcDate: "2026-10-24T16:30:00.000Z",
+      fixtureId: 401879800,
+      utcDate: "2026-10-24T17:30:00.000Z",
     });
     const dossier = buildMatchDossierForFixture(row, {
       now: new Date("2026-10-21T12:00:00.000Z"),
     });
-    expect(dossier.fixtureIdentity?.value.plMatchId).toBe("128995");
+    expect(dossier.fixtureIdentity?.value.plMatchId).toBe("479421");
     expect(dossier.teamNews?.value.fetchLogs.length).toBeGreaterThanOrEqual(2);
     const james = dossier.teamNews!.value.items.find((i) => i.player === "James")!;
     expect(james.status).toBe("d");
