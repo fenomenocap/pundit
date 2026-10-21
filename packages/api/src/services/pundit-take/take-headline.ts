@@ -1,6 +1,10 @@
 import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
-import { deskPercentDisplay, displayOutcomeLabel } from "../basics-answer-voice";
+import { displayOutcomeLabel } from "../basics-answer-voice";
+
+function modelPctInt(p: number): number {
+  return Math.round(p * 100);
+}
 
 export const COIN_FLIP_GAP_POINTS = 2;
 
@@ -18,13 +22,11 @@ export function format1x2V2Headline(
   grounding: Grounding,
   variant: "full" | "why",
 ): string {
-  const pct = deskPercentDisplay(
-    Math.max(grounding.pHome, grounding.pDraw, grounding.pAway),
-  );
+  const pct = modelPctInt(Math.max(grounding.pHome, grounding.pDraw, grounding.pAway));
   if (is1x2SidePickSuppressed(grounding)) {
     return variant === "why"
-      ? `On ${fixtureLabel}, the sides are level at ${pct} each; I have no side.`
-      : `${fixtureLabel} — level at ${pct} each; I have no side.`;
+      ? `On ${fixtureLabel}, the sides are level at ${pct}% each; I have no side.`
+      : `${fixtureLabel} — level at ${pct}% each; I have no side.`;
   }
   const ranked = ([
     { outcome: "home" as const, p: grounding.pHome },
@@ -34,10 +36,10 @@ export function format1x2V2Headline(
   const top = ranked[0];
   const label = displayOutcomeLabel(grounding, top.outcome);
   const headline = top.outcome === "draw" ? "the draw" : label;
-  const display = deskPercentDisplay(top.p);
+  const display = modelPctInt(top.p);
   return variant === "why"
-    ? `On ${fixtureLabel}, I have ${headline} at ${display}.`
-    : `${fixtureLabel} — ${headline} at ${display}.`;
+    ? `On ${fixtureLabel}, I have ${headline} at ${display}%.`
+    : `${fixtureLabel} — ${headline} at ${display}%.`;
 }
 
 export function gridHeadlineOpener(plan: PunditTakePlan, variant: "full" | "why"): string | null {

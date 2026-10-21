@@ -163,7 +163,7 @@ describe("Take v2 prod audit fixes", () => {
     const dossier = minimalDossierWithContradict("essentially a toss-up given the table.");
     const plan = buildPunditTakePlan(grounding, dossier);
     const prose = renderTakeProseDeterministic(plan, "full", grounding);
-    expect(prose).toMatch(/45\.0%/);
+    expect(prose).toMatch(/45%/);
     expect(prose).not.toMatch(/toss-up/i);
   });
 

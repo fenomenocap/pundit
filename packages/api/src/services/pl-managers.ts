@@ -27,7 +27,8 @@ export const STALE_MANAGER_NAMES = [
   "Pep Guardiola",
 ] as const;
 
-const MANAGER_HOLDER_FROM_CLAIM = /^(.+?)\s+(?:is|remains|continue\s+as|continues\s+as)\s+(?:the\s+)?(?:\w+\s+){0,3}(?:manager|head coach|coach)\b/i;
+const MANAGER_PERSON_BEFORE_ROLE =
+  /\b([\p{Lu}][\p{L}'’-]+(?:\s+[\p{Lu}][\p{L}'’-]+){0,3})\s+(?:is|remains|continue\s+as|continues\s+as)\s+(?:the\s+)?(?:(?:\w+\s+){0,3})?(?:manager|head coach|coach)\b/gu;
 
 function surnames(name: string): string[] {
   return name
@@ -41,8 +42,20 @@ function escapeRegExp(value: string): string {
 }
 
 function managerPersonNameFromClaim(claim: string): string | null {
-  const match = MANAGER_HOLDER_FROM_CLAIM.exec(claim.trim());
-  return match?.[1]?.trim() ?? null;
+  const re = new RegExp(MANAGER_PERSON_BEFORE_ROLE.source, MANAGER_PERSON_BEFORE_ROLE.flags);
+  let last: string | null = null;
+  for (const match of claim.trim().matchAll(re)) {
+    last = match[1]?.trim() ?? null;
+  }
+  return last;
+}
+
+function freshEvidenceEstablishesManagerName(dossier: MatchDossier, name: string): boolean {
+  const target = name.trim();
+  return (dossier.evidence ?? []).some((item) =>
+    item.category === "manager"
+    && takeEligibleDossierEvidence(item)
+    && managerPersonNameFromClaim(item.claim) === target);
 }
 
 function eligibleStructuredManagerName(
@@ -54,12 +67,7 @@ function eligibleStructuredManagerName(
     : dossier.manager?.value?.away?.name;
   if (!raw?.trim()) return null;
   const name = managerPersonNameFromClaim(raw) ?? raw.trim();
-  const clubLabel = side === "home" ? dossier.fixture.home : dossier.fixture.away;
-  const hasEligible = (dossier.evidence ?? []).some((item) =>
-    item.category === "manager"
-    && takeEligibleDossierEvidence(item)
-    && (!clubLabel || item.club === clubLabel || item.claim.includes(name)));
-  return hasEligible ? name : null;
+  return freshEvidenceEstablishesManagerName(dossier, name) ? name : null;
 }
 
 /** Stale-list names this turn's search titles/snippets actually established. */

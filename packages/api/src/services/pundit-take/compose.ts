@@ -30,6 +30,7 @@ import {
 } from "./take-policy-prose";
 import { asksFairOddsFixtureQuestion, renderFairOddsTakeProse } from "./take-fair-odds-prose";
 import { appendWhatFlipsItClosing, formatWhatFlipsItSentence } from "./take-flip-prose";
+import { is1x2SidePickSuppressed } from "./take-headline";
 import { dedupePolicyProseBlocks } from "./take-v2-prose-hygiene";
 import {
   asksDrawSideTakeQuestion,
@@ -124,13 +125,29 @@ function marketKindForPlan(plan: ResponsePlan): "1x2" | "btts" | "totals" {
   return "1x2";
 }
 
-function shouldAppendFlipClosing(question: string, plan: ResponsePlan): boolean {
+function shouldAppendFlipClosing(
+  question: string,
+  plan: ResponsePlan,
+  grounding: Grounding,
+  planJson: ReturnType<typeof buildPunditTakePlan>,
+): boolean {
   if (asksParlayQuestion(question)) return false;
   if (asksMarketGapFocusQuestion(question)) return false;
   if (plan.mode === "stake-refusal") return false;
   if (plan.mode === "winner-guarantee-honesty") return false;
   if (plan.mode === "odds-provenance") return false;
+  if (planJson.marketKind === "1x2" && is1x2SidePickSuppressed(grounding)) return false;
   return true;
+}
+
+function tableIncludesLiveMarketPrices(planJson: ReturnType<typeof buildPunditTakePlan>): boolean {
+  if (planJson.marketColumns.length === 0) return false;
+  if (planJson.marketKind === "1x2") return planJson.hasCompleteMarket;
+  return planJson.gridRows.some((row) =>
+    planJson.marketColumns.some((col) => {
+      const cell = row.sourceDecimals[col.sourceKey];
+      return cell != null && cell !== "—";
+    }));
 }
 
 function minimalHeadlineAndFlip(
@@ -185,12 +202,12 @@ function assembleDelivery(
       ? formatPassPlayLineTable(grounding)
       : formatTakeOddsTable(planJson);
   const sources = buildTakeSourcesFooter(grounding, resolvedDossier, Date.now());
-  const includeOdds = planJson.hasCompleteMarket || planJson.marketKind === "1x2";
+  const includeOdds = tableIncludesLiveMarketPrices(planJson);
   const footer = formatTakeSourcesFooterBlock(sources, { includeOdds });
   const postCheckMode = options?.prosePostCheck ?? (passPlay ? "forbidden" : "full");
   let proseOut = dedupePolicyProseBlocks(prose.trim());
   if (!asksParlayQuestion(question)) {
-    if (shouldAppendFlipClosing(question, plan)) {
+    if (shouldAppendFlipClosing(question, plan, grounding, planJson)) {
       proseOut = appendWhatFlipsItClosing(planJson, proseOut, grounding);
     }
     if (postCheckMode === "full") {
@@ -198,7 +215,7 @@ function assembleDelivery(
     } else if (postCheckMode === "forbidden") {
       proseOut = applyV2TakeProseGuards(scrubForbiddenTakeProse(proseOut), planJson);
     }
-    if (shouldAppendFlipClosing(question, plan)) {
+    if (shouldAppendFlipClosing(question, plan, grounding, planJson)) {
       const beforeHeadlineFix = proseOut.trim();
       proseOut = ensureGridMarketHeadline(proseOut, planJson, question);
       if (options?.deterministicPath && !beforeHeadlineFix && proseOut.trim()) {

@@ -5585,8 +5585,8 @@ export function resolveAskContext(
     && /\b(?:pass or play|play or pass)\b/i.test(question)
     && passPlayMentionEarly.size === 1) {
     const club = [...passPlayMentionEarly.keys()][0];
-    const priced = listPricedModelFixturesForClub(club, fixtures, routing.now ?? Date.now());
-    if (priced.length === 1) return { tier: "match", fixture: priced[0] };
+    const priced = findNextPricedModelFixtureForClub(club, fixtures, routing.now ?? Date.now());
+    if (priced) return { tier: "match", fixture: priced };
   }
 
   if (!teams && !competitionId && !hasExplicitMatchupCue(question)) {
@@ -5596,8 +5596,8 @@ export function resolveAskContext(
       const clubFact = singleClubCurrentFactScope(question, null, clubNames);
       if (hasMatchOutcomeIntent(question) || clubFact) {
         const club = clubNames[0];
-        const priced = listPricedModelFixturesForClub(club, fixtures, routing.now ?? Date.now());
-        if (priced.length === 1) return { tier: "match", fixture: priced[0] };
+        const priced = findNextPricedModelFixtureForClub(club, fixtures, routing.now ?? Date.now());
+        if (priced) return { tier: "match", fixture: priced };
       }
     }
   }

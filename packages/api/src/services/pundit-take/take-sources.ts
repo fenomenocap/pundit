@@ -83,9 +83,3 @@ export function formatTakeSourcesFooterBlock(
   }
   return lines.join("\n");
 }
-
-export function formatTakeSourcesDetailsBlock(footerBody: string): string {
-  const body = footerBody.trim();
-  if (!body) return "";
-  return `<details>\n<summary>Sources</summary>\n\n${body}\n\n</details>`;
-}

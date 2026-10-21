@@ -4495,25 +4495,33 @@ describe("resolveAskContext", () => {
     };
   }
 
-  it("routes a single-club manager question to the only priced fixture in window", () => {
-    const evertonNext = fixture("Everton", "Fulham", {
+  it("routes a single-club manager question to the earliest priced fixture in window", () => {
+    const evertonEarliest = fixture("Arsenal", "Everton", {
       fixtureId: 9001,
-      utcDate: "2026-10-25T15:00:00.000Z",
+      utcDate: "2026-10-24T15:00:00.000Z",
+    });
+    const evertonMid = fixture("Newcastle", "Everton", {
+      fixtureId: 9002,
+      utcDate: "2026-11-02T15:00:00.000Z",
+    });
+    const evertonLatest = fixture("Everton", "Coventry", {
+      fixtureId: 9003,
+      utcDate: "2026-11-06T15:00:00.000Z",
     });
     const other = fixture("Arsenal", "Chelsea", {
-      fixtureId: 9002,
+      fixtureId: 9004,
       utcDate: "2026-10-26T15:00:00.000Z",
     });
     const ctx = resolveAskContext(
       "What's Everton's manager today?",
       [],
       undefined,
-      [evertonNext, other],
+      [evertonLatest, evertonMid, evertonEarliest, other],
       [],
       [],
       { now: Date.parse("2026-10-21T12:00:00.000Z") },
     );
-    expect(ctx).toEqual({ tier: "match", fixture: evertonNext });
+    expect(ctx).toEqual({ tier: "match", fixture: evertonEarliest });
   });
 
   it("recognizes an authoritative friendly as outside coverage and retains fixture identity", () => {
@@ -7035,6 +7043,17 @@ describe("settled player news requires exact current-claim verification", () => 
             expect(result.answer).not.toContain("remarkable transformation");
             expect(result.answer).not.toContain("Premier League title triumph");
             if (mode === "supported" || mode === "no-marker") {
+              if (!pin && question === "Who is Arsenal\u2019s manager?") {
+                expect(resolveAskContext(
+                  question,
+                  [],
+                  undefined,
+                  [model],
+                  [],
+                  [],
+                  { now: Date.parse("2026-10-06T19:00:00.000Z") },
+                )).toMatchObject({ tier: "match", fixture: model });
+              }
               expect(result.answer, question).toContain("Arsenal’s manager is Mikel Arteta");
               if (/why/i.test(question)) expect(result.answer).toContain("I haven’t verified the club’s stated reason");
               else expect(result.answer).not.toContain("reason");
