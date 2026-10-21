@@ -118,7 +118,7 @@ describe("1x2 level headlines", () => {
   it("rejects level LLM output that names a side as value", async () => {
     vi.spyOn(takeLlm, "renderTakeProseWithLlmDetailed").mockImplementation(async (plan, variant, grounding) => {
       const raw = "Crystal Palace v Newcastle — Crystal Palace at 36%. The value is Crystal Palace at 3.06 against our fair 2.79.";
-      const guarded = finalizeLevelNoSideLlmProse(raw, plan, variant ?? "full", grounding);
+      const guarded = finalizeLevelNoSideLlmProse(raw, plan, variant ?? "full", grounding ?? null);
       if (!guarded) {
         return { prose: null, dropped: ["llm-rejected:level-side-call"], source: "none" };
       }
