@@ -899,6 +899,9 @@ export function composeMatchResponse(
   const tableExplain = tableVsModelFavoriteExplainLine(grounding);
   const gapLine = biggestMarketGapLine(grounding);
   const oddsBlock = composeMatchPreviewOddsBlock(grounding);
+  const consensus = grounding.consensus
+    ? `${PUNDIT_FUNDAMENTAL_LABEL} is our standalone 1X2 above. ${PUNDIT_CONSENSUS_LABEL}, a separate view shrunk toward the market, is ${grounding.home} ${pct(grounding.consensus.pHome)}, draw ${pct(grounding.consensus.pDraw)} and ${grounding.away} ${pct(grounding.consensus.pAway)}.`
+    : "";
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
     gapLine ?? "",
@@ -906,6 +909,7 @@ export function composeMatchResponse(
     asksCompleteMatchBriefing(question) ? composeBriefingFootball(grounding) : "",
     `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${totalsAssumptionSentence(grounding)}`,
     oddsBlock,
+    consensus,
     revisitAfterNews(grounding),
   ].filter(Boolean).join("\n\n");
 }
