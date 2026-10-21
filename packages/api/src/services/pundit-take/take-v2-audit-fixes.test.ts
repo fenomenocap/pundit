@@ -207,7 +207,7 @@ describe("Take v2 prod audit fixes", () => {
     };
     const plan = buildPunditTakePlan(grounding, null, { now: AUDIT_NOW });
     expect(plan.marketColumns.map((c) => c.sourceKey)).toEqual(["kalshi"]);
-    const table = formatTakeOddsTable(plan);
+    const table = formatTakeOddsTable(plan, grounding);
     expect(table).toMatch(/\| Kalshi \|/);
     expect(table).not.toMatch(/\| Poly \|/);
     expect(table).toMatch(/\| Best \|/);

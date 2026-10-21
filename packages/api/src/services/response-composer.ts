@@ -107,7 +107,7 @@ function biggestMarketGapLine(grounding: Grounding, nowMs = Date.now()): string 
 
 function composeMatchPreviewOddsTable(grounding: Grounding): string {
   const planJson = buildPunditTakePlan(grounding, null, { marketKind: "1x2" });
-  return formatTakeOddsTable(planJson);
+  return formatTakeOddsTable(planJson, grounding);
 }
 
 function composeMatchPreviewSourcesFooter(grounding: Grounding): string {

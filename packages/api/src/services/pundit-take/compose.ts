@@ -200,7 +200,7 @@ function assembleDelivery(
     ? ""
     : passPlay
       ? formatPassPlayLineTable(grounding)
-      : formatTakeOddsTable(planJson);
+      : formatTakeOddsTable(planJson, grounding);
   const sources = buildTakeSourcesFooter(grounding, resolvedDossier, Date.now());
   const includeOdds = tableIncludesLiveMarketPrices(planJson);
   const footer = formatTakeSourcesFooterBlock(sources, { includeOdds });

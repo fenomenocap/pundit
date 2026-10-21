@@ -52,6 +52,16 @@ function nearTiePalNewGrounding() {
   };
 }
 
+/** Raw gap 1.99 pt (level) but rounded ints 37 vs 35 — table must use raw band, not rounded. */
+function roundingEdgePalNewGrounding() {
+  return {
+    ...palNewGrounding(),
+    pHome: 0.365,
+    pDraw: 0.28,
+    pAway: 0.3451,
+  };
+}
+
 function withPalNewPinnedNow<T>(run: () => T): T {
   vi.useFakeTimers({ now: PAL_NEW_PINNED_NOW });
   try {
@@ -135,7 +145,7 @@ describe("1x2 level headlines", () => {
     };
     const exactPlan = buildPunditTakePlan(exact, null);
     expect(exactPlan.levelNoSide).toBe(true);
-    const exactTable = formatTakeOddsTable(exactPlan);
+    const exactTable = formatTakeOddsTable(exactPlan, exact);
     expect(exactTable).toMatch(/\| Crystal Palace \| 36%/);
     expect(exactTable).toMatch(/\| Newcastle \| 36%/);
     expect(exactTable).not.toMatch(/\| Draw \| 28%/);
@@ -146,7 +156,7 @@ describe("1x2 level headlines", () => {
     };
     const nearPlan = buildPunditTakePlan(near, null);
     expect(nearPlan.levelNoSide).toBe(true);
-    const nearTable = formatTakeOddsTable(nearPlan);
+    const nearTable = formatTakeOddsTable(nearPlan, near);
     expect(nearTable).toMatch(/\| Crystal Palace \| 37%/);
     expect(nearTable).toMatch(/\| Newcastle \| 36%/);
     expect(nearTable).not.toMatch(/\| Draw \| 28%/);
@@ -163,6 +173,66 @@ describe("1x2 level headlines", () => {
       expect(delivery.answer).toMatch(/\| Crystal Palace \| 37%/);
       expect(delivery.answer).toMatch(/\| Newcastle \| 36%/);
     });
+  });
+
+  it("rounding edge level table shows both sides when raw gap is under 2 pt but rounded ints differ", () => {
+    const grounding = roundingEdgePalNewGrounding();
+    const noMarket = {
+      ...grounding,
+      pricing: { ...grounding.pricing, markets: [] },
+    };
+    const plan = buildPunditTakePlan(noMarket, null);
+    expect(plan.levelNoSide).toBe(true);
+    const table = formatTakeOddsTable(plan, noMarket);
+    expect(table).toMatch(/\| Crystal Palace \| 37%/);
+    expect(table).toMatch(/\| Newcastle \| 35%/);
+    expect(table).not.toMatch(/\| Draw \| 28%/);
+  });
+
+  it("sync rounding-edge delivery keeps both level sides on the no-market table", () => {
+    withPalNewPinnedNow(() => {
+      const base = roundingEdgePalNewGrounding();
+      const grounding = {
+        ...base,
+        pricing: { ...base.pricing, markets: [] },
+      };
+      const question = "Crystal Palace v Newcastle — who wins?";
+      const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: false });
+      const delivery = withPunditTakeRequestScope("v2", () =>
+        composePunditTakeDelivery(question, grounding, plan)!);
+      expect(delivery.answer).toMatch(/level at 37% each/i);
+      expect(delivery.answer).toMatch(/\| Crystal Palace \| 37%/);
+      expect(delivery.answer).toMatch(/\| Newcastle \| 35%/);
+      expect(delivery.answer).not.toMatch(/\| Draw \| 28%/);
+    });
+  });
+
+  it("async rounding-edge delivery stays level and never calls the LLM", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key-for-level-bypass");
+    vi.stubEnv("MINIMAX_API_KEY", "");
+    const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation(() =>
+      Promise.resolve({
+        content: [{ type: "text", text: "Crystal Palace v Newcastle — Crystal Palace at 37%." }],
+        stop_reason: "end_turn",
+      } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>);
+    await withPalNewPinnedNow(async () => {
+      const base = roundingEdgePalNewGrounding();
+      const grounding = {
+        ...base,
+        pricing: { ...base.pricing, markets: [] },
+      };
+      const question = "Crystal Palace v Newcastle — who wins?";
+      const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: false });
+      const delivery = await withPunditTakeRequestScope("v2", () =>
+        composePunditTakeDeliveryAsync(question, grounding, plan));
+      expect(delivery).not.toBeNull();
+      expect(delivery!.answer).toMatch(/level at 37% each/i);
+      expect(delivery!.answer).toMatch(/\| Crystal Palace \| 37%/);
+      expect(delivery!.answer).toMatch(/\| Newcastle \| 35%/);
+      expect(create).not.toHaveBeenCalled();
+    });
+    create.mockRestore();
+    vi.unstubAllEnvs();
   });
 
   it("async near-tie delivery stays level and never calls the LLM", async () => {

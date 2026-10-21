@@ -1,4 +1,5 @@
 import type { Grounding } from "../ask";
+import type { OneXTwoOutcome } from "../response-correctness";
 import type { PunditTakePlan, TakePlanRow } from "./types";
 import { displayOutcomeLabel } from "../basics-answer-voice";
 
@@ -8,21 +9,37 @@ function modelPctInt(p: number): number {
 
 export const COIN_FLIP_GAP_POINTS = 2;
 
+/** Gap in percentage points between two raw 1X2 probabilities (same threshold as level/no-side). */
+export function oneXTwoRawProbabilityGapPoints(higher: number, lower: number): number {
+  return (higher - lower) * 100;
+}
+
+function raw1x2Probability(grounding: Grounding, outcome: OneXTwoOutcome): number {
+  if (outcome === "home") return grounding.pHome;
+  if (outcome === "draw") return grounding.pDraw;
+  return grounding.pAway;
+}
+
 export function oneXTwoTopGapPoints(grounding: Grounding): number {
   const sorted = [grounding.pHome, grounding.pDraw, grounding.pAway].slice().sort((a, b) => b - a);
-  return (sorted[0] - sorted[1]) * 100;
+  return oneXTwoRawProbabilityGapPoints(sorted[0], sorted[1]);
 }
 
 export function is1x2SidePickSuppressed(grounding: Grounding): boolean {
   return oneXTwoTopGapPoints(grounding) < COIN_FLIP_GAP_POINTS;
 }
 
+/** True when raw p is within the level band of the leading 1X2 outcome (uses COIN_FLIP_GAP_POINTS). */
+export function is1x2OutcomeWithinLevelBand(grounding: Grounding, p: number): boolean {
+  const maxRaw = Math.max(grounding.pHome, grounding.pDraw, grounding.pAway);
+  return oneXTwoRawProbabilityGapPoints(maxRaw, p) < COIN_FLIP_GAP_POINTS;
+}
+
 /** 1X2 rows to show in a no-market table when the plan has no side pick. */
-export function level1x2RowsForTable(plan: PunditTakePlan): TakePlanRow[] {
+export function level1x2RowsForTable(plan: PunditTakePlan, grounding: Grounding): TakePlanRow[] {
   if (!plan.levelNoSide || !plan.rows.length) return [];
-  const topPct = Math.max(...plan.rows.map((row) => row.modelPctInt));
-  const withinThreshold = plan.rows.filter(
-    (row) => topPct - row.modelPctInt < COIN_FLIP_GAP_POINTS,
+  const withinThreshold = plan.rows.filter((row) =>
+    is1x2OutcomeWithinLevelBand(grounding, raw1x2Probability(grounding, row.outcome)),
   );
   return withinThreshold.length > 0 ? withinThreshold : plan.rows;
 }
