@@ -1,4 +1,9 @@
-import type { PunditTakePlan } from "./types";
+import type { PunditTakePlan, TakePlanRow } from "./types";
+
+function levelTied1x2Rows(plan: PunditTakePlan): TakePlanRow[] {
+  const maxPct = Math.max(...plan.rows.map((row) => row.modelPctInt));
+  return plan.rows.filter((row) => row.modelPctInt === maxPct);
+}
 
 function formatGridTable(plan: PunditTakePlan): string {
   if (!plan.gridRows.length) return "No price yet.";
@@ -30,15 +35,16 @@ export function formatTakeOddsTable(plan: PunditTakePlan): string {
   }
 
   if (!plan.hasCompleteMarket) {
-    const row = plan.rows.find((r) => r.outcome === plan.call.outcome) ?? plan.rows[0];
-    if (!row) return "No price yet.";
-    return [
+    const rows = plan.levelNoSide ? levelTied1x2Rows(plan) : [plan.rows.find((r) => r.outcome === plan.call.outcome) ?? plan.rows[0]].filter(Boolean);
+    if (!rows.length) return "No price yet.";
+    const lines = [
       "| Outcome | Ours |",
       "| --- | --- |",
-      `| ${row.label} | ${row.modelPctInt}% / ${row.fairDecimal} |`,
+      ...rows.map((row) => `| ${row.label} | ${row.modelPctInt}% / ${row.fairDecimal} |`),
       "",
       "No price yet.",
-    ].join("\n");
+    ];
+    return lines.join("\n");
   }
 
   const headers = ["Outcome", "Ours", ...plan.marketColumns.map((c) => c.shortLabel), "Best"];

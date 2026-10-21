@@ -90,6 +90,23 @@ export function asksInjuryUpdatesWithoutLineups(question: string): boolean {
     && !/\b(?:line-?ups?|starting xi|starters?|start(?:s|ing)?|xi)\b/i.test(question);
 }
 
+function isAllowedSingleClubReasonTail(
+  reasonTail: string,
+  manager: boolean,
+  result: boolean,
+): boolean {
+  if (!manager && !result) return false;
+  const grammar = "why how was were is are did does has have he she they him her them it this that the a an club manager coach team we his their our for to of in by be been being still";
+  const topic = manager
+    ? "appoint appointed appointment choose chose chosen hire hired hiring select selected selection retain retained keep kept remain remains continuing tenure job role charge"
+    : "win won lose lost draw drew result score match game happen happened finish finished";
+  const allowed = new Set(`${grammar} ${topic}`.split(" "));
+  const words = normalizeTeamText(reasonTail.replace(/[?!.]+$/g, "")).split(" ").filter(Boolean);
+  if (words.some((word) => !allowed.has(word))) return false;
+  if (words.length > 1 && !words.some((word) => topic.split(" ").includes(word))) return false;
+  return true;
+}
+
 /** A club fact is not a fact about its pinned opponent. Never infer a new club. */
 export function singleClubCurrentFactScope(
   question: string,
@@ -102,7 +119,7 @@ export function singleClubCurrentFactScope(
   const sentenceParts = q.split(/(?<=[?.!])\s+/).map((part) => part.trim()).filter(Boolean);
   const firstSentence = sentenceParts[0] ?? q;
   const followUpSentences = sentenceParts.slice(1);
-  if (followUpSentences.some((part) => !/^(?:explain|why|how)\b/i.test(part))) return null;
+  if (followUpSentences.some((part) => !/^(?:explain\s+)?(?:why|how)\b/i.test(part))) return null;
   const manager = (/^(?:who|what)\s+is\b[^?\n]{0,100}\b(?:manager|head coach|coach)\b/i.test(firstSentence)
     || /^who\s+(?:manages|coaches)\b/i.test(firstSentence))
     && !/\b(?:space|shape|press|pressing|zones?|width|midfield|defence|defense)\b/i.test(q);
@@ -114,17 +131,10 @@ export function singleClubCurrentFactScope(
   if (/\band\s+(?!why\b|how\b)/i.test(q)) return null;
   const reasonMatch = /\band\s+((?:why|how)\b.*)$/i.exec(q);
   const reasonTail = reasonMatch?.[1];
-  if (reasonTail) {
-    // A reason for this appointment/result is useful; a new club or topic is
-    // a compound request and must keep the normal, wider evidence path.
-    const grammar = "why how was were is are did does has have he she they him her them it this that the a an club manager coach team we his their our for to of in by be been being still";
-    const topic = manager
-      ? "appoint appointed appointment choose chose chosen hire hired hiring select selected selection retain retained keep kept remain remains continuing tenure job role charge"
-      : "win won lose lost draw drew result score match game happen happened finish finished";
-    const allowed = new Set(`${grammar} ${topic}`.split(" "));
-    const words = normalizeTeamText(reasonTail.replace(/[?!.]+$/g, "")).split(" ").filter(Boolean);
-    if (words.some((word) => !allowed.has(word))
-      || (words.length > 1 && !words.some((word) => topic.split(" ").includes(word)))) return null;
+  if (reasonTail && !isAllowedSingleClubReasonTail(reasonTail, manager, result)) return null;
+  for (const followUp of followUpSentences) {
+    const tail = followUp.replace(/^(?:explain\s+)?(?:why|how)\b/i, "").trim();
+    if (!isAllowedSingleClubReasonTail(tail, manager, result)) return null;
   }
   const primaryQuestion = reasonMatch ? q.slice(0, reasonMatch.index).trim() : firstSentence;
   const folded = normalizeTeamText(primaryQuestion.replace(/['’]s\b/g, ""));

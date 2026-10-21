@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
@@ -2841,6 +2841,16 @@ describe("current-news evidence hardening", () => {
   });
 
   describe("deterministic grounded fact layer", () => {
+    const PINNED_FACT_LAYER_NOW = new Date("2026-10-21T08:30:00.000Z");
+
+    beforeEach(() => {
+      vi.useFakeTimers({ now: PINNED_FACT_LAYER_NOW });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     const model = (): Grounding => {
       const base = buildGrounding(fixture("Arsenal", "Coventry", {
         pHome: 0.9728,
