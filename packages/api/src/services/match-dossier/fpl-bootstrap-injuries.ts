@@ -29,6 +29,8 @@ export interface FplBootstrapElement {
   id: number;
   web_name: string;
   team: number;
+  /** FPL element code (matches Pulselive staff altIds.opta numeric suffix). */
+  code?: number;
   status: string;
   news: string;
   news_added: string | null;
@@ -217,7 +219,7 @@ export function buildFplInjuryEvidenceForFixture(
   fixture: ModelFixture,
   retrievedAt: string,
   snapshot: FplBootstrapSnapshot,
-  options?: { requireNewsAdded?: boolean },
+  options?: { requireNewsAdded?: boolean; dropUnavailable?: boolean },
 ): DossierEvidenceItem[] {
   if (fixture.competitionId !== "eng.1") return [];
   const teamIds = fixtureFplTeamIds(snapshot, fixture);
@@ -232,8 +234,9 @@ export function buildFplInjuryEvidenceForFixture(
     if (!team) continue;
     const club = clubLabelForFplTeam(fixture, team);
     const status = normalizeFplStatus(player.status, hasNews);
+    if (options?.dropUnavailable && status === "u") continue;
     const newsAddedAt = player.news_added ?? null;
-    if (options?.requireNewsAdded && !newsAddedAt && status !== "i" && status !== "s" && status !== "u") {
+    if (options?.requireNewsAdded && !newsAddedAt && status !== "i" && status !== "s") {
       continue;
     }
     const chanceOfPlaying = player.chance_of_playing_next_round ?? null;
@@ -259,6 +262,7 @@ export function buildFplInjuryEvidenceForFixture(
       chanceOfPlaying,
       newsAddedAt,
       fplElementId: player.id,
+      fplElementCode: player.code ?? null,
       fplTeamId: player.team,
       newsText: hasNews ? newsText : undefined,
     });

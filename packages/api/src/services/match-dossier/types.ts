@@ -70,6 +70,8 @@ export interface DossierEvidenceItem {
   newsAddedAt?: string | null;
   /** FPL bootstrap `elements[].id` (fixture-first team news audit). */
   fplElementId?: number;
+  /** FPL bootstrap `elements[].code` (Pulselive squad join). */
+  fplElementCode?: number | null;
   /** FPL bootstrap `elements[].team` (fixture-first team news audit + wrong-club guard). */
   fplTeamId?: number;
   /** Audit-only; must not be rendered on public surfaces (take renders from structured fields). */

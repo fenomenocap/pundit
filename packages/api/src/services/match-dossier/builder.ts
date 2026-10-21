@@ -342,6 +342,12 @@ export async function buildMatchDossierForFixtureAsync(
   if (matchDossierFixtureFirstEnabled()) {
     const { prefetchPlFixturesForBuildPass } = await import("./fixture-first/pl-fixtures-client");
     await prefetchPlFixturesForBuildPass();
+    const fplSnapshot = (await import("./fpl-bootstrap-injuries")).getCachedFplBootstrapSnapshot();
+    if (fplSnapshot) {
+      const { prefetchPlStaffForBuildPass } = await import("./fixture-first/pl-staff-client");
+      const fetchedAt = (options.now ?? new Date()).toISOString();
+      await prefetchPlStaffForBuildPass([fixture.home, fixture.away], fplSnapshot, fetchedAt);
+    }
   }
   let evidence: DossierEvidenceCollectResult | undefined = options.evidence
     ? {
@@ -435,6 +441,18 @@ export async function buildAndPersistDossiersForWindowAsync(
   if (matchDossierFixtureFirstEnabled()) {
     const { prefetchPlFixturesForBuildPass } = await import("./fixture-first/pl-fixtures-client");
     await prefetchPlFixturesForBuildPass();
+    const fplSnapshot = (await import("./fpl-bootstrap-injuries")).getCachedFplBootstrapSnapshot();
+    if (fplSnapshot) {
+      const model = getCachedModelData();
+      const targets = filterFixturesInKickoffWindow(
+        model.fixtures.filter((f) => f.competitionId === "eng.1"),
+        window,
+      );
+      const sides = targets.flatMap((f) => [f.home, f.away]);
+      const { prefetchPlStaffForBuildPass } = await import("./fixture-first/pl-staff-client");
+      const fetchedAt = (options.now ?? new Date()).toISOString();
+      await prefetchPlStaffForBuildPass(sides, fplSnapshot, fetchedAt);
+    }
   }
   return buildAndPersistDossiersForWindow(window, options);
 }

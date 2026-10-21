@@ -27,6 +27,12 @@ import {
   resolvePlCompSeasonIdFromRows,
   setPlFixturesCacheForTests,
 } from "./pl-fixtures-client";
+import {
+  loadPlStaffLeeds841Recorded,
+  resetPlStaffCacheForTests,
+  seedPlStaffCacheFromFplSnapshot,
+  squadIndexFromStaffPayload,
+} from "./pl-staff-client";
 import { passesFixtureFirstFreshness, previousMatchKickoffUtc } from "./previous-match-cutoff";
 import { sourceGroupForField, getSourceGroup } from "./source-groups";
 import type { DossierEvidenceItem } from "../types";
@@ -94,6 +100,7 @@ describe("fixture-first team news (source groups)", () => {
     for (const key of ENV_KEYS) saved[key] = process.env[key];
     resetFplBootstrapCacheForTests();
     resetPlFixturesCacheForTests();
+    resetPlStaffCacheForTests();
     process.env.MATCH_DOSSIER_EVIDENCE_ENABLED = "false";
     process.env.MATCH_DOSSIER_FPL_ENABLED = "false";
   });
@@ -115,6 +122,7 @@ describe("fixture-first team news (source groups)", () => {
 
   it("joins Coventry, Hull and Ipswich by FPL team id for team news", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
+    seedPlStaffCacheFromFplSnapshot(snapshot, { fetchedAt: "2026-10-21T12:00:00.000Z" });
     expect(resolveFplTeamIdForFixtureSide("Coventry", snapshot)).toBe(7);
     expect(resolveFplTeamIdForFixtureSide("Hull", snapshot)).toBe(11);
     expect(resolveFplTeamIdForFixtureSide("Ipswich", snapshot)).toBe(12);
@@ -136,7 +144,7 @@ describe("fixture-first team news (source groups)", () => {
     const pl = loadPlFixturesFromRecordedFixture();
     const row = fixture("Chelsea", "Tottenham", {
       fixtureId: 401879800,
-      utcDate: "2026-10-24T17:30:00.000Z",
+      utcDate: "2026-10-24T16:30:00.000Z",
     });
     const { identity, fetchLogs } = resolveFixtureIdentity({
       fixture: row,
@@ -144,11 +152,11 @@ describe("fixture-first team news (source groups)", () => {
       plPayload: pl,
       fetchedAt: "2026-10-21T12:00:00.000Z",
     });
-    expect(identity.plMatchId).toBe("479421");
+    expect(identity.plMatchId).toBe("128995");
     expect(identity.resolvedVia).toBe("pl-api");
     expect(identity.espnEventId).toBe(401879800);
     expect(fetchLogs.some((log) => log.sourceKey === "pl-api")).toBe(true);
-    expect(fetchLogs[0]?.url).toBe("https://footballapi.pulselive.com/football/fixtures/479421");
+    expect(fetchLogs[0]?.url).toBe("https://footballapi.pulselive.com/football/fixtures/128995");
     expect(fetchLogs[0]?.query).toContain("Chelsea v Tottenham");
   });
 
@@ -213,6 +221,7 @@ describe("fixture-first team news (source groups)", () => {
 
   it("drops stale doubt rows using only the player's own club previous match", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
+    seedPlStaffCacheFromFplSnapshot(snapshot, { fetchedAt: "2026-10-21T12:00:00.000Z" });
     const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
     const schedule = scheduleWithPrevious({
       home: "Chelsea",
@@ -245,11 +254,12 @@ describe("fixture-first team news (source groups)", () => {
     });
     expect(items.some((i) => i.player === "StaleChe")).toBe(false);
     expect(items.some((i) => i.player === "James")).toBe(true);
-    expect(items.some((i) => i.player === "Porro")).toBe(true);
+    expect(items.some((i) => i.player === "Pedro Porro")).toBe(true);
   });
 
   it("keeps Chelsea doubt news after Chelsea's previous match even when before the opponent's", () => {
     const snapshot = loadFplBootstrap841Recorded();
+    seedPlStaffCacheFromFplSnapshot(snapshot, { fetchedAt: "2026-10-21T12:00:00.000Z" });
     const row = fixture("Chelsea", "Tottenham", {
       fixtureId: 401878767,
       utcDate: "2026-10-24T16:30:00.000Z",
@@ -302,8 +312,9 @@ describe("fixture-first team news (source groups)", () => {
     expect(items.some((i) => i.player === "Chavarria" && i.club === "Chelsea")).toBe(true);
   });
 
-  it("keeps ongoing i/s/u absentees regardless of old news_added (Porro-style)", () => {
+  it("keeps ongoing i/s absentees regardless of old news_added (Porro-style)", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
+    seedPlStaffCacheFromFplSnapshot(snapshot, { fetchedAt: "2026-10-21T12:00:00.000Z" });
     const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
     const schedule = scheduleWithPrevious({
       home: "Chelsea",
@@ -312,7 +323,7 @@ describe("fixture-first team news (source groups)", () => {
       previousHomeKickoff: "2026-10-19T15:00:00.000Z",
       previousAwayKickoff: "2026-10-19T17:30:00.000Z",
     });
-    const porro = snapshot.elements.find((e) => e.web_name === "Porro")!;
+    const porro = snapshot.elements.find((e) => e.web_name === "Pedro Porro")!;
     expect(porro.status).toBe("i");
     expect(porro.news_added).toBe("2026-09-19T12:00:08.823872Z");
     const { items } = buildInjuriesDoubtsTeamNews({
@@ -331,7 +342,33 @@ describe("fixture-first team news (source groups)", () => {
       schedule,
       fetchedAt: "2026-10-21T12:00:00.000Z",
     });
-    expect(items.some((i) => i.player === "Porro")).toBe(true);
+    expect(items.some((i) => i.player === "Pedro Porro")).toBe(true);
+  });
+
+  it("drops FPL unavailable (u) rows on fixture-first path (Martinelli from 841 bootstrap)", () => {
+    const snapshot = loadFplBootstrap841Recorded();
+    seedPlStaffCacheFromFplSnapshot(snapshot, { fetchedAt: "2026-10-21T12:00:00.000Z" });
+    const martinelli = snapshot.elements.find((e) => e.web_name === "Martinelli");
+    expect(martinelli?.status).toBe("u");
+    expect(martinelli?.news_added).toBeTruthy();
+    const row = fixture("Arsenal", "Everton", { utcDate: "2026-10-24T14:00:00.000Z" });
+    const { items } = buildInjuriesDoubtsTeamNews({
+      fixture: row,
+      identity: {
+        plMatchId: "128993",
+        espnEventId: row.fixtureId,
+        fotmobMatchId: null,
+        goalMatchUuid: null,
+        bbcTipoId: null,
+        homeFplTeamId: 1,
+        awayFplTeamId: 9,
+        resolvedVia: "pl-api",
+      },
+      fplSnapshot: snapshot,
+      schedule: [],
+      fetchedAt: "2026-10-21T12:00:00.000Z",
+    });
+    expect(items.some((i) => i.fplElementId === martinelli!.id)).toBe(false);
   });
 
   it("drops unflagged available players and doubt rows missing news_added", () => {
@@ -344,8 +381,41 @@ describe("fixture-first team news (source groups)", () => {
     expect(raw.some((i) => i.player === "Saka")).toBe(true);
   });
 
+  it("drops Mateo Joseph when absent from recorded Leeds compSeason 841 staff (Opta join)", () => {
+    const snapshot = loadFplBootstrap841Recorded();
+    const joseph = snapshot.elements.find((e) => e.web_name === "Mateo Joseph");
+    expect(joseph?.status).toBe("i");
+    expect(joseph?.code).toBe(565297);
+    const pulseOverrides = new Map([
+      [9, squadIndexFromStaffPayload(loadPlStaffLeeds841Recorded())],
+    ]);
+    seedPlStaffCacheFromFplSnapshot(snapshot, {
+      fetchedAt: "2026-10-21T12:00:00.000Z",
+      pulseOverrides,
+    });
+    const row = fixture("Sunderland", "Leeds", { utcDate: "2026-10-25T16:30:00.000Z" });
+    const { items } = buildInjuriesDoubtsTeamNews({
+      fixture: row,
+      identity: {
+        plMatchId: "129002",
+        espnEventId: row.fixtureId,
+        fotmobMatchId: null,
+        goalMatchUuid: null,
+        bbcTipoId: null,
+        homeFplTeamId: 17,
+        awayFplTeamId: 13,
+        resolvedVia: "pl-api",
+      },
+      fplSnapshot: snapshot,
+      schedule: [],
+      fetchedAt: "2026-10-21T12:00:00.000Z",
+    });
+    expect(items.some((i) => i.fplElementId === joseph!.id)).toBe(false);
+  });
+
   it("defensive guard drops and logs when fplTeamId does not match labelled club (no-op on live bootstrap)", () => {
     const snapshot = loadFplBootstrap841Recorded();
+    seedPlStaffCacheFromFplSnapshot(snapshot, { fetchedAt: "2026-10-21T12:00:00.000Z" });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
     const mismatched: DossierEvidenceItem = {
@@ -397,8 +467,9 @@ describe("fixture-first team news (source groups)", () => {
 
   it("logs fetchedAt, source timestamp and exact query on team news fetches", () => {
     const snapshot = loadFplBootstrapFromRecordedFixture();
+    seedPlStaffCacheFromFplSnapshot(snapshot, { fetchedAt: "2026-10-21T12:00:00.000Z" });
     const pl = loadPlFixturesFromRecordedFixture();
-    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T17:30:00.000Z" });
+    const row = fixture("Chelsea", "Tottenham", { utcDate: "2026-10-24T16:30:00.000Z" });
     const bundle = buildFixtureFirstTeamNews({
       fixture: row,
       fplSnapshot: snapshot,
@@ -414,7 +485,7 @@ describe("fixture-first team news (source groups)", () => {
     });
     const fplLog = bundle.fetchLogs.find((log) => log.sourceKey === "fpl")!;
     expect(fplLog.fetchedAt).toBe("2026-10-21T12:00:00.000Z");
-    expect(fplLog.sourceTimestamp).toBe("2026-10-22T09:00:00.000Z");
+    expect(fplLog.sourceTimestamp).toBe("2026-10-19T22:30:08.875960Z");
     expect(fplLog.query).toBe(
       "Chelsea v Tottenham Premier League 2026-10-24 team news injuries",
     );
@@ -433,22 +504,93 @@ describe("fixture-first team news (source groups)", () => {
 
   it("builds teamNews and fixtureIdentity on dossier when flag is on", () => {
     process.env.MATCH_DOSSIER_FIXTURE_FIRST_ENABLED = "true";
-    setFplBootstrapCacheForTests(loadFplBootstrapFromRecordedFixture());
+    const snapshot = loadFplBootstrapFromRecordedFixture();
+    seedPlStaffCacheFromFplSnapshot(snapshot, { fetchedAt: "2026-10-21T12:00:00.000Z" });
+    setFplBootstrapCacheForTests(snapshot);
     setPlFixturesCacheForTests(loadPlFixturesFromRecordedFixture(), "2026-10-21T12:00:00.000Z");
     const row = fixture("Chelsea", "Tottenham", {
       fixtureId: 401879800,
-      utcDate: "2026-10-24T17:30:00.000Z",
+      utcDate: "2026-10-24T16:30:00.000Z",
     });
     const dossier = buildMatchDossierForFixture(row, {
       now: new Date("2026-10-21T12:00:00.000Z"),
     });
-    expect(dossier.fixtureIdentity?.value.plMatchId).toBe("479421");
+    expect(dossier.fixtureIdentity?.value.plMatchId).toBe("128995");
     expect(dossier.teamNews?.value.fetchLogs.length).toBeGreaterThanOrEqual(2);
-    const james = dossier.teamNews!.value.items.find((i) => i.player === "James")!;
-    expect(james.status).toBe("d");
-    expect(james.newsAddedAt).toBe("2026-10-22T09:00:00.000Z");
-    expect(james.source).toBe("fpl-bootstrap-static");
-    expect(dossier.injuries.value.items.some((i) => i.player === "James")).toBe(true);
+    const gusto = dossier.teamNews!.value.items.find((i) => i.player === "Gusto")!;
+    expect(gusto.status).toBe("d");
+    expect(gusto.newsAddedAt).toBe("2026-10-17T18:30:09.695564Z");
+    expect(gusto.source).toBe("fpl-bootstrap-static");
+    expect(dossier.injuries.value.items.some((i) => i.player === "Gusto")).toBe(true);
+  });
+
+  it("GW8 slate loses one fact when Leeds uses recorded compSeason 841 staff (Mateo Joseph)", () => {
+    const snapshot = loadFplBootstrap841Recorded();
+    const cases: Array<{ home: string; away: string; utc: string; plId: string }> = [
+      { home: "Ipswich", away: "Forest", utc: "2026-10-23T19:00:00.000Z", plId: "128999" },
+      { home: "Aston Villa", away: "Man City", utc: "2026-10-24T11:30:00.000Z", plId: "128994" },
+      { home: "Arsenal", away: "Everton", utc: "2026-10-24T14:00:00.000Z", plId: "128993" },
+      { home: "Coventry", away: "Fulham", utc: "2026-10-24T14:00:00.000Z", plId: "128996" },
+      { home: "Chelsea", away: "Tottenham", utc: "2026-10-24T16:30:00.000Z", plId: "128995" },
+      { home: "Crystal Palace", away: "Newcastle", utc: "2026-10-25T14:00:00.000Z", plId: "128997" },
+      { home: "Hull", away: "Brentford", utc: "2026-10-25T14:00:00.000Z", plId: "128998" },
+      { home: "Liverpool", away: "Brighton", utc: "2026-10-25T14:00:00.000Z", plId: "129000" },
+      { home: "Man United", away: "Bournemouth", utc: "2026-10-25T14:00:00.000Z", plId: "129001" },
+      { home: "Sunderland", away: "Leeds", utc: "2026-10-25T16:30:00.000Z", plId: "129002" },
+    ];
+    const countSlate = () => {
+      let total = 0;
+      for (const c of cases) {
+        const row = fixture(c.home, c.away, { utcDate: c.utc });
+        const { items } = buildInjuriesDoubtsTeamNews({
+          fixture: row,
+          identity: {
+            plMatchId: c.plId,
+            espnEventId: row.fixtureId,
+            fotmobMatchId: null,
+            goalMatchUuid: null,
+            bbcTipoId: null,
+            homeFplTeamId: resolveFplTeamIdForFixtureSide(c.home, snapshot),
+            awayFplTeamId: resolveFplTeamIdForFixtureSide(c.away, snapshot),
+            resolvedVia: "pl-api",
+          },
+          fplSnapshot: snapshot,
+          schedule: [],
+          fetchedAt: "2026-10-21T12:00:00.000Z",
+        });
+        total += items.length;
+      }
+      return total;
+    };
+    seedPlStaffCacheFromFplSnapshot(snapshot, { fetchedAt: "2026-10-21T12:00:00.000Z" });
+    const baseline = countSlate();
+    const leedsSquad = squadIndexFromStaffPayload(loadPlStaffLeeds841Recorded());
+    const joseph = snapshot.elements.find((e) => e.web_name === "Mateo Joseph")!;
+    expect(joseph.code).toBe(565297);
+    expect(leedsSquad.fplCodes.has(565297)).toBe(false);
+    seedPlStaffCacheFromFplSnapshot(snapshot, {
+      fetchedAt: "2026-10-21T12:00:00.000Z",
+      pulseOverrides: new Map([[9, leedsSquad]]),
+    });
+    expect(countSlate()).toBe(baseline - 1);
+    const row = fixture("Sunderland", "Leeds", { utcDate: "2026-10-25T16:30:00.000Z" });
+    const { items } = buildInjuriesDoubtsTeamNews({
+      fixture: row,
+      identity: {
+        plMatchId: "129002",
+        espnEventId: row.fixtureId,
+        fotmobMatchId: null,
+        goalMatchUuid: null,
+        bbcTipoId: null,
+        homeFplTeamId: resolveFplTeamIdForFixtureSide("Sunderland", snapshot),
+        awayFplTeamId: resolveFplTeamIdForFixtureSide("Leeds", snapshot),
+        resolvedVia: "pl-api",
+      },
+      fplSnapshot: snapshot,
+      schedule: [],
+      fetchedAt: "2026-10-21T12:00:00.000Z",
+    });
+    expect(items.some((i) => i.fplElementId === joseph.id)).toBe(false);
   });
 });
 

@@ -6,6 +6,12 @@ import {
 } from "../fpl-bootstrap-injuries";
 import { fixtureSideLabelForFplTeam, resolveFplTeamIdForFixtureSide } from "../fpl-team-map";
 import type { DossierEvidenceItem, FplPlayerAvailabilityStatus } from "../types";
+import {
+  fplElementCodeInSquad,
+  getPlStaffFetchState,
+  type PlClubSquadIndex,
+} from "./pl-staff-client";
+import { plTeamPulseIdForSide } from "./pl-fixtures-client";
 import { passesFixtureFirstFreshness, previousMatchKickoffUtc } from "./previous-match-cutoff";
 import { formatGroupQueryTemplate, getSourceGroup, sourceGroupForField } from "./source-groups";
 import type { FixtureFirstFetchLog, FixtureIdentityValue } from "./types";
@@ -20,7 +26,7 @@ export interface FotMobUnavailableRow {
 
 const FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/";
 
-const ONGOING_ABSENTEE: FplPlayerAvailabilityStatus[] = ["i", "s", "u"];
+const ONGOING_ABSENTEE: FplPlayerAvailabilityStatus[] = ["i", "s"];
 
 function fplFetchLog(fetchedAt: string, sourceTimestamp: string | null, query: string): FixtureFirstFetchLog {
   return {
@@ -59,7 +65,7 @@ function isOngoingAbsentee(status: FplPlayerAvailabilityStatus | undefined): boo
   return status != null && ONGOING_ABSENTEE.includes(status);
 }
 
-/** Doubt/news rows only: own-club previous match + newsAddedAt. i/s/u skip news freshness. */
+/** Doubt/news rows only: own-club previous match + newsAddedAt. FPL i/s skip news freshness. */
 export function applyFixtureFirstFreshnessFilter(
   items: DossierEvidenceItem[],
   fixture: ModelFixture,
@@ -77,6 +83,59 @@ export function applyFixtureFirstFreshnessFilter(
       kickoffUtc: fixture.utcDate,
       clubPreviousKickoffUtc: clubPrev,
     });
+  });
+}
+
+const SQUAD_GUARD_STATUSES: FplPlayerAvailabilityStatus[] = ["i", "s", "d"];
+
+function squadBlockedClubs(
+  fixture: ModelFixture,
+  snapshot: FplBootstrapSnapshot,
+): Set<string> {
+  const blocked = new Set<string>();
+  for (const club of [fixture.home, fixture.away]) {
+    const pulseId = plTeamPulseIdForSide(club, snapshot);
+    if (pulseId == null) continue;
+    const state = getPlStaffFetchState(pulseId);
+    if (!state || !state.ok) blocked.add(club);
+  }
+  return blocked;
+}
+
+function squadIndexForClub(club: string, snapshot: FplBootstrapSnapshot): PlClubSquadIndex | null {
+  const pulseId = plTeamPulseIdForSide(club, snapshot);
+  if (pulseId == null) return null;
+  const state = getPlStaffFetchState(pulseId);
+  if (!state?.ok) return null;
+  return state.index;
+}
+
+/** i/s/d rows must appear on the club's current PL compSeason staff list (Opta id, then FPL code). */
+export function applyPlSquadMembershipGuard(
+  items: DossierEvidenceItem[],
+  fixture: ModelFixture,
+  snapshot: FplBootstrapSnapshot,
+): DossierEvidenceItem[] {
+  const blockedClubs = squadBlockedClubs(fixture, snapshot);
+  return items.filter((item) => {
+    if (!item.club) return false;
+    if (blockedClubs.has(item.club)) return false;
+    if (item.status == null || !SQUAD_GUARD_STATUSES.includes(item.status)) return true;
+    const index = squadIndexForClub(item.club, snapshot);
+    if (!index) return false;
+    const code = item.fplElementCode
+      ?? snapshot.elements.find((row) => row.id === item.fplElementId)?.code
+      ?? null;
+    if (fplElementCodeInSquad(code, index)) return true;
+    console.log(JSON.stringify({
+      event: "fixture_first_squad_member_drop",
+      player: item.player,
+      club: item.club,
+      fplElementId: item.fplElementId ?? null,
+      fplElementCode: code,
+      status: item.status,
+    }));
+    return false;
   });
 }
 
@@ -135,7 +194,7 @@ function fotmobRowsToEvidence(
       source: "fotmob-match-details",
       player: row.name,
       club,
-      status: row.status === "doubtful" ? "d" : row.status === "out" ? "i" : "n",
+      status: row.status === "doubtful" ? "d" : "n",
       chanceOfPlaying: null,
       newsAddedAt: row.sourceTimestamp,
       fplTeamId: row.teamId,
@@ -169,14 +228,19 @@ export function buildInjuriesDoubtsTeamNews(params: {
     params.fixture,
     params.fetchedAt,
     params.fplSnapshot,
-    { requireNewsAdded: true },
+    { requireNewsAdded: true, dropUnavailable: true },
   ).map((item) => ({
     ...item,
     fixtureMatchVerified: true,
     freshnessVerified: true,
   }));
+  const guarded = applyFplTeamIdClubGuard(rawPrimary, params.fplSnapshot);
   const primaryItems = applyFixtureFirstFreshnessFilter(
-    applyFplTeamIdClubGuard(rawPrimary, params.fplSnapshot),
+    applyPlSquadMembershipGuard(
+      guarded,
+      params.fixture,
+      params.fplSnapshot,
+    ),
     params.fixture,
     params.schedule,
   );
@@ -192,13 +256,17 @@ export function buildInjuriesDoubtsTeamNews(params: {
   let fallbackItems: DossierEvidenceItem[] = [];
   if (params.fotmobUnavailable?.length && params.fotmobMatchId) {
     fallbackItems = applyFixtureFirstFreshnessFilter(
-      applyFplTeamIdClubGuard(
-        fotmobRowsToEvidence(
-          params.fotmobUnavailable,
-          params.fixture,
+      applyPlSquadMembershipGuard(
+        applyFplTeamIdClubGuard(
+          fotmobRowsToEvidence(
+            params.fotmobUnavailable,
+            params.fixture,
+            params.fplSnapshot,
+            params.fetchedAt,
+          ),
           params.fplSnapshot,
-          params.fetchedAt,
         ),
+        params.fixture,
         params.fplSnapshot,
       ),
       params.fixture,
