@@ -76,7 +76,8 @@ export function Navbar() {
             How it works
           </a>
           <div className="hidden sm:flex items-center gap-2.5 text-2xs uppercase tracking-wider text-quiet">
-            <LeagueMark />
+            {/* No league logo on the FPL simulator (not affiliated with the Premier League). */}
+            {pathname !== "/draft" && <LeagueMark />}
             <span className="inline-flex items-center gap-1.5">
               <span className="size-1.5 rounded-full bg-accent live-dot" />
               LIVE
