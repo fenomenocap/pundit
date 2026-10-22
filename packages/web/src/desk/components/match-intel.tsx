@@ -108,7 +108,7 @@ export function MatchIntel() {
               <p>{goalForecastDisclosure(f.goalCalibration)}</p>
             </SourcesToggle>
             <p className="mt-4 text-sm leading-relaxed text-quiet">
-              {f.status === "ft" ? "Pre-kickoff lean" : "Our lean"}{" "}
+              {f.status === "ft" ? "Pre-kickoff forecast" : "Our forecast"}{" "}
               <span className="text-fg font-medium">{selectionLabel(f, f.modelPick)}</span> at{" "}
               <span className="text-accent tabular-nums">{leanP === null ? "—" : fmtPct(leanP)}</span>. {f.brief}
             </p>
@@ -154,7 +154,7 @@ export function MatchIntel() {
             variant="accent"
             onClick={() =>
               queueAsk(
-                `Give me the match briefing for ${TEAMS[f.home].name} vs ${TEAMS[f.away].name}. Tactics, who decides it, and our lean.`,
+                `Give me the match briefing for ${TEAMS[f.home].name} vs ${TEAMS[f.away].name}. Tactics, who decides it, and our forecast.`,
               )
             }
           >

@@ -315,12 +315,22 @@ function MatchRow({
                     projection = null;
                   }
                   return projection ? (
-                    <div data-testid="fixture-projected-score" className="flex justify-between gap-2">
-                      <span>Most likely</span>
-                      <span className="text-fg">
-                        {projection.score.home}-{projection.score.away} {formatPercent(projection.score.probability)}
-                      </span>
-                    </div>
+                    <>
+                      <div data-testid="fixture-projected-score" className="flex justify-between gap-2">
+                        <span>Most likely</span>
+                        <span className="text-fg">
+                          {projection.score.home}-{projection.score.away} {formatPercent(projection.score.probability)}
+                        </span>
+                      </div>
+                      {projection.modal.home !== projection.score.home || projection.modal.away !== projection.score.away ? (
+                        <div data-testid="fixture-modal-score" className="flex justify-between gap-2">
+                          <span>Single likeliest</span>
+                          <span className="text-fg">
+                            {projection.modal.home}-{projection.modal.away} {formatPercent(projection.modal.probability)}
+                          </span>
+                        </div>
+                      ) : null}
+                    </>
                   ) : null;
                 })()}
                 <div className="uppercase tracking-wider text-subtle">Likely scorelines</div>

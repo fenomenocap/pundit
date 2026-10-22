@@ -67,7 +67,7 @@ export function fixtureCard(f: Fixture) {
     `xG ${f.xg[0].toFixed(2)}–${f.xg[1].toFixed(2)}.`,
     `Our 1X2 ${fmtPct(f.model.home)} / ${fmtPct(f.model.draw)} / ${fmtPct(f.model.away)}.`,
     `Over 2.5 ${fmtPct(f.model.over25)}. BTTS ${fmtPct(f.model.btts)}.`,
-    `Our lean: ${selectionLabel(f, f.modelPick)}.`,
+    `Our forecast: ${selectionLabel(f, f.modelPick)}.`,
   ] : ["No captured pre-kickoff forecast is available for this result."];
   return [
     `FOCUS: ${home.name} vs ${away.name}${score}`,

@@ -169,7 +169,7 @@ export function SlateChips() {
               </div>
               {!score ? (
                 <div className="mt-1 space-y-0.5">
-                  <div className="text-2xs text-accent tabular-nums">{fmtPct(p)} lean</div>
+                  <div className="text-2xs text-accent tabular-nums">{fmtPct(p)} {selectionLabel(f, f.modelPick)}</div>
                   <MarketQuoteLine fixture={f} className="block text-2xs text-quiet tabular-nums" />
                 </div>
               ) : null}
