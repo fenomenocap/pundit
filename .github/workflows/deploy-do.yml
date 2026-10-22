@@ -22,11 +22,22 @@ jobs:
           DO_DEPLOY_KEY: ${{ secrets.DO_DEPLOY_KEY }}
           DO_KNOWN_HOSTS: ${{ secrets.DO_KNOWN_HOSTS }}
           DO_HOST: ${{ secrets.DO_HOST }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "bad sha: $DEPLOY_SHA"; exit 1; }
           mkdir -p ~/.ssh
           printf '%s\n' "$DO_DEPLOY_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$DO_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519
-          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes root@"$DO_HOST" deploy
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes root@"$DO_HOST" "deploy $DEPLOY_SHA"
       - name: Check live version
-        run: curl -fsS https://134-209-121-101.sslip.io/version
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          live=""
+          for i in $(seq 1 30); do
+            live=$(curl -fsS https://134-209-121-101.sslip.io/version | jq -r .sha || true)
+            [ "$live" = "$DEPLOY_SHA" ] && { echo "live: $live"; exit 0; }
+            sleep 10
+          done
+          echo "live is '$live', want $DEPLOY_SHA"; exit 1
