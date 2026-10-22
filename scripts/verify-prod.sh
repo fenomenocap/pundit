@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Prod API moved from Railway to DigitalOcean (22 Oct 2026). The URL comes from
-# the PUNDIT_API_URL repo variable when set (passed in by verify-prod.yml), else
+# PUNDIT_API_URL when set in the environment (e.g. a repo variable), else
 # the DO host below. EXPECTED_API_HOST defaults to the host part of API_URL.
 DEFAULT_API_URL="https://134-209-121-101.sslip.io"
 API_URL="${PUNDIT_API_URL:-$DEFAULT_API_URL}"
