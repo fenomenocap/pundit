@@ -42,6 +42,10 @@ import {
   routableRecognizedEntries,
   requireAvailableRecognizedScenarios,
   selectRecognizedScenarioEntry,
+  answerQuotesMarketPrice,
+  shouldEvaluateMatchProvenanceReport,
+  summarizeProvenanceReport,
+  validateMatchAnswerProvenance,
   validateGrounding,
   validateSse,
   validateAnswerCopy,
@@ -398,8 +402,14 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
       return result;
     }
     const grounding = response.body?.grounding ?? null;
-    const groundingValidation = validateGrounding(grounding, turn);
     const turnNumber = history.length / 2 + 1;
+    result.answer = response.body?.answer ?? "";
+    const groundingExpectation = {
+      ...turn,
+      expectOddsSources: Boolean(turn.expectOddsSources)
+        || (grounding?.kind === "match" && answerQuotesMarketPrice(result.answer)),
+    };
+    const groundingValidation = validateGrounding(grounding, groundingExpectation);
     for (const [name, passed] of Object.entries(groundingValidation.assertions)) {
       result.assertions[`turn${turnNumber}${name[0].toUpperCase()}${name.slice(1)}`] = passed;
     }
@@ -411,7 +421,6 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
         [`turn${turnNumber}`]: groundingValidation.observations,
       };
     }
-    result.answer = response.body?.answer ?? "";
     result.citations = response.body?.citations ?? [];
     result.verification = response.body?.verification ?? null;
     result.agentTurn = response.body?.agentTurn ?? null;
@@ -446,6 +455,7 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     const structureValidation = validateAnswerStructure(result.answer, {
       expectHeadlineOneXTwo: grounding?.kind === "match"
         && Boolean(turn.expectHeadlineOneXTwo ?? scenario.expectHeadlineOneXTwo),
+      grounding: grounding?.kind === "match" ? grounding : undefined,
     });
     Object.assign(result.assertions, structureValidation.assertions);
     // `unavailable` is the same outcome as `abstain` -- both mean zero
@@ -495,6 +505,17 @@ async function runJsonScenario(scenario, options, pacer, onRequestStart) {
     assertionFailures.push(...expressionValidation.failures.map((failure) =>
       `turn ${turnNumber}: ${failure}`
     ));
+    if (grounding?.kind === "match" && shouldEvaluateMatchProvenanceReport(turn, scenario)) {
+      const provenanceReport = validateMatchAnswerProvenance(result.answer, grounding);
+      result.observations = {
+        ...result.observations,
+        [`turn${turnNumber}`]: {
+          ...(result.observations?.[`turn${turnNumber}`] ?? {}),
+          provenance: provenanceReport.assertions,
+          provenancePassed: provenanceReport.passed,
+        },
+      };
+    }
     assertionFailures.push(...citationValidation.failures.map((failure) =>
       `turn ${history.length / 2}: ${failure}`
     ));
@@ -984,7 +1005,11 @@ async function runScenario(
         expectTeams: [featured.home, featured.away],
         expectFixtureId: featured.recognizedFixtureId,
         expectCompetitionId: featured.competitionId,
-        expectOddsSources: scenario.expectOddsSources ?? false
+        expectOddsSources: scenario.expectOddsSources ?? false,
+        expectHeadlineOneXTwo: scenario.expectHeadlineOneXTwo,
+        expectModelProbabilityOrFairOdds: scenario.expectModelProbabilityOrFairOdds,
+        expectComparableMarketAttribution: scenario.expectComparableMarketAttribution,
+        expectNoUnsupportedMarketCausality: scenario.expectNoUnsupportedMarketCausality,
       }]
     }, options, pacer, onRequestStart);
   }
@@ -1395,6 +1420,7 @@ async function main() {
   report.qualityMetrics = computeTurnQualityMetrics(allTurns);
   report.qualityMetricsByCategory = computeTurnQualityMetricsByCategory(allTurns);
   report.byCategory = summarizeScenarioOutcomesByCategory(report.scenarios);
+  report.provenanceReport = summarizeProvenanceReport(report.scenarios);
   report.liveBettingMaths = summarizeLiveBettingMaths(report.scenarios);
   report.llmJudge = await resolveJudgeEvalTurns(allTurns, {
     maxTurns: 24,
