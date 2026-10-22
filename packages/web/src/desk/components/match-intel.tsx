@@ -75,6 +75,11 @@ export function MatchIntel() {
                 {projection.score.home}–{projection.score.away}
               </div>
               <div className="mt-1 text-2xs tabular-nums text-subtle">{fmtPct(projection.score.probability)} chance</div>
+              {projection.modal.home !== projection.score.home || projection.modal.away !== projection.score.away ? (
+                <div data-testid="desk-modal-score" className="mt-0.5 text-2xs tabular-nums text-subtle">
+                  Single likeliest {projection.modal.home}–{projection.modal.away} ({fmtPct(projection.modal.probability)})
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -91,11 +96,11 @@ export function MatchIntel() {
             </dl>
             {projection ? (
               <p data-testid="desk-projected-score-why" className="mt-2 text-2xs leading-5 text-quiet">
-                Projected score is the likeliest result inside our favoured outcome
+                Projected score is the likeliest score within the most likely result
                 ({projection.outcome === "draw" ? "draw" : `${TEAMS[projection.outcome === "home" ? f.home : f.away].short} win`},{" "}
-                {fmtPct(projection.pOutcome)}) and goals line ({projection.totals} 2.5, {fmtPct(projection.totals === "over" ? projection.pOver : 1 - projection.pOver)}).
+                {fmtPct(projection.pOutcome)}).
                 {projection.modal.home !== projection.score.home || projection.modal.away !== projection.score.away
-                  ? ` The single likeliest score is ${projection.modal.home}–${projection.modal.away} (${fmtPct(projection.modal.probability)}); goals are spread across many scores, so no one score is likely.`
+                  ? ` The single likeliest score is ${projection.modal.home}–${projection.modal.away} (${fmtPct(projection.modal.probability)}). Draws concentrate in one score; wins are spread over several.`
                   : ` It is also the single likeliest score (${fmtPct(projection.modal.probability)}).`}
               </p>
             ) : null}

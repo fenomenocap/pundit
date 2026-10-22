@@ -4,6 +4,8 @@ import { TEAMS } from "./data/teams";
 import { fmtKickoff, fmtPct } from "./format";
 import { scorersForTeam } from "./live";
 
+const WEEKEND_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
+
 function lineFor(f: ForecastFixture) {
   const home = TEAMS[f.home];
   const away = TEAMS[f.away];
@@ -80,14 +82,13 @@ export function fixtureCard(f: Fixture) {
 
 export function weekendNote() {
   const rec = gw3Record();
-  const ranked = [...OPEN_FIXTURES].filter(hasCapturedForecast)
-    .map((f) => ({ f, p: modelProbFor(f, f.modelPick) }))
-    .sort((a, b) => b.p - a.p);
+  // "The weekend" is the next round only, so a later round never leads the summary.
+  const ranked = rankedOpen();
   const top = ranked.slice(0, 3);
   const derby = OPEN_FIXTURES.find((f) => f.home === "MUN" && f.away === "MCI");
   const lines = top.map((t, i) => {
     const f = t.f;
-    return `${i + 1}. ${TEAMS[f.home].short} vs ${TEAMS[f.away].short} — ${selectionLabel(f, f.modelPick)}, model ${fmtPct(t.p)}. ${f.brief}`;
+    return `${i + 1}. ${TEAMS[f.home].short} vs ${TEAMS[f.away].short} (${fmtKickoff(f.kickoff)}) — ${selectionLabel(f, f.modelPick)}, model ${fmtPct(t.p, 1)}. ${f.brief}`;
   });
   const missNote = rec.pct === null
     ? null
@@ -99,7 +100,7 @@ export function weekendNote() {
       ? null
       : `The captured model went ${rec.hits} from ${rec.n} on 1X2. ${missNote}`,
     "",
-    "Current priced fixtures, in order of conviction:",
+    "This weekend's priced fixtures, in order of conviction:",
     ...lines,
     derby
       ? `\nThe derby at Old Trafford is the argument of the weekend — ${derby.brief}`
@@ -114,8 +115,15 @@ export function conviction(f: Fixture) {
   return hasCapturedForecast(f) ? modelProbFor(f, f.modelPick) : 0;
 }
 
+/** The next round of priced fixtures: kickoffs within four days of the first one. */
+export function weekendFixtures() {
+  const priced = [...OPEN_FIXTURES].filter(hasCapturedForecast);
+  const first = Math.min(...priced.map((f) => Date.parse(f.kickoff)).filter(Number.isFinite));
+  return priced.filter((f) => Date.parse(f.kickoff) < first + WEEKEND_WINDOW_MS);
+}
+
 export function rankedOpen() {
-  return [...OPEN_FIXTURES].filter(hasCapturedForecast)
+  return weekendFixtures()
     .map((f) => ({ f, p: modelProbFor(f, f.modelPick) }))
     .sort((a, b) => b.p - a.p);
 }

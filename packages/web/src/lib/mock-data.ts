@@ -501,7 +501,28 @@ const MOCK_CLUB_SEASON_EVALUATION = {
   builtAt: new Date(now).toISOString(),
   updatedAt: new Date(now).toISOString(),
   disclaimer: "Immutable pre-kickoff Pundit Fundamental forecasts captured by a deterministic checkpoint policy.",
-  fixtures: [],
+  // The finished mock match (id 3) has one sealed scheduled-window forecast and
+  // a cached fallback row for the same match, which must never be counted twice.
+  fixtures: [
+    {
+      competitionId: "eng.1", fixtureId: 3, utcDate: pastISO(1), date: pastISO(1).slice(0, 10), stage: "2026_27_english_premier_league",
+      home: "Manchester United", away: "Hull City", homeElo: 1850, awayElo: 1640,
+      pHome: 0.612, pDraw: 0.231, pAway: 0.157, pOver2_5: 0.55, pUnder2_5: 0.45, pBttsYes: 0.5, pBttsNo: 0.5,
+      snapshottedAt: pastISO(1.1), result: { homeScore: 2, awayScore: 1, winner: "home" as const },
+      method: "snapshot" as const, schemaVersion: 2 as const, forecastId: "mock-3-window", forecastAt: pastISO(1.1),
+      checkpointPolicyId: "pre-kickoff-90m-v1", checkpointReason: "scheduled_window", modelId: "pundit-fundamental",
+      modelVersion: "3",
+    },
+    {
+      competitionId: "eng.1", fixtureId: 3, utcDate: pastISO(1), date: pastISO(1).slice(0, 10), stage: "2026_27_english_premier_league",
+      home: "Manchester United", away: "Hull City", homeElo: 1850, awayElo: 1640,
+      pHome: 0.6, pDraw: 0.24, pAway: 0.16, pOver2_5: 0.55, pUnder2_5: 0.45, pBttsYes: 0.5, pBttsNo: 0.5,
+      snapshottedAt: pastISO(1.05), result: { homeScore: 2, awayScore: 1, winner: "home" as const },
+      method: "snapshot" as const, schemaVersion: 2 as const, forecastId: "mock-3-fallback", forecastAt: pastISO(1.05),
+      checkpointPolicyId: "pre-kickoff-90m-v1", checkpointReason: "pre_kickoff_cached_fallback", modelId: "pundit-fundamental",
+      modelVersion: "3",
+    },
+  ],
   missedCheckpoints: [],
   metrics: {
     fixtureCount: 0,

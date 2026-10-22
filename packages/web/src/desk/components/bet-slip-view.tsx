@@ -15,6 +15,7 @@ import {
 } from "@/desk/lib/bet-slip";
 import { cn } from "@/lib/utils";
 import { KitPip } from "./kit";
+import { DeskPageHeader } from "@/components/desk-page";
 import { OddsBtn } from "./odds-btn";
 import { Button } from "./ui/button";
 import { useLiveSlate } from "./use-live-slate";
@@ -45,16 +46,13 @@ export function selectionName(f: Fixture, market: MarketKey) {
 
 export function BetSlipView() {
   return (
-    <div data-testid="bet-slip-page" className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6">
-      <header className="mb-5">
-        <p className="eyebrow">Bet slip</p>
-        <h1 className="font-display text-4xl uppercase tracking-wide mt-1">Bet slip calculator</h1>
-        <p className="mt-2 max-w-2xl text-sm text-quiet leading-relaxed">
-          Add selections from the current Premier League fixtures to see combined odds and potential returns.
-          This is a calculator only: no bets are placed and no money is held.
-        </p>
-      </header>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(300px,1fr)]">
+    <div data-testid="bet-slip-page">
+      <DeskPageHeader
+        eyebrow="Bet slip"
+        title="Bet slip calculator"
+        subtitle="Add selections from the current Premier League fixtures to see combined odds and potential returns. This is a calculator only: no bets are placed and no money is held."
+      />
+      <div className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(300px,1fr)]">
         <FixtureMarkets />
         <Slip />
       </div>
@@ -292,6 +290,10 @@ function SelectionRow({ selection, returns, onRemove }: { selection: BetSelectio
   if (!f) return null;
   return (
     <li className="flex items-start gap-2 rounded-sm border border-border bg-elevated p-2.5">
+      <span className="mt-0.5 flex shrink-0 -space-x-1" aria-hidden>
+        <KitPip team={f.home} size="sm" />
+        <KitPip team={f.away} size="sm" />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{selectionName(f, selection.market)}</div>
         <div className="text-2xs text-quiet truncate">
