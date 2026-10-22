@@ -72,7 +72,17 @@ import {
   writeReport
 } from "./chat-battle-test-lib.mjs";
 
-const DEFAULT_API_URL = "https://thepundit.up.railway.app";
+// Production API since the DigitalOcean move (deploy-do.yml). The old Railway
+// service still answers on thepundit.up.railway.app but serves a frozen build
+// (a842177), so a sweep against it grades stale answers: on 21–22 Oct the
+// daily sweep failed featured-totals-honesty and featured-o25-scoreline-follow-up
+// for wording that current main no longer produces. PUNDIT_API_URL overrides,
+// matching scripts/verify-prod.sh and wait-for-railway-deploy.mjs.
+export const PRODUCTION_API_URL = "https://134-209-121-101.sslip.io";
+export function resolveDefaultApiUrl(env = process.env) {
+  return String(env.PUNDIT_API_URL?.trim() || PRODUCTION_API_URL).replace(/\/+$/, "");
+}
+const DEFAULT_API_URL = resolveDefaultApiUrl();
 const DEFAULT_WEB_URL = "https://thepundit.vercel.app";
 const ROOT = path.resolve(import.meta.dirname, "..");
 
