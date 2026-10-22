@@ -237,7 +237,8 @@ function resolvePolicyProse(
   if (asksWhatFlipsItQuestion(question)) {
     return null;
   }
-  if (asksFairOddsFixtureQuestion(question)) {
+  // A BTTS/totals question that mentions fair odds is about that market; the 1X2 fair-price prose would answer a different one.
+  if (asksFairOddsFixtureQuestion(question) && plan.mode !== "btts" && plan.mode !== "totals") {
     return { prose: renderFairOddsTakeProse(planJson, grounding), includeTable: true };
   }
   return null;
