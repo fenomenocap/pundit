@@ -29,3 +29,15 @@ describe("projectedScoreFromScorelines", () => {
     expect(projectedScoreFromScorelines([], { pHome: 0.4, pDraw: 0.3, pAway: 0.3 })).toBeNull();
   });
 });
+
+describe("scorelinesFromGrid (round once)", () => {
+  it("keeps full precision so 0.163463 shows as 16.3%, not 16.4% via 0.1635", async () => {
+    const { scorelinesFromGrid, projectedScoreFromScorelines } = await import("./projected-score");
+    const grid = [[0.0647, 0.0198], [0.1597, 0.0798], [0.16346303969363984, 0.1091]];
+    const rows = scorelinesFromGrid(grid)!;
+    const projected = projectedScoreFromScorelines(rows, { pHome: 0.7744, pDraw: 0.1708, pAway: 0.0548 })!;
+    expect(projected.score).toBe("2-0");
+    expect((Math.round(projected.probability * 1000) / 10).toFixed(1)).toBe("16.3");
+    expect(scorelinesFromGrid(null)).toBeNull();
+  });
+});

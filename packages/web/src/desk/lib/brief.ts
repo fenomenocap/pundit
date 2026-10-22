@@ -18,7 +18,7 @@ function lineFor(f: ForecastFixture) {
     .map((x) => x.name)
     .join(", ");
   return [
-    `${home.short} vs ${away.short}`,
+    `${home.name} vs ${away.name}`,
     `${fmtKickoff(f.kickoff)} · ${f.venue}`,
     `form ${formString(f.home)} / ${formString(f.away)}`,
     `xG ${f.xg[0].toFixed(2)}–${f.xg[1].toFixed(2)}`,
@@ -35,9 +35,9 @@ export function slateBlock() {
   const settled = SETTLED_FIXTURES.map((f) => {
     const score = f.score ? `${f.score[0]}–${f.score[1]}` : "n/a";
     if (!hasCapturedForecast(f) || typeof f.modelHit !== "boolean") {
-      return `${TEAMS[f.home].short} ${score} ${TEAMS[f.away].short} · no captured pre-kickoff forecast`;
+      return `${TEAMS[f.home].name} ${score} ${TEAMS[f.away].name} · no captured pre-kickoff forecast`;
     }
-    return `${TEAMS[f.home].short} ${score} ${TEAMS[f.away].short} · lean ${selectionLabel(f, f.modelPick)} · ${f.modelHit ? "HIT" : "MISS"} · ${f.brief}`;
+    return `${TEAMS[f.home].name} ${score} ${TEAMS[f.away].name} · pre-kickoff forecast ${selectionLabel(f, f.modelPick)} · ${f.modelHit ? "HIT" : "MISS"} · ${f.brief}`;
   }).join("\n");
   const open = OPEN_FIXTURES.filter(hasCapturedForecast).map(lineFor).join("\n");
   return [
@@ -72,10 +72,10 @@ export function fixtureCard(f: Fixture) {
   return [
     `FOCUS: ${home.name} vs ${away.name}${score}`,
     `${f.venue}. Kickoff ${fmtKickoff(f.kickoff)}.`,
-    `Form ${home.short} ${formString(f.home)} (${FORM[f.home].join("-")}). ${away.short} ${formString(f.away)}.`,
+    `Form ${home.name} ${formString(f.home)} (${FORM[f.home].join("-")}). ${away.name} ${formString(f.away)}.`,
     ...forecast,
-    `Key ${home.short}: ${menH}.`,
-    `Key ${away.short}: ${menA}.`,
+    `Key ${home.name}: ${menH}.`,
+    `Key ${away.name}: ${menA}.`,
     f.brief,
   ].join(" ");
 }
@@ -88,7 +88,7 @@ export function weekendNote() {
   const derby = OPEN_FIXTURES.find((f) => f.home === "MUN" && f.away === "MCI");
   const lines = top.map((t, i) => {
     const f = t.f;
-    return `${i + 1}. ${TEAMS[f.home].short} vs ${TEAMS[f.away].short} (${fmtKickoff(f.kickoff)}) — ${selectionLabel(f, f.modelPick)}, model ${fmtPct(t.p, 1)}. ${f.brief}`;
+    return `${i + 1}. ${TEAMS[f.home].name} vs ${TEAMS[f.away].name} (${fmtKickoff(f.kickoff)}) — ${selectionLabel(f, f.modelPick)}, model ${fmtPct(t.p, 1)}. ${f.brief}`;
   });
   const missNote = rec.pct === null
     ? null

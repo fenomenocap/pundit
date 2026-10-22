@@ -46,7 +46,7 @@ export function MatchIntel() {
             <div className="flex items-center gap-2">
               <KitPip team={f.home} size="lg" />
               <h2 className="font-display text-4xl uppercase tracking-wide leading-none">
-                {TEAMS[f.home].short}
+                {TEAMS[f.home].name}
               </h2>
             </div>
             <div className="mt-1.5">
@@ -56,7 +56,7 @@ export function MatchIntel() {
             <div className="flex items-center gap-2 mt-3">
               <KitPip team={f.away} size="lg" />
               <h2 className="font-display text-4xl uppercase tracking-wide leading-none text-quiet">
-                {TEAMS[f.away].short}
+                {TEAMS[f.away].name}
               </h2>
             </div>
             <div className="mt-1.5">
@@ -97,7 +97,7 @@ export function MatchIntel() {
             {projection ? (
               <p data-testid="desk-projected-score-why" className="mt-2 text-2xs leading-5 text-quiet">
                 Projected score is the likeliest score within the most likely result
-                ({projection.outcome === "draw" ? "draw" : `${TEAMS[projection.outcome === "home" ? f.home : f.away].short} win`},{" "}
+                ({projection.outcome === "draw" ? "draw" : `${TEAMS[projection.outcome === "home" ? f.home : f.away].name} win`},{" "}
                 {fmtPct(projection.pOutcome)}).
                 {projection.modal.home !== projection.score.home || projection.modal.away !== projection.score.away
                   ? ` The single likeliest score is ${projection.modal.home}–${projection.modal.away} (${fmtPct(projection.modal.probability)}). Draws concentrate in one score; wins are spread over several.`
@@ -133,7 +133,7 @@ export function MatchIntel() {
                   name={p.name}
                   pos={p.pos}
                   goals={p.goals}
-                  team={TEAMS[f.home].short}
+                  team={TEAMS[f.home].name}
                 />
               ))}
               {awayMen.map((p) => (
@@ -142,7 +142,7 @@ export function MatchIntel() {
                   name={p.name}
                   pos={p.pos}
                   goals={p.goals}
-                  team={TEAMS[f.away].short}
+                  team={TEAMS[f.away].name}
                 />
               ))}
             </ul>

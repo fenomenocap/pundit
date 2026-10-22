@@ -21,8 +21,18 @@ export interface MarketProbabilityRow {
   provenance: "forecast" | "market";
 }
 
+/**
+ * The one percent rule for every surface, identical to the API's
+ * deskPercentDisplay: round the probability once (half up), then format.
+ * 0.163463 -> "16.3%" on the card, summary, /fixtures and in chat.
+ */
+export function roundedPercent(n: number, digits = 1): string {
+  const scale = 10 ** (digits + 2);
+  return `${((Math.round(n * scale) / scale) * 100).toFixed(digits)}%`;
+}
+
 export function formatPercent(value: number | null): string {
-  return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+  return value === null ? "—" : roundedPercent(value, 1);
 }
 
 /** All fixture surfaces share one explicitly labelled clock, including DST. */

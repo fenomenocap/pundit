@@ -370,3 +370,11 @@ describe("calibrated goal distribution delivery", () => {
     assert.throws(() => sampleScoreGrid(row.scoreGrid!, () => 1));
   });
 });
+
+it("roundedPercent rounds once like the API (0.163463 -> 16.3%)", async () => {
+  const { roundedPercent, formatPercent } = await import("./fixture-presentation.ts");
+  assert.equal(roundedPercent(0.16346303969363984, 1), "16.3%");
+  assert.equal(formatPercent(0.16346303969363984), "16.3%");
+  assert.equal(roundedPercent(0.16351, 1), "16.4%");
+  assert.equal(roundedPercent(0.7744, 0), "77%");
+});
