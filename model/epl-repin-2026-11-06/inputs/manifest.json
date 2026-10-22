@@ -1,0 +1,116 @@
+{
+ "builtBy": "model/epl-repin-2026-11-06/prepare_inputs.py",
+ "results": {
+  "1819": {
+   "path": "model/epl-repin-2026-11-06/raw/E0-1819.csv",
+   "sha256": "7c096b3c2ecd54c6993d22eeea73450c2bde11e3457238b226b8f43c62dfc35e"
+  },
+  "1920": {
+   "path": "model/epl-repin-2026-11-06/raw/E0-1920.csv",
+   "sha256": "100037618b94f94057400bb02bf6bac4ef74ddaa58cde4b38370839c39caee61"
+  },
+  "2021": {
+   "path": "model/epl-repin-2026-11-06/raw/E0-2021.csv",
+   "sha256": "5afe63f69401457b8354eaacee24f9a3e520b3c3af6329564a9783e20d789c62"
+  },
+  "2122": {
+   "path": "model/epl-repin-2026-11-06/raw/E0-2122.csv",
+   "sha256": "335afcbabeb2939fa10ab39ba3e8215072d0b577cb8d0705c1e44c56e934e703"
+  },
+  "2223": {
+   "path": "model/epl-repin-2026-11-06/raw/E0-2223.csv",
+   "sha256": "8442792d3b614c94ea3cf381bd2736805889cc1713169035368fff19c3d02380"
+  },
+  "2324": {
+   "path": "model/epl-repin-2026-11-06/raw/E0-2324.csv",
+   "sha256": "b2e057b0ed959f198b0f63d2391c01239f3608e6de5db68edab3f88e04d07ff3"
+  },
+  "2425": {
+   "path": "model/epl-repin-2026-11-06/raw/E0-2425.csv",
+   "sha256": "d0c8ce4a96d886cf60cf101f570f4a3893844226f91c7bd769eb568c49edbfa4"
+  },
+  "2526": {
+   "path": "model/epl-repin-2026-11-06/raw/E0-2526.csv",
+   "sha256": "3e3a8352f9ada6789c508d6ca184424421fed56a30400904a4a327c583407e62"
+  },
+  "2627": {
+   "path": "model/epl-repin-2026-11-06/raw/E0-2627.csv",
+   "sha256": "705ef4373f6c4c9ec09b67eb3ca3398d6a770813095efc5d629edb591e4ee41c"
+  }
+ },
+ "clubeloMirror": {
+  "path": "model/epl-repin-2026-11-06/raw/clubelo-eng.csv",
+  "sha256": "0d368daa3d5bfda2fd3e82f24ec8515b5acda9e9a06a50b44034fa28bdec7b5b",
+  "upstream": "https://github.com/tonyelhabr/club-rankings/releases/download/club-rankings/clubelo-club-rankings.csv",
+  "upstreamSha256": "9cd156ce90584517bd12662f63688fe0856b2af0194cb70b1482b38f8cb3b6a3",
+  "upstreamBytes": 48935087,
+  "extract": "Country == ENG",
+  "publicationDates": [
+   "2023-03-27",
+   "2026-10-20"
+  ],
+  "note": "api.clubelo.com returned HTTP 502 on 22 Oct 2026. Publications before 2023-03-27 are not in this free mirror, so those matches train totals only."
+ },
+ "ratingPolicy": "latest ClubElo publication dated strictly before the kickoff UTC date, at most 14 days old, both clubs present; pins fill dates absent from the mirror",
+ "matches": 3110,
+ "matchesWithRatings": 1101,
+ "bySeason": {
+  "2018-19": {
+   "matches": 380,
+   "withRatings": 0
+  },
+  "2019-20": {
+   "matches": 380,
+   "withRatings": 0
+  },
+  "2020-21": {
+   "matches": 380,
+   "withRatings": 0
+  },
+  "2021-22": {
+   "matches": 380,
+   "withRatings": 0
+  },
+  "2022-23": {
+   "matches": 380,
+   "withRatings": 110
+  },
+  "2023-24": {
+   "matches": 380,
+   "withRatings": 341
+  },
+  "2024-25": {
+   "matches": 380,
+   "withRatings": 370
+  },
+  "2025-26": {
+   "matches": 380,
+   "withRatings": 230
+  },
+  "2026-27": {
+   "matches": 70,
+   "withRatings": 50
+  }
+ },
+ "matchesSha256": "6db7e5debc7d2a8a1ad8ebc69dc6f9a0d2340edf88bd6338693bd6500245b503",
+ "pinDates": [
+  "2026-08-12",
+  "2026-09-07",
+  "2026-09-13",
+  "2026-09-21",
+  "2026-09-28",
+  "2026-10-05",
+  "2026-10-13",
+  "2026-10-20"
+ ],
+ "clubeloPins": [
+  "packages/api/data/model-artifacts/clubelo/13d23cc4304d3a14c759f5da01a721440afdb41698522bc0604872314841ce29.json",
+  "packages/api/data/model-artifacts/clubelo/1da9aa9560446a56edb2b78c26b5d35d79937034f498fa4a1b055ca009e2b696.json",
+  "packages/api/data/model-artifacts/clubelo/2da1616b28750ddbba93bb107ee4f1c5b450ef6fe1c92bda6914b6e3fb8ba6cf.json",
+  "packages/api/data/model-artifacts/clubelo/4b4bbe8f21ea21db33b430d5bb53257c3baf0876b8fc0672240a5edae24e84d0.json",
+  "packages/api/data/model-artifacts/clubelo/ba5d688af8ac4a2cbb48580703f245497d46725eed9e71a7c68590efd7103cfd.json",
+  "packages/api/data/model-artifacts/clubelo/bc0fd923bfcd9e61bb973d3f92396592d42c7a5fed8d91284a0b750ff1b80e19.json",
+  "packages/api/data/model-artifacts/clubelo/dc24d0cb7ba184bcce90711e43e6f5354c5bc62707b8c9028eab837a27b65115.json",
+  "packages/api/data/model-artifacts/clubelo/e92896a0c08bf99a5ab548df41a9b1529c267b15f46f15eef84ab35ff883cb83.json"
+ ]
+}

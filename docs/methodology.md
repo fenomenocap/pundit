@@ -105,7 +105,7 @@ All inputs, code and outputs are committed under `model/calibration-2026-10-22/`
 
 Fit at origin 2026-10-22, current plus last season (2025-26 and 2026-27, 450 results through 2026-10-19, 280 with ratings): intercept 1.028, slope 0.501, home offset 0.281, ρ −0.08.
 
-The candidate has not replaced the production pin. It uses a different results source and fewer seasons than the pinned artifact, and it needs independent review before it is pinned (section 8).
+The candidate has not replaced the production pin. A later walk-forward study, `model/epl-repin-2026-11-06/`, refit the same production options on 2018–2026 (3,110 results, 1,101 with a pre-kickoff rating) instead of this 450-row window. On 2024/25 and 2025/26 that shorter window was slightly worse and was rejected. The study's keep rule then accepted only T = 1.286. The production pin and the temperature flag are unchanged; section 5.5 is the recommendation for the 6 Nov re-pin.
 
 ### 5.3 Backtest (out of sample)
 Method: weekly rolling origins from 2025-09-01 to 2026-10-19. For each week the goal model is fitted only on results available 24 hours before the week starts, and forecasts that week. Ratings are always dated strictly before kickoff. Window: 250 matches in 26 weeks (Sept 2025–Jan 2026 and Aug–Oct 2026; Feb–Jul 2026 has no dated rating in the mirror and is excluded).
@@ -145,6 +145,25 @@ Reliability tables for home win, draw, away win, over 2.5 and BTTS are in `repor
 | Man City v Burnley | 86.6 / 11.6 / 1.8 | 79.5 / 16.7 / 3.8 |
 | Liverpool v Chelsea | 51.0 / 26.7 / 22.3 | 47.0 / 28.3 / 24.7 |
 
+## 5.5 Re-pin recommendation (22 Oct 2026 study; not yet pinned)
+
+Evidence: `model/epl-repin-2026-11-06/report.json`, `experiment-log.json`, `reliability.json`. The script is `scripts/epl-repin-walkforward-2026-10-22.ts`. It does not change the live pin.
+
+Walk-forward on 2024/25 and 2025/26 (600 rated matches; Feb–May 2026 has no ClubElo publication inside 14 days and is not scored). Parameters that needed a search were chosen on 2023/24 only. The current-season 84 sealed matches were scored afterwards and were not used to keep or reject anything.
+
+| Config | 1X2 log loss | 1X2 Brier | Accuracy | ECE (5 buckets) | O2.5 Brier | BTTS Brier |
+|---|---|---|---|---|---|---|
+| Production spec, T off (baseline) | 1.0191 | 0.6093 | 51.0% | 0.0448 | 0.2466 | 0.2481 |
+| T = 1.286, long-history goal fit (kept) | 1.0058 | 0.6020 | 51.0% | 0.0150 | 0.2462 | 0.2479 |
+
+T = 1.286 minus baseline, 2,000 match resamples, seed 20261022: 1X2 log loss −0.0133 [−0.0241, −0.0026], 1X2 Brier −0.0072 [−0.0135, −0.0008], ECE −0.0298 [−0.0348, −0.0085]. Over 2.5 and BTTS Brier intervals include 0. Home-win ECE 0.063 → 0.031 and away-win ECE 0.066 → 0.047 on this sample. The 22 Oct 250-match window had found the opposite away-ECE movement; that window is not this study's selection sample.
+
+Rejected on that same rule: the 450-row two-season window, a temperature chosen on 2023/24 (it picked 1.10), home advantage 70, rho 0, half-life 365, team precision 25, a higher total-goals scale, a 50/50 Elo and goal-model 1X2 blend, and an attack/defence Dixon–Coles grid. The attack/defence point estimate was slightly better and its interval included 0. Historical free E0 files do not contain xG before 2026/27, so no xG fit was trained. Shots on target are stored on the input rows and were not a separate candidate.
+
+**One config for the 6 Nov re-pin:** keep decay 180 and team precision 100, refit on every Premier League result from 2018/19 through 24 hours before the pin origin (not the 450-row window), and turn `ONE_X_TWO_TEMPERATURE_ENABLED` on so the tempered 1X2 is the anchor. A review fit at origin 2026-10-22, which already includes results through 2026-10-19 and is therefore not an out-of-sample score of those matches, is intercept 1.040, slope 0.532, home offset 0.237, rho −0.06 (3,110 results, 1,101 rated). Refit again on the pin day so the 30-day clock starts then. The flag stays off in this revision. The change beats the model's own baseline on the development seasons. It does not beat the market-close bar in `model/backtest/backtest/promotion_criteria.json`, which was not re-run and previously failed, so the pin and the flag are not switched on here.
+
+The 84-match holdout, with the goal model frozen on 1 Jul 2026 and the sealed pre-kickoff ratings, moves in the same direction (EPL 1X2 log loss 1.0552 → 1.0239, Brier 0.6264 → 0.6120, ECE 0.0560 → 0.0402; the full 84, UCL rows left sealed, 1X2 Brier 0.6243 → 0.6123 and ECE 0.0617 → 0.0499). Every holdout interval includes 0. Accuracy is unchanged. That sample is too small to confirm the development result on its own.
+
 ## 6. Earlier backtests
 - `docs/how-it-works/model-backtest.md` and `model/backtest/` record earlier backtests. Model-page recalculation using the release ratings snapshot is **not** a look-ahead-free backtest, because that snapshot was taken after the matches it scores.
 
@@ -166,5 +185,5 @@ Reliability tables for home win, draw, away win, over 2.5 and BTTS are in `repor
 | ClubElo pin `13d23cc4…` | 2026-10-20 11:52 UTC | **2026-11-19 11:52 UTC (Thu 19 Nov 19:52 SGT)** | 2026-11-12 11:52 UTC |
 
 - `pnpm --filter @sports-predict/api check:model-expiry` exits non-zero from 7 days before either expiry. It runs today inside the weekly `clubelo-freshness.yml` job (Mondays 08:00 UTC), which also flags a ClubElo pin older than 7 days. The daily version (00:00 UTC, 08:00 SGT) is ready at `docs/ops/pending-workflows/model-pin-expiry.yml` and goes live once copied into `.github/workflows/` by an account with the GitHub `workflow` permission.
-- To re-pin the calibration: review `model/calibration-2026-10-22/report.json`, write the candidate fit as a schema-v1 artifact under `packages/api/data/model-artifacts/epl-goal-calibration/<sha256>.json`, update `EPL_GOAL_CALIBRATION_ARTIFACT_SHA256` and `EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN`, run the API tests, and deploy. This changes live forecasts and needs sign-off.
+- To re-pin the calibration: use the 6 Nov recommendation in section 5.5 (`model/epl-repin-2026-11-06/`), not the rejected 450-row candidate in `model/calibration-2026-10-22/`. Writing a new artifact still means a schema-v1 file under `packages/api/data/model-artifacts/epl-goal-calibration/<sha256>.json`, an update to `EPL_GOAL_CALIBRATION_ARTIFACT_SHA256` and `EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN`, the API tests, and a deploy. This changes live forecasts and needs sign-off. This revision does not do that, and it does not turn `ONE_X_TWO_TEMPERATURE_ENABLED` on.
 - To refresh ClubElo: `packages/api/scripts/refresh-clubelo-snapshot.ts` (capture, build, verify), then deploy.
