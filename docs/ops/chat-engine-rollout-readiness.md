@@ -1,6 +1,6 @@
 # Chat engine rollout readiness (`CHAT_ENGINE=agent`)
 
-Production remains on **legacy** until the checks below pass on scheduled **Daily Chat Eval** side-by-side runs (legacy hard-gated, agent report-only). Do not flip Railway `CHAT_ENGINE` from this document alone.
+Production remains on **legacy** until the checks below pass on scheduled **Daily Chat Eval** side-by-side runs (legacy hard-gated, agent report-only). Do not flip the production `CHAT_ENGINE` (droplet env file, owner-managed) from this document alone.
 
 ## Flip criteria
 

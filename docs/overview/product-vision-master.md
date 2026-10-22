@@ -1,7 +1,7 @@
 # Pundit — Product Vision Master
 
 **Repo:** [fenomenocap/pundit](https://github.com/fenomenocap/pundit)  
-**Live:** [thepundit.vercel.app](https://thepundit.vercel.app) · API [thepundit.up.railway.app](https://thepundit.up.railway.app)  
+**Live:** [thepundit.vercel.app](https://thepundit.vercel.app) · API [134-209-121-101.sslip.io](https://134-209-121-101.sslip.io) (DigitalOcean)  
 **Audited SHA:** `9c8d02b95459e526fbb964754699b2054a19b547` (`main`, public as of 31 Aug 2026)  
 **Thesis source:** `sire-agent-five-posts-synthesis.md` (SIRE / DKING terminal arc, Feb–Sep 2025)  
 **Status of this file:** canonical product vision for the repo. Not betting advice.  
@@ -75,8 +75,8 @@ Both users share the same spine. They do not share the same output schema.
 
 | Layer | What | Path / URL |
 |---|---|---|
-| Web | Next.js 14 App Router, analysis desk, paper lab, fixtures, model, evaluation | `packages/web` · thepundit.vercel.app |
-| API | Express, four-tier `/api/ask`, model, matches, evaluation | `packages/api` · thepundit.up.railway.app |
+| Web | Next.js 14 App Router, analysis desk, fixtures + EPL table, bet slip, FPL simulator, track record | `packages/web` · thepundit.vercel.app |
+| API | Express, four-tier `/api/ask`, model, matches, evaluation | `packages/api` · DigitalOcean (`134-209-121-101.sslip.io`) |
 | Model | Dixon-Coles bivariate Poisson from pinned ClubElo artifact | `packages/api/src/services/dixon-coles.ts` |
 | Football data | ESPN scoreboard / standings, 30-min cache | `packages/api/src/services/football-data.ts` |
 | Markets | Stake / Kalshi / Polymarket, no-vig 1X2, 30-min cache | `packages/api/src/services/fixture-market-sources.ts`, `model-market-odds.ts` |
@@ -259,7 +259,7 @@ The May SIRE clip already taught the honesty rule: a +0.34% BTTS is “aligned b
 | Chat homepage | v1 | **Superseded** — `/` is the analysis desk; previous chat lives at `/legacy` | `packages/web/src/desk/`, `packages/web/src/app/legacy/page.tsx` |
 | Match card | v1 | **Partial** — probabilities + market rows + prose. No EV / risk / pass / play | `MatchFixtureCard` in `home-chat.tsx` |
 | Fixtures board | v1 | **Built** | `packages/web/src/app/fixtures/page.tsx` |
-| Model reference | v1 | **Built** | `packages/web/src/app/model/page.tsx` |
+| Model reference | v1 | **Folded into Track record** (`/model` 308 → `/evaluation/club-season#methodology`) | `packages/web/src/app/evaluation/club-season/page.tsx` |
 | Club-season calibration page | v1.5 | **Built** (artifact often empty early season) | `packages/web/src/app/evaluation/club-season/page.tsx` |
 | Frozen WC backtest page | later | **Built** | `packages/web/src/app/evaluation/wc-2026/page.tsx` |
 | Mobile web | v1 | **Partial** — responsive chat, safe-area, snap chips. Not a dedicated mobile match-pricing card | `home-chat.tsx` layout |

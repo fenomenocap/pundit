@@ -23,10 +23,12 @@
 * [Model](api-reference/model.md)
 * [Ask](api-reference/ask.md)
 * [Evaluation](api-reference/evaluation.md)
+* [FPL Player Data](api-reference/fpl.md)
 * [Polymarket Reference Odds](api-reference/polymarkets.md)
 
 ## Operations
 
+* [Deploy and Release](ops/deploy.md)
 * [Environment Variables](ops/environment-variables.md)
 * [Chat Eval Runbook](ops/chat-eval.md)
 * [Cloud Monitor & Verification](ops/cloud-monitor.md)

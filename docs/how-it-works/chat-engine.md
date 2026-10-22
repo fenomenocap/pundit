@@ -33,7 +33,7 @@ Implementation (for maintainers): `packages/api/src/services/chat-engine.ts`, `c
 
 ## Promoting agent to production
 
-Production stays on **legacy** until side-by-side daily chat eval meets the flip criteria in [Chat engine rollout readiness](../ops/chat-engine-rollout-readiness.md). Do not set Railway `CHAT_ENGINE=agent` from docs alone.
+Production stays on **legacy** until side-by-side daily chat eval meets the flip criteria in [Chat engine rollout readiness](../ops/chat-engine-rollout-readiness.md). Do not set `CHAT_ENGINE=agent` in production from docs alone.
 
 ## Related
 

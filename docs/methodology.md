@@ -1,6 +1,6 @@
 # Methodology and data sources
 
-Status: current as of 22 October 2026 (origin/main, API package). This page describes how Pundit produces its football forecasts, which data it uses, what market prices are used for, how the model has been calibrated and tested, and where it is known to be weak. All times are UTC unless marked SGT (UTC+8).
+Status: current as of 23 October 2026 (origin/main, API and web). This page describes how Pundit produces its football forecasts, which data it uses, what market prices are used for, how the model has been calibrated and tested, and where it is known to be weak. All times are UTC unless marked SGT (UTC+8).
 
 ## 1. Summary
 
@@ -21,7 +21,7 @@ Status: current as of 22 October 2026 (origin/main, API package). This page desc
 | Kalshi | `https://api.elections.kalshi.com/trade-api/v2/events` | Every 30 min; 10 min on match day; 5 min live | Market 1X2 comparison | No |
 | Polymarket (gamma) | `https://gamma-api.polymarket.com/events`, `/public-search` | As Kalshi | Market 1X2 comparison | No |
 | Stake | `https://stake.bet/_api/graphql` | As Kalshi | Market 1X2 comparison | No |
-| Fantasy Premier League | `https://fantasy.premierleague.com/api/bootstrap-static/` | Per dossier build | Injuries and availability in match dossiers | No |
+| Fantasy Premier League | `https://fantasy.premierleague.com/api/bootstrap-static/` | Per dossier build; for `/draft`, cached 1 hour (`GET /api/fpl/bootstrap`) | Injuries and availability in match dossiers; player names, clubs, positions and prices in the FPL team simulator (`/draft`) | No |
 | Premier League (pulselive) | `https://footballapi.pulselive.com/football/fixtures/<id>` | Per dossier build | Fixture identity in match dossiers | No |
 | FotMob | `https://www.fotmob.com/api/data/matchDetails?matchId=<id>` | Per dossier build | Injuries and doubts in match dossiers | No |
 | eloratings.net | `https://www.eloratings.net/` | Retired | The former World Cup model only | No (retired) |
@@ -72,9 +72,10 @@ Consequence: the published expected goals are the **means of the anchored grid**
 
 The web client re-derives each published market from the grid and refuses to display a row if any differs by more than 5×10⁻⁵.
 
-### 3.6 Season simulation and paper scores
+### 3.6 Season simulation and projected scores
 - The season simulator samples from the same grids with a seed derived from its inputs, so results are reproducible.
-- "Paper" scores in the desk lab are single random draws from a grid. They are simulations, not projections; the most likely scoreline is the modal cell (3.5).
+- The **projected score** shown on the desk is deterministic, not a random draw. It is the likeliest scoreline inside the favoured 1X2 outcome and the favoured side of 2.5 goals, chosen from the published probabilities (`projectedScore` in `packages/web/src/desk/lib/grid.ts`). The same probabilities always give the same score, and it always agrees with the favoured result and goals line. The overall most likely scoreline is still the modal cell (3.5).
+- Until 22 Oct 2026 the desk showed an unseeded random draw from the grid, which could disagree with the odds. Stored draws were cleared when the fix shipped.
 
 ## 4. What market prices are used for
 - Kalshi, Polymarket and Stake prices are fetched into a separate `oddsSources` field and shown next to the model for comparison.
@@ -136,7 +137,13 @@ Reliability tables for home win, draw, away win, over 2.5 and BTTS are in `repor
 ### 5.4 1X2 temperature (T = 1.286), OFF
 - Temperature scaling divides the 1X2 log-probabilities by T and renormalises, which softens strong favourites.
 - It is implemented behind the flag `ONE_X_TWO_TEMPERATURE_ENABLED`. It is **off** unless that variable is exactly `true`. When on, the tempered 1X2 becomes the anchoring target, so the grid, totals, BTTS and scorelines stay consistent with the published 1X2.
-- Turning it on is a product decision and requires the owner's approval.
+- Turning it on is a product decision and requires the owner's approval. **It remains off.**
+
+**Independent review of the T evidence (23 Oct 2026).** A longer refit study (draft PR #404, not merged) re-tested softening on 600 Premier League matches from 2024-25 and 2025-26. A reviewer re-ran it and corrected the claims:
+- **T = 1.286 was not chosen independently of the test data.** It is a fixed constant whose pooled 2023–26 optimum (1.295) includes the test seasons. Fitting T only on earlier seasons and scoring the next one (walk-forward) gives a log-loss gain of **−0.0094** over the 600 matches, not the −0.0133 reported with fixed T = 1.286, about 30% smaller.
+- **The value you would pick honestly today is about T = 1.27** (learned from seasons before 2026-27). The walk-forward optimum has risen every season (1.07, 1.10, 1.21, 1.27), so the 1X2 has grown more over-confident and softening helps more each season.
+- **The holdout was not untouched for T.** The 250-match backtest in §5.3 already contains 50 of the 70 2026-27 holdout matches and had already shown T helping, so the holdout is not independent evidence for T. Its over 2.5 and BTTS gains mostly compare against the pre-7-Oct uncalibrated baseline, not against the current pin.
+- **No edge over the market close.** Against de-margined Pinnacle closing odds (580 of the 600 matches), log loss is worse than the close by **+0.031** for the current 1X2 and **+0.021** with T. Softening closes about a third of the gap; neither beats the market, so no edge claims are made.
 
 | Fixture (20 Oct pin) | 1X2 now | 1X2 with T = 1.286 |
 |---|---|---|
@@ -145,8 +152,15 @@ Reliability tables for home win, draw, away win, over 2.5 and BTTS are in `repor
 | Man City v Burnley | 86.6 / 11.6 / 1.8 | 79.5 / 16.7 / 3.8 |
 | Liverpool v Chelsea | 51.0 / 26.7 / 22.3 | 47.0 / 28.3 / 24.7 |
 
-## 6. Earlier backtests
-- `docs/how-it-works/model-backtest.md` and `model/backtest/` record earlier backtests. Model-page recalculation using the release ratings snapshot is **not** a look-ahead-free backtest, because that snapshot was taken after the matches it scores.
+## 6. Track record and earlier backtests
+
+### 6.1 Track record (live, pre-kickoff)
+- `GET /api/evaluation/club-season` and the Track record page (`/evaluation/club-season`) score forecasts sealed before kickoff against final results.
+- Each match is scored **once** (rule `one-per-fixture-v1`). When a match has more than one sealed row, the scheduled 90-minute pre-kickoff row is preferred over a fallback row, then the newer model version, then the later forecast. Stored rows are never rewritten; the collapse happens when metrics are computed, and the response reports it in `evaluation.dedupe`.
+- Before 22 Oct 2026 duplicate fallback rows were counted too: on 22 Oct the ledger held 104 official rows for 84 matches. Counting each match once gave 1X2 Brier 0.624 (was 0.601), winner accuracy 47.6% (was 51.0%) and 1X2 calibration error (ECE, 5 buckets) 0.062 (was 0.040). The earlier figures were inflated by the double count.
+
+### 6.2 Earlier backtests
+- `docs/how-it-works/model-backtest.md` and `model/backtest/` record earlier backtests. Recalculating past fixtures with the release ratings snapshot is **not** a look-ahead-free backtest, because that snapshot was taken after the matches it scores.
 
 ## 7. Known limits
 1. **1X2 overconfidence at large rating gaps.** The 1X2 uses a fixed 2.70-goal total and has not been re-fitted. It is more confident than markets and than its own goal model for heavy favourites (section 5.3). Temperature scaling corrects most of this but is off.
@@ -165,6 +179,6 @@ Reliability tables for home win, draw, away win, over 2.5 and BTTS are in `repor
 | EPL goal calibration `a502e436…` | 2026-10-07 00:00 UTC | **2026-11-06 00:00 UTC (Fri 6 Nov 08:00 SGT)** | 2026-10-30 00:00 UTC (Fri 30 Oct 08:00 SGT) |
 | ClubElo pin `13d23cc4…` | 2026-10-20 11:52 UTC | **2026-11-19 11:52 UTC (Thu 19 Nov 19:52 SGT)** | 2026-11-12 11:52 UTC |
 
-- `pnpm --filter @sports-predict/api check:model-expiry` exits non-zero from 7 days before either expiry. It runs today inside the weekly `clubelo-freshness.yml` job (Mondays 08:00 UTC), which also flags a ClubElo pin older than 7 days. The daily version (00:00 UTC, 08:00 SGT) is ready at `docs/ops/pending-workflows/model-pin-expiry.yml` and goes live once copied into `.github/workflows/` by an account with the GitHub `workflow` permission.
+- `pnpm --filter @sports-predict/api check:model-expiry` exits non-zero from 7 days before either expiry. It runs daily in `.github/workflows/model-pin-expiry.yml` (00:00 UTC, 08:00 SGT; offline, no secrets, never deploys) and also inside the weekly `clubelo-freshness.yml` job (Mondays 08:00 UTC), which additionally flags a ClubElo pin older than 7 days. A failing run is the alert: GitHub notifies the repository owner. (`docs/ops/pending-workflows/model-pin-expiry.yml` is the pre-install copy and is superseded by the installed workflow.)
 - To re-pin the calibration: review `model/calibration-2026-10-22/report.json`, write the candidate fit as a schema-v1 artifact under `packages/api/data/model-artifacts/epl-goal-calibration/<sha256>.json`, update `EPL_GOAL_CALIBRATION_ARTIFACT_SHA256` and `EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN`, run the API tests, and deploy. This changes live forecasts and needs sign-off.
 - To refresh ClubElo: `packages/api/scripts/refresh-clubelo-snapshot.ts` (capture, build, verify), then deploy.

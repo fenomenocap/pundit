@@ -1,6 +1,6 @@
 # How to Use Pundit
 
-Pundit’s homepage is the **Desk**. Primary nav is Desk, Paper, Draft, and Vaults. Fixtures, Model, and Ledger live in the secondary nav. A previous chat-only homepage is kept at `/legacy`.
+Pundit’s homepage is the **Desk**. The navigation is **Desk · Fixtures · Bet slip · FPL · Track record**. A previous chat-only homepage is kept at `/legacy` and is not in the navigation. The old `/model` page has been removed: that address now redirects to the methodology section of the Track record.
 
 ### The desk
 
@@ -30,27 +30,31 @@ Match grounding is not always available, and the desk says which case applies ra
 
 Every no-search response with complete match, non-priced fixture, competition, or season grounding is answered directly without a MiniMax call. Saying “current” does not by itself trigger external search when the requested fact is already in Pundit’s table, model, or season grounding. Clearly current injury, squad, manager, transfer, odds, and form questions still search first. Questions are capped at 500 characters; the API allows 10 requests per minute. You can paste a found decimal on a 1X2 outcome to get pass/play from `modelP × decimal − 1`. Pundit will not size a stake without a bankroll.
 
-### Paper, Draft, and Vaults
+### Projected score
 
-These three routes are a **local paper lab** on the same live slate. They are not a bookmaker, not a deposit product, and not on-chain.
+Each priced fixture on the desk shows one **projected score**. It is the likeliest exact score inside the favoured result (home win, draw or away win) and the favoured side of 2.5 goals, taken from the published probabilities, with a one-line reason. It is deterministic: the same probabilities always give the same score, and it always agrees with the favoured result and goals line. It is a forecast, not a guarantee. Live and final scores in the ticker and rail are shown only from the real match.
 
-* **Paper** (`/board`) — walk the slate, attach paper legs, and settle against scores in the browser.
-* **Draft** (`/draft`) — a draft-room layout over the same fixtures.
-* **Vaults** (`/vault`) — paper “model books” with simulated credit. The page itself says it is not a fund.
+The wording on how goals are estimated, and the names of the data sources, sit behind a collapsed **Sources** toggle on the desk and on Fixtures.
 
-Nothing you do here places a real wager or moves money off the device.
+### Fixtures and the Premier League table
 
-### Fixtures & Standings
+`/fixtures` shows the schedule grouped by day across enabled competitions (Premier League and UCL qualifiers), with live and final scores. Each priced fixture has a **My forecast** row (win/draw/loss). **Goals and scorelines** (over/under 2.5, both teams to score, likeliest scorelines) and **Market comparison** are behind toggles. When nothing is priced, the page says so rather than showing an empty table.
 
-The Fixtures page shows schedules and results across enabled competitions (Premier League and UCL qualifiers). Live matches show current scores. Each fixture can be opened on the desk. Standings appear below the schedule for league competitions.
+Below the schedule is a formal **Premier League table**: played, won, drawn, lost, goals for and against, goal difference, points and recent form, with zone markers.
 
-### Predictions (Model)
+### Bet slip
 
-The Model page is a read-only table of active fixture probabilities: 1X2, totals, BTTS, and top scorelines. Expand a row for full detail. This is the same cache that powers match-grounded desk answers — not a separate model path.
+`/board` is a **bet slip**. Select prices the site already shows to build singles or an accumulator, enter a stake, and the combined odds, potential return and potential profit update as you type. There is no wallet, no account and no real wager; it is a calculator. With no priced fixtures it shows “No priced fixtures are live right now.”
 
-### Evaluation (Ledger)
+### FPL team simulator
 
-* **`/evaluation/club-season`** — rolling pre-kickoff seals. The first eligible Fundamental forecast in the 90-minute window (`pre-kickoff-90m-v1`) is kept. Live volume is Railway `/data`, not the empty in-repo seed.
+`/draft` is a **Fantasy Premier League team simulator**. Pick a 15-player squad within a £100.0m budget and at most three players per club, then choose a starting XI, a captain and a vice-captain. The squad is saved in your browser only.
+
+Player names, clubs, positions and prices come from the public Fantasy Premier League data. A player without a published price is shown as unpriced and never given an estimated price. The page states: “Simulator only. Player data from Fantasy Premier League (public). Not affiliated with the Premier League.” It carries no Premier League or FPL logos.
+
+### Track record
+
+* **`/evaluation/club-season`** (Track record in the nav) — scored pre-kickoff forecasts for club fixtures. Each match counts **once**: when a match has more than one sealed forecast, the one from the scheduled 90-minute pre-kickoff window is preferred, then the newer model version, then the later forecast. It shows current-version stats, a calibration table, earlier versions (collapsed), the list of matches, and a note on anything not counted. The **How the forecasts work** section (`#methodology`) explains the method in plain English; sources and model names are behind a collapsed Sources toggle. Live results are stored on the production API server, not in the empty in-repo seed.
 * **`/evaluation/wc-2026`** — frozen World Cup 2026 backtest. Historical only.
 
-See [Evaluation API](../api-reference/evaluation.md) for the JSON endpoints.
+See [Evaluation API](../api-reference/evaluation.md) for the JSON endpoints and [Methodology and Data Sources](../methodology.md) for the full method.

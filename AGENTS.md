@@ -14,9 +14,13 @@ Pundit is a deployed analysis desk for the club season (Premier League + UCL qua
 | Fixture registry | Approved structured identities persist atomically under `/data`; `/api/fixtures/recognized` exposes read-only capability decisions. Candidates/search never become grounding. Expanded routing is flag-gated and friendlies remain outside public model coverage. |
 | Featured fixtures | Next N active fixtures across enabled competitions (EPL priority), joined to model rows for chat suggestions and market odds. |
 | Fixture markets | `fixture-market-sources.ts` fetches Stake/Kalshi/Polymarket by market profile; `model-market-odds.ts` caches no-vig 1X2 for the active fixture set. Source failures stay isolated. |
-| `/fixtures` | Multi-competition live schedule/history and standings from ESPN, with competition tabs and links onto the desk. |
-| `/model` | Native read-only view of active club fixture model probabilities; links to WC backtest. |
-| `/evaluation/club-season` | Rolling 90-minute pre-kickoff seal ledger (read-only JSON; live volume on Railway `/data`). |
+| Nav | Desk · Fixtures · Bet slip · FPL · Track record. No Paper / Draft / Vaults / Model / Ledger links (a smoke test asserts they stay gone). |
+| `/fixtures` | Schedule grouped by day with "My forecast" rows (goals/scorelines and market comparison behind toggles), a formal Premier League table, and an honest empty state when nothing is priced. |
+| `/board` | Bet slip: singles and accumulators, combined odds and potential returns update live, prices are only those the site already shows. No wallet, EV or edge. |
+| `/draft` | FPL team simulator (15-man, £100.0m, max 3 per club, XI, captain/vice) from public FPL `bootstrap-static` via web `/api/fpl` (fallback: API `GET /api/fpl/bootstrap`). Line: "Simulator only. Player data from Fantasy Premier League (public). Not affiliated with the Premier League." No logos. |
+| `/model` | Removed. 308 redirect to `/evaluation/club-season#methodology`. |
+| `/evaluation/club-season` | Track record: one scored forecast per match (`one-per-fixture-v1`, `evaluation.dedupe`), calibration table, `#methodology` section; sources behind a collapsed toggle (live volume on the DO API's `/data`). |
+| Projected score | Deterministic: likeliest score inside the favoured 1X2 outcome and favoured side of 2.5 (`projectedScore`, `desk/lib/grid.ts`). Never `Math.random`. |
 | `/evaluation/wc-2026` | Frozen WC 2026 backtest artifact (read-only, no cron). |
 | CI | `.github/workflows/ci.yml` runs TypeScript checks, API Vitest, web build, and Playwright smoke tests on pull requests. |
 
@@ -32,11 +36,11 @@ Direct current-manager answers settle from verified, source-bound role facts, in
 
 - **Vercel access:** Hobby team `fenomenocap` is owner-only — see [`docs/ops/vercel-access.md`](docs/ops/vercel-access.md). Do not invite collaborators or upgrade plans without an explicit Owner decision.
 
-- `MINIMAX_API_KEY` is configured on the Railway `@pundit/api` service. Never read it back, log it, hardcode it, or store it in the repository.
+- `MINIMAX_API_KEY` is configured in the API env file on the DigitalOcean droplet (owner-managed). Never read it back, log it, hardcode it, or store it in the repository.
 - Optional `ALLOWED_ORIGINS` (comma-separated) restricts browser CORS; leave unset only while debugging, and set it to the Vercel frontend origin(s) in production.
 - `/health` is liveness. `/ready` reports model, ESPN, active-fixture, and market-odds cache readiness without exposing secrets.
 - Cache refresh cadences: ESPN fixtures/standings and active market odds every 30 minutes; the active model every hour. Club strengths come from a reviewed local release artifact; production runtime never contacts ClubElo.
-- `PUNDIT_DATA_DIR=/data` on Railway is a mounted volume. It holds the rolling club-season calibration history, club-strength artifact current/last-good recovery copies, atomic recognized-fixture registry plus last-good recovery copy, and (only when separately enabled) the private friendly-shadow ledger. This state must survive deploys, since the container image is rebuilt each time. Unset locally, paths fall back to `packages/api/data`.
+- `PUNDIT_DATA_DIR=/data` on the DigitalOcean API is a bind mount of `/opt/pundit-data`, shared by the blue and green containers. It holds the rolling club-season calibration history, club-strength artifact current/last-good recovery copies, atomic recognized-fixture registry plus last-good recovery copy, and (only when separately enabled) the private friendly-shadow ledger. This state must survive deploys, since the container image is rebuilt each time. Unset locally, paths fall back to `packages/api/data`.
 - Before the v3 release, retire the old source-bound prospective candidate `2b5bc111e5b7c1bc411ff8cc79375b7d16dcc807c2bc8015b7786f1ea07feb87`: set `PROSPECTIVE_MODEL_CAPTURE=false`, preserve `/data/prospective-model`, and verify `/ready.prospectiveModel` is disabled. Do not let changed model sources contaminate that frozen cohort. The historical 40-match policy remains in its old receipts; future outcomes are additional monitoring, not a prerequisite for the new retrospective improvement. The read-only evaluator remains available for preserved evidence; any new collector candidate needs its own reviewed source binding.
 - Reviewed recognition-only fixtures ship in `packages/api/data/fixture-registry/approved-fixtures-v1.json`. A friendly requires an ESPN stable event ID plus an official competition, federation, or club URL; it remains outside public pricing and is merged into the atomic registry at startup.
 - Club-strength artifact hash, coverage and 30-day freshness fail closed. A 7-day `/ready` `ratingsRefreshDue` warn and `[ClubRatings] WARN` log do not withhold forecasts. Monitor `model.ratingArtifactId`, `model.ratingArtifactSha256`, `model.ratingsAgeDays`, `model.ratingsRefreshDue`, and `[ClubRatings] ALERT` log lines. Refresh after each PL weekend with `pnpm --filter @sports-predict/api refresh:clubelo-snapshot`; new snapshots enter production only through reviewed releases.
@@ -67,15 +71,15 @@ Hobby is about 100 Vercel deploys a day. `packages/web/vercel.json` runs `script
 
 Keep working on ongoing items. A worse candidate, uncertainty, optional live slate absence, or insufficient future observations is not an external blocker. Blocked work requires a concrete external condition, missing input, attempted actions, evidence, responsible owner and unblock action. Historical matches can establish retrospective improvement without waiting for future results. Preserve previous release receipts and failures unchanged; new evidence must bind to the actual source and deployment under review. Scope changes require explicit user instructions and corresponding register/guard review; an agent cannot self-approve a product boundary in place of predictive improvement.
 
-Live URLs: **Web** [thepundit.vercel.app](https://thepundit.vercel.app) · **API** [thepundit.up.railway.app](https://thepundit.up.railway.app)
+Live URLs: **Web** [thepundit.vercel.app](https://thepundit.vercel.app) · **API** [134-209-121-101.sslip.io](https://134-209-121-101.sslip.io) (DigitalOcean; Railway is retired and serves a frozen build — never target it). Deploy pipeline: [`docs/ops/deploy.md`](docs/ops/deploy.md).
 
-After Vercel or Railway env/config changes that affect production, run `pnpm verify:prod` from the repo root (~15s). For local dev against running servers, use `bash scripts/verify-local.sh`.
+After Vercel or API (droplet) env/config changes that affect production, run `pnpm verify:prod` from the repo root (~15s). For local dev against running servers, use `bash scripts/verify-local.sh`.
 
 ## Chat eval cadence
 
 Production chat eval (`pnpm chat-eval:production`) hits live OpenRouter credits — run manually after Tier 1+ deploys as a post-deploy smoke, not in CI. Unit tests for the harness run via `pnpm chat-eval:test` (no production traffic). Dry-run config check: `pnpm chat-eval:dry-run`.
 
-Four-step certification loop after a Railway + Vercel deploy that contains the work under test. Do **not** put the paid eval or live browser capture in CI.
+Four-step certification loop after an API (DigitalOcean) + Vercel deploy that contains the work under test. Do **not** put the paid eval or live browser capture in CI.
 
 1. **Battle-test** — `pnpm chat-eval:production` writes `artifacts/chat-evals/latest-run.json` (Schema-17, ≥13s pacing). Burns OpenRouter credits.
 2. **Browser JSON** — `pnpm chat-eval:browser` reads that run and writes `<runId>.browser.json` against the evaluated production web origin (mobile + desktop). Use `--dry-run` to print the required checks without launching a browser or hitting production.
@@ -127,15 +131,15 @@ packages/api/src/
 
 packages/web/src/
   app/page.tsx                     — analysis desk
-  app/board/page.tsx               — local paper board
-  app/draft/page.tsx               — draft room
-  app/vault/page.tsx               — paper model books
+  app/board/page.tsx               — bet slip (desk/components/bet-slip-view.tsx)
+  app/draft/page.tsx               — FPL team simulator (desk/components/fpl-builder.tsx)
+  app/api/fpl/route.ts             — web proxy of public FPL bootstrap-static
+  app/vault/page.tsx               — old paper view, not linked from the nav
   app/legacy/page.tsx              — previous chat homepage
   app/fixtures/page.tsx            — multi-comp schedule/history and standings
-  app/model/page.tsx               — active club fixture model reference
-  app/evaluation/club-season/page.tsx — rolling club-season calibration UI
+  app/evaluation/club-season/page.tsx — Track record (one forecast per match, #methodology)
   app/evaluation/wc-2026/page.tsx  — frozen WC backtest UI
-  desk/                            — slate, analyst pane, intel, paper lab
+  desk/                            — slate, analyst pane, intel, bet slip, FPL builder
   lib/api.ts                       — typed API boundary
   lib/mock-data.ts                 — mock-aware fixture/standing wrappers
   e2e/smoke.spec.ts                — Playwright UI shell smoke (mock mode)

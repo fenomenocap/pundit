@@ -10,6 +10,7 @@ not serve search.
 | Source | What it provides | Refresh |
 |---|---|---|
 | **ESPN public scoreboard API** | Fixtures, live/final scores, match stage, and league standings for Premier League and UCL qualifiers | Adaptive: 2 min (live), 10 min (matchday), 30 min (normal) |
+| **Fantasy Premier League (public `bootstrap-static`)** | Player names, clubs, positions and prices for the `/draft` team simulator only; never a model input | Cached 1 hour by `GET /api/fpl/bootstrap` ([FPL data](../api-reference/fpl.md)) |
 | **Recognized-fixture registry** | Approved structured identities, observed source history, and model-capability decisions; persisted atomically with last-good recovery. Reviewed friendly records require an ESPN stable event ID plus official corroboration and remain outside pricing. | Every ESPN refresh and release-approved manifest load |
 | **Pinned ClubElo artifact** | Reviewed club ratings by competition profile, used by the Dixon-Coles model | Content-addressed release artifact; active model recomputes on the adaptive model cadence with no runtime ClubElo call |
 | **Stake, Kalshi, and Polymarket public endpoints** | Best-effort active 1X2 prices normalized to no-vig probabilities for the active fixture set | Adaptive: 5 min (live), 10 min (matchday), 30 min (normal) |
