@@ -1,0 +1,30 @@
+# /opt/pundit-deploy/swap.conf — non-secret settings for deploy/do/swap.sh and
+# deploy/do/deploy.sh. Sourced as bash. Never put secrets or env values here:
+# the API's env file stays referenced (by path) from the existing compose file.
+
+REPO_DIR=/opt/pundit-deploy/pundit            # git checkout the image is built from
+COMPOSE_FILE=/opt/pundit-deploy/docker-compose.yml
+API_SERVICE=api                               # API service name in COMPOSE_FILE
+API_CONTAINER_PORT=3001                       # PORT the API listens on in the container
+LEGACY_PROJECT=                               # compose project of today's container ("" = compose default)
+
+# host: Caddy is a host service (systemd). network: Caddy is a container.
+UPSTREAM_MODE=host
+CADDY_NETWORK=                                # network mode only, e.g. pundit-deploy_default
+UPSTREAM_FILE=/etc/caddy/pundit-upstream.caddy
+CADDY_RELOAD_CMD="caddy reload --config /etc/caddy/Caddyfile"
+# network mode example:
+# CADDY_RELOAD_CMD="docker exec pundit-deploy-caddy-1 caddy reload --config /etc/caddy/Caddyfile"
+
+PUBLIC_URL=https://134-209-121-101.sslip.io
+BLUE_PORT=3101
+GREEN_PORT=3102
+READY_TIMEOUT=300
+VERIFY_TIMEOUT=60
+DRAIN_SECONDS=20
+KEEP_IMAGES=3
+STATE_DIR=/opt/pundit-deploy/state
+
+# deploy.sh: allow the legacy bare `deploy` (origin/main tip) until
+# deploy-do.yml sends the CI-passed sha; then set to 0.
+ALLOW_TIP_DEPLOY=1
