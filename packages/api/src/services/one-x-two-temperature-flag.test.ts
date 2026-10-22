@@ -5,9 +5,9 @@ import { matrixTo1x2, matrixToBtts, matrixToTotals } from "./dixon-coles";
 import * as artifacts from "./epl-goal-calibration-artifact";
 import { ONE_X_TWO_TEMPERATURE, oneXTwoTemperatureEnabled, scaleOneXTwoProbabilities } from "./one-x-two-temperature";
 
-const now = new Date("2026-10-08T00:00:00Z");
+const now = new Date("2026-10-23T00:00:00Z");
 const fixture: ActiveScoreModelInput = { home: "Arsenal", away: "Everton", competitionId: "eng.1",
-  homeStrength: 2048, awayStrength: 1816, homeAdvantageElo: 42, kickoff: "2026-10-10T12:00:00Z" };
+  homeStrength: 2048, awayStrength: 1816, homeAdvantageElo: 42, kickoff: "2026-10-25T12:00:00Z" };
 function validated() {
   const ref = { path: "reviewed/evidence.json", sha256: "a".repeat(64) };
   const artifact: artifacts.EplGoalCalibrationArtifact = { schemaVersion: 1,
@@ -15,7 +15,7 @@ function validated() {
     fit: { methodId: "shrunk-event-rate-elo-allocation-v1", origin: artifacts.EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN,
       options: { decayDays: 180, teamPrecision: 100 }, intercept: Math.log(2.7), teamEffects: { Arsenal: 0.02, Everton: -0.03 },
       allocationSlope: 0.62, homeOffset: 0.21, rho: -0.11, trainingCount: 120, allocationTrainingCount: 40,
-      trainingThrough: "2026-10-06T00:00:00Z", trainingSha256: "b".repeat(64), converged: true, gradientNorm: 1e-8 },
+      trainingThrough: "2026-10-21T00:00:00Z", trainingSha256: "b".repeat(64), converged: true, gradientNorm: 1e-8 },
     review: { experimentId: "outcome-anchored-goal-rates-v2", source: [ref], training: [ref], evaluation: [ref] } };
   const raw = JSON.stringify(artifact);
   return artifacts.validateEplGoalCalibrationArtifact(raw, createHash("sha256").update(raw).digest("hex"), now);

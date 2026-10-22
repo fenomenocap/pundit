@@ -6,9 +6,9 @@ import { matrixTo1x2, scoreMatrix } from "./dixon-coles";
 import { GOAL_CALIBRATION_CANDIDATES, historicalGoalLambdas, type HistoricalGoalFit } from "./historical-goal-calibration";
 
 export const EPL_GOAL_CALIBRATION_METHOD_ID = "outcome-anchored-shrunk-goals-v2";
-export const EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN = "2026-10-07T00:00:00.000Z";
+export const EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN = "2026-10-22T00:00:00.000Z";
 // Registration is separate from activation; the release owner pins reviewed bytes.
-export const EPL_GOAL_CALIBRATION_ARTIFACT_SHA256 = "a502e436d89d84e73647602117060a1ee2c824435ebd05a3ad6f93b859f627c7";
+export const EPL_GOAL_CALIBRATION_ARTIFACT_SHA256 = "02d8bbcde52e5a15aec10d4383b40b6c9652036f53d77b15a725500d85ac04e6";
 export const EPL_GOAL_CALIBRATION_MAX_AGE_MS = 30 * 86_400_000;
 
 export interface EplGoalCalibrationPin { readonly sha256: string; readonly activationOrigin: string }
@@ -20,6 +20,8 @@ export interface EplGoalCalibrationPin { readonly sha256: string; readonly activ
  */
 export const EPL_GOAL_CALIBRATION_PINS: readonly EplGoalCalibrationPin[] = Object.freeze([
   Object.freeze({ sha256: EPL_GOAL_CALIBRATION_ARTIFACT_SHA256, activationOrigin: EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN }),
+  // Retired 22 Oct 2026 (re-pin, model/epl-pin-2026-10-22/pin-receipt.json); kept so its stored rows replay.
+  Object.freeze({ sha256: "a502e436d89d84e73647602117060a1ee2c824435ebd05a3ad6f93b859f627c7", activationOrigin: "2026-10-07T00:00:00.000Z" }),
 ]);
 const SHA256 = /^[a-f0-9]{64}$/;
 
