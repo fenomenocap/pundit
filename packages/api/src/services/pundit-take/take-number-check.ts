@@ -210,6 +210,40 @@ function sentenceSkipsNumericAndGapGuard(sentence: string): boolean {
     || /where the numbers come from/i.test(sentence);
 }
 
+/** Value / edge wording. "to edge it" (a pick verb) is not a price claim and is not matched. */
+const VALUE_CLAIM_PATTERN =
+  /\bvalue\b|\b(?:an?|the|our|my|some|real|small|slight|clear|no) edge\b|\blooks rich\b|\bbeats our fair\b|\bagainst our fair\b/i;
+
+function realMarketDecimals(plan: PunditTakePlan): Set<number> {
+  const out = new Set<number>();
+  const add = (raw: string | null | undefined) => {
+    if (raw == null) return;
+    const n = Number.parseFloat(raw);
+    if (Number.isFinite(n) && n > 1) out.add(Math.round(n * 100));
+  };
+  // Grid (totals/BTTS) claims are backed only by grid market prices, never by 1X2 prices.
+  const grid = plan.marketKind === "totals" || plan.marketKind === "btts";
+  if (!grid) add(plan.valueLeg?.bestMarketDecimal);
+  for (const row of grid ? (plan.gridRows ?? []) : (plan.rows ?? [])) {
+    add(row.bestDecimal);
+    for (const cell of Object.values(row.sourceDecimals ?? {})) add(cell);
+  }
+  return out;
+}
+
+/**
+ * A value / edge claim must quote a real offered or market price from the plan. With no market price
+ * (e.g. totals/BTTS with "—" in every market column) a line like "The value is Over 2.5 at 1.98 against
+ * our fair 2.02" compares our own fair prices and invents value, so it is dropped.
+ */
+export function sentenceMakesUnbackedValueClaim(sentence: string, plan: PunditTakePlan): boolean {
+  if (!VALUE_CLAIM_PATTERN.test(sentence)) return false;
+  const market = realMarketDecimals(plan);
+  if (market.size === 0) return true;
+  const quoted = [...sentence.matchAll(/\bat (\d+\.\d+)\b/g)].map((m) => Math.round(Number.parseFloat(m[1]!) * 100));
+  return !quoted.some((d) => market.has(d));
+}
+
 function splitGuardSentences(prose: string): string[] {
   return prose
     .split(/\n\n+/)
@@ -225,6 +259,7 @@ export function applyV2TakeProseGuards(prose: string, plan: PunditTakePlan): str
   for (const sentence of sentences) {
     const coinFlip = plan.numericFacts?.coinFlip ?? false;
     if (sentenceHasForbiddenTossUpLanguage(sentence, coinFlip)) continue;
+    if (sentenceMakesUnbackedValueClaim(sentence, plan)) continue;
     if (plan.numericFacts && sentenceFailsTableGapCheck(sentence, plan.numericFacts)) {
       continue;
     }
