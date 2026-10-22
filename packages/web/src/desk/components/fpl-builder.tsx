@@ -1,5 +1,8 @@
 "use client";
 
+import { DeskPageHeader } from "@/components/desk-page";
+import { ClubCrest } from "@/desk/components/kit";
+import { formalTeamName } from "@/desk/lib/data/teams";
 import { useEffect, useMemo, useState } from "react";
 import { Check, X } from "lucide-react";
 import {
@@ -59,19 +62,20 @@ export function FplBuilder() {
   }, []);
 
   return (
-    <div data-testid="fpl-builder-page" className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6">
-      <header className="mb-5">
-        <p className="eyebrow">Fantasy Premier League</p>
-        <h1 className="font-display text-4xl uppercase tracking-wide mt-1">FPL team builder</h1>
-        <p className="mt-2 max-w-2xl text-sm text-quiet leading-relaxed">
+    <div data-testid="fpl-builder-page">
+      <DeskPageHeader
+        eyebrow="Fantasy Premier League · simulator"
+        title="FPL team builder"
+        subtitle={<>
           Pick a {SQUAD_SIZE}-player squad (2 goalkeepers, 5 defenders, 5 midfielders, 3 forwards) within a £{BUDGET.toFixed(1)}m budget,
           with no more than 3 players from one club. Then choose your starting XI, captain and vice-captain.
           Your squad is saved in this browser.
-        </p>
-        <p data-testid="fpl-data-attribution" className="mt-1 text-2xs text-subtle">
-          Simulator only. Player data from Fantasy Premier League (public). Not affiliated with the Premier League.
-        </p>
-      </header>
+          <span data-testid="fpl-data-attribution" className="mt-1 block text-2xs text-subtle">
+            Simulator only. Player data from Fantasy Premier League (public). Not affiliated with the Premier League.
+          </span>
+        </>}
+      />
+      <div className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6">
       {load.state === "loading" ? <p className="text-sm text-quiet">Loading players…</p> : null}
       {load.state === "error" ? (
         <p role="alert" className="rounded-md border border-border bg-surface px-4 py-3 text-sm text-quiet">
@@ -79,6 +83,7 @@ export function FplBuilder() {
         </p>
       ) : null}
       {load.state === "ready" ? <Builder data={load.data} /> : null}
+      </div>
     </div>
   );
 }
@@ -191,8 +196,9 @@ function Builder({ data }: { data: FplPayload }) {
                   <tr key={p.id} className="border-b border-border last:border-b-0">
                     <td className="px-4 py-2">
                       <div className="font-medium">{p.name}</div>
-                      <div className="text-2xs text-quiet">
-                        {p.clubName}
+                      <div className="flex items-center gap-1.5 text-2xs text-quiet">
+                        <ClubCrest name={p.clubName} size="sm" />
+                        {formalTeamName(p.clubName)}
                         {flagged(p) ? (
                           <span className="ml-1.5 text-down">
                             · {p.status ? STATUS_LABEL[p.status] ?? p.status : "Flagged"}
@@ -247,6 +253,7 @@ function Builder({ data }: { data: FplPayload }) {
                     const starting = squad.starters.includes(id);
                     return (
                       <li key={id} className="flex items-center gap-2 text-sm" data-testid="fpl-squad-player">
+                        <ClubCrest name={pl.clubName} size="sm" />
                         <span className={cn("min-w-0 flex-1 truncate", !starting && "text-quiet")}>
                           {pl.name}
                           {squad.captain === id ? <span className="ml-1 text-2xs font-semibold text-accent">(C)</span> : null}

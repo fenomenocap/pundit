@@ -28,6 +28,7 @@ import { Disclaimer } from "@/components/disclaimer";
 import { ProbabilityBar } from "@/components/probability-bar";
 import { getDocsUrl } from "@/lib/site-links";
 import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
+import { teamIdFromName } from "@/desk/lib/data/teams";
 import { DeskTakeV2AnswerMarkdown } from "@/desk/lib/desk-take-v2-answer-markdown";
 import { isPunditTakeV2RenderingActive } from "@/lib/pundit-take-v2-opt-in";
 import {
@@ -230,7 +231,7 @@ function teamAbbr(name: string): string {
     "Coventry City": "COV",
     "Brighton & Hove Albion": "BHA",
   };
-  return known[name] ?? name.slice(0, 3).toUpperCase();
+  return known[name] ?? teamIdFromName(name) ?? name.slice(0, 3).toUpperCase();
 }
 
 function groundingLabel(grounding: AskGrounding): string {

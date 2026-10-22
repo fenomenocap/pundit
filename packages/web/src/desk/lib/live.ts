@@ -6,7 +6,7 @@ import {
 } from "./data/fixtures";
 import { applyLiveForm, FORM, type ResultMark } from "./data/form";
 import type { TeamId } from "./data/teams";
-import { TEAM_LIST, TEAMS } from "./data/teams";
+import { TEAM_LIST, TEAMS, teamIdFromName } from "./data/teams";
 import { pickDeskMarketQuote } from "./market-quote";
 import { ratingComparison } from "./rating-words";
 import { deskNumbersFromModelRow, type ModelRowLambdas } from "./grid";
@@ -15,48 +15,7 @@ export const LIVE_API =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
   "https://thepundit.up.railway.app";
 
-const NAME_TO_ID: Record<string, TeamId> = {
-  Arsenal: "ARS",
-  "Aston Villa": "AVL",
-  Bournemouth: "BOU",
-  "AFC Bournemouth": "BOU",
-  Brentford: "BRE",
-  Brighton: "BHA",
-  "Brighton & Hove Albion": "BHA",
-  Chelsea: "CHE",
-  Coventry: "COV",
-  "Coventry City": "COV",
-  "Crystal Palace": "CRY",
-  Everton: "EVE",
-  Fulham: "FUL",
-  Hull: "HUL",
-  "Hull City": "HUL",
-  Ipswich: "IPS",
-  "Ipswich Town": "IPS",
-  Leeds: "LEE",
-  "Leeds United": "LEE",
-  Liverpool: "LIV",
-  "Man City": "MCI",
-  "Manchester City": "MCI",
-  "Man United": "MUN",
-  "Manchester United": "MUN",
-  Newcastle: "NEW",
-  Forest: "NFO",
-  "Nott'm Forest": "NFO",
-  "Nottingham Forest": "NFO",
-  Sunderland: "SUN",
-  Tottenham: "TOT",
-  Spurs: "TOT",
-};
-
-export function teamIdFromName(name: string): TeamId | null {
-  if (NAME_TO_ID[name]) return NAME_TO_ID[name];
-  const lower = name.trim().toLowerCase();
-  for (const team of TEAM_LIST) {
-    if (team.name.toLowerCase() === lower || team.short.toLowerCase() === lower) return team.id;
-  }
-  return null;
-}
+export { teamIdFromName };
 
 export type LiveScorer = {
   id: string;
@@ -200,6 +159,10 @@ function comparisonOdds(quote: ReturnType<typeof pickDeskMarketQuote>): Fixture[
   };
 }
 
+function pct1(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey, over: number, xg: [number, number]): string {
   const menH = scorersForTeam(home, 2).map((p) => p.name).join(", ");
   const menA = scorersForTeam(away, 2).map((p) => p.name).join(", ");
@@ -212,7 +175,8 @@ function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey
     `Expected goals ${xg[0].toFixed(2)}–${xg[1].toFixed(2)}.`,
     `1X2 ${(row.pHome * 100).toFixed(0)}/${(row.pDraw * 100).toFixed(0)}/${(row.pAway * 100).toFixed(0)}.`,
     `BTTS ${(row.pBttsYes * 100).toFixed(0)}% · Over 2.5 ${(over * 100).toFixed(0)}%.`,
-    top ? `Likeliest single score ${top.score} (${(top.probability * 100).toFixed(0)}%).` : "",
+    // Same grid cell and precision as /fixtures and the chat (e.g. 2-0 16.4%).
+    top ? `Likeliest single score ${top.score} (${pct1(top.probability)}).` : "",
     menH || menA ? `Recent scorers: ${menH} · ${menA}.` : "",
   ];
   return parts.filter(Boolean).join(" ");
