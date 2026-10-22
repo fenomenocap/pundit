@@ -1,0 +1,43 @@
+{
+ "methodId": "shrunk-event-rate-elo-allocation-v1",
+ "origin": "2026-10-22T00:00:00.000Z",
+ "options": {
+  "decayDays": 180,
+  "teamPrecision": 100
+ },
+ "intercept": 1.0277517616705178,
+ "teamEffects": {
+  "Arsenal": -0.04171498403696937,
+  "Aston Villa": 0.002107497067831679,
+  "Bournemouth": 0.01591741936709445,
+  "Brentford": 0.007207492578198032,
+  "Brighton": 0.02553187397405687,
+  "Burnley": 0.01368186726768968,
+  "Chelsea": 0.06840068643341835,
+  "Coventry": 0.0076958092183214396,
+  "Crystal Palace": 0.014692648721926866,
+  "Everton": -0.037572273653239584,
+  "Forest": -0.041656343573826714,
+  "Fulham": -0.046225917358943686,
+  "Hull": -0.03367194382106419,
+  "Ipswich": 0.04789446452502693,
+  "Leeds": -0.03505879761366243,
+  "Liverpool": 0.008212349739084801,
+  "Man City": 0.04784779194036,
+  "Man United": 0.02800781394959871,
+  "Newcastle": 0.034601415815208855,
+  "Sunderland": -0.02687737963514532,
+  "Tottenham": -0.0244801892621228,
+  "West Ham": 0.004615039740360279,
+  "Wolves": -0.03225634365115607
+ },
+ "allocationSlope": 0.500496813498457,
+ "homeOffset": 0.28050763585183897,
+ "rho": -0.08,
+ "trainingCount": 450,
+ "allocationTrainingCount": 280,
+ "trainingThrough": "2026-10-19T19:00:00.000Z",
+ "trainingSha256": "537c94279396fe47af9250faf90d0e6ca946cb9a9c5c27871cc9b714784d93e5",
+ "converged": true,
+ "gradientNorm": 7.012614726822863e-10
+}
