@@ -142,7 +142,7 @@ function Builder({ data }: { data: FplPayload }) {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,1fr)]">
       <section className="min-w-0 rounded-md border border-border bg-surface" aria-label="Player list">
         <header className="flex flex-wrap items-end gap-2 px-4 py-3 border-b border-border">
           <label className="flex flex-col text-2xs uppercase tracking-wider text-quiet">
@@ -156,7 +156,7 @@ function Builder({ data }: { data: FplPayload }) {
             Club
             <select aria-label="Club" value={club} onChange={(e) => setClub(e.target.value)} className="mt-1 h-9 rounded-sm border border-border bg-elevated px-2 text-sm normal-case tracking-normal text-fg">
               <option value="ALL">All clubs</option>
-              {data.clubs.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+              {[...data.clubs].sort((a, b) => formalTeamName(a.name).localeCompare(formalTeamName(b.name))).map((c) => <option key={c.code} value={c.code}>{formalTeamName(c.name)}</option>)}
             </select>
           </label>
           <label className="flex flex-col text-2xs uppercase tracking-wider text-quiet">
@@ -177,7 +177,7 @@ function Builder({ data }: { data: FplPayload }) {
           </label>
         </header>
         {message ? <p role="alert" className="px-4 py-2 text-xs text-down border-b border-border" data-testid="fpl-add-message">{message}</p> : null}
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-2xs uppercase tracking-wider text-quiet">
               <tr className="border-b border-border">
