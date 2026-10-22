@@ -17,11 +17,12 @@ There is **no database, no blockchain, no trading, nothing to buy.** The former 
 | Route | What it is |
 |---|---|
 | `/` | The product. Analysis desk: live slate + analyst pane (`packages/web/src/desk`), grounding badges, streaming (SSE), New Chat. |
-| `/board`, `/draft`, `/vault` | Local paper lab on the same slate — not a bookmaker. |
+| `/board` | Bet slip: singles/accumulators with live combined odds and potential returns over prices already shown. No wallet, no wager. |
+| `/draft` | FPL team simulator over public FPL data ("Simulator only … Not affiliated with the Premier League"). |
 | `/legacy` | Previous chat-only homepage (`home-chat.tsx`). |
-| `/fixtures` | Multi-competition live schedule, results and standings from ESPN, with competition tabs and links onto the desk. |
-| `/model` | Read-only native reference view over the active club-fixture model cache (`/api/model/*`). |
-| `/evaluation/club-season` | Rolling 90-minute pre-kickoff club-season ledger (live volume on Railway `/data`). |
+| `/fixtures` | Schedule grouped by day, forecast rows, and a formal Premier League table, with links onto the desk. |
+| `/model` | Removed; 308 redirect to `/evaluation/club-season#methodology`. |
+| `/evaluation/club-season` | Track record: one scored pre-kickoff forecast per match, plus the methodology section (live volume on the API's `/data`). |
 | `/evaluation/wc-2026` | **Frozen** World Cup 2026 backtest — a historical credibility artifact, deliberately disconnected from live caches and cron. |
 
 Chat status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpriced`, `no-fixtures`, `unavailable`. Suggestion chips only ever offer fixtures the model has actually priced, so a chip can never answer 503.
@@ -44,7 +45,7 @@ Chat status bar distinguishes `ready`, `partial` (some fixtures unpriced), `unpr
 | GET | `/api/evaluation/wc-2026` | Frozen backtest artifact |
 | GET | `/api/polymarkets/wc`, `/groups` | Legacy reference odds |
 | GET | `/health` | Liveness |
-| GET | `/startup` | Startup gate (Railway healthcheck path) — 200 only when football + active model caches are usable |
+| GET | `/startup` | Startup gate — 200 only when football + active model caches are usable |
 | GET | `/ready` | Full readiness + degradable-source health (see §6) |
 | GET | `/version` | Build SHA |
 
@@ -147,13 +148,13 @@ Search is an **adapter seam**. The answer model does not browse.
 | Service | Where |
 |---|---|
 | Web | Vercel — `thepundit.vercel.app`, project `sports-prediction-markets-web`, root dir `packages/web` |
-| API | Railway — `thepundit.up.railway.app`, service `@pundit/api`, RAILPACK builder, healthcheck `/startup` (120s), restart ON_FAILURE ×10 |
+| API | DigitalOcean droplet — `134-209-121-101.sslip.io`, Docker blue/green behind Caddy (`deploy/do/`), health gate `/ready` + `/version`. Railway (`thepundit.up.railway.app`) is retired and serves a frozen build. |
 
-Vercel builds are gated by `scripts/vercel-ignore-build.mjs`; Railway watches `/packages/api/**` plus root lockfiles/node version. Both are auto-deploy on push to `main`.
+Vercel builds are gated by `scripts/vercel-ignore-build.mjs` (main only, web/shared inputs only). The API deploys on every `main` push whose CI passes (`deploy-do.yml`, exact sha), then Verify Production runs. See `docs/ops/deploy.md`.
 
 ### Persistent state
 
-There is **no database.** Runtime caches are in-memory; restart-critical state is atomic JSON under `PUNDIT_DATA_DIR` (a mounted Railway volume at `/data`, falling back to `packages/api/data` locally) via `persistent-store.ts`:
+There is **no database.** Runtime caches are in-memory; restart-critical state is atomic JSON under `PUNDIT_DATA_DIR` (`/data` on the droplet, a bind mount of `/opt/pundit-data`, falling back to `packages/api/data` locally) via `persistent-store.ts`:
 
 - rolling club-season calibration ledger
 - club-strength artifact current/last-good recovery copies
@@ -169,7 +170,7 @@ Search health is deliberately **outside** the ready/not-ready decision: an outag
 
 ### Rate limiting
 
-Global limiter 100/min. `/api/ask` uses one **process-wide** bucket (not per-IP) of `ASK_RATE_LIMIT_PER_MINUTE ÷ API_REPLICAS` — default 10 ÷ 1. Raise `API_REPLICAS` only when Railway's replica count actually changes.
+Global limiter 100/min. `/api/ask` uses one **process-wide** bucket (not per-IP) of `ASK_RATE_LIMIT_PER_MINUTE ÷ API_REPLICAS` — default 10 ÷ 1. Raise `API_REPLICAS` only when the number of live API containers actually changes.
 
 ### Security posture
 
@@ -208,7 +209,7 @@ packages/
     scripts/                artifact build + verify, corpus build, ledger backup
   web/                      Next.js 15 App Router
   model/backtest/           EPL walk-forward harness (Python)
-    src/app/                page.tsx (desk) · board · draft · vault · legacy · fixtures · model · evaluation/*
+    src/app/                page.tsx (desk) · board (bet slip) · draft (FPL) · vault (unlinked) · legacy · fixtures · evaluation/* · api/fpl · api/version
     src/components/         home-chat.tsx (1,028 lines) + ui/ (shadcn primitives)
     src/lib/                api.ts (typed boundary) · mock-data.ts · team-logos · site-links
     e2e/smoke.spec.ts
@@ -267,7 +268,7 @@ ASK_RATE_LIMIT_PER_MINUTE=10
 API_REPLICAS=1
 ```
 
-Keys are managed in Railway for production and in the gitignored repo-root `.env` locally. They are never read back, logged, hardcoded or committed; `/ready` reports which variable supplied a key, never the value.
+Keys are managed in the droplet's env file for production and in the gitignored repo-root `.env` locally. They are never read back, logged, hardcoded or committed; `/ready` reports which variable supplied a key, never the value.
 
 ---
 
@@ -310,7 +311,7 @@ Recorded in `CLAUDE.md` / `AGENTS.md`, and load-bearing:
 - "Current" alone does not force external search for owned table/model/season facts.
 - **Source fidelity**: an all-zero table explicitly requested as the only evidence establishes no ranking — do not answer with ratings-and-schedule season probabilities.
 - Capability reason strings are preserved **exactly** in public copy.
-- `/model` stays aligned with the existing `/api/model/*` contract; no second model path.
+- `/fixtures` and the desk stay aligned with the existing `/api/model/*` contract; no second model path (`/model` itself is removed).
 - `/evaluation/wc-2026` stays frozen — no reconnection to live caches or cron.
 - No raw `fetch()` in page components for matches/standings — go through `lib/mock-data.ts` so `NEXT_PUBLIC_USE_MOCK` is honoured.
 

@@ -31,7 +31,7 @@ For Premier League title-race and top-four questions, Pundit runs a **Monte Carl
 
 The default simulation seed is derived from the complete standings, remaining fixtures, ratings, run count, active contributor identity and goal-calibration artifact hash. Identical grounded inputs therefore replay to identical probabilities across follow-up turns; changing a grounded input changes the replay. Tests may still inject an explicit random source.
 
-The simulator uses the same score-model policy beyond the per-fixture active cache, gated on a complete schedule and rating coverage. The paper lab samples the supplied joint grid too; calibrated rows without a coherent grid fail closed. Legacy paper rows without a grid retain their separately disclosed simulation fallback.
+The simulator uses the same score-model policy beyond the per-fixture active cache, gated on a complete schedule and rating coverage. The desk's projected score is read deterministically from the published probabilities: the likeliest scoreline inside the favoured result and the favoured side of 2.5 goals (see [Methodology §3.6](../methodology.md)). It is never a random draw.
 
 ### How the desk uses it
 
@@ -56,12 +56,12 @@ Two read-only evaluation artifacts measure how well pre-kickoff probabilities ma
 
 | Artifact | Path | Method |
 |---|---|---|
-| **Club season (rolling)** | `/evaluation/club-season` | First eligible forecast sealed in the 90-minute pre-kickoff window (`pre-kickoff-90m-v1`). Live volume is on Railway `/data`, not the empty in-repo seed. |
+| **Club season (rolling)** | `/evaluation/club-season` | First eligible forecast sealed in the 90-minute pre-kickoff window (`pre-kickoff-90m-v1`). Each match is scored once (`one-per-fixture-v1`; see [Methodology §6.1](../methodology.md)). Live volume is on the production API's data volume, not the empty in-repo seed. Shown on the site as **Track record**. |
 | **WC 2026 (frozen)** | `/evaluation/wc-2026` | Reconstructed pre-kickoff probabilities for every finished World Cup 2026 match |
 
-The Model page and recalculated historical fixture rows are exploratory views using release inputs. Targets before the EPL calibration origin retain the historical baseline; they never receive later-trained calibration parameters. Recalculation with a release ratings snapshot is not a look-ahead-free backtest.
+Recalculated historical fixture rows are exploratory views using release inputs. Targets before the EPL calibration origin retain the historical baseline; they never receive later-trained calibration parameters. Recalculation with a release ratings snapshot is not a look-ahead-free backtest.
 
-The older **offline Phase 1b calibrator** (`pnpm --filter @sports-predict/api calibrate:champion`) still writes research reports from sealed club-season rows. It does not select the active v3 artifact or change runtime constants. The in-repo ledger seed is not production truth — Railway `PUNDIT_DATA_DIR=/data` is. MiniMax does not author match probabilities.
+The older **offline Phase 1b calibrator** (`pnpm --filter @sports-predict/api calibrate:champion`) still writes research reports from sealed club-season rows. It does not select the active v3 artifact or change runtime constants. The in-repo ledger seed is not production truth — the production API's `PUNDIT_DATA_DIR=/data` volume is. MiniMax does not author match probabilities.
 
 The separate fitted attack/defence Dixon–Coles challenger remains **registered, not activated**. It is distinct from the active shrunk goal-rate calibration. The preserved rating/HFA baseline still supplies Fundamental 1X2 and unsupported calibration scopes.
 

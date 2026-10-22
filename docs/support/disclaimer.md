@@ -1,6 +1,6 @@
 # Disclaimer
 
-Pundit is an informational analysis tool. Nothing in this product — the chat, the model page, the fixtures page, evaluation pages, or the API — is:
+Pundit is an informational analysis tool. Nothing in this product — the chat, the fixtures page, the bet slip, the FPL simulator, the track record, or the API — is:
 
 * A recommendation to place any wager or take any position
 * Financial or betting advice of any kind
@@ -9,6 +9,10 @@ Pundit is an informational analysis tool. Nothing in this product — the chat, 
 **Analysis only — not betting advice.**
 
 **Market data is reference-only.** Stake, Kalshi, and Polymarket prices shown or referenced in Pundit are pulled from public sources for comparison against the model's output. Pundit is not affiliated with or endorsed by those platforms and cannot execute trades or bets.
+
+**The Bet slip is a calculator.** It adds up prices already shown on the site and works out potential returns. Nothing is placed, held or settled.
+
+**The FPL page is a simulator only.** Player data comes from Fantasy Premier League (public). Pundit is not affiliated with the Premier League.
 
 **Model output is probabilistic, not predictive.** The Dixon-Coles Poisson model produces statistical estimates from a dated, pinned ClubElo strength artifact and match context — it does not guarantee any outcome, and real matches routinely diverge from model expectations. Season outlook simulations (title race, top-four) are Monte Carlo estimates over a verified complete remaining schedule, not forecasts of certainty.
 
