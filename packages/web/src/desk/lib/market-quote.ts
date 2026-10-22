@@ -83,7 +83,8 @@ export function formatDeskMarketLine(
   const decimal = marketDecimalForPick(quote, pick);
   if (decimal === null) return null;
   const asOf = formatMarketAsOfUk(quote.observedAt);
-  const base = `Mkt ${decimal.toFixed(2)} · ${quote.sourceLabel}${asOf ? ` · as of ${asOf}` : ""}`;
+  // Source names stay behind the Sources toggle; visible prose says "Mkt" only.
+  const base = `Mkt ${decimal.toFixed(2)}${asOf ? ` · as of ${asOf}` : ""}`;
   if (!MODEL_EDGE_CLAIMS_ALLOWED) return base;
   const edgePp = (modelProb - 1 / decimal) * 100;
   const sign = edgePp > 0 ? "+" : "";

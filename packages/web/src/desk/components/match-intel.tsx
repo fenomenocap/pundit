@@ -12,12 +12,13 @@ import { ProbBar } from "@/desk/components/prob-bar";
 import { Button } from "@/desk/components/ui/button";
 import { useLiveSlate } from "@/desk/components/use-live-slate";
 import { goalForecastDisclosure } from "@/lib/fixture-presentation";
+import { projectedScore } from "@/desk/lib/grid";
+import { SourcesToggle } from "@/components/sources-toggle";
 
 export function MatchIntel() {
   const selectedId = useDesk((s) => s.selectedId);
   const f = getFixture(selectedId);
   const scores = useDesk((s) => s.scores);
-  const simulate = useDesk((s) => s.simulate);
   const queueAsk = useDesk((s) => s.queueAsk);
   useLiveSlate();
 
@@ -29,7 +30,7 @@ export function MatchIntel() {
   const hasForecast = hasCapturedForecast(f);
   const leanP = hasForecast ? modelProbFor(f, f.modelPick) : null;
   const settledScore = f.status === "ft" ? (scores[f.id] ?? f.score) : undefined;
-  const projectedScore = f.status === "upcoming" ? scores[f.id] : undefined;
+  const projection = f.status === "upcoming" && hasForecast ? projectedScore(f) : null;
 
   return (
     <aside className="hidden lg:block border-l border-border bg-surface min-w-0 lg:h-[calc(100dvh-7.5rem)] lg:overflow-y-auto">
@@ -67,17 +68,14 @@ export function MatchIntel() {
             <div className="font-display text-5xl tabular-nums leading-none">
               {settledScore[0]}–{settledScore[1]}
             </div>
-          ) : projectedScore ? (
-            <div className="text-right">
-              <div className="eyebrow">Paper</div>
+          ) : projection ? (
+            <div className="text-right" data-testid="desk-projected-score">
+              <div className="eyebrow">Projected</div>
               <div className="font-display text-3xl tabular-nums leading-none text-quiet">
-                {projectedScore[0]}–{projectedScore[1]}
+                {projection.score.home}–{projection.score.away}
               </div>
+              <div className="mt-1 text-2xs tabular-nums text-subtle">{fmtPct(projection.score.probability)} chance</div>
             </div>
-          ) : hasForecast ? (
-            <Button size="sm" variant="subtle" onClick={() => simulate(f.id)}>
-              Project score
-            </Button>
           ) : null}
         </div>
 
@@ -87,16 +85,23 @@ export function MatchIntel() {
               <ProbBar home={f.model.home} draw={f.model.draw} away={f.model.away} />
             </div>
             <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <Stat k="xG" v={`${f.xg[0].toFixed(2)}–${f.xg[1].toFixed(2)}`} />
+              <Stat k="Exp. goals" v={`${f.xg[0].toFixed(2)}–${f.xg[1].toFixed(2)}`} />
               <Stat k="O2.5" v={fmtPct(f.model.over25)} />
               <Stat k="BTTS" v={fmtPct(f.model.btts)} />
             </dl>
-            <p className="mt-2 text-2xs leading-5 text-quiet">{goalForecastDisclosure(f.goalCalibration)}</p>
-            {f.status === "upcoming" ? (
-              <p className="mt-2 text-2xs leading-5 text-quiet">
-                {f.scoreGrid ? "Paper scores sample the joint forecast distribution." : "Paper scores use a legacy independent-goals simulation."}
+            {projection ? (
+              <p data-testid="desk-projected-score-why" className="mt-2 text-2xs leading-5 text-quiet">
+                Projected score is the likeliest result inside our favoured outcome
+                ({projection.outcome === "draw" ? "draw" : `${TEAMS[projection.outcome === "home" ? f.home : f.away].short} win`},{" "}
+                {fmtPct(projection.pOutcome)}) and goals line ({projection.totals} 2.5, {fmtPct(projection.totals === "over" ? projection.pOver : 1 - projection.pOver)}).
+                {projection.modal.home !== projection.score.home || projection.modal.away !== projection.score.away
+                  ? ` The single likeliest score is ${projection.modal.home}–${projection.modal.away} (${fmtPct(projection.modal.probability)}); goals are spread across many scores, so no one score is likely.`
+                  : ` It is also the single likeliest score (${fmtPct(projection.modal.probability)}).`}
               </p>
             ) : null}
+            <SourcesToggle className="mt-2">
+              <p>{goalForecastDisclosure(f.goalCalibration)}</p>
+            </SourcesToggle>
             <p className="mt-4 text-sm leading-relaxed text-quiet">
               {f.status === "ft" ? "Pre-kickoff lean" : "Our lean"}{" "}
               <span className="text-fg font-medium">{selectionLabel(f, f.modelPick)}</span> at{" "}
@@ -151,12 +156,12 @@ export function MatchIntel() {
             Ask Pundit
           </Button>
           <Button variant="ghost" asChild>
-            <Link href="/model">Open the model page</Link>
+            <Link href="/fixtures">Open fixtures and table</Link>
           </Button>
         </div>
 
         <p className="mt-4 text-2xs text-subtle leading-relaxed">
-          Analysis only — not betting advice. Paper board is a simulation, not a bookmaker.
+          Analysis only — not betting advice. Projected scores are forecasts, not results.
         </p>
       </div>
     </aside>

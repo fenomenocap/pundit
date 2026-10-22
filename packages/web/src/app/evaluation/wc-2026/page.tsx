@@ -87,15 +87,15 @@ export default function Wc2026EvaluationPage() {
         )}
       />
       <p className="mb-6 -mt-4 max-w-2xl font-display text-lg leading-snug text-white">
-        Immutable pre-kickoff probabilities reconstructed for backtesting. Separate from the live model page, which recalculates older fixtures with current ratings.
+        Immutable pre-kickoff probabilities reconstructed for backtesting. Separate from the club-season track record, which only counts forecasts sealed before kickoff.
       </p>
 
       <div className="mb-6">
         <Link
-          href="/model"
+          href="/evaluation/club-season"
           className="text-xs text-primary transition-colors hover:text-primary/80"
         >
-          ← Predictions
+          ← Track record
         </Link>
       </div>
 
@@ -173,7 +173,7 @@ export default function Wc2026EvaluationPage() {
             <div className="border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-white">Fixture results vs model</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Pre-kickoff 1X2 probabilities and authoritative ESPN results.
+                Pre-kickoff 1X2 probabilities and final results.
               </p>
             </div>
             <div className="max-h-[70vh] overflow-auto">

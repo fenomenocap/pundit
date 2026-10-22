@@ -221,7 +221,7 @@ export const SHARED_TOTAL_XG_SENTENCE =
   "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
 
 export const CALIBRATED_GOALS_SENTENCE =
-  "I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.";
+  "I estimate goals from historical scoring and team strength; these are forecasts, not guarantees.";
 
 export function goalForecastDisclosure(calibration?: GoalCalibration): string {
   if (calibration === undefined) return SHARED_TOTAL_XG_SENTENCE;
