@@ -20,6 +20,7 @@ if (existsSync(rootEnvPath)) {
   }
 }
 
+// NEXT_PUBLIC_API_URL is inlined at build time; changing it in Vercel needs a rebuild.
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
