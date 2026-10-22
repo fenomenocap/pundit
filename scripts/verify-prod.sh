@@ -28,7 +28,23 @@ elif [[ -n "${1:-}" ]]; then
 else
   EXPECTED_WEB_SHA="$(bash "$SCRIPT_DIR/resolve-deployed-sha.sh" web)"
 fi
-EXPECTED_REGISTRY_MODE="${3:-${EXPECTED_REGISTRY_MODE:-enabled}}"
+# Expected fixture-registry mode comes from PUNDIT_EXPECT_FIXTURE_REGISTRY
+# (e.g. a repo variable), default "shadow": the DO droplet deliberately runs
+# FIXTURE_REGISTRY_ENABLED=false until the registry data is restored (22 Oct
+# 2026). Allowed values: shadow, enabled. The legacy third positional argument
+# (the workflow still passes "enabled") no longer sets the mode; it is only
+# reported when it disagrees, so flipping prod back needs just the variable.
+EXPECTED_REGISTRY_MODE="${PUNDIT_EXPECT_FIXTURE_REGISTRY:-shadow}"
+case "$EXPECTED_REGISTRY_MODE" in
+  shadow|enabled) ;;
+  *)
+    echo "FAIL: PUNDIT_EXPECT_FIXTURE_REGISTRY must be 'shadow' or 'enabled' (got '$EXPECTED_REGISTRY_MODE')"
+    exit 1
+    ;;
+esac
+if [[ -n "${3:-}" && "${3}" != "$EXPECTED_REGISTRY_MODE" ]]; then
+  echo "note: ignoring positional registry mode '${3}'; using PUNDIT_EXPECT_FIXTURE_REGISTRY=${EXPECTED_REGISTRY_MODE}"
+fi
 POLL_ATTEMPTS="${VERIFY_PROD_POLL_ATTEMPTS:-48}"
 POLL_INTERVAL_SECONDS="${VERIFY_PROD_POLL_INTERVAL_SECONDS:-5}"
 
