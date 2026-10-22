@@ -1,17 +1,83 @@
 import type { Grounding } from "../ask";
-import type { PunditTakePlan } from "./types";
+import type { OneXTwoOutcome } from "../response-correctness";
+import type { PunditTakePlan, TakePlanRow } from "./types";
+import { displayOutcomeLabel } from "../basics-answer-voice";
 
-const COIN_FLIP_GAP_POINTS = 2;
+function modelPctInt(p: number): number {
+  return Math.round(p * 100);
+}
+
+export const COIN_FLIP_GAP_POINTS = 2;
+
+/** Gap in percentage points between two raw 1X2 probabilities (same threshold as level/no-side). */
+export function oneXTwoRawProbabilityGapPoints(higher: number, lower: number): number {
+  return (higher - lower) * 100;
+}
+
+function raw1x2Probability(grounding: Grounding, outcome: OneXTwoOutcome): number {
+  if (outcome === "home") return grounding.pHome;
+  if (outcome === "draw") return grounding.pDraw;
+  return grounding.pAway;
+}
+
+export function oneXTwoTopGapPoints(grounding: Grounding): number {
+  const sorted = [grounding.pHome, grounding.pDraw, grounding.pAway].slice().sort((a, b) => b - a);
+  return oneXTwoRawProbabilityGapPoints(sorted[0], sorted[1]);
+}
+
+export function is1x2SidePickSuppressed(grounding: Grounding): boolean {
+  return oneXTwoTopGapPoints(grounding) < COIN_FLIP_GAP_POINTS;
+}
+
+/** True when raw p is within the level band of the leading 1X2 outcome (uses COIN_FLIP_GAP_POINTS). */
+export function is1x2OutcomeWithinLevelBand(grounding: Grounding, p: number): boolean {
+  const maxRaw = Math.max(grounding.pHome, grounding.pDraw, grounding.pAway);
+  return oneXTwoRawProbabilityGapPoints(maxRaw, p) < COIN_FLIP_GAP_POINTS;
+}
+
+/** 1X2 rows to show in a no-market table when the plan has no side pick. */
+export function level1x2RowsForTable(plan: PunditTakePlan, grounding: Grounding): TakePlanRow[] {
+  if (!plan.levelNoSide || !plan.rows.length) return [];
+  const withinThreshold = plan.rows.filter((row) =>
+    is1x2OutcomeWithinLevelBand(grounding, raw1x2Probability(grounding, row.outcome)),
+  );
+  return withinThreshold.length > 0 ? withinThreshold : plan.rows;
+}
+
+export function format1x2V2Headline(
+  fixtureLabel: string,
+  grounding: Grounding,
+  variant: "full" | "why",
+): string {
+  const pct = modelPctInt(Math.max(grounding.pHome, grounding.pDraw, grounding.pAway));
+  if (is1x2SidePickSuppressed(grounding)) {
+    return variant === "why"
+      ? `On ${fixtureLabel}, the sides are level at ${pct}% each; I have no side.`
+      : `${fixtureLabel} — level at ${pct}% each; I have no side.`;
+  }
+  const ranked = ([
+    { outcome: "home" as const, p: grounding.pHome },
+    { outcome: "draw" as const, p: grounding.pDraw },
+    { outcome: "away" as const, p: grounding.pAway },
+  ] as const).slice().sort((a, b) => b.p - a.p);
+  const top = ranked[0];
+  const label = displayOutcomeLabel(grounding, top.outcome);
+  const headline = top.outcome === "draw" ? "the draw" : label;
+  const display = modelPctInt(top.p);
+  return variant === "why"
+    ? `On ${fixtureLabel}, I have ${headline} at ${display}%.`
+    : `${fixtureLabel} — ${headline} at ${display}%.`;
+}
 
 export function gridHeadlineOpener(plan: PunditTakePlan, variant: "full" | "why"): string | null {
   if (!plan.gridCall) return null;
   const pct = plan.gridCall.modelPctDisplay;
-  const label = plan.gridCall.headlineLabel;
   if (plan.gridCall.coinFlip) {
     return variant === "why"
-      ? `On ${plan.fixtureLabel}, it's a coin flip — I lean ${label} at ${pct}.`
-      : `${plan.fixtureLabel} — coin flip, lean ${label} at ${pct}.`;
+      ? `On ${plan.fixtureLabel}, the sides are level at ${pct} each; I have no side.`
+      : `${plan.fixtureLabel} — level at ${pct} each; I have no side.`;
   }
+  const label = plan.gridCall.headlineLabel;
   return variant === "why"
     ? `On ${plan.fixtureLabel}, I have ${label} at ${pct}.`
     : `${plan.fixtureLabel} — ${label} at ${pct}.`;

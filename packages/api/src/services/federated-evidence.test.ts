@@ -76,6 +76,9 @@ describe("planFederatedQueries", () => {
       "What was Arsenal's latest result in 2013?",
       "What is Arsenal's final score tomorrow?",
       "Who is Arsenal's manager and why is Liverpool stronger?",
+      "Who is Arsenal's manager? Why is Liverpool stronger?",
+      "Who is Arsenal's manager? Explain why Liverpool is stronger?",
+      "Who is Arsenal's manager? How is Liverpool stronger?",
       "Who is Arsenal's manager and why is Leeds stronger?",
       "Who is Arsenal's manager? Who is Leeds' manager?",
       "Who is Arsenal's manager while Liverpool changes coach?",
@@ -84,7 +87,15 @@ describe("planFederatedQueries", () => {
       "Who is Arsenal's manager and why was he appointed? Who manages Leeds?",
       "What is Arsenal's latest result and why is Liverpool stronger?",
     ]) expect(singleClubCurrentFactScope(question, grounding)).toBeNull();
-    for (const question of ["Who is Arsenal's manager and why?", "Who is Arsenal's manager and why was he appointed?", "Who is Arsenal's manager today and why was he appointed?", "Who is Arsenal's manager and why is he still in charge?", "What is Arsenal's latest result and why did they win?"]) {
+    for (const question of [
+      "Who is Arsenal's manager and why?",
+      "Who is Arsenal's manager and why was he appointed?",
+      "Who is Arsenal's manager today and why was he appointed?",
+      "Who is Arsenal's manager and why is he still in charge?",
+      "Who is Arsenal's manager? Explain why.",
+      "Who is Arsenal's manager? Why did they retain him?",
+      "What is Arsenal's latest result and why did they win?",
+    ]) {
       expect(singleClubCurrentFactScope(question, grounding)).toEqual({ kind: /manager/.test(question) ? "manager" : "result", club: "Arsenal" });
     }
     expect(singleClubCurrentFactScope("Who is the manager of Arsenal today?", grounding)).toEqual({ kind: "manager", club: "Arsenal" });

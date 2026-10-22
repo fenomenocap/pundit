@@ -102,6 +102,7 @@ export function build1x2SupportingPoints(
 
   for (const item of dossier?.evidence ?? []) {
     if (!takeEligibleDossierEvidence(item)) continue;
+    if (item.category === "manager") continue;
     if (/\bhold a lead\b|\balways win\b|\bcan win\b/i.test(item.claim) && item.verification !== "page-verified") continue;
     if (item.direction === "supports-home" && favSide === "home") {
       points.push({

@@ -1,4 +1,6 @@
+import type { Grounding } from "../ask";
 import type { PunditTakePlan } from "./types";
+import { level1x2RowsForTable } from "./take-headline";
 
 function formatGridTable(plan: PunditTakePlan): string {
   if (!plan.gridRows.length) return "No price yet.";
@@ -24,21 +26,24 @@ function formatGridTable(plan: PunditTakePlan): string {
   return lines.join("\n");
 }
 
-export function formatTakeOddsTable(plan: PunditTakePlan): string {
+export function formatTakeOddsTable(plan: PunditTakePlan, grounding: Grounding): string {
   if (plan.marketKind !== "1x2") {
     return formatGridTable(plan);
   }
 
   if (!plan.hasCompleteMarket) {
-    const row = plan.rows.find((r) => r.outcome === plan.call.outcome) ?? plan.rows[0];
-    if (!row) return "No price yet.";
-    return [
+    const rows = plan.levelNoSide
+      ? level1x2RowsForTable(plan, grounding)
+      : [plan.rows.find((r) => r.outcome === plan.call.outcome) ?? plan.rows[0]].filter(Boolean);
+    if (!rows.length) return "No price yet.";
+    const lines = [
       "| Outcome | Ours |",
       "| --- | --- |",
-      `| ${row.label} | ${row.modelPctInt}% / ${row.fairDecimal} |`,
+      ...rows.map((row) => `| ${row.label} | ${row.modelPctInt}% / ${row.fairDecimal} |`),
       "",
       "No price yet.",
-    ].join("\n");
+    ];
+    return lines.join("\n");
   }
 
   const headers = ["Outcome", "Ours", ...plan.marketColumns.map((c) => c.shortLabel), "Best"];

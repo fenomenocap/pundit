@@ -26,7 +26,7 @@ import {
 import { buildTakeFlipCondition } from "./take-flip-condition";
 import { fairDecimalFromRawProb } from "./take-maths";
 import { filterGoalPointsForGridLead } from "./take-prose-polish";
-import { pickHigherGridSide } from "./take-headline";
+import { is1x2SidePickSuppressed, pickHigherGridSide } from "./take-headline";
 import { buildTakeNumericFacts } from "./take-number-check";
 
 const OUTCOMES: OneXTwoOutcome[] = ["home", "draw", "away"];
@@ -234,10 +234,13 @@ export function buildPunditTakePlan(
     });
   }
 
-  const call = favoriteOutcome(grounding);
-  const favSide = call.outcome === "draw" ? null : call.outcome;
+  const levelNoSide = is1x2SidePickSuppressed(grounding);
+  const call = levelNoSide
+    ? { outcome: "draw" as const, sideLabel: "level", headlineLabel: "no side" }
+    : favoriteOutcome(grounding);
+  const favSide = levelNoSide || call.outcome === "draw" ? null : call.outcome;
   const { rows, columns, hasCompleteMarket } = buildMarketRows(grounding, nowMs);
-  const valueLeg = buildValueLeg(grounding, rows);
+  const valueLeg = levelNoSide ? null : buildValueLeg(grounding, rows);
 
   return withNumericFacts(grounding, dossier, {
     schemaVersion: 1,
@@ -248,8 +251,9 @@ export function buildPunditTakePlan(
     gridRows: [],
     supporting: build1x2SupportingPoints(grounding, dossier, favSide, homeShort, awayShort),
     contradicting: buildContradictingPointsShared(grounding, dossier, favSide, call.headlineLabel),
-    flipCondition: buildTakeFlipCondition(dossier, grounding, call, null, "1x2"),
+    flipCondition: levelNoSide ? null : buildTakeFlipCondition(dossier, grounding, call, null, "1x2"),
     valueLeg,
+    levelNoSide,
     hasCompleteMarket,
     rows,
     marketColumns: columns,

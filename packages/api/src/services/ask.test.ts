@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
@@ -111,6 +111,7 @@ import {
   todayPreamble,
   managerWhyScope,
 } from "./ask";
+import { proseFromTakeAnswer, VENDOR_WORDING_CHECK_PATTERN } from "./pundit-take/take-validate";
 import {
   premierLeagueSeasonWindow,
   replaceFootballDataForTests,
@@ -2840,36 +2841,95 @@ describe("current-news evidence hardening", () => {
   });
 
   describe("deterministic grounded fact layer", () => {
+    const PINNED_FACT_LAYER_NOW = new Date("2026-10-21T08:30:00.000Z");
+
+    beforeEach(() => {
+      vi.useFakeTimers({ now: PINNED_FACT_LAYER_NOW });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     const model = (): Grounding => {
       const base = buildGrounding(fixture("Arsenal", "Coventry", {
         pHome: 0.9728,
         pDraw: 0.0229,
         pAway: 0.0043,
       }));
+      const observedAt = "2026-10-21T08:00:00.000Z";
       const oddsSources = [{
         source: "kalshi" as const,
-        observedAt: "2026-08-21T07:57:52.359Z",
+        observedAt,
         pHome: 0.8217821782178217,
         pDraw: 0.1188118811881188,
         pAway: 0.0594059405940594,
       }];
-      return { ...base, oddsSources, marketDivergence: computeMarketDivergence(base, oddsSources) };
+      const withSources = { ...base, oddsSources };
+      const marketDivergence = computeMarketDivergence(withSources, oddsSources);
+      const pricing = buildMatchPricing({
+        fixtureId: base.fixtureId,
+        home: base.home,
+        away: base.away,
+        kickoff: base.date,
+        pricedAt: observedAt,
+        pHome: base.pHome,
+        pDraw: base.pDraw,
+        pAway: base.pAway,
+        markets: oddsSources.map((source) => ({
+          source: source.source,
+          observedAt: source.observedAt,
+          pHome: source.pHome,
+          pDraw: source.pDraw,
+          pAway: source.pAway,
+          impliedDisplayDecimals: true,
+          decimalOdds: {
+            home: 1 / source.pHome,
+            draw: 1 / source.pDraw,
+            away: 1 / source.pAway,
+          },
+        })),
+      });
+      return { ...withSources, marketDivergence, pricing };
     };
+
+    it("flags Kalshi in prose below the odds table (CTO-approved vendor check scope)", () => {
+      const syntheticBadAnswer = [
+        "I make Arsenal the likeliest outcome at 97.3%.",
+        "",
+        "| Outcome | Ours | Kalshi |",
+        "| --- | --- | --- |",
+        "| Arsenal | 97.3% | 82.2% |",
+        "",
+        "Kalshi has Forest at 41%.",
+        "",
+        "Model Fundamental v3 (priced 21 Oct 15:30 SGT).",
+        "Kalshi as of 21 Oct 12:00 SGT.",
+      ].join("\n");
+      const naiveProseOnly = syntheticBadAnswer.split("| Outcome |")[0] ?? "";
+      expect(naiveProseOnly).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
+      const checkedProse = proseFromTakeAnswer(syntheticBadAnswer);
+      expect(checkedProse).toContain("Kalshi has Forest at 41%.");
+      expect(checkedProse).not.toContain("| --- |");
+      expect(checkedProse).toMatch(VENDOR_WORDING_CHECK_PATTERN);
+    });
 
     it("renders ordinary match facts and a complete third-party market without generated causality", () => {
       const answer = deterministicGroundedResponse("Analyse Arsenal vs Coventry.", model());
-      expect(answer).toContain("Arsenal 97.3%");
-      expect(answer).toContain("draw 2.3%");
-      expect(answer).toContain("Coventry 0.4%");
-      expect(answer).toMatch(/Arsenal 97\.3%|I make Arsenal/);
-      expect(answer).toMatch(/Market-implied 1X2|Market: Arsenal/i);
-      expect(answer).toMatch(/Biggest gap vs market: Arsenal, \+15\.1 pts\./);
-      expect(answer).not.toMatch(/\bKalshi\b|no-vig/i);
-      expect(answer).not.toMatch(/^Lean:/m);
-      expect(answer).toContain(SHARED_TOTAL_XG_SENTENCE);
-      expect(answer).not.toMatch(/Over 2\.5 is \d/);
-      expect(answer).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
-      expect(answer).not.toMatch(/Arteta|already been played|result on record|future replay/i);
+      expect(answer).not.toBeNull();
+      expect(answer!).toContain("Arsenal 97.3%");
+      expect(answer!).toContain("draw 2.3%");
+      expect(answer!).toContain("Coventry 0.4%");
+      expect(answer!).toMatch(/Arsenal 97\.3%|I make Arsenal/);
+      expect(answer!).toMatch(/\|\s*Outcome\s*\|\s*Ours\s*\|/);
+      expect(answer!).not.toMatch(/Market-implied 1X2/i);
+      expect(answer!).toMatch(/Biggest gap vs market: Arsenal, \+15\.1 pts\./);
+      expect(proseFromTakeAnswer(answer!)).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
+      expect(answer!).not.toMatch(/^Lean:/m);
+      expect(answer!).toContain(SHARED_TOTAL_XG_SENTENCE);
+      expect(answer!).not.toMatch(/Over 2\.5 is \d/);
+      expect(answer!).not.toMatch(/upset protection|hedging|market staleness|true price|first-choice XI/i);
+      expect(answer!).not.toMatch(/Arteta|already been played|result on record|future replay/i);
     });
 
     it("keeps explicit model-only requests free of every market/value claim", () => {
@@ -2916,8 +2976,9 @@ describe("current-news evidence hardening", () => {
         .not.toMatch(/My short answer is/i);
       expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
         .toMatch(/Biggest gap vs market|gap [+-]?\d+\.?\d* pts/i);
-      expect(closedGroundedAnswer("Why is the model so far from the market?", model()))
-        .not.toMatch(/\bKalshi\b|no-vig/i);
+      const marketGapAnswer = closedGroundedAnswer("Why is the model so far from the market?", model());
+      expect(marketGapAnswer).not.toBeNull();
+      expect(proseFromTakeAnswer(marketGapAnswer!)).not.toMatch(VENDOR_WORDING_CHECK_PATTERN);
       expect(closedGroundedAnswer("What will the 1X2 be?", model(), true))
         .toMatch(/My 1X2 is Arsenal 97\.3%.*draw.*Coventry/i);
       expect(closedGroundedAnswer("Tactical matchup", model(), true)).toMatch(/less cover against a counterattack/i);
@@ -4469,6 +4530,35 @@ describe("resolveAskContext", () => {
       neutralVenue: true,
     };
   }
+
+  it("routes a single-club manager question to the earliest priced fixture in window", () => {
+    const evertonEarliest = fixture("Arsenal", "Everton", {
+      fixtureId: 9001,
+      utcDate: "2026-10-24T15:00:00.000Z",
+    });
+    const evertonMid = fixture("Newcastle", "Everton", {
+      fixtureId: 9002,
+      utcDate: "2026-11-02T15:00:00.000Z",
+    });
+    const evertonLatest = fixture("Everton", "Coventry", {
+      fixtureId: 9003,
+      utcDate: "2026-11-06T15:00:00.000Z",
+    });
+    const other = fixture("Arsenal", "Chelsea", {
+      fixtureId: 9004,
+      utcDate: "2026-10-26T15:00:00.000Z",
+    });
+    const ctx = resolveAskContext(
+      "What's Everton's manager today?",
+      [],
+      undefined,
+      [evertonLatest, evertonMid, evertonEarliest, other],
+      [],
+      [],
+      { now: Date.parse("2026-10-21T12:00:00.000Z") },
+    );
+    expect(ctx).toEqual({ tier: "match", fixture: evertonEarliest });
+  });
 
   it("recognizes an authoritative friendly as outside coverage and retains fixture identity", () => {
     const friendly = recognizedFriendly(800, "Arsenal", "Liverpool");
@@ -6988,7 +7078,9 @@ describe("settled player news requires exact current-claim verification", () => 
             expect(result.answer).not.toContain("The reason for his continued tenure");
             expect(result.answer).not.toContain("remarkable transformation");
             expect(result.answer).not.toContain("Premier League title triumph");
-            if (!pin) expect(result.grounding).toBeNull();
+            if (!pin) {
+              expect(result.grounding, question).toMatchObject({ kind: "match", home: "Arsenal", away: "Leeds" });
+            }
             if (mode === "supported" || mode === "no-marker") {
               expect(result.answer, question).toContain("Arsenal’s manager is Mikel Arteta");
               if (/why/i.test(question)) expect(result.answer).toContain("I haven’t verified the club’s stated reason");
@@ -7001,7 +7093,9 @@ describe("settled player news requires exact current-claim verification", () => 
               if (mode === "unavailable") expect(result.verification?.status).toBe("unavailable");
             }
           };
-          for (const voice of [undefined, "desk"] as const) assertDelivery(await answerQuestion(question, [], pin ? ["Arsenal", "Leeds"] : undefined, undefined, context, undefined, voice));
+          for (const voice of [undefined, "desk"] as const) {
+            assertDelivery(await answerQuestion(question, [], pin ? ["Arsenal", "Leeds"] : undefined, undefined, context, undefined, voice));
+          }
           const deltas: string[] = [];
           const streamed = await answerQuestionStream(question, [], pin ? ["Arsenal", "Leeds"] : undefined, { onGrounding: () => {}, onDelta: (text) => deltas.push(text) }, context);
           assertDelivery(streamed); expect(deltas).toEqual([streamed.answer]);

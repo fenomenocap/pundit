@@ -148,7 +148,8 @@ describe("Take v2 prod audit fixes", () => {
     expect(plan.gridCall?.coinFlip).toBe(true);
     expect(plan.gridCall?.modelPctDisplay).toBe("50.2%");
     const prose = renderTakeProseDeterministic(plan, "full", grounding);
-    expect(prose).toMatch(/coin flip, lean Under 2\.5 at 50\.2%/);
+    expect(prose).toMatch(/level at 50\.2% each/i);
+    expect(prose).toMatch(/no side/i);
     expect(prose).not.toMatch(/Over 2\.5 at 50%/);
   });
 
@@ -206,7 +207,7 @@ describe("Take v2 prod audit fixes", () => {
     };
     const plan = buildPunditTakePlan(grounding, null, { now: AUDIT_NOW });
     expect(plan.marketColumns.map((c) => c.sourceKey)).toEqual(["kalshi"]);
-    const table = formatTakeOddsTable(plan);
+    const table = formatTakeOddsTable(plan, grounding);
     expect(table).toMatch(/\| Kalshi \|/);
     expect(table).not.toMatch(/\| Poly \|/);
     expect(table).toMatch(/\| Best \|/);
@@ -238,6 +239,42 @@ describe("Take v2 prod audit fixes", () => {
     const fact = formatFplInjuryFact(fplRow({}));
     expect(fact).toBe("Danso (Sunderland) is suspended.");
     expect(fact).not.toMatch(/Leeds|blunt/i);
+  });
+
+  it("golden-path gap + lineup question keeps gap focus and lineup boundary", () => {
+    const question = "Back to that match: where do you disagree most with the available 1X2 market, and does the gap prove anything about lineups?";
+    const grounding = chelseaTottenhamGrounding();
+    const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true, hasHistory: true });
+    const delivery = withPunditTakeRequestScope("v2", () =>
+      composePunditTakeDelivery(question, grounding, plan)!);
+    expect(delivery.answer).toMatch(/largest gap is on/i);
+    expect(delivery.answer).toMatch(/nothing about lineups on its own/i);
+    expect(delivery.answer).toMatch(/disagreement between my read and the market/i);
+  });
+
+  it("manager dossier claims are not woven into 1x2 supporting prose", () => {
+    const managerClaim = "Kieran McKenna remains the Ipswich Town head coach.";
+    const dossier = minimalDossier([{
+      id: "mgr-ipswich",
+      claim: managerClaim,
+      sourceUrl: "https://example.com/manager",
+      publisher: "example.com",
+      publishedAt: "2026-10-18T08:00:00.000Z",
+      retrievedAt: "2026-10-18T09:00:00.000Z",
+      trustTier: "news",
+      verification: "page-verified",
+      direction: "neutral",
+      relatedFactor: "other",
+      category: "manager",
+      origin: "scheduled",
+      fixtureMatchVerified: true,
+      freshnessVerified: true,
+    }], "");
+    const grounding = spursCoventryGrounding();
+    const plan = buildPunditTakePlan(grounding, dossier);
+    const prose = renderTakeProseDeterministic(plan, "full", grounding, { appendFlip: false });
+    expect(prose).not.toMatch(/McKenna/);
+    expect(prose).not.toMatch(/head coach/i);
   });
 
   it("legacy header path stays byte-identical to the unscoped composer", () => {

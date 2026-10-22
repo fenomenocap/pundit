@@ -8,17 +8,19 @@ import {
   TAKE_PROSE_BANNED_PATTERN,
   TAKE_TEMPLATE_BANNED_PATTERN,
 } from "./take-validate";
+import type { Grounding } from "../ask";
 import { renderTakeProseDeterministic } from "./take-prose";
 import { polishLlmTakeProse } from "./take-prose-polish";
+import { format1x2V2Headline } from "./take-headline";
 
 const TAKE_SYSTEM = `You are Pundit, a football analyst writing a short match take.
 
 Write plain, conversational English — not an audit, not bullet points, no section labels.
 
 Structure:
-1) First line MUST be the headline call exactly in the form: "{fixture} — {call} at {pct}%."
-2) Then 2–3 sentences weaving supporting reasons AND at least one counter / risk. Do NOT write what would flip the call — the server appends that line separately.
-3) Optional final sentence only if VALUE_SEED is provided: "The value is {side} at {marketDec} against our fair {fairDec}."
+1) First line MUST be the headline call exactly in the form: "{fixture} — {call} at {pct}%." When LEVEL_NO_SIDE is true, use: "{fixture} — level at {pct}% each; I have no side." Do not name a club as the pick.
+2) Then 2–3 sentences weaving supporting reasons AND at least one counter / risk. Do NOT write what would flip the call — the server appends that line separately (never when LEVEL_NO_SIDE).
+3) Optional final sentence only if VALUE_SEED is provided and LEVEL_NO_SIDE is false: "The value is {side} at {marketDec} against our fair {fairDec}."
 
 Hard rules:
 - Use ONLY facts and numbers from PLAN_SEEDS and ALLOWED_NUMBERS. Do not invent stats.
@@ -28,11 +30,22 @@ Hard rules:
 - Never write "I'd shift", "I would shift", or "What flips it".
 - No markdown tables.`;
 
-function planSeedsJson(plan: PunditTakePlan): string {
+function oneX2TiedPctInt(plan: PunditTakePlan): number | undefined {
+  if (!plan.rows.length) return undefined;
+  return Math.max(...plan.rows.map((row) => row.modelPctInt));
+}
+
+export function planSeedsJson(plan: PunditTakePlan): string {
+  const levelNoSide = plan.levelNoSide === true && plan.marketKind === "1x2";
+  const tiedPct = levelNoSide ? oneX2TiedPctInt(plan) : undefined;
   return JSON.stringify({
     fixture: plan.fixtureLabel,
-    call: plan.gridCall?.headlineLabel ?? plan.call.headlineLabel,
-    callPct: plan.gridCall?.modelPctInt ?? plan.rows.find((r) => r.outcome === plan.call.outcome)?.modelPctInt,
+    levelNoSide,
+    tiedPct,
+    call: levelNoSide ? "level (no side)" : (plan.gridCall?.headlineLabel ?? plan.call.headlineLabel),
+    callPct: levelNoSide
+      ? tiedPct
+      : (plan.gridCall?.modelPctInt ?? plan.rows.find((r) => r.outcome === plan.call.outcome)?.modelPctInt),
     supporting: plan.supporting.map((p) => p.text),
     counter: plan.contradicting.map((p) => p.text),
     flip: plan.flipCondition?.text ?? null,
@@ -54,6 +67,51 @@ function stripBadLines(text: string): string {
     .trim();
 }
 
+const LEVEL_FLIP_LINE = /\bI'd shift if\b/i;
+const LEVEL_VALUE_LINE = /\bThe value is\b/i;
+
+function levelLlmNamesSideAsCall(prose: string, plan: PunditTakePlan): boolean {
+  const firstLine = prose.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
+  const afterFixture = firstLine.split(/\s[—-]\s/).slice(1).join(" — ").trim();
+  if (!afterFixture || /^level at/i.test(afterFixture)) return false;
+  if (!/\bat \d+(?:\.\d+)?%/.test(afterFixture)) return false;
+  return plan.rows.some((row) => row.outcome !== "draw"
+    && new RegExp(`\\b${row.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(afterFixture));
+}
+
+function stripLevelForbiddenSentences(text: string): string {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !LEVEL_VALUE_LINE.test(sentence) && !LEVEL_FLIP_LINE.test(sentence))
+    .join(" ")
+    .trim();
+}
+
+/** Post-LLM guard for level 1X2 plans: reject side picks; strip value/flip lines. */
+export function finalizeLevelNoSideLlmProse(
+  prose: string,
+  plan: PunditTakePlan,
+  variant: "full" | "why",
+  grounding: Grounding | null,
+): string | null {
+  if (!plan.levelNoSide || plan.marketKind !== "1x2") return prose;
+  const trimmed = prose.trim();
+  if (!trimmed) return prose;
+  if (levelLlmNamesSideAsCall(trimmed, plan)) return null;
+  const cleaned = stripLevelForbiddenSentences(trimmed);
+  const headline = grounding
+    ? format1x2V2Headline(plan.fixtureLabel, grounding, variant)
+    : `${plan.fixtureLabel} — level at ${oneX2TiedPctInt(plan) ?? "—"}% each; I have no side.`;
+  const body = cleaned
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => line !== headline && !/^On .+ level at/i.test(line))
+    .join("\n")
+    .trim();
+  return body ? `${headline}\n\n${body}`.trim() : headline;
+}
+
 export type TakeLlmRenderResult = {
   prose: string | null;
   dropped: string[];
@@ -63,6 +121,7 @@ export type TakeLlmRenderResult = {
 export async function renderTakeProseWithLlmDetailed(
   plan: PunditTakePlan,
   variant: "full" | "why" = "full",
+  grounding: Grounding | null = null,
 ): Promise<TakeLlmRenderResult> {
   const inference = resolveInference();
   if (!inference.apiKey) return { prose: null, dropped: [], source: "none" };
@@ -107,7 +166,14 @@ export async function renderTakeProseWithLlmDetailed(
     if (!checked.prose.trim()) {
       return { prose: null, dropped: checked.dropped.length ? checked.dropped : ["llm-rejected:empty-after-postcheck"], source: "none" };
     }
-    const finalProse = polishLlmTakeProse(checked.prose);
+    let finalProse = polishLlmTakeProse(checked.prose);
+    if (plan.levelNoSide && plan.marketKind === "1x2") {
+      const guarded = finalizeLevelNoSideLlmProse(finalProse, plan, variant, grounding);
+      if (!guarded) {
+        return { prose: null, dropped: ["llm-rejected:level-side-call"], source: "none" };
+      }
+      finalProse = guarded;
+    }
     return { prose: finalProse, dropped: checked.dropped, source: "llm" };
   } catch {
     return { prose: null, dropped: ["llm-rejected:error"], source: "none" };
@@ -117,16 +183,18 @@ export async function renderTakeProseWithLlmDetailed(
 export async function renderTakeProseWithLlm(
   plan: PunditTakePlan,
   variant: "full" | "why" = "full",
+  grounding: Grounding | null = null,
 ): Promise<string | null> {
-  const result = await renderTakeProseWithLlmDetailed(plan, variant);
+  const result = await renderTakeProseWithLlmDetailed(plan, variant, grounding);
   return result.prose;
 }
 
 export async function renderTakeProse(
   plan: PunditTakePlan,
   variant: "full" | "why" = "full",
+  grounding: Grounding | null = null,
 ): Promise<string> {
-  const llm = await renderTakeProseWithLlm(plan, variant);
+  const llm = await renderTakeProseWithLlm(plan, variant, grounding);
   if (llm && llm.trim()) return llm;
-  return renderTakeProseDeterministic(plan, variant);
+  return renderTakeProseDeterministic(plan, variant, grounding);
 }
