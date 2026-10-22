@@ -5,6 +5,7 @@ import {
   userLinePassPlayTableCall,
   userLineGapPoints,
 } from "../response-correctness";
+import { is1x2SidePickSuppressed } from "./take-headline";
 
 export type PassPlayDecision = ReturnType<typeof resolveUserLineDecision>;
 
@@ -12,6 +13,8 @@ export interface PassPlayVerdict {
   gapPoints: number;
   decision: PassPlayDecision;
   tableCall: "Play" | "Pass" | "No call";
+  /** Level 1X2 (top two raw outcomes within COIN_FLIP_GAP_POINTS): no side, so any quoted price is a Pass. */
+  levelNoSide: boolean;
 }
 
 export function resolvePassPlayVerdict(grounding: Grounding): PassPlayVerdict | null {
@@ -19,8 +22,10 @@ export function resolvePassPlayVerdict(grounding: Grounding): PassPlayVerdict | 
   if (!line) return null;
   const modelP = grounding.pricing.model[line.outcome].p;
   const gapPoints = userLineGapPoints(modelP, line.decimalOdds);
-  const decision = resolveUserLineDecision(line, gapPoints);
-  return { gapPoints, decision, tableCall: userLinePassPlayTableCall(decision) };
+  // types.ts levelNoSide: a level game has no side pick, value, or flip, so a user-quoted price never plays.
+  const levelNoSide = is1x2SidePickSuppressed(grounding);
+  const decision = levelNoSide ? "pass" : resolveUserLineDecision(line, gapPoints);
+  return { gapPoints, decision, tableCall: userLinePassPlayTableCall(decision), levelNoSide };
 }
 
 /** Same play / pass / no-call wording as the deterministic composer (`formatUserLineLean`). */

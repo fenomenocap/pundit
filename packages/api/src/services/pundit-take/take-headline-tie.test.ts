@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { chelseaTottenhamGrounding } from "./test-fixtures/chelsea-tottenham-grounding";
 import { buildPunditTakePlan } from "./take-plan";
-import { format1x2V2Headline, pickHigherGridSide } from "./take-headline";
+import { format1x2V2Headline, formatLevel1x2SuppressedHeadline, pickHigherGridSide } from "./take-headline";
 import { renderTakeProseDeterministic } from "./take-prose";
 import { planResponse } from "../response-plan";
 import { composePunditTakeDelivery, composePunditTakeDeliveryAsync } from "./compose";
@@ -85,7 +85,7 @@ function expectLevelPalNewProse(prose: string, answer?: string) {
 }
 
 function expectNearTieLevel(answer: string) {
-  expect(answer).toMatch(/level at 37% each/i);
+  expect(answer).toMatch(/level, 37% v 36%; I have no side/i);
   expect(answer).not.toMatch(/I lean Crystal Palace/i);
   expect(answer).not.toMatch(/back Crystal Palace/i);
 }
@@ -200,7 +200,7 @@ describe("1x2 level headlines", () => {
       const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: false });
       const delivery = withPunditTakeRequestScope("v2", () =>
         composePunditTakeDelivery(question, grounding, plan)!);
-      expect(delivery.answer).toMatch(/level at 37% each/i);
+      expect(delivery.answer).toMatch(/level, 37% v 35%; I have no side/i);
       expect(delivery.answer).toMatch(/\| Crystal Palace \| 37%/);
       expect(delivery.answer).toMatch(/\| Newcastle \| 35%/);
       expect(delivery.answer).not.toMatch(/\| Draw \| 28%/);
@@ -226,7 +226,7 @@ describe("1x2 level headlines", () => {
       const delivery = await withPunditTakeRequestScope("v2", () =>
         composePunditTakeDeliveryAsync(question, grounding, plan));
       expect(delivery).not.toBeNull();
-      expect(delivery!.answer).toMatch(/level at 37% each/i);
+      expect(delivery!.answer).toMatch(/level, 37% v 35%; I have no side/i);
       expect(delivery!.answer).toMatch(/\| Crystal Palace \| 37%/);
       expect(delivery!.answer).toMatch(/\| Newcastle \| 35%/);
       expect(create).not.toHaveBeenCalled();
@@ -290,5 +290,120 @@ describe("1x2 level headlines", () => {
       { sideKey: "under", label: "Under 2.5", p: 0.49 },
     ]);
     expect(lead.coinFlip).toBe(true);
+  });
+});
+
+function homeDrawNearTieGrounding() {
+  return { ...palNewGrounding(), pHome: 0.36, pDraw: 0.35, pAway: 0.29 };
+}
+
+function awayDrawNearTieGrounding() {
+  return { ...palNewGrounding(), pHome: 0.28, pDraw: 0.355, pAway: 0.365 };
+}
+
+const SIDE_V_DRAW_CASES = [
+  { name: "home", club: "Crystal Palace", other: "Newcastle", grounding: homeDrawNearTieGrounding },
+  { name: "away", club: "Newcastle", other: "Crystal Palace", grounding: awayDrawNearTieGrounding },
+] as const;
+
+describe("level 1X2 suppressed headline wording (CTO wording 21 Oct)", () => {
+  const fixture = "Crystal Palace v Newcastle";
+
+  it("equal rounded values keep 'level at N% each'", () => {
+    expect(formatLevel1x2SuppressedHeadline(fixture, palNewGrounding(), "full"))
+      .toBe("Crystal Palace v Newcastle — level at 36% each; I have no side.");
+    expect(formatLevel1x2SuppressedHeadline(fixture, palNewGrounding(), "why"))
+      .toBe("On Crystal Palace v Newcastle, the sides are level at 36% each; I have no side.");
+  });
+
+  it("equal rounded values from unequal raw probabilities stay 'level at N% each'", () => {
+    const grounding = { ...palNewGrounding(), pHome: 0.364, pDraw: 0.28, pAway: 0.356 };
+    expect(format1x2V2Headline(fixture, grounding, "full"))
+      .toBe("Crystal Palace v Newcastle — level at 36% each; I have no side.");
+  });
+
+  it("unequal rounded values show higher first", () => {
+    expect(format1x2V2Headline(fixture, nearTiePalNewGrounding(), "full"))
+      .toBe("Crystal Palace v Newcastle — level, 37% v 36%; I have no side.");
+    const awayHigher = { ...palNewGrounding(), pHome: 0.355, pDraw: 0.275, pAway: 0.37 };
+    expect(format1x2V2Headline(fixture, awayHigher, "full"))
+      .toBe("Crystal Palace v Newcastle — level, 37% v 36%; I have no side.");
+  });
+
+  it("rounding edge 0.365 v 0.3451 renders 37% v 35%", () => {
+    expect(format1x2V2Headline(fixture, roundingEdgePalNewGrounding(), "full"))
+      .toBe("Crystal Palace v Newcastle — level, 37% v 35%; I have no side.");
+  });
+
+  it("unequal rounded why-variant", () => {
+    expect(format1x2V2Headline(fixture, nearTiePalNewGrounding(), "why"))
+      .toBe("On Crystal Palace v Newcastle, it's level, 37% v 36%; I have no side.");
+    const plan = buildPunditTakePlan(nearTiePalNewGrounding(), null, { now: PAL_NEW_PINNED_NOW });
+    const prose = renderTakeProseDeterministic(plan, "why", nearTiePalNewGrounding());
+    expect(prose).toMatch(/On Crystal Palace v Newcastle, it's level, 37% v 36%; I have no side\./);
+  });
+
+  it("gap at the threshold still names the side", () => {
+    const grounding = { ...palNewGrounding(), pHome: 0.38, pDraw: 0.36, pAway: 0.26 };
+    expect(format1x2V2Headline(fixture, grounding, "full"))
+      .toBe("Crystal Palace v Newcastle — Crystal Palace at 38%.");
+  });
+
+  describe.each(SIDE_V_DRAW_CASES)("$name side v draw near-tie", ({ club, other, grounding }) => {
+    const fullHeadline = `Crystal Palace v Newcastle — ${club} or a draw. I can't split them, so no side.`;
+    const whyHeadline = `On Crystal Palace v Newcastle, ${club} or a draw. I can't split them, so no side.`;
+
+    it("formats full and why headlines", () => {
+      expect(formatLevel1x2SuppressedHeadline(fixture, grounding(), "full")).toBe(fullHeadline);
+      expect(format1x2V2Headline(fixture, grounding(), "full")).toBe(fullHeadline);
+      expect(format1x2V2Headline(fixture, grounding(), "why")).toBe(whyHeadline);
+    });
+
+    it("deterministic renderer uses the side-v-draw headline (full and why)", () => {
+      const g = grounding();
+      const plan = buildPunditTakePlan(g, null, { now: PAL_NEW_PINNED_NOW });
+      expect(plan.levelNoSide).toBe(true);
+      expect(plan.valueLeg).toBeNull();
+      expect(plan.flipCondition).toBeNull();
+      expect(renderTakeProseDeterministic(plan, "full", g).startsWith(fullHeadline)).toBe(true);
+      expect(renderTakeProseDeterministic(plan, "why", g).startsWith(whyHeadline)).toBe(true);
+    });
+
+    it("sync v2 delivery uses the side-v-draw headline", () => {
+      withPalNewPinnedNow(() => {
+        const g = grounding();
+        const question = "Crystal Palace v Newcastle — who wins?";
+        const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
+        const delivery = withPunditTakeRequestScope("v2", () =>
+          composePunditTakeDelivery(question, g, plan)!);
+        expect(delivery.answer).toContain(fullHeadline);
+        expect(delivery.answer).not.toMatch(new RegExp(`${club} at \\d+%`));
+        expect(delivery.answer).not.toMatch(new RegExp(`${other} at \\d+%`));
+        expect(delivery.answer).not.toMatch(/I'd shift if|The value is/i);
+      });
+    });
+
+    it("async v2 delivery uses the side-v-draw headline and never calls the LLM", async () => {
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key-for-level-bypass");
+      vi.stubEnv("MINIMAX_API_KEY", "");
+      const create = vi.spyOn(Anthropic.Messages.prototype, "create").mockImplementation(() =>
+        Promise.resolve({
+          content: [{ type: "text", text: `Crystal Palace v Newcastle — ${club} at 36%.` }],
+          stop_reason: "end_turn",
+        } as Anthropic.Message) as ReturnType<typeof Anthropic.Messages.prototype.create>);
+      await withPalNewPinnedNow(async () => {
+        const g = grounding();
+        const question = "Crystal Palace v Newcastle — who wins?";
+        const plan = planResponse(question, { groundingKind: "match", hasCompleteMarket1x2: true });
+        const delivery = await withPunditTakeRequestScope("v2", () =>
+          composePunditTakeDeliveryAsync(question, g, plan));
+        expect(delivery).not.toBeNull();
+        expect(delivery!.answer).toContain(fullHeadline);
+        expect(delivery!.answer).not.toMatch(new RegExp(`${club} at \\d+%`));
+        expect(create).not.toHaveBeenCalled();
+      });
+      create.mockRestore();
+      vi.unstubAllEnvs();
+    });
   });
 });
