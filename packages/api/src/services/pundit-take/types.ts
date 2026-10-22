@@ -116,6 +116,8 @@ export interface PunditTakePlan {
   hasCompleteMarket: boolean;
   rows: TakePlanRow[];
   marketColumns: TakePlanMarketColumn[];
+  /** 1X2 top two outcomes within 2 pts — no side pick, value, or flip. */
+  levelNoSide?: boolean;
   /** Present on plans from `buildPunditTakePlan`; guards tolerate absence in unit fixtures. */
   numericFacts?: TakePlanNumericFacts;
 }

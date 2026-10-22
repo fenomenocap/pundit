@@ -23,17 +23,52 @@ export const TAKE_V2_PROSE_FORBIDDEN_PATTERN = new RegExp(
   "i",
 );
 
-export function proseFromTakeAnswer(answer: string): string {
-  const footerIdx = answer.lastIndexOf("\n\nModel ");
-  const withoutFooter = footerIdx >= 0 ? answer.slice(0, footerIdx) : answer;
-  const lines = withoutFooter.split("\n");
-  const sepIdx = lines.findIndex((line) => /^\|\s*---/.test(line.trim()) || /^\|\s*-{3,}/.test(line.trim()));
-  if (sepIdx <= 0) return withoutFooter.trim();
+/** Kalshi / no-vig must not appear in checked prose (table + Sources footer are excluded). */
+export const VENDOR_WORDING_CHECK_PATTERN = /\bKalshi\b|no-vig/i;
+
+function stripSourcesFooterBlock(text: string): string {
+  let trimmed = text.trim();
+  const detailsIdx = trimmed.search(/<details>\s*\n\s*<summary>\s*Sources\s*<\/summary>/i);
+  if (detailsIdx >= 0) {
+    trimmed = trimmed.slice(0, detailsIdx).trimEnd();
+  }
+  const footerIdx = trimmed.lastIndexOf("\n\nModel ");
+  if (footerIdx >= 0) {
+    return trimmed.slice(0, footerIdx).trimEnd();
+  }
+  return trimmed;
+}
+
+function stripOddsMarkdownTable(text: string): { before: string; after: string } {
+  const lines = text.split("\n");
+  const sepIdx = lines.findIndex((line) => {
+    const trimmed = line.trim();
+    return /^\|\s*---/.test(trimmed) || /^\|\s*-{3,}/.test(trimmed);
+  });
+  if (sepIdx <= 0) return { before: text.trim(), after: "" };
   let tableStart = sepIdx;
   while (tableStart > 0 && lines[tableStart - 1]?.trim().startsWith("|")) {
     tableStart -= 1;
   }
-  return lines.slice(0, tableStart).join("\n").trim();
+  let tableEnd = sepIdx + 1;
+  while (tableEnd < lines.length && lines[tableEnd]?.trim().startsWith("|")) {
+    tableEnd += 1;
+  }
+  let afterStart = tableEnd;
+  while (afterStart < lines.length && lines[afterStart]?.trim() === "") {
+    afterStart += 1;
+  }
+  return {
+    before: lines.slice(0, tableStart).join("\n").trim(),
+    after: lines.slice(afterStart).join("\n").trim(),
+  };
+}
+
+/** Prose above and below the odds table; excludes only the markdown table and Sources footer. */
+export function proseFromTakeAnswer(answer: string): string {
+  const withoutFooter = stripSourcesFooterBlock(answer);
+  const { before, after } = stripOddsMarkdownTable(withoutFooter);
+  return [before, after].filter(Boolean).join("\n\n");
 }
 
 export function firstForbiddenTokenInTakeProse(prose: string): string | null {

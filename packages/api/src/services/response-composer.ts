@@ -61,6 +61,12 @@ import {
 } from "./pundit-take/flags";
 import { composePunditTakeDelivery } from "./pundit-take/compose";
 import { prefetchStoredTakeDossier } from "./pundit-take/take-dossier";
+import { buildPunditTakePlan } from "./pundit-take/take-plan";
+import { formatTakeOddsTable } from "./pundit-take/take-table";
+import {
+  buildTakeSourcesFooter,
+  formatTakeSourcesFooterBlock,
+} from "./pundit-take/take-sources";
 
 /** A briefing includes football and deciding roles, not just the numeric board. */
 export function asksCompleteMatchBriefing(question: string): boolean {
@@ -76,14 +82,37 @@ function composeBriefingFootball(grounding: Grounding): string {
   return `${tactics}\n\n${roles}`;
 }
 
-export const SHARED_TOTAL_XG_SENTENCE =
-  "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter.";
-export const CALIBRATED_GOALS_SENTENCE =
-  "I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.";
+import {
+  CALIBRATED_GOALS_SENTENCE,
+  SHARED_TOTAL_XG_SENTENCE,
+  totalsAssumptionSentence,
+} from "./totals-assumption";
 
-function totalsAssumptionSentence(grounding: Grounding): string {
-  return grounding.goalCalibration?.methodId === "outcome-anchored-shrunk-goals-v2"
-    ? CALIBRATED_GOALS_SENTENCE : SHARED_TOTAL_XG_SENTENCE;
+export {
+  CALIBRATED_GOALS_SENTENCE,
+  SHARED_TOTAL_XG_SENTENCE,
+  totalsAssumptionSentence,
+} from "./totals-assumption";
+
+function biggestMarketGapLine(grounding: Grounding, nowMs = Date.now()): string | null {
+  const planJson = buildPunditTakePlan(grounding, null, { marketKind: "1x2", now: new Date(nowMs) });
+  if (!planJson.hasCompleteMarket) return null;
+  const divergence = grounding.marketDivergence[0];
+  if (!divergence) return null;
+  const valueLeg = selectValueLeg(divergence.legs);
+  const gapLabel = displayOutcomeLabel(grounding, valueLeg.outcome);
+  const sign = valueLeg.gapPoints >= 0 ? "+" : "";
+  return `Biggest gap vs market: ${gapLabel}, ${sign}${valueLeg.gapPoints.toFixed(1)} pts.`;
+}
+
+function composeMatchPreviewOddsTable(grounding: Grounding): string {
+  const planJson = buildPunditTakePlan(grounding, null, { marketKind: "1x2" });
+  return formatTakeOddsTable(planJson, grounding);
+}
+
+function composeMatchPreviewSourcesFooter(grounding: Grounding): string {
+  const sources = buildTakeSourcesFooter(grounding, null, Date.now());
+  return formatTakeSourcesFooterBlock(sources, { includeOdds: true });
 }
 
 export const STAKE_REFUSAL_SENTENCE =
@@ -193,30 +222,9 @@ function bttsCallHeadline(grounding: Grounding): string {
   return headline;
 }
 
-function asksMarketGapFocusQuestion(question: string): boolean {
-  const q = question.toLowerCase();
-  if (/\bgap\b/.test(q) && /\bprove\b/.test(q)) return true;
-  if (/\bwhere\b.{0,60}\bdisagree\b/.test(q)) return true;
-  if (/\bdisagree\b.{0,40}\b(?:most|biggest|largest)\b/.test(q)) return true;
-  if (/\b(?:does|do)\b.{0,40}\b(?:the )?gap\b/.test(q) && /\bprove\b/.test(q)) return true;
-  return false;
-}
+import { asksMarketGapFocusQuestion, composeMarketGapFocusAnswer } from "./market-gap-focus";
 
-function composeMarketGapFocusAnswer(grounding: Grounding): string {
-  const divergence = grounding.marketDivergence[0]!;
-  const leg = divergence.largest;
-  const label = displayOutcomeLabel(grounding, leg.outcome);
-  const modelPct = pct(leg.modelPercent / 100);
-  const marketPct = pct(leg.marketPercent / 100);
-  const headline = `${grounding.home} v ${grounding.away} — the largest gap is on ${label}: `
-    + `I have ${modelPct} vs the market ${marketPct}.`;
-  return joinBasicsAnswer({
-    headline,
-    supports: [
-      "A price gap only marks a disagreement between my read and the market; it does not explain the cause and says nothing about lineups on its own.",
-    ],
-  });
-}
+export { asksMarketGapFocusQuestion, composeMarketGapFocusAnswer } from "./market-gap-focus";
 
 function composeBttsBasics(_question: string, grounding: Grounding): string {
   const headline = bttsCallHeadline(grounding);
@@ -886,29 +894,27 @@ export function composeMatchResponse(
 
   const scores = grounding.topScores.slice(0, 3)
     .map((row) => `${row.score} (${pct(row.probability)})`).join(", ");
-  const market = composeMarketComparisonAnswer(question, grounding);
-  const marketRows = grounding.oddsSources
-    .filter((row) => row.pDraw !== null)
-    .map((row) =>
-      `Market-implied 1X2: ${grounding.home} ${pct(row.pHome)}, `
-      + `draw ${pct(row.pDraw!)}, ${grounding.away} ${pct(row.pAway)}.`
-    ).join(" ");
   const outcomes = [
     { label: grounding.home, p: grounding.pHome },
     { label: "the draw", p: grounding.pDraw },
     { label: grounding.away, p: grounding.pAway },
   ].sort((a, b) => b.p - a.p);
+  const tableExplain = tableVsModelFavoriteExplainLine(grounding);
+  const gapLine = biggestMarketGapLine(grounding);
+  const oddsTable = composeMatchPreviewOddsTable(grounding);
+  const sourcesFooter = composeMatchPreviewSourcesFooter(grounding);
   const consensus = grounding.consensus
     ? `${PUNDIT_FUNDAMENTAL_LABEL} is our standalone 1X2 above. ${PUNDIT_CONSENSUS_LABEL}, a separate view shrunk toward the market, is ${grounding.home} ${pct(grounding.consensus.pHome)}, draw ${pct(grounding.consensus.pDraw)} and ${grounding.away} ${pct(grounding.consensus.pAway)}.`
     : "";
-  const tableExplain = tableVsModelFavoriteExplainLine(grounding);
   return [
     `I make ${outcomes[0].label} the likeliest outcome at ${pct(outcomes[0].p)}. For ${dateLabel(grounding.date)}, my full 1X2 is ${grounding.home} ${pct(grounding.pHome)}, draw ${pct(grounding.pDraw)} and ${grounding.away} ${pct(grounding.pAway)}.`,
+    gapLine ?? "",
     tableExplain ?? "",
     asksCompleteMatchBriefing(question) ? composeBriefingFootball(grounding) : "",
     `Both teams to score is ${pct(grounding.pBttsYes)}.${scores ? ` The leading scorelines are ${scores}.` : ""} ${totalsAssumptionSentence(grounding)}`,
-    [marketRows, market].filter(Boolean).join(" "),
     consensus,
     revisitAfterNews(grounding),
+    oddsTable,
+    sourcesFooter,
   ].filter(Boolean).join("\n\n");
 }
