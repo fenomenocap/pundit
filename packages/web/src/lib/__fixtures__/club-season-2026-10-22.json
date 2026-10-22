@@ -1,0 +1,2246 @@
+{
+"capturedAt": "2026-10-22T15:20:00Z",
+"source": "GET /api/evaluation/club-season (production)",
+"fixtures": [
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401902671,
+"utcDate": "2026-08-11T15:00Z",
+"home": "Kairat",
+"away": "Levski",
+"pHome": 0.1933,
+"pDraw": 0.2497,
+"pAway": 0.557,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-08-11T15:38:55.934Z",
+"checkpointPolicyId": "legacy-transition-v0",
+"checkpointReason": "legacy_transition",
+"modelVersion": "legacy-unversioned",
+"provenanceCompleteness": "legacy_partial"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401898018,
+"utcDate": "2026-08-11T16:00Z",
+"home": "Bodoe Glimt",
+"away": "St Gillis",
+"pHome": 0.4214,
+"pDraw": 0.279,
+"pAway": 0.2996,
+"result": {
+"homeScore": 3,
+"awayScore": 2,
+"winner": "home"
+},
+"forecastAt": "2026-08-11T16:38:55.949Z",
+"checkpointPolicyId": "legacy-transition-v0",
+"checkpointReason": "legacy_transition",
+"modelVersion": "legacy-unversioned",
+"provenanceCompleteness": "legacy_partial"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401902676,
+"utcDate": "2026-08-11T16:00Z",
+"home": "Sabah",
+"away": "Aarhus",
+"pHome": 0.0697,
+"pDraw": 0.1536,
+"pAway": 0.7767,
+"result": {
+"homeScore": 4,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-11T16:38:55.949Z",
+"checkpointPolicyId": "legacy-transition-v0",
+"checkpointReason": "legacy_transition",
+"modelVersion": "legacy-unversioned",
+"provenanceCompleteness": "legacy_partial"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401902670,
+"utcDate": "2026-08-11T18:00Z",
+"home": "Crvena Zvezda",
+"away": "Beer-Sheva",
+"pHome": 0.664,
+"pDraw": 0.2096,
+"pAway": 0.1264,
+"result": {
+"homeScore": 0,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-08-11T18:54:23.849Z",
+"checkpointPolicyId": "legacy-transition-v0",
+"checkpointReason": "legacy_transition",
+"modelVersion": "legacy-unversioned",
+"provenanceCompleteness": "legacy_partial"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401902563,
+"utcDate": "2026-08-11T18:15Z",
+"home": "Celje",
+"away": "Ararat",
+"pHome": 0.8086,
+"pDraw": 0.1353,
+"pAway": 0.0561,
+"result": {
+"homeScore": 2,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-11T18:54:23.849Z",
+"checkpointPolicyId": "legacy-transition-v0",
+"checkpointReason": "legacy_transition",
+"modelVersion": "legacy-unversioned",
+"provenanceCompleteness": "legacy_partial"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401902677,
+"utcDate": "2026-08-11T18:15Z",
+"home": "Slovan Bratislava",
+"away": "Mjaellby",
+"pHome": 0.1903,
+"pDraw": 0.2484,
+"pAway": 0.5613,
+"result": {
+"homeScore": 2,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-11T18:54:23.849Z",
+"checkpointPolicyId": "legacy-transition-v0",
+"checkpointReason": "legacy_transition",
+"modelVersion": "legacy-unversioned",
+"provenanceCompleteness": "legacy_partial"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401902700,
+"utcDate": "2026-08-11T18:30Z",
+"home": "Sturm Graz",
+"away": "Fenerbahce",
+"pHome": 0.1479,
+"pDraw": 0.225,
+"pAway": 0.6272,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-08-11T18:54:23.849Z",
+"checkpointPolicyId": "legacy-transition-v0",
+"checkpointReason": "legacy_transition",
+"modelVersion": "legacy-unversioned",
+"provenanceCompleteness": "legacy_partial"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401898000,
+"utcDate": "2026-08-11T19:00Z",
+"home": "Lyon",
+"away": "Sparta Praha",
+"pHome": 0.7712,
+"pDraw": 0.1566,
+"pAway": 0.0722,
+"result": {
+"homeScore": 3,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-11T19:54:23.856Z",
+"checkpointPolicyId": "legacy-transition-v0",
+"checkpointReason": "legacy_transition",
+"modelVersion": "legacy-unversioned",
+"provenanceCompleteness": "legacy_partial"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909156,
+"utcDate": "2026-08-18T19:00Z",
+"home": "Levski",
+"away": "AEK",
+"pHome": 0.1311,
+"pDraw": 0.2132,
+"pAway": 0.6557,
+"result": {
+"homeScore": 0,
+"awayScore": 0,
+"winner": "draw"
+},
+"forecastAt": "2026-08-18T17:35:22.775Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909158,
+"utcDate": "2026-08-18T19:00Z",
+"home": "Dinamo Zagreb",
+"away": "Viking",
+"pHome": 0.336,
+"pDraw": 0.2822,
+"pAway": 0.3818,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-08-18T17:35:22.775Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909204,
+"utcDate": "2026-08-18T19:00Z",
+"home": "Fenerbahce",
+"away": "Lyon",
+"pHome": 0.2997,
+"pDraw": 0.279,
+"pAway": 0.4213,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-08-18T17:35:22.775Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401903528,
+"utcDate": "2026-08-19T19:00Z",
+"home": "Celtic",
+"away": "LASK",
+"pHome": 0.6687,
+"pDraw": 0.2076,
+"pAway": 0.1237,
+"result": {
+"homeScore": 3,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-19T17:35:50.931Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909193,
+"utcDate": "2026-08-19T19:00Z",
+"home": "Beer-Sheva",
+"away": "Sabah",
+"pHome": 0.7249,
+"pDraw": 0.1811,
+"pAway": 0.0941,
+"result": {
+"homeScore": 2,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-08-19T17:35:50.931Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909195,
+"utcDate": "2026-08-19T19:00Z",
+"home": "Slovan Bratislava",
+"away": "Celje",
+"pHome": 0.2785,
+"pDraw": 0.2758,
+"pAway": 0.4458,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-08-19T17:35:50.931Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909197,
+"utcDate": "2026-08-19T19:00Z",
+"home": "Nijmegen",
+"away": "Bodoe Glimt",
+"pHome": 0.1555,
+"pDraw": 0.2298,
+"pAway": 0.6148,
+"result": {
+"homeScore": 1,
+"awayScore": 3,
+"winner": "away"
+},
+"forecastAt": "2026-08-19T17:35:50.931Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879301,
+"utcDate": "2026-08-21T19:00Z",
+"home": "Arsenal",
+"away": "Coventry",
+"pHome": 0.9728,
+"pDraw": 0.0229,
+"pAway": 0.0043,
+"result": {
+"homeScore": 3,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-21T17:32:19.226Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879322,
+"utcDate": "2026-08-22T11:30Z",
+"home": "Hull",
+"away": "Man United",
+"pHome": 0.0201,
+"pDraw": 0.0696,
+"pAway": 0.9103,
+"result": {
+"homeScore": 2,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-22T09:33:57.455Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879298,
+"utcDate": "2026-08-22T14:00Z",
+"home": "Forest",
+"away": "Leeds",
+"pHome": 0.4836,
+"pDraw": 0.2689,
+"pAway": 0.2475,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-08-22T12:33:57.503Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879299,
+"utcDate": "2026-08-22T14:00Z",
+"home": "Ipswich",
+"away": "Sunderland",
+"pHome": 0.2674,
+"pDraw": 0.2736,
+"pAway": 0.459,
+"result": {
+"homeScore": 2,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-08-22T12:33:57.503Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879300,
+"utcDate": "2026-08-22T14:00Z",
+"home": "Everton",
+"away": "Crystal Palace",
+"pHome": 0.4355,
+"pDraw": 0.2773,
+"pAway": 0.2872,
+"result": {
+"homeScore": 2,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-22T12:33:57.503Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879321,
+"utcDate": "2026-08-22T16:30Z",
+"home": "Brentford",
+"away": "Tottenham",
+"pHome": 0.5501,
+"pDraw": 0.2518,
+"pAway": 0.1981,
+"result": {
+"homeScore": 3,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-22T14:33:57.527Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879297,
+"utcDate": "2026-08-23T13:00Z",
+"home": "Brighton",
+"away": "Aston Villa",
+"pHome": 0.2949,
+"pDraw": 0.2784,
+"pAway": 0.4267,
+"result": {
+"homeScore": 4,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-23T11:33:57.840Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879320,
+"utcDate": "2026-08-23T13:00Z",
+"home": "Man City",
+"away": "Bournemouth",
+"pHome": 0.6252,
+"pDraw": 0.2257,
+"pAway": 0.1491,
+"result": {
+"homeScore": 2,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-08-23T11:33:57.840Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879319,
+"utcDate": "2026-08-23T15:30Z",
+"home": "Newcastle",
+"away": "Liverpool",
+"pHome": 0.3044,
+"pDraw": 0.2796,
+"pAway": 0.416,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-08-23T13:33:57.855Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879318,
+"utcDate": "2026-08-24T19:00Z",
+"home": "Fulham",
+"away": "Chelsea",
+"pHome": 0.4025,
+"pDraw": 0.2809,
+"pAway": 0.3167,
+"result": {
+"homeScore": 2,
+"awayScore": 3,
+"winner": "away"
+},
+"forecastAt": "2026-08-24T17:34:11.461Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909192,
+"utcDate": "2026-08-25T16:45Z",
+"home": "Sabah",
+"away": "Beer-Sheva",
+"pHome": 0.1828,
+"pDraw": 0.2448,
+"pAway": 0.5724,
+"result": {
+"homeScore": 5,
+"awayScore": 2,
+"winner": "home"
+},
+"forecastAt": "2026-08-25T15:15:06.776Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401903707,
+"utcDate": "2026-08-25T19:00Z",
+"home": "LASK",
+"away": "Celtic",
+"pHome": 0.227,
+"pDraw": 0.2628,
+"pAway": 0.5102,
+"result": {
+"homeScore": 5,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-08-25T17:15:06.818Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909196,
+"utcDate": "2026-08-25T19:00Z",
+"home": "Bodoe Glimt",
+"away": "Nijmegen",
+"pHome": 0.7611,
+"pDraw": 0.1621,
+"pAway": 0.0767,
+"result": {
+"homeScore": 3,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-25T17:15:06.818Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909157,
+"utcDate": "2026-08-26T19:00Z",
+"home": "Viking",
+"away": "Dinamo Zagreb",
+"pHome": 0.5414,
+"pDraw": 0.2544,
+"pAway": 0.2042,
+"result": {
+"homeScore": 3,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-08-26T17:39:28.338Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909181,
+"utcDate": "2026-08-26T19:00Z",
+"home": "AEK",
+"away": "Levski",
+"pHome": 0.7946,
+"pDraw": 0.1435,
+"pAway": 0.062,
+"result": {
+"homeScore": 4,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-26T17:39:28.338Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909194,
+"utcDate": "2026-08-26T19:00Z",
+"home": "Celje",
+"away": "Slovan Bratislava",
+"pHome": 0.6067,
+"pDraw": 0.2328,
+"pAway": 0.1605,
+"result": {
+"homeScore": 1,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-08-26T17:39:28.338Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "uefa.champions_qual",
+"fixtureId": 401909203,
+"utcDate": "2026-08-26T19:00Z",
+"home": "Lyon",
+"away": "Fenerbahce",
+"pHome": 0.5822,
+"pDraw": 0.2415,
+"pAway": 0.1763,
+"result": {
+"homeScore": 1,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-08-26T17:39:28.338Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879294,
+"utcDate": "2026-08-28T19:00Z",
+"home": "Crystal Palace",
+"away": "Man City",
+"pHome": 0.1677,
+"pDraw": 0.2369,
+"pAway": 0.5954,
+"result": {
+"homeScore": 1,
+"awayScore": 4,
+"winner": "away"
+},
+"forecastAt": "2026-08-28T17:41:20.739Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879314,
+"utcDate": "2026-08-29T11:30Z",
+"home": "Liverpool",
+"away": "Forest",
+"pHome": 0.606,
+"pDraw": 0.233,
+"pAway": 0.1609,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-08-29T09:41:21.008Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879296,
+"utcDate": "2026-08-29T14:00Z",
+"home": "Bournemouth",
+"away": "Everton",
+"pHome": 0.5678,
+"pDraw": 0.2463,
+"pAway": 0.1859,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-08-29T12:41:21.064Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879316,
+"utcDate": "2026-08-29T14:00Z",
+"home": "Coventry",
+"away": "Hull",
+"pHome": 0.6794,
+"pDraw": 0.2028,
+"pAway": 0.1178,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-08-29T12:41:21.064Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879312,
+"utcDate": "2026-08-29T16:30Z",
+"home": "Tottenham",
+"away": "Newcastle",
+"pHome": 0.3266,
+"pDraw": 0.2816,
+"pAway": 0.3918,
+"result": {
+"homeScore": 0,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-08-29T14:41:21.116Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879313,
+"utcDate": "2026-08-30T13:00Z",
+"home": "Sunderland",
+"away": "Fulham",
+"pHome": 0.2979,
+"pDraw": 0.2788,
+"pAway": 0.4233,
+"result": {
+"homeScore": 1,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-08-30T10:41:21.316Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879315,
+"utcDate": "2026-08-30T13:00Z",
+"home": "Leeds",
+"away": "Brentford",
+"pHome": 0.3637,
+"pDraw": 0.2827,
+"pAway": 0.3537,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-08-30T10:41:21.316Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879317,
+"utcDate": "2026-08-30T13:00Z",
+"home": "Chelsea",
+"away": "Brighton",
+"pHome": 0.4157,
+"pDraw": 0.2796,
+"pAway": 0.3047,
+"result": {
+"homeScore": 4,
+"awayScore": 3,
+"winner": "home"
+},
+"forecastAt": "2026-08-30T10:41:21.316Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879293,
+"utcDate": "2026-08-30T15:30Z",
+"home": "Man United",
+"away": "Ipswich",
+"pHome": 0.8885,
+"pDraw": 0.0846,
+"pAway": 0.0268,
+"result": {
+"homeScore": 5,
+"awayScore": 2,
+"winner": "home"
+},
+"forecastAt": "2026-08-30T13:41:21.327Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879295,
+"utcDate": "2026-08-31T19:00Z",
+"home": "Aston Villa",
+"away": "Arsenal",
+"pHome": 0.1988,
+"pDraw": 0.2521,
+"pAway": 0.5491,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-08-31T17:36:53.793Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879288,
+"utcDate": "2026-09-04T19:00Z",
+"home": "Ipswich",
+"away": "Liverpool",
+"pHome": 0.0701,
+"pDraw": 0.1541,
+"pAway": 0.7758,
+"result": {
+"homeScore": 0,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-09-04T17:33:06.183Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879286,
+"utcDate": "2026-09-05T11:30Z",
+"home": "Newcastle",
+"away": "Bournemouth",
+"pHome": 0.3723,
+"pDraw": 0.2825,
+"pAway": 0.3452,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-09-05T09:33:06.465Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878780,
+"utcDate": "2026-09-05T14:00Z",
+"home": "Forest",
+"away": "Tottenham",
+"pHome": 0.5223,
+"pDraw": 0.2597,
+"pAway": 0.218,
+"result": {
+"homeScore": 0,
+"awayScore": 0,
+"winner": "draw"
+},
+"forecastAt": "2026-09-05T12:33:06.482Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879287,
+"utcDate": "2026-09-05T14:00Z",
+"home": "Man City",
+"away": "Coventry",
+"pHome": 0.9196,
+"pDraw": 0.063,
+"pAway": 0.0174,
+"result": {
+"homeScore": 1,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-09-05T12:33:06.482Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879289,
+"utcDate": "2026-09-05T14:00Z",
+"home": "Fulham",
+"away": "Crystal Palace",
+"pHome": 0.4539,
+"pDraw": 0.2745,
+"pAway": 0.2717,
+"result": {
+"homeScore": 2,
+"awayScore": 3,
+"winner": "away"
+},
+"forecastAt": "2026-09-05T12:33:06.482Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879290,
+"utcDate": "2026-09-05T14:00Z",
+"home": "Brighton",
+"away": "Leeds",
+"pHome": 0.5218,
+"pDraw": 0.2598,
+"pAway": 0.2184,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-09-05T12:33:06.482Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879311,
+"utcDate": "2026-09-05T14:00Z",
+"home": "Brentford",
+"away": "Sunderland",
+"pHome": 0.6285,
+"pDraw": 0.2244,
+"pAway": 0.147,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-09-05T12:33:06.482Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878781,
+"utcDate": "2026-09-05T16:30Z",
+"home": "Hull",
+"away": "Aston Villa",
+"pHome": 0.0187,
+"pDraw": 0.0661,
+"pAway": 0.9152,
+"result": {
+"homeScore": 0,
+"awayScore": 0,
+"winner": "draw"
+},
+"forecastAt": "2026-09-05T14:33:06.494Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879291,
+"utcDate": "2026-09-06T13:00Z",
+"home": "Everton",
+"away": "Man United",
+"pHome": 0.2428,
+"pDraw": 0.2676,
+"pAway": 0.4896,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-09-06T11:33:06.720Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879292,
+"utcDate": "2026-09-06T15:30Z",
+"home": "Arsenal",
+"away": "Chelsea",
+"pHome": 0.8399,
+"pDraw": 0.1163,
+"pAway": 0.0438,
+"result": {
+"homeScore": 2,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-09-06T13:33:06.751Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879279,
+"utcDate": "2026-09-12T14:00Z",
+"home": "Liverpool",
+"away": "Fulham",
+"pHome": 0.66,
+"pDraw": 0.2226,
+"pAway": 0.1174,
+"result": {
+"homeScore": 0,
+"awayScore": 0,
+"winner": "draw"
+},
+"forecastAt": "2026-09-12T12:24:16.772Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879281,
+"utcDate": "2026-09-12T14:00Z",
+"home": "Crystal Palace",
+"away": "Ipswich",
+"pHome": 0.6579,
+"pDraw": 0.2234,
+"pAway": 0.1187,
+"result": {
+"homeScore": 2,
+"awayScore": 3,
+"winner": "away"
+},
+"forecastAt": "2026-09-12T12:24:16.772Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879283,
+"utcDate": "2026-09-12T14:00Z",
+"home": "Chelsea",
+"away": "Hull",
+"pHome": 0.7918,
+"pDraw": 0.1614,
+"pAway": 0.0467,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-09-12T12:24:16.772Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879284,
+"utcDate": "2026-09-12T14:00Z",
+"home": "Aston Villa",
+"away": "Forest",
+"pHome": 0.5808,
+"pDraw": 0.2491,
+"pAway": 0.1701,
+"result": {
+"homeScore": 1,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-09-12T12:24:16.772Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879285,
+"utcDate": "2026-09-12T14:00Z",
+"home": "Bournemouth",
+"away": "Brentford",
+"pHome": 0.4512,
+"pDraw": 0.2765,
+"pAway": 0.2723,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-09-12T12:24:16.772Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879277,
+"utcDate": "2026-09-12T16:30Z",
+"home": "Tottenham",
+"away": "Everton",
+"pHome": 0.4124,
+"pDraw": 0.2805,
+"pAway": 0.3071,
+"result": {
+"homeScore": 0,
+"awayScore": 0,
+"winner": "draw"
+},
+"forecastAt": "2026-09-12T14:24:16.799Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878779,
+"utcDate": "2026-09-12T19:00Z",
+"home": "Sunderland",
+"away": "Arsenal",
+"pHome": 0.0613,
+"pDraw": 0.1777,
+"pAway": 0.761,
+"result": {
+"homeScore": 0,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-09-12T17:24:16.828Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879282,
+"utcDate": "2026-09-13T13:00Z",
+"home": "Coventry",
+"away": "Brighton",
+"pHome": 0.1667,
+"pDraw": 0.2478,
+"pAway": 0.5855,
+"result": {
+"homeScore": 0,
+"awayScore": 5,
+"winner": "away"
+},
+"forecastAt": "2026-09-13T11:24:16.963Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879278,
+"utcDate": "2026-09-13T15:30Z",
+"home": "Man United",
+"away": "Man City",
+"pHome": 0.2056,
+"pDraw": 0.2617,
+"pAway": 0.5328,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-09-13T13:24:17.009Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "1",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879280,
+"utcDate": "2026-09-14T19:00Z",
+"home": "Leeds",
+"away": "Newcastle",
+"pHome": 0.2925,
+"pDraw": 0.2791,
+"pAway": 0.4284,
+"result": {
+"homeScore": 4,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-09-14T16:59:31.074Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879275,
+"utcDate": "2026-09-18T19:00Z",
+"home": "Brentford",
+"away": "Chelsea",
+"pHome": 0.3634,
+"pDraw": 0.2827,
+"pAway": 0.3539,
+"result": {
+"homeScore": 3,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-09-18T17:20:44.968Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879269,
+"utcDate": "2026-09-19T11:30Z",
+"home": "Tottenham",
+"away": "Aston Villa",
+"pHome": 0.2965,
+"pDraw": 0.2795,
+"pAway": 0.424,
+"result": {
+"homeScore": 2,
+"awayScore": 3,
+"winner": "away"
+},
+"forecastAt": "2026-09-19T09:35:45.480Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878778,
+"utcDate": "2026-09-19T14:00Z",
+"home": "Everton",
+"away": "Ipswich",
+"pHome": 0.6404,
+"pDraw": 0.2298,
+"pAway": 0.1298,
+"result": {
+"homeScore": 1,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-09-19T12:20:45.607Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879271,
+"utcDate": "2026-09-19T14:00Z",
+"home": "Newcastle",
+"away": "Hull",
+"pHome": 0.7901,
+"pDraw": 0.1624,
+"pAway": 0.0475,
+"result": {
+"homeScore": 2,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-09-19T12:20:45.607Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879274,
+"utcDate": "2026-09-19T14:00Z",
+"home": "Brighton",
+"away": "Arsenal",
+"pHome": 0.1626,
+"pDraw": 0.246,
+"pAway": 0.5913,
+"result": {
+"homeScore": 3,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-09-19T12:20:45.607Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879270,
+"utcDate": "2026-09-19T16:30Z",
+"home": "Forest",
+"away": "Coventry",
+"pHome": 0.6491,
+"pDraw": 0.2267,
+"pAway": 0.1243,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-09-19T14:50:45.729Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879272,
+"utcDate": "2026-09-20T13:00Z",
+"home": "Man City",
+"away": "Sunderland",
+"pHome": 0.8219,
+"pDraw": 0.1442,
+"pAway": 0.0339,
+"result": {
+"homeScore": 5,
+"awayScore": 3,
+"winner": "home"
+},
+"forecastAt": "2026-09-20T11:05:46.430Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879273,
+"utcDate": "2026-09-20T13:00Z",
+"home": "Leeds",
+"away": "Crystal Palace",
+"pHome": 0.4127,
+"pDraw": 0.2805,
+"pAway": 0.3068,
+"result": {
+"homeScore": 0,
+"awayScore": 0,
+"winner": "draw"
+},
+"forecastAt": "2026-09-20T11:05:46.430Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879276,
+"utcDate": "2026-09-20T13:00Z",
+"home": "Bournemouth",
+"away": "Liverpool",
+"pHome": 0.3114,
+"pDraw": 0.2809,
+"pAway": 0.4078,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-09-20T11:05:46.430Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878777,
+"utcDate": "2026-09-20T15:30Z",
+"home": "Fulham",
+"away": "Man United",
+"pHome": 0.2765,
+"pDraw": 0.2771,
+"pAway": 0.4464,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-09-20T13:50:46.482Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879268,
+"utcDate": "2026-10-10T11:30Z",
+"home": "Arsenal",
+"away": "Leeds",
+"pHome": 0.7668,
+"pDraw": 0.1748,
+"pAway": 0.0584,
+"result": {
+"homeScore": 2,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-10-10T09:43:45.730Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879268,
+"utcDate": "2026-10-10T11:30Z",
+"home": "Arsenal",
+"away": "Leeds",
+"pHome": 0.7593,
+"pDraw": 0.1786,
+"pAway": 0.0621,
+"result": {
+"homeScore": 2,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-09-21T15:58:48.630Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878772,
+"utcDate": "2026-10-10T14:00Z",
+"home": "Sunderland",
+"away": "Brighton",
+"pHome": 0.185,
+"pDraw": 0.2549,
+"pAway": 0.5601,
+"result": {
+"homeScore": 0,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-10-10T12:28:45.837Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878772,
+"utcDate": "2026-10-10T14:00Z",
+"home": "Sunderland",
+"away": "Brighton",
+"pHome": 0.1853,
+"pDraw": 0.255,
+"pAway": 0.5597,
+"result": {
+"homeScore": 0,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-09-21T15:58:48.630Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878775,
+"utcDate": "2026-10-10T14:00Z",
+"home": "Chelsea",
+"away": "Bournemouth",
+"pHome": 0.4729,
+"pDraw": 0.2734,
+"pAway": 0.2538,
+"result": {
+"homeScore": 5,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-10-10T12:28:45.837Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878775,
+"utcDate": "2026-10-10T14:00Z",
+"home": "Chelsea",
+"away": "Bournemouth",
+"pHome": 0.4726,
+"pDraw": 0.2734,
+"pAway": 0.254,
+"result": {
+"homeScore": 5,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-09-21T15:58:48.630Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878776,
+"utcDate": "2026-10-10T14:00Z",
+"home": "Aston Villa",
+"away": "Brentford",
+"pHome": 0.4954,
+"pDraw": 0.2695,
+"pAway": 0.2351,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-10-10T12:28:45.837Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878776,
+"utcDate": "2026-10-10T14:00Z",
+"home": "Aston Villa",
+"away": "Brentford",
+"pHome": 0.4987,
+"pDraw": 0.2688,
+"pAway": 0.2324,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-09-21T15:58:48.630Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879265,
+"utcDate": "2026-10-10T14:00Z",
+"home": "Ipswich",
+"away": "Fulham",
+"pHome": 0.2414,
+"pDraw": 0.2709,
+"pAway": 0.4878,
+"result": {
+"homeScore": 2,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-10-10T12:28:45.837Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879265,
+"utcDate": "2026-10-10T14:00Z",
+"home": "Ipswich",
+"away": "Fulham",
+"pHome": 0.2415,
+"pDraw": 0.2709,
+"pAway": 0.4877,
+"result": {
+"homeScore": 2,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-09-21T15:58:48.630Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878773,
+"utcDate": "2026-10-10T16:30Z",
+"home": "Man United",
+"away": "Tottenham",
+"pHome": 0.5801,
+"pDraw": 0.2494,
+"pAway": 0.1706,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-10-10T14:58:46.107Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878773,
+"utcDate": "2026-10-10T16:30Z",
+"home": "Man United",
+"away": "Tottenham",
+"pHome": 0.5805,
+"pDraw": 0.2492,
+"pAway": 0.1703,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-09-21T15:58:48.630Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878774,
+"utcDate": "2026-10-11T13:00Z",
+"home": "Hull",
+"away": "Everton",
+"pHome": 0.14,
+"pDraw": 0.2353,
+"pAway": 0.6246,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-10-11T11:13:47.078Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878774,
+"utcDate": "2026-10-11T13:00Z",
+"home": "Hull",
+"away": "Everton",
+"pHome": 0.14,
+"pDraw": 0.2353,
+"pAway": 0.6246,
+"result": {
+"homeScore": 2,
+"awayScore": 2,
+"winner": "draw"
+},
+"forecastAt": "2026-09-21T15:58:48.630Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879266,
+"utcDate": "2026-10-11T13:00Z",
+"home": "Crystal Palace",
+"away": "Forest",
+"pHome": 0.4709,
+"pDraw": 0.2737,
+"pAway": 0.2554,
+"result": {
+"homeScore": 3,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-10-11T11:13:47.078Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879266,
+"utcDate": "2026-10-11T13:00Z",
+"home": "Crystal Palace",
+"away": "Forest",
+"pHome": 0.4711,
+"pDraw": 0.2736,
+"pAway": 0.2553,
+"result": {
+"homeScore": 3,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-09-21T15:58:48.630Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879264,
+"utcDate": "2026-10-11T15:30Z",
+"home": "Liverpool",
+"away": "Man City",
+"pHome": 0.2745,
+"pDraw": 0.2768,
+"pAway": 0.4487,
+"result": {
+"homeScore": 0,
+"awayScore": 3,
+"winner": "away"
+},
+"forecastAt": "2026-10-11T13:58:47.226Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879264,
+"utcDate": "2026-10-11T15:30Z",
+"home": "Liverpool",
+"away": "Man City",
+"pHome": 0.2622,
+"pDraw": 0.2749,
+"pAway": 0.4629,
+"result": {
+"homeScore": 0,
+"awayScore": 3,
+"winner": "away"
+},
+"forecastAt": "2026-09-21T15:58:48.630Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879267,
+"utcDate": "2026-10-12T19:00Z",
+"home": "Coventry",
+"away": "Newcastle",
+"pHome": 0.1429,
+"pDraw": 0.2368,
+"pAway": 0.6203,
+"result": {
+"homeScore": 4,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-10-12T17:14:24.269Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879267,
+"utcDate": "2026-10-12T19:00Z",
+"home": "Coventry",
+"away": "Newcastle",
+"pHome": 0.1448,
+"pDraw": 0.2378,
+"pAway": 0.6174,
+"result": {
+"homeScore": 4,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-09-21T19:24:22.180Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878771,
+"utcDate": "2026-10-17T11:30Z",
+"home": "Everton",
+"away": "Chelsea",
+"pHome": 0.3176,
+"pDraw": 0.2813,
+"pAway": 0.401,
+"result": {
+"homeScore": 0,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-10-17T09:51:30.401Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878771,
+"utcDate": "2026-10-17T11:30Z",
+"home": "Everton",
+"away": "Chelsea",
+"pHome": 0.3378,
+"pDraw": 0.2823,
+"pAway": 0.3799,
+"result": {
+"homeScore": 0,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-09-26T12:16:46.800Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878770,
+"utcDate": "2026-10-17T14:00Z",
+"home": "Fulham",
+"away": "Hull",
+"pHome": 0.6957,
+"pDraw": 0.2082,
+"pAway": 0.0961,
+"result": {
+"homeScore": 1,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-10-17T12:21:30.547Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878770,
+"utcDate": "2026-10-17T14:00Z",
+"home": "Fulham",
+"away": "Hull",
+"pHome": 0.7117,
+"pDraw": 0.2012,
+"pAway": 0.0871,
+"result": {
+"homeScore": 1,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-09-26T14:16:46.822Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879259,
+"utcDate": "2026-10-17T14:00Z",
+"home": "Man City",
+"away": "Ipswich",
+"pHome": 0.8449,
+"pDraw": 0.1301,
+"pAway": 0.025,
+"result": {
+"homeScore": 3,
+"awayScore": 2,
+"winner": "home"
+},
+"forecastAt": "2026-10-17T12:21:30.547Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879259,
+"utcDate": "2026-10-17T14:00Z",
+"home": "Man City",
+"away": "Ipswich",
+"pHome": 0.8496,
+"pDraw": 0.1272,
+"pAway": 0.0233,
+"result": {
+"homeScore": 3,
+"awayScore": 2,
+"winner": "home"
+},
+"forecastAt": "2026-09-26T14:16:46.822Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879262,
+"utcDate": "2026-10-17T14:00Z",
+"home": "Brentford",
+"away": "Liverpool",
+"pHome": 0.3163,
+"pDraw": 0.2812,
+"pAway": 0.4025,
+"result": {
+"homeScore": 1,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-10-17T12:21:30.547Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879262,
+"utcDate": "2026-10-17T14:00Z",
+"home": "Brentford",
+"away": "Liverpool",
+"pHome": 0.2978,
+"pDraw": 0.2797,
+"pAway": 0.4225,
+"result": {
+"homeScore": 1,
+"awayScore": 2,
+"winner": "away"
+},
+"forecastAt": "2026-09-26T14:16:46.822Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879258,
+"utcDate": "2026-10-17T16:30Z",
+"home": "Newcastle",
+"away": "Aston Villa",
+"pHome": 0.3833,
+"pDraw": 0.2822,
+"pAway": 0.3345,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-10-17T14:55:28.667Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879258,
+"utcDate": "2026-10-17T16:30Z",
+"home": "Newcastle",
+"away": "Aston Villa",
+"pHome": 0.4074,
+"pDraw": 0.2809,
+"pAway": 0.3117,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-09-26T17:16:46.847Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879260,
+"utcDate": "2026-10-18T13:00Z",
+"home": "Leeds",
+"away": "Man United",
+"pHome": 0.3242,
+"pDraw": 0.2817,
+"pAway": 0.3941,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-10-18T11:35:14.935Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879260,
+"utcDate": "2026-10-18T13:00Z",
+"home": "Leeds",
+"away": "Man United",
+"pHome": 0.3221,
+"pDraw": 0.2816,
+"pAway": 0.3962,
+"result": {
+"homeScore": 1,
+"awayScore": 1,
+"winner": "draw"
+},
+"forecastAt": "2026-09-27T13:16:47.145Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879261,
+"utcDate": "2026-10-18T13:00Z",
+"home": "Brighton",
+"away": "Crystal Palace",
+"pHome": 0.5539,
+"pDraw": 0.2565,
+"pAway": 0.1896,
+"result": {
+"homeScore": 5,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-10-18T11:35:14.935Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879261,
+"utcDate": "2026-10-18T13:00Z",
+"home": "Brighton",
+"away": "Crystal Palace",
+"pHome": 0.5542,
+"pDraw": 0.2564,
+"pAway": 0.1894,
+"result": {
+"homeScore": 5,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-09-27T13:16:47.145Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879263,
+"utcDate": "2026-10-18T13:00Z",
+"home": "Bournemouth",
+"away": "Sunderland",
+"pHome": 0.6387,
+"pDraw": 0.2304,
+"pAway": 0.1309,
+"result": {
+"homeScore": 2,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-10-18T11:35:14.935Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879263,
+"utcDate": "2026-10-18T13:00Z",
+"home": "Bournemouth",
+"away": "Sunderland",
+"pHome": 0.6458,
+"pDraw": 0.2279,
+"pAway": 0.1263,
+"result": {
+"homeScore": 2,
+"awayScore": 0,
+"winner": "home"
+},
+"forecastAt": "2026-09-27T13:16:47.145Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878769,
+"utcDate": "2026-10-18T15:30Z",
+"home": "Forest",
+"away": "Arsenal",
+"pHome": 0.0958,
+"pDraw": 0.2079,
+"pAway": 0.6963,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-10-18T13:50:15.042Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401878769,
+"utcDate": "2026-10-18T15:30Z",
+"home": "Forest",
+"away": "Arsenal",
+"pHome": 0.1088,
+"pDraw": 0.217,
+"pAway": 0.6743,
+"result": {
+"homeScore": 0,
+"awayScore": 1,
+"winner": "away"
+},
+"forecastAt": "2026-09-27T16:16:47.184Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879257,
+"utcDate": "2026-10-19T19:00Z",
+"home": "Tottenham",
+"away": "Coventry",
+"pHome": 0.5992,
+"pDraw": 0.2436,
+"pAway": 0.1572,
+"result": {
+"homeScore": 3,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-10-19T17:30:27.624Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "scheduled_window",
+"modelVersion": "3",
+"provenanceCompleteness": "complete"
+},
+{
+"competitionId": "eng.1",
+"fixtureId": 401879257,
+"utcDate": "2026-10-19T19:00Z",
+"home": "Tottenham",
+"away": "Coventry",
+"pHome": 0.624,
+"pDraw": 0.2356,
+"pAway": 0.1405,
+"result": {
+"homeScore": 3,
+"awayScore": 1,
+"winner": "home"
+},
+"forecastAt": "2026-09-28T19:36:08.896Z",
+"checkpointPolicyId": "pre-kickoff-90m-v1",
+"checkpointReason": "pre_kickoff_cached_fallback",
+"modelVersion": "2",
+"provenanceCompleteness": "complete"
+}
+]
+}
