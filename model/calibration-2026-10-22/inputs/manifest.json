@@ -1,0 +1,36 @@
+{
+ "builtBy": "model/calibration-2026-10-22/prepare_inputs.py",
+ "results": {
+  "2425": {
+   "path": "model/calibration-2026-10-22/raw/E0-2425.csv",
+   "sha256": "d0c8ce4a96d886cf60cf101f570f4a3893844226f91c7bd769eb568c49edbfa4"
+  },
+  "2526": {
+   "path": "model/calibration-2026-10-22/raw/E0-2526.csv",
+   "sha256": "3e3a8352f9ada6789c508d6ca184424421fed56a30400904a4a327c583407e62"
+  },
+  "2627": {
+   "path": "model/calibration-2026-10-22/raw/E0-2627.csv",
+   "sha256": "705ef4373f6c4c9ec09b67eb3ca3398d6a770813095efc5d629edb591e4ee41c"
+  }
+ },
+ "clubeloMirror": {
+  "path": "model/calibration-2026-10-22/raw/clubelo-eng-mirror.csv",
+  "sha256": "4e766cfed806f71cda75a9929c84eaeee1fd129bf33728568a04988d9e4d4e35",
+  "upstream": "https://github.com/tonyelhabr/club-rankings/releases/download/club-rankings/clubelo-club-rankings.csv"
+ },
+ "clubeloPins": [
+  "packages/api/data/model-artifacts/clubelo/13d23cc4304d3a14c759f5da01a721440afdb41698522bc0604872314841ce29.json",
+  "packages/api/data/model-artifacts/clubelo/1da9aa9560446a56edb2b78c26b5d35d79937034f498fa4a1b055ca009e2b696.json",
+  "packages/api/data/model-artifacts/clubelo/2da1616b28750ddbba93bb107ee4f1c5b450ef6fe1c92bda6914b6e3fb8ba6cf.json",
+  "packages/api/data/model-artifacts/clubelo/4b4bbe8f21ea21db33b430d5bb53257c3baf0876b8fc0672240a5edae24e84d0.json",
+  "packages/api/data/model-artifacts/clubelo/ba5d688af8ac4a2cbb48580703f245497d46725eed9e71a7c68590efd7103cfd.json",
+  "packages/api/data/model-artifacts/clubelo/bc0fd923bfcd9e61bb973d3f92396592d42c7a5fed8d91284a0b750ff1b80e19.json",
+  "packages/api/data/model-artifacts/clubelo/dc24d0cb7ba184bcce90711e43e6f5354c5bc62707b8c9028eab837a27b65115.json",
+  "packages/api/data/model-artifacts/clubelo/e92896a0c08bf99a5ab548df41a9b1529c267b15f46f15eef84ab35ff883cb83.json"
+ ],
+ "ratingPolicy": "latest ClubElo publication dated strictly before the kickoff UTC date, at most 14 days old, both clubs present",
+ "matches": 830,
+ "matchesWithRatings": 650,
+ "matchesSha256": "7c49588e13f0860577b7600ea2c7a1dca4d8523892eaf0bac667c0d6239bba19"
+}

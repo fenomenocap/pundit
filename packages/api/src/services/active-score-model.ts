@@ -9,7 +9,7 @@ import { historicalGoalLambdas } from "./historical-goal-calibration";
 import { anchorScoreGridTo1x2 } from "./outcome-anchored-score-grid";
 import {
   ONE_X_TWO_TEMPERATURE,
-  ONE_X_TWO_TEMPERATURE_ENABLED,
+  oneXTwoTemperatureEnabled,
   scaleOneXTwoProbabilities,
 } from "./one-x-two-temperature";
 
@@ -23,8 +23,14 @@ export interface ActiveScoreModelInput {
   kickoff: string;
 }
 
+export interface ActiveScoreModelOptions {
+  /** Defaults to the ONE_X_TWO_TEMPERATURE_ENABLED env flag (OFF unless exactly "true"). */
+  oneXTwoTemperature?: boolean;
+}
+
 export function resolveActiveScoreModel(
-  input: ActiveScoreModelInput, artifact: ValidatedEplGoalCalibrationArtifact | null, now = new Date()
+  input: ActiveScoreModelInput, artifact: ValidatedEplGoalCalibrationArtifact | null, now = new Date(),
+  options: ActiveScoreModelOptions = {}
 ) {
   const competition = getCompetitionById(input.competitionId);
   const home = typeof input.home === "string" ? canonicalClubName(input.home) : "";
@@ -39,6 +45,9 @@ export function resolveActiveScoreModel(
   const kickoff = goalCalibrationUtcInstant(input.kickoff);
   const baseline = scoreMatrix(...eloToLambdas(input.homeStrength, input.awayStrength, input.homeAdvantageElo));
   let matrix = baseline;
+  const tempered = input.competitionId === "eng.1" && (options.oneXTwoTemperature ?? oneXTwoTemperatureEnabled());
+  const target1x2 = tempered
+    ? scaleOneXTwoProbabilities(matrixTo1x2(baseline), ONE_X_TWO_TEMPERATURE) : matrixTo1x2(baseline);
   let method: "baseline" | "calibrated" = "baseline";
   let methodId = "clubelo-elo-to-goals-dixon-coles";
   let calibrationStatus = input.competitionId !== "eng.1" ? "baseline-competition"
@@ -55,22 +64,16 @@ export function resolveActiveScoreModel(
     unknownTeamEffects = [home, away].filter(name => !Object.hasOwn(fit.teamEffects, name));
     const [lambdaHome, lambdaAway] = historicalGoalLambdas(fit, { homeCanonicalName: home, awayCanonicalName: away,
       homeElo: input.homeStrength, awayElo: input.awayStrength });
-    matrix = anchorScoreGridTo1x2(scoreMatrix(lambdaHome, lambdaAway, fit.rho), matrixTo1x2(baseline)).matrix;
+    matrix = anchorScoreGridTo1x2(scoreMatrix(lambdaHome, lambdaAway, fit.rho), target1x2).matrix;
     method = "calibrated";
     methodId = artifact.artifact.methodId;
     calibrationStatus = "calibrated";
     artifactId = artifact.artifactId;
     artifactSha256 = artifact.artifactSha256;
   }
-  const oneXTwoFromMatrix = matrixTo1x2(matrix);
-  let pHome: number;
-  let pDraw: number;
-  let pAway: number;
-  if (ONE_X_TWO_TEMPERATURE_ENABLED && input.competitionId === "eng.1") {
-    [pHome, pDraw, pAway] = scaleOneXTwoProbabilities(oneXTwoFromMatrix, ONE_X_TWO_TEMPERATURE);
-  } else {
-    [pHome, pDraw, pAway] = oneXTwoFromMatrix;
-  }
+  // Tempered baseline rows are re-anchored too, so every market comes from one coherent grid.
+  if (tempered && method === "baseline") matrix = anchorScoreGridTo1x2(baseline, target1x2).matrix;
+  const [pHome, pDraw, pAway] = matrixTo1x2(matrix);
   const [pOver2_5, pUnder2_5] = matrixToTotals(matrix, 2.5);
   const [pBttsYes, pBttsNo] = matrixToBtts(matrix);
   let expectedHomeGoals = 0, expectedAwayGoals = 0;
