@@ -186,12 +186,22 @@ import {
 } from "./pundit-take/compose";
 import { asksTakeV2PolicyPrompt } from "./pundit-take/take-routing";
 import {
+  consumeTakeDossier,
   punditTakeV2Active,
   punditTakeV2PlayPassResolverEnabled,
   stashPrefetchedTakeDelivery,
   stashTakeDossier,
 } from "./pundit-take/flags";
 import { prefetchStoredTakeDossier } from "./pundit-take/take-dossier";
+import { matchDossierEnabled, matchDossierFixtureFirstEnabled } from "./match-dossier/flags";
+import { readMatchDossier } from "./match-dossier/storage";
+import {
+  composeFixtureFirstTeamNewsAnswer,
+  isFixtureFirstTeamNewsQuestion,
+} from "./match-dossier/dossier-team-news-answer";
+import { fplChanceProbabilitiesForTrace } from "./match-dossier/fpl-numeric-trace";
+import { enforceFplAbsenceClaims } from "./match-dossier/fpl-absence-guard";
+import type { MatchDossier } from "./match-dossier/types";
 
 function matchPlanContextForRequest(
   grounding: Parameters<typeof matchPlanContext>[0],
@@ -1018,6 +1028,11 @@ export function deterministicSearchQuery(
   const asksOwnedSeasonFact = grounding?.kind === "season"
     && (isSeasonOutlookQuestion(question)
       || /\b(?:pundit(?:'s)?|model|title|top[- ]four|relegation|season outlook)\b/i.test(question));
+  if (grounding?.kind === "match"
+    && matchDossierFixtureFirstEnabled()
+    && isFixtureFirstTeamNewsQuestion(question)) {
+    return null;
+  }
   if (!mandatoryExternal && (asksOwnedMatchFact || asksOwnedTableFact || asksOwnedSeasonFact)) {
     return null;
   }
@@ -3812,12 +3827,21 @@ export function sanitizeRuntimeResponseCorrectness(
   );
 }
 
+function resolveMatchDossierForDelivery(grounding: Grounding): MatchDossier | null {
+  const injected = consumeTakeDossier();
+  if (injected) return injected;
+  if (!matchDossierEnabled()) return null;
+  return readMatchDossier(grounding.fixtureId);
+}
+
 function enforceMatchNumericTraceability(answer: string, grounding: Grounding): string {
   const modelProbabilities = [
     grounding.pHome, grounding.pDraw, grounding.pAway,
     grounding.pOver2_5, grounding.pUnder2_5, grounding.pBttsYes, grounding.pBttsNo,
     ...(grounding.scorelines ?? []).map((row) => row.probability),
   ];
+  const dossier = resolveMatchDossierForDelivery(grounding);
+  const fplChanceProbabilities = fplChanceProbabilitiesForTrace(dossier, grounding);
   const userLine = grounding.pricing?.userLine;
   const userLineGapPoints = userLine
     ? Math.round((grounding.pricing.model[userLine.outcome].p - 1 / userLine.decimalOdds) * 1000) / 10
@@ -3828,6 +3852,7 @@ function enforceMatchNumericTraceability(answer: string, grounding: Grounding): 
   return stripUntraceableMatchPercentages(answer, {
     probabilities: [
       ...modelProbabilities,
+      ...fplChanceProbabilities,
       ...(grounding.oddsSources ?? []).flatMap((source) =>
         [source.pHome, source.pDraw, source.pAway].filter((value): value is number => value !== null)),
       ...consensusProbabilities,
@@ -9762,6 +9787,17 @@ async function settleTeamNewsFromBundle(
   const plan = planResponse(question, { groundingKind: "match", hasHistory,
     hasUserLine: grounding.pricing.userLine != null });
   if (plan.mode !== "team-news") return null;
+  if (matchDossierFixtureFirstEnabled()) {
+    const dossier = resolveMatchDossierForDelivery(grounding);
+    if (dossier?.teamNews) {
+      const answer = composeFixtureFirstTeamNewsAnswer(grounding, dossier);
+      return {
+        answer: finalizeDeliveredText(answer, grounding, ANALYST_RESPONSE_V2, { question, hasHistory }),
+        citations: [],
+        verification: { status: "not-required", supportedClaimCount: 0, removedClaimCount: 0 },
+      };
+    }
+  }
   const selectedBundle = teamNewsBundleForHydration(question, grounding, bundle);
   const pages = await hydrateBundlePublicationDates(selectedBundle, signal);
   writeRetrievedDatesOntoBundle(bundle, pages);
@@ -9943,6 +9979,12 @@ export function closedGroundedAnswer(
     // take cannot settle that request before the mandatory evidence lookup.
     if (plan.mode === "match-preview" && asksCompleteMatchBriefing(question)
       && deterministicSearchQuery(question, "", grounding)) return null;
+    if (matchDossierFixtureFirstEnabled() && plan.mode === "team-news") {
+      const dossier = resolveMatchDossierForDelivery(grounding);
+      if (dossier?.teamNews) {
+        return composeFixtureFirstTeamNewsAnswer(grounding, dossier);
+      }
+    }
     if (punditTakeV2Active() && punditTakeApplies(plan, question)) {
       const takeAnswer = composeMatchResponse(question, grounding, plan).trim();
       if (takeAnswer) return takeAnswer;
@@ -10887,16 +10929,20 @@ function finalizeDeliveredText(
   answer: string,
   grounding?: AskGrounding,
   enforceNumericTrace = false,
-  delivery?: { question?: string; hasHistory?: boolean },
+  delivery?: { question?: string; hasHistory?: boolean; evidenceBundle?: EvidenceBundle },
 ): string {
   const voiced = normalizeAnalystIdentity(answer);
   // The appropriate prose guard has already run in deliverAnswer. This final
   // boundary owns only deterministic numeric traceability and marker removal;
   // re-running the legacy market parser here deleted trusted server facts.
-  const correctnessSafe = voiced;
+  let correctnessSafe = voiced;
+  if (grounding?.kind === "match") {
+    const dossier = resolveMatchDossierForDelivery(grounding);
+    correctnessSafe = enforceFplAbsenceClaims(correctnessSafe, grounding, dossier, delivery?.evidenceBundle);
+  }
   const traced = enforceNumericTrace && grounding?.kind === "match"
     ? enforceMatchNumericTraceability(correctnessSafe, grounding)
-    : voiced;
+    : correctnessSafe;
   if (traced !== correctnessSafe) {
     analystResponseMetrics.numericGuardInterventions += 1;
     console.warn(JSON.stringify({ event: "analyst_numeric_guard_intervened" }));
