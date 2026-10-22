@@ -132,6 +132,13 @@ export interface ClubSeasonEvaluationArtifact {
   metrics: EvaluationMetrics;
   evaluation: {
     metricVersion: "multiclass-v1";
+    /** Additive: official rows collapsed to one scored forecast per fixture (ledger rows untouched). */
+    dedupe: {
+      ruleId: typeof CLUB_SEASON_DEDUPE_RULE_ID;
+      officialRows: number;
+      scoredRows: number;
+      collapsedDuplicates: number;
+    };
     segments: EvaluationSegment[];
     exclusions: {
       total: number;
@@ -272,10 +279,62 @@ function toEvaluationFixture(snapshot: ClubSeasonSnapshotFixture): EvaluationFix
   };
 }
 
+/**
+ * One scored forecast per match. The stored ledger is append-only and may hold
+ * several official rows for one fixture (for example a v2 cached-fallback seal
+ * and a v3 scheduled-window seal). Rows are never rewritten; the duplicate is
+ * collapsed here, at aggregation time, by a fixed precedence:
+ *   1. checkpointReason "scheduled_window" beats any fallback reason
+ *      (the same definition `officialCalibrationRows` uses);
+ *   2. higher numeric modelVersion (the newer model);
+ *   3. later forecastAt (closer to kickoff, still pre-kickoff by the gate);
+ *   4. lexical contributorId@contributorVersion, then snapshottedAt, as a
+ *      final deterministic tie-break.
+ */
+export const CLUB_SEASON_DEDUPE_RULE_ID = "one-per-fixture-v1" as const;
+
+const CHECKPOINT_REASON_RANK: Record<ClubSeasonSnapshotFixture["checkpointReason"], number> = {
+  scheduled_window: 2,
+  pre_kickoff_cached_fallback: 1,
+  legacy_transition: 0,
+};
+
+function numericVersion(version: string): number {
+  const value = Number(version);
+  return Number.isFinite(value) ? value : -1;
+}
+
+/** Positive when `a` should be kept over `b`. */
+export function compareClubSeasonRowPrecedence(
+  a: ClubSeasonSnapshotFixture, b: ClubSeasonSnapshotFixture
+): number {
+  const reason = CHECKPOINT_REASON_RANK[a.checkpointReason] - CHECKPOINT_REASON_RANK[b.checkpointReason];
+  if (reason !== 0) return reason;
+  const version = numericVersion(a.modelVersion) - numericVersion(b.modelVersion);
+  if (version !== 0) return version;
+  const forecastAt = (Date.parse(a.forecastAt) || 0) - (Date.parse(b.forecastAt) || 0);
+  if (forecastAt !== 0) return forecastAt;
+  const identity = `${a.contributorId}@${a.contributorVersion}`
+    .localeCompare(`${b.contributorId}@${b.contributorVersion}`);
+  if (identity !== 0) return identity;
+  return a.snapshottedAt.localeCompare(b.snapshottedAt);
+}
+
+/** Official rows only, one per competition+fixture, chosen by the precedence above. */
+export function selectOnePerFixture(fixtures: ClubSeasonSnapshotFixture[]): ClubSeasonSnapshotFixture[] {
+  const best = new Map<string, ClubSeasonSnapshotFixture>();
+  for (const fixture of fixtures) {
+    if (officialExclusionReason(fixture) !== null) continue;
+    const key = fixtureKey(fixture.competitionId, fixture.fixtureId);
+    const current = best.get(key);
+    if (!current || compareClubSeasonRowPrecedence(fixture, current) > 0) best.set(key, fixture);
+  }
+  return fixtures.filter((fixture) => best.get(fixtureKey(fixture.competitionId, fixture.fixtureId)) === fixture);
+}
+
 function computeArtifactMetrics(fixtures: ClubSeasonSnapshotFixture[]): EvaluationMetrics {
   return computeEvaluationMetrics(
-    fixtures
-      .filter((fixture) => officialExclusionReason(fixture) === null)
+    selectOnePerFixture(fixtures)
       .map(toEvaluationFixture)
       .filter((fixture): fixture is EvaluationFixture => fixture !== null)
   );
@@ -283,8 +342,8 @@ function computeArtifactMetrics(fixtures: ClubSeasonSnapshotFixture[]): Evaluati
 
 function computeSegments(fixtures: ClubSeasonSnapshotFixture[]): EvaluationSegment[] {
   const groups = new Map<string, ClubSeasonSnapshotFixture[]>();
-  for (const fixture of fixtures) {
-    if (!fixture.result || officialExclusionReason(fixture) !== null) continue;
+  for (const fixture of selectOnePerFixture(fixtures)) {
+    if (!fixture.result) continue;
     const sourceState = fixture.inputs.ratingSourceState;
     const key = [
       fixture.modelId,
@@ -319,6 +378,17 @@ function computeSegments(fixtures: ClubSeasonSnapshotFixture[]): EvaluationSegme
     .localeCompare([b.modelId, b.modelVersion, b.competitionId, b.ratingSourceState].join("|")));
 }
 
+function dedupeSummary(fixtures: ClubSeasonSnapshotFixture[]) {
+  const official = fixtures.filter((fixture) => officialExclusionReason(fixture) === null);
+  const kept = selectOnePerFixture(fixtures);
+  return {
+    ruleId: CLUB_SEASON_DEDUPE_RULE_ID,
+    officialRows: official.length,
+    scoredRows: kept.length,
+    collapsedDuplicates: official.length - kept.length,
+  };
+}
+
 function withComputedEvaluation(
   artifact: Omit<ClubSeasonEvaluationArtifact, "metrics" | "evaluation">
 ): ClubSeasonEvaluationArtifact {
@@ -337,6 +407,7 @@ function withComputedEvaluation(
     metrics: computeArtifactMetrics(artifact.fixtures),
     evaluation: {
       metricVersion: "multiclass-v1",
+      dedupe: dedupeSummary(artifact.fixtures),
       segments: computeSegments(artifact.fixtures),
       exclusions: {
         total: Object.values(exclusions).reduce((sum, count) => sum + count, 0),
