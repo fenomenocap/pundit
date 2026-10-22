@@ -10,6 +10,7 @@ builder = "RAILPACK"
 buildCommand = "corepack enable && pnpm --filter @sports-predict/api build"
 watchPatterns = [
   "/packages/api/**",
+  "/railway.toml",
   "/package.json",
   "/pnpm-lock.yaml",
   "/pnpm-workspace.yaml",

@@ -7,11 +7,16 @@ import test from "node:test";
 
 import {
   classifyRailwayStatus,
+  fetchRailwayPublicStatusReport,
   findSupersedingSuccessfulDeploy,
+  formatRailwayPublicStatusReport,
+  latestIncidentStatusFromRssDescription,
   latestStatusForContext,
   listMainDescendantsAfter,
   parseDescendantRevList,
+  parseOpenIncidentsFromRss,
   railwayDeployRequired,
+  railwayTimeoutHeadline,
   waitForRailwayDeploy,
 } from "./wait-for-railway-deploy.mjs";
 
@@ -215,6 +220,68 @@ test("listMainDescendantsAfter returns empty when rev-list fails", () => {
   assert.deepEqual(descendants, []);
 });
 
+test("railwayTimeoutHeadline distinguishes missing GitHub status from pending timeout", () => {
+  assert.match(
+    railwayTimeoutHeadline("abc123", null),
+    /Railway created no deployment for abc123/,
+  );
+  assert.match(
+    railwayTimeoutHeadline("abc123", { state: "pending" }),
+    /timed out waiting for Railway GitHub status success on abc123/,
+  );
+});
+
+test("parseOpenIncidentsFromRss keeps unresolved incidents only", () => {
+  const xml = `<?xml version="1.0"?><rss><channel>
+<item><title>Open outage</title><link>https://status.railway.com/incident/open</link>
+<description>Mar 1, 10:00:00 GMT+0 - Investigating - Still broken.</description></item>
+<item><title>Closed outage</title><link>https://status.railway.com/incident/closed</link>
+<description>Mar 1, 11:00:00 GMT+0 - Resolved - Fixed.</description></item>
+</channel></rss>`;
+  const open = parseOpenIncidentsFromRss(xml);
+  assert.equal(open.length, 1);
+  assert.equal(open[0].title, "Open outage");
+  assert.equal(open[0].latestStatus, "investigating");
+  assert.equal(latestIncidentStatusFromRssDescription("Mar 1, 11:00:00 GMT+0 - Resolved - ok"), "resolved");
+});
+
+test("formatRailwayPublicStatusReport lists page status and open incidents", () => {
+  const lines = formatRailwayPublicStatusReport({
+    pageStatus: "HASISSUES",
+    pageUrl: "https://status.railway.com",
+    openIncidents: [{ title: "Build delays", link: "https://status.railway.com/incident/x", latestStatus: "monitoring" }],
+    degradedComponents: [{ name: "Builds", status: "DEGRADEDPERFORMANCE" }],
+    fetchErrors: [],
+  });
+  assert.ok(lines.some((line) => line.includes("Railway public status: HASISSUES")));
+  assert.ok(lines.some((line) => line.includes("Railway open incident: Build delays")));
+  assert.ok(lines.some((line) => line.includes("Railway degraded component: Builds")));
+});
+
+test("fetchRailwayPublicStatusReport uses injected fetch only", async () => {
+  const urls = [];
+  const report = await fetchRailwayPublicStatusReport({
+    fetchImpl: async (url) => {
+      urls.push(url);
+      if (url.includes("summary.json")) {
+        return { ok: true, async json() { return { page: { status: "UP", url: "https://status.railway.com" } }; } };
+      }
+      if (url.includes("components.json")) {
+        return { ok: true, async json() { return { components: [{ name: "API", status: "OPERATIONAL", children: [] }] }; } };
+      }
+      return {
+        ok: true,
+        async text() {
+          return `<rss><channel><item><title>Done</title><description>GMT+0 - Resolved - ok</description></item></channel></rss>`;
+        },
+      };
+    },
+  });
+  assert.equal(report.pageStatus, "UP");
+  assert.deepEqual(report.openIncidents, []);
+  assert.equal(urls.length, 3);
+});
+
 test("waitForRailwayDeploy times out when status never succeeds", async () => {
   let nowMs = 0;
   const result = await waitForRailwayDeploy({
@@ -239,4 +306,5 @@ test("waitForRailwayDeploy times out when status never succeeds", async () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.reason, "railway-status-timeout");
+  assert.equal(result.status?.state, "pending");
 });

@@ -37,6 +37,18 @@ export const API_BUILD_PATHS = [
   /^railway\.toml$/,
 ];
 
+/** railway.toml watchPatterns for the API service (must stay aligned with API_BUILD_PATHS). */
+export const API_WATCH_PATTERNS = [
+  "/packages/api/**",
+  "/railway.toml",
+  "/package.json",
+  "/pnpm-lock.yaml",
+  "/pnpm-workspace.yaml",
+  "/vendor/brace-patterns/**",
+  "/.node-version",
+  "/.nvmrc",
+];
+
 export const BUILD_TARGETS = {
   api: API_BUILD_PATHS,
   web: WEB_BUILD_PATHS,

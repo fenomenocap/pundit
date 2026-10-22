@@ -15,6 +15,9 @@ const DEFAULT_CONTEXT = "pundit - @pundit/api";
 const DEFAULT_TIMEOUT_SECONDS = 900;
 const DEFAULT_INTERVAL_SECONDS = 15;
 const DEFAULT_MAIN_REF = "origin/main";
+const RAILWAY_INSTATUS_SUMMARY_URL = "https://railway.instatus.com/api/v2/summary.json";
+const RAILWAY_INSTATUS_COMPONENTS_URL = "https://railway.instatus.com/api/v2/components.json";
+const RAILWAY_INSTATUS_HISTORY_RSS_URL = "https://railway.instatus.com/history.rss";
 
 function flag(argv, name) {
   const index = argv.indexOf(name);
@@ -56,6 +59,144 @@ export function classifyRailwayStatus(status) {
   if (state === "success") return "done";
   if (state === "failure" || state === "error") return "failed";
   return "waiting";
+}
+
+/**
+ * Human-readable timeout headline when Railway never posted a GitHub status.
+ */
+export function railwayTimeoutHeadline(sha, latestStatus) {
+  if (!latestStatus) {
+    return `FAIL: Railway created no deployment for ${sha}`;
+  }
+  return `FAIL: timed out waiting for Railway GitHub status success on ${sha}`;
+}
+
+/**
+ * First status keyword in an Instatus RSS incident description (newest update first).
+ */
+export function latestIncidentStatusFromRssDescription(description) {
+  const match = String(description ?? "").match(/GMT\+0\s*-\s*(\w+)\s*-/);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+/**
+ * Open incidents from Railway's public Instatus RSS feed (read-only, no secrets).
+ */
+export function parseOpenIncidentsFromRss(xml) {
+  const text = String(xml ?? "");
+  const items = [];
+  const itemRe = /<item>([\s\S]*?)<\/item>/gi;
+  let match;
+  while ((match = itemRe.exec(text)) !== null) {
+    const block = match[1];
+    const title = block.match(/<title>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? "";
+    const link = block.match(/<link>([\s\S]*?)<\/link>/i)?.[1]?.trim() ?? "";
+    const description =
+      block.match(/<description>([\s\S]*?)<\/description>/i)?.[1]?.trim() ?? "";
+    const latest = latestIncidentStatusFromRssDescription(description);
+    if (latest && latest !== "resolved") {
+      items.push({ title, link, latestStatus: latest });
+    }
+  }
+  return items;
+}
+
+function walkNonOperationalComponents(components, prefix = "") {
+  const rows = [];
+  if (!Array.isArray(components)) return rows;
+  for (const component of components) {
+    const name = String(component?.name ?? "").trim();
+    const path = prefix && name ? `${prefix} → ${name}` : name || prefix;
+    const status = String(component?.status ?? "").toUpperCase();
+    if (status && status !== "OPERATIONAL") {
+      rows.push({ name: path || name, status });
+    }
+    rows.push(...walkNonOperationalComponents(component?.children, path || name));
+  }
+  return rows;
+}
+
+/**
+ * Best-effort snapshot of Railway's public status page for CI diagnostics.
+ */
+export async function fetchRailwayPublicStatusReport(options = {}) {
+  const { fetchImpl = fetch } = options;
+  const report = {
+    pageStatus: null,
+    pageUrl: null,
+    degradedComponents: [],
+    openIncidents: [],
+    fetchErrors: [],
+  };
+
+  try {
+    const summaryResponse = await fetchImpl(RAILWAY_INSTATUS_SUMMARY_URL);
+    if (summaryResponse.ok) {
+      const summary = await summaryResponse.json();
+      report.pageStatus = summary?.page?.status ?? null;
+      report.pageUrl = summary?.page?.url ?? null;
+    } else {
+      report.fetchErrors.push(`summary HTTP ${summaryResponse.status}`);
+    }
+  } catch (error) {
+    report.fetchErrors.push(
+      `summary: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  try {
+    const componentsResponse = await fetchImpl(RAILWAY_INSTATUS_COMPONENTS_URL);
+    if (componentsResponse.ok) {
+      const payload = await componentsResponse.json();
+      report.degradedComponents = walkNonOperationalComponents(payload?.components);
+    } else {
+      report.fetchErrors.push(`components HTTP ${componentsResponse.status}`);
+    }
+  } catch (error) {
+    report.fetchErrors.push(
+      `components: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  try {
+    const rssResponse = await fetchImpl(RAILWAY_INSTATUS_HISTORY_RSS_URL);
+    if (rssResponse.ok) {
+      const xml = await rssResponse.text();
+      report.openIncidents = parseOpenIncidentsFromRss(xml);
+    } else {
+      report.fetchErrors.push(`history RSS HTTP ${rssResponse.status}`);
+    }
+  } catch (error) {
+    report.fetchErrors.push(
+      `history RSS: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  return report;
+}
+
+/** Lines suitable for stderr after a Railway deploy wait failure. */
+export function formatRailwayPublicStatusReport(report) {
+  const lines = [];
+  if (report?.pageStatus) {
+    lines.push(
+      `Railway public status: ${report.pageStatus}${report.pageUrl ? ` (${report.pageUrl})` : ""}`,
+    );
+  }
+  for (const incident of report?.openIncidents ?? []) {
+    const suffix = incident.link ? ` — ${incident.link}` : "";
+    lines.push(`Railway open incident: ${incident.title} [${incident.latestStatus}]${suffix}`);
+  }
+  if ((report?.openIncidents ?? []).length === 0 && report?.pageStatus) {
+    lines.push("Railway open incidents (RSS): none listed");
+  }
+  for (const component of report?.degradedComponents ?? []) {
+    lines.push(`Railway degraded component: ${component.name} (${component.status})`);
+  }
+  for (const error of report?.fetchErrors ?? []) {
+    lines.push(`Railway public status fetch note: ${error}`);
+  }
+  return lines;
 }
 
 /**
@@ -168,11 +309,13 @@ export async function waitForRailwayDeploy(options = {}) {
 
   const deadline = now() + timeoutSeconds * 1000;
   let attempt = 0;
+  let lastLatestStatus = null;
 
   while (now() <= deadline) {
     attempt += 1;
     const statuses = await fetchStatuses({ ...repo, sha, token, fetchImpl });
     const latest = latestStatusForContext(statuses, context);
+    lastLatestStatus = latest;
     const decision = classifyRailwayStatus(latest);
 
     if (decision === "done") {
@@ -217,6 +360,7 @@ export async function waitForRailwayDeploy(options = {}) {
     ok: false,
     attempts: attempt,
     reason: "railway-status-timeout",
+    status: lastLatestStatus,
   };
 }
 
@@ -249,11 +393,15 @@ async function main(argv = process.argv.slice(2)) {
   if (result.reason === "railway-status-failed") {
     const description = result.status?.description ?? "deploy failed";
     const url = result.status?.target_url ?? "";
-    console.error(`FAIL: Railway GitHub status failed for ${sha}: ${description}${url ? ` — ${url}` : ""}`);
+    console.error(`FAIL: Railway deploy failed for ${sha}: ${description}${url ? ` — ${url}` : ""}`);
     process.exit(1);
   }
 
-  console.error(`FAIL: timed out waiting for Railway GitHub status success on ${sha}`);
+  const publicStatus = await fetchRailwayPublicStatusReport();
+  for (const line of formatRailwayPublicStatusReport(publicStatus)) {
+    console.error(line);
+  }
+  console.error(railwayTimeoutHeadline(sha, result.status));
   process.exit(1);
 }
 
