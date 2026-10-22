@@ -7,7 +7,7 @@ import {
 } from "./club-form";
 import { getCachedMatchesForCompetition } from "./football-data";
 import { DEFAULT_HOME_ADVANTAGE_ELO, eloToLambdas } from "./dixon-coles";
-import { getResolvedActiveScoreModel } from "./active-score-model";
+import { replayCarriedScoreModel } from "./active-score-model";
 import { EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN } from "./epl-goal-calibration-artifact";
 import {
   ELO_CHAMPION,
@@ -130,10 +130,11 @@ function exactForecastInputs(fixture: ModelFixture): [number, number, number] {
     && (inputs.goalCalibrationArtifactSha256 ?? null) === (calibration?.artifactSha256 ?? null)
     && (provenance.goalCalibrationArtifactSha256 ?? null) === (calibration?.artifactSha256 ?? null);
   if (!valid) throw new Error("Cached forecast inputs do not match fixture provenance");
-  const model = getResolvedActiveScoreModel({
+  // A row built under a since-retired reviewed pin replays against that pin at its own forecast time.
+  const model = replayCarriedScoreModel({
     competitionId: fixture.competitionId, home: fixture.home, away: fixture.away, kickoff: fixture.utcDate,
     homeStrength: inputs.homeStrength, awayStrength: inputs.awayStrength, homeAdvantageElo: inputs.homeAdvantageElo,
-  });
+  }, calibration?.artifactSha256, { forecastAt: provenance.forecastAt ? new Date(provenance.forecastAt) : undefined });
   if ((model.artifactSha256 ?? null) !== (calibration?.artifactSha256 ?? null)
     || (calibration && (calibration.artifactId !== model.artifactId || calibration.methodId !== model.methodId))) {
     throw new Error("Cached forecast calibration does not match the reviewed artifact");

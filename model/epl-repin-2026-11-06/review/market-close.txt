@@ -1,0 +1,4 @@
+n with close 580 of 600
+baseline 1.0062  T1.286 0.9957  close 0.9748
+baseline-close 0.0314 [0.0121, 0.0525]
+T-close 0.0209 [0.0058, 0.0360]

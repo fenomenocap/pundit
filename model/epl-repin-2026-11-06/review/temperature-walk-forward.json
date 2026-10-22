@@ -1,0 +1,41 @@
+{
+ "perSeason": [
+  {
+   "test": "2023-24",
+   "nTrain": 110,
+   "nTest": 341,
+   "learnedT": 1.07,
+   "deltaLearnedVsT1": -0.00126,
+   "deltaFixed1286VsT1": 0.00111
+  },
+  {
+   "test": "2024-25",
+   "nTrain": 451,
+   "nTest": 370,
+   "learnedT": 1.1,
+   "deltaLearnedVsT1": -0.00639,
+   "deltaFixed1286VsT1": -0.01117
+  },
+  {
+   "test": "2025-26",
+   "nTrain": 821,
+   "nTest": 230,
+   "learnedT": 1.21,
+   "deltaLearnedVsT1": -0.01425,
+   "deltaFixed1286VsT1": -0.01679
+  },
+  {
+   "test": "2026-27",
+   "nTrain": 1051,
+   "nTest": 50,
+   "learnedT": 1.27,
+   "deltaLearnedVsT1": -0.01471,
+   "deltaFixed1286VsT1": -0.01508
+  }
+ ],
+ "dev2024_26": {
+  "n": 600,
+  "deltaLearnedVsT1": -0.00941,
+  "deltaFixed1286VsT1": -0.01333
+ }
+}
