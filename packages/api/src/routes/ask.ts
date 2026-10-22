@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { formalClubNamesInText, shouldUseFormalClubNames } from "../lib/display-club-names";
 import rateLimit from "express-rate-limit";
 import { AppError } from "../middleware";
 import {
@@ -240,6 +241,9 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           voice
         ));
         result = ensureHeaderV2AskAnswerNonEmpty(trimmedQuestion, takeOverride, result);
+        if (typeof result.answer === "string" && shouldUseFormalClubNames(result.grounding)) {
+          result = { ...result, answer: formalClubNamesInText(result.answer) };
+        }
         logAskChatEngineTurn({
           effectiveEngine: result.engine,
           engineFromHeaderOverride: engineOverride !== null,
@@ -261,6 +265,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     // comment as a heartbeat while the connection would otherwise be quiet.
     let heartbeat: ReturnType<typeof setInterval> | null = null;
     let clientGone = false;
+    let formalNames = true;
     const stopHeartbeat = () => {
       if (heartbeat) clearInterval(heartbeat);
       heartbeat = null;
@@ -287,6 +292,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
               "X-Accel-Buffering": "no",
             });
             res.flushHeaders();
+            formalNames = shouldUseFormalClubNames(initialGrounding);
             sseSend(res, "grounding", { grounding: initialGrounding });
             heartbeat = setInterval(() => {
               if (!res.writableEnded) res.write(": ping\n\n");
@@ -298,7 +304,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           // remains authoritative and clients replace message content with it.
           onDelta: (text) => {
             if (clientGone || res.writableEnded) return;
-            sseSend(res, "delta", { text });
+            sseSend(res, "delta", { text: formalNames ? formalClubNamesInText(text) : text });
           },
           shouldContinue: () => !clientGone && !res.writableEnded,
           signal: requestAbort.signal,
@@ -313,7 +319,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
           engineFromHeaderOverride: engineOverride !== null,
         });
         sseSend(res, "done", {
-          answer,
+          answer: typeof answer === "string" && shouldUseFormalClubNames(grounding) ? formalClubNamesInText(answer) : answer,
           grounding,
           verification,
           presentation,
