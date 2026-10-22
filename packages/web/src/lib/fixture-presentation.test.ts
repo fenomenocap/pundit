@@ -340,6 +340,8 @@ describe("calibrated goal distribution delivery", () => {
   });
 
   it("renders calibrated and baseline disclosures from the actual method", () => {
+    assert.equal(CALIBRATED_GOALS_SENTENCE,
+      "I estimate goals from historical scoring and team strength; these are forecasts, not guarantees.");
     assert.equal(goalForecastDisclosure(calibratedRow().goalCalibration), CALIBRATED_GOALS_SENTENCE);
     assert.equal(goalForecastDisclosure(), SHARED_TOTAL_XG_SENTENCE);
     const invalid = { ...calibratedRow().goalCalibration!, artifactId: "wrong" };

@@ -12,20 +12,13 @@ import {
   type Fixture,
   type MarketKey,
 } from "./data/fixtures";
-import { PLAYERS_BY_ADP, getPlayer, type Pos } from "./data/players";
-import { samplePaperScore } from "./grid";
+import { projectedScore } from "./grid";
 import type { AskGrounding, AskPresentation } from "@/lib/api";
 import { VAULTS, type VaultId } from "./data/vaults";
 import { reconcileHydratedPaperState, resolveHydratedSelection } from "./slate-selection";
 import { applyScores } from "./paper-settlement";
 
 const STARTING = 10_000;
-const USER_SEAT = 3;
-const TEAMS_N = 8;
-const ROUNDS = 11;
-const CPU_MS = 700;
-const USER_MS = 20_000;
-
 export type SlipLeg = {
   fixtureId: string;
   market: MarketKey;
@@ -42,12 +35,6 @@ export type Ticket = {
   placedAt: number;
 };
 
-export type DraftTeam = {
-  id: number;
-  name: string;
-  picks: string[];
-};
-
 export type ChatRole = "user" | "pundit";
 
 export type ChatMsg = {
@@ -61,55 +48,6 @@ export type ChatMsg = {
   at: number;
 };
 
-const CPU_NAMES = [
-  "False Nine",
-  "High Line",
-  "Gegenpress",
-  "You",
-  "Low Block",
-  "Channel Run",
-  "Rest Defence",
-  "Second Ball",
-];
-
-function snakeSeat(pickIndex: number) {
-  const round = Math.floor(pickIndex / TEAMS_N);
-  const pos = pickIndex % TEAMS_N;
-  return round % 2 === 0 ? pos : TEAMS_N - 1 - pos;
-}
-
-function needs(picks: string[]): Record<Pos, number> {
-  const counts: Record<Pos, number> = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
-  for (const id of picks) {
-    const p = getPlayer(id);
-    if (p) counts[p.pos] += 1;
-  }
-  return counts;
-}
-
-function legal(picks: string[], pos: Pos) {
-  const c = needs(picks);
-  const remaining = ROUNDS - picks.length;
-  const next = { ...c, [pos]: c[pos] + 1 };
-  if (next.GK > 1) return false;
-  const minLeft =
-    (next.GK < 1 ? 1 : 0) +
-    Math.max(0, 3 - next.DEF) +
-    Math.max(0, 3 - next.MID) +
-    Math.max(0, 1 - next.FWD);
-  return minLeft <= remaining - 1;
-}
-
-function cpuPick(taken: Set<string>, myPicks: string[]) {
-  for (const p of PLAYERS_BY_ADP) {
-    if (taken.has(p.id)) continue;
-    if (legal(myPicks, p.pos)) return p.id;
-  }
-  return PLAYERS_BY_ADP.find((p) => !taken.has(p.id))?.id ?? PLAYERS_BY_ADP[0].id;
-}
-
-export type DraftPhase = "idle" | "live" | "done";
-
 type State = {
   cash: number;
   tickets: Ticket[];
@@ -118,10 +56,6 @@ type State = {
   selectedId: string;
   scores: Record<string, [number, number]>;
   vaultAlloc: Record<VaultId, number>;
-  draftPhase: DraftPhase;
-  draftPick: number;
-  draftTeams: DraftTeam[];
-  draftTimerEnds: number;
   messages: ChatMsg[];
   queuedAsk: string | null;
   slateEpoch: number;
@@ -137,10 +71,6 @@ type State = {
   resetBook: () => void;
   allocate: (id: VaultId, amount: number) => string | null;
   withdrawVault: (id: VaultId) => void;
-  startDraft: () => void;
-  makePick: (playerId: string) => void;
-  resetDraft: () => void;
-  tickDraft: () => void;
   pushChat: (msg: ChatMsg) => void;
   removeChat: (id: string) => void;
   resetChat: () => void;
@@ -153,6 +83,14 @@ const ftScores = Object.fromEntries(
   FIXTURES.filter((f) => f.status === "ft" && f.score).map((f) => [f.id, f.score as [number, number]]),
 );
 
+if (typeof window !== "undefined") {
+  try {
+    window.localStorage.removeItem("pundit-desk-v2");
+  } catch {
+    // Storage can be unavailable (private mode); nothing to clear then.
+  }
+}
+
 export const useDesk = create<State>()(
   persist(
     (set, get) => ({
@@ -163,10 +101,6 @@ export const useDesk = create<State>()(
       selectedId: "",
       scores: ftScores,
       vaultAlloc: { alpha: 0, neutral: 0, yield: 0 },
-      draftPhase: "idle",
-      draftPick: 0,
-      draftTeams: CPU_NAMES.map((name, id) => ({ id, name, picks: [] as string[] })),
-      draftTimerEnds: 0,
       messages: [],
       queuedAsk: null,
       slateEpoch: 0,
@@ -219,7 +153,9 @@ export const useDesk = create<State>()(
         const f = getFixture(id);
         if (!f || f.status === "ft" || !f.xg) return get().scores[id] ?? null;
         if (get().scores[id]) return get().scores[id];
-        const score: [number, number] = samplePaperScore(f);
+        const projection = projectedScore(f);
+        if (!projection) return null;
+        const score: [number, number] = [projection.score.home, projection.score.away];
         set((s) => {
           const scores = { ...s.scores, [id]: score };
           const applied = applyScores(s.tickets, scores, s.cash);
@@ -232,7 +168,8 @@ export const useDesk = create<State>()(
         set((st) => {
           const scores = { ...st.scores };
           for (const f of OPEN_FIXTURES) {
-            if (!scores[f.id] && f.xg) scores[f.id] = samplePaperScore(f);
+            const projection = !scores[f.id] && f.xg ? projectedScore(f) : null;
+            if (projection) scores[f.id] = [projection.score.home, projection.score.away];
           }
           const applied = applyScores(st.tickets, scores, st.cash);
           return { scores, tickets: applied.tickets, cash: applied.cash };
@@ -267,57 +204,6 @@ export const useDesk = create<State>()(
           cash: s.cash + s.vaultAlloc[id],
           vaultAlloc: { ...s.vaultAlloc, [id]: 0 },
         })),
-
-      startDraft: () =>
-        set({
-          draftPhase: "live",
-          draftPick: 0,
-          draftTeams: CPU_NAMES.map((name, id) => ({ id, name, picks: [] })),
-          draftTimerEnds: Date.now() + (snakeSeat(0) === USER_SEAT ? USER_MS : CPU_MS),
-        }),
-
-      makePick: (playerId) => {
-        const s = get();
-        if (s.draftPhase !== "live") return;
-        const total = TEAMS_N * ROUNDS;
-        if (s.draftPick >= total) return;
-        const seat = snakeSeat(s.draftPick);
-        const taken = new Set(s.draftTeams.flatMap((t) => t.picks));
-        if (taken.has(playerId)) return;
-        const team = s.draftTeams[seat];
-        const player = getPlayer(playerId);
-        if (!player || !legal(team.picks, player.pos)) return;
-        const teams = s.draftTeams.map((t) =>
-          t.id === seat ? { ...t, picks: [...t.picks, playerId] } : t,
-        );
-        const next = s.draftPick + 1;
-        const done = next >= total;
-        set({
-          draftTeams: teams,
-          draftPick: next,
-          draftPhase: done ? "done" : "live",
-          draftTimerEnds: done
-            ? 0
-            : Date.now() + (snakeSeat(next) === USER_SEAT ? USER_MS : CPU_MS),
-        });
-      },
-
-      resetDraft: () =>
-        set({
-          draftPhase: "idle",
-          draftPick: 0,
-          draftTeams: CPU_NAMES.map((name, id) => ({ id, name, picks: [] })),
-          draftTimerEnds: 0,
-        }),
-
-      tickDraft: () => {
-        const s = get();
-        if (s.draftPhase !== "live") return;
-        if (Date.now() < s.draftTimerEnds) return;
-        const seat = snakeSeat(s.draftPick);
-        const taken = new Set(s.draftTeams.flatMap((t) => t.picks));
-        get().makePick(cpuPick(taken, s.draftTeams[seat].picks));
-      },
 
       pushChat: (msg) =>
         set((s) => ({
@@ -380,39 +266,19 @@ export const useDesk = create<State>()(
       },
     }),
     {
-      name: "pundit-desk-v2",
+      // v3: v2 persisted unseeded random "paper" scores for upcoming fixtures.
+      // A new key drops them; results re-hydrate from the live slate.
+      name: "pundit-desk-v3",
       partialize: (s) => ({
         cash: s.cash,
         tickets: s.tickets,
         selectedId: s.selectedId,
-        scores: s.scores,
         vaultAlloc: s.vaultAlloc,
         messages: s.messages,
-        draftPhase: s.draftPhase,
-        draftPick: s.draftPick,
-        draftTeams: s.draftTeams,
-        draftTimerEnds: s.draftTimerEnds,
       }),
     },
   ),
 );
-
-export { USER_SEAT, TEAMS_N, ROUNDS, snakeSeat, needs, legal };
-
-export function rosterScore(picks: string[]) {
-  const players = picks.map((id) => getPlayer(id)).filter(Boolean);
-  const cats = [0, 0, 0, 0, 0, 0];
-  for (const p of players) p!.heat.forEach((h, i) => (cats[i] += h));
-  const avg = cats.map((c) => (players.length ? c / players.length : 0));
-  const mean = avg.reduce((a, b) => a + b, 0) / 6;
-  const value = players.reduce((a, p, i) => {
-    const pickNo = i + 1;
-    return a + (p!.adp - pickNo * (88 / 11));
-  }, 0);
-  const grade =
-    mean >= 70 ? "ALL-PRO" : mean >= 60 ? "STARTER" : mean >= 50 ? "ROTATION" : "DEVELOPMENT";
-  return { avg, mean, value, grade };
-}
 
 export function bestEdge(fixtureId: string) {
   const f = getFixture(fixtureId);

@@ -209,12 +209,11 @@ function briefFor(row: LiveModelRow, home: TeamId, away: TeamId, lean: MarketKey
   const parts = [
     ratingComparison(TEAMS[home].short, TEAMS[away].short, row.homeElo, row.awayElo),
     `Form ${formH} / ${formA}.`,
-    `xG ${xg[0].toFixed(2)}–${xg[1].toFixed(2)}.`,
+    `Expected goals ${xg[0].toFixed(2)}–${xg[1].toFixed(2)}.`,
     `1X2 ${(row.pHome * 100).toFixed(0)}/${(row.pDraw * 100).toFixed(0)}/${(row.pAway * 100).toFixed(0)}.`,
-    `BTTS ${(row.pBttsYes * 100).toFixed(0)} · O2.5 ${(over * 100).toFixed(0)} (desk).`,
-    top ? `Modal ${top.score} (${(top.probability * 100).toFixed(0)}%).` : "",
-    `Lean ${lean}.`,
-    menH || menA ? `Recent scorers: ${menH} · ${menA}.` : "Recent scorers: none in ESPN results yet.",
+    `BTTS ${(row.pBttsYes * 100).toFixed(0)}% · Over 2.5 ${(over * 100).toFixed(0)}%.`,
+    top ? `Likeliest single score ${top.score} (${(top.probability * 100).toFixed(0)}%).` : "",
+    menH || menA ? `Recent scorers: ${menH} · ${menA}.` : "",
   ];
   return parts.filter(Boolean).join(" ");
 }

@@ -52,7 +52,7 @@ describe("pickDeskMarketQuote", () => {
       pAway: 0.16,
     }], now)!;
     const line = formatDeskMarketLine(quote, "home", 0.59);
-    assert.match(line!, /^Mkt 1\.56 · Polymarket · as of \d{2}:\d{2}$/);
+    assert.match(line!, /^Mkt 1\.56 · as of \d{2}:\d{2}$/);
     assert.doesNotMatch(line!, /pp/);
   });
 });

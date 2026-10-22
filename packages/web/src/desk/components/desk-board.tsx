@@ -12,6 +12,7 @@ import {
 } from "@/lib/fixture-presentation";
 import { fmtPct } from "@/desk/lib/format";
 import { ProbBar } from "@/desk/components/prob-bar";
+import { SourcesToggle } from "@/components/sources-toggle";
 
 function Stat({ k, v }: { k: string; v: string }) {
   return (
@@ -20,6 +21,11 @@ function Stat({ k, v }: { k: string; v: string }) {
       <dd className="mt-0.5 tabular-nums text-sm text-fg">{v}</dd>
     </div>
   );
+}
+
+function average(values: Array<number | null>): number | null {
+  const present = values.filter((value): value is number => value !== null);
+  return present.length ? present.reduce((sum, value) => sum + value, 0) / present.length : null;
 }
 
 export function DeskUnpricedNotice() {
@@ -57,8 +63,7 @@ export function DeskBoard({ grounding }: { grounding?: AskGrounding }) {
         <Stat k="Draw" v={`${fmtPct(oneXTwo.pDraw)} · ${formatFairOdds(oneXTwo.fairDraw)}`} />
         <Stat k={oneXTwo.away} v={`${fmtPct(oneXTwo.pAway)} · ${formatFairOdds(oneXTwo.fairAway)}`} />
       </dl>
-      <p data-testid="desk-totals-honesty" className="mt-3 text-2xs leading-5 text-quiet">{board.totalsHonesty}</p>
-      <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
+      <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
         <Stat k="Over 2.5" v={fmtPct(board.over25, 1)} />
         <Stat k="Under 2.5" v={fmtPct(board.under25, 1)} />
         <Stat k="BTTS Yes" v={fmtPct(board.bttsYes, 1)} />
@@ -82,21 +87,33 @@ export function DeskBoard({ grounding }: { grounding?: AskGrounding }) {
         {board.markets.length === 0 ? (
           <p className="text-2xs text-quiet">{NO_COMPARISON_MARKET}</p>
         ) : (
+          <p className="flex items-baseline justify-between gap-3 text-2xs">
+            <span className="text-quiet">
+              Market average{board.markets.length > 1 ? ` (${board.markets.length} sources)` : ""}
+            </span>
+            <span className="tabular-nums">
+              {formatPercent(average(board.markets.map((row) => row.pHome)))} /{" "}
+              {formatPercent(average(board.markets.map((row) => row.pDraw)))} /{" "}
+              {formatPercent(average(board.markets.map((row) => row.pAway)))}
+            </span>
+          </p>
+        )}
+      </div>
+      <SourcesToggle className="mt-3" testId="desk-board-sources">
+        <p data-testid="desk-totals-honesty">{board.totalsHonesty}</p>
+        {board.markets.length > 0 ? (
           <ul className="space-y-1">
             {board.markets.map((row) => (
-              <li
-                key={row.id}
-                className="flex items-baseline justify-between gap-3 text-2xs"
-              >
-                <span className="text-quiet">{row.label}</span>
+              <li key={row.id} className="flex items-baseline justify-between gap-3">
+                <span>{row.label}</span>
                 <span className="tabular-nums">
                   {formatPercent(row.pHome)} / {formatPercent(row.pDraw)} / {formatPercent(row.pAway)}
                 </span>
               </li>
             ))}
           </ul>
-        )}
-      </div>
+        ) : null}
+      </SourcesToggle>
     </div>
   );
 }

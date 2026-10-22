@@ -574,8 +574,9 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
   );
   progress.phase = "club-season-evaluation";
   await page.goto(`${webUrl}/evaluation/club-season`, { waitUntil: "domcontentloaded" });
-  const clubHeading = await page.getByRole("heading", { name: "Club season calibration" }).isVisible();
-  const clubRolling = await page.getByText("Rolling snapshots", { exact: true }).isVisible();
+  // The club-season page is now the "Track record" (rolling pre-kickoff snapshots, one per match).
+  const clubHeading = await page.getByRole("heading", { name: "Track record", exact: true }).isVisible();
+  const clubRolling = await page.getByText("Track record · club season", { exact: true }).isVisible();
   await page.getByText(/^Updated /).first().waitFor({ timeout: 15_000 }).catch(() => null);
   const clubUpdated = await page.getByText(/^Updated /).first().isVisible().catch(() => false);
   checks["evaluation-calibration-presentation"] = recordViewport(
@@ -634,7 +635,9 @@ async function runViewportChecks(page, webUrl, viewport, pacer, report, canonica
     };
     progress.collected.fixtures = fixtureSurface;
     progress.phase = "model-parity";
-    await page.goto(`${webUrl}/model`, { waitUntil: "domcontentloaded" });
+    // /model was folded into /fixtures; the forecast block on each fixture row
+    // carries the model-fixture-row identity and provenance attributes.
+    await page.goto(`${webUrl}/fixtures`, { waitUntil: "domcontentloaded" });
     const modelRow = fixtureLocator(page, "model-fixture-row", canonical.fixtureId);
     await modelRow.waitFor({ timeout: 15_000 });
     const [modelFixtureId, modelVersion, forecastAt] = await Promise.all([

@@ -32,6 +32,13 @@ const nextConfig = {
       || process.env.BUILD_SHA
       || "unknown",
   },
+  async redirects() {
+    return [
+      // /model was folded into the track record's methodology section.
+      { source: "/model", destination: "/evaluation/club-season#methodology", permanent: true },
+      { source: "/evaluation", destination: "/evaluation/club-season", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;
