@@ -3,23 +3,24 @@ import type { ModelFixtureResponse } from "../src/lib/api";
 import type { ModelRowLambdas } from "../src/desk/lib/grid";
 
 test.describe("QA regressions", () => {
-  test("model empty state distinguishes unpriced fixtures from an empty schedule", async ({ page }, testInfo) => {
+  test("fixtures keep the schedule when no fixture is priced", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
       (window as Window & { __PUNDIT_E2E_FIXTURE_STATE__?: string }).__PUNDIT_E2E_FIXTURE_STATE__ = "unpriced";
     });
-    await page.goto("/model");
-    await expect(page.getByText("No priced fixtures are available for this competition right now.", { exact: false })).toBeVisible();
-    const competition = page.getByRole("button", { name: "UEFA Champions League Qualifiers", exact: true });
-    await competition.click();
-    await expect(competition).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByText("No priced fixtures are available for this competition right now. Try a table question in chat or browse fixtures and standings.", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("model-fixture-row")).toHaveCount(0);
-    await expect(page.getByText(/No upcoming fixtures|next (14|21) days/)).toHaveCount(0);
-    await page.screenshot({ path: testInfo.outputPath("model-unpriced-empty.png") });
-    await page.getByRole("link", { name: "View fixtures & standings", exact: true }).click();
+    await page.goto("/fixtures");
     await expect(page.getByRole("heading", { name: "Fixtures", exact: true })).toBeVisible();
-    await expect(page.getByText("Scheduled", { exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId("model-fixture-row")).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("fixtures-unpriced.png") });
+  });
+
+  test("/model permanently redirects to the track record methodology", async ({ page, request }) => {
+    const response = await request.get("/model", { maxRedirects: 0 });
+    expect(response.status()).toBe(308);
+    expect(response.headers().location).toContain("/evaluation/club-season#methodology");
+    await page.goto("/model");
+    await expect(page).toHaveURL(/\/evaluation\/club-season#methodology$/);
+    await expect(page.getByRole("heading", { name: "How the forecasts work" })).toBeVisible();
   });
 
   for (const missingSnapshot of [true, false]) {
@@ -49,45 +50,23 @@ test.describe("QA regressions", () => {
   }
 
   for (const width of [320, 390, 768, 1440]) {
-    test(`expanded model details remain readable without horizontal panning at ${width}px`, async ({ page }, testInfo) => {
+    test(`fixture goals and scorelines stay readable without horizontal panning at ${width}px`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 1000 });
-      await page.goto("/model");
-      const row = page.getByTestId("model-fixture-row").first();
-      await row.getByRole("button", { name: "Expand details" }).click();
-      const details = row.locator("xpath=following-sibling::tr[1]");
-      await expect(details.getByTestId("totals-honesty")).toBeVisible();
+      await page.goto("/fixtures");
+      const goals = page.getByTestId("fixture-goals").first();
+      await goals.locator("summary").first().click();
       for (const label of ["Over 2.5", "Under 2.5", "BTTS Yes", "BTTS No", "Likely scorelines"]) {
-        await expect(details.getByText(label, { exact: true })).toBeVisible();
+        await expect(goals.getByText(label, { exact: true })).toBeVisible();
       }
-      // Body overflow alone misses clipping inside the horizontally scrollable table.
-      // Inspect every rendered text line, including the far-right probabilities.
-      const geometry = await details.evaluate(element => {
-        const container = element.closest("table")!.parentElement!;
-        const clip = container.getBoundingClientRect();
-        const text = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-        const clipped: string[] = [];
-        let probabilityCount = 0;
-        while (text.nextNode()) {
-          const node = text.currentNode;
-          const value = node.textContent?.trim();
-          if (!value) continue;
-          if (/^\d+(?:\.\d+)?%$/.test(value)) probabilityCount += 1;
-          const range = document.createRange();
-          range.selectNodeContents(node);
-          for (const rect of Array.from(range.getClientRects())) {
-            if (rect.left < Math.max(0, clip.left) - 1 || rect.right > Math.min(innerWidth, clip.right) + 1) clipped.push(value);
-          }
-        }
-        return { clipped, probabilityCount, scrollLeft: container.scrollLeft };
-      });
-      expect(geometry.scrollLeft).toBe(0);
-      expect(geometry.probabilityCount).toBeGreaterThanOrEqual(7);
-      expect(geometry.clipped).toEqual([]);
-      await page.screenshot({ path: testInfo.outputPath(`expanded-model-${width}.png`), fullPage: true });
+      await expect(goals.getByTestId("totals-honesty")).toBeHidden();
+      await goals.getByTestId("fixture-goals-sources").locator("summary").click();
+      await expect(goals.getByTestId("totals-honesty")).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`fixture-goals-${width}.png`), fullPage: true });
     });
   }
 
-  test("calibrated EPL goals use server means, disclosure and joint paper scores", async ({ page }) => {
+  test("calibrated EPL goals use server means, disclosure and a deterministic projected score", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.addInitScript(() => { Math.random = () => 0.95; });
     const row = precisionBoundaryRow();
@@ -101,7 +80,7 @@ test.describe("QA regressions", () => {
     row.pHome = 0.5; row.pDraw = 0.3; row.pAway = 0.2;
     row.pOver2_5 = 0.35; row.pBttsYes = 0.45;
     await routePrecisionDeskSlate(page, row);
-    const disclosure = "I estimate goals from historical scoring patterns and team ratings; these are forecasts, not guarantees.";
+    const disclosure = "I estimate goals from historical scoring and team strength; these are forecasts, not guarantees.";
     await page.route("**/api/ask", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
       answer: `Over 2.5 is 35.0%; under 2.5 is 65.0%. ${disclosure}`,
       grounding: { ...deskMatchGrounding("espn:eng.1:901", "Arsenal", "Chelsea"), goalCalibration: row.goalCalibration,
@@ -111,17 +90,17 @@ test.describe("QA regressions", () => {
     await page.goto("/");
     await page.locator('li [data-testid="desk-slate-fixture"][data-fixture-id="espn:eng.1:901"]').click();
     await expect(page.locator("aside").getByText("1.15–0.80", { exact: true })).toBeVisible();
+    // The totals caveat sits behind the collapsed Sources toggle, never inline.
+    await expect(page.locator("aside").getByText(disclosure, { exact: true })).toBeHidden();
+    await page.locator("aside").getByTestId("sources-toggle").locator("summary").click();
     await expect(page.locator("aside").getByText(disclosure, { exact: true })).toBeVisible();
-    await expect(page.locator("aside")).toContainText("Paper scores sample the joint forecast distribution.");
-    await page.locator("aside").getByRole("button", { name: "Project score", exact: true }).click();
-    await expect(page.locator("aside").getByText("2–2", { exact: true })).toBeVisible();
+    // Math.random is pinned to 0.95: the projected score must not be a draw from it.
+    await expect(page.getByTestId("desk-projected-score")).toBeVisible();
+    await expect(page.locator("aside").getByText("2–2", { exact: true })).toHaveCount(0);
     const input = page.getByRole("textbox", { name: "Ask a question" });
     await input.fill("What about over 2.5?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByTestId("desk-totals-honesty")).toHaveText(disclosure);
-    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
-    await expect(page.getByText("xG 1.15–0.80", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Select Arsenal vs Chelsea", exact: true })).toBeVisible();
   });
 
   for (const exact of [true, false]) {
@@ -139,12 +118,10 @@ test.describe("QA regressions", () => {
       await expect(page.locator("aside")).toContainText("Arsenal rate stronger.");
       await expect(page.locator("aside")).not.toContainText("(1901)");
       await expect(page.locator("aside")).not.toContainText("(1800)");
-      await expect(page.locator("aside")).toContainText(`xG ${xg}.`);
+      await expect(page.locator("aside")).toContainText(`Expected goals ${xg}.`);
       await expect(page.locator("aside")).toContainText("1X2 50/25/25.");
-      await expect(page.locator("aside")).toContainText("BTTS 50 · O2.5 52");
-      await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
-      await expect(page.getByText(`xG ${xg}`, { exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Select Arsenal vs Chelsea", exact: true })).toBeVisible();
+      await expect(page.locator("aside")).toContainText("BTTS 50% · Over 2.5 52%");
+      await expect(page.locator("aside")).not.toContainText("(desk)");
     });
   }
 
@@ -159,8 +136,7 @@ test.describe("QA regressions", () => {
     await page.locator('li [data-testid="desk-slate-fixture"][data-fixture-id="espn:eng.1:901"]').click();
     await expect(page.locator("aside").getByText("1.73–0.97", { exact: true })).toBeVisible();
     await expect(page.locator("aside")).toContainText("1X2 50/25/25.");
-    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
-    await expect(page.getByText("xG 1.73–0.97", { exact: true })).toBeVisible();
+    await expect(page.locator("aside")).toContainText("Expected goals 1.73–0.97.");
   });
 
   const corruptedInputs: Array<[string, (row: ReturnType<typeof precisionBoundaryRow>) => void]> = [
@@ -420,7 +396,8 @@ test.describe("QA regressions", () => {
     }));
     await page.goto("/");
     const quote = page.getByTestId("desk-market-quote").first();
-    await expect(quote).toContainText("Polymarket");
+    // Source names stay behind Sources toggles, never in visible prose.
+    await expect(quote).not.toContainText("Polymarket");
     await expect(quote).toContainText("as of");
     await expect(quote).toContainText("Mkt");
   });
@@ -509,7 +486,7 @@ test.describe("QA regressions", () => {
     await routeTwoFixtureDeskSlate(page);
     for (const width of [320, 820]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const path of ["/", "/board", "/draft", "/vault", "/fixtures", "/model", "/evaluation/club-season", "/evaluation/wc-2026"]) {
+      for (const path of ["/", "/board", "/draft", "/vault", "/fixtures", "/evaluation/club-season", "/evaluation/wc-2026"]) {
         await page.goto(path);
         await expect(page.getByRole("heading").first()).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${path} at ${width}px`).toBe(true);
@@ -521,34 +498,30 @@ test.describe("QA regressions", () => {
   for (const width of [390, 820, 1024, 1440]) {
     test(`all sections are reachable without header overflow at ${width}px`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto("/model");
-      await expect(page.getByRole("heading", { name: "Club season model" })).toBeVisible();
-      expect(await page.locator("header").evaluate((header) => header.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.goto("/fixtures");
+      const title = page.getByRole("heading", { name: "Fixtures", exact: true });
+      await expect(title).toBeVisible();
+      expect(await page.locator("header").first().evaluate((header) => header.scrollWidth <= window.innerWidth)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-      const note = page.getByText("Kickoffs shown in UK time (GMT/BST).", { exact: true });
-      const noteBox = await note.boundingBox();
-      const titleBox = await page.getByRole("heading", { name: "Club season model" }).boundingBox();
+      const noteBox = await page.getByText("Kickoffs shown in UK time (GMT/BST).", { exact: true }).boundingBox();
+      const titleBox = await title.boundingBox();
       expect(noteBox!.y).toBeGreaterThan(titleBox!.y + titleBox!.height);
-      expect(await note.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        const visible = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-        return visible === element || element.contains(visible);
-      })).toBe(true);
-      await expect(page.getByRole("img", { name: /Arsenal.*Draw/ }).first()).toHaveText("");
-      const navigation = page.getByRole("navigation", { name: width < 1280 ? "Mobile" : "Main navigation", exact: true });
-      if (width < 1280) {
+      const mobile = width < 1280;
+      const navigation = page.getByRole("navigation", { name: mobile ? "Mobile" : "Main navigation", exact: true });
+      const labels = mobile ? ["Desk", "Fixtures", "Slip", "FPL", "Record"] : ["Desk", "Fixtures", "Bet slip", "FPL", "Track record"];
+      for (const name of labels) {
+        await expect(navigation.getByRole("link", { name, exact: true })).toBeVisible();
+      }
+      if (mobile) {
         const more = navigation.getByRole("button", { name: "More", exact: true });
         await more.click();
         await expect(more).toHaveAttribute("aria-expanded", "true");
+        await expect(navigation.getByRole("link", { name: "How it works", exact: true })).toBeVisible();
+        await more.click();
       }
-      for (const name of ["Fixtures", "Model", "Ledger"]) {
-        await expect(navigation.getByRole("link", { name, exact: true })).toBeVisible();
-      }
-      if (width < 1280) await expect(navigation.getByRole("link", { name: "How it works", exact: true })).toBeVisible();
-      await page.screenshot({ path: testInfo.outputPath(`model-${width}.png`), fullPage: true });
-      await navigation.getByRole("link", { name: "Ledger", exact: true }).click();
+      await page.screenshot({ path: testInfo.outputPath(`fixtures-${width}.png`), fullPage: true });
+      await navigation.getByRole("link", { name: mobile ? "Record" : "Track record", exact: true }).click();
       await expect(page).toHaveURL(/evaluation\/club-season/);
-      if (width < 1280) await expect(navigation.getByRole("button", { name: "More" })).toHaveAttribute("aria-expanded", "false");
     });
   }
 
@@ -600,7 +573,7 @@ test.describe("QA regressions", () => {
       test("kickoff labels agree across fixture, model and desk views", async ({ page }) => {
         await page.clock.setFixedTime(new Date("2026-10-04T11:30:00Z"));
         const fixtureId = "espn:eng.1:1";
-        for (const [path, testId] of [["/fixtures", "fixture-row"], ["/model", "model-fixture-row"]]) {
+        for (const [path, testId] of [["/fixtures", "fixture-row"]]) {
           await page.goto(path);
           await expect(page.getByText("Kickoffs shown in UK time (GMT/BST).", { exact: true })).toBeVisible();
           const row = page.locator(`[data-testid="${testId}"][data-fixture-id="${fixtureId}"]`);
@@ -837,6 +810,7 @@ test.describe("smoke", () => {
     await expect(rows.nth(2)).toHaveAttribute("data-fixture-id", "espn:uefa.champions_qual:2");
     await expect(rows.nth(1).getByText("Forecast ready", { exact: true })).toBeVisible();
     await expect(rows.nth(1).getByText("My forecast", { exact: true })).toBeVisible();
+    await rows.nth(1).getByTestId("fixture-market-sources").locator("summary").click();
     await expect(rows.nth(1).getByText("Polymarket", { exact: false })).toBeVisible();
     await expect(rows.nth(1).getByText("68.0%", { exact: true })).toBeVisible();
     const forecastTable = rows.nth(1).getByRole("table", { name: /forecast and market probabilities/i });
@@ -847,46 +821,26 @@ test.describe("smoke", () => {
     await expect(rows.nth(2).getByText("Required forecast input missing", { exact: true })).toBeVisible();
   });
 
-  test("model", async ({ page }) => {
-    await page.goto("/model");
-    await expect(page.getByRole("heading", { name: "Club season model" })).toBeVisible();
-    const table = page.locator("table");
-    const emptyState = page.getByText("No priced fixtures are available for this competition right now.");
-    await expect(table.or(emptyState)).toBeVisible({ timeout: 15_000 });
-  });
-
-  test("model labels live and full-time instead of Upcoming", async ({ page }) => {
-    await page.goto("/model");
-    const chelsea = page.locator("tr").filter({ hasText: "Chelsea · Tottenham Hotspur" });
-    await expect(chelsea).toBeVisible();
-    await expect(chelsea.getByTestId("model-fixture-status")).toHaveText(/Live/);
-    await expect(chelsea.getByTestId("model-fixture-status")).not.toHaveText(/Upcoming/);
-
-    const united = page.locator("tr").filter({ hasText: "Manchester United · Hull City" });
-    await expect(united).toBeVisible();
-    await expect(united.getByTestId("model-fixture-status")).toHaveText(/Full time/);
-    await expect(united.getByTestId("model-fixture-status")).not.toHaveText(/Upcoming/);
-
-    const arsenal = page.locator("tr").filter({ hasText: "Arsenal · Coventry City" });
-    await expect(arsenal.getByTestId("model-fixture-status")).toHaveText(/Upcoming/);
-  });
-
-  test("model expanded row shows cached market comparison", async ({ page }) => {
-    await page.goto("/model");
-    const arsenal = page.locator("tr").filter({ hasText: "Arsenal · Coventry City" });
-    await expect(arsenal).toBeVisible();
-    await expect(arsenal).toHaveAttribute("data-fixture-id", "espn:eng.1:1");
-    await expect(arsenal).toHaveAttribute("data-model-version", "mock-v1");
-    await expect(arsenal).toHaveAttribute("data-forecast-at", /T/);
-    await arsenal.getByRole("button", { name: "Expand details" }).click();
-    await expect(page.getByTestId("totals-honesty")).toHaveText(
-      "I use a fixed total-goals assumption, so these totals cannot tell me whether this particular match will be more open or tighter."
-    );
-    await expect(page.getByText("Markets", { exact: true })).toBeVisible();
-    await expect(page.getByText("Polymarket", { exact: true })).toBeVisible();
-    await expect(page.locator('[title*="T"]').filter({ hasText: /./ }).first()).toBeVisible();
-    await expect(page.getByText("68.0%")).toBeVisible();
+  test("fixture rows carry forecast provenance and keep markets behind a toggle", async ({ page }) => {
+    await page.goto("/fixtures");
+    const forecast = page.getByTestId("model-fixture-row").first();
+    await expect(forecast).toBeVisible();
+    await expect(forecast).toHaveAttribute("data-model-version", /.+/);
+    const sources = page.getByTestId("fixture-market-sources").first();
+    await expect(sources.getByText("Polymarket", { exact: true })).toBeHidden();
+    await sources.locator("summary").click();
+    await expect(sources.getByText("Polymarket", { exact: true })).toBeVisible();
     await expect(page.getByText("Stake", { exact: true })).toHaveCount(0);
+  });
+
+  test("fixtures show a formal Premier League table", async ({ page }) => {
+    await page.goto("/fixtures");
+    const table = page.getByTestId("league-table");
+    await expect(table).toBeVisible();
+    for (const header of ["Club", "P", "W", "D", "L", "GD", "Pts"]) {
+      await expect(table.getByRole("columnheader", { name: header, exact: true })).toBeVisible();
+    }
+    expect(await page.getByTestId("league-table-row").count()).toBeGreaterThan(0);
   });
 
   for (const viewport of [
@@ -1023,8 +977,12 @@ test.describe("smoke", () => {
     await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-fixture-id", "espn:eng.1:901");
     await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-rating-artifact-id", "test");
     await expect(page.getByTestId("desk-match-board")).toHaveAttribute("data-priced-at", "2026-09-10T12:00:00.000Z");
-    await expect(page.getByTestId("desk-board-markets")).toContainText("Polymarket");
-    await expect(page.getByTestId("desk-board-markets")).toContainText("55.0%");
+    await expect(page.getByTestId("desk-board-markets")).not.toContainText("Polymarket");
+    await expect(page.getByTestId("desk-board-markets")).toContainText("Market average");
+    const sources = page.getByTestId("desk-board-sources");
+    await sources.locator("summary").click();
+    await expect(sources).toContainText("Polymarket");
+    await expect(sources).toContainText("55.0%");
   });
 
   test("desk preserves an unresolved scorer switch and pins a resolved replacement", async ({ page }) => {
@@ -1149,8 +1107,6 @@ test.describe("smoke", () => {
     await expect(page.getByText("Live model", { exact: true })).toBeVisible();
     await expect(page.locator('[data-testid="desk-featured-fixture"][data-fixture-id="espn:eng.1:777"]')).toBeVisible();
     await expect(page.getByText("11", { exact: true })).toHaveCount(0);
-    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
-    await expect(page.getByText("No comparison market", { exact: true }).first()).toBeVisible();
   });
 
   test("desk tells the truth when the live slate has no priced fixtures or captured forecasts", async ({ page }) => {
@@ -1220,12 +1176,6 @@ test.describe("smoke", () => {
     await expect(page.getByText("NO FORECAST", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Recent settled", { exact: true })).toHaveCount(0);
     await expect(page.getByText("MISS", { exact: true })).toHaveCount(0);
-    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
-    await expect(page.getByText("No captured settled forecasts", { exact: true })).toBeVisible();
-    await expect(page.getByText("won", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("paper-position-count")).toHaveText("1");
-    await expect(page.locator('[data-ticket-id="stale-ticket"]')).toHaveCount(0);
-    await expect(page.getByText("10,060", { exact: false }).first()).toBeVisible();
     await expect(page.getByText(/NaN|GW3|GW4/)).toHaveCount(0);
   });
 
@@ -1318,28 +1268,16 @@ test.describe("smoke", () => {
     expect(new URL(fixturesHref!, "http://127.0.0.1:3000").searchParams.get("fixture"))
       .toBe("espn:uefa.champions_qual:2");
 
-    await page.goto("/model");
-    const secondLeg = page.locator("tr").filter({ hasText: "Viking · Dinamo Zagreb" });
-    const modelAsk = secondLeg.getByRole("link", { name: "Ask" });
-    await expect(modelAsk).toBeVisible();
-    const modelHref = await modelAsk.getAttribute("href");
-    expect(new URL(modelHref!, "http://127.0.0.1:3000").searchParams.get("q"))
-      .toBe("Viking vs Dinamo Zagreb");
-    expect(new URL(modelHref!, "http://127.0.0.1:3000").searchParams.get("fixture"))
-      .toBe("espn:uefa.champions_qual:4");
   });
 
   test("club-season evaluation", async ({ page }) => {
     await page.goto("/evaluation/club-season");
-    await expect(page.getByRole("heading", { name: "Club season calibration" })).toBeVisible();
-    // The page header repeats each label in an eyebrow line and a status badge,
-    // so a substring match is ambiguous under strict mode. The badge is the
-    // assertion this test intends.
-    await expect(page.getByText("Rolling snapshots", { exact: true })).toBeVisible();
-    const metrics = page.getByText("Brier score (1X2)");
-    const disclaimer = page.getByText("Pre-kickoff probabilities captured");
-    const zeroSample = page.getByText("No finished forecasts yet", { exact: false });
-    await expect(metrics.or(disclaimer).or(zeroSample)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Track record", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "How the forecasts work" })).toBeVisible();
+    await expect(page.getByTestId("track-record-sources")).not.toHaveAttribute("open", "");
+    const keys = await page.getByTestId("track-record-row").evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("data-fixture-key")));
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   test("wc-2026 evaluation", async ({ page }) => {
@@ -1636,11 +1574,12 @@ test.describe("smoke", () => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Main navigation" });
     await expect(nav.getByRole("link", { name: "Desk" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Paper" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Draft" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Vaults" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Fixtures" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Model" })).toBeVisible();
+    for (const name of ["Fixtures", "Bet slip", "FPL", "Track record"]) {
+      await expect(nav.getByRole("link", { name, exact: true })).toBeVisible();
+    }
+    for (const name of ["Paper", "Draft", "Vaults", "Model", "Ledger"]) {
+      await expect(nav.getByRole("link", { name, exact: true })).toHaveCount(0);
+    }
     await expect(nav.getByText("WC Backtest")).not.toBeVisible();
   });
 
@@ -1827,7 +1766,6 @@ test("canonical probability attributes agree across Fixtures, Model and Desk des
   const fixture = page.locator(`[data-testid="fixture-row"][data-fixture-id="${fixtureId}"]`);
   await expect(fixture).toHaveAttribute("data-capability", "priced");
   const values = await Promise.all(["home", "draw", "away"].map((side) => fixture.getAttribute(`data-p-${side}`)));
-  await page.goto("/model");
   const model = page.locator(`[data-testid="model-fixture-row"][data-fixture-id="${fixtureId}"]`);
   for (const [index, side] of ["home", "draw", "away"].entries()) {
     await expect(model).toHaveAttribute(`data-p-${side}`, values[index]!);

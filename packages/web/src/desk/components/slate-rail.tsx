@@ -39,7 +39,7 @@ export function SlateRail() {
         {open.map((f) => {
           if (!hasCapturedForecast(f)) return null;
           const active = f.id === selectedId;
-          const score = scores[f.id];
+          const score = f.status === "ft" ? scores[f.id] : undefined;
           const p = modelProbFor(f, f.modelPick);
           return (
             <li key={f.id}>
@@ -56,7 +56,7 @@ export function SlateRail() {
                 <div className="flex items-center gap-2 text-2xs uppercase tracking-wide text-quiet">
                   <span>{fmtKickoffShort(f.kickoff)}</span>
                   <span className="ml-auto tabular-nums">
-                    xG {f.xg[0].toFixed(1)}–{f.xg[1].toFixed(1)}
+                    Exp. goals {f.xg[0].toFixed(1)}–{f.xg[1].toFixed(1)}
                   </span>
                 </div>
                 <div className="mt-1.5 flex items-center gap-2">
@@ -140,7 +140,7 @@ export function SlateChips() {
         {open.map((f) => {
           if (!hasCapturedForecast(f)) return null;
           const active = f.id === selectedId;
-          const score = scores[f.id];
+          const score = f.status === "ft" ? scores[f.id] : undefined;
           const p = modelProbFor(f, f.modelPick);
           return (
             <button

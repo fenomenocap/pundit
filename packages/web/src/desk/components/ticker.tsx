@@ -16,7 +16,7 @@ export function Ticker() {
     <div className="relative overflow-hidden border-b border-border bg-elevated">
       <div className="ticker-track flex w-max items-center gap-8 py-1.5 pr-8">
         {items.map((f, i) => {
-          const score = scores[f.id];
+          const score = f.status === "ft" ? scores[f.id] : undefined;
           const p = modelProbFor(f, f.modelPick);
           return (
             <div key={`${f.id}-${i}`} className="flex items-center gap-2 text-xs whitespace-nowrap">

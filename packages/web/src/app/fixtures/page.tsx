@@ -31,7 +31,9 @@ import {
   capabilityLabel,
   capabilityTone,
   formatObservedAt,
+  formatKickoffDay,
   formatKickoffTime,
+  goalForecastDisclosure,
   KICKOFF_TIME_NOTE,
   formatPercent,
   marketRowsFromModel,
@@ -193,6 +195,7 @@ function MatchRow({
               Live
             </span>
           ) : finished ? "FT" : formatKickoffTime(match.utcDate)}
+          <div className="text-[10px] text-subtle">{formatKickoffDay(match.utcDate)}</div>
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -217,6 +220,16 @@ function MatchRow({
 
       {modelFixture && (
         <div data-testid="fixture-forecast" className="mt-2 sm:ml-[4rem]">
+          <div
+            data-testid="model-fixture-row"
+            data-fixture-id={modelFixtureIdentity(modelFixture)}
+            data-capability="priced"
+            data-p-home={modelFixture.pHome}
+            data-p-draw={modelFixture.pDraw}
+            data-p-away={modelFixture.pAway}
+            data-model-version={modelFixture.forecastProvenance?.modelVersion}
+            data-forecast-at={modelFixture.forecastProvenance?.forecastAt}
+          >
           <table className="w-full max-w-md table-fixed text-2xs tabular-nums" aria-label={`${match.homeTeam} versus ${match.awayTeam} forecast and market probabilities`}>
             <thead className="text-subtle">
               <tr>
@@ -235,6 +248,39 @@ function MatchRow({
               </tr>
             </tbody>
           </table>
+          </div>
+          <details data-testid="fixture-goals" className="group mt-1.5 text-2xs text-quiet">
+            <summary className="cursor-pointer select-none list-none uppercase tracking-wider text-subtle hover:text-fg [&::-webkit-details-marker]:hidden">
+              <span className="inline-block transition-transform group-open:rotate-90" aria-hidden>›</span> Goals and scorelines
+            </summary>
+            <div className="mt-1.5 grid max-w-md grid-cols-2 gap-x-6 gap-y-0.5 tabular-nums">
+              <div className="space-y-0.5">
+                {([
+                  ["Over 2.5", modelFixture.pOver2_5],
+                  ["Under 2.5", modelFixture.pUnder2_5],
+                  ["BTTS Yes", modelFixture.pBttsYes],
+                  ["BTTS No", modelFixture.pBttsNo],
+                ] as const).map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-2">
+                    <span>{label}</span>
+                    <span className="text-fg">{formatPercent(value)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-0.5">
+                <div className="uppercase tracking-wider text-subtle">Likely scorelines</div>
+                {modelFixture.topScores.slice(0, 3).map(({ score, probability }) => (
+                  <div key={score} className="flex justify-between gap-2">
+                    <span className="text-fg">{score}</span>
+                    <span>{formatPercent(probability)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <SourcesToggle className="mt-1.5" testId="fixture-goals-sources">
+              <p data-testid="totals-honesty">{goalForecastDisclosure(modelFixture.goalCalibration)}</p>
+            </SourcesToggle>
+          </details>
           {marketRows.length > 0 ? (
             <SourcesToggle className="mt-1.5" label="Market comparison" testId="fixture-market-sources">
               <table className="w-full max-w-md table-fixed text-2xs tabular-nums" aria-label={`${match.homeTeam} versus ${match.awayTeam} market comparison`}>
@@ -564,7 +610,7 @@ export default function FixturesPage() {
           )}
           {error && <ErrorBanner message={error} onRetry={reload} />}
 
-          <DeskSection title="Fixtures and results" aside={loading ? "Loading…" : `${matches.length} matches`}>
+          <DeskSection title="Schedule and results" aside={loading ? "Loading…" : `${matches.length} matches`}>
             {loading ? (
               <div className="space-y-2 p-4">
                 {Array.from({ length: 5 }).map((_, index) => (
