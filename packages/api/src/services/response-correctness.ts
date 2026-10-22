@@ -501,8 +501,15 @@ export function stripUntraceableMatchPercentages(
   answer: string,
   trace: TraceableMatchNumbers
 ): string {
+  // The desk renders probabilities rounded half-up at three decimals, while
+  // toFixed(1) on value * 100 rounds the binary float (6.05 -> "6.0"). Accept
+  // both so a value on a .x5 boundary does not blank its own answer.
   const allowedProbabilities = new Set(trace.probabilities
-    .filter(Number.isFinite).flatMap((value) => [(value * 100).toFixed(1), (value * 100).toFixed(0) + ".0"]));
+    .filter(Number.isFinite).flatMap((value) => [
+      (value * 100).toFixed(1),
+      (Math.round(value * 1000) / 10).toFixed(1),
+      (value * 100).toFixed(0) + ".0",
+    ]));
   const allowedGaps = new Set((trace.percentagePointGaps ?? [])
     .filter(Number.isFinite).flatMap((value) => [Math.abs(value).toFixed(1), Math.abs(value).toFixed(0) + ".0"]));
   const allowedFairOdds = new Set((trace.fairDecimalOdds ?? [])
