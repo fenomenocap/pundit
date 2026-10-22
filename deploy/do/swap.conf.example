@@ -1,29 +1,30 @@
-# /opt/pundit-deploy/swap.conf — non-secret settings for deploy/do/swap.sh and
-# deploy/do/deploy.sh. Sourced as bash. Never put secrets or env values here:
-# the API's env file stays referenced (by path) from the existing compose file.
+# /opt/pundit-deploy/swap.conf: non-secret settings for deploy/do/swap.sh and
+# deploy/do/deploy.sh. Sourced as bash. Defaults below match degen-dev, so this
+# file only needs the values you change. Never put secrets or env values here:
+# /opt/pundit/.env.api stays referenced by path from docker-compose.yml.
 
-REPO_DIR=/opt/pundit-deploy/pundit            # git checkout the image is built from
+REPO_DIR=/opt/pundit                          # git clone = docker build context
+DEPLOY_DIR=/opt/pundit-deploy
 COMPOSE_FILE=/opt/pundit-deploy/docker-compose.yml
-API_SERVICE=api                               # API service name in COMPOSE_FILE
-API_CONTAINER_PORT=3001                       # PORT the API listens on in the container
-LEGACY_PROJECT=                               # compose project of today's container ("" = compose default)
-
-# host: Caddy is a host service (systemd). network: Caddy is a container.
-UPSTREAM_MODE=host
-CADDY_NETWORK=                                # network mode only, e.g. pundit-deploy_default
-UPSTREAM_FILE=/etc/caddy/pundit-upstream.caddy
-CADDY_RELOAD_CMD="caddy reload --config /etc/caddy/Caddyfile"
-# network mode example:
-# CADDY_RELOAD_CMD="docker exec pundit-deploy-caddy-1 caddy reload --config /etc/caddy/Caddyfile"
-
+COMPOSE_PROJECT=pundit                        # runs Caddy (pundit-caddy-1)
+COMPOSE_NETWORK=pundit_default                # colours join it; Caddy dials them by container name
+API_SERVICE=api
+API_CONTAINER_PORT=3001
+LEGACY_CONTAINER=pundit-api-1                 # pre-swap API container
+CADDY_SERVICE=caddy
+CADDY_CONFIG=/etc/caddy/Caddyfile             # inside the Caddy container
+UPSTREAM_FILE=/opt/pundit-deploy/caddy/upstream.caddy
 PUBLIC_URL=https://134-209-121-101.sslip.io
-BLUE_PORT=3101
+BLUE_PORT=3101                                # 127.0.0.1 only, for the health gate
 GREEN_PORT=3102
 READY_TIMEOUT=300
 VERIFY_TIMEOUT=60
 DRAIN_SECONDS=20
+STOP_TIMEOUT=25                               # = stop_grace_period
 KEEP_IMAGES=3
 STATE_DIR=/opt/pundit-deploy/state
+LOCK_FILE=/opt/pundit-deploy/deploy.lock
+LOCK_WAIT=900
 
 # deploy.sh: allow the legacy bare `deploy` (origin/main tip) until
 # deploy-do.yml sends the CI-passed sha; then set to 0.

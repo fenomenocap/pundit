@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -47,7 +48,15 @@ export function readJsonFile<T>(filePath: string): T | null {
  */
 export function writeJsonFileAtomic(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  fs.renameSync(tempPath, filePath);
+  // The pid alone is not unique on a shared volume: every container runs node
+  // as PID 1, so during a blue/green overlap (deploy/do/swap.sh) two writers
+  // would share one temp file and could rename interleaved bytes into place.
+  const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    fs.renameSync(tempPath, filePath);
+  } catch (error) {
+    fs.rmSync(tempPath, { force: true });
+    throw error;
+  }
 }
