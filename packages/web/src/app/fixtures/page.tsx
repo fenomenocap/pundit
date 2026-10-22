@@ -1,17 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   fetchCompetitions,
   fetchActiveModelFixtures,
+  fetchClubSeasonEvaluation,
   fetchRecentMatches,
   fetchRecognizedFixtures,
   fetchStandings,
   fetchUpcomingMatches,
 } from "@/lib/mock-data";
-import { getTeamMonogram, getTeamColor } from "@/lib/team-logos";
+import { ClubCrest } from "@/desk/components/kit";
+import { formalTeamName } from "@/desk/lib/data/teams";
+import { projectedScore } from "@/desk/lib/grid";
+import {
+  favouredOutcome,
+  fixtureKey,
+  onePerFixture,
+  probabilityFor,
+  type TrackRecordRow,
+} from "@/lib/track-record";
 import { SourcesToggle } from "@/components/sources-toggle";
 import { DeskPage, DeskPageHeader, DeskSection } from "@/components/desk-page";
 import { ApiError, buildAskUrl, modelFixtureIdentity } from "@/lib/api";
@@ -137,17 +147,35 @@ function isAskable(match: MatchResponse): boolean {
     && !/\b(?:winner|loser)\b/i.test(match.awayTeam);
 }
 
-function Monogram({ name }: { name: string }) {
-  const monogram = getTeamMonogram(name);
-  const accent = getTeamColor(name);
+/**
+ * Sealed pre-kickoff forecasts from the club-season ledger, one per match
+ * (the same rows the Track record page counts), keyed by competition:fixture.
+ */
+function useSealedForecasts() {
+  const [sealed, setSealed] = useState<Map<string, TrackRecordRow>>(new Map());
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetchClubSeasonEvaluation()
+      .then((payload) => {
+        if (cancelled) return;
+        const rows = onePerFixture(payload.fixtures as unknown as TrackRecordRow[]);
+        setSealed(new Map(rows.map((row) => [fixtureKey(row), row])));
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setReady(true); });
+    return () => { cancelled = true; };
+  }, []);
+  return { sealed, ready };
+}
+
+function TeamLine({ name, score }: { name: string; score: ReactNode }) {
   return (
-    <span
-      className="flex size-6 shrink-0 items-center justify-center rounded-xs text-[10px] font-bold text-white"
-      style={{ backgroundColor: accent }}
-      aria-hidden
-    >
-      {monogram ?? "·"}
-    </span>
+    <div className="flex items-center gap-2">
+      <ClubCrest name={name} />
+      <span className="truncate text-sm font-medium text-fg" title={name}>{formalTeamName(name)}</span>
+      <span className="ml-auto font-display text-lg tabular-nums leading-none">{score}</span>
+    </div>
   );
 }
 
@@ -161,10 +189,14 @@ function MatchRow({
   match,
   recognized,
   modelFixture,
+  sealed,
+  sealedReady,
 }: {
   match: MatchResponse;
   recognized?: RecognizedFixtureSnapshotRow;
   modelFixture?: ModelFixtureResponse;
+  sealed?: TrackRecordRow;
+  sealedReady: boolean;
 }) {
   const finished = match.status === "FINISHED";
   const live = match.status === "IN_PLAY";
@@ -176,6 +208,12 @@ function MatchRow({
     )
     : null;
   const marketRows = modelFixture ? marketRowsFromModel(modelFixture) : [];
+  // A played match shows the forecast sealed before kickoff, never a later row.
+  const sealedForecast = finished || live ? sealed : undefined;
+  const liveForecast = sealedForecast ? undefined : modelFixture;
+  const noForecastLabel = finished || live
+    ? (sealedReady ? "No pre-kickoff forecast recorded" : "Loading pre-kickoff forecast…")
+    : "Forecast not yet published";
 
   return (
     <div
@@ -198,27 +236,25 @@ function MatchRow({
           <div className="text-[10px] text-subtle">{formatKickoffDay(match.utcDate)}</div>
         </div>
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Monogram name={match.homeTeam} />
-            <span className="truncate text-sm font-medium text-fg" title={match.homeTeam}>{match.homeTeam}</span>
-            <span className="ml-auto font-display text-lg tabular-nums leading-none">{showScore ? match.score?.home ?? "–" : ""}</span>
-          </div>
-          <div className="mt-1 flex items-center gap-2">
-            <Monogram name={match.awayTeam} />
-            <span className="truncate text-sm font-medium text-fg" title={match.awayTeam}>{match.awayTeam}</span>
-            <span className="ml-auto font-display text-lg tabular-nums leading-none">{showScore ? match.score?.away ?? "–" : ""}</span>
+          <TeamLine name={match.homeTeam} score={showScore ? match.score?.home ?? "–" : ""} />
+          <div className="mt-1">
+            <TeamLine name={match.awayTeam} score={showScore ? match.score?.away ?? "–" : ""} />
           </div>
         </div>
         <div className="hidden w-40 sm:block">
-          {modelFixture ? (
-            <ProbabilityStrip home={modelFixture.pHome} draw={modelFixture.pDraw} away={modelFixture.pAway} />
+          {liveForecast ? (
+            <ProbabilityStrip home={liveForecast.pHome} draw={liveForecast.pDraw} away={liveForecast.pAway} />
+          ) : sealedForecast ? (
+            <ProbabilityStrip home={sealedForecast.pHome} draw={sealedForecast.pDraw} away={sealedForecast.pAway} />
           ) : (
-            <span className="text-2xs text-subtle">No forecast</span>
+            <span data-testid="fixture-no-forecast" className="text-2xs text-subtle">{noForecastLabel}</span>
           )}
         </div>
       </div>
 
-      {modelFixture && (
+      {sealedForecast ? <SealedForecast row={sealedForecast} match={match} /> : null}
+
+      {liveForecast && modelFixture && (
         <div data-testid="fixture-forecast" className="mt-2 sm:ml-[4rem]">
           <div
             data-testid="model-fixture-row"
@@ -268,6 +304,25 @@ function MatchRow({
                 ))}
               </div>
               <div className="space-y-0.5">
+                {(() => {
+                  let projection: ReturnType<typeof projectedScore> = null;
+                  try {
+                    projection = modelFixture.scoreGrid
+                      ? projectedScore({ xg: null, scoreGrid: modelFixture.scoreGrid,
+                        model: { home: modelFixture.pHome, draw: modelFixture.pDraw, away: modelFixture.pAway } })
+                      : null;
+                  } catch {
+                    projection = null;
+                  }
+                  return projection ? (
+                    <div data-testid="fixture-projected-score" className="flex justify-between gap-2">
+                      <span>Most likely</span>
+                      <span className="text-fg">
+                        {projection.score.home}-{projection.score.away} {formatPercent(projection.score.probability)}
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
                 <div className="uppercase tracking-wider text-subtle">Likely scorelines</div>
                 {modelFixture.topScores.slice(0, 3).map(({ score, probability }) => (
                   <div key={score} className="flex justify-between gap-2">
@@ -317,7 +372,7 @@ function MatchRow({
               Ask about this match
             </Link>
             {recognized ? (
-              <CapabilityText capability={recognized.capability} />
+              <CapabilityText capability={recognized.capability} beyondSlate={match.status === "SCHEDULED" && match.competitionId === "eng.1"} />
             ) : (
               <p className="mt-0.5 text-2xs text-quiet">
                 Forecast status temporarily unavailable · you can still ask
@@ -352,8 +407,51 @@ function ProbabilityStrip({ home, draw, away }: { home: number; draw: number; aw
   );
 }
 
-function CapabilityText({ capability }: { capability: FixtureCapability }) {
+function SealedForecast({ row, match }: { row: TrackRecordRow; match: MatchResponse }) {
+  const favourite = favouredOutcome(row);
+  const hit = row.result ? row.result.winner === favourite : null;
+  const favouriteName = favourite === "home"
+    ? formalTeamName(match.homeTeam)
+    : favourite === "away" ? formalTeamName(match.awayTeam) : "Draw";
+  return (
+    <div data-testid="fixture-sealed-forecast" className="mt-2 sm:ml-[4rem]">
+      <table className="w-full max-w-md table-fixed text-2xs tabular-nums" aria-label={`${formalTeamName(match.homeTeam)} versus ${formalTeamName(match.awayTeam)} pre-kickoff forecast`}>
+        <thead className="text-subtle">
+          <tr>
+            <th scope="col" className="w-[46%] pb-1 text-left font-medium uppercase tracking-wider">Pre-kickoff forecast</th>
+            <th scope="col" className="pb-1 text-right font-medium uppercase tracking-wider">Home</th>
+            <th scope="col" className="pb-1 text-right font-medium uppercase tracking-wider">Draw</th>
+            <th scope="col" className="pb-1 text-right font-medium uppercase tracking-wider">Away</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row" className="pr-2 text-left font-normal text-quiet">My forecast</th>
+            <td className="text-right text-fg">{formatPercent(row.pHome)}</td>
+            <td className="text-right text-fg">{formatPercent(row.pDraw)}</td>
+            <td className="text-right text-fg">{formatPercent(row.pAway)}</td>
+          </tr>
+        </tbody>
+      </table>
+      {hit !== null ? (
+        <p className="mt-1 text-2xs text-quiet">
+          Favourite: {favouriteName} {formatPercent(probabilityFor(row, favourite))}{" "}
+          <span className={cn("font-semibold uppercase tracking-wider", hit ? "text-up" : "text-down")}>{hit ? "Won" : "Lost"}</span>
+          {" · "}
+          <Link href="/evaluation/club-season" className="text-accent hover:text-accent/80">Track record</Link>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function CapabilityText({ capability, beyondSlate = false }: { capability: FixtureCapability; beyondSlate?: boolean }) {
   const tone = capabilityTone(capability);
+  // Premier League fixtures beyond the published slate have ratings but no forecast yet.
+  const label = beyondSlate && capability.status === "insufficient-model-input"
+    && capability.reason === "required-context-missing"
+    ? "Forecast not yet published · priced nearer kick-off"
+    : capabilityLabel(capability);
   return (
     <p className={cn(
       "mt-0.5 truncate text-2xs",
@@ -361,7 +459,7 @@ function CapabilityText({ capability }: { capability: FixtureCapability }) {
       tone === "waiting" && "text-warn",
       tone === "outside" && "text-quiet",
     )}>
-      {capabilityLabel(capability)}
+      {label}
     </p>
   );
 }
@@ -434,8 +532,8 @@ function LeagueTable({
                 <td className="py-1.5 pl-3 text-quiet">{row.position}</td>
                 <td className="max-w-[9rem] py-1.5">
                   <span className="flex items-center gap-2">
-                    <Monogram name={row.team} />
-                    <span className="truncate font-medium">{row.team}</span>
+                    <ClubCrest name={row.team} />
+                    <span className="truncate font-medium" title={row.team}>{formalTeamName(row.team)}</span>
                   </span>
                 </td>
                 <td className="px-1 py-1.5 text-right text-quiet">{row.playedGames}</td>
@@ -470,7 +568,12 @@ function GroupTable({ group, rows }: { group: string; rows: StandingResponse[] }
           {sorted.map((row) => (
             <tr key={row.team} className="border-b border-border last:border-b-0">
               <td className="w-8 py-1.5 pl-3 text-quiet">{row.position}</td>
-              <td className="max-w-[9rem] truncate py-1.5">{row.team}</td>
+              <td className="max-w-[9rem] py-1.5">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <ClubCrest name={row.team} size="sm" />
+                  <span className="truncate">{formalTeamName(row.team)}</span>
+                </span>
+              </td>
               <td className="px-1 py-1.5 text-right text-quiet">{row.playedGames}</td>
               <td className="px-1 py-1.5 text-right">{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
               <td className="px-3 py-1.5 text-right font-display text-base leading-none">{row.points}</td>
@@ -528,6 +631,7 @@ export default function FixturesPage() {
   } =
     useFixturesData(selectedCompetition);
   const league = useLeagueTable();
+  const sealedForecasts = useSealedForecasts();
 
   useEffect(() => {
     let cancelled = false;
@@ -645,6 +749,8 @@ export default function FixturesPage() {
                         competitionId: match.competitionId,
                         fixtureId: match.id,
                       }))}
+                      sealed={sealedForecasts.sealed.get(fixtureKey({ competitionId: match.competitionId, fixtureId: match.id }))}
+                      sealedReady={sealedForecasts.ready}
                     />
                   ))}
                 </div>

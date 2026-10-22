@@ -1,7 +1,10 @@
 // ─── Team visuals ────────────────────────────────────────────────────────────
 //
 // Country flags (SVG via flagcdn) for WC-era national teams. Club fixtures use
-// neutral monogram initials instead of country flags.
+// club crests (public/crests via KitPip / ClubCrest); neutral monogram
+// initials only for clubs without a crest asset.
+
+import { teamIdFromName } from "../desk/lib/data/teams.ts";
 
 const COUNTRY_FLAG_CODES: Record<string, string> = {
   "Mexico": "mx",
@@ -84,9 +87,13 @@ function isNationalTeam(name: string): boolean {
 export function getTeamMonogram(teamName: string | null): string | null {
   if (!teamName || teamName.toLowerCase() === "tbd") return null;
   if (isNationalTeam(teamName)) return null;
+  // Premier League clubs use their three-letter code, so Brighton (BHA) and
+  // Brentford (BRE) can never collide.
+  const id = teamIdFromName(teamName);
+  if (id) return id;
   const words = teamName.split(/\s+/).filter(Boolean);
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase();
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+  return words.slice(0, 3).map((word) => word[0]).join("").toUpperCase();
 }
 
 export function getTeamFlagUrl(teamName: string | null): string | null {

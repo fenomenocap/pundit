@@ -210,14 +210,12 @@ export function samplePaperScore(fixture: { xg: [number, number] | null; scoreGr
 export type ScoreCell = { home: number; away: number; probability: number };
 
 export type ProjectedScore = {
-  /** Likeliest scoreline inside the favoured 1X2 outcome and the favoured side of 2.5 goals. */
+  /** Likeliest scoreline inside the most likely 1X2 result (same rule as the chat). */
   score: ScoreCell;
-  /** Single likeliest scoreline on the whole grid (can disagree with the goals line). */
+  /** Single likeliest scoreline on the whole grid (often 1-1: draw mass sits in few cells). */
   modal: ScoreCell;
   outcome: "home" | "draw" | "away";
-  totals: "over" | "under";
   pOutcome: number;
-  pOver: number;
 };
 
 function poissonPmf(lambda: number, k: number) {
@@ -239,13 +237,15 @@ export function independentGoalsGrid(xg: [number, number], size = 11): number[][
 
 /**
  * Deterministic projected score. Never a random draw: the same forecast always
- * gives the same score, and it agrees with the favoured result and goals line.
+ * gives the same score, and it agrees with the most likely result. No over/under
+ * constraint: a near 50/50 goals line must not change the headline score
+ * (it forced 2-1/1-2 on 27 of 30 live fixtures on 23 Oct 2026).
  */
 export function projectedScore(fixture: {
   xg: [number, number] | null;
   scoreGrid?: number[][];
   /** Published probabilities; when present they choose the favoured result and goals line. */
-  model?: { home: number; draw: number; away: number; over25: number } | null;
+  model?: { home: number; draw: number; away: number } | null;
 }): ProjectedScore | null {
   let grid: number[][];
   if (fixture.scoreGrid !== undefined) grid = fixture.scoreGrid;
@@ -258,10 +258,8 @@ export function projectedScore(fixture: {
     { key: "draw" as const, p: published?.draw ?? summary.draw },
     { key: "away" as const, p: published?.away ?? summary.away },
   ];
-  const pOver = published?.over25 ?? summary.over;
   // Ties keep the earlier key, so the result is stable.
   const outcome = outcomes.reduce((best, row) => (row.p > best.p + 1e-12 ? row : best));
-  const totals = pOver >= 0.5 ? "over" : "under";
   let modal: ScoreCell = { home: 0, away: 0, probability: -1 };
   let score: ScoreCell = { home: 0, away: 0, probability: -1 };
   for (let h = 0; h < grid.length; h++) {
@@ -269,10 +267,9 @@ export function projectedScore(fixture: {
       const p = grid[h][a];
       if (p > modal.probability + 1e-15) modal = { home: h, away: a, probability: p };
       const inOutcome = outcome.key === "home" ? h > a : outcome.key === "away" ? a > h : h === a;
-      const inTotals = totals === "over" ? h + a > 2 : h + a <= 2;
-      if (inOutcome && inTotals && p > score.probability + 1e-15) score = { home: h, away: a, probability: p };
+      if (inOutcome && p > score.probability + 1e-15) score = { home: h, away: a, probability: p };
     }
   }
   if (score.probability < 0) score = modal;
-  return { score, modal, outcome: outcome.key, totals, pOutcome: outcome.p, pOver };
+  return { score, modal, outcome: outcome.key, pOutcome: outcome.p };
 }

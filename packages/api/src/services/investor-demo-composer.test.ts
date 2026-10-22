@@ -160,9 +160,11 @@ describe("investor demo composer fixes", () => {
     expect(bttsAfter).not.toContain("Gamble responsibly");
 
     const scoreAfter = composeMatchResponse("What is the most likely score?", grounding, planResponse("What is the most likely score?", { groundingKind: "match" }));
-    expect(scoreAfter).toContain("The likeliest scoreline on Tottenham v Coventry is 1-1.");
-    expect(scoreAfter).toContain("1-1  11.6% | fair 8.62");
-    expect(scoreAfter).toMatch(/Lean: 1-1, small play\./);
+    // Lead: likeliest score within the most likely result; the grid mode is the second line.
+    expect(scoreAfter).toContain("Most likely on Tottenham v Coventry: 2-1.");
+    expect(scoreAfter).toContain("2-1  10.2%");
+    expect(scoreAfter).toContain("Single likeliest score: 1-1 (11.6%).");
+    expect(scoreAfter).not.toMatch(/Poisson|^Lean:|\bplay\b/im);
   });
 
   it("adds one table-vs-Elo line when league rank contradicts the model favourite", () => {
@@ -217,7 +219,7 @@ describe("investor demo composer fixes", () => {
       .toBe("slate-best-gap");
     expect(answer).toContain("today (18 October 2026)");
     expect(answer).toContain("Tottenham v Coventry");
-    expect(answer).toMatch(/Lean: Spurs, small play\./);
+    expect(answer).not.toMatch(/^Lean:|small play/m);
     expect(answer).not.toMatch(/\bedge\b/i);
     vi.restoreAllMocks();
   });

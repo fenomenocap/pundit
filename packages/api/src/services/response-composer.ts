@@ -16,6 +16,7 @@ import {
   type PlayerEvidenceBundle,
 } from "./player-evidence";
 import { buildResponseFacts, factById } from "./response-facts";
+import { projectedScoreFromScorelines } from "./projected-score";
 import {
   asksOver25Only,
   asksScorelineBoard,
@@ -33,7 +34,6 @@ import {
 import {
   deskFairFromProb,
   deskPercentDisplay,
-  deskProbabilityDisplay,
   displayOutcomeLabel,
   composeIndependentMarketTakeAnswer,
   formatBttsSideRow,
@@ -517,7 +517,6 @@ export function composeSlateBestGapAnswer(now = new Date()): string {
       `${rowLabel}  ${modelPct} vs market ${marketPct} | gap ${sign}${highlight.gapPoints.toFixed(1)} pts`,
       "That read uses the priced fixtures on today's slate, not every league match.",
     ],
-    lean: `Lean: ${rowLabel}, small play.`,
   });
 }
 
@@ -542,12 +541,6 @@ export function composeOddsProvenanceAnswer(grounding: Grounding): string {
     ? "Our 1X2 uses reviewed team strength; the Market line in a priced answer is the live 1X2 price we capture for that fixture."
     : "Our 1X2 uses reviewed team strength; I do not have a complete external 1X2 line on this fixture right now.";
   return joinBasicsAnswer({ headline });
-}
-
-function topScorelineRow(grounding: Grounding): { score: string; probability: number } | null {
-  const rows = grounding.scorelines?.length ? grounding.scorelines : grounding.topScores;
-  if (!rows?.length) return null;
-  return [...rows].sort((a, b) => b.probability - a.probability)[0];
 }
 
 export function composePlayerScorerAnswer(
@@ -807,16 +800,26 @@ export function composeMatchResponse(
   if (plan.mode === "exact-score") {
     const singularScoreAsk = /\b(?:most likely|correct|projected|predicted)\s+score\b|\bwhat(?:'s| is) the (?:final )?score\b/i.test(question);
     if (singularScoreAsk && !score) {
-      const top = topScorelineRow(grounding);
-      if (top) {
-        const { displayPct, fairDecimal: fairDec } = deskProbabilityDisplay(top.probability);
+      const projected = projectedScoreFromScorelines(
+        grounding.scorelines?.length ? grounding.scorelines : grounding.topScores,
+        grounding,
+      );
+      if (projected) {
+        const result = projected.outcome === "draw"
+          ? "draw"
+          : `${projected.outcome === "home" ? grounding.home : grounding.away} win`;
+        const supports = [
+          `${projected.score}  ${deskPercentDisplay(projected.probability)}`,
+          `That is the likeliest score within the most likely result (${result}, ${deskPercentDisplay(projected.pOutcome)}).`,
+        ];
+        if (projected.modal.score !== projected.score) {
+          supports.push(
+            `Single likeliest score: ${projected.modal.score} (${deskPercentDisplay(projected.modal.probability)}). Draws concentrate in one score; wins are spread over several.`,
+          );
+        }
         return joinBasicsAnswer({
-          headline: `The likeliest scoreline on ${grounding.home} v ${grounding.away} is ${top.score}.`,
-          supports: [
-            `${top.score}  ${displayPct} | fair ${fairDec}`,
-            "Scorelines come from the same Poisson grid as 1X2, totals, and BTTS.",
-          ],
-          lean: `Lean: ${top.score}, small play.`,
+          headline: `Most likely on ${grounding.home} v ${grounding.away}: ${projected.score}.`,
+          supports,
         });
       }
     }

@@ -596,7 +596,13 @@ test.describe("QA regressions", () => {
     await page.goto("/draft");
     await expect(page.getByRole("heading", { name: "FPL team builder" })).toBeVisible();
     await expect(page.getByTestId("fpl-data-attribution")).toHaveText("Simulator only. Player data from Fantasy Premier League (public). Not affiliated with the Premier League.");
-    await expect(page.locator('[data-testid="fpl-builder-page"] img, header img')).toHaveCount(0);
+    // Same design as every page: header league mark and the shared club crest assets, never new logos.
+    await expect(page.locator('header img[src="/crests/PL.svg"]')).toHaveCount(1);
+    const builderImages = page.locator('[data-testid="fpl-builder-page"] img');
+    await expect(builderImages.first()).toBeVisible();
+    for (const src of await builderImages.evaluateAll((imgs) => imgs.map((img) => img.getAttribute("src")))) {
+      expect(src).toMatch(/^\/crests\/[A-Z]{3}\.png$/);
+    }
     await expect(page.getByText("Not available", { exact: true }).first()).toBeVisible();
     for (const name of ["Keeper1", "Keeper2"]) await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
     await page.getByRole("button", { name: "Add Keeper3", exact: true }).click();
@@ -912,6 +918,34 @@ test.describe("smoke", () => {
     await expect(forecastTable.getByRole("columnheader", { name: "Away" })).toBeVisible();
     await expect(rows.nth(1).getByTestId("fixture-market-sources").locator("time")).toBeVisible();
     await expect(rows.nth(2).getByText("Required forecast input missing", { exact: true })).toBeVisible();
+  });
+
+  test("finished fixtures show their sealed pre-kickoff forecast, counted once", async ({ page }) => {
+    await page.goto("/fixtures");
+    const row = page.locator('[data-testid="fixture-row"][data-fixture-id="espn:eng.1:3"]');
+    const sealed = row.getByTestId("fixture-sealed-forecast");
+    await expect(sealed).toHaveCount(1);
+    await expect(sealed.getByText("My forecast", { exact: true })).toBeVisible();
+    // The scheduled-window row (61.2%), never the cached fallback (60.0%).
+    await expect(sealed.getByText("61.2%", { exact: true })).toBeVisible();
+    await expect(sealed.getByText("60.0%", { exact: true })).toHaveCount(0);
+    await expect(sealed).toContainText("Favourite: Manchester United 61.2% Won");
+    await expect(row.getByText("No forecast", { exact: true })).toHaveCount(0);
+  });
+
+  test("fixtures and table use the shared club crests with formal names", async ({ page }) => {
+    await page.goto("/fixtures");
+    await expect(page.getByTestId("league-table-row").first()).toBeVisible();
+    for (const scope of [page.getByTestId("fixture-row").first(), page.getByTestId("league-table")]) {
+      const srcs = await scope.locator("img").evaluateAll((imgs) => imgs.map((img) => img.getAttribute("src")));
+      expect(srcs.length).toBeGreaterThan(0);
+      for (const src of srcs) expect(src).toMatch(/^\/crests\/[A-Z]{3}\.png$/);
+    }
+    await expect(page.locator("main")).not.toContainText(/\b(Bees|Albion|Cherries)\b/);
+    // Every Premier League table row carries its crest; no two-letter monograms (Brighton/Brentford were both "BR").
+    const tableRows = page.getByTestId("league-table-row");
+    await expect(page.getByTestId("league-table").locator("img")).toHaveCount(await tableRows.count());
+    await expect(page.getByTestId("league-table").getByTestId("club-monogram")).toHaveCount(0);
   });
 
   test("fixture rows carry forecast provenance and keep markets behind a toggle", async ({ page }) => {
