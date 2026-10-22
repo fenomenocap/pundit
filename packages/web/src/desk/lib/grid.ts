@@ -241,20 +241,27 @@ export function independentGoalsGrid(xg: [number, number], size = 11): number[][
  * Deterministic projected score. Never a random draw: the same forecast always
  * gives the same score, and it agrees with the favoured result and goals line.
  */
-export function projectedScore(fixture: { xg: [number, number] | null; scoreGrid?: number[][] }): ProjectedScore | null {
+export function projectedScore(fixture: {
+  xg: [number, number] | null;
+  scoreGrid?: number[][];
+  /** Published probabilities; when present they choose the favoured result and goals line. */
+  model?: { home: number; draw: number; away: number; over25: number } | null;
+}): ProjectedScore | null {
   let grid: number[][];
   if (fixture.scoreGrid !== undefined) grid = fixture.scoreGrid;
   else if (fixture.xg) grid = independentGoalsGrid(fixture.xg);
   else return null;
   const summary = scoreGridSummary(grid);
+  const published = fixture.model ?? null;
   const outcomes = [
-    { key: "home" as const, p: summary.home },
-    { key: "draw" as const, p: summary.draw },
-    { key: "away" as const, p: summary.away },
+    { key: "home" as const, p: published?.home ?? summary.home },
+    { key: "draw" as const, p: published?.draw ?? summary.draw },
+    { key: "away" as const, p: published?.away ?? summary.away },
   ];
+  const pOver = published?.over25 ?? summary.over;
   // Ties keep the earlier key, so the result is stable.
   const outcome = outcomes.reduce((best, row) => (row.p > best.p + 1e-12 ? row : best));
-  const totals = summary.over >= 0.5 ? "over" : "under";
+  const totals = pOver >= 0.5 ? "over" : "under";
   let modal: ScoreCell = { home: 0, away: 0, probability: -1 };
   let score: ScoreCell = { home: 0, away: 0, probability: -1 };
   for (let h = 0; h < grid.length; h++) {
@@ -267,5 +274,5 @@ export function projectedScore(fixture: { xg: [number, number] | null; scoreGrid
     }
   }
   if (score.probability < 0) score = modal;
-  return { score, modal, outcome: outcome.key, totals, pOutcome: outcome.p, pOver: summary.over };
+  return { score, modal, outcome: outcome.key, totals, pOutcome: outcome.p, pOver };
 }

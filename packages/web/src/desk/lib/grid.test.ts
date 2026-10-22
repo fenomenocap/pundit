@@ -30,3 +30,11 @@ test("modal score is the single likeliest cell", () => {
 test("no forecast means no projected score", () => {
   assert.equal(projectedScore({ xg: null }), null);
 });
+
+test("published probabilities pick the favoured result and goals line", () => {
+  const p = projectedScore({ xg: [1.4, 1.3], model: { home: 0.3, draw: 0.25, away: 0.45, over25: 0.6 } })!;
+  assert.equal(p.outcome, "away");
+  assert.equal(p.totals, "over");
+  assert.ok(p.score.away > p.score.home && p.score.home + p.score.away > 2);
+  assert.equal(p.pOutcome, 0.45);
+});
