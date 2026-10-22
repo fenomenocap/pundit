@@ -337,23 +337,6 @@ test.describe("QA regressions", () => {
       await expect(page.getByRole("button", { name: "Select Arsenal vs Chelsea", exact: true }))
         .toHaveAttribute("aria-pressed", "false");
     });
-
-    test(`draft player selection works with ${key} and unavailable players stay disabled`, async ({ page }) => {
-      await page.clock.install();
-      await page.goto("/draft");
-      await page.getByRole("button", { name: "Start practice draft" }).click();
-      await page.clock.runFor(2_401);
-      await expect(page.getByText("You are on the clock", { exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Draft Haaland", exact: true })).toBeDisabled();
-      const saka = page.getByRole("button", { name: "Draft Saka", exact: true });
-      await expect(saka).toBeEnabled();
-      await saka.focus();
-      await page.keyboard.press(key);
-      await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
-      await expect(saka).toBeDisabled();
-      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pundit-desk-v2")!).state.draftTeams[3].picks))
-        .toEqual(["saka"]);
-    });
   }
 
   for (const width of [390, 1440]) {
@@ -576,22 +559,65 @@ test.describe("QA regressions", () => {
     await page.screenshot({ path: testInfo.outputPath("vault-mobile.png"), fullPage: true });
   });
 
-  test("draft identifies computer opponents before and during play", async ({ page }, testInfo) => {
+  test("bet slip updates combined odds and potential returns as stake and selections change", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await routePricedBetSlipSlate(page);
+    await page.goto("/board");
+    await expect(page.getByRole("heading", { name: "Bet slip calculator" })).toBeVisible();
+    const arsenal = page.locator("li", { has: page.getByRole("button", { name: "Select Arsenal vs Chelsea", exact: true }) });
+    const liverpool = page.locator("li", { has: page.getByRole("button", { name: "Select Liverpool vs Fulham", exact: true }) });
+    await arsenal.getByRole("button").filter({ hasText: /^1/ }).click();
+    const stake = page.getByRole("textbox", { name: "Stake per selection" });
+    await stake.fill("10");
+    await expect(page.getByTestId("bet-slip-return")).toHaveText("20");
+    await liverpool.getByRole("button").filter({ hasText: /^1/ }).click();
+    await expect(page.getByTestId("bet-slip-count")).toHaveText("2 selections");
+    await expect(page.getByTestId("bet-slip-return")).toHaveText("36");
+    await page.getByRole("tab", { name: "Accumulator" }).click();
+    await expect(page.getByTestId("bet-slip-combined-odds")).toHaveText("3.20");
+    await expect(page.getByTestId("bet-slip-return")).toHaveText("32");
+    await page.getByRole("textbox", { name: "Stake" }).fill("25");
+    await expect(page.getByTestId("bet-slip-return")).toHaveText("80");
+    // A second pick on the same match replaces the first.
+    await arsenal.getByRole("button").filter({ hasText: /^X/ }).click();
+    await expect(page.getByTestId("bet-slip-count")).toHaveText("2 selections");
+    await expect(page.getByTestId("bet-slip-combined-odds")).toHaveText("6.40");
+    await expect(page.getByTestId("bet-slip-return")).toHaveText("160");
+    await page.getByRole("textbox", { name: "Stake" }).fill("abc");
+    await expect(page.getByTestId("bet-slip-stake-error")).toContainText("Enter a stake");
+    await page.getByRole("button", { name: "Remove Draw", exact: true }).click();
+    await expect(page.getByTestId("bet-slip-acca-note")).toHaveText("An accumulator needs at least two selections.");
+    await expect(page.getByTestId("bet-slip-page")).not.toContainText(/Kalshi|Polymarket|Elo|Paper|NaN/);
+    await page.screenshot({ path: testInfo.outputPath("bet-slip.png"), fullPage: true });
+  });
+
+  test("FPL team builder enforces squad rules and saves the squad", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    await routeFplPlayers(page);
     await page.goto("/draft");
-    await expect(page.getByText(/Practice against seven computer-controlled teams/)).toBeVisible();
-    await expect(page.getByText(/Player scores are demo inputs, not current-season statistics/)).toBeVisible();
-    await page.getByRole("button", { name: "Start practice draft" }).click();
-    await expect(page.getByText("Local practice · seven computer-controlled teams · illustrative player scores", { exact: true })).toBeVisible();
-    await expect(page.getByText("You are on the clock", { exact: true })).toBeVisible({ timeout: 10_000 });
-    await page.getByRole("row").filter({ hasText: "Saka" }).click();
-    await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath("draft-mobile.png"), fullPage: true });
+    await expect(page.getByRole("heading", { name: "FPL team builder" })).toBeVisible();
+    await expect(page.getByText("Not available", { exact: true }).first()).toBeVisible();
+    for (const name of ["Keeper1", "Keeper2"]) await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
+    await page.getByRole("button", { name: "Add Keeper3", exact: true }).click();
+    await expect(page.getByTestId("fpl-add-message")).toHaveText("You already have 2 goalkeepers.");
+    for (const name of ["Def1", "Def2", "Def3", "Def4", "Def5", "Mid1", "Mid2", "Mid3", "Mid4", "Mid5", "Fwd1", "Fwd2"]) {
+      await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
+    }
+    // Keeper1, Def1 and Def2 are ARS; Fwd3 is ARS too, so a 4th ARS player is blocked.
+    await page.getByRole("button", { name: "Add Fwd3", exact: true }).click();
+    await expect(page.getByTestId("fpl-add-message")).toHaveText("You already have 3 players from ARS.");
+    await page.getByRole("button", { name: "Add Fwd4", exact: true }).click();
+    await expect(page.getByTestId("fpl-squad-count")).toHaveText("15 / 15");
+    await expect(page.getByTestId("fpl-checks")).toContainText("Budget cannot be verified: 1 selected player has no price");
+    await expect(page.getByTestId("fpl-status")).toHaveText("Incomplete");
+    await page.getByRole("button", { name: "Make Mid1 captain", exact: true }).click();
+    await page.getByRole("button", { name: "Make Mid2 vice-captain", exact: true }).click();
+    await expect(page.getByTestId("fpl-checks")).toContainText("Captain chosen.");
+    await expect(page.getByTestId("fpl-checks")).toContainText("Vice-captain chosen.");
+    await page.screenshot({ path: testInfo.outputPath("fpl-builder-mobile.png"), fullPage: true });
     await page.reload();
-    await expect(page.getByText("Local practice · seven computer-controlled teams · illustrative player scores", { exact: true })).toBeVisible();
-    await expect(page.locator("aside").getByText("Saka", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Leave room" }).click();
-    await expect(page.getByRole("button", { name: "Start practice draft" })).toBeVisible();
+    await expect(page.getByTestId("fpl-squad-count")).toHaveText("15 / 15");
+    await expect(page.getByTestId("fpl-builder-page")).not.toContainText(/Draftroom|practice draft|computer-controlled|Elo|Kalshi|NaN/);
   });
 
   for (const timezoneId of ["Asia/Singapore", "America/New_York"]) {
@@ -641,6 +667,70 @@ async function routePrecisionDeskSlate(page: Page, row: ReturnType<typeof precis
   await routeTwoFixtureDeskSlate(page);
   await page.route("**/api/model/active", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ fixtures: [row] }),
+  }));
+}
+
+async function routePricedBetSlipSlate(page: Page) {
+  const observedAt = new Date().toISOString();
+  const fixtures = [
+    { fixtureId: 901, home: "Arsenal", away: "Chelsea", pHome: 0.5, pDraw: 0.25, pAway: 0.25 },
+    { fixtureId: 902, home: "Liverpool", away: "Fulham", pHome: 0.625, pDraw: 0.2, pAway: 0.175 },
+  ];
+  await page.route("**/api/model/active", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ fixtures: fixtures.map((fixture) => ({
+      competitionId: "eng.1",
+      utcDate: "2099-09-20T19:00:00.000Z",
+      homeElo: 1900,
+      awayElo: 1800,
+      pOver2_5: 0.52,
+      pBttsYes: 0.5,
+      oddsSources: [{ source: "polymarket", observedAt, pHome: fixture.pHome, pDraw: fixture.pDraw, pAway: fixture.pAway }],
+      ...fixture,
+    })) }),
+  }));
+  await page.route("**/api/matches/active", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ fixtures: fixtures.map((fixture) => ({
+      id: fixture.fixtureId,
+      competitionId: "eng.1",
+      homeTeam: fixture.home,
+      awayTeam: fixture.away,
+      utcDate: "2099-09-20T19:00:00.000Z",
+      status: "SCHEDULED",
+    })) }),
+  }));
+  await page.route("**/api/matches/recent?competition=eng.1", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ matches: [], clubForm: { teams: [] } }),
+  }));
+}
+
+async function routeFplPlayers(page: Page) {
+  // Synthetic test players; prices are test inputs. Keeper2 has no price on purpose.
+  const spec: Array<[string, "GK" | "DEF" | "MID" | "FWD", string, number | null]> = [
+    ["Keeper1", "GK", "ARS", 5], ["Keeper2", "GK", "CHE", null], ["Keeper3", "GK", "LIV", 4.5],
+    ["Def1", "DEF", "ARS", 6], ["Def2", "DEF", "ARS", 5.5], ["Def3", "DEF", "CHE", 5], ["Def4", "DEF", "LIV", 4.5], ["Def5", "DEF", "FUL", 4.5],
+    ["Mid1", "MID", "LIV", 10], ["Mid2", "MID", "CHE", 8], ["Mid3", "MID", "FUL", 6], ["Mid4", "MID", "MCI", 5.5], ["Mid5", "MID", "MCI", 5],
+    ["Fwd1", "FWD", "MCI", 9], ["Fwd2", "FWD", "FUL", 7], ["Fwd3", "FWD", "ARS", 8], ["Fwd4", "FWD", "TOT", 6],
+  ];
+  const names: Record<string, string> = { ARS: "Arsenal", CHE: "Chelsea", LIV: "Liverpool", FUL: "Fulham", MCI: "Man City", TOT: "Spurs" };
+  await page.route("**/api/fpl", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      source: "fpl-bootstrap-static",
+      fetchedAt: "2026-10-22T15:00:00.000Z",
+      gameweek: 8,
+      clubs: Object.entries(names).map(([code, name]) => ({ code, name })),
+      players: spec.map(([name, pos, club, price], i) => ({
+        id: i + 1, name, pos, club, clubName: names[club], price,
+        status: "a", chanceNextRound: null, news: null, totalPoints: 10 + i, form: null, selectedByPercent: null,
+      })),
+    }),
   }));
 }
 
@@ -1221,11 +1311,8 @@ test.describe("smoke", () => {
     await expect(page.getByText("Recent settled", { exact: true })).toHaveCount(0);
     await expect(page.getByText("MISS", { exact: true })).toHaveCount(0);
     await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Paper" }).click();
-    await expect(page.getByText("No captured settled forecasts", { exact: true })).toBeVisible();
-    await expect(page.getByText("won", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("paper-position-count")).toHaveText("1");
-    await expect(page.locator('[data-ticket-id="stale-ticket"]')).toHaveCount(0);
-    await expect(page.getByText("10,060", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("No priced fixtures are live right now.", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Select a price to add it to your slip.", { exact: true })).toBeVisible();
     await expect(page.getByText(/NaN|GW3|GW4/)).toHaveCount(0);
   });
 
