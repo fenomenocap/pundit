@@ -135,7 +135,7 @@ test.describe("QA regressions", () => {
       await page.locator('li [data-testid="desk-slate-fixture"][data-fixture-id="espn:eng.1:901"]').click();
       const xg = exact ? "1.88–0.82" : "1.87–0.83";
       await expect(page.locator("aside").getByText(xg, { exact: true })).toBeVisible();
-      await expect(page.locator("aside")).toContainText("Our lean");
+      await expect(page.locator("aside")).toContainText("Our forecast");
       await expect(page.locator("aside")).toContainText("Arsenal rate stronger.");
       await expect(page.locator("aside")).not.toContainText("(1901)");
       await expect(page.locator("aside")).not.toContainText("(1800)");
