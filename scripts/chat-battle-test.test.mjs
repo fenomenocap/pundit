@@ -4468,3 +4468,11 @@ test("match answer provenance must mirror grounding feed, model version, and as-
   assert.equal(answerIncludesGroundedModelNumbers("Arsenal lean 75.9% with fair 1.32.", grounding), false);
   assert.equal(answerIncludesGroundedModelNumbers("Home 60.0% is my lean.", { kind: "match", pHome: 0.6, pDraw: 0.2, pAway: 0.2 }), true);
 });
+
+test("sweep targets the live DigitalOcean API by default, not the frozen Railway build", async () => {
+  const { resolveDefaultApiUrl, PRODUCTION_API_URL } = await import("./chat-battle-test.mjs");
+  assert.equal(PRODUCTION_API_URL, "https://134-209-121-101.sslip.io");
+  assert.equal(resolveDefaultApiUrl({}), PRODUCTION_API_URL);
+  assert.equal(resolveDefaultApiUrl({ PUNDIT_API_URL: " https://example.test/ " }), "https://example.test");
+  assert.doesNotMatch(resolveDefaultApiUrl({}), /railway\.app/);
+});
