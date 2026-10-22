@@ -1,8 +1,9 @@
 name: Verify Production
 
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: ["Deploy API (DigitalOcean)"]
+    types: [completed]
   workflow_dispatch:
 
 # Main can receive several pushes in minutes. Railway deploys only the newest
@@ -14,17 +15,19 @@ concurrency:
 
 jobs:
   verify:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Resolve deployed web SHA
         id: web-sha
         shell: bash
         env:
-          DEPLOY_REF: ${{ github.sha }}
+          DEPLOY_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           sha=$(bash scripts/resolve-deployed-sha.sh web)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -33,15 +36,15 @@ jobs:
         id: api-sha
         shell: bash
         env:
-          DEPLOY_REF: ${{ github.sha }}
+          DEPLOY_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           sha=$(bash scripts/resolve-deployed-sha.sh api)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for Railway API deploy
-        if: steps.api-sha.outputs.sha == github.sha
+      - name: Verify production
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/wait-for-railway-deploy.mjs --sha "${{ github.sha }}"
-
-      - run: bash scripts/verify-prod.sh "${{ steps.api-sha.outputs.sha }}" "${{ steps.web-sha.outputs.sha }}" enabled
+          PUNDIT_API_URL: ${{ vars.PUNDIT_API_URL }}
+          PUNDIT_EXPECTED_API_HOST: ${{ vars.PUNDIT_EXPECTED_API_HOST }}
+          PUNDIT_EXPECT_FIXTURE_REGISTRY: ${{ vars.PUNDIT_EXPECT_FIXTURE_REGISTRY }}
+          PUNDIT_VERIFY_WAIT_SECONDS: ${{ vars.PUNDIT_VERIFY_WAIT_SECONDS }}
+        run: bash scripts/verify-prod.sh "${{ steps.api-sha.outputs.sha }}" "${{ steps.web-sha.outputs.sha }}"
