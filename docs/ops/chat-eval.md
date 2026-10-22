@@ -2,6 +2,8 @@
 
 Production chat quality uses a **Schema-17** harness against live API and web deployments. It consumes **OpenRouter credits** — run manually after meaningful deploys, not in CI.
 
+**Target:** the harness (`scripts/chat-battle-test.mjs`) and the daily workflow sweep the production DigitalOcean API by default. Set `PUNDIT_API_URL` to sweep another deployment. The retired Railway service still serves a frozen build, so never point a sweep at it (until 22 Oct 2026 the daily sweep did, so a totals check failed on wording that current code no longer produces).
+
 ## Quick commands
 
 | Command | Role |

@@ -41,8 +41,10 @@ Public football and market sources are keyless and cached server-side on a caden
 
 ```
 packages/
-  web/   — Next.js 15 frontend: analysis desk, paper lab, /fixtures, /model, /evaluation
-  api/   — Express REST API: /api/ask, /api/matches, /api/model, /api/evaluation
+  web/   — Next.js 15 frontend: analysis desk, /fixtures (+ EPL table), /board (bet slip), /draft (FPL simulator), /evaluation (track record)
+  api/   — Express REST API: /api/ask, /api/matches, /api/model, /api/evaluation, /api/fpl
+deploy/do/ — DigitalOcean API deploy: compose, Caddy, blue/green swap.sh, SSH deploy.sh
+docs/  — GitBook source (Git Sync from this folder; see docs/SUMMARY.md)
 ```
 
 ---
@@ -53,8 +55,8 @@ Most env vars have safe local defaults (see `.env.example`). Local development
 reads one gitignored repository-root `.env`: the API loads the whole file, and
 `packages/web/next.config.mjs` copies in only its `NEXT_PUBLIC_*` values, so no
 API secret enters the web process. Exported shell values, Vercel project env and
-any `packages/web/.env*` file win over the root file. Railway and Vercel inject
-production values directly.
+any `packages/web/.env*` file win over the root file. Production values come from
+the API's env file on the DigitalOcean droplet and from the Vercel project.
 
 ```bash
 pnpm install --frozen-lockfile
@@ -76,7 +78,7 @@ cd packages/web && pnpm dev
 Without `OPENROUTER_API_KEY` (or the `MINIMAX_API_KEY` answer fallback) the API
 still serves every server-rendered answer — priced match cards, tables, season
 outlooks, capability notices — and returns 502 only for turns that need the
-answer model. Search needs `OPENROUTER_API_KEY`. Production keys live in Railway.
+answer model. Search needs `OPENROUTER_API_KEY`. Production keys live in the droplet's env file (never in git).
 
 Local smoke checks (API must be running):
 
@@ -101,8 +103,9 @@ pnpm test && pnpm build
 | GET | `/api/model/active` | Active club fixtures with model 1X2 probabilities |
 | GET | `/api/model/fixtures` | Same as active set (optional `?competition=`) |
 | GET | `/api/model/backtest-gate` | Pinned walk-forward backtest gate (`edgeValidationActive`, promotion flags) |
-| GET | `/api/evaluation/club-season` | Rolling club-season calibration artifact |
+| GET | `/api/evaluation/club-season` | Track record: club-season calibration artifact, one scored forecast per match (`evaluation.dedupe`) |
 | GET | `/api/evaluation/wc-2026` | Frozen WC 2026 backtest artifact |
+| GET | `/api/fpl/bootstrap` | Public FPL player data for the `/draft` simulator (1 h cache, stale-on-error) |
 | GET | `/health` | Process liveness |
 | GET | `/startup` | Startup gate for usable football and active-model caches |
 | GET | `/ready` | Runtime readiness and degradable-source status |
@@ -115,11 +118,14 @@ pnpm test && pnpm build
 ## Frontend Pages
 
 - **`/`** — analysis desk: live slate plus analyst pane for grounded match, table, season, and general questions
-- **`/board`**, **`/draft`**, **`/vault`** — local paper lab on the same slate (not a bookmaker)
-- **`/legacy`** — previous chat-only homepage
-- **`/fixtures`** — multi-competition live schedule, results, and standings (ESPN-backed)
-- **`/model`** — native reference view of active club fixture model probabilities
-- **`/evaluation/club-season`** — rolling 90-minute pre-kickoff club-season ledger
+Nav: Desk · Fixtures · Bet slip · FPL · Track record.
+
+- **`/fixtures`** — schedule grouped by day, forecasts (goals/scorelines and market comparison behind toggles) and a formal Premier League table
+- **`/board`** — bet slip: singles and accumulators with combined odds and potential returns updating live (a calculator; no wallet or wager)
+- **`/draft`** — FPL team simulator: 15-man squad, £100.0m, max 3 per club, XI, captain and vice, from public FPL data ("Simulator only … Not affiliated with the Premier League")
+- **`/evaluation/club-season`** — Track record: one scored pre-kickoff forecast per match, plus the "How the forecasts work" section (`#methodology`)
+- **`/model`** — removed; 308 redirect to `/evaluation/club-season#methodology`
+- **`/legacy`** — previous chat-only homepage (not in the nav); `/vault` is also no longer linked
 - **`/evaluation/wc-2026`** — frozen WC 2026 backtest metrics and fixture table
 
 ---
@@ -131,7 +137,9 @@ Production:
 | Service | URL |
 |---|---|
 | **Web (Vercel)** | [https://thepundit.vercel.app](https://thepundit.vercel.app) — project `sports-prediction-markets-web`, **Root Directory** `packages/web` |
-| **API (Railway)** | [https://thepundit.up.railway.app](https://thepundit.up.railway.app) — service `@pundit/api` |
+| **API (DigitalOcean)** | [https://134-209-121-101.sslip.io](https://134-209-121-101.sslip.io) — Docker blue/green behind Caddy, deployed by `.github/workflows/deploy-do.yml` |
+
+Railway (`thepundit.up.railway.app`) is retired as the API host since 22 Oct 2026; it may still serve a frozen build and must not be used. Full pipeline: [`docs/ops/deploy.md`](docs/ops/deploy.md).
 
 Verify the live stack after env or deploy changes:
 
@@ -139,40 +147,39 @@ Verify the live stack after env or deploy changes:
 pnpm verify:prod
 ```
 
-### Railway (`@pundit/api`)
+### API (DigitalOcean)
 
-```bash
-cd packages/api && railway up
-```
+Merges to `main` deploy automatically: after CI passes, `deploy-do.yml` sends the exact CI-tested sha to the droplet, where `deploy/do/swap.sh` runs a health-gated zero-downtime blue/green swap; Verify Production runs after the deploy. See [`deploy/do/README.md`](deploy/do/README.md). Droplet and env-file changes are made by the owner only.
 
 | Variable | Role |
 |---|---|
 | `OPENROUTER_API_KEY` | Answers and search (primary) |
 | `MINIMAX_API_KEY` | Answer fallback when OpenRouter unset |
 | `ALLOWED_ORIGINS` | Vercel frontend origin(s) |
-| `PUNDIT_DATA_DIR` | `/data` mounted volume |
+| `PUNDIT_DATA_DIR` | `/data` (bind mount of `/opt/pundit-data`) |
+| `FIXTURE_REGISTRY_ENABLED` | `true` in production |
+| `ONE_X_TWO_TEMPERATURE_ENABLED` | Off (unset); enabling needs the owner's approval |
 | `CHAT_ENGINE` | Omit or `legacy` in production; `agent` is eval-only |
 
 ### Vercel (`packages/web`)
 
-```bash
-cd packages/web && vercel --prod
-```
+Vercel builds only on `main` and only when web/shared inputs change (`scripts/vercel-ignore.sh`); docs-only and API-only merges are skipped.
 
 | Variable | Role |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | Railway API URL |
+| `NEXT_PUBLIC_API_URL` | DigitalOcean API URL (inlined at build) |
 | `NEXT_PUBLIC_USE_MOCK` | `false` in production |
 | `NEXT_PUBLIC_DOCS_URL` | Published GitBook URL (enables in-app doc links) |
 
-**GitBook:** connect the repo `docs/` folder (GitHub sync), publish, then set `NEXT_PUBLIC_DOCS_URL` in Vercel to the public space URL.
+**GitBook:** published at [pundit.gitbook.io/pundit-docs](https://pundit.gitbook.io/pundit-docs) by GitBook Git Sync from `docs/` (`docs/.gitbook.yaml`). Merging to `main` updates it; edit docs in git, not in the GitBook editor.
 
 Required env vars for local dev are listed in `.env.example`. Never commit `OPENROUTER_API_KEY` or `MINIMAX_API_KEY`.
 
 ## Backtesting
 
 - **WC 2026** — frozen reconstructed artifact at `/evaluation/wc-2026` (not live forecasts).
-- **Club season** — rolling 90-minute pre-kickoff seals at `/evaluation/club-season` (production volume on Railway `/data`).
+- **Club season** — Track record at `/evaluation/club-season`: rolling 90-minute pre-kickoff seals, one scored per match (production volume on the API's `/data`).
+- **Methodology** — data sources, calibration evidence, known limits and pin expiry: [`docs/methodology.md`](docs/methodology.md).
 - **EPL walk-forward harness** — `model/backtest/` (`pnpm backtest:ci`, `pnpm backtest:run`); gate exposed at `GET /api/model/backtest-gate`. See [`docs/how-it-works/model-backtest.md`](docs/how-it-works/model-backtest.md).
 
 Live model views recalculate from the release's pinned strength artifact on the adaptive model cadence.

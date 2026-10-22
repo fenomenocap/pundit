@@ -1,6 +1,6 @@
 # Welcome to Pundit
 
-Pundit is an analysis desk for the club season — Premier League and UEFA Champions League qualifiers. Ask about an upcoming match for probabilities grounded in Pundit's statistical model, ask about the league table or title race, or get clearly labelled general football analysis. The homepage is the desk; Paper, Draft, and Vaults are a local paper lab, not a bookmaker.
+Pundit is an analysis desk for the club season — Premier League and UEFA Champions League qualifiers. Ask about an upcoming match for probabilities grounded in Pundit's statistical model, ask about the league table or title race, or get clearly labelled general football analysis. The homepage is the desk. The site also has a Fixtures page with the Premier League table, a Bet slip for adding up odds and potential returns, an FPL team simulator, and a Track record page that scores past forecasts. None of these is a bookmaker: nothing is wagered and no money moves.
 
 Under the hood, every answer is backed by:
 
@@ -19,7 +19,8 @@ The unchanged calibration family passed a later five-season retrospective valida
 
 * [Documentation index](index.md) — full map of product, API, ops, and architecture docs
 * [What is Pundit](getting-started/what-is-pundit.md) — the short version of what this product does
-* [How to Use Pundit](getting-started/how-to-use.md) — the desk, paper lab, fixtures, model, and ledger
+* [How to Use Pundit](getting-started/how-to-use.md) — the desk, fixtures and table, bet slip, FPL simulator, and track record
+* [Methodology and Data Sources](methodology.md) — every data source, how forecasts are built, calibration evidence and known limits
 * [The Model](how-it-works/the-model.md) — how the underlying probabilities are actually generated
 * [Evaluation API](api-reference/evaluation.md) — calibration artifacts and metrics
 * [API Reference](api-reference/overview.md) — if you want to pull the data yourself

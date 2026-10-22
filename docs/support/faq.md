@@ -28,11 +28,11 @@ For Premier League and UCL-qualifier fixtures, yes when the venue is not marked 
 **Can I ask BTTS or over 2.5 without getting the 1X2 favourite again?**
 Yes. Those markets are already on the score grid. The desk settles `BTTS`, `o2.5` / `U2.5`, and likely scorelines from the same fixture facts. A market Pundit does not price (player, Asian, corners) is refused rather than answered with the favourite.
 
-**Are Paper, Draft, and Vaults real bets?**
-No. They are a local paper lab on the live slate. Nothing is a deposit, a bookmaker ticket, or an on-chain vault.
+**Are the Bet slip and FPL pages real bets?**
+No. The Bet slip (`/board`) only adds up prices the site already shows and works out potential returns; nothing is placed, deposited or settled. The FPL page (`/draft`) is a team-building simulator using public Fantasy Premier League data and is not affiliated with the Premier League.
 
 **What are the evaluation pages?**
-`/evaluation/club-season` (Ledger in the nav) shows rolling 90-minute pre-kickoff seals for club fixtures. Live volume is on Railway `/data`. `/evaluation/wc-2026` is a frozen World Cup 2026 backtest — historical only, not live forecasts.
+`/evaluation/club-season` (Track record in the nav) scores pre-kickoff forecasts for club fixtures, one forecast per match. Live volume is on the production API's data volume. `/evaluation/wc-2026` is a frozen World Cup 2026 backtest — historical only, not live forecasts.
 
 **Is there an API?**
 Yes, all data shown in the app is available read-only with no authentication (except chat, which requires `MINIMAX_API_KEY` on the server). See the [API Reference](../api-reference/overview.md).

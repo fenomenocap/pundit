@@ -2,7 +2,7 @@
 
 Pundit's backend is a small read-mostly REST API. All documented endpoints below are public — no API key or authentication required on the client. **`POST /api/ask`** needs server-side inference: **`OPENROUTER_API_KEY`** in production (answers and search), or **`MINIMAX_API_KEY`** as the answer-only fallback when OpenRouter is unset.
 
-**Base URL:** the Pundit API deployment (production: `https://thepundit.up.railway.app`).
+**Base URL:** the Pundit API deployment (production: `https://134-209-121-101.sslip.io`, on DigitalOcean since 22 Oct 2026). The old Railway address is retired and may serve a frozen build; do not use it.
 
 **Rate limits:**
 
@@ -28,6 +28,7 @@ Exceeding a limit returns an HTTP error with a JSON body like `{ "error": "Too m
 * [Matches](matches.md) — `GET /api/matches/*`
 * [Recognized fixtures](matches.md#recognized-fixtures) — `GET /api/fixtures/recognized`
 * [Model](model.md) — `GET /api/model/active`, `GET /api/model/fixtures`, `GET /api/model/backtest-gate`
+* [FPL data](fpl.md) — `GET /api/fpl/bootstrap` (public FPL player data for the `/draft` simulator)
 * [Ask](ask.md) — `POST /api/ask`
 * [Evaluation](evaluation.md) — `GET /api/evaluation/*`
 * [Polymarket Reference Odds](polymarkets.md) — legacy WC reference (`GET /api/polymarkets/*`)

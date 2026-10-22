@@ -8,7 +8,7 @@ Canonical in-repo docs for [Pundit](https://thepundit.vercel.app). GitBook publi
 | --- | --- |
 | [Welcome](README.md) | What Pundit is and where to start |
 | [What is Pundit](getting-started/what-is-pundit.md) | Answer tiers, pricing vs recognition, non-betting scope |
-| [How to use Pundit](getting-started/how-to-use.md) | Desk, paper lab, fixtures, model reference, evaluation UI |
+| [How to use Pundit](getting-started/how-to-use.md) | Desk, fixtures and EPL table, bet slip, FPL simulator, track record |
 | [Product vision](overview/product-vision.md) | Direction and design principles (not a betting stack) |
 | [FAQ](support/faq.md) | Common questions |
 | [Disclaimer](support/disclaimer.md) | Not a bookmaker; fair odds are `1/p` |
@@ -21,6 +21,7 @@ Canonical in-repo docs for [Pundit](https://thepundit.vercel.app). GitBook publi
 | [Data sources](how-it-works/data-sources.md) | ESPN, markets, artifacts, search, model vs market framing |
 | [Chat engine](how-it-works/chat-engine.md) | Legacy production path vs eval-only agent tool-calling engine |
 | [Model backtest](how-it-works/model-backtest.md) | Walk-forward EPL harness, gate, and promotion rules |
+| [Methodology and data sources](methodology.md) | Sources, forecast construction, calibration evidence, known limits, pin expiry |
 
 ## API
 
@@ -30,7 +31,8 @@ Canonical in-repo docs for [Pundit](https://thepundit.vercel.app). GitBook publi
 | [Ask](api-reference/ask.md) | `POST /api/ask` streaming, grounding, verification |
 | [Matches](api-reference/matches.md) | Fixtures, standings, recognized fixtures |
 | [Model](api-reference/model.md) | Active probabilities and backtest gate |
-| [Evaluation](api-reference/evaluation.md) | Club-season ledger and frozen WC backtest |
+| [Evaluation](api-reference/evaluation.md) | Track record (club-season, one forecast per match) and frozen WC backtest |
+| [FPL data](api-reference/fpl.md) | Public FPL player data proxy for the `/draft` simulator |
 | [Polymarket reference](api-reference/polymarkets.md) | Legacy WC reference odds |
 
 ## Operations
@@ -40,6 +42,7 @@ Canonical in-repo docs for [Pundit](https://thepundit.vercel.app). GitBook publi
 | [Environment variables](ops/environment-variables.md) | Names-only reference for API and web |
 | [Chat eval runbook](ops/chat-eval.md) | Schema-17 certification, pinned gate, search replay |
 | [Chat engine rollout readiness](ops/chat-engine-rollout-readiness.md) | Side-by-side daily eval gates before `CHAT_ENGINE=agent` in prod |
+| [Deploy and release](ops/deploy.md) | Vercel web, DigitalOcean API blue/green, Verify Production, pin-expiry alarm |
 | [Production verification](ops/cloud-monitor.md) | `verify:prod`, diagnose playbook, automations |
 | [Vercel access](ops/vercel-access.md) | Hobby team constraints |
 | [Request completion](ops/request-completion.md) | Completion register governance (internal) |

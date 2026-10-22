@@ -2,7 +2,7 @@
 
 Chat-first analysis **desk** for the Premier League and UEFA Champions League qualifiers. Recognized, policy-eligible active fixtures are grounded in locally computed match probabilities; recognized non-priced fixtures retain context with an explicit capability reason and no Pundit probabilities. Competition questions use ESPN standings, and other football questions are clearly labelled general analysis. World Cup 2026 live pipelines are retired, with historical credibility retained in the frozen backtest at `/evaluation/wc-2026`. No blockchain, database, or trading. Paper / Draft / Vaults on the web app are a local simulator, not a book. The former platform is archived at `archive/onchain-trading-v1`.
 
-**Status:** Deployed (Vercel + Railway). `POST /api/ask` is live in production with the OpenRouter key managed in Railway.
+**Status:** Deployed (web on Vercel, API on DigitalOcean with zero-downtime blue/green deploys; Railway retired 22 Oct 2026). `POST /api/ask` is live in production with the OpenRouter key in the droplet's env file.
 
 ---
 
@@ -26,8 +26,8 @@ No Prisma, no Postgres, no wagmi/viem/RainbowKit, no Solidity/Hardhat. Don't rei
 | **ESPN scoreboard/standings** (`packages/api/src/services/football-data.ts`) | `/api/matches/*`, `/fixtures`, competition and season grounding | Public and keyless. Enabled competition windows refresh every 30 minutes through bounded requests; scheduled, in-play, postponed and completed fixture state is retained. A separate strictly complete season-aware Premier League schedule is checked on that cadence and refreshed ahead of its six-hour freshness deadline, with atomic persistence and prior-generation recovery for the simulator. |
 | **Fixture registry** (`fixture-registry.ts`) | `/api/fixtures/recognized`, chat routing, model eligibility | Approved structured ESPN identities are observed in shadow mode by default and persisted atomically with last-good recovery. Reviewed friendly records require an ESPN stable ID plus an official corroborating URL. Search and user text create candidates only and never become registry, grounding, or model input. Expanded routing is controlled by `FIXTURE_REGISTRY_ENABLED`; friendly pricing remains disabled. |
 | **Pinned ClubElo artifact** (`club-strength-artifact.ts`, `club-ratings.ts`) | Active match model | A reviewed, content-addressed `clubelo@1` snapshot ships with each release and is loaded locally. Production runtime never contacts ClubElo. Hash, coverage and a 30-day freshness gate fail closed; atomic `/data` current/last-good copies recover a damaged release selector without changing inputs. |
-| **Local model** (`active-score-model.ts`, `model-data.ts`) | `/api/model/active`, `/api/model/fixtures`, `/model`, match grounding | Fundamental v3 preserves the rating/HFA champion 1X2 and calibrates ordinary EPL score shape using pinned `outcome-anchored-shrunk-goals-v2`. Totals, BTTS, scores and calibrated xG come from its final grid. UCL qualifiers, neutral fixtures and pre-2026-10-07 fixtures retain the 2.70-total baseline shape. Current EPL calibration fails closed on missing, corrupt, future or >30-day artifacts. Public forecasts expire at kickoff. |
-| **Pinned EPL goal calibration** (`epl-goal-calibration-artifact.ts`) | Ordinary EPL fixtures, season simulation, labelled Consensus and paper scores | Raw SHA-256 `a502e436d89d84e73647602117060a1ee2c824435ebd05a3ad6f93b859f627c7`; origin `2026-10-07T00:00:00Z`. Shrunk team-event goal rates, fitted Elo allocation and low-score correction are outcome-anchored to unchanged champion 1X2. Fit uses 3,090 earlier goal outcomes and 996 dated-rating allocation rows, including 50 current-season goal-only results. See `docs/how-it-works/the-model.md` for retrospective evidence limits. |
+| **Local model** (`active-score-model.ts`, `model-data.ts`) | `/api/model/active`, `/api/model/fixtures`, `/fixtures`, match grounding | Fundamental v3 preserves the rating/HFA champion 1X2 and calibrates ordinary EPL score shape using pinned `outcome-anchored-shrunk-goals-v2`. Totals, BTTS, scores and calibrated xG come from its final grid. UCL qualifiers, neutral fixtures and pre-2026-10-07 fixtures retain the 2.70-total baseline shape. Current EPL calibration fails closed on missing, corrupt, future or >30-day artifacts. Public forecasts expire at kickoff. |
+| **Pinned EPL goal calibration** (`epl-goal-calibration-artifact.ts`) | Ordinary EPL fixtures, season simulation, labelled Consensus and the desk's projected score | Raw SHA-256 `a502e436d89d84e73647602117060a1ee2c824435ebd05a3ad6f93b859f627c7`; origin `2026-10-07T00:00:00Z`. Shrunk team-event goal rates, fitted Elo allocation and low-score correction are outcome-anchored to unchanged champion 1X2. Fit uses 3,090 earlier goal outcomes and 996 dated-rating allocation rows, including 50 current-season goal-only results. See `docs/how-it-works/the-model.md` for retrospective evidence limits. |
 | **Stake/Kalshi/Polymarket** (`fixture-market-sources.ts`, `model-market-odds.ts`) | Active match grounding | Direct best-effort fetches normalize complete active 1X2 markets to no-vig probabilities every 30 minutes. Source failures remain isolated. |
 | **Frozen WC evaluation** (`wc-evaluation.ts`) | `/api/evaluation/wc-2026`, `/evaluation/wc-2026` | Read-only historical backtest. It is not a live competition pipeline and has no cron. |
 | **Web search** (`web-search.ts`) | `POST /api/ask` | Pundit-executed search. The provider calls OpenRouter chat completions with the pinned DeepSeek model and `openrouter:web_search` (Exa), then keeps only `url_citation` pages. The answer client never receives that tool. A provider failure — 429, 5xx, timeout, a reply that never searched — is a typed `degraded` outcome, never zero results. `empty` means the tool ran and cited nothing. Breakers are **per provider** and count **per question**, not per search. Health is reported on `/ready` under `webSearch`. |
@@ -47,7 +47,7 @@ API_URL=http://localhost:3001
 # Writable directory for state that must survive restarts: rolling club-season
 # calibration, the club-strength artifact recovery copies, recognized-fixture registry/recovery copy,
 # and the separately disabled private friendly-shadow ledger.
-# Production points this at a mounted Railway volume (/data). Leave unset
+# Production points this at /data (bind mount of /opt/pundit-data on the droplet). Leave unset
 # locally to use the in-repo packages/api/data directory.
 PUNDIT_DATA_DIR=
 # Shadow registry observes existing approved fixtures by default. Setting true
@@ -102,7 +102,7 @@ WEB_SEARCH_CONCURRENCY=4
 # ── Rate limiting for POST /api/ask ──────────────────────────────────────────
 # The intended limit across the whole deployment. Every instance uses one
 # process-wide bucket (not one per client IP), divided by API_REPLICAS.
-# Railway runs a single replica today, so the default of 1 makes the configured
+# Production runs a single API container today, so the default of 1 makes the configured
 # limit the real one. Raise it only if the replica count is raised. /ready
 # reports the resolved values under askRateLimit.
 ASK_RATE_LIMIT_PER_MINUTE=10
@@ -130,7 +130,8 @@ BACKTEST_PROMOTED_MODEL_ENABLED=false
 
 - Dark theme only, CSS variables in `packages/web/src/app/globals.css` (navy background, cyan/pink accent hues via shadcn's HSL token convention).
 - Mobile-first responsive.
-- `/model` is a native read-only reference over Pundit's active club-fixture `/api/model/*` cache. Keep it aligned with the existing API contract rather than introducing a second model path.
+- `/model` is removed (308 to `/evaluation/club-season#methodology`). `/fixtures` and the desk read the existing `/api/model/*` contract; do not introduce a second model path.
+- `/board` is a bet slip (a calculator over prices the site already shows) and `/draft` is an FPL team simulator over public FPL data; neither is a model input.
 - `/evaluation/wc-2026` is a frozen historical artifact. Do not reconnect it to live chat/model caches or cron.
 - Keep server-owned facts deterministic when the grounding contract is complete. The answer model may handle evidence-required current turns and general/ungrounded open-ended analysis, but it must not restate a recognized fixture's capability reason as a guessed lineup, squad, venue, rating, or policy explanation.
 - In V2 match answers, numeric facts are rendered by the server from typed fact slots. Generated prose may select and connect approved facts, but it cannot supply probabilities, fair odds, market gaps, source IDs, betting recommendations, or lineup effects itself. Narrow fact and capability questions settle without retrieval; current team news still requires verified evidence.
@@ -151,7 +152,7 @@ BACKTEST_PROMOTED_MODEL_ENABLED=false
 ## DO NOT
 
 - Reintroduce Prisma/Postgres, wagmi/viem/RainbowKit, or any onchain trading concept without discussing it first.
-- Read back, log, hardcode, or commit `OPENROUTER_API_KEY` or `MINIMAX_API_KEY`; they are managed in Railway for production and in the gitignored repo-root `.env` locally. `/ready` reports which variable supplied a key and never the value.
+- Read back, log, hardcode, or commit `OPENROUTER_API_KEY` or `MINIMAX_API_KEY`; they are managed in the droplet's env file for production and in the gitignored repo-root `.env` locally. `/ready` reports which variable supplied a key and never the value.
 - Add a runtime dependency on the archived `worldcup-model` deployment or restore a live World Cup pipeline.
 - Treat the frozen WC evaluation as current forecasts or regenerate it from current club ratings.
 - Call `fetch()` raw in page components for matches/standings data — go through `lib/mock-data.ts`'s wrappers, which honour `NEXT_PUBLIC_USE_MOCK`.
