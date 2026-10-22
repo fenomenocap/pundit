@@ -14,6 +14,7 @@
 * [Data Sources](how-it-works/data-sources.md)
 * [Chat Engine](how-it-works/chat-engine.md)
 * [Model Backtest](how-it-works/model-backtest.md)
+* [Methodology and Data Sources](methodology.md)
 
 ## API Reference
 
