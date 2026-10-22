@@ -3,9 +3,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-API_URL="https://thepundit.up.railway.app"
+# Prod API moved from Railway to DigitalOcean (22 Oct 2026). The URL comes from
+# PUNDIT_API_URL when set in the environment (e.g. a repo variable), else
+# the DO host below. EXPECTED_API_HOST defaults to the host part of API_URL.
+DEFAULT_API_URL="https://134-209-121-101.sslip.io"
+API_URL="${PUNDIT_API_URL:-$DEFAULT_API_URL}"
+API_URL="${API_URL%/}"
 WEB_URL="https://thepundit.vercel.app"
-EXPECTED_API_HOST="thepundit.up.railway.app"
+_api_host="${API_URL#*://}"
+_api_host="${_api_host%%/*}"
+EXPECTED_API_HOST="${PUNDIT_EXPECTED_API_HOST:-$_api_host}"
 
 if [[ -n "${1:-}" ]]; then
   EXPECTED_API_SHA="$1"
