@@ -13,7 +13,7 @@ const PRIMARY = [
   { href: "/", label: "Desk" },
   { href: "/fixtures", label: "Fixtures" },
   { href: "/board", label: "Bet slip", short: "Slip" },
-  { href: "/draft", label: "Draft" },
+  { href: "/draft", label: "FPL" },
   { href: "/evaluation/club-season", label: "Track record", short: "Record" },
 ] as const;
 

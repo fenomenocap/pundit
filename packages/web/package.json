@@ -13,7 +13,7 @@
     "clean": "rm -rf .next",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:unit": "node --experimental-strip-types --test src/lib/fixture-presentation.test.ts src/lib/pundit-take-v2-opt-in.test.ts src/desk/lib/split-take-v2-answer.test.ts src/desk/lib/chat-history.test.ts src/desk/lib/prose.test.ts src/desk/lib/slate-selection.test.ts src/desk/lib/paper-settlement.test.ts src/desk/lib/market-quote.test.ts src/desk/lib/rating-words.test.ts src/desk/lib/grid.test.ts src/lib/track-record.test.ts src/desk/lib/bet-slip.test.ts"
+    "test:unit": "node --experimental-strip-types --test src/lib/fixture-presentation.test.ts src/lib/pundit-take-v2-opt-in.test.ts src/desk/lib/split-take-v2-answer.test.ts src/desk/lib/chat-history.test.ts src/desk/lib/prose.test.ts src/desk/lib/slate-selection.test.ts src/desk/lib/paper-settlement.test.ts src/desk/lib/market-quote.test.ts src/desk/lib/rating-words.test.ts src/desk/lib/grid.test.ts src/lib/track-record.test.ts src/desk/lib/bet-slip.test.ts src/desk/lib/fpl-squad.test.ts src/desk/lib/fpl-data.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
