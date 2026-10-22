@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { TeamId } from "@/desk/lib/data/teams";
-import { TEAMS } from "@/desk/lib/data/teams";
+import { TEAMS, teamIdFromName } from "@/desk/lib/data/teams";
+import { getTeamColor, getTeamMonogram } from "@/lib/team-logos";
 
 const PX = { sm: 16, md: 20, lg: 32 } as const;
 const BOX = { sm: "size-4", md: "size-5", lg: "size-8" } as const;
@@ -26,6 +27,36 @@ export function KitPip({
       draggable={false}
       className={cn("shrink-0 object-contain", BOX[size], className)}
     />
+  );
+}
+
+/**
+ * Crest for a club named by any source (ESPN, FPL, the ledger). Premier League
+ * clubs use the same crest asset as the desk; any other club falls back to a
+ * neutral three-letter monogram.
+ */
+export function ClubCrest({
+  name,
+  size = "md",
+  className,
+}: {
+  name: string;
+  size?: "sm" | "md" | "lg";
+  className?: string;
+}) {
+  const id = teamIdFromName(name);
+  if (id) return <KitPip team={id} size={size} className={className} />;
+  const monogram = getTeamMonogram(name);
+  return (
+    <span
+      data-testid="club-monogram"
+      className={cn("flex shrink-0 items-center justify-center rounded-xs text-[8px] font-bold text-white", BOX[size], className)}
+      style={{ backgroundColor: getTeamColor(name) }}
+      title={name}
+      aria-hidden
+    >
+      {monogram ?? "·"}
+    </span>
   );
 }
 

@@ -16,6 +16,8 @@ import {
   type TrackRecordRow,
 } from "@/lib/track-record";
 import { cn } from "@/lib/utils";
+import { ClubCrest } from "@/desk/components/kit";
+import { formalTeamName } from "@/desk/lib/data/teams";
 
 const COMPETITION_NAME: Record<string, string> = {
   "eng.1": "Premier League",
@@ -38,7 +40,7 @@ function day(iso: string | null) {
 }
 
 function outcomeName(row: TrackRecordRow, outcome: "home" | "draw" | "away") {
-  return outcome === "home" ? row.home : outcome === "away" ? row.away : "Draw";
+  return outcome === "home" ? formalTeamName(row.home) : outcome === "away" ? formalTeamName(row.away) : "Draw";
 }
 
 function versionLabel(version: string) {
@@ -82,18 +84,18 @@ export default function TrackRecordPage() {
         right={data ? <span className="text-2xs text-subtle tabular-nums">Updated {day(data.updatedAt)}</span> : null}
       />
 
-      <div className="mx-auto grid max-w-7xl gap-4 px-4 py-5 sm:px-6">
+      <div className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)] gap-4 px-4 py-5 sm:px-6">
         {error ? <ErrorBanner message={error} onRetry={load} /> : null}
 
         {loading ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="h-24 animate-pulse rounded-md border border-border bg-surface" />
             ))}
           </div>
         ) : record && current ? (
           <>
-            <section aria-labelledby="current-heading" className="grid gap-3">
+            <section aria-labelledby="current-heading" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 id="current-heading" className="font-display text-xl uppercase tracking-wide">
                   Current forecasts · {COMPETITION_NAME[current.competitionId] ?? current.competitionId}
@@ -109,7 +111,7 @@ export default function TrackRecordPage() {
                   No finished forecasts yet for the current version.
                 </p>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <DeskStat
                     label="Matches counted"
                     value={String(current.scores.n)}
@@ -233,7 +235,13 @@ export default function TrackRecordPage() {
                           >
                             <td className="whitespace-nowrap px-4 py-2 text-quiet">{day(row.utcDate)}</td>
                             <td className="px-2 py-2">
-                              <span className="block truncate">{row.home} v {row.away}</span>
+                              <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                <ClubCrest name={row.home} size="sm" />
+                                <span className="truncate">{formalTeamName(row.home)}</span>
+                                <span className="text-subtle">v</span>
+                                <ClubCrest name={row.away} size="sm" />
+                                <span className="truncate">{formalTeamName(row.away)}</span>
+                              </span>
                               <span className="block text-2xs text-subtle">
                                 {COMPETITION_NAME[row.competitionId] ?? row.competitionId}
                                 {row.modelVersion ? ` · ${versionLabel(row.modelVersion)}` : ""}
