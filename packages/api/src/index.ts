@@ -299,6 +299,16 @@ function installProcessErrorHandlers(): void {
   });
 }
 
+/** Node keep-alive above common proxy/LB idle timeouts (60s) so the proxy never reuses a socket Node just closed. */
+export const SERVER_KEEP_ALIVE_TIMEOUT_MS = 65_000;
+/** Must exceed keepAliveTimeout (Node requirement for headersTimeout to be effective on kept-alive sockets). */
+export const SERVER_HEADERS_TIMEOUT_MS = 66_000;
+
+export function applyServerTimeouts(server: Pick<import("node:http").Server, "keepAliveTimeout" | "headersTimeout">): void {
+  server.keepAliveTimeout = SERVER_KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = SERVER_HEADERS_TIMEOUT_MS;
+}
+
 export function startServer() {
   installProcessErrorHandlers();
   const server = app.listen(port, () => {
@@ -319,6 +329,7 @@ export function startServer() {
       logFatalProcessError("Bootstrap", error);
     });
   });
+  applyServerTimeouts(server);
 
   let shuttingDown = false;
   function shutdown(signal: NodeJS.Signals): void {
