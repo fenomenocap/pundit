@@ -3,7 +3,7 @@
  *
  * Enabled only when the process environment sets
  * ONE_X_TWO_TEMPERATURE_ENABLED=true exactly. Any other value, or no value,
- * keeps production forecasts unchanged. Turning it on needs Xavi's approval;
+ * keeps production forecasts unchanged. Turning it on needs the owner's approval;
  * evidence: model/calibration-2026-10-22/report.json.
  *
  * When enabled, the tempered 1X2 becomes the anchoring target for the score

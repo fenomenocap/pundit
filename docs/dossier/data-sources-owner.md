@@ -1,8 +1,8 @@
-# Pundit data sources — Xavi's list (canonical)
+# Pundit data sources — The owner's list (canonical)
 
-Source: Xavi, in cloud agent bc-019f8ddf (Pundit research, Sept 2026), verbatim list. Refer back to this before any data-source work.
+Source: Owner, in cloud agent bc-019f8ddf (Pundit research, Sept 2026), verbatim list. Refer back to this before any data-source work.
 
-## Free / open (Xavi named)
+## Free / open (owner named)
 - WhoScored — https://www.whoscored.com/
 - The Analyst (Opta) — https://theanalyst.com/ (competition/premier-league, /stats, opta-football-predictions)
 - Transfermarkt — https://www.transfermarkt.co.uk/navigation/statistiken
@@ -12,26 +12,26 @@ Source: Xavi, in cloud agent bc-019f8ddf (Pundit research, Sept 2026), verbatim 
 - Sofascore — https://www.sofascore.com/
 - FootyStats — https://footystats.org/
 - Also named: BBC Sport, Goal.com, Premier League + other leagues' official sites, CBS Sports
-- Xavi's note: "all these sources have betting data/odds too"
+- The owner's note: "all these sources have betting data/odds too"
 
-## Gated / paid (Xavi named)
+## Gated / paid (owner named)
 - API-Football — https://www.api-football.com/documentation-v3
 - playerstats.football — https://playerstats.football/
 - Stats Perform Dynamic Stats API — https://www.statsperform.com/products/dynamic-stats-api/ (paid; "where else can we get such data?")
 
 ## Already in use / referenced
-- ESPN (fixtures, table, form; interim; Xavi: don't be ESPN-myopic)
+- ESPN (fixtures, table, form; interim; owner: don't be ESPN-myopic)
 - ClubElo (pinned model input; no runtime scrape)
 - Understat, StatsBomb open data (xG, backtest)
 - football-data.co.uk (results + Pinnacle closes; non-commercial licence)
 - Kalshi, Polymarket (market odds; Stake blocked by Cloudflare)
 - FPL bootstrap-static API (injury status; interim, terms unclear)
 
-## Standing rules (Xavi)
+## Standing rules (owner)
 - No spray-and-pray: a small curated set, ONE primary source per field (+ at most one fallback); if those don't have the fact, say nothing.
 - Don't over-rely on ESPN; don't jump to paid first; no Brave as strategy; no fixed binary allowlist (use trust tiers).
 - Third-party stats/predictions never blend into our model's probabilities. Market stays separate (Consensus view).
-- Paid sources need Xavi's yes.
+- Paid sources need the owner's yes.
 
 ## Field → source mapping (tested 20 Oct 2026, Chelsea v Spurs; full notes /workspace/news-rca/REPORT.md)
 | Field | Primary | Fallback |
@@ -46,11 +46,11 @@ Source: Xavi, in cloud agent bc-019f8ddf (Pundit research, Sept 2026), verbatim 
 | xG / advanced | The Analyst | FootyStats |
 | Previews & quotes | BBC preview via fixture page | PL match preview |
 
-Blocked (403): Sofascore, WhoScored, FBref. Transfermarkt lagging + ToS forbids scraping. FotMob ToS restricts automated access. FPL/PL API commercial terms unclear. Licensed single-source option: API-Football (paid, needs Xavi yes).
+Blocked (403): Sofascore, WhoScored, FBref. Transfermarkt lagging + ToS forbids scraping. FotMob ToS restricts automated access. FPL/PL API commercial terms unclear. Licensed single-source option: API-Football (paid, needs the owner yes).
 Open web search is OUT of the fact path (discovery only). Join on IDs, not club-name patterns.
 
 ## Source groups (20 Oct 2026, free-only; machine-readable: source-groups.json in this folder)
-Xavi, 20 Oct: no paid sources for now. Every primary and fallback below is free. API-Football, playerstats.football and Stats Perform are **deferred (paid)**.
+Owner, 20 Oct: no paid sources for now. Every primary and fallback below is free. API-Football, playerstats.football and Stats Perform are **deferred (paid)**.
 
 | Group | Primary | Fallback | Corroborate only | Access |
 |---|---|---|---|---|
@@ -93,5 +93,5 @@ Dropped or blocked: predicted lineups (all sources); Sofascore, WhoScored and FB
 Note: where this section differs from the 20 Oct field mapping above, this section wins. xG primary has moved from The Analyst to FootyStats, and the previews primary from BBC to the PL editorial API.
 
 
-## Odds (override, Xavi 2026-10-20 13:05)
+## Odds (override, owner 2026-10-20 13:05)
 Odds are AGGREGATE-ALL, not primary/fallback: show every live source's price side by side (currently Kalshi, Polymarket) with as-of time, best price and our fair price. More free books get added as they're verified; stale/failing sources are dropped from the table. Market never feeds our probabilities.

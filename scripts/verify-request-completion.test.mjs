@@ -177,9 +177,9 @@ test('uncertain/worse promotion is incomplete; product boundary needs explicit h
   assert.equal(f.verify().overall, 'FAIL');
   f.calibration.decision = { outcome: 'uncertain', evidence: [f.proof] }; f.updateCalibration();
   assert.equal(f.verify().overall, 'FAIL');
-  f.calibration.decision = { outcome: 'explicit_product_boundary', approvedBy: 'Xavi', boundary: 'Explicitly reviewed delivered scope and limitations', evidence: [f.proof] }; f.updateCalibration();
+  f.calibration.decision = { outcome: 'explicit_product_boundary', approvedBy: 'owner', boundary: 'Explicitly reviewed delivered scope and limitations', evidence: [f.proof] }; f.updateCalibration();
   assert.equal(f.verify().overall, 'FAIL');
-  const approval = { kind: 'user_scope_decision', authorRole: 'user', source: 'user_message', author: 'Xavi', requestId: f.register.requestId, requirementId: 'predictive-calibration', decision: 'approve_explicit_product_boundary', boundary: f.calibration.decision.boundary, messageId: 'synthetic-user-message', quotedAuthorization: 'Synthetic test authorization for this exact product boundary' };
+  const approval = { kind: 'user_scope_decision', authorRole: 'user', source: 'user_message', author: 'owner', requestId: f.register.requestId, requirementId: 'predictive-calibration', decision: 'approve_explicit_product_boundary', boundary: f.calibration.decision.boundary, messageId: 'synthetic-user-message', quotedAuthorization: 'Synthetic test authorization for this exact product boundary' };
   f.calibration.decision.userDecisionReceipt = f.save('user-decision.json', approval); f.updateCalibration();
   assert.equal(f.verify().overall, 'PASS');
   for (const mutate of [
