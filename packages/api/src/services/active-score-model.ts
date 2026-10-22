@@ -2,7 +2,8 @@ import { getCompetitionById } from "../config/competitions";
 import { canonicalClubName, normalizeTeamName } from "../lib/team-names";
 import { DEFAULT_HOME_ADVANTAGE_ELO, eloToLambdas, matrixTo1x2, matrixToBtts,
   matrixToCorrectScores, matrixToScorelines, matrixToTotals, scoreMatrix } from "./dixon-coles";
-import { assertValidatedEplGoalCalibrationArtifact, EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN,
+import { assertValidatedEplGoalCalibrationArtifact, EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN, EPL_GOAL_CALIBRATION_PINS,
+  type EplGoalCalibrationPin,
   goalCalibrationClubNameIsValid, goalCalibrationUtcInstant, loadEplGoalCalibrationArtifact,
   type ValidatedEplGoalCalibrationArtifact } from "./epl-goal-calibration-artifact";
 import { historicalGoalLambdas } from "./historical-goal-calibration";
@@ -26,6 +27,8 @@ export interface ActiveScoreModelInput {
 export interface ActiveScoreModelOptions {
   /** Defaults to the ONE_X_TWO_TEMPERATURE_ENABLED env flag (OFF unless exactly "true"). */
   oneXTwoTemperature?: boolean;
+  /** Activation origin of the pin the artifact belongs to. Defaults to the current pin. */
+  activationOrigin?: string;
 }
 
 export function resolveActiveScoreModel(
@@ -56,7 +59,7 @@ export function resolveActiveScoreModel(
   let artifactSha256: string | null = null;
   let unknownTeamEffects: string[] = [];
   if (input.competitionId === "eng.1" && input.homeAdvantageElo === DEFAULT_HOME_ADVANTAGE_ELO
-    && kickoff >= Date.parse(EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN)) {
+    && kickoff >= Date.parse(options.activationOrigin ?? EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN)) {
     if (!artifact) throw new Error("Current EPL scoring requires reviewed goal calibration; baseline fallback is disabled");
     assertValidatedEplGoalCalibrationArtifact(artifact, now);
     const fit = artifact.artifact.fit;
@@ -90,4 +93,48 @@ export function getResolvedActiveScoreModel(input: ActiveScoreModelInput, now = 
   const requiresCalibration = input.competitionId === "eng.1" && input.homeAdvantageElo === DEFAULT_HOME_ADVANTAGE_ELO
     && goalCalibrationUtcInstant(input.kickoff) >= Date.parse(EPL_GOAL_CALIBRATION_ACTIVATION_ORIGIN);
   return resolveActiveScoreModel(input, requiresCalibration ? loadEplGoalCalibrationArtifact({ now }) : null, now);
+}
+
+function resolveWithPin(input: ActiveScoreModelInput, pin: EplGoalCalibrationPin, at: Date) {
+  const requiresCalibration = input.competitionId === "eng.1" && input.homeAdvantageElo === DEFAULT_HOME_ADVANTAGE_ELO
+    && goalCalibrationUtcInstant(input.kickoff) >= Date.parse(pin.activationOrigin);
+  const artifact = requiresCalibration
+    ? loadEplGoalCalibrationArtifact({ expectedSha256: pin.sha256, activationOrigin: pin.activationOrigin, now: at }) : null;
+  return resolveActiveScoreModel(input, artifact, at, { activationOrigin: pin.activationOrigin });
+}
+
+export interface CarriedScoreModelOptions {
+  /** Clock for the current pin. Defaults to now. */
+  now?: Date;
+  /** The row's own forecast time; a retired pin is judged fresh at this instant. */
+  forecastAt?: Date;
+  /** Reviewed pins, current first. Tests inject a re-pinned registry here. */
+  pins?: readonly EplGoalCalibrationPin[];
+}
+
+/**
+ * Replays a cached or stored forecast against the calibration it carries.
+ * Rows built under the current pin (or none) take exactly the current path.
+ * Rows built under a reviewed pin that a re-pin has since retired replay
+ * against that pin at their own forecast time, instead of being compared with
+ * today's pin and rejected. An artifact that was never pinned still throws.
+ */
+export function replayCarriedScoreModel(
+  input: ActiveScoreModelInput, carriedArtifactSha256: string | null | undefined, options: CarriedScoreModelOptions = {}
+) {
+  const pins = options.pins ?? EPL_GOAL_CALIBRATION_PINS;
+  const now = options.now ?? new Date();
+  if (pins === EPL_GOAL_CALIBRATION_PINS && (!carriedArtifactSha256 || carriedArtifactSha256 === pins[0]?.sha256)) {
+    return getResolvedActiveScoreModel(input, now);
+  }
+  const current = pins[0];
+  if (!current) throw new Error("No reviewed EPL goal calibration pin");
+  if (!carriedArtifactSha256 || carriedArtifactSha256 === current.sha256) return resolveWithPin(input, current, now);
+  const retired = pins.slice(1).find((pin) => pin.sha256 === carriedArtifactSha256);
+  if (!retired) throw new Error("Cached forecast carries a calibration artifact that was never pinned");
+  const forecastAt = options.forecastAt;
+  if (!forecastAt || !Number.isFinite(forecastAt.getTime())) {
+    throw new Error("Replaying a retired calibration pin requires the row's forecast time");
+  }
+  return resolveWithPin(input, retired, forecastAt);
 }
